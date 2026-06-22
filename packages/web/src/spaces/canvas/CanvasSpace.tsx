@@ -64,8 +64,10 @@ import type { Modality } from '@web/spaces/canvas/types/node-view';
 import {
   applyGroupGeometry,
   computeGroupRect,
+  type FrozenGroupRect,
 } from '@web/spaces/canvas/group-geometry';
 import { planDragStopAll } from '@web/spaces/canvas/drag-persist';
+import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import {
   lockBlockedDeletion,
   lockedNodeIds,
@@ -362,21 +364,48 @@ function CanvasSpaceInner({
     lastY: number;
     childIds: string[];
   } | null>(null);
+  // #1478: while a lone member is dragged, its group's container is frozen to
+  // the drag-start full box (all members + padding). Both the dissolve hit-test
+  // (onNodeDragStop) and the render (applyGroupGeometry) read this snapshot, so a
+  // small in-group nudge neither reflows the border nor dissolves the group.
+  const frozenGroupRef = React.useRef<FrozenGroupRect | null>(null);
 
   const onNodeDragStart = React.useCallback(
     (_event: React.MouseEvent, node: Node): void => {
-      if (node.type !== 'group') return;
-      const childIds = (node.data as { childIds?: string[] }).childIds ?? [];
-      groupDragRef.current = {
-        id: node.id,
-        startX: node.position.x,
-        startY: node.position.y,
-        lastX: node.position.x,
-        lastY: node.position.y,
-        childIds,
-      };
+      if (node.type === 'group') {
+        // A group drag moves the whole box (the border follows its members), so
+        // no member-freeze applies — clear any stale snapshot.
+        frozenGroupRef.current = null;
+        const childIds = (node.data as { childIds?: string[] }).childIds ?? [];
+        groupDragRef.current = {
+          id: node.id,
+          startX: node.position.x,
+          startY: node.position.y,
+          lastX: node.position.x,
+          lastY: node.position.y,
+          childIds,
+        };
+        return;
+      }
+      // Dragging a lone member: snapshot its group's full container now (members
+      // still at their start positions) so the box is stable for the whole drag.
+      const group = flowNodes.find(
+        (item) =>
+          item.type === 'group' &&
+          ((item.data as { childIds?: string[] }).childIds ?? []).includes(
+            node.id,
+          ),
+      );
+      if (!group) {
+        frozenGroupRef.current = null;
+        return;
+      }
+      const childIds = (group.data as { childIds?: string[] }).childIds ?? [];
+      const members = flowNodes.filter((item) => childIds.includes(item.id));
+      const rect = computeGroupRect(members);
+      frozenGroupRef.current = rect ? { groupId: group.id, rect } : null;
     },
-    [],
+    [flowNodes],
   );
 
   const onNodeDrag = React.useCallback(
@@ -411,7 +440,16 @@ function CanvasSpaceInner({
       // any) moves via groupMove; EVERY loose node still persists its position +
       // group-membership change. The old code returned right after moveGroup,
       // dropping the loose nodes so they snapped back (#6). See planDragStopAll.
-      const plan = planDragStopAll(node, nodes, flowNodes, groupDragRef.current);
+      const plan = planDragStopAll(
+        node,
+        nodes,
+        flowNodes,
+        groupDragRef.current,
+        frozenGroupRef.current,
+      );
+      // The frozen snapshot only spans the drag; clear it so the next render
+      // recomputes the group's border from the members' settled positions.
+      frozenGroupRef.current = null;
       if (node.type === 'group' && groupDragRef.current?.id === node.id) {
         groupDragRef.current = null;
       }
@@ -913,11 +951,15 @@ function CanvasSpaceInner({
   // new group is selected so its toolbar / color picker is immediately usable.
   const groupSelection = React.useCallback((): void => {
     if (readOnly || groupOffer.kind !== 'group') return;
-    const members = flowNodes.filter((node) => selectedIds.includes(node.id));
-    const rect = computeGroupRect(members);
-    const position = rect ? { x: rect.x, y: rect.y } : { x: 0, y: 0 };
-    const group = createEmptyGroup(selectedIds, position, userId);
+    const plan = planGroupCreation(flowNodes, selectedIds);
+    if (!plan) return;
+    const group = createEmptyGroup(plan.childIds, plan.position, userId);
     addNode(projectId, spaceId, group);
+    // #1477: clear the marquee members' selection NOW so the mirror round-trip
+    // window holds no stale multi-selection — otherwise ReactFlow routes a
+    // right-click to the SELECTION menu instead of the GROUP menu. The group
+    // itself is selected once it mirrors back (setSelectAfterCreate).
+    setFlowNodes(plan.nextNodes);
     setSelectAfterCreate([group.id]);
   }, [readOnly, groupOffer, flowNodes, selectedIds, userId, projectId, spaceId]);
 
@@ -1208,7 +1250,7 @@ function CanvasSpaceInner({
   // itself (onNodeDragStart / onNodeDrag / onNodeDragStop). Members keep their
   // own real positions, so a member drag reflows the group on the next mirror.
   const renderNodes = React.useMemo<Node[]>(() => {
-    const sized = applyGroupGeometry(flowNodes);
+    const sized = applyGroupGeometry(flowNodes, frozenGroupRef.current);
     const groups = sized.filter((node) => node.type === 'group');
     const rest = sized.filter((node) => node.type !== 'group');
     // Locked nodes are frozen in place: any locked node (incl. a locked group as

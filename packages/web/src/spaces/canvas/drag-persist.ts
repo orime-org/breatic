@@ -13,7 +13,11 @@
 
 import type { Node } from '@xyflow/react';
 
-import { computeGroupRect } from '@web/spaces/canvas/group-geometry';
+import {
+  computeGroupRect,
+  type FrozenGroupRect,
+  type GroupRect,
+} from '@web/spaces/canvas/group-geometry';
 import {
   resolveGroupDrop,
   type GroupBox,
@@ -45,6 +49,7 @@ export interface DragPersistPlan {
   groupOps: GroupOp[];
 }
 
+
 /**
  * A node's center in flow coordinates, from its measured size (or a default
  * before ReactFlow has measured it).
@@ -58,27 +63,35 @@ function nodeCenter(node: Node): { x: number; y: number } {
 }
 
 /**
- * Build the hit-test boxes for every group, excluding the dragged node from
- * each group's bounds so a member dragged out of its own group reads as
- * "outside" (the group's rect is its *other* members' bounds). A group with no
- * remaining members is skipped. `childIds` keeps the dragged node so its
- * current group is still detectable.
+ * Build the hit-test boxes for every group. For the **frozen** group (the one
+ * whose member is being dragged), use the drag-start snapshot rect — a stable
+ * full-container box, so a small in-group nudge no longer reads as "outside" and
+ * dissolves a 2-member group (#1478). For every other group, derive the rect
+ * from its members excluding the dragged node, so a member dragged OUT of its
+ * own group still reads as "outside". A group with no resolvable rect is skipped.
  * @param flowNodes - The current flow nodes.
- * @param draggedId - The node being dropped (excluded from each rect).
+ * @param draggedId - The node being dropped (excluded from each non-frozen rect).
+ * @param frozenGroup - The drag-start snapshot of the dragged member's group, or null.
  * @returns One {@link GroupBox} per group with a resolvable rect.
  */
 function groupBoxesFor(
   flowNodes: ReadonlyArray<Node>,
   draggedId: string,
+  frozenGroup: FrozenGroupRect | null,
 ): GroupBox[] {
   const boxes: GroupBox[] = [];
   for (const node of flowNodes) {
     if (node.type !== 'group') continue;
     const childIds = (node.data as { childIds?: string[] }).childIds ?? [];
-    const members = flowNodes.filter(
-      (member) => childIds.includes(member.id) && member.id !== draggedId,
-    );
-    const rect = computeGroupRect(members);
+    let rect: GroupRect | null;
+    if (frozenGroup && node.id === frozenGroup.groupId) {
+      rect = frozenGroup.rect;
+    } else {
+      const members = flowNodes.filter(
+        (member) => childIds.includes(member.id) && member.id !== draggedId,
+      );
+      rect = computeGroupRect(members);
+    }
     if (rect) {
       boxes.push({
         id: node.id,
@@ -103,12 +116,14 @@ function groupBoxesFor(
  * @param draggedNodes - Every node ReactFlow moved in this drag (1 for a single drag, N for a marquee multi-select).
  * @param allNodes - All current flow nodes, for group hit-testing.
  * @param freezeMembershipIds - Ids whose group membership must NOT be re-evaluated (members moving rigidly with a co-dragged group); their position still persists.
+ * @param frozenGroup - The drag-start snapshot of the dragged member's group, or null (back-compat = per-member box, pre-#1478 behavior).
  * @returns The positions to persist + the membership changes to apply.
  */
 export function planDragStop(
   draggedNodes: ReadonlyArray<Node>,
   allNodes: ReadonlyArray<Node>,
   freezeMembershipIds: ReadonlySet<string> = NO_FROZEN_MEMBERSHIP,
+  frozenGroup: FrozenGroupRect | null = null,
 ): DragPersistPlan {
   const positions: NodePosition[] = [];
   const groupOps: GroupOp[] = [];
@@ -125,7 +140,7 @@ export function planDragStop(
     const drop = resolveGroupDrop(
       node.id,
       nodeCenter(node),
-      groupBoxesFor(allNodes, node.id),
+      groupBoxesFor(allNodes, node.id, frozenGroup),
     );
     if (drop.action === 'add') {
       groupOps.push({ action: 'add', groupId: drop.groupId, nodeId: node.id });
@@ -166,6 +181,7 @@ export interface DragStopAllPlan {
  * @param draggedNodes - Every co-dragged node (1 for a single drag, N for a marquee multi-select).
  * @param allNodes - All current flow nodes, for group hit-testing.
  * @param groupDrag - The active group-drag ref (id + drag-start origin), or null when no group drag is in flight.
+ * @param frozenGroup - The drag-start snapshot of a dragged member's group, or null (forwarded to the per-member membership hit-test).
  * @returns The group move (or null) plus the loose-node positions and membership ops.
  */
 export function planDragStopAll(
@@ -173,6 +189,7 @@ export function planDragStopAll(
   draggedNodes: ReadonlyArray<Node>,
   allNodes: ReadonlyArray<Node>,
   groupDrag: { id: string; startX: number; startY: number } | null,
+  frozenGroup: FrozenGroupRect | null = null,
 ): DragStopAllPlan {
   let groupMove: GroupMove | null = null;
   if (grabbed.type === 'group' && groupDrag && groupDrag.id === grabbed.id) {
@@ -204,6 +221,7 @@ export function planDragStopAll(
     draggedNodes.filter((dragged) => !groupMoveMembers.has(dragged.id)),
     allNodes,
     frozenMembership,
+    frozenGroup,
   );
   return { groupMove, positions, groupOps };
 }

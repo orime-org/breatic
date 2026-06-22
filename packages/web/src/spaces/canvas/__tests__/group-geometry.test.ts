@@ -101,4 +101,30 @@ describe('applyGroupGeometry — size group nodes to wrap their members', () => 
     // only 'a' contributes (the self-reference resolves to the group, skipped)
     expect(g.position).toEqual({ x: 100 - GROUP_PADDING, y: 100 - GROUP_PADDING });
   });
+
+  it('uses the frozen snapshot rect for the frozen group, ignoring live member positions (#1478)', () => {
+    const nodes = [
+      { id: 'g', type: 'group', position: { x: 0, y: 0 }, data: { childIds: ['a', 'b'] } },
+      node('a', 1000, 1000, 100, 50), // member dragged far during the drag
+      node('b', 0, 0, 100, 50),
+    ];
+    const frozen = { groupId: 'g', rect: { x: -24, y: -24, width: 148, height: 98 } };
+    const out = applyGroupGeometry(nodes, frozen);
+    const g = out.find((n) => n.id === 'g')!;
+    // border held at the snapshot, NOT recomputed from the moved member
+    expect(g.position).toEqual({ x: -24, y: -24 });
+    expect(g.style?.width).toBe(148);
+    expect(g.style?.height).toBe(98);
+  });
+
+  it('recomputes a non-frozen group from live members even when another group is frozen', () => {
+    const nodes = [
+      { id: 'g', type: 'group', position: { x: 0, y: 0 }, data: { childIds: ['a'] } },
+      node('a', 100, 100, 80, 40),
+    ];
+    const frozen = { groupId: 'other', rect: { x: 0, y: 0, width: 1, height: 1 } };
+    const out = applyGroupGeometry(nodes, frozen);
+    const g = out.find((n) => n.id === 'g')!;
+    expect(g.position).toEqual({ x: 100 - GROUP_PADDING, y: 100 - GROUP_PADDING });
+  });
 });

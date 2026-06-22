@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 
 import { planDragStop, planDragStopAll } from '@web/spaces/canvas/drag-persist';
+import { computeGroupRect } from '@web/spaces/canvas/group-geometry';
 
 /**
  * Build a minimal measured flow node for the drag-stop planner.
@@ -186,5 +187,48 @@ describe('planDragStopAll (mixed group + loose marquee drag — #6)', () => {
     const plan = planDragStopAll(g, [g, loose], [g, loose], null);
     expect(plan.groupMove).toBeNull();
     expect(plan.positions.map((p) => p.id)).toEqual(['a']);
+  });
+});
+
+describe('planDragStop with a frozen group snapshot (#1478)', () => {
+  // The snapshot is the FULL group container at drag-start (all members,
+  // including the one being dragged) — the stable box the member is hit-tested
+  // against, instead of the shrunk "other members only" box that made a small
+  // in-group nudge read as "outside" and dissolve a 2-member group.
+  const snapshot = computeGroupRect([node('m1', 0, 0), node('m2', 200, 0)]);
+  const frozen = { groupId: 'g', rect: snapshot! };
+
+  it('a member nudged WITHIN the frozen rect keeps membership (no false dissolve)', () => {
+    const g = node('g', 0, 0, 'group', { childIds: ['m1', 'm2'] });
+    const m1 = node('m1', 20, 0); // center (70,30) still inside the snapshot
+    const m2 = node('m2', 200, 0);
+    const plan = planDragStop([m1], [g, m1, m2], new Set(), frozen);
+    expect(plan.groupOps).toEqual([]);
+  });
+
+  it('a member dragged OUTSIDE the frozen rect leaves the group', () => {
+    const g = node('g', 0, 0, 'group', { childIds: ['m1', 'm2'] });
+    const m1 = node('m1', 1000, 0); // center far outside the snapshot
+    const m2 = node('m2', 200, 0);
+    const plan = planDragStop([m1], [g, m1, m2], new Set(), frozen);
+    expect(plan.groupOps).toContainEqual({
+      action: 'remove',
+      groupId: 'g',
+      nodeId: 'm1',
+    });
+  });
+
+  it('WITHOUT a frozen snapshot, a small nudge still dissolves (the bug it fixes)', () => {
+    // Documents the pre-fix behavior: no snapshot → groupBoxesFor excludes the
+    // dragged node → m1 nudged to (20,0) reads as outside m2's lone box → remove.
+    const g = node('g', 0, 0, 'group', { childIds: ['m1', 'm2'] });
+    const m1 = node('m1', 20, 0);
+    const m2 = node('m2', 200, 0);
+    const plan = planDragStop([m1], [g, m1, m2], new Set(), null);
+    expect(plan.groupOps).toContainEqual({
+      action: 'remove',
+      groupId: 'g',
+      nodeId: 'm1',
+    });
   });
 });
