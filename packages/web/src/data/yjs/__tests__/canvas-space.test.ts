@@ -17,6 +17,7 @@ import {
   removeEdge,
   removeFromGroup,
   removeNode,
+  runCanvasUndoBatch,
   setGroupBackground,
   setNodeContent,
   setNodeError,
@@ -365,6 +366,54 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       const depth = undo.undoStack.length;
       setNodePosition(PID, SID, 'img1', { x: 99, y: 99 });
       expect(undo.undoStack.length).toBe(depth + 1);
+    });
+  });
+
+  describe('drag-stop atomicity — one gesture = one undo entry (#3)', () => {
+    /** Read a node's position off the wire node Y.Map. */
+    function pos(nodeId: string): { x: number; y: number } | undefined {
+      const n = doc().getMap('nodesMap').get(nodeId) as Y.Map<unknown> | undefined;
+      return n?.get('position') as { x: number; y: number } | undefined;
+    }
+
+    it('a drag-out (move + dissolve) batched into one transaction is ONE undo entry; undo restores member position AND the group together', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm1', position: { x: 0, y: 0 } }));
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm2', position: { x: 100, y: 0 } }));
+      addNode(PID, SID, sampleFields('group', { childIds: ['m1', 'm2'] }, { id: 'g1' }));
+      const undo = createCanvasUndoManager(doc());
+      const depth = undo.undoStack.length;
+      // onNodeDragStop dragging m2 far out of the 2-member group fires a position
+      // write AND a removeFromGroup that dissolves the group (≤1 left). Wrapping
+      // both in one batch makes the gesture a SINGLE atomic undo step.
+      runCanvasUndoBatch(PID, SID, () => {
+        setNodePosition(PID, SID, 'm2', { x: 9999, y: 9999 });
+        removeFromGroup(PID, SID, 'g1', 'm2');
+      });
+      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined(); // dissolved
+      // ONE entry, not two: captureTimeout:0 made it two, so undo restored the
+      // group while m2 was still far away → the phantom oversized empty group.
+      expect(undo.undoStack.length).toBe(depth + 1);
+      undo.undo();
+      // Undo restored BOTH the group AND m2's original position atomically.
+      expect(doc().getMap('nodesMap').get('g1')).toBeInstanceOf(Y.Map);
+      expect(pos('m2')).toEqual({ x: 100, y: 0 });
+    });
+
+    it('a multi-node marquee move batched into one transaction is ONE undo entry; undo restores ALL nodes (#3 same root)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'a', position: { x: 0, y: 0 } }));
+      addNode(PID, SID, sampleFields('image', {}, { id: 'b', position: { x: 50, y: 50 } }));
+      const undo = createCanvasUndoManager(doc());
+      const depth = undo.undoStack.length;
+      runCanvasUndoBatch(PID, SID, () => {
+        setNodePosition(PID, SID, 'a', { x: 10, y: 10 });
+        setNodePosition(PID, SID, 'b', { x: 60, y: 60 });
+      });
+      expect(undo.undoStack.length).toBe(depth + 1); // one entry, not two
+      undo.undo();
+      // Both reverted by one undo — the bug left N separate entries, so undoing a
+      // 5-node marquee move only moved one node back.
+      expect(pos('a')).toEqual({ x: 0, y: 0 });
+      expect(pos('b')).toEqual({ x: 50, y: 50 });
     });
   });
 

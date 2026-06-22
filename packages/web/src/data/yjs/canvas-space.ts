@@ -93,9 +93,14 @@ export const MAX_UNDO_DEPTH = 50;
  * structural / metadata / name edits); remote collaborator writes carry the
  * sync provider as origin and are excluded, so undo is per-client.
  *
- * `captureTimeout: 0` disables time-based merging so two separate actions
- * never collapse into one undo step; a drag is already one entry because
- * `setNodePosition` is committed once on drag-end.
+ * `captureTimeout: 0` disables time-based merging so two unrelated actions
+ * never collapse into one undo step. A single drag gesture can still emit
+ * several writes (a position change PLUS a group-membership change, across N
+ * marquee-dragged nodes), so the canvas commits a whole drag-stop inside one
+ * {@link runCanvasUndoBatch} transaction — one gesture stays one atomic undo
+ * entry. Without that, `captureTimeout: 0` split a drag-out into separate
+ * "move" + "dissolve" steps, and undoing restored the group before the
+ * member's position reverted → a phantom oversized empty group.
  *
  * The stack is capped at {@link MAX_UNDO_DEPTH} by trimming the oldest in
  * place on each push (Y.UndoManager has no native maxDepth). The dropped
@@ -117,6 +122,29 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
     }
   });
   return undoManager;
+}
+
+/**
+ * Commit several canvas mutations as ONE atomic undo entry — frontend-owned.
+ * Each individual binding (`setNodePosition`, `moveGroup`, `removeFromGroup`,
+ * …) opens its own `CANVAS_UNDO` transaction; Yjs nests a transaction opened
+ * while one is already active into the outer one, so calling them inside this
+ * outer `doc.transact(fn, CANVAS_UNDO)` collapses every write into a single
+ * undo step. The whole-gesture wrapper a drag-stop needs: one drag = one undo,
+ * even when it moves N nodes and changes group membership (see
+ * {@link createCanvasUndoManager} for why `captureTimeout: 0` makes this
+ * explicit batching necessary).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space whose doc to mutate.
+ * @param fn - Runs the individual mutations; their writes join this one transaction.
+ */
+export function runCanvasUndoBatch(
+  projectId: string,
+  spaceId: string,
+  fn: () => void,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  doc.transact(fn, CANVAS_UNDO);
 }
 
 /**
