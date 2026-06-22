@@ -24,6 +24,11 @@ interface InnerNodeProps {
    * file picker and fills this node (media nodes). Text handles its own edit.
    */
   onActivate?: () => void;
+  /**
+   * Commit inline-edited text content, pre-bound to this node's id (text nodes).
+   * Without it the text body's edit is never persisted — discarded on blur.
+   */
+  onChange?: (next: string) => void;
 }
 
 /**
@@ -53,7 +58,7 @@ function makeFlowNode(
    */
   function FlowNode(props: NodeProps): React.JSX.Element {
     const data = props.data as unknown as NodeView;
-    const { renameNode, activateNodeUpload } = useCanvasActions();
+    const { renameNode, activateNodeUpload, setNodeContent } = useCanvasActions();
     // The canvas zoom (transform[2]) lets the name header counter-scale so it
     // keeps a constant screen size — down to a floor zoom, below which it
     // shrinks with the canvas (see `overlayCounterScale`). The scissors button
@@ -74,6 +79,14 @@ function makeFlowNode(
         activateNodeUpload(props.id, kind);
       }
     }, [activateNodeUpload, props.id, data.kind]);
+    // Text body commits its inline edit through here — the wrapper is the only
+    // layer that knows the node id, so it binds the content write to it (mirrors
+    // onRename). Without this the body's onChange is undefined and the edit is
+    // lost on blur (#1470).
+    const onChange = React.useCallback(
+      (content: string): void => setNodeContent(props.id, content),
+      [setNodeContent, props.id],
+    );
     // A group node is sized by ReactFlow to its derived bounds; this wrapper
     // must fill that height so the GroupNode's own `size-full` resolves to the
     // full rect (a percentage height needs a definite-height parent chain).
@@ -89,6 +102,7 @@ function makeFlowNode(
               locked={data.locked}
               onRename={onRename}
               onActivate={onActivate}
+              onChange={onChange}
             />
             {/* Both handles render AFTER the body. Absolutely-positioned siblings
                 paint in DOM order, so a handle placed BEFORE the body has its
