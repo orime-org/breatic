@@ -183,7 +183,7 @@
 
 ### BellMenu 在 Studio 页 —— 跨页通知统一待办
 
-**Why 现在不做**：BellMenu 通知组件（待审批的角色升级请求 / 成员加入通知 / 未读消息 等）在 Project 页右上角已经落地，但 Studio 页右上角同样应该出现（项目列表视角下，user 也需要看跨项目的待办 / 通知）。Project 页 BellMenu 已闭环；Studio 页要单独做，避免让一个 PR 同时碰 chrome layout 在两个页面的差异（Studio chrome 跟 Project chrome 是不同的 IA layer）。
+**Why 现在不做**：BellMenu 通知组件（待审批的角色升级请求 / studio·project 邀请确认 / 管理员转让 等）在 Project 页右上角已经落地，但 Studio 页右上角同样应该出现（项目列表视角下，user 也需要看跨项目的待办 / 通知）。Project 页 BellMenu 已闭环；Studio 页要单独做，避免让一个 PR 同时碰 chrome layout 在两个页面的差异（Studio chrome 跟 Project chrome 是不同的 IA layer）。
 
 **真治根工作（独立 PR）**：
 

@@ -83,12 +83,19 @@ export async function requestTransfer(
   const expiresAt = new Date(
     Date.now() + TRANSFER_TTL_DAYS * 24 * 60 * 60 * 1000,
   );
+  const profiles = await studioRepo.getPersonalProfilesByCreators([
+    fromAdminUserId,
+  ]);
+  const from = profiles.get(fromAdminUserId);
   await notificationService.createStudioTransferRequest({
     userId: toUserId,
     payload: {
       fromUserId: fromAdminUserId,
+      fromName: from?.name ?? "",
+      fromHandle: from?.slug ?? "",
       studioId: studio.id,
       studioName: studio.name,
+      studioSlug: studio.slug,
     },
     expiresAt,
   });
@@ -136,6 +143,7 @@ export async function confirmTransfer(
       fromUserId?: unknown;
       studioId?: unknown;
       studioName?: unknown;
+      studioSlug?: unknown;
     };
     if (
       typeof payload.fromUserId !== "string" ||
@@ -146,6 +154,8 @@ export async function confirmTransfer(
     const { fromUserId, studioId } = payload;
     const studioName =
       typeof payload.studioName === "string" ? payload.studioName : "";
+    const studioSlug =
+      typeof payload.studioSlug === "string" ? payload.studioSlug : "";
 
     // Demote the old admin FIRST, then promote the new one — the reverse order
     // would collide with studio_members_one_admin_per_studio (two active
@@ -165,9 +175,18 @@ export async function confirmTransfer(
     );
     if (!promoted) throw new NotFoundError(t("server.error.not_found"));
 
+    const profiles = await studioRepo.getPersonalProfilesByCreators([
+      receiverUserId,
+    ]);
+    const accepter = profiles.get(receiverUserId);
     await notificationService.createStudioTransferApproved({
       userId: fromUserId,
-      payload: { studioName },
+      payload: {
+        studioName,
+        studioSlug,
+        accepterName: accepter?.name ?? "",
+        accepterHandle: accepter?.slug ?? "",
+      },
       tx,
     });
   });

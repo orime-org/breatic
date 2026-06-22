@@ -35,7 +35,13 @@ export type { NotificationEntity };
  */
 export interface RoleUpgradeRequestPayload {
   requesterUserId: string;
+  /** Requester's personal-studio display name — shown actor-first in the bell. */
+  requesterName: string;
+  /** Requester's personal-studio slug = `@handle` shown + `/studio/{slug}` link. */
+  requesterHandle: string;
   projectName: string;
+  /** The project's slug — the bell's project name links to `/project/{slug}-{id}`. */
+  projectSlug: string;
   requestedRole: "editor"; // currently only editor upgrade is supported
   message: string | null;
 }
@@ -47,7 +53,13 @@ export interface RoleUpgradeRequestPayload {
  * inbox.
  */
 export interface RoleUpgradeDecisionPayload {
+  /** Deciding owner's personal-studio display name — shown actor-first in the bell. */
+  deciderName: string;
+  /** Deciding owner's personal-studio slug = `@handle` shown + `/studio/{slug}` link. */
+  deciderHandle: string;
   projectName: string;
+  /** The project's slug — the bell's project name links to `/project/{slug}-{id}`. */
+  projectSlug: string;
   newRole?: "editor";
   reason?: string | null;
 }
@@ -145,8 +157,13 @@ export async function createRoleUpgradeRejected(input: {
  */
 export interface StudioTransferRequestPayload {
   fromUserId: string;
+  /** Initiating admin's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  fromName: string;
+  fromHandle: string;
   studioId: string;
   studioName: string;
+  /** The studio's slug — the bell's studio name links to `/studio/{slug}`. */
+  studioSlug: string;
 }
 
 /**
@@ -155,6 +172,11 @@ export interface StudioTransferRequestPayload {
  */
 export interface StudioTransferApprovedPayload {
   studioName: string;
+  /** The studio's slug — the bell's studio name links to `/studio/{slug}`. */
+  studioSlug: string;
+  /** Accepting recipient's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  accepterName: string;
+  accepterHandle: string;
 }
 
 /**
@@ -168,7 +190,11 @@ export interface StudioInviteRequestPayload {
   invitationId: string;
   studioId: string;
   studioName: string;
+  /** Inviting admin's personal-studio slug = `@handle` shown + `/studio/{slug}` link. */
   inviterName: string;
+  inviterHandle: string;
+  /** The invited-into studio's slug — the bell's studio name links to `/studio/{slug}`. */
+  studioSlug: string;
   role: "maintainer" | "guest";
 }
 
@@ -178,7 +204,11 @@ export interface StudioInviteRequestPayload {
  */
 export interface StudioInviteAcceptedPayload {
   studioName: string;
+  /** The studio's slug — the bell's studio name links to `/studio/{slug}`. */
+  studioSlug: string;
+  /** Invitee's personal-studio name + slug (@handle) — shown actor-first + linked. */
   inviteeName: string;
+  inviteeHandle: string;
 }
 
 /**
@@ -300,7 +330,11 @@ export interface ProjectInviteRequestPayload {
   invitationId: string;
   projectId: string;
   projectName: string;
+  /** The project's slug — the bell's project name links to `/project/{slug}-{id}`. */
+  projectSlug: string;
+  /** Inviting owner's personal-studio name + slug (@handle) — shown actor-first + linked. */
   inviterName: string;
+  inviterHandle: string;
   role: "editor" | "viewer";
   /** One-time email-link token; the bell row navigates to `?token=` with it. */
   token: string;
@@ -312,7 +346,11 @@ export interface ProjectInviteRequestPayload {
  */
 export interface ProjectInviteAcceptedPayload {
   projectName: string;
+  /** The project's slug — the bell's project name links to `/project/{slug}-{id}`. */
+  projectSlug: string;
+  /** Invitee's personal-studio name + slug (@handle) — shown actor-first + linked. */
   inviteeName: string;
+  inviteeHandle: string;
 }
 
 /**

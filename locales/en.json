@@ -1323,7 +1323,7 @@
     }
   },
   "notifications": {
-    "title": "Access requests",
+    "title": "Notifications",
     "empty": "No pending notifications",
     "roleHint": {
       "editor": "Edit",
@@ -1341,17 +1341,17 @@
     "rejectedToast": "Request rejected.",
     "decideFailed": "Could not process the decision. Please try again.",
     "headline": {
-      "roleUpgradeRequest": "Someone wants editor access on {project}",
-      "roleUpgradeApproved": "Your editor access on {project} was approved",
-      "roleUpgradeRejected": "Your editor access on {project} was rejected",
-      "studioMemberInvited": "You were added to {studio}",
-      "studioTransferRequest": "You were asked to take over {studio}",
-      "studioTransferApproved": "Your admin transfer for {studio} was accepted",
-      "studioInviteRequest": "You were invited to join {studio}",
-      "studioInviteAccepted": "{invitee} accepted your invite to {studio}",
-      "projectInviteRequest": "You were invited to join {project}",
-      "projectInviteAccepted": "{invitee} accepted your invite to {project}"
+      "roleUpgradeRequest": "{actor} requested editor access on {project}",
+      "roleUpgradeApproved": "{actor} approved your editor access on {project}",
+      "roleUpgradeRejected": "{actor} rejected your editor access on {project}",
+      "studioTransferRequest": "{actor} asked you to take over {studio}",
+      "studioTransferApproved": "{actor} accepted your admin transfer for {studio}",
+      "studioInviteRequest": "{actor} invited you to join {studio}",
+      "studioInviteAccepted": "{actor} accepted your invite to {studio}",
+      "projectInviteRequest": "{actor} invited you to join {project}",
+      "projectInviteAccepted": "{actor} accepted your invite to {project}"
     },
+    "actorFallback": "Someone",
     "actionFailed": "Could not complete the action. Please try again.",
     "transferConfirmedToast": "You are now the studio admin.",
     "transferCancelledToast": "Transfer declined.",

@@ -112,8 +112,12 @@ export async function createInvite(
     throw new ConflictError(t("server.project.collaborator_limit_reached"));
   }
 
-  const names = await studioRepo.getPersonalNamesByCreators([inviterUserId]);
-  const inviterName = names.get(inviterUserId) ?? "";
+  const profiles = await studioRepo.getPersonalProfilesByCreators([
+    inviterUserId,
+  ]);
+  const inviter = profiles.get(inviterUserId);
+  const inviterName = inviter?.name ?? "";
+  const inviterHandle = inviter?.slug ?? "";
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   let invitationId = "";
@@ -139,7 +143,9 @@ export async function createInvite(
           invitationId,
           projectId,
           projectName: project.name,
+          projectSlug: project.slug,
           inviterName,
+          inviterHandle,
           role,
           token,
         },
@@ -224,15 +230,18 @@ export async function confirmInvite(
     }
 
     const project = await projectRepo.getProjectById(accepted.projectId);
-    const names = await studioRepo.getPersonalNamesByCreators([
+    const profiles = await studioRepo.getPersonalProfilesByCreators([
       accepted.invitedUserId,
     ]);
+    const invitee = profiles.get(accepted.invitedUserId);
     await notificationService.createProjectInviteAccepted({
       userId: accepted.invitedBy,
       projectId: accepted.projectId,
       payload: {
         projectName: project?.name ?? "",
-        inviteeName: names.get(accepted.invitedUserId) ?? "",
+        projectSlug: project?.slug ?? "",
+        inviteeName: invitee?.name ?? "",
+        inviteeHandle: invitee?.slug ?? "",
       },
       tx,
     });

@@ -1323,7 +1323,7 @@
     }
   },
   "notifications": {
-    "title": "访问申请",
+    "title": "通知",
     "empty": "没有待处理通知",
     "roleHint": {
       "editor": "编辑",
@@ -1341,17 +1341,17 @@
     "rejectedToast": "已拒绝升级申请。",
     "decideFailed": "处理失败,请重试。",
     "headline": {
-      "roleUpgradeRequest": "有人申请 {project} 的 Editor 权限",
-      "roleUpgradeApproved": "你在 {project} 的 Editor 权限已通过",
-      "roleUpgradeRejected": "你在 {project} 的 Editor 权限申请被拒绝",
-      "studioMemberInvited": "你已被加入 {studio}",
-      "studioTransferRequest": "有人邀请你接管 {studio}",
-      "studioTransferApproved": "你对 {studio} 的 Admin 转让已被接受",
-      "studioInviteRequest": "你被邀请加入 {studio}",
-      "studioInviteAccepted": "{invitee} 接受了你对 {studio} 的邀请",
-      "projectInviteRequest": "你被邀请加入 {project}",
-      "projectInviteAccepted": "{invitee} 接受了你对 {project} 的邀请"
+      "roleUpgradeRequest": "{actor} 申请 {project} 的 Editor 权限",
+      "roleUpgradeApproved": "{actor} 通过了你在 {project} 的 Editor 权限",
+      "roleUpgradeRejected": "{actor} 拒绝了你在 {project} 的 Editor 权限申请",
+      "studioTransferRequest": "{actor} 邀请你接管 {studio}",
+      "studioTransferApproved": "{actor} 接受了你对 {studio} 的 Admin 转让",
+      "studioInviteRequest": "{actor} 邀请你加入 {studio}",
+      "studioInviteAccepted": "{actor} 接受了你对 {studio} 的邀请",
+      "projectInviteRequest": "{actor} 邀请你加入 {project}",
+      "projectInviteAccepted": "{actor} 接受了你对 {project} 的邀请"
     },
+    "actorFallback": "某人",
     "actionFailed": "无法完成操作，请重试。",
     "transferConfirmedToast": "你现在是该 Studio 的 Admin 了。",
     "transferCancelledToast": "已拒绝转让。",

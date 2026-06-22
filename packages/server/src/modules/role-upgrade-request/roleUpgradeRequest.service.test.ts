@@ -67,9 +67,15 @@ vi.mock("../notification/notification.service.js", async (importOriginal) => {
     createRoleUpgradeRejected: vi.fn(),
   };
 });
+// The request / approve / reject paths resolve the actor's display identity
+// (name + personal-studio slug = @handle) for the bell payload via studio.service.
+vi.mock("../studio/studio.service.js", () => ({
+  getPersonalStudioProfilesByUserIds: vi.fn(),
+}));
 
 import * as notificationRepo from "../notification/notification.repo.js";
 import * as notificationService from "../notification/notification.service.js";
+import * as studioService from "../studio/studio.service.js";
 import { projectMembersRepo } from "@breatic/core";
 import * as roleUpgradeRequestService from "./roleUpgradeRequest.service.js";
 import {
@@ -82,9 +88,16 @@ const OWNER = "u-owner";
 const VIEWER = "u-viewer";
 const PID = "p-1";
 const NID = "n-1";
+const VIEWER_PROFILE = { name: "Vicky Viewer", slug: "vicky" };
+const OWNER_PROFILE = { name: "Olivia Owner", slug: "olivia" };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: no actor profile resolved (callers fall back to ""). Happy-path
+  // tests override with a specific name + slug (@handle) per the bell payload.
+  vi.mocked(
+    studioService.getPersonalStudioProfilesByUserIds,
+  ).mockResolvedValue(new Map());
 });
 
 function fakeRequest(overrides: Partial<{
@@ -110,7 +123,10 @@ function fakeRequest(overrides: Partial<{
 }
 
 describe("request", () => {
-  it("delegates to notificationService.createRoleUpgradeRequest with the right payload", async () => {
+  it("resolves the requester's identity (name + @handle) into the bell payload", async () => {
+    vi.mocked(
+      studioService.getPersonalStudioProfilesByUserIds,
+    ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
     vi.mocked(notificationService.createRoleUpgradeRequest).mockResolvedValueOnce(
       fakeRequest(),
     );
@@ -119,9 +135,13 @@ describe("request", () => {
       requesterUserId: VIEWER,
       projectId: PID,
       projectName: "Demo",
+      projectSlug: "demo-slug",
       message: "Need to edit",
     });
     expect(out.id).toBe(NID);
+    expect(
+      studioService.getPersonalStudioProfilesByUserIds,
+    ).toHaveBeenCalledWith([VIEWER]);
     expect(
       notificationService.createRoleUpgradeRequest,
     ).toHaveBeenCalledWith(
@@ -130,6 +150,8 @@ describe("request", () => {
         projectId: PID,
         payload: expect.objectContaining({
           requesterUserId: VIEWER,
+          requesterName: "Vicky Viewer",
+          requesterHandle: "vicky",
           requestedRole: "editor",
           message: "Need to edit",
         }),
@@ -139,9 +161,12 @@ describe("request", () => {
 });
 
 describe("approve", () => {
-  it("happy path — bumps role + creates approved notification + marks request read", async () => {
+  it("happy path — bumps role + creates approved notification (decider identity) + marks request read", async () => {
     vi.mocked(notificationRepo.findById).mockResolvedValueOnce(fakeRequest());
     vi.mocked(projectMembersRepo.updateRole).mockResolvedValueOnce(true);
+    vi.mocked(
+      studioService.getPersonalStudioProfilesByUserIds,
+    ).mockResolvedValueOnce(new Map([[OWNER, OWNER_PROFILE]]));
     vi.mocked(notificationService.createRoleUpgradeApproved).mockResolvedValueOnce(
       fakeRequest({ type: "access.role_upgrade_approved" }),
     );
@@ -151,6 +176,7 @@ describe("approve", () => {
       notificationId: NID,
       ownerUserId: OWNER,
       projectName: "Demo",
+      projectSlug: "demo-slug",
     });
 
     expect(projectMembersRepo.updateRole).toHaveBeenCalledWith(
@@ -160,11 +186,18 @@ describe("approve", () => {
       expect.anything(),
     );
     expect(
+      studioService.getPersonalStudioProfilesByUserIds,
+    ).toHaveBeenCalledWith([OWNER]);
+    expect(
       notificationService.createRoleUpgradeApproved,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
         requesterUserId: VIEWER,
         projectId: PID,
+        payload: expect.objectContaining({
+          deciderName: "Olivia Owner",
+          deciderHandle: "olivia",
+        }),
       }),
     );
     expect(notificationRepo.markRead).toHaveBeenCalledWith(
@@ -181,6 +214,7 @@ describe("approve", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(projectMembersRepo.updateRole).not.toHaveBeenCalled();
@@ -195,6 +229,7 @@ describe("approve", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(projectMembersRepo.updateRole).not.toHaveBeenCalled();
@@ -202,13 +237,14 @@ describe("approve", () => {
 
   it("throws Validation when the notification is not a role-upgrade-request type", async () => {
     vi.mocked(notificationRepo.findById).mockResolvedValueOnce(
-      fakeRequest({ type: "studio.member_invited" }),
+      fakeRequest({ type: "studio.invite_request" }),
     );
     await expect(
       roleUpgradeRequestService.approve({
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(ValidationError);
   });
@@ -222,6 +258,7 @@ describe("approve", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
@@ -235,6 +272,7 @@ describe("approve", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(
@@ -251,6 +289,7 @@ describe("approve", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
     // Loser does no work: no role bump, no approved notification.
@@ -264,6 +303,9 @@ describe("approve", () => {
 describe("reject", () => {
   it("creates a rejected notification + marks request read; no role bump", async () => {
     vi.mocked(notificationRepo.findById).mockResolvedValueOnce(fakeRequest());
+    vi.mocked(
+      studioService.getPersonalStudioProfilesByUserIds,
+    ).mockResolvedValueOnce(new Map([[OWNER, OWNER_PROFILE]]));
     vi.mocked(notificationService.createRoleUpgradeRejected).mockResolvedValueOnce(
       fakeRequest({ type: "access.role_upgrade_rejected" }),
     );
@@ -273,6 +315,7 @@ describe("reject", () => {
       notificationId: NID,
       ownerUserId: OWNER,
       projectName: "Demo",
+      projectSlug: "demo-slug",
       reason: "Too many editors already",
     });
 
@@ -284,6 +327,8 @@ describe("reject", () => {
         requesterUserId: VIEWER,
         projectId: PID,
         payload: expect.objectContaining({
+          deciderName: "Olivia Owner",
+          deciderHandle: "olivia",
           reason: "Too many editors already",
         }),
       }),
@@ -304,6 +349,7 @@ describe("reject", () => {
         notificationId: NID,
         ownerUserId: OWNER,
         projectName: "Demo",
+        projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
   });

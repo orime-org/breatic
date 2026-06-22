@@ -25,6 +25,7 @@ import {
   type NotificationType,
   type NotificationAction,
 } from '@web/data/api/notifications';
+import { notificationHeadline } from '@web/features/notifications/notification-headline';
 import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -136,7 +137,6 @@ function projectInviteTokenOf(payload: Record<string, unknown>): string | null {
  *   - access.role_upgrade_request   → owner inbox; inline approve / reject
  *   - access.role_upgrade_approved  → viewer (now editor) inbox; read-on-click
  *   - access.role_upgrade_rejected  → viewer inbox; read-on-click
- *   - studio.member_invited         → invitee inbox; read-on-click (slice 3)
  *   - studio.transfer_request       → proposed admin inbox; inline confirm /
  *                                     cancel + a TTL countdown (slice 3)
  *   - studio.transfer_approved      → old-admin inbox; read-on-click (slice 3)
@@ -395,7 +395,7 @@ function NotificationItem({
   onMarkRead,
 }: NotificationItemProps): React.JSX.Element {
   const t = useTranslation();
-  const headline = headlineFor(notification, t);
+  const headline = notificationHeadline(notification, t);
   const subtitle = subtitleFor(notification, t);
   const isUpgradeRequest =
     notification.type === 'access.role_upgrade_request';
@@ -423,7 +423,7 @@ function NotificationItem({
         </Avatar>
         <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
           <span
-            className='truncate text-sm font-medium text-foreground'
+            className='text-sm font-medium text-foreground'
             data-testid={`bell-notification-headline-${notification.id}`}
           >
             {headline}
@@ -527,8 +527,6 @@ function iconForType(type: NotificationType): string {
       return '✓';
     case 'access.role_upgrade_rejected':
       return '✕';
-    case 'studio.member_invited':
-      return initialsFromString('ST');
     case 'studio.transfer_request':
       return initialsFromString('TR');
     case 'studio.transfer_approved':
@@ -543,64 +541,6 @@ function iconForType(type: NotificationType): string {
       return '✓';
     default:
       return '?';
-  }
-}
-
-/**
- * Builds the localized headline for a notification from its type and payload.
- * @param n - Notification to describe.
- * @param t - Translation function used to render the localized headline.
- * @returns the localized headline, or the raw type for an unknown notification.
- */
-function headlineFor(
-  n: Notification,
-  t: ReturnType<typeof useTranslation>,
-): string {
-  switch (n.type) {
-    case 'access.role_upgrade_request':
-      return t('notifications.headline.roleUpgradeRequest', {
-        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
-      });
-    case 'access.role_upgrade_approved':
-      return t('notifications.headline.roleUpgradeApproved', {
-        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
-      });
-    case 'access.role_upgrade_rejected':
-      return t('notifications.headline.roleUpgradeRejected', {
-        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
-      });
-    case 'studio.member_invited':
-      return t('notifications.headline.studioMemberInvited', {
-        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
-      });
-    case 'studio.transfer_request':
-      return t('notifications.headline.studioTransferRequest', {
-        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
-      });
-    case 'studio.transfer_approved':
-      return t('notifications.headline.studioTransferApproved', {
-        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
-      });
-    case 'studio.invite_request':
-      return t('notifications.headline.studioInviteRequest', {
-        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
-      });
-    case 'studio.invite_accepted':
-      return t('notifications.headline.studioInviteAccepted', {
-        invitee: String((n.payload as Record<string, unknown>).inviteeName ?? ''),
-        studio: String((n.payload as Record<string, unknown>).studioName ?? ''),
-      });
-    case 'project.invite_request':
-      return t('notifications.headline.projectInviteRequest', {
-        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
-      });
-    case 'project.invite_accepted':
-      return t('notifications.headline.projectInviteAccepted', {
-        invitee: String((n.payload as Record<string, unknown>).inviteeName ?? ''),
-        project: String((n.payload as Record<string, unknown>).projectName ?? ''),
-      });
-    default:
-      return n.type;
   }
 }
 
@@ -636,10 +576,6 @@ function subtitleFor(
   if (n.type === 'access.role_upgrade_rejected') {
     const reason = typeof p.reason === 'string' ? p.reason : null;
     return reason && reason.length > 0 ? reason : null;
-  }
-  if (n.type === 'studio.member_invited') {
-    const roleKey = typeof p.role === 'string' ? STUDIO_ROLE_KEY[p.role] : null;
-    return roleKey ? t(roleKey) : null;
   }
   if (n.type === 'studio.invite_request') {
     const roleKey = typeof p.role === 'string' ? STUDIO_ROLE_KEY[p.role] : null;

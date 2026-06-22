@@ -179,6 +179,39 @@ export async function getPersonalNamesByCreators(
 }
 
 /**
+ * Batch-resolve each user's active personal studio `name` + URL `slug` (handle).
+ *
+ * Backs the bell notification actor identity: the slug is both the `@handle`
+ * shown beside the name and the `/studio/{slug}` link target. Users with no
+ * active personal studio (mid-onboarding) are absent from the map; callers
+ * fall back.
+ * @param createdByUserIds - User UUIDs to resolve (empty input → empty map)
+ * @returns Map of `userId → { name, slug }`
+ */
+export async function getPersonalProfilesByCreators(
+  createdByUserIds: string[],
+): Promise<Map<string, { name: string; slug: string }>> {
+  if (createdByUserIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      createdByUserId: studios.createdByUserId,
+      name: studios.name,
+      slug: studios.slug,
+    })
+    .from(studios)
+    .where(
+      and(
+        inArray(studios.createdByUserId, createdByUserIds),
+        eq(studios.type, "personal"),
+        isNull(studios.deletedAt),
+      ),
+    );
+  return new Map(
+    rows.map((r) => [r.createdByUserId, { name: r.name, slug: r.slug }]),
+  );
+}
+
+/**
  * Look up an active studio (personal or team) by its URL handle.
  *
  * Backs the container shell (`GET /studio/:slug`). The slug is globally

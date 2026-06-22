@@ -170,6 +170,22 @@ export async function getPersonalStudioNamesByUserIds(
 }
 
 /**
+ * Resolve the display `name` + URL `slug` (handle) of each user's personal
+ * studio in one query.
+ *
+ * The bell notification actor-identity source: the slug is the `@handle` shown
+ * beside the name and the `/studio/{slug}` link target. Users mid-onboarding
+ * (no personal studio) are absent from the map; callers fall back.
+ * @param userIds - User UUIDs to resolve (deduped + capped by the caller)
+ * @returns Map of `userId → { name, slug }` (missing for users with no studio)
+ */
+export async function getPersonalStudioProfilesByUserIds(
+  userIds: string[],
+): Promise<Map<string, { name: string; slug: string }>> {
+  return studioRepo.getPersonalProfilesByCreators(userIds);
+}
+
+/**
  * Resolve a studio by its URL slug, or `null` if no active studio has it.
  *
  * A thin lookup used by callers that need the studio id behind a slug param

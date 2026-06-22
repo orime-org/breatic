@@ -234,8 +234,15 @@ describe("createInvite", () => {
       .select({ payload: schema.notifications.payload })
       .from(schema.notifications)
       .where(eq(schema.notifications.userId, INVITEE));
-    const payload = notices[0]?.payload as { token?: unknown };
+    const payload = notices[0]?.payload as Record<string, unknown>;
     expect(payload.token).toBe(result.token);
+    // …and the inviter's identity (name + @handle) for the actor-first bell row
+    // ("[Owner] invited you to [Test Project]", the name clickable to the studio).
+    expect(payload).toMatchObject({
+      inviterName: "Owner",
+      inviterHandle: "proj-owner",
+      projectSlug: "test-project",
+    });
   });
 
   it("rejects an unregistered email with NotFound", async () => {
@@ -289,9 +296,13 @@ describe("confirmInvite", () => {
 
     expect(await projectMembersRepo.getRole(PROJECT, INVITEE)).toBe("editor");
     expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(0);
-    // The inviting owner gets a project.invite_accepted notice.
+    // The inviting owner gets a project.invite_accepted notice carrying the
+    // invitee's identity (name + @handle) for the actor-first bell row.
     const ownerNotices = await db
-      .select({ type: schema.notifications.type })
+      .select({
+        type: schema.notifications.type,
+        payload: schema.notifications.payload,
+      })
       .from(schema.notifications)
       .where(
         and(
@@ -300,6 +311,11 @@ describe("confirmInvite", () => {
         ),
       );
     expect(ownerNotices).toHaveLength(1);
+    expect(ownerNotices[0]?.payload).toMatchObject({
+      inviteeName: "Invitee",
+      inviteeHandle: "proj-invitee",
+      projectSlug: "test-project",
+    });
     // The invitee's bell notification is marked read.
     const inviteeUnread = await db
       .select({ id: schema.notifications.id })

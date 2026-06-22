@@ -1323,7 +1323,7 @@
     }
   },
   "notifications": {
-    "title": "アクセス申請",
+    "title": "通知",
     "empty": "保留中の通知はありません",
     "roleHint": {
       "editor": "編集",
@@ -1341,17 +1341,17 @@
     "rejectedToast": "リクエストを拒否しました。",
     "decideFailed": "処理に失敗しました。再試行してください。",
     "headline": {
-      "roleUpgradeRequest": "{project} の Editor 権限のリクエストがあります",
-      "roleUpgradeApproved": "{project} の Editor 権限が承認されました",
-      "roleUpgradeRejected": "{project} の Editor 権限のリクエストが拒否されました",
-      "studioMemberInvited": "{studio} に追加されました",
-      "studioTransferRequest": "{studio} の引き継ぎを依頼されました",
-      "studioTransferApproved": "{studio} の Admin 委譲が承認されました",
-      "studioInviteRequest": "{studio} への参加に招待されました",
-      "studioInviteAccepted": "{invitee} さんが {studio} への招待を承認しました",
-      "projectInviteRequest": "{project} への参加に招待されました",
-      "projectInviteAccepted": "{invitee} さんが {project} への招待を承認しました"
+      "roleUpgradeRequest": "{actor} さんが {project} の Editor 権限をリクエストしました",
+      "roleUpgradeApproved": "{actor} さんが {project} の Editor 権限を承認しました",
+      "roleUpgradeRejected": "{actor} さんが {project} の Editor 権限を拒否しました",
+      "studioTransferRequest": "{actor} さんが {studio} の引き継ぎを依頼しました",
+      "studioTransferApproved": "{actor} さんが {studio} の Admin 委譲を承認しました",
+      "studioInviteRequest": "{actor} さんが {studio} への参加に招待しました",
+      "studioInviteAccepted": "{actor} さんが {studio} への招待を承認しました",
+      "projectInviteRequest": "{actor} さんが {project} への参加に招待しました",
+      "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました"
     },
+    "actorFallback": "誰か",
     "actionFailed": "操作を完了できませんでした。もう一度お試しください。",
     "transferConfirmedToast": "あなたが Studio の Admin になりました。",
     "transferCancelledToast": "委譲を辞退しました。",
