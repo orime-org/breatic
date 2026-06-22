@@ -316,7 +316,9 @@ export interface ProjectInviteRequestPayload {
   invitationId: string;
   projectId: string;
   projectName: string;
+  /** Inviting owner's personal-studio name + slug (@handle) — shown actor-first + linked. */
   inviterName: string;
+  inviterHandle: string;
   role: "editor" | "viewer";
   /** One-time email-link token; the bell row navigates to `?token=` with it. */
   token: string;
@@ -328,7 +330,9 @@ export interface ProjectInviteRequestPayload {
  */
 export interface ProjectInviteAcceptedPayload {
   projectName: string;
+  /** Invitee's personal-studio name + slug (@handle) — shown actor-first + linked. */
   inviteeName: string;
+  inviteeHandle: string;
 }
 
 /**
