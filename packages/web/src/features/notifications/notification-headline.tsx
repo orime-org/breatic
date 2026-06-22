@@ -11,7 +11,7 @@ import type { useTranslation } from '@web/i18n/use-translation';
  * The bell headline is an i18n sentence with two DATA slots — the actor (a user)
  * and the entity (a project / studio) — both rendered as clickable links. The
  * sentence frame ("{actor} invited you to {entity}") is translated; the actor
- * name + @handle and the entity name are data, never translated. This module
+ * name + `@handle` and the entity name are data, never translated. This module
  * bridges the two: it asks `t()` to interpolate unique markers for the slots,
  * then splits the localized string on the markers and drops the link nodes in at
  * the locale-correct positions (no rich-text i18n engine needed).
@@ -52,7 +52,12 @@ export function renderSlottedText(
   );
 }
 
-/** Reads a string field off an opaque notification payload (empty if absent). */
+/**
+ * Read a string field off an opaque notification payload.
+ * @param payload - The notification's opaque payload.
+ * @param key - The field name to read.
+ * @returns The string value, or an empty string when absent / non-string.
+ */
 function str(payload: Record<string, unknown>, key: string): string {
   return typeof payload[key] === 'string' ? (payload[key] as string) : '';
 }
@@ -73,12 +78,20 @@ interface HeadlineParts {
   entityHref: string | null;
 }
 
-/** Personal-studio (and team-studio) page; the slug is the @handle. */
+/**
+ * Build the studio page path (personal or team); the slug is the `@handle`.
+ * @param slug - The studio's URL slug.
+ * @returns The `/studio/{slug}` path.
+ */
 function studioPath(slug: string): string {
   return `/studio/${slug}`;
 }
 
-/** Project page; the notification's `project_id` column is the source. */
+/**
+ * Build the project page path.
+ * @param projectId - The project id (the notification's `project_id` column).
+ * @returns The `/project/{projectId}` path.
+ */
 function projectPath(projectId: string): string {
   return `/project/${projectId}`;
 }
@@ -191,7 +204,7 @@ function headlinePartsFor(n: Notification): HeadlineParts | null {
  * with no personal studio), it degrades to plain text (the name, or a generic
  * fallback) with no broken link.
  * @param name - The actor's display name (may be empty).
- * @param handle - The actor's personal-studio slug = @handle (may be empty).
+ * @param handle - The actor's personal-studio slug = `@handle` (may be empty).
  * @param t - The translation function (for the no-name fallback).
  * @param onNavigate - Called when the link is followed (closes the bell popover).
  * @returns The actor link node, or a plain-text fallback.
@@ -218,7 +231,7 @@ function actorNode(
 
 /**
  * Build the localized, link-bearing headline for a bell notification: the actor
- * (name + @handle → personal studio) and the entity (project / studio name → its
+ * (name + `@handle` → personal studio) and the entity (project / studio name → its
  * page) are clickable links dropped into the translated sentence frame.
  * @param n - The notification to render a headline for.
  * @param t - The translation function.
