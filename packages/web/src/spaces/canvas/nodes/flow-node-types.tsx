@@ -68,21 +68,26 @@ function makeFlowNode(
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
           <div className={isGroup ? 'relative size-full' : 'relative'}>
-            <Handle
-              type='target'
-              position={Position.Left}
-              className='!h-2.5 !w-2.5 !border-muted-foreground !bg-background'
-            />
             <Inner
               data={data}
               selected={props.selected}
               locked={data.locked}
               onRename={onRename}
             />
+            {/* Both handles render AFTER the body. Absolutely-positioned siblings
+                paint in DOM order, so a handle placed BEFORE the body has its
+                inner half (the half overlapping the node) covered by the body's
+                surface and reads as a half-circle — the left-handle bug. Painting
+                both on top of the body shows each as a full dot. */}
+            <Handle
+              type='target'
+              position={Position.Left}
+              className='!h-2 !w-2 !border-border !bg-muted'
+            />
             <Handle
               type='source'
               position={Position.Right}
-              className='!h-2.5 !w-2.5 !border-muted-foreground !bg-background'
+              className='!h-2 !w-2 !border-border !bg-muted'
             />
           </div>
         </NodeScaleContext.Provider>

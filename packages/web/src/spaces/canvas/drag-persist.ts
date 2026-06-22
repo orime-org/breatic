@@ -23,6 +23,9 @@ import {
 const NODE_FALLBACK_W = 160;
 const NODE_FALLBACK_H = 96;
 
+/** Shared empty set so the default `freezeMembershipIds` allocates nothing. */
+const NO_FROZEN_MEMBERSHIP: ReadonlySet<string> = new Set();
+
 /** A node position to persist back to Yjs. */
 interface NodePosition {
   id: string;
@@ -99,17 +102,26 @@ function groupBoxesFor(
  * group drag path), so it must not be persisted here.
  * @param draggedNodes - Every node ReactFlow moved in this drag (1 for a single drag, N for a marquee multi-select).
  * @param allNodes - All current flow nodes, for group hit-testing.
+ * @param freezeMembershipIds - Ids whose group membership must NOT be re-evaluated (members moving rigidly with a co-dragged group); their position still persists.
  * @returns The positions to persist + the membership changes to apply.
  */
 export function planDragStop(
   draggedNodes: ReadonlyArray<Node>,
   allNodes: ReadonlyArray<Node>,
+  freezeMembershipIds: ReadonlySet<string> = NO_FROZEN_MEMBERSHIP,
 ): DragPersistPlan {
   const positions: NodePosition[] = [];
   const groupOps: GroupOp[] = [];
   for (const node of draggedNodes) {
     if (node.type === 'group') continue;
     positions.push({ id: node.id, position: node.position });
+    // A member of a group that is itself in the dragged set moves rigidly with
+    // its group, so its membership must not change. Re-running the hit-test
+    // would compare it against a rect built from only the OTHER members
+    // (groupBoxesFor excludes the evaluated node) — spread-apart members read as
+    // "outside" and get removed, dissolving the group (#2). Skip the membership
+    // resolution; the position above still persists (no snap-back).
+    if (freezeMembershipIds.has(node.id)) continue;
     const drop = resolveGroupDrop(
       node.id,
       nodeCenter(node),
@@ -170,6 +182,28 @@ export function planDragStopAll(
       groupMove = { groupId: grabbed.id, delta: { x: dx, y: dy } };
     }
   }
-  const { positions, groupOps } = planDragStop(draggedNodes, allNodes);
+  // Any group present in the dragged set carries its members as a rigid body.
+  // Freeze every such member's membership so the per-member hit-test can't
+  // dissolve the group (#2). The actively-dragged group's members are ALSO
+  // position-owned by moveGroup, so drop them from per-node persistence entirely
+  // to avoid double-writing their position; a merely co-selected group's members
+  // still persist their (ReactFlow-moved) position so they don't snap back.
+  const frozenMembership = new Set<string>();
+  const groupMoveMembers = new Set<string>();
+  for (const dragged of draggedNodes) {
+    if (dragged.type !== 'group') continue;
+    const childIds = (dragged.data as { childIds?: string[] }).childIds ?? [];
+    for (const childId of childIds) {
+      frozenMembership.add(childId);
+      if (groupMove && dragged.id === groupMove.groupId) {
+        groupMoveMembers.add(childId);
+      }
+    }
+  }
+  const { positions, groupOps } = planDragStop(
+    draggedNodes.filter((dragged) => !groupMoveMembers.has(dragged.id)),
+    allNodes,
+    frozenMembership,
+  );
   return { groupMove, positions, groupOps };
 }

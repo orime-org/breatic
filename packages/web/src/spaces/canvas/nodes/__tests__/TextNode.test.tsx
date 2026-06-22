@@ -92,6 +92,28 @@ describe('TextNode', () => {
     expect(body.className).toMatch(/scrollbar/);
   });
 
+  it('the scrollable body carries ReactFlow `nowheel` so the wheel scrolls the text, not the canvas', () => {
+    // Without `nowheel`, a wheel/two-finger scroll over the body is captured by
+    // ReactFlow's panOnScroll and pans the canvas instead of scrolling the
+    // overflowing text — the body shows a scrollbar but "won't scroll" (the
+    // reported bug). `nowheel` tells ReactFlow to leave wheel events alone so the
+    // element scrolls natively. Must hold in BOTH display and edit state.
+    render(
+      <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
+    );
+    expect(screen.getByTestId('text-node-body').className).toContain('nowheel');
+  });
+
+  it('keeps `nowheel` on the body while editing too (wheel still scrolls the text)', async () => {
+    const user = userEvent.setup();
+    render(
+      <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
+    );
+    const body = screen.getByTestId('text-node-body');
+    await user.dblClick(body);
+    expect(body.className).toContain('nowheel');
+  });
+
   it('edit state caps at 576 (max-h-144) and scrolls long content (#1445)', async () => {
     // Double-click → editing: same 576px cap, but overflow scrolls so the full
     // content is reachable while editing (no ellipsis truncation).

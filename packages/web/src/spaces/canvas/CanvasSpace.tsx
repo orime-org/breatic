@@ -33,6 +33,7 @@ import {
   removeElements,
   removeFromGroup,
   removeNode,
+  runCanvasUndoBatch,
   setGroupBackground,
   setNodeContent,
   setNodeError,
@@ -397,24 +398,32 @@ function CanvasSpaceInner({
       if (node.type === 'group' && groupDragRef.current?.id === node.id) {
         groupDragRef.current = null;
       }
-      if (plan.groupMove) {
-        moveGroup(
-          projectId,
-          spaceId,
-          plan.groupMove.groupId,
-          plan.groupMove.delta,
-        );
-      }
-      for (const { id, position } of plan.positions) {
-        setNodePosition(projectId, spaceId, id, position);
-      }
-      for (const op of plan.groupOps) {
-        if (op.action === 'add') {
-          addToGroup(projectId, spaceId, op.groupId, op.nodeId);
-        } else {
-          removeFromGroup(projectId, spaceId, op.groupId, op.nodeId);
+      // Commit the whole drag-stop as ONE atomic undo entry. A drag-out fires a
+      // position change AND a group-membership change; a marquee fires N position
+      // writes. Without batching, captureTimeout:0 makes each its own undo step,
+      // so undoing a drag-out restored the dissolved group BEFORE the member's
+      // position reverted — a phantom oversized empty group (#3). An empty plan
+      // opens a no-op transaction (Yjs pushes no undo entry for it).
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        if (plan.groupMove) {
+          moveGroup(
+            projectId,
+            spaceId,
+            plan.groupMove.groupId,
+            plan.groupMove.delta,
+          );
         }
-      }
+        for (const { id, position } of plan.positions) {
+          setNodePosition(projectId, spaceId, id, position);
+        }
+        for (const op of plan.groupOps) {
+          if (op.action === 'add') {
+            addToGroup(projectId, spaceId, op.groupId, op.nodeId);
+          } else {
+            removeFromGroup(projectId, spaceId, op.groupId, op.nodeId);
+          }
+        }
+      });
     },
     [projectId, spaceId, flowNodes],
   );

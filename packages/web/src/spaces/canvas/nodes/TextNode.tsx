@@ -101,6 +101,11 @@ export function TextNode({
             suppressContentEditableWarning
             onDoubleClick={startEdit}
             onBlur={commit}
+            // `nowheel` (both states): the body scrolls its own overflow, so
+            // ReactFlow must NOT capture the wheel for panOnScroll — without it a
+            // wheel/two-finger scroll over the text pans the canvas and the body
+            // "won't scroll" despite showing a scrollbar (the reported bug).
+            //
             // While editing, `nodrag` lets a pointer press select text instead
             // of dragging the node; when not editing, the body stays a drag
             // handle so the node can be moved by its content.
@@ -109,7 +114,7 @@ export function TextNode({
             // past it (`overflow-y-auto`) — no `line-clamp` ellipsis: the user
             // reads the full text by scrolling (double-click edits), with a slim
             // neutral custom scrollbar instead of the OS default (#5).
-            className={`${
+            className={`nowheel ${
               editing ? 'nodrag ' : ''
             }max-h-144 overflow-y-auto min-h-[3rem] whitespace-pre-wrap p-3 text-sm outline-none focus:bg-accent/30 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent`}
           >

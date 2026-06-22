@@ -117,6 +117,59 @@ describe('planDragStopAll (mixed group + loose marquee drag — #6)', () => {
     expect(plan.positions.map((p) => p.id).sort()).toEqual(['a', 'b']);
   });
 
+  it('does NOT dissolve a co-dragged group: members marquee-dragged WITH the group keep membership (#2 regression)', () => {
+    // A real ReactFlow marquee over a group ALSO selects the group's members, so
+    // onNodeDragStop's co-dragged set includes them. The old code hit-tested each
+    // member against a rect built from only the OTHER members (groupBoxesFor
+    // excludes the node being evaluated) — spread-apart members read as "outside"
+    // → both removed → group dissolved. With the whole group co-dragged, NO
+    // membership op may be emitted.
+    const g = node('g', 50, 50, 'group', { childIds: ['m1', 'm2'] });
+    const m1 = node('m1', 0, 0);
+    const m2 = node('m2', 400, 0); // far from m1 → outside m1's padded rect
+    const loose = node('a', 800, 800);
+    const all = [g, m1, m2, loose];
+    const groupDrag = { id: 'g', startX: 0, startY: 0 }; // delta (50,50) → real groupMove
+    const plan = planDragStopAll(g, all, all, groupDrag);
+    expect(plan.groupOps).toEqual([]); // membership frozen — no remove, no add
+    expect(plan.groupMove).toEqual({ groupId: 'g', delta: { x: 50, y: 50 } });
+    // members are owned by groupMove, NOT double-persisted as loose positions
+    expect(plan.positions.map((p) => p.id)).not.toContain('m1');
+    expect(plan.positions.map((p) => p.id)).not.toContain('m2');
+    expect(plan.positions.map((p) => p.id)).toContain('a');
+  });
+
+  it('co-selected (not grabbed) group: members keep membership but STILL persist position (#2, no snap-back)', () => {
+    // Marquee selects a group + members + a loose node, user grabs the loose
+    // node → no group-drag is armed (onNodeDragStart only arms for a grabbed
+    // group). ReactFlow still moved the members, so their positions MUST persist
+    // (else they snap back, #6), but their membership stays frozen (no dissolve).
+    const g = node('g', 0, 0, 'group', { childIds: ['m1', 'm2'] });
+    const m1 = node('m1', 0, 0);
+    const m2 = node('m2', 400, 0);
+    const loose = node('a', 800, 800);
+    const all = [g, m1, m2, loose];
+    const plan = planDragStopAll(loose, all, all, null);
+    expect(plan.groupOps).toEqual([]);
+    expect(plan.positions.map((p) => p.id).sort()).toEqual(['a', 'm1', 'm2']);
+  });
+
+  it('a lone member dragged out (its group NOT co-dragged) still leaves the group (regression guard)', () => {
+    // The legit "drag one member out" path: only the member is in the dragged
+    // set, the group is not. Membership must NOT be frozen here — the member
+    // leaves as before.
+    const g = node('g', 0, 0, 'group', { childIds: ['m1', 'm2'] });
+    const m1 = node('m1', 0, 0);
+    const m2 = node('m2', 5000, 5000); // dragged far out
+    const all = [g, m1, m2];
+    const plan = planDragStopAll(m2, [m2], all, null);
+    expect(plan.groupOps).toContainEqual({
+      action: 'remove',
+      groupId: 'g',
+      nodeId: 'm2',
+    });
+  });
+
   it('grabbed group with zero delta → no-op groupMove', () => {
     const g = node('g', 50, 50, 'group', { childIds: [] });
     const plan = planDragStopAll(g, [g], [g], {

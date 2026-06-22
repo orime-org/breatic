@@ -49,6 +49,44 @@ describe('FLOW_NODE_TYPES', () => {
     expect(renameNode).toHaveBeenCalledWith('n1', 'Renamed');
   });
 
+  // Both connection handles must paint ABOVE the node body, else the one
+  // rendered BEFORE the body has its inner half covered by the body's surface
+  // and reads as a half-circle (the reported left-handle bug). Absolutely-
+  // positioned siblings paint in DOM order, so both handles must come AFTER the
+  // body. Also pins the handle styling back to the original neutral dot.
+  it('renders both handles after the node body (painted on top) in the original neutral style (#1)', () => {
+    const Text = FLOW_NODE_TYPES.text;
+    const data: TextNodeView = {
+      kind: 'text',
+      content: 'hello',
+      status: 'idle',
+      name: 'N',
+    };
+    const { container } = render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn() }}
+        >
+          <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+    const handles = container.querySelectorAll('.react-flow__handle');
+    expect(handles.length).toBe(2);
+    const body = screen.getByTestId('text-node');
+    handles.forEach((handle) => {
+      // FOLLOWING is set when `handle` comes after `body` in document order.
+      expect(
+        body.compareDocumentPosition(handle) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // Original neutral dot restored (reverses the higher-contrast patch).
+      expect(handle.className).toContain('!border-border');
+      expect(handle.className).toContain('!bg-muted');
+      expect(handle.className).not.toContain('!bg-background');
+    });
+  });
+
   // The wrapper is the only layer with the ReactFlow store, so it must feed
   // the canvas zoom down so the name header can counter-scale to a constant
   // screen size. Proves the counter-scaled anchor is wired for content nodes.
