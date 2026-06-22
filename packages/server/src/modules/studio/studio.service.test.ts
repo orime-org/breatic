@@ -18,6 +18,7 @@ vi.mock("./studio.repo.js", () => ({
   createPersonalStudio: vi.fn(),
   getPersonalByCreator: vi.fn(),
   getPersonalNamesByCreators: vi.fn(),
+  getPersonalProfilesByCreators: vi.fn(),
   getBySlug: vi.fn(),
   listByUser: vi.fn(),
   countMembersByStudioIds: vi.fn(),
@@ -58,6 +59,7 @@ import {
   createPersonalStudio,
   getPersonalStudio,
   getPersonalStudioNamesByUserIds,
+  getPersonalStudioProfilesByUserIds,
   getStudioDetail,
   listUserStudios,
 } from "./studio.service.js";
@@ -146,6 +148,28 @@ describe("getPersonalStudioNamesByUserIds", () => {
 
     expect(result).toBe(names);
     expect(studioRepo.getPersonalNamesByCreators).toHaveBeenCalledWith([
+      "user-1",
+      "user-2",
+    ]);
+  });
+});
+
+describe("getPersonalStudioProfilesByUserIds", () => {
+  it("delegates to the repo's batch profile lookup (name + slug)", async () => {
+    const profiles = new Map([
+      ["user-1", { name: "Alice", slug: "alice-handle" }],
+    ]);
+    vi.mocked(studioRepo.getPersonalProfilesByCreators).mockResolvedValueOnce(
+      profiles,
+    );
+
+    const result = await getPersonalStudioProfilesByUserIds([
+      "user-1",
+      "user-2",
+    ]);
+
+    expect(result).toBe(profiles);
+    expect(studioRepo.getPersonalProfilesByCreators).toHaveBeenCalledWith([
       "user-1",
       "user-2",
     ]);
