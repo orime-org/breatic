@@ -51,6 +51,19 @@ export function TextNode({
 }: TextNodeProps): React.JSX.Element {
   const [editing, setEditing] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
+  // Optimistic local draft (#1470): commit() flips `editing` off synchronously,
+  // but `data.content` (the async Yjs write) only catches up a tick later. For a
+  // FRESH node that gap would render the empty-state placeholder for one frame
+  // (the reported flash). Hold the just-typed text here and prefer it for
+  // rendering until the prop matches, then drop it — same local-draft pattern as
+  // the optimistic-update microtask-race fix.
+  const [committedDraft, setCommittedDraft] = React.useState<string | null>(null);
+  const shownContent = committedDraft ?? data.content;
+  React.useEffect(() => {
+    if (committedDraft !== null && data.content === committedDraft) {
+      setCommittedDraft(null);
+    }
+  }, [data.content, committedDraft]);
   // Display state clips overflow (no scrollbar), so a bottom fade hints "there's
   // more" — but only when the content is ACTUALLY clipped, never on short text.
   // Measure scrollHeight vs clientHeight; jsdom reports 0/0 so the fade is a
@@ -59,7 +72,7 @@ export function TextNode({
   React.useLayoutEffect(() => {
     const el = ref.current;
     if (el) setClipped(el.scrollHeight > el.clientHeight + 1);
-  }, [data.content, editing]);
+  }, [shownContent, editing]);
 
   /**
    * Enters inline edit mode (unless the node is locked) and focuses the
@@ -72,15 +85,18 @@ export function TextNode({
   };
 
   /**
-   * Commits the edited text to the caller via `onChange` and leaves edit
-   * mode.
+   * Commits the edited text via `onChange` and leaves edit mode. The committed
+   * text is also held locally (`committedDraft`) so the body keeps showing it
+   * across the async gap before `data.content` updates (no placeholder flash).
    */
   const commit = (): void => {
-    if (ref.current && onChange) onChange(ref.current.innerText);
+    const text = ref.current?.innerText ?? '';
+    if (onChange) onChange(text);
+    setCommittedDraft(text);
     setEditing(false);
   };
 
-  const hasContent = data.content.length > 0;
+  const hasContent = shownContent.length > 0;
 
   return (
     <ContentNodeFrame
@@ -137,7 +153,7 @@ export function TextNode({
                 editing ? EDIT_BODY_CLASS : 'overflow-hidden'
               }`}
             >
-              {data.content}
+              {shownContent}
             </div>
             {!editing && clipped ? (
               <div

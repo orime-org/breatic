@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { TextNode } from '@web/spaces/canvas/nodes/TextNode';
@@ -113,6 +113,39 @@ describe('TextNode', () => {
     // content up to the cap — never the old cramped 48px (min-h-[3rem]).
     expect(body.className).toContain('min-h-48');
     expect(body.className).not.toContain('min-h-[3rem]');
+  });
+
+  it('does NOT flash the placeholder after committing a fresh node — holds the typed text until the prop syncs (#1470)', async () => {
+    // The Yjs write is async: commit() flips `editing` off synchronously while
+    // `data.content` (the prop) catches up a tick later. For a FRESH node
+    // (content was "") that gap renders the empty-state placeholder for one
+    // frame — the reported flash. A local committed-draft must bridge the gap so
+    // the just-typed text stays on screen (no placeholder) until the prop lands.
+    const user = userEvent.setup();
+    // onChange is a no-op here → `data.content` stays "" (simulates the prop not
+    // yet reflecting the async Yjs write).
+    render(
+      <TextNode
+        data={{ kind: 'text', content: '', status: 'idle' }}
+        onChange={() => undefined}
+      />,
+    );
+    await user.dblClick(screen.getByTestId('node-placeholder'));
+    const body = screen.getByTestId('text-node-body');
+    // jsdom has no `innerText` (the getter returns undefined); commit() reads it,
+    // so define it from textContent on this element to mirror the browser.
+    Object.defineProperty(body, 'innerText', {
+      configurable: true,
+      get(): string {
+        return this.textContent ?? '';
+      },
+    });
+    body.textContent = '1111';
+    fireEvent.blur(body); // fireEvent wraps in act → commit's state update flushes
+    // After commit: editing is off and the prop is still "" — but the body must
+    // keep showing the committed text, NOT revert to the placeholder.
+    expect(screen.queryByTestId('node-placeholder')).toBeNull();
+    expect(screen.getByTestId('text-node-body')).toHaveTextContent('1111');
   });
 
   it('empty text node: double-clicking the placeholder enters edit mode (write), showing the editable body', async () => {
