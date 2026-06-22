@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { TextNode } from '@web/spaces/canvas/nodes/TextNode';
@@ -61,6 +61,22 @@ describe('TextNode', () => {
     expect(body.getAttribute('role')).not.toBe('textbox');
   });
 
+  it('SELECTING the node (no double-click) does NOT enter edit mode — only double-click does (#1470)', () => {
+    // Selection is single-click; editing is double-click. A selected-but-not-
+    // double-clicked text node stays in the display state (clipped, no
+    // contenteditable) — editing is never triggered by selection alone.
+    render(
+      <TextNode
+        data={{ kind: 'text', content: 'Hello', status: 'idle' }}
+        selected
+      />,
+    );
+    const body = screen.getByTestId('text-node-body');
+    expect(body.getAttribute('contenteditable')).not.toBe('true');
+    expect(body.className).toContain('overflow-hidden');
+    expect(body.className).not.toContain('overflow-y-auto');
+  });
+
   it('double-clicking the body enters edit mode and commit fires onChange', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
@@ -77,19 +93,59 @@ describe('TextNode', () => {
     expect(onChange).toHaveBeenCalled();
   });
 
-  it('display state caps at 576 (max-h-144) and scrolls long content, NO line-clamp ellipsis (#5, supersedes #1445)', () => {
-    // Not editing: the body keeps the 576px cap (max-h-144 = width 288 × 2) but
-    // no longer truncates — the user reads the full text by scrolling (they know
-    // double-click edits), with a slim custom scrollbar, not the OS default.
-    // Reverses the #1445 line-clamp ellipsis.
+  it('display state caps at 576 (max-h-144) and CLIPS overflow — no scrollbar, two-state (supersedes #5 scroll-both, #1470)', () => {
+    // Not editing: cap at 576px (max-h-144 = width 288 × 2) but CLIP the overflow
+    // (overflow-hidden) — NO scrollbar. The wheel zooms the canvas here (no
+    // `nowheel` in display state, #1479), so a scrollbar you cannot scroll is
+    // dead weight; a bottom fade gradient hints "there's more" and double-click
+    // edits + scrolls. Long unbreakable tokens wrap (break-words) instead of
+    // forcing a horizontal scrollbar (the reported #1470 horizontal-scroll bug).
     render(
       <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
     );
     const body = screen.getByTestId('text-node-body');
     expect(body.className).toContain('max-h-144');
-    expect(body.className).toContain('overflow-y-auto');
-    expect(body.className).not.toContain('line-clamp');
-    expect(body.className).toMatch(/scrollbar/);
+    expect(body.className).toContain('overflow-hidden');
+    expect(body.className).not.toContain('overflow-y-auto');
+    expect(body.className).not.toMatch(/scrollbar/);
+    expect(body.className).toContain('break-words');
+    // A node is always at least the empty-state height (h-48 = 192px), grows with
+    // content up to the cap — never the old cramped 48px (min-h-[3rem]).
+    expect(body.className).toContain('min-h-48');
+    expect(body.className).not.toContain('min-h-[3rem]');
+  });
+
+  it('does NOT flash the placeholder after committing a fresh node — holds the typed text until the prop syncs (#1470)', async () => {
+    // The Yjs write is async: commit() flips `editing` off synchronously while
+    // `data.content` (the prop) catches up a tick later. For a FRESH node
+    // (content was "") that gap renders the empty-state placeholder for one
+    // frame — the reported flash. A local committed-draft must bridge the gap so
+    // the just-typed text stays on screen (no placeholder) until the prop lands.
+    const user = userEvent.setup();
+    // onChange is a no-op here → `data.content` stays "" (simulates the prop not
+    // yet reflecting the async Yjs write).
+    render(
+      <TextNode
+        data={{ kind: 'text', content: '', status: 'idle' }}
+        onChange={() => undefined}
+      />,
+    );
+    await user.dblClick(screen.getByTestId('node-placeholder'));
+    const body = screen.getByTestId('text-node-body');
+    // jsdom has no `innerText` (the getter returns undefined); commit() reads it,
+    // so define it from textContent on this element to mirror the browser.
+    Object.defineProperty(body, 'innerText', {
+      configurable: true,
+      get(): string {
+        return this.textContent ?? '';
+      },
+    });
+    body.textContent = '1111';
+    fireEvent.blur(body); // fireEvent wraps in act → commit's state update flushes
+    // After commit: editing is off and the prop is still "" — but the body must
+    // keep showing the committed text, NOT revert to the placeholder.
+    expect(screen.queryByTestId('node-placeholder')).toBeNull();
+    expect(screen.getByTestId('text-node-body')).toHaveTextContent('1111');
   });
 
   it('empty text node: double-clicking the placeholder enters edit mode (write), showing the editable body', async () => {
@@ -104,19 +160,20 @@ describe('TextNode', () => {
     ).toBe('true');
   });
 
-  it('the scrollable body carries ReactFlow `nowheel` so the wheel scrolls the text, not the canvas', () => {
-    // Without `nowheel`, a wheel/two-finger scroll over the body is captured by
-    // ReactFlow's panOnScroll and pans the canvas instead of scrolling the
-    // overflowing text — the body shows a scrollbar but "won't scroll" (the
-    // reported bug). `nowheel` tells ReactFlow to leave wheel events alone so the
-    // element scrolls natively. Must hold in BOTH display and edit state.
+  it('display state does NOT carry `nowheel` — the wheel zooms the canvas like other nodes (#1479)', () => {
+    // A non-editing text node is part of the canvas: wheeling over it must zoom
+    // the canvas (consistent with image nodes), NOT be swallowed by the body.
+    // The display body clips (no scroll), so there is nothing to scroll anyway —
+    // `nowheel` here would only break canvas zoom (the reported #1479 bug).
     render(
       <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
     );
-    expect(screen.getByTestId('text-node-body').className).toContain('nowheel');
+    expect(screen.getByTestId('text-node-body').className).not.toContain(
+      'nowheel',
+    );
   });
 
-  it('keeps `nowheel` on the body while editing too (wheel still scrolls the text)', async () => {
+  it('adds `nowheel` on the body ONLY while editing (wheel scrolls the text you are editing)', async () => {
     const user = userEvent.setup();
     render(
       <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
@@ -126,9 +183,12 @@ describe('TextNode', () => {
     expect(body.className).toContain('nowheel');
   });
 
-  it('edit state caps at 576 (max-h-144) and scrolls long content (#1445)', async () => {
-    // Double-click → editing: same 576px cap, but overflow scrolls so the full
-    // content is reachable while editing (no ellipsis truncation).
+  it('edit state caps at 576 (max-h-144), SCROLLS, wraps long tokens, starts at the empty-state height (#1470)', async () => {
+    // Double-click → editing: same 576px cap, but overflow SCROLLS (a scrollbar
+    // shows only here, in edit state) so the full content is reachable while
+    // editing; long unbreakable tokens wrap (break-words). The box starts at the
+    // empty-state height (min-h-48 = 192px), not the old cramped 48px, and grows
+    // with content up to the cap.
     const user = userEvent.setup();
     render(
       <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
@@ -137,7 +197,9 @@ describe('TextNode', () => {
     await user.dblClick(body);
     expect(body.className).toContain('max-h-144');
     expect(body.className).toContain('overflow-y-auto');
-    expect(body.className).not.toContain('line-clamp');
+    expect(body.className).toContain('break-words');
     expect(body.className).toMatch(/scrollbar/);
+    expect(body.className).toContain('min-h-48');
+    expect(body.className).not.toContain('min-h-[3rem]');
   });
 });

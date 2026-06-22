@@ -37,7 +37,7 @@ describe('FLOW_NODE_TYPES', () => {
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined, activateNodeUpload: () => undefined }}>
+        <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined, activateNodeUpload: () => undefined, setNodeContent: () => undefined }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -47,6 +47,39 @@ describe('FLOW_NODE_TYPES', () => {
     fireEvent.change(input, { target: { value: 'Renamed' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(renameNode).toHaveBeenCalledWith('n1', 'Renamed');
+  });
+
+  // Critical path (collaborative text edit → Yjs write): the flow wrapper is the
+  // only layer that knows the node id, so it must bind the text body's inline-edit
+  // commit to setNodeContent(thisNodeId, text). Without this wire the body's
+  // onChange is undefined, what the user types is never persisted, and it is
+  // discarded on blur — the reported #1470 "text content disappears" bug.
+  it('binds the text body inline-edit commit to the node id via CanvasActions (#1470)', () => {
+    const setNodeContent = vi.fn();
+    const Text = FLOW_NODE_TYPES.text;
+    const data: TextNodeView = {
+      kind: 'text',
+      content: 'A',
+      status: 'idle',
+      name: 'N',
+    };
+    render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent }}
+        >
+          <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+    const body = screen.getByTestId('text-node-body');
+    fireEvent.doubleClick(body);
+    body.innerText = 'A edited';
+    fireEvent.blur(body);
+    // The node id must reach the canvas write (jsdom innerText is layout-flaky,
+    // so we assert the binding — call + node id — not the exact text).
+    expect(setNodeContent).toHaveBeenCalled();
+    expect(setNodeContent.mock.calls[0]?.[0]).toBe('n1');
   });
 
   // Both connection handles must paint ABOVE the node body, else the one
@@ -65,7 +98,7 @@ describe('FLOW_NODE_TYPES', () => {
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn() }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn() }}
         >
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -100,7 +133,7 @@ describe('FLOW_NODE_TYPES', () => {
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn() }}>
+        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn() }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -119,7 +152,7 @@ describe('FLOW_NODE_TYPES', () => {
     render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload, setNodeContent: vi.fn() }}
         >
           <Image
             {...({

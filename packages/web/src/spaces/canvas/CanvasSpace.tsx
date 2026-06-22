@@ -1189,6 +1189,13 @@ function CanvasSpaceInner({
         if (readOnly) return;
         removeEdge(projectId, spaceId, edgeId);
       },
+      setNodeContent: (nodeId: string, content: string): void => {
+        if (readOnly) return;
+        // The RHS is the imported data-layer writer; the action key only shadows
+        // the name (object keys aren't in the body's scope — no recursion). Binds
+        // the text body's inline-edit commit to this project/space (#1470).
+        setNodeContent(projectId, spaceId, nodeId, content);
+      },
       activateNodeUpload,
     }),
     [projectId, spaceId, readOnly, activateNodeUpload],
