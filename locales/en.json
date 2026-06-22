@@ -1323,7 +1323,7 @@
     }
   },
   "notifications": {
-    "title": "Access requests",
+    "title": "Notifications",
     "empty": "No pending notifications",
     "roleHint": {
       "editor": "Edit",

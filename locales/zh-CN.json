@@ -1323,7 +1323,7 @@
     }
   },
   "notifications": {
-    "title": "访问申请",
+    "title": "通知",
     "empty": "没有待处理通知",
     "roleHint": {
       "editor": "编辑",

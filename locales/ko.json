@@ -1323,7 +1323,7 @@
     }
   },
   "notifications": {
-    "title": "액세스 요청",
+    "title": "알림",
     "empty": "대기 중인 알림이 없습니다",
     "roleHint": {
       "editor": "편집",

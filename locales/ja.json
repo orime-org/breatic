@@ -1323,7 +1323,7 @@
     }
   },
   "notifications": {
-    "title": "アクセス申請",
+    "title": "通知",
     "empty": "保留中の通知はありません",
     "roleHint": {
       "editor": "編集",
