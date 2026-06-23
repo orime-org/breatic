@@ -164,6 +164,22 @@ describe('useInlineRename — inline name-edit state machine', () => {
     expect(result.current.displayName).toBe('New');
   });
 
+  it('displayName drops the bridge when a concurrent remote rename wins (not stuck on the local name)', () => {
+    const onRename = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ current }) => useInlineRename({ current, maxLength: 30, onRename }),
+      { initialProps: { current: 'Old' } },
+    );
+    act(() => result.current.startEdit());
+    act(() => result.current.setDraft('Mine'));
+    act(() => result.current.commit());
+    expect(result.current.displayName).toBe('Mine');
+    // A collaborator renamed it to a DIFFERENT value during the round-trip
+    // window. The live value must show — not our stale committed 'Mine'.
+    rerender({ current: 'Theirs' });
+    expect(result.current.displayName).toBe('Theirs');
+  });
+
   it('cancel closes the editor without reporting a rename', () => {
     const onRename = vi.fn();
     const { result } = renderHook(() =>

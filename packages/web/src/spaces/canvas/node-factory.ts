@@ -106,9 +106,9 @@ const GROUP_DEFAULT_NAME = 'Group';
 
 /**
  * Builds a fresh Group node (group redesign 2026-06-23) in the shared wire
- * shape. Unlike {@link createEmptyGroup}, a Group stores its own authoritative
- * `width`/`height` and holds no `childIds` — members bind back via their own
- * top-level `parentId`. Pure (like the other factories): the caller injects the
+ * shape. A Group stores its own authoritative `width`/`height` (manual resize)
+ * and holds no `childIds` — members bind back via their own top-level
+ * `parentId`. Pure (like the other factories): the caller injects the
  * id (pre-generated so the same id seeds the creation plan) and `createdBy`.
  * @param id - Pre-generated id for the Group (shared with the creation plan).
  * @param position - The Group's stored top-left in canvas coordinates.

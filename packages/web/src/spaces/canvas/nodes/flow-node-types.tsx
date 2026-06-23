@@ -93,8 +93,8 @@ function makeFlowNode(
     // A Group fills the ReactFlow wrapper sized to its stored width/height, so
     // the GroupNode's own `size-full` resolves to the full rect. Content nodes
     // size to their body, so they keep the auto-height wrapper. A selected,
-    // unlocked Group shows the NodeResizer handles; `groupMin*` (members'
-    // bounding box, attached in renderNodes) stops a shrink past the members.
+    // unlocked Group shows the GroupResizer handles when it has resize bounds
+    // (empty for a read-only viewer, so no handles show — see the gate below).
     const isGroup = data.kind === 'group';
     // Per-control resize bounds (from groupResizeBounds, attached in renderNodes)
     // — each edge / corner carries its own min so ReactFlow's native clamp
@@ -117,9 +117,12 @@ function makeFlowNode(
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
           <div className={isGroup ? 'relative size-full' : 'relative'}>
-            {isGroup && Boolean(props.selected) && !data.locked ? (
-              <GroupResizer bounds={resizeBounds} onResizeEnd={onResizeEnd} />
-            ) : null}
+            {isGroup &&
+            Boolean(props.selected) &&
+            !data.locked &&
+            resizeBounds.length > 0 ? (
+                <GroupResizer bounds={resizeBounds} onResizeEnd={onResizeEnd} />
+              ) : null}
             <Inner
               data={data}
               selected={props.selected}

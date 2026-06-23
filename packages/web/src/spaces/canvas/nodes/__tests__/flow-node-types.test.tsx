@@ -145,6 +145,42 @@ describe('FLOW_NODE_TYPES', () => {
     expect(container.querySelectorAll('.react-flow__handle').length).toBe(0);
   });
 
+  it('renders NO resize controls for a selected group with empty bounds (read-only viewer)', () => {
+    const Group = FLOW_NODE_TYPES.group;
+    // A read-only viewer gets groupResizeBounds: [] (CanvasSpace renderNodes),
+    // so the group shows no resize handles even though it is selected.
+    const data = { kind: 'group', name: 'G', groupResizeBounds: [] };
+    const { container } = render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
+        >
+          <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+    expect(container.querySelectorAll('.react-flow__resize-control').length).toBe(0);
+  });
+
+  it('renders resize controls for a selected unlocked group that has bounds (editor)', () => {
+    const Group = FLOW_NODE_TYPES.group;
+    const bounds = [
+      'right', 'left', 'bottom', 'top',
+      'top-left', 'top-right', 'bottom-left', 'bottom-right',
+    ].map((position) => ({ position, minWidth: 40, minHeight: 40 }));
+    const data = { kind: 'group', name: 'G', groupResizeBounds: bounds };
+    const { container } = render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
+        >
+          <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+    expect(container.querySelectorAll('.react-flow__resize-control').length).toBe(8);
+  });
+
   // The wrapper is the only layer with the ReactFlow store, so it must feed
   // the canvas zoom down so the name header can counter-scale to a constant
   // screen size. Proves the counter-scaled anchor is wired for content nodes.

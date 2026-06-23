@@ -1454,7 +1454,12 @@ function CanvasSpaceInner({
           ...node,
           data: {
             ...(node.data as Record<string, unknown>),
-            groupResizeBounds: bounds,
+            // A read-only viewer gets NO resize bounds, so GroupResizer renders
+            // no handles — ReactFlow's NodeResizeControl works independently of
+            // `nodesDraggable`, so without this a viewer could grab + drag-resize
+            // a group locally (the write is blocked, but the affordance must not
+            // show — same rule as nodesDraggable / nodesConnectable).
+            groupResizeBounds: readOnly ? [] : bounds,
           },
           draggable: !readOnly && !frozen.has(node.id),
           zIndex: 0,

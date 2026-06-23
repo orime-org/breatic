@@ -81,11 +81,14 @@ export function useInlineRename({
   const editingRef = React.useRef(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  // Drop the bridge once the Yjs write has flowed back into `current` (they now
-  // agree) so future external renames show through immediately.
+  // Drop the bridge the moment `current` changes from the stale value it held at
+  // commit — whether the Yjs round-trip brought back OUR name OR a collaborator's
+  // different rename won (last-writer-wins). Either way the live value must show,
+  // never our stale committed name (keying on `current === committed` would stick
+  // forever when a concurrent remote rename made current a third value).
   React.useEffect(() => {
-    if (committed !== null && current === committed) setCommitted(null);
-  }, [current, committed]);
+    setCommitted(null);
+  }, [current]);
 
   // On entering edit, focus AND select the whole name so a keystroke
   // replaces it immediately (matches the project-title editor).
