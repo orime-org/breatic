@@ -143,6 +143,27 @@ describe('useInlineRename — inline name-edit state machine', () => {
     expect(useCanvasStore.getState().pendingRename).toBeNull();
   });
 
+  it('displayName bridges the commit→prop gap so the name never flashes the old value (R2-G)', () => {
+    const onRename = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ current }) => useInlineRename({ current, maxLength: 30, onRename }),
+      { initialProps: { current: 'Old' } },
+    );
+    // Before editing, displayName is just the current value.
+    expect(result.current.displayName).toBe('Old');
+    act(() => result.current.startEdit());
+    act(() => result.current.setDraft('New'));
+    act(() => result.current.commit());
+    // Commit wrote 'New' to Yjs, but the `current` prop is still the stale 'Old'
+    // (the Yjs observe hasn't round-tripped yet). displayName already shows the
+    // committed 'New', so the editor closing does NOT flash the old name.
+    expect(onRename).toHaveBeenCalledWith('New');
+    expect(result.current.displayName).toBe('New');
+    // Once the Yjs update flows back (current === committed), the bridge clears.
+    rerender({ current: 'New' });
+    expect(result.current.displayName).toBe('New');
+  });
+
   it('cancel closes the editor without reporting a rename', () => {
     const onRename = vi.fn();
     const { result } = renderHook(() =>

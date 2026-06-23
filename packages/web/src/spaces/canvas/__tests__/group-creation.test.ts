@@ -5,63 +5,76 @@ import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
+import { GROUP_PADDING } from '@web/spaces/canvas/group-geometry';
 
 /**
- * Build a minimal measured flow node for the geometry + selection planning.
+ * Build a flow node with an explicit measured size for deterministic rects.
  * @param id - Node id.
- * @param x - Position x.
- * @param y - Position y.
- * @param selected - Whether the node is locally selected.
- * @returns A flow node with a fixed 100×100 measured footprint.
+ * @param x - Absolute x.
+ * @param y - Absolute y.
+ * @param w - Measured width.
+ * @param h - Measured height.
+ * @param selected - Selection flag.
+ * @returns A ReactFlow node.
  */
-function node(id: string, x: number, y: number, selected: boolean): Node {
+function node(
+  id: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  selected = true,
+): Node {
   return {
     id,
-    type: 'text',
+    type: 'image',
     position: { x, y },
     data: {},
+    measured: { width: w, height: h },
     selected,
-    measured: { width: 100, height: 100 },
   };
 }
 
-describe('planGroupCreation (#1477)', () => {
-  it('returns null when fewer than 2 nodes are selected (nothing to group)', () => {
-    expect(planGroupCreation([node('a', 0, 0, true)], ['a'])).toBeNull();
-    expect(planGroupCreation([], [])).toBeNull();
+describe('planGroupCreation', () => {
+  it('returns null for fewer than two selected nodes', () => {
+    expect(planGroupCreation([node('a', 0, 0, 50, 50)], ['a'], 'group')).toBeNull();
   });
 
-  // The bug: grouping left the marquee members selected, so the mirror window
-  // kept a multi-selection and right-click hit the SELECTION menu. The plan
-  // must deselect every grouped member up front.
-  it('clears the selection of every grouped member (no multi-select window)', () => {
+  it('group rect = members bounding box + padding on every side', () => {
     const nodes = [
-      node('a', 0, 0, true),
-      node('b', 200, 0, true),
-      node('c', 500, 0, false),
+      node('a', 100, 100, 50, 50), // 100..150
+      node('b', 200, 180, 40, 40), // x 200..240, y 180..220
     ];
-    const plan = planGroupCreation(nodes, ['a', 'b']);
+    const plan = planGroupCreation(nodes, ['a', 'b'], 'group');
     expect(plan).not.toBeNull();
-    const byId = Object.fromEntries(plan!.nextNodes.map((n) => [n.id, n]));
-    expect(byId.a.selected).toBe(false);
-    expect(byId.b.selected).toBe(false);
+    expect(plan!.position).toEqual({ x: 100 - GROUP_PADDING, y: 100 - GROUP_PADDING });
+    expect(plan!.width).toBe(240 - 100 + 2 * GROUP_PADDING);
+    expect(plan!.height).toBe(220 - 100 + 2 * GROUP_PADDING);
+    expect(plan!.groupId).toBe('group');
   });
 
-  it('leaves non-member nodes untouched (same reference for referential equality)', () => {
+  it('members get positions relative to the group top-left + are listed', () => {
     const nodes = [
-      node('a', 0, 0, true),
-      node('b', 200, 0, true),
-      node('c', 500, 0, false),
+      node('a', 100, 100, 50, 50),
+      node('b', 200, 180, 40, 40),
     ];
-    const plan = planGroupCreation(nodes, ['a', 'b']);
-    expect(plan!.nextNodes.find((n) => n.id === 'c')).toBe(nodes[2]);
+    const plan = planGroupCreation(nodes, ['a', 'b'], 'group')!;
+    const top = plan.position; // padded top-left
+    const byId = Object.fromEntries(plan.members.map((m) => [m.id, m.position]));
+    expect(byId['a']).toEqual({ x: 100 - top.x, y: 100 - top.y });
+    expect(byId['b']).toEqual({ x: 200 - top.x, y: 180 - top.y });
   });
 
-  it('childIds = the selected ids; position = members bounding-box top-left minus padding', () => {
-    const nodes = [node('a', 0, 0, true), node('b', 200, 100, true)];
-    const plan = planGroupCreation(nodes, ['a', 'b']);
-    expect(plan!.childIds).toEqual(['a', 'b']);
-    // computeGroupRect pads by GROUP_PADDING (24): min corner (0,0) → (−24,−24).
-    expect(plan!.position).toEqual({ x: -24, y: -24 });
+  it('deselects every grouped member in the render buffer (the #1477 carry-over)', () => {
+    const nodes = [
+      node('a', 0, 0, 50, 50, true),
+      node('b', 100, 0, 50, 50, true),
+      node('c', 300, 0, 50, 50, true), // not selected into the group
+    ];
+    const plan = planGroupCreation(nodes, ['a', 'b'], 'group')!;
+    const sel = Object.fromEntries(plan.nextNodes.map((n) => [n.id, n.selected]));
+    expect(sel['a']).toBe(false);
+    expect(sel['b']).toBe(false);
+    expect(sel['c']).toBe(true); // untouched
   });
 });

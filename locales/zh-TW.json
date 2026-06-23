@@ -298,6 +298,9 @@
       "duplicate": "複製副本",
       "rename": "重新命名",
       "delete": "刪除",
+      "deleteNode": "刪除節點",
+      "deleteGroup": "刪除群組",
+      "deleteSelection": "刪除選取",
       "lockedDeleteBlocked": "鎖定的內容無法刪除，請先解鎖。",
       "clipboardError": "無法存取剪貼簿，請改用鍵盤快速鍵。"
     },

@@ -187,6 +187,16 @@ export interface CanvasNodeFields {
   type: NodeType;
   /** Canvas coordinates. Y.Map { x, y } at runtime. */
   position: { x: number; y: number };
+  /**
+   * Containing Group id — set on a member node to bind it to its Group
+   * (ReactFlow `parentId` convention). When present, `position` is relative
+   * to that Group's top-left; absent for top-level nodes. Structural: it sits
+   * alongside `position`, NOT inside `data` (which `toNodeView` narrows per
+   * modality and would drop it). Added in the group redesign
+   * (2026-06-23) — replaces the auto-container model where a group derived its
+   * members from `data.childIds`.
+   */
+  parentId?: string;
   /** Nested data Y.Map at runtime. */
   data: {
     /** Display label. */
@@ -233,11 +243,19 @@ export interface CanvasNodeFields {
     // ─── Data node fields ───────────────────────────────────
     /** Primary result: URL (image/video/audio/3D) or text body (text/web). */
     content?: string;
-    /** Video first-frame thumbnail; equals `content` for image. */
+    /** Video first-group thumbnail; equals `content` for image. */
     coverUrl?: string;
-    /** Image / video pixel width. */
+    /**
+     * For image/video: intrinsic media pixel width. For a `group` (Group):
+     * the Group's authoritative canvas width — its user-resizable footprint,
+     * stored in Yjs (group redesign 2026-06-23; no longer derived from
+     * the member bounding box).
+     */
     width?: number;
-    /** Image / video pixel height. */
+    /**
+     * For image/video: intrinsic media pixel height. For a `group` (Group):
+     * the Group's authoritative canvas height. See {@link CanvasNodeFields} `data.width`.
+     */
     height?: number;
     /** Video / audio duration in seconds. */
     duration?: number;
@@ -276,9 +294,10 @@ export interface CanvasNodeFields {
     /** Model-specific params for the Generate request. */
     params?: Record<string, unknown>;
 
-    // ─── Group node fields ──────────────────────────────────
-    /** Child node IDs when type === 'group'. */
-    childIds?: string[];
+    // ─── Group (Group) node fields ──────────────────────────
+    // A Group's authoritative size lives in `width`/`height` above; its members
+    // bind back via their own top-level `parentId` (group redesign
+    // 2026-06-23 — there is no `childIds`; `parentId` is the single source).
     /** Group container tint when type === 'group' (model revision 2026-06-15). */
     backgroundColor?: string;
 

@@ -39,6 +39,21 @@ describe('SelectionContextMenu', () => {
     expect(screen.getByTestId('selection-menu-delete')).toBeInTheDocument();
   });
 
+  it('delete item reads "Delete selection"', () => {
+    render(
+      <SelectionContextMenu
+        open
+        x={0}
+        y={0}
+        onOpenChange={() => {}}
+        onDelete={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('selection-menu-delete')).toHaveTextContent(
+      'Delete selection',
+    );
+  });
+
   it('fires the handlers on selection', () => {
     const onGroup = vi.fn();
     const onDelete = vi.fn();

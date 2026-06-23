@@ -21,3 +21,41 @@ export function matchGroupShortcut(event: ShortcutEvent): GroupShortcut | null {
   if (event.key.toLowerCase() !== 'g') return null;
   return event.shiftKey ? 'ungroup' : 'group';
 }
+
+/** The current selection's grouping offer (mirrors `GroupToolbar['kind']`). */
+export type GroupOfferKind = 'group' | 'ungroup' | 'none';
+
+/** How the canvas should respond to a (possibly grouping) keyboard chord. */
+export interface GroupShortcutPlan {
+  /**
+   * True when the chord IS a group / ungroup chord — the canvas always swallows
+   * it (preventDefault) so the browser's native Cmd+G (find-again) never fires,
+   * regardless of whether the action applies.
+   */
+  preventDefault: boolean;
+  /** The grouping action to run, or null when the chord doesn't apply. */
+  run: GroupShortcut | null;
+}
+
+/**
+ * Decide the canvas response to a keyboard chord: a group / ungroup chord is
+ * ALWAYS swallowed so the browser's native Cmd+G (find-again) can't fire on the
+ * canvas, but the grouping action only runs when it matches the current
+ * selection's offer. So Cmd+G while the selection mixes a group with loose nodes
+ * (offer `none`) is swallowed yet does nothing — the no-op decision — instead of
+ * leaking to the browser. A non-grouping chord (`action` null) passes through
+ * untouched.
+ * @param action - The matched grouping action, or null for a non-grouping chord.
+ * @param offerKind - The current selection's grouping offer.
+ * @returns Whether to preventDefault, and which action (if any) to run.
+ */
+export function planGroupShortcut(
+  action: GroupShortcut | null,
+  offerKind: GroupOfferKind,
+): GroupShortcutPlan {
+  if (action === null) return { preventDefault: false, run: null };
+  const applies =
+    (action === 'group' && offerKind === 'group') ||
+    (action === 'ungroup' && offerKind === 'ungroup');
+  return { preventDefault: true, run: applies ? action : null };
+}

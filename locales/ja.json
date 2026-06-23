@@ -298,6 +298,9 @@
       "duplicate": "複製",
       "rename": "名前を変更",
       "delete": "削除",
+      "deleteNode": "ノードを削除",
+      "deleteGroup": "グループを削除",
+      "deleteSelection": "選択を削除",
       "lockedDeleteBlocked": "ロックされた項目は削除できません。先にロックを解除してください。",
       "clipboardError": "クリップボードにアクセスできません。キーボードショートカットをお使いください。"
     },

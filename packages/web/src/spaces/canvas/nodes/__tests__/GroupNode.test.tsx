@@ -8,19 +8,19 @@ import { GroupNode } from '@web/spaces/canvas/nodes/GroupNode';
 
 describe('GroupNode', () => {
   it('renders the group container', () => {
-    render(<GroupNode data={{ kind: 'group', childIds: ['a', 'b'] }} />);
+    render(<GroupNode data={{ kind: 'group' }} />);
     expect(screen.getByTestId('group-node')).toBeInTheDocument();
   });
 
   it('shows a lock indicator when the group is locked', () => {
     render(
-      <GroupNode data={{ kind: 'group', childIds: ['a'], locked: true }} />,
+      <GroupNode data={{ kind: 'group', locked: true }} />,
     );
     expect(screen.getByTestId('group-lock-indicator')).toBeInTheDocument();
   });
 
   it('shows no lock indicator when the group is unlocked', () => {
-    render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} />);
+    render(<GroupNode data={{ kind: 'group' }} />);
     expect(
       screen.queryByTestId('group-lock-indicator'),
     ).not.toBeInTheDocument();
@@ -39,7 +39,7 @@ describe('GroupNode', () => {
 
   it('uses the node-shell border treatment — dashed line, 6px radius, fills the wrapper, 3-state colors', () => {
     const { rerender } = render(
-      <GroupNode data={{ kind: 'group', childIds: ['a'] }} />,
+      <GroupNode data={{ kind: 'group' }} />,
     );
     const node = screen.getByTestId('group-node');
     // Node radius (6px) + fills the ReactFlow wrapper + keeps the dashed line.
@@ -51,32 +51,32 @@ describe('GroupNode', () => {
       'hover:border-foreground-disabled',
     );
     // Selected uses the node's selected colour.
-    rerender(<GroupNode data={{ kind: 'group', childIds: ['a'] }} selected />);
+    rerender(<GroupNode data={{ kind: 'group' }} selected />);
     expect(screen.getByTestId('group-node')).toHaveClass(
       'border-status-selected',
     );
   });
 
   it('renders no content-node lock badge — the group shows its own group-lock-indicator', () => {
-    render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} locked />);
+    render(<GroupNode data={{ kind: 'group' }} locked />);
     expect(screen.queryByTestId('node-lock-indicator')).toBeNull();
   });
 
   it('renders the group name header, defaulting to "Group"', () => {
-    render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} />);
+    render(<GroupNode data={{ kind: 'group' }} />);
     expect(screen.getByTestId('group-name')).toHaveTextContent('Group');
   });
 
   it('shows a custom group name in the header', () => {
     render(
-      <GroupNode data={{ kind: 'group', name: 'My Group', childIds: ['a'] }} />,
+      <GroupNode data={{ kind: 'group', name: 'My Group' }} />,
     );
     expect(screen.getByTestId('group-name')).toHaveTextContent('My Group');
   });
 
   it('enters edit mode when the name is double-clicked', () => {
     render(
-      <GroupNode data={{ kind: 'group', childIds: ['a'] }} onRename={vi.fn()} />,
+      <GroupNode data={{ kind: 'group' }} onRename={vi.fn()} />,
     );
     fireEvent.doubleClick(screen.getByTestId('group-name'));
     expect(screen.getByTestId('group-name-input')).toBeInTheDocument();
@@ -85,7 +85,7 @@ describe('GroupNode', () => {
   it('does NOT enter edit mode when a locked group name is double-clicked', () => {
     render(
       <GroupNode
-        data={{ kind: 'group', childIds: ['a'], locked: true }}
+        data={{ kind: 'group', locked: true }}
         onRename={vi.fn()}
       />,
     );
@@ -99,7 +99,7 @@ describe('GroupNode', () => {
     const onRename = vi.fn();
     render(
       <GroupNode
-        data={{ kind: 'group', name: 'Group', childIds: ['a'] }}
+        data={{ kind: 'group', name: 'Group' }}
         onRename={onRename}
       />,
     );
@@ -114,7 +114,7 @@ describe('GroupNode', () => {
     const onRename = vi.fn();
     render(
       <GroupNode
-        data={{ kind: 'group', name: 'Group', childIds: ['a'] }}
+        data={{ kind: 'group', name: 'Group' }}
         onRename={onRename}
       />,
     );
@@ -131,14 +131,14 @@ describe('GroupNode', () => {
   // border is zoom-thinned. Selected → text-foreground; unselected →
   // text-muted-foreground.
   it('unselected: the group name uses the muted foreground colour', () => {
-    render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} />);
+    render(<GroupNode data={{ kind: 'group' }} />);
     const name = screen.getByTestId('group-name');
     expect(name).toHaveClass('text-muted-foreground');
     expect(name).not.toHaveClass('text-foreground');
   });
 
   it('selected: the group name uses the strong foreground colour', () => {
-    render(<GroupNode data={{ kind: 'group', childIds: ['a'] }} selected />);
+    render(<GroupNode data={{ kind: 'group' }} selected />);
     const name = screen.getByTestId('group-name');
     expect(name).toHaveClass('text-foreground');
     expect(name).not.toHaveClass('text-muted-foreground');

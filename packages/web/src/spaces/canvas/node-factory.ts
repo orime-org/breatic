@@ -10,6 +10,33 @@ import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
 export type CreatableNodeType = 'text' | 'image' | 'audio' | 'video';
 
 /**
+ * The fixed footprint of an empty / handling content node — the empty-state box
+ * (`NodeContent`: 288 × 192). Used to place a new node CENTERED on a drop point
+ * (its top-left = point − size/2) so it appears centred where the user dropped
+ * it, not offset to the bottom-right.
+ */
+export const EMPTY_NODE_SIZE = { width: 288, height: 192 } as const;
+
+/**
+ * Convert a desired CENTER point into the node's top-left, given the node's
+ * size — so a node dropped "at a point" is centred on it rather than having its
+ * top-left there.
+ * @param center - The point the node should be centred on.
+ * @param center.x - The center X.
+ * @param center.y - The center Y.
+ * @param size - The node's footprint.
+ * @param size.width - The node width.
+ * @param size.height - The node height.
+ * @returns The top-left position to store on the node.
+ */
+export function centerToTopLeft(
+  center: { x: number; y: number },
+  size: { width: number; height: number },
+): { x: number; y: number } {
+  return { x: center.x - size.width / 2, y: center.y - size.height / 2 };
+}
+
+/**
  * The creatable modalities in menu order — the single source of truth for
  * the node-library dropdown and the canvas right-click menu. 3d / web exist
  * as modalities but are not offered as creation entries yet; annotation /
@@ -74,36 +101,33 @@ export function createEmptyNode(
   };
 }
 
-/** Fixed English default name for a new group (not localized — see below). */
+/** Fixed-English default name for a new Group — a data value, not a localized label. */
 const GROUP_DEFAULT_NAME = 'Group';
 
 /**
- * Builds a fresh group node wrapping the given child node ids, in the shared
- * wire shape. Pure (like {@link createEmptyNode}): `createdBy` is injected by
- * the caller so the factory stays free of React / store access.
- *
- * The default name is the fixed English `Group` — a data value, NOT a
- * localized label — for the same reason content-node default names are fixed
- * English: a localized default would freeze the creating client's locale into
- * the shared Yjs doc for every collaborator. `backgroundColor` stays unset
- * (neutral dashed frame) until the user picks one; the group has no lock and
- * no manual size (geometry is derived from children at render).
- * @param childIds - Ids of the nodes this group wraps. Copied, not aliased, so
- *   later mutation of the caller's array cannot leak into the node.
- * @param position - Canvas coordinates the group is placed at. Group geometry
- *   is derived from its children at render; this is only an initial value.
+ * Builds a fresh Group node (group redesign 2026-06-23) in the shared wire
+ * shape. Unlike {@link createEmptyGroup}, a Group stores its own authoritative
+ * `width`/`height` and holds no `childIds` — members bind back via their own
+ * top-level `parentId`. Pure (like the other factories): the caller injects the
+ * id (pre-generated so the same id seeds the creation plan) and `createdBy`.
+ * @param id - Pre-generated id for the Group (shared with the creation plan).
+ * @param position - The Group's stored top-left in canvas coordinates.
  * @param position.x - X coordinate.
  * @param position.y - Y coordinate.
+ * @param width - The Group's authoritative width.
+ * @param height - The Group's authoritative height.
  * @param createdBy - User id of the creator (caller injects from the store).
- * @returns A complete {@link CanvasNodeFields} for a group node.
+ * @returns A complete {@link CanvasNodeFields} for a Group node.
  */
-export function createEmptyGroup(
-  childIds: ReadonlyArray<string>,
+export function createGroupNode(
+  id: string,
   position: { x: number; y: number },
+  width: number,
+  height: number,
   createdBy: string,
 ): CanvasNodeFields {
   return {
-    id: newId(),
+    id,
     type: 'group',
     position,
     data: {
@@ -114,7 +138,8 @@ export function createEmptyGroup(
       operationLocks: [],
       state: 'idle',
       attachments: [],
-      childIds: [...childIds],
+      width,
+      height,
     },
   };
 }

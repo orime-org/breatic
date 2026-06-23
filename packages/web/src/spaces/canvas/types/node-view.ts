@@ -143,8 +143,14 @@ export interface GroupNodeView extends NodeViewCommon {
   kind: 'group';
   /** Group display name shown in the group header (default "Group"). */
   name?: string;
-  /** Ids of the nodes contained in the group. */
-  childIds?: string[];
+  /**
+   * Authoritative group width/height (group redesign 2026-06-23 — the group is
+   * now a manual-size box, Figma-Frame-style) — the group's canvas footprint,
+   * rendered directly instead of derived from members. Members bind back via
+   * their own top-level `parentId`.
+   */
+  width?: number;
+  height?: number;
   /** Group container tint. */
   backgroundColor?: string;
 }
@@ -237,7 +243,8 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
       return {
         kind: 'group',
         name: data.name,
-        childIds: data.childIds,
+        width: data.width,
+        height: data.height,
         backgroundColor: data.backgroundColor,
         locked,
       };

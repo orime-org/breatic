@@ -3,64 +3,55 @@
 
 import * as React from 'react';
 
-import { addNode } from '@web/data/yjs/canvas-space';
+import { addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import {
   cloneForPaste,
   textToNode,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 import {
+  centerToTopLeft,
   createEmptyNode,
+  EMPTY_NODE_SIZE,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
-/**
- * Fixed offset a duplicated node is shifted from its source so the copy sits
- * just beside the original rather than fully covering it (matches the paste
- * offset; a duplicate lands one nudge away from its source).
- */
-const DUPLICATE_OFFSET_PX = 24;
-
 export interface NodeCreation {
   /**
-   * Create an empty node of `type` at a canvas position and return its id.
-   * The caller (canvas) supplies the already-resolved flow-coordinate drop
-   * point (viewport centre for the library, cursor for right-click).
+   * Create an empty node of `type` CENTRED on a canvas point and return its id.
+   * The caller (canvas) supplies the drop point (viewport centre for the
+   * library, cursor for right-click / drag-drop); the node is placed centred on
+   * it (top-left = point − {@link EMPTY_NODE_SIZE}/2).
    */
   createNodeAt: (
     type: CreatableNodeType,
     position: { x: number; y: number },
   ) => string;
   /**
-   * Create a media node already in `handling` state for an in-flight upload
-   * and return its id. The caller fills the node's content once the upload
-   * resolves (`setNodeContent`) or writes an error (`setNodeError`).
+   * Create a media node already in `handling` state for an in-flight upload,
+   * CENTRED on the drop point, and return its id. The caller fills the node's
+   * content once the upload resolves (`setNodeContent`) or errors (`setNodeError`).
    */
   createUploadNodeAt: (
     type: CreatableNodeType,
     position: { x: number; y: number },
   ) => string;
   /**
-   * Paste plain text as a new text node at a position; returns its id.
+   * Paste plain text as a new text node CENTRED on a point; returns its id.
    * The pasted text becomes the node's content.
    */
   pasteTextAt: (text: string, position: { x: number; y: number }) => string;
   /**
    * Paste cloned clipboard nodes (fresh ids, positions shifted by `offset`
    * so relative layout is preserved); returns the new node ids in order.
+   * The duplicate path (which can re-home a clone into an existing Group +
+   * grow it) is orchestrated by the canvas, not here.
    */
   pasteNodesAt: (
     nodes: ReadonlyArray<ClipboardNode>,
     offset: { dx: number; dy: number },
   ) => string[];
-  /**
-   * Duplicate the given nodes in place: clone them at a fixed
-   * {@link DUPLICATE_OFFSET_PX} nudge and write them straight to Yjs, never
-   * touching the system clipboard (that is the distinct copy path). Shared by
-   * the single-node and multi-selection right-click menus; returns the new ids.
-   */
-  duplicateNodes: (nodes: ReadonlyArray<ClipboardNode>) => string[];
 }
 
 /**
@@ -78,9 +69,17 @@ export function useNodeCreation(
   spaceId: string,
 ): NodeCreation {
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
+  // Every create drop centres the new node on the given point (its top-left =
+  // point − EMPTY_NODE_SIZE/2) so it appears centred where the user dropped it,
+  // not offset to the bottom-right. Consistent across the library (viewport
+  // centre), right-click create, drag-drop, and text paste.
   const createNodeAt = React.useCallback(
     (type: CreatableNodeType, position: { x: number; y: number }): string => {
-      const node = createEmptyNode(type, position, userId);
+      const node = createEmptyNode(
+        type,
+        centerToTopLeft(position, EMPTY_NODE_SIZE),
+        userId,
+      );
       addNode(projectId, spaceId, node);
       return node.id;
     },
@@ -88,7 +87,12 @@ export function useNodeCreation(
   );
   const createUploadNodeAt = React.useCallback(
     (type: CreatableNodeType, position: { x: number; y: number }): string => {
-      const node = createEmptyNode(type, position, userId, 'handling');
+      const node = createEmptyNode(
+        type,
+        centerToTopLeft(position, EMPTY_NODE_SIZE),
+        userId,
+        'handling',
+      );
       addNode(projectId, spaceId, node);
       return node.id;
     },
@@ -96,7 +100,11 @@ export function useNodeCreation(
   );
   const pasteTextAt = React.useCallback(
     (text: string, position: { x: number; y: number }): string => {
-      const node = textToNode(text, position, userId);
+      const node = textToNode(
+        text,
+        centerToTopLeft(position, EMPTY_NODE_SIZE),
+        userId,
+      );
       addNode(projectId, spaceId, node);
       return node.id;
     },
@@ -108,21 +116,20 @@ export function useNodeCreation(
       offset: { dx: number; dy: number },
     ): string[] => {
       const cloned = cloneForPaste(nodes, userId, offset);
-      cloned.forEach((node) => addNode(projectId, spaceId, node));
+      // One paste is ONE undo entry — a group + its members (or a multi-node
+      // selection) must undo as a unit, not node-by-node (mirrors the duplicate
+      // path's batch).
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        cloned.forEach((node) => addNode(projectId, spaceId, node));
+      });
       return cloned.map((node) => node.id);
     },
     [projectId, spaceId, userId],
-  );
-  const duplicateNodes = React.useCallback(
-    (nodes: ReadonlyArray<ClipboardNode>): string[] =>
-      pasteNodesAt(nodes, { dx: DUPLICATE_OFFSET_PX, dy: DUPLICATE_OFFSET_PX }),
-    [pasteNodesAt],
   );
   return {
     createNodeAt,
     createUploadNodeAt,
     pasteTextAt,
     pasteNodesAt,
-    duplicateNodes,
   };
 }

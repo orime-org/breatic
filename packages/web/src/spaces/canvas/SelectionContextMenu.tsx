@@ -118,7 +118,7 @@ export function SelectionContextMenu({
               onSelect={onDelete}
             >
               <Trash2 className='mr-2 h-4 w-4' aria-hidden='true' />
-              {t('canvas.contextMenu.delete')}
+              {t('canvas.contextMenu.deleteSelection')}
               <DropdownMenuShortcut>
                 {formatShortcut({ key: 'Delete' })}
               </DropdownMenuShortcut>

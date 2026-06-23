@@ -91,6 +91,32 @@ body {
   box-shadow: none;
 }
 
+/* Group manual-resize controls (NodeResizer). The group's OWN dashed border
+   already turns to the selected colour when selected, so the resize LINE is
+   hidden (transparent) — a second solid outline on top of the dashed one is
+   redundant; the edge is still drag-resizable, just not drawn. Only the corner /
+   edge handle squares show. The square is a background-coloured CENTRE ringed by
+   the foreground colour, both mode-aware: light mode = white centre + dark ring,
+   dark mode = dark centre + light ring — so the handle contrasts with the canvas
+   either way. */
+.react-flow__resize-control.line {
+  border-color: transparent;
+}
+.react-flow__resize-control.handle {
+  background-color: var(--color-background);
+  border-color: var(--color-foreground);
+}
+/* Enlarge the handle's HIT area without enlarging the visible square (Bug 4 A):
+   a transparent inset:-5px overlay extends the grabbable zone ~5px past each
+   edge of the square. Pointer events on the pseudo-element target the handle, so
+   ReactFlow's resize drag still fires — the corner is just easier to grab when a
+   member sits near it. */
+.react-flow__resize-control.handle::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+
 /* Canvas edge colours. ReactFlow keys its dark edge vars off `.react-flow.dark`
    (set only when you pass colorMode="dark"), which never matches our
    `data-theme="dark"`-on-<html> toggle — so its light defaults (#b1b1b7 default /

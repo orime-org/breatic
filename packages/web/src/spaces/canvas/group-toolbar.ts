@@ -12,14 +12,14 @@
  * renders the returned offer.
  */
 
-/** Minimal per-node info the toolbar rule needs (a group + its members). */
+/** Minimal per-node info the toolbar rule needs (a Group + each node's membership). */
 export interface NodeGroupInfo {
   id: string;
-  /** Whether this node is a `type='group'` container. */
+  /** Whether this node is a `type='group'` Group container. */
   isGroup: boolean;
-  /** The group's member ids (only meaningful when `isGroup`). */
-  childIds?: string[];
-  /** Whether the group is locked — a locked group cannot be ungrouped. */
+  /** The node's parent Group id, when it is already a member (group redesign). */
+  parentId?: string;
+  /** Whether the Group is locked — a locked Group cannot be ungrouped. */
   locked?: boolean;
 }
 
@@ -57,13 +57,12 @@ export function computeGroupToolbar(
   }
 
   if (selectedIds.length >= 2) {
-    const memberIds = new Set<string>();
-    for (const n of nodes) {
-      if (n.isGroup) for (const c of n.childIds ?? []) memberIds.add(c);
-    }
+    // All-loose guard (no-nesting + only-loose-nodes invariants): every selected
+    // node must be a non-Group that is not already a member of any Group — read
+    // from each node's own `parentId` (group redesign).
     const allLoose = selectedIds.every((id) => {
       const n = byId.get(id);
-      return n != null && !n.isGroup && !memberIds.has(id);
+      return n != null && !n.isGroup && n.parentId === undefined;
     });
     if (allLoose) return { kind: 'group' };
   }
