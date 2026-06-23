@@ -111,6 +111,7 @@ import {
 } from '@web/spaces/canvas/node-clipboard';
 import {
   createGroupNode,
+  EMPTY_NODE_SIZE,
   isCreatableNodeType,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
@@ -167,9 +168,13 @@ function isEditableTarget(el: Element | null): boolean {
   );
 }
 
-/** Footprint assumed for a node ReactFlow has not measured yet (drag hit-test). */
-const GROUP_DRAG_FALLBACK_W = 160;
-const GROUP_DRAG_FALLBACK_H = 96;
+// Footprint assumed for a node ReactFlow has not measured yet (drag hit-test +
+// group geometry). Uses the real empty-node size (288×192) so an unmeasured
+// node's center isn't mis-estimated for the one frame before it measures (the
+// old 160×96 guess shifted the center ~64px and could flip a borderline
+// center-in-group decision).
+const GROUP_DRAG_FALLBACK_W = EMPTY_NODE_SIZE.width;
+const GROUP_DRAG_FALLBACK_H = EMPTY_NODE_SIZE.height;
 
 /**
  * The bounding box of a Group's members (matched by `parentId`) in GROUP-LOCAL
@@ -1260,11 +1265,14 @@ function CanvasSpaceInner({
       .then((text) => {
         const clipboardNodes = parseClipboardNodes(text);
         if (clipboardNodes && clipboardNodes.length > 0) {
-          const anchor = clipboardNodes[0].position;
+          // Centre the pasted content's bounding box ON the cursor (not its
+          // top-left there) — consistent with how creation centres on its drop
+          // point (Bug C).
+          const box = clipboardBoundingBox(clipboardNodes);
           setSelectAfterCreate(
             pasteNodesAt(clipboardNodes, {
-              dx: point.x - anchor.x,
-              dy: point.y - anchor.y,
+              dx: point.x - (box.x + box.width / 2),
+              dy: point.y - (box.y + box.height / 2),
             }),
           );
         } else if (text.trim().length > 0) {

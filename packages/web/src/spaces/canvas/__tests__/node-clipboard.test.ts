@@ -143,6 +143,19 @@ describe('node-clipboard', () => {
     );
   });
 
+  it('externalParentAbs: a LOCKED existing group is excluded → the lone-member clone stays top-level (Bug A)', () => {
+    const payload: ClipboardNode[] = [
+      { type: 'text', position: { x: 120, y: 130 }, id: 'm', parentId: 'g' },
+    ];
+    const allNodes = [
+      { id: 'g', type: 'group', position: { x: 100, y: 100 }, data: { locked: true } },
+      { id: 'm', type: 'text', parentId: 'g', position: { x: 20, y: 30 } },
+    ];
+    // The group is locked (frozen membership) → it must NOT take the duplicate,
+    // so it is left out of the map and cloneForPaste makes the clone top-level.
+    expect(externalParentAbs(payload, allNodes)).toEqual(new Map());
+  });
+
   it('externalParentAbs: a member whose group IS in the payload is NOT external (empty map)', () => {
     const payload: ClipboardNode[] = [
       { type: 'group', position: { x: 100, y: 100 }, width: 200, height: 200, id: 'g' },
@@ -247,12 +260,21 @@ describe('pasteAnchorOffset — viewport-aware Cmd+V placement (R2-H, Figma-styl
     });
   });
 
-  it('anchor inside the 50%-larger margin (just off-screen) still pastes next to it', () => {
-    // viewport right edge 1000; 50%-larger area reaches 1000 + 250 = 1250.
+  it('a box fully off-screen (zoom-independent) recenters, no longer nudged off-screen', () => {
+    // top-left (1200,400) is past the right edge (1000) and the box has no size,
+    // so it does not overlap the viewport → recenter (the old 50%-inflated rule
+    // wrongly nudged it +24 and left it off-screen).
     expect(pasteAnchorOffset({ x: 1200, y: 400 }, viewport, 24)).toEqual({
-      dx: 24,
-      dy: 24,
+      dx: 500 - 1200,
+      dy: 400 - 400,
     });
+  });
+
+  it('a box that still partly overlaps the viewport pastes beside it (+offset)', () => {
+    // box spans x 900..1100 — its left half is inside the 0..1000 viewport → in view.
+    expect(
+      pasteAnchorOffset({ x: 900, y: 400, width: 200, height: 100 }, viewport, 24),
+    ).toEqual({ dx: 24, dy: 24 });
   });
 
   it('anchor far outside (scrolled away) → paste at the viewport center', () => {

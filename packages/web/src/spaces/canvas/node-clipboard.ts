@@ -88,6 +88,7 @@ export interface CaptureNode {
     width?: unknown;
     height?: unknown;
     backgroundColor?: unknown;
+    locked?: unknown;
   };
 }
 
@@ -201,7 +202,11 @@ export function externalParentAbs(
   for (const node of payload) {
     if (node.parentId === undefined || groupsInPayload.has(node.parentId)) continue;
     const parent = byId.get(node.parentId);
-    if (parent) map.set(node.parentId, { x: parent.position.x, y: parent.position.y });
+    if (parent === undefined) continue;
+    // A LOCKED existing group has frozen membership — it must NOT take the
+    // duplicate, so leave it out: the clone then becomes top-level (Bug A).
+    if (parent.data?.locked) continue;
+    map.set(node.parentId, { x: parent.position.x, y: parent.position.y });
   }
   return map;
 }
@@ -367,12 +372,12 @@ export function clipboardBoundingBox(
 
 /**
  * The offset a keyboard Cmd/Ctrl+V paste should apply so the pasted nodes land
- * where the user can see them — viewport-aware, matching Figma (R2-H). When the
- * payload's bounding box sits inside the current viewport (or an area 50% larger
- * than it, Figma's rule), paste just beside it (`+offsetPx`, the in-place feel).
- * When the canvas has been scrolled so the box is well off-screen, recenter so
- * the box's CENTER lands at the viewport center (not its top-left), so the
- * content appears centred rather than offset to the bottom-right.
+ * where the user can see them — viewport-aware (R2-H). When the payload's
+ * bounding box still overlaps the current viewport (any part visible), paste
+ * just beside it (`+offsetPx`, the in-place feel). When the canvas has been
+ * scrolled so the box is fully off-screen, recenter so the box's CENTER lands at
+ * the viewport center (not its top-left), so the content appears centred rather
+ * than offset to the bottom-right.
  * @param box - The payload's bounding box (top-left + size); a bare point is `{x,y}` with zero size.
  * @param box.x - The box left.
  * @param box.y - The box top.
@@ -396,17 +401,22 @@ export function pasteAnchorOffset(
   if (viewport.width <= 0 || viewport.height <= 0) {
     return { dx: offsetPx, dy: offsetPx };
   }
-  // Figma considers an area 50% larger than the view to decide whether to
-  // recenter — inflate the viewport by 25% on every side for the in-view test
-  // (tested against the box's top-left, i.e. where the source sat).
-  const marginX = viewport.width * 0.25;
-  const marginY = viewport.height * 0.25;
-  const inView =
-    box.x >= viewport.x - marginX &&
-    box.x <= viewport.x + viewport.width + marginX &&
-    box.y >= viewport.y - marginY &&
-    box.y <= viewport.y + viewport.height + marginY;
-  if (inView) return { dx: offsetPx, dy: offsetPx };
+  // In view = the payload's bounding box overlaps the CURRENT viewport at all.
+  // Zoom-independent: it tests the WHOLE box against the REAL viewport, not the
+  // box's top-left against a 50%-inflated rect (which flipped with zoom — at low
+  // zoom the inflated rect was so large that an off-screen source still counted
+  // as in-view, so the paste was nudged off-screen). Any sliver visible → paste
+  // beside it; fully off-screen → recenter so it is brought into view.
+  const boxRight = box.x + (box.width ?? 0);
+  const boxBottom = box.y + (box.height ?? 0);
+  const viewRight = viewport.x + viewport.width;
+  const viewBottom = viewport.y + viewport.height;
+  const intersects =
+    box.x < viewRight &&
+    boxRight > viewport.x &&
+    box.y < viewBottom &&
+    boxBottom > viewport.y;
+  if (intersects) return { dx: offsetPx, dy: offsetPx };
   const boxCenterX = box.x + (box.width ?? 0) / 2;
   const boxCenterY = box.y + (box.height ?? 0) / 2;
   const viewCenterX = viewport.x + viewport.width / 2;
