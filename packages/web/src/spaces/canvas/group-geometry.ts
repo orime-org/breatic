@@ -26,6 +26,19 @@ export interface GroupRect {
   height: number;
 }
 
+/**
+ * A group container rect frozen at drag-start (#1478): the stable full box that
+ * outlives a member's mid-drag motion. Two consumers at two DIFFERENT times: the
+ * render (`applyGroupGeometry`) reads it every frame DURING the drag to hold the
+ * border steady; the dissolve hit-test (`groupBoxesFor`) reads it ONCE on
+ * drag-stop to decide leave/keep. There is no per-frame membership decision —
+ * dissolve is evaluated a single time, on release.
+ */
+export interface FrozenGroupRect {
+  groupId: string;
+  rect: GroupRect;
+}
+
 /** The minimal node geometry the group bounds need (ReactFlow-agnostic). */
 export interface GeoNode {
   id: string;
@@ -103,23 +116,32 @@ export function computeGroupRect(
 /**
  * Re-size every group node to wrap its members: a group's `position` becomes
  * the padded bounds' top-left and its `style` width/height the bounds' size.
- * Non-group nodes — and groups whose members cannot be resolved (all missing,
- * or only the self-reference) — are returned untouched (same reference) so
- * referential-equality checks downstream stay cheap.
+ * The **frozen** group (a member is being dragged) instead uses the drag-start
+ * snapshot rect, so its border stays put while the member moves and only
+ * reflows on drag-stop (#1478). Non-group nodes — and groups whose members
+ * cannot be resolved (all missing, or only the self-reference) — are returned
+ * untouched (same reference) so referential-equality checks downstream stay cheap.
  * @param nodes - All flow nodes (members must be measured for an exact fit).
- * @returns The nodes with each group sized to its members.
+ * @param frozen - The drag-start snapshot of the group whose member is being dragged, or null.
+ * @returns The nodes with each group sized to its members (or the snapshot, when frozen).
  */
 export function applyGroupGeometry<T extends GeoNode>(
   nodes: ReadonlyArray<T>,
+  frozen: FrozenGroupRect | null = null,
 ): T[] {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   return nodes.map((node) => {
     if (node.type !== 'group') return node;
-    const members = childIdsOf(node)
-      .filter((id) => id !== node.id)
-      .map((id) => byId.get(id))
-      .filter((member): member is T => member != null);
-    const rect = computeGroupRect(members);
+    let rect: GroupRect | null;
+    if (frozen && node.id === frozen.groupId) {
+      rect = frozen.rect;
+    } else {
+      const members = childIdsOf(node)
+        .filter((id) => id !== node.id)
+        .map((id) => byId.get(id))
+        .filter((member): member is T => member != null);
+      rect = computeGroupRect(members);
+    }
     if (!rect) return node;
     return {
       ...node,
