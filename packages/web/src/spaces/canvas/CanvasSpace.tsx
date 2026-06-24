@@ -22,17 +22,18 @@ import {
 import '@xyflow/react/dist/style.css';
 import * as React from 'react';
 import { toast } from 'sonner';
+import { newId } from '@breatic/shared';
 
 import { assetsApi } from '@web/data/api';
 import {
   addEdge,
   addNode,
-  addToGroup,
-  moveGroup,
+  createGroup,
+  expandGroup,
   removeEdge,
   removeElements,
-  removeFromGroup,
   removeNode,
+  resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
   setNodeContent,
@@ -40,6 +41,7 @@ import {
   setNodeHandling,
   setNodeLocked,
   setNodeName,
+  setNodeParent,
   setNodePosition,
   useCanvasSpace,
   type CanvasEdge,
@@ -52,7 +54,10 @@ import {
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
 import { matchDuplicateShortcut } from '@web/spaces/canvas/canvas-duplicate-shortcut';
-import { matchGroupShortcut } from '@web/spaces/canvas/canvas-group-shortcut';
+import {
+  matchGroupShortcut,
+  planGroupShortcut,
+} from '@web/spaces/canvas/canvas-group-shortcut';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
 import {
   fileToNodeSpec,
@@ -61,17 +66,25 @@ import {
 } from '@web/spaces/canvas/canvas-upload';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
-import {
-  applyGroupGeometry,
-  computeGroupRect,
-  type FrozenGroupRect,
-} from '@web/spaces/canvas/group-geometry';
-import { planDragStopAll } from '@web/spaces/canvas/drag-persist';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
+import { planGroupDrag, type DragNode } from '@web/spaces/canvas/group-drag';
 import {
+  GROUP_MIN_SIZE,
+  GROUP_PADDING,
+  groupResizeBounds,
+  planGroupGrowth,
+  type GroupGrowth,
+  type GroupGrowthInput,
+  type Rect,
+} from '@web/spaces/canvas/group-geometry';
+import { topoSortByParent } from '@web/spaces/canvas/group-topology';
+import {
+  groupDeletionIds,
   lockBlockedDeletion,
   lockedNodeIds,
+  selectionDeletionIds,
 } from '@web/spaces/canvas/group-membership';
+import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
   type NodeGroupInfo,
@@ -87,12 +100,18 @@ import {
   mergeMirroredSelection,
 } from '@web/spaces/canvas/mirror-selection';
 import {
+  captureClipboard,
+  clipboardBoundingBox,
+  cloneForPaste,
+  externalParentAbs,
   parseClipboardNodes,
+  pasteAnchorOffset,
   serializeNodes,
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 import {
-  createEmptyGroup,
+  createGroupNode,
+  EMPTY_NODE_SIZE,
   isCreatableNodeType,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
@@ -149,21 +168,124 @@ function isEditableTarget(el: Element | null): boolean {
   );
 }
 
+// Footprint assumed for a node ReactFlow has not measured yet (drag hit-test +
+// group geometry). Uses the real empty-node size (288×192) so an unmeasured
+// node's center isn't mis-estimated for the one frame before it measures (the
+// old 160×96 guess shifted the center ~64px and could flip a borderline
+// center-in-group decision).
+const GROUP_DRAG_FALLBACK_W = EMPTY_NODE_SIZE.width;
+const GROUP_DRAG_FALLBACK_H = EMPTY_NODE_SIZE.height;
+
 /**
- * Project a ReactFlow node into the clipboard-portable subset, or null when
- * it isn't a copyable content node (annotation / group aren't copied yet).
- * @param node - A ReactFlow node from the render buffer.
- * @returns The clipboard node, or null to skip it.
+ * The bounding box of a Group's members (matched by `parentId`) in GROUP-LOCAL
+ * coordinates (members store positions relative to the Group top-left), or
+ * `null` when the Group is empty, plus whether every member is measured. Feeds
+ * `groupResizeBounds` so each resize control gets a member-derived min. The
+ * `allMeasured` flag drives the R1 guard: a member ReactFlow has not measured
+ * yet would shrink the box, so the caller blocks shrinking that frame.
+ * @param groupId - The Group node id (members are matched by `parentId`).
+ * @param nodes - All flow nodes.
+ * @returns The members' local bounding box (or `null` when none) + an all-measured flag.
  */
-function flowNodeToClipboard(node: Node): ClipboardNode | null {
-  if (!node.type || !isCreatableNodeType(node.type)) return null;
-  const data = node.data as { name?: unknown; content?: unknown };
+function groupMembersLocalBox(
+  groupId: string,
+  nodes: ReadonlyArray<Node>,
+): { box: Rect | null; allMeasured: boolean } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let found = false;
+  let allMeasured = true;
+  for (const node of nodes) {
+    if (node.parentId !== groupId) continue;
+    found = true;
+    if (node.measured?.width === undefined || node.measured?.height === undefined) {
+      allMeasured = false;
+    }
+    const w = node.measured?.width ?? GROUP_DRAG_FALLBACK_W;
+    const h = node.measured?.height ?? GROUP_DRAG_FALLBACK_H;
+    minX = Math.min(minX, node.position.x);
+    minY = Math.min(minY, node.position.y);
+    maxX = Math.max(maxX, node.position.x + w);
+    maxY = Math.max(maxY, node.position.y + h);
+  }
+  if (!found) return { box: null, allMeasured: true };
   return {
-    type: node.type,
-    position: node.position,
-    ...(typeof data.name === 'string' ? { name: data.name } : {}),
-    ...(typeof data.content === 'string' ? { content: data.content } : {}),
+    box: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+    allMeasured,
   };
+}
+
+/**
+ * The Group growth needed when a duplicate drops clones into EXISTING Groups
+ * (R2-A): a clone offset +24 from a source at the Group's edge can sit flush
+ * against the border, so each affected Group expands to keep `GROUP_PADDING`.
+ * Builds every affected Group's full member set (current members + the new
+ * clones) in absolute coordinates — a clone's size is its source's measured size
+ * (it is an exact copy; `clones[i]` pairs with `payload[i]`) — then defers the
+ * only-up growth math to {@link planGroupGrowth}.
+ * @param payload - The captured clipboard payload (same order as `clones`; carries each clone's source id).
+ * @param clones - The freshly cloned wire nodes (parentId + parent-relative position).
+ * @param ext - Existing Groups (outside the payload) that gained members → their absolute top-left.
+ * @param allNodes - All current flow nodes (existing members + Group rects + source sizes).
+ * @returns One growth per existing Group whose size must increase.
+ */
+function planDuplicateGroupGrowth(
+  payload: ReadonlyArray<ClipboardNode>,
+  clones: ReadonlyArray<{ parentId?: string; position: { x: number; y: number } }>,
+  ext: ReadonlyMap<string, { x: number; y: number }>,
+  allNodes: ReadonlyArray<Node>,
+): GroupGrowth[] {
+  if (ext.size === 0) return [];
+  const byId = new Map(allNodes.map((node) => [node.id, node]));
+  /**
+   * A node's rendered size (measured first, then stored, then the drag fallback).
+   * @param node - The flow node, or undefined when not found.
+   * @returns Its width / height.
+   */
+  const sizeOf = (node: Node | undefined): { width: number; height: number } => ({
+    width: node?.measured?.width ?? node?.width ?? GROUP_DRAG_FALLBACK_W,
+    height: node?.measured?.height ?? node?.height ?? GROUP_DRAG_FALLBACK_H,
+  });
+  const inputs: GroupGrowthInput[] = [];
+  for (const [groupId, groupAbs] of ext) {
+    const groupNode = byId.get(groupId);
+    if (groupNode === undefined) continue;
+    const memberRects: Rect[] = [];
+    for (const node of allNodes) {
+      if (node.parentId !== groupId) continue;
+      const size = sizeOf(node);
+      memberRects.push({
+        x: groupAbs.x + node.position.x,
+        y: groupAbs.y + node.position.y,
+        width: size.width,
+        height: size.height,
+      });
+    }
+    clones.forEach((clone, index) => {
+      if (clone.parentId !== groupId) return;
+      const size = sizeOf(byId.get(payload[index]?.id ?? ''));
+      memberRects.push({
+        x: groupAbs.x + clone.position.x,
+        y: groupAbs.y + clone.position.y,
+        width: size.width,
+        height: size.height,
+      });
+    });
+    inputs.push({
+      groupId,
+      rect: {
+        x: groupNode.position.x,
+        y: groupNode.position.y,
+        width: groupNode.width ?? groupNode.measured?.width ?? GROUP_DRAG_FALLBACK_W,
+        height:
+          groupNode.height ?? groupNode.measured?.height ?? GROUP_DRAG_FALLBACK_H,
+      },
+      memberRects,
+    });
+  }
+  return planGroupGrowth(inputs);
 }
 
 /**
@@ -174,12 +296,27 @@ function flowNodeToClipboard(node: Node): ClipboardNode | null {
  * @returns The ReactFlow node.
  */
 function toFlowNode(node: CanvasNodeView): Node {
-  return {
+  const flow: Node = {
     id: node.id,
     type: node.type,
     position: node.position,
     data: node.data as unknown as Record<string, unknown>,
   };
+  // Group containment (group redesign): a member carries its parent
+  // Group id so ReactFlow positions it relative to the Group. Only set when
+  // present so top-level nodes stay unparented.
+  if (node.parentId !== undefined) flow.parentId = node.parentId;
+  // A Group with a stored authoritative size hands ReactFlow its width/height
+  // (NodeResizer drives them) instead of deriving the box from members. Legacy
+  // auto-container groups have no stored size and fall back to derived geometry.
+  if (node.type === 'group') {
+    const view = node.data as { width?: number; height?: number };
+    if (view.width !== undefined && view.height !== undefined) {
+      flow.width = view.width;
+      flow.height = view.height;
+    }
+  }
+  return flow;
 }
 
 /**
@@ -308,13 +445,8 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, undo, redo]);
 
-  const {
-    createNodeAt,
-    createUploadNodeAt,
-    pasteTextAt,
-    pasteNodesAt,
-    duplicateNodes,
-  } = useNodeCreation(projectId, spaceId);
+  const { createNodeAt, createUploadNodeAt, pasteTextAt, pasteNodesAt } =
+    useNodeCreation(projectId, spaceId);
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
   // needs a local node array for smooth drag; Yjs stays the source of truth
@@ -351,139 +483,63 @@ function CanvasSpaceInner({
     setFlowEdges((current) => applyEdgeChanges(changes, current));
   }, []);
 
-  // Group drag carries its members: a group node has no authoritative position
-  // (geometry is derived from its members), so dragging it translates every
-  // member instead. We track the drag delta and move members locally each
-  // frame (smooth, no Yjs churn); the final delta is persisted once on stop
-  // (one moveGroup = one undo entry). Members keep their real positions.
-  const groupDragRef = React.useRef<{
-    id: string;
-    startX: number;
-    startY: number;
-    lastX: number;
-    lastY: number;
-    childIds: string[];
-  } | null>(null);
-  // #1478: while a lone member is dragged, its group's container is frozen to
-  // the drag-start full box (all members + padding). The snapshot has two
-  // consumers at DIFFERENT times: the render (applyGroupGeometry) reads it every
-  // frame DURING the drag to hold the border steady; the dissolve hit-test
-  // (groupBoxesFor, via onNodeDragStop) reads it ONCE on drag-stop to decide
-  // leave/keep. No mid-drag membership decision runs, so a small in-group nudge
-  // neither reflows the border nor (falsely) dissolves the group.
-  const frozenGroupRef = React.useRef<FrozenGroupRect | null>(null);
-
-  const onNodeDragStart = React.useCallback(
-    (_event: React.MouseEvent, node: Node): void => {
-      if (node.type === 'group') {
-        // A group drag moves the whole box (the border follows its members), so
-        // no member-freeze applies — clear any stale snapshot.
-        frozenGroupRef.current = null;
-        const childIds = (node.data as { childIds?: string[] }).childIds ?? [];
-        groupDragRef.current = {
-          id: node.id,
-          startX: node.position.x,
-          startY: node.position.y,
-          lastX: node.position.x,
-          lastY: node.position.y,
-          childIds,
-        };
-        return;
-      }
-      // Dragging a lone member: snapshot its group's full container now (members
-      // still at their start positions) so the box is stable for the whole drag.
-      const group = flowNodes.find(
-        (item) =>
-          item.type === 'group' &&
-          ((item.data as { childIds?: string[] }).childIds ?? []).includes(
-            node.id,
-          ),
-      );
-      if (!group) {
-        frozenGroupRef.current = null;
-        return;
-      }
-      const childIds = (group.data as { childIds?: string[] }).childIds ?? [];
-      const members = flowNodes.filter((item) => childIds.includes(item.id));
-      const rect = computeGroupRect(members);
-      frozenGroupRef.current = rect ? { groupId: group.id, rect } : null;
-    },
-    [flowNodes],
-  );
-
-  const onNodeDrag = React.useCallback(
-    (_event: React.MouseEvent, node: Node): void => {
-      const drag = groupDragRef.current;
-      if (!drag || drag.id !== node.id) return;
-      const dx = node.position.x - drag.lastX;
-      const dy = node.position.y - drag.lastY;
-      if (dx === 0 && dy === 0) return;
-      drag.lastX = node.position.x;
-      drag.lastY = node.position.y;
-      setFlowNodes((current) =>
-        current.map((flowNode) =>
-          drag.childIds.includes(flowNode.id)
-            ? {
-              ...flowNode,
-              position: {
-                x: flowNode.position.x + dx,
-                y: flowNode.position.y + dy,
-              },
-            }
-            : flowNode,
-        ),
-      );
-    },
-    [],
-  );
-
+  // Group drag carries its members natively (ReactFlow `parentId` positions
+  // children relative to their Group), so there is no manual member-carry ref or
+  // drag-start snapshot — onNodeDragStop alone resolves the whole result
+  // (reparent + position + Group auto-expand). See planGroupDrag.
   const onNodeDragStop = React.useCallback(
-    (_event: React.MouseEvent, node: Node, nodes: Node[]): void => {
-      // A marquee can co-drag a group AND loose nodes. The grabbed group (if
-      // any) moves via groupMove; EVERY loose node still persists its position +
-      // group-membership change. The old code returned right after moveGroup,
-      // dropping the loose nodes so they snapped back (#6). See planDragStopAll.
-      const plan = planDragStopAll(
-        node,
-        nodes,
-        flowNodes,
-        groupDragRef.current,
-        frozenGroupRef.current,
-      );
-      // The frozen snapshot only spans the drag; clear it so the next render
-      // recomputes the group's border from the members' settled positions.
-      frozenGroupRef.current = null;
-      if (node.type === 'group' && groupDragRef.current?.id === node.id) {
-        groupDragRef.current = null;
-      }
-      // Commit the whole drag-stop as ONE atomic undo entry. A drag-out fires a
-      // position change AND a group-membership change; a marquee fires N position
-      // writes. Without batching, captureTimeout:0 makes each its own undo step,
-      // so undoing a drag-out restored the dissolved group BEFORE the member's
-      // position reverted — a phantom oversized empty group (#3). An empty plan
-      // opens a no-op transaction (Yjs pushes no undo entry for it).
-      runCanvasUndoBatch(projectId, spaceId, () => {
-        if (plan.groupMove) {
-          moveGroup(
-            projectId,
-            spaceId,
-            plan.groupMove.groupId,
-            plan.groupMove.delta,
-          );
-        }
-        for (const { id, position } of plan.positions) {
-          setNodePosition(projectId, spaceId, id, position);
-        }
-        for (const op of plan.groupOps) {
-          if (op.action === 'add') {
-            addToGroup(projectId, spaceId, op.groupId, op.nodeId);
-          } else {
-            removeFromGroup(projectId, spaceId, op.groupId, op.nodeId);
+    (_event: React.MouseEvent, _node: Node, nodes: Node[]): void => {
+      if (readOnly) return;
+      const byId = new Map(flowNodes.map((item) => [item.id, item]));
+      /**
+       * Resolve a node to absolute canvas coordinates (a member's stored
+       * position is relative to its Group) + its rendered size — the form
+       * planGroupDrag hit-tests against the Group rects.
+       * @param item - The ReactFlow node.
+       * @returns The node in the absolute DragNode form.
+       */
+      const toDragNode = (item: Node): DragNode => {
+        const parent =
+          item.parentId !== undefined ? byId.get(item.parentId) : undefined;
+        const absPos = parent
+          ? {
+            x: parent.position.x + item.position.x,
+            y: parent.position.y + item.position.y,
           }
+          : item.position;
+        return {
+          id: item.id,
+          type: item.type ?? '',
+          parentId: item.parentId,
+          absPos,
+          size: {
+            width: item.measured?.width ?? item.width ?? GROUP_DRAG_FALLBACK_W,
+            height: item.measured?.height ?? item.height ?? GROUP_DRAG_FALLBACK_H,
+          },
+          // A locked Group never accepts a dragged-in node (planGroupDragStop
+          // skips it); carry its lock state through so the planner can see it.
+          locked: Boolean((item.data as { locked?: unknown }).locked),
+        };
+      };
+      const ops = planGroupDrag(nodes.map(toDragNode), flowNodes.map(toDragNode));
+      // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
+      // parent change AND a position change, plus any Group expansion — without
+      // batching, captureTimeout:0 would split them so undo restored a
+      // half-applied state. Apply reparents + positions BEFORE expansions, since
+      // expandGroup reanchors members off their just-written positions.
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        for (const r of ops.reparents) {
+          setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
+        }
+        for (const p of ops.positions) {
+          setNodePosition(projectId, spaceId, p.id, p.position);
+        }
+        for (const e of ops.expansions) {
+          expandGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
         }
       });
     },
-    [projectId, spaceId, flowNodes],
+    [readOnly, projectId, spaceId, flowNodes],
   );
 
   // Veto deletions BEFORE ReactFlow touches the local buffer: a locked group's
@@ -882,12 +938,21 @@ function CanvasSpaceInner({
       const clipboardNodes = parseClipboardNodes(text);
       if (clipboardNodes && clipboardNodes.length > 0) {
         event.preventDefault();
-        setSelectAfterCreate(
-          pasteNodesAt(clipboardNodes, {
-            dx: PASTE_OFFSET_PX,
-            dy: PASTE_OFFSET_PX,
-          }),
-        );
+        // Viewport-aware placement (R2-H, Figma-style): paste beside the source
+        // when it's in view, else recenter on the current viewport so the paste
+        // is never dropped off-screen after the canvas was scrolled away.
+        const rect = containerRef.current?.getBoundingClientRect();
+        let offset = { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX };
+        if (rect) {
+          const tl = screenToFlowPosition({ x: rect.left, y: rect.top });
+          const br = screenToFlowPosition({ x: rect.right, y: rect.bottom });
+          offset = pasteAnchorOffset(
+            clipboardBoundingBox(clipboardNodes),
+            { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y },
+            PASTE_OFFSET_PX,
+          );
+        }
+        setSelectAfterCreate(pasteNodesAt(clipboardNodes, offset));
         return;
       }
 
@@ -913,10 +978,12 @@ function CanvasSpaceInner({
      */
     const onCopy = (event: ClipboardEvent): void => {
       if (readOnly || isEditableTarget(document.activeElement)) return;
-      const clipboardNodes = flowNodesRef.current
-        .filter((node) => node.selected)
-        .map(flowNodeToClipboard)
-        .filter((node): node is ClipboardNode => node !== null);
+      const clipboardNodes = captureClipboard(
+        flowNodesRef.current
+          .filter((node) => node.selected)
+          .map((node) => node.id),
+        flowNodesRef.current,
+      );
       if (clipboardNodes.length === 0) return;
       event.clipboardData?.setData(
         'text/plain',
@@ -939,7 +1006,7 @@ function CanvasSpaceInner({
       flowNodes.map((node) => ({
         id: node.id,
         isGroup: node.type === 'group',
-        childIds: (node.data as { childIds?: string[] }).childIds,
+        parentId: node.parentId,
         locked: (node.data as { locked?: boolean }).locked,
       })),
     [flowNodes],
@@ -949,21 +1016,29 @@ function CanvasSpaceInner({
     [selectedIds, groupInfos],
   );
 
-  // Group the loose selection into a new group node. Its stored position is
-  // the members' padded top-left (real geometry is derived at render); the
-  // new group is selected so its toolbar / color picker is immediately usable.
+  // Wrap the loose selection in a new Group (group redesign). The Group
+  // stores its own width/height (the members' padded bounding box); members bind
+  // back via `parentId` with positions relative to the Group. The new Group is
+  // selected once it mirrors back so its toolbar is immediately usable.
   const groupSelection = React.useCallback((): void => {
     if (readOnly || groupOffer.kind !== 'group') return;
-    const plan = planGroupCreation(flowNodes, selectedIds);
+    const groupId = newId();
+    const plan = planGroupCreation(flowNodes, selectedIds, groupId);
     if (!plan) return;
-    const group = createEmptyGroup(plan.childIds, plan.position, userId);
-    addNode(projectId, spaceId, group);
+    const group = createGroupNode(
+      groupId,
+      plan.position,
+      plan.width,
+      plan.height,
+      userId,
+    );
+    createGroup(projectId, spaceId, group, plan.members);
     // #1477: clear the marquee members' selection NOW so the mirror round-trip
     // window holds no stale multi-selection — otherwise ReactFlow routes a
-    // right-click to the SELECTION menu instead of the GROUP menu. The group
+    // right-click to the SELECTION menu instead of the Group menu. The Group
     // itself is selected once it mirrors back (setSelectAfterCreate).
     setFlowNodes(plan.nextNodes);
-    setSelectAfterCreate([group.id]);
+    setSelectAfterCreate([groupId]);
   }, [readOnly, groupOffer, flowNodes, selectedIds, userId, projectId, spaceId]);
 
   // Dissolve the selected group — delete the group node only; its members are
@@ -1002,14 +1077,13 @@ function CanvasSpaceInner({
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       if (readOnly || isEditableTarget(document.activeElement)) return;
-      const action = matchGroupShortcut(event);
-      if (action === 'group' && groupOffer.kind === 'group') {
-        event.preventDefault();
-        groupSelection();
-      } else if (action === 'ungroup' && groupOffer.kind === 'ungroup') {
-        event.preventDefault();
-        ungroupSelection();
-      }
+      // Always swallow a group / ungroup chord on the canvas so the browser's
+      // native Cmd+G (find-again) can't fire — even when it doesn't apply to the
+      // current selection (group mixed with loose nodes → no-op, B decision).
+      const plan = planGroupShortcut(matchGroupShortcut(event), groupOffer.kind);
+      if (plan.preventDefault) event.preventDefault();
+      if (plan.run === 'group') groupSelection();
+      else if (plan.run === 'ungroup') ungroupSelection();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -1044,24 +1118,27 @@ function CanvasSpaceInner({
     [readOnly, projectId, spaceId, t],
   );
 
-  // The clipboard-portable subset of the current selection (groups / annotations
-  // aren't copyable, so they drop out). Shared by copy + duplicate.
+  // The clipboard-portable form of the current selection — Group-aware: a
+  // selected Group brings its members and a member resolves to absolute (see
+  // captureClipboard). Used by the copy paths (Cmd+C / menu copy).
   const collectSelectedClipboard = React.useCallback(
     (): ClipboardNode[] =>
-      flowNodesRef.current
-        .filter((node) => node.selected)
-        .map(flowNodeToClipboard)
-        .filter((node): node is ClipboardNode => node !== null),
+      captureClipboard(
+        flowNodesRef.current
+          .filter((node) => node.selected)
+          .map((node) => node.id),
+        flowNodesRef.current,
+      ),
     [],
   );
 
-  // The clipboard-portable form of the right-clicked node (empty for a group /
-  // non-copyable node). Shared by the node menu's copy + duplicate.
-  const nodeMenuClipboard = React.useCallback((): ClipboardNode[] => {
-    const node = flowNodesRef.current.find((item) => item.id === nodeMenu.nodeId);
-    const clip = node ? flowNodeToClipboard(node) : null;
-    return clip ? [clip] : [];
-  }, [nodeMenu.nodeId]);
+  // The clipboard-portable form of the right-clicked node. Used by the node
+  // menu's copy.
+  const nodeMenuClipboard = React.useCallback(
+    (): ClipboardNode[] =>
+      captureClipboard([nodeMenu.nodeId], flowNodesRef.current),
+    [nodeMenu.nodeId],
+  );
 
   // Copy writes to the SYSTEM clipboard (same target as Cmd+C) so it round-trips
   // with paste here and elsewhere; a permission / browser failure (e.g. Firefox)
@@ -1076,14 +1153,36 @@ function CanvasSpaceInner({
     [t],
   );
 
-  // Duplicate clones in place (fixed offset) WITHOUT touching the clipboard; the
-  // new nodes are selected once mirrored back. Shared by node + selection menus.
-  const duplicateClipboard = React.useCallback(
-    (clipboardNodes: ClipboardNode[]): void => {
-      if (readOnly || clipboardNodes.length === 0) return;
-      setSelectAfterCreate(duplicateNodes(clipboardNodes));
+  // Duplicate clones the targets in place (fixed +24 nudge) WITHOUT touching the
+  // clipboard: a Group brings its members; a lone member rejoins its existing
+  // Group (externalParentAbs) and that Group auto-grows to keep 24px around the
+  // new clone (R2-A); the clone of a locked source is itself unlocked (R2-F) and
+  // a locked target is NOT blocked (R2-E — locked items can still be duplicated).
+  // Clones + Group growth commit as ONE undo entry; the clones are selected once
+  // mirrored back. Shared by node + group + selection menus + Cmd/Ctrl+D.
+  const duplicateTargets = React.useCallback(
+    (targetIds: ReadonlyArray<string>): void => {
+      if (readOnly || targetIds.length === 0) return;
+      const nodes = flowNodesRef.current;
+      const payload = captureClipboard(targetIds, nodes);
+      if (payload.length === 0) return;
+      const ext = externalParentAbs(payload, nodes);
+      const clones = cloneForPaste(
+        payload,
+        userId,
+        { dx: PASTE_OFFSET_PX, dy: PASTE_OFFSET_PX },
+        ext,
+      );
+      const growth = planDuplicateGroupGrowth(payload, clones, ext, nodes);
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        for (const clone of clones) addNode(projectId, spaceId, clone);
+        for (const g of growth) {
+          expandGroup(projectId, spaceId, g.groupId, g.position, g.width, g.height);
+        }
+      });
+      setSelectAfterCreate(clones.map((clone) => clone.id));
     },
-    [readOnly, duplicateNodes],
+    [readOnly, projectId, spaceId, userId],
   );
 
   const copySelection = React.useCallback((): void => {
@@ -1091,8 +1190,12 @@ function CanvasSpaceInner({
   }, [writeNodesToClipboard, collectSelectedClipboard]);
 
   const duplicateSelection = React.useCallback((): void => {
-    duplicateClipboard(collectSelectedClipboard());
-  }, [duplicateClipboard, collectSelectedClipboard]);
+    duplicateTargets(
+      flowNodesRef.current
+        .filter((node) => node.selected)
+        .map((node) => node.id),
+    );
+  }, [duplicateTargets]);
 
   // Keyboard duplicate — double-platform (Cmd+D on mac, Ctrl+D on windows; see
   // matchDuplicateShortcut). Backs the menu's ⌘D / Ctrl+D hint so the shortcut
@@ -1113,26 +1216,36 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, duplicateSelection]);
 
+  // Selection-menu delete: cascade each selected Group to the WHOLE group (frame
+  // + every member, via selectionDeletionIds) — the same cascade the single-node
+  // menu uses — so deleting a selection that includes a Group removes its
+  // contents, not just the frame. Plus every edge touching any deleted node,
+  // routed through the lock guard.
   const deleteSelection = React.useCallback((): void => {
-    const selected = flowNodesRef.current.filter((node) => node.selected);
-    if (selected.length === 0) return;
-    const selectedIds = new Set(selected.map((node) => node.id));
+    const selectedIds = flowNodesRef.current
+      .filter((node) => node.selected)
+      .map((node) => node.id);
+    if (selectedIds.length === 0) return;
+    const ids = selectionDeletionIds(selectedIds, flowNodesRef.current);
+    const targets = flowNodesRef.current.filter((node) => ids.has(node.id));
     const connected = flowEdges.filter(
-      (edge) => selectedIds.has(edge.source) || selectedIds.has(edge.target),
+      (edge) => ids.has(edge.source) || ids.has(edge.target),
     );
-    commitGuardedDelete(selected, connected);
+    commitGuardedDelete(targets, connected);
   }, [flowEdges, commitGuardedDelete]);
 
-  // Node menu delete: the node plus every edge touching it (the same cascade
-  // ReactFlow's keyboard delete performs), routed through the lock guard.
+  // Node menu delete: the node — or, for a group, the WHOLE group (frame + every
+  // member, via groupDeletionIds) — plus every edge touching any deleted node,
+  // routed through the lock guard. Deleting a group deletes its contents too;
+  // ungroup (onUngroup) is the separate action that keeps the members.
   const deleteNodeFromMenu = React.useCallback((): void => {
-    const node = flowNodesRef.current.find((item) => item.id === nodeMenu.nodeId);
-    if (!node) return;
+    const ids = groupDeletionIds(nodeMenu.nodeId, flowNodesRef.current);
+    const targets = flowNodesRef.current.filter((node) => ids.has(node.id));
+    if (targets.length === 0) return;
     const connected = flowEdges.filter(
-      (edge) =>
-        edge.source === nodeMenu.nodeId || edge.target === nodeMenu.nodeId,
+      (edge) => ids.has(edge.source) || ids.has(edge.target),
     );
-    commitGuardedDelete([node], connected);
+    commitGuardedDelete(targets, connected);
   }, [nodeMenu.nodeId, flowEdges, commitGuardedDelete]);
 
   const deleteEdgeFromMenu = React.useCallback((): void => {
@@ -1152,11 +1265,14 @@ function CanvasSpaceInner({
       .then((text) => {
         const clipboardNodes = parseClipboardNodes(text);
         if (clipboardNodes && clipboardNodes.length > 0) {
-          const anchor = clipboardNodes[0].position;
+          // Centre the pasted content's bounding box ON the cursor (not its
+          // top-left there) — consistent with how creation centres on its drop
+          // point (Bug C).
+          const box = clipboardBoundingBox(clipboardNodes);
           setSelectAfterCreate(
             pasteNodesAt(clipboardNodes, {
-              dx: point.x - anchor.x,
-              dy: point.y - anchor.y,
+              dx: point.x - (box.x + box.width / 2),
+              dy: point.y - (box.y + box.height / 2),
             }),
           );
         } else if (text.trim().length > 0) {
@@ -1241,31 +1357,122 @@ function CanvasSpaceInner({
         // the text body's inline-edit commit to this project/space (#1470).
         setNodeContent(projectId, spaceId, nodeId, content);
       },
+      commitGroupResize: (groupId, rect): void => {
+        if (readOnly) return;
+        // Bug 11: a resize that grows over a loose (top-level) node whose CENTER
+        // now lands inside the Group absorbs it — the same center-in membership
+        // rule the drag path uses, extended to resize. Only loose nodes join;
+        // existing members are never expelled (the native clamp keeps them ≥
+        // padding inside).
+        const newRect = {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+        };
+        const loose = flowNodesRef.current
+          .filter(
+            (node) =>
+              node.parentId === undefined &&
+              node.type !== 'group' &&
+              node.id !== groupId,
+          )
+          .map((node) => ({
+            id: node.id,
+            rect: {
+              x: node.position.x,
+              y: node.position.y,
+              width: node.measured?.width ?? node.width ?? GROUP_DRAG_FALLBACK_W,
+              height:
+                node.measured?.height ?? node.height ?? GROUP_DRAG_FALLBACK_H,
+            },
+          }));
+        const joins = planResizeJoin(groupId, newRect, loose);
+        // ReactFlow's native per-control clamp (GroupResizer bounds) already keeps
+        // every member ≥ GROUP_PADDING inside — even on a fast release — so commit
+        // the rect VERBATIM (no post-commit repair). ReactFlow reanchored the
+        // members during the drag (their relative positions are tracked in the
+        // render buffer); persist those so the next Yjs mirror keeps them. One
+        // atomic undo entry: the Group's new size/position, its members, PLUS any
+        // newly absorbed loose nodes.
+        runCanvasUndoBatch(projectId, spaceId, () => {
+          resizeGroup(
+            projectId,
+            spaceId,
+            groupId,
+            { x: rect.x, y: rect.y },
+            rect.width,
+            rect.height,
+          );
+          for (const child of flowNodesRef.current) {
+            if (child.parentId === groupId) {
+              setNodePosition(projectId, spaceId, child.id, child.position);
+            }
+          }
+          for (const join of joins) {
+            setNodeParent(projectId, spaceId, join.id, join.parentId, join.position);
+          }
+        });
+      },
       activateNodeUpload,
     }),
     [projectId, spaceId, readOnly, activateNodeUpload],
   );
 
-  // Group nodes carry no authoritative size: derive each group's container
-  // from its members' bounding box (+ padding) at render. Groups render
-  // *behind* their members (painted first; grab them by the frame padding) and
-  // dragging one moves its members instead of the (position-less) group node
-  // itself (onNodeDragStart / onNodeDrag / onNodeDragStop). Members keep their
-  // own real positions, so a member drag reflows the group on the next mirror.
+  // A Group carries its own authoritative width/height (stored in Yjs, fed via
+  // toFlowNode), so the render path no longer derives geometry — it only
+  // topo-sorts (parent before child) and applies the lock-freeze. Groups paint
+  // at zIndex 0 so their members render above them.
   const renderNodes = React.useMemo<Node[]>(() => {
-    const sized = applyGroupGeometry(flowNodes, frozenGroupRef.current);
-    const groups = sized.filter((node) => node.type === 'group');
-    const rest = sized.filter((node) => node.type !== 'group');
-    // Locked nodes are frozen in place: any locked node (incl. a locked group as
-    // a whole) and the members of a locked group render non-draggable, so they
-    // can't be moved. An unlocked group still drags as a unit (carrying members).
-    const frozen = lockedNodeIds(sized);
+    // ReactFlow requires a Group (parent) to precede its members in the array;
+    // topo-sort enforces that. A Group carries its own authoritative width/height
+    // (set in toFlowNode), so there is no derived-geometry pass — it renders at
+    // its stored size and ReactFlow positions members relative to it.
+    const ordered = topoSortByParent(flowNodes);
+    const groups = ordered.filter((node) => node.type === 'group');
+    const rest = ordered.filter((node) => node.type !== 'group');
+    // Locked nodes are frozen in place: any locked node (incl. a locked Group as
+    // a whole) and the members of a locked Group render non-draggable. Groups
+    // sit at zIndex 0 so members paint above them.
+    const frozen = lockedNodeIds(ordered);
     return [
-      ...groups.map((node) => ({
-        ...node,
-        draggable: !readOnly && !frozen.has(node.id),
-        zIndex: 0,
-      })),
+      ...groups.map((node) => {
+        // Per-control resize bounds: each of the 8 controls (4 edges + 4 corners)
+        // gets a member-derived min so ReactFlow's NATIVE clamp hard-stops it at
+        // "members + GROUP_PADDING" (see GroupResizer). Attached to data for the
+        // node wrapper to read.
+        const { box, allMeasured } = groupMembersLocalBox(node.id, ordered);
+        const width = node.width ?? node.measured?.width ?? GROUP_DRAG_FALLBACK_W;
+        const height =
+          node.height ?? node.measured?.height ?? GROUP_DRAG_FALLBACK_H;
+        let bounds = groupResizeBounds(
+          box,
+          width,
+          height,
+          GROUP_PADDING,
+          GROUP_MIN_SIZE,
+        );
+        // R1 guard: an unmeasured member would shrink `box` and yield a bound up
+        // to GROUP_DRAG_FALLBACK short — block shrinking that frame (min = the
+        // current size; growth is still allowed) until the member measures.
+        if (!allMeasured) {
+          bounds = bounds.map((b) => ({ ...b, minWidth: width, minHeight: height }));
+        }
+        return {
+          ...node,
+          data: {
+            ...(node.data as Record<string, unknown>),
+            // A read-only viewer gets NO resize bounds, so GroupResizer renders
+            // no handles — ReactFlow's NodeResizeControl works independently of
+            // `nodesDraggable`, so without this a viewer could grab + drag-resize
+            // a group locally (the write is blocked, but the affordance must not
+            // show — same rule as nodesDraggable / nodesConnectable).
+            groupResizeBounds: readOnly ? [] : bounds,
+          },
+          draggable: !readOnly && !frozen.has(node.id),
+          zIndex: 0,
+        };
+      }),
       ...rest.map((node) =>
         frozen.has(node.id) ? { ...node, draggable: false } : node,
       ),
@@ -1310,8 +1517,6 @@ function CanvasSpaceInner({
           nodesConnectable={!readOnly}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onNodeDragStart={onNodeDragStart}
-          onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onDelete={onDelete}
           onBeforeDelete={onBeforeDelete}
@@ -1411,18 +1616,10 @@ function CanvasSpaceInner({
             nodeMenu.locked ? undefined : () => requestRename(nodeMenu.nodeId)
           }
           onDelete={deleteNodeFromMenu}
-          // Copy / duplicate are node-only (groups / annotations aren't
-          // clipboard-portable).
-          onCopy={
-            nodeMenu.isGroup
-              ? undefined
-              : () => writeNodesToClipboard(nodeMenuClipboard())
-          }
-          onDuplicate={
-            nodeMenu.isGroup
-              ? undefined
-              : () => duplicateClipboard(nodeMenuClipboard())
-          }
+          // Copy / duplicate work for a node OR a group (R2-D): a group copies /
+          // duplicates with its members (capture / clone are Group-aware).
+          onCopy={() => writeNodesToClipboard(nodeMenuClipboard())}
+          onDuplicate={() => duplicateTargets([nodeMenu.nodeId])}
           // Ungroup releases a group's members; a locked group is frozen.
           onUngroup={
             nodeMenu.isGroup && !nodeMenu.locked

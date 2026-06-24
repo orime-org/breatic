@@ -34,7 +34,8 @@ interface GroupNodeProps {
  * revision 2026-06-15: group is a core feature). A dashed, optionally tinted
  * container with a name label above it; double-click the name to rename
  * inline (Enter / blur commits, Escape cancels — the shared node-name editor).
- * Geometry is derived from the group's children at render (no manual resize);
+ * The group owns its authoritative size (stored width/height, user-resizable via
+ * the GroupResizer; group redesign 2026-06-23) and fills the ReactFlow wrapper;
  * members are independent nodes drawn on top, not re-rendered here.
  * @param root0 - Group node props.
  * @param root0.data - Group view (name + container tint + child ids).
@@ -53,14 +54,22 @@ export function GroupNode({
   // Counter-scale the name with the canvas zoom so it keeps a constant screen
   // size — the same treatment node names get (ContentNodeFrame).
   const headerScale = React.useContext(NodeScaleContext);
-  const { editing, draft, inputRef, startEdit, setDraft, commit, cancel } =
-    useInlineRename({
-      current: display,
-      // A locked group's name is frozen with its structure (decision 2026-06-20).
-      locked: data.locked,
-      maxLength: MAX_NODE_NAME_LEN,
-      onRename,
-    });
+  const {
+    editing,
+    displayName,
+    draft,
+    inputRef,
+    startEdit,
+    setDraft,
+    commit,
+    cancel,
+  } = useInlineRename({
+    current: display,
+    // A locked group's name is frozen with its structure (decision 2026-06-20).
+    locked: data.locked,
+    maxLength: MAX_NODE_NAME_LEN,
+    onRename,
+  });
 
   return (
     <div
@@ -126,7 +135,7 @@ export function GroupNode({
               selected ? 'text-foreground' : 'text-muted-foreground',
             )}
           >
-            {display}
+            {displayName}
           </div>
         )}
       </div>

@@ -2,24 +2,25 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Pure group geometry — a group node carries no authoritative size; its
- * container is **derived** from its members' bounding box (+ padding) at
- * render. Kept ReactFlow-agnostic so the bounds math is unit-tested in
- * isolation; the canvas applies {@link applyGroupGeometry} over the measured
- * flow nodes before handing them to ReactFlow.
+ * Pure Group geometry — membership hit-testing, parent/child coordinate
+ * conversion, and the Group's authoritative-size math. ReactFlow-agnostic so
+ * the math is unit-tested in isolation; the canvas wires these into the
+ * drag-stop / resize / create handlers.
+ *
+ * Replaces the auto-container model (`group-geometry.ts`) where a group's box
+ * was DERIVED from its members. A Group owns its size; these helpers decide
+ * membership by the member's center point and grow the Group only-up (never
+ * auto-shrink) when an in-group member overflows.
  */
 
-import type { CSSProperties } from 'react';
-
-/** Padding (px) added around the members' bounding box on every side. */
-export const GROUP_PADDING = 24;
-
-/** Footprint assumed for a member that ReactFlow has not measured yet. */
-const DEFAULT_NODE_WIDTH = 160;
-const DEFAULT_NODE_HEIGHT = 96;
+/** A point in canvas (flow) coordinates. */
+export interface Point {
+  x: number;
+  y: number;
+}
 
 /** A bounding rectangle in canvas (flow) coordinates. */
-export interface GroupRect {
+export interface Rect {
   x: number;
   y: number;
   width: number;
@@ -27,83 +28,97 @@ export interface GroupRect {
 }
 
 /**
- * A group container rect frozen at drag-start (#1478): the stable full box that
- * outlives a member's mid-drag motion. Two consumers at two DIFFERENT times: the
- * render (`applyGroupGeometry`) reads it every frame DURING the drag to hold the
- * border steady; the dissolve hit-test (`groupBoxesFor`) reads it ONCE on
- * drag-stop to decide leave/keep. There is no per-frame membership decision —
- * dissolve is evaluated a single time, on release.
+ * Minimum breathing room (px) the Group keeps between its border and every
+ * member, on every side, at all times — applied at creation
+ * ({@link groupRectForMembers}), on auto-expand ({@link expandGroupToWrap}), and
+ * as the manual-resize hard-stop ({@link containsWithPadding}).
  */
-export interface FrozenGroupRect {
-  groupId: string;
-  rect: GroupRect;
-}
+export const GROUP_PADDING = 24;
 
-/** The minimal node geometry the group bounds need (ReactFlow-agnostic). */
-export interface GeoNode {
-  id: string;
-  position: { x: number; y: number };
-  /** ReactFlow's post-layout measured size (absent before first measure). */
-  measured?: { width?: number | null; height?: number | null } | null;
-  width?: number | null;
-  height?: number | null;
-  type?: string;
-  data?: unknown;
-  style?: CSSProperties;
+/** Smallest a Group may be manually resized to when it holds no members. */
+export const GROUP_MIN_SIZE = 40;
+
+/**
+ * The center point of a rect.
+ * @param rect - The rectangle.
+ * @returns Its geometric center.
+ */
+function centerOf(rect: Rect): Point {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 }
 
 /**
- * A member's rendered footprint, falling back to a default cell before
- * ReactFlow has measured it so a fresh group still wraps its members.
- * @param node - The member node.
- * @returns The member's width + height in flow units.
+ * Whether `point` lies within `rect` (edges inclusive).
+ * @param rect - The rectangle.
+ * @param point - The point to test.
+ * @returns True when the point is inside or on the edge of the rect.
  */
-function sizeOf(node: GeoNode): { width: number; height: number } {
-  const width = node.measured?.width ?? node.width ?? DEFAULT_NODE_WIDTH;
-  const height = node.measured?.height ?? node.height ?? DEFAULT_NODE_HEIGHT;
-  return {
-    width: width || DEFAULT_NODE_WIDTH,
-    height: height || DEFAULT_NODE_HEIGHT,
-  };
+export function rectContainsPoint(rect: Rect, point: Point): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
 }
 
 /**
- * Read a group node's member ids from its `data.childIds`, tolerating the
- * loosely-typed flow `data` bag.
- * @param node - The group node.
- * @returns The member ids (empty when absent / malformed).
+ * Whether the member belongs to the Group, decided by the member's CENTER
+ * point (not its whole body). This is the single membership rule: on drag-stop
+ * a member whose center is inside the Group stays in (even if its body sticks
+ * out — the Group then auto-expands, see {@link expandGroupToWrap}); a member
+ * whose center crosses the Group edge leaves.
+ * @param group - The Group's authoritative rect.
+ * @param member - The member's rect (absolute canvas coordinates).
+ * @returns True when the member's center is inside the Group.
  */
-function childIdsOf(node: GeoNode): string[] {
-  const data = node.data;
-  if (data == null || typeof data !== 'object' || !('childIds' in data)) {
-    return [];
-  }
-  const ids = (data as { childIds?: unknown }).childIds;
-  return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : [];
+export function groupContainsMemberCenter(group: Rect, member: Rect): boolean {
+  return rectContainsPoint(group, centerOf(member));
 }
 
 /**
- * The bounding rectangle (+ padding) wrapping the given member nodes, or
- * `null` when there are no members.
- * @param members - The member nodes contributing to the bounds.
+ * Convert an absolute canvas position to one relative to a parent Group's
+ * top-left (the form ReactFlow stores for a parented node).
+ * @param abs - The absolute position.
+ * @param parentTopLeft - The parent Group's top-left position.
+ * @returns The position relative to the parent.
+ */
+export function toRelativePosition(abs: Point, parentTopLeft: Point): Point {
+  return { x: abs.x - parentTopLeft.x, y: abs.y - parentTopLeft.y };
+}
+
+/**
+ * Convert a parent-relative position back to absolute canvas coordinates (used
+ * when a member leaves its Group and becomes top-level again).
+ * @param rel - The parent-relative position.
+ * @param parentTopLeft - The parent Group's top-left position.
+ * @returns The absolute position.
+ */
+export function toAbsolutePosition(rel: Point, parentTopLeft: Point): Point {
+  return { x: rel.x + parentTopLeft.x, y: rel.y + parentTopLeft.y };
+}
+
+/**
+ * The initial Group rect that wraps the given members with padding on every
+ * side — used when a Group is created around a selection.
+ * @param members - The selected members' rects (absolute coordinates).
  * @param padding - Padding added on every side (default {@link GROUP_PADDING}).
- * @returns The padded bounding rect, or `null` for an empty member list.
+ * @returns The padded bounding rect, or `null` when there are no members.
  */
-export function computeGroupRect(
-  members: ReadonlyArray<GeoNode>,
+export function groupRectForMembers(
+  members: ReadonlyArray<Rect>,
   padding: number = GROUP_PADDING,
-): GroupRect | null {
+): Rect | null {
   if (members.length === 0) return null;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const member of members) {
-    const { width, height } = sizeOf(member);
-    minX = Math.min(minX, member.position.x);
-    minY = Math.min(minY, member.position.y);
-    maxX = Math.max(maxX, member.position.x + width);
-    maxY = Math.max(maxY, member.position.y + height);
+  for (const m of members) {
+    minX = Math.min(minX, m.x);
+    minY = Math.min(minY, m.y);
+    maxX = Math.max(maxX, m.x + m.width);
+    maxY = Math.max(maxY, m.y + m.height);
   }
   return {
     x: minX - padding,
@@ -114,39 +129,172 @@ export function computeGroupRect(
 }
 
 /**
- * Re-size every group node to wrap its members: a group's `position` becomes
- * the padded bounds' top-left and its `style` width/height the bounds' size.
- * The **frozen** group (a member is being dragged) instead uses the drag-start
- * snapshot rect, so its border stays put while the member moves and only
- * reflows on drag-stop (#1478). Non-group nodes — and groups whose members
- * cannot be resolved (all missing, or only the self-reference) — are returned
- * untouched (same reference) so referential-equality checks downstream stay cheap.
- * @param nodes - All flow nodes (members must be measured for an exact fit).
- * @param frozen - The drag-start snapshot of the group whose member is being dragged, or null.
- * @returns The nodes with each group sized to its members (or the snapshot, when frozen).
+ * Grow the Group so it wraps all the given members with `padding` breathing room
+ * on every side, expanding only — the result always contains the original Group
+ * rect, so it never auto-shrinks when members move or leave (user-driven
+ * `NodeResizer` is the only way to shrink). Implemented as the union of the
+ * Group's own corners with every member's corners inflated by `padding`, so a
+ * member that drifts within `padding` of an edge (or overflows it) pushes the
+ * Group out to restore the gap.
+ * @param group - The Group's current rect.
+ * @param members - The in-group members' rects (absolute coordinates).
+ * @param padding - Breathing room kept around each member (default {@link GROUP_PADDING}).
+ * @returns A rect containing the original Group and every member padded by `padding`.
  */
-export function applyGroupGeometry<T extends GeoNode>(
-  nodes: ReadonlyArray<T>,
-  frozen: FrozenGroupRect | null = null,
-): T[] {
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  return nodes.map((node) => {
-    if (node.type !== 'group') return node;
-    let rect: GroupRect | null;
-    if (frozen && node.id === frozen.groupId) {
-      rect = frozen.rect;
-    } else {
-      const members = childIdsOf(node)
-        .filter((id) => id !== node.id)
-        .map((id) => byId.get(id))
-        .filter((member): member is T => member != null);
-      rect = computeGroupRect(members);
+export function expandGroupToWrap(
+  group: Rect,
+  members: ReadonlyArray<Rect>,
+  padding: number = GROUP_PADDING,
+): Rect {
+  let minX = group.x;
+  let minY = group.y;
+  let maxX = group.x + group.width;
+  let maxY = group.y + group.height;
+  for (const m of members) {
+    minX = Math.min(minX, m.x - padding);
+    minY = Math.min(minY, m.y - padding);
+    maxX = Math.max(maxX, m.x + m.width + padding);
+    maxY = Math.max(maxY, m.y + m.height + padding);
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+/** One Group + the absolute rects of all its members (existing + newly added). */
+export interface GroupGrowthInput {
+  groupId: string;
+  /** The Group's current absolute rect. */
+  rect: Rect;
+  /** Every member's absolute rect (existing members plus any just added). */
+  memberRects: ReadonlyArray<Rect>;
+}
+
+/** A Group that must grow to keep {@link GROUP_PADDING} around its members. */
+export interface GroupGrowth {
+  groupId: string;
+  position: Point;
+  width: number;
+  height: number;
+}
+
+/**
+ * For each Group, the new size it must grow to so every member keeps
+ * {@link GROUP_PADDING} inside — used when a duplicate drops a clone into an
+ * existing Group (R2-A): the new member could sit flush against (or past) the
+ * border, so the Group expands (only-up, via {@link expandGroupToWrap}) to
+ * restore the breathing room. Only Groups that actually grew are returned, so
+ * the caller writes nothing for a Group that already had room.
+ * @param groups - Each Group with its current rect + all member absolute rects.
+ * @returns One {@link GroupGrowth} per Group whose size changed.
+ */
+export function planGroupGrowth(
+  groups: ReadonlyArray<GroupGrowthInput>,
+): GroupGrowth[] {
+  const out: GroupGrowth[] = [];
+  for (const group of groups) {
+    const grown = expandGroupToWrap(group.rect, group.memberRects);
+    if (
+      grown.x === group.rect.x &&
+      grown.y === group.rect.y &&
+      grown.width === group.rect.width &&
+      grown.height === group.rect.height
+    ) {
+      continue;
     }
-    if (!rect) return node;
-    return {
-      ...node,
-      position: { x: rect.x, y: rect.y },
-      style: { ...node.style, width: rect.width, height: rect.height },
-    };
-  });
+    out.push({
+      groupId: group.groupId,
+      position: { x: grown.x, y: grown.y },
+      width: grown.width,
+      height: grown.height,
+    });
+  }
+  return out;
+}
+
+/** The 8 NodeResizer control positions: 4 edge lines + 4 corner handles. */
+export type GroupControlPosition =
+  | 'top'
+  | 'right'
+  | 'bottom'
+  | 'left'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right';
+
+/** One resize control's member-derived minimum size. */
+export interface GroupResizeBound {
+  position: GroupControlPosition;
+  minWidth: number;
+  minHeight: number;
+}
+
+/**
+ * Per-control minimum width/height so ReactFlow's NATIVE resize clamp keeps every
+ * member ≥ `padding` inside the Group on the dragged side, with a true hard-stop
+ * (no `shouldResize` veto, no post-commit repair). Each control anchors its
+ * OPPOSITE edge, so a coordinate hard-stop ("don't cross member ± padding")
+ * collapses into a pure size floor: the `right` line keeps the left edge fixed,
+ * so "stay ≥ padding right of the rightmost member" is `minWidth = mRight +
+ * padding`; the `left` line keeps the right edge (at local `width`) fixed, so it
+ * is `minWidth = width − mLeft + padding`. The dimension an edge control does not
+ * move takes the empty floor `minSize` (it never binds). An empty Group (no
+ * `membersBox`) floors every control at `minSize`. Every derived bound is also
+ * floored at `minSize` so a member hugging the origin can't yield a sub-floor min.
+ * @param membersBox - The members' bounding box in GROUP-LOCAL coords (relative to the Group top-left), or null when empty.
+ * @param width - The Group's current width (anchors the left/top size translation).
+ * @param height - The Group's current height.
+ * @param padding - The breathing room kept inside every edge.
+ * @param minSize - The absolute floor (empty-group min + floor for every derived bound).
+ * @returns One {@link GroupResizeBound} per control (4 edge lines + 4 corner handles).
+ */
+export function groupResizeBounds(
+  membersBox: Rect | null,
+  width: number,
+  height: number,
+  padding: number,
+  minSize: number,
+): GroupResizeBound[] {
+  const POSITIONS: GroupControlPosition[] = [
+    'right',
+    'left',
+    'bottom',
+    'top',
+    'top-left',
+    'top-right',
+    'bottom-left',
+    'bottom-right',
+  ];
+  if (membersBox === null) {
+    return POSITIONS.map((position) => ({
+      position,
+      minWidth: minSize,
+      minHeight: minSize,
+    }));
+  }
+  const mLeft = membersBox.x;
+  const mTop = membersBox.y;
+  const mRight = membersBox.x + membersBox.width;
+  const mBottom = membersBox.y + membersBox.height;
+  /**
+   * Clamp a derived bound up to the empty-group floor `minSize`.
+   * @param value - The member-derived bound.
+   * @returns The greater of `value` and `minSize`.
+   */
+  const floor = (value: number): number => Math.max(value, minSize);
+  // Member-side size floor per axis: anchoring the opposite edge turns each
+  // "member ± padding" coordinate stop into a size minimum.
+  const minWFromRight = floor(mRight + padding); // left edge anchored
+  const minWFromLeft = floor(width - mLeft + padding); // right edge anchored
+  const minHFromBottom = floor(mBottom + padding); // top edge anchored
+  const minHFromTop = floor(height - mTop + padding); // bottom edge anchored
+  return [
+    { position: 'right', minWidth: minWFromRight, minHeight: minSize },
+    { position: 'left', minWidth: minWFromLeft, minHeight: minSize },
+    { position: 'bottom', minWidth: minSize, minHeight: minHFromBottom },
+    { position: 'top', minWidth: minSize, minHeight: minHFromTop },
+    { position: 'top-left', minWidth: minWFromLeft, minHeight: minHFromTop },
+    { position: 'top-right', minWidth: minWFromRight, minHeight: minHFromTop },
+    { position: 'bottom-left', minWidth: minWFromLeft, minHeight: minHFromBottom },
+    { position: 'bottom-right', minWidth: minWFromRight, minHeight: minHFromBottom },
+  ];
 }

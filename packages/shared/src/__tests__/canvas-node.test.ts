@@ -212,9 +212,9 @@ describe("CanvasNodeFields", () => {
     expect(node.data.kind).toBe("text-to-image");
   });
 
-  it("accepts a group node with childIds + backgroundColor", () => {
-    // Model revision 2026-06-15: group is a core feature (canvas region
-    // management); backgroundColor is the group container tint.
+  it("accepts a Group (group) node with a backgroundColor tint", () => {
+    // Group→Group redesign (2026-06-23): a Group has no childIds — members bind
+    // back via their own top-level parentId. backgroundColor is the Group tint.
     const node: CanvasNodeFields = {
       id: "group-1",
       type: "group",
@@ -227,12 +227,58 @@ describe("CanvasNodeFields", () => {
         operationLocks: [],
         state: "idle",
         attachments: [],
-        childIds: ["node-1", "node-2"],
         backgroundColor: "#eef2ff",
       },
     };
-    expect(node.data.childIds).toEqual(["node-1", "node-2"]);
     expect(node.data.backgroundColor).toBe("#eef2ff");
+  });
+
+  it("accepts a member node with a top-level parentId (Group containment)", () => {
+    // Group redesign (2026-06-23): members bind to their containing Group via
+    // a top-level `parentId` (ReactFlow convention) and store `position`
+    // relative to that parent. parentId is structural — it sits alongside
+    // `position`, not inside `data` (which `toNodeView` narrows per modality).
+    const node: CanvasNodeFields = {
+      id: "child-1",
+      type: "image",
+      parentId: "group-1",
+      position: { x: 10, y: 20 },
+      data: {
+        name: "Child",
+        createdAt: 1714492800000,
+        createdBy: "user-1",
+        locked: false,
+        operationLocks: [],
+        state: "idle",
+        attachments: [],
+      },
+    };
+    expect(node.parentId).toBe("group-1");
+  });
+
+  it("accepts a Group (group) node with authoritative width/height", () => {
+    // Group redesign (2026-06-23): a Group stores its own authoritative canvas
+    // footprint in width/height (no longer derived from the member bounding
+    // box). For group nodes width/height are the Group's canvas dimensions;
+    // for image/video they remain the intrinsic media pixel dimensions.
+    const group: CanvasNodeFields = {
+      id: "group-1",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: {
+        name: "My Group",
+        createdAt: 1714492800000,
+        createdBy: "user-1",
+        locked: false,
+        operationLocks: [],
+        state: "idle",
+        attachments: [],
+        width: 400,
+        height: 300,
+      },
+    };
+    expect(group.data.width).toBe(400);
+    expect(group.data.height).toBe(300);
   });
 
   it("NodeType no longer includes 'generative' (model revision 2026-06-15)", () => {

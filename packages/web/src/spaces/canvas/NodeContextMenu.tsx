@@ -51,9 +51,9 @@ interface NodeContextMenuProps {
    * read-only viewer passes none, so the block hides.
    */
   onUpload?: () => void;
-  /** Copy the node to the clipboard (node target only). */
+  /** Copy the node / group (with its members) to the clipboard. */
   onCopy?: () => void;
-  /** Duplicate the node in place (node target only). */
+  /** Duplicate the node / group (with its members) in place. */
   onDuplicate?: () => void;
   /** Ungroup the group (group target only). */
   onUngroup?: () => void;
@@ -64,8 +64,9 @@ interface NodeContextMenuProps {
  * `DropdownMenu` anchored to a zero-size element pinned at the cursor
  * (ReactFlow's `onNodeContextMenu` gives a point, not an element Radix can
  * anchor to). A node offers generate / upload / tools (top block) then copy /
- * duplicate / rename / lock / delete; a group offers ungroup / rename / lock /
- * delete. Generate / Tools are disabled placeholders (coming soon); Upload is
+ * duplicate / rename / lock / delete; a group offers copy / duplicate (with its
+ * members) / ungroup / rename / lock / delete. Generate / Tools are disabled
+ * placeholders (coming soon); Upload is
  * the only live action of the top block. Each action item renders only when its
  * handler is supplied, so the parent controls availability (e.g. read-only
  * passes none); lock / unlock is always present. Shortcut hints are
@@ -81,8 +82,8 @@ interface NodeContextMenuProps {
  * @param root0.onRename - Enter inline rename.
  * @param root0.onDelete - Delete the node / group.
  * @param root0.onUpload - Fill / replace the node's content via the file picker (node target only).
- * @param root0.onCopy - Copy the node (node target only).
- * @param root0.onDuplicate - Duplicate the node (node target only).
+ * @param root0.onCopy - Copy the node / group (with its members).
+ * @param root0.onDuplicate - Duplicate the node / group (with its members).
  * @param root0.onUngroup - Ungroup the group (group target only).
  * @returns The cursor-anchored node / group action menu.
  */
@@ -149,7 +150,7 @@ export function NodeContextMenu({
             <DropdownMenuSeparator />
           </>
         ) : null}
-        {!isGroup && (onCopy || onDuplicate) ? (
+        {onCopy || onDuplicate ? (
           <>
             {onCopy ? (
               <DropdownMenuItem data-testid='node-menu-copy' onSelect={onCopy}>
@@ -222,7 +223,11 @@ export function NodeContextMenu({
               onSelect={onDelete}
             >
               <Trash2 className='mr-2 h-4 w-4' aria-hidden='true' />
-              {t('canvas.contextMenu.delete')}
+              {t(
+                isGroup
+                  ? 'canvas.contextMenu.deleteGroup'
+                  : 'canvas.contextMenu.deleteNode',
+              )}
               <DropdownMenuShortcut>
                 {formatShortcut({ key: 'Delete' })}
               </DropdownMenuShortcut>

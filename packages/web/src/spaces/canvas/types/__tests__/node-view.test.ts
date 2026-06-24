@@ -143,22 +143,30 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     });
   });
 
-  it('returns a group view for group nodes (name / backgroundColor / childIds)', () => {
-    // Model revision 2026-06-15: group is rendered (core feature), so it now
-    // has a view instead of being skipped. The group header shows `name`.
+  it('returns a group view for group nodes (name / backgroundColor)', () => {
+    // Group is rendered (core feature); the group header shows `name`. Members
+    // bind back via their own parentId, so the view carries no childIds.
     const v = toNodeView(
       fields('group', {
         name: 'My Group',
         backgroundColor: '#eef',
-        childIds: ['a', 'b'],
       }),
     );
     expect(v).toMatchObject({
       kind: 'group',
       name: 'My Group',
       backgroundColor: '#eef',
-      childIds: ['a', 'b'],
     });
+  });
+
+  it('carries a group node authoritative width/height into the view', () => {
+    // Group redesign (2026-06-23): a group stores its own canvas footprint in
+    // width/height; the view surfaces them so GroupNode renders at that size
+    // instead of deriving the box from members.
+    const v = toNodeView(
+      fields('group', { name: 'My Group', width: 400, height: 300 }),
+    );
+    expect(v).toMatchObject({ kind: 'group', width: 400, height: 300 });
   });
 
   it('returns null for a dirty / unknown type instead of throwing', () => {

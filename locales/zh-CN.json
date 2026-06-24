@@ -298,6 +298,9 @@
       "duplicate": "复制副本",
       "rename": "重命名",
       "delete": "删除",
+      "deleteNode": "删除节点",
+      "deleteGroup": "删除编组",
+      "deleteSelection": "删除选中",
       "lockedDeleteBlocked": "锁定的内容不能删除，请先解锁。",
       "clipboardError": "无法访问剪贴板，请改用键盘快捷键。"
     },

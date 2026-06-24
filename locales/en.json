@@ -298,6 +298,9 @@
       "duplicate": "Duplicate",
       "rename": "Rename",
       "delete": "Delete",
+      "deleteNode": "Delete node",
+      "deleteGroup": "Delete group",
+      "deleteSelection": "Delete selection",
       "lockedDeleteBlocked": "Locked items can't be deleted — unlock them first.",
       "clipboardError": "Couldn't reach the clipboard. Use the keyboard shortcut instead."
     },

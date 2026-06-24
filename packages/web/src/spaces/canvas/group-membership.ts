@@ -2,109 +2,41 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Pure drag-end group membership logic (§7.5): when a single node is dropped,
- * decide whether it joins a group it now overlaps, leaves the group it was in,
- * or nothing changes. Kept ReactFlow-agnostic; the canvas hit-tests the
- * dragged node's center against each group's derived rect and applies the
- * returned action through the Yjs `addToGroup` / `removeFromGroup` bindings.
+ * Pure lock logic for the canvas: which nodes a lock freezes — a locked node,
+ * or a member of a locked Group (membership via `parentId`, group
+ * redesign 2026-06-23). Frozen nodes render non-draggable and resist deletion.
+ * Kept ReactFlow-agnostic; the canvas wires the returned sets into `renderNodes`
+ * (draggable) and `onBeforeDelete` (the lock veto).
  */
 
-import type { GroupRect } from '@web/spaces/canvas/group-geometry';
-
-/** A group's derived container rect + its current members. */
-export interface GroupBox {
-  id: string;
-  rect: GroupRect;
-  childIds: string[];
-  /** Whether the group is locked — a locked group's membership is frozen. */
-  locked?: boolean;
-}
-
-/** The membership change a drop implies. */
-export type GroupDrop =
-  | { action: 'add'; groupId: string }
-  | { action: 'remove'; groupId: string }
-  | { action: 'none' };
-
 /**
- * Whether a point falls within a rect (edge-inclusive).
- * @param rect - The rect in flow coordinates.
- * @param point - The point to test.
- * @param point.x - Point x.
- * @param point.y - Point y.
- * @returns True when the point is inside or on the rect's border.
- */
-export function rectContains(
-  rect: GroupRect,
-  point: { x: number; y: number },
-): boolean {
-  return (
-    point.x >= rect.x &&
-    point.x <= rect.x + rect.width &&
-    point.y >= rect.y &&
-    point.y <= rect.y + rect.height
-  );
-}
-
-/**
- * Resolve the membership change for dropping node `draggedId` at `center`:
- * - lands inside a group it is not already in → **add** (the binding's
- *   disjoint-membership invariant detaches it from any previous group);
- * - was a member but now sits outside that group → **remove**;
- * - stayed inside its own group, or dropped on empty canvas while loose →
- *   **none**.
- * Overlapping groups (groups never nest but can visually overlap) resolve to
- * the first hit in `groups` order.
- * @param draggedId - Id of the node that was dropped.
- * @param center - The dropped node's center in flow coordinates.
- * @param center.x - Center x.
- * @param center.y - Center y.
- * @param groups - The groups to hit-test against (with current members).
- * @returns The membership change to apply.
- */
-export function resolveGroupDrop(
-  draggedId: string,
-  center: { x: number; y: number },
-  groups: ReadonlyArray<GroupBox>,
-): GroupDrop {
-  const currentGroup = groups.find((group) =>
-    group.childIds.includes(draggedId),
-  );
-  const hit = groups.find(
-    (group) => group.id !== draggedId && rectContains(group.rect, center),
-  );
-  // A locked group freezes its membership: nothing can join it, and its members
-  // can't leave (members render draggable=false, so a leave rarely reaches here
-  // — guard anyway).
-  if (hit?.locked) return { action: 'none' };
-  if (currentGroup?.locked) return { action: 'none' };
-  if (hit && hit.id !== currentGroup?.id) {
-    return { action: 'add', groupId: hit.id };
-  }
-  if (!hit && currentGroup) {
-    return { action: 'remove', groupId: currentGroup.id };
-  }
-  return { action: 'none' };
-}
-
-/**
- * Ids of every node that is a member of a *locked* group — their position is
- * frozen, so the canvas renders them `draggable=false`. A locked group keeps
- * its members fixed in place; the group as a whole can still be dragged.
- * @param nodes - All canvas nodes (only group nodes with `data.locked` matter).
- * @returns The set of member ids belonging to locked groups.
+ * Ids of every node that is a member of a *locked* Group — their position is
+ * frozen, so the canvas renders them `draggable=false`. Membership is read from
+ * each member's own `parentId` (group redesign 2026-06-23), so a locked
+ * Group keeps its members fixed in place while the Group can still be dragged.
+ * @param nodes - All canvas nodes (each member's `parentId` + each Group's `data.locked`).
+ * @returns The set of member ids belonging to locked Groups.
  */
 export function lockedGroupMemberIds(
-  nodes: ReadonlyArray<{ type?: string; data?: unknown }>,
+  nodes: ReadonlyArray<{ id?: string; type?: string; parentId?: string; data?: unknown }>,
 ): Set<string> {
-  const ids = new Set<string>();
+  const lockedGroups = new Set<string>();
   for (const node of nodes) {
-    if (node.type !== 'group') continue;
-    const data = node.data as
-      | { locked?: boolean; childIds?: string[] }
-      | undefined;
-    if (!data?.locked) continue;
-    for (const childId of data.childIds ?? []) ids.add(childId);
+    if (node.type !== 'group' || node.id === undefined) continue;
+    if ((node.data as { locked?: boolean } | undefined)?.locked) {
+      lockedGroups.add(node.id);
+    }
+  }
+  const ids = new Set<string>();
+  if (lockedGroups.size === 0) return ids;
+  for (const node of nodes) {
+    if (
+      node.id !== undefined &&
+      node.parentId !== undefined &&
+      lockedGroups.has(node.parentId)
+    ) {
+      ids.add(node.id);
+    }
   }
   return ids;
 }
@@ -120,11 +52,54 @@ export function lockedGroupMemberIds(
  * @returns The set of node ids frozen by a lock.
  */
 export function lockedNodeIds(
-  nodes: ReadonlyArray<{ id: string; type?: string; data?: unknown }>,
+  nodes: ReadonlyArray<{ id: string; type?: string; parentId?: string; data?: unknown }>,
 ): Set<string> {
   const ids = lockedGroupMemberIds(nodes);
   for (const node of nodes) {
     if ((node.data as { locked?: boolean } | undefined)?.locked) ids.add(node.id);
+  }
+  return ids;
+}
+
+/**
+ * The ids to delete when the user deletes one node: just the node itself, UNLESS
+ * it is a Group — deleting a Group deletes the WHOLE group (the Group frame plus
+ * every member inside it, matched by `parentId`). The separate **ungroup** action
+ * keeps the members on the canvas and only drops the frame; delete removes both.
+ * @param targetId - The id of the node the user asked to delete.
+ * @param nodes - All canvas nodes (each node's `type` + `parentId`).
+ * @returns The set of node ids to delete (the target, plus its members when a Group).
+ */
+export function groupDeletionIds(
+  targetId: string,
+  nodes: ReadonlyArray<{ id: string; type?: string; parentId?: string }>,
+): Set<string> {
+  const ids = new Set<string>([targetId]);
+  const target = nodes.find((node) => node.id === targetId);
+  if (target?.type !== 'group') return ids;
+  for (const node of nodes) {
+    if (node.parentId === targetId) ids.add(node.id);
+  }
+  return ids;
+}
+
+/**
+ * The ids to delete when the user deletes a multi-selection: the union of every
+ * selected node's deletion set ({@link groupDeletionIds}), so a selection that
+ * includes a Group removes that Group's members too — the same cascade the
+ * single-node menu uses, applied across the whole selection. A member selected
+ * alongside its Group is not duplicated (Set union).
+ * @param targetIds - The ids of the selected nodes the user asked to delete.
+ * @param nodes - All canvas nodes (each node's `type` + `parentId`).
+ * @returns The set of node ids to delete (every selected node + members of any selected Group).
+ */
+export function selectionDeletionIds(
+  targetIds: ReadonlyArray<string>,
+  nodes: ReadonlyArray<{ id: string; type?: string; parentId?: string }>,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const targetId of targetIds) {
+    for (const id of groupDeletionIds(targetId, nodes)) ids.add(id);
   }
   return ids;
 }
@@ -148,7 +123,7 @@ export function filterLockedDeletion<
 >(
   nodes: ReadonlyArray<N>,
   edges: ReadonlyArray<E>,
-  allNodes: ReadonlyArray<{ id: string; type?: string; data?: unknown }>,
+  allNodes: ReadonlyArray<{ id: string; type?: string; parentId?: string; data?: unknown }>,
 ): { nodes: N[]; edges: E[] } {
   // The frozen-by-lock set (any locked node + locked group members) is exactly
   // what can't be deleted — the same set the move-freeze path uses.
@@ -178,7 +153,7 @@ export function lockBlockedDeletion<
 >(
   nodes: ReadonlyArray<N>,
   edges: ReadonlyArray<E>,
-  allNodes: ReadonlyArray<{ id: string; type?: string; data?: unknown }>,
+  allNodes: ReadonlyArray<{ id: string; type?: string; parentId?: string; data?: unknown }>,
 ): { survivors: { nodes: N[]; edges: E[] }; blocked: boolean } {
   const survivors = filterLockedDeletion(nodes, edges, allNodes);
   const blocked =

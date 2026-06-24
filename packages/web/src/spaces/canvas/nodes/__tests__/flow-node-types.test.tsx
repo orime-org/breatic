@@ -37,7 +37,7 @@ describe('FLOW_NODE_TYPES', () => {
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined, activateNodeUpload: () => undefined, setNodeContent: () => undefined }}>
+        <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined, activateNodeUpload: () => undefined, setNodeContent: () => undefined, commitGroupResize: () => undefined }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -66,7 +66,7 @@ describe('FLOW_NODE_TYPES', () => {
     render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent, commitGroupResize: vi.fn() }}
         >
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -98,7 +98,7 @@ describe('FLOW_NODE_TYPES', () => {
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn() }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
         >
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -120,6 +120,67 @@ describe('FLOW_NODE_TYPES', () => {
     });
   });
 
+  // Bug 7: a Group is a container (Figma-Frame-style), not an edge endpoint —
+  // it must render NO connection handles. The generic wrapper paints Left/Right
+  // handles for content nodes; for a group they are wrong (you don't draw a
+  // scissor edge to a frame) and the Left handle sat on the group's left edge,
+  // interfering with the left resize grab.
+  it('renders NO connection handles for a group node (Bug 7)', () => {
+    const Group = FLOW_NODE_TYPES.group;
+    const data = {
+      kind: 'group',
+      name: 'G',
+      groupMinWidth: 40,
+      groupMinHeight: 40,
+    };
+    const { container } = render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
+        >
+          <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+    expect(container.querySelectorAll('.react-flow__handle').length).toBe(0);
+  });
+
+  it('renders NO resize controls for a selected group with empty bounds (read-only viewer)', () => {
+    const Group = FLOW_NODE_TYPES.group;
+    // A read-only viewer gets groupResizeBounds: [] (CanvasSpace renderNodes),
+    // so the group shows no resize handles even though it is selected.
+    const data = { kind: 'group', name: 'G', groupResizeBounds: [] };
+    const { container } = render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
+        >
+          <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+    expect(container.querySelectorAll('.react-flow__resize-control').length).toBe(0);
+  });
+
+  it('renders resize controls for a selected unlocked group that has bounds (editor)', () => {
+    const Group = FLOW_NODE_TYPES.group;
+    const bounds = [
+      'right', 'left', 'bottom', 'top',
+      'top-left', 'top-right', 'bottom-left', 'bottom-right',
+    ].map((position) => ({ position, minWidth: 40, minHeight: 40 }));
+    const data = { kind: 'group', name: 'G', groupResizeBounds: bounds };
+    const { container } = render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
+        >
+          <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+    expect(container.querySelectorAll('.react-flow__resize-control').length).toBe(8);
+  });
+
   // The wrapper is the only layer with the ReactFlow store, so it must feed
   // the canvas zoom down so the name header can counter-scale to a constant
   // screen size. Proves the counter-scaled anchor is wired for content nodes.
@@ -133,7 +194,7 @@ describe('FLOW_NODE_TYPES', () => {
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn() }}>
+        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -152,7 +213,7 @@ describe('FLOW_NODE_TYPES', () => {
     render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload, setNodeContent: vi.fn() }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload, setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
         >
           <Image
             {...({

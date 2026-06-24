@@ -37,6 +37,16 @@ export interface CanvasActions {
    * contenteditable commit; without it what the user types is discarded on blur.
    */
   setNodeContent: (nodeId: string, content: string) => void;
+  /**
+   * Persist a Group's manual resize (group redesign): the Group's new
+   * position + width/height, plus its members' positions which ReactFlow already
+   * corrected during the resize so they stay put. Bound to the Group's
+   * `NodeResizer` `onResizeEnd`; a no-op for read-only viewers.
+   */
+  commitGroupResize: (
+    groupId: string,
+    rect: { x: number; y: number; width: number; height: number },
+  ) => void;
 }
 
 /**
@@ -49,6 +59,7 @@ const NOOP_ACTIONS: CanvasActions = {
   deleteEdge: () => undefined,
   activateNodeUpload: () => undefined,
   setNodeContent: () => undefined,
+  commitGroupResize: () => undefined,
 };
 
 export const CanvasActionsContext =

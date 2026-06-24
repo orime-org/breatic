@@ -65,21 +65,40 @@ describe('NodeContextMenu', () => {
     expect(screen.queryByTestId('node-menu-ungroup')).toBeNull();
   });
 
-  it('group target: shows ungroup / rename / delete, never copy / duplicate', () => {
+  it('group target: shows copy / duplicate / ungroup / rename / delete (R2-D)', () => {
     setup({
       target: 'group',
       onUngroup: () => {},
       onRename: () => {},
       onDelete: () => {},
-      // copy / duplicate are node-only even if handlers are passed
       onCopy: () => {},
       onDuplicate: () => {},
     });
+    // A group copies / duplicates with its members (R2-D), so the items show.
+    expect(screen.getByTestId('node-menu-copy')).toBeInTheDocument();
+    expect(screen.getByTestId('node-menu-duplicate')).toBeInTheDocument();
     expect(screen.getByTestId('node-menu-ungroup')).toBeInTheDocument();
     expect(screen.getByTestId('node-menu-rename')).toBeInTheDocument();
     expect(screen.getByTestId('node-menu-delete')).toBeInTheDocument();
-    expect(screen.queryByTestId('node-menu-copy')).toBeNull();
-    expect(screen.queryByTestId('node-menu-duplicate')).toBeNull();
+    // A group never shows the content-node generate / upload / tools block.
+    expect(screen.queryByTestId('node-menu-generate')).toBeNull();
+  });
+
+  it('node target: delete item reads "Delete node"', () => {
+    setup({ target: 'node', onDelete: () => {} });
+    expect(screen.getByTestId('node-menu-delete')).toHaveTextContent(
+      'Delete node',
+    );
+  });
+
+  it('group target: delete item reads "Delete group" (distinct from ungroup)', () => {
+    setup({ target: 'group', onDelete: () => {}, onUngroup: () => {} });
+    expect(screen.getByTestId('node-menu-delete')).toHaveTextContent(
+      'Delete group',
+    );
+    expect(screen.getByTestId('node-menu-ungroup')).toHaveTextContent(
+      'Ungroup',
+    );
   });
 
   it('fires the duplicate / delete handlers on selection', () => {

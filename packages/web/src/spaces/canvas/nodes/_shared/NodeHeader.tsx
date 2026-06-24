@@ -52,14 +52,22 @@ export function NodeHeader({
 }: NodeHeaderProps): React.JSX.Element {
   const Icon = MODALITY_ICONS[modality];
   const display = name && name.length > 0 ? name : MODALITY_LABEL[modality];
-  const { editing, draft, inputRef, startEdit, setDraft, commit, cancel } =
-    useInlineRename({
-      current: display,
-      readOnly,
-      locked,
-      maxLength: MAX_NODE_NAME_LEN,
-      onRename,
-    });
+  const {
+    editing,
+    displayName,
+    draft,
+    inputRef,
+    startEdit,
+    setDraft,
+    commit,
+    cancel,
+  } = useInlineRename({
+    current: display,
+    readOnly,
+    locked,
+    maxLength: MAX_NODE_NAME_LEN,
+    onRename,
+  });
 
   return (
     <div
@@ -102,7 +110,7 @@ export function NodeHeader({
           onDoubleClick={startEdit}
           className='min-w-0 flex-1 truncate'
         >
-          {display}
+          {displayName}
         </span>
       )}
     </div>

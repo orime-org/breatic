@@ -6,6 +6,8 @@ import type { ComponentType } from 'react';
 import * as React from 'react';
 
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
+import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
+import { GroupResizer } from '@web/spaces/canvas/nodes/GroupResizer';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
@@ -58,7 +60,8 @@ function makeFlowNode(
    */
   function FlowNode(props: NodeProps): React.JSX.Element {
     const data = props.data as unknown as NodeView;
-    const { renameNode, activateNodeUpload, setNodeContent } = useCanvasActions();
+    const { renameNode, activateNodeUpload, setNodeContent, commitGroupResize } =
+      useCanvasActions();
     // The canvas zoom (transform[2]) lets the name header counter-scale so it
     // keeps a constant screen size — down to a floor zoom, below which it
     // shrinks with the canvas (see `overlayCounterScale`). The scissors button
@@ -87,15 +90,39 @@ function makeFlowNode(
       (content: string): void => setNodeContent(props.id, content),
       [setNodeContent, props.id],
     );
-    // A group node is sized by ReactFlow to its derived bounds; this wrapper
-    // must fill that height so the GroupNode's own `size-full` resolves to the
-    // full rect (a percentage height needs a definite-height parent chain).
-    // Content nodes size to their body, so they keep the auto-height wrapper.
+    // A Group fills the ReactFlow wrapper sized to its stored width/height, so
+    // the GroupNode's own `size-full` resolves to the full rect. Content nodes
+    // size to their body, so they keep the auto-height wrapper. A selected,
+    // unlocked Group shows the GroupResizer handles when it has resize bounds
+    // (empty for a read-only viewer, so no handles show — see the gate below).
     const isGroup = data.kind === 'group';
+    // Per-control resize bounds (from groupResizeBounds, attached in renderNodes)
+    // — each edge / corner carries its own min so ReactFlow's native clamp
+    // hard-stops it at "members + padding" (see GroupResizer). Empty for a
+    // non-group node.
+    const resizeBounds =
+      (props.data as { groupResizeBounds?: GroupResizeBound[] })
+        .groupResizeBounds ?? [];
+    // Persist a Group's manual resize. ReactFlow's native per-control clamp
+    // guarantees the params already keep every member ≥ padding inside (even on
+    // a fast release), so the canvas commits the rect verbatim.
+    const onResizeEnd = React.useCallback(
+      (
+        _event: unknown,
+        params: { x: number; y: number; width: number; height: number },
+      ): void => commitGroupResize(props.id, params),
+      [commitGroupResize, props.id],
+    );
     return (
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
           <div className={isGroup ? 'relative size-full' : 'relative'}>
+            {isGroup &&
+            Boolean(props.selected) &&
+            !data.locked &&
+            resizeBounds.length > 0 ? (
+                <GroupResizer bounds={resizeBounds} onResizeEnd={onResizeEnd} />
+              ) : null}
             <Inner
               data={data}
               selected={props.selected}
@@ -104,21 +131,28 @@ function makeFlowNode(
               onActivate={onActivate}
               onChange={onChange}
             />
-            {/* Both handles render AFTER the body. Absolutely-positioned siblings
-                paint in DOM order, so a handle placed BEFORE the body has its
-                inner half (the half overlapping the node) covered by the body's
-                surface and reads as a half-circle — the left-handle bug. Painting
-                both on top of the body shows each as a full dot. */}
-            <Handle
-              type='target'
-              position={Position.Left}
-              className='!h-2 !w-2 !border-border !bg-muted'
-            />
-            <Handle
-              type='source'
-              position={Position.Right}
-              className='!h-2 !w-2 !border-border !bg-muted'
-            />
+            {/* Connection handles are for content nodes only — a Group is a
+                container (Figma-Frame-style), not an edge endpoint, so it renders
+                none (Bug 7: the Left handle also sat on the group's left edge and
+                interfered with the left resize grab). Both handles render AFTER
+                the body: absolutely-positioned siblings paint in DOM order, so a
+                handle placed BEFORE the body has its inner half covered by the
+                body's surface and reads as a half-circle (the left-handle bug);
+                painting both on top of the body shows each as a full dot. */}
+            {!isGroup ? (
+              <>
+                <Handle
+                  type='target'
+                  position={Position.Left}
+                  className='!h-2 !w-2 !border-border !bg-muted'
+                />
+                <Handle
+                  type='source'
+                  position={Position.Right}
+                  className='!h-2 !w-2 !border-border !bg-muted'
+                />
+              </>
+            ) : null}
           </div>
         </NodeScaleContext.Provider>
       </NodeIdContext.Provider>

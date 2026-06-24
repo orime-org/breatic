@@ -9,14 +9,14 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
   addEdge,
   addNode,
-  addToGroup,
   createCanvasUndoManager,
-  moveGroup,
+  createGroup,
+  expandGroup,
   readEdges,
   readNodes,
   removeEdge,
-  removeFromGroup,
   removeNode,
+  resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
   setNodeContent,
@@ -24,6 +24,7 @@ import {
   setNodeHandling,
   setNodeLocked,
   setNodeName,
+  setNodeParent,
   setNodePosition,
 } from '@web/data/yjs/canvas-space';
 
@@ -37,11 +38,12 @@ import {
 function sampleFields(
   type: NodeType,
   data: Partial<CanvasNodeFields['data']> = {},
-  opts: { id?: string; position?: { x: number; y: number } } = {},
+  opts: { id?: string; position?: { x: number; y: number }; parentId?: string } = {},
 ): CanvasNodeFields {
   return {
     id: opts.id ?? 'n1',
     type,
+    ...(opts.parentId !== undefined ? { parentId: opts.parentId } : {}),
     position: opts.position ?? { x: 10, y: 20 },
     data: {
       name: 'N',
@@ -107,6 +109,21 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     ]);
   });
 
+  it('persists and round-trips a member node parentId (Group containment)', () => {
+    // Group redesign (2026-06-23): a member binds to its Group via a top-level
+    // `parentId` (alongside `position`, not in `data`). readNodes surfaces it
+    // so `toFlowNode` can hand ReactFlow a parented node.
+    addNode(PID, SID, sampleFields('image', {}, { id: 'm', parentId: 'f1' }));
+    const nodeMap = doc().getMap('nodesMap').get('m') as Y.Map<unknown>;
+    expect(nodeMap.get('parentId')).toBe('f1');
+    expect(readNodes(doc()).find((n) => n.id === 'm')?.parentId).toBe('f1');
+  });
+
+  it('omits parentId on the view for a top-level node (no stray key)', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'top' }));
+    expect('parentId' in (readNodes(doc())[0] as object)).toBe(false);
+  });
+
   it('surfaces a backend write-back into the data Y.Map (the contract-drift fix)', () => {
     // A node enters handling (frontend created it, backend is producing it).
     addNode(
@@ -164,7 +181,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     addNode(
       PID,
       SID,
-      sampleFields('group', { backgroundColor: '#eee', childIds: ['keep'] }, { id: 'grp' }),
+      sampleFields('group', { backgroundColor: '#eee' }, { id: 'grp' }),
     );
     const ids = readNodes(doc()).map((n) => n.id);
     expect(ids).toEqual(['keep', 'grp']);
@@ -248,102 +265,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(readEdges(doc())).toHaveLength(0);
   });
 
-  describe('group membership — addToGroup / removeFromGroup', () => {
-    /** Read a group's childIds straight off the wire data Y.Map. */
-    function childIds(groupId: string): string[] | undefined {
-      const g = doc().getMap('nodesMap').get(groupId) as Y.Map<unknown> | undefined;
-      const data = g?.get('data');
-      return data instanceof Y.Map ? (data.get('childIds') as string[]) : undefined;
-    }
-
-    it('addToGroup appends a node to childIds, idempotent (no duplicate)', () => {
-      addNode(PID, SID, sampleFields('group', { childIds: ['n1'] }, { id: 'g1' }));
-      addToGroup(PID, SID, 'g1', 'n2');
-      expect(childIds('g1')).toEqual(['n1', 'n2']);
-      addToGroup(PID, SID, 'g1', 'n2');
-      expect(childIds('g1')).toEqual(['n1', 'n2']);
-    });
-
-    it('addToGroup refuses to nest a group (a group is never a member — 不嵌套)', () => {
-      addNode(PID, SID, sampleFields('group', { childIds: ['n1'] }, { id: 'g1' }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['n2'] }, { id: 'g2' }));
-      addToGroup(PID, SID, 'g1', 'g2');
-      expect(childIds('g1')).toEqual(['n1']);
-    });
-
-    it('addToGroup moves a node from its old group to the new one (成员不相交)', () => {
-      addNode(PID, SID, sampleFields('image', {}, { id: 'na' }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['na', 'nb', 'nc'] }, { id: 'gA' }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['nd'] }, { id: 'gB' }));
-      addToGroup(PID, SID, 'gB', 'na');
-      expect(childIds('gA')).toEqual(['nb', 'nc']);
-      expect(childIds('gB')).toEqual(['nd', 'na']);
-    });
-
-    it('addToGroup dissolves the old group if the move leaves it with one member (≥2 invariant — #7)', () => {
-      addNode(PID, SID, sampleFields('image', {}, { id: 'na' }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['na', 'nb'] }, { id: 'gA' }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['nd'] }, { id: 'gB' }));
-      addToGroup(PID, SID, 'gB', 'na');
-      // gA had 2 members; moving na out leaves only nb → gA auto-dissolves
-      expect(doc().getMap('nodesMap').get('gA')).toBeUndefined();
-      expect(childIds('gB')).toEqual(['nd', 'na']);
-    });
-
-    it('addToGroup deletes the old group when the moved node was its last child (删空组)', () => {
-      addNode(PID, SID, sampleFields('group', { childIds: ['only'] }, { id: 'gA' }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['x'] }, { id: 'gB' }));
-      addToGroup(PID, SID, 'gB', 'only');
-      expect(doc().getMap('nodesMap').get('gA')).toBeUndefined();
-      expect(childIds('gB')).toEqual(['x', 'only']);
-    });
-
-    it('removeFromGroup removes a member; the group survives while ≥2 remain', () => {
-      addNode(PID, SID, sampleFields('group', { childIds: ['n1', 'n2', 'n3'] }, { id: 'g1' }));
-      removeFromGroup(PID, SID, 'g1', 'n1');
-      expect(childIds('g1')).toEqual(['n2', 'n3']);
-    });
-
-    it('removeFromGroup dissolves a group left with a single member (≥2-member invariant — #7)', () => {
-      // A group needs ≥2 members to mean anything; dragging one out of a
-      // 2-member group leaves a lone node, so the group auto-dissolves. The
-      // survivor carries no back-reference to the group, so deleting the group
-      // node alone frees it.
-      addNode(PID, SID, sampleFields('group', { childIds: ['n1', 'n2'] }, { id: 'g1' }));
-      removeFromGroup(PID, SID, 'g1', 'n1');
-      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
-    });
-
-    it('removeFromGroup deletes the group when its last member leaves (不变量 1)', () => {
-      addNode(PID, SID, sampleFields('group', { childIds: ['only'] }, { id: 'g1' }));
-      removeFromGroup(PID, SID, 'g1', 'only');
-      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
-    });
-
-    it('deleting a member node detaches it from its group (no stale childId)', () => {
-      addNode(PID, SID, sampleFields('image', {}, { id: 'm1' }));
-      addNode(PID, SID, sampleFields('image', {}, { id: 'm2' }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['m1', 'm2'] }, { id: 'g1' }));
-      removeNode(PID, SID, 'm1');
-      expect(childIds('g1')).toEqual(['m2']);
-    });
-
-    it('deleting a group last member deletes the empty group too (不变量 1)', () => {
-      addNode(PID, SID, sampleFields('image', {}, { id: 'm1' }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['m1'] }, { id: 'g1' }));
-      removeNode(PID, SID, 'm1');
-      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
-    });
-
-    it('deleting the group node itself leaves its children intact (删组放回子节点)', () => {
-      addNode(PID, SID, sampleFields('image', {}, { id: 'm1' }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['m1'] }, { id: 'g1' }));
-      removeNode(PID, SID, 'g1');
-      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined();
-      expect(doc().getMap('nodesMap').get('m1')).toBeInstanceOf(Y.Map);
-    });
-  });
-
   describe('undo tracking — content / error writes excluded (spec §5, #8)', () => {
     it('setNodeContent does NOT push an undo entry (else undo strands the node in handling)', () => {
       const undo = createCanvasUndoManager(doc());
@@ -389,27 +310,24 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       return n?.get('position') as { x: number; y: number } | undefined;
     }
 
-    it('a drag-out (move + dissolve) batched into one transaction is ONE undo entry; undo restores member position AND the group together', () => {
-      addNode(PID, SID, sampleFields('image', {}, { id: 'm1', position: { x: 0, y: 0 } }));
-      addNode(PID, SID, sampleFields('image', {}, { id: 'm2', position: { x: 100, y: 0 } }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['m1', 'm2'] }, { id: 'g1' }));
+    it('a drag-out (move + detach) batched into one transaction is ONE undo entry; undo restores member position AND parent together', () => {
+      // m2 is a member of Group g1 (relative position (10,0)); g1 at (0,0).
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm2', position: { x: 10, y: 0 }, parentId: 'g1' }));
+      addNode(PID, SID, sampleFields('group', { width: 200, height: 200 }, { id: 'g1', position: { x: 0, y: 0 } }));
       const undo = createCanvasUndoManager(doc());
       const depth = undo.undoStack.length;
-      // onNodeDragStop dragging m2 far out of the 2-member group fires a position
-      // write AND a removeFromGroup that dissolves the group (≤1 left). Wrapping
-      // both in one batch makes the gesture a SINGLE atomic undo step.
+      // onNodeDragStop dragging m2 out of the Group fires a position write AND a
+      // setNodeParent(null) detach — batching makes the gesture ONE atomic undo step.
       runCanvasUndoBatch(PID, SID, () => {
-        setNodePosition(PID, SID, 'm2', { x: 9999, y: 9999 });
-        removeFromGroup(PID, SID, 'g1', 'm2');
+        setNodeParent(PID, SID, 'm2', null, { x: 9999, y: 9999 });
       });
-      expect(doc().getMap('nodesMap').get('g1')).toBeUndefined(); // dissolved
-      // ONE entry, not two: captureTimeout:0 made it two, so undo restored the
-      // group while m2 was still far away → the phantom oversized empty group.
-      expect(undo.undoStack.length).toBe(depth + 1);
+      const m2 = doc().getMap('nodesMap').get('m2') as Y.Map<unknown>;
+      expect(m2.get('parentId')).toBeUndefined(); // detached
+      expect(undo.undoStack.length).toBe(depth + 1); // one entry, not two
       undo.undo();
-      // Undo restored BOTH the group AND m2's original position atomically.
-      expect(doc().getMap('nodesMap').get('g1')).toBeInstanceOf(Y.Map);
-      expect(pos('m2')).toEqual({ x: 100, y: 0 });
+      // Undo restored BOTH the parentId AND m2's original (relative) position atomically.
+      expect((doc().getMap('nodesMap').get('m2') as Y.Map<unknown>).get('parentId')).toBe('g1');
+      expect(pos('m2')).toEqual({ x: 10, y: 0 });
     });
 
     it('a multi-node marquee move batched into one transaction is ONE undo entry; undo restores ALL nodes (#3 same root)', () => {
@@ -430,21 +348,16 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     });
   });
 
-  describe('group background + move — setGroupBackground / moveGroup', () => {
+  describe('group background — setGroupBackground', () => {
     /** Read a group's backgroundColor off the wire data Y.Map. */
     function bg(groupId: string): unknown {
       const g = doc().getMap('nodesMap').get(groupId) as Y.Map<unknown> | undefined;
       const data = g?.get('data');
       return data instanceof Y.Map ? data.get('backgroundColor') : undefined;
     }
-    /** Read a node's position off the wire node Y.Map. */
-    function pos(nodeId: string): { x: number; y: number } | undefined {
-      const n = doc().getMap('nodesMap').get(nodeId) as Y.Map<unknown> | undefined;
-      return n?.get('position') as { x: number; y: number } | undefined;
-    }
 
     it('setGroupBackground sets the group backgroundColor', () => {
-      addNode(PID, SID, sampleFields('group', { childIds: ['n1'] }, { id: 'g1' }));
+      addNode(PID, SID, sampleFields('group', {}, { id: 'g1' }));
       setGroupBackground(PID, SID, 'g1', 'var(--color-status-info-bg)');
       expect(bg('g1')).toBe('var(--color-status-info-bg)');
     });
@@ -453,26 +366,103 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       addNode(
         PID,
         SID,
-        sampleFields('group', { childIds: ['n1'], backgroundColor: 'x' }, { id: 'g1' }),
+        sampleFields('group', { backgroundColor: 'x' }, { id: 'g1' }),
       );
       setGroupBackground(PID, SID, 'g1', undefined);
       expect(bg('g1')).toBeUndefined();
     });
+  });
 
-    it('moveGroup shifts every child node by the delta (group follows via derived geometry)', () => {
-      addNode(PID, SID, sampleFields('image', {}, { id: 'c1', position: { x: 10, y: 20 } }));
-      addNode(PID, SID, sampleFields('image', {}, { id: 'c2', position: { x: 30, y: 40 } }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['c1', 'c2'] }, { id: 'g1' }));
-      moveGroup(PID, SID, 'g1', { x: 5, y: -3 });
-      expect(pos('c1')).toEqual({ x: 15, y: 17 });
-      expect(pos('c2')).toEqual({ x: 35, y: 37 });
+  describe('Group mutations (group redesign, parentId model)', () => {
+    /** Read a node's top-level parentId straight off the wire. */
+    function parentOf(id: string): string | undefined {
+      const node = doc().getMap('nodesMap').get(id);
+      return node instanceof Y.Map ? (node.get('parentId') as string | undefined) : undefined;
+    }
+    /** Read a node's position straight off the wire. */
+    function posOf(id: string): { x: number; y: number } | undefined {
+      const node = doc().getMap('nodesMap').get(id);
+      return node instanceof Y.Map
+        ? (node.get('position') as { x: number; y: number } | undefined)
+        : undefined;
+    }
+    /** Read a node's data field straight off the wire. */
+    function dataOf(id: string, key: string): unknown {
+      const node = doc().getMap('nodesMap').get(id);
+      if (!(node instanceof Y.Map)) return undefined;
+      const data = node.get('data');
+      return data instanceof Y.Map ? data.get(key) : undefined;
+    }
+
+    it('createGroup stores the Group (width/height) and binds members (parentId + relative position)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'a', position: { x: 100, y: 100 } }));
+      addNode(PID, SID, sampleFields('image', {}, { id: 'b', position: { x: 200, y: 180 } }));
+      createGroup(
+        PID,
+        SID,
+        sampleFields('group', { width: 240, height: 220 }, { id: 'f', position: { x: 76, y: 76 } }),
+        [
+          { id: 'a', position: { x: 24, y: 24 } },
+          { id: 'b', position: { x: 124, y: 104 } },
+        ],
+      );
+      expect(dataOf('f', 'width')).toBe(240);
+      expect(dataOf('f', 'height')).toBe(220);
+      expect(parentOf('a')).toBe('f');
+      expect(parentOf('b')).toBe('f');
+      expect(posOf('a')).toEqual({ x: 24, y: 24 });
+      expect(posOf('b')).toEqual({ x: 124, y: 104 });
     });
 
-    it('moveGroup skips child ids that are not real nodes (robust)', () => {
-      addNode(PID, SID, sampleFields('image', {}, { id: 'c1', position: { x: 0, y: 0 } }));
-      addNode(PID, SID, sampleFields('group', { childIds: ['c1', 'ghost'] }, { id: 'g1' }));
-      expect(() => moveGroup(PID, SID, 'g1', { x: 1, y: 1 })).not.toThrow();
-      expect(pos('c1')).toEqual({ x: 1, y: 1 });
+    it('setNodeParent sets parentId + relative position (join a Group)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'n', position: { x: 300, y: 300 } }));
+      setNodeParent(PID, SID, 'n', 'f', { x: 20, y: 30 });
+      expect(parentOf('n')).toBe('f');
+      expect(posOf('n')).toEqual({ x: 20, y: 30 });
+    });
+
+    it('setNodeParent with null clears parentId + sets absolute position (leave a Group)', () => {
+      addNode(PID, SID, sampleFields('image', {}, { id: 'n', position: { x: 20, y: 30 }, parentId: 'f' }));
+      setNodeParent(PID, SID, 'n', null, { x: 320, y: 330 });
+      expect(parentOf('n')).toBeUndefined();
+      expect(posOf('n')).toEqual({ x: 320, y: 330 });
+    });
+
+    it('resizeGroup writes the Group position + width/height', () => {
+      addNode(PID, SID, sampleFields('group', { width: 200, height: 200 }, { id: 'f', position: { x: 0, y: 0 } }));
+      resizeGroup(PID, SID, 'f', { x: -10, y: -20 }, 320, 280);
+      expect(posOf('f')).toEqual({ x: -10, y: -20 });
+      expect(dataOf('f', 'width')).toBe(320);
+      expect(dataOf('f', 'height')).toBe(280);
+    });
+
+    it('expandGroup grows the Group and reanchors members so their absolute position is preserved', () => {
+      addNode(PID, SID, sampleFields('group', { width: 200, height: 200 }, { id: 'f', position: { x: 0, y: 0 } }));
+      // member relative (-10,90) → absolute (-10,90); the Group grows left to x=-10.
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm', position: { x: -10, y: 90 }, parentId: 'f' }));
+      expandGroup(PID, SID, 'f', { x: -10, y: 0 }, 210, 200);
+      expect(posOf('f')).toEqual({ x: -10, y: 0 });
+      expect(dataOf('f', 'width')).toBe(210);
+      // relative shifted by delta (0-(-10)=10, 0): (0,90); absolute = (-10,0)+(0,90) = (-10,90), preserved.
+      expect(posOf('m')).toEqual({ x: 0, y: 90 });
+    });
+
+    it('expandGroup growing only right/bottom (top-left unchanged) leaves member positions alone', () => {
+      addNode(PID, SID, sampleFields('group', { width: 200, height: 200 }, { id: 'f', position: { x: 0, y: 0 } }));
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm', position: { x: 150, y: 150 }, parentId: 'f' }));
+      expandGroup(PID, SID, 'f', { x: 0, y: 0 }, 250, 250);
+      expect(posOf('m')).toEqual({ x: 150, y: 150 });
+      expect(dataOf('f', 'width')).toBe(250);
+    });
+
+    it('deleting a Group releases its members (clears parentId, restores absolute position, keeps members)', () => {
+      addNode(PID, SID, sampleFields('group', { width: 200, height: 200 }, { id: 'f', position: { x: 50, y: 60 } }));
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm', position: { x: 10, y: 20 }, parentId: 'f' }));
+      removeNode(PID, SID, 'f');
+      // member survives, parent cleared, position converted to absolute (rel + group pos)
+      expect(doc().getMap('nodesMap').get('f')).toBeUndefined();
+      expect(parentOf('m')).toBeUndefined();
+      expect(posOf('m')).toEqual({ x: 60, y: 80 });
     });
   });
 });

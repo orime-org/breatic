@@ -13,6 +13,13 @@ export const MAX_NODE_NAME_LEN = 30;
 export interface InlineRename {
   /** Whether the inline editor is currently open. */
   editing: boolean;
+  /**
+   * The name to render when not editing — the just-committed value during the
+   * async gap before the Yjs write round-trips back into `current`, else
+   * `current`. Render this (not the raw `current`) so closing the editor never
+   * flashes the stale old name (R2-G).
+   */
+  displayName: string;
   /** The in-progress draft value bound to the editor input. */
   draft: string;
   /** Ref to attach to the editor input — it is focused + selected on open. */
@@ -64,10 +71,24 @@ export function useInlineRename({
 }: UseInlineRenameOptions): InlineRename {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState('');
+  // The just-committed name, held only across the async gap between writing to
+  // Yjs and the observe round-tripping back into `current`. Without it, closing
+  // the editor renders the stale `current` for one frame → the old name flashes
+  // before the new one (R2-G). Cleared once `current` catches up (effect below).
+  const [committed, setCommitted] = React.useState<string | null>(null);
   // Guards Enter + blur from double-firing the commit (and stops a stale
   // blur from committing after Escape) — a ref so the check is synchronous.
   const editingRef = React.useRef(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
+
+  // Drop the bridge the moment `current` changes from the stale value it held at
+  // commit — whether the Yjs round-trip brought back OUR name OR a collaborator's
+  // different rename won (last-writer-wins). Either way the live value must show,
+  // never our stale committed name (keying on `current === committed` would stick
+  // forever when a concurrent remote rename made current a third value).
+  React.useEffect(() => {
+    setCommitted(null);
+  }, [current]);
 
   // On entering edit, focus AND select the whole name so a keystroke
   // replaces it immediately (matches the project-title editor).
@@ -89,7 +110,12 @@ export function useInlineRename({
     if (!editingRef.current) return;
     editingRef.current = false;
     const next = draft.trim().slice(0, maxLength);
-    if (next.length > 0) onRename?.(next);
+    if (next.length > 0) {
+      onRename?.(next);
+      // Show the new name immediately (bridge the Yjs round-trip gap) so the
+      // editor closing doesn't flash the old `current` (R2-G).
+      setCommitted(next);
+    }
     setEditing(false);
   }, [draft, maxLength, onRename]);
 
@@ -115,5 +141,14 @@ export function useInlineRename({
     consumePendingRename();
   }, [isRenameTarget, startEdit, consumePendingRename]);
 
-  return { editing, draft, inputRef, startEdit, setDraft, commit, cancel };
+  return {
+    editing,
+    displayName: committed ?? current,
+    draft,
+    inputRef,
+    startEdit,
+    setDraft,
+    commit,
+    cancel,
+  };
 }

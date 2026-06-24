@@ -39,6 +39,12 @@ export interface CanvasNodeView {
   /** ReactFlow node type = the view kind (the `NODE_TYPES` registry key). */
   type: NodeKind;
   position: { x: number; y: number };
+  /**
+   * Containing Group id (group redesign 2026-06-23) — present on a member
+   * node so `toFlowNode` can hand ReactFlow a parented node. Absent for
+   * top-level nodes.
+   */
+  parentId?: string;
   data: NodeView;
 }
 
@@ -279,6 +285,9 @@ export function addNode(
     const map = new Y.Map<unknown>();
     map.set('id', node.id);
     map.set('type', node.type);
+    // Group containment: persist the member→Group link as a top-level field
+    // (alongside position), only when set so top-level nodes carry no key.
+    if (node.parentId !== undefined) map.set('parentId', node.parentId);
     map.set('position', node.position);
     map.set('data', buildDataMap(node.data));
     nodesMap.set(node.id, map);
@@ -286,32 +295,35 @@ export function addNode(
 }
 
 /**
- * Within an open transaction, drop `nodeId` from any group's `childIds` so a
- * deleted member never lingers as a stale child reference; a group left empty
- * is deleted too (invariant 1: a group always keeps at least one member). A group id is never a member
- * (no nesting), so deleting a group node is a no-op here — its children stay.
+ * Within an open transaction, release a Group's members before it is deleted:
+ * clear each member's `parentId` and convert its parent-relative position back
+ * to absolute. Deleting a Group never deletes its members — they become
+ * top-level nodes. No-op when the group has no resolvable position.
  * @param nodesMap - The canvas-space `nodesMap` (call inside a transaction).
- * @param nodeId - The node id being deleted.
+ * @param groupId - The Group node being deleted.
  */
-function detachFromGroups(
+function releaseGroupMembers(
   nodesMap: Y.Map<Y.Map<unknown>>,
-  nodeId: string,
+  groupId: string,
 ): void {
-  nodesMap.forEach((node, id) => {
-    if (!(node instanceof Y.Map) || node.get('type') !== 'group') return;
-    const data = node.get('data');
-    if (!(data instanceof Y.Map)) return;
-    const ids = data.get('childIds');
-    if (!Array.isArray(ids) || !ids.includes(nodeId)) return;
-    const next = (ids as string[]).filter((x) => x !== nodeId);
-    if (next.length === 0) nodesMap.delete(id);
-    else data.set('childIds', next);
+  const group = nodesMap.get(groupId);
+  if (!(group instanceof Y.Map)) return;
+  const groupPos = group.get('position') as { x: number; y: number } | undefined;
+  nodesMap.forEach((node) => {
+    if (!(node instanceof Y.Map) || node.get('parentId') !== groupId) return;
+    if (groupPos) {
+      const p = node.get('position') as { x: number; y: number } | undefined;
+      if (p) node.set('position', { x: p.x + groupPos.x, y: p.y + groupPos.y });
+    }
+    node.delete('parentId');
   });
 }
 
 /**
- * Delete a node by id — frontend-owned operation. Also detaches the node from
- * any group it belonged to (deleting the group if it becomes empty).
+ * Delete a node by id — frontend-owned operation. Deleting a Group (group)
+ * first releases its members (clears `parentId`, restores absolute position) so
+ * they survive as top-level nodes (the canvas-level "delete group" cascade that
+ * removes the members too is a separate, higher-level action).
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space to remove the node from.
  * @param nodeId - Id of the node to delete.
@@ -324,7 +336,10 @@ export function removeNode(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   doc.transact(() => {
-    detachFromGroups(nodesMap, nodeId);
+    const node = nodesMap.get(nodeId);
+    if (node instanceof Y.Map && node.get('type') === 'group') {
+      releaseGroupMembers(nodesMap, nodeId);
+    }
     nodesMap.delete(nodeId);
   }, CANVAS_UNDO);
 }
@@ -483,91 +498,8 @@ export function setNodeError(
 }
 
 /**
- * Add a node to a group's `childIds` — frontend-owned. Enforces the group
- * invariants in one transaction:
- *   - no nesting: a group node is never added as a member (no-op if `nodeId` is a
- *     group);
- *   - disjoint membership: `nodeId` is first removed from every OTHER group's `childIds`,
- *     and if that empties one of those groups it is deleted (invariant 1);
- *   - idempotent: an already-present member is not duplicated.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the group + node.
- * @param groupId - Id of the destination group.
- * @param nodeId - Id of the node to add as a member.
- */
-export function addToGroup(
-  projectId: string,
-  spaceId: string,
-  groupId: string,
-  nodeId: string,
-): void {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const target = nodesMap.get(groupId);
-  if (!(target instanceof Y.Map) || target.get('type') !== 'group') return;
-  // no nesting — only reject when the candidate actually exists AND is a group;
-  // a not-yet-materialised member id is fine to add (it cannot be a group).
-  const candidate = nodesMap.get(nodeId);
-  if (candidate instanceof Y.Map && candidate.get('type') === 'group') return;
-  doc.transact(() => {
-    // disjoint membership — drop nodeId from every other group first.
-    nodesMap.forEach((node, id) => {
-      if (id === groupId || !(node instanceof Y.Map)) return;
-      if (node.get('type') !== 'group') return;
-      const data = node.get('data');
-      if (!(data instanceof Y.Map)) return;
-      const ids = data.get('childIds');
-      if (!Array.isArray(ids) || !ids.includes(nodeId)) return;
-      const next = (ids as string[]).filter((x) => x !== nodeId);
-      // ≥2-member invariant: moving a node out can leave the old group with one
-      // (or zero) members → dissolve it (#7).
-      if (next.length <= 1) nodesMap.delete(id);
-      else data.set('childIds', next);
-    });
-    const data = target.get('data');
-    if (!(data instanceof Y.Map)) return;
-    const ids = data.get('childIds');
-    const current = Array.isArray(ids) ? (ids as string[]) : [];
-    if (!current.includes(nodeId)) data.set('childIds', [...current, nodeId]);
-  }, CANVAS_UNDO);
-}
-
-/**
- * Remove a node from a group's `childIds` — frontend-owned. A group needs ≥2
- * members to be meaningful, so it is deleted once a removal would leave it with
- * one or zero members (invariant: a group always keeps at least two members);
- * the lone survivor becomes a free node (it holds no back-reference to the
- * group). No-op when the group / member does not exist.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the group.
- * @param groupId - Id of the group to remove a member from.
- * @param nodeId - Id of the member node to remove.
- */
-export function removeFromGroup(
-  projectId: string,
-  spaceId: string,
-  groupId: string,
-  nodeId: string,
-): void {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const group = nodesMap.get(groupId);
-  if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
-  const data = group.get('data');
-  if (!(data instanceof Y.Map)) return;
-  const ids = data.get('childIds');
-  const current = Array.isArray(ids) ? (ids as string[]) : [];
-  if (!current.includes(nodeId)) return;
-  doc.transact(() => {
-    const next = current.filter((x) => x !== nodeId);
-    if (next.length <= 1) nodesMap.delete(groupId);
-    else data.set('childIds', next);
-  }, CANVAS_UNDO);
-}
-
-/**
  * Set (or clear) a group's background tint — frontend-owned. Passing
- * `undefined` clears the field (no color → neutral dashed frame). No-op when the
+ * `undefined` clears the field (no color → neutral dashed group). No-op when the
  * group does not exist.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the group.
@@ -593,22 +525,93 @@ export function setGroupBackground(
 }
 
 /**
- * Move a whole group — frontend-owned. Shifts every member node's position by
- * `delta` in one transaction; the group's own geometry is derived from its
- * children at render, so it follows automatically (the group node carries no
- * authoritative position). Child ids that are not real nodes are skipped.
+ * Create a Group around a selection — frontend-owned (group redesign).
+ * In one transaction it inserts the Group node (carrying its authoritative
+ * width/height in `data`) and binds each member: sets the member's top-level
+ * `parentId` to the Group and its new parent-relative position. One atomic undo
+ * entry — undoing removes the Group and unbinds the members together.
  * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the group.
- * @param groupId - Id of the group being dragged.
- * @param delta - The canvas-space offset to add to every member's position.
- * @param delta.x - X offset.
- * @param delta.y - Y offset.
+ * @param spaceId - Canvas space to create the Group in.
+ * @param group - The Group node's wire fields (id, position, `data.width/height`).
+ * @param members - The members to bind, each with its parent-relative position.
  */
-export function moveGroup(
+export function createGroup(
+  projectId: string,
+  spaceId: string,
+  group: CanvasNodeFields,
+  members: ReadonlyArray<{ id: string; position: { x: number; y: number } }>,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  doc.transact(() => {
+    const map = new Y.Map<unknown>();
+    map.set('id', group.id);
+    map.set('type', group.type);
+    if (group.parentId !== undefined) map.set('parentId', group.parentId);
+    map.set('position', group.position);
+    map.set('data', buildDataMap(group.data));
+    nodesMap.set(group.id, map);
+    for (const member of members) {
+      const node = nodesMap.get(member.id);
+      if (!(node instanceof Y.Map)) continue;
+      node.set('parentId', group.id);
+      node.set('position', member.position);
+    }
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Reparent a node — frontend-owned (group redesign). Sets (or clears, when
+ * `parentId` is null) the node's top-level `parentId` and writes its new
+ * position in one transaction. The caller supplies the right coordinate space:
+ * parent-relative when joining a Group, absolute when leaving one. No-op when
+ * the node does not exist.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to reparent.
+ * @param parentId - The new parent Group id, or null to make the node top-level.
+ * @param position - The node's new position (relative when joining, absolute when leaving).
+ * @param position.x - New x coordinate.
+ * @param position.y - New y coordinate.
+ */
+export function setNodeParent(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  parentId: string | null,
+  position: { x: number; y: number },
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!(node instanceof Y.Map)) return;
+  doc.transact(() => {
+    if (parentId === null) node.delete('parentId');
+    else node.set('parentId', parentId);
+    node.set('position', position);
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Resize a Group — frontend-owned (group redesign). Writes the Group's new
+ * top-left position and authoritative `data.width`/`data.height` in one
+ * transaction (members are not rescaled). No-op when the group does not exist.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the Group.
+ * @param groupId - Id of the Group to resize.
+ * @param position - The Group's new top-left.
+ * @param position.x - New x coordinate.
+ * @param position.y - New y coordinate.
+ * @param width - The Group's new width.
+ * @param height - The Group's new height.
+ */
+export function resizeGroup(
   projectId: string,
   spaceId: string,
   groupId: string,
-  delta: { x: number; y: number },
+  position: { x: number; y: number },
+  width: number,
+  height: number,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -616,16 +619,57 @@ export function moveGroup(
   if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
   const data = group.get('data');
   if (!(data instanceof Y.Map)) return;
-  const ids = data.get('childIds');
-  if (!Array.isArray(ids)) return;
   doc.transact(() => {
-    (ids as string[]).forEach((childId) => {
-      const child = nodesMap.get(childId);
-      if (!(child instanceof Y.Map)) return;
-      const p = child.get('position') as { x: number; y: number } | undefined;
-      if (!p) return;
-      child.set('position', { x: p.x + delta.x, y: p.y + delta.y });
-    });
+    group.set('position', position);
+    data.set('width', width);
+    data.set('height', height);
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Grow a Group to a new rect AND reanchor its members so their ABSOLUTE
+ * positions stay put (group redesign). Used by auto-expand: when an
+ * in-group member's body overflows, the Group grows around it. If the Group's
+ * top-left moves, every member's parent-relative position is shifted by the
+ * inverse delta so the members don't visually move. One atomic transaction.
+ * No-op when the group does not exist.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the Group.
+ * @param groupId - Id of the Group to grow.
+ * @param position - The Group's new top-left.
+ * @param position.x - New x coordinate.
+ * @param position.y - New y coordinate.
+ * @param width - The Group's new width.
+ * @param height - The Group's new height.
+ */
+export function expandGroup(
+  projectId: string,
+  spaceId: string,
+  groupId: string,
+  position: { x: number; y: number },
+  width: number,
+  height: number,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const group = nodesMap.get(groupId);
+  if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
+  const data = group.get('data');
+  if (!(data instanceof Y.Map)) return;
+  const oldPos = group.get('position') as { x: number; y: number } | undefined;
+  const dx = oldPos ? oldPos.x - position.x : 0;
+  const dy = oldPos ? oldPos.y - position.y : 0;
+  doc.transact(() => {
+    group.set('position', position);
+    data.set('width', width);
+    data.set('height', height);
+    if (dx !== 0 || dy !== 0) {
+      nodesMap.forEach((node) => {
+        if (!(node instanceof Y.Map) || node.get('parentId') !== groupId) return;
+        const p = node.get('position') as { x: number; y: number } | undefined;
+        if (p) node.set('position', { x: p.x + dx, y: p.y + dy });
+      });
+    }
   }, CANVAS_UNDO);
 }
 
@@ -693,7 +737,10 @@ export function removeElements(
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
   doc.transact(() => {
     nodeIds.forEach((id) => {
-      detachFromGroups(nodesMap, id);
+      const node = nodesMap.get(id);
+      if (node instanceof Y.Map && node.get('type') === 'group') {
+        releaseGroupMembers(nodesMap, id);
+      }
       nodesMap.delete(id);
     });
     edgeIds.forEach((id) => edgesMap.delete(id));
@@ -725,10 +772,12 @@ export function readNodes(doc: Y.Doc): ReadonlyArray<CanvasNodeView> {
     };
     const view = toNodeView(fields);
     if (!view) return;
+    const parentId = nodeMap.get('parentId');
     out.push({
       id: fields.id,
       type: view.kind,
       position: fields.position,
+      ...(typeof parentId === 'string' ? { parentId } : {}),
       data: view,
     });
   });
