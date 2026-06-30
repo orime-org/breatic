@@ -27,6 +27,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { InvitableProjectRole } from '@breatic/shared';
 
@@ -138,6 +139,7 @@ export function ShareDialog({
               variant='chrome-ghost'
               size='chrome'
               aria-label={t('chrome.tooltip.share')}
+              onFocusCapture={suppressTooltipFocusOpen}
             >
               <Share2 className='h-[18px] w-[18px]' />
             </Button>

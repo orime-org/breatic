@@ -116,14 +116,14 @@ describe('ViewportToolbar', () => {
     expect(handlers.onZoomChange).toHaveBeenCalledWith(1.5);
   });
 
-  it('custom input clamps to [10%, 200%]', async () => {
+  it('custom input clamps to [10%, 800%]', async () => {
     const user = userEvent.setup();
     const handlers = setup();
     await user.click(screen.getByTestId('zoom-readout-trigger'));
     const input = await screen.findByTestId('zoom-custom-input');
     await user.clear(input);
     await user.type(input, '9999{Enter}');
-    expect(handlers.onZoomChange).toHaveBeenLastCalledWith(2);
+    expect(handlers.onZoomChange).toHaveBeenLastCalledWith(8);
 
     await user.click(screen.getByTestId('zoom-readout-trigger'));
     const input2 = await screen.findByTestId('zoom-custom-input');
@@ -132,13 +132,44 @@ describe('ViewportToolbar', () => {
     expect(handlers.onZoomChange).toHaveBeenLastCalledWith(0.1);
   });
 
-  it('zoom presets are 10/25/50/100/150/200 — 400% removed, 10% added', async () => {
+  it('zoom presets are 10/25/50/100/150/200/400/800', async () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('zoom-readout-trigger'));
     await screen.findByTestId('zoom-menu');
     expect(screen.getByTestId('zoom-preset-10')).toBeInTheDocument();
-    expect(screen.queryByTestId('zoom-preset-400')).not.toBeInTheDocument();
+    expect(screen.getByTestId('zoom-preset-400')).toBeInTheDocument();
+    expect(screen.getByTestId('zoom-preset-800')).toBeInTheDocument();
+  });
+
+  it('closing the zoom popover returns focus to the readout without re-popping its tooltip', async () => {
+    // C mechanism (Popover family): focus returns to the readout on close;
+    // its `onFocusCapture` stops the tooltip from opening on that refocus.
+    // (Tooltip-not-popping is also covered by real-browser smoke.)
+    const user = userEvent.setup();
+    setup();
+    const trigger = screen.getByTestId('zoom-readout-trigger');
+    await user.click(trigger);
+    await screen.findByTestId('zoom-menu');
+    await user.keyboard('{Escape}');
+    expect(document.activeElement).toBe(trigger);
+    expect(
+      document.querySelector(
+        '[data-state="instant-open"],[data-state="delayed-open"]',
+      ),
+    ).toBeNull();
+  });
+
+  it('clicking the 400% / 800% presets applies 4 / 8', async () => {
+    const user = userEvent.setup();
+    const handlers = setup();
+    await user.click(screen.getByTestId('zoom-readout-trigger'));
+    await user.click(await screen.findByTestId('zoom-preset-400'));
+    expect(handlers.onZoomChange).toHaveBeenCalledWith(4);
+
+    await user.click(screen.getByTestId('zoom-readout-trigger'));
+    await user.click(await screen.findByTestId('zoom-preset-800'));
+    expect(handlers.onZoomChange).toHaveBeenCalledWith(8);
   });
 
   it('clicking the 10% preset applies 0.1', async () => {

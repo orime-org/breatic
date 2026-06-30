@@ -19,6 +19,7 @@ import {
 } from '@web/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { CreatableNodeMenuItems } from '@web/spaces/canvas/nodes/_shared/CreatableNodeMenuItems';
@@ -269,6 +270,7 @@ function NodesMenuButton({
       disabled={disabled}
       data-testid={`tool-${item.id}`}
       className={toolButtonClassName(item)}
+      onFocusCapture={suppressTooltipFocusOpen}
     >
       <Icon className='h-5 w-5' />
     </button>
@@ -287,7 +289,13 @@ function NodesMenuButton({
   }
 
   return (
-    <DropdownMenu>
+    // `modal={false}` keeps this on-canvas picker from locking body scroll or
+    // painting a modal layer over the canvas, matching the other canvas
+    // overlay pickers (which are non-modal Popovers). Clicking the canvas then
+    // dismisses the menu via outside-click instead of being swallowed by a
+    // modal backdrop. The tooltip-refocus fix is independent (onFocusCapture
+    // on the trigger); this flag is purely about canvas interaction.
+    <DropdownMenu modal={false}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>{button}</DropdownMenuTrigger>

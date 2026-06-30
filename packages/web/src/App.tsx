@@ -31,7 +31,7 @@ import { router } from '@web/app/routes';
 export default function App(): React.JSX.Element {
   return (
     <QueryClientProvider>
-      <TooltipProvider>
+      <TooltipProvider delayDuration={100}>
         <AuthBootstrap>
           <RouterProvider router={router} />
           {/* Toast surface mounts at the top-center of the viewport so

@@ -11,7 +11,7 @@ import { cn } from '@web/lib/utils';
  * app root) to share a single delay group across tooltips.
  *
  * Composition:
- *   <TooltipProvider delayDuration={150}>
+ *   <TooltipProvider delayDuration={100}>
  *     <Tooltip>
  *       <TooltipTrigger asChild><Button>?</Button></TooltipTrigger>
  *       <TooltipContent>Help text</TooltipContent>

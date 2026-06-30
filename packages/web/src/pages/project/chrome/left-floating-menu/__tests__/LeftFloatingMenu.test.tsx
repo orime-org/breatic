@@ -107,6 +107,26 @@ describe('LeftFloatingMenu', () => {
     expect(onCreateNode).toHaveBeenCalledWith('audio');
   });
 
+  it('closing the node-library dropdown returns focus to the trigger without re-popping its tooltip', async () => {
+    // C mechanism: focus DOES return to the menu button on close (ARIA menu-
+    // button requirement — we don't block it); the trigger's `onFocusCapture`
+    // stops the tooltip from opening on that programmatic refocus, so no
+    // stray tooltip pops. (The tooltip-not-popping half is also covered by
+    // the real-browser smoke; jsdom verifies the focus return here.)
+    const user = userEvent.setup();
+    setup();
+    const trigger = screen.getByTestId('tool-nodes');
+    await user.click(trigger);
+    await screen.findByTestId('create-node-text');
+    await user.keyboard('{Escape}');
+    expect(document.activeElement).toBe(trigger);
+    expect(
+      document.querySelector(
+        '[data-state="instant-open"],[data-state="delayed-open"]',
+      ),
+    ).toBeNull();
+  });
+
   it('viewer (disabled): the node-library button does not open a create menu', async () => {
     const user = userEvent.setup();
     setup(true);

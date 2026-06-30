@@ -19,6 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import {
   notificationsApi,
   type Notification,
@@ -262,6 +263,7 @@ export function BellMenu(): React.JSX.Element {
               aria-label={t('chrome.tooltip.notifications')}
               className='relative'
               data-testid='bell-trigger'
+              onFocusCapture={suppressTooltipFocusOpen}
             >
               <Bell className='h-[18px] w-[18px]' />
               {count > 0 ? (
