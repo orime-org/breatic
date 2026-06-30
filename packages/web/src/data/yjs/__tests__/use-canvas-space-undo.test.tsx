@@ -22,6 +22,8 @@ import {
   useCanvasSpace,
   addNode,
   setNodePosition,
+  evictCanvasUndoManager,
+  _resetCanvasUndoCacheForTests,
 } from '@web/data/yjs/canvas-space';
 import { getDoc, docName, _resetForTests } from '@web/data/yjs/manager';
 
@@ -44,6 +46,7 @@ function makeNode(id: string): CanvasNodeFields {
 
 describe('useCanvasSpace canUndo mirror — collaborator deletes a tracked node', () => {
   beforeEach(() => {
+    _resetCanvasUndoCacheForTests();
     _resetForTests();
   });
 
@@ -88,5 +91,61 @@ describe('useCanvasSpace canUndo mirror — collaborator deletes a tracked node'
       result.current.undo();
     });
     expect(result.current.canUndo).toBe(false);
+  });
+});
+
+describe('useCanvasSpace undo lifecycle — switch preserves, close clears', () => {
+  beforeEach(() => {
+    _resetCanvasUndoCacheForTests();
+    _resetForTests();
+  });
+
+  it('switching away and back (remount of the same space) preserves the undo stack', () => {
+    const p = 'proj-switch';
+    const s = 'space-switch';
+
+    // Mount the active space, make a tracked edit → undo available.
+    const first = renderHook(() => useCanvasSpace(p, s));
+    act(() => {
+      addNode(p, s, makeNode('N'));
+    });
+    expect(first.result.current.canUndo).toBe(true);
+
+    // Switch to another tab: the active SpaceOutlet unmounts (key change), so
+    // this hook unmounts. The cached manager must NOT be destroyed.
+    first.unmount();
+
+    // Switch back: a fresh hook mounts for the SAME space. The undo button
+    // must still be available — the old bug reset it to false here.
+    const second = renderHook(() => useCanvasSpace(p, s));
+    expect(second.result.current.canUndo).toBe(true);
+
+    // And undo actually works (operates on the preserved stack).
+    act(() => {
+      second.result.current.undo();
+    });
+    expect(second.result.current.canUndo).toBe(false);
+  });
+
+  it('closing the tab (evict) clears the undo stack — reopening starts empty', () => {
+    const p = 'proj-close';
+    const s = 'space-close';
+    const name = docName.canvasSpace(p, s);
+
+    const first = renderHook(() => useCanvasSpace(p, s));
+    act(() => {
+      addNode(p, s, makeNode('M'));
+    });
+    expect(first.result.current.canUndo).toBe(true);
+    first.unmount();
+
+    // Closing the tab evicts the manager (what ProjectPage.onCloseTab does).
+    evictCanvasUndoManager(name);
+
+    // Reopening the same space: a brand-new empty manager → no undo available,
+    // even though the node itself is still in the (still-cached) doc.
+    const reopened = renderHook(() => useCanvasSpace(p, s));
+    expect(reopened.result.current.nodes.some((n) => n.id === 'M')).toBe(true);
+    expect(reopened.result.current.canUndo).toBe(false);
   });
 });
