@@ -13,6 +13,11 @@ import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
+import { docName } from '@web/data/yjs/manager';
+import {
+  evictCanvasUndoManager,
+  evictUndoForVanishedSpaces,
+} from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   closeSpaceTab,
@@ -203,6 +208,20 @@ function ProjectWorkspace({
   const activeSpace: ProjectSpace | undefined =
     spaces.find((s) => s.id === activeSpaceId) ?? openTabs[0];
 
+  // Clear the undo history of spaces that have VANISHED (deleted locally or by
+  // a collaborator) while still in this user's openTabIds. Such a tab drops out
+  // of `openTabs` above without going through `onCloseTab`, so its cached undo
+  // manager would otherwise leak — and a restore under the same id would bring
+  // back the stale pre-delete stack. This makes "the space left → undo cleared"
+  // hold for the deletion path too, not just explicit tab close.
+  React.useEffect(() => {
+    evictUndoForVanishedSpaces(
+      projectId,
+      openTabIds,
+      new Set(spaces.map((s) => s.id)),
+    );
+  }, [projectId, openTabIds, spaces]);
+
   // Note: NO URL ↔ active-space reconcile. Per user decision
   // `[[feedback_space_type_vs_route]]`, Space is a type/template, not
   // a route segment; the active tab + open-tab list are per-user UI
@@ -292,6 +311,11 @@ function ProjectWorkspace({
   const onCloseTab = (id: string): void => {
     if (!userId) return;
     closeSpaceTab(projectId, userId, id);
+    // Closing a tab clears that space's undo / redo history: evict its cached
+    // undo manager so reopening the space starts empty (no-op for non-canvas
+    // spaces, which have no manager). The space's Y.Doc stays cached for an
+    // instant reopen — only the undo stack is discarded.
+    evictCanvasUndoManager(docName.canvasSpace(projectId, id));
     if (id === activeSpaceId) {
       const next = openTabs.find((s) => s.id !== id);
       setActiveSpace(projectId, userId, next?.id ?? null);

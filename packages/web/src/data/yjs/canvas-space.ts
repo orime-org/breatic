@@ -131,6 +131,94 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
 }
 
 /**
+ * Process-wide cache of canvas undo managers, keyed by canvas-space document
+ * name. The undo stack lives only in the manager instance's memory (it is NOT
+ * persisted in the Y.Doc), so to survive a tab switch — which remounts the
+ * `SpaceOutlet` via `key={activeSpace.id}` and thus remounts `useCanvasSpace` —
+ * the manager must outlive the component. Binding it to the space DOC (same
+ * lifetime as `getDoc`'s cached Y.Doc) rather than the React component is the
+ * fix: switching tabs re-fetches the same manager with its stack intact;
+ * closing a tab evicts it ({@link evictCanvasUndoManager}) so a reopened space
+ * starts with a clean, empty history.
+ */
+const undoManagers = new Map<string, Y.UndoManager>();
+
+/**
+ * Get-or-create the cached canvas undo manager for a space document. The first
+ * call for a name creates one bound to that doc; subsequent calls return the
+ * same instance (so its undo stack survives tab switches). Pass the SAME `doc`
+ * that `getDoc(name)` returns — the manager observes that doc instance.
+ * @param doc - The canvas-space Y.Doc to bind a newly created manager to.
+ * @param name - The canonical canvas-space document name (cache key).
+ * @returns The cached (or newly created) undo manager for that space doc.
+ */
+export function getCanvasUndoManager(doc: Y.Doc, name: string): Y.UndoManager {
+  let manager = undoManagers.get(name);
+  // Heal a stale binding: if the cached manager was created for a different
+  // (now-recreated) doc instance, it observes a dead doc. Rebind to the live
+  // one. Guards against a future `destroyDoc` caller that forgets to evict.
+  if (manager && manager.doc !== doc) {
+    manager.destroy();
+    manager = undefined;
+  }
+  if (!manager) {
+    manager = createCanvasUndoManager(doc);
+    undoManagers.set(name, manager);
+  }
+  return manager;
+}
+
+/**
+ * Evict (destroy + drop) the cached undo manager for a space document. Called
+ * when a tab CLOSES (`ProjectPage`'s `onCloseTab`) so the space's undo / redo
+ * history is cleared — reopening that space then get-or-creates a fresh, empty
+ * manager. No-op for an unknown name (e.g. a non-canvas space or one never
+ * opened). The space's Y.Doc itself is left in `manager.ts`'s cache untouched,
+ * so reopening the tab is still instant (no re-handshake).
+ * @param name - The canonical canvas-space document name to evict.
+ */
+export function evictCanvasUndoManager(name: string): void {
+  const manager = undoManagers.get(name);
+  if (!manager) return;
+  manager.destroy();
+  undoManagers.delete(name);
+}
+
+/**
+ * Evict undo managers for open tabs whose space no longer exists. A space
+ * leaves the user's open tabs two ways: an explicit tab close (handled by
+ * `ProjectPage.onCloseTab` → {@link evictCanvasUndoManager}) OR a deletion —
+ * local or by a collaborator — which drops the tab via ProjectPage's `openTabs`
+ * filter WITHOUT a close call. This reconcile covers the deletion path so
+ * "the space left the user → its undo history is cleared" holds for BOTH paths,
+ * preventing a leaked manager and a stale pre-delete undo stack resurfacing if
+ * the space is restored under the same id. Idempotent (evict is a no-op once
+ * gone). Safe to run on the active just-deleted space: ProjectPage recomputes
+ * `activeSpace` in the same render, so that space's `useCanvasSpace` has already
+ * unmounted (and nulled its manager ref) before this effect runs.
+ * @param projectId - Project the open tabs belong to.
+ * @param openTabIds - This user's open-tab space ids.
+ * @param liveSpaceIds - The set of space ids that still exist in the project.
+ */
+export function evictUndoForVanishedSpaces(
+  projectId: string,
+  openTabIds: ReadonlyArray<string>,
+  liveSpaceIds: ReadonlySet<string>,
+): void {
+  for (const id of openTabIds) {
+    if (!liveSpaceIds.has(id)) {
+      evictCanvasUndoManager(docName.canvasSpace(projectId, id));
+    }
+  }
+}
+
+/** Reset the undo-manager cache (test helper — not for production use). */
+export function _resetCanvasUndoCacheForTests(): void {
+  undoManagers.forEach((m) => m.destroy());
+  undoManagers.clear();
+}
+
+/**
  * Commit several canvas mutations as ONE atomic undo entry — frontend-owned.
  * Each individual binding (`setNodePosition`, `moveGroup`, `removeFromGroup`,
  * …) opens its own `CANVAS_UNDO` transaction; Yjs nests a transaction opened
@@ -198,12 +286,18 @@ export function useCanvasSpace(
     };
   }, [doc]);
 
-  // Per-space undo manager. Created + destroyed in one effect keyed on the
-  // doc (StrictMode-safe, same pattern as useSocket): a page refresh is a new
-  // JS context so the stack is empty by construction (design decision: refresh
-  // clears history). `canUndo` / `canRedo` are mirrored into React state both
-  // from the manager's stack events AND imperatively after each undo / redo —
-  // see `syncAvailability` for why the events alone are not enough.
+  // Per-space undo manager, fetched from the doc-keyed cache (NOT created +
+  // destroyed with this component). The cache binds the manager's lifetime to
+  // the space DOC, so a tab switch — which remounts this hook via
+  // `key={activeSpace.id}` — re-fetches the SAME manager with its undo stack
+  // intact (the cross-space-preservation fix). Closing the tab evicts it
+  // (`ProjectPage.onCloseTab` → `evictCanvasUndoManager`) so a reopened space
+  // starts empty; a page refresh is a new JS context so the cache is empty by
+  // construction. This effect only attaches / detaches the availability
+  // listeners — it must NOT destroy the manager on unmount. `canUndo` /
+  // `canRedo` are mirrored into React state both from the manager's stack
+  // events AND imperatively after each undo / redo — see `syncAvailability`
+  // for why the events alone are not enough.
   const undoManagerRef = React.useRef<Y.UndoManager | null>(null);
   const [canUndo, setCanUndo] = React.useState(false);
   const [canRedo, setCanRedo] = React.useState(false);
@@ -223,20 +317,22 @@ export function useCanvasSpace(
   }, []);
 
   React.useEffect(() => {
-    const undoManager = createCanvasUndoManager(doc);
+    const undoManager = getCanvasUndoManager(doc, name);
     undoManagerRef.current = undoManager;
     undoManager.on('stack-item-added', syncAvailability);
     undoManager.on('stack-item-popped', syncAvailability);
     undoManager.on('stack-cleared', syncAvailability);
     syncAvailability();
     return () => {
+      // Detach this component's listeners but DO NOT destroy the manager — it
+      // is owned by the doc-keyed cache and must outlive this remount so the
+      // undo stack survives a tab switch. Eviction happens on tab close.
       undoManager.off('stack-item-added', syncAvailability);
       undoManager.off('stack-item-popped', syncAvailability);
       undoManager.off('stack-cleared', syncAvailability);
-      undoManager.destroy();
       undoManagerRef.current = null;
     };
-  }, [doc, syncAvailability]);
+  }, [doc, name, syncAvailability]);
 
   const undo = React.useCallback((): void => {
     undoManagerRef.current?.undo();
