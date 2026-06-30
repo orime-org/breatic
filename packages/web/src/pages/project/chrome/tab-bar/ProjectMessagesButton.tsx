@@ -31,6 +31,7 @@ import {
 } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /**
@@ -225,6 +226,7 @@ export function ProjectMessagesButton({
               size='chrome'
               aria-label={t('spaces.history.label')}
               data-testid='project-messages-trigger'
+              onFocusCapture={suppressTooltipFocusOpen}
               style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
             >
               <History className='h-[18px] w-[18px]' />

@@ -241,6 +241,30 @@ describe('ProjectMessagesButton', () => {
     expect(items[0].getAttribute('data-testid')).toBe('project-messages-entry-new');
     expect(items[1].getAttribute('data-testid')).toBe('project-messages-entry-old');
   });
+
+  it('closing the messages sheet returns focus to the trigger without re-popping its tooltip', async () => {
+    // C mechanism: focus returns to the trigger on close (we don't block it);
+    // the trigger's `onFocusCapture` stops the tooltip from opening on that
+    // refocus. (Tooltip-not-popping is also covered by real-browser smoke.)
+    const user = userEvent.setup();
+    render(
+      <ProjectMessagesButton
+        messages={[M_DELETED]}
+        usersById={USERS_BY_ID}
+        spacesById={SPACES_BY_ID}
+      />,
+    );
+    const trigger = screen.getByTestId('project-messages-trigger');
+    await user.click(trigger);
+    await screen.findByTestId('project-messages-sheet');
+    await user.keyboard('{Escape}');
+    expect(document.activeElement).toBe(trigger);
+    expect(
+      document.querySelector(
+        '[data-state="instant-open"],[data-state="delayed-open"]',
+      ),
+    ).toBeNull();
+  });
 });
 
 describe('relativeTime — pure bucket', () => {

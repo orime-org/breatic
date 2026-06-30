@@ -40,6 +40,7 @@ import {
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import type { SpaceType } from '@web/spaces';
@@ -136,6 +137,7 @@ export function SpaceDrawer({
               size='chrome'
               aria-label={t('spaces.drawer.label')}
               data-testid='space-drawer-trigger'
+              onFocusCapture={suppressTooltipFocusOpen}
               style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
             >
               <Menu className='h-[18px] w-[18px]' />
@@ -381,6 +383,7 @@ function SpaceDrawerRow({
                   label={t('spaces.drawer.action.delete')}
                   testId={`space-drawer-delete-${space.id}`}
                   onClick={(e) => e.stopPropagation()}
+                  onFocusCapture={suppressTooltipFocusOpen}
                   disabled={deleteBusy}
                 >
                   <Trash2 className='h-4 w-4' />
@@ -426,6 +429,13 @@ interface RowActionProps {
   children: React.ReactNode;
   disabled?: boolean;
   busy?: boolean;
+  /**
+   * `onFocusCapture` for the button — passed only when this action's button
+   * is ALSO an overlay trigger (the delete action wraps it in AlertDialog),
+   * so closing that overlay does not re-pop the row-action tooltip. See
+   * {@link suppressTooltipFocusOpen}.
+   */
+  onFocusCapture?: React.FocusEventHandler;
 }
 
 /**
@@ -438,6 +448,7 @@ interface RowActionProps {
  * @param root0.children - Icon content rendered inside the button.
  * @param root0.disabled - When `true`, the button is disabled and shows a not-allowed cursor.
  * @param root0.busy - When `true`, the button is disabled and pulses to indicate an in-flight operation.
+ * @param root0.onFocusCapture - `onFocusCapture` for the button — set only when the action is also an overlay trigger (delete), so closing it does not re-pop the tooltip.
  * @returns The icon action button with its tooltip.
  */
 function RowAction({
@@ -447,6 +458,7 @@ function RowAction({
   children,
   disabled,
   busy,
+  onFocusCapture,
 }: RowActionProps): React.JSX.Element {
   // Wrap the icon button in a shadcn Tooltip (visual / timing
   // consistent with the rest of the chrome). Native `title` attribute
@@ -463,6 +475,7 @@ function RowAction({
           type='button'
           aria-label={label}
           onClick={onClick}
+          onFocusCapture={onFocusCapture}
           disabled={disabled || busy}
           data-testid={testId}
           className={cn(

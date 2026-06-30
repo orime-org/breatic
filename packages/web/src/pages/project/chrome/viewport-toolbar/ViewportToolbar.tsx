@@ -19,12 +19,13 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { cn } from '@web/lib/utils';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 
-/** Hard limits on canvas zoom — 10%–200% (ReactFlow is pinned to the same range). */
+/** Hard limits on canvas zoom — 10%–800% (ReactFlow is pinned to the same range). */
 const ZOOM_MIN = 0.1;
-const ZOOM_MAX = 2;
-const ZOOM_PRESETS = [0.1, 0.25, 0.5, 1, 1.5, 2] as const;
+const ZOOM_MAX = 8;
+const ZOOM_PRESETS = [0.1, 0.25, 0.5, 1, 1.5, 2, 4, 8] as const;
 
 interface ViewportToolbarProps {
   zoom: number;
@@ -278,10 +279,10 @@ interface ZoomMenuProps {
 /**
  * Zoom readout + popover with preset shortcuts and a custom input.
  *
- * Click the readout → popover opens with six preset rows
- * (25/50/100/150/200/400%) and a custom-value input. Picking a preset
- * or pressing Enter on the input applies the zoom and closes the
- * popover; the value is clamped to [10%, 400%]. Input accepts
+ * Click the readout → popover opens with eight preset rows
+ * (10/25/50/100/150/200/400/800%) and a custom-value input. Picking a
+ * preset or pressing Enter on the input applies the zoom and closes the
+ * popover; the value is clamped to [10%, 800%]. Input accepts
  * `"150"` or `"150%"`.
  *
  * Every preset (including 100%) goes through the same `apply` path —
@@ -344,6 +345,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
               type='button'
               aria-label={t('viewportToolbar.zoomResetAria')}
               data-testid='zoom-readout-trigger'
+              onFocusCapture={suppressTooltipFocusOpen}
               className='inline-flex h-8 w-12 shrink-0 items-center justify-center rounded-md bg-transparent text-2xs tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
             >
               <span data-testid='zoom-readout'>{Math.round(zoom * 100)}%</span>

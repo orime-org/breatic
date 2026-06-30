@@ -23,6 +23,7 @@ import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import type { SpaceType } from '@web/spaces';
 import { useUIStore } from '@web/stores';
 import { NewSpaceDialog } from '@web/pages/project/chrome/tab-bar/NewSpaceDialog';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
 import { ProjectMessagesButton } from '@web/pages/project/chrome/tab-bar/ProjectMessagesButton';
 import { SpaceTab } from '@web/pages/project/chrome/tab-bar/SpaceTab';
@@ -433,6 +434,7 @@ export function SpaceTabBar({
                 size='chrome'
                 aria-label={t('chrome.tooltip.newSpace')}
                 data-testid='new-space-button'
+                onFocusCapture={suppressTooltipFocusOpen}
                 style={{
                   height: 'var(--btn-chrome)',
                   width: 'var(--btn-chrome)',

@@ -1528,11 +1528,11 @@ function CanvasSpaceInner({
           deleteKeyCode={DELETE_KEYS}
           proOptions={{ hideAttribution: true }}
           fitView
-          // Canvas zoom pinned to 10%–200% (the viewport toolbar's ZOOM_MIN /
+          // Canvas zoom pinned to 10%–800% (the viewport toolbar's ZOOM_MIN /
           // ZOOM_MAX use the same range); overrides ReactFlow's default 0.1–4
-          // ceiling so wheel / pinch can't exceed 200%.
+          // ceiling so wheel / pinch can't exceed 800%.
           minZoom={0.1}
-          maxZoom={2}
+          maxZoom={8}
           // Figma-like interaction: left-button drag marquee-selects (not
           // pans); two-finger trackpad scroll pans the canvas freely; pinch
           // zooms. With panOnScroll on, a plain wheel / two-finger scroll pans
