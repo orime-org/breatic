@@ -1665,7 +1665,7 @@
   "chrome": {
     "tooltip": {
       "export": "내보내기",
-      "share": "공유",
+      "share": "초대",
       "notifications": "알림",
       "newSpace": "새 Space",
       "allSpaces": "모든 Spaces",

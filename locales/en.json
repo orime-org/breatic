@@ -1665,7 +1665,7 @@
   "chrome": {
     "tooltip": {
       "export": "Export",
-      "share": "Share",
+      "share": "Invite",
       "notifications": "Notifications",
       "newSpace": "New space",
       "allSpaces": "All spaces",

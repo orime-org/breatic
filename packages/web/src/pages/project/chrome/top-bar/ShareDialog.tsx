@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Copy, Send, Share2 } from 'lucide-react';
+import { Copy, Send, UserPlus } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
 
@@ -141,7 +141,7 @@ export function ShareDialog({
               aria-label={t('chrome.tooltip.share')}
               onFocusCapture={suppressTooltipFocusOpen}
             >
-              <Share2 className='h-[18px] w-[18px]' />
+              <UserPlus className='h-[18px] w-[18px]' />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
