@@ -79,7 +79,7 @@ class FakeRedis {
     return this.get(key).size;
   }
 
-  async expire(key: string, _sec: number): Promise<number> {
+  async expire(_key: string, _sec: number): Promise<number> {
     this.assertOk("expire");
     return 1;
   }

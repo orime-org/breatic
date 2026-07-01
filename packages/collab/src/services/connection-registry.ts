@@ -88,11 +88,14 @@ export interface ConnectionRegistry {
    * @returns the number of live connections cluster-wide.
    */
   count(documentName: string): Promise<number>;
-  /** Refresh the score of every live member owned by this instance. @returns once refreshed. */
+  /**
+   * Refresh the score of every live member owned by this instance.
+   * @returns once every refresh has been attempted (best-effort / fail-open).
+   */
   heartbeat(): Promise<void>;
-  /** Start the heartbeat timer (idempotent). @returns nothing. */
+  /** Start the heartbeat timer (idempotent). */
   start(): void;
-  /** Stop the heartbeat timer. @returns nothing. */
+  /** Stop the heartbeat timer. */
   stop(): void;
 }
 
@@ -136,6 +139,7 @@ export function createConnectionRegistry(
   }
 
   /**
+   * Register a connection: ZADD to the doc's sorted set + refresh the key TTL.
    * @param documentName - Document the socket attached to.
    * @param socketId - Socket id.
    * @returns once attempted (fail-open).
@@ -162,6 +166,7 @@ export function createConnectionRegistry(
   }
 
   /**
+   * Remove a cleanly-disconnected connection: ZREM from the doc's sorted set.
    * @param documentName - Document the socket was attached to.
    * @param socketId - Socket id to remove.
    * @returns once attempted (fail-open).
@@ -186,6 +191,7 @@ export function createConnectionRegistry(
   }
 
   /**
+   * Prune stale members, then return the doc's surviving member count.
    * @param documentName - Document to count.
    * @returns cluster-wide live connection count (0 on Redis error).
    */
@@ -225,14 +231,14 @@ export function createConnectionRegistry(
     }
   }
 
-  /** @returns nothing; starts the heartbeat timer once. */
+  /** Start the heartbeat timer once (idempotent — a second call is a no-op). */
   function start(): void {
     if (timer) return;
     timer = setInterval(() => void heartbeat(), heartbeatMs);
     if (typeof timer.unref === "function") timer.unref();
   }
 
-  /** @returns nothing; stops the heartbeat timer. */
+  /** Stop the heartbeat timer (safe to call when not started). */
   function stop(): void {
     if (timer) {
       clearInterval(timer);
