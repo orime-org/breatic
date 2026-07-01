@@ -9,6 +9,7 @@ import {
   openSpaceTab,
   setActiveSpace,
   appendSpace,
+  planVanishedSpaceReconcile,
 } from '@web/data/yjs/project-meta';
 
 /**
@@ -170,3 +171,43 @@ function readUserState(): {
 
 // Suppress unused: destroyDoc imported for symmetry with manager test
 void destroyDoc;
+
+describe('planVanishedSpaceReconcile — per-user reconcile when spaces vanish', () => {
+  it('active space deleted → reactivate the first still-live open tab + prune the gone id', () => {
+    // openTabIds [a,b,c], a was deleted and was active. Reactivate to b
+    // (first remaining visible tab), prune a.
+    const out = planVanishedSpaceReconcile(
+      ['a', 'b', 'c'],
+      new Set(['b', 'c']),
+      'a',
+    );
+    expect(out.tabsToClose).toEqual(['a']);
+    expect(out.reactivateTo).toBe('b');
+  });
+
+  it('active deleted with no other open tab still live → reactivate to null (empty state)', () => {
+    // Only tab a was open and it was deleted; the project still has space x
+    // (>=1 guaranteed) but it is not in this user's open tabs.
+    const out = planVanishedSpaceReconcile(['a'], new Set(['x']), 'a');
+    expect(out.tabsToClose).toEqual(['a']);
+    expect(out.reactivateTo).toBeNull();
+  });
+
+  it('deleting a NON-active space leaves the active tab untouched (only prune)', () => {
+    const out = planVanishedSpaceReconcile(['a', 'b'], new Set(['a']), 'a');
+    expect(out.tabsToClose).toEqual(['b']);
+    expect(out.reactivateTo).toBeUndefined(); // active 'a' still live → no change
+  });
+
+  it('no vanished spaces → nothing to do', () => {
+    const out = planVanishedSpaceReconcile(['a', 'b'], new Set(['a', 'b']), 'a');
+    expect(out.tabsToClose).toEqual([]);
+    expect(out.reactivateTo).toBeUndefined();
+  });
+
+  it('null active + a vanished tab → prune it, no reactivation', () => {
+    const out = planVanishedSpaceReconcile(['a', 'b'], new Set(['a']), null);
+    expect(out.tabsToClose).toEqual(['b']);
+    expect(out.reactivateTo).toBeUndefined();
+  });
+});

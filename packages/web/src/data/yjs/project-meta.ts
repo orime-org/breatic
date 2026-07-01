@@ -345,6 +345,32 @@ export function openSpaceTab(
 }
 
 /**
+ * Plan the per-user tab reconcile after the project's spaces change. Returns
+ * which open-tab ids have VANISHED (deleted locally or by a collaborator — no
+ * longer in `liveSpaceIds`) and, when the active space is among the vanished,
+ * which still-live open tab to activate instead: the first remaining open tab,
+ * or null for the empty state. Pure — the caller applies the result via
+ * {@link closeSpaceTab} / {@link setActiveSpace}. `reactivateTo === undefined`
+ * means the active space is still live, so leave it alone (no-op).
+ * @param openTabIds - This user's open-tab space ids.
+ * @param liveSpaceIds - The set of space ids that still exist in the project.
+ * @param activeSpaceId - This user's active space id (or null).
+ * @returns The tab ids to close and the next active id (undefined = no change).
+ */
+export function planVanishedSpaceReconcile(
+  openTabIds: ReadonlyArray<string>,
+  liveSpaceIds: ReadonlySet<string>,
+  activeSpaceId: string | null,
+): { tabsToClose: string[]; reactivateTo: string | null | undefined } {
+  const tabsToClose = openTabIds.filter((id) => !liveSpaceIds.has(id));
+  const reactivateTo =
+    activeSpaceId !== null && !liveSpaceIds.has(activeSpaceId)
+      ? (openTabIds.find((id) => liveSpaceIds.has(id)) ?? null)
+      : undefined;
+  return { tabsToClose, reactivateTo };
+}
+
+/**
  * Close a Space tab for the given user. No-op if the tab is not open.
  * Does NOT delete the Space — the Space stays in `spaces`; the user's
  * tab bar just stops showing it. To fully delete a Space, call the

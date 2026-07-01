@@ -35,11 +35,20 @@ const SPACE: ProjectSpace = {
   locked: false,
 };
 
+// A second space so SPACE is not the only one — delete is enabled by default.
+// Deleting the LAST space is gated (project keeps >=1), tested separately.
+const SIBLING: ProjectSpace = {
+  id: 'sp-2',
+  name: 'Teaser',
+  type: 'canvas',
+  locked: false,
+};
+
 function setup(overrides: Partial<React.ComponentProps<typeof SpaceDrawer>> = {}) {
   const onDeleteSpace = vi.fn();
   render(
     <SpaceDrawer
-      spaces={[SPACE]}
+      spaces={[SPACE, SIBLING]}
       openTabIds={[]}
       activeSpaceId=''
       projectId='proj-1'
@@ -108,7 +117,23 @@ describe('SpaceDrawer', () => {
 
   it('locked spaces show a disabled delete action with no AlertDialog', async () => {
     const user = userEvent.setup();
-    setup({ spaces: [{ ...SPACE, locked: true }] });
+    // Two spaces so the disabled state is due to LOCK, not last-space.
+    setup({ spaces: [{ ...SPACE, locked: true }, SIBLING] });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    const deleteBtn = screen.getByTestId('space-drawer-delete-sp-1');
+    expect(deleteBtn).toBeDisabled();
+    await user.click(deleteBtn);
+    expect(
+      screen.queryByTestId('space-drawer-delete-confirm-sp-1'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('the LAST remaining space has a disabled delete action (project keeps >=1)', async () => {
+    // Only one space — its delete must be disabled (you cannot delete the last
+    // one). Backend refuses too; this is the UI gate so the affordance is never
+    // offered.
+    const user = userEvent.setup();
+    setup({ spaces: [SPACE] });
     await user.click(screen.getByTestId('space-drawer-trigger'));
     const deleteBtn = screen.getByTestId('space-drawer-delete-sp-1');
     expect(deleteBtn).toBeDisabled();
