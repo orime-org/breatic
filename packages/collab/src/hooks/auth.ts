@@ -131,25 +131,15 @@ export interface CreateAuthHookOptions {
    * cross-instance registry, #1421) — not just this process's local
    * connections, so a doc cannot hold N×cap connections across N
    * instances before any of them trips the cap. This connection is NOT
-   * yet included: it is registered by {@link registerConnection} only
-   * AFTER this count + the cap decision (so a connection never counts
-   * against its own cap check, and a rejected connection never counts at
-   * all). When the count is already at the cap, this connection is
-   * degraded to read-only instead of being rejected (mirrors Figma /
-   * Google Docs "the file is full → you can view but not edit"). Returns
-   * a Promise because the count is a Redis round-trip.
+   * included: registration happens in the `connected` lifecycle hook
+   * (after this hook returns and the Connection object exists), so a
+   * connection never counts against its own cap check. When the count is
+   * already at the cap, this connection is degraded to read-only instead
+   * of being rejected (mirrors Figma / Google Docs "the file is full →
+   * you can view but not edit"). Returns a Promise because the count is a
+   * Redis round-trip.
    */
   countConnections: (documentName: string) => Promise<number>;
-  /**
-   * Register this connection in the cross-instance registry (#1421).
-   * Called ONLY after every rejection check passes, so a rejected
-   * connection (bad cookie / non-member / deleted space) never pollutes
-   * the count — Hocuspocus fires no onDisconnect for a connection it
-   * rejects in onAuthenticate, so registering earlier (e.g. at onConnect)
-   * would leak the member until its TTL. All roles register (a viewer
-   * still holds a real connection slot that counts toward others' cap).
-   */
-  registerConnection: (documentName: string, socketId: string) => Promise<void>;
 }
 
 /**
@@ -200,25 +190,21 @@ async function loadProjectSpaceIds(
  * @param root0 - Hook construction options.
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
  * @param root0.maxConnectionsPerDoc - Per-document concurrent-connection cap (0 = unlimited); at the cap, extra connections degrade to read-only. The meta doc is exempt.
- * @param root0.countConnections - Counts a document's live connections cluster-wide (this connection NOT yet included) to evaluate the cap.
- * @param root0.registerConnection - Registers this connection in the cross-instance registry, after every rejection check passes.
- * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, registers the connection cluster-wide, mutates `connectionConfig.readOnly` for view-only members or at-capacity documents, and returns the user context — or throws to reject the connection.
+ * @param root0.countConnections - Counts a document's live connections cluster-wide (this connection not included) to evaluate the cap.
+ * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` for view-only members or at-capacity documents, and returns the user context — or throws to reject the connection.
  */
 export function createAuthHook({
   redis,
   maxConnectionsPerDoc,
   countConnections,
-  registerConnection,
 }: CreateAuthHookOptions) {
   return async ({
     documentName,
-    socketId,
     requestHeaders,
     connectionConfig,
   }: {
     token: string;
     documentName: string;
-    socketId: string;
     requestHeaders: IncomingHttpHeaders;
     connectionConfig: MutableConnectionConfig;
   }): Promise<AuthContext> => {
@@ -347,8 +333,9 @@ export function createAuthHook({
       //     never a "how many people can collaborate" surface. Only Space
       //     content docs (canvas / document / timeline) carry the cap.
       //   - `countConnections` is CLUSTER-WIDE (cross-instance registry)
-      //     and does NOT include this connection yet — we register it
-      //     just below, AFTER the count. So the boundary is `>= cap` (the
+      //     and does NOT include this connection — it is registered later,
+      //     in the `connected` lifecycle hook (after this hook returns and
+      //     the Connection object exists). So the boundary is `>= cap` (the
       //     doc already holds `cap` connections → this one is the extra),
       //     matching the old local `getConnectionsCount() >= cap`.
       //   - The count is evaluated only for roles that would otherwise be
@@ -383,16 +370,16 @@ export function createAuthHook({
       }
       connectionConfig.readOnly = role === "viewer" || atCapacity;
 
-      // Register this connection in the cross-instance registry — only
-      // now, after every rejection check has passed, so a rejected
-      // connection never pollutes the count (Hocuspocus fires no
-      // onDisconnect for a connection it rejects here). All roles register
-      // (a viewer still holds a real slot counting toward others' cap);
-      // the meta doc is exempt from the cap, so it is not registered.
-      if (parsed.kind !== "meta") {
-        await registerConnection(documentName, socketId);
-      }
-
+      // NOTE: this connection is registered in the cross-instance registry
+      // by the `connected` lifecycle hook (see hocuspocus.ts), NOT here.
+      // Registration is deliberately bound to the Connection object's
+      // existence so it is symmetric with the onDisconnect unregister:
+      // Hocuspocus fires `connected` only after it creates the Connection
+      // (and wires its onClose → onDisconnect), and fires onDisconnect only
+      // for such connections. Registering in this hook instead would leak a
+      // phantom member for any connection that passes auth but then fails
+      // during document load (no Connection object → no onDisconnect ever),
+      // whose member the per-instance heartbeat would refresh forever (#1421).
       return {
         user: { id: userId, role },
       };

@@ -135,24 +135,21 @@ describe("createAuthHook", () => {
   const buildHook = (capacity?: {
     maxConnectionsPerDoc?: number;
     countConnections?: (documentName: string) => Promise<number>;
-    registerConnection?: (documentName: string, socketId: string) => Promise<void>;
   }) => {
     const hook = createAuthHook({
       redis: mockRedis,
       maxConnectionsPerDoc: capacity?.maxConnectionsPerDoc ?? 100,
       countConnections: capacity?.countConnections ?? (async () => 0),
-      registerConnection: capacity?.registerConnection ?? (async () => undefined),
     });
     type HookArgs = Parameters<typeof hook>[0];
-    // Tests may omit `socketId` / `connectionConfig`; default both so
-    // only cap / register tests that care need to supply them.
+    // Tests may omit `connectionConfig`; default it so only cap tests that
+    // assert the read-only side effect need to supply their own.
     return (
-      args: Omit<HookArgs, "connectionConfig" | "socketId"> &
-        Partial<Pick<HookArgs, "connectionConfig" | "socketId">>,
+      args: Omit<HookArgs, "connectionConfig"> &
+        Partial<Pick<HookArgs, "connectionConfig">>,
     ): ReturnType<typeof hook> =>
       hook({
         ...args,
-        socketId: args.socketId ?? "socket-test",
         connectionConfig: args.connectionConfig ?? { readOnly: false },
       });
   };
@@ -353,19 +350,14 @@ describe("createAuthHook", () => {
     expect(connectionConfig.readOnly).toBe(false);
   });
 
-  it("exempts the meta doc from the connection cap (project infrastructure — count never consulted, never registered)", async () => {
+  it("exempts the meta doc from the connection cap (project infrastructure — count never consulted)", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
     // Even far over cap, the meta doc is never degraded — everyone must
     // connect to it (#1421 decision). The cluster-wide count must not even
-    // be consulted, and the meta connection is not registered.
+    // be consulted for meta.
     const countSpy = vi.fn(async () => 999);
-    const registerSpy = vi.fn(async () => undefined);
-    const hook = buildHook({
-      maxConnectionsPerDoc: 2,
-      countConnections: countSpy,
-      registerConnection: registerSpy,
-    });
+    const hook = buildHook({ maxConnectionsPerDoc: 2, countConnections: countSpy });
     const connectionConfig = { readOnly: false };
 
     await hook({
@@ -377,20 +369,14 @@ describe("createAuthHook", () => {
 
     expect(connectionConfig.readOnly).toBe(false);
     expect(countSpy).not.toHaveBeenCalled();
-    expect(registerSpy).not.toHaveBeenCalled();
   });
 
-  it("skips the cluster-wide count for a viewer (already read-only, no wasted Redis round-trip) but still registers it", async () => {
+  it("skips the cluster-wide count for a viewer (already read-only, no wasted Redis round-trip)", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("viewer");
     fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
     const countSpy = vi.fn(async () => 0);
-    const registerSpy = vi.fn(async () => undefined);
-    const hook = buildHook({
-      maxConnectionsPerDoc: 2,
-      countConnections: countSpy,
-      registerConnection: registerSpy,
-    });
+    const hook = buildHook({ maxConnectionsPerDoc: 2, countConnections: countSpy });
     const connectionConfig = { readOnly: false };
 
     await hook({
@@ -398,14 +384,11 @@ describe("createAuthHook", () => {
       documentName: `project-${PID}/canvas-${SID}`,
       requestHeaders: withCookie("tok"),
       connectionConfig,
-      socketId: "sock-v",
     });
 
-    // Viewer is read-only regardless, and the cap count is skipped — but a
-    // viewer still holds a real slot, so it IS registered.
+    // Viewer is read-only regardless, and the cap count is skipped.
     expect(connectionConfig.readOnly).toBe(true);
     expect(countSpy).not.toHaveBeenCalled();
-    expect(registerSpy).toHaveBeenCalledWith(`project-${PID}/canvas-${SID}`, "sock-v");
   });
 
   it("logs `connection_cap_degraded` warn when an editor drops to read-only at cap", async () => {
@@ -436,61 +419,11 @@ describe("createAuthHook", () => {
     );
   });
 
-  // ── Registration timing (#1421): only AFTER every rejection check ────
-
-  it("registers a connection (with its socketId) after a successful editor auth on a space doc", async () => {
-    getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("editor");
-    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
-    const registerSpy = vi.fn(async () => undefined);
-    const hook = buildHook({ registerConnection: registerSpy });
-
-    await hook({
-      token: PLACEHOLDER_TOKEN,
-      documentName: `project-${PID}/canvas-${SID}`,
-      requestHeaders: withCookie("tok"),
-      socketId: "sock-42",
-    });
-
-    expect(registerSpy).toHaveBeenCalledWith(`project-${PID}/canvas-${SID}`, "sock-42");
-  });
-
-  it("does NOT register a rejected connection (not a member) — no leaked count", async () => {
-    getSessionMock.mockResolvedValue("attacker");
-    loadProjectRoleMock.mockResolvedValue(null);
-    const registerSpy = vi.fn(async () => undefined);
-    const hook = buildHook({ registerConnection: registerSpy });
-
-    await expect(
-      hook({
-        token: PLACEHOLDER_TOKEN,
-        documentName: `project-${PID}/canvas-${SID}`,
-        requestHeaders: withCookie("tok"),
-        socketId: "sock-x",
-      }),
-    ).rejects.toThrow(/not authorized/);
-
-    expect(registerSpy).not.toHaveBeenCalled();
-  });
-
-  it("does NOT register a connection to a deleted space (space-exists reject)", async () => {
-    getSessionMock.mockResolvedValue("user-1");
-    loadProjectRoleMock.mockResolvedValue("editor");
-    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces(["other-space-id"]));
-    const registerSpy = vi.fn(async () => undefined);
-    const hook = buildHook({ registerConnection: registerSpy });
-
-    await expect(
-      hook({
-        token: PLACEHOLDER_TOKEN,
-        documentName: `project-${PID}/canvas-${SID}`,
-        requestHeaders: withCookie("tok"),
-        socketId: "sock-y",
-      }),
-    ).rejects.toThrow(/does not exist/);
-
-    expect(registerSpy).not.toHaveBeenCalled();
-  });
+  // NOTE: registration into the cross-instance registry no longer happens
+  // in this hook — it moved to the `connected` lifecycle hook so it stays
+  // symmetric with the onDisconnect unregister (#1421 phantom-leak fix;
+  // see hocuspocus.ts `shouldTrackConnection` + its test). The auth hook
+  // has no registry handle at all, so it structurally cannot register.
 
   it("accepts an active viewer; connection forced read-only (connectionConfig.readOnly mutated — the property Hocuspocus enforces)", async () => {
     getSessionMock.mockResolvedValue("user-1");
