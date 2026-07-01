@@ -1110,6 +1110,7 @@
         "unlock": "解除",
         "delete": "削除",
         "deleteLocked": "ロックされた Spaces は削除できません",
+        "deleteLastSpace": "Project には Space が少なくとも 1 つ必要です",
         "deleteConfirmTitle": "Space「{name}」を削除しますか？",
         "deleteConfirmDescription": "この Space と内容はソフト削除されます。Owner は Project メッセージチャンネルから復元できます。",
         "lockFail": "ロックに失敗しました",

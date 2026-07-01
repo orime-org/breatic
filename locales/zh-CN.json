@@ -1110,6 +1110,7 @@
         "unlock": "解锁",
         "delete": "删除",
         "deleteLocked": "锁住的 Spaces 无法删除",
+        "deleteLastSpace": "Project 至少保留一个 Space",
         "deleteConfirmTitle": "删除 Space「{name}」？",
         "deleteConfirmDescription": "此 Space 及其内容将被软删除。Owner 可从 Project 消息频道恢复。",
         "lockFail": "加锁失败",

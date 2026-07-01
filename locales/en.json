@@ -1110,6 +1110,7 @@
         "unlock": "Unlock",
         "delete": "Delete",
         "deleteLocked": "Locked spaces can't be deleted",
+        "deleteLastSpace": "A Project must keep at least one Space",
         "deleteConfirmTitle": "Delete space \"{name}\"?",
         "deleteConfirmDescription": "This space and its content will be soft-deleted. Owners can restore it from the project messages channel.",
         "lockFail": "Failed to lock",

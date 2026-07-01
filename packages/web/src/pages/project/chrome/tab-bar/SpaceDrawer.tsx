@@ -180,6 +180,7 @@ export function SpaceDrawer({
                 space={s}
                 isActive={s.id === activeSpaceId}
                 isOpen={openTabIds.includes(s.id)}
+                isLastSpace={spaces.length === 1}
                 onActivate={() => {
                   onActivate(s.id);
                   setOpen(false);
@@ -208,6 +209,8 @@ interface SpaceDrawerRowProps {
   space: ProjectSpace;
   isActive: boolean;
   isOpen: boolean;
+  /** True when this is the project's only space — its delete action is disabled. */
+  isLastSpace: boolean;
   onActivate: () => void;
   onView: () => void;
   onDeleteSpace?: (spaceId: string) => Promise<void> | void;
@@ -221,6 +224,7 @@ interface SpaceDrawerRowProps {
  * @param root0.space - The space rendered by this row.
  * @param root0.isActive - Whether this space is the user's active tab (shows the "editing" chip).
  * @param root0.isOpen - Whether this space is open as one of the user's tabs (shows the "open" chip).
+ * @param root0.isLastSpace - Whether this is the project's only space (disables delete — projects keep >=1).
  * @param root0.onActivate - Activates this space.
  * @param root0.onView - Opens this space (read-only preview, or activates if already open).
  * @param root0.onDeleteSpace - RPC handler to delete this space; when omitted, the delete action is read-only.
@@ -231,6 +235,7 @@ function SpaceDrawerRow({
   space,
   isActive,
   isOpen,
+  isLastSpace,
   onActivate,
   onView,
   onDeleteSpace,
@@ -276,7 +281,7 @@ function SpaceDrawerRow({
    */
   const onDelete = async (e: React.MouseEvent): Promise<void> => {
     e.stopPropagation();
-    if (deleteBusy || space.locked || !onDeleteSpace) return;
+    if (deleteBusy || space.locked || isLastSpace || !onDeleteSpace) return;
     setDeleteBusy(true);
     try {
       await onDeleteSpace(space.id);
@@ -367,9 +372,16 @@ function SpaceDrawerRow({
               <Lock className='h-4 w-4' />
             )}
           </RowAction>
-          {space.locked ? (
+          {space.locked || isLastSpace ? (
+            // Disabled delete: locked content, OR the project's last space
+            // (a project must keep >=1). The backend refuses both too; this
+            // is the UI gate so the action is never offered.
             <RowAction
-              label={t('spaces.drawer.action.deleteLocked')}
+              label={
+                space.locked
+                  ? t('spaces.drawer.action.deleteLocked')
+                  : t('spaces.drawer.action.deleteLastSpace')
+              }
               testId={`space-drawer-delete-${space.id}`}
               onClick={(e) => e.stopPropagation()}
               disabled

@@ -320,11 +320,30 @@ async function handleDelete(
   let snapshot: Record<string, unknown> | null = null;
   try {
     let notFound = false;
+    let isLast = false;
     await conn.transact((doc: Y.Doc) => {
       const spaces = doc.getMap("spaces");
       const entry = spaces.get(spaceId);
       if (!(entry instanceof Y.Map)) {
         notFound = true;
+        return;
+      }
+      // A project must always keep at least one Space — refuse to delete the
+      // last remaining one. The `spaces.size` read + the delete run in one
+      // synchronous transact callback, so within a SINGLE collab instance they
+      // are atomic (JS is single-threaded; two RPCs share the same in-memory
+      // doc and cannot interleave their callbacks). NOTE: single-instance-
+      // atomic only — in a multi-instance deployment (DEPLOY.md: collab runs
+      // multiple instances synced via Redis pub/sub) two deletes on different
+      // instances can each pass this check before the other's delete syncs,
+      // racing spaces to zero. That is a PRE-EXISTING, systemic property of
+      // ALL space-rpc read-modify-write guards (see handleCreate's CONFLICT
+      // check for the identical pattern), tracked for a collab-wide
+      // distributed-lock DD; the frontend gate + this guard cover the common
+      // (single-instance / non-concurrent) case, and a zeroed project is
+      // recoverable (create is not gated).
+      if (spaces.size <= 1) {
+        isLast = true;
         return;
       }
       snapshot = snapshotMap(entry);
@@ -340,6 +359,13 @@ async function handleDelete(
     });
     if (notFound) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
+    }
+    if (isLast) {
+      return err(
+        req.id,
+        "CONFLICT",
+        "Cannot delete the last Space in a project",
+      );
     }
   } finally {
     await conn.disconnect();

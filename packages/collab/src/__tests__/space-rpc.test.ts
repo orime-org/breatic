@@ -216,6 +216,13 @@ describe("handleSpaceRpc — happy paths", () => {
     existing.set("locked", false);
     existing.set("order", 0);
     fakeMetaDoc.doc.getMap("spaces").set(SID, existing);
+    // A second space so SID is NOT the last one (deleting the last is refused
+    // — covered by its own test). Deleting a non-last space succeeds.
+    const sibling = new Y.Map();
+    sibling.set("id", "sp-sibling");
+    sibling.set("type", "canvas");
+    sibling.set("name", "Sibling");
+    fakeMetaDoc.doc.getMap("spaces").set("sp-sibling", sibling);
 
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
@@ -252,6 +259,30 @@ describe("handleSpaceRpc — happy paths", () => {
     );
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("NOT_FOUND");
+  });
+
+  it("space:delete refuses to delete the LAST remaining space (project keeps >=1)", async () => {
+    // Only one space in the project — deleting it would leave zero. The
+    // server is the authoritative guard (frontend also disables the button,
+    // but a race / collaborator could still try). It must refuse without
+    // removing the entry or soft-deleting the canvas row.
+    const only = new Y.Map();
+    only.set("id", SID);
+    only.set("type", "canvas");
+    only.set("name", "Only");
+    fakeMetaDoc.doc.getMap("spaces").set(SID, only);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "u-1", role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("CONFLICT");
+    // Entry still there, canvas row NOT soft-deleted.
+    expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(true);
+    expect(softDeleteByNameMock).not.toHaveBeenCalled();
   });
 
   it("space:lock toggles entry.locked + pushes correct kind", async () => {

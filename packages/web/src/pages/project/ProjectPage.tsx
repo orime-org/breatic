@@ -23,6 +23,7 @@ import {
   closeSpaceTab,
   openSpaceTab,
   setActiveSpace,
+  planVanishedSpaceReconcile,
   useProjectMeta,
   useProjectMessages,
   type ProjectSpace,
@@ -221,6 +222,30 @@ function ProjectWorkspace({
       new Set(spaces.map((s) => s.id)),
     );
   }, [projectId, openTabIds, spaces]);
+
+  // Reconcile this user's per-user tab state when spaces vanish (deleted
+  // locally or by a collaborator). Delete goes through the `space:delete` RPC,
+  // NOT `onCloseTab`, so without this the active space could be a now-deleted
+  // id: the canvas renders the `?? openTabs[0]` fallback but no tab is
+  // highlighted (activeSpaceId still points at the gone space). This prunes the
+  // vanished tab ids and, if the active one vanished, activates the first
+  // still-visible tab (or the empty state when none remain). Per-user + runs on
+  // every client, so the deleter AND collaborators each converge their own
+  // state. Local Yjs writes apply even on a viewer's read-only connection
+  // (they just don't persist), so the UI stays consistent for everyone.
+  React.useEffect(() => {
+    if (!userId) return;
+    const liveIds = new Set(spaces.map((s) => s.id));
+    const { tabsToClose, reactivateTo } = planVanishedSpaceReconcile(
+      openTabIds,
+      liveIds,
+      activeSpaceId,
+    );
+    for (const id of tabsToClose) closeSpaceTab(projectId, userId, id);
+    if (reactivateTo !== undefined) {
+      setActiveSpace(projectId, userId, reactivateTo);
+    }
+  }, [userId, projectId, openTabIds, spaces, activeSpaceId]);
 
   // Note: NO URL ↔ active-space reconcile. Per user decision
   // `[[feedback_space_type_vs_route]]`, Space is a type/template, not
