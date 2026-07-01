@@ -39,9 +39,13 @@ import {
 } from "@breatic/core";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import {
-  canvasSpaceDocName,
+  withSpaceDeleteLock,
+  SpaceDeleteLockBusyError,
+} from "@collab/services/space-delete-lock.js";
+import {
   spaceContentDocName,
   projectMetaDocName,
+  type DocKind,
   type ProjectRole,
   type SpaceRpcRequest,
   type SpaceRpcResponse,
@@ -201,31 +205,58 @@ function snapshotMap(m: Y.Map<unknown>): Record<string, unknown> {
 }
 
 /**
- * Soft-delete the `yjs_documents` row for a canvas-{spaceId} doc, via
- * the shared core repo (the single home for that table's SQL).
- * @param projectId - Project the canvas doc belongs to.
- * @param spaceId - Space whose canvas doc row is marked deleted.
+ * All Space content-doc kinds. A Space is exactly ONE of these, but its
+ * content doc is uniquely identified by (projectId, spaceId) — the kind is
+ * only part of the NAME. delete / restore act on every variant so a
+ * missing / corrupted meta `type` can never leave the real row untouched.
  */
-async function softDeleteCanvasRow(
+const SPACE_CONTENT_KINDS: readonly Exclude<DocKind, "meta">[] = [
+  "canvas",
+  "document",
+  "timeline",
+];
+
+/**
+ * Soft-delete a Space's content-doc `yjs_documents` row via the shared core
+ * repo. Soft-deletes EVERY kind variant of the (projectId, spaceId) content
+ * doc (idempotent no-op for the ones that don't exist), so the real row is
+ * always covered regardless of the meta `type` field — the authoritative
+ * `countLiveSpaceDocs` therefore always decrements (a ghost row left live by
+ * a corrupted type could otherwise inflate the count past the >=1 floor).
+ * @param projectId - Project the content doc belongs to.
+ * @param spaceId - Space whose content-doc row is marked deleted.
+ */
+async function softDeleteSpaceContentRows(
   projectId: string,
   spaceId: string,
 ): Promise<void> {
-  await yjsDocumentsRepo.softDeleteByName(
-    canvasSpaceDocName(projectId, spaceId),
+  await Promise.all(
+    SPACE_CONTENT_KINDS.map((kind) =>
+      yjsDocumentsRepo.softDeleteByName(
+        spaceContentDocName(projectId, spaceId, kind),
+      ),
+    ),
   );
 }
 
 /**
- * Restore (clear deleted_at on) the canvas-{spaceId} row, via the
- * shared core repo.
- * @param projectId - Project the canvas doc belongs to.
- * @param spaceId - Space whose canvas doc row has its `deleted_at` cleared.
+ * Restore (clear deleted_at on) a Space's content-doc row, mirroring
+ * {@link softDeleteSpaceContentRows} — every kind variant, so a delete /
+ * restore cycle round-trips the real row regardless of the meta `type`.
+ * @param projectId - Project the content doc belongs to.
+ * @param spaceId - Space whose content-doc row has its `deleted_at` cleared.
  */
-async function restoreCanvasRow(
+async function restoreSpaceContentRows(
   projectId: string,
   spaceId: string,
 ): Promise<void> {
-  await yjsDocumentsRepo.restoreByName(canvasSpaceDocName(projectId, spaceId));
+  await Promise.all(
+    SPACE_CONTENT_KINDS.map((kind) =>
+      yjsDocumentsRepo.restoreByName(
+        spaceContentDocName(projectId, spaceId, kind),
+      ),
+    ),
+  );
 }
 
 // ── Handlers ────────────────────────────────────────────────────────
@@ -294,14 +325,14 @@ async function handleCreate(
 }
 
 /**
- * Delete a Space: remove its `meta.spaces` entry, push a
- * `space-deleted` audit message (with snapshot for Restore), then
- * soft-delete its canvas PG row. Caller role ≥ editor.
+ * Delete a Space, serialized across collab instances by a per-project
+ * distributed lock so the "keep >=1 Space" guard cannot be raced to zero.
+ * Caller role ≥ editor. Maps a contended lock to `CONFLICT`.
  * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc the Space is removed from.
  * @param caller - Authenticated caller's userId + role, gating the operation.
  * @param req - The `space:delete` request carrying the target spaceId.
- * @returns A success response, or a `FORBIDDEN` / `NOT_FOUND` error.
+ * @returns A success response, or a `FORBIDDEN` / `NOT_FOUND` / `CONFLICT` error.
  */
 async function handleDelete(
   ctx: SpaceRpcContext,
@@ -313,14 +344,60 @@ async function handleDelete(
     return err(req.id, "FORBIDDEN", `Role ${caller.role} cannot delete Space`);
   }
   const { spaceId } = req.payload;
+  try {
+    // Serialize deletes for THIS project across every collab instance. The
+    // "keep >=1 Space" guard is a read-modify-write; without cross-instance
+    // mutual exclusion two collaborators on different instances can each
+    // pass it against their own not-yet-synced in-memory doc and race the
+    // project to zero Spaces (see the DD 2026-07-01).
+    return await withSpaceDeleteLock(projectId, () =>
+      runDelete(ctx, projectId, caller, req, spaceId),
+    );
+  } catch (e) {
+    if (e instanceof SpaceDeleteLockBusyError) {
+      return err(
+        req.id,
+        "CONFLICT",
+        "Another delete is in progress for this project; please retry",
+      );
+    }
+    throw e; // unexpected — let the dispatcher log + return INTERNAL
+  }
+}
+
+/**
+ * The `space:delete` critical section, run under the per-project lock.
+ *
+ * Reads the AUTHORITATIVE live-Space count from PG (strongly consistent
+ * across instances, unlike the eventually-consistent in-memory
+ * `meta.spaces` CRDT), refuses if deleting would leave zero, removes the
+ * meta entry + pushes the `space-deleted` audit, then soft-deletes the
+ * TYPE-correct content-doc PG row so the count decrements.
+ * @param ctx - Collab context providing the Hocuspocus server.
+ * @param projectId - Project whose meta doc the Space is removed from.
+ * @param caller - Authenticated caller's userId + role (audit actor).
+ * @param req - The `space:delete` request (for the echoed id).
+ * @param spaceId - Target Space id.
+ * @returns A success response, or a `NOT_FOUND` / `CONFLICT` (last Space) error.
+ */
+async function runDelete(
+  ctx: SpaceRpcContext,
+  projectId: string,
+  caller: SpaceRpcCaller,
+  req: Extract<SpaceRpcRequest, { type: "space:delete" }>,
+  spaceId: string,
+): Promise<SpaceRpcResponse> {
+  // Authoritative Space count from PG (shared + strongly consistent) — NOT
+  // the in-memory spaces.size, which lags cross-instance deletes by the
+  // pub/sub propagation window.
+  const liveCount = await yjsDocumentsRepo.countLiveSpaceDocs(projectId);
   const docName = projectMetaDocName(projectId);
   const conn = await ctx.hocuspocus.openDirectConnection(docName, {
     context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
   });
-  let snapshot: Record<string, unknown> | null = null;
+  let notFound = false;
+  let isLast = false;
   try {
-    let notFound = false;
-    let isLast = false;
     await conn.transact((doc: Y.Doc) => {
       const spaces = doc.getMap("spaces");
       const entry = spaces.get(spaceId);
@@ -328,25 +405,18 @@ async function handleDelete(
         notFound = true;
         return;
       }
-      // A project must always keep at least one Space — refuse to delete the
-      // last remaining one. The `spaces.size` read + the delete run in one
-      // synchronous transact callback, so within a SINGLE collab instance they
-      // are atomic (JS is single-threaded; two RPCs share the same in-memory
-      // doc and cannot interleave their callbacks). NOTE: single-instance-
-      // atomic only — in a multi-instance deployment (DEPLOY.md: collab runs
-      // multiple instances synced via Redis pub/sub) two deletes on different
-      // instances can each pass this check before the other's delete syncs,
-      // racing spaces to zero. That is a PRE-EXISTING, systemic property of
-      // ALL space-rpc read-modify-write guards (see handleCreate's CONFLICT
-      // check for the identical pattern), tracked for a collab-wide
-      // distributed-lock DD; the frontend gate + this guard cover the common
-      // (single-instance / non-concurrent) case, and a zeroed project is
-      // recoverable (create is not gated).
-      if (spaces.size <= 1) {
+      // Refuse to delete the last remaining Space. `liveCount` is the PG
+      // authority (read under the lock above), so this holds even when two
+      // instances delete near-simultaneously: the lock serializes them and
+      // each reads the count left by the previous holder's soft-delete.
+      // INVARIANT: any future RPC that can REDUCE a project's live Space
+      // count must run under withSpaceDeleteLock + this PG-count guard too,
+      // or the cross-instance protection is defeated.
+      if (liveCount <= 1) {
         isLast = true;
         return;
       }
-      snapshot = snapshotMap(entry);
+      const snapshot = snapshotMap(entry);
       const deletedName = entry.get("name") as string | undefined;
       spaces.delete(spaceId);
       pushProjectMessage(doc, {
@@ -354,27 +424,28 @@ async function handleDelete(
         actor: caller.userId,
         spaceId,
         spaceName: deletedName,
-        spaceSnapshot: snapshot ?? undefined,
+        spaceSnapshot: snapshot,
       });
     });
-    if (notFound) {
-      return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
-    }
-    if (isLast) {
-      return err(
-        req.id,
-        "CONFLICT",
-        "Cannot delete the last Space in a project",
-      );
-    }
   } finally {
     await conn.disconnect();
   }
-  // Soft-delete the canvas-{spaceId} PG row AFTER the meta mutation so
-  // a freshly reconnecting client cannot race in between (the
-  // auth-hook space-exists check refuses the connection regardless,
-  // belt-and-suspenders).
-  await softDeleteCanvasRow(projectId, spaceId);
+  if (notFound) {
+    return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
+  }
+  if (isLast) {
+    return err(
+      req.id,
+      "CONFLICT",
+      "Cannot delete the last Space in a project",
+    );
+  }
+  // Soft-delete the content-doc PG row AFTER the meta mutation (a
+  // reconnecting client is refused by the auth-hook space-exists check
+  // regardless). This decrements the authoritative count the guard reads;
+  // it covers every kind variant so a corrupted meta `type` can't leave a
+  // ghost row inflating the count.
+  await softDeleteSpaceContentRows(projectId, spaceId);
   return ok(req.id);
 }
 
@@ -604,7 +675,7 @@ async function handleRestore(
   } finally {
     await conn.disconnect();
   }
-  await restoreCanvasRow(projectId, spaceId);
+  await restoreSpaceContentRows(projectId, spaceId);
   return ok(req.id);
 }
 

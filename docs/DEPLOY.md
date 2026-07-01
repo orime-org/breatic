@@ -27,10 +27,10 @@ Breatic supports three deployment modes:
                               ┌──────┴──────┐
                          ┌────┤  Redis :6379 ├────┐
                          │    └──────────────┘    │
-                      DB 0    DB 1    DB 2    PG :5432
-                   session   BullMQ  Streams
-                    lock      queue   pub/sub
-                  rate-limit
+              DB 0     DB 1    DB 2      DB 3      PG :5432
+            session   BullMQ  Streams   collab
+             lock      queue  (x-svc)   pub/sub
+           rate-limit                   + lock
 ```
 
 | Component | Description |
@@ -40,7 +40,7 @@ Breatic supports three deployment modes:
 | **Collab** | Hocuspocus WebSocket server. Yjs real-time sync, Redis Streams consumer. |
 | **Worker** | BullMQ background processor. AIGC generation (image/video/audio/tts/3d). |
 | **PostgreSQL** | Primary database (Drizzle ORM). Schema managed by explicit migration — `pnpm db:migrate` locally, `migrate` service in Docker. |
-| **Redis** | 3 logical DBs: DB 0 (session/lock/rate-limit), DB 1 (BullMQ), DB 2 (Streams + Hocuspocus pub/sub). |
+| **Redis** | 4 logical DBs: DB 0 (session/lock/rate-limit), DB 1 (BullMQ), DB 2 (cross-service Streams), DB 3 (collab cross-instance coordination — Hocuspocus pub/sub + space-delete lock). |
 
 ---
 
@@ -104,7 +104,8 @@ Default values in `.env.dev` work out of the box:
 | `DATABASE_URL` | `postgres://breatic:breatic@localhost:5432/breatic` | Docker PG |
 | `REDIS_URL` | `redis://localhost:6379/0` | Session, lock, rate-limit |
 | `REDIS_QUEUE_URL` | `redis://localhost:6379/1` | BullMQ task queue |
-| `REDIS_STREAM_URL` | `redis://localhost:6379/2` | Streams + Hocuspocus pub/sub |
+| `REDIS_STREAM_URL` | `redis://localhost:6379/2` | Cross-service Streams (worker/server → collab) |
+| `REDIS_COLLAB_URL` | `redis://localhost:6379/3` | Collab cross-instance coordination (Hocuspocus pub/sub + space-delete lock) |
 | `ALLOWED_ORIGINS` | `http://localhost:8000` | Vite dev server (CORS, only needed if you bypass the dev proxy) |
 
 Frontend API/WebSocket URLs are **not** in `.env` — they resolve automatically from `window.location` at runtime. Vite's dev proxy (configured in `packages/web/vite.config.ts`) forwards `/api/*` to `localhost:3000`, `/ws` to `localhost:1234`, and `/uploads/*` to `localhost:3000`, so the browser sees a single origin (`localhost:8000`) just like it would see a single origin in production (`your-domain.com` via nginx).

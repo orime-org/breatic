@@ -36,6 +36,15 @@ export interface CollabHealthProbes {
   pingRedisGeneral: () => Promise<boolean>;
   /** Resolves true when the members-sync control Redis answers PING. */
   pingRedisStream: () => Promise<boolean>;
+  /**
+   * Resolves true when the collab coordination Redis (DB3,
+   * `REDIS_COLLAB_URL`) answers PING. Houses the Hocuspocus cross-instance
+   * pub/sub + the space-delete serialization lock; a drifted connection
+   * silently breaks cross-instance sync while everything else looks
+   * healthy, so healthz MUST probe it (same class of gap that once let a
+   * drifted DB0 reject every auth with a green healthz).
+   */
+  pingRedisCollab: () => Promise<boolean>;
   /** Resolves true when Postgres answers a trivial round-trip query. */
   pingPostgres: () => Promise<boolean>;
   /** Resolves true when the separate yjs-store Postgres answers a round-trip. */
@@ -65,6 +74,7 @@ export function buildCollabHealthChecks(probes: CollabHealthProbes): HealthCheck
   return [
     { name: "redis_general", check: probes.pingRedisGeneral },
     { name: "redis_stream", check: probes.pingRedisStream },
+    { name: "redis_collab", check: probes.pingRedisCollab },
     { name: "postgres", check: probes.pingPostgres },
     { name: "postgres_yjs", check: probes.pingYjsPostgres },
     { name: "hocuspocus_listening", check: async () => probes.isHocuspocusListening() },

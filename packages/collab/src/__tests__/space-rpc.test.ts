@@ -24,18 +24,38 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";
 
-const { softDeleteByNameMock, restoreByNameMock, seedInitialStateMock } =
-  vi.hoisted(() => ({
-    softDeleteByNameMock: vi.fn(),
-    restoreByNameMock: vi.fn(),
-    seedInitialStateMock: vi.fn(),
-  }));
+const {
+  softDeleteByNameMock,
+  restoreByNameMock,
+  seedInitialStateMock,
+  countLiveSpaceDocsMock,
+  withSpaceDeleteLockMock,
+  FakeLockBusyError,
+} = vi.hoisted(() => ({
+  softDeleteByNameMock: vi.fn(),
+  restoreByNameMock: vi.fn(),
+  seedInitialStateMock: vi.fn(),
+  countLiveSpaceDocsMock: vi.fn(),
+  withSpaceDeleteLockMock: vi.fn(),
+  FakeLockBusyError: class FakeLockBusyError extends Error {},
+}));
 
 // The yjs-store repo moved to collab; space-rpc imports it locally.
 vi.mock("@collab/services/yjs-documents.repo.js", () => ({
   softDeleteByName: softDeleteByNameMock,
   restoreByName: restoreByNameMock,
   seedInitialState: seedInitialStateMock,
+  countLiveSpaceDocs: countLiveSpaceDocsMock,
+}));
+
+// The cross-instance delete lock is unit-tested in space-delete-lock.test.ts.
+// Here we bypass it so the delete guard logic (PG authoritative count +
+// type-correct content-doc naming) is tested in isolation: the default just
+// runs the critical section directly (lock always acquired). The lock-busy
+// path is its own test that overrides this to reject.
+vi.mock("@collab/services/space-delete-lock.js", () => ({
+  withSpaceDeleteLock: withSpaceDeleteLockMock,
+  SpaceDeleteLockBusyError: FakeLockBusyError,
 }));
 
 // `createLogger` now comes from `@breatic/core` (the unified logger), which
@@ -91,6 +111,17 @@ beforeEach(() => {
   softDeleteByNameMock.mockReset();
   restoreByNameMock.mockReset();
   seedInitialStateMock.mockReset();
+  // Default: PG says the project has >=2 live spaces, so a delete proceeds
+  // unless a test overrides it. The guard trusts this PG count, not the
+  // in-memory spaces.size.
+  countLiveSpaceDocsMock.mockReset();
+  countLiveSpaceDocsMock.mockResolvedValue(2);
+  // Default: the per-project delete lock is always acquired — run the
+  // critical section directly.
+  withSpaceDeleteLockMock.mockReset();
+  withSpaceDeleteLockMock.mockImplementation(
+    async (_projectId: string, fn: () => Promise<unknown>) => fn(),
+  );
 });
 
 describe("handleSpaceRpc — role validation", () => {
@@ -262,10 +293,11 @@ describe("handleSpaceRpc — happy paths", () => {
   });
 
   it("space:delete refuses to delete the LAST remaining space (project keeps >=1)", async () => {
-    // Only one space in the project — deleting it would leave zero. The
+    // The authoritative PG count says only one live space remains. The
     // server is the authoritative guard (frontend also disables the button,
     // but a race / collaborator could still try). It must refuse without
-    // removing the entry or soft-deleting the canvas row.
+    // removing the entry or soft-deleting the content row.
+    countLiveSpaceDocsMock.mockResolvedValue(1);
     const only = new Y.Map();
     only.set("id", SID);
     only.set("type", "canvas");
@@ -280,9 +312,122 @@ describe("handleSpaceRpc — happy paths", () => {
     );
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("CONFLICT");
-    // Entry still there, canvas row NOT soft-deleted.
+    // Entry still there, content row NOT soft-deleted.
     expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(true);
     expect(softDeleteByNameMock).not.toHaveBeenCalled();
+  });
+
+  it("space:delete uses the PG authoritative count, not in-memory spaces.size (multi-instance safety)", async () => {
+    // TWO spaces are visible in THIS instance's in-memory meta doc, but the
+    // authoritative PG count says only one live space remains — a delete on
+    // another instance hasn't propagated via pub/sub yet. The guard MUST
+    // trust PG, not the stale in-memory size, or the project races to zero.
+    const a = new Y.Map();
+    a.set("id", SID);
+    a.set("type", "canvas");
+    a.set("name", "A");
+    fakeMetaDoc.doc.getMap("spaces").set(SID, a);
+    const b = new Y.Map();
+    b.set("id", "sp-b");
+    b.set("type", "canvas");
+    b.set("name", "B");
+    fakeMetaDoc.doc.getMap("spaces").set("sp-b", b);
+    countLiveSpaceDocsMock.mockResolvedValue(1); // PG authority: only 1 live
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "u-1", role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("CONFLICT");
+    expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(true);
+    expect(softDeleteByNameMock).not.toHaveBeenCalled();
+  });
+
+  it("space:delete soft-deletes the content doc named by the space TYPE, not hardcoded canvas", async () => {
+    // A document-type space: its content doc is `document-{id}`, NOT
+    // `canvas-{id}`. The delete must soft-delete the type-correct row or the
+    // PG space count won't decrement (breaking the authoritative guard).
+    const docSpace = new Y.Map();
+    docSpace.set("id", SID);
+    docSpace.set("type", "document");
+    docSpace.set("name", "Doc");
+    fakeMetaDoc.doc.getMap("spaces").set(SID, docSpace);
+    const sib = new Y.Map();
+    sib.set("id", "sp-sib");
+    sib.set("type", "canvas");
+    fakeMetaDoc.doc.getMap("spaces").set("sp-sib", sib);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "u-1", role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(true);
+    expect(softDeleteByNameMock).toHaveBeenCalledWith(
+      spaceContentDocName(PID, SID, "document"),
+    );
+  });
+
+  it("space:delete soft-deletes the real content row even when meta.type is missing (all variants, corruption-robust)", async () => {
+    // A space whose meta entry lost its `type` field (data corruption). The
+    // delete targets ALL content-doc name variants for the spaceId, so the
+    // real row is soft-deleted regardless — otherwise the authoritative count
+    // would keep counting a ghost row and could be inflated past the >=1 floor.
+    const corrupt = new Y.Map();
+    corrupt.set("id", SID);
+    // deliberately NO "type" field
+    corrupt.set("name", "Corrupt");
+    fakeMetaDoc.doc.getMap("spaces").set(SID, corrupt);
+    const sib = new Y.Map();
+    sib.set("id", "sp-sib");
+    sib.set("type", "canvas");
+    fakeMetaDoc.doc.getMap("spaces").set("sp-sib", sib);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "u-1", role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(true);
+    expect(softDeleteByNameMock).toHaveBeenCalledWith(
+      spaceContentDocName(PID, SID, "canvas"),
+    );
+    expect(softDeleteByNameMock).toHaveBeenCalledWith(
+      spaceContentDocName(PID, SID, "document"),
+    );
+    expect(softDeleteByNameMock).toHaveBeenCalledWith(
+      spaceContentDocName(PID, SID, "timeline"),
+    );
+  });
+
+  it("space:delete returns CONFLICT when another delete holds the project lock", async () => {
+    const a = new Y.Map();
+    a.set("id", SID);
+    a.set("type", "canvas");
+    a.set("name", "A");
+    fakeMetaDoc.doc.getMap("spaces").set(SID, a);
+    const b = new Y.Map();
+    b.set("id", "sp-b");
+    b.set("type", "canvas");
+    fakeMetaDoc.doc.getMap("spaces").set("sp-b", b);
+    // Another instance's delete holds the per-project lock.
+    withSpaceDeleteLockMock.mockRejectedValue(new FakeLockBusyError("busy"));
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "u-1", role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("CONFLICT");
+    // The delete did not go through.
+    expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(true);
   });
 
   it("space:lock toggles entry.locked + pushes correct kind", async () => {
@@ -416,6 +561,37 @@ describe("handleSpaceRpc — happy paths", () => {
     // peers receive the atomic 3-tuple (spaces.set + new restored
     // entry + restored flag) in one update.
     expect(deletedMsg.get("restored")).toBe(true);
+  });
+
+  it("space:restore clears the content doc named by the space TYPE (document), not hardcoded canvas", async () => {
+    // Mirror of the delete naming fix: a document-type space's content doc is
+    // `document-{id}`. Restore must clear THAT row (from the snapshot type),
+    // or a delete->restore cycle would leave the real content doc soft-deleted.
+    const deletedMsg = new Y.Map();
+    deletedMsg.set("id", "pm-1");
+    deletedMsg.set("kind", "space-deleted");
+    deletedMsg.set("spaceId", SID);
+    deletedMsg.set("spaceSnapshot", {
+      id: SID,
+      type: "document",
+      name: "Doc",
+      order: 0,
+      locked: false,
+      createdAt: 1000,
+    });
+    deletedMsg.set("createdAt", 1500);
+    fakeMetaDoc.doc.getArray("projectMessages").push([deletedMsg]);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "owner-1", role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(true);
+    expect(restoreByNameMock).toHaveBeenCalledWith(
+      spaceContentDocName(PID, SID, "document"),
+    );
   });
 
   it("space:restore is idempotent against already-restored entries (skips them when finding latest deletion)", async () => {

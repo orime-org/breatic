@@ -66,7 +66,8 @@ config/ agents/ skills/ locales/ (git-tracked); uploads/ + sandbox/ (git-ignored
 - 事件总线:Redis Streams `${env}:stream:canvas-nodes`(`NodeStateUpdateEvent`,支持 `targetNodeIds: string[]` 1:N),Collab 消费后写 Yjs
 - 文档命名 v10 multi-doc:`project-{id}/meta`(含 spaces 列表)+ `project-{id}/canvas-{spaceId}`(每个 Canvas Space 一个)
 - 节点状态机:`idle` / `handling`(均在 Yjs);`localPending` 是本地 React state;失败 = `idle` + `errorMessage`
-- Yjs 持久化走 PG `yjs_documents` 表(Hocuspocus Database extension);跨实例同步走 Redis pub/sub(Hocuspocus Redis extension)
+- Yjs 持久化走 PG `yjs_documents` 表(Hocuspocus Database extension);跨实例同步走 Redis pub/sub(Hocuspocus Redis extension),连接在 `REDIS_COLLAB_URL`(DB3 collab 实例间协调库,与跨服务 Streams DB2 分开,以后可整体拆到独立 Redis 实例)
+- Space 删除是跨实例 read-modify-write(「项目至少留一个 space」守卫):走 `REDIS_COLLAB_URL` 分布式锁(fencing 唯一 token + Lua check-and-del,TTL 30s 兜底)串行化 + 锁内读 PG 权威 space 数(数 `project-{id}/` 内容文档行、排 meta),防多实例并发删除把项目 space 删到 0(DD 2026-07-01,单靠最终一致的 CRDT 内存判断会被击穿)
 - 节点结构 + 字段归属 + 状态机详细规范跟 `@breatic/shared/types/canvas-node.ts` 类型定义保持一致
 
 ### Three-layer memory + Turn compression
