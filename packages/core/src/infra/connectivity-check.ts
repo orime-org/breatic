@@ -113,7 +113,7 @@ export async function checkInfraReady(
     } catch (err) {
       throw new InfraNotReadyError(
         `Redis (${name})`,
-        `Check the ${name} Redis URL (REDIS_URL / REDIS_QUEUE_URL / REDIS_STREAM_URL) or run: docker compose up -d redis`,
+        `Check the ${name} Redis URL (REDIS_URL / REDIS_QUEUE_URL / REDIS_STREAM_URL / REDIS_COLLAB_URL) or run: docker compose up -d redis`,
         err,
       );
     }

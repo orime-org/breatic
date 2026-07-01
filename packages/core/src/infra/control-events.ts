@@ -26,13 +26,14 @@
  *
  * Why DB2 (REDIS_STREAM_URL):
  *
- *   - Same Redis connection Hocuspocus uses for cross-instance
- *     sync; reuse the connection instead of spinning a fourth.
+ *   - `members:changed` is a CROSS-SERVICE notification (API publishes,
+ *     Collab consumes), so it belongs with the cross-service Streams on
+ *     DB2 — NOT with the collab-cluster coordination that moved to
+ *     REDIS_COLLAB_URL (DB3: Hocuspocus cross-instance pub/sub + the
+ *     space-delete serialization lock).
  *   - Pub/sub channels are global (not DB-scoped) on the same Redis
  *     instance — DB choice only affects which connection publishes /
- *     listens, not who can hear it. Keeping pubs on DB2 colocates
- *     "doc collaboration" plumbing in one place; auth (DB0) stays
- *     untouched.
+ *     listens, not who can hear it. Auth (DB0) stays untouched.
  */
 
 import { getStreamRedis } from "@core/infra/redis.js";

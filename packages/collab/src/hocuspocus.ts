@@ -37,8 +37,8 @@ const logger = createLogger("hocuspocus");
 
 /** External infra config (env-based, not in YAML). */
 export interface CollabServerInfra {
-  /** Stream Redis (DB 2) — Hocuspocus cross-instance pub/sub. */
-  streamRedisUrl: string;
+  /** Collab Redis (DB 3) — Hocuspocus cross-instance pub/sub + space-delete lock. */
+  collabRedisUrl: string;
   envPrefix: string;
 }
 
@@ -75,7 +75,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // keepAlive / READONLY-aware reconnect / error tagging into the
       // pub-sub pair the extension opens.
       createClient: () =>
-        createRedisClient(infra.streamRedisUrl, {
+        createRedisClient(infra.collabRedisUrl, {
           name: "collab-hocuspocus-pubsub",
         }),
       prefix: `${infra.envPrefix}:hocuspocus`,

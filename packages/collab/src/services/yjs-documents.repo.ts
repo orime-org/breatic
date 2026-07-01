@@ -25,6 +25,7 @@
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { yjsDb, yjsDocuments } from "@breatic/core";
+import { projectMetaDocName } from "@breatic/shared";
 
 /**
  * Fetch the latest binary state of a live (non-soft-deleted) Yjs doc.
@@ -108,6 +109,47 @@ export async function softDeleteByName(name: string): Promise<boolean> {
     .where(and(eq(yjsDocuments.name, name), isNull(yjsDocuments.deletedAt)))
     .returning({ name: yjsDocuments.name });
   return rows.length > 0;
+}
+
+/**
+ * Count the live (non-soft-deleted) CONTENT docs of a project — i.e. its
+ * live Space count.
+ *
+ * Each Space has exactly one content doc (`project-{id}/{type}-{spaceId}`),
+ * seeded on create and soft-deleted on delete, so counting content-doc
+ * rows is the authoritative, strongly consistent Space count shared by
+ * every collab instance — unlike the eventually-consistent in-memory
+ * `meta.spaces` CRDT, which lags behind cross-instance deletes by the
+ * pub/sub propagation window. The project's meta doc (`project-{id}/meta`)
+ * is excluded — it is not a Space. The `project-{id}/` prefix is
+ * unambiguous (project ids are fixed-length UUIDs anchored by the `/`),
+ * matching {@link softDeleteByProjectPrefix}.
+ *
+ * LIKE-injection safety relies on an IMPLICIT upstream guarantee: a
+ * caller only reaches here after `onAuthenticate` resolved the project
+ * role, which queries the `uuid`-typed `project_members.project_id`
+ * column — a `projectId` carrying LIKE wildcards (`%` / `_`) fails PG's
+ * uuid parse and the connection is refused before any RPC dispatches. If
+ * a non-authenticated call site is ever added, assert UUID shape here.
+ *
+ * Used by the `space:delete` guard (under the cross-instance lock in
+ * `space-delete-lock.ts`) to enforce "a project always keeps >=1 Space"
+ * against PG rather than a possibly-stale in-memory doc.
+ * @param projectId - Project whose live Spaces are counted.
+ * @returns The number of live content docs (Spaces) for the project.
+ */
+export async function countLiveSpaceDocs(projectId: string): Promise<number> {
+  const rows = await yjsDb
+    .select({ count: sql<number>`count(*)::int` })
+    .from(yjsDocuments)
+    .where(
+      and(
+        sql`${yjsDocuments.name} LIKE ${`project-${projectId}/%`}`,
+        sql`${yjsDocuments.name} <> ${projectMetaDocName(projectId)}`,
+        isNull(yjsDocuments.deletedAt),
+      ),
+    );
+  return rows[0]?.count ?? 0;
 }
 
 /**

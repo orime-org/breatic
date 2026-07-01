@@ -66,6 +66,8 @@ export {
   closeQueueRedis,
   getStreamRedis,
   closeStreamRedis,
+  getCollabRedis,
+  closeCollabRedis,
   createRedisClient,
   pingRedis,
 } from "@core/infra/redis.js";

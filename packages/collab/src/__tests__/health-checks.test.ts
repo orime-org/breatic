@@ -25,6 +25,7 @@ function makeProbes(overrides: Partial<CollabHealthProbes> = {}): CollabHealthPr
   return {
     pingRedisGeneral: vi.fn(async () => true),
     pingRedisStream: vi.fn(async () => true),
+    pingRedisCollab: vi.fn(async () => true),
     pingPostgres: vi.fn(async () => true),
     pingYjsPostgres: vi.fn(async () => true),
     isHocuspocusListening: vi.fn(() => true),
@@ -44,16 +45,29 @@ describe("buildCollabHealthChecks", () => {
     expect(checks.map((c) => c.name)).toContain("redis_general");
   });
 
-  it("probes exactly the six critical dependencies (both Redis DBs + both PG + ws socket + end-to-end processing)", () => {
+  it("probes exactly the seven critical dependencies (three Redis DBs + both PG + ws socket + end-to-end processing)", () => {
     const checks = buildCollabHealthChecks(makeProbes());
     expect(checks.map((c) => c.name).sort()).toEqual([
       "hocuspocus_listening",
       "postgres",
       "postgres_yjs",
+      "redis_collab",
       "redis_general",
       "redis_stream",
       "ws_processing",
     ]);
+  });
+
+  it("probes redis_collab — collab cross-instance coordination Redis (DB3) MUST be probed or drifted sync stays silently green", () => {
+    const checks = buildCollabHealthChecks(makeProbes());
+    expect(checks.map((c) => c.name)).toContain("redis_collab");
+  });
+
+  it("the redis_collab check is wired to the pingRedisCollab probe (DB3 pub/sub + delete lock)", async () => {
+    const probes = makeProbes({ pingRedisCollab: vi.fn(async () => false) });
+    const r = buildCollabHealthChecks(probes).find((c) => c.name === "redis_collab")!;
+    expect(await r.check()).toBe(false);
+    expect(probes.pingRedisCollab).toHaveBeenCalledOnce();
   });
 
   it("probes ws_processing — alive-but-not-serving (throttle ban / doc wedge) MUST flip healthz red", async () => {

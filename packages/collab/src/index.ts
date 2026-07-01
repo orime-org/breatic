@@ -18,6 +18,8 @@ import {
   createRedisClient,
   getRedis,
   getStreamRedis,
+  getCollabRedis,
+  closeCollabRedis,
   initLogger,
   pingDb,
   pingRedis,
@@ -105,6 +107,7 @@ process.on("unhandledRejection", (reason) => {
 // of re-reading raw process.env. (The boot connectivity check now uses
 // the core Redis singletons directly, so it needs no URL args.)
 const REDIS_STREAM_URL = env.REDIS_STREAM_URL;
+const REDIS_COLLAB_URL = env.REDIS_COLLAB_URL;
 const ENV_PREFIX = env.ENV;
 const HEALTH_PORT = env.COLLAB_HEALTH_PORT;
 
@@ -118,11 +121,13 @@ async function main(): Promise<void> {
   // InfraNotReadyError per the "process lifecycle (forbidden in the
   // library layer)" mandate - application entry catches, logs with full
   // application context, and exits with code 1. Collab probes the
-  // general (session, DB0) + stream (DB2) Redis singletons it uses.
+  // general (session, DB0) + stream (DB2) + collab-coordination (DB3)
+  // Redis singletons it uses.
   try {
     await checkInfraReady({
       general: getRedis(),
       stream: getStreamRedis(),
+      collab: getCollabRedis(),
     });
   } catch (err) {
     if (err instanceof InfraNotReadyError) {
@@ -140,7 +145,7 @@ async function main(): Promise<void> {
 
   // Create and start Hocuspocus server
   const { server, hocuspocus } = await createCollabServer({
-    streamRedisUrl: REDIS_STREAM_URL,
+    collabRedisUrl: REDIS_COLLAB_URL,
     envPrefix: ENV_PREFIX,
   });
 
@@ -283,6 +288,11 @@ async function main(): Promise<void> {
       // health signal. server/worker already probe this; collab didn't.
       pingRedisGeneral: () => pingRedis(getRedis()),
       pingRedisStream: () => pingRedis(controlRedis),
+      // DB3: collab cross-instance coordination (Hocuspocus pub/sub +
+      // space-delete lock). A drifted connection silently breaks
+      // cross-instance sync while everything else looks healthy —
+      // healthz must catch it (same class as the DB0-drift gap).
+      pingRedisCollab: () => pingRedis(getCollabRedis()),
       // Single SELECT-1 liveness helper, shared across all services,
       // over the process-wide `db` singleton (same pool collab uses for
       // persistence + auth — no dedicated probe pool).
@@ -320,6 +330,7 @@ async function main(): Promise<void> {
         () => healthServer.stop(),
         () => stopMembersSync(),
         () => controlRedis.quit(),
+        () => closeCollabRedis(),
         () => stopListener(),
         () => stopLifecycle(),
       ],
