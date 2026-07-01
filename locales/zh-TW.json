@@ -1665,7 +1665,7 @@
   "chrome": {
     "tooltip": {
       "export": "匯出",
-      "share": "分享",
+      "share": "邀請",
       "notifications": "通知",
       "newSpace": "新增 Space",
       "allSpaces": "所有 Spaces",

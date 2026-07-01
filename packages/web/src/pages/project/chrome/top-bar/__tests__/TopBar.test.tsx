@@ -16,7 +16,7 @@ import { TopBar } from '@web/pages/project/chrome/top-bar/TopBar';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
-// Chrome buttons (Export / Share / Notifications) wrap their PopoverTrigger
+// Chrome buttons (Export / Invite / Notifications) wrap their PopoverTrigger
 // in shadcn `Tooltip`, and BellMenu (PR-d follow-up `e73517c`) uses
 // `useQuery` for pending access requests. App.tsx supplies both providers
 // at runtime — tests have to add them explicitly.
@@ -109,21 +109,21 @@ describe('TopBar', () => {
   });
 
   describe('role-based affordance gating (B model — hide)', () => {
-    it('owner sees the Share button', () => {
+    it('owner sees the Invite button', () => {
       setup({ role: 'owner' });
       expect(
-        screen.getByRole('button', { name: 'Share' }),
+        screen.getByRole('button', { name: 'Invite' }),
       ).toBeInTheDocument();
     });
 
-    it('editor does NOT see the Share button', () => {
+    it('editor does NOT see the Invite button', () => {
       setup({ role: 'editor' });
-      expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Invite' })).toBeNull();
     });
 
-    it('viewer does NOT see the Share button', () => {
+    it('viewer does NOT see the Invite button', () => {
       setup({ role: 'viewer' });
-      expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Invite' })).toBeNull();
     });
 
     it('owner can double-click the title into edit mode', async () => {
