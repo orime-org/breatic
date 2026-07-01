@@ -54,6 +54,7 @@ import {
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
 import { matchDuplicateShortcut } from '@web/spaces/canvas/canvas-duplicate-shortcut';
+import { FIT_VIEW_OPTIONS } from '@web/spaces/canvas/viewport-config';
 import {
   matchGroupShortcut,
   planGroupShortcut,
@@ -385,7 +386,7 @@ function CanvasSpaceInner({
     const command = pendingViewportCommand;
     if (command === 'zoomIn') zoomIn();
     else if (command === 'zoomOut') zoomOut();
-    else if (command === 'fit') fitView();
+    else if (command === 'fit') fitView(FIT_VIEW_OPTIONS);
     else zoomTo(command.zoomTo);
     consumeViewportCommand();
   }, [
@@ -1528,6 +1529,10 @@ function CanvasSpaceInner({
           deleteKeyCode={DELETE_KEYS}
           proOptions={{ hideAttribution: true }}
           fitView
+          // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
+          // sparse space doesn't zoom in to the 800% global ceiling; the manual
+          // zoom presets still use the full global range below.
+          fitViewOptions={FIT_VIEW_OPTIONS}
           // Canvas zoom pinned to 10%–800% (the viewport toolbar's ZOOM_MIN /
           // ZOOM_MAX use the same range); overrides ReactFlow's default 0.1–4
           // ceiling so wheel / pinch can't exceed 800%.
