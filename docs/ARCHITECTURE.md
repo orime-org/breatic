@@ -68,6 +68,7 @@ config/ agents/ skills/ locales/ (git-tracked); uploads/ + sandbox/ (git-ignored
 - 节点状态机:`idle` / `handling`(均在 Yjs);`localPending` 是本地 React state;失败 = `idle` + `errorMessage`
 - Yjs 持久化走 PG `yjs_documents` 表(Hocuspocus Database extension);跨实例同步走 Redis pub/sub(Hocuspocus Redis extension),连接在 `REDIS_COLLAB_URL`(DB3 collab 实例间协调库,与跨服务 Streams DB2 分开,以后可整体拆到独立 Redis 实例)
 - Space 删除是跨实例 read-modify-write(「项目至少留一个 space」守卫):走 `REDIS_COLLAB_URL` 分布式锁(fencing 唯一 token + Lua check-and-del,TTL 30s 兜底)串行化 + 锁内读 PG 权威 space 数(数 `project-{id}/` 内容文档行、排 meta),防多实例并发删除把项目 space 删到 0(DD 2026-07-01,单靠最终一致的 CRDT 内存判断会被击穿)
+- 单文档连接数上限(`max_connections_per_document`,默认 100,满了**降级只读**非拒绝)是**跨实例**计数(#1421,2026-07-01):每连接在 `REDIS_COLLAB_URL`(DB3)一个 sorted set(key `{env}:collab:conncount:{docName}`,member `{instanceId}:{socketId}`,score = 心跳时间戳)登记,`onAuthenticate` 读 cluster-wide `ZCARD`(剪枝过期后)判 `>= cap` → 降级 + 永久日志 `connection_cap_degraded`;本地 `getConnectionsCount()` 只数本实例、多实例部署会到 N×cap 才触发,故不用。心跳每 10s 续期、TTL 30s 崩溃自愈;Redis 抖动 fail-open(计数返回 0 不误锁);**meta 文档豁免**(项目基础设施人人必连)。**登记绑 `connected` 生命周期钩子**(非 `onAuthenticate`)——`connected` 只在 Hocuspocus 建好 Connection 对象(已挂 `onClose → onDisconnect`)后触发,与 `onDisconnect` 注销对称,避免 auth 通过但文档加载失败的连接漏注销、被心跳永久续期成幽灵计数(DD 2026-07-01 对抗验证发现并修)
 - 节点结构 + 字段归属 + 状态机详细规范跟 `@breatic/shared/types/canvas-node.ts` 类型定义保持一致
 
 ### Three-layer memory + Turn compression

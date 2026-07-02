@@ -127,13 +127,19 @@ export interface CreateAuthHookOptions {
   /** Max concurrent connections per document (0 = unlimited). */
   maxConnectionsPerDoc: number;
   /**
-   * Count the document's CURRENT connections (this connection is NOT yet
-   * included — the same timing the old onConnect capacity check relied
-   * on). When the count is already at the cap, this connection is
-   * degraded to read-only instead of being rejected (mirrors Figma /
-   * Google Docs "the file is full → you can view but not edit").
+   * Count the document's live connections CLUSTER-WIDE (via the
+   * cross-instance registry, #1421) — not just this process's local
+   * connections, so a doc cannot hold N×cap connections across N
+   * instances before any of them trips the cap. This connection is NOT
+   * included: registration happens in the `connected` lifecycle hook
+   * (after this hook returns and the Connection object exists), so a
+   * connection never counts against its own cap check. When the count is
+   * already at the cap, this connection is degraded to read-only instead
+   * of being rejected (mirrors Figma / Google Docs "the file is full →
+   * you can view but not edit"). Returns a Promise because the count is a
+   * Redis round-trip.
    */
-  countConnections: (documentName: string) => number;
+  countConnections: (documentName: string) => Promise<number>;
 }
 
 /**
@@ -183,8 +189,8 @@ async function loadProjectSpaceIds(
  * consumers.
  * @param root0 - Hook construction options.
  * @param root0.redis - Redis client used to resolve the session token through core's shared session store.
- * @param root0.maxConnectionsPerDoc - Per-document concurrent-connection cap (0 = unlimited); at the cap, extra connections degrade to read-only.
- * @param root0.countConnections - Counts a document's current connections (this connection excluded) to evaluate the cap.
+ * @param root0.maxConnectionsPerDoc - Per-document concurrent-connection cap (0 = unlimited); at the cap, extra connections degrade to read-only. The meta doc is exempt.
+ * @param root0.countConnections - Counts a document's live connections cluster-wide (this connection not included) to evaluate the cap.
  * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` for view-only members or at-capacity documents, and returns the user context — or throws to reject the connection.
  */
 export function createAuthHook({
@@ -319,15 +325,61 @@ export function createAuthHook({
       // writes OR the document is already at its connection cap — in the
       // latter case we degrade the extra connection to read-only rather
       // than rejecting it (mirrors Figma / Google Docs "the file is full
-      // → you can view but not edit"). `countConnections` sees existing
-      // connections only (this one is not added to the document until it
-      // loads, AFTER onAuthenticate) — the same timing the old onConnect
-      // capacity check relied on, so `>=` keeps the original boundary.
-      const atCapacity =
-        maxConnectionsPerDoc > 0 &&
-        countConnections(documentName) >= maxConnectionsPerDoc;
+      // → you can view but not edit").
+      //
+      // Cap details (#1421 cross-instance):
+      //   - The meta doc is EXEMPT. It is project infrastructure everyone
+      //     must connect to (member list, presence, Space CRUD), so it is
+      //     never a "how many people can collaborate" surface. Only Space
+      //     content docs (canvas / document / timeline) carry the cap.
+      //   - `countConnections` is CLUSTER-WIDE (cross-instance registry)
+      //     and does NOT include this connection — it is registered later,
+      //     in the `connected` lifecycle hook (after this hook returns and
+      //     the Connection object exists). So the boundary is `>= cap` (the
+      //     doc already holds `cap` connections → this one is the extra),
+      //     matching the old local `getConnectionsCount() >= cap`.
+      //   - The count is evaluated only for roles that would otherwise be
+      //     writable: a viewer is already read-only, so we skip the Redis
+      //     round-trip (the degrade log below then applies only to a real
+      //     drop of an editor / owner).
+      let atCapacity = false;
+      if (
+        role !== "viewer" &&
+        parsed.kind !== "meta" &&
+        maxConnectionsPerDoc > 0
+      ) {
+        const liveCount = await countConnections(documentName);
+        atCapacity = liveCount >= maxConnectionsPerDoc;
+        if (atCapacity) {
+          // Permanent structured log. The cap degrade was previously
+          // silent (baseline smoke found no ops signal) — oncall /
+          // metrics need to see when a doc hits the cap and an otherwise-
+          // writable member drops to read-only.
+          logger.warn(
+            {
+              userId,
+              documentName,
+              projectId: parsed.projectId,
+              liveCount,
+              cap: maxConnectionsPerDoc,
+              reason: "connection_cap_degraded",
+            },
+            "connection_cap_degraded",
+          );
+        }
+      }
       connectionConfig.readOnly = role === "viewer" || atCapacity;
 
+      // NOTE: this connection is registered in the cross-instance registry
+      // by the `connected` lifecycle hook (see hocuspocus.ts), NOT here.
+      // Registration is deliberately bound to the Connection object's
+      // existence so it is symmetric with the onDisconnect unregister:
+      // Hocuspocus fires `connected` only after it creates the Connection
+      // (and wires its onClose → onDisconnect), and fires onDisconnect only
+      // for such connections. Registering in this hook instead would leak a
+      // phantom member for any connection that passes auth but then fails
+      // during document load (no Connection object → no onDisconnect ever),
+      // whose member the per-instance heartbeat would refresh forever (#1421).
       return {
         user: { id: userId, role },
       };

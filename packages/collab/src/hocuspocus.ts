@@ -13,11 +13,23 @@
  * All tunable parameters are loaded from `config/collab.yaml`.
  */
 
+import { hostname } from "node:os";
+import { randomUUID } from "node:crypto";
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
-import { createLogger, createRedisClient, getRedis } from "@breatic/core";
+import {
+  createLogger,
+  createRedisClient,
+  getRedis,
+  getCollabRedis,
+} from "@breatic/core";
 import { createLoopbackExemptThrottle } from "@collab/infra/loopback-exempt-throttle.js";
+import {
+  createConnectionRegistry,
+  type ConnectionRegistry,
+} from "@collab/services/connection-registry.js";
+import { shouldTrackConnection } from "@collab/services/connection-tracking.js";
 import * as Y from "yjs";
 import {
   parseDocName,
@@ -48,10 +60,25 @@ export interface CollabServerInfra {
  * Behavior parameters are loaded from `config/collab.yaml`.
  * Infrastructure connections (DB, Redis) are passed as arguments.
  * @param infra - Database and Redis connection details
- * @returns Configured Server + Hocuspocus instances
+ * @returns Configured Server + Hocuspocus instances + the cross-instance connection registry (caller stops its heartbeat on shutdown)
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry }> {
   const cfg = getCollabConfig();
+
+  // Cross-instance connection registry (#1421). Records each connection
+  // in Redis DB3 (the collab-coordination singleton — same connection
+  // family as the Hocuspocus pub/sub + the space-delete lock) so the
+  // per-document connection cap counts across instances, not just this
+  // process's local connections. `instanceId` namespaces this process's
+  // members cluster-wide: hostname + pid for log correlation, plus a
+  // random suffix so a pid reused after a container restart never
+  // collides with a crashed predecessor's not-yet-expired members.
+  const instanceId = `${hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
+  const connectionRegistry = createConnectionRegistry({
+    redis: getCollabRedis(),
+    instanceId,
+  });
+  connectionRegistry.start();
 
   // Session lookup client for the onAuthenticate hook. Uses the
   // process-wide `getRedis()` singleton (DB 0, the same general-purpose
@@ -109,12 +136,13 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     onAuthenticate: createAuthHook({
       redis: authRedis,
       maxConnectionsPerDoc: cfg.max_connections_per_document,
-      // Explicit `: number` return type breaks the self-reference cycle:
-      // this closure reads `wsServer` inside `wsServer`'s own initializer,
-      // so TS cannot infer its return type through `wsServer` (TS7022/7023).
-      countConnections: (documentName: string): number =>
-        wsServer.hocuspocus.documents.get(documentName)?.getConnectionsCount() ??
-        0,
+      // Cluster-wide count via the cross-instance registry (#1421), NOT
+      // the local `getConnectionsCount()` (which only sees this process).
+      // The count excludes this connection: registration happens later, in
+      // the `connected` hook (below), so a connection never counts against
+      // its own cap check.
+      countConnections: (documentName: string): Promise<number> =>
+        connectionRegistry.count(documentName),
     }),
 
     // Extensions
@@ -123,12 +151,28 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
 
     onConnect: async ({ documentName, context, socketId }) => {
       const ctx = context as { user?: { id: string } };
-      // The per-document connection cap is no longer enforced by
-      // REJECTING here. It is applied in onAuthenticate, which degrades
-      // an at-capacity connection to read-only instead of dropping it
-      // (see createAuthHook's `maxConnectionsPerDoc` / `countConnections`).
-      // onConnect only logs the connection.
+      // The per-document connection cap is decided in onAuthenticate
+      // (degrade to read-only); the connection is registered in the
+      // cross-instance registry by the `connected` hook below (bound to the
+      // Connection lifecycle so it stays symmetric with onDisconnect).
+      // onConnect (which fires before auth) only logs.
       logger.info({ documentName, userId: ctx.user?.id, socketId }, "Client connected");
+    },
+
+    // Register this connection in the cross-instance registry for the
+    // per-document cap (#1421). The `connected` hook fires only AFTER
+    // Hocuspocus has created the Connection object (and wired its
+    // onClose → onDisconnect), so a member registered here is guaranteed
+    // to be unregistered by onDisconnect — the two are bound to the same
+    // Connection lifecycle. A connection that passes auth but then fails
+    // during document load never reaches `connected`, so it never leaks a
+    // phantom member (registering in onAuthenticate instead would, because
+    // onDisconnect never fires for a connection whose load failed). Meta
+    // docs are exempt from the cap → not tracked.
+    connected: async ({ documentName, socketId }) => {
+      if (shouldTrackConnection(documentName)) {
+        await connectionRegistry.register(documentName, socketId);
+      }
     },
 
     // `meta.users[userId]` population (2026-05-27 awareness rewrite):
@@ -173,9 +217,18 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       });
     },
 
-    onDisconnect: async ({ documentName, context }) => {
+    onDisconnect: async ({ documentName, context, socketId }) => {
       const ctx = context as { user?: { id: string } };
       const userId = ctx.user?.id;
+      // Symmetric to the `connected` registration (#1421): remove this
+      // connection from the cross-instance registry on clean disconnect,
+      // so the count drops immediately (a crash instead lets it expire via
+      // the registry TTL). onDisconnect fires for exactly the connections
+      // the `connected` hook registered (both bound to the Connection
+      // object's lifecycle). Meta / non-project docs were never tracked.
+      if (shouldTrackConnection(documentName)) {
+        await connectionRegistry.unregister(documentName, socketId);
+      }
       logger.info({ documentName, userId }, "Client disconnected");
       // Mini-tool state-machine cleanup (ADR 2026-05-11). Strips
       // operationLocks and finishes frontend-driver handling nodes the
@@ -289,5 +342,5 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     maxConnectionsPerDoc: cfg.max_connections_per_document,
   }, "Hocuspocus server configured");
 
-  return { server: wsServer, hocuspocus: wsServer.hocuspocus };
+  return { server: wsServer, hocuspocus: wsServer.hocuspocus, connectionRegistry };
 }
