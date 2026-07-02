@@ -73,6 +73,7 @@ export type {
 
 export {
   ROLE_RANK,
+  HANDLING_TIMEOUT_MS,
   membersChangedChannel,
   ALL_PROJECT_CHANNELS_PATTERN,
   SpaceTypeSchema,

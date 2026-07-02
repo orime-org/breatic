@@ -53,12 +53,34 @@ export type NodeType =
  * the live Yjs awareness roster, which updates automatically when a user
  * renames themselves. Freezing a name onto the node would drift the moment
  * the user changed their display name.
+ *
+ * `startedAt` was added 2026-07-02 (#1569 handling lease): the epoch-ms
+ * start of the fixed-budget lease. Disconnect events remain the fast path
+ * (seconds), but events can be lost (collab restart, silently-crashed
+ * driver) — the lease is the correctness guarantee: any handling node
+ * older than {@link HANDLING_TIMEOUT_MS} is swept back to idle by the
+ * collab sweeper regardless of what happened to its driver. No heartbeat
+ * renewal by design: renewals written into Yjs would pollute the CRDT
+ * history forever, so the budget is generous instead.
  */
 export interface HandlingActor {
   userId: string;
   /** Who owns the handling → idle/error transition. See type-doc above. */
   type: 'frontend' | 'backend';
+  /** Lease start (epoch ms); the fixed-budget timeout is measured from here. */
+  startedAt: number;
 }
+
+/**
+ * Unified fixed-budget handling lease (#1569, user decision 2026-07-02):
+ * ONE hour for every handling operation (upload / AIGC / future frontend
+ * media ops). The budget's job is to bound rare zombies (lost disconnect
+ * events), not to fit per-operation durations — common cases are cleaned
+ * in seconds by the disconnect fast path. Web (display-level timeout
+ * fallback) and collab (sweeper) both import THIS constant so the two
+ * sides can never drift.
+ */
+export const HANDLING_TIMEOUT_MS = 3_600_000;
 
 /**
  * One mini-tool configure-phase lock on a node.

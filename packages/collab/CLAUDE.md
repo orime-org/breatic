@@ -7,7 +7,7 @@
 
 ## 分层(包内,目录即分层)
 - `hooks/`(`auth` / `before-handle-message` / `awareness-meta-users` / `disconnect-cleanup`)= Hocuspocus 生命周期钩子,协作事件适配,翻译 Yjs 事件 ↔ 持久化/流
-- `services/`(`persistence`〔含懒种子 fetchDoc 兜底〕 / `yjs-documents.repo`〔yjs 库唯一 repo〕 / `lazy-seed` / `lifecycle-listener`〔删除/复制命令消费者〕 / `event-stream` / `space-rpc` / `task-listener` / `members-sync` / `space-delete-lock`〔DB3 fencing 锁〕 / `connection-registry`〔#1421 跨实例连接数 sorted set〕 / `connection-tracking`〔连接数上限 tracking 策略:meta 豁免的 `shouldTrackConnection` 守卫〕)= collab **自带的协作业务**(本质是协作适配,跟 Hocuspocus 绑死,留本包)
+- `services/`(`persistence`〔含懒种子 fetchDoc 兜底〕 / `yjs-documents.repo`〔yjs 库唯一 repo〕 / `lazy-seed` / `lifecycle-listener`〔删除/复制命令消费者〕 / `event-stream` / `space-rpc` / `task-listener` / `members-sync` / `space-delete-lock`〔DB3 fencing 锁〕 / `connection-registry`〔#1421 跨实例连接数 sorted set〕 / `connection-tracking`〔连接数上限 tracking 策略:meta 豁免的 `shouldTrackConnection` 守卫〕 / `handling-sweeper`〔#1569 handling 租约清扫:afterLoadDocument + 5min 周期扫,超 1h/无 handlingBy 的 handling 节点打回 idle,直接 doc 引用不走 openDirectConnection,命名 origin 不进撤销栈〕)= collab **自带的协作业务**(本质是协作适配,跟 Hocuspocus 绑死,留本包)
 - `infra/`(`logger` / `health-checks` / `connectivity-check`)= 本包支撑设施(对齐 core/server 的 `infra/`)
 - 根:`index.ts` = composition root(启动 `initCore(process.env)`,唯一读 env 处)· `hocuspocus.ts` = Hocuspocus 装配(把 hooks + services 接进 Server)· `bootstrap-config.ts` / `config.ts` = 引导 + 配置
 

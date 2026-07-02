@@ -29,6 +29,7 @@ import {
 
 initLogger("worker");
 import { runTask } from "@worker/handlers/dispatch.js";
+import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
@@ -63,6 +64,27 @@ export function startWorker(): void {
 
   worker.on("failed", (job, err) => {
     logger.error({ jobId: job?.id, error: err.message }, "job_failed");
+    // #1569 hole ② safety net: when BullMQ judges a job finally dead
+    // WITHOUT runTask's own failure paths having run (worker crashed
+    // after markRunning; stalled death), the target nodes' Yjs
+    // `handling` was never written back. Emit the standard failure
+    // patch here; the collab handling-lease sweeper is the final
+    // backstop if even this event is lost.
+    void cleanupFailedJobNodes(getStreamRedis(), job, err.message)
+      .then((emitted) => {
+        if (emitted > 0) {
+          logger.warn(
+            { jobId: job?.id, emitted, reason: "failed_job_node_cleanup" },
+            "failed_job_nodes_reclaimed",
+          );
+        }
+      })
+      .catch((cleanupErr) => {
+        logger.error(
+          { err: cleanupErr, jobId: job?.id },
+          "failed_job_node_cleanup_error",
+        );
+      });
   });
 
   logger.info("BullMQ worker started, listening on 'tasks' queue");

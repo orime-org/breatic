@@ -424,7 +424,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     await seedNode(hocuspocus, docName, nodeId, {
       name: "Success Node",
       state: "handling",
-      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend" },
+      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now() },
       attachments: [],
     });
 
@@ -511,7 +511,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     await seedNode(hocuspocus, docName, nodeId, {
       name: "Failure Node",
       state: "handling",
-      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend" },
+      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now() },
       content: "https://oss/prior-content.png",
       attachments: [],
     });
@@ -597,7 +597,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       await seedNode(hocuspocus, docName, nodeId, {
         name: `Fanout Node ${nodeId}`,
         state: "handling",
-        handlingBy: { userId: FIXTURE_USER_ID, type: "frontend" },
+        handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now() },
         attachments: [],
       });
     }

@@ -544,14 +544,21 @@ export function setNodeContent(
  * / Upload-menu) on a node that already exists. Like content / error writes it
  * uses the `CONTENT_WRITE` origin so it stays OUT of the undo stack (a transient
  * in-flight state must never become an undo entry, #8). Clears any prior error.
+ *
+ * Writes `handlingBy` (frontend driver + lease start, #1569) alongside the
+ * state: disconnect-cleanup matches on it (userId + type='frontend') and the
+ * collab sweeper measures HANDLING_TIMEOUT_MS from `startedAt` — without it
+ * a crashed tab left the node stuck in handling forever.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the node to mark in-flight.
+ * @param userId - Current user driving the fill (the lease holder).
  */
 export function setNodeHandling(
   projectId: string,
   spaceId: string,
   nodeId: string,
+  userId: string,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -561,6 +568,11 @@ export function setNodeHandling(
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => {
     data.set('state', 'handling');
+    data.set('handlingBy', {
+      userId,
+      type: 'frontend',
+      startedAt: Date.now(),
+    });
     data.delete('errorMessage');
   }, CONTENT_WRITE);
 }

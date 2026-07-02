@@ -30,6 +30,11 @@ import {
   type ConnectionRegistry,
 } from "@collab/services/connection-registry.js";
 import { shouldTrackConnection } from "@collab/services/connection-tracking.js";
+import {
+  createHandlingSweeper,
+  sweepDoc,
+  type HandlingSweeper,
+} from "@collab/services/handling-sweeper.js";
 import * as Y from "yjs";
 import {
   parseDocName,
@@ -60,9 +65,9 @@ export interface CollabServerInfra {
  * Behavior parameters are loaded from `config/collab.yaml`.
  * Infrastructure connections (DB, Redis) are passed as arguments.
  * @param infra - Database and Redis connection details
- * @returns Configured Server + Hocuspocus instances + the cross-instance connection registry (caller stops its heartbeat on shutdown)
+ * @returns Configured Server + Hocuspocus instances + the cross-instance connection registry and the handling-lease sweeper (caller stops both on shutdown)
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; handlingSweeper: HandlingSweeper }> {
   const cfg = getCollabConfig();
 
   // Cross-instance connection registry (#1421). Records each connection
@@ -157,6 +162,25 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // Connection lifecycle so it stays symmetric with onDisconnect).
       // onConnect (which fires before auth) only logs.
       logger.info({ documentName, userId: ctx.user?.id, socketId }, "Client connected");
+    },
+
+    // Handling-lease load sweep (#1569): a cold doc's zombie handling
+    // nodes are invisible until someone opens it — reclaim them the moment
+    // the doc loads. Uses the DIRECT document reference the hook hands us —
+    // NEVER openDirectConnection from a load hook: that same-doc re-entry
+    // provably deadlocks (feedback_hocuspocus_after_load_no_await_same_doc;
+    // #1567 verified the onDisconnect variant safe, load hooks are not).
+    // Meta / non-canvas docs are skipped.
+    afterLoadDocument: async ({ documentName, document }) => {
+      const parsed = parseDocName(documentName);
+      if (!parsed || parsed.kind !== "canvas") return;
+      const swept = sweepDoc(document, Date.now());
+      if (swept > 0) {
+        logger.warn(
+          { documentName, swept, reason: "handling_lease_swept_on_load" },
+          "handling_lease_swept",
+        );
+      }
     },
 
     // Register this connection in the cross-instance registry for the
@@ -342,5 +366,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     maxConnectionsPerDoc: cfg.max_connections_per_document,
   }, "Hocuspocus server configured");
 
-  return { server: wsServer, hocuspocus: wsServer.hocuspocus, connectionRegistry };
+  // Periodic handling-lease sweep (#1569) over the currently-loaded docs,
+  // for docs held open long-term (the load sweep above only fires once).
+  // Direct doc references via hocuspocus.documents — zero direct
+  // connections opened.
+  const handlingSweeper = createHandlingSweeper({
+    hocuspocus: wsServer.hocuspocus,
+  });
+  handlingSweeper.start();
+
+  return { server: wsServer, hocuspocus: wsServer.hocuspocus, connectionRegistry, handlingSweeper };
 }

@@ -130,8 +130,28 @@ describe("emitNodeStateDone", () => {
         duration: undefined,
         // null (not undefined) so the key survives JSON.stringify round-trip
         handlingBy: null,
+        // #1569 bug A: success MUST clear any prior error — null → the
+        // task-listener deletes errorMessage, mirroring the frontend
+        // setNodeContent's data.delete('errorMessage'). Without this a
+        // retried-then-succeeded (or sweeper-reclaimed-then-completed) node
+        // renders as 'error' despite holding a valid asset.
+        errorMessage: null,
       },
     });
+  });
+
+  it("clears a stale errorMessage on success — unified handling→idle contract (#1569 bug A)", async () => {
+    // A node that failed attempt 1 (errorMessage written) or was reclaimed
+    // by the lease sweeper ('Operation timed out') then succeeds must not
+    // keep the stale error. The success write-back carries errorMessage:null
+    // so the task-listener deletes it; deriveStatus then returns 'idle'.
+    await emitNodeStateDone(fakeStreamRedis, "project-p1", "n1", {
+      content: "https://oss/ok.png",
+    });
+    const event = mockPublishNodeEvent.mock.calls[0]![1] as {
+      update: Record<string, unknown>;
+    };
+    expect(event.update.errorMessage).toBeNull();
   });
 
   it("passes optional fields as undefined when not provided (no-cover case)", async () => {

@@ -152,6 +152,10 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
             // Collab `onDisconnect` leaves backend-driven handling nodes
             // alone; Worker owns the terminal state transition.
             type: "backend",
+            // Lease start (#1569): the collab sweeper reclaims this node
+            // if it is still handling HANDLING_TIMEOUT_MS from now (the
+            // worker-crash / stalled-death safety net).
+            startedAt: Date.now(),
           },
         },
       });
