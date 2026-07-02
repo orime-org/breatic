@@ -63,12 +63,45 @@ export type NodeType =
  * renewal by design: renewals written into Yjs would pollute the CRDT
  * history forever, so the budget is generous instead.
  */
+/**
+ * Handling lifecycle phase (#1580 #2). A backend (Worker) op is `queued`
+ * from enqueue until the Worker picks it up, then `running` during
+ * execution. Each phase transition re-stamps the lease (`startedAt`) so a
+ * long queue backlog does not eat into the execution window; the collab
+ * sweeper picks the timeout window by phase. Frontend-driven ops are
+ * effectively single-phase and may omit it (treated as `running`).
+ */
+export type HandlingPhase = 'queued' | 'running';
+
 export interface HandlingActor {
   userId: string;
   /** Who owns the handling → idle/error transition. See type-doc above. */
   type: 'frontend' | 'backend';
   /** Lease start (epoch ms); the fixed-budget timeout is measured from here. */
   startedAt: number;
+  /**
+   * Yjs `clientID` of the connection that opened this handling (#1580 #3).
+   * disconnect-cleanup reclaims only the exact connection that closed, not
+   * every connection sharing `userId` — so closing one tab never kills an
+   * in-flight upload in another tab of the same user. Optional for
+   * back-compat with pre-#1580 handling nodes (those fall back to the
+   * lease-timeout sweep instead of the fast disconnect path).
+   */
+  clientId?: number;
+  /**
+   * Monotonic fencing generation (#1580 #7), incremented each time handling
+   * (re)opens on a node. Every write-back (sweep / worker-done / disconnect)
+   * compare-and-sets on this: a superseded (lower-gen) op's late write is
+   * rejected, so a slow-but-alive op that completes after being reclaimed
+   * and retried cannot clobber the new op. Optional for back-compat.
+   */
+  gen?: number;
+  /**
+   * Lifecycle phase (#1580 #2): `queued` (enqueued, awaiting Worker) vs
+   * `running` (Worker executing). The sweeper picks the timeout window by
+   * phase. Absent = treat as `running` (frontend single-phase / pre-#1580).
+   */
+  phase?: HandlingPhase;
 }
 
 /**

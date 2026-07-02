@@ -22,6 +22,7 @@ import { HANDLING_TIMEOUT_MS } from "../types/canvas-node.js";
 import type {
   NodeState,
   HandlingActor,
+  HandlingPhase,
   OperationLock,
   AttachRef,
   CanvasNodeFields,
@@ -91,11 +92,37 @@ describe("HandlingActor", () => {
     // the node. A revert that re-adds `username` trips this type assertion.
     // `startedAt` (2026-07-02, #1569 lease): REQUIRED epoch-ms lease start —
     // the fixed-budget timeout (HANDLING_TIMEOUT_MS) is measured from it.
+    // #1580 hardening adds three OPTIONAL fields (optional for back-compat
+    // with pre-#1580 live handling nodes that lack them):
+    //   clientId — Yjs clientID of the originating connection (#3)
+    //   gen      — monotonic fencing generation (#7)
+    //   phase    — 'queued' | 'running' lifecycle phase (#2)
     expectTypeOf<HandlingActor>().toEqualTypeOf<{
       userId: string;
       type: "frontend" | "backend";
       startedAt: number;
+      clientId?: number;
+      gen?: number;
+      phase?: HandlingPhase;
     }>();
+  });
+
+  it("carries the #1580 connection / fencing / phase fields", () => {
+    const actor: HandlingActor = {
+      userId: "user-1",
+      type: "backend",
+      startedAt: 1_700_000_000_000,
+      clientId: 3_141_592_653, // Yjs clientID is a number
+      gen: 2,
+      phase: "running",
+    };
+    expect(actor.clientId).toBe(3_141_592_653);
+    expect(actor.gen).toBe(2);
+    expect(actor.phase).toBe("running");
+  });
+
+  it("HandlingPhase is exactly queued | running", () => {
+    expectTypeOf<HandlingPhase>().toEqualTypeOf<"queued" | "running">();
   });
 
   it("HANDLING_TIMEOUT_MS is the single unified 1-hour lease budget (#1569)", () => {
