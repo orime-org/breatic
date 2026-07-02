@@ -30,6 +30,7 @@
  * `generateMode` to avoid colliding with the view's `kind` discriminant.
  */
 
+import { HANDLING_TIMEOUT_MS } from '@breatic/shared';
 import type { CanvasNodeFields, ReferenceItem } from '@breatic/shared';
 
 /** The 6 content modalities that own a renderable payload. */
@@ -173,13 +174,29 @@ export type NodeView = ContentNodeView | AnnotationNodeView | GroupNodeView;
  * `state: 'idle'` with a non-null `errorMessage` (there is no third wire
  * state), so `handling` takes priority and a lingering error only shows
  * once the node is back to `idle`.
- * @param data - The wire data fields carrying `state` and `errorMessage`.
+ *
+ * Lease timeout fallback (#1569): a `handling` node whose lease
+ * (`handlingBy.startedAt` + HANDLING_TIMEOUT_MS) has expired derives
+ * `error` at the DISPLAY level — the collab sweeper is the authority that
+ * writes the timeout back into Yjs; this render-side check only spares a
+ * viewer from staring at an hours-old skeleton while the sweep is pending.
+ * Legacy zombies without `handlingBy` keep deriving `handling` here (no
+ * lease to measure); the sweeper reclaims them server-side.
+ * @param data - The wire data fields carrying `state`, `errorMessage` and `handlingBy`.
+ * @param now - Clock (epoch ms), injectable for tests; defaults to `Date.now()`.
  * @returns The derived display status.
  */
 export function deriveStatus(
-  data: Pick<CanvasNodeFields['data'], 'state' | 'errorMessage'>,
+  data: Pick<CanvasNodeFields['data'], 'state' | 'errorMessage' | 'handlingBy'>,
+  now: number = Date.now(),
 ): DisplayStatus {
-  if (data.state === 'handling') return 'handling';
+  if (data.state === 'handling') {
+    const startedAt = data.handlingBy?.startedAt;
+    if (startedAt !== undefined && now - startedAt > HANDLING_TIMEOUT_MS) {
+      return 'error';
+    }
+    return 'handling';
+  }
   if (data.errorMessage != null) return 'error';
   return 'idle';
 }

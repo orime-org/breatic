@@ -188,6 +188,31 @@ describe('deriveStatus — wire state + errorMessage → 3-state display status'
     expect(deriveStatus({ state: 'idle' })).toBe('idle');
   });
 
+  it('handling past the lease budget derives error — display-level timeout fallback (#1569)', () => {
+    // The collab sweeper is the authority that WRITES the timeout back to
+    // Yjs; this is only the render-side safety net so a viewer never stares
+    // at an hours-old skeleton while the sweep is pending. Clock injected
+    // for determinism.
+    const startedAt = 1_700_000_000_000;
+    const withinBudget = startedAt + 3_599_000;
+    const pastBudget = startedAt + 3_600_001;
+    const data = {
+      state: 'handling' as const,
+      handlingBy: { userId: 'u1', type: 'frontend' as const, startedAt },
+    };
+    expect(deriveStatus(data, withinBudget)).toBe('handling');
+    expect(deriveStatus(data, pastBudget)).toBe('error');
+  });
+
+  it('handling with no handlingBy stays handling at the display level (sweeper owns reclaiming legacy zombies)', () => {
+    // Pre-#1569 zombie nodes have state='handling' with no handlingBy at
+    // all. The display keeps showing handling (no lease to measure); the
+    // collab sweeper reclaims them server-side.
+    expect(deriveStatus({ state: 'handling' }, Number.MAX_SAFE_INTEGER)).toBe(
+      'handling',
+    );
+  });
+
   it('handling wins even if an errorMessage lingers', () => {
     expect(deriveStatus({ state: 'handling', errorMessage: 'old' })).toBe(
       'handling',

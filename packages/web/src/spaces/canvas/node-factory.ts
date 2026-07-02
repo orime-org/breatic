@@ -97,6 +97,20 @@ export function createEmptyNode(
       operationLocks: [],
       state: initialState,
       attachments: [],
+      // A handling upload node carries its driver + lease start (#1569):
+      // disconnect-cleanup matches on handlingBy (userId + type='frontend')
+      // and the collab sweeper measures HANDLING_TIMEOUT_MS from startedAt.
+      // Creating handling WITHOUT handlingBy is exactly the bug that left
+      // upload nodes stuck in handling forever after a crashed tab.
+      ...(initialState === 'handling'
+        ? {
+            handlingBy: {
+              userId: createdBy,
+              type: 'frontend' as const,
+              startedAt: Date.now(),
+            },
+          }
+        : {}),
     },
   };
 }

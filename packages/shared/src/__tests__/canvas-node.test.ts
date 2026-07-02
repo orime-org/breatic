@@ -18,6 +18,7 @@
  */
 
 import { describe, it, expect, expectTypeOf } from "vitest";
+import { HANDLING_TIMEOUT_MS } from "../types/canvas-node.js";
 import type {
   NodeState,
   HandlingActor,
@@ -68,27 +69,42 @@ describe("HandlingActor", () => {
     const actor: HandlingActor = {
       userId: "user-1",
       type: "frontend",
+      startedAt: 1_700_000_000_000,
     };
     expect(actor.userId).toBe("user-1");
     expect(actor.type).toBe("frontend");
+    expect(actor.startedAt).toBe(1_700_000_000_000);
   });
 
   it("accepts a valid HandlingActor shape with backend driver", () => {
     const actor: HandlingActor = {
       userId: "user-2",
       type: "backend",
+      startedAt: 1_700_000_000_000,
     };
     expect(actor.type).toBe("backend");
   });
 
-  it("carries no display-name snapshot — only userId + driver type", () => {
+  it("carries no display-name snapshot — userId + driver type + lease start only", () => {
     // Email-registration rewrite (2026-06-06): the name is rendered from
     // the live `meta.users[userId]` awareness roster, never frozen onto
     // the node. A revert that re-adds `username` trips this type assertion.
+    // `startedAt` (2026-07-02, #1569 lease): REQUIRED epoch-ms lease start —
+    // the fixed-budget timeout (HANDLING_TIMEOUT_MS) is measured from it.
     expectTypeOf<HandlingActor>().toEqualTypeOf<{
       userId: string;
       type: "frontend" | "backend";
+      startedAt: number;
     }>();
+  });
+
+  it("HANDLING_TIMEOUT_MS is the single unified 1-hour lease budget (#1569)", () => {
+    // User decision 2026-07-02: ONE timeout for every handling operation
+    // (upload / AIGC / future frontend media ops). The budget's job is to
+    // bound rare zombies (lost disconnect events), not to fit per-op
+    // durations. Web (display fallback) and collab (sweeper) both import
+    // THIS constant so the two sides can never drift.
+    expect(HANDLING_TIMEOUT_MS).toBe(3_600_000);
   });
 });
 
@@ -198,7 +214,7 @@ describe("CanvasNodeFields", () => {
         locked: false,
         operationLocks: [],
         state: "handling",
-        handlingBy: { userId: "u1", type: "backend" },
+        handlingBy: { userId: "u1", type: "backend", startedAt: 1_700_000_000_000 },
         attachments: [],
         prompt: "a painting of a sunset",
         kind: "text-to-image",
@@ -356,6 +372,7 @@ describe("CanvasNodeFields", () => {
         handlingBy: {
           userId: "user-2",
           type: "frontend",
+          startedAt: 1_700_000_000_000,
         },
         attachments: [],
         operation: "adjust",
@@ -409,7 +426,7 @@ describe("NodeStateUpdateEvent", () => {
       nodeId: "node-1",
       update: {
         state: "handling",
-        handlingBy: { userId: "u1", type: "backend" },
+        handlingBy: { userId: "u1", type: "backend", startedAt: 1_700_000_000_000 },
       },
     };
     expect(event.type).toBe("node-state-update");

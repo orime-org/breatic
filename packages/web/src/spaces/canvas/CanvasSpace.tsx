@@ -1334,13 +1334,13 @@ function CanvasSpaceInner({
         presign: assetsApi.presign,
         putFile: assetsApi.putFile,
         extractText,
-        setHandling: (id) => setNodeHandling(projectId, spaceId, id),
+        setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
         setContent: (id, content) =>
           setNodeContent(projectId, spaceId, id, content),
         setError: (id, message) => setNodeError(projectId, spaceId, id, message),
       });
     },
-    [projectId, spaceId],
+    [projectId, spaceId, userId],
   );
 
   const actions = React.useMemo<CanvasActions>(

@@ -68,6 +68,24 @@ describe('createEmptyNode — empty content node factory', () => {
       'handling',
     );
   });
+
+  it('a handling upload node carries handlingBy (frontend driver + lease start, #1569)', () => {
+    // Without handlingBy the collab disconnect-cleanup can never match the
+    // node (its filter is handlingBy.userId + type==='frontend') and the
+    // lease sweeper cannot compute the timeout — the exact pair of holes
+    // that left upload nodes stuck in handling forever.
+    const before = Date.now();
+    const node = createEmptyNode('image', pos, 'u', 'handling');
+    const after = Date.now();
+    expect(node.data.handlingBy?.userId).toBe('u');
+    expect(node.data.handlingBy?.type).toBe('frontend');
+    expect(node.data.handlingBy?.startedAt).toBeGreaterThanOrEqual(before);
+    expect(node.data.handlingBy?.startedAt).toBeLessThanOrEqual(after);
+  });
+
+  it('an idle node carries NO handlingBy', () => {
+    expect(createEmptyNode('image', pos, 'u').data.handlingBy).toBeUndefined();
+  });
 });
 
 describe('CREATABLE_NODE_TYPES + isCreatableNodeType', () => {

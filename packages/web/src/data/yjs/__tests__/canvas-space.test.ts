@@ -131,7 +131,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       SID,
       sampleFields('image', {
         state: 'handling',
-        handlingBy: { userId: 'u1', type: 'backend' },
+        handlingBy: { userId: 'u1', type: 'backend', startedAt: 1_700_000_000_000 },
       }),
     );
 
@@ -294,12 +294,32 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       const undo = createCanvasUndoManager(doc());
       addNode(PID, SID, sampleFields('image', {}, { id: 'img1' }));
       const depth = undo.undoStack.length;
-      setNodeHandling(PID, SID, 'img1');
+      setNodeHandling(PID, SID, 'img1', 'user-x');
       const node = doc().getMap('nodesMap').get('img1') as Y.Map<unknown>;
       expect((node.get('data') as Y.Map<unknown>).get('state')).toBe('handling');
       // CONTENT_WRITE origin, like content / error writes — a transient upload
       // state must not become an undo entry (#8).
       expect(undo.undoStack.length).toBe(depth);
+    });
+
+    it('setNodeHandling writes handlingBy (frontend driver + lease start, #1569)', () => {
+      // The fill-from-file path (double-click / Upload menu) must carry the
+      // same lease fields as upload-created nodes, or disconnect-cleanup and
+      // the lease sweeper cannot reclaim it after a crashed tab.
+      addNode(PID, SID, sampleFields('image', {}, { id: 'img2' }));
+      const before = Date.now();
+      setNodeHandling(PID, SID, 'img2', 'user-x');
+      const after = Date.now();
+      const node = doc().getMap('nodesMap').get('img2') as Y.Map<unknown>;
+      const handlingBy = (node.get('data') as Y.Map<unknown>).get('handlingBy') as {
+        userId: string;
+        type: string;
+        startedAt: number;
+      };
+      expect(handlingBy.userId).toBe('user-x');
+      expect(handlingBy.type).toBe('frontend');
+      expect(handlingBy.startedAt).toBeGreaterThanOrEqual(before);
+      expect(handlingBy.startedAt).toBeLessThanOrEqual(after);
     });
   });
 
