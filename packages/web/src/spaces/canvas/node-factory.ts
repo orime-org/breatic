@@ -104,12 +104,12 @@ export function createEmptyNode(
       // upload nodes stuck in handling forever after a crashed tab.
       ...(initialState === 'handling'
         ? {
-            handlingBy: {
-              userId: createdBy,
-              type: 'frontend' as const,
-              startedAt: Date.now(),
-            },
-          }
+          handlingBy: {
+            userId: createdBy,
+            type: 'frontend' as const,
+            startedAt: Date.now(),
+          },
+        }
         : {}),
     },
   };

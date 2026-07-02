@@ -19,8 +19,10 @@
  *
  * WHERE it runs: collab is the only backend process that can write Yjs
  * canvas state. Two triggers, both using DIRECT document references —
- * deliberately never `openDirectConnection` (the same-doc re-entrancy
- * pattern under investigation in #1567):
+ * deliberately never `openDirectConnection` (#1567 verified that pattern
+ * safe from onDisconnect but it DEADLOCKS from load hooks; the sweeper's
+ * load trigger runs inside afterLoadDocument, so direct references are
+ * the only correct choice here):
  *
  *   1. Document load (`afterLoadDocument` wiring in hocuspocus.ts): a
  *      cold doc's zombies are invisible until someone opens it — sweep
@@ -44,8 +46,10 @@ import { HANDLING_TIMEOUT_MS, parseDocName } from "@breatic/shared";
 /** Named transaction origin for sweep write-backs (undo-stack exclusion). */
 export const HANDLING_SWEEP_ORIGIN = "handling-lease-sweep";
 
-/** Default period of the loaded-docs scan (ms). The budget is 1h; 5 min
- * scan granularity keeps worst-case zombie lifetime ~= budget + 5 min. */
+/**
+ * Default period of the loaded-docs scan (ms). The budget is 1h; 5 min
+ * scan granularity keeps worst-case zombie lifetime ~= budget + 5 min.
+ */
 const DEFAULT_SWEEP_INTERVAL_MS = 300_000;
 
 /** Options for {@link createHandlingSweeper}. */
