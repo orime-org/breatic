@@ -86,16 +86,19 @@ const streamRedis = {} as never;
 
 /**
  * Build a minimal failed-job stand-in.
+ *
+ * Terminal-failure signal is `finishedOn` (BullMQ sets it for BOTH terminal
+ * paths — processJob's non-retry branch AND the stalled-death Lua — but
+ * NOT for a retryable failure; source-verified against bullmq 5.30.0). A
+ * retryable failure has finishedOn undefined.
  * @param data - Job payload overrides.
- * @param attemptsMade - Attempts already consumed.
- * @param attempts - Configured max attempts.
+ * @param finishedOn - Terminal-completion epoch ms; undefined = retry pending.
  * @returns A job-shaped object for the cleanup helper.
  */
 function jobWith(
   data: Partial<TaskJobData>,
-  attemptsMade = 3,
-  attempts = 3,
-): { data: TaskJobData; attemptsMade: number; opts: { attempts?: number } } {
+  finishedOn: number | undefined = 1_700_000_000_000,
+): { data: TaskJobData; finishedOn?: number } {
   return {
     data: {
       taskId: "t1",
@@ -104,8 +107,7 @@ function jobWith(
       params: {},
       ...data,
     } as TaskJobData,
-    attemptsMade,
-    opts: { attempts },
+    finishedOn,
   };
 }
 
@@ -138,12 +140,38 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
     ).toContain("stalled");
   });
 
-  it("does NOT emit while retries remain (the retry will re-drive the node)", async () => {
-    const job = jobWith(
-      { projectId: "p1", spaceId: "s1", targetNodeIds: ["n1"] },
-      1,
-      3,
-    );
+  it("fires for a STALLED-DEATH job (finishedOn set) — the exact case the attemptsMade gate missed (#1569 bug B)", async () => {
+    // BullMQ's moveStalledJobsToWait Lua moves a maxStalledCount-exceeded
+    // job straight to the failed set: it HMSETs finishedOn but does NOT
+    // increment attemptsMade. The old gate `attemptsMade < attempts` was
+    // therefore true → cleanup skipped → the node stayed a zombie, which
+    // is the PRIMARY death this safety net targets. finishedOn is the
+    // reliable terminal signal.
+    const stalled = jobWith({
+      projectId: "p1",
+      spaceId: "s1",
+      targetNodeIds: ["n1"],
+    });
+    expect(await cleanupFailedJobNodes(streamRedis, stalled, "job stalled more than allowable limit")).toBe(1);
+    expect(mockPublishNodeEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT emit while a retry is pending (finishedOn absent — the retry re-drives the node)", async () => {
+    // Built inline (not via jobWith, whose default-param would re-supply a
+    // finishedOn when passed `undefined`) so finishedOn is genuinely absent.
+    const job = {
+      data: {
+        taskId: "t1",
+        taskType: "generate",
+        userId: "u1",
+        params: {},
+        projectId: "p1",
+        spaceId: "s1",
+        targetNodeIds: ["n1"],
+      } as TaskJobData,
+      // finishedOn intentionally absent — BullMQ leaves it undefined for a
+      // retryable failure (job moved to delayed/waiting, not finished).
+    };
     expect(await cleanupFailedJobNodes(streamRedis, job, "boom")).toBe(0);
     expect(mockPublishNodeEvent).not.toHaveBeenCalled();
   });

@@ -523,6 +523,13 @@ export async function emitNodeStateDone(
       // null survives JSON.stringify (undefined is stripped).
       // The Collab consumer calls Y.Map.delete("handlingBy") on null.
       handlingBy: null,
+      // Success MUST clear any prior error (#1569 unified handling→idle
+      // contract): a node that failed a retryable attempt (errorMessage
+      // written) or was reclaimed by the lease sweeper ('Operation timed
+      // out') then succeeds would otherwise keep a stale error badge over
+      // valid content. null → the task-listener deletes errorMessage,
+      // mirroring the frontend setNodeContent's data.delete('errorMessage').
+      errorMessage: null,
     },
   });
 }

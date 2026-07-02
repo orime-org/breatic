@@ -28,9 +28,17 @@ import { emitNodeStateFailed, type TaskJobData } from "@worker/handlers/dispatch
 /** Minimal failed-job shape (BullMQ `Job` narrowed to what we read). */
 export interface FailedJobLike {
   data: TaskJobData;
-  /** Attempts already consumed (BullMQ increments before 'failed' fires). */
-  attemptsMade: number;
-  opts: { attempts?: number };
+  /**
+   * Terminal-completion timestamp (epoch ms). BullMQ sets `finishedOn` for
+   * EVERY terminal failure and ONLY terminal failures — verified against
+   * bullmq@5.30.0 source: `moveToFailed`'s non-retry branch assigns
+   * `this.finishedOn` (retry branches leave it undefined), and the
+   * stalled-death path (`moveStalledJobsToWait-9.lua`, HMSET finishedOn)
+   * sets it too WITHOUT incrementing attemptsMade. So `finishedOn` is the
+   * reliable "no more retries" signal across both paths; `attemptsMade`
+   * is NOT (a stalled death leaves it un-incremented).
+   */
+  finishedOn?: number;
 }
 
 /**
@@ -51,11 +59,15 @@ export async function cleanupFailedJobNodes(
   reason: string,
 ): Promise<number> {
   if (!job) return 0;
-  // While retries remain the retry will re-drive the node — writing idle
-  // now would fight the upcoming attempt. BullMQ increments attemptsMade
-  // before emitting 'failed', so a finally-failed job satisfies >=.
-  const maxAttempts = job.opts.attempts ?? 1;
-  if (job.attemptsMade < maxAttempts) return 0;
+  // Only reclaim on a TERMINAL failure. BullMQ's 'failed' event also fires
+  // for retryable attempts (worker.js emits after every moveToFailed) — and
+  // writing idle then would fight the upcoming retry. `finishedOn` is set
+  // iff the job is truly done (both the processJob non-retry branch and the
+  // stalled-death Lua set it; a pending retry leaves it undefined). The
+  // earlier `attemptsMade < attempts` gate was WRONG: a stalled death — the
+  // primary case this net targets — moves to failed WITHOUT incrementing
+  // attemptsMade, so that gate skipped exactly the deaths it should catch.
+  if (!job.finishedOn) return 0;
 
   const { projectId, spaceId, targetNodeIds } = job.data;
   if (!projectId || !spaceId) return 0;
