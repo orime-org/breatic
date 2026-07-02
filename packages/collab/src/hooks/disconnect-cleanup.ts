@@ -62,6 +62,16 @@ export async function cleanupOnDisconnect(
   let opLockHits = 0;
   let handlingHits = 0;
 
+  // SAFETY (#1567, verified 2026-07-02): awaiting openDirectConnection on
+  // the SAME doc from inside the onDisconnect hook chain does NOT deadlock
+  // and does NOT recurse — unlike the proven afterLoadDocument deadlock
+  // (feedback_hocuspocus_after_load_no_await_same_doc), no pending per-doc
+  // LOAD promise is held here (the doc finished loading long before any
+  // disconnect). Pinned by a real-Hocuspocus regression test
+  // (disconnect-cleanup-reentry.test.ts: unloadImmediately + in-memory
+  // store + production-shaped wiring) plus two days of dev logs with zero
+  // system-context disconnect lines. Do NOT copy this pattern into LOAD
+  // hooks (afterLoadDocument / onLoadDocument) — that one really hangs.
   let connection: Awaited<ReturnType<Hocuspocus["openDirectConnection"]>>;
   try {
     connection = await hocuspocus.openDirectConnection(documentName, {
