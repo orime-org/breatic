@@ -37,16 +37,33 @@ export type NodeType =
  * Identifies the user who triggered the current handling AND the driver
  * responsible for advancing the node out of `handling`.
  *
- * `type` was added 2026-05-11 (ADR `2026-05-11-mini-tool-state-machine.md`)
- * so the Collab `onDisconnect` cleanup hook can distinguish:
+ * `type` (added 2026-05-11, ADR `2026-05-11-mini-tool-state-machine.md`)
+ * names the driver responsible for advancing the node out of `handling`:
  *
- *   - `frontend` — the user's own browser is running the op. If the
- *     client disconnects, Collab writes back `state: 'idle', errorMessage:
- *     "Operation interrupted by client disconnect"` so the node doesn't
- *     stay stuck in `handling` forever.
+ *   - `frontend` — the user's own browser is running the op (e.g. a
+ *     presigned upload straight to object storage). The browser writes
+ *     back `state: 'idle'` on success / failure itself (`setNodeError`);
+ *     if it hard-crashes, the collab lease sweeper (below) reclaims the
+ *     node after the budget.
  *   - `backend`  — a Worker is running the op (POST → BullMQ → provider).
- *     Worker has its own retry / dead-letter machinery; Collab leaves
- *     these nodes untouched on user disconnect.
+ *     Worker self-manages via NodeStateUpdateEvent (retry / dead-letter);
+ *     BullMQ tracks its liveness.
+ *
+ * Collab's `onDisconnect` no longer reclaims handling for EITHER driver
+ * (#1580 slice 4, Option A). A disconnect is not reliable evidence the
+ * work died — a presigned upload is invisible to collab and outlives the
+ * WebSocket, so reclaiming on disconnect false-reclaims live uploads. The
+ * lease sweeper is the single, guaranteed backstop.
+ *
+ * READ-TIME SKIP INVARIANT (#1580 #5, single-writer): collab is the ONLY
+ * writer of this shared doc. Any consumer that reads a PERSISTED (Postgres)
+ * snapshot OUT OF BAND — bypassing the live collab doc, e.g. a future
+ * thumbnail / export / search-index feature — MUST treat a `handling`
+ * node's content as unusable (skip / placeholder) and MUST NOT write back
+ * to the original (that would be a second writer). The original is cleaned
+ * lazily by the collab sweeper on next load. No such out-of-band reader
+ * exists today (verified 2026-07-02) — this is the convention for the
+ * first one added.
  *
  * No display-name snapshot here (email-registration rewrite, 2026-06-06):
  * "who is handling" is rendered by looking up `meta.users[userId].name` in
@@ -55,13 +72,12 @@ export type NodeType =
  * the user changed their display name.
  *
  * `startedAt` was added 2026-07-02 (#1569 handling lease): the epoch-ms
- * start of the fixed-budget lease. Disconnect events remain the fast path
- * (seconds), but events can be lost (collab restart, silently-crashed
- * driver) — the lease is the correctness guarantee: any handling node
- * older than {@link HANDLING_TIMEOUT_MS} is swept back to idle by the
- * collab sweeper regardless of what happened to its driver. No heartbeat
- * renewal by design: renewals written into Yjs would pollute the CRDT
- * history forever, so the budget is generous instead.
+ * start of the fixed-budget lease. The lease is the SINGLE correctness
+ * guarantee: any handling node older than {@link HANDLING_TIMEOUT_MS} is
+ * swept back to idle by the collab sweeper regardless of what happened to
+ * its driver. (Disconnect is no longer a handling fast path — #1580 slice
+ * 4.) No heartbeat renewal by design: renewals written into Yjs would
+ * pollute the CRDT history forever, so the budget is generous instead.
  */
 /**
  * Handling lifecycle phase (#1580 #2). A backend (Worker) op is `queued`
@@ -80,12 +96,12 @@ export interface HandlingActor {
   /** Lease start (epoch ms); the fixed-budget timeout is measured from here. */
   startedAt: number;
   /**
-   * Yjs `clientID` of the connection that opened this handling (#1580 #3).
-   * disconnect-cleanup reclaims only the exact connection that closed, not
-   * every connection sharing `userId` — so closing one tab never kills an
-   * in-flight upload in another tab of the same user. Optional for
-   * back-compat with pre-#1580 handling nodes (those fall back to the
-   * lease-timeout sweep instead of the fast disconnect path).
+   * Yjs `clientID` of the connection that opened this handling. RESERVED,
+   * not written today: #1580 slice 4 (Option A) removed the disconnect
+   * fast-path for handling, so nothing reads this. Kept for a future #1551
+   * single-master fast-path — where a pinned instance's local `getClients`
+   * is cluster-authoritative and could safely reclaim a dead connection's
+   * handling without false-reclaiming live cross-instance uploads.
    */
   clientId?: number;
   /**
@@ -119,8 +135,8 @@ export interface HandlingActor {
  * ONE hour for every handling operation (upload / AIGC / future frontend
  * media ops). The budget's job is to bound rare zombies (lost disconnect
  * events), not to fit per-operation durations — common cases are cleaned
- * in seconds by the disconnect fast path. Web (display-level timeout
- * fallback) and collab (sweeper) both import THIS constant so the two
+ * by the owner writing back on success / failure. Web (display-level
+ * timeout fallback) and collab (sweeper) both import THIS constant so the two
  * sides can never drift.
  */
 export const HANDLING_TIMEOUT_MS = 3_600_000;
