@@ -21,7 +21,9 @@
  *   1. NO DEADLOCK: the disconnect that triggers the cleanup resolves
  *      (a deadlock would time the test out).
  *   2. THE CLEANUP WORKS through the same-doc reopen: the u1-owned
- *      handling node is written back to idle and persisted.
+ *      operationLock is stripped and persisted. (Option A, #1580 slice 4:
+ *      handling is NOT reclaimed on disconnect — the lock strip is what
+ *      proves the cleanup ran through the reopen.)
  *   3. NO RECURSION: the cleanup's own inner direct connection does not
  *      re-trigger onDisconnect into an unbounded cleanup loop (hook
  *      invocations stay bounded; two days of dev logs show zero
@@ -148,8 +150,10 @@ describe("#1567 disconnect-cleanup same-doc openDirectConnection re-entry (real 
       });
       await readConn.disconnect();
 
-      expect(state).toBe("idle");
-      expect(handlingBy).toBeUndefined();
+      // Option A (#1580 slice 4): handling is NOT reclaimed on disconnect;
+      // only the operationLock strip proves the cleanup ran through the reopen.
+      expect(state).toBe("handling");
+      expect(handlingBy).toMatchObject({ userId: "u1", type: "frontend" });
       expect(locks).toEqual([]);
 
       // ── 3. Bounded hook invocations: u1's disconnect, possibly the

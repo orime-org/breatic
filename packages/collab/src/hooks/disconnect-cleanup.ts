@@ -2,51 +2,54 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * On-disconnect cleanup for mini-tool state (the mini-tool
+ * On-disconnect cleanup for mini-tool operation locks (the mini-tool
  * state-machine ADR, 2026-05-11, §D4).
  *
  * Hocuspocus fires `onDisconnect` when a client's WebSocket closes. For
- * each canvas doc the client was holding, we scan all nodes and:
- *
- *   1. Strip `data.operationLocks` entries with `userId === disconnected`
- *      so the configure-phase lock doesn't outlive the holder.
- *   2. Find `state === 'handling'` nodes where `handlingBy.userId ===
- *      disconnected` AND `handlingBy.type === 'frontend'`, and write
- *      `state: 'idle' + errorMessage: 'Operation interrupted...' +
- *      handlingBy: null`. Frontend-driver handling means the disconnected
- *      browser was the one running the op; nobody else will ever finish it.
+ * each canvas doc the client was holding, we strip `data.operationLocks`
+ * entries with `userId === disconnected` so a configure-phase lock does
+ * not outlive its holder.
  *
  * Deliberately *not* touched:
  *
  *   - `data.locked` (user manual lock — user-owned, disconnect-resistant)
- *   - `state === 'handling'` with `handlingBy.type === 'backend'`
- *     (Worker owns its own lifecycle via NodeStateUpdateEvent)
+ *   - `state === 'handling'` (ANY driver). Disconnect is NOT reliable
+ *     evidence that in-flight work died: a frontend upload is a presigned
+ *     PUT direct to object storage — invisible to collab and outliving
+ *     the WebSocket — and the WS can drop on mere network jitter.
+ *     Reclaiming handling on disconnect therefore false-reclaims LIVE
+ *     uploads (a sibling tab of the same user, #3; a jitter blip, #11).
+ *     Instead the owner self-cleans on upload failure (`setNodeError`),
+ *     the Worker self-manages backend handling via NodeStateUpdateEvent,
+ *     and the 1h handling-lease sweeper is the guaranteed backstop for
+ *     anything that hard-crashed. (#1580 slice 4, Option A — "events
+ *     accelerate, the timeout guarantees"; the disconnect accelerator is
+ *     dropped because it cannot be made safe. Adversarial design:
+ *     workflow wf_2fef6b9b-c1e.)
  *
- * Algorithm is a naive single-doc full scan with a single `doc.transact`
- * wrapping all writes. Operation locks are sparse (typical 0–2 entries
- * per node), disconnects are low-frequency, scan is `O(N nodes)` with
- * `N` typically 100–500 → ~1 ms CPU. The simplicity beats a side index
- * (which has coherence-bug risk on every lock add/remove). See ADR §D4.
+ * Algorithm is a naive single-doc full scan with a single `doc.transact`.
+ * Operation locks are sparse (typical 0–2 entries per node), disconnects
+ * are low-frequency, scan is `O(N nodes)` with `N` typically 100–500 →
+ * ~1 ms CPU. The simplicity beats a side index (coherence-bug risk on
+ * every lock add/remove). See ADR §D4.
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { parseDocName } from "@breatic/shared";
-import type { OperationLock, HandlingActor } from "@breatic/shared";
+import type { OperationLock } from "@breatic/shared";
 import { createLogger } from "@breatic/core";
 
 const logger = createLogger("disconnect-cleanup");
 
 /**
  * Run the cleanup pass for one user disconnecting from one canvas doc.
- *
- * Idempotent on the lock-strip path (re-running yields the same result).
- * The handling-cleanup path writes once per affected node; running twice
- * is also safe because the second pass sees `state === 'idle'` already
- * and skips.
+ * Strips the disconnected user's `operationLocks`; `handling` state is
+ * left untouched for every driver (see the module doc for why — Option A,
+ * #1580 slice 4). Idempotent: re-running yields the same result.
  * @param hocuspocus - The running Hocuspocus instance.
  * @param documentName - Yjs doc the user just disconnected from.
- * @param userId - The user whose locks / handling rows to clean.
+ * @param userId - The user whose `operationLocks` to strip.
  */
 export async function cleanupOnDisconnect(
   hocuspocus: Hocuspocus,
@@ -60,7 +63,6 @@ export async function cleanupOnDisconnect(
   if (!parsed || parsed.kind !== "canvas") return;
 
   let opLockHits = 0;
-  let handlingHits = 0;
 
   // SAFETY (#1567, verified 2026-07-02): awaiting openDirectConnection on
   // the SAME doc from inside the onDisconnect hook chain does NOT deadlock
@@ -113,27 +115,6 @@ export async function cleanupOnDisconnect(
               opLockHits++;
             }
           }
-
-          // ── handling cleanup (frontend-driver only) ─────────
-          const state = dataMap.get("state");
-          const handlingBy = dataMap.get("handlingBy") as
-            | HandlingActor
-            | null
-            | undefined;
-          if (
-            state === "handling" &&
-            handlingBy &&
-            handlingBy.userId === userId &&
-            handlingBy.type === "frontend"
-          ) {
-            dataMap.set("state", "idle");
-            dataMap.set(
-              "errorMessage",
-              "Operation interrupted by client disconnect",
-            );
-            dataMap.delete("handlingBy");
-            handlingHits++;
-          }
         });
       }, "collab-disconnect-cleanup");
     });
@@ -141,9 +122,9 @@ export async function cleanupOnDisconnect(
     await connection.disconnect();
   }
 
-  if (opLockHits > 0 || handlingHits > 0) {
+  if (opLockHits > 0) {
     logger.info(
-      { documentName, userId, opLockHits, handlingHits },
+      { documentName, userId, opLockHits },
       "disconnect cleanup applied",
     );
   }
