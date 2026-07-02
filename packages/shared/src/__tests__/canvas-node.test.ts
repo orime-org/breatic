@@ -104,10 +104,11 @@ describe("HandlingActor", () => {
       clientId?: number;
       gen?: number;
       phase?: HandlingPhase;
+      serverStamped?: boolean;
     }>();
   });
 
-  it("carries the #1580 connection / fencing / phase fields", () => {
+  it("carries the #1580 connection / fencing / phase / server-stamp fields", () => {
     const actor: HandlingActor = {
       userId: "user-1",
       type: "backend",
@@ -115,10 +116,12 @@ describe("HandlingActor", () => {
       clientId: 3_141_592_653, // Yjs clientID is a number
       gen: 2,
       phase: "running",
+      serverStamped: true,
     };
     expect(actor.clientId).toBe(3_141_592_653);
     expect(actor.gen).toBe(2);
     expect(actor.phase).toBe("running");
+    expect(actor.serverStamped).toBe(true);
   });
 
   it("HandlingPhase is exactly queued | running", () => {

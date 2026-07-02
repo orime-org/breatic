@@ -102,6 +102,16 @@ export interface HandlingActor {
    * phase. Absent = treat as `running` (frontend single-phase / pre-#1580).
    */
   phase?: HandlingPhase;
+  /**
+   * Set true by the collab sweeper once it has re-stamped `startedAt` with
+   * the SERVER clock (#1580 #1). A `frontend` driver writes `startedAt` from
+   * the browser clock, which is user-controllable and must never be compared
+   * against the server clock — so the sweeper overwrites it with server time
+   * on first observation and flags it here; only then is `startedAt` trusted
+   * for expiry. `backend` startedAt is server-authored at enqueue (NTP-bounded
+   * skew), so it is never normalized. Absent = not yet server-normalized.
+   */
+  serverStamped?: boolean;
 }
 
 /**

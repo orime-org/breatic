@@ -42,6 +42,7 @@
 import * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { HANDLING_TIMEOUT_MS, parseDocName } from "@breatic/shared";
+import type { HandlingActor } from "@breatic/shared";
 
 /** Named transaction origin for sweep write-backs (undo-stack exclusion). */
 export const HANDLING_SWEEP_ORIGIN = "handling-lease-sweep";
@@ -76,37 +77,59 @@ export interface HandlingSweeper {
 }
 
 /**
- * Reclaim every expired handling node in one canvas doc.
+ * Reclaim every expired handling node in one canvas doc — and, first,
+ * server-normalize any frontend lease not yet stamped with the server clock.
  *
- * A node is expired when `state === 'handling'` AND (its lease start is
+ * `startedAt` from a `frontend` driver is BROWSER-authored and must never be
+ * compared against the server clock (#1580 #1) — a user's clock that is fast
+ * makes `now - startedAt` negative (immortal zombie), one that is slow makes
+ * a live upload look expired. So on FIRST observation the sweep overwrites a
+ * frontend lease's `startedAt` with the server clock (`now`) and flags
+ * `serverStamped`; only a server-stamped (or `backend`, already server-
+ * authored at enqueue) lease is evaluated for expiry. A normalized node is
+ * NOT reclaimed that pass — its lease now starts from server `now`.
+ *
+ * A node is then expired when `state === 'handling'` AND (its lease start is
  * older than {@link HANDLING_TIMEOUT_MS} OR it carries no `handlingBy` /
  * `startedAt` at all — an orphan by definition, see module doc). Reclaim
  * = `state: 'idle'` + `errorMessage: 'Operation timed out'` + delete
  * `handlingBy`, the same failure shape every other write-back uses (no
- * third wire state).
+ * third wire state). Both writes use {@link HANDLING_SWEEP_ORIGIN}.
  * @param doc - The canvas Y.Doc (direct reference — never a fresh connection).
- * @param now - Current time (epoch ms).
- * @returns the number of nodes reclaimed.
+ * @param now - Current server time (epoch ms).
+ * @returns the number of nodes RECLAIMED (normalization is not a reclaim).
  */
 export function sweepDoc(doc: Y.Doc, now: number): number {
   const nodesMap = doc.getMap<Y.Map<unknown>>("nodesMap");
+  const toNormalize: Y.Map<unknown>[] = [];
   const expired: Y.Map<unknown>[] = [];
   nodesMap.forEach((node) => {
     if (!(node instanceof Y.Map)) return;
     const data = node.get("data");
     if (!(data instanceof Y.Map)) return;
     if (data.get("state") !== "handling") return;
-    const handlingBy = data.get("handlingBy") as
-      | { startedAt?: number }
-      | undefined;
+    const handlingBy = data.get("handlingBy") as HandlingActor | undefined;
+    // Frontend lease not yet server-stamped → normalize this pass, do not
+    // evaluate its (browser-authored) startedAt for expiry.
+    if (handlingBy?.type === "frontend" && !handlingBy.serverStamped) {
+      toNormalize.push(data);
+      return;
+    }
     const startedAt = handlingBy?.startedAt;
     // `>` boundary — the same comparison the web display fallback uses.
     const leaseExpired =
       startedAt === undefined || now - startedAt > HANDLING_TIMEOUT_MS;
     if (leaseExpired) expired.push(data);
   });
-  if (expired.length === 0) return 0;
+  if (toNormalize.length === 0 && expired.length === 0) return 0;
   doc.transact(() => {
+    for (const data of toNormalize) {
+      const hb = data.get("handlingBy") as HandlingActor;
+      // Overwrite the browser-authored startedAt with the server clock and
+      // flag it so this normalization happens exactly once (the flag persists
+      // in the doc across collab restarts).
+      data.set("handlingBy", { ...hb, startedAt: now, serverStamped: true });
+    }
     for (const data of expired) {
       data.set("state", "idle");
       data.set("errorMessage", "Operation timed out");

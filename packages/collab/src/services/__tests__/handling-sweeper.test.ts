@@ -61,6 +61,9 @@ describe("sweepDoc (#1569 handling lease sweep)", () => {
           userId: "u1",
           type: "frontend",
           startedAt: NOW - HANDLING_TIMEOUT_MS - 1,
+          // #1580 #1: server-stamped, so its (server-clock) startedAt is
+          // evaluated for expiry rather than re-normalized.
+          serverStamped: true,
         },
       },
     });
@@ -117,7 +120,7 @@ describe("sweepDoc (#1569 handling lease sweep)", () => {
     const doc = docWith({
       fe: {
         state: "handling",
-        handlingBy: { userId: "u1", type: "frontend", startedAt: stale },
+        handlingBy: { userId: "u1", type: "frontend", startedAt: stale, serverStamped: true },
       },
       be: {
         state: "handling",
@@ -147,6 +150,65 @@ describe("sweepDoc (#1569 handling lease sweep)", () => {
     sweepDoc(doc, NOW);
     expect(origins).toContain(HANDLING_SWEEP_ORIGIN);
   });
+
+  // ── #1580 #1: server-authoritative clock ─────────────────────────
+  it("normalizes a frontend lease's browser-clock startedAt to server time on first observation (not reclaimed)", () => {
+    // A frontend driver writes startedAt from the browser clock. Here it is
+    // 2h in the FUTURE (user clock fast) — the old code computed now-startedAt
+    // negative and NEVER expired it (immortal zombie). New behaviour: the
+    // sweep OVERWRITES startedAt with the server clock + flags serverStamped,
+    // and does NOT reclaim this pass (the lease now starts from server 'now').
+    const doc = docWith({
+      fe: {
+        state: "handling",
+        handlingBy: {
+          userId: "u1",
+          type: "frontend",
+          startedAt: NOW + 7_200_000, // browser clock 2h fast
+        },
+      },
+    });
+    expect(sweepDoc(doc, NOW)).toBe(0); // 0 reclaimed — normalized, not swept
+    const hb = dataOf(doc, "fe").get("handlingBy") as {
+      startedAt: number;
+      serverStamped?: boolean;
+    };
+    expect(dataOf(doc, "fe").get("state")).toBe("handling");
+    expect(hb.startedAt).toBe(NOW); // re-stamped to the server clock
+    expect(hb.serverStamped).toBe(true);
+  });
+
+  it("reclaims a server-stamped frontend lease past budget (browser clock never consulted again)", () => {
+    const doc = docWith({
+      fe: {
+        state: "handling",
+        handlingBy: {
+          userId: "u1",
+          type: "frontend",
+          startedAt: NOW - HANDLING_TIMEOUT_MS - 1,
+          serverStamped: true,
+        },
+      },
+    });
+    expect(sweepDoc(doc, NOW)).toBe(1);
+    expect(dataOf(doc, "fe").get("state")).toBe("idle");
+  });
+
+  it("never normalizes a backend lease — startedAt is already server-authored (NTP-bounded)", () => {
+    const doc = docWith({
+      be: {
+        state: "handling",
+        handlingBy: { userId: "u2", type: "backend", startedAt: NOW - 5_000 },
+      },
+    });
+    expect(sweepDoc(doc, NOW)).toBe(0);
+    const hb = dataOf(doc, "be").get("handlingBy") as {
+      startedAt: number;
+      serverStamped?: boolean;
+    };
+    expect(hb.startedAt).toBe(NOW - 5_000); // unchanged
+    expect(hb.serverStamped).toBeUndefined(); // never flagged
+  });
 });
 
 describe("createHandlingSweeper (periodic scan over loaded docs)", () => {
@@ -162,7 +224,7 @@ describe("createHandlingSweeper (periodic scan over loaded docs)", () => {
   it("sweepAll scans every loaded CANVAS doc via direct references (no openDirectConnection)", () => {
     const stale = {
       state: "handling",
-      handlingBy: { userId: "u", type: "frontend", startedAt: NOW - HANDLING_TIMEOUT_MS - 1 },
+      handlingBy: { userId: "u", type: "frontend", startedAt: NOW - HANDLING_TIMEOUT_MS - 1, serverStamped: true },
     };
     const canvas = docWith({ n1: stale });
     const meta = docWith({}); // meta doc — must be skipped by doc-name guard
