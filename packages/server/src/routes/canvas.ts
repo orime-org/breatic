@@ -153,9 +153,14 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
             // alone; Worker owns the terminal state transition.
             type: "backend",
             // Lease start (#1569): the collab sweeper reclaims this node
-            // if it is still handling HANDLING_TIMEOUT_MS from now (the
-            // worker-crash / stalled-death safety net).
+            // if it is still handling past its budget (the worker-crash /
+            // stalled-death safety net). Server-authored (NTP-bounded), so
+            // it is trusted directly — no client-clock normalization needed.
             startedAt: Date.now(),
+            // #1580 #2: the QUEUE phase (enqueue → Worker pickup). The Worker
+            // re-stamps to phase 'running' at markRunning, so a long queue
+            // backlog does not eat into the execution budget window.
+            phase: "queued",
           },
         },
       });

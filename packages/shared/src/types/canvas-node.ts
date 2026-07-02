@@ -425,6 +425,16 @@ export interface NodeStateUpdateEvent {
   nodeId: string;
   /** Partial update merged into target node's data Y.Map by Collab consumer. */
   update: NodeStateUpdatePayload;
+  /**
+   * Lease renewal signal (#1580 #2). When set, the Collab consumer READS the
+   * node's current `handlingBy` and re-stamps `phase` + a fresh server
+   * `startedAt`, PRESERVING every other field (userId / type / clientId /
+   * gen). The Worker emits `renewLease: 'running'` at `markRunning` so the
+   * execution phase gets its own budget window — a long queue backlog does
+   * not eat into it. Read-modify-write (not a flat handlingBy overwrite) so
+   * the fencing generation survives the transition.
+   */
+  renewLease?: HandlingPhase;
 }
 
 /** Single union for forward-compat. */

@@ -33,6 +33,7 @@ import { shouldTrackConnection } from "@collab/services/connection-tracking.js";
 import {
   createHandlingSweeper,
   sweepDoc,
+  resolveLeaseBudget,
   type HandlingSweeper,
 } from "@collab/services/handling-sweeper.js";
 import * as Y from "yjs";
@@ -69,6 +70,13 @@ export interface CollabServerInfra {
  */
 export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; handlingSweeper: HandlingSweeper }> {
   const cfg = getCollabConfig();
+
+  // Handling-lease budgets (#1580 #2): default + per-operation overrides,
+  // consumed by both the load-time sweep and the periodic sweeper.
+  const leaseBudgets = {
+    defaultBudgetMs: cfg.handling_lease.default_budget_ms,
+    overrides: cfg.handling_lease.budget_overrides,
+  };
 
   // Cross-instance connection registry (#1421). Records each connection
   // in Redis DB3 (the collab-coordination singleton — same connection
@@ -174,7 +182,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     afterLoadDocument: async ({ documentName, document }) => {
       const parsed = parseDocName(documentName);
       if (!parsed || parsed.kind !== "canvas") return;
-      const swept = sweepDoc(document, Date.now());
+      const swept = sweepDoc(document, Date.now(), (phase, operation) =>
+        resolveLeaseBudget(phase, operation, leaseBudgets),
+      );
       if (swept > 0) {
         logger.warn(
           { documentName, swept, reason: "handling_lease_swept_on_load" },
@@ -372,6 +382,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // connections opened.
   const handlingSweeper = createHandlingSweeper({
     hocuspocus: wsServer.hocuspocus,
+    budgets: leaseBudgets,
   });
   handlingSweeper.start();
 

@@ -25,7 +25,13 @@
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
-import type { CanvasNodeFields, NodeStateUpdateEvent, NodeEvent } from "@breatic/shared";
+import type {
+  CanvasNodeFields,
+  NodeStateUpdateEvent,
+  NodeEvent,
+  HandlingActor,
+  HandlingPhase,
+} from "@breatic/shared";
 import { parseDocName } from "@breatic/shared";
 import { createLogger, taskEventsStreamKey } from "@breatic/core";
 import { startStreamConsumer } from "@collab/services/event-stream.js";
@@ -53,6 +59,28 @@ const WORKER_UPDATABLE_FIELDS = new Set<keyof CanvasNodeFields["data"]>([
   "duration",
   "handlingBy",
 ] as const);
+
+/**
+ * Re-stamp a handling lease's phase + startedAt IN PLACE (#1580 #2),
+ * preserving every other `handlingBy` field. Read-modify-write (not a flat
+ * overwrite) so userId / type / clientId / the fencing `gen` survive the
+ * queue→running transition. Caller runs this inside the node-state-update
+ * transaction; no-ops (returns false) when the node has no live handlingBy.
+ * @param dataMap - The node's `data` Y.Map.
+ * @param phase - The phase to transition to (Worker sends 'running').
+ * @param now - The collab server clock (epoch ms) to re-stamp startedAt with.
+ * @returns true if a lease was re-stamped, false if there was none to renew.
+ */
+export function restampLease(
+  dataMap: Y.Map<unknown>,
+  phase: HandlingPhase,
+  now: number,
+): boolean {
+  const hb = dataMap.get("handlingBy");
+  if (hb === null || typeof hb !== "object") return false;
+  dataMap.set("handlingBy", { ...(hb as HandlingActor), phase, startedAt: now });
+  return true;
+}
 
 
 /**
@@ -172,8 +200,9 @@ export async function handleNodeStateUpdateEvent(
       "node-state-update event included disallowed update keys; dropped",
     );
   }
-  if (filteredEntries.length === 0) {
-    // Nothing allowed to apply — skip without opening the document.
+  if (filteredEntries.length === 0 && event.renewLease === undefined) {
+    // Nothing allowed to apply and no lease renewal — skip without opening
+    // the document.
     return;
   }
 
@@ -238,6 +267,11 @@ export async function handleNodeStateUpdateEvent(
           } else {
             dataMap.set(k, v);
           }
+        }
+        // #1580 #2: lease renewal (queue→running) re-stamps phase + a fresh
+        // server startedAt, preserving the rest (incl. the fencing gen).
+        if (event.renewLease !== undefined) {
+          restampLease(dataMap, event.renewLease, Date.now());
         }
       }, "node-state-update");
 

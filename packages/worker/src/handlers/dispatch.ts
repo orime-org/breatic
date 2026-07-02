@@ -242,6 +242,23 @@ async function runTaskBody(
 
   await taskService.markRunning(taskId, job.id ?? "");
 
+  // #1580 #2: transition the lease queue→running so execution gets its own
+  // budget window (a long queue backlog must not eat into it). Best-effort:
+  // a publish miss just leaves the node in 'queued' (default budget), which
+  // is still safe — the sweeper backstop remains.
+  if (canvasDocName) {
+    for (const nodeId of nodeIds) {
+      try {
+        await emitNodeLeaseRunning(streamRedis, canvasDocName, nodeId);
+      } catch (err) {
+        logger.warn(
+          { err, taskId, nodeId },
+          "lease renewal (queue→running) publish failed; node stays queued",
+        );
+      }
+    }
+  }
+
   // ─── Stage 1: Call the provider ───────────────────────────────────
   // Errors here rethrow → BullMQ retries (this stage is retry-safe).
   let providerResult: Record<string, unknown>;
@@ -561,6 +578,31 @@ export async function emitNodeStateFailed(
       // The Collab consumer calls Y.Map.delete("handlingBy") on null.
       handlingBy: null,
     },
+  });
+}
+
+/**
+ * Transition a node's handling lease from the queue phase to the running
+ * (execution) phase (#1580 #2). Emitted at `markRunning` — the Collab
+ * consumer READS the node's current handlingBy and re-stamps `phase:
+ * 'running'` + a fresh server startedAt, PRESERVING the rest (the fencing
+ * gen included). Carries an empty `update` — the `renewLease` signal is the
+ * whole payload.
+ * @param streamRedis - Redis client for the stream DB.
+ * @param docName - Canvas doc the node lives in.
+ * @param nodeId - Node whose lease transitions to the execution phase.
+ */
+export async function emitNodeLeaseRunning(
+  streamRedis: ReturnType<typeof getStreamRedis>,
+  docName: string,
+  nodeId: string,
+): Promise<void> {
+  await publishNodeEvent(streamRedis, {
+    type: "node-state-update",
+    docName,
+    nodeId,
+    update: {},
+    renewLease: "running",
   });
 }
 

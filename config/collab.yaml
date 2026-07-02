@@ -38,3 +38,25 @@ throttle_ban_time: 1             # ban duration in MINUTES (the extension multip
 # ── Persistence ───────────────────────────────────
 # Quiet mode: suppress internal Hocuspocus logs (use our pino logger instead).
 quiet: true
+
+# ── Handling Lease (#1580) ────────────────────────
+# 'handling' is fragile shared Yjs state; its driver (a browser uploading,
+# a Worker running AIGC) can die silently. These tune the collab sweeper +
+# disconnect cleanup — the ONLY consumer of these values (server/worker just
+# stamp timestamps, web only renders the backend-authoritative result).
+#
+# NOT the same as worker.yaml's `lock_duration_ms` (10min): that is BullMQ's
+# own stalled-worker detection (fast path → the worker.on failed net); THIS
+# lease is the last-resort Yjs-node backstop (1h).
+handling_lease:
+  # Default lease budget (ms) per phase. A backend op has TWO phases, each
+  # re-stamped and each measured against a budget: 'queued' (enqueue→pickup)
+  # always uses this default; 'running' (execution) uses budget_overrides
+  # below if the node's operation matches, else this default. 1h is generous
+  # by design — its job is to bound rare zombies, not to fit op durations.
+  default_budget_ms: 3600000        # 1 hour
+  # Per-operation execution-budget overrides (ms), keyed by the canvas node's
+  # `data.operation`. Raise for genuinely long ops (e.g. video export) so the
+  # sweeper does not reclaim a live job. Empty = every op uses the default.
+  budget_overrides: {}
+  #   video_export: 7200000         # example: 2h for video export

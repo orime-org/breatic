@@ -20,6 +20,7 @@ vi.mock("@breatic/core", () => ({
 import {
   sweepDoc,
   createHandlingSweeper,
+  resolveLeaseBudget,
   HANDLING_SWEEP_ORIGIN,
 } from "@collab/services/handling-sweeper.js";
 
@@ -208,6 +209,73 @@ describe("sweepDoc (#1569 handling lease sweep)", () => {
     };
     expect(hb.startedAt).toBe(NOW - 5_000); // unchanged
     expect(hb.serverStamped).toBeUndefined(); // never flagged
+  });
+
+  // ── #1580 #2: per-phase / per-operation budget ───────────────────
+  it("uses a per-operation budget resolver: a running op past the DEFAULT but within its override is NOT reclaimed", () => {
+    // video_export runs long: 2h override. At default 1h it would be reclaimed,
+    // but the running-phase override keeps a live job alive.
+    const budgets = { defaultBudgetMs: 3_600_000, overrides: { video_export: 7_200_000 } };
+    const resolve = (
+      phase: "queued" | "running" | undefined,
+      op: string | undefined,
+    ): number => resolveLeaseBudget(phase, op, budgets);
+    const doc = docWith({
+      vid: {
+        state: "handling",
+        operation: "video_export",
+        handlingBy: {
+          userId: "u1",
+          type: "backend",
+          phase: "running",
+          startedAt: NOW - 3_600_000 - 60_000, // 1h1min: past default, within 2h override
+        },
+      },
+    });
+    expect(sweepDoc(doc, NOW, resolve)).toBe(0); // not reclaimed
+    expect(dataOf(doc, "vid").get("state")).toBe("handling");
+  });
+
+  it("a queued op ignores the running-phase override and uses the default budget", () => {
+    const budgets = { defaultBudgetMs: 3_600_000, overrides: { video_export: 7_200_000 } };
+    const resolve = (
+      phase: "queued" | "running" | undefined,
+      op: string | undefined,
+    ): number => resolveLeaseBudget(phase, op, budgets);
+    const doc = docWith({
+      vid: {
+        state: "handling",
+        operation: "video_export",
+        handlingBy: {
+          userId: "u1",
+          type: "backend",
+          phase: "queued", // still in the queue — override does NOT apply
+          startedAt: NOW - 3_600_000 - 60_000, // 1h1min > default 1h
+        },
+      },
+    });
+    expect(sweepDoc(doc, NOW, resolve)).toBe(1); // reclaimed: queue backlog past default
+    expect(dataOf(doc, "vid").get("state")).toBe("idle");
+  });
+});
+
+describe("resolveLeaseBudget (#1580 #2 per-phase / per-op budget)", () => {
+  const budgets = { defaultBudgetMs: 3_600_000, overrides: { video_export: 7_200_000 } };
+
+  it("running phase + operation with an override → the override budget", () => {
+    expect(resolveLeaseBudget("running", "video_export", budgets)).toBe(7_200_000);
+  });
+
+  it("running phase + operation without an override → the default budget", () => {
+    expect(resolveLeaseBudget("running", "image_gen", budgets)).toBe(3_600_000);
+  });
+
+  it("queued phase → always the default (queue backlog is operation-independent)", () => {
+    expect(resolveLeaseBudget("queued", "video_export", budgets)).toBe(3_600_000);
+  });
+
+  it("absent phase / operation → the default budget", () => {
+    expect(resolveLeaseBudget(undefined, undefined, budgets)).toBe(3_600_000);
   });
 });
 

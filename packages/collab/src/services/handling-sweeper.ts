@@ -42,10 +42,52 @@
 import * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { HANDLING_TIMEOUT_MS, parseDocName } from "@breatic/shared";
-import type { HandlingActor } from "@breatic/shared";
+import type { HandlingActor, HandlingPhase } from "@breatic/shared";
 
 /** Named transaction origin for sweep write-backs (undo-stack exclusion). */
 export const HANDLING_SWEEP_ORIGIN = "handling-lease-sweep";
+
+/** Per-phase / per-operation lease budgets (#1580 #2), from collab.yaml. */
+export interface LeaseBudgets {
+  /** Default budget (ms) — used for the queue phase and un-overridden ops. */
+  defaultBudgetMs: number;
+  /** Execution-phase budget (ms) overrides keyed by node `data.operation`. */
+  overrides: Record<string, number>;
+}
+
+/**
+ * Resolve the lease budget (ms) for one handling node (#1580 #2). A backend
+ * op has two phases, each measured against its own budget window (the lease
+ * is re-stamped at the queue→running transition):
+ *   - `running` (execution) may use a per-operation override for genuinely
+ *     long ops (e.g. video export) so the sweeper does not kill a live job;
+ *   - `queued` / absent always uses the default — queue backlog is
+ *     operation-independent.
+ * @param phase - The handling lifecycle phase.
+ * @param operation - The node's `data.operation` (used only when running).
+ * @param budgets - Configured default + per-operation overrides.
+ * @returns the budget in ms for this node.
+ */
+export function resolveLeaseBudget(
+  phase: HandlingPhase | undefined,
+  operation: string | undefined,
+  budgets: LeaseBudgets,
+): number {
+  if (phase === "running" && operation !== undefined) {
+    const override = budgets.overrides[operation];
+    if (override !== undefined) return override;
+  }
+  return budgets.defaultBudgetMs;
+}
+
+/**
+ * Budget resolver signature used by {@link sweepDoc}. The default (when a
+ * caller passes none) is the unified 1h budget for every phase / operation.
+ */
+export type ResolveBudget = (
+  phase: HandlingPhase | undefined,
+  operation: string | undefined,
+) => number;
 
 /**
  * Default period of the loaded-docs scan (ms). The budget is 1h; 5 min
@@ -61,6 +103,11 @@ export interface CreateHandlingSweeperOptions {
   intervalMs?: number;
   /** Clock, injectable for tests (default `Date.now`). */
   now?: () => number;
+  /**
+   * Per-phase / per-operation lease budgets (#1580 #2, from collab.yaml).
+   * Omitted → the unified 1h budget for every node.
+   */
+  budgets?: LeaseBudgets;
 }
 
 /** Periodic handling-lease sweeper over the loaded docs. */
@@ -97,9 +144,15 @@ export interface HandlingSweeper {
  * third wire state). Both writes use {@link HANDLING_SWEEP_ORIGIN}.
  * @param doc - The canvas Y.Doc (direct reference — never a fresh connection).
  * @param now - Current server time (epoch ms).
+ * @param resolveBudget - Budget (ms) for a node given its phase + operation
+ *   (#1580 #2). Defaults to the unified 1h for every node.
  * @returns the number of nodes RECLAIMED (normalization is not a reclaim).
  */
-export function sweepDoc(doc: Y.Doc, now: number): number {
+export function sweepDoc(
+  doc: Y.Doc,
+  now: number,
+  resolveBudget: ResolveBudget = () => HANDLING_TIMEOUT_MS,
+): number {
   const nodesMap = doc.getMap<Y.Map<unknown>>("nodesMap");
   const toNormalize: Y.Map<unknown>[] = [];
   const expired: Y.Map<unknown>[] = [];
@@ -116,9 +169,10 @@ export function sweepDoc(doc: Y.Doc, now: number): number {
       return;
     }
     const startedAt = handlingBy?.startedAt;
+    const operation = data.get("operation") as string | undefined;
+    const budget = resolveBudget(handlingBy?.phase, operation);
     // `>` boundary — the same comparison the web display fallback uses.
-    const leaseExpired =
-      startedAt === undefined || now - startedAt > HANDLING_TIMEOUT_MS;
+    const leaseExpired = startedAt === undefined || now - startedAt > budget;
     if (leaseExpired) expired.push(data);
   });
   if (toNormalize.length === 0 && expired.length === 0) return 0;
@@ -151,7 +205,12 @@ export function createHandlingSweeper(
     hocuspocus,
     intervalMs = DEFAULT_SWEEP_INTERVAL_MS,
     now = Date.now,
+    budgets,
   } = options;
+
+  const resolveBudget: ResolveBudget = budgets
+    ? (phase, operation): number => resolveLeaseBudget(phase, operation, budgets)
+    : (): number => HANDLING_TIMEOUT_MS;
 
   let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -166,7 +225,7 @@ export function createHandlingSweeper(
         // they pathologically contained a map with that key.
         const parsed = parseDocName(documentName);
         if (!parsed || parsed.kind !== "canvas") return;
-        total += sweepDoc(doc, t);
+        total += sweepDoc(doc, t, resolveBudget);
       });
       return total;
     },

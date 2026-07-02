@@ -89,7 +89,11 @@ vi.mock("ai", () => ({
 }));
 
 // ── Import the helpers under test AFTER mocks are wired ─────────────
-import { emitNodeStateDone, emitNodeStateFailed } from "../handlers/dispatch.js";
+import {
+  emitNodeStateDone,
+  emitNodeStateFailed,
+  emitNodeLeaseRunning,
+} from "../handlers/dispatch.js";
 
 // Dummy streamRedis value — handlers pass it through to publishNodeEvent
 // which is mocked, so any value works.
@@ -204,6 +208,20 @@ describe("emitNodeStateDone", () => {
 // ────────────────────────────────────────────────────────────────────
 // emitNodeStateFailed
 // ────────────────────────────────────────────────────────────────────
+
+describe("emitNodeLeaseRunning (#1580 #2 queue→running transition)", () => {
+  it("emits a renewLease='running' signal with an empty update", async () => {
+    await emitNodeLeaseRunning(fakeStreamRedis, "project-p1/canvas-s1", "n1");
+    expect(mockPublishNodeEvent).toHaveBeenCalledTimes(1);
+    expect(mockPublishNodeEvent).toHaveBeenCalledWith(fakeStreamRedis, {
+      type: "node-state-update",
+      docName: "project-p1/canvas-s1",
+      nodeId: "n1",
+      update: {},
+      renewLease: "running",
+    });
+  });
+});
 
 describe("emitNodeStateFailed", () => {
   it("emits the correct failure shape for a single node", async () => {
