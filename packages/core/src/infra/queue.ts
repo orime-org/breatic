@@ -8,7 +8,7 @@
  * the application Redis client). This module manages that connection.
  */
 
-import { Queue, Worker } from "bullmq";
+import { Queue, QueueEvents, Worker } from "bullmq";
 import type { Processor, ConnectionOptions } from "bullmq";
 import { env } from "@core/config/env.js";
 import { getWorkerConfig } from "@core/config/worker.js";
@@ -34,6 +34,7 @@ function parseRedisUrl(): ConnectionOptions {
 
 const _queues: Queue[] = [];
 const _workers: Worker[] = [];
+const _queueEvents: QueueEvents[] = [];
 
 /**
  * Create a BullMQ queue.
@@ -44,6 +45,23 @@ export function createQueue(name: string): Queue {
   const queue = new Queue(name, { connection: parseRedisUrl() });
   _queues.push(queue);
   return queue;
+}
+
+/**
+ * Create a BullMQ QueueEvents listener.
+ *
+ * Unlike a `Worker` callback (process-local, dies with its process), a
+ * `QueueEvents` instance receives queue lifecycle events (completed /
+ * failed / stalled) cross-process — every subscribed instance is notified.
+ * Used by the worker's failed-job write-back net so a job whose own worker
+ * crashed is still cleaned up by another live instance (#1580 #6).
+ * @param name - Queue name to observe.
+ * @returns A new BullMQ QueueEvents instance.
+ */
+export function createQueueEvents(name: string): QueueEvents {
+  const queueEvents = new QueueEvents(name, { connection: parseRedisUrl() });
+  _queueEvents.push(queueEvents);
+  return queueEvents;
 }
 
 /**
@@ -111,7 +129,9 @@ export async function closeQueues(): Promise<void> {
   await Promise.allSettled([
     ..._queues.map((q) => q.close()),
     ..._workers.map((w) => w.close()),
+    ..._queueEvents.map((qe) => qe.close()),
   ]);
   _queues.length = 0;
   _workers.length = 0;
+  _queueEvents.length = 0;
 }

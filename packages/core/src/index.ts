@@ -85,7 +85,7 @@ export { runGracefulShutdown } from "@core/infra/graceful-shutdown.js";
 export type { GracefulShutdownDeps } from "@core/infra/graceful-shutdown.js";
 export { checkInfraReady } from "@core/infra/connectivity-check.js";
 export { InfraNotReadyError } from "@core/infra/errors.js";
-export { createQueue, createWorker, defaultJobOpts, closeQueues } from "@core/infra/queue.js";
+export { createQueue, createQueueEvents, createWorker, defaultJobOpts, closeQueues } from "@core/infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey } from "@core/infra/storage/index.js";
 export {
   publishNodeEvent,
