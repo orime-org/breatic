@@ -36,8 +36,10 @@ export function CanvasMiniMap(): React.JSX.Element {
       // above the viewport toolbar (anchored bottom-4 = 16px, 42px tall incl.
       // border → its top edge sits at 58px) and paint the floating-overlay
       // surface. mb-16 = 64px leaves a 6px gap; mr-4 matches the toolbar's
-      // own inset. Standard Tailwind steps, no arbitrary values.
-      className='!m-0 !mr-4 !mb-16 rounded-md border border-border shadow'
+      // own inset. Radius is the 6px chrome step — deliberately distinct
+      // from the 12px toolbar (user decision 2026-07-03); the inner node
+      // rects / viewport mask keep the library defaults.
+      className='!m-0 !mr-4 !mb-16 rounded-chrome border border-border shadow'
     />
   );
 }

@@ -44,11 +44,12 @@ describe('CanvasMiniMap (#1548)', () => {
     expect(panel.className).toContain('mb-16');
   });
 
-  it('paints the floating-overlay surface (popover bg + hairline border + shadow)', () => {
+  it('paints the floating-overlay surface (hairline border + shadow + 6px chrome radius, user-ratified: distinct from the 12px toolbar)', () => {
     setup();
     const panel = screen.getByTestId('rf__minimap');
-    for (const cls of ['border-border', 'shadow', 'rounded-md']) {
+    for (const cls of ['border-border', 'shadow', 'rounded-chrome']) {
       expect(panel.className).toContain(cls);
     }
+    expect(panel.className).not.toContain('rounded-md');
   });
 });
