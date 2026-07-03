@@ -36,20 +36,30 @@ describe('CanvasMiniMap (#1548)', () => {
     expect(svg).not.toHaveAccessibleName('Mini Map');
   });
 
-  it('sits bottom-right and clears the viewport toolbar (toolbar top edge is at 58px — 64px margin leaves a gap)', () => {
+  it('sits bottom-right with the zoom-popover gap (toolbar top edge 58px + sideOffset-8 twin = 66px margin)', () => {
     setup();
     const panel = screen.getByTestId('rf__minimap');
     expect(panel.className).toContain('bottom');
     expect(panel.className).toContain('right');
-    expect(panel.className).toContain('mb-16');
+    expect(panel.className).toContain('mb-[66px]');
   });
 
-  it('paints the floating-overlay surface (hairline border + shadow + 6px chrome radius, user-ratified: distinct from the 12px toolbar)', () => {
+  it('paints the floating-overlay surface with the overlay radius (zoom-popover twin, user-ratified)', () => {
     setup();
     const panel = screen.getByTestId('rf__minimap');
-    for (const cls of ['border-border', 'shadow', 'rounded-chrome']) {
+    for (const cls of ['border-border', 'shadow', 'rounded-overlay']) {
       expect(panel.className).toContain(cls);
     }
     expect(panel.className).not.toContain('rounded-md');
+  });
+
+  it('pins the viewport mask stroke to a screen-constant width (explicit maskStrokeWidth engages the library viewScale conversion)', () => {
+    setup();
+    const panel = screen.getByTestId('rf__minimap');
+    // The library injects the CSS variable ONLY when maskStrokeWidth is a
+    // number — its absence was the unstable-hairline bug (user report).
+    expect(
+      panel.style.getPropertyValue('--xy-minimap-mask-stroke-width-props'),
+    ).not.toBe('');
   });
 });

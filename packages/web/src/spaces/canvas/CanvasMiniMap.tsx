@@ -1,24 +1,51 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { MiniMap } from '@xyflow/react';
+import { getNodesBounds, MiniMap, useStore } from '@xyflow/react';
 import type * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { minimapNodeColor } from '@web/spaces/canvas/minimap-node-color';
+import { minimapViewScale } from '@web/spaces/canvas/minimap-view-scale';
+
+/**
+ * Screen-constant corner radius for the minimap node rects (user-ratified
+ * 2026-07-03; the library's default rx=5 is in SVG units and drifted with
+ * canvas zoom). Converted to SVG units per render via the view scale.
+ */
+const NODE_RADIUS_PX = 2;
 
 /**
  * The canvas bird's-eye minimap (#1548) — ReactFlow's MiniMap in the
- * viewport's bottom-right, lifted above the viewport toolbar, painted as a
- * floating overlay (popover surface + hairline + shadow) and colored by the
+ * viewport's bottom-right, spaced and rounded as the zoom popover's twin
+ * (66px = the toolbar's 58px top edge + the popover's sideOffset-8 gap;
+ * `rounded-overlay`), painted as a floating overlay and colored by the
  * 7-color palette node-type mapping. Pannable + zoomable: dragging inside
  * the map moves the main viewport (read-only for the document — safe for
  * viewers). Mounted by the canvas only while the toolbar's minimap toggle
  * (single source: the canvas store) is on.
+ *
+ * Screen-constant geometry (user report 2026-07-03): the viewport-mask
+ * stroke engages the library's viewScale conversion by passing an explicit
+ * `maskStrokeWidth`; the node-rect radius has no such library hook, so the
+ * same view scale is mirrored here (`minimapViewScale`) and baked into
+ * `nodeBorderRadius` per render.
  * @returns The minimap panel element.
  */
 export function CanvasMiniMap(): React.JSX.Element {
   const t = useTranslation();
+  // Flow-units-per-minimap-pixel — recomputed as the store changes so the
+  // node-rect radius stays a constant NODE_RADIUS_PX on screen.
+  const viewScale = useStore((s) =>
+    minimapViewScale({
+      tx: s.transform[0],
+      ty: s.transform[1],
+      zoom: s.transform[2],
+      flowWidth: s.width,
+      flowHeight: s.height,
+      nodesBounds: s.nodeLookup.size > 0 ? getNodesBounds(s.nodes) : null,
+    }),
+  );
   return (
     <MiniMap
       position='bottom-right'
@@ -27,19 +54,22 @@ export function CanvasMiniMap(): React.JSX.Element {
       ariaLabel={t('canvas.minimap.label')}
       nodeColor={minimapNodeColor}
       nodeStrokeColor='transparent'
+      nodeBorderRadius={NODE_RADIUS_PX * viewScale}
+      // Explicit number engages the library's screen-constant conversion —
+      // without it the stroke falls back to a static SVG-unit width and
+      // visibly drifts with canvas zoom (user report).
+      maskStrokeWidth={1}
       // Surface colors ride the token system (auto light/dark); the mask is a
       // translucent canvas-tone wash so the viewport window reads as a hole.
       bgColor='var(--color-popover)'
       maskColor='color-mix(in srgb, var(--color-canvas) 65%, transparent)'
       maskStrokeColor='var(--color-active-border)'
-      // The className lands on the outer Panel div (source-verified): lift it
-      // above the viewport toolbar (anchored bottom-4 = 16px, 42px tall incl.
-      // border → its top edge sits at 58px) and paint the floating-overlay
-      // surface. mb-16 = 64px leaves a 6px gap; mr-4 matches the toolbar's
-      // own inset. Radius is the 6px chrome step — deliberately distinct
-      // from the 12px toolbar (user decision 2026-07-03); the inner node
-      // rects / viewport mask keep the library defaults.
-      className='!m-0 !mr-4 !mb-16 rounded-chrome border border-border shadow'
+      // The className lands on the outer Panel div (source-verified): the
+      // 66px bottom margin makes the gap to the toolbar match the zoom
+      // popover's sideOffset (8px above the toolbar's 58px top edge), and
+      // the radius is the shared overlay step — the map reads as the
+      // popover's sibling, deliberately distinct from the 12px toolbar.
+      className='!m-0 !mr-4 !mb-[66px] rounded-overlay border border-border shadow'
     />
   );
 }
