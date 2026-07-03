@@ -216,10 +216,13 @@
       "unlock": "解鎖群組",
       "background": "背景顏色",
       "backgroundNone": "無色",
-      "backgroundInfo": "藍色",
-      "backgroundSuccess": "綠色",
-      "backgroundWarning": "橙色",
-      "backgroundError": "珊瑚色"
+      "backgroundRed": "紅色",
+      "backgroundOrange": "橙色",
+      "backgroundGreen": "綠色",
+      "backgroundBlue": "藍色",
+      "backgroundViolet": "紫色",
+      "backgroundPink": "粉色",
+      "backgroundTeal": "青色"
     },
     "comment": {
       "composerPlaceholder": "輸入你的評論...",

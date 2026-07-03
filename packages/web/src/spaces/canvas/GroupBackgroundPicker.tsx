@@ -13,7 +13,8 @@ import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   GROUP_BACKGROUND_OPTIONS,
-  groupBackgroundStyle,
+  groupSwatchStyle,
+  normalizeGroupBackground,
 } from '@web/spaces/canvas/group-background';
 
 interface GroupBackgroundPickerProps {
@@ -28,10 +29,12 @@ interface GroupBackgroundPickerProps {
 }
 
 /**
- * The group background tint picker — a swatch button showing the current tint
- * that opens a row of choices (no color + the 4 status colors). Lives in the
- * group's floating selection toolbar; the parent owns the open state + wires
- * `onPick` to the Yjs `setGroupBackground` write.
+ * The group background tint picker — a swatch button showing the current
+ * color that opens a column of choices (no color + the 7 palette colors,
+ * #1549). Swatch dots paint the SOLID identity color (Chrome model — tint
+ * dots are near-identical in dark mode); the tint itself lands only on the
+ * group surface. Lives in the group's floating selection toolbar; the parent
+ * owns the open state + wires `onPick` to the Yjs `setGroupBackground` write.
  * @param root0 - Component props.
  * @param root0.open - Whether the dropdown is open.
  * @param root0.onOpenChange - Open-state change callback.
@@ -46,7 +49,10 @@ export function GroupBackgroundPicker({
   onPick,
 }: GroupBackgroundPickerProps): React.JSX.Element {
   const t = useTranslation();
-  const current = groupBackgroundStyle(value);
+  const current = groupSwatchStyle(value);
+  // Legacy stored names normalize to their palette successor so old docs
+  // still highlight the matching swatch (#1549 zero migration).
+  const normalized = normalizeGroupBackground(value);
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
@@ -70,7 +76,7 @@ export function GroupBackgroundPicker({
         className='flex w-fit min-w-0 flex-col gap-1 p-1'
       >
         {GROUP_BACKGROUND_OPTIONS.map((opt) => {
-          const dot = groupBackgroundStyle(opt.value);
+          const dot = groupSwatchStyle(opt.value);
           return (
             <DropdownMenuItem
               key={opt.key}
@@ -79,11 +85,16 @@ export function GroupBackgroundPicker({
               onSelect={() => onPick(opt.value)}
               className={cn(
                 'h-6 w-6 justify-center rounded-chrome p-0',
-                opt.value === value ? 'ring-1 ring-status-selected' : '',
+                opt.value === normalized ? 'ring-1 ring-status-selected' : '',
               )}
             >
               <span
-                className='h-4 w-4 rounded-full border border-border'
+                className={cn(
+                  'h-4 w-4 rounded-full',
+                  // Only the no-color dot needs a hairline to be visible at all;
+                  // identity dots carry their own full-strength color.
+                  dot ? '' : 'border border-border',
+                )}
                 style={dot ? { backgroundColor: dot } : undefined}
               />
             </DropdownMenuItem>

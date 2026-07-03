@@ -26,15 +26,49 @@ describe('GroupNode', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('applies the backgroundColor tint via var() from the stored token', () => {
+  it('applies the backgroundColor tint via var(), normalizing legacy stored tokens (#1549)', () => {
     render(
       <GroupNode
         data={{ kind: 'group', backgroundColor: '--color-status-info-bg' }}
       />,
     );
     expect(screen.getByTestId('group-node')).toHaveStyle({
-      backgroundColor: 'var(--color-status-info-bg)',
+      backgroundColor: 'var(--color-palette-blue-bg)',
     });
+  });
+
+  it('gives a tinted group the matching 40% palette border (#1549 dark-mode anchor)', () => {
+    render(
+      <GroupNode
+        data={{ kind: 'group', backgroundColor: '--color-palette-teal-bg' }}
+      />,
+    );
+    const node = screen.getByTestId('group-node');
+    // Color travels via a local CSS variable + a static class (an inline
+    // border-color shorthand with var() is dropped by jsdom's cssstyle).
+    expect(node.style.getPropertyValue('--group-tint-border')).toBe(
+      'var(--color-palette-teal-border)',
+    );
+    expect(node).toHaveClass('border-[color:var(--group-tint-border)]');
+  });
+
+  it('keeps the neutral dashed border for untinted groups', () => {
+    render(<GroupNode data={{ kind: 'group' }} />);
+    const node = screen.getByTestId('group-node');
+    expect(node).toHaveClass('border-border');
+    expect(node.style.getPropertyValue('--group-tint-border')).toBe('');
+  });
+
+  it('lets the selected class win: no tint border override while selected', () => {
+    render(
+      <GroupNode
+        data={{ kind: 'group', backgroundColor: '--color-palette-teal-bg' }}
+        selected
+      />,
+    );
+    const node = screen.getByTestId('group-node');
+    expect(node).toHaveClass('border-status-selected');
+    expect(node.className).not.toContain('--group-tint-border');
   });
 
   it('uses the node-shell border treatment — dashed line, 6px radius, fills the wrapper, 3-state colors', () => {

@@ -216,10 +216,13 @@
       "unlock": "解锁编组",
       "background": "背景颜色",
       "backgroundNone": "无色",
-      "backgroundInfo": "蓝色",
-      "backgroundSuccess": "绿色",
-      "backgroundWarning": "橙色",
-      "backgroundError": "珊瑚色"
+      "backgroundRed": "红色",
+      "backgroundOrange": "橙色",
+      "backgroundGreen": "绿色",
+      "backgroundBlue": "蓝色",
+      "backgroundViolet": "紫色",
+      "backgroundPink": "粉色",
+      "backgroundTeal": "青色"
     },
     "comment": {
       "composerPlaceholder": "输入你的评论...",

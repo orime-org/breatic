@@ -216,10 +216,13 @@
       "unlock": "グループのロック解除",
       "background": "背景色",
       "backgroundNone": "なし",
-      "backgroundInfo": "青",
-      "backgroundSuccess": "緑",
-      "backgroundWarning": "オレンジ",
-      "backgroundError": "コーラル"
+      "backgroundRed": "赤",
+      "backgroundOrange": "オレンジ",
+      "backgroundGreen": "緑",
+      "backgroundBlue": "青",
+      "backgroundViolet": "紫",
+      "backgroundPink": "ピンク",
+      "backgroundTeal": "ティール"
     },
     "comment": {
       "composerPlaceholder": "コメントを入力...",

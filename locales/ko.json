@@ -216,10 +216,13 @@
       "unlock": "그룹 잠금 해제",
       "background": "배경색",
       "backgroundNone": "없음",
-      "backgroundInfo": "파랑",
-      "backgroundSuccess": "초록",
-      "backgroundWarning": "주황",
-      "backgroundError": "코랄"
+      "backgroundRed": "빨강",
+      "backgroundOrange": "주황",
+      "backgroundGreen": "초록",
+      "backgroundBlue": "파랑",
+      "backgroundViolet": "보라",
+      "backgroundPink": "분홍",
+      "backgroundTeal": "청록"
     },
     "comment": {
       "composerPlaceholder": "댓글을 입력하세요...",

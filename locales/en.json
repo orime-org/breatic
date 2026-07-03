@@ -216,10 +216,13 @@
       "unlock": "Unlock group",
       "background": "Background color",
       "backgroundNone": "No color",
-      "backgroundInfo": "Blue",
-      "backgroundSuccess": "Green",
-      "backgroundWarning": "Orange",
-      "backgroundError": "Coral"
+      "backgroundRed": "Red",
+      "backgroundOrange": "Orange",
+      "backgroundGreen": "Green",
+      "backgroundBlue": "Blue",
+      "backgroundViolet": "Purple",
+      "backgroundPink": "Pink",
+      "backgroundTeal": "Teal"
     },
     "comment": {
       "composerPlaceholder": "Enter your comment...",

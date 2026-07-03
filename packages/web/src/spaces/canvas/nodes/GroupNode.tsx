@@ -5,7 +5,10 @@ import * as React from 'react';
 import { Lock } from 'lucide-react';
 
 import { cn } from '@web/lib/utils';
-import { groupBackgroundStyle } from '@web/spaces/canvas/group-background';
+import {
+  groupBackgroundStyle,
+  groupBorderStyle,
+} from '@web/spaces/canvas/group-background';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import {
   MAX_NODE_NAME_LEN,
@@ -51,6 +54,14 @@ export function GroupNode({
   const display =
     data.name && data.name.length > 0 ? data.name : GROUP_DEFAULT_NAME;
   const background = groupBackgroundStyle(data.backgroundColor);
+  // A tinted group carries its hue on the dashed border too (#1549
+  // calibration: dark-mode tints alone are hard to tell apart). The color
+  // travels through a local CSS variable + a static arbitrary class rather
+  // than an inline `border-color` (a shorthand jsdom's cssstyle drops when
+  // fed var(), and a class keeps the selected state on the normal cascade).
+  const borderToken = selected
+    ? undefined
+    : groupBorderStyle(data.backgroundColor);
   // Counter-scale the name with the canvas zoom so it keeps a constant screen
   // size — the same treatment node names get (ContentNodeFrame).
   const headerScale = React.useContext(NodeScaleContext);
@@ -75,7 +86,14 @@ export function GroupNode({
     <div
       data-testid='group-node'
       data-selected={selected ? 'true' : 'false'}
-      style={background ? { backgroundColor: background } : undefined}
+      style={
+        background || borderToken
+          ? ({
+            ...(background ? { backgroundColor: background } : {}),
+            ...(borderToken ? { '--group-tint-border': borderToken } : {}),
+          } as React.CSSProperties)
+          : undefined
+      }
       className={cn(
         // Fill the ReactFlow wrapper (sized to the derived rect) so the tint
         // + border cover the whole group, not just the min box. The border
@@ -87,7 +105,9 @@ export function GroupNode({
         'relative size-full min-h-[80px] min-w-[160px] rounded-sm border border-dashed transition-colors',
         selected
           ? 'border-status-selected'
-          : 'border-border hover:border-foreground-disabled',
+          : borderToken
+            ? 'border-[color:var(--group-tint-border)]'
+            : 'border-border hover:border-foreground-disabled',
       )}
     >
       {/* A locked group shows a lock badge so the frozen structure reads at a
