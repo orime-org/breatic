@@ -58,23 +58,33 @@ describe('useNodeCreation', () => {
     addNode.mockRestore();
   });
 
-  it('createUploadNodeAt writes a media node already in handling state and returns its id', () => {
+  it('createUploadNodeAt writes a media node already in handling state and returns its id + first lease (#1580 #7)', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
+    const clientId = vi
+      .spyOn(canvasSpace, 'getCanvasClientId')
+      .mockReturnValue(42);
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
-    const id = result.current.createUploadNodeAt('image', { x: 7, y: 8 });
+    const { nodeId, lease } = result.current.createUploadNodeAt('image', { x: 7, y: 8 });
 
     expect(addNode).toHaveBeenCalledTimes(1);
     const [, , node] = addNode.mock.calls[0];
-    expect(node.id).toBe(id);
+    expect(node.id).toBe(nodeId);
     expect(node.type).toBe('image');
     // Centred on the point (top-left = point − empty-node half-size).
     expect(node.position).toEqual({ x: 7 - 144, y: 8 - 96 });
     expect(node.data.state).toBe('handling');
     expect(node.data.createdBy).toBe('u-9');
+    // #1580 #7: the created node opened its FIRST lease; the returned token
+    // matches what the factory stamped onto handlingBy.
+    expect(lease).toEqual({ gen: 1, clientId: 42, userId: 'u-9' });
+    expect(node.data.handlingBy?.gen).toBe(1);
+    expect(node.data.handlingBy?.clientId).toBe(42);
+    expect(node.data.leaseGen).toBe(1);
     addNode.mockRestore();
+    clientId.mockRestore();
   });
 
   it('pasteNodesAt clones clipboard nodes (offset + fresh ids + carried content) and returns their ids', () => {

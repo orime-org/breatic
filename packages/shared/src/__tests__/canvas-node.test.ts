@@ -22,6 +22,7 @@ import { HANDLING_TIMEOUT_MS } from "../types/canvas-node.js";
 import type {
   NodeState,
   HandlingActor,
+  HandlingPhase,
   OperationLock,
   AttachRef,
   CanvasNodeFields,
@@ -70,6 +71,7 @@ describe("HandlingActor", () => {
       userId: "user-1",
       type: "frontend",
       startedAt: 1_700_000_000_000,
+      gen: 1,
     };
     expect(actor.userId).toBe("user-1");
     expect(actor.type).toBe("frontend");
@@ -81,8 +83,22 @@ describe("HandlingActor", () => {
       userId: "user-2",
       type: "backend",
       startedAt: 1_700_000_000_000,
+      gen: 1,
     };
     expect(actor.type).toBe("backend");
+  });
+
+  it("requires the fencing gen — opening a lease without one is a type error (#1580 #7)", () => {
+    // Unified-gen design (2026-07-03): every handling open takes
+    // gen = leaseGen + 1 from the node's own counter. Pre-launch, so the
+    // field is REQUIRED — no optional back-compat branch.
+    // @ts-expect-error TS2741: property 'gen' is missing
+    const missingGen: HandlingActor = {
+      userId: "user-1",
+      type: "frontend",
+      startedAt: 1_700_000_000_000,
+    };
+    expect(missingGen.userId).toBe("user-1");
   });
 
   it("carries no display-name snapshot — userId + driver type + lease start only", () => {
@@ -91,11 +107,38 @@ describe("HandlingActor", () => {
     // the node. A revert that re-adds `username` trips this type assertion.
     // `startedAt` (2026-07-02, #1569 lease): REQUIRED epoch-ms lease start —
     // the fixed-budget timeout (HANDLING_TIMEOUT_MS) is measured from it.
+    // #1580 #7 unified gen (2026-07-03): `gen` is REQUIRED (owner triple
+    // gen + userId + clientId; clientId stays optional because a backend
+    // driver has no Yjs connection of its own).
     expectTypeOf<HandlingActor>().toEqualTypeOf<{
       userId: string;
       type: "frontend" | "backend";
       startedAt: number;
+      clientId?: number;
+      gen: number;
+      phase?: HandlingPhase;
+      serverStamped?: boolean;
     }>();
+  });
+
+  it("carries the #1580 connection / fencing / phase / server-stamp fields", () => {
+    const actor: HandlingActor = {
+      userId: "user-1",
+      type: "backend",
+      startedAt: 1_700_000_000_000,
+      clientId: 3_141_592_653, // Yjs clientID is a number
+      gen: 2,
+      phase: "running",
+      serverStamped: true,
+    };
+    expect(actor.clientId).toBe(3_141_592_653);
+    expect(actor.gen).toBe(2);
+    expect(actor.phase).toBe("running");
+    expect(actor.serverStamped).toBe(true);
+  });
+
+  it("HandlingPhase is exactly queued | running", () => {
+    expectTypeOf<HandlingPhase>().toEqualTypeOf<"queued" | "running">();
   });
 
   it("HANDLING_TIMEOUT_MS is the single unified 1-hour lease budget (#1569)", () => {
@@ -165,6 +208,34 @@ describe("CanvasNodeFields", () => {
     expect(node.data.attachments).toHaveLength(0);
   });
 
+  it("carries the persistent leaseGen fencing counter (#1580 #7, optional — absent means 0)", () => {
+    // Unified-gen design (2026-07-03): `data.leaseGen` is the node's
+    // monotonic lease counter — every handling open (upload AND AIGC) takes
+    // gen = leaseGen + 1 and advances it. It is NEVER cleared when handling
+    // ends (the whole point is surviving into the next generation). Optional
+    // in the type because a node that has never been handled simply has no
+    // counter yet — readers treat absence as 0, the counter's natural zero.
+    const node: CanvasNodeFields = {
+      id: "node-lease",
+      type: "image",
+      position: { x: 0, y: 0 },
+      data: {
+        name: "Image Node",
+        createdAt: 1714492800000,
+        createdBy: "user-1",
+        locked: false,
+        operationLocks: [],
+        state: "idle",
+        attachments: [],
+        leaseGen: 3,
+      },
+    };
+    expect(node.data.leaseGen).toBe(3);
+    expectTypeOf<CanvasNodeFields["data"]["leaseGen"]>().toEqualTypeOf<
+      number | undefined
+    >();
+  });
+
   it("accepts a full data node with all optional data fields populated", () => {
     const node: CanvasNodeFields = {
       id: "node-2",
@@ -214,7 +285,7 @@ describe("CanvasNodeFields", () => {
         locked: false,
         operationLocks: [],
         state: "handling",
-        handlingBy: { userId: "u1", type: "backend", startedAt: 1_700_000_000_000 },
+        handlingBy: { userId: "u1", type: "backend", startedAt: 1_700_000_000_000, gen: 1 },
         attachments: [],
         prompt: "a painting of a sunset",
         kind: "text-to-image",
@@ -373,6 +444,7 @@ describe("CanvasNodeFields", () => {
           userId: "user-2",
           type: "frontend",
           startedAt: 1_700_000_000_000,
+          gen: 1,
         },
         attachments: [],
         operation: "adjust",
@@ -424,14 +496,30 @@ describe("NodeStateUpdateEvent", () => {
       type: "node-state-update",
       docName: "project-abc123",
       nodeId: "node-1",
+      gen: 1,
       update: {
         state: "handling",
-        handlingBy: { userId: "u1", type: "backend", startedAt: 1_700_000_000_000 },
+        handlingBy: { userId: "u1", type: "backend", startedAt: 1_700_000_000_000, gen: 1 },
       },
     };
     expect(event.type).toBe("node-state-update");
     expect(event.docName).toBe("project-abc123");
     expect(event.update.state).toBe("handling");
+  });
+
+  it("requires the fencing gen — an event without one is a type error (#1580 #7)", () => {
+    // Every node-state-update belongs to exactly one lease generation: the
+    // collab single-writer CAS-checks event.gen against the node's live
+    // handlingBy.gen (close / renew) or leaseGen (open) and drops
+    // superseded writes. Pre-launch → REQUIRED, no optional branch.
+    // @ts-expect-error TS2741: property 'gen' is missing
+    const missingGen: NodeStateUpdateEvent = {
+      type: "node-state-update",
+      docName: "project-abc123",
+      nodeId: "node-1",
+      update: { state: "idle" },
+    };
+    expect(missingGen.nodeId).toBe("node-1");
   });
 
   it("update is Partial<CanvasNodeFields['data']>", () => {
@@ -440,6 +528,7 @@ describe("NodeStateUpdateEvent", () => {
       type: "node-state-update",
       docName: "project-xyz",
       nodeId: "node-5",
+      gen: 2,
       update: {
         state: "idle",
         content: "https://cdn.example.com/result.mp4",
@@ -470,6 +559,7 @@ describe("NodeEvent", () => {
       type: "node-state-update",
       docName: "project-abc",
       nodeId: "node-1",
+      gen: 1,
       update: { state: "idle", errorMessage: "Worker crashed" },
     };
     expect(event.type).toBe("node-state-update");

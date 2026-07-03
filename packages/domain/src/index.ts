@@ -43,7 +43,7 @@ export { extractPromptText } from "@domain/agent/extract-prompt.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
-export { listAvailableModels } from "@domain/model-catalog/model-catalog.js";
+export { listAvailableModels, estimateTaskCredits, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 export type { SkillModelInfo } from "@domain/model-catalog/model-catalog.js";
 
 // ── Canvas node lock (overwrite lock; prevents concurrent-overwrite credit loss; spec §10.15.2) ──
@@ -54,4 +54,5 @@ export {
   readCanvasNodeLockHolder,
   verifyCanvasNodeLock,
   releaseCanvasNodeLock,
+  reacquireCanvasNodeLock,
 } from "@domain/canvas-lock/canvas-lock.js";

@@ -20,17 +20,19 @@ import {
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { taskService } from "@breatic/domain";
+import { taskService, estimateTaskCredits } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { projectService, authService } from "@server/modules";
+import { projectService, authService, precheckCredits } from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import {
+  AppError,
   ValidationError,
   ConflictLockedError,
   publishNodeEvent,
   getStreamRedis,
+  logger,
 } from "@breatic/core";
-import { acquireCanvasNodeLock, readCanvasNodeLockHolder } from "@breatic/domain";
+import { acquireCanvasNodeLock, readCanvasNodeLockHolder, releaseCanvasNodeLock } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
@@ -71,6 +73,20 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // a task that writes into that project's canvas node and is billed
   // to the attacker's own account.
   await projectService.assertAccess(projectId, user.id, "editor");
+
+  // #1580 #7 credit pre-check (user decision 2026-07-03): refuse an
+  // obviously-insufficient balance BEFORE creating the task. Non-locking
+  // (no reservation) — the worker's atomic markCompletedAndBill remains
+  // the billing source of truth; concurrent passes may drive the balance
+  // negative, the accepted trade-off of a soft pre-check. Same shared
+  // helper and 402 shape as the /mini-tools routes.
+  const insufficient = await precheckCredits(
+    user.id,
+    estimateTaskCredits(body.model),
+  );
+  if (insufficient) {
+    return c.json({ error: { code: 402, message: insufficient } }, 402);
+  }
 
   const task = await taskService.create(
     user.id,
@@ -135,11 +151,22 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     // Lock acquired. Publish a `state='handling'` event right away so
     // collaborators see the node enter handling without waiting for the
     // worker to start (spec §10.15.4 — collaboration visibility).
+    // #1580 adversarial fix: under gen fencing this OPEN is a HARD
+    // prerequisite, not best-effort — it is what installs the live
+    // handlingBy.gen (and advances leaseGen) that every worker write-back
+    // CAS-checks against. If it cannot be published, enqueueing anyway
+    // would bill the user for a result that can never land on the node.
     try {
       await publishNodeEvent(getStreamRedis(), {
         type: "node-state-update",
         docName: canvasSpaceDocName(projectId, spaceId),
         nodeId: targetNodeId,
+        // #1580 #7: the frontend read the node's leaseGen and sent
+        // gen = leaseGen + 1 in the body (schema guarantees coverage for
+        // the target node). Collab applies this open iff gen >= leaseGen
+        // and advances the counter; the worker echoes the same gen in
+        // every write-back for the CAS.
+        gen: body.node_gens![targetNodeId]!,
         update: {
           state: "handling",
           handlingBy: {
@@ -153,17 +180,31 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
             // alone; Worker owns the terminal state transition.
             type: "backend",
             // Lease start (#1569): the collab sweeper reclaims this node
-            // if it is still handling HANDLING_TIMEOUT_MS from now (the
-            // worker-crash / stalled-death safety net).
+            // if it is still handling past its budget (the worker-crash /
+            // stalled-death safety net). Server-authored (NTP-bounded), so
+            // it is trusted directly — no client-clock normalization needed.
             startedAt: Date.now(),
+            // #1580 #2: the QUEUE phase (enqueue → Worker pickup). The Worker
+            // re-stamps to phase 'running' at markRunning, so a long queue
+            // backlog does not eat into the execution budget window.
+            phase: "queued",
+            // #1580 #7: owner gen — same value as event.gen above.
+            gen: body.node_gens![targetNodeId]!,
           },
         },
       });
     } catch (err) {
-      // Stream publish failure is non-fatal — the worker will publish the
-      // result later. The lock is already held, so the protocol is safe.
-      // We log for observability but do not throw.
-      console.warn("[canvas /tasks] handling-state publish failed", err);
+      logger.error(
+        { err, projectId, targetNodeId, taskId: task.id },
+        "handling-open publish failed; aborting task before enqueue",
+      );
+      await taskService.markFailed(
+        task.id,
+        "Failed to publish handling-open event; task aborted before enqueue",
+      );
+      // Free the node for a retry — this task will never run.
+      await releaseCanvasNodeLock(projectId, targetNodeId, task.id);
+      throw new AppError(503, "Task event stream unavailable; please retry");
     }
   }
 
@@ -186,6 +227,9 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
       params: body.params,
       source: body.source,
       targetNodeIds: targetNodeId ? [targetNodeId] : [],
+      // #1580 #7: lease gen per target node, echoed by every worker
+      // write-back so the collab CAS can fence superseded writes.
+      nodeGens: body.node_gens,
       mode,
     },
     defaultJobOpts(),
@@ -210,6 +254,17 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
 
   // Cross-tenant guard — see /canvas/tasks rationale.
   await projectService.assertAccess(body.project_id, user.id, "editor");
+
+  // #1580 adversarial fix: understand tasks invoke real vision/ASR models
+  // and are billed at completion like every other task — this route was the
+  // only enqueue path without the shared credit pre-check.
+  const insufficientUnderstand = await precheckCredits(
+    user.id,
+    estimateTaskCredits(body.model),
+  );
+  if (insufficientUnderstand) {
+    return c.json({ error: { code: 402, message: insufficientUnderstand } }, 402);
+  }
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,

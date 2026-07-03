@@ -14,6 +14,8 @@ import {
   env,
   initLogger,
   createWorker,
+  createQueue,
+  createQueueEvents,
   checkInfraReady,
   InfraNotReadyError,
   logger,
@@ -29,7 +31,7 @@ import {
 
 initLogger("worker");
 import { runTask } from "@worker/handlers/dispatch.js";
-import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
+import { reclaimFailedJobById } from "@worker/handlers/failed-job-cleanup.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
@@ -62,26 +64,36 @@ export function startWorker(): void {
     logger.info({ jobId: job.id, taskId: job.data.taskId }, "job_completed");
   });
 
+  // Local telemetry only. The node write-back is NOT done here:
+  // `worker.on('failed')` is process-local, so it cannot cover the case
+  // this net exists for — a worker that hard-crashed runs no callback. The
+  // cross-process `QueueEvents` handler below owns the write-back (#1580 #6).
   worker.on("failed", (job, err) => {
     logger.error({ jobId: job?.id, error: err.message }, "job_failed");
-    // #1569 hole ② safety net: when BullMQ judges a job finally dead
-    // WITHOUT runTask's own failure paths having run (worker crashed
-    // after markRunning; stalled death), the target nodes' Yjs
-    // `handling` was never written back. Emit the standard failure
-    // patch here; the collab handling-lease sweeper is the final
-    // backstop if even this event is lost.
-    void cleanupFailedJobNodes(getStreamRedis(), job, err.message)
+  });
+
+  // #1569 hole ② / #1580 #6 — cross-process failed-job node write-back.
+  // `QueueEvents` 'failed' reaches every LIVE instance (a Worker callback
+  // dies with its process), so a job whose own worker crashed is still
+  // cleaned up here. The event carries only { jobId, failedReason }; we
+  // re-fetch the job (retained by `removeOnFail` age) via a read-side Queue
+  // for its data + terminal `finishedOn`. Runs once per instance (idempotent
+  // + gen-fenced, #1580 #7); the collab lease sweeper is the final backstop.
+  const tasksQueue = createQueue("tasks");
+  const queueEvents = createQueueEvents("tasks");
+  queueEvents.on("failed", ({ jobId, failedReason }) => {
+    void reclaimFailedJobById(tasksQueue, getStreamRedis(), jobId, failedReason)
       .then((emitted) => {
         if (emitted > 0) {
           logger.warn(
-            { jobId: job?.id, emitted, reason: "failed_job_node_cleanup" },
+            { jobId, emitted, reason: "failed_job_node_cleanup" },
             "failed_job_nodes_reclaimed",
           );
         }
       })
       .catch((cleanupErr) => {
         logger.error(
-          { err: cleanupErr, jobId: job?.id },
+          { err: cleanupErr, jobId },
           "failed_job_node_cleanup_error",
         );
       });

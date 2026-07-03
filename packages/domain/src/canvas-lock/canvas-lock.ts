@@ -70,6 +70,35 @@ export async function acquireCanvasNodeLock(
 }
 
 /**
+ * Take the lock back for a retry attempt of the SAME task (#1580
+ * adversarial fix: retry lock continuity). `runTask` releases the lock in
+ * its `finally` on every attempt — including a rethrow that schedules a
+ * BullMQ retry — so a retry must re-acquire before touching the node.
+ * Succeeds when the lock is free (normal case: attempt N-1 released it) OR
+ * already held by this task (release failed / never ran); fails when
+ * another task legitimately took the node between attempts — the caller
+ * must then abort WITHOUT billing (its write-backs would be gen-fenced
+ * anyway).
+ * @param projectId - UUID of the project
+ * @param nodeId - UUID of the target canvas node
+ * @param taskId - The retrying task's UUID (the lock value)
+ * @param redis - Optional Redis client (defaults to general-purpose DB 0)
+ * @returns true if this task holds the lock after the call
+ */
+export async function reacquireCanvasNodeLock(
+  projectId: string,
+  nodeId: string,
+  taskId: string,
+  redis: Redis = getRedis(),
+): Promise<boolean> {
+  if (await acquireCanvasNodeLock(projectId, nodeId, taskId, redis)) {
+    return true;
+  }
+  const holder = await redis.get(canvasNodeLockKey(projectId, nodeId));
+  return holder === taskId;
+}
+
+/**
  * Read who currently holds the lock for a canvas node. Used by the conflict
  * 409 handler to look up holder details (taskId / userId / startedAt) for
  * the toast.

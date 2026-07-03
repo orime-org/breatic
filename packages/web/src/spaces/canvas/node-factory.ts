@@ -77,6 +77,9 @@ export function isCreatableNodeType(type: string): type is CreatableNodeType {
  * @param createdBy - User id of the creator (caller injects from the store).
  * @param initialState - Initial node state (`idle` default; `handling` for an
  *   upload node that fills its content asynchronously).
+ * @param clientId - Yjs clientID of the creating connection (caller injects
+ *   via `getCanvasClientId`); required when `initialState` is `handling` —
+ *   it is the third field of the owner triple (#1580 #7).
  * @returns A complete {@link CanvasNodeFields} for an empty content node.
  */
 export function createEmptyNode(
@@ -84,6 +87,7 @@ export function createEmptyNode(
   position: { x: number; y: number },
   createdBy: string,
   initialState: NodeState = 'idle',
+  clientId?: number,
 ): CanvasNodeFields {
   return {
     id: newId(),
@@ -98,17 +102,23 @@ export function createEmptyNode(
       state: initialState,
       attachments: [],
       // A handling upload node carries its driver + lease start (#1569):
-      // disconnect-cleanup matches on handlingBy (userId + type='frontend')
-      // and the collab sweeper measures HANDLING_TIMEOUT_MS from startedAt.
+      // the collab sweeper measures HANDLING_TIMEOUT_MS from startedAt.
       // Creating handling WITHOUT handlingBy is exactly the bug that left
       // upload nodes stuck in handling forever after a crashed tab.
+      // #1580 #7 unified gen: a created-handling node opens its FIRST
+      // lease inline — gen 1 + the persistent leaseGen counter at 1 + the
+      // owner triple (createdBy / clientId). completeNodeHandling /
+      // failNodeHandling verify against this token.
       ...(initialState === 'handling'
         ? {
           handlingBy: {
             userId: createdBy,
             type: 'frontend' as const,
             startedAt: Date.now(),
+            gen: 1,
+            ...(clientId !== undefined ? { clientId } : {}),
           },
+          leaseGen: 1,
         }
         : {}),
     },

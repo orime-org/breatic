@@ -79,7 +79,10 @@ vi.mock("ai", () => ({
   stepCountIs: vi.fn(),
 }));
 
-import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
+import {
+  cleanupFailedJobNodes,
+  reclaimFailedJobById,
+} from "@worker/handlers/failed-job-cleanup.js";
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
 
 const streamRedis = {} as never;
@@ -114,6 +117,21 @@ function jobWith(
 describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
   beforeEach(() => {
     mockPublishNodeEvent.mockReset();
+  });
+
+  it("stamps each node's lease gen from job nodeGens onto the reclaim event (#1580 #7)", async () => {
+    const job = jobWith({
+      projectId: "p1",
+      spaceId: "s1",
+      targetNodeIds: ["n1", "n2"],
+      nodeGens: { n1: 4, n2: 9 },
+    });
+    await cleanupFailedJobNodes(streamRedis, job, "worker crashed");
+    const events = mockPublishNodeEvent.mock.calls.map(
+      ([, e]) => e as { nodeId: string; gen: number },
+    );
+    expect(events.find((e) => e.nodeId === "n1")?.gen).toBe(4);
+    expect(events.find((e) => e.nodeId === "n2")?.gen).toBe(9);
   });
 
   it("emits the standard failure write-back for every target node of a finally-failed job", async () => {
@@ -203,5 +221,64 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
     const emitted = await cleanupFailedJobNodes(streamRedis, job, "boom");
     expect(emitted).toBe(1);
     expect(mockPublishNodeEvent).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("reclaimFailedJobById (#1580 #6 cross-process QueueEvents handler)", () => {
+  beforeEach(() => {
+    mockPublishNodeEvent.mockReset();
+  });
+
+  it("fetches the job by id and writes back every target node of a finally-failed job", async () => {
+    // QueueEvents 'failed' delivers only { jobId, failedReason } cross-process;
+    // this handler re-fetches the job (retained by removeOnFail age) to read
+    // its data + finishedOn, then delegates to the shared write-back.
+    const job = jobWith({
+      projectId: "p1",
+      spaceId: "s1",
+      targetNodeIds: ["n1", "n2"],
+    });
+    const getJob = vi.fn(async (id: string) => (id === "job-42" ? job : undefined));
+    const emitted = await reclaimFailedJobById(
+      { getJob },
+      streamRedis,
+      "job-42",
+      "boom",
+    );
+    expect(getJob).toHaveBeenCalledWith("job-42");
+    expect(emitted).toBe(2);
+    expect(mockPublishNodeEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("no-ops when the job cannot be fetched (removed / unknown id)", async () => {
+    const getJob = vi.fn(async () => undefined);
+    const emitted = await reclaimFailedJobById(
+      { getJob },
+      streamRedis,
+      "gone",
+      "boom",
+    );
+    expect(emitted).toBe(0);
+    expect(mockPublishNodeEvent).not.toHaveBeenCalled();
+  });
+
+  it("still respects the finishedOn terminal gate (a retryable fetched job → no write-back)", async () => {
+    const retryable = {
+      data: {
+        taskId: "t1",
+        taskType: "generate",
+        userId: "u1",
+        params: {},
+        projectId: "p1",
+        spaceId: "s1",
+        targetNodeIds: ["n1"],
+      } as TaskJobData,
+      // finishedOn absent — retry pending.
+    };
+    const getJob = vi.fn(async () => retryable);
+    expect(
+      await reclaimFailedJobById({ getJob }, streamRedis, "j", "boom"),
+    ).toBe(0);
+    expect(mockPublishNodeEvent).not.toHaveBeenCalled();
   });
 });

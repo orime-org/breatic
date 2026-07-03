@@ -107,3 +107,21 @@ describe('CREATABLE_NODE_TYPES + isCreatableNodeType', () => {
     expect(isCreatableNodeType('nonsense')).toBe(false);
   });
 });
+
+// ── #1580 #7: unified gen lease on creation ──────────────────────────────
+describe('createEmptyNode — first lease on a created-handling node (#1580 #7)', () => {
+  const pos = { x: 1, y: 2 };
+
+  it('a handling upload node opens its FIRST lease: gen 1 + leaseGen 1 + the creator clientId', () => {
+    const node = createEmptyNode('image', pos, 'u', 'handling', 42);
+    expect(node.data.handlingBy?.gen).toBe(1);
+    expect(node.data.handlingBy?.clientId).toBe(42);
+    expect(node.data.leaseGen).toBe(1);
+  });
+
+  it('an idle node carries NO lease counter (absent means 0)', () => {
+    const node = createEmptyNode('image', pos, 'u');
+    expect(node.data.leaseGen).toBeUndefined();
+    expect(node.data.handlingBy).toBeUndefined();
+  });
+});

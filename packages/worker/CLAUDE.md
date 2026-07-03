@@ -6,7 +6,7 @@
 **BullMQ 壳**:把队列任务翻译成 provider / core 调用。只它认识 BullMQ。
 
 ## 分层(包内)
-- `handlers/` = 任务路由层,**不写业务**,翻译 job ↔ 调用;`dispatch.ts`(BullMQ job 入口,5 路分发:mini-tool / understand / aigc-direct / skill-explicit / skill-auto + 节点状态回写;成功写回 `emitNodeStateDone` 带 `errorMessage:null` 清旧错误 = #1569 统一善后契约)+ `local/`(本地 ffmpeg 执行:`runtime/` 下载/上传/spawn/tempdir + `video/` 8 个视频操作)+ `failed-job-cleanup.ts`(#1569:`worker.on('failed')` 兜底,**终态失败**〔靠 `job.finishedOn` 判,不靠 attemptsMade —— stalled 判死不递增它〕才发失败事件把 handling 节点打回)。**原 `handlers.ts` 文件已并进 `handlers/dispatch.ts` 消除"文件 vs 目录同名"歧义**
+- `handlers/` = 任务路由层,**不写业务**,翻译 job ↔ 调用;`dispatch.ts`(BullMQ job 入口,5 路分发:mini-tool / understand / aigc-direct / skill-explicit / skill-auto + 节点状态回写;成功写回 `emitNodeStateDone` 带 `errorMessage:null` 清旧错误 = #1569 统一善后契约)+ `local/`(本地 ffmpeg 执行:`runtime/` 下载/上传/spawn/tempdir + `video/` 8 个视频操作)+ `failed-job-cleanup.ts`(#1569 兜底 + #1580 #6 跨进程化:`reclaimFailedJobById` 由 core `createQueueEvents('tasks')` 的 **`QueueEvents.on('failed')`** 跨进程驱动〔非进程内 `worker.on('failed')` —— 崩溃 worker 跑不了自己回调,QueueEvents 每个活实例都收到〕,事件只给 jobId → 用 `queue.getJob` 取回 job〔`removeOnFail` 保留 24h〕,**终态失败**〔靠 `job.finishedOn` 判,不靠 attemptsMade —— stalled 判死不递增它〕才发失败事件把 handling 节点打回;`worker.on('failed')` 只留本地日志)。**原 `handlers.ts` 文件已并进 `handlers/dispatch.ts` 消除"文件 vs 目录同名"歧义**
 - `providers/` = AIGC 各模态(image / video / audio / tts / 3d / understand)+ 本包私有逻辑(如 video-cover)
 - `index.ts` = composition root,启动 `initCore(process.env)`,唯一读 env 处
 

@@ -35,6 +35,18 @@ const collabConfigSchema = z.object({
 
   // Logging
   quiet: z.boolean().default(true),
+
+  // Handling lease (#1580) — collab is the ONLY consumer. See collab.yaml.
+  handling_lease: z
+    .object({
+      // Default per-phase lease budget (ms). 1h.
+      default_budget_ms: z.number().int().positive().default(3_600_000),
+      // Per-operation execution-budget overrides (ms), keyed by node
+      // `data.operation`. Empty = every op uses the default.
+      budget_overrides: z.record(z.string(), z.number().int().positive()).default({}),
+    })
+    // zod v4 `.default()` takes the resolved OUTPUT shape, so spell it out.
+    .default({ default_budget_ms: 3_600_000, budget_overrides: {} }),
 });
 
 /** Validated collab configuration type. */

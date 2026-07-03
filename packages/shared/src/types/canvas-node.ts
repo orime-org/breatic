@@ -37,16 +37,33 @@ export type NodeType =
  * Identifies the user who triggered the current handling AND the driver
  * responsible for advancing the node out of `handling`.
  *
- * `type` was added 2026-05-11 (ADR `2026-05-11-mini-tool-state-machine.md`)
- * so the Collab `onDisconnect` cleanup hook can distinguish:
+ * `type` (added 2026-05-11, ADR `2026-05-11-mini-tool-state-machine.md`)
+ * names the driver responsible for advancing the node out of `handling`:
  *
- *   - `frontend` — the user's own browser is running the op. If the
- *     client disconnects, Collab writes back `state: 'idle', errorMessage:
- *     "Operation interrupted by client disconnect"` so the node doesn't
- *     stay stuck in `handling` forever.
+ *   - `frontend` — the user's own browser is running the op (e.g. a
+ *     presigned upload straight to object storage). The browser writes
+ *     back `state: 'idle'` on success / failure itself (`setNodeError`);
+ *     if it hard-crashes, the collab lease sweeper (below) reclaims the
+ *     node after the budget.
  *   - `backend`  — a Worker is running the op (POST → BullMQ → provider).
- *     Worker has its own retry / dead-letter machinery; Collab leaves
- *     these nodes untouched on user disconnect.
+ *     Worker self-manages via NodeStateUpdateEvent (retry / dead-letter);
+ *     BullMQ tracks its liveness.
+ *
+ * Collab's `onDisconnect` no longer reclaims handling for EITHER driver
+ * (#1580 slice 4, Option A). A disconnect is not reliable evidence the
+ * work died — a presigned upload is invisible to collab and outlives the
+ * WebSocket, so reclaiming on disconnect false-reclaims live uploads. The
+ * lease sweeper is the single, guaranteed backstop.
+ *
+ * READ-TIME SKIP INVARIANT (#1580 #5, single-writer): collab is the ONLY
+ * writer of this shared doc. Any consumer that reads a PERSISTED (Postgres)
+ * snapshot OUT OF BAND — bypassing the live collab doc, e.g. a future
+ * thumbnail / export / search-index feature — MUST treat a `handling`
+ * node's content as unusable (skip / placeholder) and MUST NOT write back
+ * to the original (that would be a second writer). The original is cleaned
+ * lazily by the collab sweeper on next load. No such out-of-band reader
+ * exists today (verified 2026-07-02) — this is the convention for the
+ * first one added.
  *
  * No display-name snapshot here (email-registration rewrite, 2026-06-06):
  * "who is handling" is rendered by looking up `meta.users[userId].name` in
@@ -55,20 +72,68 @@ export type NodeType =
  * the user changed their display name.
  *
  * `startedAt` was added 2026-07-02 (#1569 handling lease): the epoch-ms
- * start of the fixed-budget lease. Disconnect events remain the fast path
- * (seconds), but events can be lost (collab restart, silently-crashed
- * driver) — the lease is the correctness guarantee: any handling node
- * older than {@link HANDLING_TIMEOUT_MS} is swept back to idle by the
- * collab sweeper regardless of what happened to its driver. No heartbeat
- * renewal by design: renewals written into Yjs would pollute the CRDT
- * history forever, so the budget is generous instead.
+ * start of the fixed-budget lease. The lease is the SINGLE correctness
+ * guarantee: any handling node older than {@link HANDLING_TIMEOUT_MS} is
+ * swept back to idle by the collab sweeper regardless of what happened to
+ * its driver. (Disconnect is no longer a handling fast path — #1580 slice
+ * 4.) No heartbeat renewal by design: renewals written into Yjs would
+ * pollute the CRDT history forever, so the budget is generous instead.
  */
+/**
+ * Handling lifecycle phase (#1580 #2). A backend (Worker) op is `queued`
+ * from enqueue until the Worker picks it up, then `running` during
+ * execution. Each phase transition re-stamps the lease (`startedAt`) so a
+ * long queue backlog does not eat into the execution window; the collab
+ * sweeper picks the timeout window by phase. Frontend-driven ops are
+ * effectively single-phase and may omit it (treated as `running`).
+ */
+export type HandlingPhase = 'queued' | 'running';
+
 export interface HandlingActor {
   userId: string;
   /** Who owns the handling → idle/error transition. See type-doc above. */
   type: 'frontend' | 'backend';
   /** Lease start (epoch ms); the fixed-budget timeout is measured from here. */
   startedAt: number;
+  /**
+   * Yjs `clientID` of the connection that opened this handling. Written by
+   * FRONTEND drivers (upload / local fills) as part of the owner triple
+   * `gen + userId + clientId` (#1580 #7): when two clients race the same
+   * gen, Yjs converges `handlingBy` to one owner and only the owner's
+   * write-back lands — clientId is what tells two tabs of the same user
+   * apart. Absent for `backend` drivers (a Worker has no Yjs connection;
+   * overwrite-mode exclusivity comes from the server-side Redis node lock).
+   * Also reusable by a future #1551 single-master disconnect fast-path.
+   */
+  clientId?: number;
+  /**
+   * Monotonic fencing generation (#1580 #7, unified-gen design 2026-07-03).
+   * Every handling open — frontend upload AND backend AIGC — reads the
+   * node's persistent `data.leaseGen` counter and takes `gen = leaseGen + 1`,
+   * advancing the counter in the same write. Every write-back
+   * (worker-done / failed / renew / frontend upload completion)
+   * compare-and-sets on this: a superseded (stale-gen) op's late write is
+   * rejected, so a slow-but-alive op that completes after being reclaimed
+   * and retried cannot clobber the new op. REQUIRED (pre-launch, no
+   * back-compat branch).
+   */
+  gen: number;
+  /**
+   * Lifecycle phase (#1580 #2): `queued` (enqueued, awaiting Worker) vs
+   * `running` (Worker executing). The sweeper picks the timeout window by
+   * phase. Absent = treat as `running` (frontend single-phase / pre-#1580).
+   */
+  phase?: HandlingPhase;
+  /**
+   * Set true by the collab sweeper once it has re-stamped `startedAt` with
+   * the SERVER clock (#1580 #1). A `frontend` driver writes `startedAt` from
+   * the browser clock, which is user-controllable and must never be compared
+   * against the server clock — so the sweeper overwrites it with server time
+   * on first observation and flags it here; only then is `startedAt` trusted
+   * for expiry. `backend` startedAt is server-authored at enqueue (NTP-bounded
+   * skew), so it is never normalized. Absent = not yet server-normalized.
+   */
+  serverStamped?: boolean;
 }
 
 /**
@@ -76,8 +141,8 @@ export interface HandlingActor {
  * ONE hour for every handling operation (upload / AIGC / future frontend
  * media ops). The budget's job is to bound rare zombies (lost disconnect
  * events), not to fit per-operation durations — common cases are cleaned
- * in seconds by the disconnect fast path. Web (display-level timeout
- * fallback) and collab (sweeper) both import THIS constant so the two
+ * by the owner writing back on success / failure. Web (display-level
+ * timeout fallback) and collab (sweeper) both import THIS constant so the two
  * sides can never drift.
  */
 export const HANDLING_TIMEOUT_MS = 3_600_000;
@@ -259,6 +324,17 @@ export interface CanvasNodeFields {
     state: NodeState;
     /** Who triggered the current handling; undefined when state === 'idle'. */
     handlingBy?: HandlingActor;
+    /**
+     * Persistent monotonic lease counter (#1580 #7, unified-gen design
+     * 2026-07-03). Every handling open (frontend upload AND backend AIGC)
+     * takes `gen = leaseGen + 1` and advances this in the same write; the
+     * collab single-writer additionally enforces `leaseGen = max(old, gen)`
+     * when applying a handling-open event. NEVER cleared when handling ends
+     * — surviving into the next generation is the whole point (a stale
+     * write-back must keep failing its CAS forever). Absent = 0 (a node
+     * that has never been handled), the counter's natural zero.
+     */
+    leaseGen?: number;
     /** Last failure message; present when state === 'idle' AND last operation failed. */
     errorMessage?: string;
 
@@ -380,8 +456,31 @@ export interface NodeStateUpdateEvent {
   docName: string;
   /** Target node receiving the update. */
   nodeId: string;
+  /**
+   * Fencing generation this event belongs to (#1580 #7, REQUIRED —
+   * pre-launch, no back-compat branch). The collab single-writer
+   * compare-and-sets before applying:
+   *   - handling-OPEN events (`update.handlingBy` is an object): applied
+   *     only when `gen >= data.leaseGen` (stale opens are dropped); on
+   *     apply, `leaseGen` advances to `gen`.
+   *   - every other event (close / content / renew): applied only when the
+   *     node's live `handlingBy.gen === gen` — no live lease, or a
+   *     different generation, means this event is superseded and is
+   *     dropped (the sweeper / a newer open already owns the node).
+   */
+  gen: number;
   /** Partial update merged into target node's data Y.Map by Collab consumer. */
   update: NodeStateUpdatePayload;
+  /**
+   * Lease renewal signal (#1580 #2). When set, the Collab consumer READS the
+   * node's current `handlingBy` and re-stamps `phase` + a fresh server
+   * `startedAt`, PRESERVING every other field (userId / type / clientId /
+   * gen). The Worker emits `renewLease: 'running'` at `markRunning` so the
+   * execution phase gets its own budget window — a long queue backlog does
+   * not eat into it. Read-modify-write (not a flat handlingBy overwrite) so
+   * the fencing generation survives the transition.
+   */
+  renewLease?: HandlingPhase;
 }
 
 /** Single union for forward-compat. */

@@ -132,7 +132,14 @@ describe("cleanupOnDisconnect", () => {
     expect(locks).toHaveLength(1);
   });
 
-  it("writes errorMessage on frontend-driver handling owned by the disconnected user", async () => {
+  // Option A (#1580 slice 4): disconnect-cleanup no longer reclaims ANY
+  // handling. A browser's presigned upload is invisible to collab and
+  // outlives the WS, so a disconnect is NOT reliable evidence the upload
+  // died — guessing false-reclaims live uploads (#3 sibling-tab of the
+  // same user, #11 network jitter). The owner self-cleans on upload
+  // failure (setNodeError) and the 1h lease sweeper is the backstop. So
+  // even the disconnected user's OWN frontend handling is left untouched.
+  it("does NOT reclaim the disconnected user's own frontend handling (Option A: sibling upload survives, #3/#11)", async () => {
     const doc = buildSeededDoc({
       "node-A": {
         state: "handling",
@@ -145,11 +152,9 @@ describe("cleanupOnDisconnect", () => {
     await cleanupOnDisconnect(hocuspocus, VALID_CANVAS_DOC, "user-gone");
 
     const dataMap = getDataMap(doc, "node-A");
-    expect(dataMap.get("state")).toBe("idle");
-    expect(dataMap.get("errorMessage")).toBe(
-      "Operation interrupted by client disconnect",
-    );
-    expect(dataMap.has("handlingBy")).toBe(false);
+    expect(dataMap.get("state")).toBe("handling");
+    expect(dataMap.has("handlingBy")).toBe(true);
+    expect(dataMap.has("errorMessage")).toBe(false);
   });
 
   it("does NOT touch backend-driver handling (Worker owns its lifecycle)", async () => {
@@ -227,9 +232,9 @@ describe("cleanupOnDisconnect", () => {
 
     // node-1: lock removed
     expect((getDataMap(doc, "node-1").get("operationLocks") as unknown[])).toHaveLength(0);
-    // node-2: handling cleared
-    expect(getDataMap(doc, "node-2").get("state")).toBe("idle");
-    expect(getDataMap(doc, "node-2").get("errorMessage")).toBeTruthy();
+    // node-2: handling NOT touched (Option A — disconnect never reclaims handling)
+    expect(getDataMap(doc, "node-2").get("state")).toBe("handling");
+    expect(getDataMap(doc, "node-2").has("errorMessage")).toBe(false);
     // node-3: untouched (different user)
     expect((getDataMap(doc, "node-3").get("operationLocks") as unknown[])).toHaveLength(1);
   });

@@ -25,7 +25,13 @@
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
-import type { CanvasNodeFields, NodeStateUpdateEvent, NodeEvent } from "@breatic/shared";
+import type {
+  CanvasNodeFields,
+  NodeStateUpdateEvent,
+  NodeEvent,
+  HandlingActor,
+  HandlingPhase,
+} from "@breatic/shared";
 import { parseDocName } from "@breatic/shared";
 import { createLogger, taskEventsStreamKey } from "@breatic/core";
 import { startStreamConsumer } from "@collab/services/event-stream.js";
@@ -53,6 +59,28 @@ const WORKER_UPDATABLE_FIELDS = new Set<keyof CanvasNodeFields["data"]>([
   "duration",
   "handlingBy",
 ] as const);
+
+/**
+ * Re-stamp a handling lease's phase + startedAt IN PLACE (#1580 #2),
+ * preserving every other `handlingBy` field. Read-modify-write (not a flat
+ * overwrite) so userId / type / clientId / the fencing `gen` survive the
+ * queue→running transition. Caller runs this inside the node-state-update
+ * transaction; no-ops (returns false) when the node has no live handlingBy.
+ * @param dataMap - The node's `data` Y.Map.
+ * @param phase - The phase to transition to (Worker sends 'running').
+ * @param now - The collab server clock (epoch ms) to re-stamp startedAt with.
+ * @returns true if a lease was re-stamped, false if there was none to renew.
+ */
+export function restampLease(
+  dataMap: Y.Map<unknown>,
+  phase: HandlingPhase,
+  now: number,
+): boolean {
+  const hb = dataMap.get("handlingBy");
+  if (hb === null || typeof hb !== "object") return false;
+  dataMap.set("handlingBy", { ...(hb as HandlingActor), phase, startedAt: now });
+  return true;
+}
 
 
 /**
@@ -125,6 +153,21 @@ export async function handleNodeStateUpdateEvent(
     return;
   }
 
+  // #1580 #7: every event must carry a positive-integer fencing gen.
+  // Malformed gen is a poison payload — skip (do NOT throw; the stream
+  // consumer would infinite-retry), same policy as the shape guards above.
+  if (
+    typeof event.gen !== "number" ||
+    !Number.isInteger(event.gen) ||
+    event.gen <= 0
+  ) {
+    logger.warn(
+      { docName: event.docName, nodeId: event.nodeId, gen: event.gen },
+      "node-state-update event missing or invalid fencing gen, skipping",
+    );
+    return;
+  }
+
   // Debug trace after shape guards — keys lookup is safe now.
   logger.debug({
     docName: event.docName,
@@ -172,8 +215,9 @@ export async function handleNodeStateUpdateEvent(
       "node-state-update event included disallowed update keys; dropped",
     );
   }
-  if (filteredEntries.length === 0) {
-    // Nothing allowed to apply — skip without opening the document.
+  if (filteredEntries.length === 0 && event.renewLease === undefined) {
+    // Nothing allowed to apply and no lease renewal — skip without opening
+    // the document.
     return;
   }
 
@@ -196,6 +240,7 @@ export async function handleNodeStateUpdateEvent(
   }
 
   let applied = false;
+  let fenced: { leaseGen: number; liveGen: number | null } | null = null;
   try {
     await connection.transact((doc: Y.Doc) => {
       // v10 layout: `nodesMap` at the top level of `canvas-{sid}`.
@@ -223,6 +268,32 @@ export async function handleNodeStateUpdateEvent(
         return;
       }
 
+      // #1580 #7 fencing CAS — decide whether this event's generation may
+      // touch the node at all, BEFORE any field lands. Two rules:
+      //   OPEN  (update.handlingBy is an object): apply iff
+      //         gen >= leaseGen; on apply, leaseGen advances to gen. Equal
+      //         gen is the normal AIGC echo (the frontend pre-advanced the
+      //         counter before the REST call).
+      //   OTHER (close / content patch / renew): apply iff the node's LIVE
+      //         handlingBy.gen === gen — no live lease (sweeper reclaimed)
+      //         or a different generation means this write is superseded.
+      const isOpen = filteredEntries.some(
+        ([k, v]) => k === "handlingBy" && v !== null && v !== undefined && typeof v === "object",
+      );
+      const currentLeaseGen =
+        typeof dataMap.get("leaseGen") === "number"
+          ? (dataMap.get("leaseGen") as number)
+          : 0;
+      const liveHb = dataMap.get("handlingBy");
+      const liveGen =
+        liveHb !== null && typeof liveHb === "object"
+          ? (liveHb as HandlingActor).gen
+          : null;
+      if (isOpen ? event.gen < currentLeaseGen : liveGen !== event.gen) {
+        fenced = { leaseGen: currentLeaseGen, liveGen };
+        return;
+      }
+
       // Wrap the multi-field merge in a single Yjs transaction so all key
       // updates are broadcast as one atomic update. Without this, each
       // dataMap.set/delete() emits a separate Yjs update and collaborators
@@ -239,12 +310,41 @@ export async function handleNodeStateUpdateEvent(
             dataMap.set(k, v);
           }
         }
+        // #1580 #7: an applied open advances the node's persistent counter.
+        // Collab writes it from the CAS-checked event.gen — leaseGen is NOT
+        // in WORKER_UPDATABLE_FIELDS, so it can never arrive via the payload.
+        if (isOpen) {
+          dataMap.set("leaseGen", event.gen);
+        }
+        // #1580 #2: lease renewal (queue→running) re-stamps phase + a fresh
+        // server startedAt, preserving the rest (incl. the fencing gen).
+        // Gen-gated by the CAS above (renew is an OTHER-rule event).
+        if (event.renewLease !== undefined) {
+          restampLease(dataMap, event.renewLease, Date.now());
+        }
       }, "node-state-update");
 
       applied = true;
     });
   } finally {
     await connection.disconnect();
+  }
+
+  if (fenced !== null) {
+    // Permanent log (not debug): a fenced drop is the fencing system doing
+    // its job — oncall must be able to trace WHY a task's result never
+    // landed on the node (superseded by a newer lease / already reclaimed).
+    logger.info(
+      {
+        docName: event.docName,
+        nodeId: event.nodeId,
+        eventGen: event.gen,
+        nodeLeaseGen: (fenced as { leaseGen: number }).leaseGen,
+        liveGen: (fenced as { liveGen: number | null }).liveGen,
+      },
+      "node-state-update fenced (superseded gen), dropped",
+    );
+    return;
   }
 
   if (applied) {

@@ -73,9 +73,11 @@ vi.mock("ai", () => ({
 
 // Controller mutated per test to drive success / failure / multi-output scenarios
 const providerCtrl = {
-  mode: "success" as "success" | "failure" | "multi",
+  mode: "success" as "success" | "failure" | "multi" | "fail-once",
   outputs: [{ url: "https://oss/result.png", cover_url: "https://oss/thumb.png" }],
   error: new Error("Synthetic provider error"),
+  // fail-once mode: first invocation throws (retryable), later ones succeed.
+  calls: 0,
 };
 
 // Must be hoisted before the module imports below
@@ -87,6 +89,10 @@ vi.mock("@breatic/worker/src/handlers/local/index.js", () => ({
   runLocalHandler: async () => {
     if (providerCtrl.mode === "failure") {
       throw providerCtrl.error;
+    }
+    if (providerCtrl.mode === "fail-once") {
+      providerCtrl.calls += 1;
+      if (providerCtrl.calls === 1) throw providerCtrl.error;
     }
     return {
       outputs: providerCtrl.outputs.map((o) => ({
@@ -240,8 +246,12 @@ async function readNodeData(
  * Mirrors the v10 Yjs canvas structure:
  *   doc.getMap("nodesMap")[nodeId].data = Y.Map(dataFields)
  *
- * Plain object values are set directly; nested plain-object values are
- * converted to Y.Map (for handlingBy etc.).
+ * Every value is set EXACTLY as production does: the web data layer's
+ * `buildDataMap` stores nested values (handlingBy, position, attachments)
+ * as PLAIN objects/arrays inside the data Y.Map — never as nested Y.Maps.
+ * The old harness converted nested objects to Y.Map, which diverged from
+ * production and hid the gen-CAS's property reads from the real shape
+ * (#1580 adversarial follow-up: harness must mirror production).
  */
 async function seedNode(
   hp: Hocuspocus,
@@ -260,22 +270,14 @@ async function seedNode(
 
       const dataMap = new Y.Map();
       for (const [k, v] of Object.entries(dataFields)) {
-        if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-          const nested = new Y.Map();
-          for (const [nk, nv] of Object.entries(v as Record<string, unknown>)) {
-            nested.set(nk, nv);
-          }
-          dataMap.set(k, nested);
-        } else {
-          dataMap.set(k, v);
-        }
+        dataMap.set(k, v);
       }
 
-      const posMap = new Y.Map<unknown>([["x", 100], ["y", 200]]);
       const nodeMap = new Y.Map<unknown>([
         ["id", nodeId],
         ["type", "image"],
-        ["position", posMap],
+        // Plain object, exactly like production addNode's map.set('position', ...).
+        ["position", { x: 100, y: 200 }],
         ["data", dataMap],
       ]);
 
@@ -424,7 +426,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     await seedNode(hocuspocus, docName, nodeId, {
       name: "Success Node",
       state: "handling",
-      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now() },
+      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
+      leaseGen: 1,
       attachments: [],
     });
 
@@ -455,6 +458,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "remove-bg",
       params: {},
       targetNodeIds: [nodeId],
+      nodeGens: { [nodeId]: 1 },
       mode: "append" as const,
     }, { attempts: 1 });
 
@@ -511,7 +515,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     await seedNode(hocuspocus, docName, nodeId, {
       name: "Failure Node",
       state: "handling",
-      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now() },
+      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
+      leaseGen: 1,
       content: "https://oss/prior-content.png",
       attachments: [],
     });
@@ -537,6 +542,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "remove-bg",
       params: {},
       targetNodeIds: [nodeId],
+      nodeGens: { [nodeId]: 1 },
       mode: "append" as const,
     }, { attempts: 1 }); // 1 attempt so it fails fast without retries
 
@@ -574,6 +580,93 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
   });
 
   /**
+   * Test 2b — Retryable failure then success (#1580 adversarial fix:
+   * "retryable close self-fences the retry")
+   *
+   * Attempt 1's provider call throws (retryable — attempts: 2), attempt 2
+   * succeeds. The worker must NOT emit the failure lease-close on the
+   * non-terminal attempt; the node keeps its live lease, so the successful
+   * retry's done write-back passes the gen CAS and lands.
+   *
+   * Invariants:
+   *   - node ends state=idle with the SUCCESS content (not stuck on error)
+   *   - errorMessage is cleared (success write-back carries errorMessage:null)
+   *   - handlingBy cleared
+   */
+  it("Test 2b: retryable failure then success — retry's result lands (no self-fencing)", async () => {
+    const nodeId = "node-retry-t2b";
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
+
+    providerCtrl.mode = "fail-once";
+    providerCtrl.calls = 0;
+    providerCtrl.error = new Error("Synthetic transient provider error (attempt 1)");
+    providerCtrl.outputs = [{
+      url: "https://oss/result-t2b-retry.png",
+      cover_url: "https://oss/thumb-t2b.png",
+    }];
+
+    await seedNode(hocuspocus, docName, nodeId, {
+      name: "Retry Node",
+      state: "handling",
+      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
+      leaseGen: 1,
+      attachments: [],
+    });
+
+    const [taskRow] = await db.insert(schema.tasks).values({
+      userId: FIXTURE_USER_ID,
+      projectId: FIXTURE_PROJECT_ID,
+      spaceId: FIXTURE_SPACE_ID,
+      taskType: "image",
+      mode: "append",
+      source: "mini_tool",
+      params: {},
+    }).returning();
+    const taskId = taskRow!.id;
+
+    await tasksQueue.add("run-task", {
+      taskId,
+      taskType: "image",
+      userId: FIXTURE_USER_ID,
+      projectId: FIXTURE_PROJECT_ID,
+      spaceId: FIXTURE_SPACE_ID,
+      source: "mini_tool",
+      toolName: "remove-bg",
+      params: {},
+      targetNodeIds: [nodeId],
+      nodeGens: { [nodeId]: 1 },
+      mode: "append" as const,
+      // 2 attempts with minimal backoff so the retry runs inside the test window.
+    }, { attempts: 2, backoff: { type: "fixed" as const, delay: 100 } });
+
+    await waitForCondition(
+      async () => {
+        const t = await taskService.getByIdInternal(taskId);
+        return t?.status === "completed";
+      },
+      30_000,
+      `task ${taskId} completed after retry`,
+    );
+
+    await waitForCondition(
+      async () => {
+        const data = await readNodeData(hocuspocus, docName, nodeId);
+        return data?.["state"] === "idle" && data?.["content"] === "https://oss/result-t2b-retry.png";
+      },
+      30_000,
+      `node ${nodeId} received the retry's content`,
+    );
+
+    const data = await readNodeData(hocuspocus, docName, nodeId);
+    expect(data!["state"]).toBe("idle");
+    expect(data!["content"]).toBe("https://oss/result-t2b-retry.png");
+    // The success write-back must have cleared attempt-1's error (and no
+    // close may have shipped on the non-terminal attempt at all).
+    expect(data!["errorMessage"]).toBeUndefined();
+    expect("handlingBy" in (data ?? {})).toBe(false);
+  });
+
+  /**
    * Test 3 — Multi-output fanout: 1 task → N nodes
    *
    * Invariants:
@@ -597,7 +690,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       await seedNode(hocuspocus, docName, nodeId, {
         name: `Fanout Node ${nodeId}`,
         state: "handling",
-        handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now() },
+        handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
+        leaseGen: 1,
         attachments: [],
       });
     }
@@ -623,6 +717,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "multi-angle",
       params: {},
       targetNodeIds: nodeIds,
+      nodeGens: Object.fromEntries(nodeIds.map((id) => [id, 1])),
       mode: "append" as const,
     }, { attempts: 1 });
 

@@ -145,7 +145,8 @@ describe("handleNodeStateUpdateEvent", () => {
   it("applies state + content; deletes handlingBy when value is undefined (handling→idle success)", async () => {
     const doc = buildSeededDoc(NODE_ID, {
       state: "handling",
-      handlingBy: { userId: "u1", username: "alice" },
+      handlingBy: { userId: "u1", gen: 1 },
+      leaseGen: 1,
     });
     const { hocuspocus } = buildHocuspocus(doc);
 
@@ -153,6 +154,7 @@ describe("handleNodeStateUpdateEvent", () => {
       type: "node-state-update",
       docName: VALID_DOC_NAME,
       nodeId: NODE_ID,
+      gen: 1,
       update: {
         state: "idle",
         content: "https://cdn.example.com/result.png",
@@ -173,7 +175,8 @@ describe("handleNodeStateUpdateEvent", () => {
   it("applies state + errorMessage; deletes handlingBy; leaves content untouched (handling→idle failure)", async () => {
     const doc = buildSeededDoc(NODE_ID, {
       state: "handling",
-      handlingBy: { userId: "u1", username: "alice" },
+      handlingBy: { userId: "u1", gen: 2 },
+      leaseGen: 2,
       content: "https://cdn.example.com/previous.png",
     });
     const { hocuspocus } = buildHocuspocus(doc);
@@ -182,6 +185,7 @@ describe("handleNodeStateUpdateEvent", () => {
       type: "node-state-update",
       docName: VALID_DOC_NAME,
       nodeId: NODE_ID,
+      gen: 2,
       update: {
         state: "idle",
         errorMessage: "upstream timeout",
@@ -201,13 +205,18 @@ describe("handleNodeStateUpdateEvent", () => {
 
   // ── Case 3: allowlist drops disallowed keys ────────────────────────────
   it("filters disallowed keys and logs droppedKeys; only allowed keys applied", async () => {
-    const doc = buildSeededDoc(NODE_ID, { state: "handling" });
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: { userId: "u1", gen: 1 },
+      leaseGen: 1,
+    });
     const { hocuspocus } = buildHocuspocus(doc);
 
     const event = {
       type: "node-state-update" as const,
       docName: VALID_DOC_NAME,
       nodeId: NODE_ID,
+      gen: 1,
       update: {
         state: "idle" as const,
         // Disallowed keys
@@ -261,6 +270,7 @@ describe("handleNodeStateUpdateEvent", () => {
       type: "node-state-update",
       docName: VALID_DOC_NAME,
       nodeId: NODE_ID,
+      gen: 1,
       update: { state: "idle" },
     };
 
@@ -276,7 +286,8 @@ describe("handleNodeStateUpdateEvent", () => {
   it("wraps all field mutations in a single doc.transact with origin 'node-state-update'", async () => {
     const doc = buildSeededDoc(NODE_ID, {
       state: "handling",
-      handlingBy: { userId: "u1", username: "alice" },
+      handlingBy: { userId: "u1", gen: 1 },
+      leaseGen: 1,
     });
 
     // We intercept doc.transact to inspect the origin string.
@@ -294,6 +305,7 @@ describe("handleNodeStateUpdateEvent", () => {
       type: "node-state-update",
       docName: VALID_DOC_NAME,
       nodeId: NODE_ID,
+      gen: 1,
       update: {
         state: "idle",
         content: "https://cdn.example.com/r.png",
@@ -327,6 +339,7 @@ describe("handleNodeStateUpdateEvent", () => {
       type: "node-state-update",
       docName: "bad",   // invalid pattern
       nodeId: NODE_ID,
+      gen: 1,
       update: { state: "idle" },
     };
 
@@ -431,6 +444,7 @@ describe("handleNodeStateUpdateEvent", () => {
       type: "node-state-update",
       docName: VALID_DOC_NAME,
       nodeId: NODE_ID,
+      gen: 1,
       update: { state: "idle" },
     };
 
@@ -479,5 +493,286 @@ describe("handleNodeStateUpdateEvent", () => {
     const warningMessages = (warnSpy.mock.calls as [unknown, string][])
       .map(([, msg]) => msg ?? "");
     expect(warningMessages.some((m) => /Unknown event type|unknown.*type/i.test(m))).toBe(true);
+  });
+});
+
+// ── #1580 #7: gen fencing CAS ───────────────────────────────────────────
+//
+// Unified-gen design (2026-07-03): every node-state-update belongs to one
+// lease generation (event.gen). The single-writer CAS-checks before
+// applying:
+//   - handling-OPEN events (update.handlingBy is an object): applied only
+//     when gen >= data.leaseGen; on apply, leaseGen advances to gen.
+//   - every other event (close / content / renew): applied only when the
+//     node's live handlingBy.gen === event.gen.
+describe("gen fencing CAS (#1580 #7)", () => {
+  beforeEach(() => {
+    warnSpy.mockClear();
+    infoSpy.mockClear();
+    debugSpy.mockClear();
+    errorSpy.mockClear();
+  });
+
+  /** A live lease seeded on the node (owner triple + gen). */
+  const liveLease = (gen: number): Record<string, unknown> => ({
+    userId: "u1",
+    type: "backend",
+    startedAt: 1_700_000_000_000,
+    gen,
+  });
+
+  /** A close (done) event carrying content, fenced by `gen`. */
+  const closeEvent = (gen: number, content: string): NodeStateUpdateEvent => ({
+    type: "node-state-update",
+    docName: VALID_DOC_NAME,
+    nodeId: NODE_ID,
+    gen,
+    update: { state: "idle", content, handlingBy: undefined },
+  });
+
+  /** A handling-open event (server echo of the REST-supplied gen). */
+  const openEvent = (gen: number): NodeStateUpdateEvent => ({
+    type: "node-state-update",
+    docName: VALID_DOC_NAME,
+    nodeId: NODE_ID,
+    gen,
+    update: {
+      state: "handling",
+      handlingBy: {
+        userId: "u1",
+        type: "backend",
+        startedAt: 1_700_000_000_000,
+        gen,
+      },
+    },
+  });
+
+  it("applies a close whose gen matches the live lease", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: liveLease(3),
+      leaseGen: 3,
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    await handleNodeStateUpdateEvent(hocuspocus, closeEvent(3, "https://cdn.example.com/v3.png"));
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    expect(dataMap.get("state")).toBe("idle");
+    expect(dataMap.get("content")).toBe("https://cdn.example.com/v3.png");
+    expect(dataMap.has("handlingBy")).toBe(false);
+  });
+
+  it("drops a stale-gen close (superseded op's late write must not clobber)", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: liveLease(4),
+      leaseGen: 4,
+      content: "https://cdn.example.com/current.png",
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    await handleNodeStateUpdateEvent(hocuspocus, closeEvent(3, "https://cdn.example.com/zombie.png"));
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    // Nothing applied — the gen-4 lease still owns the node.
+    expect(dataMap.get("state")).toBe("handling");
+    expect(dataMap.get("content")).toBe("https://cdn.example.com/current.png");
+    expect((dataMap.get("handlingBy") as { gen: number }).gen).toBe(4);
+  });
+
+  it("drops a close when no lease is live (sweeper already reclaimed)", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "idle",
+      leaseGen: 3,
+      errorMessage: "Timed out",
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    await handleNodeStateUpdateEvent(hocuspocus, closeEvent(3, "https://cdn.example.com/zombie.png"));
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    expect(dataMap.get("state")).toBe("idle");
+    expect(dataMap.has("content")).toBe(false);
+    expect(dataMap.get("errorMessage")).toBe("Timed out");
+  });
+
+  it("applies an open whose gen advances the counter and stamps leaseGen", async () => {
+    const doc = buildSeededDoc(NODE_ID, { state: "idle", leaseGen: 3 });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    await handleNodeStateUpdateEvent(hocuspocus, openEvent(4));
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    expect(dataMap.get("state")).toBe("handling");
+    expect((dataMap.get("handlingBy") as { gen: number }).gen).toBe(4);
+    expect(dataMap.get("leaseGen")).toBe(4);
+  });
+
+  it("applies an equal-gen open (frontend pre-advanced leaseGen; server echo lands)", async () => {
+    // AIGC flow: the frontend writes handlingBy{gen:4} + leaseGen=4 directly
+    // into the doc, THEN the server's open event (same gen 4) arrives via the
+    // stream. gen >= leaseGen, so the echo applies (it re-types the driver to
+    // 'backend' with the queued phase).
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: { userId: "u1", type: "frontend", startedAt: 1, gen: 4, clientId: 7 },
+      leaseGen: 4,
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    await handleNodeStateUpdateEvent(hocuspocus, openEvent(4));
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    const hb = dataMap.get("handlingBy") as { gen: number; type: string };
+    expect(hb.gen).toBe(4);
+    expect(hb.type).toBe("backend");
+    expect(dataMap.get("leaseGen")).toBe(4);
+  });
+
+  it("drops a stale-gen open and leaves leaseGen untouched", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: liveLease(5),
+      leaseGen: 5,
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    await handleNodeStateUpdateEvent(hocuspocus, openEvent(4));
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    expect((dataMap.get("handlingBy") as { gen: number }).gen).toBe(5);
+    expect(dataMap.get("leaseGen")).toBe(5);
+  });
+
+  it("treats a missing leaseGen as 0 (first-ever open with gen 1 applies)", async () => {
+    const doc = buildSeededDoc(NODE_ID, { state: "idle" });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    await handleNodeStateUpdateEvent(hocuspocus, openEvent(1));
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    expect(dataMap.get("state")).toBe("handling");
+    expect(dataMap.get("leaseGen")).toBe(1);
+  });
+
+  it("gates renewLease by gen: wrong gen does not restamp", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: { ...liveLease(4), phase: "queued" },
+      leaseGen: 4,
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    const renew: NodeStateUpdateEvent = {
+      type: "node-state-update",
+      docName: VALID_DOC_NAME,
+      nodeId: NODE_ID,
+      gen: 3,
+      update: {},
+      renewLease: "running",
+    };
+    await handleNodeStateUpdateEvent(hocuspocus, renew);
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    const hb = dataMap.get("handlingBy") as { phase: string; gen: number };
+    expect(hb.phase).toBe("queued");
+    expect(hb.gen).toBe(4);
+  });
+
+  it("gates renewLease by gen: matching gen restamps phase and preserves gen", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: { ...liveLease(4), phase: "queued" },
+      leaseGen: 4,
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    const renew: NodeStateUpdateEvent = {
+      type: "node-state-update",
+      docName: VALID_DOC_NAME,
+      nodeId: NODE_ID,
+      gen: 4,
+      update: {},
+      renewLease: "running",
+    };
+    await handleNodeStateUpdateEvent(hocuspocus, renew);
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    const hb = dataMap.get("handlingBy") as { phase: string; gen: number };
+    expect(hb.phase).toBe("running");
+    expect(hb.gen).toBe(4);
+  });
+
+  it("skips an event whose gen is malformed at runtime (poison-payload tolerance)", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: liveLease(2),
+      leaseGen: 2,
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
+
+    const malformed = {
+      type: "node-state-update" as const,
+      docName: VALID_DOC_NAME,
+      nodeId: NODE_ID,
+      gen: "not-a-number",
+      update: { state: "idle" as const, handlingBy: undefined },
+    };
+    await handleNodeStateUpdateEvent(hocuspocus, malformed as unknown as NodeStateUpdateEvent);
+
+    const dataMap = getDataMap(doc, NODE_ID);
+    expect(dataMap.get("state")).toBe("handling");
+    expect(warnSpy).toHaveBeenCalled();
+  });
+});
+
+// ── #1580 #10: crash-net duplicate write-back dedup (via #7 CAS) ─────────
+//
+// A normal (non-crash) failure produces TWO failure events for the same
+// lease: the handler's own catch write-back, then the cross-process
+// QueueEvents net re-emitting for the same job. The dedup is the #7 CAS
+// itself — the first close cleared handlingBy, so the duplicate finds no
+// live lease and is fenced. No bespoke dedup state needed.
+describe("crash-net duplicate write-back dedup (#1580 #10)", () => {
+  beforeEach(() => {
+    warnSpy.mockClear();
+    infoSpy.mockClear();
+  });
+
+  it("the second identical failure write-back is fenced after the first closed the lease", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: { userId: "u1", type: "backend", startedAt: 1, gen: 2 },
+      leaseGen: 2,
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
+    const failureEvent: NodeStateUpdateEvent = {
+      type: "node-state-update",
+      docName: VALID_DOC_NAME,
+      nodeId: NODE_ID,
+      gen: 2,
+      update: {
+        state: "idle",
+        errorMessage: "Task failed: provider 500",
+        handlingBy: undefined,
+      },
+    };
+
+    // First write-back (the handler's own catch): applies.
+    await handleNodeStateUpdateEvent(hocuspocus, failureEvent);
+    const dataMap = getDataMap(doc, NODE_ID);
+    expect(dataMap.get("state")).toBe("idle");
+    expect(dataMap.has("handlingBy")).toBe(false);
+
+    // Duplicate (the QueueEvents net, any live instance): fenced no-op.
+    infoSpy.mockClear();
+    await handleNodeStateUpdateEvent(hocuspocus, failureEvent);
+    const fencedLog = (infoSpy.mock.calls as [unknown, string][]).find(
+      ([, msg]) => /fenced/i.test(msg ?? ""),
+    );
+    expect(fencedLog).toBeDefined();
+    expect(dataMap.get("state")).toBe("idle");
+    expect(dataMap.get("errorMessage")).toBe("Task failed: provider 500");
   });
 });

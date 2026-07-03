@@ -37,8 +37,10 @@ import {
   runCanvasUndoBatch,
   setGroupBackground,
   setNodeContent,
-  setNodeError,
   setNodeHandling,
+  completeNodeHandling,
+  failNodeHandling,
+  isNodeHandling,
   setNodeLocked,
   setNodeName,
   setNodeParent,
@@ -681,43 +683,55 @@ function CanvasSpaceInner({
           x: origin.x + i * STAGGER_STEP_PX,
           y: origin.y + i * STAGGER_STEP_PX,
         };
-        const nodeId = createUploadNodeAt(spec.nodeType, position);
+        // #1580 #7: the created-handling node carries its first lease; the
+        // write-backs verify it, so a superseded upload (someone re-opened
+        // the node after a sweeper reclaim) cannot clobber the new owner.
+        const { nodeId, lease } = createUploadNodeAt(spec.nodeType, position);
         created.push(nodeId);
         if (spec.needsUpload) {
           void runMediaUpload(file, projectId, {
             presign: assetsApi.presign,
             putFile: assetsApi.putFile,
-            onSuccess: (fileUrl) =>
-              setNodeContent(projectId, spaceId, nodeId, fileUrl),
+            onSuccess: (fileUrl) => {
+              if (!completeNodeHandling(projectId, spaceId, nodeId, fileUrl, lease)) {
+                toast(t('canvas.upload.ownershipLost'));
+              }
+            },
             // Fixed-English wire string — like AIGC failure messages and the
             // group default name. errorMessage is written to Yjs and rendered
             // raw to every collaborator, so it must not freeze the uploader's
             // locale into the shared doc. The filename is the locale-free part
             // telling the user which file failed.
             onFailure: () =>
-              setNodeError(
+              failNodeHandling(
                 projectId,
                 spaceId,
                 nodeId,
                 `Upload failed: ${file.name}`,
+                lease,
               ),
           });
         } else {
           void extractText(file)
-            .then((text) => setNodeContent(projectId, spaceId, nodeId, text))
+            .then((text) => {
+              if (!completeNodeHandling(projectId, spaceId, nodeId, text, lease)) {
+                toast(t('canvas.upload.ownershipLost'));
+              }
+            })
             .catch(() =>
-              setNodeError(
+              failNodeHandling(
                 projectId,
                 spaceId,
                 nodeId,
                 `Extraction failed: ${file.name}`,
+                lease,
               ),
             );
         }
       }
       if (created.length > 0) setSelectAfterCreate(created);
     },
-    [readOnly, projectId, spaceId, createUploadNodeAt],
+    [readOnly, projectId, spaceId, createUploadNodeAt, t],
   );
 
   // Upload-button path: chrome posted picked files (the picker must open
@@ -1334,13 +1348,20 @@ function CanvasSpaceInner({
         presign: assetsApi.presign,
         putFile: assetsApi.putFile,
         extractText,
+        // #1580 #7 busy gate: a node already handling refuses a second fill.
+        isHandling: (id) => isNodeHandling(projectId, spaceId, id),
+        onBusy: () => toast(t('canvas.upload.nodeBusy')),
         setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
-        setContent: (id, content) =>
-          setNodeContent(projectId, spaceId, id, content),
-        setError: (id, message) => setNodeError(projectId, spaceId, id, message),
+        setContent: (id, content, lease) => {
+          const landed = completeNodeHandling(projectId, spaceId, id, content, lease);
+          if (!landed) toast(t('canvas.upload.ownershipLost'));
+          return landed;
+        },
+        setError: (id, message, lease) =>
+          failNodeHandling(projectId, spaceId, id, message, lease),
       });
     },
-    [projectId, spaceId, userId],
+    [projectId, spaceId, userId, t],
   );
 
   const actions = React.useMemo<CanvasActions>(

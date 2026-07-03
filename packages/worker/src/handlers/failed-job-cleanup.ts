@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Node write-back safety net for jobs BullMQ judged dead (#1569 hole ②).
+ * Node write-back safety net for jobs BullMQ judged dead (#1569 hole ②;
+ * made cross-process in #1580 #6).
  *
  * `runTask`'s own failure paths emit the node failure write-back — but
  * they only run when the handler runs. Two death modes bypass them:
@@ -13,9 +14,17 @@
  *     it straight to failed without re-running the handler.
  *
  * In both, the target nodes' Yjs `state: 'handling'` was never written
- * back — a zombie the `worker.on('failed')` hook closes by calling this
- * helper. The collab handling-lease sweeper (1h budget) remains the
- * final backstop if even this event is lost.
+ * back. This net closes that.
+ *
+ * WHY CROSS-PROCESS (#1580 #6): the crashed-worker case CANNOT be handled
+ * by that worker's own `worker.on('failed')` — a dead process runs no
+ * callback. So the net is driven by BullMQ `QueueEvents` 'failed'
+ * ({@link reclaimFailedJobById}), which every LIVE instance receives, so
+ * some live instance always does the write-back. (Detecting the death is
+ * BullMQ's own job: its stalled-checker — which needs at least one live
+ * worker in the fleet to run `moveStalledJobsToWait` — moves a crashed
+ * job to the failed set. If the WHOLE fleet is down nothing runs here, and
+ * the collab handling-lease sweeper (1h budget) is the final backstop.)
  *
  * Idempotent by construction: the write-back is the standard failure
  * patch (idle + errorMessage + handlingBy:null) applied by the collab
@@ -69,7 +78,7 @@ export async function cleanupFailedJobNodes(
   // attemptsMade, so that gate skipped exactly the deaths it should catch.
   if (!job.finishedOn) return 0;
 
-  const { projectId, spaceId, targetNodeIds } = job.data;
+  const { projectId, spaceId, targetNodeIds, nodeGens } = job.data;
   if (!projectId || !spaceId) return 0;
   if (!targetNodeIds || targetNodeIds.length === 0) return 0;
 
@@ -82,6 +91,10 @@ export async function cleanupFailedJobNodes(
         docName,
         nodeId,
         `Task failed: ${reason}`,
+        // #1580 #7: echo the node's lease gen so the collab CAS accepts the
+        // reclaim only while this job's lease is still live. 0 (never a
+        // valid gen) marks a producer bug; collab drops it with a warn.
+        nodeGens?.[nodeId] ?? 0,
       );
       emitted++;
     } catch {
@@ -91,4 +104,43 @@ export async function cleanupFailedJobNodes(
     }
   }
   return emitted;
+}
+
+/** Read-side queue shape: fetch a job by id (satisfied by BullMQ `Queue`). */
+export interface JobFetcher {
+  /**
+   * Fetch a job by id, or `undefined` if it no longer exists. Terminally
+   * failed jobs are retained by `removeOnFail.age` (24h, see
+   * `defaultJobOpts`), so a job is fetchable right after its failure event.
+   */
+  getJob(jobId: string): Promise<FailedJobLike | undefined>;
+}
+
+/**
+ * Cross-process failed-job write-back (#1580 #6). BullMQ `QueueEvents`
+ * 'failed' delivers only `{ jobId, failedReason }` — NOT the job payload —
+ * to every LIVE instance. This handler re-fetches the job (retained by
+ * `removeOnFail`) for its `data` + terminal `finishedOn`, then delegates to
+ * {@link cleanupFailedJobNodes} (which no-ops unless the failure is
+ * terminal).
+ *
+ * Runs once per subscribed instance per failed job (QueueEvents broadcasts):
+ * the write-back is idempotent, and the fencing gen (#1580 #7) makes any
+ * stale write a no-op. That redundancy is the price of crash-resilience —
+ * the instance whose worker died runs no callback, but every OTHER live
+ * instance still cleans the node up.
+ * @param queue - Read-side fetcher (a BullMQ `Queue`) resolving the job id.
+ * @param streamRedis - Redis client for the stream DB.
+ * @param jobId - The failed job's id from the `QueueEvents` 'failed' event.
+ * @param reason - BullMQ failure reason, embedded in the node error message.
+ * @returns the number of nodes a write-back was successfully published for.
+ */
+export async function reclaimFailedJobById(
+  queue: JobFetcher,
+  streamRedis: ReturnType<typeof getStreamRedis>,
+  jobId: string,
+  reason: string,
+): Promise<number> {
+  const job = await queue.getJob(jobId);
+  return cleanupFailedJobNodes(streamRedis, job, reason);
 }

@@ -20,8 +20,10 @@ import {
   runCanvasUndoBatch,
   setGroupBackground,
   setNodeContent,
-  setNodeError,
   setNodeHandling,
+  completeNodeHandling,
+  failNodeHandling,
+  isNodeHandling,
   setNodeLocked,
   setNodeName,
   setNodeParent,
@@ -131,7 +133,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       SID,
       sampleFields('image', {
         state: 'handling',
-        handlingBy: { userId: 'u1', type: 'backend', startedAt: 1_700_000_000_000 },
+        handlingBy: { userId: 'u1', type: 'backend', startedAt: 1_700_000_000_000, gen: 1 },
       }),
     );
 
@@ -214,7 +216,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(readNodes(doc())[0].data).toMatchObject({ locked: false });
   });
 
-  it('setNodeContent writes content + flips handling → idle (upload done)', () => {
+  it('setNodeContent (plain writer — text inline edit) writes content + flips handling → idle', () => {
     addNode(PID, SID, sampleFields('image', { state: 'handling' }));
     setNodeContent(PID, SID, 'n1', 'https://cdn/photo.png');
     const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
@@ -238,9 +240,11 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(data.get('errorMessage')).toBeUndefined();
   });
 
-  it('setNodeError writes errorMessage + idle so deriveStatus shows error (upload fail)', () => {
-    addNode(PID, SID, sampleFields('image', { state: 'handling' }));
-    setNodeError(PID, SID, 'n1', 'Upload failed: photo.png');
+  it('failNodeHandling writes errorMessage + idle so deriveStatus shows error (upload fail)', () => {
+    addNode(PID, SID, sampleFields('image'));
+    const lease = setNodeHandling(PID, SID, 'n1', 'u1');
+    expect(lease).toBeDefined();
+    failNodeHandling(PID, SID, 'n1', 'Upload failed: photo.png', lease!);
     const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
@@ -274,11 +278,12 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       expect(undo.undoStack.length).toBe(depth);
     });
 
-    it('setNodeError does NOT push an undo entry', () => {
+    it('failNodeHandling does NOT push an undo entry', () => {
       const undo = createCanvasUndoManager(doc());
-      addNode(PID, SID, sampleFields('image', { state: 'handling' }, { id: 'img1' }));
+      addNode(PID, SID, sampleFields('image', {}, { id: 'img1' }));
+      const lease = setNodeHandling(PID, SID, 'img1', 'u1');
       const depth = undo.undoStack.length;
-      setNodeError(PID, SID, 'img1', 'upload failed: pic.png');
+      failNodeHandling(PID, SID, 'img1', 'upload failed: pic.png', lease!);
       expect(undo.undoStack.length).toBe(depth);
     });
 
@@ -484,5 +489,116 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       expect(parentOf('m')).toBeUndefined();
       expect(posOf('m')).toEqual({ x: 60, y: 80 });
     });
+  });
+});
+
+// ── #1580 #7: unified gen lease (owner triple + persistent counter) ──────
+//
+// Every handling open takes gen = leaseGen + 1 from the node's own counter
+// and stamps the owner triple (gen + userId + clientId). Write-backs verify
+// the caller still owns the live lease — a superseded upload's late write
+// must not clobber the new owner's work.
+describe('unified gen lease (#1580 #7)', () => {
+  beforeEach(() => {
+    _resetForTests();
+  });
+
+  it('setNodeHandling takes gen = leaseGen + 1, advances leaseGen, stamps the owner triple, and returns the token', () => {
+    addNode(PID, SID, sampleFields('image'));
+    const lease = setNodeHandling(PID, SID, 'n1', 'user-x');
+    expect(lease).toEqual({
+      gen: 1,
+      clientId: doc().clientID,
+      userId: 'user-x',
+    });
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    const hb = data.get('handlingBy') as {
+      gen: number;
+      clientId: number;
+      userId: string;
+      type: string;
+    };
+    expect(hb.gen).toBe(1);
+    expect(hb.clientId).toBe(doc().clientID);
+    expect(hb.userId).toBe('user-x');
+    expect(hb.type).toBe('frontend');
+    expect(data.get('leaseGen')).toBe(1);
+  });
+
+  it('sequential opens increment gen monotonically (leaseGen survives close)', () => {
+    addNode(PID, SID, sampleFields('image'));
+    const first = setNodeHandling(PID, SID, 'n1', 'user-x');
+    completeNodeHandling(PID, SID, 'n1', 'https://cdn/a.png', first!);
+    const second = setNodeHandling(PID, SID, 'n1', 'user-x');
+    expect(second!.gen).toBe(2);
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('leaseGen')).toBe(2);
+  });
+
+  it('setNodeHandling returns undefined for a missing node (no throw)', () => {
+    expect(setNodeHandling(PID, SID, 'ghost', 'user-x')).toBeUndefined();
+  });
+
+  it('completeNodeHandling with the live token writes content + idle + clears error, returns true', () => {
+    addNode(PID, SID, sampleFields('image', { errorMessage: 'old fail' }));
+    const lease = setNodeHandling(PID, SID, 'n1', 'user-x');
+    const landed = completeNodeHandling(PID, SID, 'n1', 'https://cdn/new.png', lease!);
+    expect(landed).toBe(true);
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('content')).toBe('https://cdn/new.png');
+    expect(data.get('state')).toBe('idle');
+    expect(data.get('errorMessage')).toBeUndefined();
+    expect(data.has('handlingBy')).toBe(false);
+    // The counter is NEVER cleared — the next open must take gen 2.
+    expect(data.get('leaseGen')).toBe(1);
+  });
+
+  it('completeNodeHandling with a superseded token is a no-op returning false (owner CAS)', () => {
+    addNode(PID, SID, sampleFields('image'));
+    const stale = setNodeHandling(PID, SID, 'n1', 'user-a');
+    // Another actor re-opened the lease (e.g. after a sweeper reclaim) —
+    // the live lease now belongs to gen 2 / user-b.
+    const live = setNodeHandling(PID, SID, 'n1', 'user-b');
+    const landed = completeNodeHandling(PID, SID, 'n1', 'https://cdn/zombie.png', stale!);
+    expect(landed).toBe(false);
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.has('content')).toBe(false);
+    expect(data.get('state')).toBe('handling');
+    expect((data.get('handlingBy') as { gen: number }).gen).toBe(live!.gen);
+  });
+
+  it('completeNodeHandling with a different clientId same gen is rejected (two tabs racing the same gen)', () => {
+    addNode(PID, SID, sampleFields('image'));
+    const lease = setNodeHandling(PID, SID, 'n1', 'user-a');
+    const foreign = { ...lease!, clientId: lease!.clientId + 1 };
+    expect(completeNodeHandling(PID, SID, 'n1', 'https://cdn/x.png', foreign)).toBe(false);
+  });
+
+  it('failNodeHandling with a superseded token is a no-op returning false', () => {
+    addNode(PID, SID, sampleFields('image'));
+    const stale = setNodeHandling(PID, SID, 'n1', 'user-a');
+    setNodeHandling(PID, SID, 'n1', 'user-b');
+    expect(failNodeHandling(PID, SID, 'n1', 'boom', stale!)).toBe(false);
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('state')).toBe('handling');
+    expect(data.has('errorMessage')).toBe(false);
+  });
+
+  it('isNodeHandling reflects the node state (busy gate primitive)', () => {
+    addNode(PID, SID, sampleFields('image'));
+    expect(isNodeHandling(PID, SID, 'n1')).toBe(false);
+    setNodeHandling(PID, SID, 'n1', 'user-x');
+    expect(isNodeHandling(PID, SID, 'n1')).toBe(true);
+    expect(isNodeHandling(PID, SID, 'ghost')).toBe(false);
   });
 });

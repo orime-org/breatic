@@ -198,7 +198,7 @@ describe('deriveStatus — wire state + errorMessage → 3-state display status'
     const pastBudget = startedAt + 3_600_001;
     const data = {
       state: 'handling' as const,
-      handlingBy: { userId: 'u1', type: 'frontend' as const, startedAt },
+      handlingBy: { userId: 'u1', type: 'frontend' as const, startedAt, gen: 1 },
     };
     expect(deriveStatus(data, withinBudget)).toBe('handling');
     expect(deriveStatus(data, pastBudget)).toBe('error');
