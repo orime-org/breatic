@@ -117,6 +117,43 @@ body {
   inset: -5px;
 }
 
+/* Skeleton shimmer (#1550). The old `animate-pulse bg-primary/10` swung a 10%
+   fill to 5% — near-invisible against a card surface. Perceived "loading" comes
+   from MOTION, so a highlight band sweeps left→right across a foreground-mixed
+   base fill (both via color-mix off --color-foreground: mode-symmetric, no
+   dark-mode special case; explicit color-mix because Tailwind's /N opacity
+   modifier silently no-ops on our hex tokens). Single element, no
+   pseudo-elements: the gradient is the background-image riding on the
+   background-color, swept via background-position over an oversized
+   background-size. */
+.skeleton-shimmer {
+  background-color: color-mix(in srgb, var(--color-foreground) 11%, transparent);
+  background-image: linear-gradient(
+    90deg,
+    transparent 35%,
+    color-mix(in srgb, var(--color-foreground) 24%, transparent) 50%,
+    transparent 65%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+/* No prefers-reduced-motion override — user-ratified 2026-07-03: the
+   skeleton communicates "this node is generating" (functional state, not
+   decoration), and the sweep is a low-contrast brightness band with NO
+   element displacement (no parallax / scale / translation), so it is not
+   vestibular-trigger motion. An earlier reduce override silently blanked
+   the animation on reduce-enabled machines and made the loading state
+   unreadable — the very defect this slice fixes. Do not re-add one here. */
+
 /* Canvas edge colours. ReactFlow keys its dark edge vars off `.react-flow.dark`
    (set only when you pass colorMode="dark"), which never matches our
    `data-theme="dark"`-on-<html> toggle — so its light defaults (#b1b1b7 default /

@@ -61,4 +61,22 @@ describe('ImageNode', () => {
     await user.dblClick(ph);
     expect(onActivate).toHaveBeenCalled();
   });
+
+  it('the shell clips the filled image - no corner gap (#1550 follow-up)', () => {
+    render(
+      <ImageNode
+        data={{ kind: 'image', status: 'idle', content: 'blob:img' }}
+      />,
+    );
+    // Concentric-radius geometry: the shell is rounded-sm (6px) + 1px border
+    // with zero padding, so a child carrying its own 6px radius curves faster
+    // than the border's inner arc and opens a gap in all four corners. The
+    // shell clips every child to its rounded box; the img carries NO radius.
+    expect(screen.getByTestId('image-node').className).toContain(
+      'overflow-hidden',
+    );
+    expect(screen.getByTestId('image-node-img').className).not.toContain(
+      'rounded',
+    );
+  });
 });

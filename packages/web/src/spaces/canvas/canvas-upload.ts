@@ -116,6 +116,11 @@ export interface FillNodeDeps {
    * silently racing the live lease holder.
    */
   isHandling: (nodeId: string) => boolean;
+  /**
+   * Called (instead of any work) when the picked file's classification does
+   * not match the target node's modality — the type gate below.
+   */
+  onTypeMismatch: (nodeId: string) => void;
   /** Called (instead of any work) when the busy gate refuses the fill. */
   onBusy: (nodeId: string) => void;
   /**
@@ -143,17 +148,30 @@ export interface FillNodeDeps {
  * a locale-frozen toast), matching the create-on-drop path's wire strings.
  * Write-backs carry the lease token so a superseded fill cannot clobber a
  * newer owner's work.
+ *
+ * Type gate (user bug 2026-07-03): the picker's `accept` filter is advisory —
+ * macOS lets an `audio/*` picker select `.mp4` (the MP4 container family
+ * includes audio-only `audio/mp4`), and nothing downstream checked the file
+ * against the node. The file's classification must match the target node's
+ * modality or the fill is refused before any lease is taken; an audio-only
+ * container (`audio/mp4`) still classifies as audio and passes.
  * @param nodeId - The existing node to fill.
  * @param file - The picked file.
+ * @param targetModality - The target node's modality; the file must classify to it.
  * @param projectId - Owning project (authorizes the presign).
  * @param deps - Injected upload network + content / error sinks.
  */
 export async function fillNodeFromFile(
   nodeId: string,
   file: File,
+  targetModality: UploadNodeSpec['nodeType'],
   projectId: string,
   deps: FillNodeDeps,
 ): Promise<void> {
+  if (fileToNodeSpec(file).nodeType !== targetModality) {
+    deps.onTypeMismatch(nodeId);
+    return;
+  }
   if (deps.isHandling(nodeId)) {
     deps.onBusy(nodeId);
     return;

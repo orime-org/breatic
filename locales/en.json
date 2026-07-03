@@ -319,7 +319,8 @@
     },
     "upload": {
       "nodeBusy": "This node is busy — another operation is in progress.",
-      "ownershipLost": "Upload result was not written — the node was removed or taken over."
+      "ownershipLost": "Upload result was not written — the node was removed or taken over.",
+      "typeMismatch": "File type doesn’t match this node."
     },
     "minimap": {
       "label": "Canvas minimap"
