@@ -159,9 +159,9 @@ export function TextNode({
               <div
                 data-testid='text-node-fade'
                 aria-hidden='true'
-                // `rounded-b-sm` matches the NodeShell's bottom corners so the
-                // fade doesn't square off past the node's rounded bottom edge.
-                className='pointer-events-none absolute inset-x-0 bottom-0 h-10 rounded-b-sm bg-gradient-to-t from-card to-transparent'
+                // The NodeShell clips children to its rounded box, so the fade
+                // needs no radius of its own.
+                className='pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent'
               />
             ) : null}
           </div>

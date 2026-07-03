@@ -58,7 +58,7 @@ export function ImageNode({
             src={data.content ?? ''}
             alt=''
             data-testid='image-node-img'
-            className='block h-auto w-full rounded-[var(--radius-content-sm)]'
+            className='block h-auto w-full'
           />
         }
       />

@@ -29,8 +29,14 @@ const STATUS_BORDER: Record<DisplayStatus, string> = {
 
 /**
  * Unified outer shell for every canvas node (text / image / audio / video
- * / annotation). Owns the single 1px state border (selection / status colour)
- * and the lock indicator so type nodes only have to render their body.
+ * / annotation). Owns the single 1px state border (selection / status colour),
+ * the lock indicator, AND the corner clip (`overflow-hidden`) so type nodes
+ * only have to render their body. The clip is the concentric-radius fix
+ * (user report 2026-07-03): the shell is rounded with a 1px border and zero
+ * padding, so any edge-touching child (image, iframe, handling skeleton,
+ * text fade) carrying its own radius curves faster than the border's inner
+ * arc and opens a gap in all four corners — the shell clipping every child
+ * to its rounded box makes that geometry impossible by construction.
  *
  * The one 1px border is tinted by state (selected wins over status):
  *   - `idle`     → neutral border
@@ -64,7 +70,7 @@ export function NodeShell({
         // `canvas-node-shell` is the stable hook the drag-lift CSS rule targets
         // (`.react-flow__node.dragging .canvas-node-shell` → shadow in index.css);
         // a static card is flat — no shadow — per the design system.
-        'canvas-node-shell relative rounded-sm border bg-card text-card-foreground transition-colors',
+        'canvas-node-shell relative overflow-hidden rounded-sm border bg-card text-card-foreground transition-colors',
         selected ? 'border-status-selected' : STATUS_BORDER[status],
         className,
       )}

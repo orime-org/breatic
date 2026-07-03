@@ -42,7 +42,7 @@ export function NodeContent({
       <div data-testid='node-content-handling' className='h-48 w-full'>
         <Skeleton
           data-testid='node-content-skeleton'
-          className='h-full w-full rounded-sm'
+          className='h-full w-full rounded-none'
         />
       </div>
     );

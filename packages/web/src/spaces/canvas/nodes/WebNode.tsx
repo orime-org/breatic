@@ -61,7 +61,7 @@ export function WebNode({
             title='Embedded web page'
             sandbox='allow-scripts allow-same-origin allow-popups'
             referrerPolicy='no-referrer'
-            className='h-48 w-full rounded-[var(--radius-content-sm)] border-0 bg-background'
+            className='h-48 w-full border-0 bg-background'
           />
         }
       />

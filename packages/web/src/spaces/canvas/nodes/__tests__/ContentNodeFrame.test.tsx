@@ -79,4 +79,18 @@ describe('ContentNodeFrame', () => {
     );
     expect(screen.getByTestId('text-node').className).toContain('w-72');
   });
+
+  it('the shell clips children to its rounded box (concentric-radius invariant, user report 2026-07-03)', () => {
+    render(
+      <ContentNodeFrame modality='image' name='n' testId='frame-shell'>
+        <div />
+      </ContentNodeFrame>,
+    );
+    // Every edge-touching child (image, iframe, handling skeleton, text fade)
+    // relies on this clip; a child radius equal to the shell's own opens a
+    // four-corner gap against the 1px border's inner arc.
+    expect(screen.getByTestId('frame-shell').className).toContain(
+      'overflow-hidden',
+    );
+  });
 });
