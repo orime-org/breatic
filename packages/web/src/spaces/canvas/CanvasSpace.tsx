@@ -94,6 +94,7 @@ import {
 } from '@web/spaces/canvas/group-toolbar';
 import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
+import { CanvasMiniMap } from '@web/spaces/canvas/CanvasMiniMap';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
 import { GroupSelectionToolbar } from '@web/spaces/canvas/GroupSelectionToolbar';
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
@@ -372,6 +373,9 @@ function CanvasSpaceInner({
   // store for the toolbar's read-out, and run the toolbar's commands (posted
   // through the store mailbox) against ReactFlow here, where the API exists.
   const setZoom = useCanvasStore((s) => s.setZoom);
+  // Minimap visibility (single source, #1548) — toggled by the viewport
+  // toolbar, consumed here to mount/unmount the map.
+  const minimapVisible = useCanvasStore((s) => s.minimapVisible);
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
@@ -1580,6 +1584,9 @@ function CanvasSpaceInner({
             size={DOT_SIZE_PX}
             color='var(--color-canvas-grid)'
           />
+          {/* Bird's-eye minimap (#1548) — toolbar-toggled via the canvas
+              store; safe for read-only viewers (viewport navigation only). */}
+          {minimapVisible ? <CanvasMiniMap /> : null}
           {/* Floating selection toolbar: group a fresh selection, or ungroup
               a selected group (mirrors the Cmd/Ctrl+G shortcuts). */}
           <NodeToolbar

@@ -10,7 +10,7 @@ describe('useCanvasStore', () => {
       selectedNodeIds: [],
       hoverNodeId: null,
       zoom: 1,
-      minimapVisible: false,
+      minimapVisible: true,
       showLockedOverlay: false,
       pendingNodeCreate: null,
       pendingUploadFiles: null,
@@ -26,7 +26,10 @@ describe('useCanvasStore', () => {
     expect(s.selectedNodeIds).toEqual([]);
     expect(s.hoverNodeId).toBeNull();
     expect(s.zoom).toBe(1);
-    expect(s.minimapVisible).toBe(false);
+  });
+
+  it('minimap is visible by default — the built map ships on (#1548, single source of truth)', () => {
+    expect(useCanvasStore.getInitialState().minimapVisible).toBe(true);
   });
 
   it('addSelectedNodeId is idempotent (no dup)', () => {
@@ -37,9 +40,9 @@ describe('useCanvasStore', () => {
 
   it('toggleMinimap flips visible flag', () => {
     useCanvasStore.getState().toggleMinimap();
-    expect(useCanvasStore.getState().minimapVisible).toBe(true);
-    useCanvasStore.getState().toggleMinimap();
     expect(useCanvasStore.getState().minimapVisible).toBe(false);
+    useCanvasStore.getState().toggleMinimap();
+    expect(useCanvasStore.getState().minimapVisible).toBe(true);
   });
 
   it('requestRename posts a node id; consumePendingRename clears it', () => {

@@ -104,7 +104,8 @@ export const useCanvasStore = create<CanvasState>()(
     selectedNodeIds: [],
     hoverNodeId: null,
     zoom: 1,
-    minimapVisible: false,
+    // The built minimap ships on (#1548) — one toolbar click turns it off.
+    minimapVisible: true,
     showLockedOverlay: false,
     pendingNodeCreate: null,
     pendingUploadFiles: null,

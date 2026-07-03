@@ -313,7 +313,10 @@ function ProjectWorkspace({
   const requestHistoryCommand = useCanvasStore(
     (s) => s.requestHistoryCommand,
   );
-  const [minimapVisible, setMinimapVisible] = React.useState(true);
+  // Minimap visibility lives in the canvas store (single source, #1548):
+  // the toolbar toggles it here, the canvas mounts/unmounts the map off it.
+  const minimapVisible = useCanvasStore((s) => s.minimapVisible);
+  const toggleMinimap = useCanvasStore((s) => s.toggleMinimap);
   const [snapToGrid, setSnapToGrid] = React.useState(false);
 
   // ---- Handlers ----
@@ -687,7 +690,7 @@ function ProjectWorkspace({
                     onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
                     onFit={() => requestViewportCommand('fit')}
                     onToggleSnap={() => setSnapToGrid((v) => !v)}
-                    onToggleMinimap={() => setMinimapVisible((v) => !v)}
+                    onToggleMinimap={toggleMinimap}
                     onUndo={() => requestHistoryCommand('undo')}
                     onRedo={() => requestHistoryCommand('redo')}
                   />
