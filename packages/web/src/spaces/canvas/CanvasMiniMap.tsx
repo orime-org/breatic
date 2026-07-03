@@ -63,7 +63,10 @@ export function CanvasMiniMap(): React.JSX.Element {
       // translucent canvas-tone wash so the viewport window reads as a hole.
       bgColor='var(--color-popover)'
       maskColor='color-mix(in srgb, var(--color-canvas) 65%, transparent)'
-      maskStrokeColor='var(--color-active-border)'
+      // Hairline token (12% translucent neutral, the same line every card /
+      // the map frame itself uses): the screen-constant 1px width made the
+      // old mid-gray active-border read too strong (user 2026-07-03).
+      maskStrokeColor='var(--color-border)'
       // The className lands on the outer Panel div (source-verified). The
       // 61px bottom margin puts the map's bottom edge exactly where the zoom
       // popover's sits (Radix anchors sideOffset-8 to the TRIGGER button top

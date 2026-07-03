@@ -61,5 +61,10 @@ describe('CanvasMiniMap (#1548)', () => {
     expect(
       panel.style.getPropertyValue('--xy-minimap-mask-stroke-width-props'),
     ).not.toBe('');
+    // Hairline color, not the mid-gray active-border (user 2026-07-03:
+    // the screen-constant width made that read too strong).
+    expect(
+      panel.style.getPropertyValue('--xy-minimap-mask-stroke-color-props'),
+    ).toBe('var(--color-border)');
   });
 });
