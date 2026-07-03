@@ -185,7 +185,14 @@ export const taskCreateSchema = z
      * target id" on its own).
      */
     node_gens: z
-      .record(z.string().uuid(), z.number().int().positive())
+      .record(
+        z.string().uuid(),
+        // Capped at int32 max (#1580 adversarial: an uncapped client gen of
+        // MAX_SAFE_INTEGER floods the node's monotonic leaseGen counter and
+        // bricks every future backend generation on it). ~2.1e9 generations
+        // is one open per second for 68 years — never a legitimate limit.
+        z.number().int().positive().lte(2_147_483_647),
+      )
       .optional(),
   })
   .superRefine((val, ctx) => {

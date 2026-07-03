@@ -156,11 +156,23 @@ export function sweepDoc(
   const nodesMap = doc.getMap<Y.Map<unknown>>("nodesMap");
   const toNormalize: Y.Map<unknown>[] = [];
   const expired: Y.Map<unknown>[] = [];
+  const staleIdleLease: Y.Map<unknown>[] = [];
   nodesMap.forEach((node) => {
     if (!(node instanceof Y.Map)) return;
     const data = node.get("data");
     if (!(data instanceof Y.Map)) return;
-    if (data.get("state") !== "handling") return;
+    if (data.get("state") !== "handling") {
+      // #1580 adversarial self-heal: an idle node still carrying a
+      // handlingBy is CRDT merge residue — the sweeper's whole-object
+      // normalization set racing a frontend completion delete converges
+      // to this shape (the delete cannot remove the unseen set). Nothing
+      // reads it, but a future open would sit next to a stale actor
+      // forever; drop it here (not a reclaim — the node is already idle).
+      if (data.get("state") === "idle" && data.has("handlingBy")) {
+        staleIdleLease.push(data);
+      }
+      return;
+    }
     const handlingBy = data.get("handlingBy") as HandlingActor | undefined;
     // Frontend lease not yet server-stamped → normalize this pass, do not
     // evaluate its (browser-authored) startedAt for expiry.
@@ -175,8 +187,13 @@ export function sweepDoc(
     const leaseExpired = startedAt === undefined || now - startedAt > budget;
     if (leaseExpired) expired.push(data);
   });
-  if (toNormalize.length === 0 && expired.length === 0) return 0;
+  if (toNormalize.length === 0 && expired.length === 0 && staleIdleLease.length === 0) {
+    return 0;
+  }
   doc.transact(() => {
+    for (const data of staleIdleLease) {
+      data.delete("handlingBy");
+    }
     for (const data of toNormalize) {
       const hb = data.get("handlingBy") as HandlingActor;
       // Overwrite the browser-authored startedAt with the server clock and
@@ -201,6 +218,16 @@ export function sweepDoc(
  * 1h lease budget while flattening the herd.
  */
 export const LOAD_SWEEP_JITTER_MAX_MS = 3_000;
+
+/**
+ * Floor of the jittered delay (#1580 adversarial). `afterLoadDocument`
+ * fires before the Redis extension's cross-instance sync step 2 has
+ * necessarily arrived — a near-zero delay could sweep a stale replica and
+ * clobber a lease that is live on another instance. 500ms comfortably
+ * covers pub/sub round-trips; the true fix (sync-aware triggering) comes
+ * free with #1551 single-master routing.
+ */
+export const LOAD_SWEEP_JITTER_MIN_MS = 500;
 
 /** Options for {@link scheduleLoadSweep}. */
 export interface ScheduleLoadSweepOptions {
@@ -238,7 +265,9 @@ export function scheduleLoadSweep(options: ScheduleLoadSweepOptions): void {
     random = Math.random,
     onSwept,
   } = options;
-  const delay = Math.floor(random() * LOAD_SWEEP_JITTER_MAX_MS);
+  const delay =
+    LOAD_SWEEP_JITTER_MIN_MS +
+    Math.floor(random() * (LOAD_SWEEP_JITTER_MAX_MS - LOAD_SWEEP_JITTER_MIN_MS));
   const timer = setTimeout(() => {
     // Unloaded (or reloaded as a fresh instance) while we waited — skip;
     // sweeping a detached doc would write into a document nobody persists.

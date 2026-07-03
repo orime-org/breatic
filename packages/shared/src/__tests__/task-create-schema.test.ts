@@ -89,3 +89,19 @@ describe("taskCreateSchema node_gens (#1580 #7)", () => {
     expect(parsed.success).toBe(true);
   });
 });
+
+describe("gen upper bound (#1580 adversarial: MAX_SAFE_INTEGER bricks the counter)", () => {
+  it("rejects a gen above the 2^31-1 cap (counter-flooding guard)", () => {
+    const parsed = taskCreateSchema.safeParse(
+      overwriteBody({ node_gens: { [NODE_ID]: Number.MAX_SAFE_INTEGER } }),
+    );
+    expect(parsed.success).toBe(false);
+  });
+
+  it("accepts a gen at the cap boundary", () => {
+    const parsed = taskCreateSchema.safeParse(
+      overwriteBody({ node_gens: { [NODE_ID]: 2_147_483_647 } }),
+    );
+    expect(parsed.success).toBe(true);
+  });
+});

@@ -180,6 +180,57 @@ describe("Tasks routes", () => {
       expect(jobPayload.targetNodeIds).toEqual([nodeId]);
       expect(jobPayload.nodeGens).toEqual({ [nodeId]: 7 });
     });
+
+    it("hard-fails an overwrite when the handling-OPEN publish fails — task failed, lock released, no enqueue (#1580 adversarial)", async () => {
+      // The OPEN event is what installs the live handlingBy.gen + advances
+      // leaseGen on the collab side. If it never lands, every subsequent
+      // worker write-back for this job is CAS-fenced — the user would be
+      // billed for a result that can never reach the node. So the publish
+      // is a hard prerequisite, not best-effort.
+      const nodeId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+      mocks.publishNodeEvent.mockRejectedValueOnce(new Error("stream down"));
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "image",
+          params: {},
+          model: "test-model",
+          source: "canvas",
+          project_id: PID,
+          space_id: SID,
+          mode: "overwrite",
+          target_node_id: nodeId,
+          node_gens: { [nodeId]: 3 },
+        }),
+      });
+
+      expect(res.status).toBeGreaterThanOrEqual(500);
+      expect(mocks.taskService.markFailed).toHaveBeenCalled();
+      expect(mocks.canvasLock.releaseCanvasNodeLock).toHaveBeenCalled();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /canvas/understand — credit pre-check (#1580 adversarial)", () => {
+    it("rejects with 402 when the balance is below the estimate — no task row created", async () => {
+      mocks.creditService.getBalance.mockResolvedValue(0);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          source_type: "image",
+          source_url: "https://cdn/x.png",
+          project_id: PID,
+          space_id: SID,
+        }),
+      });
+
+      expect(res.status).toBe(402);
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+    });
   });
 
   describe("GET /canvas/nodes/:nodeId/history", () => {

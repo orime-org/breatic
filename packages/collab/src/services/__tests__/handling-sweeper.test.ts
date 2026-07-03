@@ -20,6 +20,7 @@ vi.mock("@breatic/core", () => ({
 import {
   scheduleLoadSweep,
   LOAD_SWEEP_JITTER_MAX_MS,
+  LOAD_SWEEP_JITTER_MIN_MS,
   sweepDoc,
   createHandlingSweeper,
   resolveLeaseBudget,
@@ -423,8 +424,12 @@ describe("scheduleLoadSweep (#1580 #9 jitter)", () => {
         now: () => HANDLING_TIMEOUT_MS + 1,
         random: () => 0.9,
       });
-      // After 10% + ε of the window only doc A has swept.
-      vi.advanceTimersByTime(Math.ceil(LOAD_SWEEP_JITTER_MAX_MS * 0.1) + 1);
+      // After floor + 10% of the spread window (+ ε) only doc A has swept.
+      vi.advanceTimersByTime(
+        LOAD_SWEEP_JITTER_MIN_MS +
+          Math.ceil((LOAD_SWEEP_JITTER_MAX_MS - LOAD_SWEEP_JITTER_MIN_MS) * 0.1) +
+          1,
+      );
       expect(a.data.get("state")).toBe("idle");
       expect(b.data.get("state")).toBe("handling");
       vi.advanceTimersByTime(LOAD_SWEEP_JITTER_MAX_MS);
@@ -469,8 +474,89 @@ describe("scheduleLoadSweep (#1580 #9 jitter)", () => {
         random: () => 0,
         onSwept,
       });
-      vi.advanceTimersByTime(1);
+      vi.advanceTimersByTime(LOAD_SWEEP_JITTER_MIN_MS + 1);
       expect(onSwept).toHaveBeenCalledExactlyOnceWith(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// ── #1580 adversarial: idle + stale handlingBy self-heal ─────────────────
+//
+// The sweeper's whole-object normalization set can race a frontend
+// completion delete across replicas (CRDT-concurrent: the delete cannot
+// remove the unseen set), converging to an inconsistent idle node that
+// still carries a handlingBy. Nothing consumed it, but it must not live
+// forever — the sweep self-heals it on the next pass.
+describe("sweepDoc idle-node stale-lease self-heal (#1580 adversarial)", () => {
+  it("deletes a handlingBy left on an idle node (CRDT merge residue)", () => {
+    const doc = new Y.Doc();
+    const nodesMap = doc.getMap<Y.Map<unknown>>("nodesMap");
+    const node = new Y.Map<unknown>();
+    const data = new Y.Map<unknown>();
+    data.set("state", "idle");
+    data.set("content", "https://cdn/x.png");
+    data.set("handlingBy", {
+      userId: "u1",
+      type: "frontend",
+      startedAt: 123,
+      gen: 2,
+      serverStamped: true,
+    });
+    node.set("data", data);
+    doc.transact(() => nodesMap.set("n1", node));
+
+    sweepDoc(doc, HANDLING_TIMEOUT_MS + 1);
+
+    expect(data.has("handlingBy")).toBe(false);
+    // The idle node itself is untouched — no reclaim, no error.
+    expect(data.get("state")).toBe("idle");
+    expect(data.get("content")).toBe("https://cdn/x.png");
+    expect(data.has("errorMessage")).toBe(false);
+  });
+
+  it("does not count the self-heal as a reclaim", () => {
+    const doc = new Y.Doc();
+    const nodesMap = doc.getMap<Y.Map<unknown>>("nodesMap");
+    const node = new Y.Map<unknown>();
+    const data = new Y.Map<unknown>();
+    data.set("state", "idle");
+    data.set("handlingBy", { userId: "u1", type: "frontend", startedAt: 1, gen: 1 });
+    node.set("data", data);
+    doc.transact(() => nodesMap.set("n1", node));
+
+    expect(sweepDoc(doc, HANDLING_TIMEOUT_MS + 1)).toBe(0);
+  });
+});
+
+// ── #1580 adversarial: jitter lower bound ────────────────────────────────
+describe("scheduleLoadSweep jitter floor (#1580 adversarial)", () => {
+  it("never fires before the floor — a near-zero random still waits LOAD_SWEEP_JITTER_MIN_MS", () => {
+    vi.useFakeTimers();
+    try {
+      const doc = new Y.Doc();
+      const nodesMap = doc.getMap<Y.Map<unknown>>("nodesMap");
+      const node = new Y.Map<unknown>();
+      const data = new Y.Map<unknown>();
+      data.set("state", "handling");
+      data.set("handlingBy", { userId: "u1", type: "backend", startedAt: 0, gen: 1 });
+      node.set("data", data);
+      doc.transact(() => nodesMap.set("n1", node));
+      const documents = new Map([["project-p/canvas-s", doc]]);
+      scheduleLoadSweep({
+        documentName: "project-p/canvas-s",
+        document: doc,
+        documents,
+        now: () => HANDLING_TIMEOUT_MS + 1,
+        random: () => 0,
+      });
+      // Before the floor: nothing may have run — the doc may still be
+      // receiving the remote sync (step 2) that carries the real state.
+      vi.advanceTimersByTime(LOAD_SWEEP_JITTER_MIN_MS - 1);
+      expect(data.get("state")).toBe("handling");
+      vi.advanceTimersByTime(2);
+      expect(data.get("state")).toBe("idle");
     } finally {
       vi.useRealTimers();
     }

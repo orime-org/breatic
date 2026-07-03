@@ -48,7 +48,7 @@ const canvasTaskBinding = {
    * frontend read the node's `leaseGen` and sends gen = leaseGen + 1;
    * the worker echoes it in every write-back for the collab CAS.
    */
-  gen: z.number().int().positive(),
+  gen: z.number().int().positive().lte(2_147_483_647),
 } as const;
 
 // Mini-Tools: Image
@@ -106,7 +106,7 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
     // #1580 #7 unified gen — see canvasTaskBinding.gen.
-    gen: z.number().int().positive(),
+    gen: z.number().int().positive().lte(2_147_483_647),
   }),
   z.object({
     tool: z.literal("speed"),
@@ -118,7 +118,7 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
     // #1580 #7 unified gen — see canvasTaskBinding.gen.
-    gen: z.number().int().positive(),
+    gen: z.number().int().positive().lte(2_147_483_647),
   }),
   z.object({
     tool: z.literal("cut"),
@@ -137,7 +137,7 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
     // #1580 #7 unified gen — see canvasTaskBinding.gen.
-    gen: z.number().int().positive(),
+    gen: z.number().int().positive().lte(2_147_483_647),
   }),
   z.object({
     tool: z.literal("adjust"),
@@ -149,7 +149,7 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
     // #1580 #7 unified gen — see canvasTaskBinding.gen.
-    gen: z.number().int().positive(),
+    gen: z.number().int().positive().lte(2_147_483_647),
   }),
   z.object({
     tool: z.literal("audio-denoise"),
@@ -161,7 +161,7 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
     // #1580 #7 unified gen — see canvasTaskBinding.gen.
-    gen: z.number().int().positive(),
+    gen: z.number().int().positive().lte(2_147_483_647),
   }),
   // Visual-parity local handlers (not real AIGC). Match the legacy
   // ffmpeg.wasm surface one-to-one so migrating the front-end is a
@@ -178,7 +178,7 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
     // #1580 #7 unified gen — see canvasTaskBinding.gen.
-    gen: z.number().int().positive(),
+    gen: z.number().int().positive().lte(2_147_483_647),
   }),
   z.object({
     tool: z.literal("scene-extension"),
@@ -201,7 +201,7 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
     // #1580 #7 unified gen — see canvasTaskBinding.gen.
-    gen: z.number().int().positive(),
+    gen: z.number().int().positive().lte(2_147_483_647),
   }),
   z.object({
     tool: z.literal("hdr-conversion"),
@@ -215,7 +215,7 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
     // #1580 #7 unified gen — see canvasTaskBinding.gen.
-    gen: z.number().int().positive(),
+    gen: z.number().int().positive().lte(2_147_483_647),
   }),
 ]);
 

@@ -316,7 +316,7 @@
     },
     "upload": {
       "nodeBusy": "该节点正忙 — 另一个操作正在进行中。",
-      "ownershipLost": "上传已被丢弃 — 其他人已接管该节点。"
+      "ownershipLost": "上传结果未写入 — 节点已被移除或被他人接管。"
     }
   },
   "editor": {

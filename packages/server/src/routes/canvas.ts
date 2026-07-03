@@ -25,13 +25,14 @@ import { nodeHistoryService } from "@breatic/domain";
 import { projectService, authService, precheckCredits } from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import {
+  AppError,
   ValidationError,
   ConflictLockedError,
   publishNodeEvent,
   getStreamRedis,
   logger,
 } from "@breatic/core";
-import { acquireCanvasNodeLock, readCanvasNodeLockHolder } from "@breatic/domain";
+import { acquireCanvasNodeLock, readCanvasNodeLockHolder, releaseCanvasNodeLock } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
@@ -150,6 +151,11 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
     // Lock acquired. Publish a `state='handling'` event right away so
     // collaborators see the node enter handling without waiting for the
     // worker to start (spec §10.15.4 — collaboration visibility).
+    // #1580 adversarial fix: under gen fencing this OPEN is a HARD
+    // prerequisite, not best-effort — it is what installs the live
+    // handlingBy.gen (and advances leaseGen) that every worker write-back
+    // CAS-checks against. If it cannot be published, enqueueing anyway
+    // would bill the user for a result that can never land on the node.
     try {
       await publishNodeEvent(getStreamRedis(), {
         type: "node-state-update",
@@ -188,10 +194,17 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
         },
       });
     } catch (err) {
-      // Stream publish failure is non-fatal — the worker will publish the
-      // result later. The lock is already held, so the protocol is safe.
-      // We log for observability but do not throw.
-      logger.warn({ err, projectId, targetNodeId }, "handling-state publish failed");
+      logger.error(
+        { err, projectId, targetNodeId, taskId: task.id },
+        "handling-open publish failed; aborting task before enqueue",
+      );
+      await taskService.markFailed(
+        task.id,
+        "Failed to publish handling-open event; task aborted before enqueue",
+      );
+      // Free the node for a retry — this task will never run.
+      await releaseCanvasNodeLock(projectId, targetNodeId, task.id);
+      throw new AppError(503, "Task event stream unavailable; please retry");
     }
   }
 
@@ -241,6 +254,17 @@ canvas.post("/understand", zValidator("json", understandSchema), async (c) => {
 
   // Cross-tenant guard — see /canvas/tasks rationale.
   await projectService.assertAccess(body.project_id, user.id, "editor");
+
+  // #1580 adversarial fix: understand tasks invoke real vision/ASR models
+  // and are billed at completion like every other task — this route was the
+  // only enqueue path without the shared credit pre-check.
+  const insufficientUnderstand = await precheckCredits(
+    user.id,
+    estimateTaskCredits(body.model),
+  );
+  if (insufficientUnderstand) {
+    return c.json({ error: { code: 402, message: insufficientUnderstand } }, 402);
+  }
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,

@@ -25,7 +25,7 @@ import { taskService } from "@breatic/domain";
 import { creditService } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { publishNodeEvent } from "@breatic/core";
-import { verifyCanvasNodeLock, releaseCanvasNodeLock } from "@breatic/domain";
+import { verifyCanvasNodeLock, releaseCanvasNodeLock, reacquireCanvasNodeLock } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -104,6 +104,61 @@ export interface TaskJobData {
    * UUID, no contention possible).
    */
   mode: "append" | "overwrite";
+}
+
+/**
+ * Whether the currently-running attempt is the job's LAST allowed one
+ * (#1580 adversarial fix: retryable close self-fences the retry). BullMQ
+ * 5.30 semantics (source-verified): `attemptsStarted` increments when
+ * processing starts, so attempt N observes attemptsStarted === N;
+ * `opts.attempts` is the total allowance (absent = 1). A failure lease
+ * CLOSE (state:'idle' + handlingBy:null) may only be emitted on a terminal
+ * attempt — a non-terminal close deletes the live handlingBy, and the
+ * retry (same gen, from the fixed job payload) is then fenced by the
+ * collab CAS forever: the user gets billed for the successful retry while
+ * the node keeps the stale error. Defensive: a missing attemptsStarted
+ * counts as terminal (emitting a possibly-early close is the safer failure
+ * mode — the QueueEvents net + CAS dedup absorb it; suppressing the only
+ * close would strand the node until the sweeper).
+ * @param job - The BullMQ job (attempt counters + retry allowance).
+ * @returns true when no further retries will follow this attempt.
+ */
+export function isTerminalAttempt(
+  job: Pick<Job<TaskJobData>, "attemptsStarted" | "opts">,
+): boolean {
+  const started = job.attemptsStarted ?? Number.MAX_SAFE_INTEGER;
+  return started >= (job.opts?.attempts ?? 1);
+}
+
+/**
+ * Publish the failure write-back for every target node, isolating each
+ * publish (#1580 adversarial fix: a stream hiccup on node K must not skip
+ * nodes K+1..N, and must never escape into BullMQ's retry machinery for a
+ * task already marked failed). Mirrors the success path's per-node
+ * try/catch; the collab lease sweeper backstops any node this misses.
+ * @param streamRedis - Redis client for the stream DB.
+ * @param docName - Canvas doc the nodes live in.
+ * @param nodeIds - Target nodes to mark failed.
+ * @param genOf - Lease gen resolver for one node (#1580 #7).
+ * @param errorMessage - Human-readable failure reason.
+ */
+async function emitFailedBestEffort(
+  streamRedis: ReturnType<typeof getStreamRedis>,
+  docName: string,
+  nodeIds: string[],
+  genOf: (nodeId: string) => number,
+  errorMessage: string,
+): Promise<void> {
+  for (const nodeId of nodeIds) {
+    try {
+      await emitNodeStateFailed(streamRedis, docName, nodeId, errorMessage, genOf(nodeId));
+    } catch (err) {
+      logger.warn(
+        { err, nodeId, docName },
+        "Failed to publish NodeStateUpdateEvent (failure)",
+      );
+    }
+  }
 }
 
 /**
@@ -243,6 +298,28 @@ async function runTaskBody(
       { taskId, billedCredits: existing.billedCredits },
       "Task already completed + billed; returning stored result",
     );
+    // #1580 adversarial fix: a crash in the window between billing and the
+    // Stage-4 publish leaves the node handling with a billed, persisted
+    // result. On redelivery, RE-EMIT the done write-backs from the stored
+    // result — idempotent (Y.Map LWW) and gen-fenced (a node someone
+    // legitimately re-opened since just drops it), so the only effect is
+    // closing a lease that was never closed.
+    const storedOutputs = (existing.result as { outputs?: Array<{ url?: string; cover_url?: string }> } | null)?.outputs;
+    if (canvasDocName && storedOutputs && nodeIds.length > 0) {
+      for (let i = 0; i < nodeIds.length; i++) {
+        const nodeId = nodeIds[i]!;
+        const url = storedOutputs[i]?.url;
+        if (typeof url !== "string") continue;
+        try {
+          await emitNodeStateDone(streamRedis, canvasDocName, nodeId, {
+            content: url,
+            coverUrl: storedOutputs[i]?.cover_url,
+          }, genOf(nodeId));
+        } catch (err) {
+          logger.warn({ err, taskId, nodeId }, "Failed to re-publish NodeStateUpdateEvent (billed redelivery)");
+        }
+      }
+    }
     return (existing.result ?? { alreadyCompleted: true });
   }
   if (existing?.providerResultUrl) {
@@ -252,11 +329,27 @@ async function runTaskBody(
     );
     await taskService.markFailed(taskId, "Task retry not allowed after provider call");
     if (canvasDocName) {
-      for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, "Retry not allowed after provider returned a result", genOf(nodeId));
-      }
+      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, "Retry not allowed after provider returned a result");
     }
     return { failed: true, reason: "no_retry_after_provider" };
+  }
+
+  // #1580 adversarial fix (retry lock continuity): `runTask`'s finally
+  // releases the overwrite lock on EVERY attempt end — including a rethrow
+  // that schedules a BullMQ retry — so a retry attempt must take the lock
+  // back before doing any work. Fails ⇒ another task legitimately took the
+  // node between attempts; abort WITHOUT billing (our write-backs would be
+  // gen-fenced anyway). No node event: the new holder owns the node's state.
+  if (lockTargetNodeId && projectId) {
+    const relocked = await reacquireCanvasNodeLock(projectId, lockTargetNodeId, taskId);
+    if (!relocked) {
+      logger.warn(
+        { taskId, nodeId: lockTargetNodeId, projectId },
+        "canvas_lock_lost_between_retries_aborting",
+      );
+      await taskService.markFailed(taskId, "Canvas-node lock lost between retries; aborted");
+      return { failed: true, reason: "lock_lost_between_retries" };
+    }
   }
 
   await taskService.markRunning(taskId, job.id ?? "");
@@ -316,10 +409,14 @@ async function runTaskBody(
     logger.error({ taskId, error: errorMsg }, "provider_call_failed");
     await taskService.markFailed(taskId, errorMsg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    if (canvasDocName) {
-      for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, errorMsg, genOf(nodeId));
-      }
+    // #1580 adversarial fix: the lease CLOSE may only ship on a TERMINAL
+    // failure. A retryable failure keeps the node handling (the retry's
+    // renew re-stamps it) — closing here deletes the live handlingBy, and
+    // the retry's same-gen write-backs are then CAS-fenced forever: billed
+    // result, node stuck on the stale error. Same contract the QueueEvents
+    // net enforces via job.finishedOn.
+    if (canvasDocName && isTerminalAttempt(job)) {
+      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg);
     }
     throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
   }
@@ -336,9 +433,7 @@ async function runTaskBody(
     await taskService.markFailed(taskId, msg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
     if (canvasDocName) {
-      for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, msg, genOf(nodeId));
-      }
+      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, msg);
     }
     return { failed: true, reason: "output_count_mismatch" };
   }
@@ -365,9 +460,7 @@ async function runTaskBody(
     await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
     if (canvasDocName) {
-      for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, errorMsg, genOf(nodeId));
-      }
+      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg);
     }
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
@@ -763,7 +856,16 @@ async function persistOutputs(
         next.url = url;
         logger.info({ key, size: ((extra).buffer).length }, "Persisted sync transport result");
       } catch (err) {
-        logger.warn({ err }, "Failed to persist buffer result");
+        // #1580 adversarial fix: swallowing this left `next.url` undefined —
+        // Stage 3 then BILLED the task while Stage 4 silently skipped the
+        // url-less output (node stuck handling, no write-back, user charged
+        // for nothing). Rethrow so Stage 2's persist-failure path enforces
+        // the billing policy: persist failed = markFailed + NO charge +
+        // failure write-back. Unlike Case 2 below there is no usable
+        // fallback URL — the bytes only exist in this buffer.
+        delete (extra).buffer;
+        delete (extra).contentType;
+        throw err;
       }
       delete (extra).buffer;
       delete (extra).contentType;

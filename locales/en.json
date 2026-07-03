@@ -316,7 +316,7 @@
     },
     "upload": {
       "nodeBusy": "This node is busy — another operation is in progress.",
-      "ownershipLost": "Upload discarded — someone else took over this node."
+      "ownershipLost": "Upload result was not written — the node was removed or taken over."
     }
   },
   "editor": {

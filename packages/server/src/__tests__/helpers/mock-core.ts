@@ -185,6 +185,10 @@ export const mocks = {
   nodeHistoryRepo: {
     listByNode: vi.fn().mockResolvedValue([]),
   },
+  // Stream publish (task-events). Shared ref so route tests can drive
+  // publish failures (#1580 adversarial: the handling-OPEN is a hard
+  // prerequisite of the gen echo chain, not best-effort).
+  publishNodeEvent: vi.fn().mockResolvedValue(undefined),
   // Canvas node lock (moved to @breatic/domain in PR4). Defaults: lock
   // acquires cleanly + no prior holder so happy-path routes succeed.
   canvasLock: {
@@ -309,7 +313,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     closeQueues: vi.fn(),
     defaultJobOpts: () => ({}),
     checkRateLimit: vi.fn().mockResolvedValue(true),
-    publishNodeEvent: vi.fn(),
+    publishNodeEvent: mocks.publishNodeEvent,
     getStorageAdapter: vi.fn(),
     setSession: vi.fn(),
     getSession: vi.fn(),
