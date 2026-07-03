@@ -320,6 +320,9 @@
     "upload": {
       "nodeBusy": "該節點正忙 — 另一個操作正在進行中。",
       "ownershipLost": "上傳結果未寫入 — 節點已被移除或被他人接管。"
+    },
+    "minimap": {
+      "label": "畫布縮略圖"
     }
   },
   "editor": {
