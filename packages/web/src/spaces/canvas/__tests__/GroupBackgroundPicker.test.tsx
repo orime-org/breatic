@@ -26,14 +26,21 @@ function setup(
   );
 }
 
-describe('GroupBackgroundPicker', () => {
-  it('renders 无色 + the 4 status swatches', () => {
+describe('GroupBackgroundPicker (#1549 seven-color palette)', () => {
+  it('renders 无色 + the 7 palette swatches', () => {
     setup();
-    expect(screen.getByTestId('group-bg-none')).toBeInTheDocument();
-    expect(screen.getByTestId('group-bg-info')).toBeInTheDocument();
-    expect(screen.getByTestId('group-bg-success')).toBeInTheDocument();
-    expect(screen.getByTestId('group-bg-warning')).toBeInTheDocument();
-    expect(screen.getByTestId('group-bg-error')).toBeInTheDocument();
+    for (const key of [
+      'none',
+      'red',
+      'orange',
+      'green',
+      'blue',
+      'violet',
+      'pink',
+      'teal',
+    ]) {
+      expect(screen.getByTestId(`group-bg-${key}`)).toBeInTheDocument();
+    }
   });
 
   it('uses the 6px button radius on the trigger and lays swatches out vertically', () => {
@@ -42,16 +49,31 @@ describe('GroupBackgroundPicker', () => {
     expect(screen.getByTestId('group-bg-list')).toHaveClass('flex-col');
   });
 
-  it('applies a tint token when a swatch is chosen', () => {
+  it('paints swatch dots with the SOLID identity color, not the tint (Chrome model)', () => {
+    setup();
+    const dot = screen
+      .getByTestId('group-bg-red')
+      .querySelector('span') as HTMLSpanElement;
+    expect(dot.style.backgroundColor).toBe('var(--color-palette-red)');
+  });
+
+  it('applies a palette tint token when a swatch is chosen', () => {
     const onPick = vi.fn();
     setup({ onPick });
-    fireEvent.click(screen.getByTestId('group-bg-info'));
-    expect(onPick).toHaveBeenCalledExactlyOnceWith('--color-status-info-bg');
+    fireEvent.click(screen.getByTestId('group-bg-blue'));
+    expect(onPick).toHaveBeenCalledExactlyOnceWith('--color-palette-blue-bg');
+  });
+
+  it('highlights the matching swatch for a LEGACY stored value (zero-migration normalization)', () => {
+    setup({ value: '--color-status-info-bg' });
+    // Legacy info tint normalizes to palette blue — the blue swatch must
+    // show the selected ring even though the stored string is the old name.
+    expect(screen.getByTestId('group-bg-blue').className).toContain('ring-1');
   });
 
   it('clears the tint when 无色 is chosen', () => {
     const onPick = vi.fn();
-    setup({ onPick, value: '--color-status-info-bg' });
+    setup({ onPick, value: '--color-palette-blue-bg' });
     fireEvent.click(screen.getByTestId('group-bg-none'));
     expect(onPick).toHaveBeenCalledExactlyOnceWith(undefined);
   });

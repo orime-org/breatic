@@ -16,41 +16,37 @@ interface ConnectionBannerProps {
   onReLogin?: () => void;
 }
 
+/** The banner's two alarm tones, mapping 1:1 onto status token triples. */
+type BannerTone = 'error' | 'warning';
+
 /**
- * Banner-internal button. Raw `<button>` instead of the shadcn
- * `<Button variant='outline'>` because the outline variant's
- * defaults - `hover:bg-accent` + `hover:text-accent-foreground` -
- * are mode-aware tokens that win the cascade over a base
- * `bg-black/30 text-white` override on hover. That made the banner
- * button visibly different in light vs. dark mode on hover (light
- * mode flashed a near-white button on the red banner, 2026-05-26
- * user smoke). A fully self-styled `<button>` opts out of the
- * variant cascade entirely → both modes render identically and the
- * hover effect (`hover:opacity-90`) is the only thing that changes.
- *
- * Mode-independent palette here matches the banner itself - see the
- * component-level docstring for rationale + memory reference.
+ * Banner-internal button. Self-styled (not the shadcn outline variant, whose
+ * mode-aware hover tokens fight banner-local colors — 2026-05-26 user smoke)
+ * and toned with the same status triple as the banner surface (#1549): the
+ * identity color carries the text + border, hover recesses with the tint.
+ * Tailwind classes are written out per tone — no template-assembled class
+ * names (they would be purged).
  */
 interface BannerButtonProps {
+  tone: BannerTone;
   onClick?: () => void;
-  className?: string;
   testId?: string;
   children: React.ReactNode;
 }
 
 /**
- * Self-styled banner action button (see the interface docstring above for
- * why a raw `<button>` is used instead of the shadcn outline variant).
+ * Self-styled banner action button carrying the banner's status tone
+ * (see the interface docstring above for why not shadcn outline).
  * @param root0 - Component props.
+ * @param root0.tone - Status tone matching the banner surface.
  * @param root0.onClick - Click handler for the button action.
- * @param root0.className - Extra classes merged onto the button's base styles.
  * @param root0.testId - Test id applied to the button for assertions.
  * @param root0.children - Button label / icon content.
- * @returns The mode-independent banner action button.
+ * @returns The toned banner action button.
  */
 function BannerButton({
+  tone,
   onClick,
-  className,
   testId,
   children,
 }: BannerButtonProps): React.JSX.Element {
@@ -60,29 +56,12 @@ function BannerButton({
       onClick={onClick}
       data-testid={testId}
       className={cn(
-        'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md',
-        'border border-white/30 bg-black/30 px-3',
-        'text-sm font-medium text-white',
-        // Hover feedback: solid color swap (bg + border). Aligns with the
-        // rest of the project's hover-only convention - project-wide
-        // rule is "hover state, no active state" per user 2026-05-26
-        // (chrome-ghost was the lone exception with active:bg-secondary
-        // and has been removed in the same commit). Uses Tailwind static
-        // `zinc-800` solid color - does NOT trip the lint:hover ADR
-        // ban (which only forbids `hover:bg-X/N` alpha-modifier patterns
-        // for Tailwind v4 silent-fail prevention; solid colors are fine).
-        //
-        // Prior attempts (chrome MCP-verified 2026-05-26):
-        //   - `hover:opacity-90` - 10% change on dark button: invisible
-        //   - `hover:brightness-125` - no-op on pure-black/white palette
-        //     (RGB 0×N=0; 255 clamps)
-        //   - `hover:scale-105` - physical feedback but introduced a
-        //     third hover-feedback standard inconsistent with the rest
-        //     of the project; user rejected as cross-standard.
-        'transition-colors duration-150',
-        'hover:border-white/70 hover:bg-zinc-800',
-        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/50',
-        className,
+        'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-3',
+        'text-sm font-medium transition-colors duration-150',
+        'focus-visible:outline-none focus-visible:ring-1',
+        tone === 'error'
+          ? 'border-status-error-border text-status-error-foreground hover:bg-status-error-bg focus-visible:ring-status-error'
+          : 'border-status-warning-border text-status-warning-foreground hover:bg-status-warning-bg focus-visible:ring-status-warning',
       )}
     >
       {children}
@@ -95,7 +74,7 @@ function BannerButton({
  * connection.
  *
  * Renders nothing when status is `connected` (steady state). When the
- * connection is unhealthy, surfaces a colored 40px horizontal bar with
+ * connection is unhealthy, surfaces a status-colored horizontal bar with
  * a short explanation + an action button so the user is never left in
  * the dark about why content stopped updating.
  *
@@ -103,27 +82,20 @@ function BannerButton({
  * show a connection banner of this shape when the realtime channel
  * fails.
  *
- * State → visual:
+ * State → visual (#1549 — the palette status triples, superseding the
+ * pre-#1549 static `bg-red-900` / `bg-amber-700` alarm colors by user
+ * decision 2026-07-03):
  *   connecting   → no banner (avoid flash on every quick reconnect)
  *   connected    → no banner
- *   authFailed   → deep red, "session expired", [re-login] action
- *   disconnected → deep amber, "disconnected", [refresh the page] action
+ *   authFailed   → status-error triple, "session expired", [re-login]
+ *   disconnected → status-warning triple, "disconnected", [refresh]
  *
- * Mode-independent palette (Tailwind static `red-900` / `amber-700`):
- *   banner is an alarm signal - its color semantics are constant
- *   regardless of light/dark mode. Using shared `--color-status-error-*`
- *   tokens would make light-mode banner a pale-red wash (silly for a
- *   "session expired" alert) AND would couple banner color changes to
- *   in-app error text in ToolCallCard / NewSpaceDialog (which DO want
- *   to follow theme mode). See memory
- *   `feedback_mode_independent_tokens` for the broader rule:
- *   brand / status alarm UI elements opt out of theme switching.
- *
- * Button override (`bg-black/30 border-white/30 text-white`): default
- * shadcn outline variant uses `--background` which would render a
- * white pill on the deep-red banner in light mode - visually jarring.
- * Translucent-black + white border + white text keeps strong contrast
- * on both deep-red and deep-amber banners.
+ * Structure is two layers: the outer fixed shell paints the opaque page
+ * surface (the status `-bg` tints are 14% translucent by design — painted
+ * directly on a fixed element they would ghost the TopBar underneath),
+ * and the inner surface carries the tint + bottom border + identity text.
+ * Both layers adapt to light/dark automatically through the palette's
+ * dark overrides — the banner no longer opts out of theming.
  * @param root0 - Component props.
  * @param root0.status - Current Hocuspocus connection status driving the banner's visibility and color.
  * @param root0.onReload - Click handler for the reload / reconnect CTA (refresh window).
@@ -144,6 +116,7 @@ export function ConnectionBanner({
     return null;
   }
   const isAuthFailed = status === 'authFailed';
+  const tone: BannerTone = isAuthFailed ? 'error' : 'warning';
 
   // `fixed top-0 left-0 right-0 z-50` - banner sits OUTSIDE the
   // document flow, overlaying the very top of the viewport. TopBar
@@ -161,46 +134,50 @@ export function ConnectionBanner({
       aria-live='polite'
       data-testid='connection-banner'
       data-status={status}
-      className={cn(
-        'fixed top-0 right-0 left-0 z-50',
-        'flex items-center justify-between gap-3 px-4 py-2 text-sm',
-        // Mode-independent - see component docstring. Tailwind static
-        // palette is intentional: banner color does NOT follow light/dark.
-        isAuthFailed
-          ? 'bg-red-900 text-red-50'
-          : 'bg-amber-700 text-amber-50',
-      )}
+      className='fixed top-0 right-0 left-0 z-50 bg-background'
     >
-      <div className='flex min-w-0 items-center gap-2'>
-        {isAuthFailed ? (
-          <AlertTriangle className='h-4 w-4 shrink-0' aria-hidden />
-        ) : (
-          <Loader2 className='h-4 w-4 shrink-0 animate-spin' aria-hidden />
+      <div
+        data-testid='connection-banner-surface'
+        className={cn(
+          'flex items-center justify-between gap-3 border-b px-4 py-2 text-sm',
+          tone === 'error'
+            ? 'bg-status-error-bg text-status-error-foreground border-status-error-border'
+            : 'bg-status-warning-bg text-status-warning-foreground border-status-warning-border',
         )}
-        <span className='truncate font-medium'>
-          {isAuthFailed
-            ? t('connection.banner.authFailed.text')
-            : t('connection.banner.disconnected.text')}
-        </span>
-      </div>
-      <div className='flex shrink-0 items-center gap-2'>
-        {isAuthFailed && onReLogin ? (
-          <BannerButton
-            onClick={onReLogin}
-            testId='connection-banner-relogin'
-          >
-            {t('connection.banner.authFailed.action')}
-          </BannerButton>
-        ) : null}
-        {onReload ? (
-          <BannerButton
-            onClick={onReload}
-            testId='connection-banner-reload'
-          >
-            <RefreshCw className='h-3.5 w-3.5' aria-hidden />
-            {t('connection.banner.reload')}
-          </BannerButton>
-        ) : null}
+      >
+        <div className='flex min-w-0 items-center gap-2'>
+          {isAuthFailed ? (
+            <AlertTriangle className='h-4 w-4 shrink-0' aria-hidden />
+          ) : (
+            <Loader2 className='h-4 w-4 shrink-0 animate-spin' aria-hidden />
+          )}
+          <span className='truncate font-medium'>
+            {isAuthFailed
+              ? t('connection.banner.authFailed.text')
+              : t('connection.banner.disconnected.text')}
+          </span>
+        </div>
+        <div className='flex shrink-0 items-center gap-2'>
+          {isAuthFailed && onReLogin ? (
+            <BannerButton
+              tone={tone}
+              onClick={onReLogin}
+              testId='connection-banner-relogin'
+            >
+              {t('connection.banner.authFailed.action')}
+            </BannerButton>
+          ) : null}
+          {onReload ? (
+            <BannerButton
+              tone={tone}
+              onClick={onReload}
+              testId='connection-banner-reload'
+            >
+              <RefreshCw className='h-3.5 w-3.5' aria-hidden />
+              {t('connection.banner.reload')}
+            </BannerButton>
+          ) : null}
+        </div>
       </div>
     </div>
   );

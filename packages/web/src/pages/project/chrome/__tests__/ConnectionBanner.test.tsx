@@ -50,6 +50,42 @@ describe('ConnectionBanner', () => {
     expect(onReload).toHaveBeenCalledTimes(1);
   });
 
+  it('authFailed paints the status-error triple, not the old static red (#1549)', () => {
+    render(<ConnectionBanner status='authFailed' onReLogin={() => {}} />);
+    const surface = screen.getByTestId('connection-banner-surface');
+    expect(surface).toHaveClass(
+      'bg-status-error-bg',
+      'text-status-error-foreground',
+      'border-status-error-border',
+    );
+    expect(screen.getByTestId('connection-banner').className).not.toContain(
+      'bg-red-900',
+    );
+  });
+
+  it('disconnected paints the status-warning triple, not the old static amber (#1549)', () => {
+    render(<ConnectionBanner status='disconnected' onReload={() => {}} />);
+    const surface = screen.getByTestId('connection-banner-surface');
+    expect(surface).toHaveClass(
+      'bg-status-warning-bg',
+      'text-status-warning-foreground',
+      'border-status-warning-border',
+    );
+    expect(screen.getByTestId('connection-banner').className).not.toContain(
+      'bg-amber-700',
+    );
+  });
+
+  it('banner buttons follow the tone (identity text/border, no white-on-dark override)', () => {
+    render(<ConnectionBanner status='authFailed' onReLogin={() => {}} />);
+    const btn = screen.getByTestId('connection-banner-relogin');
+    expect(btn).toHaveClass(
+      'text-status-error-foreground',
+      'border-status-error-border',
+    );
+    expect(btn.className).not.toContain('text-white');
+  });
+
   it('authFailed banner shows reload too if onReload is provided', () => {
     render(
       <ConnectionBanner

@@ -210,39 +210,73 @@ html[data-theme='light'] {
      color. Delete buttons / errors all use the status-error coral tint
      (bg/border/foreground), enforced by the lint:no-extreme status check. */
 
-  /* ---- Status · 5 colors · scheme D (2026-06-11). Identity hue (same both
-     modes) drives bg = 14% tint + border = 40% tint over transparent (chip
-     adapts to any surface). foreground = a READABLE color that flips by mode:
-     deep here (light), lightened in the dark block below — the old "tint +
-     same-hue text" was unreadable (light info 2.03:1); D passes AA both modes
-     (light 4.88–5.74 / dark 7.81–8.72). Consumed via utilities (`bg-status-
-     error-bg`, `text-status-success-foreground`, `border-status-*-border`);
-     node selection ring uses `ring-status-selected` (1px). handling = info
-     blue + spinner; locked = neutral gray + lock icon. ---- */
-  --color-status-selected: #5e6ad2; /* indigo identity · selection ring */
-  --color-status-selected-bg: color-mix(in srgb, #5e6ad2 14%, transparent);
-  --color-status-selected-foreground: #4f46e5; /* light deep text (dark → #a5acf5) */
-  --color-status-selected-border: color-mix(in srgb, #5e6ad2 40%, transparent);
+  /* ---- Palette · 7 colors · single chromatic source of truth (#1549,
+     2026-07-03, supersedes the 5-color scheme D). Hand-tuned LIGHT/DARK
+     pairs — no contrast-math-derived values. Anchors = Radix step 11
+     (verified per-hue to sit inside each industry convergence zone: red
+     ≈ GitHub #cf222e, orange ≈ Primer severe, green ≈ Primer success,
+     blue ≈ Primer accent; violet, not purple, so `selected` stays inside
+     the industry selection band H226-252 while keeping 40° from blue).
+     Dark variants follow the industry rule: same hue, lighter + softer
+     (the dark block below overrides ONLY these 7 identity values; every
+     tint / alias tracks them through var()).
+     Identity doubles as the colored-TEXT color (text = identity itself);
+     -bg = 14% tint, -border = 40% tint over transparent (chip adapts to
+     any surface — transparency mixing, not contrast math). ---- */
+  --color-palette-red: #ce2c31;
+  --color-palette-orange: #cc4e00;
+  --color-palette-green: #218358;
+  --color-palette-blue: #0d74ce;
+  --color-palette-violet: #6550b9;
+  --color-palette-pink: #c2298a;
+  --color-palette-teal: #008573;
+  --color-palette-red-bg: color-mix(in srgb, var(--color-palette-red) 14%, transparent);
+  --color-palette-red-border: color-mix(in srgb, var(--color-palette-red) 40%, transparent);
+  --color-palette-orange-bg: color-mix(in srgb, var(--color-palette-orange) 14%, transparent);
+  --color-palette-orange-border: color-mix(in srgb, var(--color-palette-orange) 40%, transparent);
+  --color-palette-green-bg: color-mix(in srgb, var(--color-palette-green) 14%, transparent);
+  --color-palette-green-border: color-mix(in srgb, var(--color-palette-green) 40%, transparent);
+  --color-palette-blue-bg: color-mix(in srgb, var(--color-palette-blue) 14%, transparent);
+  --color-palette-blue-border: color-mix(in srgb, var(--color-palette-blue) 40%, transparent);
+  --color-palette-violet-bg: color-mix(in srgb, var(--color-palette-violet) 14%, transparent);
+  --color-palette-violet-border: color-mix(in srgb, var(--color-palette-violet) 40%, transparent);
+  --color-palette-pink-bg: color-mix(in srgb, var(--color-palette-pink) 14%, transparent);
+  --color-palette-pink-border: color-mix(in srgb, var(--color-palette-pink) 40%, transparent);
+  --color-palette-teal-bg: color-mix(in srgb, var(--color-palette-teal) 14%, transparent);
+  --color-palette-teal-border: color-mix(in srgb, var(--color-palette-teal) 40%, transparent);
 
-  --color-status-info: #4ea7fc; /* sky identity · tip / banner */
-  --color-status-info-bg: color-mix(in srgb, #4ea7fc 14%, transparent);
-  --color-status-info-foreground: #1864ab; /* light deep text (dark → #7cc0ff) */
-  --color-status-info-border: color-mix(in srgb, #4ea7fc 40%, transparent);
+  /* ---- Status · semantic ALIASES into the palette (#1549). The utility
+     names (`bg-status-error-bg`, `text-status-*-foreground`,
+     `ring-status-selected`, …) are unchanged so every consumer keeps its
+     class list; -foreground = the identity itself (the computed per-mode
+     text values of scheme D are retired — dark adaptation lives in the
+     palette's dark block now). error→red / warning→orange / success→green
+     / info→blue / selected→violet. handling = info blue + spinner;
+     locked = neutral gray + lock icon. ---- */
+  --color-status-selected: var(--color-palette-violet);
+  --color-status-selected-bg: var(--color-palette-violet-bg);
+  --color-status-selected-foreground: var(--color-palette-violet);
+  --color-status-selected-border: var(--color-palette-violet-border);
 
-  --color-status-success: #2ea043; /* green identity · success */
-  --color-status-success-bg: color-mix(in srgb, #2ea043 14%, transparent);
-  --color-status-success-foreground: #237032; /* light deep text (dark → #5fd07a) */
-  --color-status-success-border: color-mix(in srgb, #2ea043 40%, transparent);
+  --color-status-info: var(--color-palette-blue);
+  --color-status-info-bg: var(--color-palette-blue-bg);
+  --color-status-info-foreground: var(--color-palette-blue);
+  --color-status-info-border: var(--color-palette-blue-border);
 
-  --color-status-warning: #fc7840; /* orange identity · usage / expiry */
-  --color-status-warning-bg: color-mix(in srgb, #fc7840 14%, transparent);
-  --color-status-warning-foreground: #9a3a0a; /* light deep text (dark → #ffa472) */
-  --color-status-warning-border: color-mix(in srgb, #fc7840 40%, transparent);
+  --color-status-success: var(--color-palette-green);
+  --color-status-success-bg: var(--color-palette-green-bg);
+  --color-status-success-foreground: var(--color-palette-green);
+  --color-status-success-border: var(--color-palette-green-border);
 
-  --color-status-error: #eb5757; /* coral identity · failure */
-  --color-status-error-bg: color-mix(in srgb, #eb5757 14%, transparent);
-  --color-status-error-foreground: #a82c20; /* light deep text (dark → #ff8f8f) */
-  --color-status-error-border: color-mix(in srgb, #eb5757 40%, transparent);
+  --color-status-warning: var(--color-palette-orange);
+  --color-status-warning-bg: var(--color-palette-orange-bg);
+  --color-status-warning-foreground: var(--color-palette-orange);
+  --color-status-warning-border: var(--color-palette-orange-border);
+
+  --color-status-error: var(--color-palette-red);
+  --color-status-error-bg: var(--color-palette-red-bg);
+  --color-status-error-foreground: var(--color-palette-red);
+  --color-status-error-border: var(--color-palette-red-border);
 
   /* ---- Annotation note surface · sticky-note color (canvas AnnotationNode).
      Standalone token, not part of the neutral / status systems. Dark variant
@@ -376,14 +410,17 @@ html[data-theme='dark'] {
 
   --color-ring: var(--neutral-600);
 
-  /* status identity hue / bg / border stay always-color (color-mix). Scheme D
-     overrides ONLY the foreground text: lightened colored text on the dark
-     tint (dark 7.81–8.72 AA). */
-  --color-status-selected-foreground: #a5acf5;
-  --color-status-info-foreground: #7cc0ff;
-  --color-status-success-foreground: #5fd07a;
-  --color-status-warning-foreground: #ffa472;
-  --color-status-error-foreground: #ff8f8f;
+  /* Palette · 7 hand-tuned DARK identities (#1549). Industry rule verified
+     per-hue: hue held, lighter + softer (GitHub #f85149-family reds, Primer
+     #ffa057 orange, …). Only these 7 change — every -bg / -border tint and
+     every status alias tracks them via var(). */
+  --color-palette-red: #ff9592;
+  --color-palette-orange: #ffa057;
+  --color-palette-green: #3dd68c;
+  --color-palette-blue: #70b8ff;
+  --color-palette-violet: #baa7ff;
+  --color-palette-pink: #ff8dcc;
+  --color-palette-teal: #0bd8b6;
 
   /* Annotation note · dark variant (muted warm tone, readable foreground). */
   --color-note: #3a3214;

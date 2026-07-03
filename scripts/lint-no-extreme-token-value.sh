@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
-# no-extreme-token-value guard — lock the pure-neutral + off-extreme + scheme-D
-# status-readability invariants of the design system (9th-rebuild final spec).
+# no-extreme-token-value guard — lock the pure-neutral + off-extreme + palette
+# structure invariants of the design system (#1549 seven-color palette).
 #
-# Three checks, all anti-drift gates for the token set (DESIGN.md §5.2 / §5.4):
+# Three checks, all anti-drift gates for the token set:
 #   1. Pure neutral R=G=B — every --neutral-* (and any direct-hex --color-*
 #      surface override) has equal R/G/B channels (zero hue, no warm/cool tint).
 #   2. Off-extreme bounds — no channel brighter than #f5 (245) or darker than
 #      #12 (18); never #fff / #000. Lightest token = #f5f5f5, darkest = #141414.
-#   3. Status readability — every status -foreground clears WCAG AA 4.5:1 on its
-#      own tint -bg color-mix composited over the page surface, in BOTH modes.
+#   3. Palette structure (#1549) — the 7 --color-palette-* identities each have
+#      a hand-tuned light value AND a DIFFERENT hand-tuned dark override (the
+#      "one pair per theme" mandate — a single flattened value is the exact
+#      failure mode the palette replaced); their -bg/-border tints are
+#      color-mix derivations of the identity; the 5 status tokens are pure
+#      aliases into the palette (foreground = the identity itself) with no
+#      scheme-D dark foreground overrides left behind.
+#      WCAG contrast is PRINTED FOR REFERENCE ONLY and never fails the build —
+#      color values are hand-tuned by eye per theme (user decision 2026-07-03),
+#      not derived from contrast math.
 #
-# Status colours (chromatic by design), brand/logo, and the note (yellow
-# sticky-note) token are exempt from checks 1–2. There is no longer a
-# `destructive` solid button (red-narrowing: delete buttons use the error
-# tint now) so it is not checked.
+# Palette / status colours (chromatic by design), brand/logo, and the note
+# (yellow sticky-note) token are exempt from checks 1–2.
 #
 # Exit: 0 clean · 1 violation · 2 misconfiguration.
 #
@@ -59,12 +65,22 @@ function vars(block) {
   return m;
 }
 const L = vars(lightCss);
-const D = Object.assign({}, L, vars(darkCss)); // dark = light then dark overrides
+const DARK_OVERRIDES = vars(darkCss);
+const D = Object.assign({}, L, DARK_OVERRIDES); // dark = light then dark overrides
 
 function resolve(map, v, depth = 0) {
   if (depth > 5 || v == null) return v;
   const m = /^var\((--[a-z0-9-]+)\)$/i.exec(v.trim());
   return m ? resolve(map, map[m[1]], depth + 1) : v;
+}
+
+// Replace every var(--x) INSIDE a longer expression (e.g. a color-mix formula)
+// with its resolved value from the map — needed since #1549 tints reference
+// their identity via var() instead of repeating the hex.
+function inlineVars(map, expr, depth = 0) {
+  if (depth > 5 || expr == null) return expr;
+  const next = expr.replace(/var\((--[a-z0-9-]+)\)/gi, (_, name) => map[name] ?? `var(${name})`);
+  return next === expr ? next : inlineVars(map, next, depth + 1);
 }
 
 // --- WCAG colour helpers ----------------------------------------------------
@@ -87,8 +103,7 @@ const toHex = (rgb) => '#' + rgb.map((v) => Math.round(v).toString(16).padStart(
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 // chromatic-by-design / not-a-neutral tokens — exempt from R=G=B + off-extreme
-const EXEMPT = /(status|brand|note|canvas-grid|shadow|destructive)/i;
-const AA = 4.5;
+const EXEMPT = /(palette|status|brand|note|canvas-grid|shadow|destructive)/i;
 let fail = false;
 const rows = [];
 
@@ -112,28 +127,82 @@ for (const mode of ['light', 'dark']) {
   }
 }
 
-// --- check 3: status -foreground readability (WCAG AA on tint bg) -----------
-const STATUSES = ['selected', 'info', 'success', 'warning', 'error'];
+// --- check 3: palette structure (#1549) --------------------------------------
+const PALETTE = ['red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'];
+// status → the palette color it must alias to
+const STATUS_ALIASES = { selected: 'violet', info: 'blue', success: 'green', warning: 'orange', error: 'red' };
+
+// 3a. each palette identity: hand-tuned light hex + a DIFFERENT dark hex
+for (const p of PALETTE) {
+  const name = `--color-palette-${p}`;
+  const light = L[name];
+  const dark = DARK_OVERRIDES[name];
+  if (!light || !HEX.test(light.trim())) {
+    rows.push(`FAIL light ${name} — missing or not a plain hex identity`); fail = true; continue;
+  }
+  if (!dark || !HEX.test(dark.trim())) {
+    rows.push(`FAIL dark  ${name} — missing dark override (each color is a hand-tuned LIGHT+DARK pair)`); fail = true; continue;
+  }
+  if (light.trim().toLowerCase() === dark.trim().toLowerCase()) {
+    rows.push(`FAIL       ${name} — light and dark are identical (${light}); flattened values are the failure mode #1549 replaced`); fail = true;
+  }
+  // tints must be color-mix derivations referencing the identity via var()
+  for (const [suffix, pct] of [['-bg', '14'], ['-border', '40']]) {
+    const tint = L[name + suffix];
+    const wanted = new RegExp(`color-mix\\(in srgb,\\s*var\\(${name}\\)\\s+${pct}%\\s*,\\s*transparent\\)`, 'i');
+    if (!tint || !wanted.test(tint)) {
+      rows.push(`FAIL       ${name}${suffix} — must be color-mix(in srgb, var(${name}) ${pct}%, transparent), got: ${tint ?? 'missing'}`);
+      fail = true;
+    }
+    if (DARK_OVERRIDES[name + suffix]) {
+      rows.push(`FAIL dark  ${name}${suffix} — tints must not be re-declared in dark (they track the identity via var())`);
+      fail = true;
+    }
+  }
+}
+
+// 3b. status tokens are pure aliases into the palette; no scheme-D leftovers
+for (const [s, p] of Object.entries(STATUS_ALIASES)) {
+  const expectations = [
+    [`--color-status-${s}`, `var(--color-palette-${p})`],
+    [`--color-status-${s}-bg`, `var(--color-palette-${p}-bg)`],
+    [`--color-status-${s}-foreground`, `var(--color-palette-${p})`], // text = the identity itself
+    [`--color-status-${s}-border`, `var(--color-palette-${p}-border)`],
+  ];
+  for (const [name, expected] of expectations) {
+    const got = L[name];
+    if (!got || got.trim().toLowerCase() !== expected.toLowerCase()) {
+      rows.push(`FAIL       ${name} — must alias ${expected}, got: ${got ?? 'missing'}`);
+      fail = true;
+    }
+    if (DARK_OVERRIDES[name]) {
+      rows.push(`FAIL dark  ${name} — status tokens must not be re-declared in dark (retired scheme-D override); dark lives in the palette identities`);
+      fail = true;
+    }
+  }
+}
+
+// 3c. contrast REFERENCE report — printed for the record, NEVER fails.
+// Values are hand-tuned by eye per theme (user decision 2026-07-03); the
+// numbers below exist so a reviewer can see the landscape, not to gate it.
 for (const mode of ['light', 'dark']) {
   const map = mode === 'light' ? L : D;
   const surface = hex2rgb(resolve(map, map['--color-background']));
-  for (const s of STATUSES) {
-    const bgFormula = resolve(map, map[`--color-status-${s}-bg`]);
-    const fgVal = resolve(map, map[`--color-status-${s}-foreground`]);
-    if (!bgFormula || !fgVal) { rows.push(`FAIL ${mode} status-${s} — missing token`); fail = true; continue; }
+  for (const p of PALETTE) {
+    const identity = resolve(map, map[`--color-palette-${p}`]);
+    const bgFormula = inlineVars(map, map[`--color-palette-${p}-bg`]);
     const bg = mixOver(bgFormula, surface);
-    if (!bg) { rows.push(`FAIL ${mode} status-${s} — bg is not a color-mix tint: ${bgFormula}`); fail = true; continue; }
-    const r = ratio(hex2rgb(fgVal), bg);
-    const ok = r >= AA;
-    if (!ok) fail = true;
-    rows.push(`${ok ? 'ok  ' : 'FAIL'} ${mode.padEnd(5)} status-${s.padEnd(8)} ${fgVal} on ${toHex(bg)} = ${r.toFixed(2)}:1`);
+    if (!identity || !HEX.test(identity) || !bg) continue; // structural failures already reported above
+    const onTint = ratio(hex2rgb(identity), bg);
+    const onPage = ratio(hex2rgb(identity), surface);
+    rows.push(`ref  ${mode.padEnd(5)} palette-${p.padEnd(7)} ${identity} on tint ${toHex(bg)} = ${onTint.toFixed(2)}:1 · on page = ${onPage.toFixed(2)}:1`);
   }
 }
 
 console.log(rows.join('\n'));
 if (fail) {
-  console.error('\nlint-no-extreme-token-value: FAIL — neutral/off-extreme/status invariant violated');
+  console.error('\nlint-no-extreme-token-value: FAIL — neutral/off-extreme/palette-structure invariant violated');
   process.exit(1);
 }
-console.log('\nlint-no-extreme-token-value: clean ✅ (pure neutral R=G=B + off-extreme + status ≥ 4.5:1, both modes)');
+console.log('\nlint-no-extreme-token-value: clean ✅ (pure neutral R=G=B + off-extreme + 7-color palette structure; contrast printed for reference only)');
 NODE
