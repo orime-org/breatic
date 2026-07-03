@@ -43,11 +43,19 @@ describe('Skeleton', () => {
       expect(rule).toContain('color-mix(in srgb, var(--color-foreground)');
     });
 
-    it('drops the animation under prefers-reduced-motion but keeps the static fill', () => {
-      const reduced = css.slice(css.indexOf('prefers-reduced-motion'));
-      expect(reduced).not.toBe('');
-      expect(reduced).toContain('.skeleton-shimmer');
-      expect(reduced).toContain('animation: none');
+    it('has NO reduced-motion override - the sweep is functional state, not decoration (user-ratified 2026-07-03)', () => {
+      // An earlier reduce override silently blanked the animation on
+      // reduce-enabled machines, making the loading state unreadable — the
+      // very defect this slice fixes. The sweep moves no element (a
+      // brightness band, no displacement), so it is not vestibular-trigger
+      // motion and must keep playing.
+      const shimmerRule = css.slice(css.indexOf('.skeleton-shimmer'));
+      const reducedIdx = shimmerRule.indexOf('prefers-reduced-motion');
+      if (reducedIdx !== -1) {
+        const reducedBlock = shimmerRule.slice(reducedIdx, reducedIdx + 400);
+        expect(reducedBlock).not.toContain('animation: none');
+      }
+      expect(shimmerRule).toContain('animation: skeleton-shimmer');
     });
   });
 

@@ -8,8 +8,9 @@ import { cn } from '@web/lib/utils';
  * Plain `<div>` with the `skeleton-shimmer` treatment (see `index.css`):
  * a foreground-mixed base fill plus a sweeping highlight, replacing the
  * old `animate-pulse bg-primary/10` whose 10%→5% opacity swing was
- * near-invisible against a card surface (#1550). Falls back to the static
- * fill under `prefers-reduced-motion`.
+ * near-invisible against a card surface (#1550). The sweep plays under
+ * `prefers-reduced-motion` too (user-ratified): it signals functional
+ * loading state and moves no element — not vestibular-trigger motion.
  *
  * Size with `className`: e.g. `<Skeleton className="h-4 w-full" />` for a
  * one-line text placeholder, `<Skeleton className="h-10 w-10 rounded-full" />`

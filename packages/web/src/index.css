@@ -146,13 +146,13 @@ body {
     background-position: -100% 0;
   }
 }
-/* Reduced motion: stop the sweep, keep the (raised, still visible) static
-   fill — the a11y contract from the #1550 spec. */
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-shimmer {
-    animation: none;
-  }
-}
+/* No prefers-reduced-motion override — user-ratified 2026-07-03: the
+   skeleton communicates "this node is generating" (functional state, not
+   decoration), and the sweep is a low-contrast brightness band with NO
+   element displacement (no parallax / scale / translation), so it is not
+   vestibular-trigger motion. An earlier reduce override silently blanked
+   the animation on reduce-enabled machines and made the loading state
+   unreadable — the very defect this slice fixes. Do not re-add one here. */
 
 /* Canvas edge colours. ReactFlow keys its dark edge vars off `.react-flow.dark`
    (set only when you pass colorMode="dark"), which never matches our
