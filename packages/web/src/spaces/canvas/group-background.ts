@@ -95,7 +95,7 @@ export function groupBorderStyle(
  * swatches must use the full-strength identity (tint dots are near-identical
  * in dark mode); the tint is applied only to the group surface itself.
  * @param value - The stored token name, or `undefined` for no color.
- * @returns The `var(...)` identity color string, or `undefined` for 无色.
+ * @returns The `var(...)` identity color string, or `undefined` for no color.
  */
 export function groupSwatchStyle(
   value: string | undefined,

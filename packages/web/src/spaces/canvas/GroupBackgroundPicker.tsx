@@ -91,7 +91,7 @@ export function GroupBackgroundPicker({
               <span
                 className={cn(
                   'h-4 w-4 rounded-full',
-                  // Only the 无色 dot needs a hairline to be visible at all;
+                  // Only the no-color dot needs a hairline to be visible at all;
                   // identity dots carry their own full-strength color.
                   dot ? '' : 'border border-border',
                 )}

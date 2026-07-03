@@ -309,7 +309,7 @@ export default function PrimitivesGallery(): React.JSX.Element {
             </ScrollArea>
           </Section>
 
-          <Section title='Status palette · scheme D tint badges (bg / readable fg / border) — selected tints the node border, see node states below'>
+          <Section title='Status palette · 7-color-palette alias tint badges (bg / identity fg / border) — selected tints the node border, see node states below'>
             <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3'>
               {(
                 ['info', 'success', 'warning', 'error'] as const

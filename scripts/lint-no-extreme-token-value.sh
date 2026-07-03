@@ -5,15 +5,21 @@
 # Three checks, all anti-drift gates for the token set:
 #   1. Pure neutral R=G=B — every --neutral-* (and any direct-hex --color-*
 #      surface override) has equal R/G/B channels (zero hue, no warm/cool tint).
+#      Neutral primitives MUST be plain hex — rgb()/hsl()/etc. would silently
+#      bypass the channel check, so non-hex neutrals fail outright.
 #   2. Off-extreme bounds — no channel brighter than #f5 (245) or darker than
 #      #12 (18); never #fff / #000. Lightest token = #f5f5f5, darkest = #141414.
-#   3. Palette structure (#1549) — the 7 --color-palette-* identities each have
-#      a hand-tuned light value AND a DIFFERENT hand-tuned dark override (the
-#      "one pair per theme" mandate — a single flattened value is the exact
-#      failure mode the palette replaced); their -bg/-border tints are
-#      color-mix derivations of the identity; the 5 status tokens are pure
-#      aliases into the palette (foreground = the identity itself) with no
-#      scheme-D dark foreground overrides left behind.
+#   3. Palette structure (#1549) — EXACTLY the 7 --color-palette-* identities
+#      (red/orange/green/blue/violet/pink/teal; extras fail), each with a
+#      hand-tuned light value AND a genuinely different dark override (hex
+#      compared by RGB value, so #c23 vs #cc2233 counts as flattened); their
+#      -bg/-border tints are exactly the canonical color-mix derivation of the
+#      identity; every palette declaration lives OUTSIDE @theme (Tailwind 4
+#      tree-shakes @theme vars without literal consumers — pink/teal tints are
+#      reached only via runtime-built var() names, so @theme placement strips
+#      them from production builds); the 5 status tokens are pure aliases into
+#      the palette (foreground = the identity itself) with no scheme-D dark
+#      foreground overrides left behind.
 #      WCAG contrast is PRINTED FOR REFERENCE ONLY and never fails the build —
 #      color values are hand-tuned by eye per theme (user decision 2026-07-03),
 #      not derived from contrast math.
@@ -26,10 +32,107 @@
 # Usage:
 #   ./scripts/lint-no-extreme-token-value.sh                  # real tokens.css
 #   ./scripts/lint-no-extreme-token-value.sh <tokens.css>     # a fixture (tests)
-#   pnpm lint:no-extreme-token-value   (wired in package.json + CI)
+#   ./scripts/lint-no-extreme-token-value.sh --self-test      # mutation fixtures
+#   pnpm lint:no-extreme-token-value   (wired in package.json + CI; runs the
+#                                       real file AND the self-test)
+#
+# --self-test: mutates the REAL tokens.css into known-bad fixtures (each one a
+# violation the adversarial audit 2026-07-03 proved could slip through earlier
+# revisions) and asserts the guard now catches every one of them, plus asserts
+# the unmutated file stays clean. This keeps the guard itself guarded.
 set -euo pipefail
 
-TOKENS="${1:-packages/web/src/theme/tokens.css}"
+REAL_TOKENS="packages/web/src/theme/tokens.css"
+
+if [ "${1:-}" = "--self-test" ]; then
+  [ -f "$REAL_TOKENS" ] || { echo "self-test: real tokens file not found: $REAL_TOKENS" >&2; exit 2; }
+  TMPDIR_ST="$(mktemp -d)"
+  trap 'rm -rf "$TMPDIR_ST"' EXIT
+  fail=0
+
+  # Each fixture: <name> <sed/python mutation> — must make the guard exit 1.
+  run_case() {
+    local name="$1" file="$2" want="$3"
+    if bash "$0" "$file" >/dev/null 2>&1; then got=0; else got=1; fi
+    if [ "$got" -ne "$want" ]; then
+      echo "self-test FAIL: $name (want exit $want, got $got)"
+      fail=1
+    else
+      echo "self-test ok:   $name"
+    fi
+  }
+
+  # 0. The real file must be clean.
+  run_case "real-file-clean" "$REAL_TOKENS" 0
+
+  # 1. 8th palette color (light-only, wrong tint pcts) must be caught.
+  python3 - "$REAL_TOKENS" "$TMPDIR_ST/eighth.css" <<'PY'
+import sys
+s = open(sys.argv[1]).read()
+s = s.replace("--color-palette-teal: #008573;",
+  "--color-palette-teal: #008573;\n  --color-palette-yellow: #9e6c00;\n  --color-palette-yellow-bg: color-mix(in srgb, var(--color-palette-yellow) 60%, transparent);\n  --color-palette-yellow-border: color-mix(in srgb, var(--color-palette-yellow) 90%, transparent);", 1)
+open(sys.argv[2], 'w').write(s)
+PY
+  run_case "eighth-color-caught" "$TMPDIR_ST/eighth.css" 1
+
+  # 2. Non-hex neutral (hsl) must be caught.
+  sed 's/--neutral-500: #5f5f5f;/--neutral-500: hsl(30, 45%, 40%);/' "$REAL_TOKENS" > "$TMPDIR_ST/hsl-neutral.css"
+  run_case "hsl-neutral-caught" "$TMPDIR_ST/hsl-neutral.css" 1
+
+  # 3. Non-hex direct --color-* surface (pure-white rgb) must be caught.
+  sed 's/--color-background: #f0f0f0;/--color-background: rgb(255, 255, 255);/' "$REAL_TOKENS" > "$TMPDIR_ST/rgb-bg.css"
+  run_case "rgb-background-caught" "$TMPDIR_ST/rgb-bg.css" 1
+
+  # 4. Second dark block flattening a palette color must be caught.
+  { cat "$REAL_TOKENS"; printf "\nhtml[data-theme='dark'] {\n  --color-palette-red: #ce2c31;\n}\n"; } > "$TMPDIR_ST/second-dark.css"
+  run_case "second-dark-block-caught" "$TMPDIR_ST/second-dark.css" 1
+
+  # 5. Nested color-mix diluting the tint (substring evasion) must be caught.
+  python3 - "$REAL_TOKENS" "$TMPDIR_ST/nested-mix.css" <<'PY'
+import sys
+s = open(sys.argv[1]).read()
+s = s.replace(
+  "--color-palette-red-bg: color-mix(in srgb, var(--color-palette-red) 14%, transparent);",
+  "--color-palette-red-bg: color-mix(in srgb, color-mix(in srgb, var(--color-palette-red) 14%, transparent) 20%, #ffffff);", 1)
+open(sys.argv[2], 'w').write(s)
+PY
+  run_case "nested-mix-caught" "$TMPDIR_ST/nested-mix.css" 1
+
+  # 6. Light/dark flattened via 3- vs 6-digit hex must be caught.
+  python3 - "$REAL_TOKENS" "$TMPDIR_ST/notation-flatten.css" <<'PY'
+import sys, re
+s = open(sys.argv[1]).read()
+s = s.replace("--color-palette-red: #ce2c31;", "--color-palette-red: #c23;", 1)   # light → #cc2233
+s = s.replace("--color-palette-red: #ff9592;", "--color-palette-red: #cc2233;", 1) # dark → same color
+open(sys.argv[2], 'w').write(s)
+PY
+  run_case "notation-flatten-caught" "$TMPDIR_ST/notation-flatten.css" 1
+
+  # 7. Palette declared inside @theme (tree-shake hazard) must be caught.
+  python3 - "$REAL_TOKENS" "$TMPDIR_ST/palette-in-theme.css" <<'PY'
+import sys
+s = open(sys.argv[1]).read()
+block = "  --color-palette-red: #ce2c31;\n"
+assert block in s
+s = s.replace(block, "", 1)  # remove from :root (also breaks pair — but the placement check must fire too)
+s = s.replace("@theme {", "@theme {\n  --color-palette-red: #ce2c31;", 1)
+open(sys.argv[2], 'w').write(s)
+PY
+  run_case "palette-in-theme-caught" "$TMPDIR_ST/palette-in-theme.css" 1
+
+  # 8. Wrong alias wiring (error → blue) must be caught.
+  sed 's|--color-status-error: var(--color-palette-red);|--color-status-error: var(--color-palette-blue);|' "$REAL_TOKENS" > "$TMPDIR_ST/cross-wire.css"
+  run_case "alias-cross-wire-caught" "$TMPDIR_ST/cross-wire.css" 1
+
+  if [ "$fail" -ne 0 ]; then
+    echo "lint-no-extreme-token-value --self-test: FAIL" >&2
+    exit 1
+  fi
+  echo "lint-no-extreme-token-value --self-test: clean ✅ (8 mutation fixtures all caught, real file clean)"
+  exit 0
+fi
+
+TOKENS="${1:-$REAL_TOKENS}"
 [ -f "$TOKENS" ] || { echo "lint-no-extreme-token-value: tokens file not found: $TOKENS" >&2; exit 2; }
 
 node - "$TOKENS" <<'NODE'
@@ -37,25 +140,30 @@ const fs = require('fs');
 const file = process.argv[2];
 const css = fs.readFileSync(file, 'utf8');
 
-// --- split light vs dark var maps (dark = html[data-theme='dark'] { ... }) --
-function darkRange(s) {
-  // Match the actual dark-block selector (html[data-theme='dark'] {), NOT a
-  // mention inside a comment — the selector must be immediately followed by
-  // optional whitespace + the opening brace (a comment mention is not, so it
-  // is skipped). indexOf("data-theme='dark'") used to hit the header comment.
-  const sel = /html\[data-theme=['"]dark['"]\]\s*\{/.exec(s);
-  if (!sel) return null;
-  const open = sel.index + sel[0].length - 1;
-  let depth = 0;
-  for (let j = open; j < s.length; j++) {
-    if (s[j] === '{') depth++;
-    else if (s[j] === '}') { depth--; if (depth === 0) return [open, j + 1]; }
+// --- locate ALL dark blocks (html[data-theme='dark'] { ... }) ---------------
+// The cascade lets a LATER block override an earlier one, so a second dark
+// block re-flattening a palette color must be parsed too — merge every block
+// in document order (adversarial audit 2026-07-03: single-.exec() let block
+// two masquerade as light CSS).
+function blockRanges(s, selectorRe) {
+  const ranges = [];
+  const re = new RegExp(selectorRe, 'g');
+  let sel;
+  while ((sel = re.exec(s))) {
+    const open = sel.index + sel[0].length - 1;
+    let depth = 0;
+    for (let j = open; j < s.length; j++) {
+      if (s[j] === '{') depth++;
+      else if (s[j] === '}') { depth--; if (depth === 0) { ranges.push([open, j + 1]); re.lastIndex = j + 1; break; } }
+    }
   }
-  return [open, s.length];
+  return ranges;
 }
-const dr = darkRange(css);
-const darkCss = dr ? css.slice(dr[0], dr[1]) : '';
-const lightCss = dr ? css.slice(0, dr[0]) + css.slice(dr[1]) : css;
+const darkRanges = blockRanges(css, "html\\[data-theme=['\"]dark['\"]\\]\\s*\\{");
+const themeRanges = blockRanges(css, "@theme\\s*\\{");
+const darkCss = darkRanges.map(([a, b]) => css.slice(a, b)).join('\n');
+let lightCss = css;
+for (const [a, b] of [...darkRanges].reverse()) lightCss = lightCss.slice(0, a) + lightCss.slice(b);
 
 function vars(block) {
   const m = {};
@@ -102,28 +210,53 @@ function mixOver(formula, surface) {
 const toHex = (rgb) => '#' + rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+// rgb()/rgba() carry readable channels — parse them so the R=G=B +
+// off-extreme checks still apply (a translucent neutral hairline like
+// rgba(30,30,30,.12) is legitimate; rgb(255,255,255) is not). Other
+// functional notations (hsl/oklch/…) hide the channels — violations.
+const RGB_FN = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*[\d.]+\s*)?\)$/i;
+const NON_CHECKABLE_DIRECT = /^(hsl|hsla|hwb|lab|lch|oklab|oklch|color)\(/i;
 // chromatic-by-design / not-a-neutral tokens — exempt from R=G=B + off-extreme
 const EXEMPT = /(palette|status|brand|note|canvas-grid|shadow|destructive)/i;
 let fail = false;
 const rows = [];
 
 // --- check 1 + 2: pure neutral R=G=B + off-extreme bounds -------------------
-// Check --neutral-* primitives and any DIRECT-hex --color-* surface override
-// (var()-derived tokens inherit their primitive's compliance, already checked).
+// Check --neutral-* primitives and any DIRECT-value --color-* surface override
+// (var()/color-mix references inherit their primitive's compliance).
 for (const mode of ['light', 'dark']) {
   const map = mode === 'light' ? L : D;
   for (const [name, raw] of Object.entries(map)) {
     const isNeutral = /^--neutral-/.test(name);
     const isColor = /^--color-/.test(name) && !EXEMPT.test(name);
     if (!isNeutral && !isColor) continue;
-    if (!HEX.test(raw.trim())) continue; // skip var()/color-mix/keyword — primitive carries the check
-    const [r, g, b] = hex2rgb(raw);
+    const v = raw.trim();
+    let channels = null;
+    if (HEX.test(v)) {
+      channels = hex2rgb(v);
+    } else {
+      const m = RGB_FN.exec(v);
+      if (m) {
+        channels = [Number(m[1]), Number(m[2]), Number(m[3])];
+      } else if (NON_CHECKABLE_DIRECT.test(v)) {
+        rows.push(`FAIL ${mode.padEnd(5)} ${name} ${v} — functional notation hides the channels from the neutral/off-extreme checks; use hex or rgb()/rgba()`);
+        fail = true;
+        continue;
+      } else if (isNeutral) {
+        rows.push(`FAIL ${mode.padEnd(5)} ${name} ${v} — neutral primitives must be plain hex (got a reference/expression)`);
+        fail = true;
+        continue;
+      } else {
+        continue; // var()/color-mix on --color-*: primitive carries the check
+      }
+    }
+    const [r, g, b] = channels;
     if (!(r === g && g === b)) {
-      rows.push(`FAIL ${mode.padEnd(5)} ${name} ${raw} — not R=G=B (neutral must have equal channels)`);
+      rows.push(`FAIL ${mode.padEnd(5)} ${name} ${v} — not R=G=B (neutral must have equal channels)`);
       fail = true; continue;
     }
-    if (r > 245) { rows.push(`FAIL ${mode.padEnd(5)} ${name} ${raw} — brighter than #f5f5f5 (off-extreme upper bound)`); fail = true; }
-    else if (r < 18) { rows.push(`FAIL ${mode.padEnd(5)} ${name} ${raw} — darker than #121212 (off-extreme floor)`); fail = true; }
+    if (r > 245) { rows.push(`FAIL ${mode.padEnd(5)} ${name} ${v} — brighter than #f5f5f5 (off-extreme upper bound)`); fail = true; }
+    else if (r < 18) { rows.push(`FAIL ${mode.padEnd(5)} ${name} ${v} — darker than #121212 (off-extreme floor)`); fail = true; }
   }
 }
 
@@ -132,7 +265,38 @@ const PALETTE = ['red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'];
 // status → the palette color it must alias to
 const STATUS_ALIASES = { selected: 'violet', info: 'blue', success: 'green', warning: 'orange', error: 'red' };
 
-// 3a. each palette identity: hand-tuned light hex + a DIFFERENT dark hex
+// 3a-0. EXACTLY the expected palette token set — an 8th color (or a stray
+// suffix) must fail, not silently skip (audit: allowlist-only checking let
+// --color-palette-yellow through untouched).
+const EXPECTED_PALETTE_TOKENS = new Set(
+  PALETTE.flatMap((p) => [`--color-palette-${p}`, `--color-palette-${p}-bg`, `--color-palette-${p}-border`]),
+);
+for (const map of [L, DARK_OVERRIDES]) {
+  for (const name of Object.keys(map)) {
+    if (name.startsWith('--color-palette-') && !EXPECTED_PALETTE_TOKENS.has(name)) {
+      rows.push(`FAIL       ${name} — not part of the ratified 7-color palette (extras need a new user decision + guard update)`);
+      fail = true;
+    }
+  }
+}
+
+// 3a-1. no palette declaration may live inside @theme — Tailwind 4 tree-shakes
+// @theme vars without literal utility consumers, and the pink/teal tints are
+// consumed only via runtime-built var() names, so @theme placement strips them
+// from production builds (audit 2026-07-03: pink-border vanished from dist).
+{
+  const re = /--color-palette-[a-z0-9-]+\s*:/gi;
+  let m;
+  while ((m = re.exec(css))) {
+    if (themeRanges.some(([a, b]) => m.index > a && m.index < b)) {
+      rows.push(`FAIL       ${m[0].replace(/\s*:$/, '')} — declared inside @theme; palette tokens must live in :root (tree-shake hazard)`);
+      fail = true;
+    }
+  }
+}
+
+// 3a-2. each palette identity: hand-tuned light hex + a genuinely different
+// dark hex (compared as RGB — #c23 vs #cc2233 is the same color).
 for (const p of PALETTE) {
   const name = `--color-palette-${p}`;
   const light = L[name];
@@ -143,15 +307,16 @@ for (const p of PALETTE) {
   if (!dark || !HEX.test(dark.trim())) {
     rows.push(`FAIL dark  ${name} — missing dark override (each color is a hand-tuned LIGHT+DARK pair)`); fail = true; continue;
   }
-  if (light.trim().toLowerCase() === dark.trim().toLowerCase()) {
-    rows.push(`FAIL       ${name} — light and dark are identical (${light}); flattened values are the failure mode #1549 replaced`); fail = true;
+  if (toHex(hex2rgb(light)) === toHex(hex2rgb(dark))) {
+    rows.push(`FAIL       ${name} — light and dark are the same color (${light} / ${dark}); flattened values are the failure mode #1549 replaced`); fail = true;
   }
-  // tints must be color-mix derivations referencing the identity via var()
+  // tints must be EXACTLY the canonical color-mix derivation (anchored — a
+  // nested mix containing the formula as a substring is a different value).
   for (const [suffix, pct] of [['-bg', '14'], ['-border', '40']]) {
     const tint = L[name + suffix];
-    const wanted = new RegExp(`color-mix\\(in srgb,\\s*var\\(${name}\\)\\s+${pct}%\\s*,\\s*transparent\\)`, 'i');
-    if (!tint || !wanted.test(tint)) {
-      rows.push(`FAIL       ${name}${suffix} — must be color-mix(in srgb, var(${name}) ${pct}%, transparent), got: ${tint ?? 'missing'}`);
+    const wanted = new RegExp(`^color-mix\\(in srgb,\\s*var\\(${name}\\)\\s+${pct}%\\s*,\\s*transparent\\)$`, 'i');
+    if (!tint || !wanted.test(tint.trim())) {
+      rows.push(`FAIL       ${name}${suffix} — must be exactly color-mix(in srgb, var(${name}) ${pct}%, transparent), got: ${tint ?? 'missing'}`);
       fail = true;
     }
     if (DARK_OVERRIDES[name + suffix]) {

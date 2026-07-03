@@ -39,16 +39,24 @@
  *      to the slider.
  *   3. `--color-primary` derives from neutral (pure black / white); raw
  *      `--brand-*` values are reserved for the logo SVG only.
- *   4. Status palette = 5 colors · scheme D (selected / info / success /
- *      warning / error). Identity hue + bg + border are always-color (same
- *      both modes); only the `-foreground` text flips by mode (deep in light,
- *      lightened in dark) for readability. `handling` = info blue + spinner
- *      (no own color); `locked` = neutral gray + lock icon.
+ *   4. Palette = 7 colors, the single chromatic source of truth (#1549,
+ *      2026-07-03, supersedes the 5-color scheme D): hand-tuned LIGHT/DARK
+ *      pairs (dark overrides only the 7 identities; tints + aliases track
+ *      via var()). The 5 status token groups are pure aliases into it and
+ *      `-foreground` = the identity itself (per-mode computed text values
+ *      retired). The palette lives in `:root`, NOT `@theme` — Tailwind 4
+ *      tree-shakes @theme variables with no literal utility consumer, and
+ *      the pink/teal tints are consumed only through runtime-built var()
+ *      names (group tints), so in @theme they get stripped from the build.
+ *      Status aliases stay in `@theme` for utility generation (they have
+ *      56 class consumers). `handling` = info blue + spinner (no own
+ *      color); `locked` = neutral gray + lock icon.
  */
 
 /* ============================================================
    :root — neutral primitives + non-Tailwind-namespace tokens
-   + status palette (color-mix, must stay out of @theme).
+   + the 7-color palette (identities + color-mix tints; kept out
+   of @theme so the build can never tree-shake them).
    ============================================================ */
 :root,
 html[data-theme='light'] {
@@ -92,6 +100,46 @@ html[data-theme='light'] {
      brand-exemption tokens were removed when studio chrome went neutral;
      only the logo keeps brand identity. */
   --brand-fg: #ffffff;
+
+  /* Palette · 7 colors · single chromatic source of truth (#1549,
+     2026-07-03, supersedes the 5-color scheme D). Hand-tuned LIGHT/DARK
+     pairs — no contrast-math-derived values. Anchors = Radix step 11
+     (verified per-hue to sit inside each industry convergence zone: red
+     ≈ GitHub #cf222e, orange ≈ Primer severe, green ≈ Primer success,
+     blue ≈ Primer accent; violet, not purple, so `selected` stays inside
+     the industry selection band H226-252 while keeping 40° from blue).
+     Dark variants follow the industry rule: same hue, lighter + softer
+     (the dark block below overrides ONLY these 7 identity values; every
+     tint / alias tracks them through var()).
+     Identity doubles as the colored-TEXT color (text = identity itself);
+     -bg = 14% tint, -border = 40% tint over transparent (chip adapts to
+     any surface — transparency mixing, not contrast math).
+     MUST live in :root, not @theme: Tailwind 4 tree-shakes @theme vars
+     with no literal consumer, and pink/teal tints are reached only via
+     runtime-built var() names (group tints) — in @theme the build strips
+     them (adversarial audit 2026-07-03). Enforced by
+     lint:no-extreme-token-value. */
+  --color-palette-red: #ce2c31;
+  --color-palette-orange: #cc4e00;
+  --color-palette-green: #218358;
+  --color-palette-blue: #0d74ce;
+  --color-palette-violet: #6550b9;
+  --color-palette-pink: #c2298a;
+  --color-palette-teal: #008573;
+  --color-palette-red-bg: color-mix(in srgb, var(--color-palette-red) 14%, transparent);
+  --color-palette-red-border: color-mix(in srgb, var(--color-palette-red) 40%, transparent);
+  --color-palette-orange-bg: color-mix(in srgb, var(--color-palette-orange) 14%, transparent);
+  --color-palette-orange-border: color-mix(in srgb, var(--color-palette-orange) 40%, transparent);
+  --color-palette-green-bg: color-mix(in srgb, var(--color-palette-green) 14%, transparent);
+  --color-palette-green-border: color-mix(in srgb, var(--color-palette-green) 40%, transparent);
+  --color-palette-blue-bg: color-mix(in srgb, var(--color-palette-blue) 14%, transparent);
+  --color-palette-blue-border: color-mix(in srgb, var(--color-palette-blue) 40%, transparent);
+  --color-palette-violet-bg: color-mix(in srgb, var(--color-palette-violet) 14%, transparent);
+  --color-palette-violet-border: color-mix(in srgb, var(--color-palette-violet) 40%, transparent);
+  --color-palette-pink-bg: color-mix(in srgb, var(--color-palette-pink) 14%, transparent);
+  --color-palette-pink-border: color-mix(in srgb, var(--color-palette-pink) 40%, transparent);
+  --color-palette-teal-bg: color-mix(in srgb, var(--color-palette-teal) 14%, transparent);
+  --color-palette-teal-border: color-mix(in srgb, var(--color-palette-teal) 40%, transparent);
 
   /* Space scale · 8pt grid — discrete project scale, NOT Tailwind 4's
      --spacing single multiplier. Consumed inline via `var(--space-N)`. */
@@ -209,41 +257,6 @@ html[data-theme='light'] {
   /* Destructive (delete) is red-narrowed away — no separate solid danger
      color. Delete buttons / errors all use the status-error coral tint
      (bg/border/foreground), enforced by the lint:no-extreme status check. */
-
-  /* ---- Palette · 7 colors · single chromatic source of truth (#1549,
-     2026-07-03, supersedes the 5-color scheme D). Hand-tuned LIGHT/DARK
-     pairs — no contrast-math-derived values. Anchors = Radix step 11
-     (verified per-hue to sit inside each industry convergence zone: red
-     ≈ GitHub #cf222e, orange ≈ Primer severe, green ≈ Primer success,
-     blue ≈ Primer accent; violet, not purple, so `selected` stays inside
-     the industry selection band H226-252 while keeping 40° from blue).
-     Dark variants follow the industry rule: same hue, lighter + softer
-     (the dark block below overrides ONLY these 7 identity values; every
-     tint / alias tracks them through var()).
-     Identity doubles as the colored-TEXT color (text = identity itself);
-     -bg = 14% tint, -border = 40% tint over transparent (chip adapts to
-     any surface — transparency mixing, not contrast math). ---- */
-  --color-palette-red: #ce2c31;
-  --color-palette-orange: #cc4e00;
-  --color-palette-green: #218358;
-  --color-palette-blue: #0d74ce;
-  --color-palette-violet: #6550b9;
-  --color-palette-pink: #c2298a;
-  --color-palette-teal: #008573;
-  --color-palette-red-bg: color-mix(in srgb, var(--color-palette-red) 14%, transparent);
-  --color-palette-red-border: color-mix(in srgb, var(--color-palette-red) 40%, transparent);
-  --color-palette-orange-bg: color-mix(in srgb, var(--color-palette-orange) 14%, transparent);
-  --color-palette-orange-border: color-mix(in srgb, var(--color-palette-orange) 40%, transparent);
-  --color-palette-green-bg: color-mix(in srgb, var(--color-palette-green) 14%, transparent);
-  --color-palette-green-border: color-mix(in srgb, var(--color-palette-green) 40%, transparent);
-  --color-palette-blue-bg: color-mix(in srgb, var(--color-palette-blue) 14%, transparent);
-  --color-palette-blue-border: color-mix(in srgb, var(--color-palette-blue) 40%, transparent);
-  --color-palette-violet-bg: color-mix(in srgb, var(--color-palette-violet) 14%, transparent);
-  --color-palette-violet-border: color-mix(in srgb, var(--color-palette-violet) 40%, transparent);
-  --color-palette-pink-bg: color-mix(in srgb, var(--color-palette-pink) 14%, transparent);
-  --color-palette-pink-border: color-mix(in srgb, var(--color-palette-pink) 40%, transparent);
-  --color-palette-teal-bg: color-mix(in srgb, var(--color-palette-teal) 14%, transparent);
-  --color-palette-teal-border: color-mix(in srgb, var(--color-palette-teal) 40%, transparent);
 
   /* ---- Status · semantic ALIASES into the palette (#1549). The utility
      names (`bg-status-error-bg`, `text-status-*-foreground`,
