@@ -53,18 +53,14 @@ describe('CanvasMiniMap (#1548)', () => {
     expect(panel.className).not.toContain('rounded-md');
   });
 
-  it('pins the viewport mask stroke to a screen-constant width (explicit maskStrokeWidth engages the library viewScale conversion)', () => {
+  it('the viewport mask carries NO stroke - the mask contrast alone marks the viewport (user 2026-07-03)', () => {
     setup();
     const panel = screen.getByTestId('rf__minimap');
-    // The library injects the CSS variable ONLY when maskStrokeWidth is a
-    // number — its absence was the unstable-hairline bug (user report).
-    expect(
-      panel.style.getPropertyValue('--xy-minimap-mask-stroke-width-props'),
-    ).not.toBe('');
-    // Hairline color, not the mid-gray active-border (user 2026-07-03:
-    // the screen-constant width made that read too strong).
+    // Explicit transparent (not an absent prop): the library default could
+    // drift across upgrades, and an earlier hairline/active-border stroke
+    // was ratified away entirely.
     expect(
       panel.style.getPropertyValue('--xy-minimap-mask-stroke-color-props'),
-    ).toBe('var(--color-border)');
+    ).toBe('transparent');
   });
 });
