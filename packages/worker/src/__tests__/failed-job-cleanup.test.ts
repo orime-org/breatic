@@ -119,6 +119,21 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
     mockPublishNodeEvent.mockReset();
   });
 
+  it("stamps each node's lease gen from job nodeGens onto the reclaim event (#1580 #7)", async () => {
+    const job = jobWith({
+      projectId: "p1",
+      spaceId: "s1",
+      targetNodeIds: ["n1", "n2"],
+      nodeGens: { n1: 4, n2: 9 },
+    });
+    await cleanupFailedJobNodes(streamRedis, job, "worker crashed");
+    const events = mockPublishNodeEvent.mock.calls.map(
+      ([, e]) => e as { nodeId: string; gen: number },
+    );
+    expect(events.find((e) => e.nodeId === "n1")?.gen).toBe(4);
+    expect(events.find((e) => e.nodeId === "n2")?.gen).toBe(9);
+  });
+
   it("emits the standard failure write-back for every target node of a finally-failed job", async () => {
     const job = jobWith({
       projectId: "p1",

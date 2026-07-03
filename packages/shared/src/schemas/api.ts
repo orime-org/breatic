@@ -173,6 +173,20 @@ export const taskCreateSchema = z
      *     (spec §10.15.3 two-tier check).
      */
     mode: z.enum(["append", "overwrite"]),
+    /**
+     * Lease generation per target node (#1580 #7, unified-gen design
+     * 2026-07-03). The frontend — the original trigger, the only party
+     * that reads the node's `leaseGen` — computes `gen = leaseGen + 1`
+     * per node and sends it here. The server threads each gen into the
+     * BullMQ job payload and the handling-open event; the worker echoes
+     * it in every write-back; collab CAS-checks it before applying.
+     * Required whenever the task binds to a canvas node (enforced by the
+     * superRefine below — a record type cannot express "must cover the
+     * target id" on its own).
+     */
+    node_gens: z
+      .record(z.string().uuid(), z.number().int().positive())
+      .optional(),
   })
   .superRefine((val, ctx) => {
     if (val.mode === "overwrite" && !val.target_node_id) {
@@ -181,6 +195,17 @@ export const taskCreateSchema = z
         message:
           "target_node_id is required when mode is 'overwrite' (spec §10.15.3)",
         path: ["target_node_id"],
+      });
+    }
+    // #1580 #7: a node-bound task must carry a gen for its target node —
+    // without it the worker's write-back cannot pass the collab CAS and
+    // the result would never land.
+    if (val.target_node_id && val.node_gens?.[val.target_node_id] === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "node_gens must include target_node_id when the task binds to a node (#1580 #7)",
+        path: ["node_gens"],
       });
     }
   });

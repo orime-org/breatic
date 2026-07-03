@@ -424,7 +424,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     await seedNode(hocuspocus, docName, nodeId, {
       name: "Success Node",
       state: "handling",
-      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now() },
+      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
+      leaseGen: 1,
       attachments: [],
     });
 
@@ -455,6 +456,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "remove-bg",
       params: {},
       targetNodeIds: [nodeId],
+      nodeGens: { [nodeId]: 1 },
       mode: "append" as const,
     }, { attempts: 1 });
 
@@ -511,7 +513,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     await seedNode(hocuspocus, docName, nodeId, {
       name: "Failure Node",
       state: "handling",
-      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now() },
+      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
+      leaseGen: 1,
       content: "https://oss/prior-content.png",
       attachments: [],
     });
@@ -537,6 +540,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "remove-bg",
       params: {},
       targetNodeIds: [nodeId],
+      nodeGens: { [nodeId]: 1 },
       mode: "append" as const,
     }, { attempts: 1 }); // 1 attempt so it fails fast without retries
 
@@ -597,7 +601,8 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       await seedNode(hocuspocus, docName, nodeId, {
         name: `Fanout Node ${nodeId}`,
         state: "handling",
-        handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now() },
+        handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
+        leaseGen: 1,
         attachments: [],
       });
     }
@@ -623,6 +628,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "multi-angle",
       params: {},
       targetNodeIds: nodeIds,
+      nodeGens: Object.fromEntries(nodeIds.map((id) => [id, 1])),
       mode: "append" as const,
     }, { attempts: 1 });
 

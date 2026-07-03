@@ -20,15 +20,16 @@ import {
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { taskService } from "@breatic/domain";
+import { taskService, estimateTaskCredits } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { projectService, authService } from "@server/modules";
+import { projectService, authService, precheckCredits } from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import {
   ValidationError,
   ConflictLockedError,
   publishNodeEvent,
   getStreamRedis,
+  logger,
 } from "@breatic/core";
 import { acquireCanvasNodeLock, readCanvasNodeLockHolder } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
@@ -71,6 +72,20 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // a task that writes into that project's canvas node and is billed
   // to the attacker's own account.
   await projectService.assertAccess(projectId, user.id, "editor");
+
+  // #1580 #7 credit pre-check (user decision 2026-07-03): refuse an
+  // obviously-insufficient balance BEFORE creating the task. Non-locking
+  // (no reservation) — the worker's atomic markCompletedAndBill remains
+  // the billing source of truth; concurrent passes may drive the balance
+  // negative, the accepted trade-off of a soft pre-check. Same shared
+  // helper and 402 shape as the /mini-tools routes.
+  const insufficient = await precheckCredits(
+    user.id,
+    estimateTaskCredits(body.model),
+  );
+  if (insufficient) {
+    return c.json({ error: { code: 402, message: insufficient } }, 402);
+  }
 
   const task = await taskService.create(
     user.id,
@@ -140,6 +155,12 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
         type: "node-state-update",
         docName: canvasSpaceDocName(projectId, spaceId),
         nodeId: targetNodeId,
+        // #1580 #7: the frontend read the node's leaseGen and sent
+        // gen = leaseGen + 1 in the body (schema guarantees coverage for
+        // the target node). Collab applies this open iff gen >= leaseGen
+        // and advances the counter; the worker echoes the same gen in
+        // every write-back for the CAS.
+        gen: body.node_gens![targetNodeId]!,
         update: {
           state: "handling",
           handlingBy: {
@@ -161,6 +182,8 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
             // re-stamps to phase 'running' at markRunning, so a long queue
             // backlog does not eat into the execution budget window.
             phase: "queued",
+            // #1580 #7: owner gen — same value as event.gen above.
+            gen: body.node_gens![targetNodeId]!,
           },
         },
       });
@@ -168,7 +191,7 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
       // Stream publish failure is non-fatal — the worker will publish the
       // result later. The lock is already held, so the protocol is safe.
       // We log for observability but do not throw.
-      console.warn("[canvas /tasks] handling-state publish failed", err);
+      logger.warn({ err, projectId, targetNodeId }, "handling-state publish failed");
     }
   }
 
@@ -191,6 +214,9 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
       params: body.params,
       source: body.source,
       targetNodeIds: targetNodeId ? [targetNodeId] : [],
+      // #1580 #7: lease gen per target node, echoed by every worker
+      // write-back so the collab CAS can fence superseded writes.
+      nodeGens: body.node_gens,
       mode,
     },
     defaultJobOpts(),

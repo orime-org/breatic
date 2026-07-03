@@ -20,9 +20,9 @@ import {
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { env } from "@breatic/core";
-import { taskService, creditService } from "@breatic/domain";
+import { taskService, MIN_TASK_CREDIT_COST } from "@breatic/domain";
 import { createQueue, defaultJobOpts } from "@breatic/core";
+import { precheckCredits } from "@server/modules";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -33,22 +33,6 @@ const tasksQueue = createQueue("tasks");
 /** TTS-class tool names that use task_type="tts" instead of "audio". */
 const TTS_TOOLS = new Set(["tts", "voice-clone"]);
 
-/** Minimum credit cost per tool — reject if user can't afford. */
-const MIN_CREDIT_COST = 5;
-
-/**
- * Pre-check: reject if user has insufficient credits.
- * @param userId - The authenticated user whose credit balance is checked.
- * @returns An error message string when the balance is below {@link MIN_CREDIT_COST}, or `null` when affordable (or payments are disabled).
- */
-async function checkCredits(userId: string): Promise<string | null> {
-  if (!env.PAYMENT_ENABLED) return null;
-  const balance = await creditService.getBalance(userId);
-  if (balance < MIN_CREDIT_COST) {
-    return `Insufficient credits. Required: ${MIN_CREDIT_COST}, available: ${balance}`;
-  }
-  return null;
-}
 
 /**
  * Shared helper — create task and enqueue BullMQ job.
@@ -63,6 +47,8 @@ async function checkCredits(userId: string): Promise<string | null> {
  * @param projectId - Optional project ID
  * @param spaceId - The space (canvas) the task belongs to
  * @param targetNodeIds - UUIDs of the canvas nodes to update on completion
+ * @param nodeGens - Lease gen per target node (#1580 #7): echoed by every
+ *   worker write-back so the collab CAS can fence superseded writes
  * @returns Object with `task_id` and `status: "pending"`
  */
 async function enqueueMiniTool(
@@ -72,7 +58,8 @@ async function enqueueMiniTool(
   userId: string,
   projectId: string,
   spaceId: string,
-  targetNodeIds: string[] = [],
+  targetNodeIds: string[],
+  nodeGens: Record<string, number>,
 ): Promise<{ task_id: string; status: string }> {
   // Mini-tools always create a new sibling result node (the caller
   // pre-allocates `target_node_id` as a fresh UUID), so mode is
@@ -106,6 +93,7 @@ async function enqueueMiniTool(
       params,
       source: "mini_tool",
       targetNodeIds,
+      nodeGens,
       mode: "append" as const,
     },
     defaultJobOpts(),
@@ -126,11 +114,11 @@ async function enqueueMiniTool(
  */
 miniTools.post("/image", zValidator("json", imageToolSchema), async (c) => {
   const user = c.get("user");
-  const err = await checkCredits(user.id);
+  const err = await precheckCredits(user.id, MIN_TASK_CREDIT_COST);
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, project_id, space_id, target_node_id, ...params } = body;
+  const { tool, project_id, space_id, target_node_id, gen, ...params } = body;
 
   const result = await enqueueMiniTool(
     tool,
@@ -140,6 +128,7 @@ miniTools.post("/image", zValidator("json", imageToolSchema), async (c) => {
     project_id,
     space_id,
     [target_node_id],
+    { [target_node_id]: gen },
   );
   return c.json({ data: result }, 201);
 });
@@ -154,11 +143,11 @@ miniTools.post("/image", zValidator("json", imageToolSchema), async (c) => {
  */
 miniTools.post("/video", zValidator("json", videoToolSchema), async (c) => {
   const user = c.get("user");
-  const err = await checkCredits(user.id);
+  const err = await precheckCredits(user.id, MIN_TASK_CREDIT_COST);
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, project_id, space_id, target_node_id, ...params } = body;
+  const { tool, project_id, space_id, target_node_id, gen, ...params } = body;
 
   const result = await enqueueMiniTool(
     tool,
@@ -168,6 +157,7 @@ miniTools.post("/video", zValidator("json", videoToolSchema), async (c) => {
     project_id,
     space_id,
     [target_node_id],
+    { [target_node_id]: gen },
   );
   return c.json({ data: result }, 201);
 });
@@ -183,11 +173,11 @@ miniTools.post("/video", zValidator("json", videoToolSchema), async (c) => {
  */
 miniTools.post("/audio", zValidator("json", audioToolSchema), async (c) => {
   const user = c.get("user");
-  const err = await checkCredits(user.id);
+  const err = await precheckCredits(user.id, MIN_TASK_CREDIT_COST);
   if (err) return c.json({ error: { code: 402, message: err } }, 402);
 
   const body = c.req.valid("json");
-  const { tool, project_id, space_id, target_node_id, ...params } = body;
+  const { tool, project_id, space_id, target_node_id, gen, ...params } = body;
 
   const taskType = TTS_TOOLS.has(tool) ? "tts" : "audio";
   const result = await enqueueMiniTool(
@@ -198,6 +188,7 @@ miniTools.post("/audio", zValidator("json", audioToolSchema), async (c) => {
     project_id,
     space_id,
     [target_node_id],
+    { [target_node_id]: gen },
   );
   return c.json({ data: result }, 201);
 });

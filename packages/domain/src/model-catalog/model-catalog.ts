@@ -260,6 +260,40 @@ export function listAvailableModels(modality: string): SkillModelInfo[] {
   }));
 }
 
+/**
+ * Floor a task's pre-check estimate never goes below. Also the flat
+ * requirement for tasks whose model (and therefore `cost_per_call`) is
+ * unknown at enqueue time — mini-tools, skill-auto flows. One shared
+ * number so the /canvas/tasks and /mini-tools pre-checks can never drift.
+ */
+export const MIN_TASK_CREDIT_COST = 5;
+
+/**
+ * Pre-check cost estimate for a task (#1580 #7 credit pre-check, user
+ * decision 2026-07-03: server refuses obviously-insufficient balances
+ * BEFORE enqueue; the check is NON-LOCKING — the worker still bills the
+ * actual usage at completion, and two tasks passing the pre-check
+ * concurrently may drive the balance negative, an accepted trade-off of
+ * a soft pre-check).
+ *
+ * Looks the model up across every modality and returns its
+ * `cost_per_call`; unknown / unspecified models fall back to
+ * {@link MIN_TASK_CREDIT_COST} (the pre-check's job is refusing broke
+ * requests, not exact pricing).
+ * @param model - Model name from the request body, if any.
+ * @returns The credits the caller must at least hold to enqueue.
+ */
+export function estimateTaskCredits(model?: string): number {
+  if (model) {
+    const catalog = getModelCatalog();
+    for (const modality of MODALITIES) {
+      const entry = catalog[modality].find((m) => m.name === model);
+      if (entry && entry.cost_per_call > 0) return entry.cost_per_call;
+    }
+  }
+  return MIN_TASK_CREDIT_COST;
+}
+
 /** Reset cached catalog (for testing). */
 export function resetModelCatalog(): void {
   _cache = null;

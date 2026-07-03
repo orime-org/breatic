@@ -48,6 +48,8 @@ const BINDING = {
   project_id: VALID_PROJECT_ID,
   space_id: VALID_SPACE_ID,
   target_node_id: VALID_NODE_ID,
+  // #1580 #7 unified gen: every node-bound body carries the target's lease gen.
+  gen: 1,
 };
 
 describe("Mini-tools credit pre-check (BUG-015)", () => {

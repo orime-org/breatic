@@ -27,7 +27,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 });
 
 import { createApp } from "../../app.js";
-import { mocks } from "../helpers/mock-core.js";
+import { mocks, mockQueueAdd } from "../helpers/mock-core.js";
 
 const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 
@@ -109,6 +109,76 @@ describe("Tasks routes", () => {
       });
 
       expect(res.status).toBe(401);
+    });
+
+    it("rejects with 402 when the balance is below the estimate — no task row created (#1580 #7 pre-check)", async () => {
+      mocks.creditService.getBalance.mockResolvedValue(0);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "image",
+          params: {},
+          model: "test-model",
+          source: "canvas",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(res.status).toBe(402);
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a node-bound body whose node_gens misses the target (#1580 #7 schema gate)", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "image",
+          params: {},
+          model: "test-model",
+          source: "canvas",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+          target_node_id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+    });
+
+    it("threads node_gens into the BullMQ job payload (#1580 #7 gen echo chain)", async () => {
+      const nodeId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "image",
+          params: {},
+          model: "test-model",
+          source: "canvas",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+          target_node_id: nodeId,
+          node_gens: { [nodeId]: 7 },
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const jobPayload = mockQueueAdd.mock.calls.at(-1)?.[1] as {
+        targetNodeIds: string[];
+        nodeGens: Record<string, number>;
+      };
+      expect(jobPayload.targetNodeIds).toEqual([nodeId]);
+      expect(jobPayload.nodeGens).toEqual({ [nodeId]: 7 });
     });
   });
 

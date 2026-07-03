@@ -109,6 +109,9 @@ describe('runMediaUpload — presign → PUT → success / failure callbacks', (
 });
 
 describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-click / Upload menu)', () => {
+  /** The owner triple the stubbed setHandling hands back (#1580 #7). */
+  const LEASE = { gen: 1, clientId: 7, userId: 'u1' };
+
   /** Build the injected sinks + spies for a fill run. */
   function makeDeps(over: Partial<Parameters<typeof fillNodeFromFile>[3]> = {}) {
     return {
@@ -120,9 +123,11 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       }),
       putFile: vi.fn().mockResolvedValue(undefined),
       extractText: vi.fn().mockResolvedValue('extracted body'),
-      setHandling: vi.fn(),
-      setContent: vi.fn(),
-      setError: vi.fn(),
+      isHandling: vi.fn().mockReturnValue(false),
+      onBusy: vi.fn(),
+      setHandling: vi.fn().mockReturnValue(LEASE),
+      setContent: vi.fn().mockReturnValue(true),
+      setError: vi.fn().mockReturnValue(true),
       ...over,
     };
   }
@@ -136,7 +141,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       deps,
     );
     expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
-    expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'https://cdn/p.png');
+    expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'https://cdn/p.png', LEASE);
     expect(deps.setError).not.toHaveBeenCalled();
     expect(deps.extractText).not.toHaveBeenCalled();
   });
@@ -150,7 +155,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       deps,
     );
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).toHaveBeenCalledExactlyOnceWith('n1', 'Upload failed: bad.png');
+    expect(deps.setError).toHaveBeenCalledExactlyOnceWith('n1', 'Upload failed: bad.png', LEASE);
   });
 
   it('non-media file: extract text locally → fill content (no upload)', async () => {
@@ -163,7 +168,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     );
     expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
     expect(deps.presign).not.toHaveBeenCalled();
-    expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'extracted body');
+    expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'extracted body', LEASE);
   });
 
   it('extraction failure: writes a fixed-English error', async () => {
@@ -177,6 +182,34 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       deps,
     );
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).toHaveBeenCalledExactlyOnceWith('n1', 'Extraction failed: weird.bin');
+    expect(deps.setError).toHaveBeenCalledExactlyOnceWith('n1', 'Extraction failed: weird.bin', LEASE);
+  });
+
+  it('busy gate (#1580 #7): a node already handling refuses the fill — onBusy fires, nothing else runs', async () => {
+    const deps = makeDeps({ isHandling: vi.fn().mockReturnValue(true) });
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'p.png', { type: 'image/png' }),
+      'p1',
+      deps,
+    );
+    expect(deps.onBusy).toHaveBeenCalledExactlyOnceWith('n1');
+    expect(deps.setHandling).not.toHaveBeenCalled();
+    expect(deps.presign).not.toHaveBeenCalled();
+    expect(deps.setContent).not.toHaveBeenCalled();
+    expect(deps.setError).not.toHaveBeenCalled();
+  });
+
+  it('missing node (#1580 #7): setHandling returns undefined — the fill aborts silently', async () => {
+    const deps = makeDeps({ setHandling: vi.fn().mockReturnValue(undefined) });
+    await fillNodeFromFile(
+      'ghost',
+      new File(['x'], 'p.png', { type: 'image/png' }),
+      'p1',
+      deps,
+    );
+    expect(deps.presign).not.toHaveBeenCalled();
+    expect(deps.setContent).not.toHaveBeenCalled();
+    expect(deps.setError).not.toHaveBeenCalled();
   });
 });

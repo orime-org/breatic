@@ -43,6 +43,12 @@ const canvasTaskBinding = {
   project_id: z.string().uuid(),
   space_id: z.string().uuid(),
   target_node_id: z.string().uuid(),
+  /**
+   * Lease generation for the target node (#1580 #7 unified gen): the
+   * frontend read the node's `leaseGen` and sends gen = leaseGen + 1;
+   * the worker echoes it in every write-back for the collab CAS.
+   */
+  gen: z.number().int().positive(),
 } as const;
 
 // Mini-Tools: Image
@@ -71,13 +77,13 @@ export const imageToolSchema = z.discriminatedUnion("tool", [
 
 // Mini-Tools: Video
 export const videoToolSchema = z.discriminatedUnion("tool", [
-  z.object({ tool: z.literal("upscale"), video: z.string(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("interpolate"), video: z.string(), multiplier: z.number().default(2), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("extend"), video: z.string(), prompt: z.string().default(""), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("edit"), video: z.string(), prompt: z.string(), images: z.array(z.string()).optional(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("motion"), image: z.string(), video: z.string().optional(), prompt: z.string().default(""), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("animate"), video: z.string(), image: z.string().optional(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("talking-head"), image: z.string(), audio: z.string(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("upscale"), video: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("interpolate"), video: z.string(), multiplier: z.number().default(2), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("extend"), video: z.string(), prompt: z.string().default(""), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("edit"), video: z.string(), prompt: z.string(), images: z.array(z.string()).optional(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("motion"), image: z.string(), video: z.string().optional(), prompt: z.string().default(""), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("animate"), video: z.string(), image: z.string().optional(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("talking-head"), image: z.string(), audio: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
   // Local (Worker-side FFmpeg) mini-tool — first non-vendor video op.
   // `host_node_id` identifies the mixed-editor container when the
   // request originates from a node-editor doc (Worker reads it out of
@@ -99,6 +105,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
+    // #1580 #7 unified gen — see canvasTaskBinding.gen.
+    gen: z.number().int().positive(),
   }),
   z.object({
     tool: z.literal("speed"),
@@ -109,6 +117,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
+    // #1580 #7 unified gen — see canvasTaskBinding.gen.
+    gen: z.number().int().positive(),
   }),
   z.object({
     tool: z.literal("cut"),
@@ -126,6 +136,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
+    // #1580 #7 unified gen — see canvasTaskBinding.gen.
+    gen: z.number().int().positive(),
   }),
   z.object({
     tool: z.literal("adjust"),
@@ -136,6 +148,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
+    // #1580 #7 unified gen — see canvasTaskBinding.gen.
+    gen: z.number().int().positive(),
   }),
   z.object({
     tool: z.literal("audio-denoise"),
@@ -146,6 +160,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
+    // #1580 #7 unified gen — see canvasTaskBinding.gen.
+    gen: z.number().int().positive(),
   }),
   // Visual-parity local handlers (not real AIGC). Match the legacy
   // ffmpeg.wasm surface one-to-one so migrating the front-end is a
@@ -161,6 +177,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
+    // #1580 #7 unified gen — see canvasTaskBinding.gen.
+    gen: z.number().int().positive(),
   }),
   z.object({
     tool: z.literal("scene-extension"),
@@ -182,6 +200,8 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
+    // #1580 #7 unified gen — see canvasTaskBinding.gen.
+    gen: z.number().int().positive(),
   }),
   z.object({
     tool: z.literal("hdr-conversion"),
@@ -194,16 +214,18 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
     space_id: z.string().uuid(),
     host_node_ids: z.array(z.string()).min(1).optional(),
     target_node_id: z.string().uuid(),
+    // #1580 #7 unified gen — see canvasTaskBinding.gen.
+    gen: z.number().int().positive(),
   }),
 ]);
 
 // Mini-Tools: Audio
 export const audioToolSchema = z.discriminatedUnion("tool", [
-  z.object({ tool: z.literal("sfx"), prompt: z.string(), duration_seconds: z.number().optional(), prompt_influence: z.number().default(0.3), loop: z.boolean().default(false), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("tts"), text: z.string(), voice_id: z.string().default("Alice"), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("voice-clone"), text: z.string(), audio: z.string(), reference_text: z.string().optional(), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("separate"), audio: z.string(), mode: z.string().default("vocals"), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
-  z.object({ tool: z.literal("extend"), audio: z.string(), prompt: z.string().default(""), model: z.string().optional(), node_ids: z.array(z.string()).min(1).optional(), project_id: z.string().uuid(), space_id: z.string().uuid(), target_node_id: z.string().uuid() }),
+  z.object({ tool: z.literal("sfx"), prompt: z.string(), duration_seconds: z.number().optional(), prompt_influence: z.number().default(0.3), loop: z.boolean().default(false), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("tts"), text: z.string(), voice_id: z.string().default("Alice"), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("voice-clone"), text: z.string(), audio: z.string(), reference_text: z.string().optional(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("separate"), audio: z.string(), mode: z.string().default("vocals"), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("extend"), audio: z.string(), prompt: z.string().default(""), model: z.string().optional(), ...canvasTaskBinding }),
 ]);
 
 // Mini-Tools: Text

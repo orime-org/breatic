@@ -65,7 +65,7 @@ export interface MediaUploadDeps {
  * Upload a media file: presign → PUT the bytes → report the public URL on
  * success, or signal failure. Never throws — both outcomes route through the
  * `onSuccess` / `onFailure` callbacks so the caller can write them to Yjs
- * (`setNodeContent` / `setNodeError`).
+ * (`completeNodeHandling` / `failNodeHandling`).
  * @param file - The media file to upload.
  * @param projectId - Owning project (authorizes the presign).
  * @param deps - Injected presign / putFile / result callbacks.
@@ -88,6 +88,20 @@ export async function runMediaUpload(
   }
 }
 
+/**
+ * The owner triple a handling opener holds (#1580 #7). Mirrors the data
+ * layer's `LeaseToken` — declared structurally here so this pure module
+ * keeps zero imports beyond the assets API type.
+ */
+export interface UploadLease {
+  /** Fencing generation from the node's `leaseGen` counter. */
+  gen: number;
+  /** Yjs clientID of the opening connection. */
+  clientId: number;
+  /** User who opened the handling. */
+  userId: string;
+}
+
 /** Injected dependencies for {@link fillNodeFromFile} (upload network + Yjs sinks). */
 export interface FillNodeDeps {
   /** Request a presigned upload URL (media path). */
@@ -96,22 +110,39 @@ export interface FillNodeDeps {
   putFile: MediaUploadDeps['putFile'];
   /** Read / extract a non-media file's text locally (the text path). */
   extractText: (file: File) => Promise<string>;
-  /** Mark the node in-flight (`handling`) before the upload / extraction. */
-  setHandling: (nodeId: string) => void;
-  /** Fill the node's content (media URL or extracted text). */
-  setContent: (nodeId: string, content: string) => void;
-  /** Write a fixed-English error onto the node (never a toast — it is shared). */
-  setError: (nodeId: string, message: string) => void;
+  /**
+   * Busy gate (#1580 #7, user decision 2026-07-03): true when the node is
+   * already handling — a second fill is refused up front instead of
+   * silently racing the live lease holder.
+   */
+  isHandling: (nodeId: string) => boolean;
+  /** Called (instead of any work) when the busy gate refuses the fill. */
+  onBusy: (nodeId: string) => void;
+  /**
+   * Open the lease (`handling` + owner triple); `undefined` = node gone.
+   * The returned token threads through to the write-backs below.
+   */
+  setHandling: (nodeId: string) => UploadLease | undefined;
+  /**
+   * Leased content write-back; returns false when the lease was superseded
+   * (the node's final content belongs to the final lease owner).
+   */
+  setContent: (nodeId: string, content: string, lease: UploadLease) => boolean;
+  /** Leased error write-back (fixed-English wire string — never a toast). */
+  setError: (nodeId: string, message: string, lease: UploadLease) => boolean;
 }
 
 /**
  * Fill an **existing** (empty) node from a picked file — the double-click /
  * Upload-menu path. Unlike {@link runMediaUpload}'s caller in `processFiles`
- * (which CREATES a node), this writes into a node that already exists: mark it
- * `handling`, then media files (image / video / audio) presign → PUT and fill
- * the public URL, while every other file is read / extracted locally and fills
- * the text. Failures write a fixed-English error onto the node (shared doc, so
- * never a locale-frozen toast), matching the create-on-drop path's wire strings.
+ * (which CREATES a node), this writes into a node that already exists:
+ * refuse if the node is busy (#1580 #7 gate), open the lease, then media
+ * files (image / video / audio) presign → PUT and fill the public URL,
+ * while every other file is read / extracted locally and fills the text.
+ * Failures write a fixed-English error onto the node (shared doc, so never
+ * a locale-frozen toast), matching the create-on-drop path's wire strings.
+ * Write-backs carry the lease token so a superseded fill cannot clobber a
+ * newer owner's work.
  * @param nodeId - The existing node to fill.
  * @param file - The picked file.
  * @param projectId - Owning project (authorizes the presign).
@@ -123,19 +154,24 @@ export async function fillNodeFromFile(
   projectId: string,
   deps: FillNodeDeps,
 ): Promise<void> {
-  deps.setHandling(nodeId);
+  if (deps.isHandling(nodeId)) {
+    deps.onBusy(nodeId);
+    return;
+  }
+  const lease = deps.setHandling(nodeId);
+  if (!lease) return;
   if (fileToNodeSpec(file).needsUpload) {
     await runMediaUpload(file, projectId, {
       presign: deps.presign,
       putFile: deps.putFile,
-      onSuccess: (fileUrl) => deps.setContent(nodeId, fileUrl),
-      onFailure: () => deps.setError(nodeId, `Upload failed: ${file.name}`),
+      onSuccess: (fileUrl) => deps.setContent(nodeId, fileUrl, lease),
+      onFailure: () => deps.setError(nodeId, `Upload failed: ${file.name}`, lease),
     });
     return;
   }
   try {
-    deps.setContent(nodeId, await deps.extractText(file));
+    deps.setContent(nodeId, await deps.extractText(file), lease);
   } catch {
-    deps.setError(nodeId, `Extraction failed: ${file.name}`);
+    deps.setError(nodeId, `Extraction failed: ${file.name}`, lease);
   }
 }

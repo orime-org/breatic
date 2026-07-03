@@ -118,13 +118,14 @@ describe("emitNodeStateDone", () => {
       height: 200,
     };
 
-    await emitNodeStateDone(fakeStreamRedis, docName, nodeId, contentFields);
+    await emitNodeStateDone(fakeStreamRedis, docName, nodeId, contentFields, 1);
 
     expect(mockPublishNodeEvent).toHaveBeenCalledTimes(1);
     expect(mockPublishNodeEvent).toHaveBeenCalledWith(fakeStreamRedis, {
       type: "node-state-update",
       docName,
       nodeId,
+      gen: 1,
       update: {
         state: "idle",
         content: contentFields.content,
@@ -151,7 +152,7 @@ describe("emitNodeStateDone", () => {
     // so the task-listener deletes it; deriveStatus then returns 'idle'.
     await emitNodeStateDone(fakeStreamRedis, "project-p1", "n1", {
       content: "https://oss/ok.png",
-    });
+    }, 1);
     const event = mockPublishNodeEvent.mock.calls[0]![1] as {
       update: Record<string, unknown>;
     };
@@ -161,7 +162,7 @@ describe("emitNodeStateDone", () => {
   it("passes optional fields as undefined when not provided (no-cover case)", async () => {
     await emitNodeStateDone(fakeStreamRedis, "project-p2", "n2", {
       content: "https://oss/y.mp4",
-    });
+    }, 1);
 
     expect(mockPublishNodeEvent).toHaveBeenCalledTimes(1);
     const event = mockPublishNodeEvent.mock.calls[0]![1] as Record<string, unknown>;
@@ -184,7 +185,7 @@ describe("emitNodeStateDone", () => {
     for (let i = 0; i < nodeIds.length; i++) {
       await emitNodeStateDone(fakeStreamRedis, docName, nodeIds[i]!, {
         content: urls[i]!,
-      });
+      }, 1);
     }
 
     expect(mockPublishNodeEvent).toHaveBeenCalledTimes(2);
@@ -211,12 +212,13 @@ describe("emitNodeStateDone", () => {
 
 describe("emitNodeLeaseRunning (#1580 #2 queue→running transition)", () => {
   it("emits a renewLease='running' signal with an empty update", async () => {
-    await emitNodeLeaseRunning(fakeStreamRedis, "project-p1/canvas-s1", "n1");
+    await emitNodeLeaseRunning(fakeStreamRedis, "project-p1/canvas-s1", "n1", 1);
     expect(mockPublishNodeEvent).toHaveBeenCalledTimes(1);
     expect(mockPublishNodeEvent).toHaveBeenCalledWith(fakeStreamRedis, {
       type: "node-state-update",
       docName: "project-p1/canvas-s1",
       nodeId: "n1",
+      gen: 1,
       update: {},
       renewLease: "running",
     });
@@ -229,13 +231,14 @@ describe("emitNodeStateFailed", () => {
     const nodeId = "n1";
     const errorMessage = "Worker exploded";
 
-    await emitNodeStateFailed(fakeStreamRedis, docName, nodeId, errorMessage);
+    await emitNodeStateFailed(fakeStreamRedis, docName, nodeId, errorMessage, 1);
 
     expect(mockPublishNodeEvent).toHaveBeenCalledTimes(1);
     expect(mockPublishNodeEvent).toHaveBeenCalledWith(fakeStreamRedis, {
       type: "node-state-update",
       docName,
       nodeId,
+      gen: 1,
       update: {
         state: "idle",
         errorMessage,
@@ -252,7 +255,7 @@ describe("emitNodeStateFailed", () => {
 
     // Caller loops over targetNodeIds and calls helper once per node
     for (const nodeId of nodeIds) {
-      await emitNodeStateFailed(fakeStreamRedis, docName, nodeId, errorMessage);
+      await emitNodeStateFailed(fakeStreamRedis, docName, nodeId, errorMessage, 1);
     }
 
     expect(mockPublishNodeEvent).toHaveBeenCalledTimes(2);
@@ -281,7 +284,7 @@ describe("caller-level empty targetNodeIds guard", () => {
 
     // Simulate what runTask does when nodeIds.length === 0
     for (const nodeId of targetNodeIds) {
-      await emitNodeStateDone(fakeStreamRedis, "project-p3", nodeId, { content: "https://oss/z.png" });
+      await emitNodeStateDone(fakeStreamRedis, "project-p3", nodeId, { content: "https://oss/z.png" }, 1);
     }
 
     expect(mockPublishNodeEvent).not.toHaveBeenCalled();
@@ -291,9 +294,45 @@ describe("caller-level empty targetNodeIds guard", () => {
     const targetNodeIds: string[] = [];
 
     for (const nodeId of targetNodeIds) {
-      await emitNodeStateFailed(fakeStreamRedis, "project-p4", nodeId, "some error");
+      await emitNodeStateFailed(fakeStreamRedis, "project-p4", nodeId, "some error", 1);
     }
 
     expect(mockPublishNodeEvent).not.toHaveBeenCalled();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// #1580 #7: gen fencing echo — every write-back carries the lease gen
+// the job was created under, so the collab CAS can verify the write
+// still belongs to the live lease.
+// ────────────────────────────────────────────────────────────────────
+
+describe("gen fencing echo (#1580 #7)", () => {
+  it("emitNodeStateDone stamps the lease gen onto the event", async () => {
+    await emitNodeStateDone(
+      fakeStreamRedis,
+      "project-p1",
+      "n1",
+      { content: "https://oss/ok.png" },
+      5,
+    );
+    const event = mockPublishNodeEvent.mock.calls[0]![1] as { gen: number };
+    expect(event.gen).toBe(5);
+  });
+
+  it("emitNodeStateFailed stamps the lease gen onto the event", async () => {
+    await emitNodeStateFailed(fakeStreamRedis, "project-p1", "n1", "boom", 7);
+    const event = mockPublishNodeEvent.mock.calls[0]![1] as { gen: number };
+    expect(event.gen).toBe(7);
+  });
+
+  it("emitNodeLeaseRunning stamps the lease gen onto the renew event", async () => {
+    await emitNodeLeaseRunning(fakeStreamRedis, "project-p1", "n1", 3);
+    const event = mockPublishNodeEvent.mock.calls[0]![1] as {
+      gen: number;
+      renewLease: string;
+    };
+    expect(event.gen).toBe(3);
+    expect(event.renewLease).toBe("running");
   });
 });

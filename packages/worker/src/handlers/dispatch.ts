@@ -80,6 +80,17 @@ export interface TaskJobData {
    */
   targetNodeIds?: string[];
   /**
+   * Lease generation per target node (#1580 #7, unified-gen design). The
+   * frontend read each node's `leaseGen` counter and sent gen = leaseGen+1
+   * in the REST body; the server threads the map here. Every write-back
+   * (done / failed / renew / crash-net reclaim) echoes the node's gen so
+   * the collab CAS can verify the write still belongs to the live lease.
+   * Present iff `targetNodeIds` is non-empty (route schemas enforce
+   * coverage); a missing entry is a producer bug — the emit helpers then
+   * send gen 0, which collab rejects with a permanent warn log.
+   */
+  nodeGens?: Record<string, number>;
+  /**
    * Execution mode (spec §10.13 / §10.15). Required — producer (server
    * routes) must always declare intent.
    *
@@ -197,13 +208,21 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   lockTargetNodeId: string | null,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds, nodeGens } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
   // targetNodeIds from job payload (replaces old params.node_ids / historyItemId pattern).
   // Falls back to empty array for tasks not bound to any canvas node.
   const nodeIds: string[] = targetNodeIds ?? [];
+  /**
+   * Lease gen for one target node (#1580 #7). 0 (never valid — gens start
+   * at 1) marks a producer bug; the collab consumer rejects it with a
+   * permanent warn so the miss is traceable.
+   * @param nodeId - The target node whose lease gen the job carries.
+   * @returns The node's lease gen, or 0 when the job is missing it.
+   */
+  const genOf = (nodeId: string): number => nodeGens?.[nodeId] ?? 0;
 
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
@@ -234,7 +253,7 @@ async function runTaskBody(
     await taskService.markFailed(taskId, "Task retry not allowed after provider call");
     if (canvasDocName) {
       for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, "Retry not allowed after provider returned a result");
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, "Retry not allowed after provider returned a result", genOf(nodeId));
       }
     }
     return { failed: true, reason: "no_retry_after_provider" };
@@ -249,7 +268,7 @@ async function runTaskBody(
   if (canvasDocName) {
     for (const nodeId of nodeIds) {
       try {
-        await emitNodeLeaseRunning(streamRedis, canvasDocName, nodeId);
+        await emitNodeLeaseRunning(streamRedis, canvasDocName, nodeId, genOf(nodeId));
       } catch (err) {
         logger.warn(
           { err, taskId, nodeId },
@@ -299,7 +318,7 @@ async function runTaskBody(
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
     if (canvasDocName) {
       for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, errorMsg);
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, errorMsg, genOf(nodeId));
       }
     }
     throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
@@ -318,7 +337,7 @@ async function runTaskBody(
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
     if (canvasDocName) {
       for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, msg);
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, msg, genOf(nodeId));
       }
     }
     return { failed: true, reason: "output_count_mismatch" };
@@ -347,7 +366,7 @@ async function runTaskBody(
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
     if (canvasDocName) {
       for (const nodeId of nodeIds) {
-        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, errorMsg);
+        await emitNodeStateFailed(streamRedis, canvasDocName, nodeId, errorMsg, genOf(nodeId));
       }
     }
     // Return normally (don't throw) — we don't want BullMQ to retry
@@ -475,7 +494,7 @@ async function runTaskBody(
         await emitNodeStateDone(streamRedis, docName, nodeId, {
           content: url,
           coverUrl: out?.cover_url,
-        });
+        }, genOf(nodeId));
       } catch (err) {
         logger.warn({ err, taskId, nodeId }, "Failed to publish NodeStateUpdateEvent (success)");
       }
@@ -519,17 +538,21 @@ export interface NodeStateDoneFields {
  * @param docName - Project doc name (e.g. "project-{projectId}")
  * @param nodeId - Canvas node receiving the update
  * @param contentFields - Content fields to write into the node's data map
+ * @param gen - Lease gen this write-back belongs to (#1580 #7); collab
+ *   CAS-checks it against the node's live handlingBy.gen before applying.
  */
 export async function emitNodeStateDone(
   streamRedis: ReturnType<typeof getStreamRedis>,
   docName: string,
   nodeId: string,
   contentFields: NodeStateDoneFields,
+  gen: number,
 ): Promise<void> {
   await publishNodeEvent(streamRedis, {
     type: "node-state-update",
     docName,
     nodeId,
+    gen,
     update: {
       state: "idle",
       content: contentFields.content,
@@ -560,17 +583,21 @@ export async function emitNodeStateDone(
  * @param docName - Project doc name (e.g. "project-{projectId}")
  * @param nodeId - Canvas node receiving the update
  * @param errorMessage - Human-readable error description
+ * @param gen - Lease gen this write-back belongs to (#1580 #7); collab
+ *   CAS-checks it against the node's live handlingBy.gen before applying.
  */
 export async function emitNodeStateFailed(
   streamRedis: ReturnType<typeof getStreamRedis>,
   docName: string,
   nodeId: string,
   errorMessage: string,
+  gen: number,
 ): Promise<void> {
   await publishNodeEvent(streamRedis, {
     type: "node-state-update",
     docName,
     nodeId,
+    gen,
     update: {
       state: "idle",
       errorMessage,
@@ -591,16 +618,20 @@ export async function emitNodeStateFailed(
  * @param streamRedis - Redis client for the stream DB.
  * @param docName - Canvas doc the node lives in.
  * @param nodeId - Node whose lease transitions to the execution phase.
+ * @param gen - Lease gen this renewal belongs to (#1580 #7); collab only
+ *   restamps when it matches the node's live handlingBy.gen.
  */
 export async function emitNodeLeaseRunning(
   streamRedis: ReturnType<typeof getStreamRedis>,
   docName: string,
   nodeId: string,
+  gen: number,
 ): Promise<void> {
   await publishNodeEvent(streamRedis, {
     type: "node-state-update",
     docName,
     nodeId,
+    gen,
     update: {},
     renewLease: "running",
   });

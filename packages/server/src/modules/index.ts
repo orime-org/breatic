@@ -20,6 +20,7 @@ export * as conversationService from "@server/modules/conversation/conversation.
 export * as attachmentService from "@server/modules/conversation/conversation-attachment.service.js";
 export * as memoryService from "@server/modules/memory/memory.service.js";
 export * as paymentService from "@server/modules/payment/payment.service.js";
+export { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 export * as projectService from "@server/modules/project/project.service.js";
 export * as projectMembersService from "@server/modules/project/projectMembers.service.js";
 export * as recentService from "@server/modules/recent/recent.service.js";

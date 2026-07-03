@@ -313,6 +313,10 @@
     },
     "edge": {
       "delete": "Delete connection"
+    },
+    "upload": {
+      "nodeBusy": "This node is busy — another operation is in progress.",
+      "ownershipLost": "Upload discarded — someone else took over this node."
     }
   },
   "editor": {

@@ -96,22 +96,28 @@ export interface HandlingActor {
   /** Lease start (epoch ms); the fixed-budget timeout is measured from here. */
   startedAt: number;
   /**
-   * Yjs `clientID` of the connection that opened this handling. RESERVED,
-   * not written today: #1580 slice 4 (Option A) removed the disconnect
-   * fast-path for handling, so nothing reads this. Kept for a future #1551
-   * single-master fast-path — where a pinned instance's local `getClients`
-   * is cluster-authoritative and could safely reclaim a dead connection's
-   * handling without false-reclaiming live cross-instance uploads.
+   * Yjs `clientID` of the connection that opened this handling. Written by
+   * FRONTEND drivers (upload / local fills) as part of the owner triple
+   * `gen + userId + clientId` (#1580 #7): when two clients race the same
+   * gen, Yjs converges `handlingBy` to one owner and only the owner's
+   * write-back lands — clientId is what tells two tabs of the same user
+   * apart. Absent for `backend` drivers (a Worker has no Yjs connection;
+   * overwrite-mode exclusivity comes from the server-side Redis node lock).
+   * Also reusable by a future #1551 single-master disconnect fast-path.
    */
   clientId?: number;
   /**
-   * Monotonic fencing generation (#1580 #7), incremented each time handling
-   * (re)opens on a node. Every write-back (sweep / worker-done / disconnect)
-   * compare-and-sets on this: a superseded (lower-gen) op's late write is
+   * Monotonic fencing generation (#1580 #7, unified-gen design 2026-07-03).
+   * Every handling open — frontend upload AND backend AIGC — reads the
+   * node's persistent `data.leaseGen` counter and takes `gen = leaseGen + 1`,
+   * advancing the counter in the same write. Every write-back
+   * (worker-done / failed / renew / frontend upload completion)
+   * compare-and-sets on this: a superseded (stale-gen) op's late write is
    * rejected, so a slow-but-alive op that completes after being reclaimed
-   * and retried cannot clobber the new op. Optional for back-compat.
+   * and retried cannot clobber the new op. REQUIRED (pre-launch, no
+   * back-compat branch).
    */
-  gen?: number;
+  gen: number;
   /**
    * Lifecycle phase (#1580 #2): `queued` (enqueued, awaiting Worker) vs
    * `running` (Worker executing). The sweeper picks the timeout window by
@@ -318,6 +324,17 @@ export interface CanvasNodeFields {
     state: NodeState;
     /** Who triggered the current handling; undefined when state === 'idle'. */
     handlingBy?: HandlingActor;
+    /**
+     * Persistent monotonic lease counter (#1580 #7, unified-gen design
+     * 2026-07-03). Every handling open (frontend upload AND backend AIGC)
+     * takes `gen = leaseGen + 1` and advances this in the same write; the
+     * collab single-writer additionally enforces `leaseGen = max(old, gen)`
+     * when applying a handling-open event. NEVER cleared when handling ends
+     * — surviving into the next generation is the whole point (a stale
+     * write-back must keep failing its CAS forever). Absent = 0 (a node
+     * that has never been handled), the counter's natural zero.
+     */
+    leaseGen?: number;
     /** Last failure message; present when state === 'idle' AND last operation failed. */
     errorMessage?: string;
 
@@ -439,6 +456,19 @@ export interface NodeStateUpdateEvent {
   docName: string;
   /** Target node receiving the update. */
   nodeId: string;
+  /**
+   * Fencing generation this event belongs to (#1580 #7, REQUIRED —
+   * pre-launch, no back-compat branch). The collab single-writer
+   * compare-and-sets before applying:
+   *   - handling-OPEN events (`update.handlingBy` is an object): applied
+   *     only when `gen >= data.leaseGen` (stale opens are dropped); on
+   *     apply, `leaseGen` advances to `gen`.
+   *   - every other event (close / content / renew): applied only when the
+   *     node's live `handlingBy.gen === gen` — no live lease, or a
+   *     different generation, means this event is superseded and is
+   *     dropped (the sweeper / a newer open already owns the node).
+   */
+  gen: number;
   /** Partial update merged into target node's data Y.Map by Collab consumer. */
   update: NodeStateUpdatePayload;
   /**

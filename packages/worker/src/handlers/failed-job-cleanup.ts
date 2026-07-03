@@ -78,7 +78,7 @@ export async function cleanupFailedJobNodes(
   // attemptsMade, so that gate skipped exactly the deaths it should catch.
   if (!job.finishedOn) return 0;
 
-  const { projectId, spaceId, targetNodeIds } = job.data;
+  const { projectId, spaceId, targetNodeIds, nodeGens } = job.data;
   if (!projectId || !spaceId) return 0;
   if (!targetNodeIds || targetNodeIds.length === 0) return 0;
 
@@ -91,6 +91,10 @@ export async function cleanupFailedJobNodes(
         docName,
         nodeId,
         `Task failed: ${reason}`,
+        // #1580 #7: echo the node's lease gen so the collab CAS accepts the
+        // reclaim only while this job's lease is still live. 0 (never a
+        // valid gen) marks a producer bug; collab drops it with a warn.
+        nodeGens?.[nodeId] ?? 0,
       );
       emitted++;
     } catch {
