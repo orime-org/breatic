@@ -32,7 +32,7 @@ import {
 import { shouldTrackConnection } from "@collab/services/connection-tracking.js";
 import {
   createHandlingSweeper,
-  sweepDoc,
+  scheduleLoadSweep,
   resolveLeaseBudget,
   type HandlingSweeper,
 } from "@collab/services/handling-sweeper.js";
@@ -173,24 +173,32 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     },
 
     // Handling-lease load sweep (#1569): a cold doc's zombie handling
-    // nodes are invisible until someone opens it — reclaim them the moment
-    // the doc loads. Uses the DIRECT document reference the hook hands us —
-    // NEVER openDirectConnection from a load hook: that same-doc re-entry
-    // provably deadlocks (feedback_hocuspocus_after_load_no_await_same_doc;
-    // #1567 verified the onDisconnect variant safe, load hooks are not).
-    // Meta / non-canvas docs are skipped.
-    afterLoadDocument: async ({ documentName, document }) => {
+    // nodes are invisible until someone opens it — reclaim them shortly
+    // after the doc loads. Uses the DIRECT document reference the hook
+    // hands us — NEVER openDirectConnection from a load hook: that same-doc
+    // re-entry provably deadlocks
+    // (feedback_hocuspocus_after_load_no_await_same_doc; #1567 verified the
+    // onDisconnect variant safe, load hooks are not). Meta / non-canvas
+    // docs are skipped. #1580 #9: the sweep is JITTERED (not run in the
+    // load tick) so a restart reloading every doc doesn't stampede N sweeps
+    // + N broadcast transactions at once; the jitter is negligible against
+    // the 1h budget, and a doc unloaded while waiting is skipped.
+    afterLoadDocument: async ({ documentName, document, instance }) => {
       const parsed = parseDocName(documentName);
       if (!parsed || parsed.kind !== "canvas") return;
-      const swept = sweepDoc(document, Date.now(), (phase, operation) =>
-        resolveLeaseBudget(phase, operation, leaseBudgets),
-      );
-      if (swept > 0) {
-        logger.warn(
-          { documentName, swept, reason: "handling_lease_swept_on_load" },
-          "handling_lease_swept",
-        );
-      }
+      scheduleLoadSweep({
+        documentName,
+        document,
+        documents: instance.documents,
+        resolveBudget: (phase, operation) =>
+          resolveLeaseBudget(phase, operation, leaseBudgets),
+        onSwept: (swept) => {
+          logger.warn(
+            { documentName, swept, reason: "handling_lease_swept_on_load" },
+            "handling_lease_swept",
+          );
+        },
+      });
     },
 
     // Register this connection in the cross-instance registry for the

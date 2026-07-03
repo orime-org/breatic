@@ -194,6 +194,62 @@ export function sweepDoc(
 }
 
 /**
+ * Max random delay for the load-time sweep (#1580 #9). A collab restart
+ * reloads every doc in a burst; sweeping each synchronously inside
+ * `afterLoadDocument` stampedes the process (N sweeps + N broadcast
+ * transactions in the same tick). 3s of spread is negligible against the
+ * 1h lease budget while flattening the herd.
+ */
+export const LOAD_SWEEP_JITTER_MAX_MS = 3_000;
+
+/** Options for {@link scheduleLoadSweep}. */
+export interface ScheduleLoadSweepOptions {
+  /** Doc name (used to verify the doc is still loaded when the timer fires). */
+  documentName: string;
+  /** The just-loaded canvas Y.Doc (direct reference). */
+  document: Y.Doc;
+  /** The live `hocuspocus.documents` map — sweep only if the doc is still in it. */
+  documents: Pick<Map<string, Y.Doc>, "get">;
+  /** Budget resolver (#1580 #2); defaults to the unified 1h. */
+  resolveBudget?: ResolveBudget;
+  /** Clock, injectable for tests (default `Date.now`). */
+  now?: () => number;
+  /** Uniform [0,1) source for the jitter, injectable for tests. */
+  random?: () => number;
+  /** Reports the reclaim count when > 0 (the caller logs it). */
+  onSwept?: (swept: number) => void;
+}
+
+/**
+ * Schedule a single jittered load-time sweep for a just-loaded canvas doc
+ * (#1580 #9 anti-thundering-herd). The sweep runs after a random delay in
+ * `[0, LOAD_SWEEP_JITTER_MAX_MS)`; if the doc was unloaded (or replaced)
+ * while waiting, the sweep is skipped — the next load or the periodic scan
+ * covers it. The timer is unref'd so a pending sweep never holds shutdown.
+ * @param options - See {@link ScheduleLoadSweepOptions}.
+ */
+export function scheduleLoadSweep(options: ScheduleLoadSweepOptions): void {
+  const {
+    documentName,
+    document,
+    documents,
+    resolveBudget = (): number => HANDLING_TIMEOUT_MS,
+    now = Date.now,
+    random = Math.random,
+    onSwept,
+  } = options;
+  const delay = Math.floor(random() * LOAD_SWEEP_JITTER_MAX_MS);
+  const timer = setTimeout(() => {
+    // Unloaded (or reloaded as a fresh instance) while we waited — skip;
+    // sweeping a detached doc would write into a document nobody persists.
+    if (documents.get(documentName) !== document) return;
+    const swept = sweepDoc(document, now(), resolveBudget);
+    if (swept > 0) onSwept?.(swept);
+  }, delay);
+  if (typeof timer.unref === "function") timer.unref();
+}
+
+/**
  * Build the periodic sweeper over the Hocuspocus instance's loaded docs.
  * @param options - See {@link CreateHandlingSweeperOptions}.
  * @returns a {@link HandlingSweeper}.

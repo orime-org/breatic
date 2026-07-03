@@ -18,6 +18,8 @@ vi.mock("@breatic/core", () => ({
 }));
 
 import {
+  scheduleLoadSweep,
+  LOAD_SWEEP_JITTER_MAX_MS,
   sweepDoc,
   createHandlingSweeper,
   resolveLeaseBudget,
@@ -341,6 +343,134 @@ describe("createHandlingSweeper (periodic scan over loaded docs)", () => {
       sweeper.stop();
       vi.advanceTimersByTime(5000);
       expect(spy.mock.calls.length).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// ── #1580 #9: load-sweep jitter (anti thundering herd) ───────────────────
+//
+// A collab restart reloads every doc in a burst; sweeping each one
+// synchronously inside afterLoadDocument stampedes the process (N sweeps +
+// N broadcast transactions in the same tick). The load sweep is therefore
+// deferred by a random jitter — negligible against the 1h lease budget —
+// and skipped entirely if the doc was unloaded while waiting.
+describe("scheduleLoadSweep (#1580 #9 jitter)", () => {
+  /**
+   * Build a doc with one expired handling node.
+   * @returns The doc and its data map for post-sweep assertions.
+   */
+  function docWithZombie(): { doc: Y.Doc; data: Y.Map<unknown> } {
+    const doc = new Y.Doc();
+    const nodesMap = doc.getMap<Y.Map<unknown>>("nodesMap");
+    const node = new Y.Map<unknown>();
+    const data = new Y.Map<unknown>();
+    data.set("state", "handling");
+    data.set("handlingBy", {
+      userId: "u1",
+      type: "backend",
+      startedAt: 0,
+      gen: 1,
+    });
+    node.set("data", data);
+    doc.transact(() => nodesMap.set("n1", node));
+    return { doc, data };
+  }
+
+  it("defers the sweep by the jittered delay instead of sweeping in the load tick", () => {
+    vi.useFakeTimers();
+    try {
+      const { doc, data } = docWithZombie();
+      const documents = new Map([["project-p/canvas-s", doc]]);
+      scheduleLoadSweep({
+        documentName: "project-p/canvas-s",
+        document: doc,
+        documents,
+        now: () => HANDLING_TIMEOUT_MS + 1,
+        random: () => 0.5,
+      });
+      // Not swept synchronously — the whole point of the jitter.
+      expect(data.get("state")).toBe("handling");
+      vi.advanceTimersByTime(LOAD_SWEEP_JITTER_MAX_MS);
+      expect(data.get("state")).toBe("idle");
+      expect(data.get("errorMessage")).toBe("Operation timed out");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("spreads two loads across different delays (random drives the offset)", () => {
+    vi.useFakeTimers();
+    try {
+      const a = docWithZombie();
+      const b = docWithZombie();
+      const documents = new Map([
+        ["project-p/canvas-a", a.doc],
+        ["project-p/canvas-b", b.doc],
+      ]);
+      scheduleLoadSweep({
+        documentName: "project-p/canvas-a",
+        document: a.doc,
+        documents,
+        now: () => HANDLING_TIMEOUT_MS + 1,
+        random: () => 0.1,
+      });
+      scheduleLoadSweep({
+        documentName: "project-p/canvas-b",
+        document: b.doc,
+        documents,
+        now: () => HANDLING_TIMEOUT_MS + 1,
+        random: () => 0.9,
+      });
+      // After 10% + ε of the window only doc A has swept.
+      vi.advanceTimersByTime(Math.ceil(LOAD_SWEEP_JITTER_MAX_MS * 0.1) + 1);
+      expect(a.data.get("state")).toBe("idle");
+      expect(b.data.get("state")).toBe("handling");
+      vi.advanceTimersByTime(LOAD_SWEEP_JITTER_MAX_MS);
+      expect(b.data.get("state")).toBe("idle");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips the sweep when the doc was unloaded (or replaced) while waiting", () => {
+    vi.useFakeTimers();
+    try {
+      const { doc, data } = docWithZombie();
+      const documents = new Map<string, Y.Doc>([["project-p/canvas-s", doc]]);
+      scheduleLoadSweep({
+        documentName: "project-p/canvas-s",
+        document: doc,
+        documents,
+        now: () => HANDLING_TIMEOUT_MS + 1,
+        random: () => 0.5,
+      });
+      // Unload before the jitter elapses.
+      documents.delete("project-p/canvas-s");
+      vi.advanceTimersByTime(LOAD_SWEEP_JITTER_MAX_MS + 1);
+      expect(data.get("state")).toBe("handling");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports the reclaim count through onSwept (wired to the load-sweep warn log)", () => {
+    vi.useFakeTimers();
+    try {
+      const { doc } = docWithZombie();
+      const documents = new Map([["project-p/canvas-s", doc]]);
+      const onSwept = vi.fn();
+      scheduleLoadSweep({
+        documentName: "project-p/canvas-s",
+        document: doc,
+        documents,
+        now: () => HANDLING_TIMEOUT_MS + 1,
+        random: () => 0,
+        onSwept,
+      });
+      vi.advanceTimersByTime(1);
+      expect(onSwept).toHaveBeenCalledExactlyOnceWith(1);
     } finally {
       vi.useRealTimers();
     }

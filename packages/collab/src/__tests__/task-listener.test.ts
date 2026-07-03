@@ -726,3 +726,53 @@ describe("gen fencing CAS (#1580 #7)", () => {
     expect(warnSpy).toHaveBeenCalled();
   });
 });
+
+// ── #1580 #10: crash-net duplicate write-back dedup (via #7 CAS) ─────────
+//
+// A normal (non-crash) failure produces TWO failure events for the same
+// lease: the handler's own catch write-back, then the cross-process
+// QueueEvents net re-emitting for the same job. The dedup is the #7 CAS
+// itself — the first close cleared handlingBy, so the duplicate finds no
+// live lease and is fenced. No bespoke dedup state needed.
+describe("crash-net duplicate write-back dedup (#1580 #10)", () => {
+  beforeEach(() => {
+    warnSpy.mockClear();
+    infoSpy.mockClear();
+  });
+
+  it("the second identical failure write-back is fenced after the first closed the lease", async () => {
+    const doc = buildSeededDoc(NODE_ID, {
+      state: "handling",
+      handlingBy: { userId: "u1", type: "backend", startedAt: 1, gen: 2 },
+      leaseGen: 2,
+    });
+    const { hocuspocus } = buildHocuspocus(doc);
+    const failureEvent: NodeStateUpdateEvent = {
+      type: "node-state-update",
+      docName: VALID_DOC_NAME,
+      nodeId: NODE_ID,
+      gen: 2,
+      update: {
+        state: "idle",
+        errorMessage: "Task failed: provider 500",
+        handlingBy: undefined,
+      },
+    };
+
+    // First write-back (the handler's own catch): applies.
+    await handleNodeStateUpdateEvent(hocuspocus, failureEvent);
+    const dataMap = getDataMap(doc, NODE_ID);
+    expect(dataMap.get("state")).toBe("idle");
+    expect(dataMap.has("handlingBy")).toBe(false);
+
+    // Duplicate (the QueueEvents net, any live instance): fenced no-op.
+    infoSpy.mockClear();
+    await handleNodeStateUpdateEvent(hocuspocus, failureEvent);
+    const fencedLog = (infoSpy.mock.calls as [unknown, string][]).find(
+      ([, msg]) => /fenced/i.test(msg ?? ""),
+    );
+    expect(fencedLog).toBeDefined();
+    expect(dataMap.get("state")).toBe("idle");
+    expect(dataMap.get("errorMessage")).toBe("Task failed: provider 500");
+  });
+});
