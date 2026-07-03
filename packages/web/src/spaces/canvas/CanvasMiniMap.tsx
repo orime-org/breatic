@@ -1,19 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { getNodesBounds, MiniMap, useStore } from '@xyflow/react';
+import { MiniMap } from '@xyflow/react';
 import type * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { minimapNodeColor } from '@web/spaces/canvas/minimap-node-color';
-import { minimapViewScale } from '@web/spaces/canvas/minimap-view-scale';
-
-/**
- * Screen-constant corner radius for the minimap node rects (user-ratified
- * 2026-07-03; the library's default rx=5 is in SVG units and drifted with
- * canvas zoom). Converted to SVG units per render via the view scale.
- */
-const NODE_RADIUS_PX = 2;
 
 /**
  * The canvas bird's-eye minimap (#1548) — ReactFlow's MiniMap in the
@@ -27,25 +19,14 @@ const NODE_RADIUS_PX = 2;
  *
  * Screen-constant geometry (user report 2026-07-03): the viewport-mask
  * stroke engages the library's viewScale conversion by passing an explicit
- * `maskStrokeWidth`; the node-rect radius has no such library hook, so the
- * same view scale is mirrored here (`minimapViewScale`) and baked into
- * `nodeBorderRadius` per render.
+ * `maskStrokeWidth`. Node rects are square-cornered (user-ratified: any
+ * fixed screen radius balloons proportionally on tiny rects at low zoom —
+ * a 2px radius on a 4px-tall rect is a full capsule; Figma's minimap is
+ * square-cornered too).
  * @returns The minimap panel element.
  */
 export function CanvasMiniMap(): React.JSX.Element {
   const t = useTranslation();
-  // Flow-units-per-minimap-pixel — recomputed as the store changes so the
-  // node-rect radius stays a constant NODE_RADIUS_PX on screen.
-  const viewScale = useStore((s) =>
-    minimapViewScale({
-      tx: s.transform[0],
-      ty: s.transform[1],
-      zoom: s.transform[2],
-      flowWidth: s.width,
-      flowHeight: s.height,
-      nodesBounds: s.nodeLookup.size > 0 ? getNodesBounds(s.nodes) : null,
-    }),
-  );
   return (
     <MiniMap
       position='bottom-right'
@@ -54,7 +35,7 @@ export function CanvasMiniMap(): React.JSX.Element {
       ariaLabel={t('canvas.minimap.label')}
       nodeColor={minimapNodeColor}
       nodeStrokeColor='transparent'
-      nodeBorderRadius={NODE_RADIUS_PX * viewScale}
+      nodeBorderRadius={0}
       // Explicit number engages the library's screen-constant conversion —
       // without it the stroke falls back to a static SVG-unit width and
       // visibly drifts with canvas zoom (user report).
