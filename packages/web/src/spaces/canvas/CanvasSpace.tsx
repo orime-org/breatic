@@ -66,6 +66,7 @@ import {
   fileToNodeSpec,
   fillNodeFromFile,
   runMediaUpload,
+  type UploadNodeSpec,
 } from '@web/spaces/canvas/canvas-upload';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
@@ -1317,14 +1318,22 @@ function CanvasSpaceInner({
   // a new node like the drop path). The target id is held in a ref across the
   // picker's async open; the change handler fills it.
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
-  const uploadTargetRef = React.useRef<string | null>(null);
+  const uploadTargetRef = React.useRef<{
+    nodeId: string;
+    modality: UploadNodeSpec['nodeType'];
+  } | null>(null);
   const activateNodeUpload = React.useCallback(
     (nodeId: string, modality: Modality): void => {
       if (readOnly) return;
       const accept = UPLOAD_ACCEPT[modality];
       const input = uploadInputRef.current;
       if (!accept || !input) return; // 3d / web have no picker yet
-      uploadTargetRef.current = nodeId;
+      // Only modalities present in UPLOAD_ACCEPT reach here, so the narrowing
+      // cast is safe; the modality rides along for the fill's type gate.
+      uploadTargetRef.current = {
+        nodeId,
+        modality: modality as UploadNodeSpec['nodeType'],
+      };
       input.accept = accept;
       input.value = '';
       input.click();
@@ -1345,13 +1354,17 @@ function CanvasSpaceInner({
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
-      const nodeId = uploadTargetRef.current;
+      const target = uploadTargetRef.current;
       uploadTargetRef.current = null;
-      if (!file || !nodeId) return;
-      void fillNodeFromFile(nodeId, file, projectId, {
+      if (!file || !target) return;
+      void fillNodeFromFile(target.nodeId, file, target.modality, projectId, {
         presign: assetsApi.presign,
         putFile: assetsApi.putFile,
         extractText,
+        // Type gate: the picker's accept is advisory (macOS lets audio/*
+        // select .mp4) — a file that doesn't classify to the node's modality
+        // is refused with a local toast (user bug 2026-07-03).
+        onTypeMismatch: () => toast(t('canvas.upload.typeMismatch')),
         // #1580 #7 busy gate: a node already handling refuses a second fill.
         isHandling: (id) => isNodeHandling(projectId, spaceId, id),
         onBusy: () => toast(t('canvas.upload.nodeBusy')),

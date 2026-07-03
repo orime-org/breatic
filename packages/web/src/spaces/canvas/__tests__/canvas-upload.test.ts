@@ -113,7 +113,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
   const LEASE = { gen: 1, clientId: 7, userId: 'u1' };
 
   /** Build the injected sinks + spies for a fill run. */
-  function makeDeps(over: Partial<Parameters<typeof fillNodeFromFile>[3]> = {}) {
+  function makeDeps(over: Partial<Parameters<typeof fillNodeFromFile>[4]> = {}) {
     return {
       presign: vi.fn().mockResolvedValue({
         uploadUrl: 'https://put',
@@ -125,6 +125,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       extractText: vi.fn().mockResolvedValue('extracted body'),
       isHandling: vi.fn().mockReturnValue(false),
       onBusy: vi.fn(),
+      onTypeMismatch: vi.fn(),
       setHandling: vi.fn().mockReturnValue(LEASE),
       setContent: vi.fn().mockReturnValue(true),
       setError: vi.fn().mockReturnValue(true),
@@ -137,6 +138,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     await fillNodeFromFile(
       'n1',
       new File(['x'], 'p.png', { type: 'image/png' }),
+      'image',
       'p1',
       deps,
     );
@@ -151,6 +153,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     await fillNodeFromFile(
       'n1',
       new File(['x'], 'bad.png', { type: 'image/png' }),
+      'image',
       'p1',
       deps,
     );
@@ -163,6 +166,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     await fillNodeFromFile(
       'n1',
       new File(['x'], 'doc.txt', { type: 'text/plain' }),
+      'text',
       'p1',
       deps,
     );
@@ -178,6 +182,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     await fillNodeFromFile(
       'n1',
       new File(['x'], 'weird.bin', { type: 'application/octet-stream' }),
+      'text',
       'p1',
       deps,
     );
@@ -190,6 +195,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     await fillNodeFromFile(
       'n1',
       new File(['x'], 'p.png', { type: 'image/png' }),
+      'image',
       'p1',
       deps,
     );
@@ -205,11 +211,54 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     await fillNodeFromFile(
       'ghost',
       new File(['x'], 'p.png', { type: 'image/png' }),
+      'image',
       'p1',
       deps,
     );
     expect(deps.presign).not.toHaveBeenCalled();
     expect(deps.setContent).not.toHaveBeenCalled();
     expect(deps.setError).not.toHaveBeenCalled();
+  });
+
+  it('type gate: an mp4 VIDEO picked into an AUDIO node is refused - nothing runs (user bug 2026-07-03: macOS lets audio/* pickers select .mp4)', async () => {
+    const deps = makeDeps();
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'clip.mp4', { type: 'video/mp4' }),
+      'audio',
+      'p1',
+      deps,
+    );
+    expect(deps.onTypeMismatch).toHaveBeenCalledExactlyOnceWith('n1');
+    expect(deps.setHandling).not.toHaveBeenCalled();
+    expect(deps.presign).not.toHaveBeenCalled();
+    expect(deps.setContent).not.toHaveBeenCalled();
+    expect(deps.setError).not.toHaveBeenCalled();
+  });
+
+  it('type gate: an audio-only mp4 container (audio/mp4, .m4a) into an AUDIO node is ACCEPTED', async () => {
+    const deps = makeDeps();
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'song.m4a', { type: 'audio/mp4' }),
+      'audio',
+      'p1',
+      deps,
+    );
+    expect(deps.onTypeMismatch).not.toHaveBeenCalled();
+    expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
+  });
+
+  it('type gate: an image into a TEXT node is refused (the gate is generic, not audio-specific)', async () => {
+    const deps = makeDeps();
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'p.png', { type: 'image/png' }),
+      'text',
+      'p1',
+      deps,
+    );
+    expect(deps.onTypeMismatch).toHaveBeenCalledExactlyOnceWith('n1');
+    expect(deps.setHandling).not.toHaveBeenCalled();
   });
 });
