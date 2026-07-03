@@ -19,7 +19,7 @@ import { runLocalHandler } from "@worker/handlers/local/index.js";
 import { getModel } from "@breatic/domain";
 import { buildToolSet } from "@breatic/domain";
 import { getSkillRegistry } from "@breatic/domain";
-import { getStreamRedis } from "@breatic/core";
+import { getStreamRedis, getWorkerConfig } from "@breatic/core";
 import { downloadAndStore, getStorageAdapter, storageKey } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { creditService } from "@breatic/domain";
@@ -131,6 +131,41 @@ export function isTerminalAttempt(
 }
 
 /**
+ * Zombie fence for the billing critical section (#1580 adversarial
+ * residual: BullMQ double-live). A worker whose event loop stalled past
+ * `lockDuration` is judged dead — the job is re-queued (or terminally
+ * failed, with the crash net reclaiming the node) — but the stalled
+ * handler itself may REVIVE and keep running. It must never touch money:
+ * its write-backs are gen-fenced anyway, so billing would charge the user
+ * for a result that can never land.
+ *
+ * BullMQ's per-attempt job lock IS the fencing token: `job.extendLock`
+ * atomically re-asserts ownership (Lua: lock value === token → renew for
+ * `durationMs` + remove from the stalled set → 1; anything else → 0,
+ * source-verified in bullmq 5.30). A 1 therefore guarantees exclusive
+ * ownership for the next `durationMs` — ample for the milliseconds of
+ * bill + publish that follow; the existing `billed_at` CAS still backstops
+ * double-charges. Transport errors propagate (the BullMQ retry chain owns
+ * infra failures — a fence that cannot be evaluated must not silently
+ * pass OR silently abort a healthy attempt).
+ * @param job - The BullMQ job (its `extendLock` re-asserts the lock).
+ * @param token - This attempt's lock token (2nd Processor argument). A
+ *   real Worker always passes it; token-less direct invocations happen
+ *   only outside the queue, where no stall judge (and thus no zombie)
+ *   exists — the fence is skipped.
+ * @param durationMs - Lock extension window (the configured lockDuration).
+ * @returns true when this execution still exclusively owns the job.
+ */
+export async function verifyJobLockOwnership(
+  job: Pick<Job<TaskJobData>, "extendLock">,
+  token: string | undefined,
+  durationMs: number,
+): Promise<boolean> {
+  if (token === undefined) return true;
+  return (await job.extendLock(token, durationMs)) === 1;
+}
+
+/**
  * Publish the failure write-back for every target node, isolating each
  * publish (#1580 adversarial fix: a stream hiccup on node K must not skip
  * nodes K+1..N, and must never escape into BullMQ's retry machinery for a
@@ -220,9 +255,14 @@ function resolveCanvasDocName(
  * (Worker crash → finally block del lock; if that also fails, the TTL is
  * the safety net).
  * @param job - BullMQ job carrying the TaskJobData payload to execute
+ * @param token - This attempt's lock token (2nd Processor argument);
+ *   threaded to the zombie fence before the billing critical section
  * @returns The result dict on success, or a failure status marker (e.g. `{ failed: true, reason }`)
  */
-export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unknown>> {
+export async function runTask(
+  job: Job<TaskJobData>,
+  token?: string,
+): Promise<Record<string, unknown>> {
   const { taskId, projectId, targetNodeIds, mode } = job.data;
   const lockTargetNodeId =
     mode === "overwrite" &&
@@ -233,7 +273,7 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
       : null;
 
   try {
-    return await runTaskBody(job, lockTargetNodeId);
+    return await runTaskBody(job, lockTargetNodeId, token);
   } finally {
     if (lockTargetNodeId && projectId) {
       try {
@@ -257,11 +297,13 @@ export async function runTask(job: Job<TaskJobData>): Promise<Record<string, unk
  * @param job - BullMQ job carrying the TaskJobData payload to execute
  * @param lockTargetNodeId - Non-null when this task holds an overwrite lock
  *   and should verify ownership before publishing the success event.
+ * @param token - This attempt's BullMQ lock token, for the zombie fence.
  * @returns The result dict on success, or a failure status marker (e.g. `{ failed: true, reason }`)
  */
 async function runTaskBody(
   job: Job<TaskJobData>,
   lockTargetNodeId: string | null,
+  token?: string,
 ): Promise<Record<string, unknown>> {
   const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds, nodeGens } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
@@ -500,6 +542,24 @@ async function runTaskBody(
   };
 
   const durationMs = Math.round(performance.now() - startTime);
+
+  // #1580 zombie fence: prove we still exclusively own this job BEFORE
+  // touching money. A revived stalled handler reads 0 here (BullMQ already
+  // re-queued or failed the job; the crash net may have reclaimed the
+  // node) and must abort silently — writing ANYTHING (markFailed included)
+  // could clobber the state of the live re-queued attempt.
+  const stillOwner = await verifyJobLockOwnership(
+    job,
+    token,
+    getWorkerConfig().lock_duration_ms,
+  );
+  if (!stillOwner) {
+    logger.error(
+      { taskId, jobId: job.id },
+      "job_lock_lost_zombie_execution_aborting_before_billing",
+    );
+    return { failed: true, reason: "job_lock_lost_zombie" };
+  }
 
   // ─── Stage 3: Mark completed + charge (atomic via CAS) ────────────
   // markCompletedAndBill uses a WHERE billed_at IS NULL clause so only

@@ -54,7 +54,7 @@ vi.mock("ai", () => ({
   stepCountIs: vi.fn(),
 }));
 
-import { isTerminalAttempt } from "../handlers/dispatch.js";
+import { isTerminalAttempt, verifyJobLockOwnership } from "../handlers/dispatch.js";
 
 describe("isTerminalAttempt (#1580 adversarial: retryable close self-fences the retry)", () => {
   it("attempt 1 of 3 is NOT terminal — no lease close may be emitted", () => {
@@ -84,5 +84,48 @@ describe("isTerminalAttempt (#1580 adversarial: retryable close self-fences the 
     // close would strand nodes until the sweeper; emitting a possibly-early
     // close is the safer failure mode (the QueueEvents net + CAS dedup it).
     expect(isTerminalAttempt({ opts: { attempts: 3 } } as never)).toBe(true);
+  });
+});
+
+describe("verifyJobLockOwnership (#1580 adversarial residual: zombie double-live)", () => {
+  it("returns true when extendLock returns 1 (we still hold the job lock)", async () => {
+    const job = {
+      id: "j1",
+      extendLock: vi.fn().mockResolvedValue(1),
+    };
+    await expect(
+      verifyJobLockOwnership(job as never, "token-a", 600_000),
+    ).resolves.toBe(true);
+    expect(job.extendLock).toHaveBeenCalledExactlyOnceWith("token-a", 600_000);
+  });
+
+  it("returns false when extendLock returns 0 — the lock was reclaimed, we are a zombie", async () => {
+    // A zombie (event-loop stall past lockDuration, then revived) must not
+    // touch money: BullMQ already judged this execution dead (job re-queued
+    // or terminally failed; the crash net may have reclaimed the node).
+    const job = { id: "j1", extendLock: vi.fn().mockResolvedValue(0) };
+    await expect(
+      verifyJobLockOwnership(job as never, "token-a", 600_000),
+    ).resolves.toBe(false);
+  });
+
+  it("skips the fence (true) when no token exists — non-Worker direct invocation only", async () => {
+    // A real BullMQ Worker ALWAYS passes the token; token-less calls only
+    // happen outside the queue (no stall judge exists there, so no zombie).
+    const job = { id: "j1", extendLock: vi.fn() };
+    await expect(
+      verifyJobLockOwnership(job as never, undefined, 600_000),
+    ).resolves.toBe(true);
+    expect(job.extendLock).not.toHaveBeenCalled();
+  });
+
+  it("propagates an extendLock transport error (BullMQ retry chain owns it)", async () => {
+    const job = {
+      id: "j1",
+      extendLock: vi.fn().mockRejectedValue(new Error("redis gone")),
+    };
+    await expect(
+      verifyJobLockOwnership(job as never, "token-a", 600_000),
+    ).rejects.toThrow(/redis gone/);
   });
 });
