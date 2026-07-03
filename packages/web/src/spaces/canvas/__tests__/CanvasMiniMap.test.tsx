@@ -36,18 +36,18 @@ describe('CanvasMiniMap (#1548)', () => {
     expect(svg).not.toHaveAccessibleName('Mini Map');
   });
 
-  it('sits bottom-right with the zoom-popover gap (toolbar top edge 58px + sideOffset-8 twin = 66px margin)', () => {
+  it('bottom edge aligns with the zoom popover (Radix anchors sideOffset-8 to the TRIGGER top at 53px, not the toolbar top - measured 61px)', () => {
     setup();
     const panel = screen.getByTestId('rf__minimap');
     expect(panel.className).toContain('bottom');
     expect(panel.className).toContain('right');
-    expect(panel.className).toContain('mb-[66px]');
+    expect(panel.className).toContain('mb-[61px]');
   });
 
   it('paints the floating-overlay surface with the overlay radius (zoom-popover twin, user-ratified)', () => {
     setup();
     const panel = screen.getByTestId('rf__minimap');
-    for (const cls of ['border-border', 'shadow', 'rounded-overlay']) {
+    for (const cls of ['border-border', 'shadow', 'rounded-overlay', 'overflow-hidden']) {
       expect(panel.className).toContain(cls);
     }
     expect(panel.className).not.toContain('rounded-md');

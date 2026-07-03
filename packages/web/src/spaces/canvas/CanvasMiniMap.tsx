@@ -64,12 +64,14 @@ export function CanvasMiniMap(): React.JSX.Element {
       bgColor='var(--color-popover)'
       maskColor='color-mix(in srgb, var(--color-canvas) 65%, transparent)'
       maskStrokeColor='var(--color-active-border)'
-      // The className lands on the outer Panel div (source-verified): the
-      // 66px bottom margin makes the gap to the toolbar match the zoom
-      // popover's sideOffset (8px above the toolbar's 58px top edge), and
-      // the radius is the shared overlay step — the map reads as the
-      // popover's sibling, deliberately distinct from the 12px toolbar.
-      className='!m-0 !mr-4 !mb-[66px] rounded-overlay border border-border shadow'
+      // The className lands on the outer Panel div (source-verified). The
+      // 61px bottom margin puts the map's bottom edge exactly where the zoom
+      // popover's sits (Radix anchors sideOffset-8 to the TRIGGER button top
+      // at 53px, not the toolbar top — same-frame measurement 2026-07-03).
+      // overflow-hidden clips the right-angled inner SVG to the rounded
+      // frame (without it the corners read square — the "radius mismatch"
+      // the user saw; radius + shadow are byte-identical to the popover's).
+      className='!m-0 !mr-4 !mb-[61px] overflow-hidden rounded-overlay border border-border shadow'
     />
   );
 }
