@@ -1260,10 +1260,10 @@
   "menu": {
     "createAria": "创建菜单",
     "item": {
-      "nodes": "节点库 — 4 类生成节点",
-      "upload": "上传素材(多文件混合)",
+      "nodes": "节点库",
+      "upload": "上传素材",
       "comment": "在画布加批注",
-      "collection": "Collection — 跨 Projects 共享素材(敬请期待)",
+      "collection": "Collection(敬请期待)",
       "help": "帮助(敬请期待)",
       "feedback": "反馈 / 客服(敬请期待)"
     },

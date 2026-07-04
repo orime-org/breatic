@@ -1260,10 +1260,10 @@
   "menu": {
     "createAria": "作成メニュー",
     "item": {
-      "nodes": "ノードライブラリ — 4 種類の生成ノード",
-      "upload": "素材をアップロード(混在ファイル可)",
+      "nodes": "ノードライブラリ",
+      "upload": "素材をアップロード",
       "comment": "キャンバスに注釈を追加",
-      "collection": "Collection — Projects 横断共有(近日対応)",
+      "collection": "Collection(近日対応)",
       "help": "ヘルプ(近日対応)",
       "feedback": "フィードバック / サポート(近日対応)"
     },
