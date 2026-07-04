@@ -20,12 +20,14 @@ interface TextNodeProps {
 /**
  * Editing-only body classes: `nowheel` (the wheel scrolls the text you are
  * editing, not the canvas) + `nodrag` (a pointer press selects text instead of
- * dragging the node) + `overflow-y-auto` with a slim custom scrollbar. The
+ * dragging the node) + `cursor-text` (contenteditable has no UA cursor of its
+ * own and would inherit the ReactFlow node wrapper's grab hand — user bug
+ * 2026-07-04) + `overflow-y-auto` with a slim custom scrollbar. The
  * display state has NONE of these — it clips (overflow-hidden) with a fade hint
  * and leaves the wheel to ReactFlow so it zooms the canvas (#1470 / #1479).
  */
 const EDIT_BODY_CLASS =
-  'nowheel nodrag overflow-y-auto focus:bg-accent/30 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent';
+  'nowheel nodrag cursor-text overflow-y-auto focus:bg-accent/30 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent';
 
 /**
  * Text node — modality body that supports inline contenteditable

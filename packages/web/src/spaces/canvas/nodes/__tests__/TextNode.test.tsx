@@ -202,4 +202,15 @@ describe('TextNode', () => {
     expect(body.className).toContain('min-h-48');
     expect(body.className).not.toContain('min-h-[3rem]');
   });
+
+  it('editing body shows the text cursor, not the inherited grab hand (user bug 2026-07-04)', async () => {
+    const user = userEvent.setup();
+    render(<TextNode data={{ kind: 'text', status: 'idle', content: 'hello' }} />);
+    const body = screen.getByTestId('text-node-body');
+    await user.dblClick(body);
+    // contenteditable has NO UA cursor of its own - it inherits the ReactFlow
+    // node wrapper's grab hand unless the editing class declares cursor-text.
+    expect(body.getAttribute('contenteditable')).toBe('true');
+    expect(body.className).toContain('cursor-text');
+  });
 });

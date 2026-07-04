@@ -1260,10 +1260,10 @@
   "menu": {
     "createAria": "建立選單",
     "item": {
-      "nodes": "節點庫 — 4 類生成節點",
+      "nodes": "節點庫",
       "upload": "上傳素材(多檔案混合)",
       "comment": "在畫布加註解",
-      "collection": "Collection — 跨 Projects 共享素材(敬請期待)",
+      "collection": "Collection(敬請期待)",
       "help": "說明(敬請期待)",
       "feedback": "意見回饋 / 客服(敬請期待)"
     },
