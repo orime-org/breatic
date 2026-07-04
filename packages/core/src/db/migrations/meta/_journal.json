@@ -246,6 +246,13 @@
       "when": 1780900000000,
       "tag": "0034_project_activities",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1780900100000,
+      "tag": "0035_studio_assets",
+      "breakpoints": true
     }
   ]
 }

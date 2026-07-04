@@ -33,6 +33,10 @@ export * as taskRepo from "@domain/task/task.repo.js";
 export * as nodeHistoryService from "@domain/node-history/node-history.service.js";
 export * as nodeHistoryRepo from "@domain/node-history/node-history.repo.js";
 
+// ── Asset (physical asset registry: within-studio dedup + attribution + usage) ──
+export * as assetService from "@domain/asset/asset.service.js";
+export * as assetRepo from "@domain/asset/asset.repo.js";
+
 // ── Agent (AIGC execution kernel: model / tools / skill loading / prompt extraction) ──
 export { getModel, resolveProvider } from "@domain/agent/llm.js";
 export { buildToolSet, DEFAULT_TOOLS } from "@domain/agent/tools/index.js";

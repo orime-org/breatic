@@ -20,6 +20,7 @@ export type {
   ToolCallInfo,
   TaskEntity,
   NodeHistoryEntity,
+  StudioAssetEntity,
   ConversationAttachmentEntity,
   AssetKind,
   PaymentEntity,

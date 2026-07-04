@@ -17,6 +17,7 @@ import {
   boolean,
   doublePrecision,
   integer,
+  bigint,
   timestamp,
   jsonb,
   uniqueIndex,
@@ -1043,5 +1044,71 @@ export const projectActivities = pgTable(
     // The task_id partial UNIQUE lives in migration 0034 (Drizzle's
     // builder does not emit partial unique indexes - same note as
     // project_invitations).
+  ],
+);
+
+// ── Studio assets ────────────────────────────────────────────────────
+//
+// Physical asset registry (spec 2026-07-04-asset-layer-v1). One row per
+// unique stored object PER STUDIO: the same bytes uploaded twice inside
+// one studio dedup to one row (within-studio dedup); across studios they
+// are independent rows (each studio owns its own physical copy). The
+// content hash is a DEDUP COLUMN ONLY - it never enters the storage key
+// or URL (those stay random + unguessable; a content-hash URL would be a
+// content-existence oracle). Registration happens off the canvas hot
+// path (server /assets/uploaded handshake + worker generation Stage 4),
+// never on Yjs node edits.
+//
+// V1 has no delete flow (assets accumulate); `deleted_at` is reserved
+// for a future GDPR / studio-deletion cascade. It does NOT cascade with
+// deleteProject (studio-scoped, not project-scoped).
+
+export const studioAssets = pgTable(
+  "studio_assets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** Owner studio (storage usage + dedup scope). */
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    /** sha256 hex of the content - the dedup key (never in the URL). */
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    /** Random storage key (unchanged format; NOT the hash). */
+    storageKey: text("storage_key").notNull(),
+    /** Public URL (adapter.publicUrl(key)) - the value embedded in Yjs. */
+    fileUrl: text("file_url").notNull(),
+    /** Cached byte size; source of truth is the storage layer head(). */
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    mimeType: varchar("mime_type", { length: 100 }).notNull(),
+    /** image | video | audio | document | file (detectKind). */
+    kind: varchar("kind", { length: 20 }).notNull(),
+    /** 'ai' (worker-generated) | 'upload' (user upload). */
+    source: varchar("source", { length: 20 }).notNull(),
+    /**
+     * The generation task that produced an AI asset - links to cost via
+     * tasks.billed_credits + credit_transactions.reference_id. Null for
+     * uploads (user-supplied, no generation cost).
+     */
+    generationTaskId: uuid("generation_task_id").references(() => tasks.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    // Reserved for future GDPR / studio-deletion cascade; no V1 flow
+    // writes it (assets are non-deletable in V1). No updated_at: a row is
+    // immutable once created (content_hash defines it).
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    // Usage sum + management listing scoped to one studio (partial on
+    // live rows).
+    index("studio_assets_studio_idx")
+      .on(table.studioId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    // The (studio_id, content_hash) partial UNIQUE (within-studio dedup
+    // key, WHERE deleted_at IS NULL) lives in the migration - Drizzle's
+    // builder does not emit partial unique indexes (same note as
+    // project_activities / project_invitations).
   ],
 );
