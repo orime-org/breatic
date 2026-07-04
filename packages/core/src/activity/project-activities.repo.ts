@@ -134,14 +134,64 @@ export const projectActivitiesRepo = {
   },
 
   /**
-   * Append a generation activity row idempotently: a redelivered
-   * billed job re-runs worker Stage 4, and the partial UNIQUE on
-   * task_id turns the duplicate insert into a no-op.
-   * @param activity - The new generation row; `taskId` must be set.
-   * @returns The inserted row's id, or `null` when the task already has a row.
+   * Record a SUCCEEDED generation, authoritatively. Success is the
+   * terminal truth for a task (it billed + produced output), so it
+   * always wins the one-row-per-task slot: if a premature / crash-net
+   * `generation:failed` row already exists for this taskId, this
+   * OVERWRITES it to `generation:succeeded` (keeping the row id +
+   * created_at so feed ordering is stable); an existing succeeded row
+   * is idempotently refreshed. This closes the "wrong-outcome sticks"
+   * window that a bare first-write-wins insert leaves open when a
+   * retryable attempt writes failed before the winning attempt succeeds.
+   * @param activity - The generation row; `taskId` must be set, `type`
+   *   must be `generation:succeeded`.
+   * @returns The row id (inserted or overwritten).
    */
-  async insertIgnoreDuplicateTask(
-    activity: NewProjectActivity & { taskId: string },
+  async upsertGenerationSucceeded(
+    activity: NewProjectActivity & { taskId: string; type: "generation:succeeded" },
+  ): Promise<string> {
+    const rows = await db
+      .insert(projectActivities)
+      .values({
+        projectId: activity.projectId,
+        actorUserId: activity.actorUserId,
+        type: activity.type,
+        spaceId: activity.spaceId ?? null,
+        nodeId: activity.nodeId ?? null,
+        taskId: activity.taskId,
+        payload: activity.payload,
+      })
+      .onConflictDoUpdate({
+        target: projectActivities.taskId,
+        targetWhere: sql`task_id IS NOT NULL`,
+        set: {
+          type: "generation:succeeded",
+          actorUserId: activity.actorUserId,
+          spaceId: activity.spaceId ?? null,
+          nodeId: activity.nodeId ?? null,
+          payload: activity.payload,
+        },
+      })
+      .returning({ id: projectActivities.id });
+    const row = rows[0];
+    if (!row) throw new Error("generation success upsert returned no row");
+    return row.id;
+  },
+
+  /**
+   * Record a FAILED generation, non-destructively. Failure is NOT
+   * authoritative — a later attempt may still succeed — so it only
+   * lands when the task has no row yet: `ON CONFLICT DO NOTHING` never
+   * overwrites an existing `generation:succeeded` (or an earlier
+   * failed) row. Used by the in-handler terminal-failure paths AND the
+   * cross-instance crash-net (which every live worker runs per failed
+   * job — the conflict makes the redundant writes no-ops).
+   * @param activity - The generation row; `taskId` must be set, `type`
+   *   must be `generation:failed`.
+   * @returns The inserted row's id, or `null` when a row already exists.
+   */
+  async insertGenerationFailedIfAbsent(
+    activity: NewProjectActivity & { taskId: string; type: "generation:failed" },
   ): Promise<string | null> {
     const rows = await db
       .insert(projectActivities)

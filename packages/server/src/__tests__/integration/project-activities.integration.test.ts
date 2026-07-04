@@ -114,19 +114,21 @@ async function loginCookie(userId: string): Promise<string> {
 }
 
 describe("generation idempotency (billed-redelivery guard)", () => {
-  it("two insertIgnoreDuplicateTask calls with one taskId leave ONE row", async () => {
+  it("two success upserts with one taskId leave ONE row", async () => {
     const { userId } = await insertUserWithStudio("Gen Author");
     const projectId = await insertProject(userId);
     const taskId = crypto.randomUUID();
 
-    const first = await projectActivitiesRepo.insertIgnoreDuplicateTask({
+    // A billed redelivery re-asserts success — the upsert refreshes the
+    // single row rather than duplicating it.
+    await projectActivitiesRepo.upsertGenerationSucceeded({
       projectId,
       actorUserId: userId,
       type: "generation:succeeded",
       taskId,
       payload: { source: "task", executedOn: "backend" },
     });
-    const second = await projectActivitiesRepo.insertIgnoreDuplicateTask({
+    await projectActivitiesRepo.upsertGenerationSucceeded({
       projectId,
       actorUserId: userId,
       type: "generation:succeeded",
@@ -134,12 +136,71 @@ describe("generation idempotency (billed-redelivery guard)", () => {
       payload: { source: "task", executedOn: "backend" },
     });
 
-    expect(first).not.toBeNull();
-    expect(second).toBeNull();
     const rows = await sql<{ n: number }[]>`
       SELECT count(*)::int AS n FROM project_activities WHERE task_id = ${taskId}
     `;
     expect(rows[0]!.n).toBe(1);
+  });
+});
+
+describe("generation outcome authority (success wins, failure never overwrites)", () => {
+  it("a later success OVERWRITES a premature/crash-net failed row (same task, one row, succeeded)", async () => {
+    const { userId } = await insertUserWithStudio("Outcome A");
+    const projectId = await insertProject(userId);
+    const taskId = crypto.randomUUID();
+
+    // Premature failure lands first (e.g. crash-net on a stall that
+    // later resumed and succeeded).
+    await projectActivitiesRepo.insertGenerationFailedIfAbsent({
+      projectId,
+      actorUserId: userId,
+      type: "generation:failed",
+      taskId,
+      payload: { source: "task", executedOn: "backend", errorMessage: "stalled" },
+    });
+    // The winning attempt asserts success.
+    await projectActivitiesRepo.upsertGenerationSucceeded({
+      projectId,
+      actorUserId: userId,
+      type: "generation:succeeded",
+      taskId,
+      payload: { source: "task", executedOn: "backend", outputCount: 1 },
+    });
+
+    const rows = await sql<{ type: string }[]>`
+      SELECT type FROM project_activities WHERE task_id = ${taskId}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.type).toBe("generation:succeeded");
+  });
+
+  it("a crash-net failure does NOT overwrite an existing success (feed stays succeeded)", async () => {
+    const { userId } = await insertUserWithStudio("Outcome B");
+    const projectId = await insertProject(userId);
+    const taskId = crypto.randomUUID();
+
+    await projectActivitiesRepo.upsertGenerationSucceeded({
+      projectId,
+      actorUserId: userId,
+      type: "generation:succeeded",
+      taskId,
+      payload: { source: "task", executedOn: "backend", outputCount: 1 },
+    });
+    // A late crash-net failure for the same task must be a no-op.
+    const inserted = await projectActivitiesRepo.insertGenerationFailedIfAbsent({
+      projectId,
+      actorUserId: userId,
+      type: "generation:failed",
+      taskId,
+      payload: { source: "task", executedOn: "backend", errorMessage: "late net" },
+    });
+    expect(inserted).toBeNull();
+
+    const rows = await sql<{ type: string }[]>`
+      SELECT type FROM project_activities WHERE task_id = ${taskId}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.type).toBe("generation:succeeded");
   });
 });
 

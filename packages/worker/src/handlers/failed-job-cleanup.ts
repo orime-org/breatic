@@ -83,11 +83,14 @@ export async function cleanupFailedJobNodes(
   if (!projectId) return 0;
   // Crash-net activity row: the worker that died never reached its
   // in-handler failure path, so the feed would silently lose the
-  // outcome. Idempotent on taskId - when the in-handler path DID run
-  // (plain terminal failure, every live instance also receives this
-  // broadcast), the partial UNIQUE turns this into a no-op.
+  // outcome. FAILURE is non-authoritative — insert-if-absent NEVER
+  // overwrites a generation:succeeded row (a task that billed + produced
+  // output but crashed before its Stage-4 activity write is corrected to
+  // succeeded on redelivery, and this crash-net row must not clobber
+  // that). Every live instance runs this per failed job; the conflict
+  // makes the redundant writes no-ops.
   try {
-    const inserted = await projectActivitiesRepo.insertIgnoreDuplicateTask({
+    const inserted = await projectActivitiesRepo.insertGenerationFailedIfAbsent({
       projectId,
       actorUserId: job.data.userId,
       type: "generation:failed",
