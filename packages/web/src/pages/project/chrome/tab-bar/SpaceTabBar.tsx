@@ -10,7 +10,8 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 
-import type { ProjectMessageEntry, ProjectRole } from '@breatic/shared';
+import type { ProjectRole } from '@breatic/shared';
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { Button } from '@web/components/ui/button';
 import {
   Tooltip,
@@ -46,23 +47,16 @@ interface SpaceTabBarProps {
   /** Open the read-only preview sheet for a Space (drawer "view" action). */
   onViewSpace: (id: string) => void;
   /**
-   * Project-wide message channel (missing nodes + Space lifecycle).
-   * Defaults to empty when the parent hasn't wired it yet.
+   * Live meta-doc provider — ProjectMessagesButton listens for the
+   * `activity:new` stateless signal on it (ADR 2026-07-04
+   * project-activity-feed; feed data itself arrives via REST).
    */
-  projectMessages?: ReadonlyArray<ProjectMessageEntry>;
-  /**
-   * Live user lookup (`useProjectMeta().users`). ProjectMessagesButton
-   * renders display names by reading `usersById[m.actor]`. Q11 v2
-   * replaced snapshot strings with pointers so username rename
-   * retroactively updates every old message.
-   */
-  usersById?: ReadonlyMap<string, { name: string }>;
+  metaProvider?: Pick<HocuspocusProvider, 'on' | 'off'> | null;
   /** Caller's role on the project - drives owner-only message actions. */
   currentUserRole?: ProjectRole;
   /** Owner-only: restore a soft-deleted Space via collab `space:restore` RPC. */
   onRestoreSpace?: (spaceId: string) => Promise<void> | void;
-  /** Owner-only: clear all entries in `meta.projectMessages`. */
-  onClearMessages?: () => Promise<void> | void;
+
   /** Soft-delete a Space (drawer row × button). RPC handler from ProjectPage. */
   onDeleteSpace?: (spaceId: string) => Promise<void> | void;
   /** Toggle Space lock (drawer row 🔒 button). RPC handler from ProjectPage. */
@@ -85,7 +79,6 @@ interface SpaceTabBarProps {
  * Scroll arrows hide when content doesn't overflow + show disabled
  * state at boundaries (industry standard pattern per mock v4.27/v4.29).
  */
-const EMPTY_USERS_MAP: ReadonlyMap<string, { name: string }> = new Map();
 
 /**
  * The 40px space tab bar: agent-column toggle, scrollable open-tab strip
@@ -101,11 +94,9 @@ const EMPTY_USERS_MAP: ReadonlyMap<string, { name: string }> = new Map();
  * @param root0.onCreate - Creates a new space of the given type and name.
  * @param root0.onClose - Closes a tab (removes it from the bar without deleting the space).
  * @param root0.onViewSpace - Opens the read-only preview sheet for a space (drawer "view" action).
- * @param root0.projectMessages - Project-wide message channel entries; defaults to empty.
- * @param root0.usersById - Live user lookup used to render message-channel actor display names.
+ * @param root0.metaProvider - Live meta-doc provider carrying the activity:new signal.
  * @param root0.currentUserRole - Caller's role on the project, driving owner-only message actions.
  * @param root0.onRestoreSpace - Owner-only handler to restore a soft-deleted space.
- * @param root0.onClearMessages - Owner-only handler to clear all project message entries.
  * @param root0.onDeleteSpace - Handler to soft-delete a space (drawer row delete button).
  * @param root0.onSetSpaceLocked - Handler to toggle a space's lock (drawer row lock button).
  * @param root0.onRenameSpace - Handler to rename a space inline from the tab strip.
@@ -121,11 +112,9 @@ export function SpaceTabBar({
   onCreate,
   onClose,
   onViewSpace,
-  projectMessages = [],
-  usersById,
+  metaProvider,
   currentUserRole,
   onRestoreSpace,
-  onClearMessages,
   onDeleteSpace,
   onSetSpaceLocked,
   onRenameSpace,
@@ -135,16 +124,6 @@ export function SpaceTabBar({
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
   const agentOpen = !collapsed;
   const scrollerRef = React.useRef<HTMLDivElement>(null);
-
-  // Q11 v2 - ProjectMessagesButton renders display names via O(1) Map
-  // lookup against the live `meta.spaces` Y.Map. Build the lookup
-  // here from the array `allSpaces` (already supplied for the drawer)
-  // so the bell needn't iterate the array per message at render time.
-  const spacesById = React.useMemo(() => {
-    const m = new Map<string, { name: string }>();
-    for (const s of allSpaces) m.set(s.id, { name: s.name });
-    return m;
-  }, [allSpaces]);
 
   // Track scroll overflow + boundaries to drive the smart-hide/disabled
   // states for the left / right scroll arrows (mock v4.27 / v4.29).
@@ -456,12 +435,10 @@ export function SpaceTabBar({
           onSetSpaceLocked={onSetSpaceLocked}
         />
         <ProjectMessagesButton
-          messages={projectMessages}
-          usersById={usersById ?? EMPTY_USERS_MAP}
-          spacesById={spacesById}
+          projectId={projectId}
+          provider={metaProvider}
           currentUserRole={currentUserRole}
           onRestore={onRestoreSpace}
-          onClearAll={onClearMessages}
         />
       </div>
     </div>

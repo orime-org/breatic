@@ -29,7 +29,6 @@
  *   - `space:delete`        - caller role ≥ editor
  *   - `space:lock` / unlock - caller role ≥ editor
  *   - `space:restore`       - caller role = owner
- *   - `messages:clear`      - caller role = owner
  */
 import { z } from "zod";
 
@@ -104,31 +103,6 @@ export const SpaceRestorePayloadSchema = z.object({
 });
 export type SpaceRestorePayload = z.infer<typeof SpaceRestorePayloadSchema>;
 
-/**
- * Owner-only clear of `meta.projectMessages` entries.
- *
- * - `ids` clears specific entries by id
- * - `olderThanMs` clears entries with `createdAt < olderThanMs`
- * - `all` clears the whole array
- *
- * Exactly one of the three must be set (Zod refine below).
- */
-export const MessagesClearPayloadSchema = z
-  .object({
-    ids: z.array(z.string()).optional(),
-    olderThanMs: z.number().int().nonnegative().optional(),
-    all: z.literal(true).optional(),
-  })
-  .refine(
-    (v) =>
-      [v.ids !== undefined, v.olderThanMs !== undefined, v.all !== undefined]
-        .filter(Boolean).length === 1,
-    {
-      message: "Exactly one of ids / olderThanMs / all must be set",
-    },
-  );
-export type MessagesClearPayload = z.infer<typeof MessagesClearPayloadSchema>;
-
 // ── Request envelope (tagged union) ─────────────────────────────────
 
 export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
@@ -156,11 +130,6 @@ export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
     id: RpcIdSchema,
     type: z.literal("space:restore"),
     payload: SpaceRestorePayloadSchema,
-  }),
-  z.object({
-    id: RpcIdSchema,
-    type: z.literal("messages:clear"),
-    payload: MessagesClearPayloadSchema,
   }),
 ]);
 export type SpaceRpcRequest = z.infer<typeof SpaceRpcRequestSchema>;
@@ -191,79 +160,3 @@ export const SpaceRpcResponseSchema = z.discriminatedUnion("ok", [
 ]);
 export type SpaceRpcResponse = z.infer<typeof SpaceRpcResponseSchema>;
 
-// ── projectMessages entry schema ────────────────────────────────────
-
-/**
- * Single entry in `meta.projectMessages` Y.Array. Per ADR
- * 2026-05-23-project-messages-channel kind enum.
- */
-export const ProjectMessageKindSchema = z.enum([
-  "missing-node",
-  "space-created",
-  "space-deleted",
-  "space-locked",
-  "space-unlocked",
-  "space-restored",
-  "space-renamed",
-]);
-export type ProjectMessageKind = z.infer<typeof ProjectMessageKindSchema>;
-
-export const ProjectMessageEntrySchema = z.object({
-  id: z.string(),
-  kind: ProjectMessageKindSchema,
-  /**
-   * Q11 v2 - userId (UUID) of the user who triggered this event.
-   * Optional because system-emitted entries (e.g. `missing-node`) have
-   * no human actor. Frontend renders the display name via
-   * `meta.users[actor].name` so a later rename retroactively reflects.
-   */
-  actor: z.string().optional(),
-  /**
-   * Q11 v2.1 - pointer into `meta.spaces` for ownership/lookup of
-   * non-name metadata (e.g. type for kind icons). The Space's
-   * displayed NAME, however, is captured as a snapshot below
-   * (`spaceName`) so each entry records the name at the moment the
-   * event happened - rename is its own audit event(`space-renamed`
-   * kind), the existing entries stay frozen as historical truth.
-   * Live-lookup of name was tried in v2 but conflicts with the
-   * "events log" semantics.
-   */
-  spaceId: z.string().optional(),
-  /**
-   * Snapshot of Space name at event time. For `space-deleted` the
-   * spaceId has left `meta.spaces` so this is the only place left
-   * to read from; for active kinds (`space-created` / `-locked` /
-   * `-unlocked` / `-restored`) it records the name as it was when
-   * the event fired, immune to later renames. For `space-renamed`
-   * this is the NEW name (post-rename); the pre-rename name lives
-   * in `oldSpaceName`.
-   */
-  spaceName: z.string().optional(),
-  /**
-   * `space-renamed` only - snapshot of the Space name BEFORE the
-   * rename. Paired with `spaceName` (the new name) the frontend
-   * renders "{actor} renamed {oldSpaceName} to {spaceName}".
-   * Optional because every other kind leaves it empty.
-   */
-  oldSpaceName: z.string().optional(),
-  spaceSnapshot: z.record(z.string(), z.unknown()).optional(),
-  /**
-   * `space-deleted` only - `true` once a subsequent `space:restore`
-   * RPC has successfully un-soft-deleted the Space. The restore
-   * handler mutates this field on the original deleted entry in the
-   * same `transact` that writes the new `space-restored` entry, so
-   * any client looking at the deleted row knows it's already been
-   * brought back. Drives the bell sheet's restore button - present
-   * & true means render a disabled "restored" badge instead of an
-   * actionable Restore. Missing on legacy entries written before
-   * this field shipped; treat undefined as "not yet restored" (the
-   * restore RPC will refuse the second click via NOT_FOUND, which
-   * is still correct - the field just lets the UI prevent the
-   * round-trip in the first place).
-   */
-  restored: z.boolean().optional(),
-  message: z.string().optional(),
-  context: z.record(z.string(), z.unknown()).optional(),
-  createdAt: z.number().int(),
-});
-export type ProjectMessageEntry = z.infer<typeof ProjectMessageEntrySchema>;

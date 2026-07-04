@@ -35,6 +35,12 @@ import type * as NotificationServiceModule from "../notification/notification.se
 // approve/reject transactional paths execute without a real PG
 // connection. Error classes are defined in the factory so the service's
 // `throw` and the test's `toBeInstanceOf` share one constructor.
+// The service under test appends feed rows via the activity helper -
+// stub it out (its own behavior is covered by projectActivity tests).
+vi.mock("@server/modules/activity/projectActivity.service.js", () => ({
+  recordProjectActivity: vi.fn(async () => {}),
+}));
+
 vi.mock("@breatic/core", () => {
   class NotFoundError extends Error {}
   class ForbiddenError extends Error {}

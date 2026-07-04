@@ -57,7 +57,7 @@ members.patch(
     const projectId = c.get("projectId");
     const targetUserId = c.req.param("userId");
     const body = c.req.valid("json");
-    await projectMembersService.changeRole(projectId, targetUserId, body.role);
+    await projectMembersService.changeRole(projectId, targetUserId, body.role, c.get("user").id);
     return c.json({ data: { ok: true } });
   },
 );
@@ -74,7 +74,7 @@ members.delete(
   async (c) => {
     const projectId = c.get("projectId");
     const targetUserId = c.req.param("userId");
-    await projectMembersService.remove(projectId, targetUserId);
+    await projectMembersService.remove(projectId, targetUserId, c.get("user").id);
     return c.json({ data: { ok: true } });
   },
 );

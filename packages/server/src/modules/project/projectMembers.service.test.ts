@@ -23,6 +23,12 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// The service under test appends feed rows via the activity helper -
+// stub it out (its own behavior is covered by projectActivity tests).
+vi.mock("@server/modules/activity/projectActivity.service.js", () => ({
+  recordProjectActivity: vi.fn(async () => {}),
+}));
+
 vi.mock("@breatic/core", () => {
   class ConflictError extends Error {}
   class NotFoundError extends Error {}

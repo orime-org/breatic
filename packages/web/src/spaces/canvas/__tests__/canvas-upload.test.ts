@@ -7,6 +7,7 @@ import {
   fileToNodeSpec,
   fillNodeFromFile,
   runMediaUpload,
+  computeDeletedAssetEntries,
 } from '@web/spaces/canvas/canvas-upload';
 
 describe('fileToNodeSpec — MIME → which node + whether to upload', () => {
@@ -260,5 +261,47 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     );
     expect(deps.onTypeMismatch).toHaveBeenCalledExactlyOnceWith('n1');
     expect(deps.setHandling).not.toHaveBeenCalled();
+  });
+});
+
+describe('computeDeletedAssetEntries — asset-delete report accounting', () => {
+  const url = (n: string): string => `https://cdn/${n}.png`;
+
+  it('reports a deleted media node\'s content + cover as separate entries', () => {
+    const deleted = [
+      { id: 'v1', type: 'video', data: { content: url('vid'), coverUrl: url('cover') } },
+    ];
+    const entries = computeDeletedAssetEntries(deleted, deleted, 'sp-1');
+    expect(entries.map((e) => e.fileUrl).sort()).toEqual([url('cover'), url('vid')].sort());
+    expect(entries.every((e) => e.nodeId === 'v1' && e.spaceId === 'sp-1')).toBe(true);
+  });
+
+  it('does NOT report a URL still referenced by a surviving node (pasted duplicate)', () => {
+    const shared = url('shared');
+    const deleted = [{ id: 'a', type: 'image', data: { content: shared } }];
+    const all = [
+      { id: 'a', type: 'image', data: { content: shared } },
+      { id: 'b', type: 'image', data: { content: shared } }, // survivor holds the same URL
+    ];
+    expect(computeDeletedAssetEntries(deleted, all, 'sp-1')).toEqual([]);
+  });
+
+  it('reports the URL once the LAST referencing node is deleted', () => {
+    const shared = url('shared');
+    const deleted = [
+      { id: 'a', type: 'image', data: { content: shared } },
+      { id: 'b', type: 'image', data: { content: shared } },
+    ];
+    const entries = computeDeletedAssetEntries(deleted, deleted, 'sp-1');
+    expect(entries.map((e) => e.fileUrl)).toContain(shared);
+  });
+
+  it('skips non-media nodes and non-http content (data:/blob: placeholders, errors)', () => {
+    const deleted = [
+      { id: 't', type: 'text', data: { content: url('ignored') } },
+      { id: 'i', type: 'image', data: { content: 'data:image/png;base64,AAAA' } },
+      { id: 'e', type: 'image', data: { content: 'Upload failed: x.png' } },
+    ];
+    expect(computeDeletedAssetEntries(deleted, deleted, 'sp-1')).toEqual([]);
   });
 });

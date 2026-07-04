@@ -958,3 +958,90 @@ export const projectInvitations = pgTable(
     // Drizzle's table builder does not emit partial unique indexes.
   ],
 );
+
+// ── Project Activities ───────────────────────────────────────────────
+//
+// Unified project activity feed (ADR 2026-07-04 project-activity-feed):
+// asset uploads/deletes, generation outcomes, space lifecycle, member
+// changes - one append-only table replacing the meta-doc
+// `projectMessages` Y.Array (retired; a CRDT array never shrinks, so a
+// high-frequency feed there would bloat the meta doc irreversibly).
+//
+// APPEND-ONLY: no deleted_at / updated_at (same exemption as
+// project_lifecycle_outbox - immutable audit log, not a business
+// entity). The single mutable column is `restored`, consumed by
+// space:restore to mark a space:deleted row's snapshot as used.
+// Written by server (assets, members), worker (generation) and collab
+// (space lifecycle) through the core-owned repo.
+
+export const projectActivities = pgTable(
+  "project_activities",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    /**
+     * Pointer to the acting user (display name resolved by a users join
+     * at read time so renames propagate retroactively). Null for
+     * system-originated rows (e.g. lazy-seed bootstrap entries).
+     */
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    /**
+     * Event type. Allowed values (CHECK enforced at SQL level, 0034):
+     * asset:uploaded | asset:deleted | generation:succeeded |
+     * generation:failed | space:created | space:deleted |
+     * space:restored | space:locked | space:unlocked | space:renamed |
+     * member:joined | member:removed | member:role-changed |
+     * member:ownership-transferred
+     */
+    type: varchar("type", { length: 64 }).notNull(),
+    spaceId: uuid("space_id"),
+    nodeId: uuid("node_id"),
+    /**
+     * Generation idempotency key - one activity row per task even when
+     * BullMQ redelivers a billed job and worker Stage 4 re-runs
+     * (partial UNIQUE in migration 0034; INSERT .. ON CONFLICT DO
+     * NOTHING). Null for non-generation rows and frontend-executed
+     * mini-tools (which have no task).
+     */
+    taskId: uuid("task_id"),
+    /**
+     * Type-specific payload. Shapes (zod-validated in the shared package):
+     * - asset:uploaded/deleted: { fileUrl, kind }
+     * - generation:*: { source, toolName?, model?, outputCount?,
+     *   executedOn?, errorMessage? }
+     * - space:deleted: { spaceName, spaceSnapshot } (snapshot rebuilds
+     *   the meta directory entry on restore)
+     * - space:renamed: { spaceName, oldSpaceName }
+     * - member:*: { role?, previousRole? }
+     */
+    payload: jsonb("payload").notNull(),
+    /**
+     * Restore-consumption marker, meaningful only on space:deleted rows
+     * (space:restore flips it so the same snapshot is never consumed
+     * twice). Always false on every other type.
+     */
+    restored: boolean("restored").default(false).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    // Soft-delete: individual rows are never user-deleted, but the whole
+    // table is project-scoped and cascade-soft-deleted by deleteProject
+    // (same as node_history). Feed queries filter deleted_at IS NULL.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    // Hot feed index for keyset pagination (partial on live rows):
+    // WHERE project_id = ? AND deleted_at IS NULL AND (created_at, id) < (?, ?)
+    // ORDER BY created_at DESC, id DESC.
+    index("project_activities_feed_idx")
+      .on(table.projectId, table.createdAt, table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+    // The task_id partial UNIQUE lives in migration 0034 (Drizzle's
+    // builder does not emit partial unique indexes - same note as
+    // project_invitations).
+  ],
+);

@@ -14,6 +14,7 @@
 import type { MiddlewareHandler } from "hono";
 import { getRedis, checkRateLimit, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
+import { getRateLimit } from "@server/config/rate-limits.js";
 
 /** A request's rate-limit key dimension. */
 type KeyBy = "ip" | "user";
@@ -70,5 +71,32 @@ export function rateLimit(opts: {
       );
     }
     await next();
+  };
+}
+
+/**
+ * Build a rate-limit middleware whose `max` / `windowSeconds` come from
+ * `config/rate-limits.yaml` (via {@link getRateLimit}) instead of
+ * hardcoded literals — the single way routes should throttle, so no
+ * throttle number lives in code. The `action` doubles as the yaml key
+ * and the Redis prefix.
+ * @param action - Throttle action (yaml key + Redis prefix, e.g. `login`).
+ * @param keyBy - Bucket dimension: `'ip'` (default) or `'user'` (needs `requireAuth` upstream).
+ * @returns The configured rate-limit middleware.
+ */
+export function rateLimitFor(
+  action: string,
+  keyBy?: KeyBy,
+): MiddlewareHandler {
+  // Config is read + the inner middleware built on the FIRST request,
+  // not at import — route registration must stay side-effect-free so a
+  // route file can be imported without a config file present (tests).
+  let inner: MiddlewareHandler | null = null;
+  return async (c, next) => {
+    if (!inner) {
+      const { max, windowSeconds } = getRateLimit(action);
+      inner = rateLimit({ prefix: action, max, windowSeconds, keyBy });
+    }
+    return inner(c, next);
   };
 }

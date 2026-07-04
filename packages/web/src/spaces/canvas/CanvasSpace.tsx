@@ -66,6 +66,7 @@ import {
   fileToNodeSpec,
   fillNodeFromFile,
   runMediaUpload,
+  computeDeletedAssetEntries,
   type UploadNodeSpec,
 } from '@web/spaces/canvas/canvas-upload';
 import { extractText } from '@web/spaces/canvas/text-extract';
@@ -585,6 +586,44 @@ function CanvasSpaceInner({
     [readOnly, flowNodes, t],
   );
 
+  // Activity-feed reporters (ADR 2026-07-04): fire-and-forget behind the
+  // canvas write-backs. The upload handshake failure surfaces a toast (the
+  // audit trail lost a verified event); the delete report stays silent —
+  // the deletion itself already succeeded and re-prompting the user would
+  // read as a failed delete.
+  const reportUploadedAsset = React.useCallback(
+    (nodeId: string, info: { key: string; kind: string }): void => {
+      void assetsApi
+        .reportUploaded({
+          projectId,
+          key: info.key,
+          kind: info.kind,
+          nodeId,
+          spaceId,
+        })
+        .catch(() => toast(t('canvas.activity.reportFailed')));
+    },
+    [projectId, spaceId, t],
+  );
+  const reportDeletedAssets = React.useCallback(
+    (deletedNodes: Node[]): void => {
+      // flowNodesRef still holds the deleted nodes here (Yjs removal
+      // propagates async); computeDeletedAssetEntries excludes them and
+      // skips URLs still referenced by a surviving node (pasted copies).
+      const entries = computeDeletedAssetEntries(
+        deletedNodes,
+        flowNodesRef.current,
+        spaceId,
+      );
+      if (entries.length === 0) return;
+      void assetsApi.reportDeleted({ projectId, entries }).catch(() => {
+        // Silent: the deletion already succeeded; a toast here would read
+        // as a failed delete. The feed misses one audit entry at worst.
+      });
+    },
+    [projectId, spaceId],
+  );
+
   // Persist the (already lock-filtered, read-only-gated by onBeforeDelete)
   // deletion to Yjs in ONE removeElements transaction — node + edge deletion is a
   // single undo entry, so one undo restores BOTH (the reported bug: node came
@@ -603,8 +642,9 @@ function CanvasSpaceInner({
         deletedNodes.map((node) => node.id),
         deletedEdges.map((edge) => edge.id),
       );
+      reportDeletedAssets(deletedNodes);
     },
-    [projectId, spaceId],
+    [projectId, spaceId, reportDeletedAssets],
   );
 
   const onConnect = React.useCallback(
@@ -715,6 +755,7 @@ function CanvasSpaceInner({
                 `Upload failed: ${file.name}`,
                 lease,
               ),
+            onUploaded: (info) => reportUploadedAsset(nodeId, info),
           });
         } else {
           void extractText(file)
@@ -736,7 +777,7 @@ function CanvasSpaceInner({
       }
       if (created.length > 0) setSelectAfterCreate(created);
     },
-    [readOnly, projectId, spaceId, createUploadNodeAt, t],
+    [readOnly, projectId, spaceId, createUploadNodeAt, t, reportUploadedAsset],
   );
 
   // Upload-button path: chrome posted picked files (the picker must open
@@ -1134,8 +1175,9 @@ function CanvasSpaceInner({
         survivors.nodes.map((node) => node.id),
         survivors.edges.map((edge) => edge.id),
       );
+      reportDeletedAssets(survivors.nodes);
     },
-    [readOnly, projectId, spaceId, t],
+    [readOnly, projectId, spaceId, t, reportDeletedAssets],
   );
 
   // The clipboard-portable form of the current selection — Group-aware: a
@@ -1376,9 +1418,10 @@ function CanvasSpaceInner({
         },
         setError: (id, message, lease) =>
           failNodeHandling(projectId, spaceId, id, message, lease),
+        onUploaded: (id, info) => reportUploadedAsset(id, info),
       });
     },
-    [projectId, spaceId, userId, t],
+    [projectId, spaceId, userId, t, reportUploadedAsset],
   );
 
   const actions = React.useMemo<CanvasActions>(

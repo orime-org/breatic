@@ -42,15 +42,6 @@ export interface EncodeInitialMetaStateArgs {
   name: string;
   createdBy: string;
   /**
-   * Q11 v2 — the creating user's userId (UUID). Stored as the
-   * `actor` field of the seeded `space-created` projectMessages
-   * entry; the frontend looks up `meta.users[actor].name` at render
-   * time so a display-name change retroactively propagates. Required
-   * (not nullable) so a regression that drops the lookup trips the
-   * TypeScript build.
-   */
-  actor: string;
-  /**
    * Creator's display name (their personal studio `name`, falling back
    * to the email local-part). Seeded into `meta.users[actor]` so other
    * members reading the project before the creator first connects
@@ -136,7 +127,6 @@ export function encodeInitialMetaState(
     kind,
     name,
     createdBy,
-    actor,
     creatorName,
     creatorAvatarUrl,
     ts,
@@ -159,27 +149,12 @@ export function encodeInitialMetaState(
     createdBy,
   });
 
-  // Q11 v2.1 — bootstrap path seeds the first `projectMessages` entry
-  // consistent with `collab/space-rpc.handleCreate`. Field convention:
-  //   - `actor`     = userId (UUID) — frontend renders display name
-  //                   via live lookup against `meta.users[actor].name`
-  //                   so a display-name change retroactively reflects.
-  //   - `spaceName` = SNAPSHOT of name at event time. Rename is a
-  //                   separate audit event (future `space-renamed`
-  //                   kind), every prior entry stays frozen as
-  //                   historical truth. Frontend renders verbatim,
-  //                   does NOT look up the live Space name.
-  //   - `id`        = full `pm-${ts}-${spaceId}` (no slice truncation)
-  //                   — deterministic because every input is too.
-  const projectMessages = doc.getArray("projectMessages");
-  const msg = new Y.Map<unknown>();
-  msg.set("id", `pm-${ts}-${spaceId}`);
-  msg.set("kind", "space-created");
-  msg.set("actor", actor);
-  msg.set("spaceId", spaceId);
-  msg.set("spaceName", name);
-  msg.set("createdAt", ts);
-  projectMessages.push([msg]);
+  // The initial space:created audit entry lives in the PG
+  // project_activities table (ADR 2026-07-04 project-activity-feed -
+  // the meta-doc projectMessages Y.Array is retired); the caller that
+  // seeds this doc (server project creation / collab lazy-seed) writes
+  // that activity row itself, since only it knows the actor + can
+  // reach the business DB at the right transactional moment.
 
   // 2026-05-27 awareness rewrite — seed `meta.users[creator]` so
   // ProjectMessagesButton's actor lookup hits on the

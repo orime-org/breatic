@@ -21,7 +21,7 @@ import { authService, studioService } from "@server/modules";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { t } from "@breatic/shared";
-import { rateLimit } from "@server/middleware/rate-limit.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
   clearSessionCookie,
@@ -70,7 +70,7 @@ function getGoogleClient(): OAuth2Client {
  * @returns `201` with `{ user, recoveryCode }` on success + Set-Cookie
  * @throws {AppError} `409` if email is already registered
  */
-auth.post("/register", rateLimit({ prefix: "register", max: 10, windowSeconds: 3600 }), zValidator("json", registerSchema), async (c) => {
+auth.post("/register", rateLimitFor("register"), zValidator("json", registerSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const { user, recoveryCode } = await authService.register(email, password);
   const { token } = await authService.loginEmail(email, password);
@@ -115,7 +115,7 @@ auth.post("/setup-studio", requireAuth, zValidator("json", setupStudioSchema), a
  * @returns `200` with `{ user }` on success + Set-Cookie
  * @throws {AppError} `401` if credentials are invalid
  */
-auth.post("/login", rateLimit({ prefix: "login", max: 5, windowSeconds: 60 }), zValidator("json", loginSchema), async (c) => {
+auth.post("/login", rateLimitFor("login"), zValidator("json", loginSchema), async (c) => {
   const { email, password } = c.req.valid("json");
   const { user, token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
@@ -156,7 +156,7 @@ const googleAuthSchema = z.object({
  * @throws {AppError} `401` if the credential is invalid, expired, or unverified
  * @throws {AppError} `503` if Google OAuth is not configured on this server
  */
-auth.post("/google", rateLimit({ prefix: "google", max: 10, windowSeconds: 60 }), zValidator("json", googleAuthSchema), async (c) => {
+auth.post("/google", rateLimitFor("google"), zValidator("json", googleAuthSchema), async (c) => {
   if (!env.GOOGLE_CLIENT_ID) {
     logger.warn("google_oauth_unconfigured");
     return c.json({ error: { code: 503, message: t("server.auth.google_oauth_unconfigured") } }, 503);
@@ -245,7 +245,7 @@ const forgotPasswordSchema = z.object({
 
 auth.post(
   "/forgot-password",
-  rateLimit({ prefix: "forgot", max: 3, windowSeconds: 3600 }),
+  rateLimitFor("forgot"),
   zValidator("json", forgotPasswordSchema),
   async (c) => {
     const { email } = c.req.valid("json");
@@ -280,7 +280,7 @@ const resetPasswordSchema = z.object({
 
 auth.post(
   "/reset-password",
-  rateLimit({ prefix: "reset", max: 5, windowSeconds: 3600 }),
+  rateLimitFor("reset"),
   zValidator("json", resetPasswordSchema),
   async (c) => {
     const { token, password } = c.req.valid("json");
@@ -322,7 +322,7 @@ const resetWithRecoveryCodeSchema = z.object({
  */
 auth.post(
   "/reset-password-with-recovery-code",
-  rateLimit({ prefix: "reset-recovery", max: 5, windowSeconds: 3600 }),
+  rateLimitFor("reset-recovery"),
   zValidator("json", resetWithRecoveryCodeSchema),
   async (c) => {
     const { email, recoveryCode, newPassword } = c.req.valid("json");
@@ -358,7 +358,7 @@ const verifyEmailSchema = z.object({
  */
 auth.post(
   "/verify-email",
-  rateLimit({ prefix: "verify-email", max: 10, windowSeconds: 60 }),
+  rateLimitFor("verify-email"),
   zValidator("json", verifyEmailSchema),
   async (c) => {
     const { token } = c.req.valid("json");
@@ -381,7 +381,7 @@ auth.post(
 auth.post(
   "/resend-verification-email",
   requireAuth,
-  rateLimit({ prefix: "resend-verify", max: 1, windowSeconds: 60 }),
+  rateLimitFor("resend-verify"),
   async (c) => {
     const user = c.get("user");
     const verifyBaseUrl = c.req.header("Origin")

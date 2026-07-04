@@ -82,7 +82,7 @@ describe("PATCH /projects/:pid/members/:userId — change role", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(mocks.projectMembersService.changeRole).toHaveBeenCalledWith(PID, TARGET, "viewer");
+    expect(mocks.projectMembersService.changeRole).toHaveBeenCalledWith(PID, TARGET, "viewer", "user-1");
   });
 
   it("rejects role='owner' in patch body with 400", async () => {
@@ -119,7 +119,7 @@ describe("DELETE /projects/:pid/members/:userId — remove", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(mocks.projectMembersService.remove).toHaveBeenCalledWith(PID, TARGET);
+    expect(mocks.projectMembersService.remove).toHaveBeenCalledWith(PID, TARGET, "user-1");
   });
 
   it("non-owner cannot remove — 403", async () => {

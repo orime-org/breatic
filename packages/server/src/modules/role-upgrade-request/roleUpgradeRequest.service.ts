@@ -34,6 +34,7 @@ import { db } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
+import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { projectMembersRepo } from "@breatic/core";
 import { NotFoundError, ForbiddenError, ValidationError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
@@ -97,6 +98,8 @@ interface DecisionInput {
  *   already filter by id).
  */
 export async function approve(input: DecisionInput): Promise<void> {
+  let approvedActivity: { projectId: string; targetUserId: string } | null =
+    null;
   await db.transaction(async (tx) => {
     const req = await loadAndGate(tx, input);
     // Serialization point: the mark-read CAS (UPDATE … WHERE read_at IS NULL)
@@ -131,7 +134,29 @@ export async function approve(input: DecisionInput): Promise<void> {
       },
       tx,
     });
+    approvedActivity = {
+      projectId: String(req.projectId),
+      targetUserId: requesterUserId,
+    };
   });
+  // Activity row AFTER the role bump committed (best-effort audit;
+  // the helper announces the live signal itself).
+  if (approvedActivity !== null) {
+    const approved = approvedActivity as {
+      projectId: string;
+      targetUserId: string;
+    };
+    await recordProjectActivity({
+      projectId: approved.projectId,
+      actorUserId: input.ownerUserId,
+      type: "member:role-changed",
+      payload: {
+        role: "editor",
+        previousRole: "viewer",
+        targetUserId: approved.targetUserId,
+      },
+    });
+  }
 }
 
 /**

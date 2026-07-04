@@ -97,4 +97,28 @@ export function membersChangedChannel(projectId: string): string {
  * `psubscribe` keeps the connection count down vs subscribing each
  * channel separately.
  */
+/**
+ * Control event announcing a new project_activities row written by
+ * server or worker - collab relays it as the `activity:new` stateless
+ * signal on the project meta doc (ADR 2026-07-04 project-activity-feed).
+ * Fire-and-forget pub/sub by design: an offline collab instance safely
+ * misses it (clients refetch via REST when the panel opens).
+ */
+export interface ActivityNewControlEvent {
+  type: "project-activity:new";
+  projectId: string;
+  ts: number;
+}
+
+/**
+ * Pub/sub channel for {@link ActivityNewControlEvent}. Matched by
+ * {@link ALL_PROJECT_CHANNELS_PATTERN}, so the collab control-plane
+ * subscriber receives it without a second subscription.
+ * @param projectId - Project scope of the channel.
+ * @returns The channel name.
+ */
+export function activityNewChannel(projectId: string): string {
+  return `project:${projectId}:activity:new`;
+}
+
 export const ALL_PROJECT_CHANNELS_PATTERN = "project:*";

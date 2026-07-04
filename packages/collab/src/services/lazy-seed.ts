@@ -31,13 +31,17 @@
  */
 
 import {
+  createLogger,
   defaultSpaceName,
   encodeInitialMetaState,
   encodeInitialSpaceContentState,
   loadInitialSpaceType,
+  projectActivitiesRepo,
 } from "@breatic/core";
 import { deriveId, parseDocName, spaceContentDocName } from "@breatic/shared";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
+
+const logger = createLogger("lazy-seed");
 
 /** Placeholder creator/actor — backfilled to the real user via awareness. */
 const SYSTEM_ACTOR = "system";
@@ -77,14 +81,30 @@ export async function lazySeedMeta(
     kind,
     name: defaultSpaceName(kind),
     createdBy: SYSTEM_ACTOR,
-    actor: SYSTEM_ACTOR,
     creatorName: SYSTEM_ACTOR,
     creatorAvatarUrl: null,
     ts: Date.now(),
   });
 
   const inserted = await yjsDocumentsRepo.seedInitialState(documentName, bytes);
-  if (inserted) return bytes;
+  if (inserted) {
+    // Winner of the seed race records the initial space:created
+    // activity row (actor null = system; the meta-doc projectMessages
+    // seed entry was retired with the feed move to PG, ADR 2026-07-04).
+    // Best-effort: a failed audit row must not fail the project load.
+    try {
+      await projectActivitiesRepo.insert({
+        projectId,
+        actorUserId: null,
+        type: "space:created",
+        spaceId,
+        payload: { spaceName: defaultSpaceName(kind) },
+      });
+    } catch (e) {
+      logger.error({ err: e, projectId, spaceId }, "activity_seed_failed");
+    }
+    return bytes;
+  }
   // Lost the insert race (another connection/instance seeded first):
   // return the persisted winner so every loader converges on one doc.
   return (await yjsDocumentsRepo.fetchDocData(documentName)) ?? bytes;

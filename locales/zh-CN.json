@@ -324,6 +324,9 @@
     },
     "minimap": {
       "label": "画布缩略图"
+    },
+    "activity": {
+      "reportFailed": "上传未能记录到 Project 活动"
     }
   },
   "editor": {
@@ -1709,5 +1712,20 @@
     "title": "你没有访问该 Project 的权限",
     "description": "请联系 Project Owner 申请访问,他们可以通过邮箱邀请你。",
     "backToStudio": "返回 Studio"
+  },
+  "activity": {
+    "description": "Project 活动",
+    "loading": "加载中…",
+    "type": {
+      "assetUploaded": "{actor} 上传了素材",
+      "assetDeleted": "{actor} 删除了素材",
+      "generationSucceeded": "{actor} 完成了一次生成",
+      "generationSucceededTool": "{actor} 使用 {toolName} 生成了内容",
+      "generationFailed": "{actor} 的生成失败了",
+      "memberJoined": "{actor} 加入了 Project",
+      "memberRemoved": "{actor} 移除了一名成员",
+      "memberRoleChanged": "{actor} 将一名成员的角色改为 {role}",
+      "ownershipTransferred": "{actor} 转移了 Project 所有权"
+    }
   }
 }

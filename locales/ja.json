@@ -324,6 +324,9 @@
     },
     "minimap": {
       "label": "キャンバスのミニマップ"
+    },
+    "activity": {
+      "reportFailed": "アップロードを Project アクティビティに記録できませんでした"
     }
   },
   "editor": {
@@ -1709,5 +1712,20 @@
     "title": "この Project へのアクセス権がありません",
     "description": "Project Owner に連絡してアクセスを依頼してください。メールで招待してもらえます。",
     "backToStudio": "Studio に戻る"
+  },
+  "activity": {
+    "description": "Project アクティビティ",
+    "loading": "読み込み中…",
+    "type": {
+      "assetUploaded": "{actor} が素材をアップロードしました",
+      "assetDeleted": "{actor} が素材を削除しました",
+      "generationSucceeded": "{actor} が生成を完了しました",
+      "generationSucceededTool": "{actor} が {toolName} で生成しました",
+      "generationFailed": "{actor} の生成が失敗しました",
+      "memberJoined": "{actor} が Project に参加しました",
+      "memberRemoved": "{actor} がメンバーを削除しました",
+      "memberRoleChanged": "{actor} がメンバーのロールを {role} に変更しました",
+      "ownershipTransferred": "{actor} が Project の所有権を移譲しました"
+    }
   }
 }

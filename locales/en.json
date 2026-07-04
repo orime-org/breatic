@@ -324,6 +324,9 @@
     },
     "minimap": {
       "label": "Canvas minimap"
+    },
+    "activity": {
+      "reportFailed": "Failed to record the upload in project activity"
     }
   },
   "editor": {
@@ -1709,5 +1712,20 @@
     "title": "You don't have access to this project",
     "description": "Please contact the project owner to request access. They can invite you by email.",
     "backToStudio": "Back to Studio"
+  },
+  "activity": {
+    "description": "Project activity",
+    "loading": "Loading…",
+    "type": {
+      "assetUploaded": "{actor} uploaded an asset",
+      "assetDeleted": "{actor} deleted an asset",
+      "generationSucceeded": "{actor} completed a generation",
+      "generationSucceededTool": "{actor} generated with {toolName}",
+      "generationFailed": "{actor}'s generation failed",
+      "memberJoined": "{actor} joined the project",
+      "memberRemoved": "{actor} removed a member",
+      "memberRoleChanged": "{actor} changed a member's role to {role}",
+      "ownershipTransferred": "{actor} transferred project ownership"
+    }
   }
 }

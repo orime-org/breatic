@@ -1,0 +1,30 @@
+# ── Per-action rate limits (abuse throttles) ────────────────────────
+# Redis sliding-window counters. Tunable without a redeploy.
+#   max            = requests allowed inside the window
+#   window_seconds = window length in seconds
+# The key DIMENSION (IP for pre-auth endpoints, user id for post-auth)
+# is fixed in code per action for security; only the counts live here.
+#
+# Every action a route throttles MUST have an entry — a missing action
+# fails loudly at startup rather than silently disabling the throttle.
+
+# Auth (pre-auth, IP-keyed)
+login:          { max: 5,   window_seconds: 60 }
+register:       { max: 10,  window_seconds: 3600 }
+google:         { max: 10,  window_seconds: 60 }
+forgot:         { max: 3,   window_seconds: 3600 }
+reset:          { max: 5,   window_seconds: 3600 }
+reset-recovery: { max: 5,   window_seconds: 3600 }
+verify-email:   { max: 10,  window_seconds: 60 }
+resend-verify:  { max: 1,   window_seconds: 60 }
+
+# Studio (post-auth, user-keyed)
+slug-check:     { max: 60,  window_seconds: 60 }
+studio-create:  { max: 10,  window_seconds: 3600 }
+
+# Assets (post-auth, user-keyed)
+presign:        { max: 30,  window_seconds: 60 }
+# Activity-feed report routes (/assets/uploaded, /assets/deleted) —
+# fire once per upload / node-delete; 120/60s covers a heavy multi-file
+# drag while capping a flood loop against the append-only feed table.
+asset-report:   { max: 120, window_seconds: 60 }
