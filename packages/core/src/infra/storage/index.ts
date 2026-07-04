@@ -160,3 +160,39 @@ export async function downloadAndStore(
 export function sha256Hex(data: Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
+
+/**
+ * Download a remote file with transfer-stream completeness guards, shared
+ * by every StorageAdapter.persistFromUrl. A silently-truncated or empty
+ * response must NOT be hashed / stored / registered / billed as a
+ * complete asset (asset-layer adversarial holes #3 truncation / #5
+ * zero-byte): it throws so the worker's Stage-2 persist path fails the
+ * task (markFailed + no charge) instead of storing wrong content.
+ * @param sourceUrl - The remote URL to download (120s timeout).
+ * @returns The full downloaded bytes plus the resolved content type.
+ * @throws {Error} On non-OK HTTP, a content-length mismatch (truncation),
+ *   or a zero-byte body.
+ */
+export async function downloadValidated(
+  sourceUrl: string,
+): Promise<{ buffer: Buffer; contentType: string }> {
+  const response = await fetch(sourceUrl, {
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to download ${sourceUrl}: HTTP ${response.status}`);
+  }
+  const contentType =
+    response.headers.get("content-type") ?? "application/octet-stream";
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const declared = response.headers.get("content-length");
+  if (declared !== null && Number(declared) !== buffer.length) {
+    throw new Error(
+      `Truncated download ${sourceUrl}: content-length ${declared} != received ${buffer.length} bytes`,
+    );
+  }
+  if (buffer.length === 0) {
+    throw new Error(`Empty download ${sourceUrl}: received 0 bytes`);
+  }
+  return { buffer, contentType };
+}

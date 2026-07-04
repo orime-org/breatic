@@ -30,6 +30,7 @@ import { verifyCanvasNodeLock, releaseCanvasNodeLock, reacquireCanvasNodeLock } 
 import { canvasSpaceDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
+import { NotFoundError } from "@breatic/core";
 import { extractPromptText } from "@breatic/domain";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
@@ -1054,7 +1055,10 @@ function taskTypeToAssetKind(
  * @param contentHash - sha256 of the content (dedup key).
  * @param sizeBytes - Byte size (from the transfer / buffer).
  * @param mimeType - Content type.
- * @returns Nothing.
+ * @returns The URL the canvas node should use: the deduped asset's
+ *   fileUrl on a within-studio dedup hit (so the node matches the
+ *   registry row), the passed `url` on a fresh insert, or undefined when
+ *   registration was skipped (no project) or failed (caller keeps `url`).
  */
 async function registerGeneratedAsset(
   opts: { taskType: string; userId: string; projectId?: string; taskId: string },
@@ -1063,10 +1067,10 @@ async function registerGeneratedAsset(
   contentHash: string,
   sizeBytes: number,
   mimeType: string,
-): Promise<void> {
-  if (!opts.projectId) return;
+): Promise<string | undefined> {
+  if (!opts.projectId) return undefined;
   try {
-    await assetService.register({
+    const { asset, deduped } = await assetService.register({
       projectId: opts.projectId,
       actingUserId: opts.userId,
       contentHash,
@@ -1078,11 +1082,30 @@ async function registerGeneratedAsset(
       source: "ai",
       generationTaskId: opts.taskId,
     });
+    // #1 (adversarial): on a within-studio dedup hit, point the canvas
+    // node at the already-registered asset's fileUrl (the first stored
+    // copy) so the node URL matches the registry row instead of the
+    // freshly-uploaded duplicate object (left for future storage GC).
+    return deduped ? asset.fileUrl : url;
   } catch (err) {
-    logger.warn(
-      { err, key, taskId: opts.taskId },
-      "asset_register_failed (generation)",
-    );
+    if (err instanceof NotFoundError) {
+      // #2 (adversarial): the owner studio could not be resolved (missing
+      // project, or the acting user has no personal studio). Bytes are
+      // already stored + the task bills regardless (best-effort), so this
+      // must NOT fail the job — but a billed-yet-untracked asset must be
+      // observable for reconciliation, so log at error level with a
+      // distinct event rather than a generic warn.
+      logger.error(
+        { err, key, taskId: opts.taskId, userId: opts.userId },
+        "asset_register_untracked (billed but not registered — no owner studio)",
+      );
+    } else {
+      logger.warn(
+        { err, key, taskId: opts.taskId },
+        "asset_register_failed (generation)",
+      );
+    }
+    return undefined;
   }
 }
 
@@ -1143,7 +1166,8 @@ async function persistOutputs(
         const url = await adapter.upload(key, buf, contentType);
         next.url = url;
         logger.info({ key, size: buf.length }, "Persisted sync transport result");
-        await registerGeneratedAsset(opts, key, url, sha256Hex(buf), buf.length, contentType);
+        const reconciled = await registerGeneratedAsset(opts, key, url, sha256Hex(buf), buf.length, contentType);
+        if (reconciled) next.url = reconciled;
       } catch (err) {
         // #1580 adversarial fix: swallowing this left `next.url` undefined —
         // Stage 3 then BILLED the task while Stage 4 silently skipped the
@@ -1162,17 +1186,19 @@ async function persistOutputs(
 
     // Case 2: temporary CDN URL — re-host to our storage.
     if (typeof next.url === "string" && next.url.startsWith("http") && !next.url.includes("/uploads/")) {
-      try {
-        const key = makeKey();
-        const { url: permanentUrl, sha256, sizeBytes, contentType } =
-          await downloadAndStore(next.url, key);
-        if (!next.extra) next.extra = {};
-        (next.extra).url_original = next.url;
-        next.url = permanentUrl;
-        await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
-      } catch (err) {
-        logger.warn({ url: next.url, err }, "Failed to persist result URL, keeping original");
-      }
+      // #4 (adversarial): a PRIMARY-output re-host failure must fail the
+      // task (Stage 2 markFailed + NO charge), never swallow-and-keep the
+      // expiring provider URL while still billing. downloadAndStore
+      // throwing propagates to runTask's Stage-2 persist-failure path.
+      // (registerGeneratedAsset is internally best-effort and never throws.)
+      const key = makeKey();
+      const { url: permanentUrl, sha256, sizeBytes, contentType } =
+        await downloadAndStore(next.url, key);
+      if (!next.extra) next.extra = {};
+      (next.extra).url_original = next.url;
+      next.url = permanentUrl;
+      const reconciled = await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
+      if (reconciled) next.url = reconciled;
     }
 
     persisted.push(next);
@@ -1193,8 +1219,12 @@ async function persistOutputs(
         await downloadAndStore(value, key);
       extras[field] = permanentUrl;
       extras[`${field}_original`] = value;
-      await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
+      const reconciled = await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
+      if (reconciled) extras[field] = reconciled;
     } catch (err) {
+      // Extras are auxiliary (not the billed deliverable) — keep best-effort:
+      // a failed re-host of a secondary field falls back to the original URL
+      // and does NOT fail the task (unlike a primary output, hole #4).
       logger.warn({ field, url: value, err }, "Failed to persist result URL, keeping original");
     }
   }
