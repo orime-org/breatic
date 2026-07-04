@@ -63,8 +63,10 @@ const ACTIVE_SPACE_ID_KEY = 'activeSpaceId';
  */
 const PROJECT_MESSAGES_KEY = 'projectMessages';
 /**
- * Y.Map<userId, { name, avatarUrl }> seeded by `collab/auth.ts
- * ensureUserInMetaDoc` on every WebSocket handshake. Consumers
+ * Y.Map<userId, { name, avatarUrl }> seeded at project creation by the
+ * meta bootstrap and kept live by collab's awareness projection
+ * (`hooks/awareness-meta-users.ts`, which replaced the earlier
+ * handshake-time upsert - PR #153). Consumers
  * (ProjectMessagesButton, MembersStack, future presence overlays)
  * look up display names via this map so a username rename retroactively
  * propagates to every old `projectMessages` entry. See Q11 v2 design
