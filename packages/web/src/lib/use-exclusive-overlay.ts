@@ -42,15 +42,18 @@ export function useExclusiveOverlay(
         // Claim the slot - any previously open overlay sees its `open`
         // flip to false on the next render and unmounts itself.
         setActiveId(id);
-      } else if (activeId === id) {
+      } else if (useUIStore.getState().activeOverlayId === id) {
         // Only release the slot if we're currently the active one.
-        // Avoids a stale-close race when an unrelated overlay has
-        // already taken over (its open=true won the slot before our
-        // onOpenChange(false) fired).
+        // Avoids a stale-close race when another overlay has already
+        // taken over. MUST read the store's live value, not the render
+        // closure: a handler that claims for overlay B and then
+        // releases overlay A runs before any re-render, so A's closure
+        // still says A owns the slot and would null out B's claim
+        // (SpaceDrawer "view" -> read-only sheet handoff, 2026-07-04).
         setActiveId(null);
       }
     },
-    [id, activeId, setActiveId],
+    [id, setActiveId],
   );
 
   return [open, setOpen];
