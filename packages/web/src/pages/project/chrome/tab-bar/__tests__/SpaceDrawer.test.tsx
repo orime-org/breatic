@@ -142,4 +142,20 @@ describe('SpaceDrawer', () => {
       screen.queryByTestId('space-drawer-delete-confirm-sp-1'),
     ).not.toBeInTheDocument();
   });
+
+  it('#1539: closing the delete-confirm dialog returns focus to the drawer, not <body>', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    await user.click(screen.getByTestId('space-drawer-delete-sp-1'));
+    await screen.findByTestId('space-drawer-delete-confirm-sp-1');
+    await user.click(screen.getAllByRole('button', { name: 'Cancel' })[0]);
+    // Radix's default return target is the hover-revealed row trigger, which
+    // fails here (modal dialog inside a non-modal sheet) and drops focus on
+    // <body> - a keyboard user loses their place. The drawer panel must
+    // reclaim focus so Tab continues inside the work surface.
+    const drawer = screen.getByTestId('space-drawer');
+    expect(document.body).not.toBe(document.activeElement);
+    expect(drawer.contains(document.activeElement)).toBe(true);
+  });
 });

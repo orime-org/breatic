@@ -127,6 +127,14 @@ export function SpaceDrawer({
 }: SpaceDrawerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('space-drawer');
+  const sheetContentRef = React.useRef<HTMLDivElement>(null);
+  const handleConfirmCloseAutoFocus = React.useCallback((event: Event): void => {
+    // #1539: keep the keyboard user in the work surface - the drawer panel
+    // (tabindex=-1 via Radix) reclaims focus instead of Radix's default
+    // return-to-trigger, which fails here and dropped focus on <body>.
+    event.preventDefault();
+    sheetContentRef.current?.focus();
+  }, []);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <Tooltip>
@@ -149,6 +157,7 @@ export function SpaceDrawer({
         </TooltipContent>
       </Tooltip>
       <SheetContent
+        ref={sheetContentRef}
         side='right-floating'
         // Width matches ProjectMessagesButton sheet (315px) for a
         // consistent right-floating sheet footprint across the chrome
@@ -196,6 +205,7 @@ export function SpaceDrawer({
                 }}
                 onDeleteSpace={onDeleteSpace}
                 onSetSpaceLocked={onSetSpaceLocked}
+                onConfirmCloseAutoFocus={handleConfirmCloseAutoFocus}
               />
             ))
           )}
@@ -206,6 +216,13 @@ export function SpaceDrawer({
 }
 
 interface SpaceDrawerRowProps {
+  /**
+   * #1539: the delete-confirm dialog's close-focus handler. Radix's default
+   * return target is the hover-revealed row trigger, which fails for a modal
+   * dialog inside a non-modal sheet (and the trigger is GONE after a
+   * confirmed delete) - focus fell to <body>. The drawer panel reclaims it.
+   */
+  onConfirmCloseAutoFocus: (event: Event) => void;
   space: ProjectSpace;
   isActive: boolean;
   isOpen: boolean;
@@ -229,6 +246,7 @@ interface SpaceDrawerRowProps {
  * @param root0.onView - Opens this space (read-only preview, or activates if already open).
  * @param root0.onDeleteSpace - RPC handler to delete this space; when omitted, the delete action is read-only.
  * @param root0.onSetSpaceLocked - RPC handler to lock/unlock this space; when omitted, the lock action is read-only.
+ * @param root0.onConfirmCloseAutoFocus - Close-focus handler for the delete-confirm dialog (#1539: drawer panel reclaims focus).
  * @returns The drawer row for the space.
  */
 function SpaceDrawerRow({
@@ -240,6 +258,7 @@ function SpaceDrawerRow({
   onView,
   onDeleteSpace,
   onSetSpaceLocked,
+  onConfirmCloseAutoFocus,
 }: SpaceDrawerRowProps): React.JSX.Element {
   const t = useTranslation();
   const meta = TYPE_META[space.type];
@@ -404,6 +423,7 @@ function SpaceDrawerRow({
               <AlertDialogContent
                 data-testid={`space-drawer-delete-confirm-${space.id}`}
                 onClick={(e) => e.stopPropagation()}
+                onCloseAutoFocus={onConfirmCloseAutoFocus}
               >
                 <AlertDialogHeader>
                   <AlertDialogTitle>
