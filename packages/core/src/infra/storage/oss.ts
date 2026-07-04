@@ -118,4 +118,14 @@ export class AliyunOSSStorageAdapter implements StorageAdapter {
     const baseUrl = env.UPLOAD_BASE_URL || `${env.OSS_ENDPOINT}/${this.bucket}`;
     return `${baseUrl}/${key}`;
   }
+
+  /**
+   * Whether `url` points at an object in our OSS bucket / CDN base.
+   * @param url - the URL to test
+   * @returns true when the URL starts with our public base
+   */
+  isOwnUrl(url: string): boolean {
+    const baseUrl = env.UPLOAD_BASE_URL || `${env.OSS_ENDPOINT}/${this.bucket}`;
+    return url.startsWith(`${baseUrl}/`);
+  }
 }

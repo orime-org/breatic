@@ -136,4 +136,14 @@ export class S3StorageAdapter implements StorageAdapter {
     const baseUrl = env.UPLOAD_BASE_URL || `https://${this.bucket}.s3.${this.region}.amazonaws.com`;
     return `${baseUrl}/${key}`;
   }
+
+  /**
+   * Whether `url` points at an object in our S3 bucket / CDN base.
+   * @param url - the URL to test
+   * @returns true when the URL starts with our public base
+   */
+  isOwnUrl(url: string): boolean {
+    const baseUrl = env.UPLOAD_BASE_URL || `https://${this.bucket}.s3.${this.region}.amazonaws.com`;
+    return url.startsWith(`${baseUrl}/`);
+  }
 }

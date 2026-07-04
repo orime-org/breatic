@@ -164,6 +164,9 @@ vi.mock("@breatic/core", async (importOriginal) => {
       upload: async (_key: string, _data: Buffer, _contentType: string) =>
         "https://oss/uploaded",
       persistFromUrl: async (url: string) => persist(url),
+      // Our-own URLs = whatever upload() produced. Provider temp URLs
+      // ("https://oss/result-*.png" etc.) are external → re-hosted by Case 2.
+      isOwnUrl: (url: string) => url.startsWith("https://oss/uploaded"),
     }),
     storageKey: () => "test/key.png",
   };
@@ -1055,5 +1058,28 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       .from(schema.studioAssets)
       .where(eq(schema.studioAssets.generationTaskId, taskId));
     expect(rows.length).toBe(0);
+  });
+
+  it("Test 8 (asset #A round-3): a local-handler output that is already OUR OWN URL is not re-hosted by Case 2", async () => {
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
+    const nodeId = "node-ownurl-t8";
+
+    // Simulate a local mini-tool (video cut/crop) that uploaded its output
+    // to our storage and returned an OUR-OWN url. failDownload makes any
+    // Case-2 re-download throw. Pre-round-3 the '/uploads/' guard did not
+    // recognize our S3/OSS URL, so Case 2 fired and the failing re-download
+    // failed the task; with adapter.isOwnUrl the re-host is skipped → the
+    // task completes and the node keeps the already-stored URL.
+    storageCtrl.failDownload = true;
+    const taskId = await runGeneration({ nodeId, url: "https://oss/uploaded" });
+
+    await waitForCondition(
+      async () => (await taskService.getByIdInternal(taskId))?.status === "completed",
+      30_000,
+      `task ${taskId} (own-url output) completed without re-host`,
+    );
+    const data = await readNodeData(hocuspocus, docName, nodeId);
+    expect(data!["state"]).toBe("idle");
+    expect(data!["content"]).toBe("https://oss/uploaded");
   });
 });

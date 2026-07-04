@@ -1144,15 +1144,10 @@ async function persistOutputs(
   });
 
   const persisted: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }> = [];
+  const adapter = await getStorageAdapter();
 
   for (const out of outputs) {
     const next: { url?: string; cover_url?: string; extra?: Record<string, unknown> } = { ...out };
-    // Whether Case 1 already stored this output to permanent storage.
-    // Case 2 must then NOT re-host it — next.url is ours, not an external
-    // temp URL (#1+#3 adversarial: on S3/OSS the local `/uploads/` guard
-    // does not recognize our own bucket URL, so a buffer output would fall
-    // through and get re-downloaded / double-stored).
-    let storedFromBuffer = false;
 
     // Case 1: raw bytes from sync transports (sync provider calls).
     // These live in extra.buffer / extra.contentType (normalized by
@@ -1162,7 +1157,6 @@ async function persistOutputs(
       try {
         const key = makeKey();
         const contentType = ((extra).contentType as string) ?? "application/octet-stream";
-        const adapter = await getStorageAdapter();
         const buf = (extra).buffer;
         const url = await adapter.upload(key, buf, contentType);
         next.url = url;
@@ -1182,20 +1176,24 @@ async function persistOutputs(
       }
       delete (extra).buffer;
       delete (extra).contentType;
-      storedFromBuffer = true;
     }
 
-    // Case 2: temporary EXTERNAL CDN URL — re-host to our storage. Skipped
-    // when Case 1 already stored this output (#1+#3 adversarial): its
-    // next.url is OURS (an S3/OSS/local URL we just wrote), not an external
-    // provider temp URL, so re-downloading our own object would double-store
-    // and — post-#4 (Case 2 no longer swallows) — could fail the task on a
-    // transient read blip and discard an already-persisted deliverable.
+    // Case 2: temporary EXTERNAL provider URL — re-host it to our storage.
+    // SKIPPED for any URL we already own (adapter.isOwnUrl): a Case-1 buffer
+    // output AND a local mini-tool handler both upload to our own bucket and
+    // return our own URL — re-downloading our own object would double-store
+    // and, post-#4 (no swallow), could fail the task on a transient read blip
+    // and discard an already-persisted deliverable (adversarial round-2 #A
+    // buffer path + round-3 local-handler URL path; the old `/uploads/`
+    // substring only recognized the local adapter, so S3/OSS URLs fell
+    // through). NOTE: local mini-tool outputs are our-own URLs, so they are
+    // no longer registered here — registering those cost-0 transformations
+    // needs the producer to thread the hash/size and is a deferred v1 gap
+    // (todo #1615); the pre-fix Case-2 path double-stored them anyway.
     if (
-      !storedFromBuffer &&
       typeof next.url === "string" &&
       next.url.startsWith("http") &&
-      !next.url.includes("/uploads/")
+      !adapter.isOwnUrl(next.url)
     ) {
       // #4 (adversarial): a PRIMARY-output re-host failure must fail the
       // task (Stage 2 markFailed + NO charge), never swallow-and-keep the
@@ -1226,7 +1224,7 @@ async function persistOutputs(
   for (const field of urlFields) {
     const value = extras[field];
     if (typeof value !== "string" || !value.startsWith("http")) continue;
-    if (value.includes("/uploads/")) continue;
+    if (adapter.isOwnUrl(value)) continue; // already ours — don't re-host
     try {
       const key = makeKey();
       const { url: permanentUrl, sha256, sizeBytes, contentType } =

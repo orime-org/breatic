@@ -74,6 +74,19 @@ export interface StorageAdapter {
    * Used after a client direct upload to construct the asset URL.
    */
   publicUrl(key: string): string;
+
+  /**
+   * Whether `url` points at an object THIS adapter owns (starts with our
+   * storage's public base). Lets the worker's re-host step skip
+   * re-downloading an object we already stored — a local mini-tool
+   * handler uploads to our own bucket then returns our own URL, and a
+   * sync-transport buffer output is uploaded here too; neither is an
+   * external provider temp URL, so Case 2 must NOT re-host it
+   * (adversarial round-2 #A + round-3: the old `/uploads/` substring only
+   * recognized local storage, so cloud URLs fell through and got
+   * re-downloaded / double-stored / — post no-swallow — failed on a blip).
+   */
+  isOwnUrl(url: string): boolean;
 }
 
 // Singleton
@@ -177,6 +190,14 @@ async function downloadOnce(
 ): Promise<{ buffer: Buffer; contentType: string }> {
   const response = await fetch(sourceUrl, {
     signal: AbortSignal.timeout(120_000),
+    // Request an uncompressed transfer so content-length equals the bytes
+    // we receive and the completeness check below actually validates the
+    // wire (adversarial #B round-3: undici does NOT throw on a truncated
+    // gzip/br stream — it silently returns the partial decoded bytes; an
+    // identity transfer restores real truncation detection). If a server
+    // ignores this and still encodes, the isEncoded fallback skips the
+    // length check to avoid a false "truncated" on a complete body.
+    headers: { "accept-encoding": "identity" },
   });
   if (!response.ok) {
     if (response.status >= 500 || response.status === 429) {

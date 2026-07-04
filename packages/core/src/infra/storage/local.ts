@@ -95,6 +95,15 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
 
   /**
+   * Whether `url` is one we served (starts with our public base).
+   * @param url - the URL to test
+   * @returns true when the URL points at an object in our storage
+   */
+  isOwnUrl(url: string): boolean {
+    return url.startsWith(`${this.baseUrl}/`);
+  }
+
+  /**
    * Absolute filesystem path for a key (local-only helper).
    * @param key - the storage key to resolve to an absolute path
    * @returns the absolute filesystem path under the upload dir
