@@ -136,7 +136,7 @@ export function SpaceDrawer({
     sheetContentRef.current?.focus();
   }, []);
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={setOpen} modal>
       <Tooltip>
         <TooltipTrigger asChild>
           <SheetTrigger asChild>
@@ -159,6 +159,7 @@ export function SpaceDrawer({
       <SheetContent
         ref={sheetContentRef}
         side='right-floating'
+        withOverlay
         // Width matches ProjectMessagesButton sheet (315px) for a
         // consistent right-floating sheet footprint across the chrome
         // (PR #138 user-driven alignment).
@@ -317,7 +318,10 @@ function SpaceDrawerRow({
       <div
         className={cn(
           'group flex items-start gap-3 border-b border-border px-4 py-3 transition-colors',
-          isActive ? 'bg-muted' : 'hover:bg-accent',
+          // Selected row = the accent hover fill (tokens.css: accent is
+          // the "lift above every panel" fill; muted is a RECESS fill
+          // that made the active row darker than its siblings).
+          isActive ? 'bg-accent' : 'hover:bg-accent',
         )}
         data-testid={`space-drawer-row-${space.id}`}
       >

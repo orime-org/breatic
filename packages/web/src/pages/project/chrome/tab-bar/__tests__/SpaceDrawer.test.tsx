@@ -143,6 +143,29 @@ describe('SpaceDrawer', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('opens as a modal sheet with a backdrop overlay, like dialogs', async () => {
+    // User decision 2026-07-04: now that focus is managed as modal
+    // (delete-confirm returns focus to the drawer), the visuals must
+    // match — the chrome sheets show the same backdrop as dialogs.
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    expect(screen.getByTestId('sheet-overlay')).toBeInTheDocument();
+  });
+
+  it('the active (editing) row uses the accent hover fill, not the recessed muted fill', async () => {
+    // tokens.css semantics: --color-accent is the "global hover" lift,
+    // --color-muted is a RECESS fill (avatar bg / track / disabled) that
+    // sits below the card surface — using it on the selected row made it
+    // darker than its siblings (user report 2026-07-04).
+    const user = userEvent.setup();
+    setup({ activeSpaceId: 'sp-1' });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    const row = screen.getByTestId('space-drawer-row-sp-1');
+    expect(row.className).toContain('bg-accent');
+    expect(row.className).not.toContain('bg-muted');
+  });
+
   it('#1539: closing the delete-confirm dialog returns focus to the drawer, not <body>', async () => {
     const user = userEvent.setup();
     setup();

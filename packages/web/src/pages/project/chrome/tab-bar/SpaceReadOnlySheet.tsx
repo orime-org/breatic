@@ -69,9 +69,10 @@ export function SpaceReadOnlySheet({
   const meta = space ? TYPE_META[space.type] : null;
   const Icon = meta?.icon ?? Palette;
   return (
-    <Sheet open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
+    <Sheet open={open} onOpenChange={(next) => (next ? undefined : onClose())} modal>
       <SheetContent
         side='right-floating'
+        withOverlay
         className='flex w-[min(720px,90vw)] flex-col p-0 sm:max-w-none'
         data-testid='space-read-only-sheet'
       >

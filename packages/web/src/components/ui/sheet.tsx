@@ -43,6 +43,7 @@ const SheetOverlay = React.forwardRef<
       'fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
       className,
     )}
+    data-testid='sheet-overlay'
     {...props}
     ref={ref}
   />
@@ -100,8 +101,11 @@ interface SheetContentProps
   /**
    * Show the half-transparent backdrop overlay. Default `false` per
    * 2026-05-25 user decision — Sheets are non-modal by default so
-   * sibling UI stays clickable. Pass `true` for the rare case the
-   * sheet must steal full attention (destructive confirms etc.).
+   * sibling UI stays clickable. The right-floating chrome sheets
+   * (SpaceDrawer / SpaceReadOnlySheet / ProjectMessagesButton) all opt
+   * in (pass `true` together with `modal` on the `Sheet` root) per the
+   * 2026-07-04 user decision: their focus behaves modally, so the
+   * visuals match dialogs (backdrop + inert page behind).
    */
   withOverlay?: boolean;
 }
