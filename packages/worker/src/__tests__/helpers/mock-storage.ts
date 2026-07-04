@@ -72,6 +72,7 @@ export function installCoreStorageMock(): StorageMockState {
       },
       head: async () => ({}),
       publicUrl: (k: string) => `mock://storage/${k}`,
+      isOwnUrl: (url: string) => url.startsWith("mock://storage/"),
     }),
     storageKey: () => state.getNextKey(),
   }));
