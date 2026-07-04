@@ -1261,7 +1261,7 @@
     "createAria": "创建菜单",
     "item": {
       "nodes": "节点库",
-      "upload": "上传素材",
+      "upload": "上传素材(多文件混合)",
       "comment": "在画布加批注",
       "collection": "Collection(敬请期待)",
       "help": "帮助(敬请期待)",

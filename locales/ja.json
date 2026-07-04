@@ -1261,7 +1261,7 @@
     "createAria": "作成メニュー",
     "item": {
       "nodes": "ノードライブラリ",
-      "upload": "素材をアップロード",
+      "upload": "素材をアップロード(混在ファイル可)",
       "comment": "キャンバスに注釈を追加",
       "collection": "Collection(近日対応)",
       "help": "ヘルプ(近日対応)",

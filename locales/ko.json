@@ -1261,7 +1261,7 @@
     "createAria": "만들기 메뉴",
     "item": {
       "nodes": "노드 라이브러리",
-      "upload": "에셋 업로드",
+      "upload": "에셋 업로드 (혼합 파일)",
       "comment": "캔버스에 주석 달기",
       "collection": "Collection (출시 예정)",
       "help": "도움말 (출시 예정)",

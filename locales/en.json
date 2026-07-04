@@ -1261,7 +1261,7 @@
     "createAria": "Create menu",
     "item": {
       "nodes": "Node library",
-      "upload": "Upload assets",
+      "upload": "Upload assets (mixed files)",
       "comment": "Annotate on canvas",
       "collection": "Collection (coming soon)",
       "help": "Help (coming soon)",
