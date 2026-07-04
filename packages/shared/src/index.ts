@@ -106,6 +106,24 @@ export type {
   ProjectMessageEntry,
 } from "@shared/types/index.js";
 
+export {
+  PROJECT_ACTIVITY_TYPES,
+  ACTIVITY_NEW_SIGNAL,
+  AssetActivityPayloadSchema,
+  GenerationActivityPayloadSchema,
+  SpaceActivityPayloadSchema,
+  MemberActivityPayloadSchema,
+  ProjectActivityEntrySchema,
+  ProjectActivityPageSchema,
+  ActivityNewSignalSchema,
+} from "@shared/types/index.js";
+export type {
+  ProjectActivityType,
+  ProjectActivityEntry,
+  ProjectActivityPage,
+  ActivityNewSignal,
+} from "@shared/types/index.js";
+
 export type {
   ApiResponse,
   PaginatedResponse,

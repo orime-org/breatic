@@ -69,6 +69,24 @@ export type { SpaceType, Space } from "@shared/types/space.js";
 export { SpaceTypeSchema } from "@shared/types/space.js";
 
 export {
+  PROJECT_ACTIVITY_TYPES,
+  ACTIVITY_NEW_SIGNAL,
+  AssetActivityPayloadSchema,
+  GenerationActivityPayloadSchema,
+  SpaceActivityPayloadSchema,
+  MemberActivityPayloadSchema,
+  ProjectActivityEntrySchema,
+  ProjectActivityPageSchema,
+  ActivityNewSignalSchema,
+} from "@shared/types/project-activity.js";
+export type {
+  ProjectActivityType,
+  ProjectActivityEntry,
+  ProjectActivityPage,
+  ActivityNewSignal,
+} from "@shared/types/project-activity.js";
+
+export {
   SPACE_NAME_MAX_LEN,
   SpaceRpcRequestSchema,
   SpaceRpcResponseSchema,
