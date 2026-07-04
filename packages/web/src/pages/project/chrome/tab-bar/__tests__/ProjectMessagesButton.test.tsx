@@ -87,6 +87,17 @@ describe('ProjectMessagesButton', () => {
     expect(screen.queryByTestId('project-messages-dot')).toBeNull();
   });
 
+  it('opens as a modal sheet with a backdrop overlay, like dialogs', async () => {
+    // User decision 2026-07-04: chrome sheets (SpaceDrawer / messages /
+    // read-only peek) show the same backdrop as dialogs.
+    const user = userEvent.setup();
+    render(
+      <ProjectMessagesButton messages={[M_DELETED]} usersById={USERS_BY_ID} spacesById={SPACES_BY_ID} />,
+    );
+    await user.click(screen.getByTestId('project-messages-trigger'));
+    expect(screen.getByTestId('sheet-overlay')).toBeInTheDocument();
+  });
+
   it('renders one row per message after opening the popover', async () => {
     const user = userEvent.setup();
     render(

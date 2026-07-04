@@ -217,7 +217,7 @@ export function ProjectMessagesButton({
   };
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={setOpen} modal>
       <Tooltip>
         <TooltipTrigger asChild>
           <SheetTrigger asChild>
@@ -245,6 +245,7 @@ export function ProjectMessagesButton({
       */}
       <SheetContent
         side='right-floating'
+        withOverlay
         className='flex w-[315px] flex-col p-0'
         data-testid='project-messages-sheet'
       >
