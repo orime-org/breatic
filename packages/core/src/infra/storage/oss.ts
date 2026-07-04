@@ -14,7 +14,7 @@ import type {
   ObjectHead,
   PersistedObject,
 } from "@core/infra/storage/index.js";
-import { sha256Hex } from "@core/infra/storage/index.js";
+import { downloadValidated, sha256Hex } from "@core/infra/storage/index.js";
 
 /** Storage adapter that persists files to Alibaba Cloud OSS. */
 export class AliyunOSSStorageAdapter implements StorageAdapter {
@@ -60,16 +60,10 @@ export class AliyunOSSStorageAdapter implements StorageAdapter {
    * @param sourceUrl - the remote URL to download (120s timeout)
    * @param key - the OSS object key to store the file under
    * @returns the public URL of the uploaded object
-   * @throws {Error} when the source URL responds with a non-OK status
+   * @throws {Error} when the download fails, is truncated, or is empty
    */
   async persistFromUrl(sourceUrl: string, key: string): Promise<PersistedObject> {
-    const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(120_000) });
-    if (!response.ok) {
-      throw new Error(`Failed to download ${sourceUrl}: HTTP ${response.status}`);
-    }
-
-    const contentType = response.headers.get("content-type") ?? "application/octet-stream";
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const { buffer, contentType } = await downloadValidated(sourceUrl);
     const url = await this.upload(key, buffer, contentType);
     return { url, sha256: sha256Hex(buffer), sizeBytes: buffer.length, contentType };
   }
@@ -123,5 +117,15 @@ export class AliyunOSSStorageAdapter implements StorageAdapter {
   publicUrl(key: string): string {
     const baseUrl = env.UPLOAD_BASE_URL || `${env.OSS_ENDPOINT}/${this.bucket}`;
     return `${baseUrl}/${key}`;
+  }
+
+  /**
+   * Whether `url` points at an object in our OSS bucket / CDN base.
+   * @param url - the URL to test
+   * @returns true when the URL starts with our public base
+   */
+  isOwnUrl(url: string): boolean {
+    const baseUrl = env.UPLOAD_BASE_URL || `${env.OSS_ENDPOINT}/${this.bucket}`;
+    return url.startsWith(`${baseUrl}/`);
   }
 }

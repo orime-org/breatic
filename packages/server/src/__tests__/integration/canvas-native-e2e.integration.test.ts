@@ -29,6 +29,7 @@ import {
   expect,
   beforeAll,
   afterAll,
+  afterEach,
   vi,
   inject,
 } from "vitest";
@@ -73,7 +74,12 @@ vi.mock("ai", () => ({
 
 // Controller mutated per test to drive success / failure / multi-output scenarios
 const providerCtrl = {
-  mode: "success" as "success" | "failure" | "multi" | "fail-once",
+  mode: "success" as
+    | "success"
+    | "failure"
+    | "multi"
+    | "fail-once"
+    | "buffer",
   outputs: [{ url: "https://oss/result.png", cover_url: "https://oss/thumb.png" }],
   error: new Error("Synthetic provider error"),
   // fail-once mode: first invocation throws (retryable), later ones succeed.
@@ -94,6 +100,15 @@ vi.mock("@breatic/worker/src/handlers/local/index.js", () => ({
       providerCtrl.calls += 1;
       if (providerCtrl.calls === 1) throw providerCtrl.error;
     }
+    if (providerCtrl.mode === "buffer") {
+      // Sync-transport shape: raw bytes (no output URL) → toUnifiedOutputs
+      // routes the buffer into extra.buffer, exercising persistOutputs Case 1.
+      return {
+        buffer: Buffer.from("synthetic-audio-bytes"),
+        contentType: "audio/mp3",
+        cost: 0,
+      };
+    }
     return {
       outputs: providerCtrl.outputs.map((o) => ({
         url: o.url,
@@ -104,26 +119,54 @@ vi.mock("@breatic/worker/src/handlers/local/index.js", () => ({
   },
 }));
 
+// Controllable storage stub (asset-layer hardening).
+//   failDownload → the re-host throws (hole #4: a persist failure must
+//     propagate so Stage 2 markFailed + NO charge; before the fix Case 2
+//     swallowed it and billed).
+//   contentKey → forces the sha256 so two DIFFERENT provider URLs can
+//     share a content hash (hole #1: dedup-hit node-URL reconciliation).
+// Default: sha256 derived from the URL, so distinct outputs get distinct
+// hashes and multi-output fan-out never falsely dedups/collapses.
+const storageCtrl: { failDownload: boolean; contentKey: string | null } = {
+  failDownload: false,
+  contentKey: null,
+};
+
 // Storage: passthrough — URLs look like permanent storage already
 vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
+  const { createHash } = await import("node:crypto");
+  const persist = async (
+    sourceUrl: string,
+  ): Promise<{
+    url: string;
+    sha256: string;
+    sizeBytes: number;
+    contentType: string;
+  }> => {
+    if (storageCtrl.failDownload) {
+      throw new Error(
+        "Synthetic re-host failure (test): download/persist failed",
+      );
+    }
+    const hashInput = storageCtrl.contentKey ?? sourceUrl;
+    return {
+      url: sourceUrl,
+      sha256: createHash("sha256").update(hashInput).digest("hex"),
+      sizeBytes: Math.max(1, sourceUrl.length),
+      contentType: "application/octet-stream",
+    };
+  };
   return {
     ...orig,
-    downloadAndStore: async (url: string) => ({
-      url,
-      sha256: "0".repeat(64),
-      sizeBytes: 0,
-      contentType: "application/octet-stream",
-    }),
+    downloadAndStore: async (url: string) => persist(url),
     getStorageAdapter: async () => ({
       upload: async (_key: string, _data: Buffer, _contentType: string) =>
         "https://oss/uploaded",
-      persistFromUrl: async (url: string) => ({
-        url,
-        sha256: "0".repeat(64),
-        sizeBytes: 0,
-        contentType: "application/octet-stream",
-      }),
+      persistFromUrl: async (url: string) => persist(url),
+      // Our-own URLs = whatever upload() produced. Provider temp URLs
+      // ("https://oss/result-*.png" etc.) are external → re-hosted by Case 2.
+      isOwnUrl: (url: string) => url.startsWith("https://oss/uploaded"),
     }),
     storageKey: () => "test/key.png",
   };
@@ -145,6 +188,7 @@ import { initCore, schema, createTestDb } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { startTaskListener } from "@breatic/collab/src/services/task-listener.js";
 import { canvasSpaceDocName } from "@breatic/shared";
+import { eq } from "drizzle-orm";
 
 initCore(process.env);
 
@@ -191,6 +235,12 @@ const FIXTURE_STUDIO_ID = "00000000-0000-0000-0000-000000000003";
 // to `project-{pid}/canvas-{spaceId}`. Spaces have no PG table, so
 // this is just a stable UUID we reuse across tasks in the test.
 const FIXTURE_SPACE_ID = "00000000-0000-0000-0000-000000000004";
+// A registered user with NO personal studio (mid-onboarding: registration
+// creates the user + credit balance but not the studio). Used to exercise
+// asset hole #2 — a generation acting as this user cannot resolve an owner
+// studio, so registration is best-effort skipped (billed but untracked)
+// and must NOT fail the job.
+const FIXTURE_USER_NO_STUDIO_ID = "00000000-0000-0000-0000-000000000005";
 
 // ── Polling helpers ──────────────────────────────────────────────────────────
 
@@ -314,6 +364,13 @@ beforeAll(async () => {
   await db.insert(schema.users).values({
     id: FIXTURE_USER_ID,
     email: "integration-test@breatic.example",
+    emailVerified: true,
+  }).onConflictDoNothing();
+
+  // Registered but no personal studio (asset hole #2 fixture).
+  await db.insert(schema.users).values({
+    id: FIXTURE_USER_NO_STUDIO_ID,
+    email: "integration-test-nostudio@breatic.example",
     emailVerified: true,
   }).onConflictDoNothing();
 
@@ -765,5 +822,264 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       expect(data!["coverUrl"]).toBe(providerCtrl.outputs[i]!.cover_url);
       expect("handlingBy" in (data ?? {})).toBe(false);
     }
+  });
+
+  // ── Asset-layer hardening (adversarial holes #4 / #1 / #2) ──────────────
+  afterEach(() => {
+    storageCtrl.failDownload = false;
+    storageCtrl.contentKey = null;
+  });
+
+  /**
+   * Drive one successful-provider generation end to end: seed the node,
+   * insert the task row, and enqueue the job. Returns the task id so the
+   * caller can await completion / inspect billing.
+   * @param opts - Generation parameters.
+   * @param opts.nodeId - Target canvas node id.
+   * @param opts.url - Provider output URL.
+   * @param opts.userId - Acting user (defaults to the studio-owning fixture).
+   * @returns The inserted task's id.
+   */
+  async function runGeneration(opts: {
+    nodeId: string;
+    url: string;
+    userId?: string;
+  }): Promise<string> {
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
+    const userId = opts.userId ?? FIXTURE_USER_ID;
+    providerCtrl.mode = "success";
+    providerCtrl.outputs = [{ url: opts.url, cover_url: "" }];
+    await seedNode(hocuspocus, docName, opts.nodeId, {
+      name: "Gen Node",
+      state: "handling",
+      handlingBy: { userId, type: "frontend", startedAt: Date.now(), gen: 1 },
+      leaseGen: 1,
+      attachments: [],
+    });
+    const [taskRow] = await db
+      .insert(schema.tasks)
+      .values({
+        userId,
+        projectId: FIXTURE_PROJECT_ID,
+        spaceId: FIXTURE_SPACE_ID,
+        taskType: "image",
+        mode: "append",
+        source: "mini_tool",
+        params: {},
+      })
+      .returning();
+    const taskId = taskRow!.id;
+    await tasksQueue.add(
+      "run-task",
+      {
+        taskId,
+        taskType: "image",
+        userId,
+        projectId: FIXTURE_PROJECT_ID,
+        spaceId: FIXTURE_SPACE_ID,
+        source: "mini_tool",
+        toolName: "remove-bg",
+        params: {},
+        targetNodeIds: [opts.nodeId],
+        nodeGens: { [opts.nodeId]: 1 },
+        mode: "append" as const,
+      },
+      { attempts: 1 },
+    );
+    return taskId;
+  }
+
+  it("Test 4 (asset #4): a primary-output re-host failure fails the task and does NOT bill", async () => {
+    const nodeId = "node-persistfail-t4";
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
+    const tempUrl = "https://cdn.tmp/expiring-t4.png";
+    storageCtrl.failDownload = true; // the re-host to permanent storage throws
+
+    const taskId = await runGeneration({ nodeId, url: tempUrl });
+
+    await waitForCondition(
+      async () => {
+        const t = await taskService.getByIdInternal(taskId);
+        return t?.status === "failed";
+      },
+      30_000,
+      `task ${taskId} failed on persist failure`,
+    );
+
+    // CRITICAL: a persist failure must NOT bill (user decision 2026-07-04).
+    const [t] = await db
+      .select()
+      .from(schema.tasks)
+      .where(eq(schema.tasks.id, taskId));
+    expect(t!.status).toBe("failed");
+    expect(t!.billedAt).toBeNull();
+
+    // The node ends idle with an error, NOT pointing at the expiring temp URL.
+    const data = await readNodeData(hocuspocus, docName, nodeId);
+    expect(data!["state"]).toBe("idle");
+    expect(typeof data!["errorMessage"]).toBe("string");
+    expect(data!["content"]).not.toBe(tempUrl);
+  });
+
+  it("Test 5 (asset #1): a within-studio dedup hit collapses to one registry row; node keeps its own URL (reconcile deferred to #1609)", async () => {
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
+    // Force both generations to hash to the same content (a genuine dedup).
+    storageCtrl.contentKey = "asset-1-dedup-content";
+
+    const urlA = "https://oss/dedup-first-t5.png";
+    const taskA = await runGeneration({ nodeId: "node-dedup-a-t5", url: urlA });
+    await waitForCondition(
+      async () => (await taskService.getByIdInternal(taskA))?.status === "completed",
+      30_000,
+      `task ${taskA} (first dedup gen) completed`,
+    );
+    const first = await readNodeData(hocuspocus, docName, "node-dedup-a-t5");
+    expect(first!["content"]).toBe(urlA);
+
+    // Second gen: same content hash, DIFFERENT provider URL → registry
+    // dedups to the first row (usage counted once). The node keeps its OWN
+    // url — the node-URL reconcile is deferred to the upload slice (#1609)
+    // because reconciling could leak cross-project identifiers (adversarial
+    // #5). This test locks the dedup-collapse + the "no reconcile" contract.
+    const urlB = "https://oss/dedup-second-t5.png";
+    const taskB = await runGeneration({ nodeId: "node-dedup-b-t5", url: urlB });
+    await waitForCondition(
+      async () => (await taskService.getByIdInternal(taskB))?.status === "completed",
+      30_000,
+      `task ${taskB} (second dedup gen) completed`,
+    );
+    await waitForCondition(
+      async () => {
+        const d = await readNodeData(hocuspocus, docName, "node-dedup-b-t5");
+        return d?.["state"] === "idle" && typeof d?.["content"] === "string";
+      },
+      5_000,
+      "second dedup node idle with content",
+    );
+
+    const second = await readNodeData(hocuspocus, docName, "node-dedup-b-t5");
+    expect(second!["content"]).toBe(urlB); // keeps its own URL (no reconcile)
+    // Registry collapsed to exactly one row for the shared content hash.
+    const rows = await db
+      .select()
+      .from(schema.studioAssets)
+      .where(eq(schema.studioAssets.studioId, FIXTURE_STUDIO_ID));
+    expect(rows.filter((r) => r.fileUrl === urlA).length).toBe(1);
+    expect(rows.some((r) => r.fileUrl === urlB)).toBe(false);
+  });
+
+  it("Test 7 (asset #A HIGH): a sync-transport buffer output is NOT re-hosted by Case 2 (no fall-through / no fail on a Case-2 blip)", async () => {
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
+    const nodeId = "node-buffer-t7";
+
+    // Provider returns raw bytes (audio/tts) → Case 1 uploads them to
+    // permanent storage. storageCtrl.failDownload makes any Case-2 re-host
+    // throw. Pre-fix, Case 1's own (non-/uploads/) URL fell through into
+    // Case 2 → the failing re-download marked the task failed. With the fix
+    // Case 2 is skipped (storedFromBuffer), so the task COMPLETES.
+    storageCtrl.failDownload = true;
+    providerCtrl.mode = "buffer";
+
+    await seedNode(hocuspocus, docName, nodeId, {
+      name: "Buffer Node",
+      state: "handling",
+      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
+      leaseGen: 1,
+      attachments: [],
+    });
+    const [taskRow] = await db
+      .insert(schema.tasks)
+      .values({
+        userId: FIXTURE_USER_ID,
+        projectId: FIXTURE_PROJECT_ID,
+        spaceId: FIXTURE_SPACE_ID,
+        taskType: "audio",
+        mode: "append",
+        source: "mini_tool",
+        params: {},
+      })
+      .returning();
+    const taskId = taskRow!.id;
+    await tasksQueue.add(
+      "run-task",
+      {
+        taskId,
+        taskType: "audio",
+        userId: FIXTURE_USER_ID,
+        projectId: FIXTURE_PROJECT_ID,
+        spaceId: FIXTURE_SPACE_ID,
+        source: "mini_tool",
+        toolName: "tts",
+        params: {},
+        targetNodeIds: [nodeId],
+        nodeGens: { [nodeId]: 1 },
+        mode: "append" as const,
+      },
+      { attempts: 1 },
+    );
+
+    await waitForCondition(
+      async () => (await taskService.getByIdInternal(taskId))?.status === "completed",
+      30_000,
+      `task ${taskId} (buffer output) completed despite Case-2 failDownload`,
+    );
+    const data = await readNodeData(hocuspocus, docName, nodeId);
+    expect(data!["state"]).toBe("idle");
+    // Node points at the Case-1 permanent URL, never re-hosted by Case 2.
+    expect(data!["content"]).toBe("https://oss/uploaded");
+  });
+
+  it("Test 6 (asset #2): a generation by a user with no personal studio completes best-effort but registers no asset", async () => {
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
+    const nodeId = "node-nostudio-t6";
+    const url = "https://oss/nostudio-t6.png";
+
+    // Acting user has NO personal studio → resolveOwnerStudioId throws →
+    // registration is best-effort skipped. The job MUST still complete
+    // (bytes stored + node updated) — best-effort must not fail the job.
+    const taskId = await runGeneration({
+      nodeId,
+      url,
+      userId: FIXTURE_USER_NO_STUDIO_ID,
+    });
+
+    await waitForCondition(
+      async () => (await taskService.getByIdInternal(taskId))?.status === "completed",
+      30_000,
+      `task ${taskId} (no-studio user) completed best-effort`,
+    );
+    const data = await readNodeData(hocuspocus, docName, nodeId);
+    expect(data!["state"]).toBe("idle");
+    expect(data!["content"]).toBe(url); // node still got its content
+
+    // But the asset is UNTRACKED — no studio_assets row links to this task.
+    const rows = await db
+      .select()
+      .from(schema.studioAssets)
+      .where(eq(schema.studioAssets.generationTaskId, taskId));
+    expect(rows.length).toBe(0);
+  });
+
+  it("Test 8 (asset #A round-3): a local-handler output that is already OUR OWN URL is not re-hosted by Case 2", async () => {
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
+    const nodeId = "node-ownurl-t8";
+
+    // Simulate a local mini-tool (video cut/crop) that uploaded its output
+    // to our storage and returned an OUR-OWN url. failDownload makes any
+    // Case-2 re-download throw. Pre-round-3 the '/uploads/' guard did not
+    // recognize our S3/OSS URL, so Case 2 fired and the failing re-download
+    // failed the task; with adapter.isOwnUrl the re-host is skipped → the
+    // task completes and the node keeps the already-stored URL.
+    storageCtrl.failDownload = true;
+    const taskId = await runGeneration({ nodeId, url: "https://oss/uploaded" });
+
+    await waitForCondition(
+      async () => (await taskService.getByIdInternal(taskId))?.status === "completed",
+      30_000,
+      `task ${taskId} (own-url output) completed without re-host`,
+    );
+    const data = await readNodeData(hocuspocus, docName, nodeId);
+    expect(data!["state"]).toBe("idle");
+    expect(data!["content"]).toBe("https://oss/uploaded");
   });
 });

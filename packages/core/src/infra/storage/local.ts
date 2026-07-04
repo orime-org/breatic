@@ -16,7 +16,7 @@ import type {
   ObjectHead,
   PersistedObject,
 } from "@core/infra/storage/index.js";
-import { sha256Hex } from "@core/infra/storage/index.js";
+import { downloadValidated, sha256Hex } from "@core/infra/storage/index.js";
 
 /** Storage adapter that persists files to the local filesystem. */
 export class LocalStorageAdapter implements StorageAdapter {
@@ -58,16 +58,10 @@ export class LocalStorageAdapter implements StorageAdapter {
    * @param sourceUrl - the remote URL to download (120s timeout)
    * @param key - the storage key to write the downloaded file under
    * @returns the public URL serving the persisted file
-   * @throws {Error} when the source URL responds with a non-OK status
+   * @throws {Error} when the download fails, is truncated, or is empty
    */
   async persistFromUrl(sourceUrl: string, key: string): Promise<PersistedObject> {
-    const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(120_000) });
-    if (!response.ok) {
-      throw new Error(`Failed to download ${sourceUrl}: HTTP ${response.status}`);
-    }
-
-    const contentType = response.headers.get("content-type") ?? "application/octet-stream";
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const { buffer, contentType } = await downloadValidated(sourceUrl);
     const url = await this.upload(key, buffer, contentType);
     return { url, sha256: sha256Hex(buffer), sizeBytes: buffer.length, contentType };
   }
@@ -98,6 +92,15 @@ export class LocalStorageAdapter implements StorageAdapter {
    */
   publicUrl(key: string): string {
     return `${this.baseUrl}/${key}`;
+  }
+
+  /**
+   * Whether `url` is one we served (starts with our public base).
+   * @param url - the URL to test
+   * @returns true when the URL points at an object in our storage
+   */
+  isOwnUrl(url: string): boolean {
+    return url.startsWith(`${this.baseUrl}/`);
   }
 
   /**

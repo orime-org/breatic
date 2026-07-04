@@ -30,6 +30,7 @@ import { verifyCanvasNodeLock, releaseCanvasNodeLock, reacquireCanvasNodeLock } 
 import { canvasSpaceDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
+import { NotFoundError } from "@breatic/core";
 import { extractPromptText } from "@breatic/domain";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
@@ -1054,7 +1055,8 @@ function taskTypeToAssetKind(
  * @param contentHash - sha256 of the content (dedup key).
  * @param sizeBytes - Byte size (from the transfer / buffer).
  * @param mimeType - Content type.
- * @returns Nothing.
+ * @returns Nothing. (Node-URL reconciliation on a within-studio dedup hit
+ *   is deferred to the upload slice #1609 — see the Case 2 comment.)
  */
 async function registerGeneratedAsset(
   opts: { taskType: string; userId: string; projectId?: string; taskId: string },
@@ -1079,10 +1081,26 @@ async function registerGeneratedAsset(
       generationTaskId: opts.taskId,
     });
   } catch (err) {
-    logger.warn(
-      { err, key, taskId: opts.taskId },
-      "asset_register_failed (generation)",
-    );
+    if (err instanceof NotFoundError) {
+      // #2/#6 (adversarial): the owner studio could not be resolved — a
+      // missing project (possibly a legitimate soft-delete race) or an
+      // acting user without a personal studio (mid-onboarding). Bytes are
+      // already stored + the task bills regardless (best-effort), so this
+      // must NOT fail the job. Emit a distinct, greppable event so a
+      // billed-yet-untracked asset stays observable — at WARN, not ERROR:
+      // the soft-delete race + onboarding gap are expected, not crashes,
+      // so error level would only add alert noise. projectId is in the
+      // context to tell the cases apart during reconciliation.
+      logger.warn(
+        { err, key, taskId: opts.taskId, userId: opts.userId, projectId: opts.projectId },
+        "asset_register_untracked (billed but not registered — no owner studio)",
+      );
+    } else {
+      logger.warn(
+        { err, key, taskId: opts.taskId },
+        "asset_register_failed (generation)",
+      );
+    }
   }
 }
 
@@ -1126,6 +1144,7 @@ async function persistOutputs(
   });
 
   const persisted: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }> = [];
+  const adapter = await getStorageAdapter();
 
   for (const out of outputs) {
     const next: { url?: string; cover_url?: string; extra?: Record<string, unknown> } = { ...out };
@@ -1138,7 +1157,6 @@ async function persistOutputs(
       try {
         const key = makeKey();
         const contentType = ((extra).contentType as string) ?? "application/octet-stream";
-        const adapter = await getStorageAdapter();
         const buf = (extra).buffer;
         const url = await adapter.upload(key, buf, contentType);
         next.url = url;
@@ -1160,19 +1178,39 @@ async function persistOutputs(
       delete (extra).contentType;
     }
 
-    // Case 2: temporary CDN URL — re-host to our storage.
-    if (typeof next.url === "string" && next.url.startsWith("http") && !next.url.includes("/uploads/")) {
-      try {
-        const key = makeKey();
-        const { url: permanentUrl, sha256, sizeBytes, contentType } =
-          await downloadAndStore(next.url, key);
-        if (!next.extra) next.extra = {};
-        (next.extra).url_original = next.url;
-        next.url = permanentUrl;
-        await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
-      } catch (err) {
-        logger.warn({ url: next.url, err }, "Failed to persist result URL, keeping original");
-      }
+    // Case 2: temporary EXTERNAL provider URL — re-host it to our storage.
+    // SKIPPED for any URL we already own (adapter.isOwnUrl): a Case-1 buffer
+    // output AND a local mini-tool handler both upload to our own bucket and
+    // return our own URL — re-downloading our own object would double-store
+    // and, post-#4 (no swallow), could fail the task on a transient read blip
+    // and discard an already-persisted deliverable (adversarial round-2 #A
+    // buffer path + round-3 local-handler URL path; the old `/uploads/`
+    // substring only recognized the local adapter, so S3/OSS URLs fell
+    // through). NOTE: local mini-tool outputs are our-own URLs, so they are
+    // no longer registered here — registering those cost-0 transformations
+    // needs the producer to thread the hash/size and is a deferred v1 gap
+    // (todo #1615); the pre-fix Case-2 path double-stored them anyway.
+    if (
+      typeof next.url === "string" &&
+      next.url.startsWith("http") &&
+      !adapter.isOwnUrl(next.url)
+    ) {
+      // #4 (adversarial): a PRIMARY-output re-host failure must fail the
+      // task (Stage 2 markFailed + NO charge), never swallow-and-keep the
+      // expiring provider URL while still billing. downloadAndStore
+      // throwing propagates to runTask's Stage-2 persist-failure path.
+      // (registerGeneratedAsset is internally best-effort and never throws.)
+      const key = makeKey();
+      const { url: permanentUrl, sha256, sizeBytes, contentType } =
+        await downloadAndStore(next.url, key);
+      if (!next.extra) next.extra = {};
+      (next.extra).url_original = next.url;
+      next.url = permanentUrl;
+      // #1 node-URL reconcile on a dedup hit is DEFERRED to the upload slice
+      // (#1609): AI outputs dedup near-zero, and reconciling a node to a
+      // sibling asset's fileUrl can leak cross-project identifiers + create
+      // a cross-project storage dependency (adversarial #5).
+      await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
     }
 
     persisted.push(next);
@@ -1186,7 +1224,7 @@ async function persistOutputs(
   for (const field of urlFields) {
     const value = extras[field];
     if (typeof value !== "string" || !value.startsWith("http")) continue;
-    if (value.includes("/uploads/")) continue;
+    if (adapter.isOwnUrl(value)) continue; // already ours — don't re-host
     try {
       const key = makeKey();
       const { url: permanentUrl, sha256, sizeBytes, contentType } =
@@ -1195,6 +1233,9 @@ async function persistOutputs(
       extras[`${field}_original`] = value;
       await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
     } catch (err) {
+      // Extras are auxiliary (not the billed deliverable) — keep best-effort:
+      // a failed re-host of a secondary field falls back to the original URL
+      // and does NOT fail the task (unlike a primary output, hole #4).
       logger.warn({ field, url: value, err }, "Failed to persist result URL, keeping original");
     }
   }
