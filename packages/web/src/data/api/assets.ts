@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { apiGet } from '@web/data/api/request';
+import { apiGet, apiPost } from '@web/data/api/request';
 
 /** Result of a presign request — matches the backend `/assets/presign` shape. */
 export interface PresignResult {
@@ -59,5 +59,67 @@ export const assetsApi = {
     if (!res.ok) {
       throw new Error(`Asset upload failed (HTTP ${res.status})`);
     }
+  },
+
+  /**
+   * Report a completed upload (activity-feed handshake, ADR 2026-07-04).
+   * The server verifies the object exists in storage (head()) before the
+   * activity row is recorded — call AFTER the PUT succeeded.
+   * @param params - Upload identity + optional canvas context.
+   * @param params.projectId - Owning project.
+   * @param params.key - Storage key returned by {@link presign}.
+   * @param params.kind - Asset kind returned by {@link presign}.
+   * @param params.nodeId - Canvas node the asset landed on, when node-bound.
+   * @param params.spaceId - Space the node lives in.
+   * @param params.source - `mini_tool` for frontend-executed mini-tool products.
+   * @param params.toolName - Mini-tool name when `source` is set.
+   * @returns Nothing (the activity row is server-side).
+   */
+  async reportUploaded(params: {
+    projectId: string;
+    key: string;
+    kind: string;
+    nodeId?: string;
+    spaceId?: string;
+    source?: 'mini_tool';
+    toolName?: string;
+  }): Promise<void> {
+    await apiPost<{ ok: boolean }>('/assets/uploaded', {
+      project_id: params.projectId,
+      key: params.key,
+      kind: params.kind,
+      ...(params.nodeId !== undefined && { node_id: params.nodeId }),
+      ...(params.spaceId !== undefined && { space_id: params.spaceId }),
+      ...(params.source !== undefined && { source: params.source }),
+      ...(params.toolName !== undefined && { tool_name: params.toolName }),
+    });
+  },
+
+  /**
+   * Report deleted assets (activity feed, batch). Report-only — the
+   * deletion itself is a client-side Yjs operation.
+   * @param params - Project + the deleted asset entries.
+   * @param params.projectId - Owning project.
+   * @param params.entries - One entry per deleted asset-bearing node.
+   * @returns Nothing (the activity rows are server-side).
+   */
+  async reportDeleted(params: {
+    projectId: string;
+    entries: Array<{
+      fileUrl: string;
+      kind: string;
+      nodeId?: string;
+      spaceId?: string;
+    }>;
+  }): Promise<void> {
+    await apiPost<{ ok: boolean }>('/assets/deleted', {
+      project_id: params.projectId,
+      entries: params.entries.map((e) => ({
+        file_url: e.fileUrl,
+        kind: e.kind,
+        ...(e.nodeId !== undefined && { node_id: e.nodeId }),
+        ...(e.spaceId !== undefined && { space_id: e.spaceId }),
+      })),
+    });
   },
 };

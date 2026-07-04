@@ -13,7 +13,9 @@
  *
  *   - `meta.spaces` — any structural change (create / delete / modify
  *     a Space entry). Must go through `space:*` stateless RPC.
- *   - `meta.projectMessages` — any push / delete. Must go through
+ *   - `meta.projectMessages` — RETIRED root (feed moved to the PG
+ *     activity table, ADR 2026-07-04); still guarded so a malicious
+ *     client cannot resurrect it. Was:
  *     `messages:*` RPC (push is collab-only side-effect of space:*
  *     handlers; clear is owner-only RPC).
  *   - `meta.users` — any add / modify / delete. The display-name
@@ -204,7 +206,7 @@ export function checkWriteAuthz({
 
   if (beforeMessages !== afterMessages) {
     throw new WriteAuthzError(
-      "Direct write to meta.projectMessages is not allowed — collab writes via space:* / messages:* RPC handlers only",
+      "Direct write to meta.projectMessages is not allowed — the feed moved to the PG activity table (ADR 2026-07-04); the root is retired and only guarded against malicious writes",
     );
   }
 

@@ -96,8 +96,6 @@ export {
   SpaceLockPayloadSchema,
   SpaceRenamePayloadSchema,
   SpaceRestorePayloadSchema,
-  ProjectMessageKindSchema,
-  ProjectMessageEntrySchema,
 } from "@shared/types/space-rpc.js";
 export type {
   SpaceRpcRequest,
@@ -108,8 +106,6 @@ export type {
   SpaceLockPayload,
   SpaceRenamePayload,
   SpaceRestorePayload,
-  ProjectMessageKind,
-  ProjectMessageEntry,
 } from "@shared/types/space-rpc.js";
 
 export {

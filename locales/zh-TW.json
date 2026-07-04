@@ -324,6 +324,9 @@
     },
     "minimap": {
       "label": "畫布縮略圖"
+    },
+    "activity": {
+      "reportFailed": "上傳未能記錄到 Project 活動"
     }
   },
   "editor": {
@@ -1709,5 +1712,20 @@
     "title": "你沒有存取此 Project 的權限",
     "description": "請聯絡 Project Owner 申請存取,他們可以透過電子郵件邀請你。",
     "backToStudio": "返回 Studio"
+  },
+  "activity": {
+    "description": "Project 活動",
+    "loading": "載入中…",
+    "type": {
+      "assetUploaded": "{actor} 上傳了素材",
+      "assetDeleted": "{actor} 刪除了素材",
+      "generationSucceeded": "{actor} 完成了一次生成",
+      "generationSucceededTool": "{actor} 使用 {toolName} 生成了內容",
+      "generationFailed": "{actor} 的生成失敗了",
+      "memberJoined": "{actor} 加入了 Project",
+      "memberRemoved": "{actor} 移除了一名成員",
+      "memberRoleChanged": "{actor} 將一名成員的角色改為 {role}",
+      "ownershipTransferred": "{actor} 轉移了 Project 擁有權"
+    }
   }
 }

@@ -6,7 +6,6 @@ import { describe, it, expect } from "vitest";
 import {
   SpaceRpcRequestSchema,
   SpaceRpcResponseSchema,
-  ProjectMessageEntrySchema,
 } from "../space-rpc.js";
 
 describe("SpaceRpcRequestSchema — discriminated union", () => {
@@ -119,38 +118,6 @@ describe("SpaceRpcResponseSchema", () => {
       id: "r1",
       ok: false,
       error: { code: "OH_NO", message: "x" },
-    });
-    expect(r.success).toBe(false);
-  });
-});
-
-describe("ProjectMessageEntrySchema", () => {
-  it("parses missing-node entry", () => {
-    ProjectMessageEntrySchema.parse({
-      id: "m1",
-      kind: "missing-node",
-      message: "project_message.missing_node.no_actor",
-      context: { nodeId: "n-1" },
-      createdAt: Date.now(),
-    });
-  });
-
-  it("parses space-deleted entry with spaceName snapshot", () => {
-    ProjectMessageEntrySchema.parse({
-      id: "m2",
-      kind: "space-deleted",
-      actor: "user-1",
-      spaceId: "sp-1",
-      spaceName: "Main canvas",
-      createdAt: Date.now(),
-    });
-  });
-
-  it("rejects entry with unknown kind", () => {
-    const r = ProjectMessageEntrySchema.safeParse({
-      id: "m3",
-      kind: "explosion",
-      createdAt: 1,
     });
     expect(r.success).toBe(false);
   });

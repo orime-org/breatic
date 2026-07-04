@@ -38,7 +38,6 @@ vi.mock('@web/data/yjs/project-meta', async () => {
       status: 'connected' as const,
       authFailedReason: null,
     }),
-    useProjectMessages: () => ({ messages: [] }),
   };
 });
 

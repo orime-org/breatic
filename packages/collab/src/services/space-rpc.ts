@@ -177,7 +177,7 @@ async function recordSpaceActivity(
 
 /**
  * Read a Y.Map's contents as a plain JS object suitable for stashing
- * inside a projectMessages snapshot field. Skips nested CRDTs - Space
+ * inside a space:deleted activity row's snapshot payload. Skips nested CRDTs - Space
  * entries are flat (id / type / name / order / locked / createdAt), so
  * `toJSON()` returns a plain object.
  * @param m - A flat Space entry Y.Map (id / type / name / order / locked / createdAt).

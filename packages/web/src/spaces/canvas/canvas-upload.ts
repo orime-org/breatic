@@ -59,6 +59,12 @@ export interface MediaUploadDeps {
   onSuccess: (fileUrl: string) => void;
   /** Called (no args) when presign or the PUT fails. */
   onFailure: () => void;
+  /**
+   * Optional post-success hook carrying the storage identity — the
+   * caller reports the upload to the activity-feed handshake with it
+   * (fire-and-forget; the canvas write-back never waits on it).
+   */
+  onUploaded?: (info: { key: string; kind: string; fileUrl: string }) => void;
 }
 
 /**
@@ -76,13 +82,14 @@ export async function runMediaUpload(
   deps: MediaUploadDeps,
 ): Promise<void> {
   try {
-    const { uploadUrl, fileUrl } = await deps.presign({
+    const { uploadUrl, fileUrl, key, kind } = await deps.presign({
       filename: file.name,
       contentType: file.type,
       projectId,
     });
     await deps.putFile(uploadUrl, file);
     deps.onSuccess(fileUrl);
+    deps.onUploaded?.({ key, kind, fileUrl });
   } catch {
     deps.onFailure();
   }
@@ -135,6 +142,15 @@ export interface FillNodeDeps {
   setContent: (nodeId: string, content: string, lease: UploadLease) => boolean;
   /** Leased error write-back (fixed-English wire string — never a toast). */
   setError: (nodeId: string, message: string, lease: UploadLease) => boolean;
+  /**
+   * Optional activity-feed handshake reporter (media path only) — called
+   * after a successful upload with the storage identity + the node it
+   * landed on. Fire-and-forget at the caller.
+   */
+  onUploaded?: (
+    nodeId: string,
+    info: { key: string; kind: string; fileUrl: string },
+  ) => void;
 }
 
 /**
@@ -184,6 +200,7 @@ export async function fillNodeFromFile(
       putFile: deps.putFile,
       onSuccess: (fileUrl) => deps.setContent(nodeId, fileUrl, lease),
       onFailure: () => deps.setError(nodeId, `Upload failed: ${file.name}`, lease),
+      onUploaded: (info) => deps.onUploaded?.(nodeId, info),
     });
     return;
   }

@@ -1,311 +1,220 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+/**
+ * Activity feed panel tests (ADR 2026-07-04 project-activity-feed).
+ * The panel reads REST keyset pages (mocked activitiesApi) instead of
+ * the retired meta-doc projectMessages Y.Array.
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   render as rtlRender,
   screen,
+  waitFor,
   type RenderOptions,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
-import type { ProjectMessageEntry } from '@breatic/shared';
-import {
-  ProjectMessagesButton,
-  relativeTime,
-} from '@web/pages/project/chrome/tab-bar/ProjectMessagesButton';
+import type { ProjectActivityEntry } from '@breatic/shared';
+import { ProjectMessagesButton, relativeTime } from '@web/pages/project/chrome/tab-bar/ProjectMessagesButton';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores/ui';
 
-// The trigger now wraps `SheetTrigger` in shadcn `Tooltip`, which
-// throws if no `TooltipProvider` is up the tree. App.tsx supplies
-// one at runtime — tests have to add it explicitly.
-const render = (ui: React.ReactElement, options?: RenderOptions) =>
-  rtlRender(ui, { wrapper: TooltipProvider, ...options });
+const { listMock } = vi.hoisted(() => ({ listMock: vi.fn() }));
+vi.mock('@web/data/api/activities', () => ({
+  activitiesApi: { list: listMock },
+}));
+
+const PID = '11111111-1111-4111-8111-111111111111';
+
+/**
+ * Renders with the providers the panel needs (tooltip + a fresh query
+ * client so no cache leaks between tests).
+ * @param ui - Element under test.
+ * @param options - Optional RTL overrides.
+ * @returns The RTL render result.
+ */
+function render(ui: React.ReactElement, options?: RenderOptions): ReturnType<typeof rtlRender> {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const Wrapper = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
+    <QueryClientProvider client={client}>
+      <TooltipProvider>{children}</TooltipProvider>
+    </QueryClientProvider>
+  );
+  return rtlRender(ui, { wrapper: Wrapper, ...options });
+}
 
 beforeEach(() => {
-  // Reset the global exclusive-overlay state — `useExclusiveOverlay`
-  // reads it, so a leftover `activeOverlayId` from a sibling test
-  // would either open or block this test's sheet incorrectly.
   useUIStore.setState({ activeOverlayId: null });
+  listMock.mockReset();
+  listMock.mockResolvedValue({ items: [], nextCursor: null });
 });
 
-// Q11 v2 — `actor` is a userId, name is rendered via the `usersById`
-// prop's live Yjs lookup. `spaceName` snapshot field was removed for
-// active entries; `space-deleted` keeps `spaceSnapshot.name` because
-// the spaceId leaves `meta.spaces` at delete time and there's no live
-// row left to look up against.
-const USERS_BY_ID: ReadonlyMap<string, { name: string }> = new Map([
-  ['u-yuki', { name: 'Yuki' }],
-]);
-const SPACES_BY_ID: ReadonlyMap<string, { name: string }> = new Map([
-  ['sp-2', { name: 'Reel' }],
-]);
+/**
+ * Build a feed entry with overridable fields.
+ * @param over - Field overrides.
+ * @returns A complete feed entry.
+ */
+function entry(over: Partial<ProjectActivityEntry>): ProjectActivityEntry {
+  return {
+    id: over.id ?? 'a-1',
+    projectId: PID,
+    actorUserId: 'u-1',
+    actorName: 'Yuki',
+    type: 'space:created',
+    spaceId: null,
+    nodeId: null,
+    taskId: null,
+    payload: {},
+    restored: false,
+    createdAt: Date.now() - 60_000,
+    ...over,
+  };
+}
 
-const M_DELETED: ProjectMessageEntry = {
-  id: 'm-del',
-  kind: 'space-deleted',
-  actor: 'u-yuki',
-  spaceId: 'sp-1',
-  spaceSnapshot: { id: 'sp-1', name: 'Main', type: 'canvas' },
-  createdAt: Date.now() - 60_000,
-};
-
-const M_CREATED: ProjectMessageEntry = {
-  id: 'm-new',
-  kind: 'space-created',
-  actor: 'u-yuki',
-  spaceId: 'sp-2',
-  createdAt: Date.now() - 600_000,
-};
-
-const M_RENAMED: ProjectMessageEntry = {
-  id: 'm-rename',
-  kind: 'space-renamed',
-  actor: 'u-yuki',
-  spaceId: 'sp-2',
-  spaceName: 'Reel v2',
-  oldSpaceName: 'Reel',
-  createdAt: Date.now() - 90_000,
-};
-
-const M_MISSING: ProjectMessageEntry = {
-  id: 'm-miss',
-  kind: 'missing-node',
-  message: 'spaces.history.kind.missingNode',
-  context: { nodeId: 'n-1' },
-  createdAt: Date.now() - 30_000,
-};
-
-describe('ProjectMessagesButton', () => {
-  it('renders trigger without any unread / dot indicator', () => {
-    // Project messages channel has no read / unread state — the trigger
-    // never decorates with a dot, regardless of message count.
-    render(<ProjectMessagesButton messages={[M_DELETED]} usersById={USERS_BY_ID} spacesById={SPACES_BY_ID} />);
+describe('ProjectMessagesButton (activity feed)', () => {
+  it('renders the trigger without any unread indicator', () => {
+    render(<ProjectMessagesButton projectId={PID} />);
     expect(screen.getByTestId('project-messages-trigger')).toBeInTheDocument();
     expect(screen.queryByTestId('project-messages-dot')).toBeNull();
   });
 
   it('opens as a modal sheet with a backdrop overlay, like dialogs', async () => {
-    // User decision 2026-07-04: chrome sheets (SpaceDrawer / messages /
-    // read-only peek) show the same backdrop as dialogs.
     const user = userEvent.setup();
-    render(
-      <ProjectMessagesButton messages={[M_DELETED]} usersById={USERS_BY_ID} spacesById={SPACES_BY_ID} />,
-    );
+    render(<ProjectMessagesButton projectId={PID} />);
     await user.click(screen.getByTestId('project-messages-trigger'));
     expect(screen.getByTestId('sheet-overlay')).toBeInTheDocument();
   });
 
-  it('renders one row per message after opening the popover', async () => {
+  it('fetches the first page on open and renders one row per entry', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        entry({ id: 'a-1', type: 'space:created', payload: { spaceName: 'Main' } }),
+        entry({ id: 'a-2', type: 'asset:uploaded', payload: { fileUrl: 'https://x/f.png', kind: 'image' } }),
+        entry({
+          id: 'a-3',
+          type: 'generation:succeeded',
+          payload: { source: 'mini_tool', toolName: 'crop', executedOn: 'frontend' },
+        }),
+      ],
+      nextCursor: null,
+    });
     const user = userEvent.setup();
-    render(
-      <ProjectMessagesButton messages={[M_DELETED, M_CREATED, M_MISSING]} usersById={USERS_BY_ID} spacesById={SPACES_BY_ID} />,
-    );
+    render(<ProjectMessagesButton projectId={PID} />);
     await user.click(screen.getByTestId('project-messages-trigger'));
-    expect(screen.getByTestId('project-messages-entry-m-del')).toBeInTheDocument();
-    expect(screen.getByTestId('project-messages-entry-m-new')).toBeInTheDocument();
-    expect(screen.getByTestId('project-messages-entry-m-miss')).toBeInTheDocument();
+    expect(await screen.findByTestId('project-messages-entry-a-1')).toBeInTheDocument();
+    expect(screen.getByTestId('project-messages-entry-a-2')).toBeInTheDocument();
+    expect(screen.getByTestId('project-messages-entry-a-3')).toBeInTheDocument();
+    expect(listMock).toHaveBeenCalledWith(PID, undefined);
   });
 
-  it('shows Restore button only for owner on space-deleted entries', async () => {
-    const user = userEvent.setup();
+  it('shows the Restore button only for the owner on unconsumed space:deleted rows', async () => {
     const onRestore = vi.fn();
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-1',
+          type: 'space:deleted',
+          spaceId: 'sp-9',
+          payload: { spaceName: 'Doomed', spaceSnapshot: { id: 'sp-9' } },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
     render(
-      <ProjectMessagesButton
-        messages={[M_DELETED, M_CREATED]}
-        usersById={USERS_BY_ID}
-        spacesById={SPACES_BY_ID}
-        currentUserRole='owner'
-        onRestore={onRestore}
-      />,
+      <ProjectMessagesButton projectId={PID} currentUserRole='owner' onRestore={onRestore} />,
     );
     await user.click(screen.getByTestId('project-messages-trigger'));
+    const btn = await screen.findByTestId('project-messages-restore-del-1');
+    await user.click(btn);
+    expect(onRestore).toHaveBeenCalledWith('sp-9');
+  });
+
+  it('replaces Restore with a disabled restored badge when the row is consumed', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-2',
+          type: 'space:deleted',
+          spaceId: 'sp-9',
+          restored: true,
+          payload: { spaceName: 'Back' },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(<ProjectMessagesButton projectId={PID} currentUserRole='owner' />);
+    await user.click(screen.getByTestId('project-messages-trigger'));
     expect(
-      screen.getByTestId('project-messages-restore-m-del'),
+      await screen.findByTestId('project-messages-restored-badge-del-2'),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId('project-messages-restore-m-new'),
-    ).toBeNull();
-    await user.click(screen.getByTestId('project-messages-restore-m-del'));
-    expect(onRestore).toHaveBeenCalledWith('sp-1');
+    expect(screen.queryByTestId('project-messages-restore-del-2')).toBeNull();
   });
 
-  it('replaces Restore button with a disabled "已恢复" badge when the deleted entry has restored=true', async () => {
-    // Owner just clicked Restore once — collab's space:restore RPC
-    // mutated `restored=true` on the original deleted entry inside
-    // the same transact that wrote the space-restored audit entry.
-    // The bell sheet now disables the button via that single
-    // boolean read so a second click can't round-trip to the
-    // server and fail with "No deletion record found" (the canvas
-    // row was already un-soft-deleted).
+  it('hides Restore for non-owner viewers', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-3',
+          type: 'space:deleted',
+          spaceId: 'sp-9',
+          payload: { spaceName: 'Doomed' },
+        }),
+      ],
+      nextCursor: null,
+    });
     const user = userEvent.setup();
-    const M_DELETED_RESTORED: ProjectMessageEntry = {
-      ...M_DELETED,
-      restored: true,
-    };
-    const onRestore = vi.fn();
-    render(
-      <ProjectMessagesButton
-        messages={[M_DELETED_RESTORED]}
-        usersById={USERS_BY_ID}
-        spacesById={SPACES_BY_ID}
-        currentUserRole='owner'
-        onRestore={onRestore}
-      />,
-    );
+    render(<ProjectMessagesButton projectId={PID} currentUserRole='viewer' />);
     await user.click(screen.getByTestId('project-messages-trigger'));
-    // Restore button gone, restored badge in its place.
-    expect(
-      screen.queryByTestId('project-messages-restore-m-del'),
-    ).toBeNull();
-    const badge = screen.getByTestId('project-messages-restored-badge-m-del');
-    expect(badge).toBeDisabled();
-    expect(badge.textContent).toMatch(/已恢复|Restored|復元済み|已還原/);
+    await screen.findByTestId('project-messages-entry-del-3');
+    expect(screen.queryByTestId('project-messages-restore-del-3')).toBeNull();
   });
 
-  it('hides Restore button for non-owner viewers', async () => {
+  it('the activity:new stateless signal invalidates the feed (refetch)', async () => {
+    type StatelessCb = (data: { payload: string }) => void;
+    const listeners = new Map<string, StatelessCb>();
+    const provider = {
+      on: vi.fn((event: string, cb: (data: { payload: string }) => void) => {
+        listeners.set(event, cb);
+      }),
+      off: vi.fn(),
+    } as unknown as import('@hocuspocus/provider').HocuspocusProvider;
     const user = userEvent.setup();
-    render(
-      <ProjectMessagesButton
-        messages={[M_DELETED]}
-        usersById={USERS_BY_ID}
-        spacesById={SPACES_BY_ID}
-        currentUserRole='editor'
-        onRestore={vi.fn()}
-      />,
-    );
+    render(<ProjectMessagesButton projectId={PID} provider={provider} />);
     await user.click(screen.getByTestId('project-messages-trigger'));
-    expect(
-      screen.queryByTestId('project-messages-restore-m-del'),
-    ).toBeNull();
-  });
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
 
-  it('hides Clear all for everyone (Q11 v2.1 design — projectMessages is the audit log)', async () => {
-    // The clear-all button was removed in Q11 v2.1: projectMessages
-    // now functions as an append-only audit log for rename / lock /
-    // delete / restore events. Letting the owner wipe it loses
-    // provenance the very moment we lean on it as the source of
-    // truth. Re-enable once a "soft clear" / archive workflow ships.
-    const user = userEvent.setup();
-    render(
-      <ProjectMessagesButton
-        messages={[M_DELETED]}
-        usersById={USERS_BY_ID}
-        spacesById={SPACES_BY_ID}
-        currentUserRole='owner'
-        onClearAll={vi.fn()}
-      />,
-    );
-    await user.click(screen.getByTestId('project-messages-trigger'));
-    // Owner — still hidden.
-    expect(screen.queryByTestId('project-messages-clear-all')).toBeNull();
-  });
+    listeners.get('stateless')?.({
+      payload: JSON.stringify({ t: 'activity:new', projectId: PID }),
+    });
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
 
-  it('renders space-renamed entry citing both old and new names', async () => {
-    // Q12 design: rename is its own audit event. We show
-    //   "Yuki renamed Reel → Reel v2"
-    // so the historical Reel name is preserved alongside the current
-    // one (the live space row already moved on). Both names must
-    // appear verbatim in the rendered row text.
-    const user = userEvent.setup();
-    render(
-      <ProjectMessagesButton
-        messages={[M_RENAMED]}
-        usersById={USERS_BY_ID}
-        spacesById={SPACES_BY_ID}
-      />,
-    );
-    await user.click(screen.getByTestId('project-messages-trigger'));
-    const row = screen.getByTestId('project-messages-entry-m-rename');
-    expect(row.textContent).toMatch(/Yuki/);
-    expect(row.textContent).toMatch(/Reel\b/); // old name as a whole word
-    expect(row.textContent).toMatch(/Reel v2/); // new name
-  });
-
-  it('renders empty-state copy when no messages', async () => {
-    const user = userEvent.setup();
-    render(<ProjectMessagesButton messages={[]} usersById={USERS_BY_ID} spacesById={SPACES_BY_ID} />);
-    await user.click(screen.getByTestId('project-messages-trigger'));
-    expect(screen.getByText(/messages yet|no messages/i)).toBeInTheDocument();
-  });
-
-  it('shows newest first (reverse insertion order)', async () => {
-    const user = userEvent.setup();
-    const old: ProjectMessageEntry = {
-      id: 'old',
-      kind: 'space-created',
-      spaceId: 's',
-      createdAt: 1,
-    };
-    const newer: ProjectMessageEntry = {
-      id: 'new',
-      kind: 'space-deleted',
-      spaceId: 's',
-      createdAt: 2,
-    };
-    render(<ProjectMessagesButton messages={[old, newer]} usersById={USERS_BY_ID} spacesById={SPACES_BY_ID} />);
-    await user.click(screen.getByTestId('project-messages-trigger'));
-    const list = screen.getByTestId('project-messages-list');
-    const items = list.querySelectorAll('[data-testid^="project-messages-entry-"]');
-    expect(items[0].getAttribute('data-testid')).toBe('project-messages-entry-new');
-    expect(items[1].getAttribute('data-testid')).toBe('project-messages-entry-old');
-  });
-
-  it('closing the messages sheet returns focus to the trigger without re-popping its tooltip', async () => {
-    // C mechanism: focus returns to the trigger on close (we don't block it);
-    // the trigger's `onFocusCapture` stops the tooltip from opening on that
-    // refocus. (Tooltip-not-popping is also covered by real-browser smoke.)
-    const user = userEvent.setup();
-    render(
-      <ProjectMessagesButton
-        messages={[M_DELETED]}
-        usersById={USERS_BY_ID}
-        spacesById={SPACES_BY_ID}
-      />,
-    );
-    const trigger = screen.getByTestId('project-messages-trigger');
-    await user.click(trigger);
-    await screen.findByTestId('project-messages-sheet');
-    await user.keyboard('{Escape}');
-    expect(document.activeElement).toBe(trigger);
-    expect(
-      document.querySelector(
-        '[data-state="instant-open"],[data-state="delayed-open"]',
-      ),
-    ).toBeNull();
+    // Foreign / non-JSON stateless traffic is ignored.
+    listeners.get('stateless')?.({ payload: 'not-json' });
+    listeners.get('stateless')?.({
+      payload: JSON.stringify({ t: 'activity:new', projectId: 'other' }),
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(listMock).toHaveBeenCalledTimes(2);
   });
 });
 
-describe('relativeTime — pure bucket', () => {
-  const NOW = 1_700_000_000_000;
-  it('buckets < 1 min → justNow', () => {
-    expect(relativeTime(NOW - 30_000, NOW).key).toBe(
-      'spaces.history.relative.justNow',
-    );
-  });
-  it('buckets minutes / hours / yesterday / days / weeks / months / iso', () => {
-    expect(relativeTime(NOW - 5 * 60_000, NOW).key).toBe(
-      'spaces.history.relative.minutesAgo',
-    );
-    expect(relativeTime(NOW - 5 * 3_600_000, NOW).key).toBe(
-      'spaces.history.relative.hoursAgo',
-    );
-    expect(relativeTime(NOW - 30 * 3_600_000, NOW).key).toBe(
-      'spaces.history.relative.yesterday',
-    );
-    expect(relativeTime(NOW - 3 * 86_400_000, NOW).key).toBe(
-      'spaces.history.relative.daysAgo',
-    );
-    expect(relativeTime(NOW - 10 * 86_400_000, NOW).key).toBe(
-      'spaces.history.relative.weeksAgo',
-    );
-    expect(relativeTime(NOW - 60 * 86_400_000, NOW).key).toBe(
-      'spaces.history.relative.monthsAgo',
-    );
-    expect(relativeTime(NOW - 400 * 86_400_000, NOW).key).toBe(
-      'spaces.history.relative.isoDate',
-    );
+describe('relativeTime', () => {
+  it('buckets minutes / hours / days', () => {
+    const now = 1_780_900_000_000;
+    expect(relativeTime(now - 30_000, now).key).toBe('spaces.history.relative.justNow');
+    expect(relativeTime(now - 5 * 60_000, now)).toEqual({
+      key: 'spaces.history.relative.minutesAgo',
+      params: { count: 5 },
+    });
+    expect(relativeTime(now - 3 * 3_600_000, now).key).toBe('spaces.history.relative.hoursAgo');
+    expect(relativeTime(now - 3 * 86_400_000, now).key).toBe('spaces.history.relative.daysAgo');
   });
 });

@@ -14,14 +14,26 @@ import type * as React from 'react';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useUIStore } from '@web/stores';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 // Agent-toggle / NewSpace / Drawer / ProjectMessages buttons in the
 // tab bar now use shadcn `Tooltip` for hover tooltips. App.tsx
-// supplies `TooltipProvider` at runtime; tests have to add it.
-const render = (ui: React.ReactElement, options?: RenderOptions) =>
-  rtlRender(ui, { wrapper: TooltipProvider, ...options });
+// supplies `TooltipProvider` at runtime; tests have to add it. The
+// embedded ProjectMessagesButton also needs a QueryClient (activity
+// feed via React Query since ADR 2026-07-04).
+const render = (ui: React.ReactElement, options?: RenderOptions) => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const Wrapper = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
+    <QueryClientProvider client={client}>
+      <TooltipProvider>{children}</TooltipProvider>
+    </QueryClientProvider>
+  );
+  return rtlRender(ui, { wrapper: Wrapper, ...options });
+};
 
 const SPACES: ProjectSpace[] = [
   { id: 's1', name: 'Main', type: 'canvas' },

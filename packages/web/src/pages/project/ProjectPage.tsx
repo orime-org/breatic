@@ -25,7 +25,6 @@ import {
   setActiveSpace,
   planVanishedSpaceReconcile,
   useProjectMeta,
-  useProjectMessages,
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
@@ -189,11 +188,9 @@ function ProjectWorkspace({
     spaces,
     openTabIds,
     activeSpaceId,
-    users: projectUsers,
     provider,
     status: connectionStatus,
   } = useProjectMeta(projectId, userId);
-  const { messages: projectMessages } = useProjectMessages(projectId);
 
   // Tabs shown in the tab bar = each open tab id resolved against the
   // shared spaces list (drop missing ids - happens if another user
@@ -488,14 +485,6 @@ function ProjectWorkspace({
     );
   };
 
-  /** Owner-only: clear all entries in `meta.projectMessages`. */
-  const onClearMessages = async (): Promise<void> => {
-    await callRpc(
-      { type: 'messages:clear', payload: { all: true } },
-      'project.space.error.create',
-    );
-  };
-
   /**
    * Open the read-only preview sheet for a Space.
    * @param id - The id of the Space to preview read-only.
@@ -618,11 +607,9 @@ function ProjectWorkspace({
               onDeleteSpace={onDeleteSpace}
               onSetSpaceLocked={onSetSpaceLocked}
               onRenameSpace={onRenameSpace}
-              projectMessages={projectMessages}
-              usersById={projectUsers}
+              metaProvider={provider}
               currentUserRole={role}
               onRestoreSpace={onRestoreSpace}
-              onClearMessages={onClearMessages}
             />
             <div className='relative flex-1'>
               {activeSpace ? (
