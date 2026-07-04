@@ -1055,10 +1055,8 @@ function taskTypeToAssetKind(
  * @param contentHash - sha256 of the content (dedup key).
  * @param sizeBytes - Byte size (from the transfer / buffer).
  * @param mimeType - Content type.
- * @returns The URL the canvas node should use: the deduped asset's
- *   fileUrl on a within-studio dedup hit (so the node matches the
- *   registry row), the passed `url` on a fresh insert, or undefined when
- *   registration was skipped (no project) or failed (caller keeps `url`).
+ * @returns Nothing. (Node-URL reconciliation on a within-studio dedup hit
+ *   is deferred to the upload slice #1609 — see the Case 2 comment.)
  */
 async function registerGeneratedAsset(
   opts: { taskType: string; userId: string; projectId?: string; taskId: string },
@@ -1067,10 +1065,10 @@ async function registerGeneratedAsset(
   contentHash: string,
   sizeBytes: number,
   mimeType: string,
-): Promise<string | undefined> {
-  if (!opts.projectId) return undefined;
+): Promise<void> {
+  if (!opts.projectId) return;
   try {
-    const { asset, deduped } = await assetService.register({
+    await assetService.register({
       projectId: opts.projectId,
       actingUserId: opts.userId,
       contentHash,
@@ -1082,21 +1080,19 @@ async function registerGeneratedAsset(
       source: "ai",
       generationTaskId: opts.taskId,
     });
-    // #1 (adversarial): on a within-studio dedup hit, point the canvas
-    // node at the already-registered asset's fileUrl (the first stored
-    // copy) so the node URL matches the registry row instead of the
-    // freshly-uploaded duplicate object (left for future storage GC).
-    return deduped ? asset.fileUrl : url;
   } catch (err) {
     if (err instanceof NotFoundError) {
-      // #2 (adversarial): the owner studio could not be resolved (missing
-      // project, or the acting user has no personal studio). Bytes are
+      // #2/#6 (adversarial): the owner studio could not be resolved — a
+      // missing project (possibly a legitimate soft-delete race) or an
+      // acting user without a personal studio (mid-onboarding). Bytes are
       // already stored + the task bills regardless (best-effort), so this
-      // must NOT fail the job — but a billed-yet-untracked asset must be
-      // observable for reconciliation, so log at error level with a
-      // distinct event rather than a generic warn.
-      logger.error(
-        { err, key, taskId: opts.taskId, userId: opts.userId },
+      // must NOT fail the job. Emit a distinct, greppable event so a
+      // billed-yet-untracked asset stays observable — at WARN, not ERROR:
+      // the soft-delete race + onboarding gap are expected, not crashes,
+      // so error level would only add alert noise. projectId is in the
+      // context to tell the cases apart during reconciliation.
+      logger.warn(
+        { err, key, taskId: opts.taskId, userId: opts.userId, projectId: opts.projectId },
         "asset_register_untracked (billed but not registered — no owner studio)",
       );
     } else {
@@ -1105,7 +1101,6 @@ async function registerGeneratedAsset(
         "asset_register_failed (generation)",
       );
     }
-    return undefined;
   }
 }
 
@@ -1152,6 +1147,12 @@ async function persistOutputs(
 
   for (const out of outputs) {
     const next: { url?: string; cover_url?: string; extra?: Record<string, unknown> } = { ...out };
+    // Whether Case 1 already stored this output to permanent storage.
+    // Case 2 must then NOT re-host it — next.url is ours, not an external
+    // temp URL (#1+#3 adversarial: on S3/OSS the local `/uploads/` guard
+    // does not recognize our own bucket URL, so a buffer output would fall
+    // through and get re-downloaded / double-stored).
+    let storedFromBuffer = false;
 
     // Case 1: raw bytes from sync transports (sync provider calls).
     // These live in extra.buffer / extra.contentType (normalized by
@@ -1166,8 +1167,7 @@ async function persistOutputs(
         const url = await adapter.upload(key, buf, contentType);
         next.url = url;
         logger.info({ key, size: buf.length }, "Persisted sync transport result");
-        const reconciled = await registerGeneratedAsset(opts, key, url, sha256Hex(buf), buf.length, contentType);
-        if (reconciled) next.url = reconciled;
+        await registerGeneratedAsset(opts, key, url, sha256Hex(buf), buf.length, contentType);
       } catch (err) {
         // #1580 adversarial fix: swallowing this left `next.url` undefined —
         // Stage 3 then BILLED the task while Stage 4 silently skipped the
@@ -1182,10 +1182,21 @@ async function persistOutputs(
       }
       delete (extra).buffer;
       delete (extra).contentType;
+      storedFromBuffer = true;
     }
 
-    // Case 2: temporary CDN URL — re-host to our storage.
-    if (typeof next.url === "string" && next.url.startsWith("http") && !next.url.includes("/uploads/")) {
+    // Case 2: temporary EXTERNAL CDN URL — re-host to our storage. Skipped
+    // when Case 1 already stored this output (#1+#3 adversarial): its
+    // next.url is OURS (an S3/OSS/local URL we just wrote), not an external
+    // provider temp URL, so re-downloading our own object would double-store
+    // and — post-#4 (Case 2 no longer swallows) — could fail the task on a
+    // transient read blip and discard an already-persisted deliverable.
+    if (
+      !storedFromBuffer &&
+      typeof next.url === "string" &&
+      next.url.startsWith("http") &&
+      !next.url.includes("/uploads/")
+    ) {
       // #4 (adversarial): a PRIMARY-output re-host failure must fail the
       // task (Stage 2 markFailed + NO charge), never swallow-and-keep the
       // expiring provider URL while still billing. downloadAndStore
@@ -1197,8 +1208,11 @@ async function persistOutputs(
       if (!next.extra) next.extra = {};
       (next.extra).url_original = next.url;
       next.url = permanentUrl;
-      const reconciled = await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
-      if (reconciled) next.url = reconciled;
+      // #1 node-URL reconcile on a dedup hit is DEFERRED to the upload slice
+      // (#1609): AI outputs dedup near-zero, and reconciling a node to a
+      // sibling asset's fileUrl can leak cross-project identifiers + create
+      // a cross-project storage dependency (adversarial #5).
+      await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
     }
 
     persisted.push(next);
@@ -1219,8 +1233,7 @@ async function persistOutputs(
         await downloadAndStore(value, key);
       extras[field] = permanentUrl;
       extras[`${field}_original`] = value;
-      const reconciled = await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
-      if (reconciled) extras[field] = reconciled;
+      await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
     } catch (err) {
       // Extras are auxiliary (not the billed deliverable) — keep best-effort:
       // a failed re-host of a secondary field falls back to the original URL

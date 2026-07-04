@@ -161,32 +161,42 @@ export function sha256Hex(data: Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
+/** A download failure worth retrying (server 5xx / 429 — self-healing). */
+class TransientDownloadError extends Error {}
+
 /**
- * Download a remote file with transfer-stream completeness guards, shared
- * by every StorageAdapter.persistFromUrl. A silently-truncated or empty
- * response must NOT be hashed / stored / registered / billed as a
- * complete asset (asset-layer adversarial holes #3 truncation / #5
- * zero-byte): it throws so the worker's Stage-2 persist path fails the
- * task (markFailed + no charge) instead of storing wrong content.
+ * One download attempt with transfer-stream completeness guards.
  * @param sourceUrl - The remote URL to download (120s timeout).
  * @returns The full downloaded bytes plus the resolved content type.
- * @throws {Error} On non-OK HTTP, a content-length mismatch (truncation),
- *   or a zero-byte body.
+ * @throws {TransientDownloadError} On HTTP 5xx / 429 (retryable).
+ * @throws {Error} On HTTP 4xx, a content-length mismatch (truncation), or
+ *   a zero-byte body (permanent — not retried).
  */
-export async function downloadValidated(
+async function downloadOnce(
   sourceUrl: string,
 ): Promise<{ buffer: Buffer; contentType: string }> {
   const response = await fetch(sourceUrl, {
     signal: AbortSignal.timeout(120_000),
   });
   if (!response.ok) {
+    if (response.status >= 500 || response.status === 429) {
+      throw new TransientDownloadError(
+        `Download ${sourceUrl}: HTTP ${response.status}`,
+      );
+    }
     throw new Error(`Failed to download ${sourceUrl}: HTTP ${response.status}`);
   }
   const contentType =
     response.headers.get("content-type") ?? "application/octet-stream";
   const buffer = Buffer.from(await response.arrayBuffer());
+  // content-length is the COMPRESSED size when the body is content-encoded
+  // (fetch/undici auto-decompresses), so it will not equal the decoded
+  // buffer length — only assert equality for unencoded responses
+  // (adversarial #B: a gzip/br response must not read as "truncated").
+  const encoding = response.headers.get("content-encoding");
+  const isEncoded = encoding !== null && encoding.toLowerCase() !== "identity";
   const declared = response.headers.get("content-length");
-  if (declared !== null && Number(declared) !== buffer.length) {
+  if (!isEncoded && declared !== null && Number(declared) !== buffer.length) {
     throw new Error(
       `Truncated download ${sourceUrl}: content-length ${declared} != received ${buffer.length} bytes`,
     );
@@ -195,4 +205,44 @@ export async function downloadValidated(
     throw new Error(`Empty download ${sourceUrl}: received 0 bytes`);
   }
   return { buffer, contentType };
+}
+
+/**
+ * Download a remote file with transfer-stream completeness guards, shared
+ * by every StorageAdapter.persistFromUrl. A silently-truncated or empty
+ * response must NOT be hashed / stored / registered / billed as a
+ * complete asset (asset-layer adversarial holes #3 truncation / #5
+ * zero-byte): it throws so the worker's Stage-2 persist path fails the
+ * task (markFailed + no charge) instead of storing wrong content.
+ *
+ * Server-side transient failures (HTTP 5xx / 429, common self-healing CDN
+ * blips) are retried up to `maxAttempts` with linear backoff — the
+ * re-fetch is idempotent (re-download → re-upload under a fresh key), and
+ * job-level retry is fenced off after the provider call, so this is the
+ * correct resilience layer (adversarial #E). Permanent failures (HTTP 4xx,
+ * truncation, zero-byte) throw immediately without retry.
+ * @param sourceUrl - The remote URL to download (120s timeout per attempt).
+ * @param opts - Retry tuning (defaults: 3 attempts, 500ms linear backoff).
+ * @param opts.maxAttempts - Total attempts including the first.
+ * @param opts.retryBackoffMs - Base backoff (multiplied by attempt number).
+ * @returns The full downloaded bytes plus the resolved content type.
+ * @throws {Error} On a permanent failure, or after exhausting retries.
+ */
+export async function downloadValidated(
+  sourceUrl: string,
+  opts?: { maxAttempts?: number; retryBackoffMs?: number },
+): Promise<{ buffer: Buffer; contentType: string }> {
+  const maxAttempts = opts?.maxAttempts ?? 3;
+  const backoffMs = opts?.retryBackoffMs ?? 500;
+  let attempt = 0;
+  for (;;) {
+    attempt += 1;
+    try {
+      return await downloadOnce(sourceUrl);
+    } catch (err) {
+      const retryable = err instanceof TransientDownloadError;
+      if (!retryable || attempt >= maxAttempts) throw err;
+      await new Promise((resolve) => setTimeout(resolve, backoffMs * attempt));
+    }
+  }
 }

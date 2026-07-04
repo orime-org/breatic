@@ -91,14 +91,14 @@ describe("downloadValidated", () => {
     );
   });
 
-  it("throws on a non-OK HTTP status", async () => {
+  it("throws on a non-OK HTTP status (maxAttempts=1 → no retry)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => fakeResponse(Buffer.from("err"), {}, false, 500)),
     );
-    await expect(downloadValidated("https://cdn/boom")).rejects.toThrow(
-      /HTTP 500/,
-    );
+    await expect(
+      downloadValidated("https://cdn/boom", { maxAttempts: 1 }),
+    ).rejects.toThrow(/HTTP 500/);
   });
 
   it("passes when content-length header is absent (only bytes known)", async () => {
@@ -111,5 +111,65 @@ describe("downloadValidated", () => {
     );
     const res = await downloadValidated("https://cdn/nolen");
     expect(res.buffer.length).toBe(body.length);
+  });
+
+  it("does NOT read a content-encoded (gzip) response as truncated", async () => {
+    // content-length is the COMPRESSED size; fetch auto-decompresses, so the
+    // decoded body is longer — the equality check must be skipped (#B).
+    const body = Buffer.from("decompressed body longer than the compressed one");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        fakeResponse(body, {
+          "content-length": "12",
+          "content-encoding": "gzip",
+          "content-type": "application/json",
+        }),
+      ),
+    );
+    const res = await downloadValidated("https://cdn/g.json.gz");
+    expect(res.buffer.length).toBe(body.length);
+  });
+
+  it("retries a transient 5xx then succeeds (#E)", async () => {
+    const body = Buffer.from("eventually ok");
+    const responses = [
+      fakeResponse(Buffer.from("x"), {}, false, 503),
+      fakeResponse(Buffer.from("x"), {}, false, 429),
+      fakeResponse(body, {
+        "content-length": String(body.length),
+        "content-type": "image/png",
+      }),
+    ];
+    let i = 0;
+    const fetchFn = vi.fn(async () => responses[i++]!);
+    vi.stubGlobal("fetch", fetchFn);
+    const res = await downloadValidated("https://cdn/flaky.png", {
+      maxAttempts: 3,
+      retryBackoffMs: 0,
+    });
+    expect(res.buffer.length).toBe(body.length);
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+  });
+
+  it("throws after exhausting retries on a persistent 5xx", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => fakeResponse(Buffer.from("x"), {}, false, 503)),
+    );
+    await expect(
+      downloadValidated("https://cdn/down", { maxAttempts: 2, retryBackoffMs: 0 }),
+    ).rejects.toThrow(/HTTP 503/);
+  });
+
+  it("does NOT retry a permanent 4xx", async () => {
+    const fetchFn = vi.fn(async () =>
+      fakeResponse(Buffer.from("nope"), {}, false, 404),
+    );
+    vi.stubGlobal("fetch", fetchFn);
+    await expect(
+      downloadValidated("https://cdn/gone", { maxAttempts: 3, retryBackoffMs: 0 }),
+    ).rejects.toThrow(/HTTP 404/);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 });

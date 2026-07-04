@@ -74,7 +74,12 @@ vi.mock("ai", () => ({
 
 // Controller mutated per test to drive success / failure / multi-output scenarios
 const providerCtrl = {
-  mode: "success" as "success" | "failure" | "multi" | "fail-once",
+  mode: "success" as
+    | "success"
+    | "failure"
+    | "multi"
+    | "fail-once"
+    | "buffer",
   outputs: [{ url: "https://oss/result.png", cover_url: "https://oss/thumb.png" }],
   error: new Error("Synthetic provider error"),
   // fail-once mode: first invocation throws (retryable), later ones succeed.
@@ -94,6 +99,15 @@ vi.mock("@breatic/worker/src/handlers/local/index.js", () => ({
     if (providerCtrl.mode === "fail-once") {
       providerCtrl.calls += 1;
       if (providerCtrl.calls === 1) throw providerCtrl.error;
+    }
+    if (providerCtrl.mode === "buffer") {
+      // Sync-transport shape: raw bytes (no output URL) → toUnifiedOutputs
+      // routes the buffer into extra.buffer, exercising persistOutputs Case 1.
+      return {
+        buffer: Buffer.from("synthetic-audio-bytes"),
+        contentType: "audio/mp3",
+        cost: 0,
+      };
     }
     return {
       outputs: providerCtrl.outputs.map((o) => ({
@@ -904,7 +918,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     expect(data!["content"]).not.toBe(tempUrl);
   });
 
-  it("Test 5 (asset #1): a within-studio dedup hit reconciles the node URL to the existing asset", async () => {
+  it("Test 5 (asset #1): a within-studio dedup hit collapses to one registry row; node keeps its own URL (reconcile deferred to #1609)", async () => {
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
     // Force both generations to hash to the same content (a genuine dedup).
     storageCtrl.contentKey = "asset-1-dedup-content";
@@ -919,8 +933,11 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     const first = await readNodeData(hocuspocus, docName, "node-dedup-a-t5");
     expect(first!["content"]).toBe(urlA);
 
-    // Second gen: same content hash, DIFFERENT provider URL → dedup hit →
-    // node must reconcile to the FIRST asset's fileUrl, not its own url.
+    // Second gen: same content hash, DIFFERENT provider URL → registry
+    // dedups to the first row (usage counted once). The node keeps its OWN
+    // url — the node-URL reconcile is deferred to the upload slice (#1609)
+    // because reconciling could leak cross-project identifiers (adversarial
+    // #5). This test locks the dedup-collapse + the "no reconcile" contract.
     const urlB = "https://oss/dedup-second-t5.png";
     const taskB = await runGeneration({ nodeId: "node-dedup-b-t5", url: urlB });
     await waitForCondition(
@@ -938,14 +955,75 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     );
 
     const second = await readNodeData(hocuspocus, docName, "node-dedup-b-t5");
-    expect(second!["content"]).toBe(urlA); // reconciled to the first, not urlB
-    // Exactly one asset row for this content hash in the studio (deduped).
+    expect(second!["content"]).toBe(urlB); // keeps its own URL (no reconcile)
+    // Registry collapsed to exactly one row for the shared content hash.
     const rows = await db
       .select()
       .from(schema.studioAssets)
       .where(eq(schema.studioAssets.studioId, FIXTURE_STUDIO_ID));
     expect(rows.filter((r) => r.fileUrl === urlA).length).toBe(1);
     expect(rows.some((r) => r.fileUrl === urlB)).toBe(false);
+  });
+
+  it("Test 7 (asset #A HIGH): a sync-transport buffer output is NOT re-hosted by Case 2 (no fall-through / no fail on a Case-2 blip)", async () => {
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
+    const nodeId = "node-buffer-t7";
+
+    // Provider returns raw bytes (audio/tts) → Case 1 uploads them to
+    // permanent storage. storageCtrl.failDownload makes any Case-2 re-host
+    // throw. Pre-fix, Case 1's own (non-/uploads/) URL fell through into
+    // Case 2 → the failing re-download marked the task failed. With the fix
+    // Case 2 is skipped (storedFromBuffer), so the task COMPLETES.
+    storageCtrl.failDownload = true;
+    providerCtrl.mode = "buffer";
+
+    await seedNode(hocuspocus, docName, nodeId, {
+      name: "Buffer Node",
+      state: "handling",
+      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
+      leaseGen: 1,
+      attachments: [],
+    });
+    const [taskRow] = await db
+      .insert(schema.tasks)
+      .values({
+        userId: FIXTURE_USER_ID,
+        projectId: FIXTURE_PROJECT_ID,
+        spaceId: FIXTURE_SPACE_ID,
+        taskType: "audio",
+        mode: "append",
+        source: "mini_tool",
+        params: {},
+      })
+      .returning();
+    const taskId = taskRow!.id;
+    await tasksQueue.add(
+      "run-task",
+      {
+        taskId,
+        taskType: "audio",
+        userId: FIXTURE_USER_ID,
+        projectId: FIXTURE_PROJECT_ID,
+        spaceId: FIXTURE_SPACE_ID,
+        source: "mini_tool",
+        toolName: "tts",
+        params: {},
+        targetNodeIds: [nodeId],
+        nodeGens: { [nodeId]: 1 },
+        mode: "append" as const,
+      },
+      { attempts: 1 },
+    );
+
+    await waitForCondition(
+      async () => (await taskService.getByIdInternal(taskId))?.status === "completed",
+      30_000,
+      `task ${taskId} (buffer output) completed despite Case-2 failDownload`,
+    );
+    const data = await readNodeData(hocuspocus, docName, nodeId);
+    expect(data!["state"]).toBe("idle");
+    // Node points at the Case-1 permanent URL, never re-hosted by Case 2.
+    expect(data!["content"]).toBe("https://oss/uploaded");
   });
 
   it("Test 6 (asset #2): a generation by a user with no personal studio completes best-effort but registers no asset", async () => {
