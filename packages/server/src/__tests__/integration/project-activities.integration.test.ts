@@ -384,13 +384,17 @@ describe("restore consumption transaction", () => {
     );
     expect(deleted).not.toBeNull();
 
-    await projectActivitiesRepo.consumeRestoreAndAppend(deleted!.id, {
-      projectId,
-      actorUserId: userId,
-      type: "space:restored",
-      spaceId,
-      payload: { spaceName: "Doomed" },
-    });
+    const won = await projectActivitiesRepo.consumeRestoreAndAppend(
+      deleted!.id,
+      {
+        projectId,
+        actorUserId: userId,
+        type: "space:restored",
+        spaceId,
+        payload: { spaceName: "Doomed" },
+      },
+    );
+    expect(won).toBe(true);
 
     // The deleted row is consumed — a second restore finds nothing…
     expect(
@@ -418,5 +422,40 @@ describe("restore consumption transaction", () => {
     );
     expect(second).not.toBeNull();
     expect(second!.id).not.toBe(deleted!.id);
+  });
+
+  it("consume is a CAS: a second consume of the same deleted row loses (no duplicate space:restored)", async () => {
+    const { userId } = await insertUserWithStudio("Racer");
+    const projectId = await insertProject(userId);
+    const spaceId = crypto.randomUUID();
+    await projectActivitiesRepo.insert({
+      projectId,
+      actorUserId: userId,
+      type: "space:deleted",
+      spaceId,
+      payload: { spaceName: "Raced", spaceSnapshot: { id: spaceId } },
+    });
+    const deleted = await projectActivitiesRepo.latestUnrestoredDeleted(
+      projectId,
+      spaceId,
+    );
+    const restoredRow = {
+      projectId,
+      actorUserId: userId,
+      type: "space:restored" as const,
+      spaceId,
+      payload: { spaceName: "Raced" },
+    };
+    // Two instances race the SAME deleted row: exactly one wins + appends.
+    const [a, b] = await Promise.all([
+      projectActivitiesRepo.consumeRestoreAndAppend(deleted!.id, restoredRow),
+      projectActivitiesRepo.consumeRestoreAndAppend(deleted!.id, restoredRow),
+    ]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+    const rows = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM project_activities
+      WHERE project_id = ${projectId} AND type = 'space:restored'
+    `;
+    expect(rows[0]!.n).toBe(1);
   });
 });

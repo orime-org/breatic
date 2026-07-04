@@ -237,26 +237,41 @@ export const projectActivitiesRepo = {
   },
 
   /**
-   * Consume a space:deleted row's snapshot and append the matching
-   * space:restored row in ONE business-DB transaction, so the audit
-   * trail never shows a restored space with its deletion record still
-   * unconsumed (or vice versa). The content-doc undelete lives in the
-   * separate yjs PG database and cannot join this transaction - the
-   * caller sequences it before this call (restore step order is
-   * documented at the collab call site).
-   * @param deletedRowId - The consumed space:deleted activity row id.
-   * @param restoredActivity - The space:restored row to append.
-   * @returns Nothing.
+   * Compare-and-swap consume of a space:deleted row's snapshot, and —
+   * only when THIS call wins the CAS — append the matching
+   * space:restored row, both in ONE business-DB transaction.
+   *
+   * The consume is `SET restored=true WHERE id=? AND restored=false`:
+   * if the row was already consumed (a concurrent cross-instance
+   * restore won the race — restore holds no in-memory Yjs serialization
+   * across instances), the update matches zero rows and we append
+   * NOTHING, returning false. This is what keeps one restore = one
+   * space:restored row and one snapshot consumption, honoring the
+   * schema's "never consumed twice" guarantee. The content-doc undelete
+   * lives in the separate yjs PG database and cannot join this
+   * transaction — the caller sequences it before this call (restore
+   * step order documented at the collab call site).
+   * @param deletedRowId - The space:deleted row to consume.
+   * @param restoredActivity - The space:restored row to append on a win.
+   * @returns True when this call won the CAS and appended; false when
+   *   the row was already consumed (no append).
    */
   async consumeRestoreAndAppend(
     deletedRowId: string,
     restoredActivity: NewProjectActivity,
-  ): Promise<void> {
-    await db.transaction(async (tx: DbTx) => {
-      await tx
+  ): Promise<boolean> {
+    return db.transaction(async (tx: DbTx) => {
+      const won = await tx
         .update(projectActivities)
         .set({ restored: true })
-        .where(eq(projectActivities.id, deletedRowId));
+        .where(
+          and(
+            eq(projectActivities.id, deletedRowId),
+            eq(projectActivities.restored, false),
+          ),
+        )
+        .returning({ id: projectActivities.id });
+      if (won.length === 0) return false;
       await tx.insert(projectActivities).values({
         projectId: restoredActivity.projectId,
         actorUserId: restoredActivity.actorUserId,
@@ -266,6 +281,7 @@ export const projectActivitiesRepo = {
         taskId: restoredActivity.taskId ?? null,
         payload: restoredActivity.payload,
       });
+      return true;
     });
   },
 };

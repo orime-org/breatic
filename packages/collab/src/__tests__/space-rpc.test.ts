@@ -149,7 +149,8 @@ beforeEach(() => {
   activityLatestUnrestoredMock.mockReset();
   activityLatestUnrestoredMock.mockResolvedValue(null);
   activityConsumeRestoreMock.mockReset();
-  activityConsumeRestoreMock.mockResolvedValue(undefined);
+  // Default: this instance wins the consume CAS (returns true).
+  activityConsumeRestoreMock.mockResolvedValue(true);
 });
 
 describe("handleSpaceRpc — role validation", () => {
@@ -535,6 +536,40 @@ describe("handleSpaceRpc — restore sources from the PG activity row", () => {
       spaceId: SID,
       payload: { spaceName: "Main" },
     });
+    // Won the CAS → the activity:new signal is broadcast.
+    expect(fakeMetaDoc.broadcastStateless).toHaveBeenCalledWith(
+      JSON.stringify({ t: ACTIVITY_NEW_SIGNAL, projectId: PID }),
+    );
+  });
+
+  it("does NOT broadcast when the consume CAS is lost (a concurrent cross-instance restore already consumed the row)", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    // This instance rebuilt the entry but LOST the consume race.
+    activityConsumeRestoreMock.mockResolvedValue(false);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "owner-1", role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(true);
+    // No duplicate space:restored signal — the winner already broadcast.
+    expect(fakeMetaDoc.broadcastStateless).not.toHaveBeenCalled();
+  });
+
+  it("maps a busy cross-instance lock to CONFLICT (restore serializes under the delete lock)", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    withSpaceDeleteLockMock.mockRejectedValue(new FakeLockBusyError("busy"));
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "owner-1", role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("CONFLICT");
   });
 
   it("returns CONFLICT and does NOT consume the row when the space already exists (retry-safety guard)", async () => {

@@ -605,6 +605,46 @@ async function handleRestore(
     );
   }
   const { spaceId } = req.payload;
+  // Serialize the whole restore under the SAME per-project lock delete
+  // uses. Restore un-deletes a content-doc row — mutating the very
+  // count delete's floor-guard trusts — and rebuilds the meta entry, so
+  // an unlocked restore can interleave with a concurrent delete of the
+  // same spaceId and leave a ghost (live content, no meta entry) that
+  // inflates countLiveSpaceDocs. The lock also serializes cross-instance
+  // restore-vs-restore; the repo CAS below is the airtight backstop for
+  // the residual lock-TTL window.
+  try {
+    return await withSpaceDeleteLock(projectId, () =>
+      runRestore(ctx, projectId, caller, req, spaceId),
+    );
+  } catch (e) {
+    if (e instanceof SpaceDeleteLockBusyError) {
+      return err(
+        req.id,
+        "CONFLICT",
+        "Another Space operation is in progress for this project; please retry",
+      );
+    }
+    throw e;
+  }
+}
+
+/**
+ * The `space:restore` critical section, run under the per-project lock.
+ * @param ctx - Collab context providing the Hocuspocus server.
+ * @param projectId - Project whose meta doc the Space is restored into.
+ * @param caller - Authenticated caller's userId + role (audit actor).
+ * @param req - The `space:restore` request (for the echoed id).
+ * @param spaceId - Target Space id.
+ * @returns A success response, or a `NOT_FOUND` / `CONFLICT` error.
+ */
+async function runRestore(
+  ctx: SpaceRpcContext,
+  projectId: string,
+  caller: SpaceRpcCaller,
+  req: Extract<SpaceRpcRequest, { type: "space:restore" }>,
+  spaceId: string,
+): Promise<SpaceRpcResponse> {
   const deletedRow = await projectActivitiesRepo.latestUnrestoredDeleted(
     projectId,
     spaceId,
@@ -653,14 +693,18 @@ async function handleRestore(
       ? snapshotRecord["name"]
       : undefined;
   try {
-    await projectActivitiesRepo.consumeRestoreAndAppend(deletedRow.id, {
-      projectId,
-      actorUserId: caller.userId,
-      type: "space:restored",
-      spaceId,
-      payload: { spaceName },
-    });
-    broadcastActivitySignal(ctx.hocuspocus, projectId);
+    // CAS consume: only the winner appends space:restored + signals.
+    const won = await projectActivitiesRepo.consumeRestoreAndAppend(
+      deletedRow.id,
+      {
+        projectId,
+        actorUserId: caller.userId,
+        type: "space:restored",
+        spaceId,
+        payload: { spaceName },
+      },
+    );
+    if (won) broadcastActivitySignal(ctx.hocuspocus, projectId);
   } catch (e) {
     // Space is fully restored; only the consumption marker + audit row
     // failed. A retry is refused by the already-present guard, so log
