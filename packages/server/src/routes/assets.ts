@@ -57,25 +57,68 @@ function detectKind(contentType: string): "image" | "video" | "audio" | "documen
   return "file";
 }
 
-// ── Rate limit for presign ──────────────────────────────────────────
+// ── Per-user rate limits ────────────────────────────────────────────
 
 /**
- * Per-user rate limit for presign requests — 30 per 60s, keyed by user id (or `anonymous`).
- * @param c - The Hono request context; the authenticated user id keys the limiter.
- * @param next - The downstream handler, invoked only when under the limit.
- * @returns A 429 JSON response when the limit is exceeded; otherwise nothing (control passes to `next`).
+ * Build a per-user sliding-window rate-limit middleware, keyed by
+ * `{action}:{userId}` (or `anonymous`). Used to throttle every write
+ * path here — presign AND the activity-feed report routes — so no
+ * authenticated editor can flood storage presigns or the append-only,
+ * never-pruned `project_activities` table.
+ * @param action - Limiter namespace (also the Redis key prefix + log tag).
+ * @param limit - Max requests allowed inside the window.
+ * @param windowSeconds - Sliding-window length in seconds.
+ * @returns A Hono middleware that 429s when the caller exceeds the limit.
  */
-const presignRateLimit: MiddlewareHandler = async (c, next) => {
-  const user = c.get("user") as { id: string } | undefined;
-  const key = user?.id ?? "anonymous";
-  const redis = getRedis();
-  const allowed = await checkRateLimit(redis, `presign:${key}`, 30, 60);
-  if (!allowed) {
-    logger.warn({ action: "presign", key }, "rate_limit_hit");
-    return c.json({ error: { code: 429, message: t("server.error.rate_limited") } }, 429);
-  }
-  await next();
-};
+function makeRateLimit(
+  action: string,
+  limit: number,
+  windowSeconds: number,
+): MiddlewareHandler {
+  return async (c, next) => {
+    const user = c.get("user") as { id: string } | undefined;
+    const key = user?.id ?? "anonymous";
+    const redis = getRedis();
+    const allowed = await checkRateLimit(
+      redis,
+      `${action}:${key}`,
+      limit,
+      windowSeconds,
+    );
+    if (!allowed) {
+      logger.warn({ action, key }, "rate_limit_hit");
+      return c.json(
+        { error: { code: 429, message: t("server.error.rate_limited") } },
+        429,
+      );
+    }
+    await next();
+  };
+}
+
+const presignRateLimit = makeRateLimit("presign", 30, 60);
+// Report routes fire once per upload / node-delete — 120/60s comfortably
+// covers a heavy multi-file drag while still capping a flood loop.
+const reportRateLimit = makeRateLimit("asset-report", 120, 60);
+
+/**
+ * Reject a client-supplied storage key that is not bound to this
+ * caller + project, or that attempts path traversal. A legitimate key
+ * from `/presign` always starts with `{userId}/{projectId}/`
+ * (`storageKey()` format), so this makes `head()` a genuine
+ * authenticity boundary instead of a bare existence check — without it
+ * an editor could report a foreign project's asset URL into this
+ * project's node history + feed, or (local storage) traverse out of
+ * the upload dir. Mirrors the `/local-upload` guard.
+ * @param key - The client-supplied storage key.
+ * @param userId - Authenticated caller id.
+ * @param projectId - Target project id.
+ * @returns True when the key is safe to trust for this caller + project.
+ */
+function isOwnedKey(key: string, userId: string, projectId: string): boolean {
+  if (key.includes("..") || key.includes("//")) return false;
+  return key.startsWith(`${userId}/${projectId}/`);
+}
 
 // ── Presign ─────────────────────────────────────────────────────────
 
@@ -214,12 +257,25 @@ const uploadedSchema = z.object({
 assets.post(
   "/uploaded",
   requireAuth,
+  reportRateLimit,
   zValidator("json", uploadedSchema),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
 
     await projectService.assertAccess(body.project_id, user.id, "editor");
+
+    // The key MUST be one this caller presigned for THIS project, and
+    // must not traverse. head() only proves existence — without this
+    // binding an editor could report a foreign / off-project asset URL
+    // into this project's history + feed (or, on local storage,
+    // traverse out of the upload dir).
+    if (!isOwnedKey(body.key, user.id, body.project_id)) {
+      return c.json(
+        { error: { message: t("server.error.validation") } },
+        422,
+      );
+    }
 
     // Verify the object really landed in storage before trusting the
     // claim (first real caller of StorageAdapter.head).
@@ -278,7 +334,10 @@ const deletedSchema = z.object({
   entries: z
     .array(
       z.object({
-        file_url: z.string().url(),
+        // Capped so a flood loop cannot bloat the append-only feed
+        // table with multi-KB payloads (2048 comfortably fits any
+        // real asset URL).
+        file_url: z.string().url().max(2048),
         kind: z.string().min(1).max(32),
         node_id: z.string().min(1).max(128).optional(),
         space_id: z.string().uuid().optional(),
@@ -291,6 +350,7 @@ const deletedSchema = z.object({
 assets.post(
   "/deleted",
   requireAuth,
+  reportRateLimit,
   zValidator("json", deletedSchema),
   async (c) => {
     const user = c.get("user");

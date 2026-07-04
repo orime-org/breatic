@@ -245,6 +245,47 @@ describe("POST /assets/uploaded — handshake verification", () => {
     expect(rows[0]!.n).toBe(0);
   });
 
+  it("422 and NO row for a key not owned by the caller + project (cross-project / traversal guard)", async () => {
+    const { userId } = await insertUserWithStudio("Owner Y");
+    const attacker = await insertUserWithStudio("Attacker");
+    const projectId = await insertProject(userId);
+    // Attacker is a real editor on the project.
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${projectId}, ${attacker.userId}, 'editor', ${userId})
+    `;
+    const cookie = await loginCookie(attacker.userId);
+
+    // A key belonging to ANOTHER user / project (foreign asset URL the
+    // attacker has seen). Even if the object exists in storage, it must
+    // be refused because it is not bound to (attacker, projectId).
+    const foreignKey = `${userId}/some-other-project/image/2026-07-04/x.png`;
+    const cross = await app.request("/api/v1/assets/uploaded", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ project_id: projectId, key: foreignKey, kind: "image" }),
+    });
+    expect(cross.status).toBe(422);
+
+    // A path-traversal key is refused before head() even runs.
+    const traversal = await app.request("/api/v1/assets/uploaded", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        project_id: projectId,
+        key: `${attacker.userId}/${projectId}/../../../../etc/hostname`,
+        kind: "image",
+      }),
+    });
+    expect(traversal.status).toBe(422);
+
+    const rows = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM project_activities
+      WHERE project_id = ${projectId} AND type = 'asset:uploaded'
+    `;
+    expect(rows[0]!.n).toBe(0);
+  });
+
   it("records asset:uploaded after a real local upload round-trip", async () => {
     const { userId } = await insertUserWithStudio("Uploader 2");
     const projectId = await insertProject(userId);
@@ -279,6 +320,48 @@ describe("POST /assets/uploaded — handshake verification", () => {
       WHERE project_id = ${projectId} AND type = 'asset:uploaded'
     `;
     expect(rows[0]!.n).toBe(1);
+  });
+});
+
+describe("POST /assets/deleted — report guards", () => {
+  it("400 for an over-long file_url (feed-bloat cap)", async () => {
+    const { userId } = await insertUserWithStudio("Deleter");
+    const projectId = await insertProject(userId);
+    const res = await app.request("/api/v1/assets/deleted", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: await loginCookie(userId),
+      },
+      body: JSON.stringify({
+        project_id: projectId,
+        entries: [{ file_url: `http://x/${"A".repeat(4000)}`, kind: "image" }],
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rate-limits a report flood (429 before the window resets)", async () => {
+    const { userId } = await insertUserWithStudio("Flooder");
+    const projectId = await insertProject(userId);
+    const cookie = await loginCookie(userId);
+    const body = JSON.stringify({
+      project_id: projectId,
+      entries: [{ file_url: "http://x/f.png", kind: "image" }],
+    });
+    // The limiter is 120/60s per user; fire past it and assert a 429
+    // appears (any authenticated editor could otherwise flood the
+    // append-only feed table). Break as soon as it trips.
+    let tripped = false;
+    for (let i = 0; i < 130 && !tripped; i++) {
+      const res = await app.request("/api/v1/assets/deleted", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body,
+      });
+      if (res.status === 429) tripped = true;
+    }
+    expect(tripped).toBe(true);
   });
 });
 
