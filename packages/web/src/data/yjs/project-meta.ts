@@ -20,7 +20,7 @@ import { useCurrentUserStore } from '@web/stores/current-user';
  *
  * Y.Doc structure:
  *
- *   spaces:  Y.Array<Y.Map<{ id, name, type, locked? }>>     shared (all members)
+ *   spaces:  Y.Map<spaceId, Y.Map<{ id, name, type, locked? }>>  shared (all members)
  *   perUser: Y.Map<userId, Y.Map<{                            per-user (each
  *     openTabIds:    Y.Array<string>,                          user has their
  *     activeSpaceId: string | null,                            own tab bar +
@@ -40,10 +40,12 @@ import { useCurrentUserStore } from '@web/stores/current-user';
  *     Hocuspocus `beforeHandleMessage` extension (collab F.2 hook).
  *
  * Write boundaries:
- *   - Shared `spaces` writes (create / delete / lock) flow through the
- *     server REST endpoints + Redis pub/sub event → collab listener
- *     mutates the doc → all clients receive WS broadcast. The client
- *     does NOT write `spaces` directly (eliminates double-write).
+ *   - Shared `spaces` writes (create / delete / lock / rename) round-trip
+ *     through the collab process as stateless RPCs on the live meta-doc
+ *     WebSocket (`sendSpaceRpc` → collab `services/space-rpc.ts`, per ADR
+ *     2026-05-23 yjs-collab-only-write-authz): collab authorizes the role,
+ *     applies the privileged Yjs write + audit entry, and Yjs broadcasts
+ *     the change. The client does NOT write `spaces` directly.
  *   - Per-user writes (`openSpaceTab` / `closeSpaceTab` /
  *     `setActiveSpace`) write the client's OWN `perUser[userId]`
  *     subtree directly; the Hocuspocus extension ensures the user
