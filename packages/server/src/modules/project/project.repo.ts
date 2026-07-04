@@ -18,7 +18,7 @@
 
 import { eq, and, isNull, isNotNull, or, desc } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
-import { db } from "@breatic/core";
+import { db, projectActivitiesRepo } from "@breatic/core";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
 import {
   projects,
@@ -391,6 +391,10 @@ export async function deleteProject(id: string): Promise<void> {
       .update(nodeHistory)
       .set({ deletedAt: now })
       .where(and(eq(nodeHistory.projectId, id), isNull(nodeHistory.deletedAt)));
+
+    // Project activity feed dies with its project (append-only rows, but
+    // project-scoped — same cascade as node_history above).
+    await projectActivitiesRepo.softDeleteByProject(id, tx);
 
     await tx
       .update(tasks)

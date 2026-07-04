@@ -1028,16 +1028,18 @@ export const projectActivities = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    // Soft-delete: individual rows are never user-deleted, but the whole
+    // table is project-scoped and cascade-soft-deleted by deleteProject
+    // (same as node_history). Feed queries filter deleted_at IS NULL.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
-    // Hot feed index for keyset pagination:
-    // WHERE project_id = ? AND (created_at, id) < (?, ?)
+    // Hot feed index for keyset pagination (partial on live rows):
+    // WHERE project_id = ? AND deleted_at IS NULL AND (created_at, id) < (?, ?)
     // ORDER BY created_at DESC, id DESC.
-    index("project_activities_feed_idx").on(
-      table.projectId,
-      table.createdAt,
-      table.id,
-    ),
+    index("project_activities_feed_idx")
+      .on(table.projectId, table.createdAt, table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
     // The task_id partial UNIQUE lives in migration 0034 (Drizzle's
     // builder does not emit partial unique indexes - same note as
     // project_invitations).

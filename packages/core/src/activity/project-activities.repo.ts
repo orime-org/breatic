@@ -249,13 +249,35 @@ export const projectActivitiesRepo = {
         ),
       )
       .where(
-        keysetFilter
-          ? and(eq(projectActivities.projectId, projectId), keysetFilter)
-          : eq(projectActivities.projectId, projectId),
+        and(
+          eq(projectActivities.projectId, projectId),
+          isNull(projectActivities.deletedAt),
+          ...(keysetFilter ? [keysetFilter] : []),
+        ),
       )
       .orderBy(desc(projectActivities.createdAt), desc(projectActivities.id))
       .limit(limit);
     return rows.map((r) => toEntity(r.row, r.actorName));
+  },
+
+  /**
+   * Soft-delete every live activity row of a project — the
+   * deleteProject cascade (same as node_history). Individual rows are
+   * never user-deleted, but the whole feed dies with its project.
+   * @param projectId - Project being deleted.
+   * @param tx - The deleteProject business transaction to join.
+   * @returns Nothing.
+   */
+  async softDeleteByProject(projectId: string, tx: DbTx): Promise<void> {
+    await tx
+      .update(projectActivities)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(
+          eq(projectActivities.projectId, projectId),
+          isNull(projectActivities.deletedAt),
+        ),
+      );
   },
 
   /**
@@ -279,6 +301,7 @@ export const projectActivitiesRepo = {
           eq(projectActivities.spaceId, spaceId),
           eq(projectActivities.type, "space:deleted"),
           eq(projectActivities.restored, false),
+          isNull(projectActivities.deletedAt),
         ),
       )
       .orderBy(desc(projectActivities.createdAt), desc(projectActivities.id))

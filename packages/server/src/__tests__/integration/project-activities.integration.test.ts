@@ -426,6 +426,40 @@ describe("POST /assets/deleted — report guards", () => {
   });
 });
 
+describe("deleteProject cascade soft-deletes the feed", () => {
+  it("a deleted project's activity rows are soft-deleted + excluded from the feed", async () => {
+    const { userId } = await insertUserWithStudio("Deleter Owner");
+    const projectId = await insertProject(userId);
+    await projectActivitiesRepo.insert({
+      projectId,
+      actorUserId: userId,
+      type: "space:created",
+      payload: { spaceName: "S" },
+    });
+    // Before delete: one live row.
+    const before = await projectActivitiesRepo.listByProject(projectId, null, 50);
+    expect(before).toHaveLength(1);
+
+    const { deleteProject } = await import(
+      "@server/modules/project/project.repo.js"
+    );
+    await deleteProject(projectId);
+
+    // The rows are soft-deleted (deleted_at stamped) and no longer served.
+    const after = await projectActivitiesRepo.listByProject(projectId, null, 50);
+    expect(after).toHaveLength(0);
+    const live = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM project_activities
+      WHERE project_id = ${projectId} AND deleted_at IS NULL
+    `;
+    expect(live[0]!.n).toBe(0);
+    const total = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM project_activities WHERE project_id = ${projectId}
+    `;
+    expect(total[0]!.n).toBe(1); // row still present, just soft-deleted
+  });
+});
+
 describe("restore consumption transaction", () => {
   it("consumeRestoreAndAppend flips restored + appends space:restored atomically", async () => {
     const { userId } = await insertUserWithStudio("Restorer");
