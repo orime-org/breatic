@@ -109,7 +109,12 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
   return {
     ...orig,
-    downloadAndStore: async (url: string) => url,
+    downloadAndStore: async (url: string) => ({
+      url,
+      sha256: "0".repeat(64),
+      sizeBytes: 0,
+      contentType: "application/octet-stream",
+    }),
     getStorageAdapter: async () => ({
       upload: async (_key: string, _data: Buffer, _contentType: string) =>
         "https://oss/uploaded",

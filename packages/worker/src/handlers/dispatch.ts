@@ -1023,17 +1023,6 @@ function toUnifiedOutputs(raw: Record<string, unknown>): {
 }
 
 /**
- * Persist each output's URL / buffer to permanent storage. Mirrors the
- * pre-refactor `persistResultUrls` but iterates outputs.
- * @param outputs - Unified outputs, each possibly carrying a temp URL or raw buffer
- * @param extras - Non-output result fields that may also carry re-hostable URLs
- * @param opts - Persistence context
- * @param opts.taskType - Task type, used to pick the storage extension and key prefix
- * @param opts.userId - User who owns the persisted assets
- * @param opts.projectId - Project the assets belong to, if any
- * @returns The outputs with temp URLs / buffers replaced by permanent storage URLs
- */
-/**
  * Map an AIGC task type to the coarse asset kind for studio_assets.
  * @param taskType - The generation task type.
  * @returns The asset kind.
@@ -1055,7 +1044,11 @@ function taskTypeToAssetKind(
  * write logs instead of failing the job (mirrors the activity-feed
  * best-effort contract). No-op without a project (e.g. agent
  * attachments have no project scope).
- * @param opts - Persistence context (taskType / userId / projectId / taskId).
+ * @param opts - Persistence context.
+ * @param opts.taskType - Generation task type (mapped to the asset kind).
+ * @param opts.userId - Acting user (attribution resolution input).
+ * @param opts.projectId - Project scope; the call is a no-op when absent.
+ * @param opts.taskId - Producing task id (asset cost link).
  * @param key - Storage key of the stored object.
  * @param url - Public URL of the stored object.
  * @param contentHash - sha256 of the content (dedup key).
@@ -1093,6 +1086,20 @@ async function registerGeneratedAsset(
   }
 }
 
+/**
+ * Persist each output's URL / buffer to permanent storage, registering
+ * each stored AI asset into studio_assets (within-studio dedup + cost
+ * link). Mirrors the pre-refactor `persistResultUrls` but iterates
+ * outputs.
+ * @param outputs - Unified outputs, each possibly carrying a temp URL or raw buffer
+ * @param extras - Non-output result fields that may also carry re-hostable URLs
+ * @param opts - Persistence context
+ * @param opts.taskType - Task type, used to pick the storage extension and key prefix
+ * @param opts.userId - User who owns / triggered the persisted assets
+ * @param opts.projectId - Project the assets belong to, if any
+ * @param opts.taskId - Producing task id (asset cost link)
+ * @returns The outputs with temp URLs / buffers replaced by permanent storage URLs
+ */
 async function persistOutputs(
   outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>,
   extras: Record<string, unknown>,
@@ -1132,7 +1139,7 @@ async function persistOutputs(
         const key = makeKey();
         const contentType = ((extra).contentType as string) ?? "application/octet-stream";
         const adapter = await getStorageAdapter();
-        const buf = (extra).buffer as Buffer;
+        const buf = (extra).buffer;
         const url = await adapter.upload(key, buf, contentType);
         next.url = url;
         logger.info({ key, size: buf.length }, "Persisted sync transport result");
