@@ -36,11 +36,14 @@ import {
   parseDocName,
   projectMetaDocName,
   type MembersChangedEvent,
+  type ActivityNewControlEvent,
+  ACTIVITY_NEW_SIGNAL,
+  type ActivityNewSignal,
 } from "@breatic/shared";
 
 const logger = createLogger("members-sync");
 
-type ProjectControlEvent = MembersChangedEvent;
+type ProjectControlEvent = MembersChangedEvent | ActivityNewControlEvent;
 
 /**
  * Best-effort kick — close every ws connection the user holds to
@@ -141,6 +144,27 @@ async function handleEvent(
       },
       "members_changed_handled",
     );
+    return;
+  }
+
+  if (event.type === "project-activity:new") {
+    // Relay a server/worker-written activity row to connected members
+    // as the same stateless signal collab-originated rows broadcast
+    // directly (ADR 2026-07-04 project-activity-feed).
+    const docName = projectMetaDocName(event.projectId);
+    const doc = hocuspocus.documents?.get(docName);
+    if (doc) {
+      try {
+        doc.broadcastStateless(
+          JSON.stringify({
+            t: ACTIVITY_NEW_SIGNAL,
+            projectId: event.projectId,
+          } satisfies ActivityNewSignal),
+        );
+      } catch (err) {
+        logger.warn({ err, docName }, "activity_signal_relay_failed");
+      }
+    }
     return;
   }
 

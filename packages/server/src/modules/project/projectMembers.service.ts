@@ -20,6 +20,7 @@
 
 import { projectMembersRepo } from "@breatic/core";
 import { publishMembersChanged } from "@breatic/core";
+import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { ProjectMember, ProjectRole } from "@breatic/shared";
@@ -50,6 +51,7 @@ export async function getOwner(projectId: string): Promise<string | null> {
  * @param projectId - Project UUID
  * @param targetUserId - Member whose role is changing
  * @param newRole - 'editor' or 'viewer'
+ * @param actorUserId - Acting user (activity feed attribution); optional for legacy callers
  * @throws {NotFoundError} if no active member row matches
  * @throws {ConflictError} if the target is the owner (use
  *   transfer-owner, V1-deferred)
@@ -58,6 +60,7 @@ export async function changeRole(
   projectId: string,
   targetUserId: string,
   newRole: Exclude<ProjectRole, "owner">,
+  actorUserId?: string,
 ): Promise<void> {
   const current = await projectMembersRepo.getRole(projectId, targetUserId);
   if (current === null) {
@@ -79,6 +82,12 @@ export async function changeRole(
     action: "update",
     newRole,
   });
+  await recordProjectActivity({
+    projectId,
+    actorUserId: actorUserId ?? null,
+    type: "member:role-changed",
+    payload: { role: newRole, previousRole: current, targetUserId },
+  });
 }
 
 /**
@@ -89,12 +98,14 @@ export async function changeRole(
  * yourself is allowed if you are not the owner.
  * @param projectId - Project UUID
  * @param targetUserId - Member being removed
+ * @param actorUserId - Acting user (activity feed attribution); optional for legacy callers
  * @throws {NotFoundError} if no active member row matches
  * @throws {ConflictError} if the target is the owner
  */
 export async function remove(
   projectId: string,
   targetUserId: string,
+  actorUserId?: string,
 ): Promise<void> {
   const current = await projectMembersRepo.getRole(projectId, targetUserId);
   if (current === null) {
@@ -110,5 +121,11 @@ export async function remove(
   await publishMembersChanged(projectId, {
     affectedUserId: targetUserId,
     action: "remove",
+  });
+  await recordProjectActivity({
+    projectId,
+    actorUserId: actorUserId ?? null,
+    type: "member:removed",
+    payload: { previousRole: current, targetUserId },
   });
 }

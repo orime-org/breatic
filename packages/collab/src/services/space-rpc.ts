@@ -7,7 +7,7 @@
  * Per ADR 2026-05-23-yjs-collab-only-write-authz:
  *
  *   - create / delete / lock / unlock / rename - caller role ≥ editor
- *   - restore / messages:clear                  - caller role = owner
+ *   - restore                                   - caller role = owner
  *
  * Each handler:
  *
@@ -16,8 +16,12 @@
  *      with `context.user.id = 'system'` so `beforeHandleMessage`
  *      lets the write through (the client-facing gate refuses
  *      anything coming from a real user id).
- *   3. Performs the meta-doc mutation (set / delete a `spaces` entry,
- *      push a `projectMessages` entry, etc.) in a single Y transaction.
+ *   3. Performs the meta-doc mutation (set / delete a `spaces` entry)
+ *      in a single Y transaction, then appends the matching
+ *      `project_activities` PG row + broadcasts the `activity:new`
+ *      stateless signal (best-effort - the Yjs mutation is already
+ *      applied, so an activity failure logs instead of failing the RPC;
+ *      ADR 2026-07-04 project-activity-feed).
  *   4. For delete: also soft-deletes the canvas-{spaceId} row in PG so
  *      stale tabs cannot resurrect the data via Hocuspocus persistence
  *      (per `auth.ts` space-exists check - meta.spaces is the source of
@@ -35,7 +39,9 @@ import * as Y from "yjs";
 import {
   createLogger,
   encodeInitialSpaceContentState,
+  projectActivitiesRepo,
   writeSpaceEntry,
+  type NewProjectActivity,
 } from "@breatic/core";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import {
@@ -49,7 +55,8 @@ import {
   type ProjectRole,
   type SpaceRpcRequest,
   type SpaceRpcResponse,
-  type ProjectMessageKind,
+  ACTIVITY_NEW_SIGNAL,
+  type ActivityNewSignal,
 } from "@breatic/shared";
 
 const logger = createLogger("space-rpc");
@@ -116,85 +123,61 @@ function requireAtLeast(role: ProjectRole, min: ProjectRole): boolean {
 }
 
 /**
- * Push a `projectMessages` entry inside the given Yjs transaction. The
- * caller must already hold a transact() context - this helper does not
- * open its own. Snapshot fields exist so a `space-deleted` entry can
- * be reverse-engineered into a restore later without keeping the
- * deleted entry in `meta.spaces`.
+ * Broadcast the `activity:new` stateless signal on the project's meta
+ * doc so connected members refetch the feed's first page. No-op when
+ * the doc is not loaded (nobody online - next panel open refetches via
+ * REST anyway).
+ * @param hocuspocus - Running Hocuspocus server holding loaded docs.
+ * @param projectId - Project whose meta doc receives the signal.
  */
-/**
- * Q11 v2 - projectMessages stores pointers, not snapshot strings.
- *
- * `actor` is the caller's userId (UUID); the frontend looks up
- * `meta.users[actor].name` at render time so a username rename
- * propagates retroactively. Likewise `spaceId` is enough on its own
- * - `meta.spaces[spaceId].name` gives the live name, so a Space
- * rename is reflected in every historical message that references
- * it. `spaceSnapshot` is preserved for `space-deleted` because the
- * id leaves `meta.spaces` at delete time and Restore needs the
- * original name + type to re-create the entry.
- *
- * The `id` field is the full Yjs entry identifier (`pm-${ts}-${full
- * uuid}`); no slice truncation per the design discussion ("never slice any ID from now on"). `Math.random()` was avoided because it would break
- * `encodeInitialMetaState`'s determinism contract - and consistency
- * across collab + bootstrap paths is easier when both use the same
- * id-generation shape.
- * @param doc - The meta Y.Doc whose `projectMessages` array receives the new entry; caller already holds the transact context.
- * @param args - Fields describing the audit entry to append.
- * @param args.kind - Message kind (e.g. `space-created` / `space-deleted` / `space-renamed`).
- * @param args.actor - Caller's userId (UUID); the name is resolved at render time via `meta.users[actor]`.
- * @param args.spaceId - Pointer into `meta.spaces` for the referenced Space, when applicable.
- * @param args.spaceName - Space name snapshot at event time, rendered verbatim by the frontend.
- * @param args.oldSpaceName - Previous name for `space-renamed` entries, paired with the new `spaceName`.
- * @param args.spaceSnapshot - Full Space entry preserved for `space-deleted` so Restore can re-create it.
- * @param args.message - i18n key supplying extra context for kinds that need it (e.g. `missing-node`).
- */
-function pushProjectMessage(
-  doc: Y.Doc,
-  args: {
-    kind: ProjectMessageKind;
-    /** userId (UUID) - render-time lookup via meta.users for name. */
-    actor: string;
-    /** Pointer into `meta.spaces` for non-name metadata (e.g. type). */
-    spaceId?: string;
-    /**
-     * Space name at event time. Frozen snapshot - rename will push
-     * its own `space-renamed` audit entry, leaving every prior entry
-     * carrying the historical name. The frontend renders this
-     * verbatim and does NOT look up the live name (Q11 v2.1).
-     */
-    spaceName?: string;
-    /**
-     * `space-renamed` only - pre-rename name snapshot. Paired with
-     * `spaceName` (the new name) the frontend renders the transition.
-     */
-    oldSpaceName?: string;
-    /** Only for `space-deleted`: full Space entry for Restore re-hydration. */
-    spaceSnapshot?: Record<string, unknown>;
-    message?: string; // i18n key for kinds that need extra context (e.g. `missing-node`)
-  },
+function broadcastActivitySignal(
+  hocuspocus: Hocuspocus,
+  projectId: string,
 ): void {
-  const entry = new Y.Map<unknown>();
-  const ts = Date.now();
-  entry.set("id", args.spaceId ? `pm-${ts}-${args.spaceId}` : `pm-${ts}`);
-  entry.set("kind", args.kind);
-  entry.set("actor", args.actor);
-  if (args.spaceId !== undefined) entry.set("spaceId", args.spaceId);
-  if (args.spaceName !== undefined) entry.set("spaceName", args.spaceName);
-  if (args.oldSpaceName !== undefined) {
-    entry.set("oldSpaceName", args.oldSpaceName);
+  const doc = hocuspocus.documents?.get(projectMetaDocName(projectId));
+  if (!doc) return;
+  try {
+    doc.broadcastStateless(
+      JSON.stringify({
+        t: ACTIVITY_NEW_SIGNAL,
+        projectId,
+      } satisfies ActivityNewSignal),
+    );
+  } catch (e) {
+    logger.warn({ err: e, projectId }, "activity_signal_broadcast_failed");
   }
-  if (args.spaceSnapshot !== undefined) {
-    entry.set("spaceSnapshot", args.spaceSnapshot);
-  }
-  if (args.message !== undefined) entry.set("message", args.message);
-  entry.set("createdAt", ts);
-  doc.getArray("projectMessages").push([entry]);
 }
 
 /**
+ * Append one activity row for a completed space mutation + broadcast
+ * the live signal. Best-effort by design: the Yjs mutation has already
+ * been applied, so failing the RPC here would make the client retry an
+ * operation that already succeeded - instead the failure is logged for
+ * the audit trail to be repaired from.
+ * @param ctx - Collab context providing the Hocuspocus server.
+ * @param projectId - Project the activity belongs to.
+ * @param activity - The activity row minus its projectId.
+ */
+async function recordSpaceActivity(
+  ctx: SpaceRpcContext,
+  projectId: string,
+  activity: Omit<NewProjectActivity, "projectId">,
+): Promise<void> {
+  try {
+    await projectActivitiesRepo.insert({ projectId, ...activity });
+    broadcastActivitySignal(ctx.hocuspocus, projectId);
+  } catch (e) {
+    logger.error(
+      { err: e, projectId, activityType: activity.type },
+      "activity_record_failed",
+    );
+  }
+}
+
+
+/**
  * Read a Y.Map's contents as a plain JS object suitable for stashing
- * inside a projectMessages snapshot field. Skips nested CRDTs - Space
+ * inside a space:deleted activity row's snapshot payload. Skips nested CRDTs - Space
  * entries are flat (id / type / name / order / locked / createdAt), so
  * `toJSON()` returns a plain object.
  * @param m - A flat Space entry Y.Map (id / type / name / order / locked / createdAt).
@@ -308,16 +291,16 @@ async function handleCreate(
         createdAt: Date.now(),
         createdBy: caller.userId,
       });
-      pushProjectMessage(doc, {
-        kind: "space-created",
-        actor: caller.userId,
-        spaceId,
-        spaceName: name,
-      });
     });
     if (conflict) {
       return err(req.id, "CONFLICT", `Space ${spaceId} already exists`);
     }
+    await recordSpaceActivity(ctx, projectId, {
+      actorUserId: caller.userId,
+      type: "space:created",
+      spaceId,
+      payload: { spaceName: name },
+    });
     return ok(req.id, { spaceId, type, name });
   } finally {
     await conn.disconnect();
@@ -397,6 +380,8 @@ async function runDelete(
   });
   let notFound = false;
   let isLast = false;
+  let snapshot: Record<string, unknown> | null = null;
+  let deletedName: string | undefined;
   try {
     await conn.transact((doc: Y.Doc) => {
       const spaces = doc.getMap("spaces");
@@ -416,16 +401,9 @@ async function runDelete(
         isLast = true;
         return;
       }
-      const snapshot = snapshotMap(entry);
-      const deletedName = entry.get("name") as string | undefined;
+      snapshot = snapshotMap(entry);
+      deletedName = entry.get("name") as string | undefined;
       spaces.delete(spaceId);
-      pushProjectMessage(doc, {
-        kind: "space-deleted",
-        actor: caller.userId,
-        spaceId,
-        spaceName: deletedName,
-        spaceSnapshot: snapshot,
-      });
     });
   } finally {
     await conn.disconnect();
@@ -446,6 +424,16 @@ async function runDelete(
   // it covers every kind variant so a corrupted meta `type` can't leave a
   // ghost row inflating the count.
   await softDeleteSpaceContentRows(projectId, spaceId);
+  // The space:deleted row carries the directory-entry snapshot that
+  // space:restore consumes to rebuild the meta entry (the canvas
+  // CONTENT doc is soft-deleted above and merely un-deleted on
+  // restore - it is never snapshotted).
+  await recordSpaceActivity(ctx, projectId, {
+    actorUserId: caller.userId,
+    type: "space:deleted",
+    spaceId,
+    payload: { spaceName: deletedName, spaceSnapshot: snapshot ?? {} },
+  });
   return ok(req.id);
 }
 
@@ -474,6 +462,7 @@ async function handleLock(
   });
   try {
     let notFound = false;
+    let spaceName: string | undefined;
     await conn.transact((doc: Y.Doc) => {
       const spaces = doc.getMap("spaces");
       const entry = spaces.get(spaceId);
@@ -482,16 +471,17 @@ async function handleLock(
         return;
       }
       entry.set("locked", locked);
-      pushProjectMessage(doc, {
-        kind: locked ? "space-locked" : "space-unlocked",
-        actor: caller.userId,
-        spaceId,
-        spaceName: entry.get("name") as string | undefined,
-      });
+      spaceName = entry.get("name") as string | undefined;
     });
     if (notFound) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
     }
+    await recordSpaceActivity(ctx, projectId, {
+      actorUserId: caller.userId,
+      type: locked ? "space:locked" : "space:unlocked",
+      spaceId,
+      payload: { spaceName },
+    });
     return ok(req.id);
   } finally {
     await conn.disconnect();
@@ -526,6 +516,7 @@ async function handleRename(
     let notFound = false;
     let locked = false;
     let noop = false;
+    let oldName = "";
     await conn.transact((doc: Y.Doc) => {
       const spaces = doc.getMap("spaces");
       const entry = spaces.get(spaceId);
@@ -542,19 +533,12 @@ async function handleRename(
         typeof previousName === "string" ? previousName : "";
       if (oldSpaceName === name) {
         // Idempotent no-op - skip the audit entry so a rename to the
-        // same name doesn't pollute projectMessages with a phantom
-        // "X renamed Foo to Foo".
+        // same name doesn't produce a phantom "X renamed Foo to Foo".
         noop = true;
         return;
       }
       entry.set("name", name);
-      pushProjectMessage(doc, {
-        kind: "space-renamed",
-        actor: caller.userId,
-        spaceId,
-        spaceName: name,
-        oldSpaceName,
-      });
+      oldName = oldSpaceName;
     });
     if (notFound) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
@@ -566,7 +550,14 @@ async function handleRename(
         `Space ${spaceId} is locked; unlock before renaming`,
       );
     }
-    void noop; // explicit: no-op rename still returns ok (no error to surface)
+    if (!noop) {
+      await recordSpaceActivity(ctx, projectId, {
+        actorUserId: caller.userId,
+        type: "space:renamed",
+        spaceId,
+        payload: { spaceName: name, oldSpaceName: oldName },
+      });
+    }
     return ok(req.id);
   } finally {
     await conn.disconnect();
@@ -574,15 +565,31 @@ async function handleRename(
 }
 
 /**
- * Restore a previously deleted Space: rebuild its `meta.spaces` entry
- * from the latest unrestored `space-deleted` snapshot, mark that audit
- * entry `restored`, then clear `deleted_at` on its canvas PG row.
- * Caller role = owner.
+ * Restore a previously deleted Space. Two data layers, two mechanisms
+ * (ADR 2026-07-04): the canvas CONTENT doc rows are soft-deleted in the
+ * yjs PG database and merely un-deleted here (never snapshotted); the
+ * meta DIRECTORY entry is rebuilt from the spaceSnapshot carried by the
+ * latest unconsumed `space:deleted` activity row. Caller role = owner.
+ *
+ * Step order is load-bearing:
+ *   1. PG: read the latest unconsumed space:deleted activity row.
+ *   2. Meta transact: rebuild the directory entry (refuse CONFLICT if
+ *      the space already exists - also the guard that makes a retry
+ *      after a partial failure safe).
+ *   3. Content rows un-delete (separate yjs PG database - cannot share
+ *      a business-DB transaction; unconditional + idempotent).
+ *   4. Business-DB transaction: mark the deleted row consumed + append
+ *      the space:restored activity row.
+ * A crash between 2 and 4 leaves the space alive with the deleted row
+ * unconsumed - harmless: a retry is refused by the step-2 guard, and
+ * the next delete/restore cycle targets its own newer deleted row.
+ * Never reorder 4 before 2: consuming the snapshot before the rebuild
+ * makes a step-2 failure unretryable.
  * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc the Space is restored into.
  * @param caller - Authenticated caller's userId + role; only `owner` may restore.
  * @param req - The `space:restore` request carrying the target spaceId.
- * @returns A success response, or a `FORBIDDEN` / `NOT_FOUND` (no restorable deletion record) error.
+ * @returns A success response, or a `FORBIDDEN` / `NOT_FOUND` / `CONFLICT` error.
  */
 async function handleRestore(
   ctx: SpaceRpcContext,
@@ -598,145 +605,114 @@ async function handleRestore(
     );
   }
   const { spaceId } = req.payload;
-  const docName = projectMetaDocName(projectId);
-  const conn = await ctx.hocuspocus.openDirectConnection(docName, {
-    context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
-  });
+  // Serialize the whole restore under the SAME per-project lock delete
+  // uses. Restore un-deletes a content-doc row — mutating the very
+  // count delete's floor-guard trusts — and rebuilds the meta entry, so
+  // an unlocked restore can interleave with a concurrent delete of the
+  // same spaceId and leave a ghost (live content, no meta entry) that
+  // inflates countLiveSpaceDocs. The lock also serializes cross-instance
+  // restore-vs-restore; the repo CAS below is the airtight backstop for
+  // the residual lock-TTL window.
   try {
-    let snapshot: Record<string, unknown> | null = null;
-    await conn.transact((doc: Y.Doc) => {
-      const spaces = doc.getMap("spaces");
-      if (spaces.has(spaceId)) {
-        // Already present - owner clicked restore on a Space that's
-        // not deleted. Treat as conflict so the client surfaces a
-        // distinct error UX.
-        return;
-      }
-      // Find the most recent UNRESTORED `space-deleted` entry for
-      // this spaceId - we read its snapshot to rebuild the Space
-      // AND mutate `restored = true` on the same entry so the bell
-      // sheet's restore button can render a disabled "restored" badge
-      // without round-tripping a second time. The `restored !==
-      // true` filter is what keeps a delete → restore → delete →
-      // restore loop honest: each cycle finds its own unrestored
-      // deleted entry instead of accidentally re-marking an
-      // already-handled one. Walk from the tail for the latest
-      // matching record.
-      const messages = doc.getArray("projectMessages");
-      let deletedEntry: Y.Map<unknown> | null = null;
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const m = messages.get(i);
-        if (
-          m instanceof Y.Map &&
-          m.get("kind") === "space-deleted" &&
-          m.get("spaceId") === spaceId &&
-          m.get("restored") !== true
-        ) {
-          const s = m.get("spaceSnapshot");
-          if (s && typeof s === "object") {
-            snapshot = s as Record<string, unknown>;
-            deletedEntry = m;
-            break;
-          }
-        }
-      }
-      if (!snapshot || !deletedEntry) {
-        return;
-      }
-      const entry = new Y.Map<unknown>();
-      for (const [k, v] of Object.entries(snapshot)) {
-        entry.set(k, v);
-      }
-      spaces.set(spaceId, entry);
-      pushProjectMessage(doc, {
-        kind: "space-restored",
-        actor: caller.userId,
-        spaceId,
-        spaceName: snapshot && typeof (snapshot).name === "string"
-          ? ((snapshot).name)
-          : undefined,
-      });
-      // Mark the original deleted entry as restored so any client
-      // looking at the audit log knows the row was brought back.
-      // Same transact as the spaces.set + pushProjectMessage above,
-      // so peers receive the rebuild + new audit entry + restored
-      // flag atomically (a partial state - restored entry pushed
-      // but the deleted row still flagged unrestored - never
-      // appears on the wire).
-      deletedEntry.set("restored", true);
-    });
-    if (!snapshot) {
+    return await withSpaceDeleteLock(projectId, () =>
+      runRestore(ctx, projectId, caller, req, spaceId),
+    );
+  } catch (e) {
+    if (e instanceof SpaceDeleteLockBusyError) {
       return err(
         req.id,
-        "NOT_FOUND",
-        `No deletion record found for Space ${spaceId} (or already restored)`,
+        "CONFLICT",
+        "Another Space operation is in progress for this project; please retry",
       );
     }
-  } finally {
-    await conn.disconnect();
+    throw e;
   }
-  await restoreSpaceContentRows(projectId, spaceId);
-  return ok(req.id);
 }
 
 /**
- * Clear `projectMessages` entries — all of them, a specific id set, or
- * those older than a cutoff timestamp, depending on the payload.
- * Caller role = owner.
+ * The `space:restore` critical section, run under the per-project lock.
  * @param ctx - Collab context providing the Hocuspocus server.
- * @param projectId - Project whose meta doc holds the `projectMessages` array.
- * @param caller - Authenticated caller's userId + role; only `owner` may clear messages.
- * @param req - The `messages:clear` request selecting all / specific ids / older-than entries.
- * @returns A success response, or a `FORBIDDEN` error when the caller is not the owner.
+ * @param projectId - Project whose meta doc the Space is restored into.
+ * @param caller - Authenticated caller's userId + role (audit actor).
+ * @param req - The `space:restore` request (for the echoed id).
+ * @param spaceId - Target Space id.
+ * @returns A success response, or a `NOT_FOUND` / `CONFLICT` error.
  */
-async function handleMessagesClear(
+async function runRestore(
   ctx: SpaceRpcContext,
   projectId: string,
   caller: SpaceRpcCaller,
-  req: Extract<SpaceRpcRequest, { type: "messages:clear" }>,
+  req: Extract<SpaceRpcRequest, { type: "space:restore" }>,
+  spaceId: string,
 ): Promise<SpaceRpcResponse> {
-  if (caller.role !== "owner") {
+  const deletedRow = await projectActivitiesRepo.latestUnrestoredDeleted(
+    projectId,
+    spaceId,
+  );
+  const snapshot = deletedRow?.payload["spaceSnapshot"];
+  if (
+    !deletedRow ||
+    !snapshot ||
+    typeof snapshot !== "object" ||
+    Array.isArray(snapshot)
+  ) {
     return err(
       req.id,
-      "FORBIDDEN",
-      `Only owner can clear projectMessages (role: ${caller.role})`,
+      "NOT_FOUND",
+      `No deletion record found for Space ${spaceId} (or already restored)`,
     );
   }
+  const snapshotRecord = snapshot as Record<string, unknown>;
   const docName = projectMetaDocName(projectId);
   const conn = await ctx.hocuspocus.openDirectConnection(docName, {
     context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
   });
+  let alreadyPresent = false;
   try {
     await conn.transact((doc: Y.Doc) => {
-      const arr = doc.getArray("projectMessages");
-      if (req.payload.all === true) {
-        if (arr.length > 0) arr.delete(0, arr.length);
+      const spaces = doc.getMap("spaces");
+      if (spaces.has(spaceId)) {
+        alreadyPresent = true;
         return;
       }
-      if (req.payload.ids && req.payload.ids.length > 0) {
-        const idSet = new Set(req.payload.ids);
-        // Walk from tail to head so index shifts on delete don't move
-        // entries we haven't visited yet.
-        for (let i = arr.length - 1; i >= 0; i--) {
-          const m = arr.get(i);
-          if (m instanceof Y.Map && idSet.has(m.get("id") as string)) {
-            arr.delete(i, 1);
-          }
-        }
-        return;
+      const entry = new Y.Map<unknown>();
+      for (const [k, v] of Object.entries(snapshotRecord)) {
+        entry.set(k, v);
       }
-      if (typeof req.payload.olderThanMs === "number") {
-        const cutoff = req.payload.olderThanMs;
-        for (let i = arr.length - 1; i >= 0; i--) {
-          const m = arr.get(i);
-          if (m instanceof Y.Map && (m.get("createdAt") as number) < cutoff) {
-            arr.delete(i, 1);
-          }
-        }
-      }
+      spaces.set(spaceId, entry);
     });
   } finally {
     await conn.disconnect();
+  }
+  if (alreadyPresent) {
+    return err(req.id, "CONFLICT", `Space ${spaceId} is not deleted`);
+  }
+  await restoreSpaceContentRows(projectId, spaceId);
+  const spaceName =
+    typeof snapshotRecord["name"] === "string"
+      ? snapshotRecord["name"]
+      : undefined;
+  try {
+    // CAS consume: only the winner appends space:restored + signals.
+    const won = await projectActivitiesRepo.consumeRestoreAndAppend(
+      deletedRow.id,
+      {
+        projectId,
+        actorUserId: caller.userId,
+        type: "space:restored",
+        spaceId,
+        payload: { spaceName },
+      },
+    );
+    if (won) broadcastActivitySignal(ctx.hocuspocus, projectId);
+  } catch (e) {
+    // Space is fully restored; only the consumption marker + audit row
+    // failed. A retry is refused by the already-present guard, so log
+    // for repair instead of failing an already-applied restore.
+    logger.error(
+      { err: e, projectId, spaceId },
+      "activity_restore_consume_failed",
+    );
   }
   return ok(req.id);
 }
@@ -771,8 +747,6 @@ export async function handleSpaceRpc(
         return await handleRename(ctx, projectId, caller, request);
       case "space:restore":
         return await handleRestore(ctx, projectId, caller, request);
-      case "messages:clear":
-        return await handleMessagesClear(ctx, projectId, caller, request);
     }
   } catch (e) {
     logger.error(

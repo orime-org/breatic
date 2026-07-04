@@ -324,6 +324,9 @@
     },
     "minimap": {
       "label": "캔버스 미니맵"
+    },
+    "activity": {
+      "reportFailed": "업로드를 Project 활동에 기록하지 못했습니다"
     }
   },
   "editor": {
@@ -1709,5 +1712,20 @@
     "title": "이 Project에 대한 접근 권한이 없습니다",
     "description": "Project Owner에게 연락하여 접근을 요청해 주세요. 이메일로 초대해 줄 수 있습니다.",
     "backToStudio": "Studio로 돌아가기"
+  },
+  "activity": {
+    "description": "Project 활동",
+    "loading": "불러오는 중…",
+    "type": {
+      "assetUploaded": "{actor} 님이 소재를 업로드했습니다",
+      "assetDeleted": "{actor} 님이 소재를 삭제했습니다",
+      "generationSucceeded": "{actor} 님이 생성을 완료했습니다",
+      "generationSucceededTool": "{actor} 님이 {toolName}(으)로 생성했습니다",
+      "generationFailed": "{actor} 님의 생성이 실패했습니다",
+      "memberJoined": "{actor} 님이 Project에 참여했습니다",
+      "memberRemoved": "{actor} 님이 멤버를 제거했습니다",
+      "memberRoleChanged": "{actor} 님이 멤버 역할을 {role}(으)로 변경했습니다",
+      "ownershipTransferred": "{actor} 님이 Project 소유권을 이전했습니다"
+    }
   }
 }

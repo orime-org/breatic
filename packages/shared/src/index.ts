@@ -67,6 +67,7 @@ export type {
   SpaceType,
   Space,
   MembersChangedEvent,
+  ActivityNewControlEvent,
   ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
   ProjectLifecycleEvent,
@@ -76,6 +77,7 @@ export {
   ROLE_RANK,
   HANDLING_TIMEOUT_MS,
   membersChangedChannel,
+  activityNewChannel,
   ALL_PROJECT_CHANNELS_PATTERN,
   SpaceTypeSchema,
   SPACE_NAME_MAX_LEN,
@@ -87,9 +89,6 @@ export {
   SpaceLockPayloadSchema,
   SpaceRenamePayloadSchema,
   SpaceRestorePayloadSchema,
-  MessagesClearPayloadSchema,
-  ProjectMessageKindSchema,
-  ProjectMessageEntrySchema,
 } from "@shared/types/index.js";
 
 export type {
@@ -101,9 +100,24 @@ export type {
   SpaceLockPayload,
   SpaceRenamePayload,
   SpaceRestorePayload,
-  MessagesClearPayload,
-  ProjectMessageKind,
-  ProjectMessageEntry,
+} from "@shared/types/index.js";
+
+export {
+  PROJECT_ACTIVITY_TYPES,
+  ACTIVITY_NEW_SIGNAL,
+  AssetActivityPayloadSchema,
+  GenerationActivityPayloadSchema,
+  SpaceActivityPayloadSchema,
+  MemberActivityPayloadSchema,
+  ProjectActivityEntrySchema,
+  ProjectActivityPageSchema,
+  ActivityNewSignalSchema,
+} from "@shared/types/index.js";
+export type {
+  ProjectActivityType,
+  ProjectActivityEntry,
+  ProjectActivityPage,
+  ActivityNewSignal,
 } from "@shared/types/index.js";
 
 export type {

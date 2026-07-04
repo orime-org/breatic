@@ -1,10 +1,21 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { AlertTriangle, History, RotateCcw, Trash2 } from 'lucide-react';
-import { useState, type JSX } from 'react';
+import { AlertTriangle, History, RotateCcw } from 'lucide-react';
+import { useEffect, useRef, useState, type JSX } from 'react';
+import {
+  useInfiniteQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 
-import type { ProjectMessageEntry, ProjectRole } from '@breatic/shared';
+import {
+  ActivityNewSignalSchema,
+  type ProjectActivityEntry,
+  type ProjectActivityType,
+  type ProjectRole,
+} from '@breatic/shared';
+import { activitiesApi } from '@web/data/api/activities';
 import {
   Sheet,
   SheetContent,
@@ -12,17 +23,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@web/components/ui/sheet';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
 import {
   Tooltip,
@@ -35,39 +35,28 @@ import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /**
- * Project-wide message channel surfaced by the History clock icon on
- * the right of the tab bar. Backed by `meta.projectMessages` (Y.Array)
- * — replaces the legacy `SpaceHistoryButton` stub.
+ * Project activity feed surfaced by the History clock icon on the
+ * right of the tab bar (ADR 2026-07-04 project-activity-feed).
  *
- * Per ADR 2026-05-23 project-messages-channel: one channel, one kind
- * enum, single list with color dots — V1 skips the filter chips.
- *
- * Owner-only affordances (per ADR §B2.5 permissions matrix):
- *   - `Restore` button on each `space-deleted` entry → `space:restore` RPC
- *   - `Clear all` footer → `messages:clear { all: true }` RPC
+ * Backed by the PG `project_activities` table via
+ * `GET /projects/:id/activities` (keyset pages, actor names resolved
+ * server-side) — replaces the retired meta-doc `projectMessages`
+ * Y.Array reader. Live updates arrive as the `activity:new` stateless
+ * signal on the project meta doc socket; the panel reacts by
+ * invalidating the query (Figma-style signal + refetch).
  */
 export interface ProjectMessagesButtonProps {
-  messages: ReadonlyArray<ProjectMessageEntry>;
+  projectId: string;
   /**
-   * Live user lookup from `useProjectMeta().users` — used to render
-   * `m.actor` (userId) as a display name. Q11 v2 moved away from
-   * snapshot strings on every message; a username rename now
-   * retroactively updates every historical entry by way of this map.
+   * Live meta-doc provider carrying the `activity:new` stateless
+   * signal. Null while the socket mounts — the panel still works via
+   * REST (open = fetch), it just misses live pushes until connected.
    */
-  usersById: ReadonlyMap<string, { name: string }>;
-  /**
-   * Live Space lookup from `useProjectMeta().spaces` — used to render
-   * `m.spaceId` as a current name. Falls back to `spaceSnapshot.name`
-   * for `space-deleted` entries (the spaceId leaves `meta.spaces` at
-   * delete time; the snapshot is the only place left to read from).
-   */
-  spacesById: ReadonlyMap<string, { name: string }>;
+  provider?: Pick<HocuspocusProvider, 'on' | 'off'> | null;
   /** Caller's role on the project. Drives owner-only affordances. */
   currentUserRole?: ProjectRole;
   /** Owner restore handler. Promise lets us show transient progress. */
   onRestore?: (spaceId: string) => Promise<void> | void;
-  /** Owner clear-all handler. */
-  onClearAll?: () => Promise<void> | void;
 }
 
 /**
@@ -129,69 +118,182 @@ function relativeTime(epochMs: number, now = Date.now()): RelativeTime {
 }
 
 /**
- * Color-dot palette per ADR project-messages-channel §kind colors.
- * Uses semantic status / accent tokens so dark / light mode both work.
+ * Color-dot palette per event family. Uses semantic status / accent
+ * tokens so dark / light mode both work.
  */
-const KIND_DOT_CLASS: Record<ProjectMessageEntry['kind'], string> = {
-  'missing-node': 'bg-status-warning-border',
-  'space-created': 'bg-status-success-border',
-  'space-deleted': 'bg-status-error-border',
-  'space-locked': 'bg-status-info-border',
-  'space-unlocked': 'bg-muted-foreground',
-  'space-restored': 'bg-status-success-border',
-  'space-renamed': 'bg-status-info-border',
-};
-
-const KIND_LABEL_KEY: Record<ProjectMessageEntry['kind'], string> = {
-  'missing-node': 'spaces.history.kind.missingNode',
-  'space-created': 'spaces.history.kind.spaceCreated',
-  'space-deleted': 'spaces.history.kind.spaceDeleted',
-  'space-locked': 'spaces.history.kind.spaceLocked',
-  'space-unlocked': 'spaces.history.kind.spaceUnlocked',
-  'space-restored': 'spaces.history.kind.spaceRestored',
-  'space-renamed': 'spaces.history.kind.spaceRenamed',
+const TYPE_DOT_CLASS: Record<ProjectActivityType, string> = {
+  'asset:uploaded': 'bg-status-success-border',
+  'asset:deleted': 'bg-status-error-border',
+  'generation:succeeded': 'bg-status-success-border',
+  'generation:failed': 'bg-status-error-border',
+  'space:created': 'bg-status-success-border',
+  'space:deleted': 'bg-status-error-border',
+  'space:locked': 'bg-status-info-border',
+  'space:unlocked': 'bg-muted-foreground',
+  'space:restored': 'bg-status-success-border',
+  'space:renamed': 'bg-status-info-border',
+  'member:joined': 'bg-status-success-border',
+  'member:removed': 'bg-status-error-border',
+  'member:role-changed': 'bg-status-info-border',
+  'member:ownership-transferred': 'bg-status-info-border',
 };
 
 /**
- * Feature flag — the clear-all button stays hidden since 2026-05-27 (Q11
- * v2.1): projectMessages is the audit / events log (rename / lock / delete
- * / restore push entries); letting the owner wipe it loses provenance the
- * moment we lean on it as the source of truth. Re-enable once a soft-clear
- * / archive workflow + retention policy exist. Typed `boolean` (not the
- * `false` literal) so the JSX guard below is not a constant expression.
+ * Resolve the ICU message key + params for one feed entry. The space
+ * family reuses the existing `spaces.history.kind.*` copy (same
+ * wording, snapshot names travel in the payload now); asset /
+ * generation / member events use the `activity.type.*` keys.
+ * @param entry - The feed entry to render.
+ * @returns The ICU key and its params.
  */
-const CLEAR_ALL_ENABLED: boolean = false;
+function entryMessage(entry: ProjectActivityEntry): {
+  key: string;
+  params: Record<string, string | number>;
+} {
+  const actor = entry.actorName ?? entry.actorUserId ?? 'system';
+  const p = entry.payload;
+  const spaceName = typeof p['spaceName'] === 'string' ? p['spaceName'] : '—';
+  switch (entry.type) {
+    case 'space:created':
+      return { key: 'spaces.history.kind.spaceCreated', params: { actor, spaceName } };
+    case 'space:deleted':
+      return { key: 'spaces.history.kind.spaceDeleted', params: { actor, spaceName } };
+    case 'space:locked':
+      return { key: 'spaces.history.kind.spaceLocked', params: { actor, spaceName } };
+    case 'space:unlocked':
+      return { key: 'spaces.history.kind.spaceUnlocked', params: { actor, spaceName } };
+    case 'space:restored':
+      return { key: 'spaces.history.kind.spaceRestored', params: { actor, spaceName } };
+    case 'space:renamed':
+      return {
+        key: 'spaces.history.kind.spaceRenamed',
+        params: {
+          actor,
+          spaceName,
+          oldSpaceName:
+            typeof p['oldSpaceName'] === 'string' ? p['oldSpaceName'] : '',
+        },
+      };
+    case 'asset:uploaded':
+      return { key: 'activity.type.assetUploaded', params: { actor } };
+    case 'asset:deleted':
+      return { key: 'activity.type.assetDeleted', params: { actor } };
+    case 'generation:succeeded':
+      return typeof p['toolName'] === 'string'
+        ? {
+          key: 'activity.type.generationSucceededTool',
+          params: { actor, toolName: p['toolName'] },
+        }
+        : { key: 'activity.type.generationSucceeded', params: { actor } };
+    case 'generation:failed':
+      return { key: 'activity.type.generationFailed', params: { actor } };
+    case 'member:joined':
+      return { key: 'activity.type.memberJoined', params: { actor } };
+    case 'member:removed':
+      return { key: 'activity.type.memberRemoved', params: { actor } };
+    case 'member:role-changed':
+      return {
+        key: 'activity.type.memberRoleChanged',
+        params: { actor, role: typeof p['role'] === 'string' ? p['role'] : '' },
+      };
+    case 'member:ownership-transferred':
+      return { key: 'activity.type.ownershipTransferred', params: { actor } };
+  }
+}
 
 /**
  * History clock icon on the right of the tab bar that opens the
- * project-wide message / audit channel sheet (created / deleted / locked
- * / renamed / restored events) with owner-only restore and clear-all
- * affordances.
+ * project activity feed sheet (uploads, deletions, generations, space
+ * lifecycle, member changes) with keyset paging, live signal-driven
+ * refresh, and the owner-only restore affordance on space deletions.
  * @param root0 - Component props.
- * @param root0.messages - Project message entries to render, newest shown first (last 100 cap).
- * @param root0.usersById - Live user lookup used to render each entry's actor id as a display name.
- * @param root0.currentUserRole - Caller's role on the project, driving owner-only affordances.
+ * @param root0.projectId - Project whose feed to show.
+ * @param root0.provider - Live meta-doc provider carrying the activity:new signal.
+ * @param root0.currentUserRole - Caller's role, driving owner-only affordances.
  * @param root0.onRestore - Owner restore handler invoked with the deleted space's id.
- * @param root0.onClearAll - Owner clear-all handler for wiping the message channel.
- * @returns The history trigger button and its message-channel sheet.
+ * @returns The history trigger button and its activity feed sheet.
  */
 export function ProjectMessagesButton({
-  messages,
-  usersById,
+  projectId,
+  provider,
   currentUserRole,
   onRestore,
-  onClearAll,
 }: ProjectMessagesButtonProps): JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('project-messages');
   const isOwner = currentUserRole === 'owner';
-  // Last 100 cap — older auditing belongs in a dedicated dashboard.
-  const visible = messages.slice(-100).reverse();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [clearing, setClearing] = useState(false);
+  const queryClient = useQueryClient();
+  const sentinelRef = useRef<HTMLLIElement | null>(null);
+
+  const feed = useInfiniteQuery({
+    queryKey: ['project-activities', projectId],
+    queryFn: ({ pageParam }) =>
+      activitiesApi.list(projectId, pageParam || undefined),
+    initialPageParam: '',
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled: open,
+    refetchOnWindowFocus: false,
+  });
+
+  // Live updates: the meta-doc socket broadcasts `activity:new`
+  // whenever a row lands (collab directly; server/worker via the
+  // control-plane relay). React by invalidating — the panel refetches
+  // when open, and the next open fetches fresh anyway.
+  useEffect(() => {
+    if (!provider) return;
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    /**
+     * Parse a stateless payload and invalidate the feed on a signal.
+     * @param data - The stateless message wrapper.
+     * @param data.payload - Raw stateless string payload.
+     */
+    const onStateless = (data: { payload: string }): void => {
+      try {
+        const parsed = ActivityNewSignalSchema.safeParse(
+          JSON.parse(data.payload),
+        );
+        if (parsed.success && parsed.data.projectId === projectId) {
+          // Coalesce a burst (a bulk op emits many signals) into one
+          // refetch on a short trailing timer.
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            void queryClient.invalidateQueries({
+              queryKey: ['project-activities', projectId],
+            });
+          }, 250);
+        }
+      } catch {
+        // Non-JSON stateless traffic (e.g. space RPC responses) — not ours.
+      }
+    };
+    provider.on('stateless', onStateless);
+    return (): void => {
+      if (debounce) clearTimeout(debounce);
+      provider.off('stateless', onStateless);
+    };
+  }, [provider, projectId, queryClient]);
+
+  // Infinite scroll: fetch the next page when the tail sentinel enters
+  // the list viewport. Depends only on the primitives that matter (not
+  // the whole query object, whose identity changes every render and
+  // would tear down + rebuild the observer on each render).
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = feed;
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !open) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting) && hasNextPage && !isFetchingNextPage) {
+        void fetchNextPage();
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [open, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   /**
-   * Restores a deleted space via `onRestore`, tracking per-entry busy state.
+   * Restores a deleted space via `onRestore`, tracking per-entry busy
+   * state, then refreshes the feed (the restore appends its own row).
    * @param spaceId - Id of the deleted space to restore.
    */
   const onClickRestore = async (spaceId: string): Promise<void> => {
@@ -199,22 +301,15 @@ export function ProjectMessagesButton({
     setBusyId(spaceId);
     try {
       await onRestore(spaceId);
+      void queryClient.invalidateQueries({
+        queryKey: ['project-activities', projectId],
+      });
     } finally {
       setBusyId(null);
     }
   };
-  /**
-   * Clears the whole message channel via `onClearAll`, tracking busy state.
-   */
-  const onClickClear = async (): Promise<void> => {
-    if (!onClearAll) return;
-    setClearing(true);
-    try {
-      await onClearAll();
-    } finally {
-      setClearing(false);
-    }
-  };
+
+  const entries = feed.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
     <Sheet open={open} onOpenChange={setOpen} modal>
@@ -250,120 +345,37 @@ export function ProjectMessagesButton({
         data-testid='project-messages-sheet'
       >
         <header className='flex flex-col gap-2 border-b border-border px-4 py-3'>
-          {/*
-            Only the title row reserves space (pr-10) for the absolute
-            X close button in the top-right of the SheetContent. The
-            meta row below has no pr — it can extend to the inner right
-            edge of the header (px-4), letting `justify-between` push
-            the clear button fully to the right.
-          */}
           <SheetTitle className='pr-10 text-base font-semibold text-foreground'>
             {t('spaces.history.header')}
           </SheetTitle>
-          {/*
-            Meta row: count on the left, owner-only "clear all" on the
-            right (justify-between). Non-owner sees only the left count
-            and an empty right side — natural since meta is left-aligned.
-            Wrapping the destructive button in AlertDialog forces a
-            confirm step (PR #138 — prevent accidental data loss).
-          */}
-          <div className='flex items-center justify-between gap-3'>
-            <SheetDescription className='text-xs text-muted-foreground'>
-              {t('spaces.history.description', { count: messages.length })}
-            </SheetDescription>
-            {/* Clear-all stays hidden — see CLEAR_ALL_ENABLED above. */}
-            {CLEAR_ALL_ENABLED && isOwner && messages.length > 0 ? (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <button
-                    type='button'
-                    disabled={clearing}
-                    data-testid='project-messages-clear-all'
-                    className='inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50'
-                  >
-                    <Trash2 className='h-3 w-3' aria-hidden />
-                    {t('spaces.history.action.clearAll')}
-                  </button>
-                </AlertDialogTrigger>
-                <AlertDialogContent data-testid='project-messages-clear-confirm'>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>
-                      {t('spaces.history.action.clearAllConfirmTitle')}
-                    </AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {t('spaces.history.action.clearAllConfirmDescription')}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
-                    <AlertDialogAction
-                      variant='destructive'
-                      onClick={onClickClear}
-                      data-testid='project-messages-clear-confirm-action'
-                    >
-                      {t('spaces.history.action.clearAll')}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            ) : null}
-          </div>
+          <SheetDescription className='text-xs text-muted-foreground'>
+            {t('activity.description')}
+          </SheetDescription>
         </header>
         <ul
-          // `flex-1` (not a hard `max-h-[420px]`) lets the list fill the
-          // remaining sheet height below the header. The prior cap caused
-          // a visible empty band inside the sheet when the floating sheet
-          // is taller than 420 + header (see PR #135 bug report).
           className='flex flex-1 flex-col overflow-y-auto'
           role='list'
           data-testid='project-messages-list'
         >
-          {visible.length === 0 ? (
+          {entries.length === 0 ? (
             <li className='px-4 py-3 text-sm text-muted-foreground'>
-              {t('spaces.history.empty')}
+              {feed.isLoading
+                ? t('activity.loading')
+                : t('spaces.history.empty')}
             </li>
           ) : (
-            visible.map((m) => {
+            entries.map((m) => {
               const rel = relativeTime(m.createdAt);
-              // A `space-deleted` entry is "already restored" iff
-              // `restored === true` — collab's space:restore RPC
-              // handler mutates this flag on the original deleted
-              // entry inside the same transact that pushes the new
-              // space-restored audit entry, so we get an O(1)
-              // single-field read instead of walking projectMessages
-              // for a matching restored entry. Undefined on legacy
-              // entries written before this field shipped; treat
-              // as "not yet restored" (the restore RPC still
-              // refuses the duplicate with NOT_FOUND — the field
-              // just lets the UI prevent the round-trip).
               const alreadyRestored =
-                m.kind === 'space-deleted' && m.restored === true;
+                m.type === 'space:deleted' && m.restored === true;
               const canRestore =
                 isOwner &&
-                m.kind === 'space-deleted' &&
+                m.type === 'space:deleted' &&
                 Boolean(m.spaceId) &&
                 !alreadyRestored;
               const showRestoredBadge =
-                isOwner && m.kind === 'space-deleted' && alreadyRestored;
-              // Q11 v2.1 lookup chain:
-              //   - actor name: live lookup `meta.users[actor]` so a
-              //     username rename retroactively propagates (user
-              //     identity is stable, rename is rare + not an audit
-              //     event).
-              //   - space name: SNAPSHOT first — `m.spaceName` was
-              //     captured at event time and stays frozen. The Space
-              //     rename will push its own `space-renamed` audit
-              //     entry once that kind is wired up; until then the
-              //     historical name is the right thing to render.
-              //     Snapshot missing (legacy `missing-node` entry with
-              //     no spaceId) falls through to em-dash.
-              const actorName =
-                (m.actor ? usersById.get(m.actor)?.name : undefined) ?? m.actor ?? '';
-              const snapshotName =
-                typeof m.spaceSnapshot?.name === 'string'
-                  ? (m.spaceSnapshot.name as string)
-                  : undefined;
-              const spaceName = m.spaceName ?? snapshotName ?? '—';
+                isOwner && m.type === 'space:deleted' && alreadyRestored;
+              const msg = entryMessage(m);
               return (
                 <li
                   key={m.id}
@@ -374,12 +386,12 @@ export function ProjectMessagesButton({
                   <span
                     className={cn(
                       'mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full',
-                      KIND_DOT_CLASS[m.kind],
+                      TYPE_DOT_CLASS[m.type],
                     )}
                     aria-hidden
                     data-testid={`project-messages-dot-${m.id}`}
                   />
-                  {m.kind === 'missing-node' ? (
+                  {m.type === 'generation:failed' ? (
                     <AlertTriangle
                       className='mt-0.5 h-4 w-4 shrink-0 text-status-warning-foreground'
                       aria-hidden
@@ -387,13 +399,7 @@ export function ProjectMessagesButton({
                   ) : null}
                   <div className='flex min-w-0 flex-1 flex-col gap-1'>
                     <p className='text-sm leading-relaxed text-foreground'>
-                      {m.message
-                        ? t(m.message, m.context as Record<string, string | number> | undefined)
-                        : t(KIND_LABEL_KEY[m.kind], {
-                          spaceName,
-                          actor: actorName,
-                          oldSpaceName: m.oldSpaceName ?? '',
-                        })}
+                      {t(msg.key, msg.params)}
                     </p>
                     <p className='text-2xs tabular-nums text-muted-foreground'>
                       {t(rel.key, rel.params)}
@@ -426,6 +432,18 @@ export function ProjectMessagesButton({
               );
             })
           )}
+          {/* Tail sentinel: entering the viewport loads the next page. */}
+          {feed.hasNextPage ? (
+            <li
+              ref={sentinelRef}
+              role='listitem'
+              aria-hidden
+              data-testid='project-messages-load-more'
+              className='px-4 py-2 text-center text-2xs text-muted-foreground'
+            >
+              {feed.isFetchingNextPage ? t('activity.loading') : ''}
+            </li>
+          ) : null}
         </ul>
       </SheetContent>
     </Sheet>

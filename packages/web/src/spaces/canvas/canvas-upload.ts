@@ -59,6 +59,12 @@ export interface MediaUploadDeps {
   onSuccess: (fileUrl: string) => void;
   /** Called (no args) when presign or the PUT fails. */
   onFailure: () => void;
+  /**
+   * Optional post-success hook carrying the storage identity — the
+   * caller reports the upload to the activity-feed handshake with it
+   * (fire-and-forget; the canvas write-back never waits on it).
+   */
+  onUploaded?: (info: { key: string; kind: string; fileUrl: string }) => void;
 }
 
 /**
@@ -76,13 +82,14 @@ export async function runMediaUpload(
   deps: MediaUploadDeps,
 ): Promise<void> {
   try {
-    const { uploadUrl, fileUrl } = await deps.presign({
+    const { uploadUrl, fileUrl, key, kind } = await deps.presign({
       filename: file.name,
       contentType: file.type,
       projectId,
     });
     await deps.putFile(uploadUrl, file);
     deps.onSuccess(fileUrl);
+    deps.onUploaded?.({ key, kind, fileUrl });
   } catch {
     deps.onFailure();
   }
@@ -135,6 +142,15 @@ export interface FillNodeDeps {
   setContent: (nodeId: string, content: string, lease: UploadLease) => boolean;
   /** Leased error write-back (fixed-English wire string — never a toast). */
   setError: (nodeId: string, message: string, lease: UploadLease) => boolean;
+  /**
+   * Optional activity-feed handshake reporter (media path only) — called
+   * after a successful upload with the storage identity + the node it
+   * landed on. Fire-and-forget at the caller.
+   */
+  onUploaded?: (
+    nodeId: string,
+    info: { key: string; kind: string; fileUrl: string },
+  ) => void;
 }
 
 /**
@@ -184,6 +200,7 @@ export async function fillNodeFromFile(
       putFile: deps.putFile,
       onSuccess: (fileUrl) => deps.setContent(nodeId, fileUrl, lease),
       onFailure: () => deps.setError(nodeId, `Upload failed: ${file.name}`, lease),
+      onUploaded: (info) => deps.onUploaded?.(nodeId, info),
     });
     return;
   }
@@ -192,4 +209,65 @@ export async function fillNodeFromFile(
   } catch {
     deps.setError(nodeId, `Extraction failed: ${file.name}`, lease);
   }
+}
+
+/** A minimal canvas node shape for asset-delete accounting (pure). */
+export interface AssetNodeLike {
+  id: string;
+  type?: string;
+  data?: { content?: unknown; coverUrl?: unknown };
+}
+
+/** One asset-delete report entry (activity feed). */
+export interface DeletedAssetEntry {
+  fileUrl: string;
+  kind: string;
+  nodeId: string;
+  spaceId: string;
+}
+
+/**
+ * Compute the asset-delete report entries for a set of deleted nodes
+ * (ADR 2026-07-04 project-activity-feed).
+ *
+ * For each deleted media node (image / video / audio) it reports BOTH
+ * the primary asset (`data.content`) AND the cover (`data.coverUrl`) —
+ * each is a stored object the node owned. It SKIPS any URL still
+ * referenced by a SURVIVING node (a URL in `allNodes` minus the deleted
+ * set): pasted copies share a content URL, so deleting one copy leaves
+ * the asset in use and it must not be reported deleted (which would
+ * mislead the audit feed + a future GC).
+ * @param deletedNodes - The nodes being removed.
+ * @param allNodes - The current node set (still includes the deleted
+ *   ones — Yjs removal propagates async; the deleted set is excluded here).
+ * @param spaceId - The space the nodes live in.
+ * @returns The report entries (content + cover, unreferenced only).
+ */
+export function computeDeletedAssetEntries(
+  deletedNodes: ReadonlyArray<AssetNodeLike>,
+  allNodes: ReadonlyArray<AssetNodeLike>,
+  spaceId: string,
+): DeletedAssetEntry[] {
+  const deletedIds = new Set(deletedNodes.map((n) => n.id));
+  const survivingUrls = new Set<string>();
+  for (const n of allNodes) {
+    if (deletedIds.has(n.id)) continue;
+    if (typeof n.data?.content === 'string') survivingUrls.add(n.data.content);
+    if (typeof n.data?.coverUrl === 'string') survivingUrls.add(n.data.coverUrl);
+  }
+  const mediaTypes = new Set(['image', 'video', 'audio']);
+  return deletedNodes.flatMap((node) => {
+    if (node.type === undefined || !mediaTypes.has(node.type)) return [];
+    const out: DeletedAssetEntry[] = [];
+    for (const url of [node.data?.content, node.data?.coverUrl]) {
+      if (
+        typeof url === 'string' &&
+        /^https?:\/\//.test(url) &&
+        !survivingUrls.has(url)
+      ) {
+        out.push({ fileUrl: url, kind: node.type!, nodeId: node.id, spaceId });
+      }
+    }
+    return out;
+  });
 }

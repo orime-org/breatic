@@ -93,7 +93,7 @@ export {
   taskEventsStreamKey,
   lifecycleStreamKey,
 } from "@core/infra/event-stream.js";
-export { publishMembersChanged } from "@core/infra/control-events.js";
+export { publishMembersChanged, publishActivityNew } from "@core/infra/control-events.js";
 export { setSession, getSession, deleteSession, deleteAllSessions, SESSION_COOKIE_NAME } from "@core/infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 
@@ -106,6 +106,15 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // task / node-history / agent / model-catalog / canvas-lock) lives in
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
+export {
+  projectActivitiesRepo,
+  encodeActivityCursor,
+  decodeActivityCursor,
+} from "@core/activity/project-activities.repo.js";
+export type {
+  NewProjectActivity,
+  ActivityCursor,
+} from "@core/activity/project-activities.repo.js";
 export * as projectAuthService from "@core/auth/projectAuth.service.js";
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──

@@ -239,6 +239,13 @@
       "when": 1780700800000,
       "tag": "0033_drop_member_invited",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1780900000000,
+      "tag": "0034_project_activities",
+      "breakpoints": true
     }
   ]
 }

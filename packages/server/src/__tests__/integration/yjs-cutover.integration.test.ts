@@ -129,7 +129,6 @@ describe("yjs repo against the separate yjs DB", () => {
       kind: "canvas",
       name: "Canvas",
       createdBy: "system",
-      actor: "system",
       creatorName: "system",
       creatorAvatarUrl: null,
       ts: 1,

@@ -41,11 +41,12 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getProjectCollaboratorCap } from "@server/config/limits.js";
+import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { randomBytes } from "node:crypto";
 import { db, env, getRedis } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { projectMembersRepo } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { type ProjectRole, t } from "@breatic/shared";
 import type {
   InvitableProjectRole,
   PendingProjectInvitationSummary,
@@ -191,6 +192,7 @@ export async function confirmInvite(
   invitationId: string,
   receiverUserId: string,
 ): Promise<void> {
+  let joinedActivity: { projectId: string; role: ProjectRole } | null = null;
   await db.transaction(async (tx) => {
     // Serialization point: only the first confirm flips status to accepted;
     // a losing/expired/wrong-user attempt matches zero rows → null → abort.
@@ -245,7 +247,20 @@ export async function confirmInvite(
       },
       tx,
     });
+    joinedActivity = { projectId: accepted.projectId, role: accepted.role };
   });
+  // Activity row AFTER the membership transaction committed (the feed
+  // records outcomes; recordProjectActivity is best-effort and
+  // announces the live signal itself).
+  if (joinedActivity !== null) {
+    const joined = joinedActivity as { projectId: string; role: ProjectRole };
+    await recordProjectActivity({
+      projectId: joined.projectId,
+      actorUserId: receiverUserId,
+      type: "member:joined",
+      payload: { role: joined.role },
+    });
+  }
 }
 
 /**

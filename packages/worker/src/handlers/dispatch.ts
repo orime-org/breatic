@@ -19,7 +19,7 @@ import { runLocalHandler } from "@worker/handlers/local/index.js";
 import { getModel } from "@breatic/domain";
 import { buildToolSet } from "@breatic/domain";
 import { getSkillRegistry } from "@breatic/domain";
-import { getStreamRedis, getWorkerConfig } from "@breatic/core";
+import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import { downloadAndStore, getStorageAdapter, storageKey } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { creditService } from "@breatic/domain";
@@ -362,6 +362,24 @@ async function runTaskBody(
         }
       }
     }
+    // #1580-parallel activity-feed fix: a crash between billing and the
+    // Stage-4 activity write leaves the feed with no success row (or a
+    // crash-net generation:failed one). Re-assert the success row on
+    // every billed redelivery (upsert overwrites a stale failed row),
+    // mirroring the node-writeback re-emit above.
+    if (projectId) {
+      await recordGenerationActivity({
+        projectId,
+        userId,
+        taskId,
+        succeeded: true,
+        spaceId,
+        nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
+        source,
+        toolName,
+        model,
+      });
+    }
     return (existing.result ?? { alreadyCompleted: true });
   }
   if (existing?.providerResultUrl) {
@@ -460,6 +478,22 @@ async function runTaskBody(
     if (canvasDocName && isTerminalAttempt(job)) {
       await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg);
     }
+    // Terminal attempts only - a retryable failure may still succeed,
+    // and the feed records outcomes, not attempts.
+    if (projectId && isTerminalAttempt(job)) {
+      await recordGenerationActivity({
+        projectId,
+        userId,
+        taskId,
+        succeeded: false,
+        spaceId,
+        nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
+        source,
+        toolName,
+        model,
+        errorMessage: errorMsg,
+      });
+    }
     throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
   }
 
@@ -476,6 +510,19 @@ async function runTaskBody(
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
     if (canvasDocName) {
       await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, msg);
+    }
+    if (projectId) {
+      await recordGenerationActivity({
+        projectId,
+        userId,
+        taskId,
+        succeeded: false,
+        spaceId,
+        source,
+        toolName,
+        model,
+        errorMessage: msg,
+      });
     }
     return { failed: true, reason: "output_count_mismatch" };
   }
@@ -503,6 +550,19 @@ async function runTaskBody(
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
     if (canvasDocName) {
       await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg);
+    }
+    if (projectId) {
+      await recordGenerationActivity({
+        projectId,
+        userId,
+        taskId,
+        succeeded: false,
+        spaceId,
+        source,
+        toolName,
+        model,
+        errorMessage: errorMsg,
+      });
     }
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
@@ -654,11 +714,110 @@ async function runTaskBody(
     }
   }
 
+  if (projectId) {
+    await recordGenerationActivity({
+      projectId,
+      userId,
+      taskId,
+      succeeded: true,
+      spaceId,
+      nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
+      source,
+      toolName,
+      model: (unified.extras.model as string | undefined) ?? model,
+      outputCount: persistedOutputs.length,
+    });
+  }
+
   logger.info(
     { taskId, taskType, skillName, resolvedSkills, creditsUsed, durationMs, billed: wasFirst },
     "task_completed",
   );
   return result;
+}
+
+// ─── Activity feed emission ─────────────────────────────────────────
+
+/**
+ * Append the generation outcome to the project activity feed + announce
+ * it to the collab control plane (ADR 2026-07-04 project-activity-feed).
+ *
+ * Outcome-authoritative dedup (one row per taskId): SUCCESS wins
+ * (`upsertGenerationSucceeded` overwrites a premature / crash-net
+ * failed row), FAILURE never overwrites (`insertGenerationFailedIfAbsent`).
+ * So the feed always converges on the true final state regardless of
+ * interleaving — a billed task that crashed before Stage 4 and got a
+ * crash-net `generation:failed` is corrected to succeeded when its
+ * success is re-asserted on redelivery. Best-effort by design: the task
+ * outcome (billing, node write-backs) is already committed, so a failed
+ * audit write logs instead of failing the job.
+ * @param args - Row fields for the generation activity.
+ * @param args.projectId - Project the task ran in.
+ * @param args.userId - Requesting user (feed actor).
+ * @param args.taskId - Task id (idempotency key).
+ * @param args.succeeded - Terminal outcome flag (success authoritative).
+ * @param args.spaceId - Space the target nodes live in, when node-bound.
+ * @param args.nodeId - Single target node, or null for multi-output tasks.
+ * @param args.source - Enqueue source (task / mini_tool / understand).
+ * @param args.toolName - Mini-tool name, when source is mini_tool.
+ * @param args.model - Provider model used.
+ * @param args.outputCount - Number of persisted outputs (success only).
+ * @param args.errorMessage - Terminal failure reason (failure only).
+ * @returns Nothing.
+ */
+async function recordGenerationActivity(args: {
+  projectId: string;
+  userId: string;
+  taskId: string;
+  succeeded: boolean;
+  spaceId?: string;
+  nodeId?: string | null;
+  source?: string;
+  toolName?: string;
+  model?: string;
+  outputCount?: number;
+  errorMessage?: string;
+}): Promise<void> {
+  const payload = {
+    source: args.source ?? "task",
+    ...(args.toolName !== undefined && { toolName: args.toolName }),
+    ...(args.model !== undefined && { model: args.model }),
+    ...(args.outputCount !== undefined && { outputCount: args.outputCount }),
+    executedOn: "backend" as const,
+    ...(args.errorMessage !== undefined && { errorMessage: args.errorMessage }),
+  };
+  const common = {
+    projectId: args.projectId,
+    actorUserId: args.userId,
+    spaceId: args.spaceId ?? null,
+    nodeId: args.nodeId ?? null,
+    taskId: args.taskId,
+    payload,
+  };
+  try {
+    let changed = false;
+    if (args.succeeded) {
+      // Success is authoritative — always lands (overwrites a failed row).
+      await projectActivitiesRepo.upsertGenerationSucceeded({
+        ...common,
+        type: "generation:succeeded",
+      });
+      changed = true;
+    } else {
+      // Failure only lands if the task has no row yet.
+      const inserted = await projectActivitiesRepo.insertGenerationFailedIfAbsent({
+        ...common,
+        type: "generation:failed",
+      });
+      changed = inserted !== null;
+    }
+    if (changed) await publishActivityNew(args.projectId);
+  } catch (err) {
+    logger.warn(
+      { err, taskId: args.taskId, projectId: args.projectId },
+      "activity_record_failed",
+    );
+  }
 }
 
 // ─── Event emit helpers ──────────────────────────────────────────────
