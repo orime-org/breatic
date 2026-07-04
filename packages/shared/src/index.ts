@@ -87,7 +87,6 @@ export {
   SpaceLockPayloadSchema,
   SpaceRenamePayloadSchema,
   SpaceRestorePayloadSchema,
-  MessagesClearPayloadSchema,
   ProjectMessageKindSchema,
   ProjectMessageEntrySchema,
 } from "@shared/types/index.js";
@@ -101,7 +100,6 @@ export type {
   SpaceLockPayload,
   SpaceRenamePayload,
   SpaceRestorePayload,
-  MessagesClearPayload,
   ProjectMessageKind,
   ProjectMessageEntry,
 } from "@shared/types/index.js";

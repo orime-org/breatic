@@ -237,17 +237,35 @@ export const projectActivitiesRepo = {
   },
 
   /**
-   * Mark a space:deleted row's snapshot as consumed by a restore.
-   * Runs inside the caller's transaction together with the
-   * space:restored insert and the content-doc undelete.
-   * @param id - The space:deleted activity row id.
-   * @param tx - Transaction to join (restore atomicity).
+   * Consume a space:deleted row's snapshot and append the matching
+   * space:restored row in ONE business-DB transaction, so the audit
+   * trail never shows a restored space with its deletion record still
+   * unconsumed (or vice versa). The content-doc undelete lives in the
+   * separate yjs PG database and cannot join this transaction - the
+   * caller sequences it before this call (restore step order is
+   * documented at the collab call site).
+   * @param deletedRowId - The consumed space:deleted activity row id.
+   * @param restoredActivity - The space:restored row to append.
    * @returns Nothing.
    */
-  async markRestored(id: string, tx: DbTx): Promise<void> {
-    await tx
-      .update(projectActivities)
-      .set({ restored: true })
-      .where(eq(projectActivities.id, id));
+  async consumeRestoreAndAppend(
+    deletedRowId: string,
+    restoredActivity: NewProjectActivity,
+  ): Promise<void> {
+    await db.transaction(async (tx: DbTx) => {
+      await tx
+        .update(projectActivities)
+        .set({ restored: true })
+        .where(eq(projectActivities.id, deletedRowId));
+      await tx.insert(projectActivities).values({
+        projectId: restoredActivity.projectId,
+        actorUserId: restoredActivity.actorUserId,
+        type: restoredActivity.type,
+        spaceId: restoredActivity.spaceId ?? null,
+        nodeId: restoredActivity.nodeId ?? null,
+        taskId: restoredActivity.taskId ?? null,
+        payload: restoredActivity.payload,
+      });
+    });
   },
 };

@@ -6,7 +6,6 @@ import { describe, it, expect } from "vitest";
 import {
   SpaceRpcRequestSchema,
   SpaceRpcResponseSchema,
-  MessagesClearPayloadSchema,
   ProjectMessageEntrySchema,
 } from "../space-rpc.js";
 
@@ -23,7 +22,7 @@ describe("SpaceRpcRequestSchema — discriminated union", () => {
     }
   });
 
-  it("parses space:delete / lock / restore / messages:clear", () => {
+  it("parses space:delete / lock / restore", () => {
     SpaceRpcRequestSchema.parse({
       id: "r2",
       type: "space:delete",
@@ -39,11 +38,18 @@ describe("SpaceRpcRequestSchema — discriminated union", () => {
       type: "space:restore",
       payload: { spaceId: "sp-1" },
     });
-    SpaceRpcRequestSchema.parse({
+  });
+
+  it("rejects the retired messages:clear type (activity feed ADR 2026-07-04)", () => {
+    // The feed moved to the append-only PG activity table; the
+    // destructive clear arm was removed with it. Locked in so the arm
+    // cannot quietly return.
+    const r = SpaceRpcRequestSchema.safeParse({
       id: "r5",
       type: "messages:clear",
       payload: { all: true },
     });
+    expect(r.success).toBe(false);
   });
 
   it("rejects an unknown rpc type", () => {
@@ -80,36 +86,6 @@ describe("SpaceRpcRequestSchema — discriminated union", () => {
       payload: { spaceId: "sp-1", type: "canvas", name: "" },
     });
     expect(r.success).toBe(false);
-  });
-});
-
-describe("MessagesClearPayloadSchema — exactly-one constraint", () => {
-  it("accepts ids only", () => {
-    expect(
-      MessagesClearPayloadSchema.safeParse({ ids: ["m1", "m2"] }).success,
-    ).toBe(true);
-  });
-
-  it("accepts olderThanMs only", () => {
-    expect(
-      MessagesClearPayloadSchema.safeParse({ olderThanMs: 1000 }).success,
-    ).toBe(true);
-  });
-
-  it("accepts all=true only", () => {
-    expect(MessagesClearPayloadSchema.safeParse({ all: true }).success).toBe(
-      true,
-    );
-  });
-
-  it("rejects empty payload (none set)", () => {
-    expect(MessagesClearPayloadSchema.safeParse({}).success).toBe(false);
-  });
-
-  it("rejects multiple branches set", () => {
-    expect(
-      MessagesClearPayloadSchema.safeParse({ all: true, ids: ["x"] }).success,
-    ).toBe(false);
   });
 });
 

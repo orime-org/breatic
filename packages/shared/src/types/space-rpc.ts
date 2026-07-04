@@ -29,7 +29,6 @@
  *   - `space:delete`        - caller role ≥ editor
  *   - `space:lock` / unlock - caller role ≥ editor
  *   - `space:restore`       - caller role = owner
- *   - `messages:clear`      - caller role = owner
  */
 import { z } from "zod";
 
@@ -104,31 +103,6 @@ export const SpaceRestorePayloadSchema = z.object({
 });
 export type SpaceRestorePayload = z.infer<typeof SpaceRestorePayloadSchema>;
 
-/**
- * Owner-only clear of `meta.projectMessages` entries.
- *
- * - `ids` clears specific entries by id
- * - `olderThanMs` clears entries with `createdAt < olderThanMs`
- * - `all` clears the whole array
- *
- * Exactly one of the three must be set (Zod refine below).
- */
-export const MessagesClearPayloadSchema = z
-  .object({
-    ids: z.array(z.string()).optional(),
-    olderThanMs: z.number().int().nonnegative().optional(),
-    all: z.literal(true).optional(),
-  })
-  .refine(
-    (v) =>
-      [v.ids !== undefined, v.olderThanMs !== undefined, v.all !== undefined]
-        .filter(Boolean).length === 1,
-    {
-      message: "Exactly one of ids / olderThanMs / all must be set",
-    },
-  );
-export type MessagesClearPayload = z.infer<typeof MessagesClearPayloadSchema>;
-
 // ── Request envelope (tagged union) ─────────────────────────────────
 
 export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
@@ -156,11 +130,6 @@ export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
     id: RpcIdSchema,
     type: z.literal("space:restore"),
     payload: SpaceRestorePayloadSchema,
-  }),
-  z.object({
-    id: RpcIdSchema,
-    type: z.literal("messages:clear"),
-    payload: MessagesClearPayloadSchema,
   }),
 ]);
 export type SpaceRpcRequest = z.infer<typeof SpaceRpcRequestSchema>;

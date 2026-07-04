@@ -16,12 +16,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
 
-const { loadInitialSpaceTypeMock, seedInitialStateMock, fetchDocDataMock } =
-  vi.hoisted(() => ({
-    loadInitialSpaceTypeMock: vi.fn(),
-    seedInitialStateMock: vi.fn(),
-    fetchDocDataMock: vi.fn(),
-  }));
+const {
+  loadInitialSpaceTypeMock,
+  seedInitialStateMock,
+  fetchDocDataMock,
+  activityInsertMock,
+} = vi.hoisted(() => ({
+  loadInitialSpaceTypeMock: vi.fn(),
+  seedInitialStateMock: vi.fn(),
+  fetchDocDataMock: vi.fn(),
+  activityInsertMock: vi.fn(),
+}));
 
 vi.mock("@collab/services/yjs-documents.repo.js", () => ({
   seedInitialState: seedInitialStateMock,
@@ -33,6 +38,15 @@ vi.mock(
   async (importActual: () => Promise<Record<string, unknown>>) => ({
     ...(await importActual()),
     loadInitialSpaceType: loadInitialSpaceTypeMock,
+    // The seed writes the initial space:created activity row (PG) and
+    // logs on failure - both need stubs (no DB / config under test).
+    projectActivitiesRepo: { insert: activityInsertMock },
+    createLogger: () => ({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }),
   }),
 );
 

@@ -45,6 +45,15 @@ vi.mock(
   async (importActual: () => Promise<Record<string, unknown>>) => ({
     ...(await importActual()),
     loadInitialSpaceType: loadInitialSpaceTypeMock,
+    // lazy-seed writes the initial space:created activity row (PG) and
+    // logs on failure - both need stubs (no DB / config under test).
+    projectActivitiesRepo: { insert: vi.fn() },
+    createLogger: () => ({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }),
   }),
 );
 
