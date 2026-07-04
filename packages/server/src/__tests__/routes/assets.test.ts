@@ -55,18 +55,32 @@ describe("Assets routes", () => {
     });
   });
 
-  describe("POST /assets/history", () => {
+  describe("POST /assets/uploaded (handshake, replaced /assets/history)", () => {
     it("requires auth", async () => {
       const app = createApp();
-      const res = await app.request("/api/v1/assets/history", {
+      const res = await app.request("/api/v1/assets/uploaded", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "upload",
           project_id: "a0000000-0000-4000-8000-000000000001",
-          node_id: "node-1",
-          content: "https://example.com/file.png",
-          metadata: { filename: "file.png", size: 1024, mimeType: "image/png" },
+          key: "u/p/img/abc.png",
+          kind: "image",
+        }),
+      });
+
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe("POST /assets/deleted (report)", () => {
+    it("requires auth", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/assets/deleted", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: "a0000000-0000-4000-8000-000000000001",
+          entries: [{ file_url: "https://example.com/f.png", kind: "image" }],
         }),
       });
 

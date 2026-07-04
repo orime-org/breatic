@@ -33,6 +33,7 @@ import {
   getRedis,
 } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/domain";
+import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import type { MiddlewareHandler } from "hono";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
@@ -177,49 +178,141 @@ assets.put("/local-upload/*", requireAuth, async (c) => {
   return c.json({ data: { key, size: buffer.length } });
 });
 
-// ── History reporting ───────────────────────────────────────────────
+// ── Upload handshake + delete report (activity feed) ────────────────
+//
+// ADR 2026-07-04 project-activity-feed (D1, upload handshake): the
+// client MUST report a completed upload here; the server verifies the
+// object actually exists in storage (head()) before recording the
+// activity - an unverified client claim never enters the audit trail.
+// This route replaced the never-wired `POST /assets/history` upload
+// reporter and absorbed its node_history recording.
 
-const historySchema = z.object({
-  type: z.literal("upload"),
+const uploadedSchema = z.object({
   project_id: z.string().uuid(),
-  node_id: z.string().min(1),
-  content: z.string().url(),
-  thumbnail_url: z.string().url().optional(),
-  metadata: z.object({
-    filename: z.string().max(255),
-    size: z.number().int().positive(),
-    mimeType: z.string().max(100),
-  }),
+  /** Storage key returned by /presign - the head() verification target. */
+  key: z.string().min(1).max(512),
+  node_id: z.string().min(1).max(128).optional(),
+  space_id: z.string().uuid().optional(),
+  kind: z.string().min(1).max(32),
+  /**
+   * `mini_tool` marks a FRONTEND-executed mini-tool product (capability
+   * rule: pure media transforms run in the browser and never pass
+   * through worker Stage 4) - the row lands as generation:succeeded
+   * instead of asset:uploaded. Plain uploads omit it.
+   */
+  source: z.literal("mini_tool").optional(),
+  tool_name: z.string().max(64).optional(),
+  metadata: z
+    .object({
+      filename: z.string().max(255),
+      size: z.number().int().positive(),
+      mimeType: z.string().max(100),
+    })
+    .optional(),
 });
 
-/**
- * `POST /assets/history` — report a file upload to node_history.
- *
- * Called by the frontend AFTER writing to Yjs. This is async and
- * best-effort — if it fails, the upload still succeeded (the file
- * is in storage and the Yjs node content is updated). The history
- * record enables version timeline and restore.
- */
 assets.post(
-  "/history",
+  "/uploaded",
   requireAuth,
-  zValidator("json", historySchema),
+  zValidator("json", uploadedSchema),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
 
     await projectService.assertAccess(body.project_id, user.id, "editor");
 
-    await nodeHistoryService.recordUpload({
+    // Verify the object really landed in storage before trusting the
+    // claim (first real caller of StorageAdapter.head).
+    const adapter = await getStorageAdapter();
+    const head = await adapter.head(body.key);
+    if (!head.exists) {
+      return c.json(
+        { error: { message: t("server.error.validation") } },
+        422,
+      );
+    }
+    const fileUrl = adapter.publicUrl(body.key);
+
+    // Node history record (version timeline), when node-bound.
+    if (body.node_id) {
+      try {
+        await nodeHistoryService.recordUpload({
+          projectId: body.project_id,
+          nodeId: body.node_id,
+          userId: user.id,
+          content: fileUrl,
+          metadata: body.metadata,
+        });
+      } catch (err) {
+        logger.warn(
+          { err, projectId: body.project_id, nodeId: body.node_id },
+          "upload_history_record_failed",
+        );
+      }
+    }
+
+    await recordProjectActivity({
       projectId: body.project_id,
-      nodeId: body.node_id,
-      userId: user.id,
-      content: body.content,
-      thumbnailUrl: body.thumbnail_url,
-      metadata: body.metadata,
+      actorUserId: user.id,
+      type: body.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded",
+      spaceId: body.space_id ?? null,
+      nodeId: body.node_id ?? null,
+      payload:
+        body.source === "mini_tool"
+          ? {
+              source: "mini_tool",
+              ...(body.tool_name !== undefined && { toolName: body.tool_name }),
+              executedOn: "frontend",
+              fileUrl,
+              kind: body.kind,
+            }
+          : { fileUrl, kind: body.kind },
     });
 
-    return c.json({ data: { ok: true } });
+    return c.json({ data: { ok: true, fileUrl } });
+  },
+);
+
+const deletedSchema = z.object({
+  project_id: z.string().uuid(),
+  entries: z
+    .array(
+      z.object({
+        file_url: z.string().url(),
+        kind: z.string().min(1).max(32),
+        node_id: z.string().min(1).max(128).optional(),
+        space_id: z.string().uuid().optional(),
+      }),
+    )
+    .min(1)
+    .max(100),
+});
+
+assets.post(
+  "/deleted",
+  requireAuth,
+  zValidator("json", deletedSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+
+    await projectService.assertAccess(body.project_id, user.id, "editor");
+
+    // Report-only (no verification): deleting a node is a client-side
+    // Yjs operation the collab write-authz already gates; this records
+    // the audit trail. Batch = one report per multi-node delete.
+    for (const entry of body.entries) {
+      await recordProjectActivity({
+        projectId: body.project_id,
+        actorUserId: user.id,
+        type: "asset:deleted",
+        spaceId: entry.space_id ?? null,
+        nodeId: entry.node_id ?? null,
+        payload: { fileUrl: entry.file_url, kind: entry.kind },
+      });
+    }
+
+    return c.json({ data: { ok: true, recorded: body.entries.length } });
   },
 );
 
