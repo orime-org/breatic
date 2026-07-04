@@ -210,3 +210,64 @@ export async function fillNodeFromFile(
     deps.setError(nodeId, `Extraction failed: ${file.name}`, lease);
   }
 }
+
+/** A minimal canvas node shape for asset-delete accounting (pure). */
+export interface AssetNodeLike {
+  id: string;
+  type?: string;
+  data?: { content?: unknown; coverUrl?: unknown };
+}
+
+/** One asset-delete report entry (activity feed). */
+export interface DeletedAssetEntry {
+  fileUrl: string;
+  kind: string;
+  nodeId: string;
+  spaceId: string;
+}
+
+/**
+ * Compute the asset-delete report entries for a set of deleted nodes
+ * (ADR 2026-07-04 project-activity-feed).
+ *
+ * For each deleted media node (image / video / audio) it reports BOTH
+ * the primary asset (`data.content`) AND the cover (`data.coverUrl`) —
+ * each is a stored object the node owned. It SKIPS any URL still
+ * referenced by a SURVIVING node (a URL in `allNodes` minus the deleted
+ * set): pasted copies share a content URL, so deleting one copy leaves
+ * the asset in use and it must not be reported deleted (which would
+ * mislead the audit feed + a future GC).
+ * @param deletedNodes - The nodes being removed.
+ * @param allNodes - The current node set (still includes the deleted
+ *   ones — Yjs removal propagates async; the deleted set is excluded here).
+ * @param spaceId - The space the nodes live in.
+ * @returns The report entries (content + cover, unreferenced only).
+ */
+export function computeDeletedAssetEntries(
+  deletedNodes: ReadonlyArray<AssetNodeLike>,
+  allNodes: ReadonlyArray<AssetNodeLike>,
+  spaceId: string,
+): DeletedAssetEntry[] {
+  const deletedIds = new Set(deletedNodes.map((n) => n.id));
+  const survivingUrls = new Set<string>();
+  for (const n of allNodes) {
+    if (deletedIds.has(n.id)) continue;
+    if (typeof n.data?.content === 'string') survivingUrls.add(n.data.content);
+    if (typeof n.data?.coverUrl === 'string') survivingUrls.add(n.data.coverUrl);
+  }
+  const mediaTypes = new Set(['image', 'video', 'audio']);
+  return deletedNodes.flatMap((node) => {
+    if (node.type === undefined || !mediaTypes.has(node.type)) return [];
+    const out: DeletedAssetEntry[] = [];
+    for (const url of [node.data?.content, node.data?.coverUrl]) {
+      if (
+        typeof url === 'string' &&
+        /^https?:\/\//.test(url) &&
+        !survivingUrls.has(url)
+      ) {
+        out.push({ fileUrl: url, kind: node.type!, nodeId: node.id, spaceId });
+      }
+    }
+    return out;
+  });
+}

@@ -66,6 +66,7 @@ import {
   fileToNodeSpec,
   fillNodeFromFile,
   runMediaUpload,
+  computeDeletedAssetEntries,
   type UploadNodeSpec,
 } from '@web/spaces/canvas/canvas-upload';
 import { extractText } from '@web/spaces/canvas/text-extract';
@@ -606,15 +607,14 @@ function CanvasSpaceInner({
   );
   const reportDeletedAssets = React.useCallback(
     (deletedNodes: Node[]): void => {
-      const entries = deletedNodes.flatMap((node) => {
-        const type = node.type ?? '';
-        if (type !== 'image' && type !== 'video' && type !== 'audio') return [];
-        const content = (node.data as { content?: unknown } | undefined)?.content;
-        if (typeof content !== 'string' || !/^https?:\/\//.test(content)) {
-          return [];
-        }
-        return [{ fileUrl: content, kind: type, nodeId: node.id, spaceId }];
-      });
+      // flowNodesRef still holds the deleted nodes here (Yjs removal
+      // propagates async); computeDeletedAssetEntries excludes them and
+      // skips URLs still referenced by a surviving node (pasted copies).
+      const entries = computeDeletedAssetEntries(
+        deletedNodes,
+        flowNodesRef.current,
+        spaceId,
+      );
       if (entries.length === 0) return;
       void assetsApi.reportDeleted({ projectId, entries }).catch(() => {
         // Silent: the deletion already succeeded; a toast here would read

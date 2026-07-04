@@ -242,6 +242,7 @@ export function ProjectMessagesButton({
   // when open, and the next open fetches fresh anyway.
   useEffect(() => {
     if (!provider) return;
+    let debounce: ReturnType<typeof setTimeout> | null = null;
     /**
      * Parse a stateless payload and invalidate the feed on a signal.
      * @param data - The stateless message wrapper.
@@ -253,9 +254,14 @@ export function ProjectMessagesButton({
           JSON.parse(data.payload),
         );
         if (parsed.success && parsed.data.projectId === projectId) {
-          void queryClient.invalidateQueries({
-            queryKey: ['project-activities', projectId],
-          });
+          // Coalesce a burst (a bulk op emits many signals) into one
+          // refetch on a short trailing timer.
+          if (debounce) clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            void queryClient.invalidateQueries({
+              queryKey: ['project-activities', projectId],
+            });
+          }, 250);
         }
       } catch {
         // Non-JSON stateless traffic (e.g. space RPC responses) — not ours.
@@ -263,23 +269,27 @@ export function ProjectMessagesButton({
     };
     provider.on('stateless', onStateless);
     return (): void => {
+      if (debounce) clearTimeout(debounce);
       provider.off('stateless', onStateless);
     };
   }, [provider, projectId, queryClient]);
 
   // Infinite scroll: fetch the next page when the tail sentinel enters
-  // the list viewport.
+  // the list viewport. Depends only on the primitives that matter (not
+  // the whole query object, whose identity changes every render and
+  // would tear down + rebuild the observer on each render).
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = feed;
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !open) return;
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting) && feed.hasNextPage && !feed.isFetchingNextPage) {
-        void feed.fetchNextPage();
+      if (entries.some((e) => e.isIntersecting) && hasNextPage && !isFetchingNextPage) {
+        void fetchNextPage();
       }
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [open, feed]);
+  }, [open, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   /**
    * Restores a deleted space via `onRestore`, tracking per-entry busy
