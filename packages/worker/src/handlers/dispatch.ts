@@ -1094,7 +1094,7 @@ async function persistOutputs(
     if (typeof next.url === "string" && next.url.startsWith("http") && !next.url.includes("/uploads/")) {
       try {
         const key = makeKey();
-        const permanentUrl = await downloadAndStore(next.url, key);
+        const { url: permanentUrl } = await downloadAndStore(next.url, key);
         if (!next.extra) next.extra = {};
         (next.extra).url_original = next.url;
         next.url = permanentUrl;
@@ -1117,7 +1117,7 @@ async function persistOutputs(
     if (value.includes("/uploads/")) continue;
     try {
       const key = makeKey();
-      const permanentUrl = await downloadAndStore(value, key);
+      const { url: permanentUrl } = await downloadAndStore(value, key);
       extras[field] = permanentUrl;
       extras[`${field}_original`] = value;
     } catch (err) {
