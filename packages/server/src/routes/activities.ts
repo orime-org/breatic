@@ -24,7 +24,10 @@ const activities = new Hono<{ Variables: AuthVariables }>();
 
 const listQuerySchema = z.object({
   cursor: z.string().max(512).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  // Upper bound is enforced by the service against the configured
+  // activity_feed_page_max (config/limits.yaml) — a large value here is
+  // clamped, not rejected, so the config is the single source of truth.
+  limit: z.coerce.number().int().min(1).optional(),
 });
 
 activities.get(

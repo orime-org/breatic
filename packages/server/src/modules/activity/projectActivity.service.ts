@@ -25,12 +25,9 @@ import {
   type NewProjectActivity,
 } from "@breatic/core";
 import type { ProjectActivityPage } from "@breatic/shared";
+import { getActivityFeedPageLimits } from "@server/config/limits.js";
 
 const logger = createLogger("project-activity");
-
-/** Page-size clamp for the feed route (default 50). */
-export const ACTIVITY_PAGE_LIMIT_MAX = 100;
-export const ACTIVITY_PAGE_LIMIT_DEFAULT = 50;
 
 /**
  * Append one activity row + announce it to the collab control plane.
@@ -65,9 +62,10 @@ export async function listProjectActivities(
   rawCursor: string | undefined,
   rawLimit: number | undefined,
 ): Promise<ProjectActivityPage> {
+  const pageLimits = getActivityFeedPageLimits();
   const limit = Math.min(
-    Math.max(rawLimit ?? ACTIVITY_PAGE_LIMIT_DEFAULT, 1),
-    ACTIVITY_PAGE_LIMIT_MAX,
+    Math.max(rawLimit ?? pageLimits.default, 1),
+    pageLimits.max,
   );
   // Malformed cursors decode to null = first page (they arrive from
   // the network; a garbage cursor must not 500 the feed).

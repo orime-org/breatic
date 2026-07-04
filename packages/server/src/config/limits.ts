@@ -22,10 +22,12 @@ import { parse } from "yaml";
 import { z } from "zod";
 import { MONOREPO_ROOT } from "@breatic/core";
 
-/** Schema for `config/limits.yaml` — both caps default to 100. */
+/** Schema for `config/limits.yaml`. */
 export const limitsConfigSchema = z.object({
   studio_member_cap: z.number().int().positive().default(100),
   project_collaborator_cap: z.number().int().positive().default(100),
+  activity_feed_page_default: z.number().int().positive().default(50),
+  activity_feed_page_max: z.number().int().positive().default(100),
 });
 
 let _cached: z.infer<typeof limitsConfigSchema> | null = null;
@@ -58,4 +60,14 @@ export function getStudioMemberCap(): number {
  */
 export function getProjectCollaboratorCap(): number {
   return loadConfig().project_collaborator_cap;
+}
+
+/**
+ * Activity-feed keyset page size (default when no `?limit`, and the
+ * hard ceiling a client `?limit` is clamped to).
+ * @returns `{ default: number, max: number }` page-size bounds.
+ */
+export function getActivityFeedPageLimits(): { default: number; max: number } {
+  const c = loadConfig();
+  return { default: c.activity_feed_page_default, max: c.activity_feed_page_max };
 }

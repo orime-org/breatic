@@ -14,3 +14,10 @@
 #   only bounds the explicit invite roster.
 studio_member_cap: 100
 project_collaborator_cap: 100
+
+# ── Activity feed paging ───────────────────────────────
+# Keyset page size for GET /projects/:id/activities.
+#   activity_feed_page_default: page size when the client omits ?limit
+#   activity_feed_page_max:     hard ceiling a client ?limit is clamped to
+activity_feed_page_default: 50
+activity_feed_page_max: 100

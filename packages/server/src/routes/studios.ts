@@ -26,7 +26,7 @@ import { zValidator } from "@hono/zod-validator";
 import { createTeamStudioSchema } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
-import { rateLimit } from "@server/middleware/rate-limit.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { studioService, projectService, recentService } from "@server/modules";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
@@ -95,7 +95,7 @@ studios.get("/recent", async (c) => {
  */
 studios.get(
   "/slug-available",
-  rateLimit({ prefix: "slug-check", max: 60, windowSeconds: 60, keyBy: "user" }),
+  rateLimitFor("slug-check", "user"),
   async (c) => {
     const slug = c.req.query("slug") ?? "";
     const data = await studioService.checkStudioSlug(slug);
@@ -114,7 +114,7 @@ studios.get(
  */
 studios.post(
   "/",
-  rateLimit({ prefix: "studio-create", max: 10, windowSeconds: 3600, keyBy: "user" }),
+  rateLimitFor("studio-create", "user"),
   zValidator("json", createTeamStudioSchema),
   async (c) => {
     const user = c.get("user");

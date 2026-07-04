@@ -22,6 +22,7 @@ import { z } from "zod";
 import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { projectService } from "@server/modules";
 import {
   getStorageAdapter,
@@ -29,12 +30,9 @@ import {
   env,
   logger,
   ValidationError,
-  checkRateLimit,
-  getRedis,
 } from "@breatic/core";
 import { nodeHistoryService } from "@breatic/domain";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
-import type { MiddlewareHandler } from "hono";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
 
@@ -57,49 +55,7 @@ function detectKind(contentType: string): "image" | "video" | "audio" | "documen
   return "file";
 }
 
-// ── Per-user rate limits ────────────────────────────────────────────
-
-/**
- * Build a per-user sliding-window rate-limit middleware, keyed by
- * `{action}:{userId}` (or `anonymous`). Used to throttle every write
- * path here — presign AND the activity-feed report routes — so no
- * authenticated editor can flood storage presigns or the append-only,
- * never-pruned `project_activities` table.
- * @param action - Limiter namespace (also the Redis key prefix + log tag).
- * @param limit - Max requests allowed inside the window.
- * @param windowSeconds - Sliding-window length in seconds.
- * @returns A Hono middleware that 429s when the caller exceeds the limit.
- */
-function makeRateLimit(
-  action: string,
-  limit: number,
-  windowSeconds: number,
-): MiddlewareHandler {
-  return async (c, next) => {
-    const user = c.get("user") as { id: string } | undefined;
-    const key = user?.id ?? "anonymous";
-    const redis = getRedis();
-    const allowed = await checkRateLimit(
-      redis,
-      `${action}:${key}`,
-      limit,
-      windowSeconds,
-    );
-    if (!allowed) {
-      logger.warn({ action, key }, "rate_limit_hit");
-      return c.json(
-        { error: { code: 429, message: t("server.error.rate_limited") } },
-        429,
-      );
-    }
-    await next();
-  };
-}
-
-const presignRateLimit = makeRateLimit("presign", 30, 60);
-// Report routes fire once per upload / node-delete — 120/60s comfortably
-// covers a heavy multi-file drag while still capping a flood loop.
-const reportRateLimit = makeRateLimit("asset-report", 120, 60);
+// ── Per-user key-ownership guard ────────────────────────────────────
 
 /**
  * Reject a client-supplied storage key that is not bound to this
@@ -145,7 +101,7 @@ const presignSchema = z.object({
 assets.get(
   "/presign",
   requireAuth,
-  presignRateLimit,
+  rateLimitFor("presign", "user"),
   zValidator("query", presignSchema),
   async (c) => {
     const user = c.get("user");
@@ -257,7 +213,7 @@ const uploadedSchema = z.object({
 assets.post(
   "/uploaded",
   requireAuth,
-  reportRateLimit,
+  rateLimitFor("asset-report", "user"),
   zValidator("json", uploadedSchema),
   async (c) => {
     const user = c.get("user");
@@ -350,7 +306,7 @@ const deletedSchema = z.object({
 assets.post(
   "/deleted",
   requireAuth,
-  reportRateLimit,
+  rateLimitFor("asset-report", "user"),
   zValidator("json", deletedSchema),
   async (c) => {
     const user = c.get("user");
