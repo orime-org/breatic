@@ -777,7 +777,7 @@ function CanvasSpaceInner({
       }
       if (created.length > 0) setSelectAfterCreate(created);
     },
-    [readOnly, projectId, spaceId, createUploadNodeAt, t],
+    [readOnly, projectId, spaceId, createUploadNodeAt, t, reportUploadedAsset],
   );
 
   // Upload-button path: chrome posted picked files (the picker must open

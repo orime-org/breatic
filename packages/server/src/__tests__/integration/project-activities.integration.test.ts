@@ -149,14 +149,22 @@ describe("GET /projects/:id/activities — keyset feed", () => {
     const projectId = await insertProject(userId);
     const cookie = await loginCookie(userId);
 
-    // Five rows, oldest to newest s0..s4.
+    // Five rows, oldest to newest s0..s4. created_at is set explicitly
+    // per row: bulk inserts can land inside one millisecond, and the
+    // (created_at, id) tie-break on a random uuid would make the order
+    // assertion flaky (bitten in the full concurrent suite run).
     for (let i = 0; i < 5; i++) {
-      await projectActivitiesRepo.insert({
+      const id = await projectActivitiesRepo.insert({
         projectId,
         actorUserId: userId,
         type: "space:created",
         payload: { spaceName: `s${i}` },
       });
+      await sql`
+        UPDATE project_activities
+        SET created_at = to_timestamp(1783000000 + ${i})
+        WHERE id = ${id}
+      `;
     }
 
     const page1Res = await app.request(
@@ -170,12 +178,17 @@ describe("GET /projects/:id/activities — keyset feed", () => {
 
     // A NEW row lands between page fetches — offset pagination would
     // shift the window and re-serve s3; keyset must continue at s2.
-    await projectActivitiesRepo.insert({
+    const midId = await projectActivitiesRepo.insert({
       projectId,
       actorUserId: userId,
       type: "space:created",
       payload: { spaceName: "s5-mid-walk" },
     });
+    await sql`
+      UPDATE project_activities
+      SET created_at = to_timestamp(1783000100)
+      WHERE id = ${midId}
+    `;
 
     const page2Res = await app.request(
       `/api/v1/projects/${projectId}/activities?limit=2&cursor=${encodeURIComponent(page1.nextCursor ?? "")}`,
