@@ -20,8 +20,9 @@ import { getModel } from "@breatic/domain";
 import { buildToolSet } from "@breatic/domain";
 import { getSkillRegistry } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
-import { downloadAndStore, getStorageAdapter, storageKey } from "@breatic/core";
+import { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@breatic/core";
 import { taskService } from "@breatic/domain";
+import { assetService } from "@breatic/domain";
 import { creditService } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { publishNodeEvent } from "@breatic/core";
@@ -542,7 +543,7 @@ async function runTaskBody(
   // Any error here marks the task failed with NO CHARGE and NO RETRY.
   let persistedOutputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
   try {
-    persistedOutputs = await persistOutputs(unified.outputs, unified.extras, { taskType, userId, projectId });
+    persistedOutputs = await persistOutputs(unified.outputs, unified.extras, { taskType, userId, projectId, taskId });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
@@ -1022,20 +1023,87 @@ function toUnifiedOutputs(raw: Record<string, unknown>): {
 }
 
 /**
- * Persist each output's URL / buffer to permanent storage. Mirrors the
- * pre-refactor `persistResultUrls` but iterates outputs.
+ * Map an AIGC task type to the coarse asset kind for studio_assets.
+ * @param taskType - The generation task type.
+ * @returns The asset kind.
+ */
+function taskTypeToAssetKind(
+  taskType: string,
+): "image" | "video" | "audio" | "document" | "file" {
+  if (taskType === "image") return "image";
+  if (taskType === "video") return "video";
+  if (taskType === "audio" || taskType === "tts") return "audio";
+  if (taskType === "understand") return "document";
+  return "file";
+}
+
+/**
+ * Register a just-persisted AI-generated asset into studio_assets
+ * (within-studio dedup + cost link). Best-effort by design — the bytes
+ * are already stored + the task will bill regardless; a failed registry
+ * write logs instead of failing the job (mirrors the activity-feed
+ * best-effort contract). No-op without a project (e.g. agent
+ * attachments have no project scope).
+ * @param opts - Persistence context.
+ * @param opts.taskType - Generation task type (mapped to the asset kind).
+ * @param opts.userId - Acting user (attribution resolution input).
+ * @param opts.projectId - Project scope; the call is a no-op when absent.
+ * @param opts.taskId - Producing task id (asset cost link).
+ * @param key - Storage key of the stored object.
+ * @param url - Public URL of the stored object.
+ * @param contentHash - sha256 of the content (dedup key).
+ * @param sizeBytes - Byte size (from the transfer / buffer).
+ * @param mimeType - Content type.
+ * @returns Nothing.
+ */
+async function registerGeneratedAsset(
+  opts: { taskType: string; userId: string; projectId?: string; taskId: string },
+  key: string,
+  url: string,
+  contentHash: string,
+  sizeBytes: number,
+  mimeType: string,
+): Promise<void> {
+  if (!opts.projectId) return;
+  try {
+    await assetService.register({
+      projectId: opts.projectId,
+      actingUserId: opts.userId,
+      contentHash,
+      storageKey: key,
+      fileUrl: url,
+      sizeBytes,
+      mimeType,
+      kind: taskTypeToAssetKind(opts.taskType),
+      source: "ai",
+      generationTaskId: opts.taskId,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, key, taskId: opts.taskId },
+      "asset_register_failed (generation)",
+    );
+  }
+}
+
+/**
+ * Persist each output's URL / buffer to permanent storage, registering
+ * each stored AI asset into studio_assets (within-studio dedup + cost
+ * link). Mirrors the pre-refactor `persistResultUrls` but iterates
+ * outputs.
  * @param outputs - Unified outputs, each possibly carrying a temp URL or raw buffer
  * @param extras - Non-output result fields that may also carry re-hostable URLs
  * @param opts - Persistence context
  * @param opts.taskType - Task type, used to pick the storage extension and key prefix
- * @param opts.userId - User who owns the persisted assets
+ * @param opts.userId - User who owns / triggered the persisted assets
  * @param opts.projectId - Project the assets belong to, if any
+ * @param opts.taskId - Producing task id (asset cost link)
  * @returns The outputs with temp URLs / buffers replaced by permanent storage URLs
  */
 async function persistOutputs(
   outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>,
   extras: Record<string, unknown>,
-  opts: { taskType: string; userId: string; projectId?: string },
+  opts: { taskType: string; userId: string; projectId?: string; taskId: string },
 ): Promise<Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>> {
   const extMap: Record<string, string> = {
     image: ".png",
@@ -1071,9 +1139,11 @@ async function persistOutputs(
         const key = makeKey();
         const contentType = ((extra).contentType as string) ?? "application/octet-stream";
         const adapter = await getStorageAdapter();
-        const url = await adapter.upload(key, (extra).buffer, contentType);
+        const buf = (extra).buffer;
+        const url = await adapter.upload(key, buf, contentType);
         next.url = url;
-        logger.info({ key, size: ((extra).buffer).length }, "Persisted sync transport result");
+        logger.info({ key, size: buf.length }, "Persisted sync transport result");
+        await registerGeneratedAsset(opts, key, url, sha256Hex(buf), buf.length, contentType);
       } catch (err) {
         // #1580 adversarial fix: swallowing this left `next.url` undefined —
         // Stage 3 then BILLED the task while Stage 4 silently skipped the
@@ -1094,10 +1164,12 @@ async function persistOutputs(
     if (typeof next.url === "string" && next.url.startsWith("http") && !next.url.includes("/uploads/")) {
       try {
         const key = makeKey();
-        const permanentUrl = await downloadAndStore(next.url, key);
+        const { url: permanentUrl, sha256, sizeBytes, contentType } =
+          await downloadAndStore(next.url, key);
         if (!next.extra) next.extra = {};
         (next.extra).url_original = next.url;
         next.url = permanentUrl;
+        await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
       } catch (err) {
         logger.warn({ url: next.url, err }, "Failed to persist result URL, keeping original");
       }
@@ -1117,9 +1189,11 @@ async function persistOutputs(
     if (value.includes("/uploads/")) continue;
     try {
       const key = makeKey();
-      const permanentUrl = await downloadAndStore(value, key);
+      const { url: permanentUrl, sha256, sizeBytes, contentType } =
+        await downloadAndStore(value, key);
       extras[field] = permanentUrl;
       extras[`${field}_original`] = value;
+      await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
     } catch (err) {
       logger.warn({ field, url: value, err }, "Failed to persist result URL, keeping original");
     }

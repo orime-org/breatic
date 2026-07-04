@@ -141,6 +141,28 @@ export interface NodeHistoryEntity {
   createdAt: Date;
 }
 
+/**
+ * Physical asset entity (spec 2026-07-04-asset-layer-v1). One row per
+ * unique stored object per studio (within-studio dedup). `contentHash`
+ * is a dedup column only — it is never part of `fileUrl` (URLs stay
+ * random + unguessable). `generationTaskId` links an AI asset to its
+ * cost; null for uploads.
+ */
+export interface StudioAssetEntity {
+  id: string;
+  studioId: string;
+  contentHash: string;
+  storageKey: string;
+  fileUrl: string;
+  sizeBytes: number;
+  mimeType: string;
+  kind: "image" | "video" | "audio" | "document" | "file";
+  source: "ai" | "upload";
+  generationTaskId: string | null;
+  createdAt: Date;
+  deletedAt: Date | null;
+}
+
 /** Payment entity. */
 export interface PaymentEntity {
   id: string;

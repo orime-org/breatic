@@ -11,7 +11,12 @@
 import { mkdirSync, writeFileSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { env, MONOREPO_ROOT } from "@core/config/env.js";
-import type { StorageAdapter, ObjectHead } from "@core/infra/storage/index.js";
+import type {
+  StorageAdapter,
+  ObjectHead,
+  PersistedObject,
+} from "@core/infra/storage/index.js";
+import { sha256Hex } from "@core/infra/storage/index.js";
 
 /** Storage adapter that persists files to the local filesystem. */
 export class LocalStorageAdapter implements StorageAdapter {
@@ -55,7 +60,7 @@ export class LocalStorageAdapter implements StorageAdapter {
    * @returns the public URL serving the persisted file
    * @throws {Error} when the source URL responds with a non-OK status
    */
-  async persistFromUrl(sourceUrl: string, key: string): Promise<string> {
+  async persistFromUrl(sourceUrl: string, key: string): Promise<PersistedObject> {
     const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(120_000) });
     if (!response.ok) {
       throw new Error(`Failed to download ${sourceUrl}: HTTP ${response.status}`);
@@ -63,7 +68,8 @@ export class LocalStorageAdapter implements StorageAdapter {
 
     const contentType = response.headers.get("content-type") ?? "application/octet-stream";
     const buffer = Buffer.from(await response.arrayBuffer());
-    return this.upload(key, buffer, contentType);
+    const url = await this.upload(key, buffer, contentType);
+    return { url, sha256: sha256Hex(buffer), sizeBytes: buffer.length, contentType };
   }
 
   /**

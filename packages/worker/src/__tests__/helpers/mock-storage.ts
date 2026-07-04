@@ -18,6 +18,7 @@
  * register fetch-able sources.
  */
 
+import { createHash } from "node:crypto";
 import { vi, type MockInstance } from "vitest";
 
 export interface StorageUpload {
@@ -62,7 +63,12 @@ export function installCoreStorageMock(): StorageMockState {
         const buf = state.sources.get(sourceUrl);
         if (!buf) throw new Error(`mock-storage: unknown source ${sourceUrl}`);
         state.uploads.push({ key, buffer: buf, contentType: "application/octet-stream" });
-        return `mock://storage/${key}`;
+        return {
+          url: `mock://storage/${key}`,
+          sha256: createHash("sha256").update(buf).digest("hex"),
+          sizeBytes: buf.length,
+          contentType: "application/octet-stream",
+        };
       },
       head: async () => ({}),
       publicUrl: (k: string) => `mock://storage/${k}`,

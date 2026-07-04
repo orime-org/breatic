@@ -10,6 +10,8 @@
  * - aliyun_oss: Alibaba Cloud OSS (uploads buffer to OSS)
  */
 
+import { createHash } from "node:crypto";
+
 import { newId } from "@breatic/shared";
 
 import { env } from "@core/config/env.js";
@@ -21,18 +23,30 @@ export interface ObjectHead {
   exists: boolean;
 }
 
+/** Result of persisting a remote URL: URL + content sha256 + byte size. */
+export interface PersistedObject {
+  url: string;
+  sha256: string;
+  sizeBytes: number;
+  contentType: string;
+}
+
 /** Storage adapter interface. */
 export interface StorageAdapter {
   /** Upload binary data and return a public URL. */
   upload(key: string, data: Buffer, contentType: string): Promise<string>;
 
   /**
-   * Persist a file from a remote URL and return a permanent URL.
+   * Persist a file from a remote URL to our storage. Returns the
+   * permanent URL plus the content's sha256 + byte size, computed on
+   * the transfer stream (the bytes flow through here anyway, so hashing
+   * costs no extra download). The asset layer uses the sha256 as its
+   * dedup column (spec 2026-07-04-asset-layer-v1).
    *
    * - local: downloads to disk, serves via static route
    * - s3/oss: downloads then uploads to cloud storage
    */
-  persistFromUrl(sourceUrl: string, key: string): Promise<string>;
+  persistFromUrl(sourceUrl: string, key: string): Promise<PersistedObject>;
 
   /**
    * Generate a presigned PUT URL for client-side direct upload.
@@ -121,13 +135,28 @@ export function storageKey(opts: {
 }
 
 /**
- * Download from temporary URL and persist to storage.
- * Delegates to adapter's persistFromUrl().
+ * Download from a temporary URL and persist to storage. Delegates to
+ * the adapter's persistFromUrl(), which also returns the content sha256
+ * + byte size (computed on the transfer stream) for the asset layer.
  * @param url - the temporary source URL to download from
  * @param key - the storage key to persist the object under
- * @returns the permanent public URL of the persisted object
+ * @returns the permanent URL + content sha256 + byte size + contentType
  */
-export async function downloadAndStore(url: string, key: string): Promise<string> {
+export async function downloadAndStore(
+  url: string,
+  key: string,
+): Promise<PersistedObject> {
   const adapter = await getStorageAdapter();
   return adapter.persistFromUrl(url, key);
+}
+
+/**
+ * sha256 hex digest of a buffer — the asset layer's dedup key. Shared by
+ * the storage adapters (URL transfer path) and the worker (local-buffer
+ * path) so both compute the hash identically.
+ * @param data - The bytes to hash.
+ * @returns Lowercase hex sha256.
+ */
+export function sha256Hex(data: Buffer): string {
+  return createHash("sha256").update(data).digest("hex");
 }
