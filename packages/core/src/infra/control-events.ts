@@ -39,6 +39,8 @@
 import { getStreamRedis } from "@core/infra/redis.js";
 import {
   membersChangedChannel,
+  activityNewChannel,
+  type ActivityNewControlEvent,
   type MembersChangedEvent,
 } from "@breatic/shared";
 
@@ -63,4 +65,23 @@ export async function publishMembersChanged(
   };
   const redis = getStreamRedis();
   await redis.publish(membersChangedChannel(projectId), JSON.stringify(event));
+}
+
+/**
+ * Announce a freshly written project_activities row to the collab
+ * control plane, which relays it to connected members as the
+ * `activity:new` stateless signal (ADR 2026-07-04). Fire-and-forget
+ * pub/sub: nobody online means nobody needs the live signal - the
+ * feed panel refetches via REST on open.
+ * @param projectId - Project the activity row belongs to.
+ * @returns Nothing.
+ */
+export async function publishActivityNew(projectId: string): Promise<void> {
+  const event: ActivityNewControlEvent = {
+    type: "project-activity:new",
+    projectId,
+    ts: Date.now(),
+  };
+  const redis = getStreamRedis();
+  await redis.publish(activityNewChannel(projectId), JSON.stringify(event));
 }

@@ -114,10 +114,12 @@ export type {
 
 export {
   membersChangedChannel,
+  activityNewChannel,
   ALL_PROJECT_CHANNELS_PATTERN,
 } from "@shared/types/redis-events.js";
 export type {
   MembersChangedEvent,
+  ActivityNewControlEvent,
   ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
   ProjectLifecycleEvent,

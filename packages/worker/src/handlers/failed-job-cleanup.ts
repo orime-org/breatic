@@ -31,6 +31,7 @@
  * task-listener; re-applying it to an already-idle node is harmless.
  */
 import type { getStreamRedis } from "@breatic/core";
+import { projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { emitNodeStateFailed, type TaskJobData } from "@worker/handlers/dispatch.js";
 
@@ -79,7 +80,34 @@ export async function cleanupFailedJobNodes(
   if (!job.finishedOn) return 0;
 
   const { projectId, spaceId, targetNodeIds, nodeGens } = job.data;
-  if (!projectId || !spaceId) return 0;
+  if (!projectId) return 0;
+  // Crash-net activity row: the worker that died never reached its
+  // in-handler failure path, so the feed would silently lose the
+  // outcome. Idempotent on taskId - when the in-handler path DID run
+  // (plain terminal failure, every live instance also receives this
+  // broadcast), the partial UNIQUE turns this into a no-op.
+  try {
+    const inserted = await projectActivitiesRepo.insertIgnoreDuplicateTask({
+      projectId,
+      actorUserId: job.data.userId,
+      type: "generation:failed",
+      spaceId: spaceId ?? null,
+      nodeId:
+        targetNodeIds && targetNodeIds.length === 1 ? targetNodeIds[0] : null,
+      taskId: job.data.taskId,
+      payload: {
+        source: job.data.source ?? "task",
+        ...(job.data.toolName !== undefined && { toolName: job.data.toolName }),
+        executedOn: "backend",
+        errorMessage: `Task failed: ${reason}`,
+      },
+    });
+    if (inserted) await publishActivityNew(projectId);
+  } catch {
+    // Best-effort: the node write-backs below are the critical part;
+    // the caller (application entry) logs stream-level failures.
+  }
+  if (!spaceId) return 0;
   if (!targetNodeIds || targetNodeIds.length === 0) return 0;
 
   const docName = canvasSpaceDocName(projectId, spaceId);
