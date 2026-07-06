@@ -54,9 +54,8 @@ export function NodeResolutionBadge({
     <div
       data-testid='node-resolution-badge'
       className={cn(
-        // `shrink-0` + `whitespace-nowrap`: the badge never shrinks or wraps in
-        // the shared header row — the name yields space instead (#1616).
-        'shrink-0 whitespace-nowrap px-1 text-xs',
+        // `whitespace-nowrap` keeps `1920×1080` on one line in its corner anchor.
+        'whitespace-nowrap px-1 text-xs',
         selected ? 'text-foreground' : 'text-muted-foreground',
       )}
     >

@@ -31,11 +31,11 @@ describe('ContentNodeFrame', () => {
   });
 
   // #1616: image/video nodes show their pixel resolution in a badge mirroring
-  // the name header. The name (left) and badge (right) share ONE counter-scaled
-  // row (justify-between) so they can never overlap at any name length or zoom
-  // — the adversarial pass found two independent corner anchors overlapped a
-  // long name into the badge at low zoom.
-  it('resolution present + idle: badge sits in the single header row, right side', () => {
+  // the name header. The badge is its OWN corner anchor pinned to the card's
+  // top-RIGHT (origin-bottom-right), so it stays glued to the right corner at
+  // every zoom — a full-width justify-between row drifted the badge off-corner
+  // (mid-card above 100%, past the right edge below 100%).
+  it('resolution present + idle: badge is a top-right corner anchor', () => {
     render(
       <ContentNodeFrame
         modality='image'
@@ -48,14 +48,11 @@ describe('ContentNodeFrame', () => {
     );
     const badge = screen.getByTestId('node-resolution-badge');
     expect(badge).toHaveTextContent('1920×1080');
-    // One shared row, not a separate right anchor: name yields space + truncates,
-    // the badge never shrinks — so they cannot overlap.
-    const row = screen.getByTestId('node-header-anchor');
-    expect(row).toHaveClass('justify-between');
-    expect(row).toContainElement(badge);
-    expect(screen.queryByTestId('node-resolution-anchor')).toBeNull();
-    expect(badge).toHaveClass('shrink-0');
-    expect(screen.getByTestId('node-header')).toHaveClass('min-w-0');
+    const anchor = screen.getByTestId('node-resolution-anchor');
+    expect(anchor).toContainElement(badge);
+    expect(anchor).toHaveClass('bottom-full');
+    expect(anchor).toHaveClass('right-0');
+    expect(anchor).toHaveClass('origin-bottom-right');
   });
 
   it('no resolution: no badge is rendered (empty / unloaded state)', () => {
