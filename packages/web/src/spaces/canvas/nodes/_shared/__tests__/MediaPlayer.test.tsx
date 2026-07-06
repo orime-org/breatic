@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
@@ -93,5 +93,28 @@ describe('MediaPlayer', () => {
     // values don't reflow the popover (kept tight — not over-wide).
     expect(pct.className).toContain('w-6');
     expect(pct.className).toContain('text-center');
+  });
+
+  // #1616: video surfaces its intrinsic pixel size via onDimensions so the
+  // node can render a resolution badge; audio has no pixel size and must not.
+  it('video: onLoadedMetadata reports the pixel dimensions via onDimensions (#1616)', () => {
+    const onDimensions = vi.fn();
+    render(
+      <MediaPlayer modality='video' src='/v.mp4' onDimensions={onDimensions} />,
+    );
+    const v = screen.getByTestId('media-element');
+    Object.defineProperty(v, 'videoWidth', { value: 640, configurable: true });
+    Object.defineProperty(v, 'videoHeight', { value: 480, configurable: true });
+    fireEvent.loadedMetadata(v);
+    expect(onDimensions).toHaveBeenCalledWith({ width: 640, height: 480 });
+  });
+
+  it('audio: never reports dimensions (no pixel size) (#1616)', () => {
+    const onDimensions = vi.fn();
+    render(
+      <MediaPlayer modality='audio' src='/a.mp3' onDimensions={onDimensions} />,
+    );
+    fireEvent.loadedMetadata(screen.getByTestId('media-element'));
+    expect(onDimensions).not.toHaveBeenCalled();
   });
 });

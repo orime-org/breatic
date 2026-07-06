@@ -5,6 +5,10 @@ import * as React from 'react';
 
 import { cn } from '@web/lib/utils';
 import { NodeHeader } from '@web/spaces/canvas/nodes/_shared/NodeHeader';
+import {
+  NodeResolutionBadge,
+  type NodeResolution,
+} from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import type {
@@ -26,6 +30,12 @@ interface ContentNodeFrameProps {
   className?: string;
   /** Stable test id for the shell root, per type node. */
   testId?: string;
+  /**
+   * Intrinsic media resolution (image/video only); when set, a pixel-size
+   * badge mirrors the name header at the card's top-right. Omit / undefined
+   * (empty node, or media not yet loaded) → no badge.
+   */
+  resolution?: NodeResolution;
   /** The modality body rendered inside the shell. */
   children: React.ReactNode;
 }
@@ -51,6 +61,7 @@ interface ContentNodeFrameProps {
  * @param root0.onRename - Commit a rename, pre-bound to this node's id.
  * @param root0.className - Extra classes merged onto the shell (sizing).
  * @param root0.testId - Stable test id for the shell root.
+ * @param root0.resolution - Intrinsic media resolution; renders the top-right pixel-size badge when set.
  * @param root0.children - The modality body rendered inside the shell.
  * @returns The header-over-shell content node frame.
  */
@@ -63,15 +74,30 @@ export function ContentNodeFrame({
   onRename,
   className,
   testId,
+  resolution,
   children,
 }: ContentNodeFrameProps): React.JSX.Element {
-  // The header floats in an absolutely-positioned anchor pinned just above the
-  // card's top-left, counter-scaled by the canvas zoom so it keeps a constant
-  // screen size. Taking it out of flow makes the frame's in-flow box the card
-  // alone, which is what centres the wrapper's Left/Right connection handles on
-  // the card body rather than the header+card stack. The bottom padding is the
-  // (constant, zoom-independent) gap between the header and the card.
+  // The name header floats in an absolutely-positioned anchor pinned just above
+  // the card's top-left, counter-scaled by the canvas zoom so it keeps a
+  // constant screen size. Taking it out of flow makes the frame's in-flow box
+  // the card alone, which centres the wrapper's Left/Right connection handles on
+  // the card body. The bottom padding is the (constant) gap to the card.
+  //
+  // The resolution badge (image/video only) is a MIRROR anchor pinned to the
+  // card's top-RIGHT, counter-scaled from `origin-bottom-right` so it stays
+  // glued to the card's right corner at every zoom. It must be its OWN
+  // corner-pinned anchor, NOT a right item in a full-width row: a full-width row
+  // has a constant screen width while the card's screen width scales with zoom,
+  // so at >100% the badge would land mid-card and at <100% it would spill past
+  // the right edge (#1616). It is gated on the media actually being displayed
+  // (idle) — during regeneration (handling → skeleton) or error the media
+  // element is unmounted, so a previously-read resolution must not linger.
+  // At low zoom the two constant-size labels can overlap a long name into the
+  // badge; that is accepted (user, 2026-07-06) — low zoom is for overview /
+  // moving nodes, not editing, so a corner-pinned badge matters more than the
+  // overlap.
   const headerScale = React.useContext(NodeScaleContext);
+  const mediaShown = status !== 'handling' && status !== 'error';
   return (
     <div className='relative'>
       <div
@@ -87,6 +113,19 @@ export function ContentNodeFrame({
           onRename={onRename}
         />
       </div>
+      {mediaShown && resolution && (
+        <div
+          data-testid='node-resolution-anchor'
+          className='absolute bottom-full right-0 origin-bottom-right pb-1'
+          style={{ transform: `scale(${headerScale})` }}
+        >
+          <NodeResolutionBadge
+            width={resolution.width}
+            height={resolution.height}
+            selected={selected}
+          />
+        </div>
+      )}
       <NodeShell
         status={status}
         selected={selected}

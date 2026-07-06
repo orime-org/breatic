@@ -8,6 +8,7 @@ import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFr
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
 
 interface VideoNodeProps {
   data: VideoNodeView;
@@ -37,6 +38,7 @@ export function VideoNode({
   onRename,
 }: VideoNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
+  const { resolution, setResolution } = useNodeResolution(data.content);
   return (
     <ContentNodeFrame
       modality='video'
@@ -46,6 +48,7 @@ export function VideoNode({
       locked={locked}
       onRename={onRename}
       testId='video-node'
+      resolution={resolution}
     >
       <NodeContent
         status={data.status}
@@ -59,6 +62,7 @@ export function VideoNode({
             modality='video'
             src={data.content ?? ''}
             poster={data.coverUrl}
+            onDimensions={setResolution}
           />
         }
       />
