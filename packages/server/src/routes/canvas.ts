@@ -334,10 +334,13 @@ const nodeHistoryQuerySchema = z.object({
 
 canvas.get(
   "/nodes/:nodeId/history",
+  zValidator("param", z.object({ nodeId: z.string().uuid() })),
   zValidator("query", nodeHistoryQuerySchema),
   async (c) => {
     const user = c.get("user");
-    const nodeId = c.req.param("nodeId");
+    // nodeId is a canvas node UUID (node_history.node_id is uuid) — validated
+    // here so a malformed id is a 400, not a uuid-cast 500 inside the query.
+    const { nodeId } = c.req.valid("param");
     const { project_id, limit, offset, status } = c.req.valid("query");
 
     // Cross-tenant guard — node history includes every old version

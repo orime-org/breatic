@@ -422,7 +422,7 @@ export const nodeHistory = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
-    nodeId: varchar("node_id", { length: 255 }).notNull(),
+    nodeId: uuid("node_id").notNull(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),

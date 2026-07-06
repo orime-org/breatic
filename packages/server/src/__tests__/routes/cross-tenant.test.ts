@@ -74,7 +74,7 @@ describe("GET /canvas/nodes/:nodeId/history — project_id ownership", () => {
     mocks.projectService.assertAccess.mockRejectedValue(new ForbiddenError("nope"));
     const app = createApp();
     const res = await app.request(
-      `/api/v1/canvas/nodes/n-1/history?project_id=${PROJ_UUID}`,
+      `/api/v1/canvas/nodes/c0000000-0000-4000-8000-000000000003/history?project_id=${PROJ_UUID}`,
       { headers: AUTH },
     );
     expect(res.status).toBe(403);

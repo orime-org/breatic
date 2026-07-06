@@ -189,6 +189,7 @@ import { taskService } from "@breatic/domain";
 import { startTaskListener } from "@breatic/collab/src/services/task-listener.js";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { eq } from "drizzle-orm";
+import crypto from "node:crypto";
 
 initCore(process.env);
 
@@ -481,7 +482,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    *   - errorMessage is absent
    */
   it("Test 1: success path — state=idle, content+coverUrl written, handlingBy deleted", async () => {
-    const nodeId = "node-success-t1";
+    const nodeId = crypto.randomUUID();
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
 
     providerCtrl.mode = "success";
@@ -574,7 +575,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    * RED before #1618: case (a) re-emits but never records → 0 history rows.
    */
   it("Test 1b: billed-redelivery re-records node_history exactly once (#1618 hole ②)", async () => {
-    const nodeId = "node-billed-redeliver-t1b";
+    const nodeId = crypto.randomUUID();
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
 
     // The crashed run left the node handling with a live lease at gen 1.
@@ -654,7 +655,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    *   - handlingBy is deleted
    */
   it("Test 2: failure path — state=idle, errorMessage set, content unchanged", async () => {
-    const nodeId = "node-failure-t2";
+    const nodeId = crypto.randomUUID();
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
 
     providerCtrl.mode = "failure";
@@ -743,7 +744,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    *   - handlingBy cleared
    */
   it("Test 2b: retryable failure then success — retry's result lands (no self-fencing)", async () => {
-    const nodeId = "node-retry-t2b";
+    const nodeId = crypto.randomUUID();
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
 
     providerCtrl.mode = "fail-once";
@@ -824,7 +825,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    *   - handlingBy cleared on all nodes
    */
   it("Test 3: multi-output fanout — 3 nodes each receive their distinct content URL", async () => {
-    const nodeIds = ["node-fan-t3-a", "node-fan-t3-b", "node-fan-t3-c"];
+    const nodeIds = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
 
     providerCtrl.mode = "multi";
@@ -972,7 +973,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
   }
 
   it("Test 4 (asset #4): a primary-output re-host failure fails the task and does NOT bill", async () => {
-    const nodeId = "node-persistfail-t4";
+    const nodeId = crypto.randomUUID();
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
     const tempUrl = "https://cdn.tmp/expiring-t4.png";
     storageCtrl.failDownload = true; // the re-host to permanent storage throws
@@ -1007,15 +1008,17 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
     // Force both generations to hash to the same content (a genuine dedup).
     storageCtrl.contentKey = "asset-1-dedup-content";
+    const nodeA = crypto.randomUUID();
+    const nodeB = crypto.randomUUID();
 
     const urlA = "https://oss/dedup-first-t5.png";
-    const taskA = await runGeneration({ nodeId: "node-dedup-a-t5", url: urlA });
+    const taskA = await runGeneration({ nodeId: nodeA, url: urlA });
     await waitForCondition(
       async () => (await taskService.getByIdInternal(taskA))?.status === "completed",
       30_000,
       `task ${taskA} (first dedup gen) completed`,
     );
-    const first = await readNodeData(hocuspocus, docName, "node-dedup-a-t5");
+    const first = await readNodeData(hocuspocus, docName, nodeA);
     expect(first!["content"]).toBe(urlA);
 
     // Second gen: same content hash, DIFFERENT provider URL → registry
@@ -1024,7 +1027,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     // because reconciling could leak cross-project identifiers (adversarial
     // #5). This test locks the dedup-collapse + the "no reconcile" contract.
     const urlB = "https://oss/dedup-second-t5.png";
-    const taskB = await runGeneration({ nodeId: "node-dedup-b-t5", url: urlB });
+    const taskB = await runGeneration({ nodeId: nodeB, url: urlB });
     await waitForCondition(
       async () => (await taskService.getByIdInternal(taskB))?.status === "completed",
       30_000,
@@ -1032,14 +1035,14 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     );
     await waitForCondition(
       async () => {
-        const d = await readNodeData(hocuspocus, docName, "node-dedup-b-t5");
+        const d = await readNodeData(hocuspocus, docName, nodeB);
         return d?.["state"] === "idle" && typeof d?.["content"] === "string";
       },
       5_000,
       "second dedup node idle with content",
     );
 
-    const second = await readNodeData(hocuspocus, docName, "node-dedup-b-t5");
+    const second = await readNodeData(hocuspocus, docName, nodeB);
     expect(second!["content"]).toBe(urlB); // keeps its own URL (no reconcile)
     // Registry collapsed to exactly one row for the shared content hash.
     const rows = await db
@@ -1052,7 +1055,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
 
   it("Test 7 (asset #A HIGH): a sync-transport buffer output is NOT re-hosted by Case 2 (no fall-through / no fail on a Case-2 blip)", async () => {
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
-    const nodeId = "node-buffer-t7";
+    const nodeId = crypto.randomUUID();
 
     // Provider returns raw bytes (audio/tts) → Case 1 uploads them to
     // permanent storage. storageCtrl.failDownload makes any Case-2 re-host
@@ -1113,7 +1116,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
 
   it("Test 6 (asset #2): a generation by a user with no personal studio completes best-effort but registers no asset", async () => {
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
-    const nodeId = "node-nostudio-t6";
+    const nodeId = crypto.randomUUID();
     const url = "https://oss/nostudio-t6.png";
 
     // Acting user has NO personal studio → resolveOwnerStudioId throws →
@@ -1144,7 +1147,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
 
   it("Test 8 (asset #A round-3): a local-handler output that is already OUR OWN URL is not re-hosted by Case 2", async () => {
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
-    const nodeId = "node-ownurl-t8";
+    const nodeId = crypto.randomUUID();
 
     // Simulate a local mini-tool (video cut/crop) that uploaded its output
     // to our storage and returned an OUR-OWN url. failDownload makes any
