@@ -32,8 +32,13 @@
  */
 import type { getStreamRedis } from "@breatic/core";
 import { projectActivitiesRepo, publishActivityNew } from "@breatic/core";
+import { taskService } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
-import { emitNodeStateFailed, type TaskJobData } from "@worker/handlers/dispatch.js";
+import {
+  emitNodeStateFailed,
+  recordGenerationForNodes,
+  type TaskJobData,
+} from "@worker/handlers/dispatch.js";
 
 /** Minimal failed-job shape (BullMQ `Job` narrowed to what we read). */
 export interface FailedJobLike {
@@ -81,6 +86,78 @@ export async function cleanupFailedJobNodes(
 
   const { projectId, spaceId, targetNodeIds, nodeGens } = job.data;
   if (!projectId) return 0;
+
+  // #1618 A / adversarial hole ①: a task that billed (Stage 3) then
+  // TERMINALLY failed before Stage-4 recorded still has a persisted, charged
+  // result on the task row. Re-record it to node_history + emit a SUCCESS
+  // write-back rather than stamping 'failed' over a paid result — otherwise
+  // the user is charged for a generation with no history entry and a "failed"
+  // node. Terminal (no retry left) → recording is best-effort; a total-DB
+  // outage that outlasts the whole retry chain leaves the row unwritten — the
+  // task-row reconcile sweep (#1621) is the final backstop for that infra
+  // boundary. The task fetch is wrapped so a lookup error just falls through
+  // to the standard failure write-back.
+  let task = null as Awaited<ReturnType<typeof taskService.getByIdInternal>>;
+  try {
+    task = await taskService.getByIdInternal(job.data.taskId);
+  } catch {
+    // best-effort — fall through to the standard failure write-back below.
+  }
+  const billedResult = task?.billedAt
+    ? (task.result as {
+        model?: string;
+        cost?: number;
+        outputs?: Array<{ url?: string; cover_url?: string }>;
+      } | null)
+    : null;
+  if (
+    task?.billedAt &&
+    spaceId &&
+    targetNodeIds &&
+    targetNodeIds.length > 0 &&
+    billedResult?.outputs
+  ) {
+    const outputs = billedResult.outputs;
+    const docName = canvasSpaceDocName(projectId, spaceId);
+    try {
+      await projectActivitiesRepo.upsertGenerationSucceeded({
+        projectId,
+        actorUserId: task.userId,
+        type: "generation:succeeded",
+        spaceId: spaceId ?? null,
+        nodeId: targetNodeIds.length === 1 ? targetNodeIds[0] : null,
+        taskId: job.data.taskId,
+        payload: { source: job.data.source ?? "task", executedOn: "backend" },
+      });
+      await publishActivityNew(projectId);
+    } catch {
+      // Best-effort activity; the node re-record + write-back below is critical.
+    }
+    await recordGenerationForNodes(
+      streamRedis,
+      docName,
+      {
+        projectId,
+        userId: task.userId,
+        taskId: job.data.taskId,
+        taskType: job.data.taskType,
+        metadata: {
+          model: billedResult.model,
+          cost: billedResult.cost,
+          durationMs: task.durationMs ?? undefined,
+          params: task.params,
+        },
+      },
+      targetNodeIds.map((nodeId, i) => ({
+        nodeId,
+        url: outputs[i]?.url,
+        coverUrl: outputs[i]?.cover_url,
+      })),
+      (nodeId) => nodeGens?.[nodeId] ?? 0,
+    );
+    return targetNodeIds.length;
+  }
+
   // Crash-net activity row: the worker that died never reached its
   // in-handler failure path, so the feed would silently lose the
   // outcome. FAILURE is non-authoritative — insert-if-absent NEVER

@@ -195,3 +195,35 @@ describe("fencing property (#1580 #7)", () => {
     );
   });
 });
+
+describe("gen=0 missing-gen done is fenced (#1618 sole-guard)", () => {
+  it("a done event carrying gen=0 does NOT clobber a live lease (gen>=1)", async () => {
+    const doc = freshDoc();
+    const hocuspocus = stubHocuspocus(doc);
+
+    // Establish a live lease at gen 3.
+    await handleNodeStateUpdateEvent(
+      hocuspocus,
+      toEvent({ kind: "open", gen: 3 }),
+    );
+
+    // A worker whose job payload lost the gen emits a done with gen=0
+    // (genOf falls back to 0). After #1618 removed the worker-side
+    // verifyCanvasNodeLock discard, the collab gen fence is the SOLE guard
+    // against a stale result landing — it MUST drop this event.
+    await handleNodeStateUpdateEvent(
+      hocuspocus,
+      toEvent({ kind: "close", gen: 0, content: "stale-result" }),
+    );
+
+    const dataMap = (
+      doc.getMap("nodesMap").get(NODE_ID) as Y.Map<unknown>
+    ).get("data") as Y.Map<unknown>;
+    // The live lease is untouched: still handling, no stale content landed,
+    // lease gen still 3, handlingBy still the live gen.
+    expect(dataMap.get("state")).toBe("handling");
+    expect(dataMap.get("content")).toBeUndefined();
+    expect(dataMap.get("leaseGen")).toBe(3);
+    expect((dataMap.get("handlingBy") as { gen: number }).gen).toBe(3);
+  });
+});

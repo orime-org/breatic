@@ -82,6 +82,68 @@ export async function create(data: {
 }
 
 /**
+ * Idempotently record a successful AIGC generation. Backed by the partial
+ * unique index from migration 0036 — (task_id, node_id) WHERE
+ * entry_type='generation' AND status='success' AND deleted_at IS NULL — so
+ * concurrent double-live executions and a billed-redelivery re-record all
+ * collapse to a single row. On conflict no new row is inserted and the
+ * pre-existing one is returned.
+ * @param data - Generation fields; `taskId` is the idempotency key.
+ * @param data.projectId - ID of the project owning the node.
+ * @param data.nodeId - ID of the canvas node the generation targets.
+ * @param data.userId - ID of the user who triggered the generation.
+ * @param data.content - Reference to the generated content (e.g. asset URL).
+ * @param data.thumbnailUrl - Thumbnail URL for previews, if available.
+ * @param data.taskId - ID of the task that produced this result (idempotency key).
+ * @param data.metadata - Arbitrary generation metadata (model, cost, params, etc.).
+ * @returns The inserted entity, or the pre-existing one on conflict.
+ */
+export async function createGenerationSuccessIfAbsent(data: {
+  projectId: string;
+  nodeId: string;
+  userId: string;
+  content: string;
+  thumbnailUrl?: string;
+  taskId: string;
+  metadata?: Record<string, unknown>;
+}): Promise<NodeHistoryEntity> {
+  const inserted = await db
+    .insert(nodeHistory)
+    .values({
+      projectId: data.projectId,
+      nodeId: data.nodeId,
+      userId: data.userId,
+      entryType: "generation",
+      status: "success",
+      content: data.content,
+      thumbnailUrl: data.thumbnailUrl ?? null,
+      taskId: data.taskId,
+      metadata: data.metadata ?? {},
+    })
+    .onConflictDoNothing({
+      target: [nodeHistory.taskId, nodeHistory.nodeId],
+      where: sql`task_id IS NOT NULL AND entry_type = 'generation' AND status = 'success' AND deleted_at IS NULL`,
+    })
+    .returning();
+  if (inserted[0]) return toEntity(inserted[0]);
+  // Conflict — the success row already exists; fetch and return it so the
+  // caller still gets the canonical entity (idempotent from any path).
+  const existing = await db
+    .select()
+    .from(nodeHistory)
+    .where(
+      and(
+        eq(nodeHistory.taskId, data.taskId),
+        eq(nodeHistory.nodeId, data.nodeId),
+        eq(nodeHistory.status, "success"),
+        isNull(nodeHistory.deletedAt),
+      ),
+    )
+    .limit(1);
+  return toEntity(existing[0]!);
+}
+
+/**
  * List history entries for a node, ordered by most recent first.
  * @param projectId - Project UUID
  * @param nodeId - Node ID (string, e.g. "1002-1775309939251-LP9fU")

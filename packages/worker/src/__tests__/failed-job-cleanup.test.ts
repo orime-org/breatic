@@ -21,6 +21,11 @@ const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", () => ({
   publishNodeEvent: mockPublishNodeEvent,
+  publishActivityNew: vi.fn(),
+  projectActivitiesRepo: {
+    insertGenerationFailedIfAbsent: vi.fn(),
+    upsertGenerationSucceeded: vi.fn(),
+  },
   getStreamRedis: vi.fn(),
   getRedis: vi.fn(),
   env: { ENV: "test", CREDIT_MULTIPLIER: 1 },
@@ -84,6 +89,7 @@ import {
   reclaimFailedJobById,
 } from "@worker/handlers/failed-job-cleanup.js";
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
+import { taskService, nodeHistoryService } from "@breatic/domain";
 
 const streamRedis = {} as never;
 
@@ -117,6 +123,8 @@ function jobWith(
 describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
   beforeEach(() => {
     mockPublishNodeEvent.mockReset();
+    vi.mocked(taskService.getByIdInternal).mockReset();
+    vi.mocked(nodeHistoryService.recordGenerationSuccess).mockReset();
   });
 
   it("stamps each node's lease gen from job nodeGens onto the reclaim event (#1580 #7)", async () => {
@@ -222,11 +230,53 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
     expect(emitted).toBe(1);
     expect(mockPublishNodeEvent).toHaveBeenCalledTimes(2);
   });
+
+  it("re-records node_history + emits SUCCESS (not failure) for a BILLED terminal-failed task (#1618 A / hole ①)", async () => {
+    // A task that billed (Stage 3) then terminally failed before Stage-4
+    // recorded — the crash-net must recover the paid result, not stamp
+    // 'failed' over it.
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({
+      id: "t1",
+      userId: "u1",
+      taskType: "image",
+      billedAt: new Date(),
+      billedCredits: 4,
+      durationMs: 1000,
+      params: {},
+      result: {
+        model: "resolved-m",
+        cost: 0.04,
+        outputs: [{ url: "https://x/done.png", cover_url: "https://x/cover.png" }],
+      },
+    } as never);
+    const job = jobWith({
+      projectId: "p1",
+      spaceId: "s1",
+      targetNodeIds: ["n1"],
+      nodeGens: { n1: 3 },
+    });
+
+    await cleanupFailedJobNodes(streamRedis, job, "job stalled more than allowable limit");
+
+    // The billed result is re-recorded to node_history (recoverable via #1619).
+    expect(nodeHistoryService.recordGenerationSuccess).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(nodeHistoryService.recordGenerationSuccess).mock.calls[0]![0],
+    ).toMatchObject({ nodeId: "n1", content: "https://x/done.png", taskId: "t1" });
+    // The write-back is a SUCCESS (content set), NOT a failure over the paid result.
+    const [, event] = mockPublishNodeEvent.mock.calls[0] as [
+      unknown,
+      { update: Record<string, unknown> },
+    ];
+    expect(event.update.content).toBe("https://x/done.png");
+  });
 });
 
 describe("reclaimFailedJobById (#1580 #6 cross-process QueueEvents handler)", () => {
   beforeEach(() => {
     mockPublishNodeEvent.mockReset();
+    vi.mocked(taskService.getByIdInternal).mockReset();
+    vi.mocked(nodeHistoryService.recordGenerationSuccess).mockReset();
   });
 
   it("fetches the job by id and writes back every target node of a finally-failed job", async () => {

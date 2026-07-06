@@ -116,27 +116,6 @@ export async function readCanvasNodeLockHolder(
 }
 
 /**
- * Verify that the caller's taskId still owns the lock. The worker calls this
- * before writing the result to Yjs — if the TTL expired and someone else
- * grabbed the lock, the worker must NOT publish its stale result (spec
- * §10.15.5).
- * @param projectId - UUID of the project
- * @param nodeId - UUID of the target canvas node
- * @param taskId - The worker's own task UUID
- * @param redis - Optional Redis client (defaults to general-purpose DB 0)
- * @returns true if the worker still holds the lock
- */
-export async function verifyCanvasNodeLock(
-  projectId: string,
-  nodeId: string,
-  taskId: string,
-  redis: Redis = getRedis(),
-): Promise<boolean> {
-  const current = await readCanvasNodeLockHolder(projectId, nodeId, redis);
-  return current === taskId;
-}
-
-/**
  * Release the lock — only deletes if the caller still owns it. Safe to call
  * unconditionally in a `finally` block; if the TTL already expired or someone
  * else owns the key, this is a no-op.

@@ -450,6 +450,13 @@ export const nodeHistory = pgTable(
       table.nodeId,
       table.createdAt,
     ),
+    // Generation idempotency (#1618): a partial UNIQUE (task_id, node_id)
+    // WHERE entry_type='generation' AND status='success' AND deleted_at IS
+    // NULL lives in migration 0036 (Drizzle's builder does not emit partial
+    // unique indexes — same note as project_activities / project_invitations).
+    // createGenerationSuccessIfAbsent relies on it for ON CONFLICT DO NOTHING,
+    // so a billed generation lands in history exactly once (double-live +
+    // billed-redelivery re-record both collapse to one row).
   ],
 );
 

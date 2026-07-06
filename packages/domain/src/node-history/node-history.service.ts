@@ -45,12 +45,10 @@ export async function recordGenerationSuccess(opts: {
     params?: Record<string, unknown>;
   };
 }): Promise<NodeHistoryEntity> {
-  return repo.create({
+  return repo.createGenerationSuccessIfAbsent({
     projectId: opts.projectId,
     nodeId: opts.nodeId,
     userId: opts.userId,
-    entryType: "generation",
-    status: "success",
     content: opts.content,
     thumbnailUrl: opts.thumbnailUrl,
     taskId: opts.taskId,

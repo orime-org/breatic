@@ -26,7 +26,7 @@ import { assetService } from "@breatic/domain";
 import { creditService } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { publishNodeEvent } from "@breatic/core";
-import { verifyCanvasNodeLock, releaseCanvasNodeLock, reacquireCanvasNodeLock } from "@breatic/domain";
+import { releaseCanvasNodeLock, reacquireCanvasNodeLock } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -348,21 +348,43 @@ async function runTaskBody(
     // result — idempotent (Y.Map LWW) and gen-fenced (a node someone
     // legitimately re-opened since just drops it), so the only effect is
     // closing a lease that was never closed.
-    const storedOutputs = (existing.result as { outputs?: Array<{ url?: string; cover_url?: string }> } | null)?.outputs;
-    if (canvasDocName && storedOutputs && nodeIds.length > 0) {
-      for (let i = 0; i < nodeIds.length; i++) {
-        const nodeId = nodeIds[i]!;
-        const url = storedOutputs[i]?.url;
-        if (typeof url !== "string") continue;
-        try {
-          await emitNodeStateDone(streamRedis, canvasDocName, nodeId, {
-            content: url,
-            coverUrl: storedOutputs[i]?.cover_url,
-          }, genOf(nodeId));
-        } catch (err) {
-          logger.warn({ err, taskId, nodeId }, "Failed to re-publish NodeStateUpdateEvent (billed redelivery)");
-        }
-      }
+    const storedResult = existing.result as {
+      model?: string;
+      cost?: number;
+      outputs?: Array<{ url?: string; cover_url?: string }>;
+    } | null;
+    const storedOutputs = storedResult?.outputs;
+    if (canvasDocName && storedOutputs && nodeIds.length > 0 && projectId) {
+      // #1618 hole ②: the prior run billed but may have crashed BEFORE the
+      // Stage-4 node_history record. Re-record (idempotent) AND re-emit here
+      // so a billed result is always recoverable from history — no matter
+      // which failure path. Metadata comes from the persisted task row.
+      await recordGenerationForNodes(
+        streamRedis,
+        canvasDocName,
+        {
+          projectId,
+          userId,
+          taskId,
+          taskType,
+          metadata: {
+            // Parity with Stage 4 — read the resolved model/cost the provider
+            // echoed into the persisted result, not the raw job payload /
+            // charged credits (#1618 adversarial ②).
+            model: storedResult?.model ?? model,
+            cost: storedResult?.cost,
+            durationMs: existing.durationMs ?? undefined,
+            params,
+          },
+        },
+        nodeIds.map((nodeId, i) => ({
+          nodeId,
+          url: storedOutputs[i]?.url,
+          coverUrl: storedOutputs[i]?.cover_url,
+        })),
+        genOf,
+        { rethrowOnRecordFailure: true },
+      );
     }
     // #1580-parallel activity-feed fix: a crash between billing and the
     // Stage-4 activity write leaves the feed with no success row (or a
@@ -656,64 +678,35 @@ async function runTaskBody(
   }
 
   // ─── Stage 4: Record history + publish NodeStateUpdateEvent ──────
+  // No canvas-node lock check here (#1618): the billed result is recorded to
+  // node_history + emitted (idempotent, via recordGenerationForNodes). Whether
+  // the write-back lands on the node is arbitrated solely by collab's
+  // gen/leaseGen fence — if the node was reclaimed mid-execution, our event is
+  // fenced there while the result is still recorded to history.
   if (canvasDocName && projectId && nodeIds.length > 0) {
-    // ★ B1 (spec §10.15.5): verify the canvas-node lock is still ours
-    // before publishing the success event. The TTL might have expired and
-    // someone else reclaimed the node — in that case, our result must NOT
-    // overwrite their in-flight handling state. Mark this task failed and
-    // skip publish; the lock holder will eventually publish their own result.
-    if (lockTargetNodeId) {
-      const stillOwn = await verifyCanvasNodeLock(
+    await recordGenerationForNodes(
+      streamRedis,
+      canvasDocName,
+      {
         projectId,
-        lockTargetNodeId,
+        userId,
         taskId,
-      );
-      if (!stillOwn) {
-        logger.warn(
-          { taskId, nodeId: lockTargetNodeId, projectId },
-          "canvas_lock_lost_discarding_result",
-        );
-        await taskService.markFailed(
-          taskId,
-          "Canvas-node lock no longer held; result discarded (spec §10.15.5)",
-        );
-        return { failed: true, reason: "lock_lost" };
-      }
-    }
-    const docName = canvasDocName;
-    for (let i = 0; i < nodeIds.length; i++) {
-      const nodeId = nodeIds[i]!;
-      const out = persistedOutputs[i];
-      const url = out?.url;
-      if (typeof url !== "string") continue;
-      try {
-        await nodeHistoryService.recordGenerationSuccess({
-          projectId,
-          nodeId,
-          userId,
-          content: url,
-          thumbnailUrl: out?.cover_url ?? (taskType === "image" ? url : undefined),
-          taskId,
-          metadata: {
-            model: (unified.extras.model as string | undefined) ?? model,
-            cost: unified.extras.cost as number | undefined,
-            durationMs,
-            params,
-          },
-        });
-      } catch (err) {
-        logger.warn({ err, taskId, nodeId }, "Failed to record node history (success)");
-      }
-
-      try {
-        await emitNodeStateDone(streamRedis, docName, nodeId, {
-          content: url,
-          coverUrl: out?.cover_url,
-        }, genOf(nodeId));
-      } catch (err) {
-        logger.warn({ err, taskId, nodeId }, "Failed to publish NodeStateUpdateEvent (success)");
-      }
-    }
+        taskType,
+        metadata: {
+          model: (unified.extras.model as string | undefined) ?? model,
+          cost: unified.extras.cost as number | undefined,
+          durationMs,
+          params,
+        },
+      },
+      nodeIds.map((nodeId, i) => ({
+        nodeId,
+        url: persistedOutputs[i]?.url,
+        coverUrl: persistedOutputs[i]?.cover_url,
+      })),
+      genOf,
+      { rethrowOnRecordFailure: true },
+    );
   }
 
   if (projectId) {
@@ -819,6 +812,92 @@ async function recordGenerationActivity(args: {
       { err, taskId: args.taskId, projectId: args.projectId },
       "activity_record_failed",
     );
+  }
+}
+
+/**
+ * Record node_history AND emit the success write-back for each target node
+ * (#1618). Shared by the Stage-4 success path and the billed-redelivery
+ * re-record. Recording is idempotent (createGenerationSuccessIfAbsent backed
+ * by the migration-0036 partial unique), so calling this more than once for a
+ * task — double-live concurrent executions, or a redelivery — yields exactly
+ * one history row per (task, node); the re-emit is gen-fenced by collab. Each
+ * node is isolated: a failure on node K neither skips K+1..N nor escapes into
+ * BullMQ's retry machinery (mirrors emitFailedBestEffort). Outputs whose url
+ * is not a string are skipped.
+ * @param streamRedis - Redis client for the cross-service stream DB.
+ * @param docName - Canvas doc the target nodes live in.
+ * @param ctx - Shared task context + generation metadata.
+ * @param ctx.projectId - Project owning the nodes.
+ * @param ctx.userId - User who triggered the generation.
+ * @param ctx.taskId - Task that produced the result (node_history idempotency key).
+ * @param ctx.taskType - Task type (drives the image thumbnail fallback).
+ * @param ctx.metadata - Generation metadata stored on each history row.
+ * @param ctx.metadata.model - Model identifier that produced the result.
+ * @param ctx.metadata.cost - Credits/cost attributed to the generation.
+ * @param ctx.metadata.durationMs - Provider call duration in milliseconds.
+ * @param ctx.metadata.params - Provider/tool parameters used for the generation.
+ * @param outputs - Per-node results; a non-string url is skipped.
+ * @param genOf - Lease-gen resolver for one node (#1580 #7 fencing).
+ * @param opts - Failure-handling options.
+ * @param opts.rethrowOnRecordFailure - When true, a node_history record
+ *   failure is RE-THROWN (a billed generation MUST be recorded — the throw
+ *   fails the job so BullMQ redelivers and the re-entry guard re-records
+ *   idempotently). When false (terminal crash-net, no retry left), the
+ *   failure is best-effort/swallowed. The emit is always best-effort.
+ * @returns Resolves once every node has been recorded + emitted.
+ */
+export async function recordGenerationForNodes(
+  streamRedis: ReturnType<typeof getStreamRedis>,
+  docName: string,
+  ctx: {
+    projectId: string;
+    userId: string;
+    taskId: string;
+    taskType: string;
+    metadata: {
+      model?: string;
+      cost?: number;
+      durationMs?: number;
+      params?: Record<string, unknown>;
+    };
+  },
+  outputs: Array<{ nodeId: string; url?: string; coverUrl?: string }>,
+  genOf: (nodeId: string) => number,
+  opts: { rethrowOnRecordFailure?: boolean } = {},
+): Promise<void> {
+  for (const o of outputs) {
+    if (typeof o.url !== "string") continue;
+    const url = o.url;
+    try {
+      await nodeHistoryService.recordGenerationSuccess({
+        projectId: ctx.projectId,
+        nodeId: o.nodeId,
+        userId: ctx.userId,
+        content: url,
+        thumbnailUrl: o.coverUrl ?? (ctx.taskType === "image" ? url : undefined),
+        taskId: ctx.taskId,
+        metadata: ctx.metadata,
+      });
+    } catch (err) {
+      // #1618 A: a billed generation MUST land in node_history. On a live run
+      // (rethrowOnRecordFailure) re-throw so BullMQ redelivers and the
+      // re-entry guard re-records idempotently; on the terminal crash-net path
+      // (no retry left) fall back to best-effort.
+      logger.error({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "node_history record failed");
+      if (opts.rethrowOnRecordFailure) throw err;
+    }
+    try {
+      await emitNodeStateDone(
+        streamRedis,
+        docName,
+        o.nodeId,
+        { content: url, coverUrl: o.coverUrl },
+        genOf(o.nodeId),
+      );
+    } catch (err) {
+      logger.warn({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "Failed to publish NodeStateUpdateEvent (success)");
+    }
   }
 }
 

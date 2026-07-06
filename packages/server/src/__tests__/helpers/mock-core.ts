@@ -196,7 +196,6 @@ export const mocks = {
     canvasNodeLockKey: vi.fn(),
     acquireCanvasNodeLock: vi.fn().mockResolvedValue(true),
     readCanvasNodeLockHolder: vi.fn().mockResolvedValue(null),
-    verifyCanvasNodeLock: vi.fn().mockResolvedValue(true),
     releaseCanvasNodeLock: vi.fn().mockResolvedValue(undefined),
   },
   // v10: project-scoped permission lookup. Default = caller is owner
