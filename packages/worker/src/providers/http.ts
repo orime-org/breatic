@@ -11,6 +11,7 @@
 import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
 import { getWorkerConfig } from "@breatic/core";
+import { exponentialJitterDelay } from "@breatic/core";
 
 /**
  * Lazy-loaded HTTP config values, pulled from the worker config on each call.
@@ -91,7 +92,7 @@ export async function requestWithRetry(
     }
 
     if (response.status === 429 && attempt < httpConfig().maxRetries) {
-      const delay = httpConfig().retryBaseDelay * 2 ** attempt;
+      const delay = exponentialJitterDelay(attempt, httpConfig().retryBaseDelay);
       logger.warn({ provider, url, attempt: attempt + 1, delay }, "rate_limited_retry");
       await sleep(delay);
       lastError = new Error(`${provider} 429 Too Many Requests`);

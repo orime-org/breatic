@@ -12,6 +12,7 @@ import { Queue, QueueEvents, Worker } from "bullmq";
 import type { Processor, ConnectionOptions } from "bullmq";
 import { env } from "@core/config/env.js";
 import { getWorkerConfig } from "@core/config/worker.js";
+import { jitterBackoffStrategy } from "@core/infra/retry.js";
 
 /**
  * Parse REDIS_QUEUE_URL into BullMQ-compatible connection options.
@@ -87,6 +88,11 @@ export function createWorker<T>(
     connection: parseRedisUrl(),
     concurrency: cfg.concurrency,
     lockDuration: cfg.lock_duration_ms,
+    settings: {
+      // Full-jittered exponential backoff for job retries (#1625 Slice 2).
+      // Paired with defaultJobOpts' `backoff: { type: "jitter" }`.
+      backoffStrategy: jitterBackoffStrategy(cfg.job_backoff_delay_ms),
+    },
   });
   _workers.push(worker);
   return worker;
@@ -100,21 +106,22 @@ export function createWorker<T>(
  *   429) benefit from retries. The Worker's re-entry guard makes
  *   sure the provider is never called twice per task, so retries
  *   only kick in for the pre-provider stage.
- * - `backoff` uses exponential delay (base * 2^attempt) so the
- *   second retry waits longer than the first.
+ * - `backoff` uses a full-jittered exponential delay (the custom "jitter"
+ *   strategy registered on the Worker) so retries neither hammer in
+ *   lockstep nor wait a fixed time.
  * - `removeOnComplete` / `removeOnFail` keep the Redis queue clean.
  * @returns the default BullMQ job options (attempts, backoff, retention)
  */
 export function defaultJobOpts(): {
   attempts: number;
-  backoff: { type: "exponential"; delay: number };
+  backoff: { type: "jitter" };
   removeOnComplete: { age: number; count: number };
   removeOnFail: { age: number; count: number };
 } {
   const cfg = getWorkerConfig();
   return {
     attempts: cfg.job_attempts,
-    backoff: { type: "exponential", delay: cfg.job_backoff_delay_ms },
+    backoff: { type: "jitter" },
     removeOnComplete: { age: 3600, count: 1000 },
     removeOnFail: { age: 86400, count: 1000 },
   };
