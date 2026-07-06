@@ -13,7 +13,8 @@
  * are always kept unconsolidated.
  */
 
-import { generateText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
+import { generateTextRetry } from "@breatic/domain";
 import { getModel } from "@breatic/domain";
 import { getAgentConfig } from "@breatic/core";
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
@@ -104,7 +105,7 @@ export async function consolidateIfNeeded(
     .replace("{messages}", messagesText);
 
   // Call LLM for consolidation (temperature=0: factual extraction, no creativity)
-  const result = await generateText({
+  const result = await generateTextRetry({
     model: getModel(config.consolidation_model),
     messages: [{ role: "user" as const, content: prompt }],
     stopWhen: stepCountIs(1),

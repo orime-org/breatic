@@ -18,7 +18,8 @@
  * - enable_web_search -> pass-through
  */
 
-import { generateText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
+import { generateTextRetry } from "@breatic/domain";
 import { getModel } from "@breatic/domain";
 import type { ModelFamily } from "@worker/providers/shared.js";
 
@@ -148,7 +149,7 @@ export async function buildRequest(
       ? `Convert this image description into a structured prompt JSON with fields: subject, style, technical, lighting, composition. Camera info: ${cameraContext}. Description: "${prompt}"`
       : `Convert this image description into a structured prompt JSON with fields: subject, style, technical, lighting, composition. Description: "${prompt}"`;
 
-    const result = await generateText({
+    const result = await generateTextRetry({
       model: getModel("deepseek/deepseek-chat"),
       messages: [{ role: "user", content: userContent }],
       stopWhen: stepCountIs(1),

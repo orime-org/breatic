@@ -8,7 +8,8 @@
  * messages built by the model family. Returns `{ text, cost }`.
  */
 
-import { generateText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
+import { generateTextRetry } from "@breatic/domain";
 import type { ModelMessage } from "ai";
 import type { ResolvedModel } from "@worker/providers/shared.js";
 import type { AnyUnderstandFamily } from "@worker/providers/understand/models/types.js";
@@ -47,7 +48,7 @@ export async function generate(
   const modelString = resolved.litellmModel ?? resolved.modelName;
   const model = getModel(modelString);
 
-  const result = await generateText({
+  const result = await generateTextRetry({
     model,
     messages: messages as ModelMessage[],
     maxOutputTokens: maxTokens,
