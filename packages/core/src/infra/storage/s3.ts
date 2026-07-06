@@ -42,6 +42,11 @@ export class S3StorageAdapter implements StorageAdapter {
         accessKeyId: env.S3_ACCESS_KEY,
         secretAccessKey: env.S3_SECRET_KEY,
       },
+      // Pin the retry policy explicitly (#1625 Slice 3) — these are the aws-sdk
+      // v3 defaults, made visible instead of implicit. "standard" mode retries
+      // transient failures with exponential backoff + full jitter internally.
+      maxAttempts: 3,
+      retryMode: "standard",
     });
   }
 
