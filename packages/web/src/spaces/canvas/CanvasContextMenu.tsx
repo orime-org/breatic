@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ClipboardPaste } from 'lucide-react';
+import { Clipboard } from 'lucide-react';
 import type * as React from 'react';
 
 import {
@@ -75,7 +75,7 @@ export function CanvasContextMenu({
               data-testid='canvas-menu-paste'
               onSelect={onPaste}
             >
-              <ClipboardPaste className='mr-2 h-4 w-4' aria-hidden='true' />
+              <Clipboard className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.contextMenu.paste')}
               <DropdownMenuShortcut>
                 {formatShortcut({ mod: true, key: 'V' })}
