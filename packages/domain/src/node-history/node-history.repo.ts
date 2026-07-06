@@ -146,7 +146,9 @@ export async function createGenerationSuccessIfAbsent(data: {
 /**
  * List history entries for a node, ordered by most recent first.
  * @param projectId - Project UUID
- * @param nodeId - Node ID (string, e.g. "1002-1775309939251-LP9fU")
+ * @param nodeId - Canvas node ID — a v4 UUID minted client-side by
+ *   `@breatic/shared` `newId()`, stored as text (e.g.
+ *   "550e8400-e29b-41d4-a716-446655440000")
  * @param opts - Pagination and filter
  * @param opts.limit - Maximum rows to return; capped at 100. Defaults to 20.
  * @param opts.offset - Number of rows to skip for pagination. Defaults to 0.
