@@ -49,9 +49,8 @@ export function CreatableNodeMenuItems({
             key={type}
             data-testid={`create-node-${type}`}
             onSelect={() => onPick(type)}
-            className='gap-2'
           >
-            <Icon className='h-4 w-4 opacity-70' aria-hidden='true' />
+            <Icon className='mr-2 h-4 w-4' aria-hidden='true' />
             {t(NODE_LABEL_KEY[type])}
           </DropdownMenuItem>
         );
