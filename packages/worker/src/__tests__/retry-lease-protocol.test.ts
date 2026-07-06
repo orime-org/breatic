@@ -38,7 +38,6 @@ vi.mock("@breatic/domain", () => ({
   buildToolSet: vi.fn(),
   getSkillRegistry: vi.fn(),
   extractPromptText: vi.fn(),
-  verifyCanvasNodeLock: vi.fn(),
   releaseCanvasNodeLock: vi.fn(),
   reacquireCanvasNodeLock: vi.fn(),
 }));

@@ -563,6 +563,88 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
   });
 
   /**
+   * Test 1b — Billed-redelivery (#1618 crash-window closure / hole ②)
+   *
+   * A task billed on a prior run whose Worker crashed between billing and
+   * the Stage-4 node_history record. On redelivery the re-entry guard's
+   * "already billed" branch re-emits the stored result AND (post-#1618)
+   * re-records node_history exactly once — so a billed result is always
+   * recoverable from history, no matter which failure path.
+   *
+   * RED before #1618: case (a) re-emits but never records → 0 history rows.
+   */
+  it("Test 1b: billed-redelivery re-records node_history exactly once (#1618 hole ②)", async () => {
+    const nodeId = "node-billed-redeliver-t1b";
+    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
+
+    // The crashed run left the node handling with a live lease at gen 1.
+    await seedNode(hocuspocus, docName, nodeId, {
+      name: "Redeliver Node",
+      state: "handling",
+      handlingBy: { userId: FIXTURE_USER_ID, type: "backend", startedAt: Date.now(), gen: 1 },
+      leaseGen: 1,
+      attachments: [],
+    });
+
+    // A task already billed on the prior run (result persisted on the row),
+    // but with NO node_history row yet (the crash was before Stage 4).
+    const [taskRow] = await db.insert(schema.tasks).values({
+      userId: FIXTURE_USER_ID,
+      projectId: FIXTURE_PROJECT_ID,
+      spaceId: FIXTURE_SPACE_ID,
+      taskType: "image",
+      mode: "append",
+      source: "mini_tool",
+      params: {},
+      status: "completed",
+      billedAt: new Date(),
+      billedCredits: 3,
+      creditsUsed: 3,
+      result: { model: "resolved-model-t1b", cost: 0.05, outputs: [{ url: "https://oss/billed-redeliver.png", cover_url: "https://oss/thumb-1b.png" }] },
+    }).returning();
+    const taskId = taskRow!.id;
+
+    await tasksQueue.add("run-task", {
+      taskId,
+      taskType: "image",
+      userId: FIXTURE_USER_ID,
+      projectId: FIXTURE_PROJECT_ID,
+      spaceId: FIXTURE_SPACE_ID,
+      source: "mini_tool",
+      toolName: "remove-bg",
+      params: {},
+      targetNodeIds: [nodeId],
+      nodeGens: { [nodeId]: 1 },
+      mode: "append" as const,
+    }, { attempts: 1 });
+
+    // Wait for the case-(a) re-emit to reach the node (proof the redelivery
+    // was processed) — gen 1 matches the live lease so it lands.
+    await waitForCondition(
+      async () => {
+        const d = await readNodeData(hocuspocus, docName, nodeId);
+        return d?.["content"] === "https://oss/billed-redeliver.png";
+      },
+      30_000,
+      `case-a re-emit landed for ${taskId}`,
+    );
+
+    // The same billed-redelivery path re-records node_history exactly once.
+    const rows = await db
+      .select()
+      .from(schema.nodeHistory)
+      .where(eq(schema.nodeHistory.taskId, taskId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("success");
+    expect(rows[0]!.entryType).toBe("generation");
+    expect(rows[0]!.content).toBe("https://oss/billed-redeliver.png");
+    // #1618 ②: metadata parity — case a reads the resolved model from the
+    // persisted task result, matching what Stage 4 would have recorded (not
+    // the raw job payload / charged credits).
+    expect((rows[0]!.metadata as { model?: string }).model).toBe("resolved-model-t1b");
+  });
+
+  /**
    * Test 2 — Failure path: handling → idle + errorMessage
    *
    * Invariants:

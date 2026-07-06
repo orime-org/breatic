@@ -56,7 +56,6 @@ export {
   canvasNodeLockKey,
   acquireCanvasNodeLock,
   readCanvasNodeLockHolder,
-  verifyCanvasNodeLock,
   releaseCanvasNodeLock,
   reacquireCanvasNodeLock,
 } from "@domain/canvas-lock/canvas-lock.js";
