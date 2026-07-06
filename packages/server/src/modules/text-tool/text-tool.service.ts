@@ -10,7 +10,8 @@
  * streaming completes (based on actual token usage).
  */
 
-import { streamText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
+import { streamTextRetry } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { getModel } from "@breatic/domain";
 import { getModelForTool, getPromptForTool } from "@server/config/text-tools.js";
@@ -142,7 +143,7 @@ export async function* executeTextTool(
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);
 
-    const result = streamText({
+    const result = streamTextRetry({
       model: getModel(modelString),
       system: systemPrompt,
       messages: [{ role: "user" as const, content: userMessage }],

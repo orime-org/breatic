@@ -47,6 +47,8 @@ export class LocalStorageAdapter implements StorageAdapter {
   async upload(key: string, data: Buffer, _contentType: string): Promise<string> {
     const filePath = resolve(this.uploadDir, key);
     mkdirSync(dirname(filePath), { recursive: true });
+    // No retry (#1625 Slice 3): a local FS write failure (disk full, permission,
+    // read-only mount) is not transient, so retrying would not help — fail fast.
     writeFileSync(filePath, data);
 
     const url = `${this.baseUrl}/${key}`;

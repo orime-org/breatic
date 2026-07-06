@@ -35,3 +35,8 @@ memory_user_max_size: 2048
 # ── Tools ─────────────────────────────────────────────────
 # Maximum characters returned from web_fetch tool output.
 web_fetch_max_chars: 50000
+
+# ── LLM resilience ────────────────────────────────────────
+# Retry budget (maxRetries) for every LLM call, injected by the model-call
+# wrapper (generateTextRetry / streamTextRetry). AI SDK default is 2 (#1625).
+llm_max_retries: 2

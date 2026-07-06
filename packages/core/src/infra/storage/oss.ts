@@ -32,6 +32,9 @@ export class AliyunOSSStorageAdapter implements StorageAdapter {
       throw new Error("Aliyun OSS requires OSS_BUCKET, OSS_ENDPOINT, OSS_ACCESS_KEY, OSS_SECRET_KEY");
     }
 
+    // NOTE (#1625 Slice 3): ali-oss@6 exposes no constructor retry option (no
+    // `retryMax`); uploads rely on the library's internal retry. Documented in
+    // docs/CONFIGURATION.md rather than pinned here (unlike S3's maxAttempts).
     this.client = new OSS({
       bucket: this.bucket,
       endpoint: env.OSS_ENDPOINT,

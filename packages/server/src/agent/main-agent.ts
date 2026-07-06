@@ -8,7 +8,8 @@
  * `streamText()` + `maxSteps` for automatic tool-call looping.
  */
 
-import { streamText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
+import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, TextPart, ImagePart } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/domain";
@@ -143,7 +144,7 @@ export class MainAgent {
     const agentCfg = getAgentConfig();
     const tools = buildToolSet(toolNames ?? []);
 
-    const result = streamText({
+    const result = streamTextRetry({
       model: getModel(agentCfg.default_model),
       system,
       messages,

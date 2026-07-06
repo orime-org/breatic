@@ -12,7 +12,8 @@
  * @module
  */
 
-import { tool, generateText, stepCountIs } from "ai";
+import { tool, stepCountIs } from "ai";
+import { generateTextRetry } from "@domain/agent/model-call.js";
 import { z } from "zod";
 import { getModel, resolveProvider } from "@domain/agent/llm.js";
 import { getAgent, listAgents } from "@domain/agent/agent-loader.js";
@@ -133,7 +134,7 @@ export const spawnTool = tool({
     // The actual task
     messages.push({ role: "user", content: task });
 
-    const result = await generateText({
+    const result = await generateTextRetry({
       model: getModel(agentDef.model),
       system,
       messages,

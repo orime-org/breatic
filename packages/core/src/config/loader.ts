@@ -24,6 +24,8 @@ const agentConfigSchema = z.object({
   memory_project_max_size: z.number().int().positive().default(3072),
   memory_user_max_size: z.number().int().positive().default(2048),
   web_fetch_max_chars: z.number().int().positive().default(50000),
+  /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
+  llm_max_retries: z.number().int().min(0).default(2),
 });
 
 /** Validated agent configuration type. */

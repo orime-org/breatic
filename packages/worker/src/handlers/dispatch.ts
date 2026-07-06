@@ -13,7 +13,8 @@
  */
 
 import type { Job } from "bullmq";
-import { generateText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
+import { generateTextRetry } from "@breatic/domain";
 import { resolveMiniToolEntry } from "@worker/mini-tool-registry.js";
 import { runLocalHandler } from "@worker/handlers/local/index.js";
 import { getModel } from "@breatic/domain";
@@ -1500,7 +1501,7 @@ async function runSkillAgent(
   }
 
   const tools = buildToolSet(toolNames);
-  const result = await generateText({
+  const result = await generateTextRetry({
     model: getModel(),
     system: skillContent,
     messages: [{ role: "user" as const, content: JSON.stringify(params) }],

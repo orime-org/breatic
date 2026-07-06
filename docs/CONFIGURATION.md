@@ -82,7 +82,26 @@ loader:`packages/core/src/config/storage.ts`。`downloadValidated` 转存 provid
 | `download.max_attempts` | 3 | 下载总尝试次数(含首次)|
 | `download.retry_base_delay_ms` | 500 | 退避基延时(× 尝试次数,再 full-jitter)|
 
-## 7. 其他 yaml
+## 7. `config/agent.yaml` — LLM 韧性(节选)
+
+loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 行为 / 记忆 / 工具旋钮;韧性相关:
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `llm_max_retries` | 2 | 每次 LLM 调用的重试次数(maxRetries),由 model-call wrapper 统一注入(#1625 Slice 3)|
+
+## 8. 连接 / 存储上传韧性(代码内,非 yaml)
+
+基础设施底层韧性值,硬编码在代码里(不 per-deploy 调):
+
+| 项 | 值 | 位置 |
+|---|---|---|
+| Redis `keepAlive` / `commandTimeout` / `connectTimeout` / `maxRetriesPerRequest` | 30000 / 5000 / 10000ms / 3 | `core/infra/redis.ts` |
+| S3 上传 `maxAttempts` / `retryMode` | 3 / `standard`(exp + jitter)| `core/infra/storage/s3.ts`(#1625)|
+| Aliyun OSS 上传 | 库内部 retry(ali-oss@6 无构造 retry 选项)| `core/infra/storage/oss.ts` |
+| 本地 FS 写 | 无重试(失败非瞬时)| `core/infra/storage/local.ts` |
+
+## 9. 其他 yaml
 
 | 文件 | loader | 内容 |
 |---|---|---|
@@ -90,6 +109,6 @@ loader:`packages/core/src/config/storage.ts`。`downloadValidated` 转存 provid
 | `config/text-tools.yaml` | `packages/server/src/config/text-tools.ts` | 文本 mini-tool 模型 + 参数 |
 | `config/agent.yaml` | `packages/core/src/config/*` | MainAgent 行为 / 记忆 / 工具 / worker 限制 |
 
-## 8. 环境变量(部署级,非 yaml)
+## 10. 环境变量(部署级,非 yaml)
 
 在 `@breatic/core` 的 env schema(`packages/core/src/config/schema.ts`)里,zod 校验 + 默认值。典型:`PORT`(3001)/ 三个 healthz 端口 / `DATABASE_URL` / `YJS_DATABASE_URL` / 四个 `REDIS_*_URL`(DB0-3)/ `DB_POOL_SIZE`(10)/ `ALLOWED_ORIGINS` / `COOKIE_DOMAIN` 等。`PATH` / `HOME` 不入 schema(继承宿主)。
