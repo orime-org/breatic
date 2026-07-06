@@ -115,7 +115,7 @@ describe("node_history generation idempotency (#1618 Y)", () => {
     const userId = await insertUser("Gen Author");
     const projectId = await insertProject(userId);
     const taskId = await createTask(userId, projectId);
-    const nodeId = `node-${seq++}`;
+    const nodeId = crypto.randomUUID();
 
     const opts = {
       projectId,
@@ -139,7 +139,7 @@ describe("node_history generation idempotency (#1618 Y)", () => {
     const userId = await insertUser("Race Author");
     const projectId = await insertProject(userId);
     const taskId = await createTask(userId, projectId);
-    const nodeId = `node-${seq++}`;
+    const nodeId = crypto.randomUUID();
 
     const opts = {
       projectId,
@@ -163,8 +163,8 @@ describe("node_history generation idempotency (#1618 Y)", () => {
     const userId = await insertUser("Multi Node");
     const projectId = await insertProject(userId);
     const taskId = await createTask(userId, projectId);
-    const nodeA = `node-${seq++}`;
-    const nodeB = `node-${seq++}`;
+    const nodeA = crypto.randomUUID();
+    const nodeB = crypto.randomUUID();
 
     const base = {
       projectId,
@@ -184,7 +184,7 @@ describe("node_history generation idempotency (#1618 Y)", () => {
     const userId = await insertUser("Recovery");
     const projectId = await insertProject(userId);
     const taskId = await createTask(userId, projectId);
-    const nodeId = `node-${seq++}`;
+    const nodeId = crypto.randomUUID();
 
     const opts = {
       projectId,

@@ -242,11 +242,20 @@ describe("Tasks routes", () => {
 
       const app = createApp();
       const res = await app.request(
-        "/api/v1/canvas/nodes/node-1/history?project_id=a0000000-0000-4000-8000-000000000001&limit=10&offset=0",
+        "/api/v1/canvas/nodes/b0000000-0000-4000-8000-000000000002/history?project_id=a0000000-0000-4000-8000-000000000001&limit=10&offset=0",
         { headers: AUTH },
       );
 
       expect(res.status).toBe(200);
+    });
+
+    it("400 for a non-uuid nodeId (canvas node ids are uuids)", async () => {
+      const app = createApp();
+      const res = await app.request(
+        "/api/v1/canvas/nodes/not-a-uuid/history?project_id=a0000000-0000-4000-8000-000000000001",
+        { headers: AUTH },
+      );
+      expect(res.status).toBe(400);
     });
   });
 });

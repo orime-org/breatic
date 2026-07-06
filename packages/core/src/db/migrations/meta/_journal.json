@@ -260,6 +260,13 @@
       "when": 1780900200000,
       "tag": "0036_node_history_generation_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1780900300000,
+      "tag": "0037_node_history_node_id_uuid",
+      "breakpoints": true
     }
   ]
 }
