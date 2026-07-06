@@ -1,0 +1,9 @@
+# Storage retry / resilience config (#1625 Slice 2).
+#
+# downloadValidated re-fetches transient failures (5xx / 429) with a
+# full-jittered linear backoff. Registered in docs/CONFIGURATION.md.
+download:
+  # Total attempts including the first.
+  max_attempts: 3
+  # Base backoff (ms). Effective ceiling = base * attempt, then full-jittered.
+  retry_base_delay_ms: 500

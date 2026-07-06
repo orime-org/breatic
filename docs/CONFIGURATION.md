@@ -68,12 +68,21 @@ loader:`packages/core/src/config/worker.ts`。
 |---|---|---|
 | `concurrency` | 5 | 单 worker 并发任务数 |
 | `job_attempts` | 3 | 任务失败重试次数 |
-| `job_backoff_delay_ms` | 2000 | 重试退避基延时 |
+| `job_backoff_delay_ms` | 2000 | 重试退避基延时(full-jitter,自定义 backoffStrategy)|
 | `lock_duration_ms` | 600000(10 分钟) | 任务锁时长 |
-| `http_max_retries` / `http_retry_base_delay` | 3 / 2000 | provider HTTP 重试 |
+| `http_max_retries` / `http_retry_base_delay` | 3 / 2000 | provider HTTP 重试(full-jitter)|
 | `poll_interval` | 3000 | 队列轮询间隔 |
 
-## 6. 其他 yaml
+## 6. `config/storage.yaml` — 存储下载重试
+
+loader:`packages/core/src/config/storage.ts`。`downloadValidated` 转存 provider 结果时,对瞬时失败(5xx / 429)的重试参数;退避加 full-jitter(#1625)。
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `download.max_attempts` | 3 | 下载总尝试次数(含首次)|
+| `download.retry_base_delay_ms` | 500 | 退避基延时(× 尝试次数,再 full-jitter)|
+
+## 7. 其他 yaml
 
 | 文件 | loader | 内容 |
 |---|---|---|
@@ -81,6 +90,6 @@ loader:`packages/core/src/config/worker.ts`。
 | `config/text-tools.yaml` | `packages/server/src/config/text-tools.ts` | 文本 mini-tool 模型 + 参数 |
 | `config/agent.yaml` | `packages/core/src/config/*` | MainAgent 行为 / 记忆 / 工具 / worker 限制 |
 
-## 7. 环境变量(部署级,非 yaml)
+## 8. 环境变量(部署级,非 yaml)
 
 在 `@breatic/core` 的 env schema(`packages/core/src/config/schema.ts`)里,zod 校验 + 默认值。典型:`PORT`(3001)/ 三个 healthz 端口 / `DATABASE_URL` / `YJS_DATABASE_URL` / 四个 `REDIS_*_URL`(DB0-3)/ `DB_POOL_SIZE`(10)/ `ALLOWED_ORIGINS` / `COOKIE_DOMAIN` 等。`PATH` / `HOME` 不入 schema(继承宿主)。

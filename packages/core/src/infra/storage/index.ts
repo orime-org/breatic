@@ -15,6 +15,8 @@ import { createHash } from "node:crypto";
 import { newId } from "@breatic/shared";
 
 import { env } from "@core/config/env.js";
+import { getStorageConfig } from "@core/config/storage.js";
+import { fullJitter } from "@core/infra/retry.js";
 
 /** Metadata returned by StorageAdapter.head() after a client upload. */
 export interface ObjectHead {
@@ -243,9 +245,9 @@ async function downloadOnce(
  * correct resilience layer (adversarial #E). Permanent failures (HTTP 4xx,
  * truncation, zero-byte) throw immediately without retry.
  * @param sourceUrl - The remote URL to download (120s timeout per attempt).
- * @param opts - Retry tuning (defaults: 3 attempts, 500ms linear backoff).
+ * @param opts - Retry tuning (defaults from config/storage.yaml; jittered).
  * @param opts.maxAttempts - Total attempts including the first.
- * @param opts.retryBackoffMs - Base backoff (multiplied by attempt number).
+ * @param opts.retryBackoffMs - Base backoff (× attempt, then full-jittered).
  * @returns The full downloaded bytes plus the resolved content type.
  * @throws {Error} On a permanent failure, or after exhausting retries.
  */
@@ -253,8 +255,9 @@ export async function downloadValidated(
   sourceUrl: string,
   opts?: { maxAttempts?: number; retryBackoffMs?: number },
 ): Promise<{ buffer: Buffer; contentType: string }> {
-  const maxAttempts = opts?.maxAttempts ?? 3;
-  const backoffMs = opts?.retryBackoffMs ?? 500;
+  const cfg = getStorageConfig().download;
+  const maxAttempts = opts?.maxAttempts ?? cfg.max_attempts;
+  const backoffMs = opts?.retryBackoffMs ?? cfg.retry_base_delay_ms;
   let attempt = 0;
   for (;;) {
     attempt += 1;
@@ -263,7 +266,11 @@ export async function downloadValidated(
     } catch (err) {
       const retryable = err instanceof TransientDownloadError;
       if (!retryable || attempt >= maxAttempts) throw err;
-      await new Promise((resolve) => setTimeout(resolve, backoffMs * attempt));
+      // Full-jittered linear backoff (ceiling = backoffMs * attempt) so
+      // correlated CDN blips do not re-fetch in synchronized waves (#1625).
+      await new Promise((resolve) =>
+        setTimeout(resolve, fullJitter(backoffMs * attempt)),
+      );
     }
   }
 }
