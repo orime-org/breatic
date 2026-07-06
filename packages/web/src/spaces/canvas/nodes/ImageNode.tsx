@@ -7,6 +7,7 @@ import type { ImageNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
+import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
 
 interface ImageNodeProps {
   data: ImageNodeView;
@@ -36,6 +37,7 @@ export function ImageNode({
   onRename,
 }: ImageNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
+  const { resolution, setResolution } = useNodeResolution(data.content);
   return (
     <ContentNodeFrame
       modality='image'
@@ -45,6 +47,7 @@ export function ImageNode({
       locked={locked}
       onRename={onRename}
       testId='image-node'
+      resolution={resolution}
     >
       <NodeContent
         status={data.status}
@@ -59,6 +62,15 @@ export function ImageNode({
             alt=''
             data-testid='image-node-img'
             className='block h-auto w-full'
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                setResolution({
+                  width: img.naturalWidth,
+                  height: img.naturalHeight,
+                });
+              }
+            }}
           />
         }
       />

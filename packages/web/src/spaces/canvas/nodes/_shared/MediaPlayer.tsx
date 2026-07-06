@@ -10,6 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
 import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/useMediaPlayer';
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
 
@@ -20,6 +21,12 @@ interface MediaPlayerProps {
   src: string;
   /** Poster image (video only). */
   poster?: string;
+  /**
+   * Reports the video's intrinsic pixel size once metadata loads (video only —
+   * audio has no pixel dimensions and never fires this). Lets the node render a
+   * resolution badge without a data-model field.
+   */
+  onDimensions?: (resolution: NodeResolution) => void;
 }
 
 /**
@@ -47,12 +54,14 @@ function formatTime(seconds: number): string {
  * @param root0.modality - `'audio'` or `'video'`.
  * @param root0.src - Media source URL.
  * @param root0.poster - Poster image (video only).
+ * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
  * @returns The media player element.
  */
 export function MediaPlayer({
   modality,
   src,
   poster,
+  onDimensions,
 }: MediaPlayerProps): React.JSX.Element {
   const ref = React.useRef<HTMLMediaElement>(null);
   const p = useMediaPlayer(ref);
@@ -129,6 +138,12 @@ export function MediaPlayer({
           playsInline
           data-testid='media-element'
           className='block w-full'
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget;
+            if (v.videoWidth > 0 && v.videoHeight > 0) {
+              onDimensions?.({ width: v.videoWidth, height: v.videoHeight });
+            }
+          }}
         />
         <div
           data-testid='controls'

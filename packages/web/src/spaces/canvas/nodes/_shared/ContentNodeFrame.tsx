@@ -5,6 +5,10 @@ import * as React from 'react';
 
 import { cn } from '@web/lib/utils';
 import { NodeHeader } from '@web/spaces/canvas/nodes/_shared/NodeHeader';
+import {
+  NodeResolutionBadge,
+  type NodeResolution,
+} from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import type {
@@ -26,6 +30,12 @@ interface ContentNodeFrameProps {
   className?: string;
   /** Stable test id for the shell root, per type node. */
   testId?: string;
+  /**
+   * Intrinsic media resolution (image/video only); when set, a pixel-size
+   * badge mirrors the name header at the card's top-right. Omit / undefined
+   * (empty node, or media not yet loaded) → no badge.
+   */
+  resolution?: NodeResolution;
   /** The modality body rendered inside the shell. */
   children: React.ReactNode;
 }
@@ -51,6 +61,7 @@ interface ContentNodeFrameProps {
  * @param root0.onRename - Commit a rename, pre-bound to this node's id.
  * @param root0.className - Extra classes merged onto the shell (sizing).
  * @param root0.testId - Stable test id for the shell root.
+ * @param root0.resolution - Intrinsic media resolution; renders the top-right pixel-size badge when set.
  * @param root0.children - The modality body rendered inside the shell.
  * @returns The header-over-shell content node frame.
  */
@@ -63,20 +74,30 @@ export function ContentNodeFrame({
   onRename,
   className,
   testId,
+  resolution,
   children,
 }: ContentNodeFrameProps): React.JSX.Element {
-  // The header floats in an absolutely-positioned anchor pinned just above the
-  // card's top-left, counter-scaled by the canvas zoom so it keeps a constant
-  // screen size. Taking it out of flow makes the frame's in-flow box the card
-  // alone, which is what centres the wrapper's Left/Right connection handles on
-  // the card body rather than the header+card stack. The bottom padding is the
-  // (constant, zoom-independent) gap between the header and the card.
+  // The header floats in an absolutely-positioned anchor spanning the card's
+  // full width just above it, counter-scaled by the canvas zoom so it keeps a
+  // constant screen size. Taking it out of flow makes the frame's in-flow box
+  // the card alone, which is what centres the wrapper's Left/Right connection
+  // handles on the card body rather than the header+card stack. The bottom
+  // padding is the (constant, zoom-independent) gap between the header and card.
+  //
+  // The name (left) and the optional resolution badge (right) live in ONE
+  // `justify-between` row — not two independent corner anchors — so the name
+  // yields space and truncates while the badge stays put: they can never
+  // overlap at any name length or zoom (#1616 adversarial fix). The badge is
+  // gated on the media actually being displayed (idle): during in-place
+  // regeneration (handling → skeleton) or error the media element is unmounted,
+  // so a previously-read resolution must NOT keep floating there.
   const headerScale = React.useContext(NodeScaleContext);
+  const mediaShown = status !== 'handling' && status !== 'error';
   return (
     <div className='relative'>
       <div
         data-testid='node-header-anchor'
-        className='absolute bottom-full left-0 origin-bottom-left pb-1'
+        className='absolute bottom-full left-0 flex w-full origin-bottom-left items-center justify-between gap-2 pb-1'
         style={{ transform: `scale(${headerScale})` }}
       >
         <NodeHeader
@@ -86,6 +107,13 @@ export function ContentNodeFrame({
           locked={locked}
           onRename={onRename}
         />
+        {mediaShown && resolution && (
+          <NodeResolutionBadge
+            width={resolution.width}
+            height={resolution.height}
+            selected={selected}
+          />
+        )}
       </div>
       <NodeShell
         status={status}

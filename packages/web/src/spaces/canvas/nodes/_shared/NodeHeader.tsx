@@ -77,7 +77,10 @@ export function NodeHeader({
       // only the active one stands out — a cue that survives low zoom where the
       // selection border is thinned (canvas-nodes design §5.1).
       className={cn(
-        'flex max-w-[16rem] items-center gap-1.5 px-1 text-xs',
+        // `min-w-0` lets the name yield space and truncate when it shares the
+        // header row with the resolution badge (#1616) — inert when the header
+        // is the row's only child. `max-w-[16rem]` still caps a lone name.
+        'flex min-w-0 max-w-[16rem] items-center gap-1.5 px-1 text-xs',
         selected ? 'text-foreground' : 'text-muted-foreground',
       )}
     >

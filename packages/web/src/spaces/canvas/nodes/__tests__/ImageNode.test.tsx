@@ -2,10 +2,27 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ImageNode } from '@web/spaces/canvas/nodes/ImageNode';
+
+/**
+ * jsdom never decodes images, so `naturalWidth`/`naturalHeight` stay 0. Stub
+ * them on the element and fire the load event to exercise the onLoad read path.
+ * @param img - The image element to stub.
+ * @param width - The intrinsic width to report.
+ * @param height - The intrinsic height to report.
+ * @returns Nothing.
+ */
+function fireImageLoad(img: HTMLElement, width: number, height: number): void {
+  Object.defineProperty(img, 'naturalWidth', { value: width, configurable: true });
+  Object.defineProperty(img, 'naturalHeight', {
+    value: height,
+    configurable: true,
+  });
+  fireEvent.load(img);
+}
 
 describe('ImageNode', () => {
   it('renders placeholder when no url', () => {
@@ -78,5 +95,74 @@ describe('ImageNode', () => {
     expect(screen.getByTestId('image-node-img').className).not.toContain(
       'rounded',
     );
+  });
+
+  // #1616: non-empty image nodes show their pixel resolution top-right once the
+  // image loads; read from the DOM (naturalWidth/Height), no data-model field.
+  it('shows the resolution badge after the image loads (#1616)', () => {
+    render(
+      <ImageNode
+        data={{ kind: 'image', status: 'idle', content: 'https://e.com/x.jpg' }}
+      />,
+    );
+    fireImageLoad(screen.getByTestId('image-node-img'), 1920, 1080);
+    expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent(
+      '1920×1080',
+    );
+  });
+
+  it('empty image node shows no resolution badge (#1616)', () => {
+    render(<ImageNode data={{ kind: 'image', status: 'idle' }} />);
+    expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
+  });
+
+  it('no badge before the image loads — broken/loading src (#1616)', () => {
+    render(
+      <ImageNode
+        data={{ kind: 'image', status: 'idle', content: 'https://e.com/x.jpg' }}
+      />,
+    );
+    // No load event fired (still loading, or onError for a broken src).
+    expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
+  });
+
+  it('resets the badge when the content URL changes (no stale value) (#1616)', () => {
+    const { rerender } = render(
+      <ImageNode
+        data={{ kind: 'image', status: 'idle', content: 'https://e.com/a.jpg' }}
+      />,
+    );
+    fireImageLoad(screen.getByTestId('image-node-img'), 1920, 1080);
+    expect(screen.getByTestId('node-resolution-badge')).toHaveTextContent(
+      '1920×1080',
+    );
+    // Swap the image: the badge must clear until the NEW image loads, never
+    // showing the previous image's dimensions.
+    rerender(
+      <ImageNode
+        data={{ kind: 'image', status: 'idle', content: 'https://e.com/b.jpg' }}
+      />,
+    );
+    expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
+  });
+
+  // #1616 adversarial fix: regenerating a loaded node in place flips status to
+  // 'handling' while keeping the SAME content URL — the img unmounts behind a
+  // skeleton but resolution state survives. The badge must hide, not float a
+  // stale size over the skeleton.
+  it('hides the badge when flipping to handling in place (same content) (#1616)', () => {
+    const { rerender } = render(
+      <ImageNode
+        data={{ kind: 'image', status: 'idle', content: 'https://e.com/x.jpg' }}
+      />,
+    );
+    fireImageLoad(screen.getByTestId('image-node-img'), 1920, 1080);
+    expect(screen.getByTestId('node-resolution-badge')).toBeInTheDocument();
+    rerender(
+      <ImageNode
+        data={{ kind: 'image', status: 'handling', content: 'https://e.com/x.jpg' }}
+      />,
+    );
+    expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
   });
 });
