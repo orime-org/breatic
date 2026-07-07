@@ -1367,6 +1367,8 @@
       "roleUpgradeRejected": "{actor}님이 {project}의 Editor 액세스를 거절했습니다",
       "studioTransferRequest": "{actor}님이 {studio} 인수를 요청했습니다",
       "studioTransferApproved": "{actor}님이 {studio}의 Admin 이전을 수락했습니다",
+      "projectTransferRequest": "{actor}님이 {project} 인수를 요청했습니다",
+      "projectTransferApproved": "{actor}님이 {project}의 소유권 이전을 수락했습니다",
       "studioInviteRequest": "{actor}님이 {studio}에 초대했습니다",
       "studioInviteAccepted": "{actor}님이 {studio} 초대를 수락했습니다",
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",

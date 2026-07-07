@@ -13,7 +13,7 @@
  *     7 days.
  *   - `confirmTransfer`: the recipient accepts. In ONE db.transaction: mark
  *     the request read (the CAS serialization point), then demote the old
- *     admin to guest FIRST and promote the recipient to admin SECOND (order
+ *     admin to maintainer FIRST and promote the recipient to admin SECOND (order
  *     is load-bearing — promoting first would collide with the
  *     `studio_members_one_admin_per_studio` partial unique), then notify the
  *     old admin via `studio.transfer_approved`.
@@ -53,7 +53,7 @@ const TRANSFER_TTL_DAYS = 7;
  * The current admin asks an existing member to take over as the studio admin.
  *
  * Resolves the studio by slug, refuses personal studios, and requires the
- * proposed new admin to be a distinct active member of the studio. Drops an
+ * proposed new admin to be a distinct active non-guest member of the studio. Drops an
  * actionable `studio.transfer_request` notification in their inbox that
  * expires after {@link TRANSFER_TTL_DAYS} days. No role change happens here —
  * the swap is deferred until the recipient confirms.
@@ -79,6 +79,11 @@ export async function requestTransfer(
   }
   const role = await studioMembersRepo.getRole(studio.id, toUserId);
   if (!role) throw new NotFoundError(t("server.error.not_found"));
+  // Only a non-guest (admin / maintainer) may receive the studio (#1612 / D3):
+  // guests are read-only and must not become the admin.
+  if (role === "guest") {
+    throw new ValidationError(t("server.error.validation"));
+  }
 
   const expiresAt = new Date(
     Date.now() + TRANSFER_TTL_DAYS * 24 * 60 * 60 * 1000,
@@ -106,7 +111,7 @@ export async function requestTransfer(
  *
  * In one transaction: (1) mark-read CAS on the request (serialization point),
  * (2) re-read + gate the notification (right type, still within its TTL),
- * (3) demote the old admin to guest FIRST, (4) promote the recipient to admin
+ * (3) demote the old admin to maintainer FIRST, (4) promote the recipient to admin
  * SECOND (order avoids the one-admin partial unique), (5) notify the old admin
  * with `studio.transfer_approved`.
  * @param notificationId - The `studio.transfer_request` notification id
@@ -159,11 +164,12 @@ export async function confirmTransfer(
 
     // Demote the old admin FIRST, then promote the new one — the reverse order
     // would collide with studio_members_one_admin_per_studio (two active
-    // admins) mid-transaction.
+    // admins) mid-transaction. The old admin drops ONE rank to maintainer
+    // (#1612 / D1 "降一档"), not all the way to guest.
     const demoted = await studioMembersRepo.updateRole(
       studioId,
       fromUserId,
-      "guest",
+      "maintainer",
       tx,
     );
     if (!demoted) throw new NotFoundError(t("server.error.not_found"));

@@ -230,6 +230,21 @@ export async function getBySlug(slug: string): Promise<Studio | null> {
 }
 
 /**
+ * Load a studio by its id (active only) — used where the caller already holds
+ * a studio id (e.g. a project's `studioId`) and needs the studio's `type`.
+ * @param id - Studio UUID
+ * @returns The studio, or `null` if missing / soft-deleted
+ */
+export async function getById(id: string): Promise<Studio | null> {
+  const rows = await db
+    .select()
+    .from(studios)
+    .where(and(eq(studios.id, id), isNull(studios.deletedAt)))
+    .limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
  * List every active studio the user is an active member of, oldest first.
  *
  * Joins `studio_members` → `studios`, hiding soft-deleted memberships and

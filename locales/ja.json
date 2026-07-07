@@ -1367,6 +1367,8 @@
       "roleUpgradeRejected": "{actor} さんが {project} の Editor 権限を拒否しました",
       "studioTransferRequest": "{actor} さんが {studio} の引き継ぎを依頼しました",
       "studioTransferApproved": "{actor} さんが {studio} の Admin 委譲を承認しました",
+      "projectTransferRequest": "{actor} さんが {project} の引き継ぎを依頼しました",
+      "projectTransferApproved": "{actor} さんが {project} のオーナー委譲を承認しました",
       "studioInviteRequest": "{actor} さんが {studio} への参加に招待しました",
       "studioInviteAccepted": "{actor} さんが {studio} への招待を承認しました",
       "projectInviteRequest": "{actor} さんが {project} への参加に招待しました",

@@ -274,6 +274,13 @@
       "when": 1780900400000,
       "tag": "0038_tasks_provider_task_id",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1780900500000,
+      "tag": "0039_notifications_project_transfer_types",
+      "breakpoints": true
     }
   ]
 }

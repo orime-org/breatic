@@ -1367,6 +1367,8 @@
       "roleUpgradeRejected": "{actor} 拒絕了你在 {project} 的 Editor 權限申請",
       "studioTransferRequest": "{actor} 邀請你接管 {studio}",
       "studioTransferApproved": "{actor} 接受了你對 {studio} 的 Admin 轉讓",
+      "projectTransferRequest": "{actor} 邀請你接管 {project}",
+      "projectTransferApproved": "{actor} 接受了你對 {project} 的所有權轉讓",
       "studioInviteRequest": "{actor} 邀請你加入 {studio}",
       "studioInviteAccepted": "{actor} 接受了你對 {studio} 的邀請",
       "projectInviteRequest": "{actor} 邀請你加入 {project}",
