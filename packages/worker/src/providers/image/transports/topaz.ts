@@ -13,7 +13,8 @@
  * API docs: https://developer.topazlabs.com/image-api/
  */
 
-import type { ResolvedModel } from "@worker/providers/shared.js";
+import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
+import { submitOrResume } from "@worker/providers/async-resume.js";
 import { requestWithRetry, pollUntilDone, extractNested } from "@worker/providers/http.js";
 import { logger } from "@breatic/core";
 
@@ -135,57 +136,104 @@ async function generateSync(
 
 /**
  * Submit to async Topaz endpoint and poll for result.
+ *
+ * Submit is at-most-once across BullMQ retries (#1628): with a stored vendor
+ * process id the submit POST is skipped and polling resumes; on a fresh run
+ * the server-returned process id is persisted before polling starts (Topaz
+ * has no client-side idempotency field, so only the returned id is stored).
  * @param resolved - Resolved provider endpoint
  * @param headers - Auth headers
  * @param params - API parameters
  * @param sourceUrl - Source image URL
+ * @param resume - Worker resume context; absent for legacy/direct callers
  * @returns Object with `url` and `model`
+ * @throws {Error} if the task fails or returns no output
  */
 async function generateAsyncPoll(
   resolved: ResolvedModel,
   headers: Record<string, string>,
   params: Record<string, unknown>,
   sourceUrl: string | undefined,
+  resume?: ResumeContext,
 ): Promise<{ url: string; model: string }> {
   const url = `${resolved.baseUrl}/${resolved.modelId}`;
   const formData = buildFormData(params, sourceUrl);
 
-  const data = await requestWithRetry(
-    url,
-    {
-      method: "POST",
-      headers,
-      body: formData,
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
-    },
-    "topaz",
-  );
+  /**
+   * Submit response captured when Topaz returns the output immediately,
+   * so `poll` can short-circuit without a status round-trip.
+   */
+  let immediateResult: Record<string, unknown> | null = null;
 
-  const processId = data.process_id as string | undefined;
+  /**
+   * Submit the enhancement task to Topaz.
+   * @returns The vendor process id (`""` sentinel when the response carried
+   * an immediate output and no process id — nothing to resume by)
+   * @throws {Error} if the response carries neither a process_id nor output
+   */
+  const submit = async (): Promise<string> => {
+    const data = await requestWithRetry(
+      url,
+      {
+        method: "POST",
+        headers,
+        body: formData,
+        signal: AbortSignal.timeout(resolved.timeout * 1000),
+      },
+      "topaz",
+    );
 
-  if (!processId) {
-    // If no process_id, check for immediate result
-    const outputUrl = (data.output_url ?? data.url) as string | undefined;
-    if (outputUrl) {
-      return { url: outputUrl, model: resolved.modelName };
+    const processId = data.process_id as string | undefined;
+
+    if (!processId) {
+      // If no process_id, check for immediate result
+      const outputUrl = (data.output_url ?? data.url) as string | undefined;
+      if (outputUrl) {
+        immediateResult = data;
+        return "";
+      }
+      throw new Error("No process_id or output in Topaz async response");
     }
-    throw new Error("No process_id or output in Topaz async response");
-  }
+    return processId;
+  };
 
-  // Poll for result
-  const result = await pollUntilDone(
-    `${resolved.baseUrl}/status/${processId}`,
-    {
-      headers,
-      statusPath: ["status"],
-      successStatuses: new Set(["completed"]),
-      failureStatuses: new Set(["failed", "error"]),
-      errorPath: ["error"],
-      interval: 3000,
-      maxWait: 300_000,
-      provider: "topaz",
+  /**
+   * Poll the Topaz process by id until it reaches a terminal status,
+   * short-circuiting when the submit response carried an immediate output.
+   * @param processId - The vendor process id to poll
+   * @returns The terminal poll response (or the captured immediate response)
+   */
+  const poll = async (processId: string): Promise<Record<string, unknown>> => {
+    if (immediateResult) {
+      return immediateResult;
+    }
+    return pollUntilDone(
+      `${resolved.baseUrl}/status/${processId}`,
+      {
+        headers,
+        statusPath: ["status"],
+        successStatuses: new Set(["completed"]),
+        failureStatuses: new Set(["failed", "error"]),
+        errorPath: ["error"],
+        interval: 3000,
+        maxWait: 300_000,
+        provider: "topaz",
+      },
+    );
+  };
+
+  const result = await submitOrResume({
+    storedTaskId: resume?.storedTaskId ?? null,
+    submit,
+    persistId: async (id: string): Promise<void> => {
+      // "" sentinel = immediate output with no process id — nothing to resume by.
+      if (id === "") {
+        return;
+      }
+      await resume?.persistTaskId(id);
     },
-  );
+    poll,
+  });
 
   const outputUrl = (extractNested(result, ["output_url"]) ?? extractNested(result, ["url"])) as string | undefined;
   if (!outputUrl) {
@@ -203,6 +251,8 @@ async function generateAsyncPoll(
  * @param _prompt - Image description (unused — Topaz enhances an existing source image)
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters from `buildRequest()`
+ * @param resume - Worker resume context for at-most-once submit (#1628);
+ * only used on the async endpoint path (the sync endpoint has no task id)
  * @returns Object with `url`, `model`, and `cost`
  * @throws {Error} if the task fails or returns no output
  */
@@ -210,6 +260,7 @@ export async function generate(
   _prompt: string,
   resolved: ResolvedModel,
   params: Record<string, unknown>,
+  resume?: ResumeContext,
 ): Promise<{ url: string; model: string; cost: number }> {
   const headers = authHeaders(resolved.apiKey);
   const isAsync = resolved.modelId.endsWith("/async");
@@ -221,7 +272,7 @@ export async function generate(
   const cost = await estimateCost(resolved, headers, mutableParams, sourceUrl);
 
   const result = isAsync
-    ? await generateAsyncPoll(resolved, headers, mutableParams, sourceUrl)
+    ? await generateAsyncPoll(resolved, headers, mutableParams, sourceUrl, resume)
     : await generateSync(resolved, headers, mutableParams, sourceUrl);
 
   return { ...result, cost };

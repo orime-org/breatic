@@ -21,6 +21,7 @@ import {
   validateParams,
   listAvailableModels,
   type ModelFamily,
+  type ResumeContext,
   type Transport,
 } from "@worker/providers/shared.js";
 
@@ -101,6 +102,7 @@ function getTransport(providerName: string): Transport {
  * @param prompt - Image description prompt
  * @param modelName - Model name (required)
  * @param params - Additional parameters passed to the model family
+ * @param resume - Worker resume context for at-most-once submit (#1628)
  * @returns A dict with url, model, and cost (actual API cost in USD)
  * @throws {Error} if model or provider resolution fails
  */
@@ -108,6 +110,7 @@ export async function generateAsync(
   prompt: string,
   modelName: string | undefined,
   params: Record<string, unknown> = {},
+  resume?: ResumeContext,
 ): Promise<{ url?: string; text?: string; model: string; cost: number }> {
   const resolved = resolveModel("image", modelName);
   const family = _MODEL_FAMILIES.get(resolved.modelName);
@@ -128,7 +131,7 @@ export async function generateAsync(
   const release = await acquireSemaphore(resolved.providerName, resolved.maxConcurrency);
 
   try {
-    return await transport.generate(formattedPrompt, resolved, apiParams);
+    return await transport.generate(formattedPrompt, resolved, apiParams, resume);
   } finally {
     release();
   }

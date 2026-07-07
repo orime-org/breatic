@@ -21,7 +21,8 @@
  * Models served: veo-3.1 (t2v, i2v, extend)
  */
 
-import type { ResolvedModel } from "@worker/providers/shared.js";
+import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
+import { submitOrResume } from "@worker/providers/async-resume.js";
 import { requestWithRetry } from "@worker/providers/http.js";
 
 const POLL_INTERVAL = 5000; // ms
@@ -94,9 +95,13 @@ function sleep(ms: number): Promise<void> {
  *
  * Uses long-running operations pattern with manual polling since
  * the Google API uses a `done` boolean instead of status strings.
+ * Submit is at-most-once across BullMQ retries (#1628): the operation
+ * name is persisted right after submit; with a stored operation name
+ * the submit POST is skipped and polling resumes.
  * @param prompt - Video description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters
+ * @param resume - Worker resume context; absent for legacy/direct callers
  * @returns Object with `url`, `model`, and `cost`
  * @throws {Error} if the task fails or returns no output
  */
@@ -104,55 +109,79 @@ export async function generate(
   prompt: string,
   resolved: ResolvedModel,
   params: Record<string, unknown>,
+  resume?: ResumeContext,
 ): Promise<{ url: string; model: string; cost: number }> {
-  const body = buildRequestBody(prompt, { ...params });
   const queryParams = `key=${resolved.apiKey}`;
 
-  const data = await requestWithRetry(
-    `${resolved.baseUrl}/models/${resolved.modelId}:generateVideos?${queryParams}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
-    },
-    "google",
-  );
-
-  const operationName = data.name as string | undefined;
-  if (!operationName) {
-    throw new Error(`Google returned no operation name. Response: ${JSON.stringify(data)}`);
-  }
-
-  // Poll the operation
-  let elapsed = 0;
-  while (elapsed < MAX_WAIT) {
-    const result = await requestWithRetry(
-      `${resolved.baseUrl}/${operationName}?${queryParams}`,
-      { method: "GET", headers: {} },
+  /**
+   * Submit the VEO generation to Google.
+   * @returns The long-running operation name (the vendor task id)
+   * @throws {Error} if the response carries no operation name
+   */
+  const submit = async (): Promise<string> => {
+    const body = buildRequestBody(prompt, { ...params });
+    const data = await requestWithRetry(
+      `${resolved.baseUrl}/models/${resolved.modelId}:generateVideos?${queryParams}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(resolved.timeout * 1000),
+      },
       "google",
     );
 
-    if (result.done) {
-      const error = result.error as Record<string, unknown> | undefined;
-      if (error) {
-        throw new Error(
-          `Google VEO task failed: ${(error.message as string) ?? "unknown"}`,
-        );
+    const operationName = data.name as string | undefined;
+    if (!operationName) {
+      throw new Error(`Google returned no operation name. Response: ${JSON.stringify(data)}`);
+    }
+    return operationName;
+  };
+
+  /**
+   * Poll the Google operation by name until `done`.
+   * @param operationName - The operation name returned by submit
+   * @returns The terminal operation response
+   * @throws {Error} on operation error or timeout
+   */
+  const poll = async (operationName: string): Promise<Record<string, unknown>> => {
+    let elapsed = 0;
+    while (elapsed < MAX_WAIT) {
+      const result = await requestWithRetry(
+        `${resolved.baseUrl}/${operationName}?${queryParams}`,
+        { method: "GET", headers: {} },
+        "google",
+      );
+
+      if (result.done) {
+        const error = result.error as Record<string, unknown> | undefined;
+        if (error) {
+          throw new Error(
+            `Google VEO task failed: ${(error.message as string) ?? "unknown"}`,
+          );
+        }
+        return result;
       }
 
-      const url = extractVideoUrl(result);
-      if (!url) {
-        throw new Error("Google VEO task done but no video URL");
-      }
-
-      const cost = resolved.costPerCall / 100;
-      return { url, model: resolved.modelName, cost };
+      await sleep(POLL_INTERVAL);
+      elapsed += POLL_INTERVAL;
     }
 
-    await sleep(POLL_INTERVAL);
-    elapsed += POLL_INTERVAL;
+    throw new Error(`Google VEO operation did not complete within ${MAX_WAIT / 1000}s`);
+  };
+
+  const result = await submitOrResume({
+    storedTaskId: resume?.storedTaskId ?? null,
+    submit,
+    persistId: resume?.persistTaskId ?? (async (): Promise<void> => {}),
+    poll,
+  });
+
+  const url = extractVideoUrl(result);
+  if (!url) {
+    throw new Error("Google VEO task done but no video URL");
   }
 
-  throw new Error(`Google VEO operation did not complete within ${MAX_WAIT / 1000}s`);
+  const cost = resolved.costPerCall / 100;
+  return { url, model: resolved.modelName, cost };
 }

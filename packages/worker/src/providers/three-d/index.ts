@@ -20,6 +20,7 @@ import {
   validateParams,
   listAvailableModels,
   type ModelFamily,
+  type ResumeContext,
 } from "@worker/providers/shared.js";
 
 // ── Model Families ──────────────────────────────────────────────────
@@ -75,6 +76,7 @@ function getTransport(providerName: string): typeof wavespeedTransport.generate 
  * @param prompt - 3D object description prompt
  * @param modelName - Model name (required)
  * @param params - Additional parameters passed to the model family
+ * @param resume - Worker resume context for at-most-once submit (#1628)
  * @returns Object with url, model, and cost (actual API cost in USD)
  * @throws {Error} if model or provider resolution fails
  */
@@ -82,6 +84,7 @@ export async function generateAsync(
   prompt: string,
   modelName: string | undefined,
   params: Record<string, unknown> = {},
+  resume?: ResumeContext,
 ): Promise<{ url: string; model: string; cost: number }> {
   const resolved = resolveModel("three_d", modelName);
   const family = _MODEL_FAMILIES.get(resolved.modelName);
@@ -103,7 +106,7 @@ export async function generateAsync(
   const release = await acquireSemaphore(resolved.providerName, resolved.maxConcurrency);
 
   try {
-    return await transport(formattedPrompt, resolved, apiParams);
+    return await transport(formattedPrompt, resolved, apiParams, resume);
   } finally {
     release();
   }

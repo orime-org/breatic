@@ -385,6 +385,12 @@ export const tasks = pgTable(
      */
     providerResultUrl: text("provider_result_url"),
     /**
+     * Vendor task id for async (submit → poll) generation. Persisted right
+     * after submit; on a BullMQ retry the Worker resumes by polling this id
+     * instead of re-submitting (prevents duplicate vendor generation, #1628).
+     */
+    providerTaskId: text("provider_task_id"),
+    /**
      * Idempotency guard for credit deduction. Set via CAS when the task
      * is marked completed AND the file is persisted to storage. If set,
      * `chargeOnce()` is a no-op. Prevents double-charge on BullMQ retries,

@@ -44,12 +44,34 @@ export interface ModelFamily {
   ): Promise<[string, Record<string, unknown>]>;
 }
 
+/**
+ * Resume context threaded from the Worker into async (submit + poll)
+ * transports (#1628). Makes the vendor submit at-most-once across BullMQ
+ * retries: the transport persists the vendor task id right after submit,
+ * and a retried job resumes by polling the stored id instead of
+ * re-submitting (which would create a duplicate, billed vendor task).
+ * Sync transports ignore it.
+ */
+export interface ResumeContext {
+  /** Vendor task id persisted by a previous attempt, or null on first run. */
+  storedTaskId: string | null;
+  /** Persist the vendor task id right after submit (pre-poll). */
+  persistTaskId: (id: string) => Promise<void>;
+  /**
+   * Deterministic client-side task id (derived from our task UUID) for
+   * vendors with idempotent submit (Kling `external_task_id`): a retried
+   * identical submit is rejected as a duplicate instead of re-generating.
+   */
+  externalTaskId: string;
+}
+
 /** Transport interface — one per API provider adapter. */
 export interface Transport {
   generate(
     prompt: string,
     resolved: ResolvedModel,
     params: Record<string, unknown>,
+    resume?: ResumeContext,
   ): Promise<TransportResult>;
 }
 

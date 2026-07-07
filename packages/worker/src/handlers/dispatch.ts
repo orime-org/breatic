@@ -16,6 +16,7 @@ import type { Job } from "bullmq";
 import { stepCountIs } from "ai";
 import { generateTextRetry } from "@breatic/domain";
 import { resolveMiniToolEntry } from "@worker/mini-tool-registry.js";
+import type { ResumeContext } from "@worker/providers/shared.js";
 import { runLocalHandler } from "@worker/handlers/local/index.js";
 import { getModel } from "@breatic/domain";
 import { buildToolSet } from "@breatic/domain";
@@ -457,11 +458,39 @@ async function runTaskBody(
   }
 
   // ─── Stage 1: Call the provider ───────────────────────────────────
-  // Errors here rethrow → BullMQ retries (this stage is retry-safe).
+  // Errors here rethrow → BullMQ retries. For SYNC providers a retry
+  // re-invokes the vendor (accepted policy, #1628: UX over the narrow
+  // duplicate-cost window). For ASYNC providers the resume context below
+  // makes the submit at-most-once: the vendor task id is persisted right
+  // after submit, and a retried job resumes by polling the stored id.
   let providerResult: Record<string, unknown>;
   let creditsUsed = 0;
   let resolvedSkills: string[] = [];
   const startTime = performance.now();
+
+  // #1628: threaded into async transports via provider.generateAsync.
+  const resume: ResumeContext = {
+    storedTaskId: existing?.providerTaskId ?? null,
+    persistTaskId: (id: string): Promise<void> =>
+      taskService.recordProviderTaskId(taskId, id),
+    externalTaskId: `breatic-${taskId}`,
+  };
+  if (resume.storedTaskId) {
+    logger.info(
+      { taskId, providerTaskId: resume.storedTaskId, attempt: job.attemptsMade + 1 },
+      "async_resume_stored_provider_task",
+    );
+  } else if (job.attemptsMade > 0) {
+    // #1628 monitoring: a retry with no stored vendor task id re-invokes the
+    // provider from scratch. For SYNC providers the previous attempt may have
+    // already generated + charged upstream (timeout-after-generation window)
+    // → this attempt is a POTENTIAL duplicate external cost. Structured event
+    // feeds the duplicate-cost alarm trend.
+    logger.warn(
+      { taskId, taskType, attempt: job.attemptsMade + 1 },
+      "provider_reinvoked_on_retry_potential_duplicate_cost",
+    );
+  }
 
   try {
     if (source === "mini_tool" && toolName) {
@@ -472,11 +501,12 @@ async function runTaskBody(
         jobId: job.id ?? "",
         userId,
         projectId,
+        resume,
       });
     } else if (taskType === "understand") {
-      [providerResult, creditsUsed] = await runUnderstand(model, params);
+      [providerResult, creditsUsed] = await runUnderstand(model, params, resume);
     } else if (taskType in AIGC_TASK_TYPES && !skillName) {
-      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params);
+      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, resume);
     } else {
       const [text, skills] = await runSkillAgent(taskType, skillName, params);
       resolvedSkills = skills;
@@ -1332,6 +1362,8 @@ interface RunMiniToolOpts {
   jobId: string;
   userId: string;
   projectId: string | undefined;
+  /** Async-transport resume context for at-most-once vendor submit (#1628). */
+  resume: ResumeContext;
 }
 
 /**
@@ -1343,7 +1375,7 @@ interface RunMiniToolOpts {
 async function runMiniTool(
   opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
-  const { toolName, taskType, params, jobId, userId, projectId } = opts;
+  const { toolName, taskType, params, jobId, userId, projectId, resume } = opts;
   const entry = resolveMiniToolEntry(taskType, toolName);
 
   // Strip workflow-meta fields that are for infra (not for the
@@ -1380,7 +1412,7 @@ async function runMiniTool(
   delete validated.prompt;
   delete validated.text;
 
-  const result = await provider.generateAsync(prompt, modelName, validated);
+  const result = await provider.generateAsync(prompt, modelName, validated, resume);
   const cost = (result.cost as number) ?? 0;
   const credits = cost * 100 * env.CREDIT_MULTIPLIER;
 
@@ -1392,11 +1424,13 @@ async function runMiniTool(
  * analysis or ASR) via the understand provider.
  * @param model - Model override, or undefined to use the per-source-type default
  * @param params - Task params carrying `source_type`, `source_url` and an optional prompt
+ * @param resume - Async-transport resume context for at-most-once submit (#1628)
  * @returns A `[result, credits]` tuple: the analysis result dict and the credits to charge
  */
 async function runUnderstand(
   model: string | undefined,
   params: Record<string, unknown>,
+  resume: ResumeContext,
 ): Promise<[Record<string, unknown>, number]> {
   const sourceType = params.source_type as string;
   const sourceUrl = params.source_url as string;
@@ -1412,7 +1446,7 @@ async function runUnderstand(
   }
 
   const { generateAsync } = await import("@worker/providers/understand/index.js");
-  const result = await generateAsync(prompt, modelName, cleanParams);
+  const result = await generateAsync(prompt, modelName, cleanParams, resume);
   const cost = (result.cost) ?? 0;
   const credits = cost * 100 * env.CREDIT_MULTIPLIER;
 
@@ -1425,6 +1459,7 @@ async function runUnderstand(
  * @param taskType - AIGC task type (image / audio / video / tts / three_d)
  * @param model - Model name to invoke; required for this path
  * @param params - Task params, including the raw prompt/text to sanitise
+ * @param resume - Async-transport resume context for at-most-once submit (#1628)
  * @returns A `[result, credits]` tuple: the provider result dict and the credits to charge
  * @throws {Error} when `model` is not provided
  */
@@ -1432,6 +1467,7 @@ async function runAigcDirect(
   taskType: string,
   model: string | undefined,
   params: Record<string, unknown>,
+  resume: ResumeContext,
 ): Promise<[Record<string, unknown>, number]> {
   if (!model) throw new Error(`model is required for AIGC direct path (${taskType})`);
 
@@ -1446,7 +1482,7 @@ async function runAigcDirect(
   const provider = await importProvider(taskType);
   const [, validated] = provider.validateParams(model, cleanParams);
 
-  const result = await provider.generateAsync(prompt, model, validated);
+  const result = await provider.generateAsync(prompt, model, validated, resume);
   const cost = (result.cost as number) ?? 0;
   const credits = cost * 100 * env.CREDIT_MULTIPLIER;
 
@@ -1521,7 +1557,7 @@ async function runSkillAgent(
  */
 async function importProvider(taskType: string): Promise<{
   validateParams: (model: string, params: Record<string, unknown>) => [string, Record<string, unknown>];
-  generateAsync: (prompt: string, model: string, params: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  generateAsync: (prompt: string, model: string, params: Record<string, unknown>, resume?: ResumeContext) => Promise<Record<string, unknown>>;
 }> {
   const modality = AIGC_TASK_TYPES[taskType] ?? taskType;
   /**
@@ -1533,10 +1569,10 @@ async function importProvider(taskType: string): Promise<{
    */
   const wrap = (
     validate: (m: string | undefined, p?: Record<string, unknown>) => [string, Record<string, unknown>],
-    generate: (prompt: string, model: string, params: Record<string, unknown>) => Promise<Record<string, unknown>>,
+    generate: (prompt: string, model: string, params: Record<string, unknown>, resume?: ResumeContext) => Promise<Record<string, unknown>>,
   ): {
     validateParams: (model: string, params: Record<string, unknown>) => [string, Record<string, unknown>];
-    generateAsync: (prompt: string, model: string, params: Record<string, unknown>) => Promise<Record<string, unknown>>;
+    generateAsync: (prompt: string, model: string, params: Record<string, unknown>, resume?: ResumeContext) => Promise<Record<string, unknown>>;
   } => ({
     validateParams: (model: string, params: Record<string, unknown>) => validate(model, params),
     generateAsync: generate,

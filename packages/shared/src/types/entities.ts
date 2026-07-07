@@ -98,6 +98,8 @@ export interface TaskEntity {
   source: string;
   /** URL returned by the AIGC provider (pre-persistence). Set as the "no-retry" point of no return. */
   providerResultUrl: string | null;
+  /** Vendor task id for async generation; on retry the Worker resumes by polling it (#1628). */
+  providerTaskId: string | null;
   /** Idempotency guard for credit deduction — set when charge has been applied. */
   billedAt: Date | null;
   /** Actual credits charged (audit trail). */

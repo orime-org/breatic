@@ -14,7 +14,8 @@
  *     GET  {base_url}/predictions/{task_id}/result  ->  poll until completed
  */
 
-import type { ResolvedModel } from "@worker/providers/shared.js";
+import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
+import { submitOrResume } from "@worker/providers/async-resume.js";
 import {
   bearerHeaders,
   requestWithRetry,
@@ -42,9 +43,16 @@ function extractOutputUrl(data: Record<string, unknown>): string | undefined {
  * Uses submit + poll pattern. The shared `requestWithRetry` handles
  * 429 exponential backoff. After completion, queries WaveSpeed billing
  * for actual cost.
+ *
+ * Submit is at-most-once across BullMQ retries (#1628): with a stored
+ * vendor task id the submit POST is skipped and polling resumes; on a
+ * fresh run the returned task id is persisted before polling starts.
+ * WaveSpeed has no client-side idempotency field, so nothing is added
+ * to the submit body (Tier B).
  * @param prompt - 3D object description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters (already converted by `buildRequest`)
+ * @param resume - Worker resume context; absent for legacy/direct callers
  * @returns Object with `url`, `model`, and `cost`
  * @throws {Error} if the task fails or returns no output
  */
@@ -52,6 +60,7 @@ export async function generate(
   prompt: string,
   resolved: ResolvedModel,
   params: Record<string, unknown>,
+  resume?: ResumeContext,
 ): Promise<{ url: string; model: string; cost: number }> {
   // Strip null/undefined values — WaveSpeed rejects nullable fields
   const body: Record<string, unknown> = {};
@@ -65,50 +74,83 @@ export async function generate(
   const headers = bearerHeaders(resolved.apiKey);
   const submitUrl = `${resolved.baseUrl}/${resolved.modelId}`;
 
-  const data = await requestWithRetry(
-    submitUrl,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
-    },
-    "wavespeed",
-  );
+  // Submit response captured when it already carries outputs, so poll()
+  // can short-circuit and preserve the pre-resume synchronous fast path.
+  let syncResult: Record<string, unknown> | null = null;
+  // The vendor task id poll() ran with (stored or fresh), used for the
+  // post-poll billing query.
+  let billedTaskId = "";
 
-  const url = extractOutputUrl(data);
-  const taskId = extractNested(data, ["data", "id"]) as string | undefined;
+  /**
+   * Submit the generation task to WaveSpeed.
+   * @returns The vendor task id
+   * @throws {Error} if the response carries no task id
+   */
+  const submit = async (): Promise<string> => {
+    const data = await requestWithRetry(
+      submitUrl,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(resolved.timeout * 1000),
+      },
+      "wavespeed",
+    );
 
-  // Synchronous result available
-  if (url) {
-    const cost = taskId ? await queryBilling(resolved, taskId) : 0;
-    return { url, model: resolved.modelName, cost };
-  }
+    if (extractOutputUrl(data) !== undefined) {
+      // Synchronous result available — poll() returns it without a GET.
+      syncResult = data;
+    }
 
-  if (!taskId) {
-    throw new Error("No task ID or outputs in WaveSpeed response");
-  }
+    const taskId = extractNested(data, ["data", "id"]) as string | undefined;
+    if (!taskId) {
+      throw new Error(`WaveSpeed returned no task id. Response: ${JSON.stringify(data)}`);
+    }
+    return taskId;
+  };
 
-  // Poll for async result (3D tasks can take up to 10 minutes)
-  const result = await pollUntilDone(
-    `${resolved.baseUrl}/predictions/${taskId}/result`,
-    {
-      headers,
-      statusPath: ["data", "status"],
-      successStatuses: new Set(["completed"]),
-      failureStatuses: new Set(["failed"]),
-      errorPath: ["data", "error"],
-      interval: 3000,
-      maxWait: 600_000,
-      provider: "wavespeed",
-    },
-  );
+  /**
+   * Poll the WaveSpeed task by id until it reaches a terminal status.
+   *
+   * Short-circuits when this run's submit already returned the outputs
+   * synchronously. 3D tasks can take up to 10 minutes, hence the long
+   * `maxWait`.
+   * @param taskId - The vendor task id to poll
+   * @returns The terminal poll (or synchronous submit) response
+   */
+  const poll = async (taskId: string): Promise<Record<string, unknown>> => {
+    billedTaskId = taskId;
+    if (syncResult) {
+      return syncResult;
+    }
+    return pollUntilDone(
+      `${resolved.baseUrl}/predictions/${taskId}/result`,
+      {
+        headers,
+        statusPath: ["data", "status"],
+        successStatuses: new Set(["completed"]),
+        failureStatuses: new Set(["failed"]),
+        errorPath: ["data", "error"],
+        interval: 3000,
+        maxWait: 600_000,
+        provider: "wavespeed",
+      },
+    );
+  };
+
+  const result = await submitOrResume({
+    storedTaskId: resume?.storedTaskId ?? null,
+    submit,
+    persistId: resume?.persistTaskId ?? (async (): Promise<void> => {}),
+    poll,
+  });
 
   const outputUrl = extractOutputUrl(result);
   if (!outputUrl) {
     throw new Error("No output URL after WaveSpeed polling");
   }
 
-  const cost = await queryBilling(resolved, taskId);
+  const cost = await queryBilling(resolved, billedTaskId);
   return { url: outputUrl, model: resolved.modelName, cost };
 }

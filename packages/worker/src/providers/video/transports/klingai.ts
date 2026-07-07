@@ -23,7 +23,8 @@
  */
 
 import { createHmac } from "node:crypto";
-import type { ResolvedModel } from "@worker/providers/shared.js";
+import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
+import { submitOrResume } from "@worker/providers/async-resume.js";
 import {
   requestWithRetry,
   pollUntilDone,
@@ -104,9 +105,16 @@ function extractVideoUrl(data: Record<string, unknown>): string | undefined {
 
 /**
  * Generate a video asynchronously via KlingAI official API.
+ *
+ * Submit is at-most-once across BullMQ retries (#1628): with a stored vendor
+ * task id the submit POST is skipped and polling resumes; a fresh submit
+ * carries a deterministic `external_task_id` (account-unique per Kling docs)
+ * so a retried identical submit is deduped vendor-side, and the returned
+ * task id is persisted before polling starts.
  * @param prompt - Video description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters (already converted by model family)
+ * @param resume - Worker resume context; absent for legacy/direct callers
  * @returns Object with `url`, `model`, and `cost`
  * @throws {Error} if the task fails or returns no output
  */
@@ -114,45 +122,66 @@ export async function generate(
   prompt: string,
   resolved: ResolvedModel,
   params: Record<string, unknown>,
+  resume?: ResumeContext,
 ): Promise<{ url: string; model: string; cost: number }> {
   const endpoint = inferEndpoint(params);
   const headers = authHeaders(resolved.apiKey);
 
-  const body: Record<string, unknown> = {
-    model_name: resolved.modelId,
-    prompt,
-    ...params,
-    ...resolved.extraParams,
+  /**
+   * Submit the generation task to KlingAI.
+   * @returns The vendor task id
+   * @throws {Error} if the response carries no task_id
+   */
+  const submit = async (): Promise<string> => {
+    const body: Record<string, unknown> = {
+      model_name: resolved.modelId,
+      prompt,
+      ...params,
+      ...resolved.extraParams,
+      // Tier A (#1628): deterministic client id → duplicate submits are
+      // rejected by Kling instead of creating a second billed task.
+      ...(resume ? { external_task_id: resume.externalTaskId } : {}),
+    };
+
+    const data = await requestWithRetry(
+      `${resolved.baseUrl}/videos/${endpoint}`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(resolved.timeout * 1000),
+      },
+      "klingai",
+    );
+
+    const taskId = extractNested(data, ["data", "task_id"]) as string | undefined;
+    if (!taskId) {
+      throw new Error(`KlingAI returned no task_id. Response: ${JSON.stringify(data)}`);
+    }
+    return taskId;
   };
 
-  const data = await requestWithRetry(
-    `${resolved.baseUrl}/videos/${endpoint}`,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
-    },
-    "klingai",
-  );
-
-  const taskId = extractNested(data, ["data", "task_id"]) as string | undefined;
-  if (!taskId) {
-    throw new Error(`KlingAI returned no task_id. Response: ${JSON.stringify(data)}`);
-  }
-
-  // Poll for result
-  const result = await pollUntilDone(
-    `${resolved.baseUrl}/videos/${endpoint}/${taskId}`,
-    {
+  /**
+   * Poll the KlingAI task by id until it reaches a terminal status.
+   * @param taskId - The vendor task id to poll
+   * @returns The terminal poll response
+   */
+  const poll = (taskId: string): Promise<Record<string, unknown>> =>
+    pollUntilDone(`${resolved.baseUrl}/videos/${endpoint}/${taskId}`, {
       headers,
       statusPath: ["data", "task_status"],
       successStatuses: new Set(["succeed"]),
       failureStatuses: new Set(["failed"]),
       errorPath: ["data", "task_status_msg"],
       provider: "klingai",
-    },
-  );
+    });
+
+  const result = await submitOrResume({
+    storedTaskId: resume?.storedTaskId ?? null,
+    submit,
+    persistId: resume?.persistTaskId ?? (async (): Promise<void> => {}),
+    poll,
+  });
 
   const url = extractVideoUrl(result);
   if (!url) {

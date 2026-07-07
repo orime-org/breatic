@@ -20,7 +20,8 @@
  * Models served: (none currently — retained for provider infrastructure)
  */
 
-import type { ResolvedModel } from "@worker/providers/shared.js";
+import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
+import { submitOrResume } from "@worker/providers/async-resume.js";
 import {
   bearerHeaders,
   pollUntilDone,
@@ -102,9 +103,15 @@ function extractCost(data: Record<string, unknown>): number {
  * Generate an image asynchronously via DashScope API.
  *
  * Submits a task then polls until completion using the shared polling utility.
+ *
+ * Submit is at-most-once across BullMQ retries (#1628): with a stored vendor
+ * task id the submit POST is skipped and polling resumes; on a fresh run the
+ * server-returned task id is persisted before polling starts (DashScope has
+ * no client-side idempotency field, so only the returned id is stored).
  * @param prompt - Image description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters
+ * @param resume - Worker resume context; absent for legacy/direct callers
  * @returns Object with `url`, `model`, and `cost`
  * @throws {Error} if the task fails or returns no output
  */
@@ -112,38 +119,51 @@ export async function generate(
   prompt: string,
   resolved: ResolvedModel,
   params: Record<string, unknown>,
+  resume?: ResumeContext,
 ): Promise<{ url: string; model: string; cost: number }> {
   const body = buildRequestBody(prompt, resolved, params);
   const headers = authHeaders(resolved.apiKey);
 
-  const submitUrl = `${resolved.baseUrl}/services/aigc/text2image/image-synthesis`;
-  const response = await fetch(submitUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(resolved.timeout * 1000),
-  });
+  /**
+   * Submit the generation task to DashScope.
+   * @returns The vendor task id
+   * @throws {Error} if the HTTP call fails or the response carries no task_id
+   */
+  const submit = async (): Promise<string> => {
+    const submitUrl = `${resolved.baseUrl}/services/aigc/text2image/image-synthesis`;
+    const response = await fetch(submitUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(resolved.timeout * 1000),
+    });
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`DashScope API HTTP ${response.status}: ${text}`);
-  }
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`DashScope API HTTP ${response.status}: ${text}`);
+    }
 
-  const data = (await response.json()) as Record<string, unknown>;
-  const taskId = extractNested(data, ["output", "task_id"]) as string | undefined;
+    const data = (await response.json()) as Record<string, unknown>;
+    const taskId = extractNested(data, ["output", "task_id"]) as string | undefined;
 
-  if (!taskId) {
-    throw new Error(`DashScope returned no task_id. Response: ${JSON.stringify(data)}`);
-  }
+    if (!taskId) {
+      throw new Error(`DashScope returned no task_id. Response: ${JSON.stringify(data)}`);
+    }
+    return taskId;
+  };
 
   // Poll for result using bearer headers without the async flag
   const pollHeaders: Record<string, string> = {
     Authorization: `Bearer ${resolved.apiKey}`,
   };
 
-  const result = await pollUntilDone(
-    `${resolved.baseUrl}/tasks/${taskId}`,
-    {
+  /**
+   * Poll the DashScope task by id until it reaches a terminal status.
+   * @param taskId - The vendor task id to poll
+   * @returns The terminal poll response
+   */
+  const poll = (taskId: string): Promise<Record<string, unknown>> =>
+    pollUntilDone(`${resolved.baseUrl}/tasks/${taskId}`, {
       headers: pollHeaders,
       statusPath: ["output", "task_status"],
       successStatuses: new Set(["SUCCEEDED"]),
@@ -152,8 +172,14 @@ export async function generate(
       interval: 3000,
       maxWait: 300_000,
       provider: "dashscope",
-    },
-  );
+    });
+
+  const result = await submitOrResume({
+    storedTaskId: resume?.storedTaskId ?? null,
+    submit,
+    persistId: resume?.persistTaskId ?? (async (): Promise<void> => {}),
+    poll,
+  });
 
   const url = extractImageUrl(result);
   if (!url) {
