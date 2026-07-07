@@ -58,54 +58,156 @@ describe('fileToNodeSpec — MIME → which node + whether to upload', () => {
   });
 });
 
-describe('runMediaUpload — presign → PUT → success / failure callbacks', () => {
+/** The knob fixture threaded through the upload orchestration tests. */
+const CFG = {
+  maxUploadBytes: 2147483648,
+  clientMaxAttempts: 3,
+  clientRetryBaseDelayMs: 1000,
+  clientRequestTimeoutMs: 30000,
+  clientPutMinBytesPerSec: 65536,
+};
+
+const HASH = 'a'.repeat(64);
+
+/** Shared orchestration deps (config + hash + network spies). */
+function makeUploadDeps(
+  over: Partial<Parameters<typeof runMediaUpload>[2]> = {},
+): Parameters<typeof runMediaUpload>[2] {
+  return {
+    getUploadConfig: vi.fn().mockResolvedValue(CFG),
+    hashFile: vi.fn().mockResolvedValue(HASH),
+    presign: vi.fn().mockResolvedValue({
+      uploadUrl: 'https://put',
+      fileUrl: 'https://cdn/p.png',
+      key: 'k',
+      kind: 'image',
+    }),
+    putFile: vi.fn().mockResolvedValue(undefined),
+    onSuccess: vi.fn(),
+    onFailure: vi.fn(),
+    sleep: () => Promise.resolve(),
+    ...over,
+  };
+}
+
+describe('runMediaUpload — config → hash → presign(dedup) → PUT → callbacks', () => {
   const file = new File(['x'], 'photo.png', { type: 'image/png' });
 
-  it('presigns with the file name + type, PUTs, then reports the public URL', async () => {
-    const presign = vi
-      .fn()
-      .mockResolvedValue({ uploadUrl: 'https://put', fileUrl: 'https://cdn/p.png', key: 'k', kind: 'image' });
-    const putFile = vi.fn().mockResolvedValue(undefined);
-    const onSuccess = vi.fn();
-    const onFailure = vi.fn();
+  it('presigns with name + type + size + hash, PUTs with the config, reports the URL', async () => {
+    const deps = makeUploadDeps();
+    const onUploaded = vi.fn();
 
-    await runMediaUpload(file, 'p1', { presign, putFile, onSuccess, onFailure });
+    await runMediaUpload(file, 'p1', { ...deps, onUploaded });
 
-    expect(presign).toHaveBeenCalledWith({
+    expect(deps.presign).toHaveBeenCalledWith({
       filename: 'photo.png',
       contentType: 'image/png',
       projectId: 'p1',
+      size: file.size,
+      hash: HASH,
     });
-    expect(putFile).toHaveBeenCalledWith('https://put', file);
-    expect(onSuccess).toHaveBeenCalledExactlyOnceWith('https://cdn/p.png');
-    expect(onFailure).not.toHaveBeenCalled();
+    expect(deps.putFile).toHaveBeenCalledWith('https://put', file, CFG);
+    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith('https://cdn/p.png');
+    expect(onUploaded).toHaveBeenCalledExactlyOnceWith({
+      key: 'k',
+      kind: 'image',
+      fileUrl: 'https://cdn/p.png',
+      hash: HASH,
+    });
+    expect(deps.onFailure).not.toHaveBeenCalled();
   });
 
-  it('reports failure when presign throws (PUT not attempted)', async () => {
-    const presign = vi.fn().mockRejectedValue(new Error('403'));
-    const putFile = vi.fn();
-    const onSuccess = vi.fn();
-    const onFailure = vi.fn();
+  it('dedup hit: skips the PUT entirely and reuses the existing URL (B.2)', async () => {
+    const deps = makeUploadDeps({
+      presign: vi.fn().mockResolvedValue({
+        alreadyExists: true,
+        fileUrl: 'https://cdn/existing.png',
+        kind: 'image',
+      }),
+    });
+    const onUploaded = vi.fn();
 
-    await runMediaUpload(file, 'p1', { presign, putFile, onSuccess, onFailure });
+    await runMediaUpload(file, 'p1', { ...deps, onUploaded });
 
-    expect(putFile).not.toHaveBeenCalled();
-    expect(onSuccess).not.toHaveBeenCalled();
-    expect(onFailure).toHaveBeenCalledOnce();
+    expect(deps.putFile).not.toHaveBeenCalled();
+    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith('https://cdn/existing.png');
+    expect(onUploaded).toHaveBeenCalledExactlyOnceWith({
+      dedup: true,
+      kind: 'image',
+      fileUrl: 'https://cdn/existing.png',
+      hash: HASH,
+    });
+  });
+
+  it('hash degrade: hashing failed (null) → the upload still runs, hash omitted', async () => {
+    const deps = makeUploadDeps({ hashFile: vi.fn().mockResolvedValue(null) });
+    const onUploaded = vi.fn();
+
+    await runMediaUpload(file, 'p1', { ...deps, onUploaded });
+
+    expect(deps.presign).toHaveBeenCalledWith(
+      expect.objectContaining({ hash: null }),
+    );
+    expect(deps.onSuccess).toHaveBeenCalledOnce();
+    expect(onUploaded).toHaveBeenCalledExactlyOnceWith({
+      key: 'k',
+      kind: 'image',
+      fileUrl: 'https://cdn/p.png',
+      hash: null,
+    });
+  });
+
+  it('retries a transient presign failure (5xx) before succeeding', async () => {
+    const presign = vi
+      .fn()
+      .mockRejectedValueOnce({ response: { status: 503 } })
+      .mockResolvedValueOnce({
+        uploadUrl: 'https://put',
+        fileUrl: 'https://cdn/p.png',
+        key: 'k',
+        kind: 'image',
+      });
+    const deps = makeUploadDeps({ presign });
+
+    await runMediaUpload(file, 'p1', deps);
+
+    expect(presign).toHaveBeenCalledTimes(2);
+    expect(deps.onSuccess).toHaveBeenCalledOnce();
+    expect(deps.onFailure).not.toHaveBeenCalled();
+  });
+
+  it('reports failure when presign finally throws (PUT not attempted)', async () => {
+    const deps = makeUploadDeps({
+      presign: vi.fn().mockRejectedValue({ response: { status: 403 } }),
+    });
+
+    await runMediaUpload(file, 'p1', deps);
+
+    expect(deps.putFile).not.toHaveBeenCalled();
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledOnce();
   });
 
   it('reports failure when the PUT throws', async () => {
-    const presign = vi
-      .fn()
-      .mockResolvedValue({ uploadUrl: 'https://put', fileUrl: 'https://cdn/p.png', key: 'k', kind: 'image' });
-    const putFile = vi.fn().mockRejectedValue(new Error('network'));
-    const onSuccess = vi.fn();
-    const onFailure = vi.fn();
+    const deps = makeUploadDeps({
+      putFile: vi.fn().mockRejectedValue(new Error('network')),
+    });
 
-    await runMediaUpload(file, 'p1', { presign, putFile, onSuccess, onFailure });
+    await runMediaUpload(file, 'p1', deps);
 
-    expect(onSuccess).not.toHaveBeenCalled();
-    expect(onFailure).toHaveBeenCalledOnce();
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledOnce();
+  });
+
+  it('reports failure when the config fetch itself fails', async () => {
+    const deps = makeUploadDeps({
+      getUploadConfig: vi.fn().mockRejectedValue(new Error('down')),
+    });
+
+    await runMediaUpload(file, 'p1', deps);
+
+    expect(deps.presign).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledOnce();
   });
 });
 
@@ -116,6 +218,8 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
   /** Build the injected sinks + spies for a fill run. */
   function makeDeps(over: Partial<Parameters<typeof fillNodeFromFile>[4]> = {}) {
     return {
+      getUploadConfig: vi.fn().mockResolvedValue(CFG),
+      hashFile: vi.fn().mockResolvedValue(HASH),
       presign: vi.fn().mockResolvedValue({
         uploadUrl: 'https://put',
         fileUrl: 'https://cdn/p.png',
@@ -130,6 +234,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       setHandling: vi.fn().mockReturnValue(LEASE),
       setContent: vi.fn().mockReturnValue(true),
       setError: vi.fn().mockReturnValue(true),
+      sleep: () => Promise.resolve(),
       ...over,
     };
   }

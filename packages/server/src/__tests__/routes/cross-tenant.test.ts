@@ -87,7 +87,7 @@ describe("GET /assets/presign — project ownership", () => {
     mocks.projectService.assertAccess.mockRejectedValue(new ForbiddenError("nope"));
     const app = createApp();
     const res = await app.request(
-      `/api/v1/assets/presign?filename=a.png&content_type=image/png&project_id=${PROJ_UUID}`,
+      `/api/v1/assets/presign?filename=a.png&content_type=image/png&project_id=${PROJ_UUID}&size=1`,
       { headers: AUTH },
     );
     expect(res.status).toBe(403);

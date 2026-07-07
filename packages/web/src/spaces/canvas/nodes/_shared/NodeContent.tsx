@@ -4,6 +4,7 @@
 import * as React from 'react';
 
 import { Skeleton } from '@web/components/ui/skeleton';
+import { useTranslation } from '@web/i18n/use-translation';
 import type { DisplayStatus } from '@web/spaces/canvas/types/node-view';
 
 interface NodeContentProps {
@@ -12,6 +13,12 @@ interface NodeContentProps {
   hasContent: boolean;
   placeholder: React.ReactNode;
   content: React.ReactNode;
+  /**
+   * Retry a failed upload (#1609 P4) — present only while the session
+   * still stashes the failed File; the error branch then renders a
+   * Retry button. Pre-bound to the node id by the canvas.
+   */
+  onRetry?: () => void;
 }
 
 /**
@@ -25,6 +32,7 @@ interface NodeContentProps {
  * @param root0.hasContent - Whether a content payload exists, choosing content vs placeholder when idle.
  * @param root0.placeholder - Empty-state node rendered when idle with no content.
  * @param root0.content - Modality-specific body rendered when idle with content.
+ * @param root0.onRetry - Retry a failed upload; when present the error branch renders a Retry button (#1609 P4).
  * @returns The branch element for the current node state.
  */
 export function NodeContent({
@@ -33,7 +41,9 @@ export function NodeContent({
   hasContent,
   placeholder,
   content,
+  onRetry,
 }: NodeContentProps): React.JSX.Element {
+  const t = useTranslation();
   if (status === 'handling') {
     // The skeleton fills the fixed empty-state box (288 x 192) so a node that is
     // generating keeps the footprint it had while empty, then grows to its real
@@ -51,9 +61,22 @@ export function NodeContent({
     return (
       <div
         data-testid='node-content-error'
-        className='flex h-full w-full items-center justify-center p-3 text-xs text-status-error-foreground'
+        className='flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-xs text-status-error-foreground'
       >
-        {errorMessage ?? 'Something went wrong.'}
+        <span>{errorMessage ?? 'Something went wrong.'}</span>
+        {onRetry ? (
+          <button
+            type='button'
+            data-testid='node-content-retry'
+            className='nodrag rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted focus-visible:outline-2'
+            onClick={(event) => {
+              event.stopPropagation();
+              onRetry();
+            }}
+          >
+            {t('canvas.upload.retry')}
+          </button>
+        ) : null}
       </div>
     );
   }

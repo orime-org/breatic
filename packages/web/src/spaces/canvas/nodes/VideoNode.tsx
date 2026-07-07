@@ -15,6 +15,8 @@ interface VideoNodeProps {
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
+  /** Retry a failed upload (error state), pre-bound to this node (#1609 P4). */
+  onRetryUpload?: () => void;
   onRename?: (name: string) => void;
 }
 
@@ -27,6 +29,7 @@ interface VideoNodeProps {
  * @param root0.selected - Whether the node is selected, driving the selection ring.
  * @param root0.locked - Whether the node is locked, showing the lock indicator.
  * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
+ * @param root0.onRetryUpload - Retry a failed upload from the session stash (#1609 P4); absent hides the Retry button.
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
  * @returns The video node element (placeholder or native video player).
  */
@@ -35,6 +38,7 @@ export function VideoNode({
   selected,
   locked,
   onActivate,
+  onRetryUpload,
   onRename,
 }: VideoNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
@@ -53,6 +57,7 @@ export function VideoNode({
       <NodeContent
         status={data.status}
         errorMessage={data.errorMessage}
+        onRetry={onRetryUpload}
         hasContent={hasContent}
         placeholder={
           <NodePlaceholder modality='video' onActivate={onActivate} />

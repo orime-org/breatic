@@ -86,6 +86,7 @@
     "copy-to-clipboard": "^3.3.3",
     "dayjs": "^1.11.19",
     "dompurify": "^3.3.3",
+    "hash-wasm": "^4.12.0",
     "highlight.js": "^11.11.1",
     "i18next": "^23.16.8",
     "i18next-browser-languagedetector": "^8.2.0",

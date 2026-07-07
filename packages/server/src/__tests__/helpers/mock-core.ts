@@ -320,6 +320,12 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     env: { ENV: "dev", PORT: 3000, ALLOWED_ORIGINS: "http://localhost:3001", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled" },
     MONOREPO_ROOT: "/tmp",
     getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, full_detail_turns: 3, memory_user_max_size: 1000, memory_project_max_size: 1000 }),
+    // Values intentionally differ from config/storage.yaml so route tests
+    // prove the endpoint reads config instead of hardcoding.
+    getStorageConfig: () => ({
+      download: { max_attempts: 3, retry_base_delay_ms: 500 },
+      upload: { max_upload_bytes: 1024, client_max_attempts: 2, client_retry_base_delay_ms: 250, client_request_timeout_ms: 5000, client_put_min_bytes_per_sec: 1024 },
+    }),
     // Logger
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
     // Infra-adjacent services that STAY in @breatic/core.

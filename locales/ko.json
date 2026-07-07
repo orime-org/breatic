@@ -6,6 +6,7 @@
       "unauthorized": "인증 정보가 유효하지 않거나 만료되었습니다",
       "conflict": "리소스 충돌",
       "validation": "입력값이 유효하지 않습니다",
+      "upload_too_large": "파일이 업로드 크기 제한을 초과했습니다.",
       "insufficient_credits": "크레딧이 부족합니다: 필요 {required}, 보유 {available}",
       "rate_limited": "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요",
       "internal": "내부 서버 오류",
@@ -320,7 +321,9 @@
     "upload": {
       "nodeBusy": "이 노드는 사용 중입니다 — 다른 작업이 진행 중입니다.",
       "ownershipLost": "업로드 결과가 기록되지 않았습니다 — 노드가 삭제되었거나 다른 사용자가 이어받았습니다.",
-      "typeMismatch": "파일 형식이 노드와 일치하지 않습니다."
+      "typeMismatch": "파일 형식이 노드와 일치하지 않습니다.",
+      "retry": "다시 업로드",
+      "tooLarge": "{filename}은(는) 업로드 크기 제한을 초과했습니다."
     },
     "minimap": {
       "label": "캔버스 미니맵"
