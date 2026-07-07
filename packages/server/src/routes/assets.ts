@@ -105,7 +105,18 @@ assets.get("/upload-config", requireAuth, (c) => {
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 const presignSchema = z.object({
-  filename: z.string().min(1).max(255),
+  filename: z
+    .string()
+    .min(1)
+    .max(255)
+    // Reject path separators + control chars (#1630 hardening): the
+    // filename's extension is spliced into the storage key, so a "/" or
+    // "\\" could inject a stray path segment. Everything else — Unicode
+    // letters (Chinese / Japanese filenames), spaces, punctuation — stays
+    // allowed; this is a global product, an ASCII-only whitelist would
+    // wrongly reject legitimate non-Latin filenames.
+    // eslint-disable-next-line no-control-regex -- rejecting control chars IS the intent
+    .regex(/^[^/\\\x00-\x1f\x7f]+$/, "filename contains an unsafe character"),
   content_type: z.string().min(1).max(100),
   project_id: z.string().uuid(),
   /** Declared byte size — the authoritative upload-cap gate input. */

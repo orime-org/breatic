@@ -54,6 +54,30 @@ describe("Assets routes", () => {
       expect(res.status).toBe(400);
     });
 
+    it("rejects a filename with a path separator or control char (400)", async () => {
+      const app = createApp();
+      const proj = "a0000000-0000-4000-8000-000000000001";
+      for (const bad of ["a/b.png", "a\\b.png", "a\u0001b.png"]) {
+        const res = await app.request(
+          `/api/v1/assets/presign?filename=${encodeURIComponent(bad)}&content_type=image/png&project_id=${proj}&size=1`,
+          { headers: AUTH },
+        );
+        expect(res.status).toBe(400);
+      }
+    });
+
+    it("accepts a Unicode (Chinese) filename — the whitelist must not reject it", async () => {
+      const app = createApp();
+      const proj = "a0000000-0000-4000-8000-000000000001";
+      const res = await app.request(
+        `/api/v1/assets/presign?filename=${encodeURIComponent("我的图片 (1).png")}&content_type=image/png&project_id=${proj}&size=1`,
+        { headers: AUTH },
+      );
+      // Passes the filename validator (any later failure is the mocked
+      // storage adapter, never a 400 from the character check).
+      expect(res.status).not.toBe(400);
+    });
+
     it("requires the declared size (400 without it)", async () => {
       const app = createApp();
       const res = await app.request(
