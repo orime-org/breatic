@@ -1069,7 +1069,15 @@
       "isMe": "(you)",
       "remove": "Remove",
       "removeConfirmTitle": "Remove collaborator?",
-      "removeConfirmBody": "{name} will lose access to this project. This cannot be undone."
+      "removeConfirmBody": "{name} will lose access to this project. This cannot be undone.",
+      "transferTitle": "Transfer ownership",
+      "transferHint": "Hand this Project to another member of this Studio. They become the Owner and you become an Editor once they accept.",
+      "transferButton": "Transfer ownership…",
+      "transferSelectPlaceholder": "Select a member",
+      "transferSend": "Send request",
+      "transferNoCandidates": "No eligible members yet. Add an Editor or Viewer who also belongs to this Studio first.",
+      "transferSuccess": "Transfer request sent to {name}.",
+      "transferFailed": "Could not send the transfer request. Please try again."
     },
     "stack": {
       "triggerAria": "Project members ({count})",
@@ -1378,6 +1386,8 @@
     "actionFailed": "Could not complete the action. Please try again.",
     "transferConfirmedToast": "You are now the studio admin.",
     "transferCancelledToast": "Transfer declined.",
+    "projectTransferConfirmedToast": "You are now the project owner.",
+    "projectTransferCancelledToast": "Transfer declined.",
     "transferAccept": "Accept",
     "transferDecline": "Decline",
     "subtitle": {

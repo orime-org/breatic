@@ -1069,7 +1069,15 @@
       "isMe": "(自分)",
       "remove": "削除",
       "removeConfirmTitle": "コラボレーターを削除しますか？",
-      "removeConfirmBody": "{name} はこの Project へのアクセスを失います。この操作は元に戻せません。"
+      "removeConfirmBody": "{name} はこの Project へのアクセスを失います。この操作は元に戻せません。",
+      "transferTitle": "所有権を委譲",
+      "transferHint": "この Project を同じ Studio の別のメンバーに委譲します。相手が承認すると Owner になり、あなたは Editor になります。",
+      "transferButton": "所有権を委譲…",
+      "transferSelectPlaceholder": "メンバーを選択",
+      "transferSend": "リクエストを送信",
+      "transferNoCandidates": "対象のメンバーがいません。まず同じ Studio に属する Editor または Viewer を追加してください。",
+      "transferSuccess": "{name} に委譲リクエストを送信しました。",
+      "transferFailed": "委譲リクエストを送信できませんでした。もう一度お試しください。"
     },
     "stack": {
       "triggerAria": "Project メンバー({count})",
@@ -1368,7 +1376,7 @@
       "studioTransferRequest": "{actor} さんが {studio} の引き継ぎを依頼しました",
       "studioTransferApproved": "{actor} さんが {studio} の Admin 委譲を承認しました",
       "projectTransferRequest": "{actor} さんが {project} の引き継ぎを依頼しました",
-      "projectTransferApproved": "{actor} さんが {project} のオーナー委譲を承認しました",
+      "projectTransferApproved": "{actor} さんが {project} の所有権移譲を承認しました",
       "studioInviteRequest": "{actor} さんが {studio} への参加に招待しました",
       "studioInviteAccepted": "{actor} さんが {studio} への招待を承認しました",
       "projectInviteRequest": "{actor} さんが {project} への参加に招待しました",
@@ -1378,6 +1386,8 @@
     "actionFailed": "操作を完了できませんでした。もう一度お試しください。",
     "transferConfirmedToast": "あなたが Studio の Admin になりました。",
     "transferCancelledToast": "委譲を辞退しました。",
+    "projectTransferConfirmedToast": "あなたが Project の Owner になりました。",
+    "projectTransferCancelledToast": "委譲を辞退しました。",
     "transferAccept": "承認",
     "transferDecline": "辞退",
     "subtitle": {

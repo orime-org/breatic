@@ -1069,7 +1069,15 @@
       "isMe": "(你)",
       "remove": "移除",
       "removeConfirmTitle": "移除協作者？",
-      "removeConfirmBody": "{name} 將失去這個 Project 的存取權限。此操作無法復原。"
+      "removeConfirmBody": "{name} 將失去這個 Project 的存取權限。此操作無法復原。",
+      "transferTitle": "轉讓所有權",
+      "transferHint": "將這個 Project 轉讓給本 Studio 的另一位成員。對方接受後成為 Owner,你會變成 Editor。",
+      "transferButton": "轉讓所有權…",
+      "transferSelectPlaceholder": "選擇一位成員",
+      "transferSend": "傳送請求",
+      "transferNoCandidates": "暫無合適的成員。請先新增一位同屬本 Studio 的 Editor 或 Viewer。",
+      "transferSuccess": "已向 {name} 傳送轉讓請求。",
+      "transferFailed": "轉讓請求傳送失敗,請重試。"
     },
     "stack": {
       "triggerAria": "Project 成員（{count}）",
@@ -1378,6 +1386,8 @@
     "actionFailed": "無法完成操作，請重試。",
     "transferConfirmedToast": "你現在是該 Studio 的 Admin 了。",
     "transferCancelledToast": "已拒絕轉讓。",
+    "projectTransferConfirmedToast": "你現在是該 Project 的 Owner 了。",
+    "projectTransferCancelledToast": "已拒絕轉讓。",
     "transferAccept": "接受",
     "transferDecline": "拒絕",
     "subtitle": {

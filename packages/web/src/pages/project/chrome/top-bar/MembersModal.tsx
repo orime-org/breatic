@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
@@ -36,11 +36,14 @@ import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { useTranslation } from '@web/i18n/use-translation';
 import { membersApi } from '@web/data/api/members';
 import type { Member, MemberRole } from '@web/data/api/members';
+import { projectsApi } from '@web/data/api/projects';
 
 interface MembersModalProps {
   projectId?: string;
   members?: ReadonlyArray<Member>;
   currentUserId?: string;
+  /** Viewer's own role on this project; the transfer section is owner-only. */
+  currentUserRole?: MemberRole;
 }
 
 const STUB_MEMBERS: ReadonlyArray<Member> = [
@@ -88,14 +91,19 @@ function initialsOf(name: string): string {
  * @param root0.projectId - Id of the project whose membership is managed; role/remove calls target it.
  * @param root0.members - Members to list; defaults to stub data when not supplied.
  * @param root0.currentUserId - Viewer's user id, used to mark and protect their own row.
+ * @param root0.currentUserRole - Viewer's own project role; gates the owner-only transfer section.
  * @returns the collaborator management dialog with role and remove controls.
  */
 export function MembersModal({
   projectId,
   members = STUB_MEMBERS,
   currentUserId,
+  currentUserRole,
 }: MembersModalProps): React.JSX.Element {
   const t = useTranslation();
+  const isOwner = currentUserRole === 'owner';
+  const canTransfer =
+    isOwner && projectId !== undefined && projectId !== 'demo';
   const [open, setOpen] = useExclusiveOverlay('members-modal');
   const [pendingRowId, setPendingRowId] = React.useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = React.useState<Member | null>(null);
@@ -183,6 +191,10 @@ export function MembersModal({
                 </li>
               ))}
             </ul>
+
+            {canTransfer && projectId ? (
+              <TransferOwnershipSection projectId={projectId} members={members} />
+            ) : null}
           </DialogBody>
         </DialogContent>
       </Dialog>
@@ -225,6 +237,150 @@ export function MembersModal({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+interface TransferOwnershipSectionProps {
+  projectId: string;
+  members: ReadonlyArray<Member>;
+}
+
+/**
+ * Owner-only "Transfer ownership" section pinned to the bottom of the members
+ * modal (Danger-Zone convention). Expands inline to a recipient picker whose
+ * options are the backend's transfer candidates (project members who are also
+ * non-guest studio members) merged with the already-loaded display profiles —
+ * so it never offers a recipient the backend would reject. Sending is a
+ * two-step handshake: it dispatches a request the recipient accepts via their
+ * bell; no role change until then.
+ * @param root0 - Transfer section props.
+ * @param root0.projectId - The project whose ownership may be transferred.
+ * @param root0.members - The loaded member roster (source of display names).
+ * @returns the transfer section (collapsed button, or the inline picker).
+ */
+function TransferOwnershipSection({
+  projectId,
+  members,
+}: TransferOwnershipSectionProps): React.JSX.Element {
+  const t = useTranslation();
+  const [expanded, setExpanded] = React.useState(false);
+  const [selected, setSelected] = React.useState('');
+  const [sending, setSending] = React.useState(false);
+
+  const candidatesQuery = useQuery({
+    queryKey: ['transfer-candidates', projectId],
+    queryFn: () => membersApi.transferCandidates(projectId),
+    enabled: expanded,
+  });
+  const candidateIds = new Set(
+    (candidatesQuery.data ?? []).map((c) => c.userId),
+  );
+  const candidates = members.filter((m) => candidateIds.has(m.userId));
+
+  /**
+   * Sends the ownership-transfer request to the picked recipient, then collapses.
+   * @throws {never} network / API errors are caught and surfaced as an error toast.
+   */
+  async function handleSend(): Promise<void> {
+    if (!selected || sending) return;
+    setSending(true);
+    try {
+      await projectsApi.transferOwner(projectId, selected);
+      const name = candidates.find((c) => c.userId === selected)?.name ?? '';
+      toast.success(t('members.modal.transferSuccess', { name }));
+      setExpanded(false);
+      setSelected('');
+    } catch {
+      toast.error(t('members.modal.transferFailed'));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div
+      className='mt-3 border-t border-border pt-3'
+      data-testid='members-modal-transfer'
+    >
+      <div className='flex items-start justify-between gap-3'>
+        <div className='flex min-w-0 flex-col gap-0.5'>
+          <span className='text-sm font-medium text-foreground'>
+            {t('members.modal.transferTitle')}
+          </span>
+          <span className='text-xs text-muted-foreground'>
+            {t('members.modal.transferHint')}
+          </span>
+        </div>
+        {!expanded ? (
+          <Button
+            variant='outline'
+            size='sm'
+            className='h-8 shrink-0 text-xs'
+            onClick={() => setExpanded(true)}
+            data-testid='members-modal-transfer-open'
+          >
+            {t('members.modal.transferButton')}
+          </Button>
+        ) : null}
+      </div>
+
+      {expanded ? (
+        <div
+          className='mt-3 flex flex-col gap-3'
+          data-testid='members-modal-transfer-panel'
+        >
+          {candidatesQuery.isLoading ? (
+            <span className='text-xs text-muted-foreground'>…</span>
+          ) : candidates.length === 0 ? (
+            <span className='text-xs text-muted-foreground'>
+              {t('members.modal.transferNoCandidates')}
+            </span>
+          ) : (
+            <Select value={selected} onValueChange={setSelected}>
+              <SelectTrigger
+                className='h-9 text-sm'
+                data-testid='members-modal-transfer-select'
+                aria-label={t('members.modal.transferSelectPlaceholder')}
+              >
+                <SelectValue
+                  placeholder={t('members.modal.transferSelectPlaceholder')}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {candidates.map((c) => (
+                  <SelectItem key={c.userId} value={c.userId}>
+                    {c.email ? `${c.name} · ${c.email}` : c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <div className='flex items-center justify-end gap-2'>
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-8 text-xs'
+              onClick={() => {
+                setExpanded(false);
+                setSelected('');
+              }}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant='destructive'
+              size='sm'
+              className='h-8 text-xs'
+              disabled={!selected || sending}
+              onClick={() => void handleSend()}
+              data-testid='members-modal-transfer-send'
+            >
+              {t('members.modal.transferSend')}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

@@ -23,7 +23,9 @@ export type NotificationType =
   | 'studio.invite_request'
   | 'studio.invite_accepted'
   | 'project.invite_request'
-  | 'project.invite_accepted';
+  | 'project.invite_accepted'
+  | 'project.transfer_request'
+  | 'project.transfer_approved';
 
 /** Action on an actionable notification (e.g. a studio transfer request). */
 export type NotificationAction = 'confirm' | 'cancel';

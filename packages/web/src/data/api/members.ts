@@ -33,6 +33,19 @@ export const membersApi = {
   list(projectId: string) {
     return apiGet<ProjectMembership[]>(`/projects/${projectId}/members`);
   },
+  /**
+   * `GET /projects/:id/members/transfer-candidates` — owner-only. The eligible
+   * owner-transfer recipients: active project members (editor / viewer) who are
+   * also active non-guest studio members (ADR D3). Carries the role relation
+   * only (like `list`); the caller merges display profiles it already has.
+   * @param projectId - The project whose transfer candidates to list.
+   * @returns the eligible recipients' `{ userId, role }` rows.
+   */
+  transferCandidates(projectId: string) {
+    return apiGet<ProjectMembership[]>(
+      `/projects/${projectId}/members/transfer-candidates`,
+    );
+  },
   setRole(projectId: string, memberId: string, role: MemberRole) {
     return apiPatch<Member>(`/projects/${projectId}/members/${memberId}`, {
       role,
