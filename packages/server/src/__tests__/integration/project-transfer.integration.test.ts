@@ -198,11 +198,21 @@ interface Seeded {
 }
 
 /**
- * A team studio (admin) with a project owned by a maintainer (`ownerId`) and a
- * second maintainer (`recipientId`) who is NOT yet a project member — so
- * confirm exercises the materializeOwner insert path.
+ * A team studio (admin) with a project owned by `ownerId`. By default the
+ * `recipientId` is BOTH a studio maintainer AND a project editor — the two
+ * layers a project-transfer recipient must satisfy (D3, 2026-07-08). Each layer
+ * can be overridden (or nulled) independently so a test can seed an ineligible
+ * recipient: a non-project-member, an outside collaborator (project member but
+ * not a studio member), or a studio guest.
  */
-async function seedProjectTransfer(): Promise<Seeded> {
+async function seedProjectTransfer(opts?: {
+  recipientStudioRole?: "admin" | "maintainer" | "guest" | null;
+  recipientProjectRole?: "editor" | "viewer" | null;
+}): Promise<Seeded> {
+  const recipientStudioRole =
+    opts?.recipientStudioRole === undefined ? "maintainer" : opts.recipientStudioRole;
+  const recipientProjectRole =
+    opts?.recipientProjectRole === undefined ? "editor" : opts.recipientProjectRole;
   const adminId = await insertUser();
   const ownerId = await insertUser();
   const recipientId = await insertUser();
@@ -212,8 +222,11 @@ async function seedProjectTransfer(): Promise<Seeded> {
   const recipientSlug = await insertPersonalStudio(recipientId, recipientName);
   const studio = await insertTeamStudio(adminId);
   await insertStudioMember(studio.id, ownerId, "maintainer");
-  await insertStudioMember(studio.id, recipientId, "maintainer");
+  if (recipientStudioRole)
+    await insertStudioMember(studio.id, recipientId, recipientStudioRole);
   const project = await insertProject(studio.id, ownerId);
+  if (recipientProjectRole)
+    await insertProjectMember(project.id, recipientId, recipientProjectRole);
   return {
     studioId: studio.id,
     projectId: project.id,
@@ -270,20 +283,33 @@ describe("requestProjectTransfer", () => {
   });
 
   it("rejects a guest recipient with a validation error (only non-guest can receive)", async () => {
-    const { studioId, projectId, ownerId } = await seedProjectTransfer();
-    const guestId = await insertUser();
-    await insertStudioMember(studioId, guestId, "guest");
+    // The recipient IS a project editor but only a studio guest → studio-layer reject.
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer({
+      recipientStudioRole: "guest",
+    });
     await expect(
-      projectTransferService.requestProjectTransfer(projectId, ownerId, guestId),
+      projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId),
     ).rejects.toMatchObject({ statusCode: 422 });
   });
 
-  it("rejects a recipient who is not a studio member with NotFound", async () => {
-    const { projectId, ownerId } = await seedProjectTransfer();
-    const stranger = await insertUser();
+  it("rejects a recipient who is not a project member with a validation error", async () => {
+    // A studio maintainer who never joined the project → project-layer reject.
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer({
+      recipientProjectRole: null,
+    });
     await expect(
-      projectTransferService.requestProjectTransfer(projectId, ownerId, stranger),
-    ).rejects.toMatchObject({ statusCode: 404 });
+      projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId),
+    ).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  it("rejects an outside collaborator (project member but NOT a studio member) — prevents transferring out of the studio", async () => {
+    // A project editor who is not a studio member at all → studio-layer reject.
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer({
+      recipientStudioRole: null,
+    });
+    await expect(
+      projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId),
+    ).rejects.toMatchObject({ statusCode: 422 });
   });
 
   it("rejects transferring to oneself with a validation error", async () => {
@@ -295,7 +321,7 @@ describe("requestProjectTransfer", () => {
 });
 
 describe("confirmProjectTransfer", () => {
-  it("demotes the old owner to editor, promotes the recipient to owner (inserting them), notifies the old owner, emits the activity — exactly one owner", async () => {
+  it("demotes the old owner to editor, promotes the recipient to owner (from editor), notifies the old owner, emits the activity — exactly one owner", async () => {
     const {
       projectId,
       ownerId,
@@ -310,7 +336,7 @@ describe("confirmProjectTransfer", () => {
     await projectTransferService.confirmProjectTransfer(req!.id, recipientId);
 
     // Old owner dropped ONE rank to editor (D1), recipient is the new owner —
-    // materializeOwner inserted them (they were not a project member before).
+    // materializeOwner promoted them from editor (D3: recipient is a project member).
     expect(await getProjectRole(projectId, ownerId)).toBe("editor");
     expect(await getProjectRole(projectId, recipientId)).toBe("owner");
     expect(await activeOwnerCount(projectId)).toBe(1);
@@ -330,9 +356,10 @@ describe("confirmProjectTransfer", () => {
     });
   });
 
-  it("promotes a recipient who was already an editor to owner", async () => {
-    const { projectId, ownerId, recipientId } = await seedProjectTransfer();
-    await insertProjectMember(projectId, recipientId, "editor");
+  it("promotes a recipient who was a project viewer to owner (viewer can receive)", async () => {
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer({
+      recipientProjectRole: "viewer",
+    });
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
     const [req] = await transferRequestsFor(recipientId);
 

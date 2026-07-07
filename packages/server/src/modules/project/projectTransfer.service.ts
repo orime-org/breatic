@@ -56,21 +56,25 @@ import { t } from "@breatic/shared";
 const TRANSFER_TTL_DAYS = 7;
 
 /**
- * The current project owner asks a non-guest studio member to take over as owner.
+ * The current project owner asks another project collaborator to take over as owner.
  *
  * Loads the project + its studio, refuses personal-studio projects, verifies the
  * caller is the current owner (ADR D4: only the owner initiates — not the studio
- * admin), and requires the recipient to be a distinct non-guest member of the
- * project's studio. Drops an actionable `project.transfer_request` notification
- * that expires after {@link TRANSFER_TTL_DAYS} days. No role change here — the
- * swap is deferred until the recipient confirms.
+ * admin), and requires the recipient to satisfy BOTH layers (ADR D3, 2026-07-08):
+ * already a member of THIS project (editor or viewer) AND a non-guest member of
+ * the project's studio (the studio check blocks transferring the project out of
+ * its studio to an outside collaborator, and blocks guests). Drops an actionable
+ * `project.transfer_request` notification that expires after
+ * {@link TRANSFER_TTL_DAYS} days. No role change here — the swap is deferred
+ * until the recipient confirms.
  * @param projectId - The project whose owner role is being transferred
  * @param fromUserId - The acting owner initiating the transfer
- * @param toUserId - The studio member proposed as the new owner
- * @throws {NotFoundError} project / studio not found, or the recipient is not a
- *   member of the project's studio
+ * @param toUserId - The project collaborator proposed as the new owner
+ * @throws {NotFoundError} project or studio not found
  * @throws {ForbiddenError} the studio is personal, or the caller is not the owner
- * @throws {ValidationError} the recipient is the acting owner, or is a guest
+ * @throws {ValidationError} the recipient is the acting owner, is not a project
+ *   member (editor/viewer), is not a studio member (would transfer out of the
+ *   studio), or is a studio guest
  */
 export async function requestProjectTransfer(
   projectId: string,
@@ -92,10 +96,27 @@ export async function requestProjectTransfer(
   if (toUserId === fromUserId) {
     throw new ValidationError(t("server.error.validation"));
   }
-  // The recipient must be a non-guest (admin / maintainer) member of the studio.
-  const recipientRole = await studioMembersRepo.getRole(studio.id, toUserId);
-  if (!recipientRole) throw new NotFoundError(t("server.error.not_found"));
-  if (recipientRole === "guest") {
+  // Recipient eligibility is TWO layers (ADR D3, 2026-07-08 — both required):
+  // 1) project layer — must ALREADY collaborate on this project (editor or
+  //    viewer). A recipient with the owner role would be the initiator (rejected
+  //    by the self-transfer guard above), so only editor / viewer / null occur.
+  const recipientProjectRole = await projectMembersRepo.getRole(
+    projectId,
+    toUserId,
+  );
+  if (recipientProjectRole !== "editor" && recipientProjectRole !== "viewer") {
+    throw new ValidationError(t("server.error.validation"));
+  }
+  // 2) studio layer — must be a non-guest (admin / maintainer) member of the
+  //    project's studio. Blocks transferring the project OUT of its studio: a
+  //    project may hold "outside collaborators" who are project members but not
+  //    studio members (projectInvite.createInvite never checks studio
+  //    membership), and blocks guests from taking ownership.
+  const recipientStudioRole = await studioMembersRepo.getRole(
+    studio.id,
+    toUserId,
+  );
+  if (!recipientStudioRole || recipientStudioRole === "guest") {
     throw new ValidationError(t("server.error.validation"));
   }
 
