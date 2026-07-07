@@ -39,6 +39,7 @@ function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
     resolvedSkills: (row.resolvedSkills ?? []),
     source: row.source,
     providerResultUrl: row.providerResultUrl,
+    providerTaskId: row.providerTaskId,
     billedAt: row.billedAt,
     billedCredits: row.billedCredits,
     deletedAt: row.deletedAt,
@@ -230,6 +231,22 @@ export async function recordProviderResult(
   await db
     .update(tasks)
     .set({ providerResultUrl, updatedAt: new Date() })
+    .where(eq(tasks.id, id));
+}
+
+/**
+ * Persist the vendor task id for an async generation, right after submit.
+ * On a BullMQ retry the Worker resumes by polling this id (#1628).
+ * @param id - Task UUID
+ * @param providerTaskId - The vendor's task/request id returned by submit
+ */
+export async function recordProviderTaskId(
+  id: string,
+  providerTaskId: string,
+): Promise<void> {
+  await db
+    .update(tasks)
+    .set({ providerTaskId, updatedAt: new Date() })
     .where(eq(tasks.id, id));
 }
 

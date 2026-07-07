@@ -267,6 +267,13 @@
       "when": 1780900300000,
       "tag": "0037_node_history_node_id_uuid",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1780900400000,
+      "tag": "0038_tasks_provider_task_id",
+      "breakpoints": true
     }
   ]
 }

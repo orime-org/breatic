@@ -174,6 +174,19 @@ export async function recordProviderResult(
 }
 
 /**
+ * Persist the vendor task id for an async generation (post-submit, pre-poll).
+ * On BullMQ retry the Worker resumes by polling this id, not re-submitting (#1628).
+ * @param taskId - UUID of the task to update.
+ * @param providerTaskId - The vendor's task/request id returned by submit.
+ */
+export async function recordProviderTaskId(
+  taskId: string,
+  providerTaskId: string,
+): Promise<void> {
+  await taskRepo.recordProviderTaskId(taskId, providerTaskId);
+}
+
+/**
  * Atomic "mark completed AND reserve billing" transition.
  *
  * Returns `true` if this call performed the transition (i.e. we should
