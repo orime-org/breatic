@@ -41,7 +41,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore } from "@breatic/core";
+import { initCore, projectMembersRepo } from "@breatic/core";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 
 try {
@@ -417,5 +417,51 @@ describe("cancelProjectTransfer", () => {
     await expect(
       projectTransferService.cancelProjectTransfer(req!.id, recipientId),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe("listTransferCandidates (recipient picker data)", () => {
+  it("returns project editor/viewer members who are non-guest studio members, excluding the owner and non-project-members", async () => {
+    const { projectId, ownerId, adminId, recipientId } =
+      await seedProjectTransfer();
+    const ids = (await projectMembersRepo.listTransferCandidates(projectId)).map(
+      (r) => r.userId,
+    );
+    expect(ids).toContain(recipientId); // editor + maintainer → eligible
+    expect(ids).not.toContain(ownerId); // the owner role is excluded
+    expect(ids).not.toContain(adminId); // studio member but NOT a project member
+  });
+
+  it("includes a viewer recipient (viewer can receive)", async () => {
+    const { projectId, recipientId } = await seedProjectTransfer({
+      recipientProjectRole: "viewer",
+    });
+    const ids = (await projectMembersRepo.listTransferCandidates(projectId)).map(
+      (r) => r.userId,
+    );
+    expect(ids).toContain(recipientId);
+  });
+
+  it("excludes a studio guest, an outside collaborator, and a non-project-member", async () => {
+    const guest = await seedProjectTransfer({ recipientStudioRole: "guest" });
+    expect(
+      (await projectMembersRepo.listTransferCandidates(guest.projectId)).map(
+        (r) => r.userId,
+      ),
+    ).not.toContain(guest.recipientId);
+
+    const outside = await seedProjectTransfer({ recipientStudioRole: null });
+    expect(
+      (await projectMembersRepo.listTransferCandidates(outside.projectId)).map(
+        (r) => r.userId,
+      ),
+    ).not.toContain(outside.recipientId);
+
+    const nonMember = await seedProjectTransfer({ recipientProjectRole: null });
+    expect(
+      (await projectMembersRepo.listTransferCandidates(nonMember.projectId)).map(
+        (r) => r.userId,
+      ),
+    ).not.toContain(nonMember.recipientId);
   });
 });
