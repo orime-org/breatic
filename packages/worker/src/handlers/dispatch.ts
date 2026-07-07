@@ -480,6 +480,16 @@ async function runTaskBody(
       { taskId, providerTaskId: resume.storedTaskId, attempt: job.attemptsMade + 1 },
       "async_resume_stored_provider_task",
     );
+  } else if (job.attemptsMade > 0) {
+    // #1628 monitoring: a retry with no stored vendor task id re-invokes the
+    // provider from scratch. For SYNC providers the previous attempt may have
+    // already generated + charged upstream (timeout-after-generation window)
+    // → this attempt is a POTENTIAL duplicate external cost. Structured event
+    // feeds the duplicate-cost alarm trend.
+    logger.warn(
+      { taskId, taskType, attempt: job.attemptsMade + 1 },
+      "provider_reinvoked_on_retry_potential_duplicate_cost",
+    );
   }
 
   try {

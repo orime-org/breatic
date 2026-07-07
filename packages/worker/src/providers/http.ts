@@ -155,6 +155,9 @@ export async function pollUntilDone(
       const errorMsg = options.errorPath
         ? String(extractNested(resp, options.errorPath, "unknown"))
         : "unknown";
+      // #1628: log at the poll layer (not only via the bubbled-up job error)
+      // so vendor-side failures are attributable to the specific poll URL.
+      logger.warn({ provider, url, status, errorMsg }, "poll_task_failed");
       throw new Error(`${provider} task failed: ${errorMsg}`);
     }
 
@@ -162,6 +165,8 @@ export async function pollUntilDone(
     elapsed += interval;
   }
 
+  // #1628: same rationale — make poll timeouts visible at this layer.
+  logger.warn({ provider, url, maxWait }, "poll_timeout");
   throw new Error(`${provider} task did not complete within ${maxWait / 1000}s`);
 }
 

@@ -9,9 +9,13 @@ concurrency: 5
 
 # ── BullMQ Job Retry ──────────────────────────────
 # Max attempts per job. BullMQ schedules retries with exponential
-# backoff when the handler throws. The Worker's re-entry guard
-# (provider_result_url check) prevents the provider from being
-# invoked twice — retries only apply to the pre-provider stage.
+# backoff when the handler throws. Duplicate-provider-call protection
+# on retries (#1628): a SUCCESSFUL provider call sets provider_result_url
+# (re-entry guard: never invoked again); ASYNC providers persist the
+# vendor task id at submit, so a retry resumes polling instead of
+# re-submitting; SYNC providers ARE re-invoked on retry (accepted
+# policy: UX over the narrow duplicate-external-cost window, which is
+# monitored via provider_reinvoked_on_retry_potential_duplicate_cost).
 job_attempts: 3
 
 # Base backoff delay (ms) for BullMQ retries: delay = base * 2^attempt.

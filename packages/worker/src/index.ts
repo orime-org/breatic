@@ -69,7 +69,17 @@ export function startWorker(): void {
   // this net exists for — a worker that hard-crashed runs no callback. The
   // cross-process `QueueEvents` handler below owns the write-back (#1580 #6).
   worker.on("failed", (job, err) => {
-    logger.error({ jobId: job?.id, error: err.message }, "job_failed");
+    // #1628: attempt counters make retry progression visible ("attempt 2/3"),
+    // distinguishing a retry-in-progress from a terminal failure in logs.
+    logger.error(
+      {
+        jobId: job?.id,
+        error: err.message,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "job_failed",
+    );
   });
 
   // #1569 hole ② / #1580 #6 — cross-process failed-job node write-back.
