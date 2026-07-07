@@ -58,10 +58,15 @@ export function NodeContent({
     );
   }
   if (status === 'error') {
+    // Fixed h-48 box like the empty + handling branches (#1632): every node's
+    // three "no displayable content" states (empty / generating / error) keep
+    // the same 288×192 footprint. h-full would let the height collapse to a
+    // single line of error text, making the node a flat wide bar. Shared by
+    // all 6 content modalities (image/video/audio/text/3d/web).
     return (
       <div
         data-testid='node-content-error'
-        className='flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-xs text-status-error-foreground'
+        className='flex h-48 w-full flex-col items-center justify-center gap-2 p-3 text-xs text-status-error-foreground'
       >
         <span>{errorMessage ?? 'Something went wrong.'}</span>
         {onRetry ? (
