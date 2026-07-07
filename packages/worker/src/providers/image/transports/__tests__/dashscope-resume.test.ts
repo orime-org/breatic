@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import type * as httpModule from "@worker/providers/http.js";
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
 
@@ -20,7 +21,7 @@ import type { ResolvedModel } from "@worker/providers/shared.js";
 const pollUntilDoneMock = vi.fn();
 
 vi.mock("@worker/providers/http.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@worker/providers/http.js")>();
+  const actual = await importOriginal<typeof httpModule>();
   return {
     ...actual,
     pollUntilDone: (...args: unknown[]) => pollUntilDoneMock(...args),

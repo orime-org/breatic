@@ -31,7 +31,7 @@ export interface SubmitOrResumeOptions<T> {
  * the core ⑦ invariant that prevents duplicate vendor generation.
  * @param opts - The injected submit / persist / poll steps + the stored id.
  * @returns The poll result once the vendor task reaches a terminal state.
- * @throws Propagates from `submit` (→ BullMQ retries), `persistId`, or `poll`.
+ * @throws {Error} Propagates from `submit` (→ BullMQ retries), `persistId`, or `poll`.
  */
 export async function submitOrResume<T>(
   opts: SubmitOrResumeOptions<T>,
