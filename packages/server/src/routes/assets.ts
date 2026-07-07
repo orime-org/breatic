@@ -184,8 +184,11 @@ assets.get(
     const key = storageKey({
       userId: user.id,
       projectId: project_id,
+      // storageKey's ext contract is dotted (#1630): the upload filename
+      // yields a BARE extension ("png"), so dot it here — the caller owns
+      // the format, storageKey fails fast on a dot-less ext.
       taskType: kind,
-      ext: filename.split(".").pop() ?? "bin",
+      ext: `.${filename.split(".").pop() ?? "bin"}`,
     });
 
     const adapter = await getStorageAdapter();
