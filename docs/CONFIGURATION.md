@@ -73,14 +73,26 @@ loader:`packages/core/src/config/worker.ts`。
 | `http_max_retries` / `http_retry_base_delay` | 3 / 2000 | provider HTTP 重试(full-jitter)|
 | `poll_interval` | 3000 | 队列轮询间隔 |
 
-## 6. `config/storage.yaml` — 存储下载重试
+## 6. `config/storage.yaml` — 存储下载重试 + 浏览器上传
 
-loader:`packages/core/src/config/storage.ts`。`downloadValidated` 转存 provider 结果时,对瞬时失败(5xx / 429)的重试参数;退避加 full-jitter(#1625)。
+loader:`packages/core/src/config/storage.ts`。
+
+`download.*`:`downloadValidated` 转存 provider 结果时,对瞬时失败(5xx / 429)的重试参数;退避加 full-jitter(#1625)。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `download.max_attempts` | 3 | 下载总尝试次数(含首次)|
 | `download.retry_base_delay_ms` | 500 | 退避基延时(× 尝试次数,再 full-jitter)|
+
+`upload.*`:浏览器上传旋钮(#1609 资产层片2)。前端经 `GET /assets/upload-config`(会话缓存)取;上传上限在 `/assets/presign` 权威校验(413),前端选文件时预检只为体验。
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `upload.max_upload_bytes` | 2147483648(2 GiB)| 上传硬上限(字节);超限 presign 返 413,前端选文件当场拒 |
+| `upload.client_max_attempts` | 3 | 浏览器 presign + PUT 各自总尝试次数(含首次,仅瞬时错误)|
+| `upload.client_retry_base_delay_ms` | 1000 | 浏览器重试退避基延时(full-jitter)|
+| `upload.client_request_timeout_ms` | 30000 | 浏览器 API 请求单次超时;也是 PUT 停滞守卫的下限 |
+| `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(下限, 文件大小 / 该速率)|
 
 ## 7. `config/agent.yaml` — LLM 韧性(节选)
 

@@ -6,6 +6,7 @@
       "unauthorized": "認証情報が無効または期限切れです",
       "conflict": "リソースの競合",
       "validation": "入力データが無効です",
+      "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",
       "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
       "internal": "内部サーバーエラー",
@@ -320,7 +321,9 @@
     "upload": {
       "nodeBusy": "このノードは処理中です — 別の操作が進行中です。",
       "ownershipLost": "アップロード結果は書き込まれませんでした — ノードが削除されたか、他のユーザーが引き継ぎました。",
-      "typeMismatch": "ファイルの種類がノードと一致しません。"
+      "typeMismatch": "ファイルの種類がノードと一致しません。",
+      "retry": "再アップロード",
+      "tooLarge": "{filename} はアップロードサイズの上限を超えています。"
     },
     "minimap": {
       "label": "キャンバスのミニマップ"

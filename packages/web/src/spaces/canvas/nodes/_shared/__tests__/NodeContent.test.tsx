@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 
@@ -68,6 +68,38 @@ describe('NodeContent', () => {
     expect(screen.getByTestId('node-content-error')).toHaveTextContent(
       /something went wrong/i,
     );
+  });
+
+  it('renders a Retry button in the error branch when onRetry is provided (#1609 P4)', () => {
+    const onRetry = vi.fn();
+    render(
+      <NodeContent
+        status='error'
+        errorMessage='Upload failed: a.png'
+        hasContent={false}
+        placeholder={<div>P</div>}
+        content={<div>C</div>}
+        onRetry={onRetry}
+      />,
+    );
+
+    const button = screen.getByTestId('node-content-retry');
+    fireEvent.click(button);
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it('renders NO Retry button without onRetry (no stashed file / not an upload error)', () => {
+    render(
+      <NodeContent
+        status='error'
+        errorMessage='Extraction failed: a.bin'
+        hasContent={false}
+        placeholder={<div>P</div>}
+        content={<div>C</div>}
+      />,
+    );
+
+    expect(screen.queryByTestId('node-content-retry')).not.toBeInTheDocument();
   });
 
   it('the empty state fills a fixed h-48 box so every empty node is the same size', () => {

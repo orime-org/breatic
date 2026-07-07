@@ -7,3 +7,25 @@ download:
   max_attempts: 3
   # Base backoff (ms). Effective ceiling = base * attempt, then full-jittered.
   retry_base_delay_ms: 500
+
+# Browser upload knobs (#1609 asset slice 2). Served to the frontend via
+# GET /assets/upload-config (session-cached). Registered in
+# docs/CONFIGURATION.md.
+upload:
+  # Hard upload cap (bytes). Frontend rejects oversize files on selection
+  # (no network traffic); /assets/presign enforces it authoritatively
+  # (413). Also protects local-storage mode, which buffers the whole
+  # file in server memory. Default 2 GiB.
+  max_upload_bytes: 2147483648
+  # Browser-side attempts for presign + PUT, including the first
+  # (matches worker job_attempts=3). Transient errors only.
+  client_max_attempts: 3
+  # Base backoff (ms) between browser retry attempts, full-jittered.
+  client_retry_base_delay_ms: 1000
+  # Per-attempt timeout (ms) for browser API requests (presign/config).
+  # Also the floor for the PUT stall guard below.
+  client_request_timeout_ms: 30000
+  # PUT stall guard: per-attempt timeout = max(request timeout,
+  # size / this rate). A dead connection aborts + retries instead of
+  # hanging forever, while a legitimately slow big upload never trips it.
+  client_put_min_bytes_per_sec: 65536

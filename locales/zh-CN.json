@@ -6,6 +6,7 @@
       "unauthorized": "凭证无效或已过期",
       "conflict": "资源冲突",
       "validation": "输入数据无效",
+      "upload_too_large": "文件超过上传大小限制。",
       "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
       "rate_limited": "请求过于频繁，请稍后再试",
       "internal": "服务器内部错误",
@@ -320,7 +321,9 @@
     "upload": {
       "nodeBusy": "该节点正忙 — 另一个操作正在进行中。",
       "ownershipLost": "上传结果未写入 — 节点已被移除或被他人接管。",
-      "typeMismatch": "文件类型与节点不符。"
+      "typeMismatch": "文件类型与节点不符。",
+      "retry": "重新上传",
+      "tooLarge": "{filename} 超过上传大小限制。"
     },
     "minimap": {
       "label": "画布缩略图"

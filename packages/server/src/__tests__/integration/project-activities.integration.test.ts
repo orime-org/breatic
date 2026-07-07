@@ -354,7 +354,7 @@ describe("POST /assets/uploaded — handshake verification", () => {
 
     // Presign against local storage, PUT the bytes, then handshake.
     const presign = await app.request(
-      `/api/v1/assets/presign?filename=a.png&content_type=image/png&project_id=${projectId}`,
+      `/api/v1/assets/presign?filename=a.png&content_type=image/png&project_id=${projectId}&size=4`,
       { headers: { Cookie: cookie } },
     );
     expect(presign.status).toBe(200);

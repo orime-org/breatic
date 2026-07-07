@@ -31,6 +31,12 @@ interface InnerNodeProps {
    * Without it the text body's edit is never persisted — discarded on blur.
    */
   onChange?: (next: string) => void;
+  /**
+   * Retry a failed upload from its session-stashed File, pre-bound to this
+   * node's id (#1609 P4). Present only while a stash exists — its absence
+   * hides the error-state Retry button.
+   */
+  onRetryUpload?: () => void;
 }
 
 /**
@@ -60,8 +66,14 @@ function makeFlowNode(
    */
   function FlowNode(props: NodeProps): React.JSX.Element {
     const data = props.data as unknown as NodeView;
-    const { renameNode, activateNodeUpload, setNodeContent, commitGroupResize } =
-      useCanvasActions();
+    const {
+      renameNode,
+      activateNodeUpload,
+      setNodeContent,
+      commitGroupResize,
+      retryNodeUpload,
+      hasUploadRetryFile,
+    } = useCanvasActions();
     // The canvas zoom (transform[2]) lets the name header counter-scale so it
     // keeps a constant screen size — down to a floor zoom, below which it
     // shrinks with the canvas (see `overlayCounterScale`). The scissors button
@@ -90,6 +102,16 @@ function makeFlowNode(
       (content: string): void => setNodeContent(props.id, content),
       [setNodeContent, props.id],
     );
+    // Error-state Retry (#1609 P4): bound only while the session still
+    // stashes this node's failed File — no stash (refresh / success /
+    // non-upload error) leaves the prop undefined and no button renders.
+    // The stash is written BEFORE the error lands in Yjs, so by the time
+    // the error re-render evaluates this the stash is already visible.
+    const onRetryUpload = React.useCallback(
+      (): void => retryNodeUpload(props.id),
+      [retryNodeUpload, props.id],
+    );
+    const canRetryUpload = hasUploadRetryFile(props.id);
     // A Group fills the ReactFlow wrapper sized to its stored width/height, so
     // the GroupNode's own `size-full` resolves to the full rect. Content nodes
     // size to their body, so they keep the auto-height wrapper. A selected,
@@ -130,6 +152,7 @@ function makeFlowNode(
               onRename={onRename}
               onActivate={onActivate}
               onChange={onChange}
+              {...(canRetryUpload && { onRetryUpload })}
             />
             {/* Connection handles are for content nodes only — a Group is a
                 container (Figma-Frame-style), not an edge endpoint, so it renders

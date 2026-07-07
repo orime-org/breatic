@@ -68,7 +68,16 @@ import {
   runMediaUpload,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
+  type UploadedInfo,
 } from '@web/spaces/canvas/canvas-upload';
+import { hashFile } from '@web/data/upload/hash';
+import { putFileWithRetry } from '@web/data/upload/upload-retry';
+import {
+  stashRetryFile,
+  getRetryFile,
+  clearRetryFile,
+  hasRetryFile,
+} from '@web/spaces/canvas/upload-retry-files';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
@@ -592,14 +601,25 @@ function CanvasSpaceInner({
   // the deletion itself already succeeded and re-prompting the user would
   // read as a failed delete.
   const reportUploadedAsset = React.useCallback(
-    (nodeId: string, info: { key: string; kind: string }): void => {
+    (nodeId: string, info: UploadedInfo, file: File): void => {
       void assetsApi
         .reportUploaded({
           projectId,
-          key: info.key,
           kind: info.kind,
           nodeId,
           spaceId,
+          // Regular path carries the stored key; a dedup hit reports the
+          // hash instead (nothing was uploaded — the server re-verifies
+          // the ledger row, #1609 B.2). hash is null only on the hashing
+          // worker degrade, where the upload stays untracked (plan §6).
+          ...(info.hash !== null && { hash: info.hash }),
+          ...(info.dedup === true ? { dedup: true as const } : {}),
+          ...(info.key !== undefined && { key: info.key }),
+          metadata: {
+            filename: file.name,
+            size: file.size,
+            mimeType: file.type,
+          },
         })
         .catch(() => toast(t('canvas.activity.reportFailed')));
     },
@@ -720,62 +740,90 @@ function CanvasSpaceInner({
   const processFiles = React.useCallback(
     (files: File[], origin: { x: number; y: number }): void => {
       if (readOnly || files.length === 0) return;
-      const created: string[] = [];
-      for (let i = 0; i < files.length; i += 1) {
-        const file = files[i];
-        const spec = fileToNodeSpec(file);
-        const position = {
-          x: origin.x + i * STAGGER_STEP_PX,
-          y: origin.y + i * STAGGER_STEP_PX,
-        };
-        // #1580 #7: the created-handling node carries its first lease; the
-        // write-backs verify it, so a superseded upload (someone re-opened
-        // the node after a sweeper reclaim) cannot clobber the new owner.
-        const { nodeId, lease } = createUploadNodeAt(spec.nodeType, position);
-        created.push(nodeId);
-        if (spec.needsUpload) {
-          void runMediaUpload(file, projectId, {
-            presign: assetsApi.presign,
-            putFile: assetsApi.putFile,
-            onSuccess: (fileUrl) => {
-              if (!completeNodeHandling(projectId, spaceId, nodeId, fileUrl, lease)) {
-                toast(t('canvas.upload.ownershipLost'));
-              }
-            },
-            // Fixed-English wire string — like AIGC failure messages and the
-            // group default name. errorMessage is written to Yjs and rendered
-            // raw to every collaborator, so it must not freeze the uploader's
-            // locale into the shared doc. The filename is the locale-free part
-            // telling the user which file failed.
-            onFailure: () =>
-              failNodeHandling(
-                projectId,
-                spaceId,
-                nodeId,
-                `Upload failed: ${file.name}`,
-                lease,
-              ),
-            onUploaded: (info) => reportUploadedAsset(nodeId, info),
-          });
-        } else {
-          void extractText(file)
-            .then((text) => {
-              if (!completeNodeHandling(projectId, spaceId, nodeId, text, lease)) {
-                toast(t('canvas.upload.ownershipLost'));
-              }
-            })
-            .catch(() =>
-              failNodeHandling(
-                projectId,
-                spaceId,
-                nodeId,
-                `Extraction failed: ${file.name}`,
-                lease,
-              ),
-            );
+      void (async () => {
+        // Upload-cap pre-check (#1609 P7): oversize media is refused ON
+        // SELECTION with a toast — no node, zero network. A failed config
+        // fetch skips the pre-check instead of blocking uploads (the
+        // presign 413 gate stays authoritative). Session-cached after the
+        // first call, so this await is normally instant.
+        let maxBytes = Infinity;
+        try {
+          maxBytes = (await assetsApi.fetchUploadConfig()).maxUploadBytes;
+        } catch {
+          // Server-side 413 remains the authoritative gate.
         }
-      }
-      if (created.length > 0) setSelectAfterCreate(created);
+        const admitted: File[] = [];
+        for (const file of files) {
+          if (fileToNodeSpec(file).needsUpload && file.size > maxBytes) {
+            toast(t('canvas.upload.tooLarge', { filename: file.name }));
+          } else {
+            admitted.push(file);
+          }
+        }
+        const created: string[] = [];
+        for (let i = 0; i < admitted.length; i += 1) {
+          const file = admitted[i];
+          const spec = fileToNodeSpec(file);
+          const position = {
+            x: origin.x + i * STAGGER_STEP_PX,
+            y: origin.y + i * STAGGER_STEP_PX,
+          };
+          // #1580 #7: the created-handling node carries its first lease; the
+          // write-backs verify it, so a superseded upload (someone re-opened
+          // the node after a sweeper reclaim) cannot clobber the new owner.
+          const { nodeId, lease } = createUploadNodeAt(spec.nodeType, position);
+          created.push(nodeId);
+          if (spec.needsUpload) {
+            void runMediaUpload(file, projectId, {
+              getUploadConfig: assetsApi.fetchUploadConfig,
+              hashFile,
+              presign: assetsApi.presign,
+              putFile: putFileWithRetry,
+              onSuccess: (fileUrl) => {
+                clearRetryFile(projectId, spaceId, nodeId);
+                if (!completeNodeHandling(projectId, spaceId, nodeId, fileUrl, lease)) {
+                  toast(t('canvas.upload.ownershipLost'));
+                }
+              },
+              // Fixed-English wire string — like AIGC failure messages and the
+              // group default name. errorMessage is written to Yjs and rendered
+              // raw to every collaborator, so it must not freeze the uploader's
+              // locale into the shared doc. The filename is the locale-free part
+              // telling the user which file failed. The File is stashed BEFORE
+              // the error lands so the error re-render already sees the Retry
+              // stash (#1609 P4).
+              onFailure: () => {
+                stashRetryFile(projectId, spaceId, nodeId, file);
+                failNodeHandling(
+                  projectId,
+                  spaceId,
+                  nodeId,
+                  `Upload failed: ${file.name}`,
+                  lease,
+                );
+              },
+              onUploaded: (info) => reportUploadedAsset(nodeId, info, file),
+            });
+          } else {
+            void extractText(file)
+              .then((text) => {
+                if (!completeNodeHandling(projectId, spaceId, nodeId, text, lease)) {
+                  toast(t('canvas.upload.ownershipLost'));
+                }
+              })
+              .catch(() =>
+                failNodeHandling(
+                  projectId,
+                  spaceId,
+                  nodeId,
+                  `Extraction failed: ${file.name}`,
+                  lease,
+                ),
+              );
+          }
+        }
+        if (created.length > 0) setSelectAfterCreate(created);
+      })();
     },
     [readOnly, projectId, spaceId, createUploadNodeAt, t, reportUploadedAsset],
   );
@@ -1393,35 +1441,81 @@ function CanvasSpaceInner({
     );
     if (node?.type) activateNodeUpload(node.id, node.type as Modality);
   }, [nodeMenu.nodeId, activateNodeUpload]);
+  // Fill an existing node from a File — shared by the picker path
+  // (double-click / node-menu Upload) and the error-state Retry (#1609 P4).
+  const fillUpload = React.useCallback(
+    (
+      nodeId: string,
+      file: File,
+      modality: UploadNodeSpec['nodeType'],
+    ): void => {
+      void (async () => {
+        // Upload-cap pre-check (#1609 P7) — same semantics as processFiles.
+        let maxBytes = Infinity;
+        try {
+          maxBytes = (await assetsApi.fetchUploadConfig()).maxUploadBytes;
+        } catch {
+          // Server-side 413 remains the authoritative gate.
+        }
+        if (fileToNodeSpec(file).needsUpload && file.size > maxBytes) {
+          toast(t('canvas.upload.tooLarge', { filename: file.name }));
+          return;
+        }
+        await fillNodeFromFile(nodeId, file, modality, projectId, {
+          getUploadConfig: assetsApi.fetchUploadConfig,
+          hashFile,
+          presign: assetsApi.presign,
+          putFile: putFileWithRetry,
+          extractText,
+          // Type gate: the picker's accept is advisory (macOS lets audio/*
+          // select .mp4) — a file that doesn't classify to the node's modality
+          // is refused with a local toast (user bug 2026-07-03).
+          onTypeMismatch: () => toast(t('canvas.upload.typeMismatch')),
+          // #1580 #7 busy gate: a node already handling refuses a second fill.
+          isHandling: (id) => isNodeHandling(projectId, spaceId, id),
+          onBusy: () => toast(t('canvas.upload.nodeBusy')),
+          setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
+          setContent: (id, content, lease) => {
+            clearRetryFile(projectId, spaceId, id);
+            const landed = completeNodeHandling(projectId, spaceId, id, content, lease);
+            if (!landed) toast(t('canvas.upload.ownershipLost'));
+            return landed;
+          },
+          setError: (id, message, lease) => {
+            // Stash media Files for the Retry button (upload failures
+            // only — a text-extraction failure has nothing to re-upload).
+            if (fileToNodeSpec(file).needsUpload) {
+              stashRetryFile(projectId, spaceId, id, file);
+            }
+            return failNodeHandling(projectId, spaceId, id, message, lease);
+          },
+          onUploaded: (id, info) => reportUploadedAsset(id, info, file),
+        });
+      })();
+    },
+    [projectId, spaceId, userId, t, reportUploadedAsset],
+  );
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
       const target = uploadTargetRef.current;
       uploadTargetRef.current = null;
       if (!file || !target) return;
-      void fillNodeFromFile(target.nodeId, file, target.modality, projectId, {
-        presign: assetsApi.presign,
-        putFile: assetsApi.putFile,
-        extractText,
-        // Type gate: the picker's accept is advisory (macOS lets audio/*
-        // select .mp4) — a file that doesn't classify to the node's modality
-        // is refused with a local toast (user bug 2026-07-03).
-        onTypeMismatch: () => toast(t('canvas.upload.typeMismatch')),
-        // #1580 #7 busy gate: a node already handling refuses a second fill.
-        isHandling: (id) => isNodeHandling(projectId, spaceId, id),
-        onBusy: () => toast(t('canvas.upload.nodeBusy')),
-        setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
-        setContent: (id, content, lease) => {
-          const landed = completeNodeHandling(projectId, spaceId, id, content, lease);
-          if (!landed) toast(t('canvas.upload.ownershipLost'));
-          return landed;
-        },
-        setError: (id, message, lease) =>
-          failNodeHandling(projectId, spaceId, id, message, lease),
-        onUploaded: (id, info) => reportUploadedAsset(id, info),
-      });
+      fillUpload(target.nodeId, file, target.modality);
     },
-    [projectId, spaceId, userId, t, reportUploadedAsset],
+    [fillUpload],
+  );
+  // Error-state Retry (#1609 P4): re-run the upload from the session
+  // stash. The stash survives repeated failures (cleared only on success)
+  // and a refresh drops it — the button then no longer renders.
+  const retryNodeUpload = React.useCallback(
+    (nodeId: string): void => {
+      if (readOnly) return;
+      const file = getRetryFile(projectId, spaceId, nodeId);
+      if (!file) return;
+      fillUpload(nodeId, file, fileToNodeSpec(file).nodeType);
+    },
+    [readOnly, projectId, spaceId, fillUpload],
   );
 
   const actions = React.useMemo<CanvasActions>(
@@ -1497,8 +1591,11 @@ function CanvasSpaceInner({
         });
       },
       activateNodeUpload,
+      retryNodeUpload,
+      hasUploadRetryFile: (nodeId: string): boolean =>
+        hasRetryFile(projectId, spaceId, nodeId),
     }),
-    [projectId, spaceId, readOnly, activateNodeUpload],
+    [projectId, spaceId, readOnly, activateNodeUpload, retryNodeUpload],
   );
 
   // A Group carries its own authoritative width/height (stored in Yjs, fed via

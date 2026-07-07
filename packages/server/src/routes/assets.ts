@@ -23,15 +23,16 @@ import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { projectService } from "@server/modules";
+import { assetUploadService, projectService } from "@server/modules";
 import {
   getStorageAdapter,
+  getStorageConfig,
   storageKey,
   env,
   logger,
   ValidationError,
 } from "@breatic/core";
-import { nodeHistoryService } from "@breatic/domain";
+import { assetService, nodeHistoryService } from "@breatic/domain";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
@@ -76,12 +77,41 @@ function isOwnedKey(key: string, userId: string, projectId: string): boolean {
   return key.startsWith(`${userId}/${projectId}/`);
 }
 
+// ── Upload config (#1609 slice 2) ───────────────────────────────────
+
+/**
+ * `GET /assets/upload-config` — browser upload knobs from
+ * `config/storage.yaml` (`upload:` section). The frontend fetches this
+ * once per session and caches it: upload size cap (pre-checked on file
+ * selection; authoritatively enforced by /presign) + retry attempts /
+ * backoff base for presign + PUT.
+ */
+assets.get("/upload-config", requireAuth, (c) => {
+  const { upload } = getStorageConfig();
+  return c.json({
+    data: {
+      maxUploadBytes: upload.max_upload_bytes,
+      clientMaxAttempts: upload.client_max_attempts,
+      clientRetryBaseDelayMs: upload.client_retry_base_delay_ms,
+      clientRequestTimeoutMs: upload.client_request_timeout_ms,
+      clientPutMinBytesPerSec: upload.client_put_min_bytes_per_sec,
+    },
+  });
+});
+
 // ── Presign ─────────────────────────────────────────────────────────
+
+/** sha256 hex — the only hash shape the dedup ledger stores. */
+const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 const presignSchema = z.object({
   filename: z.string().min(1).max(255),
   content_type: z.string().min(1).max(100),
   project_id: z.string().uuid(),
+  /** Declared byte size — the authoritative upload-cap gate input. */
+  size: z.coerce.number().int().positive(),
+  /** Client-computed content hash; present → dedup lookup (#1609). */
+  hash: z.string().regex(SHA256_HEX).optional(),
 });
 
 /**
@@ -105,10 +135,50 @@ assets.get(
   zValidator("query", presignSchema),
   async (c) => {
     const user = c.get("user");
-    const { filename, content_type, project_id } = c.req.valid("query");
+    const { filename, content_type, project_id, size, hash } =
+      c.req.valid("query");
 
     // Upload is a write — edit-or-above can presign.
     await projectService.assertAccess(project_id, user.id, "editor");
+
+    // Authoritative upload cap (the frontend pre-check is UX only).
+    const { upload } = getStorageConfig();
+    if (size > upload.max_upload_bytes) {
+      logger.info(
+        { size, cap: upload.max_upload_bytes, userId: user.id },
+        "presign_rejected_over_cap",
+      );
+      return c.json(
+        { error: { message: t("server.error.upload_too_large") } },
+        413,
+      );
+    }
+
+    // Dedup lookup (#1609, B.2): the owner studio already holding this
+    // content (with a matching size) skips the upload — the node reuses
+    // the existing asset's URL. A size mismatch falls through to a
+    // normal presign (content claim not trusted, spec §8).
+    if (hash !== undefined) {
+      const dedupHit = await assetUploadService.checkUploadDedup({
+        projectId: project_id,
+        actingUserId: user.id,
+        contentHash: hash,
+        sizeBytes: size,
+      });
+      if (dedupHit) {
+        logger.info(
+          { hash, userId: user.id, projectId: project_id },
+          "presign_dedup_hit",
+        );
+        return c.json({
+          data: {
+            alreadyExists: true,
+            fileUrl: dedupHit.fileUrl,
+            kind: dedupHit.kind,
+          },
+        });
+      }
+    }
 
     const kind = detectKind(content_type);
     const key = storageKey({
@@ -186,29 +256,58 @@ assets.put("/local-upload/*", requireAuth, async (c) => {
 // This route replaced the never-wired `POST /assets/history` upload
 // reporter and absorbed its node_history recording.
 
-const uploadedSchema = z.object({
-  project_id: z.string().uuid(),
-  /** Storage key returned by /presign - the head() verification target. */
-  key: z.string().min(1).max(512),
-  node_id: z.string().min(1).max(128).optional(),
-  space_id: z.string().uuid().optional(),
-  kind: z.string().min(1).max(32),
-  /**
-   * `mini_tool` marks a FRONTEND-executed mini-tool product (capability
-   * rule: pure media transforms run in the browser and never pass
-   * through worker Stage 4) - the row lands as generation:succeeded
-   * instead of asset:uploaded. Plain uploads omit it.
-   */
-  source: z.literal("mini_tool").optional(),
-  tool_name: z.string().max(64).optional(),
-  metadata: z
-    .object({
-      filename: z.string().max(255),
-      size: z.number().int().positive(),
-      mimeType: z.string().max(100),
-    })
-    .optional(),
-});
+const uploadedSchema = z
+  .object({
+    project_id: z.string().uuid(),
+    /**
+     * Storage key returned by /presign - the head() verification target.
+     * Required on the regular path; absent on the dedup path (no new
+     * object was stored).
+     */
+    key: z.string().min(1).max(512).optional(),
+    /**
+     * Dedup report (#1609, B.2): the presign answered `alreadyExists`,
+     * nothing was uploaded — the server re-verifies the (studio, hash)
+     * row instead of key ownership + head().
+     */
+    dedup: z.literal(true).optional(),
+    /** Content sha256; regular path → ledger registration, dedup path → the lookup key. */
+    hash: z.string().regex(SHA256_HEX).optional(),
+    node_id: z.string().min(1).max(128).optional(),
+    space_id: z.string().uuid().optional(),
+    kind: z.string().min(1).max(32),
+    /**
+     * `mini_tool` marks a FRONTEND-executed mini-tool product (capability
+     * rule: pure media transforms run in the browser and never pass
+     * through worker Stage 4) - the row lands as generation:succeeded
+     * instead of asset:uploaded. Plain uploads omit it.
+     */
+    source: z.literal("mini_tool").optional(),
+    tool_name: z.string().max(64).optional(),
+    metadata: z
+      .object({
+        filename: z.string().max(255),
+        size: z.number().int().positive(),
+        mimeType: z.string().max(100),
+      })
+      .optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.dedup === true && val.hash === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "hash is required for a dedup report",
+        path: ["hash"],
+      });
+    }
+    if (val.dedup !== true && val.key === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "key is required for an upload report",
+        path: ["key"],
+      });
+    }
+  });
 
 assets.post(
   "/uploaded",
@@ -221,29 +320,98 @@ assets.post(
 
     await projectService.assertAccess(body.project_id, user.id, "editor");
 
-    // The key MUST be one this caller presigned for THIS project, and
-    // must not traverse. head() only proves existence — without this
-    // binding an editor could report a foreign / off-project asset URL
-    // into this project's history + feed (or, on local storage,
-    // traverse out of the upload dir).
-    if (!isOwnedKey(body.key, user.id, body.project_id)) {
-      return c.json(
-        { error: { message: t("server.error.validation") } },
-        422,
-      );
-    }
+    let fileUrl: string;
+    if (body.dedup === true && body.hash !== undefined) {
+      // Dedup path (#1609, B.2): nothing was uploaded — verify the
+      // claimed (studio, hash) row server-side (stronger than the
+      // key-prefix anti-spoof below: the URL is re-derived, never
+      // trusted from the client).
+      const verified = await assetUploadService.verifyDedupUpload({
+        projectId: body.project_id,
+        actingUserId: user.id,
+        contentHash: body.hash,
+      });
+      if (!verified) {
+        return c.json(
+          { error: { message: t("server.error.validation") } },
+          422,
+        );
+      }
+      fileUrl = verified.fileUrl;
+    } else if (body.key !== undefined) {
+      // Regular path: the key MUST be one this caller presigned for THIS
+      // project, and must not traverse. head() only proves existence —
+      // without this binding an editor could report a foreign /
+      // off-project asset URL into this project's history + feed (or, on
+      // local storage, traverse out of the upload dir).
+      if (!isOwnedKey(body.key, user.id, body.project_id)) {
+        return c.json(
+          { error: { message: t("server.error.validation") } },
+          422,
+        );
+      }
 
-    // Verify the object really landed in storage before trusting the
-    // claim (first real caller of StorageAdapter.head).
-    const adapter = await getStorageAdapter();
-    const head = await adapter.head(body.key);
-    if (!head.exists) {
-      return c.json(
-        { error: { message: t("server.error.validation") } },
-        422,
-      );
+      // Verify the object really landed in storage before trusting the
+      // claim (first real caller of StorageAdapter.head).
+      const adapter = await getStorageAdapter();
+      const head = await adapter.head(body.key);
+      if (!head.exists) {
+        return c.json(
+          { error: { message: t("server.error.validation") } },
+          422,
+        );
+      }
+      fileUrl = adapter.publicUrl(body.key);
+
+      // Ledger registration (#1609): size + content type come from what
+      // STORAGE reports (head()), never the client. The dedup KEY
+      // (content_hash) IS the client-asserted hash, though — the browser
+      // upload path trusts it (unlike the worker path, which hashes the
+      // transfer stream server-side). Dedup is studio-scoped, so this
+      // trust is bounded to team-studio insiders, not the world; the
+      // residual poison surface (an insider padding bytes to a target
+      // file's size to plant a hash they don't own) is accepted here and
+      // covered by an OFFLINE integrity sweep (#1631) that re-hashes
+      // stored objects and quarantines mismatches — trust-but-verify,
+      // async (user decision 2026-07-07; Dropbox dropped cross-user dedup
+      // over this exact hash-as-proof attack, but that was GLOBAL dedup;
+      // studio-scoped keeps instant dedup without world-facing exposure).
+      // A missing hash can only be the hashing-worker degrade — the
+      // upload stays available but untracked (monitored signal, plan §6).
+      if (body.hash !== undefined) {
+        const mimeType =
+          head.contentType !== ""
+            ? head.contentType
+            : (body.metadata?.mimeType ?? "application/octet-stream");
+        try {
+          await assetService.register({
+            projectId: body.project_id,
+            actingUserId: user.id,
+            contentHash: body.hash,
+            storageKey: body.key,
+            fileUrl,
+            sizeBytes: head.size,
+            mimeType,
+            kind: detectKind(mimeType),
+            source: "upload",
+          });
+        } catch (err) {
+          logger.error(
+            { err, projectId: body.project_id, key: body.key, userId: user.id },
+            "asset_ledger_register_failed",
+          );
+        }
+      } else {
+        logger.info(
+          { projectId: body.project_id, key: body.key, userId: user.id },
+          "asset_upload_untracked_no_hash",
+        );
+      }
+    } else {
+      // Unreachable: the schema superRefine guarantees dedup→hash and
+      // regular→key. Kept for TS narrowing + defense in depth.
+      return c.json({ error: { message: t("server.error.validation") } }, 422);
     }
-    const fileUrl = adapter.publicUrl(body.key);
 
     // Node history record (version timeline), when node-bound.
     if (body.node_id) {

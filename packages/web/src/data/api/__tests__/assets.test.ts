@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe('assetsApi.presign — aligned to the backend presign contract', () => {
-  it('sends snake_case query params (filename / content_type / project_id)', async () => {
+  it('sends snake_case query params incl. the declared size and optional hash', async () => {
     vi.mocked(apiGet).mockResolvedValue({
       uploadUrl: 'https://put',
       fileUrl: 'https://public',
@@ -33,6 +33,8 @@ describe('assetsApi.presign — aligned to the backend presign contract', () => 
       filename: 'photo.png',
       contentType: 'image/png',
       projectId: 'p1',
+      size: 1234,
+      hash: 'a'.repeat(64),
     });
 
     expect(vi.mocked(apiGet)).toHaveBeenCalledWith('/assets/presign', {
@@ -40,11 +42,35 @@ describe('assetsApi.presign — aligned to the backend presign contract', () => 
         filename: 'photo.png',
         content_type: 'image/png',
         project_id: 'p1',
+        size: 1234,
+        hash: 'a'.repeat(64),
       },
     });
   });
 
-  it('returns the backend shape { uploadUrl, fileUrl, key, kind }', async () => {
+  it('omits the hash param when hashing degraded to null', async () => {
+    vi.mocked(apiGet).mockResolvedValue({
+      uploadUrl: 'https://put',
+      fileUrl: 'https://public',
+      key: 'k',
+      kind: 'image',
+    });
+
+    await assetsApi.presign({
+      filename: 'photo.png',
+      contentType: 'image/png',
+      projectId: 'p1',
+      size: 10,
+      hash: null,
+    });
+
+    const params = vi.mocked(apiGet).mock.calls[0]![1] as {
+      params: Record<string, unknown>;
+    };
+    expect('hash' in params.params).toBe(false);
+  });
+
+  it('returns the normal shape { uploadUrl, fileUrl, key, kind }', async () => {
     vi.mocked(apiGet).mockResolvedValue({
       uploadUrl: 'https://put',
       fileUrl: 'https://public/photo.png',
@@ -56,6 +82,7 @@ describe('assetsApi.presign — aligned to the backend presign contract', () => 
       filename: 'photo.png',
       contentType: 'image/png',
       projectId: 'p1',
+      size: 10,
     });
 
     expect(result).toEqual({
@@ -63,6 +90,67 @@ describe('assetsApi.presign — aligned to the backend presign contract', () => 
       fileUrl: 'https://public/photo.png',
       key: 'proj/photo.png',
       kind: 'image',
+    });
+  });
+
+  it('passes a dedup hit { alreadyExists, fileUrl, kind } through unchanged', async () => {
+    vi.mocked(apiGet).mockResolvedValue({
+      alreadyExists: true,
+      fileUrl: 'https://public/photo.png',
+      kind: 'image',
+    });
+
+    const result = await assetsApi.presign({
+      filename: 'photo.png',
+      contentType: 'image/png',
+      projectId: 'p1',
+      size: 10,
+      hash: 'a'.repeat(64),
+    });
+
+    expect(result).toEqual({
+      alreadyExists: true,
+      fileUrl: 'https://public/photo.png',
+      kind: 'image',
+    });
+  });
+});
+
+describe('assetsApi.fetchUploadConfig — session-cached knobs', () => {
+  it('fetches once and serves later calls from the cache', async () => {
+    assetsApi.resetUploadConfigCache();
+    vi.mocked(apiGet).mockResolvedValue({
+      maxUploadBytes: 2147483648,
+      clientMaxAttempts: 3,
+      clientRetryBaseDelayMs: 1000,
+      clientRequestTimeoutMs: 30000,
+      clientPutMinBytesPerSec: 65536,
+    });
+
+    const first = await assetsApi.fetchUploadConfig();
+    const second = await assetsApi.fetchUploadConfig();
+
+    expect(first.maxUploadBytes).toBe(2147483648);
+    expect(second).toBe(first);
+    expect(vi.mocked(apiGet)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(apiGet)).toHaveBeenCalledWith('/assets/upload-config');
+  });
+
+  it('does not cache a failure (next call retries the fetch)', async () => {
+    assetsApi.resetUploadConfigCache();
+    vi.mocked(apiGet)
+      .mockRejectedValueOnce(new Error('down'))
+      .mockResolvedValueOnce({
+        maxUploadBytes: 1,
+        clientMaxAttempts: 3,
+        clientRetryBaseDelayMs: 1000,
+        clientRequestTimeoutMs: 30000,
+        clientPutMinBytesPerSec: 65536,
+      });
+
+    await expect(assetsApi.fetchUploadConfig()).rejects.toThrow('down');
+    await expect(assetsApi.fetchUploadConfig()).resolves.toMatchObject({
+      maxUploadBytes: 1,
     });
   });
 });

@@ -1,7 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { PresignResult } from '@web/data/api/assets';
+import { isDedupHit, type PresignResponse } from '@web/data/api/assets';
+import {
+  retryTransient,
+  type UploadClientConfig,
+} from '@web/data/upload/upload-retry';
 
 /**
  * Pure canvas-upload classification + the media upload orchestrator. Classify
@@ -45,36 +49,68 @@ export function fileToNodeSpec(file: Pick<File, 'type'>): UploadNodeSpec {
   return { nodeType: 'text', needsUpload: false };
 }
 
+/**
+ * The storage identity a finished upload reports to the activity-feed
+ * handshake (#1609): regular path carries the stored key; a dedup hit
+ * carries `dedup: true` (nothing was uploaded); `hash` is null only when
+ * the hashing worker degraded.
+ */
+export interface UploadedInfo {
+  kind: string;
+  fileUrl: string;
+  /** Content sha256, or null when hashing degraded (worker failure). */
+  hash: string | null;
+  /** Stored object key (regular path only). */
+  key?: string;
+  /** True when the presign answered `alreadyExists` (B.2 instant dedup). */
+  dedup?: true;
+}
+
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */
 export interface MediaUploadDeps {
-  /** Request a presigned upload URL (the real one is `assetsApi.presign`). */
+  /** Fetch the session-cached upload knobs (`assetsApi.fetchUploadConfig`). */
+  getUploadConfig: () => Promise<UploadClientConfig>;
+  /** Hash the file for dedup; null = degrade, never rejects (`hashFile`). */
+  hashFile: (file: File) => Promise<string | null>;
+  /** Request a presigned upload URL or a dedup hit (`assetsApi.presign`). */
   presign: (params: {
     filename: string;
     contentType: string;
     projectId: string;
-  }) => Promise<PresignResult>;
-  /** PUT the file to its presigned URL (the real one is `assetsApi.putFile`). */
-  putFile: (uploadUrl: string, file: File) => Promise<void>;
+    size: number;
+    hash?: string | null;
+  }) => Promise<PresignResponse>;
+  /** PUT the file with retries + stall guard (`putFileWithRetry`). */
+  putFile: (
+    uploadUrl: string,
+    file: File,
+    cfg: UploadClientConfig,
+  ) => Promise<void>;
   /** Called with the public URL once the upload succeeds. */
   onSuccess: (fileUrl: string) => void;
-  /** Called (no args) when presign or the PUT fails. */
+  /** Called (no args) when config/presign/PUT finally fail. */
   onFailure: () => void;
   /**
    * Optional post-success hook carrying the storage identity — the
    * caller reports the upload to the activity-feed handshake with it
    * (fire-and-forget; the canvas write-back never waits on it).
    */
-  onUploaded?: (info: { key: string; kind: string; fileUrl: string }) => void;
+  onUploaded?: (info: UploadedInfo) => void;
+  /** Backoff sleep override (tests only — production uses real timers). */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /**
- * Upload a media file: presign → PUT the bytes → report the public URL on
- * success, or signal failure. Never throws — both outcomes route through the
- * `onSuccess` / `onFailure` callbacks so the caller can write them to Yjs
- * (`completeNodeHandling` / `failNodeHandling`).
+ * Upload a media file (#1609 orchestration): fetch the knobs → hash the
+ * bytes (Web Worker, any size) → presign with size + hash — a dedup hit
+ * skips the upload entirely and reuses the existing URL (B.2) — else PUT
+ * with retries, then report the public URL. presign gets the same
+ * 3-attempt transient-retry treatment as the PUT. Never throws — both
+ * outcomes route through `onSuccess` / `onFailure` so the caller can
+ * write them to Yjs (`completeNodeHandling` / `failNodeHandling`).
  * @param file - The media file to upload.
  * @param projectId - Owning project (authorizes the presign).
- * @param deps - Injected presign / putFile / result callbacks.
+ * @param deps - Injected config / hash / network / result callbacks.
  */
 export async function runMediaUpload(
   file: File,
@@ -82,14 +118,31 @@ export async function runMediaUpload(
   deps: MediaUploadDeps,
 ): Promise<void> {
   try {
-    const { uploadUrl, fileUrl, key, kind } = await deps.presign({
-      filename: file.name,
-      contentType: file.type,
-      projectId,
-    });
-    await deps.putFile(uploadUrl, file);
-    deps.onSuccess(fileUrl);
-    deps.onUploaded?.({ key, kind, fileUrl });
+    const cfg = await deps.getUploadConfig();
+    const hash = await deps.hashFile(file);
+    const res = await retryTransient(
+      () =>
+        deps.presign({
+          filename: file.name,
+          contentType: file.type,
+          projectId,
+          size: file.size,
+          hash,
+        }),
+      {
+        attempts: cfg.clientMaxAttempts,
+        baseDelayMs: cfg.clientRetryBaseDelayMs,
+        ...(deps.sleep !== undefined && { sleep: deps.sleep }),
+      },
+    );
+    if (isDedupHit(res)) {
+      deps.onSuccess(res.fileUrl);
+      deps.onUploaded?.({ dedup: true, kind: res.kind, fileUrl: res.fileUrl, hash });
+      return;
+    }
+    await deps.putFile(res.uploadUrl, file, cfg);
+    deps.onSuccess(res.fileUrl);
+    deps.onUploaded?.({ key: res.key, kind: res.kind, fileUrl: res.fileUrl, hash });
   } catch {
     deps.onFailure();
   }
@@ -111,10 +164,16 @@ export interface UploadLease {
 
 /** Injected dependencies for {@link fillNodeFromFile} (upload network + Yjs sinks). */
 export interface FillNodeDeps {
-  /** Request a presigned upload URL (media path). */
+  /** Fetch the session-cached upload knobs (media path). */
+  getUploadConfig: MediaUploadDeps['getUploadConfig'];
+  /** Hash the file for dedup (media path). */
+  hashFile: MediaUploadDeps['hashFile'];
+  /** Request a presigned upload URL / dedup hit (media path). */
   presign: MediaUploadDeps['presign'];
-  /** PUT the file to its presigned URL (media path). */
+  /** PUT the file with retries (media path). */
   putFile: MediaUploadDeps['putFile'];
+  /** Backoff sleep override (tests only). */
+  sleep?: MediaUploadDeps['sleep'];
   /** Read / extract a non-media file's text locally (the text path). */
   extractText: (file: File) => Promise<string>;
   /**
@@ -147,10 +206,7 @@ export interface FillNodeDeps {
    * after a successful upload with the storage identity + the node it
    * landed on. Fire-and-forget at the caller.
    */
-  onUploaded?: (
-    nodeId: string,
-    info: { key: string; kind: string; fileUrl: string },
-  ) => void;
+  onUploaded?: (nodeId: string, info: UploadedInfo) => void;
 }
 
 /**
@@ -196,11 +252,14 @@ export async function fillNodeFromFile(
   if (!lease) return;
   if (fileToNodeSpec(file).needsUpload) {
     await runMediaUpload(file, projectId, {
+      getUploadConfig: deps.getUploadConfig,
+      hashFile: deps.hashFile,
       presign: deps.presign,
       putFile: deps.putFile,
       onSuccess: (fileUrl) => deps.setContent(nodeId, fileUrl, lease),
       onFailure: () => deps.setError(nodeId, `Upload failed: ${file.name}`, lease),
       onUploaded: (info) => deps.onUploaded?.(nodeId, info),
+      ...(deps.sleep !== undefined && { sleep: deps.sleep }),
     });
     return;
   }

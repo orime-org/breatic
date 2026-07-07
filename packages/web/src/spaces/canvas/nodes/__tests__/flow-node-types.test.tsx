@@ -37,7 +37,7 @@ describe('FLOW_NODE_TYPES', () => {
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined, activateNodeUpload: () => undefined, setNodeContent: () => undefined, commitGroupResize: () => undefined }}>
+        <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined, activateNodeUpload: () => undefined, setNodeContent: () => undefined, commitGroupResize: () => undefined, retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -66,7 +66,7 @@ describe('FLOW_NODE_TYPES', () => {
     render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent, commitGroupResize: vi.fn() }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent, commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -98,7 +98,7 @@ describe('FLOW_NODE_TYPES', () => {
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -136,7 +136,7 @@ describe('FLOW_NODE_TYPES', () => {
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -153,7 +153,7 @@ describe('FLOW_NODE_TYPES', () => {
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -172,7 +172,7 @@ describe('FLOW_NODE_TYPES', () => {
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -194,7 +194,7 @@ describe('FLOW_NODE_TYPES', () => {
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}>
+        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -213,7 +213,7 @@ describe('FLOW_NODE_TYPES', () => {
     render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload, setNodeContent: vi.fn(), commitGroupResize: vi.fn() }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload, setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Image
             {...({

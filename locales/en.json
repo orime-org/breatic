@@ -6,6 +6,7 @@
       "unauthorized": "Invalid or expired credentials",
       "conflict": "Resource conflict",
       "validation": "Invalid input",
+      "upload_too_large": "File exceeds the upload size limit.",
       "insufficient_credits": "Insufficient credits: required {required}, available {available}",
       "rate_limited": "Too many requests, please try again later",
       "internal": "Internal server error",
@@ -320,7 +321,9 @@
     "upload": {
       "nodeBusy": "This node is busy — another operation is in progress.",
       "ownershipLost": "Upload result was not written — the node was removed or taken over.",
-      "typeMismatch": "File type doesn’t match this node."
+      "typeMismatch": "File type doesn’t match this node.",
+      "retry": "Retry upload",
+      "tooLarge": "{filename} exceeds the upload size limit."
     },
     "minimap": {
       "label": "Canvas minimap"
