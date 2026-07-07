@@ -57,6 +57,24 @@ describe('isTransientUploadError — retry only what can heal', () => {
     expect(isTransientUploadError({ response: { status: 404 } })).toBe(false);
   });
 
+  it('reads status off the project ApiException flat .status (real presign error shape)', () => {
+    // apiGet rejects with ApiException { status, name: 'ApiException' } —
+    // a FLAT status, not { response: { status } }. Adversarial #2: without
+    // this, every transient presign failure (503/429/network-0) is judged
+    // non-transient and the presign retry is dead.
+    const apiErr = (status: number): unknown => {
+      const e = new Error('api') as Error & { status: number; name: string };
+      e.name = 'ApiException';
+      e.status = status;
+      return e;
+    };
+    expect(isTransientUploadError(apiErr(503))).toBe(true);
+    expect(isTransientUploadError(apiErr(429))).toBe(true);
+    expect(isTransientUploadError(apiErr(0))).toBe(true); // network drop
+    expect(isTransientUploadError(apiErr(403))).toBe(false);
+    expect(isTransientUploadError(apiErr(413))).toBe(false);
+  });
+
   it('does not retry unknown programming errors', () => {
     expect(isTransientUploadError(new Error('undefined is not a function'))).toBe(
       false,
@@ -114,6 +132,18 @@ describe('computePutTimeoutMs — stall guard scales with size', () => {
   it('scales by the minimum acceptable rate for large files', () => {
     // 6553600 bytes at 65536 B/s = 100s > 30s floor
     expect(computePutTimeoutMs(6553600, CFG)).toBe(100000);
+  });
+
+  it('keeps a 2 GiB file (the upload cap) below the 32-bit setTimeout ceiling', () => {
+    // Guard invariant: a timeout past 2,147,483,647 ms (the int32
+    // setTimeout / AbortSignal.timeout limit) overflows to ~0 and aborts
+    // the PUT instantly. At the 2 GiB cap and 65536 B/s floor the timeout
+    // is ~32.8M ms (~9h) — comfortably under the ceiling — so no clamp is
+    // needed today. This test fails the day someone shrinks the rate floor
+    // or raises the cap enough to approach the limit, forcing a clamp then.
+    const t = computePutTimeoutMs(2147483648, CFG);
+    expect(t).toBeGreaterThan(0);
+    expect(t).toBeLessThanOrEqual(2147483647);
   });
 });
 

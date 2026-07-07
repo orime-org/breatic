@@ -363,11 +363,21 @@ assets.post(
       }
       fileUrl = adapter.publicUrl(body.key);
 
-      // Ledger registration (#1609): every hashed upload lands in
-      // studio_assets with the size + content type STORAGE reports (the
-      // client claim is never the source of truth). A missing hash can
-      // only be the hashing-worker degrade — the upload stays available
-      // but untracked (monitored signal, plan §6).
+      // Ledger registration (#1609): size + content type come from what
+      // STORAGE reports (head()), never the client. The dedup KEY
+      // (content_hash) IS the client-asserted hash, though — the browser
+      // upload path trusts it (unlike the worker path, which hashes the
+      // transfer stream server-side). Dedup is studio-scoped, so this
+      // trust is bounded to team-studio insiders, not the world; the
+      // residual poison surface (an insider padding bytes to a target
+      // file's size to plant a hash they don't own) is accepted here and
+      // covered by an OFFLINE integrity sweep (#1631) that re-hashes
+      // stored objects and quarantines mismatches — trust-but-verify,
+      // async (user decision 2026-07-07; Dropbox dropped cross-user dedup
+      // over this exact hash-as-proof attack, but that was GLOBAL dedup;
+      // studio-scoped keeps instant dedup without world-facing exposure).
+      // A missing hash can only be the hashing-worker degrade — the
+      // upload stays available but untracked (monitored signal, plan §6).
       if (body.hash !== undefined) {
         const mimeType =
           head.contentType !== ""

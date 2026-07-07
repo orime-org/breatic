@@ -42,17 +42,22 @@ export class UploadHttpError extends Error {
 }
 
 /**
- * Extract an HTTP status from an upload/presign error, if it carries one
- * ({@link UploadHttpError} or an axios-shaped `{ response: { status } }`).
+ * Extract an HTTP status from an upload/presign error, if it carries one.
+ * Covers three shapes: {@link UploadHttpError} (PUT path), the project's
+ * `ApiException` (apiGet path — a FLAT `.status`, NOT `{response:{status}}`),
+ * and a raw axios error (`{ response: { status } }`, defensive fallback).
+ * The flat-status branch is what makes the presign retry actually work —
+ * apiGet normalizes every failure into an ApiException whose status lives
+ * on `.status`, so reading only the axios shape left presign retries dead.
  * @param err - The thrown value.
  * @returns The status, or null when the error carries none (network-level).
  */
 function errorStatus(err: unknown): number | null {
-  if (err instanceof UploadHttpError) return err.status;
-  if (typeof err === 'object' && err !== null && 'response' in err) {
-    const status = (err as { response?: { status?: unknown } }).response?.status;
-    if (typeof status === 'number') return status;
-  }
+  if (typeof err !== 'object' || err === null) return null;
+  const flat = (err as { status?: unknown }).status;
+  if (typeof flat === 'number') return flat;
+  const nested = (err as { response?: { status?: unknown } }).response?.status;
+  if (typeof nested === 'number') return nested;
   return null;
 }
 
@@ -65,7 +70,9 @@ function errorStatus(err: unknown): number | null {
  */
 export function isTransientUploadError(err: unknown): boolean {
   const status = errorStatus(err);
-  if (status !== null) return status >= 500 || status === 429;
+  // status 0 = no HTTP response reached us (network drop / timeout / CORS),
+  // which apiGet normalizes to `.status = 0` — the most retryable case.
+  if (status !== null) return status === 0 || status >= 500 || status === 429;
   if (err instanceof TypeError) return true;
   if (
     err instanceof DOMException &&
