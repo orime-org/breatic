@@ -165,7 +165,7 @@ export async function confirmTransfer(
     // Demote the old admin FIRST, then promote the new one — the reverse order
     // would collide with studio_members_one_admin_per_studio (two active
     // admins) mid-transaction. The old admin drops ONE rank to maintainer
-    // (#1612 / D1 "降一档"), not all the way to guest.
+    // (#1612 / D1 one-rank-down demotion), not all the way to guest.
     const demoted = await studioMembersRepo.updateRole(
       studioId,
       fromUserId,

@@ -13,7 +13,7 @@
  *     recipient's inbox, expiring after 7 days.
  *   - `confirmProjectTransfer`: the recipient accepts. In ONE db.transaction:
  *     mark the request read (the CAS serialization point), then demote the old
- *     owner to editor FIRST (#1611 / D1 "降一档") and promote the recipient to
+ *     owner to editor FIRST (#1611 / D1 one-rank-down demotion) and promote the recipient to
  *     owner SECOND via `materializeOwner` (insert / revive / promote — the
  *     recipient may not yet be a project member), then notify the old owner via
  *     `project.transfer_approved`. AFTER the tx commits, append the
