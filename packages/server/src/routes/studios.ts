@@ -33,6 +33,9 @@ import * as studioMemberService from "@server/modules/studio/studioMember.servic
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
 import { buildStudioInvitationMail } from "@server/modules/studio/studio-invite-mail.js";
+import { buildStudioTransferMail } from "@server/modules/studio/studio-transfer-mail.js";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
 import { sendMail } from "@server/infra/mailer.js";
 import { logger } from "@breatic/core";
 
@@ -258,6 +261,28 @@ studio.post("/:slug/transfer-admin", requireStudioRole("admin"), async (c) => {
   const slug = c.req.param("slug");
   const body = transferAdminSchema.parse(await c.req.json());
   await studioTransferService.requestTransfer(slug, user.id, body.toUserId);
+  // Best-effort transfer email — the bell notification is the always-delivered
+  // path; this only fires when an SMTP backend is configured. A send failure
+  // must NOT fail the request (the request + bell already landed).
+  try {
+    const recipient = await userRepo.getUserById(body.toUserId);
+    const studioRow = await studioRepo.getBySlug(slug);
+    const profiles = await studioRepo.getPersonalProfilesByCreators([user.id]);
+    if (recipient && studioRow) {
+      const origin = c.req.header("Origin") ?? "http://localhost:8000";
+      const mailResult = await sendMail(
+        buildStudioTransferMail({
+          recipientEmail: recipient.email,
+          initiatorName: profiles.get(user.id)?.name ?? "",
+          studioName: studioRow.name,
+          studioLink: `${origin}/studio/${slug}`,
+        }),
+      );
+      logger.info({ slug, mailStatus: mailResult.status }, "studio_transfer_email");
+    }
+  } catch (err) {
+    logger.error({ err, slug }, "studio_transfer_email_failed");
+  }
   return c.json({ data: { ok: true } }, 201);
 });
 
