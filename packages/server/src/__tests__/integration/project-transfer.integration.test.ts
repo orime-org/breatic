@@ -403,6 +403,50 @@ describe("confirmProjectTransfer", () => {
   });
 });
 
+describe("confirmProjectTransfer — TOCTOU eligibility re-check", () => {
+  it("rejects confirm when the recipient was demoted to studio guest after the request (roles unchanged)", async () => {
+    const { studioId, projectId, ownerId, recipientId } =
+      await seedProjectTransfer();
+    await projectTransferService.requestProjectTransfer(
+      projectId,
+      ownerId,
+      recipientId,
+    );
+    const [req] = await transferRequestsFor(recipientId);
+    // The admin demotes the recipient to guest AFTER the request was sent.
+    await sql`UPDATE studio_members SET role = 'guest' WHERE studio_id = ${studioId} AND user_id = ${recipientId}`;
+
+    await expect(
+      projectTransferService.confirmProjectTransfer(req!.id, recipientId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(await getProjectRole(projectId, ownerId)).toBe("owner");
+    expect(await getProjectRole(projectId, recipientId)).toBe("editor");
+    expect(await activeOwnerCount(projectId)).toBe(1);
+  });
+
+  it("rejects confirm when the recipient was kicked from the studio after the request (ownership cannot leave the studio)", async () => {
+    const { studioId, projectId, ownerId, recipientId } =
+      await seedProjectTransfer();
+    await projectTransferService.requestProjectTransfer(
+      projectId,
+      ownerId,
+      recipientId,
+    );
+    const [req] = await transferRequestsFor(recipientId);
+    // A studio kick soft-deletes the recipient's studio_members + project_members rows.
+    await sql`UPDATE studio_members SET deleted_at = now() WHERE studio_id = ${studioId} AND user_id = ${recipientId}`;
+    await sql`UPDATE project_members SET deleted_at = now() WHERE project_id = ${projectId} AND user_id = ${recipientId}`;
+
+    await expect(
+      projectTransferService.confirmProjectTransfer(req!.id, recipientId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(await getProjectRole(projectId, ownerId)).toBe("owner");
+    expect(await activeOwnerCount(projectId)).toBe(1);
+  });
+});
+
 describe("cancelProjectTransfer", () => {
   it("marks the request read and changes no roles", async () => {
     const { projectId, ownerId, recipientId } = await seedProjectTransfer();

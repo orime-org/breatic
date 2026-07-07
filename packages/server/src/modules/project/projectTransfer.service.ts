@@ -193,6 +193,31 @@ export async function confirmProjectTransfer(
     const projectSlug =
       typeof payload.projectSlug === "string" ? payload.projectSlug : "";
 
+    // TOCTOU guard (adversarial review): the request-time two-layer eligibility
+    // (ADR D3) can go stale within the 7-day TTL — the recipient may have been
+    // demoted to studio guest or kicked from the studio since the request. Re-
+    // verify BOTH layers BEFORE the swap; otherwise materializeOwner (ON CONFLICT
+    // DO UPDATE, no setWhere) would revive a soft-deleted / guest row straight to
+    // owner and move the project out of its studio. Reads committed state; a
+    // ConflictError rolls the whole transaction back (including the mark-read).
+    const recipientProjectRole = await projectMembersRepo.getRole(
+      projectId,
+      receiverUserId,
+    );
+    if (
+      recipientProjectRole !== "editor" &&
+      recipientProjectRole !== "viewer"
+    ) {
+      throw new ConflictError(t("server.error.conflict"));
+    }
+    const project = await projectRepo.getProjectById(projectId);
+    const recipientStudioRole = project
+      ? await studioMembersRepo.getRole(project.studioId, receiverUserId)
+      : null;
+    if (!recipientStudioRole || recipientStudioRole === "guest") {
+      throw new ConflictError(t("server.error.conflict"));
+    }
+
     // Demote the old owner to editor FIRST (drops zero owners), then promote the
     // recipient to owner SECOND — the reverse order would collide with
     // project_members_one_owner_per_project. materializeOwner inserts / revives

@@ -321,6 +321,30 @@ describe("confirmTransfer", () => {
   });
 });
 
+describe("confirmTransfer — TOCTOU eligibility re-check", () => {
+  it("rejects confirm when the recipient was demoted to guest after the request (roles unchanged)", async () => {
+    const { studioId, slug, adminId, memberId } = await seedStudio();
+    await studioTransferService.requestTransfer(slug, adminId, memberId);
+    const [req] = await transferRequestsFor(memberId);
+    // The admin demotes the recipient to guest AFTER the request was sent.
+    await sql`UPDATE studio_members SET role = 'guest' WHERE studio_id = ${studioId} AND user_id = ${memberId}`;
+
+    await expect(
+      studioTransferService.confirmTransfer(req!.id, memberId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    // The swap did NOT happen: the admin stays admin, the recipient stays guest.
+    const roles = await sql<{ user_id: string; role: string }[]>`
+      SELECT user_id, role FROM studio_members
+      WHERE studio_id = ${studioId} AND deleted_at IS NULL
+    `;
+    const roleOf = (uid: string): string | undefined =>
+      roles.find((r) => r.user_id === uid)?.role;
+    expect(roleOf(adminId)).toBe("admin");
+    expect(roleOf(memberId)).toBe("guest");
+  });
+});
+
 describe("cancelTransfer", () => {
   it("marks the request read and changes no roles", async () => {
     const { studioId, slug, adminId, memberId } = await seedStudio();

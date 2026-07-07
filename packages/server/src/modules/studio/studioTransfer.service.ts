@@ -162,6 +162,20 @@ export async function confirmTransfer(
     const studioSlug =
       typeof payload.studioSlug === "string" ? payload.studioSlug : "";
 
+    // TOCTOU guard (adversarial review): the request-time non-guest check
+    // (#1612 / D3) can go stale within the 7-day TTL — the recipient may have
+    // been demoted to guest since the request. Re-verify BEFORE the swap;
+    // otherwise updateRole would flip a guest's still-active row straight to
+    // admin. Reads committed state; a ConflictError rolls the whole transaction
+    // back (including the mark-read).
+    const recipientRole = await studioMembersRepo.getRole(
+      studioId,
+      receiverUserId,
+    );
+    if (!recipientRole || recipientRole === "guest") {
+      throw new ConflictError(t("server.error.conflict"));
+    }
+
     // Demote the old admin FIRST, then promote the new one — the reverse order
     // would collide with studio_members_one_admin_per_studio (two active
     // admins) mid-transaction. The old admin drops ONE rank to maintainer
