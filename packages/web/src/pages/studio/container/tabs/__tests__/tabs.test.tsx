@@ -226,17 +226,19 @@ const PERSONAL: StudioDetail = {
 
 describe('SettingsTab (spec §3.11 danger zone)', () => {
   it('shows transfer / delete for a team studio Admin', () => {
-    render(<SettingsTab studio={TEAM} />);
+    withQuery(<SettingsTab studio={TEAM} members={[]} />);
     expect(screen.getByText('Danger zone')).toBeInTheDocument();
   });
 
   it('never shows the danger zone for a personal studio', () => {
-    render(<SettingsTab studio={PERSONAL} />);
+    withQuery(<SettingsTab studio={PERSONAL} members={[]} />);
     expect(screen.queryByText('Danger zone')).toBeNull();
   });
 
   it('hides the danger zone from a team Member', () => {
-    render(<SettingsTab studio={{ ...TEAM, myStudioRole: 'guest' }} />);
+    withQuery(
+      <SettingsTab studio={{ ...TEAM, myStudioRole: 'guest' }} members={[]} />,
+    );
     expect(screen.queryByText('Danger zone')).toBeNull();
   });
 });

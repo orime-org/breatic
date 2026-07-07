@@ -1,13 +1,36 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
+import { Button } from '@web/components/ui/button';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@web/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@web/components/ui/select';
+import { studiosApi } from '@web/data/api/studios';
+import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
+import type { StudioMember } from '@web/pages/studio/container/container-types';
 
 interface SettingsTabProps {
   studio: StudioDetail;
+  /** The studio's members — the transfer picker lists the non-guest ones. */
+  members: readonly StudioMember[];
 }
 
 /**
@@ -47,17 +70,144 @@ function Field({
 }
 
 /**
+ * The single "Transfer Studio" entry (2026-07-08 decision A) — a button in the
+ * Settings danger zone that opens a recipient picker. The only eligible
+ * recipients are the studio's non-guest members other than the admin, i.e. the
+ * maintainers (the sole admin is the acting user). Sending is a two-step
+ * handshake: it dispatches a request the recipient accepts via their bell; the
+ * admin role does not change until then. Replaces the former per-member-row
+ * "Transfer admin" action (single entry, avoids two places).
+ * @param root0 - Transfer section props.
+ * @param root0.slug - The studio's URL handle (the transfer request path param).
+ * @param root0.members - The studio members (source of the maintainer candidates).
+ * @returns the transfer button + its recipient-picker dialog.
+ */
+function TransferStudioSection({
+  slug,
+  members,
+}: {
+  slug: string;
+  members: readonly StudioMember[];
+}): React.JSX.Element {
+  const t = useTranslation();
+  const [open, setOpen] = React.useState(false);
+  const [selected, setSelected] = React.useState('');
+
+  const candidates = members.filter((m) => m.studioRole === 'maintainer');
+
+  const transferMutation = useMutation({
+    mutationFn: (userId: string) =>
+      studiosApi.requestTransfer(slug, { toUserId: userId }),
+    onSuccess: () => {
+      setOpen(false);
+      setSelected('');
+      toast.success(t('studio.container.members.transferRequested'));
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiException
+          ? err.message
+          : t('studio.container.members.actionFailed'),
+      ),
+  });
+
+  return (
+    <>
+      <button
+        type='button'
+        className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-accent'
+        onClick={() => setOpen(true)}
+        data-testid='settings-transfer-open'
+      >
+        {t('studio.container.settings.transfer')}
+      </button>
+
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setSelected('');
+        }}
+      >
+        <DialogContent data-testid='settings-transfer-dialog'>
+          <DialogHeader>
+            <DialogTitle>
+              {t('studio.container.settings.transferTitle')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('studio.container.settings.transferBody')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody className='flex flex-col gap-3'>
+            {candidates.length === 0 ? (
+              <span className='text-xs text-muted-foreground'>
+                {t('studio.container.settings.transferNoCandidates')}
+              </span>
+            ) : (
+              <Select value={selected} onValueChange={setSelected}>
+                <SelectTrigger
+                  data-testid='settings-transfer-select'
+                  aria-label={t(
+                    'studio.container.settings.transferSelectPlaceholder',
+                  )}
+                >
+                  <SelectValue
+                    placeholder={t(
+                      'studio.container.settings.transferSelectPlaceholder',
+                    )}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {candidates.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.email ? `${m.name} · ${m.email}` : m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className='flex items-center justify-end gap-2'>
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={() => setOpen(false)}
+              >
+                {t('studio.container.dialog.cancel')}
+              </Button>
+              <Button
+                size='sm'
+                disabled={!selected || transferMutation.isPending}
+                onClick={() => transferMutation.mutate(selected)}
+                data-testid='settings-transfer-send'
+              >
+                {t('studio.container.members.transferConfirmAction')}
+              </Button>
+            </div>
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/**
  * The Settings tab (spec §3.11) — studio basic info plus a governance "danger
- * zone". Per DD §3.11 the transfer / delete actions are Owner-only and never
+ * zone". Per DD §3.11 the transfer / delete actions are Admin-only and never
  * available for the personal studio (permanent); they show here only for a team
- * studio whose viewer is an Admin. Basic-info editing wires to the real API in
- * Phase 2 (read-only display here). The "bio" field from the mock is omitted
- * until the studio contract carries a `description` (backend gap).
- * @param props the current studio detail.
+ * studio whose viewer is an Admin. The "Transfer Studio" button opens the
+ * recipient picker (2026-07-08 decision A — the single transfer entry). Basic-info
+ * editing wires to the real API in Phase 2 (read-only display here). The "bio"
+ * field from the mock is omitted until the studio contract carries a
+ * `description` (backend gap).
+ * @param props the current studio detail + its members.
  * @param props.studio the studio detail to render.
+ * @param props.members the studio members (the transfer picker's candidate source).
  * @returns the Settings tab content.
  */
-export function SettingsTab({ studio }: SettingsTabProps): React.JSX.Element {
+export function SettingsTab({
+  studio,
+  members,
+}: SettingsTabProps): React.JSX.Element {
   const t = useTranslation();
   const canGovern = studio.myStudioRole === 'admin' && studio.type === 'team';
   return (
@@ -83,12 +233,7 @@ export function SettingsTab({ studio }: SettingsTabProps): React.JSX.Element {
             {t('studio.container.settings.dangerHint')}
           </p>
           <div className='mt-1 flex gap-2.5'>
-            <button
-              type='button'
-              className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-accent'
-            >
-              {t('studio.container.settings.transfer')}
-            </button>
+            <TransferStudioSection slug={studio.slug} members={members} />
             <button
               type='button'
               className='h-[30px] rounded-chrome border border-status-error-foreground px-3 text-xs font-medium text-status-error-foreground transition-colors hover:bg-accent'

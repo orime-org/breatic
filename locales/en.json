@@ -1566,7 +1566,6 @@
         "rowMenu": "Member actions",
         "promoteToMaintainer": "Make maintainer",
         "demoteToGuest": "Make guest",
-        "transferAdmin": "Transfer admin…",
         "inviteTitle": "Invite a member",
         "inviteEmailLabel": "Email",
         "inviteEmailPlaceholder": "name@example.com",
@@ -1578,8 +1577,6 @@
         "removeConfirmBody": "{name} will lose access to every project in this studio, and any projects they own pass to you. This cannot be undone.",
         "removeConfirmAction": "Remove",
         "removeSuccess": "Member removed.",
-        "transferConfirmTitle": "Transfer admin?",
-        "transferConfirmBody": "{name} must accept the transfer from their notifications before they become admin. You stay admin until they accept.",
         "transferConfirmAction": "Send request",
         "transferRequested": "Transfer request sent.",
         "actionFailed": "Something went wrong. Please try again.",
@@ -1599,7 +1596,11 @@
         "dangerTitle": "Danger zone",
         "transfer": "Transfer Studio",
         "delete": "Delete Studio",
-        "dangerHint": "Transferring moves all projects, collections and the wallet to the new owner; deletion can not be undone. Owner only."
+        "dangerHint": "Transferring moves all projects, collections and the wallet to the new owner; deletion can not be undone. Owner only.",
+        "transferTitle": "Transfer Studio ownership",
+        "transferBody": "Choose a Maintainer to become the new Admin. They must accept before the transfer takes effect; you become a Maintainer.",
+        "transferSelectPlaceholder": "Select a Maintainer",
+        "transferNoCandidates": "No Maintainers to transfer to. Promote a member to Maintainer first."
       },
       "dialog": {
         "newProjectTitle": "New project",

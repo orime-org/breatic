@@ -1566,7 +1566,6 @@
         "rowMenu": "멤버 작업",
         "promoteToMaintainer": "Maintainer로 지정",
         "demoteToGuest": "Guest로 지정",
-        "transferAdmin": "Admin 이전…",
         "inviteTitle": "멤버 초대",
         "inviteEmailLabel": "이메일",
         "inviteEmailPlaceholder": "name@example.com",
@@ -1578,8 +1577,6 @@
         "removeConfirmBody": "{name} 님은 이 Studio의 모든 Project에 대한 접근 권한을 잃고, 소유한 Project는 회원님에게 이전됩니다. 이 작업은 되돌릴 수 없습니다.",
         "removeConfirmAction": "삭제",
         "removeSuccess": "멤버를 삭제했습니다.",
-        "transferConfirmTitle": "Admin을 이전할까요?",
-        "transferConfirmBody": "{name} 님이 알림에서 이전을 수락해야 Admin이 됩니다. 상대방이 수락하기 전까지는 회원님이 Admin입니다.",
         "transferConfirmAction": "요청 보내기",
         "transferRequested": "이전 요청을 보냈습니다.",
         "actionFailed": "문제가 발생했습니다. 다시 시도해 주세요.",
@@ -1599,7 +1596,11 @@
         "dangerTitle": "위험 영역",
         "transfer": "Studio 양도",
         "delete": "Studio 삭제",
-        "dangerHint": "양도하면 모든 Projects, 에셋 모음, 지갑이 새 Owner에게 이전됩니다; 삭제는 되돌릴 수 없습니다. Owner만 가능합니다."
+        "dangerHint": "양도하면 모든 Projects, 에셋 모음, 지갑이 새 Owner에게 이전됩니다; 삭제는 되돌릴 수 없습니다. Owner만 가능합니다.",
+        "transferTitle": "Studio 소유권 이전",
+        "transferBody": "새 Admin이 될 Maintainer를 선택하세요. 상대가 수락해야 이전이 적용되며, 당신은 Maintainer가 됩니다.",
+        "transferSelectPlaceholder": "Maintainer 선택",
+        "transferNoCandidates": "이전할 Maintainer가 없습니다. 먼저 멤버를 Maintainer로 승격하세요."
       },
       "dialog": {
         "newProjectTitle": "새 Project",

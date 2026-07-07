@@ -1566,7 +1566,6 @@
         "rowMenu": "成员操作",
         "promoteToMaintainer": "设为 Maintainer",
         "demoteToGuest": "设为 Guest",
-        "transferAdmin": "转让 Admin…",
         "inviteTitle": "邀请成员",
         "inviteEmailLabel": "邮箱",
         "inviteEmailPlaceholder": "name@example.com",
@@ -1578,8 +1577,6 @@
         "removeConfirmBody": "{name} 将失去对本 Studio 所有 Project 的访问权限，其拥有的 Project 会转移给你。此操作不可撤销。",
         "removeConfirmAction": "移除",
         "removeSuccess": "已移除成员。",
-        "transferConfirmTitle": "转让 Admin？",
-        "transferConfirmBody": "{name} 需要在通知中接受转让后才能成为 Admin。在对方接受之前，你仍是 Admin。",
         "transferConfirmAction": "发送请求",
         "transferRequested": "转让请求已发送。",
         "actionFailed": "出错了，请重试。",
@@ -1599,7 +1596,11 @@
         "dangerTitle": "危险操作",
         "transfer": "转让 Studio",
         "delete": "删除 Studio",
-        "dangerHint": "转让会把所有 Projects、Collections 与钱包整体过户给新 Owner;删除不可恢复。仅 Owner 可操作。"
+        "dangerHint": "转让会把所有 Projects、Collections 与钱包整体过户给新 Owner;删除不可恢复。仅 Owner 可操作。",
+        "transferTitle": "转让 Studio 所有权",
+        "transferBody": "选择一位 Maintainer 成为新的 Admin。对方接受后转让才生效,你会变成 Maintainer。",
+        "transferSelectPlaceholder": "选择一位 Maintainer",
+        "transferNoCandidates": "没有可转让的 Maintainer。请先把一位成员提升为 Maintainer。"
       },
       "dialog": {
         "newProjectTitle": "新建 Project",

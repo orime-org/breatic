@@ -1566,7 +1566,6 @@
         "rowMenu": "メンバー操作",
         "promoteToMaintainer": "Maintainer にする",
         "demoteToGuest": "Guest にする",
-        "transferAdmin": "Admin を委譲…",
         "inviteTitle": "メンバーを招待",
         "inviteEmailLabel": "メールアドレス",
         "inviteEmailPlaceholder": "name@example.com",
@@ -1578,8 +1577,6 @@
         "removeConfirmBody": "{name} はこの Studio のすべての Project へのアクセスを失い、所有していた Project はあなたに移ります。この操作は元に戻せません。",
         "removeConfirmAction": "削除",
         "removeSuccess": "メンバーを削除しました。",
-        "transferConfirmTitle": "Admin を委譲しますか？",
-        "transferConfirmBody": "{name} が通知で委譲を承認するまで Admin になりません。承認されるまではあなたが Admin のままです。",
         "transferConfirmAction": "リクエストを送信",
         "transferRequested": "委譲リクエストを送信しました。",
         "actionFailed": "エラーが発生しました。もう一度お試しください。",
@@ -1599,7 +1596,11 @@
         "dangerTitle": "危険な操作",
         "transfer": "Studio を譲渡",
         "delete": "Studio を削除",
-        "dangerHint": "譲渡はすべての Projects ・ Collections ・ウォレットを新しい Owner に移します;削除は元に戻せません。Owner のみ可能です。"
+        "dangerHint": "譲渡はすべての Projects ・ Collections ・ウォレットを新しい Owner に移します;削除は元に戻せません。Owner のみ可能です。",
+        "transferTitle": "Studio の所有権を委譲",
+        "transferBody": "新しい Admin になる Maintainer を選びます。相手が承認すると委譲が有効になり、あなたは Maintainer になります。",
+        "transferSelectPlaceholder": "Maintainer を選択",
+        "transferNoCandidates": "委譲できる Maintainer がいません。まずメンバーを Maintainer に昇格してください。"
       },
       "dialog": {
         "newProjectTitle": "Project を新規作成",
