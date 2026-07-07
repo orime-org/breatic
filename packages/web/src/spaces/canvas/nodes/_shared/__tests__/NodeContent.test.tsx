@@ -56,6 +56,25 @@ describe('NodeContent', () => {
     expect(screen.getByTestId('node-content-error')).toHaveTextContent('Oh no');
   });
 
+  it('error state fills the same fixed h-48 box as empty/handling, not a collapsed one-line bar (#1632)', () => {
+    render(
+      <NodeContent
+        status='error'
+        errorMessage='Operation timed out'
+        hasContent={false}
+        placeholder={<div>P</div>}
+        content={<div>C</div>}
+      />,
+    );
+    // Bug #1632: the error branch used h-full → height collapsed to one text
+    // line (~42px), so the node became a flat wide bar instead of the empty
+    // node's 288×192 box. It must fill the shared fixed h-48 like empty +
+    // handling do, and NOT keep the collapsing h-full.
+    const box = screen.getByTestId('node-content-error');
+    expect(box.className).toContain('h-48');
+    expect(box.className).not.toMatch(/\bh-full\b/);
+  });
+
   it('error block falls back to a generic message when no errorMessage', () => {
     render(
       <NodeContent

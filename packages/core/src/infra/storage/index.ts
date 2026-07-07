@@ -131,8 +131,11 @@ export async function getStorageAdapter(): Promise<StorageAdapter> {
  * @param opts.userId - User ID (optional — omit for transport-level uploads)
  * @param opts.projectId - Project ID (defaults to "default")
  * @param opts.taskType - Task type (image, video, audio, tts, etc.)
- * @param opts.ext - File extension (e.g. ".png", ".mp4")
+ * @param opts.ext - File extension the CALLER must dot (".png", or a
+ *   compound suffix like "_cover.jpg"), or "" for none — appended verbatim.
+ *   A bare "png" throws: the caller owns the format (#1630).
  * @returns the unique storage key path for the object
+ * @throws {Error} If `ext` is non-empty and contains no dot (bare extension).
  */
 export function storageKey(opts: {
   userId?: string;
@@ -140,6 +143,18 @@ export function storageKey(opts: {
   taskType: string;
   ext: string;
 }): string {
+  // Extension contract (#1630): the caller passes a dotted extension
+  // (".png"), a compound dotted suffix ("_cover.jpg"), or "" for none — it
+  // is appended verbatim below. A bare "png" is a caller bug; fail fast
+  // here (the single choke point every key flows through — upload / AIGC /
+  // cover / local) instead of silently producing a dot-less
+  // "..._<uuid>png". `includes('.')` (not startsWith) so compound suffixes
+  // like "_cover.jpg" satisfy the contract.
+  if (opts.ext !== "" && !opts.ext.includes(".")) {
+    throw new Error(
+      `storageKey: ext must be a dotted extension (e.g. ".png") or "", got "${opts.ext}"`,
+    );
+  }
   const date = new Date().toISOString().slice(0, 10);
   const filename = `${Date.now()}_${newId()}${opts.ext}`;
   if (opts.userId) {
