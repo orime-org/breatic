@@ -22,6 +22,7 @@ import {
   acquireSemaphore,
   validateParams,
   listAvailableModels,
+  type ResumeContext,
 } from "@worker/providers/shared.js";
 import type { AnyUnderstandFamily } from "@worker/providers/understand/models/types.js";
 
@@ -56,6 +57,7 @@ type UnderstandTransportFn = (
   family: AnyUnderstandFamily,
   prompt: string,
   params: Record<string, unknown>,
+  resume?: ResumeContext,
 ) => Promise<{ text: string; cost: number }>;
 
 /** Provider name -> transport generate function. */
@@ -90,6 +92,7 @@ function getTransport(providerName: string): UnderstandTransportFn {
  * @param prompt - Analysis instruction or empty string for transcribe
  * @param modelName - Model name (required)
  * @param params - Additional parameters (images, video_url, audio_url, etc.)
+ * @param resume - Worker resume context for at-most-once async submit (#1628)
  * @returns Object with text (result), model, and cost
  * @throws {Error} if model or provider resolution fails
  */
@@ -97,6 +100,7 @@ export async function generateAsync(
   prompt: string,
   modelName: string | undefined,
   params: Record<string, unknown> = {},
+  resume?: ResumeContext,
 ): Promise<{ text: string; model: string; cost: number }> {
   const resolved = resolveModel("understand", modelName);
   const family = _MODEL_FAMILIES.get(resolved.modelName);
@@ -111,7 +115,7 @@ export async function generateAsync(
   const release = await acquireSemaphore(resolved.providerName, resolved.maxConcurrency);
 
   try {
-    const result = await transport(resolved, family, prompt, params);
+    const result = await transport(resolved, family, prompt, params, resume);
     return {
       text: result.text,
       model: resolved.modelName,
