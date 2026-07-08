@@ -17,16 +17,13 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { NotFoundError, logger } from "@breatic/core";
+import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRole, getProjectId } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
-import { buildProjectInvitationMail } from "@server/modules/project-invite/project-invite-mail.js";
-import { sendMail } from "@server/infra/mailer.js";
-import { logMailResult } from "@server/utils/log-mail.js";
 
 /** Respond body — confirm (accept) or decline the invite, by its link token. */
 const respondSchema = z.object({
@@ -110,34 +107,18 @@ projectInvites.post(
     const user = c.get("user");
     const projectId = getProjectId(c);
     const body = c.req.valid("json");
+    const origin = c.req.header("Origin") ?? "http://localhost:8000";
+    // The optional best-effort invite email is sent inside the service (the bell
+    // notification is the always-delivered path); the route passes the Origin and
+    // reuses the returned token to build the copyable invite URL.
     const invite = await projectInviteService.createInvite(
       projectId,
       user.id,
       body.email,
       body.role,
+      origin,
     );
-    const origin = c.req.header("Origin") ?? "http://localhost:8000";
     const inviteLink = `${origin}/project-invite?token=${invite.token}`;
-    // Email is an OPTIONAL enhancement — the bell notification is the always-
-    // delivered path. A send failure must NOT fail the request (the invite +
-    // bell already landed); best-effort, logged at the application boundary.
-    try {
-      const result = await sendMail(
-        buildProjectInvitationMail({
-          inviteeEmail: invite.inviteeEmail,
-          inviterName: invite.inviterName,
-          projectName: invite.projectName,
-          role: invite.role,
-          inviteLink,
-        }),
-      );
-      logMailResult(result, { userId: user.id, subject: "project_invite" });
-    } catch (err) {
-      logger.error(
-        { err, projectId, invitationId: invite.invitationId },
-        "project_invite_email_failed",
-      );
-    }
     return c.json({ data: { inviteLink } }, 201);
   },
 );

@@ -37,9 +37,9 @@ import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import { buildStudioTransferMail } from "@server/modules/studio/studio-transfer-mail.js";
-import { sendMail } from "@server/infra/mailer.js";
-import { db, logger } from "@breatic/core";
+import { buildStudioTransferMail } from "@server/utils/notification-mail.js";
+import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
+import { db } from "@breatic/core";
 import {
   ConflictError,
   ForbiddenError,
@@ -115,24 +115,17 @@ export async function requestTransfer(
   // caller passed an origin (the route's HTTP Origin). A send failure must NOT
   // fail the request (the request + bell already landed).
   if (origin) {
-    try {
-      const recipient = await userRepo.getUserById(toUserId);
-      if (recipient) {
-        const mailResult = await sendMail(
-          buildStudioTransferMail({
-            recipientEmail: recipient.email,
-            initiatorName: from?.name ?? "",
-            studioName: studio.name,
-            studioLink: `${origin}/studio/${slug}`,
-          }),
-        );
-        logger.info(
-          { studioId: studio.id, mailStatus: mailResult.status },
-          "studio_transfer_email",
-        );
-      }
-    } catch (err) {
-      logger.error({ err, studioId: studio.id }, "studio_transfer_email_failed");
+    const recipient = await userRepo.getUserById(toUserId);
+    if (recipient) {
+      await sendBestEffortMail(
+        buildStudioTransferMail({
+          recipientEmail: recipient.email,
+          initiatorName: from?.name ?? "",
+          studioName: studio.name,
+          studioLink: `${origin}/studio/${slug}`,
+        }),
+        { userId: toUserId, subject: "studio_transfer" },
+      );
     }
   }
 }

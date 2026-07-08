@@ -42,6 +42,8 @@ import * as notificationService from "@server/modules/notification/notification.
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getProjectCollaboratorCap } from "@server/config/limits.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
+import { buildProjectInvitationMail } from "@server/utils/notification-mail.js";
+import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import { randomBytes } from "node:crypto";
 import { db, env, getRedis } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
@@ -67,7 +69,7 @@ const INVITE_TTL_DAYS = 7;
  * token here — the project invite diverges from studio in that ALL three channels
  * (the owner's copyable URL, the bell, the email) funnel through the SAME
  * `/project-invite?token=` landing page, so the token is shared: it is returned
- * to the caller (route surfaces the copyable URL + email link) AND embedded in
+ * to the caller (route surfaces the copyable URL) AND embedded in
  * the notification payload (so the bell can build the same link). The token
  * lives in Redis (not the PG tx) — a tx rollback simply leaves an orphan token
  * that self-expires in 7 days. The `project_invitations_one_pending` partial
@@ -76,9 +78,11 @@ const INVITE_TTL_DAYS = 7;
  * @param inviterUserId - The acting owner (becomes `invitedBy`; name in payload)
  * @param email - The invitee's email; must belong to a registered user
  * @param role - The granted project role (editor | viewer; never owner)
+ * @param origin - Request Origin; when set, the best-effort invite email is sent
+ *   here (link built from the shared token). Omit to skip it.
  * @returns The new invitation id + email-link token, the invitee's id + email,
  *   and the project / inviter names + role (so the route can compose the
- *   copyable invite URL + email)
+ *   copyable invite URL)
  * @throws {NotFoundError} project not found, or no user with that email
  * @throws {ConflictError} the user already has access to the project, or already
  *   has a live pending invite to it
@@ -88,6 +92,7 @@ export async function createInvite(
   inviterUserId: string,
   email: string,
   role: InvitableProjectRole,
+  origin?: string,
 ): Promise<{
   invitationId: string;
   token: string;
@@ -160,6 +165,22 @@ export async function createInvite(
       throw new ConflictError(t("server.project.already_invited"));
     }
     throw err;
+  }
+
+  // Best-effort invite email — the bell notification is the always-delivered
+  // path; this only fires when an SMTP backend is configured and the caller
+  // passed an origin. A send failure must NOT fail the request.
+  if (origin) {
+    await sendBestEffortMail(
+      buildProjectInvitationMail({
+        inviteeEmail: email,
+        inviterName,
+        projectName: project.name,
+        role,
+        inviteLink: `${origin}/project-invite?token=${token}`,
+      }),
+      { userId: inviterUserId, subject: "project_invite" },
+    );
   }
 
   return {

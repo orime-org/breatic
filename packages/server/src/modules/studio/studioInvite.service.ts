@@ -14,9 +14,9 @@
  * Four operations:
  *   - `createInvite`: admin invites a registered user. Validates, then in ONE
  *     tx creates the pending row + the `studio.invite_request` notification +
- *     links them. Returns the invitee + invitation id so the route layer can
- *     send the (optional) email. A second LIVE pending for the same
- *     (studio, invitee) hits the partial unique → ConflictError.
+ *     links them, then sends the optional invite email (best-effort, when an
+ *     origin is given). A second LIVE pending for the same (studio, invitee)
+ *     hits the partial unique → ConflictError.
  *   - `confirmInvite`: the invitee accepts. In ONE tx: the accept CAS (the
  *     serialization point — concurrent confirms apply EXACTLY ONCE), then
  *     upsert the membership, mark the bell notification read, and notify the
@@ -35,6 +35,8 @@ import * as invitesRepo from "@server/modules/studio/studioInvitations.repo.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { buildStudioInvitationMail } from "@server/utils/notification-mail.js";
+import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import { getStudioMemberCap } from "@server/config/limits.js";
 import { randomBytes } from "node:crypto";
 import { db, env, getRedis } from "@breatic/core";
@@ -56,15 +58,17 @@ const INVITE_TTL_DAYS = 7;
  *
  * Resolves the studio by slug, refuses personal studios, looks the invitee up
  * by email (unregistered → NotFound), and refuses re-inviting an already-active
- * member. Returns the invitee + the new invitation id so the route layer can
- * dispatch the optional email link. The `studio_invitations_one_pending`
- * partial unique maps a duplicate LIVE pending to a ConflictError.
+ * member, then sends the optional invite email here (best-effort) when an
+ * `origin` is given. The `studio_invitations_one_pending` partial unique maps a
+ * duplicate LIVE pending to a ConflictError.
  * @param slug - The studio's URL handle
  * @param inviterUserId - The acting admin (becomes `invitedBy`; name in payload)
  * @param email - The invitee's email; must belong to a registered user
  * @param role - The granted studio role (maintainer | guest; never admin)
+ * @param origin - Request Origin; when set, the best-effort invite email is sent
+ *   here (the `/studio-invite?token=` link is built from it). Omit to skip it.
  * @returns The new invitation id, the invitee's id + email, and the studio /
- *   inviter names + role (so the route can compose the invite email)
+ *   inviter names + role
  * @throws {NotFoundError} studio not found, or no user with that email
  * @throws {ForbiddenError} the studio is personal (cannot have invited members)
  * @throws {ConflictError} the user is already an active member, or already has
@@ -75,6 +79,7 @@ export async function createInvite(
   inviterUserId: string,
   email: string,
   role: InvitableRole,
+  origin?: string,
 ): Promise<{
   invitationId: string;
   inviteeUserId: string;
@@ -142,6 +147,23 @@ export async function createInvite(
       throw new ConflictError(t("server.studio.already_invited"));
     }
     throw err;
+  }
+
+  // Best-effort invite email — the bell notification is the always-delivered
+  // path; this only fires when an SMTP backend is configured and the caller
+  // passed an origin. A send failure must NOT fail the request.
+  if (origin) {
+    const token = await issueInviteToken(invitationId);
+    await sendBestEffortMail(
+      buildStudioInvitationMail({
+        inviteeEmail: email,
+        inviterName,
+        studioName: studio.name,
+        role,
+        inviteLink: `${origin}/studio-invite?token=${token}`,
+      }),
+      { userId: inviterUserId, subject: "studio_invite" },
+    );
   }
 
   return {
