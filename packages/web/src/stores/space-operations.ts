@@ -4,12 +4,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
-/** Metadata attached to a registered operation (reserved for future toast copy). */
-interface OperationMeta {
-  /** Human label for the operation kind (e.g. "upload"). Unused by v1 gating. */
-  label?: string;
-}
-
 /**
  * Per-space front-end operation registry (#1617).
  *
@@ -24,13 +18,21 @@ interface OperationMeta {
  * It is deliberately NOT derived from Yjs `handling` state: that also covers
  * backend AIGC, which writes back via the server-side collab doc and survives a
  * tab close — those must not block closing.
+ *
+ * Operations are REFERENCE-COUNTED per (space, operationId), not a presence map:
+ * two front-end operations can target the SAME node id (a slow upload from a
+ * double-click while a second upload on that node is refused by the busy gate
+ * but still registers + unregisters). Without a refcount the second's
+ * unregister would clear the guard for the first, still-running upload, closing
+ * the tab and losing the in-flight write-back (adversarial finding, #1617). The
+ * space stays busy until every registration has a matching unregister.
  */
 interface SpaceOperationsState {
-  /** spaceId → (operationId → meta). A space is "busy" while its inner map is non-empty. */
-  operations: Record<string, Record<string, OperationMeta>>;
-  /** Register an in-flight front-end operation on a space (idempotent per id). */
-  register: (spaceId: string, operationId: string, meta?: OperationMeta) => void;
-  /** Clear an operation once it settles (success or failure); empty spaces are pruned. */
+  /** spaceId → (operationId → refcount). A space is "busy" while its inner map is non-empty (every entry has count ≥ 1). */
+  operations: Record<string, Record<string, number>>;
+  /** Register one in-flight front-end operation on a space (increments its refcount). */
+  register: (spaceId: string, operationId: string) => void;
+  /** Release one operation once it settles (decrements the refcount; entry + empty spaces are pruned at zero). */
   unregister: (spaceId: string, operationId: string) => void;
   /** Whether the given space has any in-flight front-end operation. */
   hasOperations: (spaceId: string) => boolean;
@@ -41,16 +43,22 @@ interface SpaceOperationsState {
 export const useSpaceOperationsStore = create<SpaceOperationsState>()(
   immer((set, get) => ({
     operations: {},
-    register: (spaceId, operationId, meta = {}) =>
+    register: (spaceId, operationId) =>
       set((s) => {
-        (s.operations[spaceId] ??= {})[operationId] = meta;
+        const forSpace = (s.operations[spaceId] ??= {});
+        forSpace[operationId] = (forSpace[operationId] ?? 0) + 1;
       }),
     unregister: (spaceId, operationId) =>
       set((s) => {
         const forSpace = s.operations[spaceId];
         if (!forSpace) return;
-        delete forSpace[operationId];
-        if (Object.keys(forSpace).length === 0) delete s.operations[spaceId];
+        const next = (forSpace[operationId] ?? 0) - 1;
+        if (next > 0) {
+          forSpace[operationId] = next;
+        } else {
+          delete forSpace[operationId];
+          if (Object.keys(forSpace).length === 0) delete s.operations[spaceId];
+        }
       }),
     hasOperations: (spaceId) =>
       Object.keys(get().operations[spaceId] ?? {}).length > 0,

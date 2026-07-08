@@ -71,11 +71,22 @@ describe('useSpaceOperationsStore', () => {
     );
   });
 
-  it('re-registering the same operation id does not double-count', () => {
+  it('reference-counts operations sharing an id so a duplicate settling does not clear a still-running one (#1617 clobber)', () => {
+    // Two front-end operations can target the SAME node id: a slow upload from a
+    // double-click while a second upload on that node is refused by the busy
+    // gate but still registers + unregisters. A presence map (no refcount) would
+    // let the second's unregister clear the guard for the FIRST, still-running
+    // upload — the tab-close guard then reads clear, the space closes, and the
+    // in-flight write-back is lost. Reference counting keeps the space busy
+    // until BOTH settle.
     const store = useSpaceOperationsStore.getState();
-    store.register('space-1', 'op-1');
-    store.register('space-1', 'op-1');
-    store.unregister('space-1', 'op-1');
+    store.register('space-1', 'node-a'); // op1 (slow, still running)
+    store.register('space-1', 'node-a'); // op2 (same node)
+    store.unregister('space-1', 'node-a'); // op2 settles first
+    expect(useSpaceOperationsStore.getState().hasOperations('space-1')).toBe(
+      true,
+    ); // op1 still running → the space MUST stay busy
+    store.unregister('space-1', 'node-a'); // op1 settles
     expect(useSpaceOperationsStore.getState().hasOperations('space-1')).toBe(
       false,
     );
