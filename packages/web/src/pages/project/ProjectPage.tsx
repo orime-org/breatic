@@ -28,6 +28,7 @@ import {
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
+import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import type { SpaceType } from '@web/spaces';
 
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
@@ -294,6 +295,29 @@ function ProjectWorkspace({
     return () => clearTimeout(handle);
   }, [spaceOpInProgress, setSpaceOpInProgress, t]);
 
+  // Warn before a browser tab / window close while any space has an in-flight
+  // front-end operation (#1617). Unlike a space-tab close (which we block), the
+  // browser only allows a generic, non-customizable prompt — it cannot be
+  // blocked — so this is a best-effort guard against losing an upload whose
+  // local Yjs write-back has not synced yet. Reads the registry at event time so
+  // the listener never needs re-attaching.
+  React.useEffect(() => {
+    /**
+     * beforeunload handler: trigger the browser's generic close prompt while any
+     * space has an in-flight front-end operation (#1617).
+     * @param event - The beforeunload event.
+     */
+    const onBeforeUnload = (event: BeforeUnloadEvent): void => {
+      if (!useSpaceOperationsStore.getState().hasAnyOperations()) return;
+      event.preventDefault();
+      // Legacy browsers require a returnValue to trigger the prompt; modern ones
+      // show their own generic message and ignore the string.
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
+
   // ---- Local view UI state ----
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   // Zoom is owned by the canvas (the ReactFlow viewport): the canvas mirrors the
@@ -335,6 +359,16 @@ function ProjectWorkspace({
    */
   const onCloseTab = (id: string): void => {
     if (!userId) return;
+    // Block closing a space tab while it has an in-flight FRONT-END operation
+    // (e.g. an upload). Closing a tab detaches that space's Yjs doc; if the user
+    // never reopens the space, the operation's local write-back never syncs =
+    // lost work (#1617). Backend AIGC is unaffected — it writes back through the
+    // server-side collab doc, independent of the tab — so it is deliberately not
+    // tracked in this registry (only front-end operations register).
+    if (useSpaceOperationsStore.getState().hasOperations(id)) {
+      toast(t('canvas.close.operationInProgress'));
+      return;
+    }
     closeSpaceTab(projectId, userId, id);
     // Closing a tab clears that space's undo / redo history: evict its cached
     // undo manager so reopening the space starts empty (no-op for non-canvas

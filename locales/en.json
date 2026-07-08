@@ -318,6 +318,9 @@
     "edge": {
       "delete": "Delete connection"
     },
+    "close": {
+      "operationInProgress": "An operation is still in progress — finish it before closing this Space."
+    },
     "upload": {
       "nodeBusy": "This node is busy — another operation is in progress.",
       "ownershipLost": "Upload result was not written — the node was removed or taken over.",

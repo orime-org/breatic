@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { MiniMap } from '@xyflow/react';
-import type * as React from 'react';
+import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { minimapNodeColor } from '@web/spaces/canvas/minimap-node-color';
@@ -25,7 +25,7 @@ import { minimapNodeColor } from '@web/spaces/canvas/minimap-node-color';
  * square-cornered too).
  * @returns The minimap panel element.
  */
-export function CanvasMiniMap(): React.JSX.Element {
+export const CanvasMiniMap = React.memo(function CanvasMiniMap(): React.JSX.Element {
   const t = useTranslation();
   return (
     <MiniMap
@@ -54,4 +54,4 @@ export function CanvasMiniMap(): React.JSX.Element {
       className='!m-0 !mr-4 !mb-[61px] overflow-hidden rounded-overlay border border-border shadow'
     />
   );
-}
+});

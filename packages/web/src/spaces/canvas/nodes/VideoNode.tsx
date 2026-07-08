@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import type { VideoNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
@@ -33,7 +33,7 @@ interface VideoNodeProps {
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
  * @returns The video node element (placeholder or native video player).
  */
-export function VideoNode({
+export const VideoNode = React.memo(function VideoNode({
   data,
   selected,
   locked,
@@ -73,4 +73,4 @@ export function VideoNode({
       />
     </ContentNodeFrame>
   );
-}
+});

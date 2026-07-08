@@ -87,7 +87,7 @@ interface NodeContextMenuProps {
  * @param root0.onUngroup - Ungroup the group (group target only).
  * @returns The cursor-anchored node / group action menu.
  */
-export function NodeContextMenu({
+export const NodeContextMenu = React.memo(function NodeContextMenu({
   open,
   x,
   y,
@@ -237,4 +237,4 @@ export function NodeContextMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
+});

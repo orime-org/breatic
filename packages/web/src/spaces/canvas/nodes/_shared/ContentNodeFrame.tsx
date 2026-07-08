@@ -9,8 +9,8 @@ import {
   NodeResolutionBadge,
   type NodeResolution,
 } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
-import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
+import { ZoomCounterScaled } from '@web/spaces/canvas/nodes/_shared/ZoomCounterScaled';
 import type {
   DisplayStatus,
   Modality,
@@ -96,14 +96,12 @@ export function ContentNodeFrame({
   // badge; that is accepted (user, 2026-07-06) — low zoom is for overview /
   // moving nodes, not editing, so a corner-pinned badge matters more than the
   // overlap.
-  const headerScale = React.useContext(NodeScaleContext);
   const mediaShown = status !== 'handling' && status !== 'error';
   return (
     <div className='relative'>
-      <div
-        data-testid='node-header-anchor'
+      <ZoomCounterScaled
+        testId='node-header-anchor'
         className='absolute bottom-full left-0 origin-bottom-left pb-1'
-        style={{ transform: `scale(${headerScale})` }}
       >
         <NodeHeader
           modality={modality}
@@ -112,19 +110,18 @@ export function ContentNodeFrame({
           locked={locked}
           onRename={onRename}
         />
-      </div>
+      </ZoomCounterScaled>
       {mediaShown && resolution && (
-        <div
-          data-testid='node-resolution-anchor'
+        <ZoomCounterScaled
+          testId='node-resolution-anchor'
           className='absolute bottom-full right-0 origin-bottom-right pb-1'
-          style={{ transform: `scale(${headerScale})` }}
         >
           <NodeResolutionBadge
             width={resolution.width}
             height={resolution.height}
             selected={selected}
           />
-        </div>
+        </ZoomCounterScaled>
       )}
       <NodeShell
         status={status}

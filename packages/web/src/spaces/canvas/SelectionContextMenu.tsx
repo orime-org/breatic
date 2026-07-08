@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { Copy, CopyPlus, Group, Trash2 } from 'lucide-react';
-import type * as React from 'react';
+import * as React from 'react';
 
 import {
   DropdownMenu,
@@ -53,7 +53,7 @@ interface SelectionContextMenuProps {
  * @param root0.onDelete - Delete the selection.
  * @returns The cursor-anchored selection action menu.
  */
-export function SelectionContextMenu({
+export const SelectionContextMenu = React.memo(function SelectionContextMenu({
   open,
   x,
   y,
@@ -128,4 +128,4 @@ export function SelectionContextMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
+});

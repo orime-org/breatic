@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import type { WebNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
@@ -29,7 +29,7 @@ interface WebNodeProps {
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
  * @returns The web node element (placeholder or sandboxed iframe).
  */
-export function WebNode({
+export const WebNode = React.memo(function WebNode({
   data,
   selected,
   locked,
@@ -67,4 +67,4 @@ export function WebNode({
       />
     </ContentNodeFrame>
   );
-}
+});

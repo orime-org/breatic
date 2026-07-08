@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { Clipboard } from 'lucide-react';
-import type * as React from 'react';
+import * as React from 'react';
 
 import {
   DropdownMenu,
@@ -48,7 +48,7 @@ interface CanvasContextMenuProps {
  * @param root0.onPaste - Paste clipboard nodes / text at the cursor.
  * @returns The cursor-anchored creatable-node + paste menu.
  */
-export function CanvasContextMenu({
+export const CanvasContextMenu = React.memo(function CanvasContextMenu({
   open,
   x,
   y,
@@ -86,4 +86,4 @@ export function CanvasContextMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
+});

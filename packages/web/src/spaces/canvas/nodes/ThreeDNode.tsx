@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { Box } from 'lucide-react';
-import type * as React from 'react';
+import * as React from 'react';
 
 import type { ThreeDNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
@@ -30,7 +30,7 @@ interface ThreeDNodeProps {
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
  * @returns The 3D node element (placeholder or model URL stub).
  */
-export function ThreeDNode({
+export const ThreeDNode = React.memo(function ThreeDNode({
   data,
   selected,
   locked,
@@ -67,4 +67,4 @@ export function ThreeDNode({
       />
     </ContentNodeFrame>
   );
-}
+});

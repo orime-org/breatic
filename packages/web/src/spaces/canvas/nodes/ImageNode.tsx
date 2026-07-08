@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import type { ImageNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
@@ -32,7 +32,7 @@ interface ImageNodeProps {
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
  * @returns The image node element (placeholder or rendered image).
  */
-export function ImageNode({
+export const ImageNode = React.memo(function ImageNode({
   data,
   selected,
   locked,
@@ -81,4 +81,4 @@ export function ImageNode({
       />
     </ContentNodeFrame>
   );
-}
+});

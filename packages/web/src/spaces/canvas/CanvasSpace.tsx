@@ -92,6 +92,7 @@ import {
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
+import { useStableList } from '@web/spaces/canvas/use-stable-list';
 import {
   groupDeletionIds,
   lockBlockedDeletion,
@@ -133,7 +134,9 @@ import {
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { useCanvasStore } from '@web/stores';
+import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 /**
  * File-picker `accept` per modality for the empty-node double-click /
@@ -373,7 +376,26 @@ function CanvasSpaceInner({
     projectId,
     spaceId,
   );
-  const [flowNodes, setFlowNodes] = React.useState<Node[]>([]);
+  // The ReactFlow render buffer lives in a dedicated plain zustand store
+  // (#1647 step 4), not local state, so discrete consumers can subscribe to
+  // just their slice instead of the whole component re-running on every change.
+  const flowNodes = useCanvasGraphStore((s) => s.flowNodes);
+  const setFlowNodes = useCanvasGraphStore((s) => s.setFlowNodes);
+  const flowEdges = useCanvasGraphStore((s) => s.flowEdges);
+  const setFlowEdges = useCanvasGraphStore((s) => s.setFlowEdges);
+  // Clear the shared buffer BEFORE this space's first paint. A space switch
+  // remounts this body (keyed on space id), but the buffer is a global store
+  // that survives the remount, so it still holds the PREVIOUS space's nodes on
+  // the new mount. A passive unmount cleanup runs only after the next space has
+  // already painted → the new space flashes the old nodes for one frame
+  // (adversarial finding, #1647). `useLayoutEffect` on mount resets before
+  // paint, restoring the pre-store `useState([])` empty start; the mirror
+  // effect below then fills it with this space's nodes. Also reset on unmount so
+  // a closed space leaves nothing lingering in the singleton.
+  React.useLayoutEffect(() => {
+    useCanvasGraphStore.getState().reset();
+    return () => useCanvasGraphStore.getState().reset();
+  }, []);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView, zoomTo } =
     useReactFlow();
@@ -474,7 +496,7 @@ function CanvasSpaceInner({
   // user's selection (including a just-created node's auto-selection).
   React.useEffect(() => {
     setFlowNodes((prev) => mergeMirroredSelection(prev, nodes.map(toFlowNode)));
-  }, [nodes]);
+  }, [nodes, setFlowNodes]);
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
   // as nodes — a LOCAL edges array + onEdgesChange. Without a local buffer,
@@ -483,7 +505,6 @@ function CanvasSpaceInner({
   // no selected edge to remove. Yjs stays the source of truth; the viewer
   // read-only flag rides on each edge's `data` so the scissors hides for
   // viewers, and local `selected` is carried forward across Yjs re-mirrors.
-  const [flowEdges, setFlowEdges] = React.useState<Edge[]>([]);
   React.useEffect(() => {
     setFlowEdges((prev) =>
       mergeMirroredEdgeSelection(
@@ -491,15 +512,21 @@ function CanvasSpaceInner({
         edges.map((edge) => ({ ...toFlowEdge(edge), data: { readOnly } })),
       ),
     );
-  }, [edges, readOnly]);
+  }, [edges, readOnly, setFlowEdges]);
 
-  const onNodesChange = React.useCallback((changes: NodeChange[]): void => {
-    setFlowNodes((current) => applyNodeChanges(changes, current));
-  }, []);
+  const onNodesChange = React.useCallback(
+    (changes: NodeChange[]): void => {
+      setFlowNodes((current) => applyNodeChanges(changes, current));
+    },
+    [setFlowNodes],
+  );
 
-  const onEdgesChange = React.useCallback((changes: EdgeChange[]): void => {
-    setFlowEdges((current) => applyEdgeChanges(changes, current));
-  }, []);
+  const onEdgesChange = React.useCallback(
+    (changes: EdgeChange[]): void => {
+      setFlowEdges((current) => applyEdgeChanges(changes, current));
+    },
+    [setFlowEdges],
+  );
 
   // Group drag carries its members natively (ReactFlow `parentId` positions
   // children relative to their Group), so there is no manual member-carry ref or
@@ -737,6 +764,21 @@ function CanvasSpaceInner({
   // to Yjs so collaborators see the whole lifecycle, and both write a
   // fixed-English error onto the node on failure (never a toast). No file is
   // rejected. Created nodes are batch-selected once mirrored back.
+  // Track an in-flight front-end operation (upload / extraction) in the
+  // per-space operation registry (#1617): register on start, unregister once the
+  // work settles — which for these flows is AFTER the result is written back to
+  // Yjs (the .then / .catch that call complete/failNodeHandling resolve before
+  // this .finally). Closing the space tab is blocked while any operation is
+  // registered, so the local write-back gets a chance to sync before detach.
+  const trackOperation = React.useCallback(
+    (operationId: string, work: Promise<unknown>): void => {
+      const ops = useSpaceOperationsStore.getState();
+      ops.register(spaceId, operationId);
+      void work.finally(() => ops.unregister(spaceId, operationId));
+    },
+    [spaceId],
+  );
+
   const processFiles = React.useCallback(
     (files: File[], origin: { x: number; y: number }): void => {
       if (readOnly || files.length === 0) return;
@@ -774,58 +816,74 @@ function CanvasSpaceInner({
           const { nodeId, lease } = createUploadNodeAt(spec.nodeType, position);
           created.push(nodeId);
           if (spec.needsUpload) {
-            void runMediaUpload(file, projectId, {
-              getUploadConfig: assetsApi.fetchUploadConfig,
-              hashFile,
-              presign: assetsApi.presign,
-              putFile: putFileWithRetry,
-              onSuccess: (fileUrl) => {
-                clearRetryFile(projectId, spaceId, nodeId);
-                if (!completeNodeHandling(projectId, spaceId, nodeId, fileUrl, lease)) {
-                  toast(t('canvas.upload.ownershipLost'));
-                }
-              },
-              // Fixed-English wire string — like AIGC failure messages and the
-              // group default name. errorMessage is written to Yjs and rendered
-              // raw to every collaborator, so it must not freeze the uploader's
-              // locale into the shared doc. The filename is the locale-free part
-              // telling the user which file failed. The File is stashed BEFORE
-              // the error lands so the error re-render already sees the Retry
-              // stash (#1609 P4).
-              onFailure: () => {
-                stashRetryFile(projectId, spaceId, nodeId, file);
-                failNodeHandling(
-                  projectId,
-                  spaceId,
-                  nodeId,
+            trackOperation(
+              nodeId,
+              runMediaUpload(file, projectId, {
+                getUploadConfig: assetsApi.fetchUploadConfig,
+                hashFile,
+                presign: assetsApi.presign,
+                putFile: putFileWithRetry,
+                onSuccess: (fileUrl) => {
+                  clearRetryFile(projectId, spaceId, nodeId);
+                  if (!completeNodeHandling(projectId, spaceId, nodeId, fileUrl, lease)) {
+                    toast(t('canvas.upload.ownershipLost'));
+                  }
+                },
+                // Fixed-English wire string — like AIGC failure messages and the
+                // group default name. errorMessage is written to Yjs and rendered
+                // raw to every collaborator, so it must not freeze the uploader's
+                // locale into the shared doc. The filename is the locale-free part
+                // telling the user which file failed. The File is stashed BEFORE
+                // the error lands so the error re-render already sees the Retry
+                // stash (#1609 P4).
+                onFailure: () => {
+                  stashRetryFile(projectId, spaceId, nodeId, file);
+                  failNodeHandling(
+                    projectId,
+                    spaceId,
+                    nodeId,
                   `Upload failed: ${file.name}`,
                   lease,
-                );
-              },
-              onUploaded: (info) => reportUploadedAsset(nodeId, info, file),
-            });
+                  );
+                },
+                onUploaded: (info) => reportUploadedAsset(nodeId, info, file),
+              }),
+            );
           } else {
-            void extractText(file)
-              .then((text) => {
-                if (!completeNodeHandling(projectId, spaceId, nodeId, text, lease)) {
-                  toast(t('canvas.upload.ownershipLost'));
-                }
-              })
-              .catch(() =>
-                failNodeHandling(
-                  projectId,
-                  spaceId,
-                  nodeId,
-                  `Extraction failed: ${file.name}`,
-                  lease,
+            trackOperation(
+              nodeId,
+              extractText(file)
+                .then((text) => {
+                  if (
+                    !completeNodeHandling(projectId, spaceId, nodeId, text, lease)
+                  ) {
+                    toast(t('canvas.upload.ownershipLost'));
+                  }
+                })
+                .catch(() =>
+                  failNodeHandling(
+                    projectId,
+                    spaceId,
+                    nodeId,
+                    `Extraction failed: ${file.name}`,
+                    lease,
+                  ),
                 ),
-              );
+            );
           }
         }
         if (created.length > 0) setSelectAfterCreate(created);
       })();
     },
-    [readOnly, projectId, spaceId, createUploadNodeAt, t, reportUploadedAsset],
+    [
+      readOnly,
+      projectId,
+      spaceId,
+      createUploadNodeAt,
+      t,
+      reportUploadedAsset,
+      trackOperation,
+    ],
   );
 
   // Upload-button path: chrome posted picked files (the picker must open
@@ -1001,7 +1059,7 @@ function CanvasSpaceInner({
       })),
     );
     setSelectAfterCreate(null);
-  }, [selectAfterCreate, nodes]);
+  }, [selectAfterCreate, nodes, setFlowNodes]);
 
   // ---- Clipboard (slice 2b) ----
   // The system clipboard is the single source of truth. Copy serializes the
@@ -1106,19 +1164,30 @@ function CanvasSpaceInner({
 
   // ---- Grouping (selection → group / ungroup) ----
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
-  const selectedIds = React.useMemo(
-    () => flowNodes.filter((node) => node.selected).map((node) => node.id),
-    [flowNodes],
+  // Stable references (#1647 step 4): the Yjs mirror hands a fresh `flowNodes`
+  // every doc change, so these re-derive a new array each render; `useStableList`
+  // collapses identical results to the previous reference so `groupOffer` (and
+  // the group toolbar it feeds) only recompute when the selection / group
+  // structure actually changes — not on an unrelated position drag or data write.
+  const selectedIds = useStableList(
+    React.useMemo(
+      () => flowNodes.filter((node) => node.selected).map((node) => node.id),
+      [flowNodes],
+    ),
   );
-  const groupInfos = React.useMemo<NodeGroupInfo[]>(
-    () =>
-      flowNodes.map((node) => ({
-        id: node.id,
-        isGroup: node.type === 'group',
-        parentId: node.parentId,
-        locked: (node.data as { locked?: boolean }).locked,
-      })),
-    [flowNodes],
+  const groupInfos = useStableList(
+    React.useMemo<NodeGroupInfo[]>(
+      () =>
+        flowNodes.map((node) => ({
+          id: node.id,
+          isGroup: node.type === 'group',
+          parentId: node.parentId,
+          locked: (node.data as { locked?: boolean }).locked,
+        })),
+      [flowNodes],
+    ),
+    (info) =>
+      `${info.id}:${info.isGroup ? 1 : 0}:${info.parentId ?? ''}:${info.locked ? 1 : 0}`,
   );
   const groupOffer = React.useMemo(
     () => computeGroupToolbar(selectedIds, groupInfos),
@@ -1146,9 +1215,18 @@ function CanvasSpaceInner({
     // window holds no stale multi-selection — otherwise ReactFlow routes a
     // right-click to the SELECTION menu instead of the Group menu. The Group
     // itself is selected once it mirrors back (setSelectAfterCreate).
-    setFlowNodes(plan.nextNodes);
+    setFlowNodes(() => plan.nextNodes);
     setSelectAfterCreate([groupId]);
-  }, [readOnly, groupOffer, flowNodes, selectedIds, userId, projectId, spaceId]);
+  }, [
+    readOnly,
+    groupOffer,
+    flowNodes,
+    selectedIds,
+    userId,
+    projectId,
+    spaceId,
+    setFlowNodes,
+  ]);
 
   // Dissolve the selected group — delete the group node only; its members are
   // untouched and stay on the canvas (delete-group = release children).
@@ -1461,7 +1539,7 @@ function CanvasSpaceInner({
           toast(t('canvas.upload.tooLarge', { filename: file.name }));
           return;
         }
-        await fillNodeFromFile(nodeId, file, modality, projectId, {
+        const fillWork = fillNodeFromFile(nodeId, file, modality, projectId, {
           getUploadConfig: assetsApi.fetchUploadConfig,
           hashFile,
           presign: assetsApi.presign,
@@ -1491,9 +1569,10 @@ function CanvasSpaceInner({
           },
           onUploaded: (id, info) => reportUploadedAsset(id, info, file),
         });
+        trackOperation(nodeId, fillWork);
       })();
     },
-    [projectId, spaceId, userId, t, reportUploadedAsset],
+    [projectId, spaceId, userId, t, reportUploadedAsset, trackOperation],
   );
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
@@ -1658,6 +1737,49 @@ function CanvasSpaceInner({
     ];
   }, [flowNodes, readOnly]);
 
+  // Stable menu-callback references (#1647 step 4E): the context menus are
+  // React.memo'd, so their `onOpenChange` / action props must be stable
+  // references to let the memo bail — a fresh inline arrow each render would
+  // defeat it. The node-menu actions close over the current menu target, so they
+  // re-key on `nodeMenu` (open / target change) — exactly when the menu content
+  // should update. The two conditional actions (`onRename` / `onUngroup`, which
+  // resolve to `undefined` when frozen) use `useMemo` since they memoize a value.
+  const onContextMenuOpenChange = React.useCallback(
+    (open: boolean) => setContextMenu((prev) => ({ ...prev, open })),
+    [],
+  );
+  const onNodeMenuOpenChange = React.useCallback(
+    (open: boolean) => setNodeMenu((prev) => ({ ...prev, open })),
+    [],
+  );
+  const onSelectionMenuOpenChange = React.useCallback(
+    (open: boolean) => setSelectionMenu((prev) => ({ ...prev, open })),
+    [],
+  );
+  const onEdgeMenuOpenChange = React.useCallback(
+    (open: boolean) => setEdgeMenu((prev) => ({ ...prev, open })),
+    [],
+  );
+  const onNodeMenuRename = React.useMemo(
+    () => (nodeMenu.locked ? undefined : () => requestRename(nodeMenu.nodeId)),
+    [nodeMenu.locked, nodeMenu.nodeId, requestRename],
+  );
+  const onNodeMenuCopy = React.useCallback(
+    () => writeNodesToClipboard(nodeMenuClipboard()),
+    [writeNodesToClipboard, nodeMenuClipboard],
+  );
+  const onNodeMenuDuplicate = React.useCallback(
+    () => duplicateTargets([nodeMenu.nodeId]),
+    [duplicateTargets, nodeMenu.nodeId],
+  );
+  const onNodeMenuUngroup = React.useMemo(
+    () =>
+      nodeMenu.isGroup && !nodeMenu.locked
+        ? () => removeNode(projectId, spaceId, nodeMenu.nodeId)
+        : undefined,
+    [nodeMenu.isGroup, nodeMenu.locked, nodeMenu.nodeId, projectId, spaceId],
+  );
+
   return (
     <CanvasActionsContext.Provider value={actions}>
       <div
@@ -1686,6 +1808,14 @@ function CanvasSpaceInner({
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}
           edgeTypes={EDGE_TYPES}
+          // Only mount the nodes / edges intersecting the viewport (#1647 step 5)
+          // so a heavy space stays smooth on pan / zoom. Enabled built-in with NO
+          // custom guard rail: the historic offscreen-edge bug (xyflow #4516) is
+          // fixed in our v12.10.2, so groups + edges are verified in real-browser
+          // smoke rather than pre-guarded (a guard rail is added only if smoke
+          // shows breakage). NOTE: this does not shrink the INITIAL mount (all
+          // nodes render once); it helps pan / zoom after load (xyflow #3883).
+          onlyRenderVisibleElements
           // Viewer backstop (#1377): a read-only viewer must not move nodes or
           // draw edges. The real boundary is the collab server (a read-only
           // connection rejects the viewer's Yjs sync-update), but gating these
@@ -1777,9 +1907,7 @@ function CanvasSpaceInner({
           open={contextMenu.open}
           x={contextMenu.x}
           y={contextMenu.y}
-          onOpenChange={(open) =>
-            setContextMenu((prev) => ({ ...prev, open }))
-          }
+          onOpenChange={onContextMenuOpenChange}
           onPick={onContextMenuPick}
           onPaste={pasteAtCursor}
         />
@@ -1789,7 +1917,7 @@ function CanvasSpaceInner({
           y={nodeMenu.y}
           locked={nodeMenu.locked}
           target={nodeMenu.isGroup ? 'group' : 'node'}
-          onOpenChange={(open) => setNodeMenu((prev) => ({ ...prev, open }))}
+          onOpenChange={onNodeMenuOpenChange}
           onToggleLock={onToggleNodeLock}
           // Upload fills / replaces the node's content (node-only; its presence
           // also gates the Generate / Upload / Tools block). The menu only opens
@@ -1798,28 +1926,20 @@ function CanvasSpaceInner({
           onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
           // Rename is frozen on a locked node / group (the name is on-canvas
           // content); hide it rather than offer a silent no-op.
-          onRename={
-            nodeMenu.locked ? undefined : () => requestRename(nodeMenu.nodeId)
-          }
+          onRename={onNodeMenuRename}
           onDelete={deleteNodeFromMenu}
           // Copy / duplicate work for a node OR a group (R2-D): a group copies /
           // duplicates with its members (capture / clone are Group-aware).
-          onCopy={() => writeNodesToClipboard(nodeMenuClipboard())}
-          onDuplicate={() => duplicateTargets([nodeMenu.nodeId])}
+          onCopy={onNodeMenuCopy}
+          onDuplicate={onNodeMenuDuplicate}
           // Ungroup releases a group's members; a locked group is frozen.
-          onUngroup={
-            nodeMenu.isGroup && !nodeMenu.locked
-              ? () => removeNode(projectId, spaceId, nodeMenu.nodeId)
-              : undefined
-          }
+          onUngroup={onNodeMenuUngroup}
         />
         <SelectionContextMenu
           open={selectionMenu.open}
           x={selectionMenu.x}
           y={selectionMenu.y}
-          onOpenChange={(open) =>
-            setSelectionMenu((prev) => ({ ...prev, open }))
-          }
+          onOpenChange={onSelectionMenuOpenChange}
           // Group is offered only for an all-loose 2+ selection (same rule as
           // the floating toolbar + Cmd/Ctrl+G).
           onGroup={groupOffer.kind === 'group' ? groupSelection : undefined}
@@ -1831,7 +1951,7 @@ function CanvasSpaceInner({
           open={edgeMenu.open}
           x={edgeMenu.x}
           y={edgeMenu.y}
-          onOpenChange={(open) => setEdgeMenu((prev) => ({ ...prev, open }))}
+          onOpenChange={onEdgeMenuOpenChange}
           onDelete={deleteEdgeFromMenu}
         />
       </div>
