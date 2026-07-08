@@ -133,6 +133,7 @@ import {
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { useCanvasStore } from '@web/stores';
+import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 /**
@@ -373,7 +374,16 @@ function CanvasSpaceInner({
     projectId,
     spaceId,
   );
-  const [flowNodes, setFlowNodes] = React.useState<Node[]>([]);
+  // The ReactFlow render buffer lives in a dedicated plain zustand store
+  // (#1647 step 4), not local state, so discrete consumers can subscribe to
+  // just their slice instead of the whole component re-running on every change.
+  // Reset on unmount so a space switch (this body remounts, keyed on space id)
+  // never briefly flashes the previous space's nodes.
+  const flowNodes = useCanvasGraphStore((s) => s.flowNodes);
+  const setFlowNodes = useCanvasGraphStore((s) => s.setFlowNodes);
+  const flowEdges = useCanvasGraphStore((s) => s.flowEdges);
+  const setFlowEdges = useCanvasGraphStore((s) => s.setFlowEdges);
+  React.useEffect(() => () => useCanvasGraphStore.getState().reset(), []);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView, zoomTo } =
     useReactFlow();
@@ -474,7 +484,7 @@ function CanvasSpaceInner({
   // user's selection (including a just-created node's auto-selection).
   React.useEffect(() => {
     setFlowNodes((prev) => mergeMirroredSelection(prev, nodes.map(toFlowNode)));
-  }, [nodes]);
+  }, [nodes, setFlowNodes]);
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
   // as nodes — a LOCAL edges array + onEdgesChange. Without a local buffer,
@@ -483,7 +493,6 @@ function CanvasSpaceInner({
   // no selected edge to remove. Yjs stays the source of truth; the viewer
   // read-only flag rides on each edge's `data` so the scissors hides for
   // viewers, and local `selected` is carried forward across Yjs re-mirrors.
-  const [flowEdges, setFlowEdges] = React.useState<Edge[]>([]);
   React.useEffect(() => {
     setFlowEdges((prev) =>
       mergeMirroredEdgeSelection(
@@ -491,15 +500,21 @@ function CanvasSpaceInner({
         edges.map((edge) => ({ ...toFlowEdge(edge), data: { readOnly } })),
       ),
     );
-  }, [edges, readOnly]);
+  }, [edges, readOnly, setFlowEdges]);
 
-  const onNodesChange = React.useCallback((changes: NodeChange[]): void => {
-    setFlowNodes((current) => applyNodeChanges(changes, current));
-  }, []);
+  const onNodesChange = React.useCallback(
+    (changes: NodeChange[]): void => {
+      setFlowNodes((current) => applyNodeChanges(changes, current));
+    },
+    [setFlowNodes],
+  );
 
-  const onEdgesChange = React.useCallback((changes: EdgeChange[]): void => {
-    setFlowEdges((current) => applyEdgeChanges(changes, current));
-  }, []);
+  const onEdgesChange = React.useCallback(
+    (changes: EdgeChange[]): void => {
+      setFlowEdges((current) => applyEdgeChanges(changes, current));
+    },
+    [setFlowEdges],
+  );
 
   // Group drag carries its members natively (ReactFlow `parentId` positions
   // children relative to their Group), so there is no manual member-carry ref or
@@ -1001,7 +1016,7 @@ function CanvasSpaceInner({
       })),
     );
     setSelectAfterCreate(null);
-  }, [selectAfterCreate, nodes]);
+  }, [selectAfterCreate, nodes, setFlowNodes]);
 
   // ---- Clipboard (slice 2b) ----
   // The system clipboard is the single source of truth. Copy serializes the
@@ -1146,9 +1161,18 @@ function CanvasSpaceInner({
     // window holds no stale multi-selection — otherwise ReactFlow routes a
     // right-click to the SELECTION menu instead of the Group menu. The Group
     // itself is selected once it mirrors back (setSelectAfterCreate).
-    setFlowNodes(plan.nextNodes);
+    setFlowNodes(() => plan.nextNodes);
     setSelectAfterCreate([groupId]);
-  }, [readOnly, groupOffer, flowNodes, selectedIds, userId, projectId, spaceId]);
+  }, [
+    readOnly,
+    groupOffer,
+    flowNodes,
+    selectedIds,
+    userId,
+    projectId,
+    spaceId,
+    setFlowNodes,
+  ]);
 
   // Dissolve the selected group — delete the group node only; its members are
   // untouched and stay on the canvas (delete-group = release children).
