@@ -1798,6 +1798,14 @@ function CanvasSpaceInner({
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}
           edgeTypes={EDGE_TYPES}
+          // Only mount the nodes / edges intersecting the viewport (#1647 step 5)
+          // so a heavy space stays smooth on pan / zoom. Enabled built-in with NO
+          // custom guard rail: the historic offscreen-edge bug (xyflow #4516) is
+          // fixed in our v12.10.2, so groups + edges are verified in real-browser
+          // smoke rather than pre-guarded (a guard rail is added only if smoke
+          // shows breakage). NOTE: this does not shrink the INITIAL mount (all
+          // nodes render once); it helps pan / zoom after load (xyflow #3883).
+          onlyRenderVisibleElements
           // Viewer backstop (#1377): a read-only viewer must not move nodes or
           // draw edges. The real boundary is the collab server (a read-only
           // connection rejects the viewer's Yjs sync-update), but gating these
