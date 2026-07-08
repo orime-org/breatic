@@ -159,6 +159,16 @@ const STAGGER_WRAP = 8;
 /** Pixels a pasted node is shifted from its source so it doesn't fully cover it. */
 const PASTE_OFFSET_PX = 24;
 
+/**
+ * Operation id for the drop/upload batch prefix in the per-space operation
+ * registry (#1617). Registered synchronously when a multi-file drop starts so
+ * the tab-close guard blocks a close during the config-fetch + node-creation
+ * window, before the per-node upload operations exist. Constant (not per-drop):
+ * concurrent drops share it and the reference-counted registry keeps the space
+ * busy until every batch's prefix settles.
+ */
+const UPLOAD_BATCH_OP = 'upload-batch';
+
 const DELETE_KEYS = ['Backspace', 'Delete'];
 
 /**
@@ -782,7 +792,12 @@ function CanvasSpaceInner({
   const processFiles = React.useCallback(
     (files: File[], origin: { x: number; y: number }): void => {
       if (readOnly || files.length === 0) return;
-      void (async () => {
+      // Register the batch SYNCHRONOUSLY (before the config-fetch await) so the
+      // tab-close guard sees the space busy from the drop onward — not only once
+      // the per-node uploads start after the await (#1617 pre-registration
+      // window). This batch op covers the config-fetch + node-creation prefix;
+      // each admitted upload tracks its own lifetime below.
+      const batchWork = (async () => {
         // Upload-cap pre-check (#1609 P7): oversize media is refused ON
         // SELECTION with a toast — no node, zero network. A failed config
         // fetch skips the pre-check instead of blocking uploads (the
@@ -874,6 +889,7 @@ function CanvasSpaceInner({
         }
         if (created.length > 0) setSelectAfterCreate(created);
       })();
+      trackOperation(UPLOAD_BATCH_OP, batchWork);
     },
     [
       readOnly,
@@ -1527,7 +1543,11 @@ function CanvasSpaceInner({
       file: File,
       modality: UploadNodeSpec['nodeType'],
     ): void => {
-      void (async () => {
+      // Register SYNCHRONOUSLY (before the config-fetch await) by making the
+      // whole flow the tracked work — otherwise the tab-close guard reads "not
+      // busy" during the config round-trip and a close in that window loses the
+      // write-back (#1617 pre-registration window).
+      const work = (async () => {
         // Upload-cap pre-check (#1609 P7) — same semantics as processFiles.
         let maxBytes = Infinity;
         try {
@@ -1539,7 +1559,7 @@ function CanvasSpaceInner({
           toast(t('canvas.upload.tooLarge', { filename: file.name }));
           return;
         }
-        const fillWork = fillNodeFromFile(nodeId, file, modality, projectId, {
+        await fillNodeFromFile(nodeId, file, modality, projectId, {
           getUploadConfig: assetsApi.fetchUploadConfig,
           hashFile,
           presign: assetsApi.presign,
@@ -1569,8 +1589,8 @@ function CanvasSpaceInner({
           },
           onUploaded: (id, info) => reportUploadedAsset(id, info, file),
         });
-        trackOperation(nodeId, fillWork);
       })();
+      trackOperation(nodeId, work);
     },
     [projectId, spaceId, userId, t, reportUploadedAsset, trackOperation],
   );

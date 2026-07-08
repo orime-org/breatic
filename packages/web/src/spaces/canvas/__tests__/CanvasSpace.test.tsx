@@ -19,6 +19,8 @@ import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { serializeNodes } from '@web/spaces/canvas/node-clipboard';
 import { useCanvasStore } from '@web/stores';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { assetsApi } from '@web/data/api';
+import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
@@ -100,6 +102,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       canUndo: false,
       canRedo: false,
     });
+    useSpaceOperationsStore.setState({ operations: {} });
     useCurrentUserStore.getState().setUser({
       id: 'u-1',
       name: 'Ada',
@@ -410,5 +413,44 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     dispatchKeyDown('z', { meta: true });
 
     expect(undoSpy).not.toHaveBeenCalled();
+  });
+
+  // ---- Upload operation registry: pre-registration window (#1617) ----
+  // A front-end upload must mark its space BUSY in the operation registry
+  // synchronously the moment it starts — BEFORE the async upload-config fetch.
+  // The tab-close guard (ProjectPage.onCloseTab) reads hasOperations at event
+  // time; if registration lags behind `await fetchUploadConfig()`, a tab close
+  // during that round-trip bypasses the guard and the resumed write-back lands
+  // on a detached Yjs doc = lost upload (adversarial re-attack round 2, #1617).
+  it('drop marks the space busy synchronously, before the upload-config fetch resolves (#1617 window)', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    // Deferred config fetch: stays pending so the upload flow is suspended AT
+    // the config await — the exact point the pre-fix code had not yet registered.
+    const configSpy = vi
+      .spyOn(assetsApi, 'fetchUploadConfig')
+      .mockReturnValue(
+        new Promise(() => {}) as ReturnType<typeof assetsApi.fetchUploadConfig>,
+      );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+
+    const surface = screen.getByTestId('canvas-space');
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      configurable: true,
+      value: { files: [file], types: ['Files'] },
+    });
+    Object.defineProperty(drop, 'clientX', { configurable: true, value: 10 });
+    Object.defineProperty(drop, 'clientY', { configurable: true, value: 10 });
+    act(() => {
+      surface.dispatchEvent(drop);
+    });
+
+    // The drop reached the upload flow (it awaited the config)...
+    expect(configSpy).toHaveBeenCalled();
+    // ...and the space is ALREADY busy — before the config fetch resolves.
+    expect(useSpaceOperationsStore.getState().hasOperations('s')).toBe(true);
+
+    configSpy.mockRestore();
   });
 });
