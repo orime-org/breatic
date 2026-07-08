@@ -46,6 +46,12 @@ interface CanvasState {
   hoverNodeId: string | null;
   zoom: number;
   minimapVisible: boolean;
+  /**
+   * Snap-to-grid toggle: when on, ReactFlow rounds dragged node positions to the
+   * grid (aligned to the visible background dots). Per-user viewport state kept
+   * here so CanvasSpace can subscribe and feed ReactFlow's `snapToGrid` prop.
+   */
+  snapToGrid: boolean;
   showLockedOverlay: boolean;
   /** Chrome → canvas mailbox: the node type to create at the viewport centre. */
   pendingNodeCreate: CreateIntent | null;
@@ -74,6 +80,8 @@ interface CanvasState {
   setZoom: (zoom: number) => void;
   setMinimapVisible: (visible: boolean) => void;
   toggleMinimap: () => void;
+  setSnapToGrid: (enabled: boolean) => void;
+  toggleSnapToGrid: () => void;
   setShowLockedOverlay: (show: boolean) => void;
   /** Post a create intent from chrome (node-library pick). */
   requestNodeCreate: (type: CreateIntent) => void;
@@ -106,6 +114,8 @@ export const useCanvasStore = create<CanvasState>()(
     zoom: 1,
     // The built minimap ships on (#1548) — one toolbar click turns it off.
     minimapVisible: true,
+    // Snap-to-grid ships OFF — free placement is the default, snapping is opt-in.
+    snapToGrid: false,
     showLockedOverlay: false,
     pendingNodeCreate: null,
     pendingUploadFiles: null,
@@ -141,6 +151,14 @@ export const useCanvasStore = create<CanvasState>()(
     toggleMinimap: () =>
       set((s) => {
         s.minimapVisible = !s.minimapVisible;
+      }),
+    setSnapToGrid: (enabled) =>
+      set((s) => {
+        s.snapToGrid = enabled;
+      }),
+    toggleSnapToGrid: () =>
+      set((s) => {
+        s.snapToGrid = !s.snapToGrid;
       }),
     setShowLockedOverlay: (show) =>
       set((s) => {

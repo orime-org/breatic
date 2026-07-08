@@ -11,6 +11,7 @@ describe('useCanvasStore', () => {
       hoverNodeId: null,
       zoom: 1,
       minimapVisible: true,
+      snapToGrid: false,
       showLockedOverlay: false,
       pendingNodeCreate: null,
       pendingUploadFiles: null,
@@ -43,6 +44,26 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().minimapVisible).toBe(false);
     useCanvasStore.getState().toggleMinimap();
     expect(useCanvasStore.getState().minimapVisible).toBe(true);
+  });
+
+  // Snap-to-grid is a per-user viewport toggle in the same single source of
+  // truth as the minimap (#1548 pattern), so CanvasSpace can subscribe and feed
+  // it to ReactFlow. It starts OFF: free placement is the default, snapping is
+  // opt-in (unlike the minimap, which is a view aid that ships on).
+  it('snap-to-grid is OFF by default (free placement; snapping is opt-in)', () => {
+    expect(useCanvasStore.getInitialState().snapToGrid).toBe(false);
+  });
+
+  it('toggleSnapToGrid flips the flag', () => {
+    useCanvasStore.getState().toggleSnapToGrid();
+    expect(useCanvasStore.getState().snapToGrid).toBe(true);
+    useCanvasStore.getState().toggleSnapToGrid();
+    expect(useCanvasStore.getState().snapToGrid).toBe(false);
+  });
+
+  it('setSnapToGrid sets the flag explicitly', () => {
+    useCanvasStore.getState().setSnapToGrid(true);
+    expect(useCanvasStore.getState().snapToGrid).toBe(true);
   });
 
   it('requestRename posts a node id; consumePendingRename clears it', () => {
