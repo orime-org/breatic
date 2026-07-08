@@ -180,6 +180,36 @@ export interface StudioTransferApprovedPayload {
 }
 
 /**
+ * Project transfer-request payload — a project owner asks a studio member to
+ * take over as owner (#1611). Stored on the actionable `project.transfer_request`
+ * notification (confirm/cancel; expires after a TTL). `projectId` rides along so
+ * the confirm step can swap roles without re-resolving the project.
+ */
+export interface ProjectTransferRequestPayload {
+  fromUserId: string;
+  /** Initiating owner's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  fromName: string;
+  fromHandle: string;
+  projectId: string;
+  projectName: string;
+  /** The project's slug — the bell's project name links to the project. */
+  projectSlug: string;
+}
+
+/**
+ * Project transfer-approved payload — the recipient accepted; stored on the
+ * `project.transfer_approved` notification in the OLD owner's inbox.
+ */
+export interface ProjectTransferApprovedPayload {
+  projectName: string;
+  /** The project's slug — the bell's project name links to the project. */
+  projectSlug: string;
+  /** Accepting recipient's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  accepterName: string;
+  accepterHandle: string;
+}
+
+/**
  * Studio invite-request payload — an admin invites a registered user to join a
  * studio. Stored on the actionable `studio.invite_request` notification in the
  * invitee's inbox (confirm/decline; expires after a TTL). `invitationId` is the
@@ -256,6 +286,57 @@ export async function createStudioTransferApproved(input: {
     {
       userId: input.userId,
       type: "studio.transfer_approved",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
+/**
+ * Notify a user that a project owner wants to transfer project ownership to
+ * them (#1611) — actionable (confirm/cancel), expires after the given TTL.
+ * @param input - Recipient inbox, payload, expiry, and optional transaction
+ * @param input.userId - The proposed new owner who receives the request
+ * @param input.payload - The initiating owner's id + project id/name/slug
+ * @param input.expiresAt - When the request times out (7 days from creation)
+ * @param input.tx - Optional transaction to bundle with related writes
+ * @returns The inserted `project.transfer_request` notification
+ */
+export async function createProjectTransferRequest(input: {
+  userId: string;
+  payload: ProjectTransferRequestPayload;
+  expiresAt: Date;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "project.transfer_request",
+      payload: input.payload as unknown as Record<string, unknown>,
+      expiresAt: input.expiresAt,
+    },
+    input.tx,
+  );
+}
+
+/**
+ * Notify the OLD owner that the project transfer they initiated was accepted
+ * (#1611).
+ * @param input - Old-owner inbox, payload, and optional transaction
+ * @param input.userId - The former owner who receives the confirmation
+ * @param input.payload - The project name/slug + accepter identity
+ * @param input.tx - Optional transaction to bundle with the role swap
+ * @returns The inserted `project.transfer_approved` notification
+ */
+export async function createProjectTransferApproved(input: {
+  userId: string;
+  payload: ProjectTransferApprovedPayload;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "project.transfer_approved",
       payload: input.payload as unknown as Record<string, unknown>,
     },
     input.tx,

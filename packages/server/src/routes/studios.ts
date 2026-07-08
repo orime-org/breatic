@@ -257,7 +257,14 @@ studio.post("/:slug/transfer-admin", requireStudioRole("admin"), async (c) => {
   const user = c.get("user");
   const slug = c.req.param("slug");
   const body = transferAdminSchema.parse(await c.req.json());
-  await studioTransferService.requestTransfer(slug, user.id, body.toUserId);
+  // The service sends the best-effort transfer email itself (needs the recipient
+  // + profile repos); the route only forwards the request Origin for the link.
+  await studioTransferService.requestTransfer(
+    slug,
+    user.id,
+    body.toUserId,
+    c.req.header("Origin") ?? "http://localhost:8000",
+  );
   return c.json({ data: { ok: true } }, 201);
 });
 

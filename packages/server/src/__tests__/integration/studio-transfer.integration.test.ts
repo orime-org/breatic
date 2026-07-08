@@ -15,8 +15,9 @@
  * builder cannot reproduce them, so they are proven here:
  *
  *   - requestTransfer lands an actionable notification with a future expiry.
- *   - confirm demotes the old admin to guest, promotes the recipient to
+ *   - confirm demotes the old admin to maintainer, promotes the recipient to
  *     admin, and notifies the old admin — leaving EXACTLY ONE active admin.
+ *   - requestTransfer rejects a guest recipient (only non-guest can receive).
  *   - an expired request cannot be confirmed (Conflict).
  *   - two concurrent confirms apply the transfer EXACTLY ONCE.
  *   - cancel changes no roles.
@@ -179,7 +180,7 @@ async function seedStudio(): Promise<Seeded> {
   const adminSlug = await insertPersonalStudio(adminId, adminName);
   const memberSlug = await insertPersonalStudio(memberId, memberName);
   const studio = await insertStudioWithAdmin(adminId);
-  await insertMemberRaw(studio.id, memberId, "guest");
+  await insertMemberRaw(studio.id, memberId, "maintainer");
   return {
     studioId: studio.id,
     slug: studio.slug,
@@ -241,6 +242,16 @@ describe("requestTransfer", () => {
       studioTransferService.requestTransfer(studio.slug, admin, member),
     ).rejects.toMatchObject({ statusCode: 403 });
   });
+
+  it("rejects transferring to a guest member — only non-guest (admin/maintainer) can receive (#1612)", async () => {
+    const adminId = await insertUser();
+    const guestId = await insertUser();
+    const studio = await insertStudioWithAdmin(adminId);
+    await insertMemberRaw(studio.id, guestId, "guest");
+    await expect(
+      studioTransferService.requestTransfer(studio.slug, adminId, guestId),
+    ).rejects.toMatchObject({ statusCode: 422 });
+  });
 });
 
 describe("confirmTransfer", () => {
@@ -252,7 +263,7 @@ describe("confirmTransfer", () => {
 
     await studioTransferService.confirmTransfer(req!.id, memberId);
 
-    expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("guest");
+    expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("maintainer");
     expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("admin");
     // The invariant: the studio has exactly one active admin after the swap.
     expect(await activeAdminCount(studioId)).toBe(1);
@@ -283,7 +294,7 @@ describe("confirmTransfer", () => {
 
     // The whole transaction rolled back — roles are unchanged.
     expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("admin");
-    expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("guest");
+    expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("maintainer");
     expect(await activeAdminCount(studioId)).toBe(1);
   });
 
@@ -303,10 +314,34 @@ describe("confirmTransfer", () => {
     expect(fulfilled).toBe(1);
     expect(rejected).toBe(1);
     // The swap landed once: one active admin, one approved notification.
-    expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("guest");
+    expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("maintainer");
     expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("admin");
     expect(await activeAdminCount(studioId)).toBe(1);
     expect(await countByType(adminId, "studio.transfer_approved")).toBe(1);
+  });
+});
+
+describe("confirmTransfer — TOCTOU eligibility re-check", () => {
+  it("rejects confirm when the recipient was demoted to guest after the request (roles unchanged)", async () => {
+    const { studioId, slug, adminId, memberId } = await seedStudio();
+    await studioTransferService.requestTransfer(slug, adminId, memberId);
+    const [req] = await transferRequestsFor(memberId);
+    // The admin demotes the recipient to guest AFTER the request was sent.
+    await sql`UPDATE studio_members SET role = 'guest' WHERE studio_id = ${studioId} AND user_id = ${memberId}`;
+
+    await expect(
+      studioTransferService.confirmTransfer(req!.id, memberId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    // The swap did NOT happen: the admin stays admin, the recipient stays guest.
+    const roles = await sql<{ user_id: string; role: string }[]>`
+      SELECT user_id, role FROM studio_members
+      WHERE studio_id = ${studioId} AND deleted_at IS NULL
+    `;
+    const roleOf = (uid: string): string | undefined =>
+      roles.find((r) => r.user_id === uid)?.role;
+    expect(roleOf(adminId)).toBe("admin");
+    expect(roleOf(memberId)).toBe("guest");
   });
 });
 
@@ -320,7 +355,7 @@ describe("cancelTransfer", () => {
 
     // No role swap.
     expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("admin");
-    expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("guest");
+    expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("maintainer");
     expect(await activeAdminCount(studioId)).toBe(1);
     // No approved notification was sent.
     expect(await countByType(adminId, "studio.transfer_approved")).toBe(0);

@@ -224,35 +224,8 @@ describe('MembersTab — remove member (confirm gate)', () => {
   });
 });
 
-describe('MembersTab — transfer admin (confirm gate)', () => {
-  it('requires confirmation before calling requestTransfer', async () => {
-    const user = userEvent.setup();
-    vi.mocked(studiosApi.requestTransfer).mockResolvedValueOnce({ ok: true });
-    renderTab(
-      <MembersTab
-        slug='acme'
-        members={[ADMIN, GUEST]}
-        studioRole='admin'
-        studioType='team' pendingInvitations={[]}
-      />,
-    );
-    await user.click(screen.getByTestId(`member-row-menu-${GUEST.id}`));
-    await user.click(
-      await screen.findByTestId(`member-transfer-admin-${GUEST.id}`),
-    );
-
-    expect(studiosApi.requestTransfer).not.toHaveBeenCalled();
-    const dialog = await screen.findByTestId('member-confirm-dialog');
-    await user.click(within(dialog).getByTestId('member-confirm-action'));
-
-    await waitFor(() => {
-      expect(studiosApi.requestTransfer).toHaveBeenCalledWith('acme', {
-        toUserId: GUEST.id,
-      });
-    });
-    expect(toast.success).toHaveBeenCalled();
-  });
-});
+// Transferring studio admin moved to the Settings tab (2026-07-08 decision A);
+// its flow is covered by SettingsTab.test.tsx, not the per-member-row menu.
 
 describe('MembersTab — pending invitations', () => {
   it('shows the pending section with the invitee + role badge to an admin', () => {

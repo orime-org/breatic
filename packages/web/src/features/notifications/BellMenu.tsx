@@ -87,7 +87,7 @@ function expiresInLabel(
  * does NOT (it links out to the `/project-invite` landing page), so it is not a
  * kind here.
  */
-type ActionKind = 'transfer' | 'studioInvite';
+type ActionKind = 'transfer' | 'projectTransfer' | 'studioInvite';
 
 /**
  * Maps an inline-actionable notification type to its handshake kind, so the
@@ -98,6 +98,7 @@ type ActionKind = 'transfer' | 'studioInvite';
  */
 function actionKindFor(type: NotificationType): ActionKind {
   if (type === 'studio.invite_request') return 'studioInvite';
+  if (type === 'project.transfer_request') return 'projectTransfer';
   return 'transfer';
 }
 
@@ -115,6 +116,11 @@ function toastKeyFor(kind: ActionKind, action: NotificationAction): string {
     return action === 'confirm'
       ? 'notifications.inviteConfirmedToast'
       : 'notifications.inviteDeclinedToast';
+  }
+  if (kind === 'projectTransfer') {
+    return action === 'confirm'
+      ? 'notifications.projectTransferConfirmedToast'
+      : 'notifications.projectTransferCancelledToast';
   }
   return action === 'confirm'
     ? 'notifications.transferConfirmedToast'
@@ -402,7 +408,8 @@ function NotificationItem({
   const isUpgradeRequest =
     notification.type === 'access.role_upgrade_request';
   const isTransferRequest =
-    notification.type === 'studio.transfer_request';
+    notification.type === 'studio.transfer_request' ||
+    notification.type === 'project.transfer_request';
   // Studio invites confirm INLINE here; the project invite does NOT — it links
   // out to the `/project-invite` landing page (the divergence from studio).
   const isStudioInviteRequest =

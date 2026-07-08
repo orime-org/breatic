@@ -198,7 +198,7 @@ export default function StudioContainerPage(): React.JSX.Element {
                 />
               </TabsContent>
               <TabsContent value='settings'>
-                <SettingsTab studio={view.studio} />
+                <SettingsTab studio={view.studio} members={members} />
               </TabsContent>
             </div>
           </div>

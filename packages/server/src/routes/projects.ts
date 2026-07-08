@@ -23,6 +23,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRoleOnParam } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
 import { projectService, recentService } from "@server/modules";
+import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import { projectAuthService } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
@@ -56,6 +57,39 @@ projects.post("/", zValidator("json", projectCreateSchema), async (c) => {
   );
   return c.json({ data: project }, 201);
 });
+
+/** Transfer-owner request body (#1611). */
+const transferOwnerSchema = z.object({ toUserId: z.string().uuid() });
+
+/**
+ * `POST /projects/:id/transfer-owner` — the project owner asks a non-guest
+ * studio member to take over as owner (step 1 of the two-step handshake, #1611).
+ * Owner-gated; drops an actionable `project.transfer_request` notification
+ * (confirm/cancel, 7-day TTL) in the recipient's inbox. No role change yet —
+ * that lands when the recipient confirms via the notification action endpoint.
+ * @returns `201` with `{ data: { ok: true } }`; `403` not the owner / personal
+ *   studio, `404` project / recipient not found, `422` recipient is the owner
+ *   or a guest
+ */
+projects.post(
+  "/:id/transfer-owner",
+  requireRoleOnParam("id", "owner"),
+  zValidator("json", transferOwnerSchema),
+  async (c) => {
+    const user = c.get("user");
+    const id = c.req.param("id");
+    const { toUserId } = c.req.valid("json");
+    // The service sends the best-effort transfer email itself (needs the recipient
+    // + profile repos); the route only forwards the request Origin for the link.
+    await projectTransferService.requestProjectTransfer(
+      id,
+      user.id,
+      toUserId,
+      c.req.header("Origin") ?? "http://localhost:8000",
+    );
+    return c.json({ data: { ok: true } }, 201);
+  },
+);
 
 /**
  * `GET /projects/:id` — read a project plus the caller's role (the

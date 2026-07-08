@@ -66,4 +66,21 @@ export const projectsApi = {
   delete(id: string) {
     return apiDelete(`/projects/${id}`);
   },
+  /**
+   * `POST /api/v1/projects/:id/transfer-owner` — the current owner asks a
+   * project collaborator (who is also a non-guest studio member) to take over
+   * as owner. Owner-only; sends an actionable notification (+ best-effort email)
+   * to the recipient — no role change until they confirm. Rejects with a typed
+   * `ApiException`: `403` not the owner / personal studio, `422` recipient
+   * ineligible (not a project member, not a studio member, or a guest).
+   * @param id the bare project uuid.
+   * @param toUserId the proposed new owner's user id (from the candidate picker).
+   * @returns once the transfer request has been sent.
+   */
+  transferOwner(id: string, toUserId: string) {
+    return apiPost<{ ok: boolean }, { toUserId: string }>(
+      `/projects/${id}/transfer-owner`,
+      { toUserId },
+    );
+  },
 };

@@ -129,6 +129,16 @@ const PROJECT_ROWS: Partial<
     nameField: 'inviteeName',
     handleField: 'inviteeHandle',
   },
+  'project.transfer_request': {
+    key: 'projectTransferRequest',
+    nameField: 'fromName',
+    handleField: 'fromHandle',
+  },
+  'project.transfer_approved': {
+    key: 'projectTransferApproved',
+    nameField: 'accepterName',
+    handleField: 'accepterHandle',
+  },
 };
 
 /** Per-type config for a notification whose entity is a studio. */

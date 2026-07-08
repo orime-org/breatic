@@ -13,7 +13,7 @@
  *     7 days.
  *   - `confirmTransfer`: the recipient accepts. In ONE db.transaction: mark
  *     the request read (the CAS serialization point), then demote the old
- *     admin to guest FIRST and promote the recipient to admin SECOND (order
+ *     admin to maintainer FIRST and promote the recipient to admin SECOND (order
  *     is load-bearing — promoting first would collide with the
  *     `studio_members_one_admin_per_studio` partial unique), then notify the
  *     old admin via `studio.transfer_approved`.
@@ -34,9 +34,12 @@
  */
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import { db } from "@breatic/core";
+import { buildStudioTransferMail } from "@server/modules/studio/studio-transfer-mail.js";
+import { sendMail } from "@server/infra/mailer.js";
+import { db, logger } from "@breatic/core";
 import {
   ConflictError,
   ForbiddenError,
@@ -53,13 +56,14 @@ const TRANSFER_TTL_DAYS = 7;
  * The current admin asks an existing member to take over as the studio admin.
  *
  * Resolves the studio by slug, refuses personal studios, and requires the
- * proposed new admin to be a distinct active member of the studio. Drops an
+ * proposed new admin to be a distinct active non-guest member of the studio. Drops an
  * actionable `studio.transfer_request` notification in their inbox that
  * expires after {@link TRANSFER_TTL_DAYS} days. No role change happens here —
  * the swap is deferred until the recipient confirms.
  * @param slug - The studio's URL handle
  * @param fromAdminUserId - The acting admin initiating the transfer
  * @param toUserId - The member proposed as the new admin
+ * @param origin - The request Origin for the best-effort email link; omit to skip the email
  * @throws {NotFoundError} studio not found, or the recipient is not an active member
  * @throws {ForbiddenError} the studio is personal (admin cannot be transferred)
  * @throws {ValidationError} the recipient is the acting admin themselves
@@ -68,6 +72,7 @@ export async function requestTransfer(
   slug: string,
   fromAdminUserId: string,
   toUserId: string,
+  origin?: string,
 ): Promise<void> {
   const studio = await studioRepo.getBySlug(slug);
   if (!studio) throw new NotFoundError(t("server.error.not_found"));
@@ -79,6 +84,11 @@ export async function requestTransfer(
   }
   const role = await studioMembersRepo.getRole(studio.id, toUserId);
   if (!role) throw new NotFoundError(t("server.error.not_found"));
+  // Only a non-guest (admin / maintainer) may receive the studio (#1612 / D3):
+  // guests are read-only and must not become the admin.
+  if (role === "guest") {
+    throw new ValidationError(t("server.error.validation"));
+  }
 
   const expiresAt = new Date(
     Date.now() + TRANSFER_TTL_DAYS * 24 * 60 * 60 * 1000,
@@ -99,6 +109,32 @@ export async function requestTransfer(
     },
     expiresAt,
   });
+
+  // Best-effort transfer email — the bell notification above is the always-
+  // delivered path; this only fires when an SMTP backend is configured and the
+  // caller passed an origin (the route's HTTP Origin). A send failure must NOT
+  // fail the request (the request + bell already landed).
+  if (origin) {
+    try {
+      const recipient = await userRepo.getUserById(toUserId);
+      if (recipient) {
+        const mailResult = await sendMail(
+          buildStudioTransferMail({
+            recipientEmail: recipient.email,
+            initiatorName: from?.name ?? "",
+            studioName: studio.name,
+            studioLink: `${origin}/studio/${slug}`,
+          }),
+        );
+        logger.info(
+          { studioId: studio.id, mailStatus: mailResult.status },
+          "studio_transfer_email",
+        );
+      }
+    } catch (err) {
+      logger.error({ err, studioId: studio.id }, "studio_transfer_email_failed");
+    }
+  }
 }
 
 /**
@@ -106,7 +142,7 @@ export async function requestTransfer(
  *
  * In one transaction: (1) mark-read CAS on the request (serialization point),
  * (2) re-read + gate the notification (right type, still within its TTL),
- * (3) demote the old admin to guest FIRST, (4) promote the recipient to admin
+ * (3) demote the old admin to maintainer FIRST, (4) promote the recipient to admin
  * SECOND (order avoids the one-admin partial unique), (5) notify the old admin
  * with `studio.transfer_approved`.
  * @param notificationId - The `studio.transfer_request` notification id
@@ -157,13 +193,28 @@ export async function confirmTransfer(
     const studioSlug =
       typeof payload.studioSlug === "string" ? payload.studioSlug : "";
 
+    // TOCTOU guard (adversarial review): the request-time non-guest check
+    // (#1612 / D3) can go stale within the 7-day TTL — the recipient may have
+    // been demoted to guest since the request. Re-verify BEFORE the swap;
+    // otherwise updateRole would flip a guest's still-active row straight to
+    // admin. Reads committed state; a ConflictError rolls the whole transaction
+    // back (including the mark-read).
+    const recipientRole = await studioMembersRepo.getRole(
+      studioId,
+      receiverUserId,
+    );
+    if (!recipientRole || recipientRole === "guest") {
+      throw new ConflictError(t("server.error.conflict"));
+    }
+
     // Demote the old admin FIRST, then promote the new one — the reverse order
     // would collide with studio_members_one_admin_per_studio (two active
-    // admins) mid-transaction.
+    // admins) mid-transaction. The old admin drops ONE rank to maintainer
+    // (#1612 / D1 one-rank-down demotion), not all the way to guest.
     const demoted = await studioMembersRepo.updateRole(
       studioId,
       fromUserId,
-      "guest",
+      "maintainer",
       tx,
     );
     if (!demoted) throw new NotFoundError(t("server.error.not_found"));

@@ -8,9 +8,9 @@
  * behind `requireRole`, which translates "no membership" or "below
  * minimum" into 403 (never 404 — see middleware/role.ts).
  *
- * `transfer-owner` is intentionally not implemented in V1 (v10 spec
- * §7.2.5). For project ownership transfer, see the team-Studio
- * phase.
+ * Project ownership transfer (#1611) runs via `POST /projects/:id/transfer-owner`
+ * (a two-step handshake, see projectTransfer.service); this router exposes its
+ * recipient picker via `GET .../members/transfer-candidates` (owner-only).
  */
 
 import { Hono } from "hono";
@@ -37,6 +37,22 @@ members.get("/", requireRole("viewer"), async (c) => {
   const projectId = c.get("projectId");
   const list = await projectMembersService.list(projectId);
   return c.json({ data: list });
+});
+
+/**
+ * `GET /api/v1/projects/:pid/members/transfer-candidates` — the eligible
+ * owner-transfer recipients (owner-only): active project members (editor /
+ * viewer) who are ALSO active non-guest members of the project's studio
+ * (ADR D3). Backs the transfer recipient picker so it never offers a recipient
+ * the transfer would reject. The transfer itself runs via
+ * `POST /projects/:id/transfer-owner`.
+ * @returns `200` with `{ data: Array<{ userId, role }> }`
+ */
+members.get("/transfer-candidates", requireRole("owner"), async (c) => {
+  const projectId = c.get("projectId");
+  const candidates =
+    await projectMembersService.listTransferCandidates(projectId);
+  return c.json({ data: candidates });
 });
 
 const patchBodySchema = z.object({

@@ -35,6 +35,22 @@ export async function list(projectId: string): Promise<ProjectMember[]> {
 }
 
 /**
+ * List a project's eligible owner-transfer recipients — active project members
+ * (`editor` / `viewer`) who are ALSO active non-guest members of the project's
+ * studio (ADR D3, 2026-07-08). The transfer route gates the caller as the
+ * `owner`; the frontend recipient picker renders exactly this set (merged with
+ * display profiles). Keeping the two-layer eligibility here means the picker can
+ * never offer a recipient the transfer would reject.
+ * @param projectId - Project UUID
+ * @returns The eligible recipients' user ids + their current project role
+ */
+export async function listTransferCandidates(
+  projectId: string,
+): Promise<Array<{ userId: string; role: Exclude<ProjectRole, "owner"> }>> {
+  return projectMembersRepo.listTransferCandidates(projectId);
+}
+
+/**
  * Get the owner's user id for a project (used by notification
  * dispatch — e.g. access request created → mail owner).
  * @param projectId - Project UUID

@@ -28,6 +28,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { notificationService } from "@server/modules";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
+import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 
 /** Action body — confirm or cancel an actionable notification. */
 const actionSchema = z.object({
@@ -111,6 +112,13 @@ route.post("/:id/action", async (c) => {
         await studioTransferService.confirmTransfer(id, user.id);
       } else {
         await studioTransferService.cancelTransfer(id, user.id);
+      }
+      break;
+    case "project.transfer_request":
+      if (body.action === "confirm") {
+        await projectTransferService.confirmProjectTransfer(id, user.id);
+      } else {
+        await projectTransferService.cancelProjectTransfer(id, user.id);
       }
       break;
     case "studio.invite_request": {

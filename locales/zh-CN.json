@@ -1069,7 +1069,15 @@
       "isMe": "(你)",
       "remove": "移除",
       "removeConfirmTitle": "移除协作者？",
-      "removeConfirmBody": "{name} 将失去对这个 Project 的访问权限。此操作不可撤销。"
+      "removeConfirmBody": "{name} 将失去对这个 Project 的访问权限。此操作不可撤销。",
+      "transferTitle": "转让所有权",
+      "transferHint": "把这个 Project 转让给本 Studio 的另一位成员。对方接受后成为 Owner,你会变成 Editor。",
+      "transferButton": "转让所有权…",
+      "transferSelectPlaceholder": "选择一位成员",
+      "transferSend": "发送请求",
+      "transferNoCandidates": "暂无合适的成员。请先添加一位同属本 Studio 的 Editor 或 Viewer。",
+      "transferSuccess": "已向 {name} 发送转让请求。",
+      "transferFailed": "转让请求发送失败,请重试。"
     },
     "stack": {
       "triggerAria": "Project 成员（{count}）",
@@ -1367,6 +1375,8 @@
       "roleUpgradeRejected": "{actor} 拒绝了你在 {project} 的 Editor 权限申请",
       "studioTransferRequest": "{actor} 邀请你接管 {studio}",
       "studioTransferApproved": "{actor} 接受了你对 {studio} 的 Admin 转让",
+      "projectTransferRequest": "{actor} 邀请你接管 {project}",
+      "projectTransferApproved": "{actor} 接受了你对 {project} 的所有权转让",
       "studioInviteRequest": "{actor} 邀请你加入 {studio}",
       "studioInviteAccepted": "{actor} 接受了你对 {studio} 的邀请",
       "projectInviteRequest": "{actor} 邀请你加入 {project}",
@@ -1376,6 +1386,8 @@
     "actionFailed": "无法完成操作，请重试。",
     "transferConfirmedToast": "你现在是该 Studio 的 Admin 了。",
     "transferCancelledToast": "已拒绝转让。",
+    "projectTransferConfirmedToast": "你现在是该 Project 的 Owner 了。",
+    "projectTransferCancelledToast": "已拒绝转让。",
     "transferAccept": "接受",
     "transferDecline": "拒绝",
     "subtitle": {
@@ -1554,7 +1566,6 @@
         "rowMenu": "成员操作",
         "promoteToMaintainer": "设为 Maintainer",
         "demoteToGuest": "设为 Guest",
-        "transferAdmin": "转让 Admin…",
         "inviteTitle": "邀请成员",
         "inviteEmailLabel": "邮箱",
         "inviteEmailPlaceholder": "name@example.com",
@@ -1566,8 +1577,6 @@
         "removeConfirmBody": "{name} 将失去对本 Studio 所有 Project 的访问权限，其拥有的 Project 会转移给你。此操作不可撤销。",
         "removeConfirmAction": "移除",
         "removeSuccess": "已移除成员。",
-        "transferConfirmTitle": "转让 Admin？",
-        "transferConfirmBody": "{name} 需要在通知中接受转让后才能成为 Admin。在对方接受之前，你仍是 Admin。",
         "transferConfirmAction": "发送请求",
         "transferRequested": "转让请求已发送。",
         "actionFailed": "出错了，请重试。",
@@ -1587,7 +1596,11 @@
         "dangerTitle": "危险操作",
         "transfer": "转让 Studio",
         "delete": "删除 Studio",
-        "dangerHint": "转让会把所有 Projects、Collections 与钱包整体过户给新 Owner;删除不可恢复。仅 Owner 可操作。"
+        "dangerHint": "转让会把所有 Projects、Collections 与钱包整体过户给新 Owner;删除不可恢复。仅 Owner 可操作。",
+        "transferTitle": "转让 Studio 所有权",
+        "transferBody": "选择一位 Maintainer 成为新的 Admin。对方接受后转让才生效,你会变成 Maintainer。",
+        "transferSelectPlaceholder": "选择一位 Maintainer",
+        "transferNoCandidates": "没有可转让的 Maintainer。请先把一位成员提升为 Maintainer。"
       },
       "dialog": {
         "newProjectTitle": "新建 Project",

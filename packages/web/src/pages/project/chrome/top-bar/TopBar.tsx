@@ -122,6 +122,7 @@ export function TopBar({
         projectId={projectId}
         members={members}
         currentUserId={currentUserId}
+        currentUserRole={role}
       />
     </header>
   );

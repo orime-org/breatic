@@ -14,10 +14,10 @@
  * partial unique index treats `deleted_at IS NOT NULL` rows as gone).
  */
 
-import { and, eq, isNull, isNotNull, inArray, sql } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import type { DbTx } from "@core/db/client.js";
-import { projectMembers, projects } from "@core/db/schema.js";
+import { projectMembers, projects, studioMembers } from "@core/db/schema.js";
 import type { ProjectMember, ProjectRole } from "@breatic/shared";
 
 /**
@@ -127,6 +127,48 @@ export async function listByProjectId(
       ),
     );
   return rows.map(toEntity);
+}
+
+/**
+ * List a project's eligible OWNER-transfer recipients (2026-07-08).
+ *
+ * A recipient must satisfy BOTH layers (ADR D3): already an active project
+ * member with the `editor` or `viewer` role (the current `owner` is excluded by
+ * the role filter) AND an active NON-guest member of the project's studio. The
+ * studio join blocks "outside collaborators" (project members who are not studio
+ * members) so ownership can never leave the studio, and excludes guests.
+ * Returns bare `{ userId, role }` (the caller merges display profiles).
+ * @param projectId - Project UUID
+ * @returns The eligible recipients' user ids + their current project role
+ */
+export async function listTransferCandidates(
+  projectId: string,
+): Promise<Array<{ userId: string; role: Exclude<ProjectRole, "owner"> }>> {
+  const rows = await db
+    .select({ userId: projectMembers.userId, role: projectMembers.role })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .innerJoin(
+      studioMembers,
+      and(
+        eq(studioMembers.userId, projectMembers.userId),
+        eq(studioMembers.studioId, projects.studioId),
+        isNull(studioMembers.deletedAt),
+        ne(studioMembers.role, "guest"),
+      ),
+    )
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        inArray(projectMembers.role, ["editor", "viewer"]),
+        isNull(projectMembers.deletedAt),
+        isNull(projects.deletedAt),
+      ),
+    );
+  return rows.map((r) => ({
+    userId: r.userId,
+    role: r.role as Exclude<ProjectRole, "owner">,
+  }));
 }
 
 /**

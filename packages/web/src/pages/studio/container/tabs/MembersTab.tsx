@@ -51,10 +51,7 @@ interface MembersTabProps {
 }
 
 /** The member targeted by a confirm dialog, tagged with which action. */
-type Confirm =
-  | { kind: 'remove'; member: StudioMember }
-  | { kind: 'transfer'; member: StudioMember }
-  | null;
+type Confirm = { kind: 'remove'; member: StudioMember } | null;
 
 /**
  * The Members tab (spec §3.7). Lists members (avatar / name / email / studio
@@ -145,18 +142,6 @@ export function MembersTab({
     onError: (err) => toast.error(errorMessage(err, t)),
   });
 
-  const transferMutation = useMutation({
-    mutationFn: (userId: string) =>
-      studiosApi.requestTransfer(slug, { toUserId: userId }),
-    onSuccess: () => {
-      // No member-list change yet — the swap happens when the recipient
-      // confirms. Just acknowledge the request was sent.
-      setConfirm(null);
-      toast.success(t('studio.container.members.transferRequested'));
-    },
-    onError: (err) => toast.error(errorMessage(err, t)),
-  });
-
   const revokeMutation = useMutation({
     mutationFn: (invitationId: string) =>
       studiosApi.revokeInvitation(slug, invitationId),
@@ -172,7 +157,6 @@ export function MembersTab({
   const pendingUserId =
     (roleMutation.isPending && roleMutation.variables?.userId) ||
     (removeMutation.isPending && removeMutation.variables) ||
-    (transferMutation.isPending && transferMutation.variables) ||
     null;
 
   /**
@@ -271,9 +255,6 @@ export function MembersTab({
                         onRemove={(m) =>
                           setConfirm({ kind: 'remove', member: m })
                         }
-                        onTransferAdmin={(m) =>
-                          setConfirm({ kind: 'transfer', member: m })
-                        }
                       />
                     )}
                   </td>
@@ -361,20 +342,14 @@ export function MembersTab({
         <AlertDialogContent data-testid='member-confirm-dialog'>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirm?.kind === 'transfer'
-                ? t('studio.container.members.transferConfirmTitle')
-                : t('studio.container.members.removeConfirmTitle')}
+              {t('studio.container.members.removeConfirmTitle')}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {confirm?.kind === 'transfer'
-                ? t('studio.container.members.transferConfirmBody', {
+              {confirm
+                ? t('studio.container.members.removeConfirmBody', {
                   name: confirm.member.name,
                 })
-                : confirm
-                  ? t('studio.container.members.removeConfirmBody', {
-                    name: confirm.member.name,
-                  })
-                  : ''}
+                : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -382,23 +357,17 @@ export function MembersTab({
               {t('studio.container.dialog.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
-              variant={confirm?.kind === 'remove' ? 'destructive' : 'default'}
-              disabled={removeMutation.isPending || transferMutation.isPending}
+              variant='destructive'
+              disabled={removeMutation.isPending}
               onClick={(event) => {
                 // Keep the dialog mounted until the mutation's onSuccess closes
                 // it, so a failure leaves it open with the toast error.
                 event.preventDefault();
-                if (confirm?.kind === 'remove') {
-                  removeMutation.mutate(confirm.member.id);
-                } else if (confirm?.kind === 'transfer') {
-                  transferMutation.mutate(confirm.member.id);
-                }
+                if (confirm) removeMutation.mutate(confirm.member.id);
               }}
               data-testid='member-confirm-action'
             >
-              {confirm?.kind === 'transfer'
-                ? t('studio.container.members.transferConfirmAction')
-                : t('studio.container.members.removeConfirmAction')}
+              {t('studio.container.members.removeConfirmAction')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
