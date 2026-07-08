@@ -34,9 +34,12 @@
  */
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import { db } from "@breatic/core";
+import { buildStudioTransferMail } from "@server/modules/studio/studio-transfer-mail.js";
+import { sendMail } from "@server/infra/mailer.js";
+import { db, logger } from "@breatic/core";
 import {
   ConflictError,
   ForbiddenError,
@@ -60,6 +63,7 @@ const TRANSFER_TTL_DAYS = 7;
  * @param slug - The studio's URL handle
  * @param fromAdminUserId - The acting admin initiating the transfer
  * @param toUserId - The member proposed as the new admin
+ * @param origin - The request Origin for the best-effort email link; omit to skip the email
  * @throws {NotFoundError} studio not found, or the recipient is not an active member
  * @throws {ForbiddenError} the studio is personal (admin cannot be transferred)
  * @throws {ValidationError} the recipient is the acting admin themselves
@@ -68,6 +72,7 @@ export async function requestTransfer(
   slug: string,
   fromAdminUserId: string,
   toUserId: string,
+  origin?: string,
 ): Promise<void> {
   const studio = await studioRepo.getBySlug(slug);
   if (!studio) throw new NotFoundError(t("server.error.not_found"));
@@ -104,6 +109,32 @@ export async function requestTransfer(
     },
     expiresAt,
   });
+
+  // Best-effort transfer email — the bell notification above is the always-
+  // delivered path; this only fires when an SMTP backend is configured and the
+  // caller passed an origin (the route's HTTP Origin). A send failure must NOT
+  // fail the request (the request + bell already landed).
+  if (origin) {
+    try {
+      const recipient = await userRepo.getUserById(toUserId);
+      if (recipient) {
+        const mailResult = await sendMail(
+          buildStudioTransferMail({
+            recipientEmail: recipient.email,
+            initiatorName: from?.name ?? "",
+            studioName: studio.name,
+            studioLink: `${origin}/studio/${slug}`,
+          }),
+        );
+        logger.info(
+          { studioId: studio.id, mailStatus: mailResult.status },
+          "studio_transfer_email",
+        );
+      }
+    } catch (err) {
+      logger.error({ err, studioId: studio.id }, "studio_transfer_email_failed");
+    }
+  }
 }
 
 /**

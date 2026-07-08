@@ -24,12 +24,6 @@ import { requireRoleOnParam } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
 import { projectService, recentService } from "@server/modules";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
-import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
-import { buildProjectTransferMail } from "@server/modules/project/project-transfer-mail.js";
-import { sendMail } from "@server/infra/mailer.js";
-import { logger } from "@breatic/core";
 import { projectAuthService } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
@@ -85,32 +79,14 @@ projects.post(
     const user = c.get("user");
     const id = c.req.param("id");
     const { toUserId } = c.req.valid("json");
-    await projectTransferService.requestProjectTransfer(id, user.id, toUserId);
-    // Best-effort transfer email — the bell notification is the always-delivered
-    // path; this only fires when an SMTP backend is configured. A send failure
-    // must NOT fail the request (the request + bell already landed).
-    try {
-      const recipient = await userRepo.getUserById(toUserId);
-      const project = await projectRepo.getProjectById(id);
-      const profiles = await studioRepo.getPersonalProfilesByCreators([user.id]);
-      if (recipient && project) {
-        const origin = c.req.header("Origin") ?? "http://localhost:8000";
-        const mailResult = await sendMail(
-          buildProjectTransferMail({
-            recipientEmail: recipient.email,
-            initiatorName: profiles.get(user.id)?.name ?? "",
-            projectName: project.name,
-            projectLink: `${origin}/project/${project.slug}-${id}`,
-          }),
-        );
-        logger.info(
-          { projectId: id, mailStatus: mailResult.status },
-          "project_transfer_email",
-        );
-      }
-    } catch (err) {
-      logger.error({ err, projectId: id }, "project_transfer_email_failed");
-    }
+    // The service sends the best-effort transfer email itself (needs the recipient
+    // + profile repos); the route only forwards the request Origin for the link.
+    await projectTransferService.requestProjectTransfer(
+      id,
+      user.id,
+      toUserId,
+      c.req.header("Origin") ?? "http://localhost:8000",
+    );
     return c.json({ data: { ok: true } }, 201);
   },
 );

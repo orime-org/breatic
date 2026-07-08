@@ -42,7 +42,10 @@ import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
-import { db, projectMembersRepo } from "@breatic/core";
+import * as userRepo from "@server/modules/auth/user.repo.js";
+import { buildProjectTransferMail } from "@server/modules/project/project-transfer-mail.js";
+import { sendMail } from "@server/infra/mailer.js";
+import { db, projectMembersRepo, logger } from "@breatic/core";
 import {
   ConflictError,
   ForbiddenError,
@@ -70,6 +73,7 @@ const TRANSFER_TTL_DAYS = 7;
  * @param projectId - The project whose owner role is being transferred
  * @param fromUserId - The acting owner initiating the transfer
  * @param toUserId - The project collaborator proposed as the new owner
+ * @param origin - The request Origin for the best-effort email link; omit to skip the email
  * @throws {NotFoundError} project or studio not found
  * @throws {ForbiddenError} the studio is personal, or the caller is not the owner
  * @throws {ValidationError} the recipient is the acting owner, is not a project
@@ -80,6 +84,7 @@ export async function requestProjectTransfer(
   projectId: string,
   fromUserId: string,
   toUserId: string,
+  origin?: string,
 ): Promise<void> {
   const project = await projectRepo.getProjectById(projectId);
   if (!project) throw new NotFoundError(t("server.error.not_found"));
@@ -137,6 +142,32 @@ export async function requestProjectTransfer(
     },
     expiresAt,
   });
+
+  // Best-effort transfer email — the bell notification above is the always-
+  // delivered path; this only fires when an SMTP backend is configured and the
+  // caller passed an origin (the route's HTTP Origin). A send failure must NOT
+  // fail the request (the request + bell already landed).
+  if (origin) {
+    try {
+      const recipient = await userRepo.getUserById(toUserId);
+      if (recipient) {
+        const mailResult = await sendMail(
+          buildProjectTransferMail({
+            recipientEmail: recipient.email,
+            initiatorName: from?.name ?? "",
+            projectName: project.name,
+            projectLink: `${origin}/project/${project.slug}-${projectId}`,
+          }),
+        );
+        logger.info(
+          { projectId, mailStatus: mailResult.status },
+          "project_transfer_email",
+        );
+      }
+    } catch (err) {
+      logger.error({ err, projectId }, "project_transfer_email_failed");
+    }
+  }
 }
 
 /**
