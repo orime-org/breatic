@@ -379,13 +379,23 @@ function CanvasSpaceInner({
   // The ReactFlow render buffer lives in a dedicated plain zustand store
   // (#1647 step 4), not local state, so discrete consumers can subscribe to
   // just their slice instead of the whole component re-running on every change.
-  // Reset on unmount so a space switch (this body remounts, keyed on space id)
-  // never briefly flashes the previous space's nodes.
   const flowNodes = useCanvasGraphStore((s) => s.flowNodes);
   const setFlowNodes = useCanvasGraphStore((s) => s.setFlowNodes);
   const flowEdges = useCanvasGraphStore((s) => s.flowEdges);
   const setFlowEdges = useCanvasGraphStore((s) => s.setFlowEdges);
-  React.useEffect(() => () => useCanvasGraphStore.getState().reset(), []);
+  // Clear the shared buffer BEFORE this space's first paint. A space switch
+  // remounts this body (keyed on space id), but the buffer is a global store
+  // that survives the remount, so it still holds the PREVIOUS space's nodes on
+  // the new mount. A passive unmount cleanup runs only after the next space has
+  // already painted → the new space flashes the old nodes for one frame
+  // (adversarial finding, #1647). `useLayoutEffect` on mount resets before
+  // paint, restoring the pre-store `useState([])` empty start; the mirror
+  // effect below then fills it with this space's nodes. Also reset on unmount so
+  // a closed space leaves nothing lingering in the singleton.
+  React.useLayoutEffect(() => {
+    useCanvasGraphStore.getState().reset();
+    return () => useCanvasGraphStore.getState().reset();
+  }, []);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView, zoomTo } =
     useReactFlow();
