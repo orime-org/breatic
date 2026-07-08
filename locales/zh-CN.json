@@ -318,6 +318,9 @@
     "edge": {
       "delete": "删除连线"
     },
+    "close": {
+      "operationInProgress": "有操作正在进行 — 请先完成再关闭此 Space。"
+    },
     "upload": {
       "nodeBusy": "该节点正忙 — 另一个操作正在进行中。",
       "ownershipLost": "上传结果未写入 — 节点已被移除或被他人接管。",

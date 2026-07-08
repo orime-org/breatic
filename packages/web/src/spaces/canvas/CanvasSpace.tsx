@@ -136,6 +136,7 @@ import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { useCanvasStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 /**
  * File-picker `accept` per modality for the empty-node double-click /
@@ -753,6 +754,21 @@ function CanvasSpaceInner({
   // to Yjs so collaborators see the whole lifecycle, and both write a
   // fixed-English error onto the node on failure (never a toast). No file is
   // rejected. Created nodes are batch-selected once mirrored back.
+  // Track an in-flight front-end operation (upload / extraction) in the
+  // per-space operation registry (#1617): register on start, unregister once the
+  // work settles — which for these flows is AFTER the result is written back to
+  // Yjs (the .then / .catch that call complete/failNodeHandling resolve before
+  // this .finally). Closing the space tab is blocked while any operation is
+  // registered, so the local write-back gets a chance to sync before detach.
+  const trackOperation = React.useCallback(
+    (operationId: string, work: Promise<unknown>): void => {
+      const ops = useSpaceOperationsStore.getState();
+      ops.register(spaceId, operationId);
+      void work.finally(() => ops.unregister(spaceId, operationId));
+    },
+    [spaceId],
+  );
+
   const processFiles = React.useCallback(
     (files: File[], origin: { x: number; y: number }): void => {
       if (readOnly || files.length === 0) return;
@@ -790,58 +806,74 @@ function CanvasSpaceInner({
           const { nodeId, lease } = createUploadNodeAt(spec.nodeType, position);
           created.push(nodeId);
           if (spec.needsUpload) {
-            void runMediaUpload(file, projectId, {
-              getUploadConfig: assetsApi.fetchUploadConfig,
-              hashFile,
-              presign: assetsApi.presign,
-              putFile: putFileWithRetry,
-              onSuccess: (fileUrl) => {
-                clearRetryFile(projectId, spaceId, nodeId);
-                if (!completeNodeHandling(projectId, spaceId, nodeId, fileUrl, lease)) {
-                  toast(t('canvas.upload.ownershipLost'));
-                }
-              },
-              // Fixed-English wire string — like AIGC failure messages and the
-              // group default name. errorMessage is written to Yjs and rendered
-              // raw to every collaborator, so it must not freeze the uploader's
-              // locale into the shared doc. The filename is the locale-free part
-              // telling the user which file failed. The File is stashed BEFORE
-              // the error lands so the error re-render already sees the Retry
-              // stash (#1609 P4).
-              onFailure: () => {
-                stashRetryFile(projectId, spaceId, nodeId, file);
-                failNodeHandling(
-                  projectId,
-                  spaceId,
-                  nodeId,
+            trackOperation(
+              nodeId,
+              runMediaUpload(file, projectId, {
+                getUploadConfig: assetsApi.fetchUploadConfig,
+                hashFile,
+                presign: assetsApi.presign,
+                putFile: putFileWithRetry,
+                onSuccess: (fileUrl) => {
+                  clearRetryFile(projectId, spaceId, nodeId);
+                  if (!completeNodeHandling(projectId, spaceId, nodeId, fileUrl, lease)) {
+                    toast(t('canvas.upload.ownershipLost'));
+                  }
+                },
+                // Fixed-English wire string — like AIGC failure messages and the
+                // group default name. errorMessage is written to Yjs and rendered
+                // raw to every collaborator, so it must not freeze the uploader's
+                // locale into the shared doc. The filename is the locale-free part
+                // telling the user which file failed. The File is stashed BEFORE
+                // the error lands so the error re-render already sees the Retry
+                // stash (#1609 P4).
+                onFailure: () => {
+                  stashRetryFile(projectId, spaceId, nodeId, file);
+                  failNodeHandling(
+                    projectId,
+                    spaceId,
+                    nodeId,
                   `Upload failed: ${file.name}`,
                   lease,
-                );
-              },
-              onUploaded: (info) => reportUploadedAsset(nodeId, info, file),
-            });
+                  );
+                },
+                onUploaded: (info) => reportUploadedAsset(nodeId, info, file),
+              }),
+            );
           } else {
-            void extractText(file)
-              .then((text) => {
-                if (!completeNodeHandling(projectId, spaceId, nodeId, text, lease)) {
-                  toast(t('canvas.upload.ownershipLost'));
-                }
-              })
-              .catch(() =>
-                failNodeHandling(
-                  projectId,
-                  spaceId,
-                  nodeId,
-                  `Extraction failed: ${file.name}`,
-                  lease,
+            trackOperation(
+              nodeId,
+              extractText(file)
+                .then((text) => {
+                  if (
+                    !completeNodeHandling(projectId, spaceId, nodeId, text, lease)
+                  ) {
+                    toast(t('canvas.upload.ownershipLost'));
+                  }
+                })
+                .catch(() =>
+                  failNodeHandling(
+                    projectId,
+                    spaceId,
+                    nodeId,
+                    `Extraction failed: ${file.name}`,
+                    lease,
+                  ),
                 ),
-              );
+            );
           }
         }
         if (created.length > 0) setSelectAfterCreate(created);
       })();
     },
-    [readOnly, projectId, spaceId, createUploadNodeAt, t, reportUploadedAsset],
+    [
+      readOnly,
+      projectId,
+      spaceId,
+      createUploadNodeAt,
+      t,
+      reportUploadedAsset,
+      trackOperation,
+    ],
   );
 
   // Upload-button path: chrome posted picked files (the picker must open
@@ -1497,7 +1529,7 @@ function CanvasSpaceInner({
           toast(t('canvas.upload.tooLarge', { filename: file.name }));
           return;
         }
-        await fillNodeFromFile(nodeId, file, modality, projectId, {
+        const fillWork = fillNodeFromFile(nodeId, file, modality, projectId, {
           getUploadConfig: assetsApi.fetchUploadConfig,
           hashFile,
           presign: assetsApi.presign,
@@ -1527,9 +1559,10 @@ function CanvasSpaceInner({
           },
           onUploaded: (id, info) => reportUploadedAsset(id, info, file),
         });
+        trackOperation(nodeId, fillWork);
       })();
     },
-    [projectId, spaceId, userId, t, reportUploadedAsset],
+    [projectId, spaceId, userId, t, reportUploadedAsset, trackOperation],
   );
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
