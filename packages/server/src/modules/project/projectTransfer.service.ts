@@ -43,9 +43,9 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
-import { buildProjectTransferMail } from "@server/modules/project/project-transfer-mail.js";
-import { sendMail } from "@server/infra/mailer.js";
-import { db, projectMembersRepo, logger } from "@breatic/core";
+import { buildProjectTransferMail } from "@server/utils/notification-mail.js";
+import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
+import { db, projectMembersRepo } from "@breatic/core";
 import {
   ConflictError,
   ForbiddenError,
@@ -148,25 +148,18 @@ export async function requestProjectTransfer(
   // caller passed an origin (the route's HTTP Origin). A send failure must NOT
   // fail the request (the request + bell already landed).
   if (origin) {
-    try {
+    await sendBestEffortMail(async () => {
+      // Resolve the recipient INSIDE the best-effort boundary — a DB read blip
+      // must not fail this request (the transfer-request bell already committed).
       const recipient = await userRepo.getUserById(toUserId);
-      if (recipient) {
-        const mailResult = await sendMail(
-          buildProjectTransferMail({
-            recipientEmail: recipient.email,
-            initiatorName: from?.name ?? "",
-            projectName: project.name,
-            projectLink: `${origin}/project/${project.slug}-${projectId}`,
-          }),
-        );
-        logger.info(
-          { projectId, mailStatus: mailResult.status },
-          "project_transfer_email",
-        );
-      }
-    } catch (err) {
-      logger.error({ err, projectId }, "project_transfer_email_failed");
-    }
+      if (!recipient) return null;
+      return buildProjectTransferMail({
+        recipientEmail: recipient.email,
+        initiatorName: from?.name ?? "",
+        projectName: project.name,
+        projectLink: `${origin}/project/${project.slug}-${projectId}`,
+      });
+    }, { userId: toUserId, subject: "project_transfer" });
   }
 }
 

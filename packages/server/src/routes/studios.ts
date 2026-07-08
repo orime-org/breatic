@@ -32,9 +32,6 @@ import { studioService, projectService, recentService } from "@server/modules";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
-import { buildStudioInvitationMail } from "@server/modules/studio/studio-invite-mail.js";
-import { sendMail } from "@server/infra/mailer.js";
-import { logger } from "@breatic/core";
 
 /** Invite body — a registered email + the granted role (never admin). */
 const inviteMemberSchema = z.object({
@@ -186,31 +183,15 @@ studio.post("/:slug/members", requireStudioRole("admin"), async (c) => {
   const user = c.get("user");
   const slug = c.req.param("slug");
   const body = inviteMemberSchema.parse(await c.req.json());
-  const invite = await studioInviteService.createInvite(
+  // The optional best-effort invite email is sent inside the service (the bell
+  // notification is the always-delivered path); the route only passes the Origin.
+  await studioInviteService.createInvite(
     slug,
     user.id,
     body.email,
     body.role,
+    c.req.header("Origin") ?? "http://localhost:8000",
   );
-  // Email is an OPTIONAL enhancement — the bell notification is the always-
-  // delivered path. A send failure must NOT fail the request (the invite + bell
-  // already landed); best-effort, logged at the application boundary.
-  try {
-    const token = await studioInviteService.issueInviteToken(invite.invitationId);
-    const origin = c.req.header("Origin") ?? "http://localhost:8000";
-    const mailResult = await sendMail(
-      buildStudioInvitationMail({
-        inviteeEmail: invite.inviteeEmail,
-        inviterName: invite.inviterName,
-        studioName: invite.studioName,
-        role: invite.role,
-        inviteLink: `${origin}/studio-invite?token=${token}`,
-      }),
-    );
-    logger.info({ slug, mailStatus: mailResult.status }, "studio_invite_email");
-  } catch (err) {
-    logger.error({ err, slug }, "studio_invite_email_failed");
-  }
   return c.json({ data: { ok: true } }, 201);
 });
 
