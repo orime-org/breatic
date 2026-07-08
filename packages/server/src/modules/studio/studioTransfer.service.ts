@@ -115,18 +115,18 @@ export async function requestTransfer(
   // caller passed an origin (the route's HTTP Origin). A send failure must NOT
   // fail the request (the request + bell already landed).
   if (origin) {
-    const recipient = await userRepo.getUserById(toUserId);
-    if (recipient) {
-      await sendBestEffortMail(
-        buildStudioTransferMail({
-          recipientEmail: recipient.email,
-          initiatorName: from?.name ?? "",
-          studioName: studio.name,
-          studioLink: `${origin}/studio/${slug}`,
-        }),
-        { userId: toUserId, subject: "studio_transfer" },
-      );
-    }
+    await sendBestEffortMail(async () => {
+      // Resolve the recipient INSIDE the best-effort boundary — a DB read blip
+      // must not fail this request (the transfer-request bell already committed).
+      const recipient = await userRepo.getUserById(toUserId);
+      if (!recipient) return null;
+      return buildStudioTransferMail({
+        recipientEmail: recipient.email,
+        initiatorName: from?.name ?? "",
+        studioName: studio.name,
+        studioLink: `${origin}/studio/${slug}`,
+      });
+    }, { userId: toUserId, subject: "studio_transfer" });
   }
 }
 

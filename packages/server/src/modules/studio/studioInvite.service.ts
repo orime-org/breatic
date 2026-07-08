@@ -153,17 +153,19 @@ export async function createInvite(
   // path; this only fires when an SMTP backend is configured and the caller
   // passed an origin. A send failure must NOT fail the request.
   if (origin) {
-    const token = await issueInviteToken(invitationId);
-    await sendBestEffortMail(
-      buildStudioInvitationMail({
+    await sendBestEffortMail(async () => {
+      // Mint the email-link token INSIDE the best-effort boundary — a Redis blip
+      // minting it must not fail this request (the invite + bell already committed;
+      // the token is only for the optional email, the bell confirms via invitationId).
+      const token = await issueInviteToken(invitationId);
+      return buildStudioInvitationMail({
         inviteeEmail: email,
         inviterName,
         studioName: studio.name,
         role,
         inviteLink: `${origin}/studio-invite?token=${token}`,
-      }),
-      { userId: inviterUserId, subject: "studio_invite" },
-    );
+      });
+    }, { userId: inviterUserId, subject: "studio_invite" });
   }
 
   return {

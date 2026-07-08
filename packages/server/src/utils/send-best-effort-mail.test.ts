@@ -20,10 +20,10 @@ const CTX = { userId: "u1", subject: "studio_invite" };
 beforeEach(() => vi.clearAllMocks());
 
 describe("sendBestEffortMail", () => {
-  it("sends the mail and routes the result through the shared log policy", async () => {
+  it("builds + sends the mail and routes the result through the shared log policy", async () => {
     vi.mocked(sendMail).mockResolvedValueOnce({ status: "sent" });
 
-    await sendBestEffortMail(MAIL, CTX);
+    await sendBestEffortMail(async () => MAIL, CTX);
 
     expect(sendMail).toHaveBeenCalledWith(MAIL);
     expect(logMailResult).toHaveBeenCalledWith({ status: "sent" }, CTX);
@@ -36,7 +36,7 @@ describe("sendBestEffortMail", () => {
 
     // Must resolve (not reject) — a failed best-effort mail must not fail the
     // caller's request (the bell notification already landed).
-    await expect(sendBestEffortMail(MAIL, CTX)).resolves.toBeUndefined();
+    await expect(sendBestEffortMail(async () => MAIL, CTX)).resolves.toBeUndefined();
 
     expect(logger.error).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledWith(
@@ -45,5 +45,33 @@ describe("sendBestEffortMail", () => {
     );
     // On the throwing path we never reach the status-based log policy.
     expect(logMailResult).not.toHaveBeenCalled();
+  });
+
+  it("swallows a PREPARE failure too — a throwing factory (token mint / recipient read blip) must not fail the request", async () => {
+    // Regression guard: the factory does the pre-send fetch (issueInviteToken /
+    // getUserById). Its failure must be swallowed just like a send failure —
+    // the invite/transfer + bell already committed. (This is the exact hole the
+    // adversarial pass caught: the fetch used to sit OUTSIDE the swallow.)
+    const boom = new Error("redis blip");
+
+    await expect(
+      sendBestEffortMail(async () => {
+        throw boom;
+      }, CTX),
+    ).resolves.toBeUndefined();
+
+    expect(sendMail).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: boom, subject: "studio_invite", userId: "u1" }),
+      "mail_send_failed",
+    );
+  });
+
+  it("skips sending when the factory returns null (e.g. recipient gone)", async () => {
+    await sendBestEffortMail(async () => null, CTX);
+
+    expect(sendMail).not.toHaveBeenCalled();
+    expect(logMailResult).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
   });
 });

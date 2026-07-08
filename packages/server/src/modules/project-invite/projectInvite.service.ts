@@ -171,14 +171,17 @@ export async function createInvite(
   // path; this only fires when an SMTP backend is configured and the caller
   // passed an origin. A send failure must NOT fail the request.
   if (origin) {
+    // The token was already minted in the tx above (it is also returned to the
+    // route for the copyable URL), so this factory only builds the mail.
     await sendBestEffortMail(
-      buildProjectInvitationMail({
-        inviteeEmail: email,
-        inviterName,
-        projectName: project.name,
-        role,
-        inviteLink: `${origin}/project-invite?token=${token}`,
-      }),
+      async () =>
+        buildProjectInvitationMail({
+          inviteeEmail: email,
+          inviterName,
+          projectName: project.name,
+          role,
+          inviteLink: `${origin}/project-invite?token=${token}`,
+        }),
       { userId: inviterUserId, subject: "project_invite" },
     );
   }
