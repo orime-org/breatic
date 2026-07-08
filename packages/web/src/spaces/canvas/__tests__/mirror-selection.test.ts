@@ -45,6 +45,106 @@ describe('mergeMirroredSelection', () => {
   });
 });
 
+describe('mergeMirroredSelection reference stability (#1647 — React.memo needs stable refs)', () => {
+  // The Yjs mirror rebuilds the whole node array on every doc change, so every
+  // node gets a fresh object. Without reference stability, a change to one node
+  // hands ALL nodes new `data` references, defeating React.memo (every node
+  // re-renders). The merge must reuse the previous object reference for any node
+  // whose render inputs (type / parentId / position / size / selection / data)
+  // are unchanged, so only the node that actually changed re-renders.
+
+  it('reuses the previous object reference when nothing render-relevant changed', () => {
+    const prev = [
+      {
+        id: 'a',
+        type: 'text',
+        position: { x: 0, y: 0 },
+        data: { content: 'hi', status: 'idle' },
+        selected: false,
+      },
+    ] as Node[];
+    // A different node changed elsewhere → the mirror rebuilt `a` fresh, but `a`
+    // itself is identical.
+    const fresh = [
+      {
+        id: 'a',
+        type: 'text',
+        position: { x: 0, y: 0 },
+        data: { content: 'hi', status: 'idle' },
+      },
+    ] as Node[];
+
+    const merged = mergeMirroredSelection(prev, fresh);
+    expect(merged[0]).toBe(prev[0]); // SAME reference → memo bails, `a` not re-rendered
+  });
+
+  it('returns a new reference when the node data changed', () => {
+    const prev = [
+      { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: { content: 'hi' } },
+    ] as Node[];
+    const fresh = [
+      { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: { content: 'bye' } },
+    ] as Node[];
+
+    const merged = mergeMirroredSelection(prev, fresh);
+    expect(merged[0]).not.toBe(prev[0]);
+    expect((merged[0].data as { content: string }).content).toBe('bye');
+  });
+
+  it('returns a new reference when the position changed', () => {
+    const prev = [
+      { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: {} },
+    ] as Node[];
+    const fresh = [
+      { id: 'a', type: 'text', position: { x: 5, y: 7 }, data: {} },
+    ] as Node[];
+
+    const merged = mergeMirroredSelection(prev, fresh);
+    expect(merged[0]).not.toBe(prev[0]);
+    expect(merged[0].position).toEqual({ x: 5, y: 7 });
+  });
+
+  it('returns a new reference when a group node was resized (width/height changed)', () => {
+    const prev = [
+      {
+        id: 'g',
+        type: 'group',
+        position: { x: 0, y: 0 },
+        width: 200,
+        height: 100,
+        data: {},
+      },
+    ] as Node[];
+    const fresh = [
+      {
+        id: 'g',
+        type: 'group',
+        position: { x: 0, y: 0 },
+        width: 300,
+        height: 100,
+        data: {},
+      },
+    ] as Node[];
+
+    const merged = mergeMirroredSelection(prev, fresh);
+    expect(merged[0]).not.toBe(prev[0]);
+    expect(merged[0].width).toBe(300);
+  });
+
+  it('returns a new reference when a node was reparented into a group', () => {
+    const prev = [
+      { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: {} },
+    ] as Node[];
+    const fresh = [
+      { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: {}, parentId: 'g' },
+    ] as Node[];
+
+    const merged = mergeMirroredSelection(prev, fresh);
+    expect(merged[0]).not.toBe(prev[0]);
+    expect(merged[0].parentId).toBe('g');
+  });
+});
+
 describe('mergeMirroredEdgeSelection', () => {
   it('carries forward the edge selected flag by id across a Yjs re-mirror', () => {
     // Without this, edge selection is wiped on every Yjs change, so the

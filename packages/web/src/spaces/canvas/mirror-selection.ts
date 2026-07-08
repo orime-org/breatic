@@ -4,6 +4,64 @@
 import type { Edge, Node } from '@xyflow/react';
 
 /**
+ * Shallow-equal two node `data` records by their own enumerable keys (values
+ * compared with `Object.is`). The Yjs mirror rebuilds each node's `data` fresh
+ * every doc change, so a reference compare is always false; this compares the
+ * flat fields (content / status / name / locked / …). A nested object inside
+ * data (e.g. an active `handlingBy` lease) compares by reference and so reads as
+ * changed — correct, since a handling node IS actively changing.
+ * @param a - One node's data record (or undefined).
+ * @param b - The other node's data record (or undefined).
+ * @returns True when both have identical own keys with `Object.is`-equal values.
+ */
+function sameData(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (
+    typeof a !== 'object' ||
+    a === null ||
+    typeof b !== 'object' ||
+    b === null
+  ) {
+    return false;
+  }
+  const ak = Object.keys(a as Record<string, unknown>);
+  const bk = Object.keys(b as Record<string, unknown>);
+  if (ak.length !== bk.length) return false;
+  return ak.every((k) =>
+    Object.is(
+      (a as Record<string, unknown>)[k],
+      (b as Record<string, unknown>)[k],
+    ),
+  );
+}
+
+/**
+ * Whether two ReactFlow nodes have identical render inputs, so the previous
+ * object reference can be reused. Compares every field `toFlowNode` sets (type,
+ * position, parentId, group width/height) plus the carried local flags
+ * (selected / dragging) and `data` (shallow). Reusing the reference for
+ * unchanged nodes is what lets `React.memo` bail — otherwise a change to ONE
+ * node hands ALL nodes a fresh object and every node re-renders (#1647 R1).
+ * @param a - The previous render-buffer node.
+ * @param b - The freshly merged node.
+ * @returns True when nothing that affects rendering changed.
+ */
+function sameRenderInputs(a: Node, b: Node): boolean {
+  return (
+    a.type === b.type &&
+    a.parentId === b.parentId &&
+    a.position.x === b.position.x &&
+    a.position.y === b.position.y &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.selected === b.selected &&
+    a.dragging === b.dragging &&
+    a.hidden === b.hidden &&
+    sameData(a.data, b.data)
+  );
+}
+
+/**
  * Merge local selection state into a freshly mirrored node array. Yjs is the
  * source of truth for node data / position, but **selection (and an in-flight
  * drag) is per-user local UI state** that does not live in Yjs. The mirror
@@ -15,23 +73,27 @@ import type { Edge, Node } from '@xyflow/react';
  * position) comes from the fresh nodes. Brand-new nodes (not in `prev`) are
  * left as-is — the auto-select effect selects a freshly created node
  * explicitly once it appears.
+ *
+ * **Reference stability (#1647)**: for a node whose render inputs are unchanged,
+ * the PREVIOUS object reference is reused (not a fresh `{...node}`), so
+ * `React.memo` on the node body bails and only the node that actually changed
+ * re-renders. Without this, the mirror hands every node a new reference on every
+ * doc change and memo never bails.
  * @param prev - The previous render buffer (holds local selection / drag).
  * @param fresh - The nodes freshly mapped from the Yjs mirror.
- * @returns The fresh nodes with local selection / drag flags preserved by id.
+ * @returns The fresh nodes with local selection / drag preserved and unchanged
+ *   nodes' previous references reused.
  */
 export function mergeMirroredSelection(
   prev: ReadonlyArray<Node>,
   fresh: ReadonlyArray<Node>,
 ): Node[] {
-  const local = new Map(
-    prev.map((node) => [
-      node.id,
-      { selected: node.selected, dragging: node.dragging },
-    ]),
-  );
+  const prevById = new Map(prev.map((node) => [node.id, node]));
   return fresh.map((node) => {
-    const carried = local.get(node.id);
-    return carried ? { ...node, ...carried } : node;
+    const p = prevById.get(node.id);
+    if (!p) return node; // brand-new node
+    const merged = { ...node, selected: p.selected, dragging: p.dragging };
+    return sameRenderInputs(p, merged) ? p : merged;
   });
 }
 
