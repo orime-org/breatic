@@ -9,11 +9,11 @@ import {
   groupBackgroundStyle,
   groupBorderStyle,
 } from '@web/spaces/canvas/group-background';
-import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import {
   MAX_NODE_NAME_LEN,
   useInlineRename,
 } from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
+import { ZoomCounterScaled } from '@web/spaces/canvas/nodes/_shared/ZoomCounterScaled';
 import type { GroupNodeView } from '@web/spaces/canvas/types/node-view';
 
 /** Fixed-English default shown when a group has no explicit name. */
@@ -46,7 +46,7 @@ interface GroupNodeProps {
  * @param root0.onRename - Called with the new name on a committed rename.
  * @returns The group container element.
  */
-export function GroupNode({
+export const GroupNode = React.memo(function GroupNode({
   data,
   selected,
   onRename,
@@ -62,9 +62,6 @@ export function GroupNode({
   const borderToken = selected
     ? undefined
     : groupBorderStyle(data.backgroundColor);
-  // Counter-scale the name with the canvas zoom so it keeps a constant screen
-  // size — the same treatment node names get (ContentNodeFrame).
-  const headerScale = React.useContext(NodeScaleContext);
   const {
     editing,
     displayName,
@@ -123,10 +120,7 @@ export function GroupNode({
       ) : null}
       {/* Name floats above the group's top-left, counter-scaled by zoom so it
           stays a constant screen size — mirrors the node name header. */}
-      <div
-        className='absolute bottom-full left-0 origin-bottom-left pb-1'
-        style={{ transform: `scale(${headerScale})` }}
-      >
+      <ZoomCounterScaled className='absolute bottom-full left-0 origin-bottom-left pb-1'>
         {editing ? (
           <input
             ref={inputRef}
@@ -158,7 +152,7 @@ export function GroupNode({
             {displayName}
           </div>
         )}
-      </div>
+      </ZoomCounterScaled>
     </div>
   );
-}
+});

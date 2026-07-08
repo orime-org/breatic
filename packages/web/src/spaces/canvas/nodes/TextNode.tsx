@@ -44,7 +44,7 @@ const EDIT_BODY_CLASS =
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
  * @returns The text node element (placeholder or inline-editable body).
  */
-export function TextNode({
+export const TextNode = React.memo(function TextNode({
   data,
   selected,
   locked,
@@ -171,4 +171,4 @@ export function TextNode({
       />
     </ContentNodeFrame>
   );
-}
+});

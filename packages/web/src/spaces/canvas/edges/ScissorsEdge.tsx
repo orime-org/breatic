@@ -37,7 +37,7 @@ export function shouldShowScissors(selected: boolean, readOnly: boolean): boolea
  * @param props - ReactFlow edge props; endpoints, `selected`, and `data` (which carries the viewer `readOnly` flag).
  * @returns The edge path plus the conditional scissors overlay.
  */
-export function ScissorsEdge(props: EdgeProps): React.JSX.Element {
+export const ScissorsEdge = React.memo(function ScissorsEdge(props: EdgeProps): React.JSX.Element {
   const { id, selected, data } = props;
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX: props.sourceX,
@@ -80,4 +80,4 @@ export function ScissorsEdge(props: EdgeProps): React.JSX.Element {
       ) : null}
     </>
   );
-}
+});

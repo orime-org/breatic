@@ -5,9 +5,18 @@ import { describe, it, expect } from 'vitest';
 import { NODE_TYPES, NODE_KIND_LIST } from '@web/spaces/canvas/nodes/registry';
 
 describe('canvas NODE_TYPES registry', () => {
-  it('exposes a component for every kind in NODE_KIND_LIST', () => {
+  it('exposes a renderable component for every kind in NODE_KIND_LIST', () => {
     NODE_KIND_LIST.forEach((k) => {
-      expect(typeof NODE_TYPES[k]).toBe('function');
+      const component = NODE_TYPES[k];
+      // Node bodies are React.memo-wrapped for canvas perf (#1647), and
+      // React.memo returns an exotic component OBJECT (with `$$typeof`), not a
+      // plain function — so a valid entry is a function or a memo component.
+      const isRenderable =
+        typeof component === 'function' ||
+        (typeof component === 'object' &&
+          component !== null &&
+          '$$typeof' in component);
+      expect(isRenderable).toBe(true);
     });
   });
 

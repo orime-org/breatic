@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { cn } from '@web/lib/utils';
@@ -27,7 +27,7 @@ interface AnnotationNodeProps {
  * @param root0.locked - Whether the node is locked, showing the lock indicator.
  * @returns The collaboration sticky node element.
  */
-export function AnnotationNode({
+export const AnnotationNode = React.memo(function AnnotationNode({
   data,
   selected,
   locked,
@@ -59,7 +59,7 @@ export function AnnotationNode({
       </div>
     </NodeShell>
   );
-}
+});
 
 /**
  * Formats an epoch-ms timestamp as a short relative time (e.g. "5m ago"),

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import type { AudioNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
@@ -32,7 +32,7 @@ interface AudioNodeProps {
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
  * @returns The audio node element (placeholder or native audio player).
  */
-export function AudioNode({
+export const AudioNode = React.memo(function AudioNode({
   data,
   selected,
   locked,
@@ -67,4 +67,4 @@ export function AudioNode({
       />
     </ContentNodeFrame>
   );
-}
+});
