@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { GroupBackgroundPicker } from '@web/spaces/canvas/GroupBackgroundPicker';
@@ -41,7 +41,7 @@ interface GroupSelectionToolbarProps {
  * @param root0.onPickBg - Apply / clear the group tint.
  * @returns The floating selection toolbar element.
  */
-export function GroupSelectionToolbar({
+export const GroupSelectionToolbar = React.memo(function GroupSelectionToolbar({
   offer,
   onGroup,
   onUngroup,
@@ -89,4 +89,4 @@ export function GroupSelectionToolbar({
       )}
     </div>
   );
-}
+});

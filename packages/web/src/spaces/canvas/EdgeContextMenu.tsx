@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { Trash2 } from 'lucide-react';
-import type * as React from 'react';
+import * as React from 'react';
 
 import {
   DropdownMenu,
@@ -41,7 +41,7 @@ interface EdgeContextMenuProps {
  * @param root0.onDelete - Delete the right-clicked edge.
  * @returns The cursor-anchored edge action menu.
  */
-export function EdgeContextMenu({
+export const EdgeContextMenu = React.memo(function EdgeContextMenu({
   open,
   x,
   y,
@@ -69,4 +69,4 @@ export function EdgeContextMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
+});
