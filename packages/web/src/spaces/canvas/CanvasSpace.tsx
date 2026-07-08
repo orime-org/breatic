@@ -1727,6 +1727,49 @@ function CanvasSpaceInner({
     ];
   }, [flowNodes, readOnly]);
 
+  // Stable menu-callback references (#1647 step 4E): the context menus are
+  // React.memo'd, so their `onOpenChange` / action props must be stable
+  // references to let the memo bail — a fresh inline arrow each render would
+  // defeat it. The node-menu actions close over the current menu target, so they
+  // re-key on `nodeMenu` (open / target change) — exactly when the menu content
+  // should update. The two conditional actions (`onRename` / `onUngroup`, which
+  // resolve to `undefined` when frozen) use `useMemo` since they memoize a value.
+  const onContextMenuOpenChange = React.useCallback(
+    (open: boolean) => setContextMenu((prev) => ({ ...prev, open })),
+    [],
+  );
+  const onNodeMenuOpenChange = React.useCallback(
+    (open: boolean) => setNodeMenu((prev) => ({ ...prev, open })),
+    [],
+  );
+  const onSelectionMenuOpenChange = React.useCallback(
+    (open: boolean) => setSelectionMenu((prev) => ({ ...prev, open })),
+    [],
+  );
+  const onEdgeMenuOpenChange = React.useCallback(
+    (open: boolean) => setEdgeMenu((prev) => ({ ...prev, open })),
+    [],
+  );
+  const onNodeMenuRename = React.useMemo(
+    () => (nodeMenu.locked ? undefined : () => requestRename(nodeMenu.nodeId)),
+    [nodeMenu.locked, nodeMenu.nodeId, requestRename],
+  );
+  const onNodeMenuCopy = React.useCallback(
+    () => writeNodesToClipboard(nodeMenuClipboard()),
+    [writeNodesToClipboard, nodeMenuClipboard],
+  );
+  const onNodeMenuDuplicate = React.useCallback(
+    () => duplicateTargets([nodeMenu.nodeId]),
+    [duplicateTargets, nodeMenu.nodeId],
+  );
+  const onNodeMenuUngroup = React.useMemo(
+    () =>
+      nodeMenu.isGroup && !nodeMenu.locked
+        ? () => removeNode(projectId, spaceId, nodeMenu.nodeId)
+        : undefined,
+    [nodeMenu.isGroup, nodeMenu.locked, nodeMenu.nodeId, projectId, spaceId],
+  );
+
   return (
     <CanvasActionsContext.Provider value={actions}>
       <div
@@ -1846,9 +1889,7 @@ function CanvasSpaceInner({
           open={contextMenu.open}
           x={contextMenu.x}
           y={contextMenu.y}
-          onOpenChange={(open) =>
-            setContextMenu((prev) => ({ ...prev, open }))
-          }
+          onOpenChange={onContextMenuOpenChange}
           onPick={onContextMenuPick}
           onPaste={pasteAtCursor}
         />
@@ -1858,7 +1899,7 @@ function CanvasSpaceInner({
           y={nodeMenu.y}
           locked={nodeMenu.locked}
           target={nodeMenu.isGroup ? 'group' : 'node'}
-          onOpenChange={(open) => setNodeMenu((prev) => ({ ...prev, open }))}
+          onOpenChange={onNodeMenuOpenChange}
           onToggleLock={onToggleNodeLock}
           // Upload fills / replaces the node's content (node-only; its presence
           // also gates the Generate / Upload / Tools block). The menu only opens
@@ -1867,28 +1908,20 @@ function CanvasSpaceInner({
           onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
           // Rename is frozen on a locked node / group (the name is on-canvas
           // content); hide it rather than offer a silent no-op.
-          onRename={
-            nodeMenu.locked ? undefined : () => requestRename(nodeMenu.nodeId)
-          }
+          onRename={onNodeMenuRename}
           onDelete={deleteNodeFromMenu}
           // Copy / duplicate work for a node OR a group (R2-D): a group copies /
           // duplicates with its members (capture / clone are Group-aware).
-          onCopy={() => writeNodesToClipboard(nodeMenuClipboard())}
-          onDuplicate={() => duplicateTargets([nodeMenu.nodeId])}
+          onCopy={onNodeMenuCopy}
+          onDuplicate={onNodeMenuDuplicate}
           // Ungroup releases a group's members; a locked group is frozen.
-          onUngroup={
-            nodeMenu.isGroup && !nodeMenu.locked
-              ? () => removeNode(projectId, spaceId, nodeMenu.nodeId)
-              : undefined
-          }
+          onUngroup={onNodeMenuUngroup}
         />
         <SelectionContextMenu
           open={selectionMenu.open}
           x={selectionMenu.x}
           y={selectionMenu.y}
-          onOpenChange={(open) =>
-            setSelectionMenu((prev) => ({ ...prev, open }))
-          }
+          onOpenChange={onSelectionMenuOpenChange}
           // Group is offered only for an all-loose 2+ selection (same rule as
           // the floating toolbar + Cmd/Ctrl+G).
           onGroup={groupOffer.kind === 'group' ? groupSelection : undefined}
@@ -1900,7 +1933,7 @@ function CanvasSpaceInner({
           open={edgeMenu.open}
           x={edgeMenu.x}
           y={edgeMenu.y}
-          onOpenChange={(open) => setEdgeMenu((prev) => ({ ...prev, open }))}
+          onOpenChange={onEdgeMenuOpenChange}
           onDelete={deleteEdgeFromMenu}
         />
       </div>
