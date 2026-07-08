@@ -334,11 +334,13 @@ function ProjectWorkspace({
   const requestHistoryCommand = useCanvasStore(
     (s) => s.requestHistoryCommand,
   );
-  // Minimap visibility lives in the canvas store (single source, #1548):
-  // the toolbar toggles it here, the canvas mounts/unmounts the map off it.
+  // Minimap visibility + snap-to-grid live in the canvas store (single source,
+  // #1548): the toolbar toggles them here, the canvas reads them off the store
+  // (the previous local useState for snap never reached the canvas — dead toggle).
   const minimapVisible = useCanvasStore((s) => s.minimapVisible);
   const toggleMinimap = useCanvasStore((s) => s.toggleMinimap);
-  const [snapToGrid, setSnapToGrid] = React.useState(false);
+  const snapToGrid = useCanvasStore((s) => s.snapToGrid);
+  const toggleSnapToGrid = useCanvasStore((s) => s.toggleSnapToGrid);
 
   // ---- Handlers ----
 
@@ -710,7 +712,7 @@ function ProjectWorkspace({
                     onZoomOut={() => requestViewportCommand('zoomOut')}
                     onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
                     onFit={() => requestViewportCommand('fit')}
-                    onToggleSnap={() => setSnapToGrid((v) => !v)}
+                    onToggleSnap={toggleSnapToGrid}
                     onToggleMinimap={toggleMinimap}
                     onUndo={() => requestHistoryCommand('undo')}
                     onRedo={() => requestHistoryCommand('redo')}

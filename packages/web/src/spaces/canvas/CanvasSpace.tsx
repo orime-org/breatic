@@ -180,6 +180,13 @@ const DOT_GAP_PX = 24;
 const DOT_SIZE_PX = 2;
 
 /**
+ * Snap-to-grid step (#1663), aligned to the visible background dots
+ * (`DOT_GAP_PX`) so a snapped node lands on a dot the user can actually see.
+ * Module-level for a stable array reference across renders.
+ */
+const SNAP_GRID: [number, number] = [DOT_GAP_PX, DOT_GAP_PX];
+
+/**
  * Whether a focused element should keep the browser's native paste / copy —
  * so editing a node body or a form field isn't hijacked by the canvas
  * clipboard handlers.
@@ -419,6 +426,7 @@ function CanvasSpaceInner({
   // Minimap visibility (single source, #1548) — toggled by the viewport
   // toolbar, consumed here to mount/unmount the map.
   const minimapVisible = useCanvasStore((s) => s.minimapVisible);
+  const snapToGrid = useCanvasStore((s) => s.snapToGrid);
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
@@ -1836,6 +1844,13 @@ function CanvasSpaceInner({
           // shows breakage). NOTE: this does not shrink the INITIAL mount (all
           // nodes render once); it helps pan / zoom after load (xyflow #3883).
           onlyRenderVisibleElements
+          // Snap-to-grid (#1663): when the toolbar toggle is on, ReactFlow rounds
+          // dragged node positions to SNAP_GRID (aligned to the visible background
+          // dots). Read from the canvas store — single source mirroring the
+          // minimap (#1548); the toggle was previously a dead local useState that
+          // never reached the canvas.
+          snapToGrid={snapToGrid}
+          snapGrid={SNAP_GRID}
           // Viewer backstop (#1377): a read-only viewer must not move nodes or
           // draw edges. The real boundary is the collab server (a read-only
           // connection rejects the viewer's Yjs sync-update), but gating these
