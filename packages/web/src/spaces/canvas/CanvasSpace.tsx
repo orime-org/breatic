@@ -92,6 +92,7 @@ import {
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
+import { useStableList } from '@web/spaces/canvas/use-stable-list';
 import {
   groupDeletionIds,
   lockBlockedDeletion,
@@ -1121,19 +1122,30 @@ function CanvasSpaceInner({
 
   // ---- Grouping (selection → group / ungroup) ----
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
-  const selectedIds = React.useMemo(
-    () => flowNodes.filter((node) => node.selected).map((node) => node.id),
-    [flowNodes],
+  // Stable references (#1647 step 4): the Yjs mirror hands a fresh `flowNodes`
+  // every doc change, so these re-derive a new array each render; `useStableList`
+  // collapses identical results to the previous reference so `groupOffer` (and
+  // the group toolbar it feeds) only recompute when the selection / group
+  // structure actually changes — not on an unrelated position drag or data write.
+  const selectedIds = useStableList(
+    React.useMemo(
+      () => flowNodes.filter((node) => node.selected).map((node) => node.id),
+      [flowNodes],
+    ),
   );
-  const groupInfos = React.useMemo<NodeGroupInfo[]>(
-    () =>
-      flowNodes.map((node) => ({
-        id: node.id,
-        isGroup: node.type === 'group',
-        parentId: node.parentId,
-        locked: (node.data as { locked?: boolean }).locked,
-      })),
-    [flowNodes],
+  const groupInfos = useStableList(
+    React.useMemo<NodeGroupInfo[]>(
+      () =>
+        flowNodes.map((node) => ({
+          id: node.id,
+          isGroup: node.type === 'group',
+          parentId: node.parentId,
+          locked: (node.data as { locked?: boolean }).locked,
+        })),
+      [flowNodes],
+    ),
+    (info) =>
+      `${info.id}:${info.isGroup ? 1 : 0}:${info.parentId ?? ''}:${info.locked ? 1 : 0}`,
   );
   const groupOffer = React.useMemo(
     () => computeGroupToolbar(selectedIds, groupInfos),
