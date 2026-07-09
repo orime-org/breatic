@@ -58,6 +58,14 @@ export interface GeneratePanelViewModel {
   nodeStatus: string | undefined;
   /** Active generation sub-mode (the t2i / i2i toggle state; default t2i). */
   mode: ImageGenMode;
+  /**
+   * Whether the GLOBAL generatable-image catalog is empty (still loading, failed
+   * to load, or no generation model configured). Distinct from `models.length`,
+   * which is the ACTIVE-mode-filtered subset: the mode toggle gates its disabled
+   * state on THIS (not the mode subset) so a node stuck in a mode with zero
+   * models can still toggle back to the populated mode (adversarial round 2).
+   */
+  catalogEmpty: boolean;
 }
 
 /**
@@ -200,5 +208,6 @@ export function buildGeneratePanelViewModel(input: {
     creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
     mode,
+    catalogEmpty: generatable.length === 0,
   };
 }

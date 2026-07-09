@@ -22,6 +22,13 @@ interface GeneratePanelProps {
   model: string;
   /** Active generation sub-mode (drives the t2i / i2i toggle). */
   mode: ImageGenMode;
+  /**
+   * Whether the GLOBAL generatable catalog is empty (loading / failed / none
+   * configured). Gates the mode toggle's disabled state — NOT `models.length`
+   * (the active-mode subset), so a node in a mode with zero models can still
+   * toggle back to the populated mode.
+   */
+  catalogEmpty: boolean;
   /** Current ratio + resolution selection. */
   params: { aspect_ratio?: string; resolution?: string };
   /** The node's derived reference rows. */
@@ -70,6 +77,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   models,
   model,
   mode,
+  catalogEmpty,
   params,
   references,
   creditEstimate,
@@ -121,7 +129,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         <ImageModeToggle
           value={mode}
           onChange={onToggleMode}
-          disabled={models.length === 0}
+          disabled={catalogEmpty}
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
         {currentModel ? (

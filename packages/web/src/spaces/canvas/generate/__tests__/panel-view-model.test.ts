@@ -214,6 +214,33 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.creditEstimate).toBe(0);
   });
 
+  it('flags catalogEmpty on GLOBAL generatable-model emptiness, not the active mode (§ round-2)', () => {
+    const nodes = [node('n1', imageView())]; // t2i
+    const toolsOnly = [makeModel('bg', { mode: 'remove_bg', tier: 'internal' })];
+    // loading / failed (no models) -> empty
+    expect(
+      buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: [] }).catalogEmpty,
+    ).toBe(true);
+    // only pure tools, zero generatable -> empty
+    expect(
+      buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: toolsOnly }).catalogEmpty,
+    ).toBe(true);
+    // has generatable models -> NOT empty
+    expect(
+      buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models }).catalogEmpty,
+    ).toBe(false);
+    // i2i mode with ZERO i2i models but t2i models present: catalogEmpty stays
+    // false so the toggle can escape back to t2i (round-2 fix).
+    expect(
+      buildGeneratePanelViewModel({
+        nodeId: 'n1',
+        nodes: [node('n1', imageView({ mode: 'i2i' }))],
+        edges: [],
+        models,
+      }).catalogEmpty,
+    ).toBe(false);
+  });
+
   it('excludes pure-tool models (remove_bg / upscale) from the picker', () => {
     const mixed = [
       makeModel('flux', { mode: 't2i' }), // generation

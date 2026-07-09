@@ -322,6 +322,7 @@ function GeneratePanelBody({
       models={vm.models}
       model={vm.model}
       mode={vm.mode}
+      catalogEmpty={vm.catalogEmpty}
       params={{
         aspect_ratio: asStr(vm.params.aspect_ratio),
         resolution: asStr(vm.params.resolution),
