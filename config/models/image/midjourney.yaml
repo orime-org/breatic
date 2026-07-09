@@ -15,6 +15,7 @@ models:
 
   - name: "midjourney-v7"
     display_name: "Midjourney V7"
+    icon: "midjourney"
     mode: "t2i"
     tier: recommended
     description: "Top aesthetics, artistic imagery"
@@ -54,6 +55,7 @@ models:
 
   - name: "midjourney-niji-v7"
     display_name: "Midjourney Niji V7"
+    icon: "midjourney"
     mode: "t2i"
     tier: recommended
     description: "Anime and illustration specialist"
@@ -93,6 +95,7 @@ models:
 
   - name: "midjourney-v7-img2img"
     display_name: "Midjourney V7 Img2Img"
+    icon: "midjourney"
     mode: "i2i"
     tier: optional
     description: "Artistic img2img, best aesthetics"
@@ -139,6 +142,7 @@ models:
 
   - name: "midjourney-niji-v7-img2img"
     display_name: "Midjourney Niji V7 Img2Img"
+    icon: "midjourney"
     mode: "i2i"
     tier: optional
     description: "Anime img2img, style transfer"

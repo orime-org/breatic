@@ -16,6 +16,7 @@ models:
 
   - name: "seedream-5.0-lite"
     display_name: "Seedream 5.0 Lite"
+    icon: "seedream"
     mode: "t2i"
     tier: recommended
     description: "Latest, reasoning + web search"

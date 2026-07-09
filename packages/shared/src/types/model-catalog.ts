@@ -72,6 +72,12 @@ export interface ModelEntry {
   generation_time: number;
   params: Record<string, ParamDescriptor>;
   providers: ModelProvider[];
+  /**
+   * Brand icon name for the Generate picker (mapped to an inline SVG on the
+   * frontend, e.g. `nano-banana` / `midjourney` / `seedream`). Optional so a
+   * catalog entry missing it degrades to a fallback icon rather than dropping.
+   */
+  icon?: string;
 }
 
 /** Full catalog grouped by modality — the `data` payload of `GET /models`. */
@@ -172,6 +178,8 @@ const modelEntrySchema = z.object({
   tier: z.enum(["recommended", "optional", "internal"]).catch("optional"),
   cost_per_call: z.number().catch(0),
   generation_time: z.number().catch(0),
+  // Brand icon name; a non-string → undefined so the entry still survives.
+  icon: z.string().optional().catch(undefined),
   // Non-object params → {}; an individual garbage descriptor → SAFE_DESCRIPTOR,
   // so siblings survive. `z.record` keys are always strings here.
   params: z

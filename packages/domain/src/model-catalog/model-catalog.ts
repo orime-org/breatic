@@ -109,6 +109,7 @@ function loadModelsFromFile(
       generation_time: (m.generation_time as number) ?? 60,
       params: (m.params as Record<string, ParamDescriptor>) ?? {},
       providers,
+      icon: m.icon as string | undefined,
     };
   });
 }

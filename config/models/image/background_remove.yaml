@@ -15,6 +15,7 @@ models:
 
   - name: "bg-remover"
     display_name: "Background Remover"
+    icon: "background-remover"
     mode: "remove_bg"
     tier: internal
     description: "AI background removal with alpha matte"
