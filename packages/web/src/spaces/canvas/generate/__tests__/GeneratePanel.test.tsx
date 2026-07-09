@@ -118,6 +118,15 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
   });
 
+  it('disables the mode toggle while the catalog is empty (loading/failed) — guards the data-clobber', () => {
+    // Adversarial finding 2026-07-09: toggling while models=[] resolves an empty
+    // model + params and would clobber the node's stored model/params in Yjs.
+    // The toggle must be inert until the catalog resolves.
+    setup({ models: [] });
+    expect(screen.getByTestId('generate-mode-t2i')).toBeDisabled();
+    expect(screen.getByTestId('generate-mode-i2i')).toBeDisabled();
+  });
+
   it('greys out the reference rail in t2i (edges stay visible but inert)', () => {
     setup({
       mode: 't2i',

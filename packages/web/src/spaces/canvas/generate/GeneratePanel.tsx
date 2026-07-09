@@ -118,7 +118,11 @@ export const GeneratePanel = React.memo(function GeneratePanel({
       {promptSlot}
 
       <div className='flex items-center gap-1.5'>
-        <ImageModeToggle value={mode} onChange={onToggleMode} />
+        <ImageModeToggle
+          value={mode}
+          onChange={onToggleMode}
+          disabled={models.length === 0}
+        />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
         {currentModel ? (
           <RatioResolutionPicker

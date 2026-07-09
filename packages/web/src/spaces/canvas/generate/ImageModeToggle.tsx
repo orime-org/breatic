@@ -11,6 +11,13 @@ interface ImageModeToggleProps {
   value: ImageGenMode;
   /** Called with the newly-picked mode (only when it differs from the active one). */
   onChange: (mode: ImageGenMode) => void;
+  /**
+   * Disable the whole toggle — set while the model catalog is empty (still
+   * loading or failed to load). A toggle then could not resolve a model for the
+   * target mode and would clobber the node's stored model / params in Yjs, so
+   * switching is blocked until the catalog resolves.
+   */
+  disabled?: boolean;
 }
 
 /** The two toggle options, in display order (text-to-image first — the default). */
@@ -38,12 +45,15 @@ const OPTIONS: ReadonlyArray<{
 export const ImageModeToggle = React.memo(function ImageModeToggle({
   value,
   onChange,
+  disabled = false,
 }: ImageModeToggleProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <div
       role='group'
-      className='flex h-8 shrink-0 items-center gap-0.5 rounded-full border border-border bg-muted p-0.5'
+      className={`flex h-8 shrink-0 items-center gap-0.5 rounded-full border border-border bg-muted p-0.5 ${
+        disabled ? 'opacity-50' : ''
+      }`}
     >
       {OPTIONS.map(({ mode, labelKey, testId }) => {
         const active = mode === value;
@@ -53,13 +63,14 @@ export const ImageModeToggle = React.memo(function ImageModeToggle({
             type='button'
             data-testid={testId}
             aria-pressed={active}
+            disabled={disabled}
             onClick={() => {
               if (!active) onChange(mode);
             }}
-            className={`flex h-full items-center rounded-full px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+            className={`flex h-full items-center rounded-full px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed ${
               active
                 ? 'bg-background font-medium text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
+                : 'text-muted-foreground enabled:hover:text-foreground'
             }`}
           >
             {t(labelKey)}

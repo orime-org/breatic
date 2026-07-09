@@ -210,6 +210,12 @@ function GeneratePanelBody({
       const nodeData = graph.nodes.find((n) => n.id === nodeId)?.data;
       const content = nodeData && 'status' in nodeData ? nodeData : undefined;
       const { model, params } = resolveModeSwitch(content, newMode, models);
+      // Never persist an empty model: the catalog may still be loading / have
+      // failed (models === []), or the target mode may offer nothing. Writing
+      // model='' + params={} would clobber the node's stored model AND params
+      // in Yjs — params does NOT self-heal. Bail (the toggle is also disabled
+      // while the catalog is empty; this backstops the target-mode-empty case).
+      if (!model) return;
       setNodeMode(projectId, spaceId, nodeId, newMode, model, params);
     },
     [models, projectId, spaceId, nodeId],
