@@ -106,17 +106,9 @@
       "already_running": "別のテキストツールが実行中です。お待ちください。"
     }
   },
-  "save": "保存",
   "cancel": "キャンセル",
-  "delete": "削除",
-  "confirm": "確認",
-  "close": "閉じる",
   "loading": "読み込み中...",
-  "search": "検索",
-  "retry": "再試行",
-  "back": "戻る",
   "next": "次へ",
-  "done": "完了",
   "agent": {
     "placeholder": "作りたいものを説明してください...",
     "thinking": "考え中...",
@@ -376,12 +368,6 @@
     "script": "脚本",
     "comingSoon": "エディターはまもなく公開"
   },
-  "payment": {
-    "buy_credits": "クレジット購入",
-    "credits_balance": "クレジット：{balance}",
-    "per_credit": "{price}/クレジット",
-    "save_percent": "{percent}% お得"
-  },
   "auth": {
     "email": "メールアドレス",
     "password": "パスワード",
@@ -488,16 +474,6 @@
       }
     }
   },
-  "breatic_slogan": "AIで創造性を可視化",
-  "about_us": "私たちについて",
-  "support_and_service": "サポートとサービス",
-  "terms_of_use": "利用規約",
-  "privacy_policy": "プライバシーポリシー",
-  "enter_workspace": "ワークスペースに入る",
-  "enter_editor": "エディターに入る",
-  "all_rights_reserved": "全著作権所有。",
-  "common_error_noCredits": "クレジットが不足しています。クレジットを購入してください。",
-  "common_error_noLogin": "ログインしてください。",
   "workspace": {
     "label": "ワークスペース",
     "copy_success": "Project のコピーに成功しました",
@@ -707,242 +683,6 @@
     "fullscreen": "全画面",
     "edit": "編集"
   },
-  "export": {
-    "title": "エクスポート",
-    "format": "形式",
-    "exportType": "エクスポートタイプ",
-    "video": "ビデオ",
-    "image": "画像",
-    "videoFormat": "ビデオフォーマット",
-    "imageFormat": "画像フォーマット",
-    "quality": "品質",
-    "resolution": "解像度",
-    "frameRate": "フレームレート",
-    "bitrate": "ビットレート",
-    "bitrateMode": "ビットレートモード",
-    "customBitrate": "カスタムビットレート",
-    "codec": "コーデック",
-    "audioSampleRate": "オーディオサンプルレート",
-    "audioQuality": "オーディオ品質",
-    "audio": "オーディオ",
-    "audioFormat": "オーディオフォーマット",
-    "audioBitrate": "ビットレート",
-    "sampleRate": "サンプルレート",
-    "bitrateOptions": {
-      "lower": "低",
-      "recommended": "推奨",
-      "higher": "高",
-      "custom": "カスタム"
-    },
-    "bitrateModeOptions": {
-      "cbr": "CBR (固定ビットレート)",
-      "vbr": "VBR (可変ビットレート)"
-    },
-    "audioQualityOptions": {
-      "pcm": "PCM ロスレス"
-    },
-    "exporting": "エクスポート中",
-    "progress": "ブラウザを閉じるとエクスポートがキャンセルされます。",
-    "success": "エクスポート完了",
-    "cancelled": "エクスポートがキャンセルされました",
-    "failed": "エクスポート失敗",
-    "download": "ダウンロード",
-    "close": "閉じる",
-    "cancelTitle": "エクスポートのキャンセル確認",
-    "cancelMessage": "閉じるとエクスポートが中止されます。よろしいですか？",
-    "exportImage": "画像をエクスポート",
-    "exportingImage": "画像をデバイスにダウンロードできます。",
-    "exportingVideo": "動画をデバイスにダウンロードできます。",
-    "exportingAudio": "オーディオのエクスポートが完了しました。オーディオをデバイスにダウンロードできます。",
-    "uploading": "アップロード中",
-    "uploadingToServer": "サーバーへアップロード中...",
-    "message": {
-      "workflowIdMissing": "ワークフロー ID が見つかりません。アップロードをスキップしました",
-      "failedGetResource": "リソース URL の取得に失敗しました",
-      "fileUploadFailed": "ファイルのアップロードに失敗しました",
-      "imageBackendSoon": "画像のエクスポートは近日中にバックエンドで提供されます。",
-      "videoBackendSoon": "動画のエクスポートは近日中にバックエンドで提供されます。",
-      "audioBackendSoon": "オーディオのエクスポートは近日中にバックエンドで提供されます。"
-    }
-  },
-  "fontSelector": {
-    "title": "フォント",
-    "searchPlaceholder": "フォントを検索...",
-    "detecting": "フォントを検出中...",
-    "detectFailed": "フォントの検出に失敗しました",
-    "retry": "再試行",
-    "noFontsFound": "一致するフォントが見つかりません"
-  },
-  "textStyle": {
-    "title": "スタイル",
-    "font": "フォント",
-    "fontWeight": "太さ",
-    "fontSize": "サイズ",
-    "color": "色",
-    "align": "配置",
-    "alignLeft": "左揃え",
-    "alignCenter": "中央揃え",
-    "alignRight": "右揃え",
-    "decoration": "装飾",
-    "case": "大文字小文字",
-    "caseNone": "なし",
-    "caseUppercase": "大文字",
-    "caseLowercase": "小文字",
-    "caseCapitalize": "先頭大文字",
-    "opacity": "不透明度",
-    "stroke": "縁取り",
-    "strokeColor": "色",
-    "strokeWidth": "幅",
-    "shadow": "影",
-    "shadowColor": "色",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "ぼかし",
-    "fontWeightThin": "最細",
-    "fontWeightExtraLight": "極細",
-    "fontWeightLight": "細字",
-    "fontWeightNormal": "標準",
-    "fontWeightMedium": "中字",
-    "fontWeightSemiBold": "半太",
-    "fontWeightBold": "太字",
-    "fontWeightExtraBold": "極太",
-    "fontWeightBlack": "最太"
-  },
-  "mediaStyle": {
-    "title": "スタイル",
-    "borderRadius": "角丸",
-    "outline": "アウトライン",
-    "outlineColor": "色",
-    "outlineWidth": "幅",
-    "shadow": "影",
-    "shadowColor": "色",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "ぼかし",
-    "filter": "フィルター",
-    "blur": "ぼかし",
-    "brightness": "明るさ",
-    "opacity": "不透明度"
-  },
-  "toolbar": {
-    "text": "テキスト",
-    "image": "画像",
-    "video": "動画",
-    "audio": "音声",
-    "media": "メディアライブラリ"
-  },
-  "mediaLibrary": {
-    "title": "メディアライブラリ",
-    "upload": "メディアをアップロード",
-    "uploadPrompt": "メディアをアップロードして編集を開始",
-    "dragDrop": "ここにファイルをドラッグ",
-    "dragDropImage": "ここに画像ファイルをドラッグ",
-    "dragDropAudio": "ここに音声ファイルをドラッグ",
-    "dragDropVideo": "ここに動画ファイルをドラッグ",
-    "clickToSelect": "またはクリックしてファイルを選択",
-    "clickToSelectImage": "またはクリックして画像ファイルを選択",
-    "clickToSelectAudio": "またはクリックして音声ファイルを選択",
-    "clickToSelectVideo": "またはクリックして動画ファイルを選択",
-    "releaseFile": "アップロードするにはドロップ...",
-    "supportedFormats": "対応形式",
-    "videoFormats": "動画: MP4、MOV、AVI",
-    "imageFormats": "画像: JPG、PNG、GIF",
-    "audioFormats": "音声: MP3、WAV",
-    "addToTimeline": "タイムラインに追加",
-    "delete": "削除",
-    "noMedia": "メディアなし",
-    "videoAdded": "動画を追加しました",
-    "audioAdded": "音声を追加しました",
-    "imageAdded": "画像を追加しました",
-    "addText": "テキストを追加",
-    "textSection": "テキスト",
-    "imageSection": "画像",
-    "videoSection": "動画",
-    "audioSection": "音声"
-  },
-  "timeline": {
-    "track": "トラック",
-    "videoTrack": "動画トラック",
-    "audioTrack": "音声トラック",
-    "duration": "長さ",
-    "addMediaPrompt": "メディアをタイムラインに追加して編集を開始"
-  },
-  "rightPanel": {
-    "selectElement": "要素を選択",
-    "selectToEdit": "タイムライン上のクリップを選択してプロパティを編集",
-    "unknownMediaType": "不明なメディアタイプ"
-  },
-  "videoStyle": {
-    "title": "スタイル",
-    "crop": "トリミング",
-    "cropVideo": "動画をトリミング",
-    "volume": "音量",
-    "speed": "速度",
-    "borderRadius": "角丸",
-    "outline": "アウトライン",
-    "outlineColor": "色",
-    "outlineWidth": "幅",
-    "shadow": "影",
-    "shadowColor": "色",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "ぼかし",
-    "filter": "フィルター",
-    "blur": "ぼかし",
-    "brightness": "明るさ",
-    "opacity": "不透明度"
-  },
-  "imageStyle": {
-    "title": "スタイル",
-    "crop": "トリミング",
-    "cropImage": "画像をトリミング",
-    "borderRadius": "角丸",
-    "outline": "アウトライン",
-    "outlineColor": "色",
-    "outlineWidth": "幅",
-    "shadow": "影",
-    "shadowColor": "色",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "ぼかし",
-    "filter": "フィルター",
-    "blur": "ぼかし",
-    "brightness": "明るさ",
-    "opacity": "不透明度"
-  },
-  "audioStyle": {
-    "title": "スタイル",
-    "volume": "音量",
-    "speed": "速度",
-    "fadeIn": "フェードイン",
-    "fadeOut": "フェードアウト"
-  },
-  "cropModal": {
-    "title": "トリミング",
-    "cancel": "キャンセル",
-    "confirm": "確認",
-    "reset": "リセット",
-    "aspect": "アスペクト比",
-    "free": "自由",
-    "original": "元のサイズ"
-  },
-  "playbackControls": {
-    "reset": "再生をリセット",
-    "undo": "元に戻す",
-    "redo": "やり直す",
-    "splitLeft": "左に分割",
-    "splitRight": "右に分割",
-    "split": "クリップを分割",
-    "copy": "クリップをコピー",
-    "delete": "クリップを削除",
-    "stepBackward": "1秒戻る",
-    "stepForward": "1秒進む",
-    "play": "再生",
-    "pause": "一時停止",
-    "fullscreen": "フルスクリーンプレビュー",
-    "zoomOut": "縮小",
-    "zoomIn": "拡大"
-  },
   "message": {
     "projectSaved": "Project を保存しました",
     "saveProjectFailed": "Project の保存に失敗しました",
@@ -966,97 +706,6 @@
     "saving": "保存中...",
     "saveSuccess": "保存が成功しました",
     "saveFailed": "保存に失敗しました"
-  },
-  "nodeLibraryPanel": {
-    "data_nodes": "Agent Nodes",
-    "editor_nodes": "Editor Nodes"
-  },
-  "userCenter": {
-    "modal": {
-      "logout": {
-        "title": "ログアウト",
-        "description": "ログアウトしてもよろしいですか？",
-        "confirm": "確認",
-        "cancel": "キャンセル"
-      },
-      "account": {
-        "tabs": {
-          "account": {
-            "label": "アカウント",
-            "logout": "ログアウト",
-            "accountInformation": "アカウント情報",
-            "membershipLevel": "メンバーシップレベル",
-            "credits": "クレジット",
-            "freeCredits": "無料クレジット",
-            "membershipCredits": "メンバーシップクレジット",
-            "purchaseCredits": "購入クレジット"
-          },
-          "creditsObtained": {
-            "label": "獲得クレジット",
-            "tHeader": {
-              "date": "日付",
-              "creditType": "クレジットタイプ",
-              "creditsObtained": "獲得クレジット"
-            }
-          },
-          "creditsUsed": {
-            "label": "使用クレジット",
-            "tHeader": {
-              "date": "日付",
-              "taskId": "タスクID",
-              "taskName": "タスク名",
-              "creditType": "クレジットタイプ",
-              "creditsUsed": "使用クレジット"
-            }
-          },
-          "billing": {
-            "label": "請求",
-            "tHeader": {
-              "date": "日付",
-              "serviceName": "サービス名",
-              "paymentAmount": "支払い金額",
-              "orderNumber": "注文番号",
-              "orderState": "注文状態"
-            }
-          }
-        }
-      },
-      "purchase": {
-        "cancelPayment": "支払いがキャンセルされました！",
-        "title": "クレジット購入",
-        "description": "ご注意：購入したクレジットは譲渡不可で返金不可です。",
-        "buy": "今すぐ購入",
-        "info": "無料クレジットは毎月初めにリセットされます。メンバーシップクレジットは毎月自動的に累積されます。クレジットは Breatic の AI 生成画像およびその他のリソースの後続の AI 生成機能に使用されます。"
-      },
-      "upgrade": {
-        "cancelSubscription": "サブスクリプションがキャンセルされました！",
-        "title": "メンバーシップアップグレード",
-        "monthly": "月額",
-        "annual": "年額",
-        "month": "月",
-        "year": "年",
-        "bestValue": "ベストバリュー",
-        "description": "ご注意：メンバーシップ特権は譲渡不可で返金不可です。",
-        "freeTrial": "無料トライアル",
-        "upgradeNow": "今すぐアップグレード",
-        "features": "機能",
-        "info": "無料クレジットは毎月初めにリセットされます。メンバーシップクレジットは毎月自動的に累積されます。クレジットは Breatic の AI 生成画像およびその他のリソースの後続の AI 生成機能に使用されます。"
-      },
-      "credits": {
-        "title": "アップグレード",
-        "credits": "クレジット",
-        "freeCredits": "無料クレジット",
-        "membershipCredits": "メンバーシップクレジット",
-        "purchaseCredits": "購入クレジット",
-        "buyBtn": "クレジット購入"
-      },
-      "userDropdown": {
-        "account": "アカウント",
-        "termsOfUse": "利用規約",
-        "privacyPolicy": "プライバシーポリシー",
-        "logout": "ログアウト"
-      }
-    }
   },
   "members": {
     "popover": {
@@ -1110,21 +759,6 @@
     "stack": {
       "triggerAria": "Project メンバー({count})",
       "removeAria": "{name} を削除"
-    }
-  },
-  "credits": {
-    "pill": {
-      "aria_label": "クレジット残高"
-    },
-    "dialog": {
-      "title": "クレジット購入",
-      "balance_label": "現在の残高",
-      "note": "無期限 · 一括購入",
-      "per100_unit": "/100 クレジット",
-      "cta_select": "選択",
-      "loading": "価格を読み込み中…",
-      "no_tiers": "購入可能なパッケージがありません",
-      "checkout_failed": "決済の作成に失敗しました"
     }
   },
   "spaces": {
@@ -1275,18 +909,6 @@
     "zoomIn": "拡大",
     "closePreview": "プレビューを閉じる"
   },
-  "upload": {
-    "uploading": "アップロード中…",
-    "error": "エラー",
-    "preview": "プレビュー",
-    "removeFile": "ファイルを削除",
-    "failed": "アップロードに失敗",
-    "complete": "アップロード完了",
-    "fileInput": "ファイル入力"
-  },
-  "media": {
-    "noItems": "アイテムなし"
-  },
   "document": {
     "editorComingSoon": "テキストエディターはまもなく公開",
     "imageDialog": {
@@ -1295,9 +917,6 @@
       "embedUrl": "URL を埋め込む",
       "dropOrBrowse": "ここに画像をドロップまたはクリックして参照"
     }
-  },
-  "mediaUploader": {
-    "fileProcessFailed": "ファイル処理に失敗しました"
   },
   "menu": {
     "createAria": "作成メニュー",
@@ -1338,24 +957,6 @@
     "undo": "元に戻す",
     "redo": "やり直し",
     "zoomCustomAria": "カスタムズーム(%)"
-  },
-  "lang": {
-    "en": {
-      "label": "English",
-      "glyph": "EN"
-    },
-    "zhCN": {
-      "label": "簡体字中国語",
-      "glyph": "中"
-    },
-    "zhTW": {
-      "label": "繁体字中国語",
-      "glyph": "繁"
-    },
-    "ja": {
-      "label": "日本語",
-      "glyph": "日"
-    }
   },
   "role": {
     "owner": "Owner",

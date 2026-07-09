@@ -106,17 +106,9 @@
       "already_running": "另一個文字工具正在執行,請稍候。"
     }
   },
-  "save": "儲存",
   "cancel": "取消",
-  "delete": "刪除",
-  "confirm": "確認",
-  "close": "關閉",
   "loading": "載入中...",
-  "search": "搜尋",
-  "retry": "重試",
-  "back": "返回",
   "next": "下一步",
-  "done": "完成",
   "agent": {
     "placeholder": "描述您想創作的內容...",
     "thinking": "思考中...",
@@ -376,12 +368,6 @@
     "script": "劇本",
     "comingSoon": "編輯器即將上線"
   },
-  "payment": {
-    "buy_credits": "購買積分",
-    "credits_balance": "積分：{balance}",
-    "per_credit": "{price}/積分",
-    "save_percent": "省 {percent}%"
-  },
   "auth": {
     "email": "電子郵件",
     "password": "密碼",
@@ -488,16 +474,6 @@
       }
     }
   },
-  "breatic_slogan": "AI讓創意可見",
-  "about_us": "關於我們",
-  "support_and_service": "支援與服務",
-  "terms_of_use": "使用條款",
-  "privacy_policy": "隱私政策",
-  "enter_workspace": "進入工作臺",
-  "enter_editor": "進入編輯器",
-  "all_rights_reserved": "版權所有。",
-  "common_error_noCredits": "沒有足夠的积分，請購買积分。",
-  "common_error_noLogin": "請登錄。",
   "workspace": {
     "label": "工作臺",
     "copy_success": "Project 複製成功",
@@ -707,242 +683,6 @@
     "fullscreen": "全螢幕",
     "edit": "編輯"
   },
-  "export": {
-    "title": "匯出",
-    "format": "格式",
-    "exportType": "匯出類型",
-    "video": "影片",
-    "image": "圖片",
-    "videoFormat": "影片格式",
-    "imageFormat": "圖片格式",
-    "quality": "品質",
-    "resolution": "解析度",
-    "frameRate": "幀率",
-    "bitrate": "位元率",
-    "bitrateMode": "位元率模式",
-    "customBitrate": "自訂位元率",
-    "codec": "編碼",
-    "audioSampleRate": "音訊取樣率",
-    "audioQuality": "音訊品質",
-    "audio": "音訊",
-    "audioFormat": "音訊格式",
-    "audioBitrate": "位元率",
-    "sampleRate": "取樣率",
-    "bitrateOptions": {
-      "lower": "更低",
-      "recommended": "推薦",
-      "higher": "更高",
-      "custom": "自訂"
-    },
-    "bitrateModeOptions": {
-      "cbr": "CBR (靜態位元率)",
-      "vbr": "VBR (動態位元率)"
-    },
-    "audioQualityOptions": {
-      "pcm": "PCM 無損"
-    },
-    "exporting": "匯出中",
-    "progress": "關閉瀏覽器將取消匯出。",
-    "success": "匯出完成",
-    "cancelled": "匯出已取消",
-    "failed": "匯出失敗",
-    "download": "下載",
-    "close": "關閉",
-    "cancelTitle": "確認取消匯出",
-    "cancelMessage": "關閉將停止匯出處理程序。確定要取消嗎？",
-    "exportImage": "匯出圖片",
-    "exportingImage": "您可以將圖片下載到您的裝置。",
-    "exportingVideo": "您可以將影片下載到您的裝置。",
-    "exportingAudio": "音訊已成功匯出，您可以將音訊下載到您的裝置。",
-    "uploading": "上傳中",
-    "uploadingToServer": "正在上傳到伺服器...",
-    "message": {
-      "workflowIdMissing": "工作流 ID 遺失，已略過上傳",
-      "failedGetResource": "取得資源 URL 失敗",
-      "fileUploadFailed": "檔案上傳失敗",
-      "imageBackendSoon": "圖片匯出功能將由後端提供，敬請期待。",
-      "videoBackendSoon": "影片匯出功能將由後端提供，敬請期待。",
-      "audioBackendSoon": "音訊匯出功能將由後端提供，敬請期待。"
-    }
-  },
-  "fontSelector": {
-    "title": "字型",
-    "searchPlaceholder": "搜尋字型...",
-    "detecting": "正在偵測字型...",
-    "detectFailed": "字型偵測失敗",
-    "retry": "重新偵測",
-    "noFontsFound": "沒有找到符合的字型"
-  },
-  "textStyle": {
-    "title": "樣式",
-    "font": "字型",
-    "fontWeight": "字重",
-    "fontSize": "字型大小",
-    "color": "顏色",
-    "align": "對齊",
-    "alignLeft": "靠左對齊",
-    "alignCenter": "置中對齊",
-    "alignRight": "靠右對齊",
-    "decoration": "裝飾",
-    "case": "大小寫",
-    "caseNone": "無",
-    "caseUppercase": "大寫",
-    "caseLowercase": "小寫",
-    "caseCapitalize": "首字母大寫",
-    "opacity": "不透明度",
-    "stroke": "描邊",
-    "strokeColor": "顏色",
-    "strokeWidth": "寬度",
-    "shadow": "陰影",
-    "shadowColor": "顏色",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "模糊",
-    "fontWeightThin": "極細",
-    "fontWeightExtraLight": "特細",
-    "fontWeightLight": "細體",
-    "fontWeightNormal": "正常",
-    "fontWeightMedium": "中等",
-    "fontWeightSemiBold": "半粗",
-    "fontWeightBold": "粗體",
-    "fontWeightExtraBold": "特粗",
-    "fontWeightBlack": "極粗"
-  },
-  "mediaStyle": {
-    "title": "樣式",
-    "borderRadius": "圓角",
-    "outline": "輪廓",
-    "outlineColor": "顏色",
-    "outlineWidth": "寬度",
-    "shadow": "陰影",
-    "shadowColor": "顏色",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "模糊",
-    "filter": "濾鏡",
-    "blur": "模糊",
-    "brightness": "亮度",
-    "opacity": "不透明度"
-  },
-  "toolbar": {
-    "text": "文字",
-    "image": "圖片",
-    "video": "影片",
-    "audio": "音訊",
-    "media": "素材庫"
-  },
-  "mediaLibrary": {
-    "title": "素材庫",
-    "upload": "上傳素材",
-    "uploadPrompt": "上傳素材開始編輯",
-    "dragDrop": "拖曳檔案到這裡",
-    "dragDropImage": "拖曳圖片檔案到這裡",
-    "dragDropAudio": "拖曳音訊檔案到這裡",
-    "dragDropVideo": "拖曳影片檔案到這裡",
-    "clickToSelect": "或點擊選擇檔案",
-    "clickToSelectImage": "或點擊選擇圖片檔案",
-    "clickToSelectAudio": "或點擊選擇音訊檔案",
-    "clickToSelectVideo": "或點擊選擇影片檔案",
-    "releaseFile": "釋放檔案...",
-    "supportedFormats": "支援的格式",
-    "videoFormats": "影片: MP4、MOV、AVI",
-    "imageFormats": "圖片: JPG、PNG、GIF",
-    "audioFormats": "音訊: MP3、WAV",
-    "addToTimeline": "加入時間軸",
-    "delete": "刪除",
-    "noMedia": "暫無素材",
-    "videoAdded": "影片加入成功",
-    "audioAdded": "音訊加入成功",
-    "imageAdded": "圖片加入成功",
-    "addText": "加入文字",
-    "textSection": "文字",
-    "imageSection": "圖片",
-    "videoSection": "影片",
-    "audioSection": "音訊"
-  },
-  "timeline": {
-    "track": "軌道",
-    "videoTrack": "影片軌道",
-    "audioTrack": "音訊軌道",
-    "duration": "時長",
-    "addMediaPrompt": "加入素材到時間軸開始編輯"
-  },
-  "rightPanel": {
-    "selectElement": "選擇一個元素",
-    "selectToEdit": "在時間軸上選擇素材來編輯屬性",
-    "unknownMediaType": "未知素材類型"
-  },
-  "videoStyle": {
-    "title": "樣式",
-    "crop": "裁切",
-    "cropVideo": "裁切影片",
-    "volume": "音量",
-    "speed": "速度",
-    "borderRadius": "圓角",
-    "outline": "輪廓",
-    "outlineColor": "顏色",
-    "outlineWidth": "寬度",
-    "shadow": "陰影",
-    "shadowColor": "顏色",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "模糊",
-    "filter": "濾鏡",
-    "blur": "模糊",
-    "brightness": "亮度",
-    "opacity": "不透明度"
-  },
-  "imageStyle": {
-    "title": "樣式",
-    "crop": "裁切",
-    "cropImage": "裁切圖片",
-    "borderRadius": "圓角",
-    "outline": "輪廓",
-    "outlineColor": "顏色",
-    "outlineWidth": "寬度",
-    "shadow": "陰影",
-    "shadowColor": "顏色",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "模糊",
-    "filter": "濾鏡",
-    "blur": "模糊",
-    "brightness": "亮度",
-    "opacity": "不透明度"
-  },
-  "audioStyle": {
-    "title": "樣式",
-    "volume": "音量",
-    "speed": "速度",
-    "fadeIn": "淡入",
-    "fadeOut": "淡出"
-  },
-  "cropModal": {
-    "title": "裁切",
-    "cancel": "取消",
-    "confirm": "確認",
-    "reset": "重設",
-    "aspect": "比例",
-    "free": "自由",
-    "original": "原始"
-  },
-  "playbackControls": {
-    "reset": "重設播放",
-    "undo": "復原",
-    "redo": "重做",
-    "splitLeft": "向左分割",
-    "splitRight": "向右分割",
-    "split": "分割片段",
-    "copy": "複製片段",
-    "delete": "刪除片段",
-    "stepBackward": "後退1秒",
-    "stepForward": "前進1秒",
-    "play": "播放",
-    "pause": "暫停",
-    "fullscreen": "全螢幕預覽",
-    "zoomOut": "縮小",
-    "zoomIn": "放大"
-  },
   "message": {
     "projectSaved": "Project 已儲存",
     "saveProjectFailed": "儲存 Project 失敗",
@@ -966,97 +706,6 @@
     "saving": "儲存中...",
     "saveSuccess": "儲存成功",
     "saveFailed": "儲存失敗"
-  },
-  "nodeLibraryPanel": {
-    "data_nodes": "Agent Nodes",
-    "editor_nodes": "Editor Nodes"
-  },
-  "userCenter": {
-    "modal": {
-      "logout": {
-        "title": "登出",
-        "description": "您確定要登出嗎？",
-        "confirm": "確認",
-        "cancel": "取消"
-      },
-      "account": {
-        "tabs": {
-          "account": {
-            "label": "帳戶",
-            "logout": "登出",
-            "accountInformation": "帳戶資訊",
-            "membershipLevel": "會員等級",
-            "credits": "積分",
-            "freeCredits": "免費積分",
-            "membershipCredits": "會員積分",
-            "purchaseCredits": "購買積分"
-          },
-          "creditsObtained": {
-            "label": "積分獲得",
-            "tHeader": {
-              "date": "日期",
-              "creditType": "積分類型",
-              "creditsObtained": "獲得積分"
-            }
-          },
-          "creditsUsed": {
-            "label": "積分使用",
-            "tHeader": {
-              "date": "日期",
-              "taskId": "任務ID",
-              "taskName": "任務名稱",
-              "creditType": "積分類型",
-              "creditsUsed": "使用積分"
-            }
-          },
-          "billing": {
-            "label": "帳單",
-            "tHeader": {
-              "date": "日期",
-              "serviceName": "服務名稱",
-              "paymentAmount": "支付金額",
-              "orderNumber": "訂單號",
-              "orderState": "訂單狀態"
-            }
-          }
-        }
-      },
-      "purchase": {
-        "cancelPayment": "支付已取消！",
-        "title": "購買積分",
-        "description": "溫馨提示：購買的積分不可轉讓且不可退款。",
-        "buy": "立即購買",
-        "info": "免費積分每月初重置。會員積分每月自動累積。積分用於 Breatic 的 AI 生成圖片以及後續其他資源的 AI 生成功能。"
-      },
-      "upgrade": {
-        "cancelSubscription": "訂閱已取消！",
-        "title": "升級會員",
-        "monthly": "月度",
-        "annual": "年度",
-        "month": "月",
-        "year": "年",
-        "bestValue": "超值優惠",
-        "description": "溫馨提示：會員特權不可轉讓且不可退款。",
-        "freeTrial": "免費試用",
-        "upgradeNow": "立即升級",
-        "features": "功能特性",
-        "info": "免費積分每月初重置。會員積分每月自動累積。積分用於 Breatic 的 AI 生成圖片以及後續其他資源的 AI 生成功能。"
-      },
-      "credits": {
-        "title": "升級",
-        "credits": "積分",
-        "freeCredits": "免費積分",
-        "membershipCredits": "會員積分",
-        "purchaseCredits": "購買積分",
-        "buyBtn": "購買積分"
-      },
-      "userDropdown": {
-        "account": "帳戶",
-        "termsOfUse": "使用條款",
-        "privacyPolicy": "隱私政策",
-        "logout": "登出"
-      }
-    }
   },
   "members": {
     "popover": {
@@ -1110,21 +759,6 @@
     "stack": {
       "triggerAria": "Project 成員（{count}）",
       "removeAria": "移除 {name}"
-    }
-  },
-  "credits": {
-    "pill": {
-      "aria_label": "點數餘額"
-    },
-    "dialog": {
-      "title": "購買點數",
-      "balance_label": "目前餘額",
-      "note": "點數永不過期 · 一次性購買",
-      "per100_unit": "/100 點數",
-      "cta_select": "選擇",
-      "loading": "載入價格中…",
-      "no_tiers": "暫無可用點數包",
-      "checkout_failed": "建立付款失敗,請重試"
     }
   },
   "spaces": {
@@ -1275,18 +909,6 @@
     "zoomIn": "放大",
     "closePreview": "關閉預覽"
   },
-  "upload": {
-    "uploading": "上傳中…",
-    "error": "錯誤",
-    "preview": "預覽",
-    "removeFile": "移除檔案",
-    "failed": "上傳失敗",
-    "complete": "上傳完成",
-    "fileInput": "檔案輸入"
-  },
-  "media": {
-    "noItems": "暫無內容"
-  },
   "document": {
     "editorComingSoon": "文字編輯器即將上線",
     "imageDialog": {
@@ -1295,9 +917,6 @@
       "embedUrl": "嵌入 URL",
       "dropOrBrowse": "拖入圖片或點擊瀏覽"
     }
-  },
-  "mediaUploader": {
-    "fileProcessFailed": "檔案處理失敗"
   },
   "menu": {
     "createAria": "建立選單",
@@ -1338,24 +957,6 @@
     "undo": "復原",
     "redo": "重做",
     "zoomCustomAria": "自訂縮放(%)"
-  },
-  "lang": {
-    "en": {
-      "label": "English",
-      "glyph": "EN"
-    },
-    "zhCN": {
-      "label": "簡體中文",
-      "glyph": "中"
-    },
-    "zhTW": {
-      "label": "繁體中文",
-      "glyph": "繁"
-    },
-    "ja": {
-      "label": "日本語",
-      "glyph": "日"
-    }
   },
   "role": {
     "owner": "Owner",
