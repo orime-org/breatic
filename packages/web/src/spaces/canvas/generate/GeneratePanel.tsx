@@ -85,13 +85,19 @@ export const GeneratePanel = React.memo(function GeneratePanel({
 }: GeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
   const currentModel = models.find((m) => m.name === model);
+  // Text-to-image generates from scratch and ignores source images (§2.5): the
+  // reference add-button is disabled and the rail is greyed out.
+  const referencesOff = mode === 't2i';
   const placeholderClass =
     'flex h-8 w-8 items-center justify-center rounded-full border border-border ' +
     'text-muted-foreground opacity-50 cursor-not-allowed';
   return (
     <div className='flex w-[min(560px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
       <div className='flex items-start justify-between'>
-        <GenerateToolbar onReference={onAddReference} />
+        <GenerateToolbar
+          onReference={onAddReference}
+          referenceDisabled={referencesOff}
+        />
         <button
           type='button'
           data-testid='generate-exit'
@@ -103,7 +109,11 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         </button>
       </div>
 
-      <ReferenceRail references={references} onRemove={onRemoveReference} />
+      <ReferenceRail
+        references={references}
+        onRemove={onRemoveReference}
+        disabled={referencesOff}
+      />
 
       {promptSlot}
 

@@ -107,4 +107,31 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     fireEvent.click(screen.getByTestId('generate-mode-i2i'));
     expect(onToggleMode).toHaveBeenCalledWith('i2i');
   });
+
+  it('disables the reference add-button in t2i (§2.5)', () => {
+    setup({ mode: 't2i' });
+    expect(screen.getByTestId('generate-tool-reference')).toBeDisabled();
+  });
+
+  it('enables the reference add-button in i2i', () => {
+    setup({ mode: 'i2i' });
+    expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
+  });
+
+  it('greys out the reference rail in t2i (edges stay visible but inert)', () => {
+    setup({
+      mode: 't2i',
+      references: [
+        {
+          refId: 'e1',
+          sourceNodeId: 's1',
+          sourceNodeType: 'image',
+          sourceNodeName: 'Src',
+        },
+      ],
+    });
+    expect(screen.getByTestId('generate-reference-rail')).toHaveClass(
+      'opacity-50',
+    );
+  });
 });
