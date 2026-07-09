@@ -327,6 +327,20 @@ export interface CanvasNodeFields {
     model?: string;
     /** Model-specific params for the Generate request. */
     params?: Record<string, unknown>;
+    /**
+     * Image-generation input mode: `'t2i'` (text-to-image) or `'i2i'`
+     * (image-to-image), set by the Generate panel's manual toggle. Drives which
+     * catalog models the picker offers and whether references are enabled. A
+     * free string per the modality-neutral wire contract (valid set is a
+     * frontend concern). Distinct from `kind` (node content modality).
+     */
+    mode?: string;
+    /**
+     * Per-mode memory of the last-chosen model name, keyed by mode (`t2i` /
+     * `i2i`), so toggling between modes restores the model the user last picked
+     * for that mode (falling back to the first available one otherwise).
+     */
+    modelByMode?: Record<string, string>;
 
     // ─── Group (Group) node fields ──────────────────────────
     // A Group's authoritative size lives in `width`/`height` above; its members
