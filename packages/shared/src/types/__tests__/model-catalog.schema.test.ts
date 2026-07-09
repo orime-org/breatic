@@ -62,6 +62,24 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.total).toBe(2);
   });
 
+  it("preserves a valid icon name on an entry", () => {
+    const raw = catalog([entry("flux", { icon: "nano-banana" })]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.icon).toBe("nano-banana");
+  });
+
+  it("coerces a non-string icon to undefined but keeps the entry", () => {
+    const raw = catalog([entry("flux", { icon: 123 })]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image).toHaveLength(1);
+    expect(out.image[0]?.icon).toBeUndefined();
+  });
+
+  it("leaves icon undefined when the field is absent (icon is optional)", () => {
+    const out = sanitizeModelCatalog(catalog([entry("flux")]));
+    expect(out.image[0]?.icon).toBeUndefined();
+  });
+
   it("drops an entry whose name is not a string (identity is required)", () => {
     const raw = catalog([entry("good"), entry("x", { name: 123 }), entry("also-good")]);
     const out = sanitizeModelCatalog(raw);

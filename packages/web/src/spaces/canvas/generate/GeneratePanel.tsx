@@ -8,16 +8,27 @@ import type { ModelEntry } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { GenerateToolbar } from '@web/spaces/canvas/generate/GenerateToolbar';
+import { ImageModeToggle } from '@web/spaces/canvas/generate/ImageModeToggle';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 
 interface GeneratePanelProps {
-  /** Catalog image models. */
+  /** Catalog image models (already narrowed to the active mode). */
   models: ModelEntry[];
   /** Current model id. */
   model: string;
+  /** Active generation sub-mode (drives the t2i / i2i toggle). */
+  mode: ImageGenMode;
+  /**
+   * Whether the GLOBAL generatable catalog is empty (loading / failed / none
+   * configured). Gates the mode toggle's disabled state — NOT `models.length`
+   * (the active-mode subset), so a node in a mode with zero models can still
+   * toggle back to the populated mode.
+   */
+  catalogEmpty: boolean;
   /** Current ratio + resolution selection. */
   params: { aspect_ratio?: string; resolution?: string };
   /** The node's derived reference rows. */
@@ -32,6 +43,8 @@ interface GeneratePanelProps {
   onExit: () => void;
   /** Pick a model. */
   onSelectModel: (modelId: string) => void;
+  /** Switch the generation sub-mode (t2i / i2i). */
+  onToggleMode: (mode: ImageGenMode) => void;
   /** Change ratio / resolution. */
   onChangeParams: (partial: { aspect_ratio?: string; resolution?: string }) => void;
   /** Enter the canvas reference-pick mode. */
@@ -63,6 +76,8 @@ const FOOTER_PLACEHOLDERS = [
 export const GeneratePanel = React.memo(function GeneratePanel({
   models,
   model,
+  mode,
+  catalogEmpty,
   params,
   references,
   creditEstimate,
@@ -70,6 +85,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   promptSlot,
   onExit,
   onSelectModel,
+  onToggleMode,
   onChangeParams,
   onAddReference,
   onRemoveReference,
@@ -77,13 +93,19 @@ export const GeneratePanel = React.memo(function GeneratePanel({
 }: GeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
   const currentModel = models.find((m) => m.name === model);
+  // Text-to-image generates from scratch and ignores source images (§2.5): the
+  // reference add-button is disabled and the rail is greyed out.
+  const referencesOff = mode === 't2i';
   const placeholderClass =
     'flex h-8 w-8 items-center justify-center rounded-full border border-border ' +
     'text-muted-foreground opacity-50 cursor-not-allowed';
   return (
-    <div className='flex w-[min(470px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
+    <div className='flex w-[min(560px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
       <div className='flex items-start justify-between'>
-        <GenerateToolbar onReference={onAddReference} />
+        <GenerateToolbar
+          onReference={onAddReference}
+          referenceDisabled={referencesOff}
+        />
         <button
           type='button'
           data-testid='generate-exit'
@@ -95,11 +117,20 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         </button>
       </div>
 
-      <ReferenceRail references={references} onRemove={onRemoveReference} />
+      <ReferenceRail
+        references={references}
+        onRemove={onRemoveReference}
+        disabled={referencesOff}
+      />
 
       {promptSlot}
 
       <div className='flex items-center gap-1.5'>
+        <ImageModeToggle
+          value={mode}
+          onChange={onToggleMode}
+          disabled={catalogEmpty}
+        />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
         {currentModel ? (
           <RatioResolutionPicker

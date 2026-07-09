@@ -22,6 +22,7 @@ models:
 
   - name: "topaz-upscale"
     display_name: "Topaz Upscale"
+    icon: "topaz"
     mode: "upscale"
     tier: internal
     description: "AI upscale to 2K/4K/8K"

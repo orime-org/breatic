@@ -29,4 +29,9 @@ describe('GenerateToolbar — Reference is live; Style / Mark / Focus are disabl
     fireEvent.click(screen.getByTestId('generate-tool-reference'));
     expect(onReference).toHaveBeenCalledTimes(1);
   });
+
+  it('disables Reference when referenceDisabled is set (text-to-image, §2.5)', () => {
+    render(<GenerateToolbar onReference={() => {}} referenceDisabled />);
+    expect(screen.getByTestId('generate-tool-reference')).toBeDisabled();
+  });
 });

@@ -16,6 +16,11 @@ const PLACEHOLDER_TOOLS = [
 interface GenerateToolbarProps {
   /** Enter the "select a reference from the canvas" mode (participates in the reference rail). */
   onReference: () => void;
+  /**
+   * Disable the Reference button — set in text-to-image, which generates from
+   * scratch and ignores source images (mode toggle 2026-07-09 §2.5).
+   */
+  referenceDisabled?: boolean;
 }
 
 /**
@@ -29,6 +34,7 @@ interface GenerateToolbarProps {
  */
 export const GenerateToolbar = React.memo(function GenerateToolbar({
   onReference,
+  referenceDisabled = false,
 }: GenerateToolbarProps): React.JSX.Element {
   const t = useTranslation();
   const buttonClass =
@@ -54,6 +60,7 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         type='button'
         data-testid='generate-tool-reference'
         onClick={onReference}
+        disabled={referenceDisabled}
         className={buttonClass}
       >
         <Plus className='h-4 w-4' aria-hidden='true' />

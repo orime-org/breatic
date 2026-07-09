@@ -204,7 +204,7 @@ export interface AttachRef {
  * One content-node model (model revision 2026-06-15): a content node
  * (text / image / audio / video / 3d / web) carries its payload
  * (content / coverUrl / etc.) AND its Generate inputs
- * (prompt / model / kind / references / params) — Generate is a toolbar
+ * (prompt / model / mode / references / params) — Generate is a toolbar
  * action, not a separate node type. `annotation` is a sticky; `group`
  * contains other nodes. All node types share the state machine and core
  * fields.
@@ -308,25 +308,41 @@ export interface CanvasNodeFields {
 
     // ─── Generate inputs (content nodes) ────────────────────
     // Generate is a toolbar action on a content node (model revision
-    // 2026-06-15). kind / prompt / model / params are the Generate panel's
+    // 2026-06-15). mode / prompt / model / params are the Generate panel's
     // inputs, stored on the content node and shared via Yjs so collaborators
     // see edits live. There is no `outputType` — the content node's own
     // modality is its output. The reference rail is NOT stored here — it is
     // derived live from the node's incoming edges (a connection = a reference).
     /**
-     * Generate sub-mode — the variant picked in the Generate panel, one set
-     * per content modality (e.g. audio: TTS / Song / SFX / Melody / Clone;
-     * image: text-to-image / image-to-image). Stays a free `string`: the
-     * valid set per modality is a frontend / `config/models` concern, not a
-     * shape the wire contract should couple to the model catalog.
+     * Generation sub-mode — the input variant picked in the Generate panel,
+     * with ONE value set per node modality:
+     *   - image: `'t2i'` (text-to-image) / `'i2i'` (image-to-image)
+     *   - audio (future): e.g. TTS / Song / SFX / Melody / Clone
+     *   - video (future): its own generation variants
+     * Set by the Generate panel's manual toggle. Drives which catalog models
+     * the picker offers and (image) whether references are enabled. Stays a
+     * free `string`: the wire contract is modality-neutral and must NOT couple
+     * to the per-modality valid set — that narrowing (e.g. web's `ImageGenMode`
+     * = `'t2i' | 'i2i'`) is a frontend / `config/models` concern. Distinct from
+     * top-level `type` (the node's content modality): `mode` is the sub-mode
+     * WITHIN that modality's generation. (Replaced the earlier `data.kind`
+     * sub-mode field, whose name clashed with the view discriminant — cleanup
+     * 2026-07-09.)
      */
-    kind?: string;
+    mode?: string;
     /** Rich text prompt — Y.XmlFragment at runtime (TipTap + y-prosemirror). */
     prompt?: unknown;
     /** Model id from config/models/*.yaml. */
     model?: string;
     /** Model-specific params for the Generate request. */
     params?: Record<string, unknown>;
+    /**
+     * Per-mode memory of the last-chosen model name, keyed by the generation
+     * sub-mode (image: `t2i` / `i2i`), so toggling between modes restores the
+     * model the user last picked for that mode (falling back to the first
+     * available one otherwise).
+     */
+    modelByMode?: Record<string, string>;
 
     // ─── Group (Group) node fields ──────────────────────────
     // A Group's authoritative size lives in `width`/`height` above; its members

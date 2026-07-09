@@ -305,6 +305,8 @@
       "mark": "マーク",
       "focus": "フォーカス",
       "reference": "参照",
+      "modeT2i": "テキストから画像",
+      "modeI2i": "画像から画像",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で素材を参照",
       "selectFromCanvas": "キャンバスから参照を選択",

@@ -16,6 +16,7 @@ models:
 
   - name: "nano-banana-pro"
     display_name: "Nano Banana Pro"
+    icon: "nano-banana"
     mode: "t2i"
     tier: recommended
     description: "Flagship quality, 4K, lens control"
@@ -65,6 +66,7 @@ models:
 
   - name: "nano-banana-2"
     display_name: "Nano Banana 2"
+    icon: "nano-banana"
     mode: "t2i"
     tier: optional
     description: "Fast high-quality, recommended default"
@@ -118,6 +120,7 @@ models:
 
   - name: "nano-banana-pro-edit"
     display_name: "Nano Banana Pro Edit"
+    icon: "nano-banana"
     mode: ["i2i", "edit"]
     tier: recommended
     description: "Flagship editor, 14-image ref"
@@ -151,6 +154,7 @@ models:
 
   - name: "nano-banana-2-edit"
     display_name: "Nano Banana 2 Edit"
+    icon: "nano-banana"
     mode: ["i2i", "edit"]
     tier: optional
     description: "Fast editor, web search enhanced"

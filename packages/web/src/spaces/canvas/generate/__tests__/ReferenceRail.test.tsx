@@ -44,4 +44,14 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     );
     expect(container).toBeEmptyDOMElement();
   });
+
+  it('greys out + de-activates the rail when disabled (text-to-image, §2.5)', () => {
+    render(<ReferenceRail references={REFS} onRemove={() => {}} disabled />);
+    const rail = screen.getByTestId('generate-reference-rail');
+    // Still renders the chips (edges stay visible) but dimmed + non-interactive:
+    // the remove buttons are disabled (blocks mouse AND keyboard).
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(rail).toHaveClass('opacity-50');
+    expect(screen.getByTestId('generate-ref-remove-a->me')).toBeDisabled();
+  });
 });

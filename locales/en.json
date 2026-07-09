@@ -312,6 +312,8 @@
       "mark": "Mark",
       "focus": "Focus",
       "reference": "Reference",
+      "modeT2i": "Text to Image",
+      "modeI2i": "Image to Image",
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to reference assets",
       "selectFromCanvas": "Select a reference from the canvas",

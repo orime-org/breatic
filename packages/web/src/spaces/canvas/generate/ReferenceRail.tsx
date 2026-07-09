@@ -12,6 +12,13 @@ interface ReferenceRailProps {
   references: ReferenceRailItem[];
   /** Remove a reference by id — the caller deletes the backing edge. */
   onRemove: (refId: string) => void;
+  /**
+   * Grey out + de-activate the rail — set in text-to-image, which ignores
+   * source images (mode toggle 2026-07-09 §2.5). The chips still render (so the
+   * node's edges stay visible) but are non-interactive; switch to image-to-image
+   * to manage them.
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -27,11 +34,16 @@ interface ReferenceRailProps {
 export const ReferenceRail = React.memo(function ReferenceRail({
   references,
   onRemove,
+  disabled = false,
 }: ReferenceRailProps): React.JSX.Element | null {
   const t = useTranslation();
   if (references.length === 0) return null;
   return (
-    <div className='flex flex-wrap gap-1.5' role='list'>
+    <div
+      className={`flex flex-wrap gap-1.5 ${disabled ? 'opacity-50' : ''}`}
+      role='list'
+      data-testid='generate-reference-rail'
+    >
       {references.map((ref) => (
         <div
           key={ref.refId}
@@ -58,7 +70,8 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             data-testid={`generate-ref-remove-${ref.refId}`}
             aria-label={t('canvas.generatePanel.removeReference')}
             onClick={() => onRemove(ref.refId)}
-            className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            disabled={disabled}
+            className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed'
           >
             <X className='h-3 w-3' aria-hidden='true' />
           </button>
