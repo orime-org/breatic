@@ -58,7 +58,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             data-testid={`generate-ref-remove-${ref.refId}`}
             aria-label={t('canvas.generatePanel.removeReference')}
             onClick={() => onRemove(ref.refId)}
-            className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+            className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
           >
             <X className='h-3 w-3' aria-hidden='true' />
           </button>

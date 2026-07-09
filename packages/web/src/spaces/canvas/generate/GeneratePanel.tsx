@@ -89,7 +89,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           data-testid='generate-exit'
           aria-label={t('canvas.generatePanel.exit')}
           onClick={onExit}
-          className='flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+          className='flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-4 w-4' aria-hidden='true' />
         </button>
@@ -147,7 +147,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
             aria-label={t('canvas.generatePanel.execute')}
             disabled={!canExecute}
             onClick={onExecute}
-            className='flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
+            className='flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
           >
             <ArrowUp className='h-4 w-4' aria-hidden='true' />
           </button>

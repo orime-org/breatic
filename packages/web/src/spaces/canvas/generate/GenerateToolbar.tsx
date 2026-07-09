@@ -34,7 +34,7 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
   const buttonClass =
     'flex flex-col items-center gap-1 rounded-md px-2 py-1.5 text-xs ' +
     'text-muted-foreground transition-colors focus-visible:outline-none ' +
-    'focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ' +
+    'focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 ' +
     'disabled:cursor-not-allowed enabled:hover:bg-accent enabled:hover:text-accent-foreground';
   return (
     <div className='flex items-center gap-1' role='group'>

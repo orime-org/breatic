@@ -74,7 +74,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   const label = [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ');
   const optionClass =
     'rounded-md border border-border px-2 py-1 text-xs text-foreground transition-colors ' +
-    'hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
+    'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
     'aria-[current=true]:border-primary aria-[current=true]:bg-accent';
   return (
     <div className='relative'>
@@ -84,7 +84,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup='dialog'
         aria-expanded={open}
-        className='flex h-8 items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+        className='flex h-8 items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
       >
         {label}
       </button>
