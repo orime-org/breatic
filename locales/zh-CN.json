@@ -1722,7 +1722,6 @@
   },
   "chrome": {
     "tooltip": {
-      "export": "导出",
       "share": "邀请",
       "notifications": "通知",
       "newSpace": "新建 Space",
@@ -1745,11 +1744,6 @@
       "openSpaces": "已打开的 Space",
       "language": "语言：{name}",
       "theme": "主题：{theme}"
-    },
-    "export": {
-      "png": "PNG（当前视图）",
-      "pdf": "PDF（整个画布）",
-      "json": "JSON（原始数据）"
     }
   },
   "noAccess": {

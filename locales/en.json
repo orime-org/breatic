@@ -1722,7 +1722,6 @@
   },
   "chrome": {
     "tooltip": {
-      "export": "Export",
       "share": "Invite",
       "notifications": "Notifications",
       "newSpace": "New space",
@@ -1745,11 +1744,6 @@
       "openSpaces": "Open spaces",
       "language": "Language: {name}",
       "theme": "Theme: {theme}"
-    },
-    "export": {
-      "png": "PNG (current view)",
-      "pdf": "PDF (whole canvas)",
-      "json": "JSON (raw data)"
     }
   },
   "noAccess": {

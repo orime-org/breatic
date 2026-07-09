@@ -1722,7 +1722,6 @@
   },
   "chrome": {
     "tooltip": {
-      "export": "내보내기",
       "share": "초대",
       "notifications": "알림",
       "newSpace": "새 Space",
@@ -1745,11 +1744,6 @@
       "openSpaces": "열려 있는 Space",
       "language": "언어: {name}",
       "theme": "테마: {theme}"
-    },
-    "export": {
-      "png": "PNG(현재 보기)",
-      "pdf": "PDF(전체 캔버스)",
-      "json": "JSON(원본 데이터)"
     }
   },
   "noAccess": {

@@ -11,7 +11,6 @@ import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
 import { MembersStack } from '@web/pages/project/chrome/top-bar/MembersStack';
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
-import { ExportMenu } from '@web/pages/project/chrome/top-bar/ExportMenu';
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
@@ -37,7 +36,7 @@ interface TopBarProps {
 }
 
 /**
- * Project top bar — 11 elements per the chrome-baseline mock
+ * Project top bar — 10 elements per the chrome-baseline mock
  * ground truth.
  *
  * Layout (mock § TopBar v4.0):
@@ -46,7 +45,7 @@ interface TopBarProps {
  *   - .left  = Logo · BackLink · TitleEditable · RoleTag
  *   - .right = 2 topbar-groups separated by `--space-3` (6px) gap:
  *       group A (4 text-icon): Members · Lang · Theme · Credits
- *       group B (3 icon-only): Export · Share · Bell
+ *       group B (2 icon-only): Share · Bell
  *
  *   (Tweaks removed 2026-05-19 per user — defaults fixed in tokens.css.)
  * @param root0 - Top-bar props.
@@ -110,7 +109,6 @@ export function TopBar({
           style={{ gap: 'var(--space-2)', marginLeft: 'var(--space-3)' }}
           data-testid='topbar-group-icon-only'
         >
-          <ExportMenu />
           {/* Share is an owner-only affordance (B model — hidden, not
               disabled, for non-owners). Backend `requireRole` enforces
               the real boundary; this hide is UX only. */}

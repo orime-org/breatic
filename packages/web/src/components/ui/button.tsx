@@ -66,7 +66,7 @@ const buttonVariants = cva(
         chrome:
           'h-[var(--btn-chrome)] w-[var(--btn-chrome)] rounded-chrome',
         // Menu-item size — for popover / dropdown internal options
-        // (LangSwitcher / ThemeToggle / ExportMenu list items). Matches
+        // (LangSwitcher / ThemeToggle list items). Matches
         // mock `.menu-item` spec: auto height + `--radius-chrome` (6px)
         // + 13px label + asymmetric padding so a stack of items in a
         // 2px-padded popover lines up with the mock proportions.

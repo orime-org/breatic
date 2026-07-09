@@ -1722,7 +1722,6 @@
   },
   "chrome": {
     "tooltip": {
-      "export": "エクスポート",
       "share": "招待",
       "notifications": "通知",
       "newSpace": "新規 Space",
@@ -1745,11 +1744,6 @@
       "openSpaces": "開いている Space",
       "language": "言語：{name}",
       "theme": "テーマ：{theme}"
-    },
-    "export": {
-      "png": "PNG(現在のビュー)",
-      "pdf": "PDF(キャンバス全体)",
-      "json": "JSON(生データ)"
     }
   },
   "noAccess": {
