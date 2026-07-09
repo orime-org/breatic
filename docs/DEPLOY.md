@@ -566,14 +566,20 @@ curl -I https://api.breatic.ai        # expect 301 → https://www.breatic.ai/
 
 ### Canvas deep link shows empty page / "add node" does nothing
 
-The `/project/<id>` route depends on a session token being present in
-Redux on first render. The token is hydrated from `localStorage.auth`
-at store-init time (`packages/web/src/store/modules/userCenter.ts`), so
-this should always work for a logged-in user.
+The `/project/<id>` route needs the logged-in user resolved before it
+renders. On first load `AuthBootstrap`
+(`packages/web/src/app/AuthBootstrap.tsx`) pings `/auth/me` once — the
+browser attaches the httpOnly session cookie (`withCredentials`), and the
+response populates the current-user store
+(`packages/web/src/stores/current-user.ts`). `ProtectedRoute` shows a
+loading shell until that ping resolves, so a logged-in user should always
+land on the canvas.
 
-If you're seeing this after a deploy: check that the frontend build
-actually includes the fix (search the built bundle for
-`loadInitialAuthInfo`). If the bundle is stale, rebuild:
+If you're seeing this after a deploy, it's almost always the session
+cookie not reaching the API: confirm the browser is on the canonical
+`www.` host (see the redirect note above) and that `/auth/me` returns 200
+(not 401) in the network tab. If the frontend bundle looks stale (grep the
+built bundle for `AuthBootstrap`), rebuild:
 
 ```bash
 docker compose build web
