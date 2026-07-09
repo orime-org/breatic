@@ -81,7 +81,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
     'flex h-8 w-8 items-center justify-center rounded-full border border-border ' +
     'text-muted-foreground opacity-50 cursor-not-allowed';
   return (
-    <div className='flex w-[min(470px,92vw)] flex-col gap-2.5 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-md'>
+    <div className='flex w-[min(470px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
       <div className='flex items-start justify-between'>
         <GenerateToolbar onReference={onAddReference} />
         <button
@@ -89,7 +89,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           data-testid='generate-exit'
           aria-label={t('canvas.generatePanel.exit')}
           onClick={onExit}
-          className='flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className='flex h-7 w-7 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-4 w-4' aria-hidden='true' />
         </button>

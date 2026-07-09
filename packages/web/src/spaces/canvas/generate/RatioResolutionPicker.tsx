@@ -73,18 +73,18 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   const resolutions = paramValues(model, 'resolution');
   const label = [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ');
   const optionClass =
-    'rounded-md border border-border px-2 py-1 text-xs text-foreground transition-colors ' +
+    'rounded-overlay border border-border px-2 py-1 text-xs text-foreground transition-colors ' +
     'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
     'aria-[current=true]:border-primary aria-[current=true]:bg-accent';
   return (
-    <div className='relative'>
+    <div className='relative shrink-0'>
       <button
         type='button'
         data-testid='generate-ratio-trigger'
         onClick={() => setOpen((o) => !o)}
         aria-haspopup='dialog'
         aria-expanded={open}
-        className='flex h-8 items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+        className='flex h-8 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
       >
         {label}
       </button>
@@ -98,7 +98,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
           <div
             role='dialog'
             aria-label={t('canvas.generatePanel.ratio')}
-            className='absolute bottom-full left-0 z-50 mb-1 w-64 rounded-md border border-border bg-popover p-3 shadow-md'
+            className='absolute bottom-full left-0 z-50 mb-1 w-64 rounded-overlay border border-border bg-popover p-3 shadow-md'
           >
             {resolutions.length > 0 ? (
               <div className='mb-3'>

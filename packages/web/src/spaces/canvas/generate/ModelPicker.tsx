@@ -34,14 +34,14 @@ export const ModelPicker = React.memo(function ModelPicker({
   const [open, setOpen] = React.useState(false);
   const current = models.find((m) => m.name === value);
   return (
-    <div className='relative'>
+    <div className='relative min-w-0'>
       <button
         type='button'
         data-testid='generate-model-trigger'
         onClick={() => setOpen((o) => !o)}
         aria-haspopup='listbox'
         aria-expanded={open}
-        className='flex h-8 max-w-[12rem] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+        className='flex h-8 min-w-0 max-w-[12rem] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
       >
         <span className='truncate'>{current?.display_name ?? value}</span>
         <ChevronDown className='h-3.5 w-3.5 shrink-0 opacity-60' aria-hidden='true' />
@@ -58,7 +58,7 @@ export const ModelPicker = React.memo(function ModelPicker({
             onKeyDown={(e) => {
               if (e.key === 'Escape') setOpen(false);
             }}
-            className='absolute bottom-full left-0 z-50 mb-1 max-h-52 min-w-[13rem] overflow-auto rounded-md border border-border bg-popover p-1 shadow-md'
+            className='nowheel absolute bottom-full left-0 z-50 mb-1 max-h-52 min-w-[13rem] overflow-auto rounded-overlay border border-border bg-popover p-1 shadow-md [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent'
           >
             {models.map((m) => (
               <li key={m.name}>

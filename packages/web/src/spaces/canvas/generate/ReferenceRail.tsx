@@ -37,7 +37,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
           key={ref.refId}
           role='listitem'
           data-testid={`generate-ref-${ref.refId}`}
-          className='group relative flex items-center gap-1.5 rounded-md border border-border bg-background/60 py-1 pl-1 pr-1.5'
+          className='group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5'
         >
           {ref.thumbnail ? (
             <img
