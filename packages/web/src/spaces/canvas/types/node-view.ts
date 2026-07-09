@@ -26,9 +26,9 @@
  * or unknown `type`.
  *
  * Content views also project the Generate panel's inputs (prompt / model /
- * params). The generation sub-mode is NOT projected — it lives on wire
- * `data.mode` and the Generate panel reads it straight from the wire node
- * (panel-view-model), so no view field mirrors it.
+ * params / mode / modelByMode). The Generate panel reads them via the view
+ * (panel-view-model consumes `CanvasNodeView.data`, which IS this view), and
+ * writes back to the wire through the canvas-space setters.
  */
 
 import { HANDLING_TIMEOUT_MS } from '@breatic/shared';
@@ -77,6 +77,17 @@ interface ContentNodeViewBase extends NodeViewCommon {
   model?: string;
   /** Model-specific request params. */
   params?: Record<string, unknown>;
+  /**
+   * Generation sub-mode (wire `data.mode`) — the manual toggle state, one
+   * value set per modality (image: `t2i` / `i2i`). Projected so the Generate
+   * panel reads it via the view like model / params.
+   */
+  mode?: string;
+  /**
+   * Per-mode memory of the last-chosen model name (wire `data.modelByMode`),
+   * keyed by generation sub-mode. Drives model restoration on a mode toggle.
+   */
+  modelByMode?: Record<string, string>;
 }
 
 export interface TextNodeView extends ContentNodeViewBase {
@@ -212,9 +223,9 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const errorMessage = data.errorMessage;
   const locked = data.locked;
   // Common content-view fields: the editable name (node name header), the
-  // derived status, and the Generate panel inputs (prompt / model / params).
-  // The generation sub-mode (wire `data.mode`) is NOT projected — the Generate
-  // panel reads it straight from the wire node (panel-view-model).
+  // derived status, and the Generate panel inputs (prompt / model / params /
+  // mode / modelByMode) — the panel reads these via the view and writes back
+  // to the wire through the canvas-space setters.
   const contentCommon = {
     name: data.name,
     status,
@@ -223,6 +234,8 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     prompt: data.prompt,
     model: data.model,
     params: data.params,
+    mode: data.mode,
+    modelByMode: data.modelByMode,
   };
   switch (type) {
     case 'text':

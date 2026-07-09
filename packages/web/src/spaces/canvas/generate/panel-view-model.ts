@@ -15,11 +15,30 @@ import {
   deriveReferences,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
+import {
+  filterModelsByMode,
+  resolveModelForMode,
+  type ImageGenMode,
+} from '@web/spaces/canvas/generate/image-mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import type {
   ContentNodeView,
   NodeView,
 } from '@web/spaces/canvas/types/node-view';
+
+/** Default generation sub-mode for a node with none stored (design 2026-07-09 §2.3). */
+const DEFAULT_IMAGE_GEN_MODE: ImageGenMode = 't2i';
+
+/**
+ * Reads a node's stored generation sub-mode, defaulting + boundary-sanitizing:
+ * anything that is not the literal `'i2i'` (undefined, `'t2i'`, or a malformed
+ * value from untrusted Yjs) resolves to the default `'t2i'`.
+ * @param stored - The node's stored `mode` (free string on the wire).
+ * @returns The active {@link ImageGenMode}.
+ */
+function resolveMode(stored: string | undefined): ImageGenMode {
+  return stored === 'i2i' ? 'i2i' : DEFAULT_IMAGE_GEN_MODE;
+}
 
 /** The render inputs the Generate panel needs, derived from live node data. */
 export interface GeneratePanelViewModel {
@@ -37,6 +56,8 @@ export interface GeneratePanelViewModel {
   creditEstimate: number;
   /** The target node's display status — gates execute (no submit while handling). */
   nodeStatus: string | undefined;
+  /** Active generation sub-mode (the t2i / i2i toggle state; default t2i). */
+  mode: ImageGenMode;
 }
 
 /**
@@ -71,16 +92,25 @@ function assetUrlOf(data: NodeView | undefined): string | undefined {
 }
 
 /**
- * Picks the effective model id: the node's stored model when it exists in the
- * catalog, else the first `recommended` model, else the first model.
- * @param stored - The node's stored model id (may be absent / stale).
- * @param models - The catalog models.
- * @returns The effective model id, or empty string for an empty catalog.
+ * Picks the effective model id for the active mode: the node's stored model
+ * when it is still offered under this mode, else the mode's remembered pick,
+ * else the first model offered for the mode (design 2026-07-09 §2.3 —
+ * "first model of the mode"; supersedes slice-1's recommended-tier default).
+ * Empty string when the mode offers no model.
+ * @param stored - The node's stored model id (may be absent / stale / wrong-mode).
+ * @param mode - The active generation sub-mode.
+ * @param modelByMode - The node's per-mode model memory.
+ * @param modeModels - The catalog models offered under the active mode.
+ * @returns The effective model id, or empty string when the mode has no models.
  */
-function pickModel(stored: string | undefined, models: ModelEntry[]): string {
-  if (stored && models.some((m) => m.name === stored)) return stored;
-  const recommended = models.find((m) => m.tier === 'recommended');
-  return recommended?.name ?? models[0]?.name ?? '';
+function pickModelForMode(
+  stored: string | undefined,
+  mode: ImageGenMode,
+  modelByMode: Record<string, string> | undefined,
+  modeModels: ModelEntry[],
+): string {
+  if (stored && modeModels.some((m) => m.name === stored)) return stored;
+  return resolveModelForMode(mode, modelByMode ?? {}, modeModels) ?? '';
 }
 
 /**
@@ -100,26 +130,36 @@ export function buildGeneratePanelViewModel(input: {
 }): GeneratePanelViewModel {
   // models is trusted: the catalog is sanitized at the API boundary
   // (sanitizeModelCatalog), so it is always a ModelEntry[]. Offer only
-  // generatable image models in the picker — text-to-image / image-to-image /
-  // edit — and drop pure tools (background removal, upscale), which belong in
-  // the mini-tool system, not the Generate panel.
+  // generatable image models — text-to-image / image-to-image / edit — dropping
+  // pure tools (background removal, upscale), which belong in the mini-tool
+  // system. Then narrow to the ACTIVE mode (mode toggle 2026-07-09) so the
+  // picker shows one clean list per mode instead of every t2i/i2i variant.
   const { nodeId, nodes, edges } = input;
-  const models = input.models.filter((m) => isImageGenerationMode(m.mode));
   const content = asContentView(nodes.find((n) => n.id === nodeId)?.data);
+  const mode = resolveMode(content?.mode);
+  const generatable = input.models.filter((m) => isImageGenerationMode(m.mode));
+  const models = filterModelsByMode(generatable, mode);
 
-  const model = pickModel(content?.model, models);
+  const model = pickModelForMode(content?.model, mode, content?.modelByMode, models);
   const current = models.find((m) => m.name === model);
   const params = current ? resolveParamsForModel(current, content?.params ?? {}) : {};
 
   const references = deriveReferences(nodeId, nodes, edges);
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const referenceUrls = references
-    .map((r) => assetUrlOf(byId.get(r.sourceNodeId)?.data))
-    // The source node's content is collaborative Yjs data — untrusted, and NOT
-    // covered by the catalog boundary. typeof, not Boolean: a malformed source
-    // whose content is a non-string object is truthy and would slip a non-URL
-    // into the task payload.
-    .filter((u): u is string => typeof u === 'string' && u.length > 0);
+  // t2i generates from scratch and ignores source images (design §2.5): the
+  // rail still renders (greyed in the panel) but contributes NO reference URLs
+  // to the execute payload. i2i sends them. (Style images — a future slice —
+  // will be the one exception that survives t2i.)
+  const referenceUrls =
+    mode === 't2i'
+      ? []
+      : references
+        .map((r) => assetUrlOf(byId.get(r.sourceNodeId)?.data))
+      // The source node's content is collaborative Yjs data — untrusted, and
+      // NOT covered by the catalog boundary. typeof, not Boolean: a malformed
+      // source whose content is a non-string object is truthy and would slip
+      // a non-URL into the task payload.
+        .filter((u): u is string => typeof u === 'string' && u.length > 0);
 
   return {
     models,
@@ -131,5 +171,6 @@ export function buildGeneratePanelViewModel(input: {
     // when current is found, cost_per_call is a trusted number (boundary).
     creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
+    mode,
   };
 }

@@ -50,30 +50,85 @@ function imageView(over: Partial<Extract<NodeView, { kind: 'image' }>> = {}): No
 }
 
 describe('buildGeneratePanelViewModel', () => {
+  // Both t2i so the default-t2i view offers them; sdxl is `recommended` to
+  // prove the default pick is now FIRST-of-mode (design §2.3), not the
+  // recommended tier (which drove slice-1's pickModel).
   const models = [
-    makeModel('flux', { tier: 'optional', cost_per_call: 7 }),
-    makeModel('sdxl', { tier: 'recommended', cost_per_call: 3 }),
+    makeModel('flux', { mode: 't2i', tier: 'optional', cost_per_call: 7 }),
+    makeModel('sdxl', { mode: 't2i', tier: 'recommended', cost_per_call: 3 }),
   ];
+  // A small i2i catalog + node for the reference tests: reference URLs only
+  // flow in i2i (t2i generates from scratch — see the dedicated t2i test).
+  const i2iModels = [makeModel('mj-i2i', { mode: 'i2i', cost_per_call: 9 })];
+  /**
+   * An i2i-mode image node whose panel offers the i2i catalog above.
+   * @param over - Extra image-view overrides.
+   * @returns An i2i image node view.
+   */
+  function i2iView(
+    over: Partial<Extract<NodeView, { kind: 'image' }>> = {},
+  ): NodeView {
+    return imageView({ mode: 'i2i', model: 'mj-i2i', ...over });
+  }
 
-  it('uses the stored model when it is present in the catalog', () => {
+  it('uses the stored model when it is present in the mode catalog', () => {
     const nodes = [node('n1', imageView({ model: 'flux' }))];
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.model).toBe('flux');
     expect(vm.creditEstimate).toBe(7);
   });
 
-  it('falls back to the first recommended model when the node has none', () => {
+  it('picks the first model of the mode when the node has none (design §2.3, not recommended-tier)', () => {
     const nodes = [node('n1', imageView())];
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
-    expect(vm.model).toBe('sdxl');
-    expect(vm.creditEstimate).toBe(3);
+    expect(vm.model).toBe('flux'); // first of the t2i list, though sdxl is recommended
+    expect(vm.creditEstimate).toBe(7);
   });
 
-  it('falls back to the first model when nothing is recommended', () => {
-    const flat = [makeModel('a'), makeModel('b')];
+  it('restores the mode\'s remembered model over the first when nothing is stored', () => {
+    const nodes = [node('n1', imageView({ modelByMode: { t2i: 'sdxl' } }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.model).toBe('sdxl'); // remembered t2i pick beats the first-of-mode default
+  });
+
+  it('defaults the mode to t2i when the node stores none', () => {
     const nodes = [node('n1', imageView())];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: flat });
-    expect(vm.model).toBe('a');
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.mode).toBe('t2i');
+  });
+
+  it('reads a stored i2i mode', () => {
+    const nodes = [node('n1', i2iView())];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: i2iModels });
+    expect(vm.mode).toBe('i2i');
+  });
+
+  it('sanitizes a malformed stored mode to t2i', () => {
+    const nodes = [node('n1', imageView({ mode: 'garbage' }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.mode).toBe('t2i');
+  });
+
+  it('narrows the picker to the active mode (t2i shows t2i, i2i shows i2i)', () => {
+    const mixed = [
+      makeModel('flux', { mode: 't2i' }),
+      makeModel('mj-i2i', { mode: 'i2i' }),
+      makeModel('nano-edit', { mode: ['i2i', 'edit'] }), // carries i2i
+    ];
+    const t2iVm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes: [node('n1', imageView())],
+      edges: [],
+      models: mixed,
+    });
+    expect(t2iVm.models.map((m) => m.name)).toEqual(['flux']);
+    const i2iVm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes: [node('n1', imageView({ mode: 'i2i' }))],
+      edges: [],
+      models: mixed,
+    });
+    expect(i2iVm.models.map((m) => m.name)).toEqual(['mj-i2i', 'nano-edit']);
   });
 
   it('resolves params against the current model (keeps valid, fills defaults)', () => {
@@ -86,43 +141,57 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.params.bogus).toBeUndefined(); // dropped — model has no such param
   });
 
-  it('derives references from incoming edges and snapshots their asset URLs', () => {
+  it('derives references from incoming edges and snapshots their asset URLs (i2i)', () => {
     const nodes = [
-      node('n1', imageView({ model: 'flux' })),
+      node('n1', i2iView()),
       node('src', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models });
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
     expect(vm.references).toHaveLength(1);
     expect(vm.references[0]?.sourceNodeId).toBe('src');
     expect(vm.referenceUrls).toEqual(['https://cdn/x.png']);
   });
 
-  it('keeps only string URLs in referenceUrls (filters a malformed non-string content)', () => {
+  it('t2i contributes NO reference URLs even with an incoming edge (generates from scratch)', () => {
+    // Design §2.5: t2i ignores source images — the rail still renders (greyed in
+    // the panel) but no reference URL reaches the execute payload.
     const nodes = [
-      node('n1', imageView({ model: 'flux' })),
+      node('n1', imageView({ model: 'flux' })), // default t2i
+      node('src', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
+    ];
+    const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models });
+    expect(vm.references).toHaveLength(1); // rail still shown
+    expect(vm.referenceUrls).toEqual([]); // but nothing submitted
+  });
+
+  it('keeps only string URLs in referenceUrls (filters a malformed non-string content, i2i)', () => {
+    const nodes = [
+      node('n1', i2iView()),
       // malformed: content is an object, not a URL string
       node('src', imageView({ name: 'Bad', content: { u: 1 } as unknown as string })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models });
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
     expect(vm.referenceUrls).toEqual([]); // the object must not slip into the payload
   });
 
-  it('skips references whose source carries no asset URL', () => {
+  it('skips references whose source carries no asset URL (i2i)', () => {
     const nodes = [
-      node('n1', imageView({ model: 'flux' })),
+      node('n1', i2iView()),
       node('src', imageView({ name: 'Empty' })), // no content
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models });
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
     expect(vm.references).toHaveLength(1); // still shown in the rail
     expect(vm.referenceUrls).toEqual([]); // but no URL to submit
   });
 
   it('returns a safe empty view-model when the node is missing', () => {
     const vm = buildGeneratePanelViewModel({ nodeId: 'ghost', nodes: [], edges: [], models });
-    expect(vm.model).toBe('sdxl'); // still offers a default so the picker is usable
+    expect(vm.model).toBe('flux'); // first of the default (t2i) mode — picker stays usable
+    expect(vm.mode).toBe('t2i');
     expect(vm.references).toEqual([]);
     expect(vm.referenceUrls).toEqual([]);
   });
@@ -142,19 +211,16 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.creditEstimate).toBe(0);
   });
 
-  it('excludes pure-tool models (remove_bg / upscale) from the picker, keeps generation modes', () => {
+  it('excludes pure-tool models (remove_bg / upscale) from the picker', () => {
     const mixed = [
       makeModel('flux', { mode: 't2i' }), // generation
-      makeModel('mj-i2i', { mode: 'i2i' }), // image-to-image
-      makeModel('nano-edit', { mode: ['i2i', 'edit'] }), // edit (carries i2i)
       makeModel('bg-remover', { mode: 'remove_bg', tier: 'internal' }), // tool
       makeModel('topaz', { mode: 'upscale', tier: 'internal' }), // tool
     ];
-    const nodes = [node('n1', imageView())];
+    const nodes = [node('n1', imageView())]; // default t2i
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: mixed });
-    expect(vm.models.map((m) => m.name)).toEqual(['flux', 'mj-i2i', 'nano-edit']);
-    // the model default is picked from the generatable set, never a tool
-    expect(['flux', 'mj-i2i', 'nano-edit']).toContain(vm.model);
+    expect(vm.models.map((m) => m.name)).toEqual(['flux']); // tools dropped
+    expect(vm.model).toBe('flux'); // default never a tool
   });
 
   it('falls back off a stored tool model to a generatable default', () => {

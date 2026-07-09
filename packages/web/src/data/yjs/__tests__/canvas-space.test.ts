@@ -30,6 +30,7 @@ import {
   failNodeHandling,
   isNodeHandling,
   setNodeLocked,
+  setNodeMode,
   setNodeModel,
   setNodeName,
   setNodeParams,
@@ -316,23 +317,62 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(data.get('params')).toEqual({ aspect_ratio: '16:9', resolution: '2K' });
   });
 
-  it('setNodeModel writes model + params in one transaction (model-switch reset)', () => {
+  it('setNodeModel writes model + params + records the mode memory in one transaction', () => {
     addNode(
       PID,
       SID,
-      sampleFields('image', { model: 'old', params: { aspect_ratio: '1:1' } }),
+      sampleFields('image', { mode: 't2i', model: 'old', params: { aspect_ratio: '1:1' } }),
     );
-    setNodeModel(PID, SID, 'n1', 'nano_banana_pro', { aspect_ratio: '16:9' });
+    setNodeModel(PID, SID, 'n1', 't2i', 'nano_banana_pro', { aspect_ratio: '16:9' });
     const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
     expect(data.get('model')).toBe('nano_banana_pro');
     expect(data.get('params')).toEqual({ aspect_ratio: '16:9' });
+    // The pick is remembered under its mode so a later toggle back restores it.
+    expect(data.get('modelByMode')).toEqual({ t2i: 'nano_banana_pro' });
   });
 
-  it('setNodeParams / setNodeModel are no-ops when the node is missing', () => {
+  it('setNodeModel merges the pick into an existing modelByMode, keeping other modes', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { mode: 't2i', modelByMode: { i2i: 'mj-i2i' } }),
+    );
+    setNodeModel(PID, SID, 'n1', 't2i', 'flux', {});
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('modelByMode')).toEqual({ i2i: 'mj-i2i', t2i: 'flux' });
+  });
+
+  it('setNodeMode writes mode + model + params atomically (toggle), NOT touching modelByMode', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', {
+        mode: 't2i',
+        model: 'flux',
+        params: { aspect_ratio: '16:9' },
+        modelByMode: { t2i: 'flux' },
+      }),
+    );
+    // Toggle to i2i, selecting the resolved model + reconciled params for it.
+    setNodeMode(PID, SID, 'n1', 'i2i', 'mj-i2i', { aspect_ratio: '1:1' });
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('mode')).toBe('i2i');
+    expect(data.get('model')).toBe('mj-i2i');
+    expect(data.get('params')).toEqual({ aspect_ratio: '1:1' });
+    // A toggle is not an explicit pick — the per-mode memory is left as-is.
+    expect(data.get('modelByMode')).toEqual({ t2i: 'flux' });
+  });
+
+  it('setNodeParams / setNodeModel / setNodeMode are no-ops when the node is missing', () => {
     expect(() => setNodeParams(PID, SID, 'ghost', {})).not.toThrow();
-    expect(() => setNodeModel(PID, SID, 'ghost', 'm', {})).not.toThrow();
+    expect(() => setNodeModel(PID, SID, 'ghost', 't2i', 'm', {})).not.toThrow();
+    expect(() => setNodeMode(PID, SID, 'ghost', 't2i', 'm', {})).not.toThrow();
   });
 
   it('getOrCreatePromptFragment creates + persists a Y.XmlFragment on the node prompt', () => {

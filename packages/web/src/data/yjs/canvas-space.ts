@@ -543,12 +543,17 @@ export function setNodeParams(
 }
 
 /**
- * Switch a content node's Generate model, writing the new model id AND the
- * reconciled params in ONE transaction so collaborators never observe the new
- * model paired with the old (now-invalid) params. Frontend-owned.
+ * Switch a content node's Generate model, writing the new model id, the
+ * reconciled params, AND recording it as the active mode's remembered model —
+ * all in ONE transaction so collaborators never observe a torn state.
+ * `modelByMode` is a whole-object last-write-wins field (like `params`): the
+ * user picking a model in mode `mode` stores `modelByMode[mode] = model`, so a
+ * later toggle back to that mode restores it (see {@link setNodeMode}).
+ * Frontend-owned.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the node whose model to switch.
+ * @param mode - The active generation sub-mode this pick belongs to (e.g. 't2i').
  * @param model - The new model id.
  * @param params - The params reconciled for the new model (see resolveParamsForModel).
  */
@@ -556,6 +561,7 @@ export function setNodeModel(
   projectId: string,
   spaceId: string,
   nodeId: string,
+  mode: string,
   model: string,
   params: Record<string, unknown>,
 ): void {
@@ -566,6 +572,49 @@ export function setNodeModel(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => {
+    data.set('model', model);
+    data.set('params', params);
+    const prev = data.get('modelByMode');
+    const base =
+      prev != null && typeof prev === 'object'
+        ? (prev as Record<string, string>)
+        : {};
+    data.set('modelByMode', { ...base, [mode]: model });
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Switch a content node's generation sub-mode (the manual t2i / i2i toggle),
+ * writing the new `mode` together with the model + params resolved for that
+ * mode — all in ONE transaction so collaborators never see the new mode paired
+ * with the old mode's model. The caller resolves `model` (the mode's remembered
+ * pick via `modelByMode`, else the first available — see resolveModelForMode)
+ * and reconciles `params` before calling. Does NOT touch `modelByMode`: a
+ * toggle is not an explicit pick, so only {@link setNodeModel} records the
+ * per-mode memory. Frontend-owned.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node whose mode to switch.
+ * @param mode - The new generation sub-mode (e.g. 't2i' / 'i2i').
+ * @param model - The model to select for the new mode.
+ * @param params - The params reconciled for that model.
+ */
+export function setNodeMode(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  mode: string,
+  model: string,
+  params: Record<string, unknown>,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => {
+    data.set('mode', mode);
     data.set('model', model);
     data.set('params', params);
   }, CANVAS_UNDO);

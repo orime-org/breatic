@@ -181,12 +181,16 @@ function GeneratePanelBody({
         toast.error(t('canvas.generatePanel.modelUnavailable'));
         return;
       }
+      // Record the pick under the ACTIVE mode (freshVm re-reads live Yjs) so a
+      // later toggle back to this mode restores it (modelByMode memory).
+      const fresh = freshVm();
       setNodeModel(
         projectId,
         spaceId,
         nodeId,
+        fresh.mode,
         modelId,
-        resolveParamsForModel(picked, freshVm().params),
+        resolveParamsForModel(picked, fresh.params),
       );
     },
     [models, projectId, spaceId, nodeId, freshVm, t],
