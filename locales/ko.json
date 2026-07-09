@@ -305,6 +305,8 @@
       "mark": "마크",
       "focus": "포커스",
       "reference": "참조",
+      "modeT2i": "텍스트→이미지",
+      "modeI2i": "이미지→이미지",
       "exit": "종료",
       "promptPlaceholder": "생성할 이미지를 설명하세요. @ 로 소재 참조",
       "selectFromCanvas": "캔버스에서 참조 선택",

@@ -114,6 +114,34 @@ function pickModelForMode(
 }
 
 /**
+ * Resolves the model + reconciled params to persist when TOGGLING a node to a
+ * new generation mode. Mirrors {@link buildGeneratePanelViewModel}'s
+ * model/params derivation but for an ARBITRARY target mode (not the node's
+ * stored one), so the container can compute what `setNodeMode` should write.
+ * The node's current model is intentionally NOT preferred — a toggle resolves
+ * fresh for the target mode (its remembered pick → recommended → first).
+ * @param content - The node's current content view, read for `modelByMode` + `params` (may be undefined).
+ * @param mode - The target generation sub-mode.
+ * @param models - The full catalog image models (unfiltered).
+ * @returns The model id + reconciled params to persist for the target mode.
+ */
+export function resolveModeSwitch(
+  content: Pick<ContentNodeView, 'modelByMode' | 'params'> | undefined,
+  mode: ImageGenMode,
+  models: ModelEntry[],
+): { model: string; params: Record<string, unknown> } {
+  const generatable = models.filter((m) => isImageGenerationMode(m.mode));
+  const modeModels = filterModelsByMode(generatable, mode);
+  const model =
+    resolveModelForMode(mode, content?.modelByMode ?? {}, modeModels) ?? '';
+  const picked = modeModels.find((m) => m.name === model);
+  const params = picked
+    ? resolveParamsForModel(picked, content?.params ?? {})
+    : {};
+  return { model, params };
+}
+
+/**
  * Derives the Generate panel's render inputs from a node's live data.
  * @param input - The target node id, current nodes / edges, and catalog models.
  * @param input.nodeId - The node whose panel is open.

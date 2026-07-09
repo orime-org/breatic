@@ -4,7 +4,10 @@
 import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
-import { buildGeneratePanelViewModel } from '@web/spaces/canvas/generate/panel-view-model';
+import {
+  buildGeneratePanelViewModel,
+  resolveModeSwitch,
+} from '@web/spaces/canvas/generate/panel-view-model';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -239,5 +242,45 @@ describe('buildGeneratePanelViewModel', () => {
     const nodes = [node('n1', imageView({ model: 'flux', status: 'handling' }))];
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.nodeStatus).toBe('handling');
+  });
+});
+
+describe('resolveModeSwitch — model + params to persist on a mode toggle', () => {
+  const catalog = [
+    makeModel('flux-t2i', { mode: 't2i' }),
+    makeModel('mj-i2i', { mode: 'i2i' }),
+    makeModel('nano-i2i', { mode: ['i2i'], tier: 'recommended' }),
+  ];
+
+  it('resolves the target mode\'s recommended model when there is no memory', () => {
+    const r = resolveModeSwitch({ modelByMode: {}, params: {} }, 'i2i', catalog);
+    expect(r.model).toBe('nano-i2i'); // the recommended i2i model
+  });
+
+  it('restores the target mode\'s remembered model over the recommended', () => {
+    const r = resolveModeSwitch(
+      { modelByMode: { i2i: 'mj-i2i' }, params: {} },
+      'i2i',
+      catalog,
+    );
+    expect(r.model).toBe('mj-i2i'); // remembered i2i pick beats the recommended
+  });
+
+  it('reconciles params against the resolved model (keeps valid, drops unknown)', () => {
+    const r = resolveModeSwitch(
+      { modelByMode: {}, params: { aspect_ratio: '16:9', bogus: 'x' } },
+      't2i',
+      catalog,
+    );
+    expect(r.model).toBe('flux-t2i');
+    expect(r.params.aspect_ratio).toBe('16:9'); // kept — valid for the model
+    expect(r.params.bogus).toBeUndefined(); // dropped — model has no such param
+  });
+
+  it('yields an empty model when the target mode offers nothing', () => {
+    const t2iOnly = [makeModel('flux-t2i', { mode: 't2i' })];
+    const r = resolveModeSwitch({ modelByMode: {}, params: {} }, 'i2i', t2iOnly);
+    expect(r.model).toBe('');
+    expect(r.params).toEqual({});
   });
 });

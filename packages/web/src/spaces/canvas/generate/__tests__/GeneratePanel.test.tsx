@@ -36,6 +36,7 @@ function setup(
     <GeneratePanel
       models={[MODEL]}
       model='nano_banana_pro'
+      mode='t2i'
       params={{ aspect_ratio: '16:9', resolution: '2K' }}
       references={[]}
       creditEstimate={7}
@@ -43,6 +44,7 @@ function setup(
       promptSlot={<div data-testid='prompt-slot'>prompt</div>}
       onExit={() => {}}
       onSelectModel={() => {}}
+      onToggleMode={() => {}}
       onChangeParams={() => {}}
       onAddReference={() => {}}
       onRemoveReference={() => {}}
@@ -93,5 +95,16 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
   it('does not render a count control (count is fixed to 1)', () => {
     setup();
     expect(screen.queryByTestId('generate-count')).toBeNull();
+  });
+
+  it('renders the mode toggle and fires onToggleMode when switching to i2i', () => {
+    const onToggleMode = vi.fn();
+    setup({ mode: 't2i', onToggleMode });
+    expect(screen.getByTestId('generate-mode-t2i')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByTestId('generate-mode-i2i'));
+    expect(onToggleMode).toHaveBeenCalledWith('i2i');
   });
 });

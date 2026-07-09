@@ -18,6 +18,7 @@ import {
   readCanvasGraph,
   readNodeLeaseGen,
   removeEdge,
+  setNodeMode,
   setNodeModel,
   setNodeParams,
   type CanvasEdge,
@@ -26,9 +27,11 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
+import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import {
   buildGeneratePanelViewModel,
+  resolveModeSwitch,
   type GeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
@@ -196,6 +199,22 @@ function GeneratePanelBody({
     [models, projectId, spaceId, nodeId, freshVm, t],
   );
 
+  const onToggleMode = React.useCallback(
+    (newMode: ImageGenMode) => {
+      // Read the node fresh (a collaborator may have changed its modelByMode /
+      // params), resolve the model + params for the TARGET mode, and write the
+      // switch in one Yjs transaction. resolveModeSwitch resolves fresh for the
+      // target mode (its remembered pick → recommended → first) — the current
+      // model belongs to the old mode and is deliberately not carried over.
+      const graph = readCanvasGraph(projectId, spaceId);
+      const nodeData = graph.nodes.find((n) => n.id === nodeId)?.data;
+      const content = nodeData && 'status' in nodeData ? nodeData : undefined;
+      const { model, params } = resolveModeSwitch(content, newMode, models);
+      setNodeMode(projectId, spaceId, nodeId, newMode, model, params);
+    },
+    [models, projectId, spaceId, nodeId],
+  );
+
   const onChangeParams = React.useCallback(
     (partial: { aspect_ratio?: string; resolution?: string }) => {
       setNodeParams(projectId, spaceId, nodeId, {
@@ -296,6 +315,7 @@ function GeneratePanelBody({
     <GeneratePanel
       models={vm.models}
       model={vm.model}
+      mode={vm.mode}
       params={{
         aspect_ratio: asStr(vm.params.aspect_ratio),
         resolution: asStr(vm.params.resolution),
@@ -314,6 +334,7 @@ function GeneratePanelBody({
       }
       onExit={closeGeneratePanel}
       onSelectModel={onSelectModel}
+      onToggleMode={onToggleMode}
       onChangeParams={onChangeParams}
       onAddReference={onAddReference}
       onRemoveReference={onRemoveReference}
