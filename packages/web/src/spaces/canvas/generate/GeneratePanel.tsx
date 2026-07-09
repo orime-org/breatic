@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ArrowUp, Camera, Globe, Languages, Sparkles, X, Zap } from 'lucide-react';
+import { ArrowUp, Camera, Globe, Languages, Sparkles, Star, X } from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
@@ -138,7 +138,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
             data-testid='generate-credit'
             className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
           >
-            <Zap className='h-3.5 w-3.5' aria-hidden='true' />
+            <Star className='h-3.5 w-3.5' aria-hidden='true' />
             {creditEstimate}
           </span>
           <button
