@@ -8,7 +8,7 @@ import type { ModelEntry } from '@breatic/shared';
  * image-to-image. A model belongs to a mode when its `mode` field includes
  * that value (a multi-mode `["i2i", "edit"]` model belongs to `i2i`).
  */
-export type GenerationMode = 't2i' | 'i2i';
+export type ImageGenMode = 't2i' | 'i2i';
 
 /**
  * Keeps only the models offerable under a generation mode — those whose `mode`
@@ -20,7 +20,7 @@ export type GenerationMode = 't2i' | 'i2i';
  */
 export function filterModelsByMode(
   models: ModelEntry[],
-  mode: GenerationMode,
+  mode: ImageGenMode,
 ): ModelEntry[] {
   return models.filter((m) =>
     (Array.isArray(m.mode) ? m.mode : [m.mode]).includes(mode),
@@ -37,8 +37,8 @@ export function filterModelsByMode(
  * @returns The model name to select, or undefined when the mode has no models.
  */
 export function resolveModelForMode(
-  mode: GenerationMode,
-  modelByMode: Partial<Record<GenerationMode, string>>,
+  mode: ImageGenMode,
+  modelByMode: Partial<Record<ImageGenMode, string>>,
   filteredModels: ModelEntry[],
 ): string | undefined {
   const remembered = modelByMode[mode];

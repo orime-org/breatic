@@ -8,8 +8,8 @@ import type { ModelEntry } from '@breatic/shared';
 import {
   filterModelsByMode,
   resolveModelForMode,
-  type GenerationMode,
-} from '@web/spaces/canvas/generate/mode-selection';
+  type ImageGenMode,
+} from '@web/spaces/canvas/generate/image-mode-selection';
 
 /**
  * Minimal ModelEntry fixture — only the fields the mode logic reads.
@@ -65,13 +65,24 @@ describe('filterModelsByMode', () => {
   it('returns [] when no model matches the mode', () => {
     expect(filterModelsByMode([T2I, T2I_B], 'i2i')).toEqual([]);
   });
+
+  it('excludes a pure-edit model from i2i — edit is not a generation mode', () => {
+    // The generate panel routes on i2i; a model with only the `edit`
+    // capability belongs to the future image-editing mini-tool, not here.
+    // (In practice such a model is already excluded upstream by slice-1's
+    // isImageGenerationMode; this locks the invariant at the mode filter too.)
+    const pureEdit = model('edit-only', ['edit']);
+    expect(filterModelsByMode([I2I, pureEdit], 'i2i').map((m) => m.name)).toEqual([
+      'i2i-a',
+    ]);
+  });
 });
 
 describe('resolveModelForMode', () => {
   const t2iModels = [T2I, T2I_B];
 
   it('restores the remembered model for the mode when still available', () => {
-    const remembered: Partial<Record<GenerationMode, string>> = { t2i: 't2i-b' };
+    const remembered: Partial<Record<ImageGenMode, string>> = { t2i: 't2i-b' };
     expect(resolveModelForMode('t2i', remembered, t2iModels)).toBe('t2i-b');
   });
 
@@ -80,7 +91,7 @@ describe('resolveModelForMode', () => {
   });
 
   it('falls back to the first model when the remembered one is gone from the catalog', () => {
-    const remembered: Partial<Record<GenerationMode, string>> = { t2i: 'removed' };
+    const remembered: Partial<Record<ImageGenMode, string>> = { t2i: 'removed' };
     expect(resolveModelForMode('t2i', remembered, t2iModels)).toBe('t2i-a');
   });
 
