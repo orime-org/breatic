@@ -19,6 +19,8 @@ describe('useCanvasStore', () => {
       pendingHistoryCommand: null,
       canUndo: false,
       canRedo: false,
+      generatePanelNodeId: null,
+      referencePickForNodeId: null,
     });
   });
 
@@ -64,6 +66,50 @@ describe('useCanvasStore', () => {
   it('setSnapToGrid sets the flag explicitly', () => {
     useCanvasStore.getState().setSnapToGrid(true);
     expect(useCanvasStore.getState().snapToGrid).toBe(true);
+  });
+
+  // The Generate panel's open state is per-user local UI (never Yjs): one
+  // collaborator opening a node's panel must NOT open it for everyone. Only
+  // one panel is open at a time, keyed by node id.
+  it('generate panel starts closed (no node)', () => {
+    expect(useCanvasStore.getInitialState().generatePanelNodeId).toBeNull();
+  });
+
+  it('openGeneratePanel opens the panel for a node; closeGeneratePanel clears it', () => {
+    useCanvasStore.getState().openGeneratePanel('n-9');
+    expect(useCanvasStore.getState().generatePanelNodeId).toBe('n-9');
+    useCanvasStore.getState().closeGeneratePanel();
+    expect(useCanvasStore.getState().generatePanelNodeId).toBeNull();
+  });
+
+  it('opening a second node’s panel replaces the first (one panel open at a time)', () => {
+    useCanvasStore.getState().openGeneratePanel('a');
+    useCanvasStore.getState().openGeneratePanel('b');
+    expect(useCanvasStore.getState().generatePanelNodeId).toBe('b');
+  });
+
+  it('startReferencePick enters pick mode; endReferencePick exits', () => {
+    useCanvasStore.getState().startReferencePick('gen-1');
+    expect(useCanvasStore.getState().referencePickForNodeId).toBe('gen-1');
+    useCanvasStore.getState().endReferencePick();
+    expect(useCanvasStore.getState().referencePickForNodeId).toBeNull();
+  });
+
+  it('opening the panel for another node exits any in-progress reference pick', () => {
+    useCanvasStore.getState().openGeneratePanel('a');
+    useCanvasStore.getState().startReferencePick('a');
+    // Switch the panel to a different node — the stale pick must not survive.
+    useCanvasStore.getState().openGeneratePanel('b');
+    expect(useCanvasStore.getState().generatePanelNodeId).toBe('b');
+    expect(useCanvasStore.getState().referencePickForNodeId).toBeNull();
+  });
+
+  it('closeGeneratePanel also exits any in-progress reference pick', () => {
+    useCanvasStore.getState().openGeneratePanel('gen-1');
+    useCanvasStore.getState().startReferencePick('gen-1');
+    useCanvasStore.getState().closeGeneratePanel();
+    expect(useCanvasStore.getState().generatePanelNodeId).toBeNull();
+    expect(useCanvasStore.getState().referencePickForNodeId).toBeNull();
   });
 
   it('requestRename posts a node id; consumePendingRename clears it', () => {

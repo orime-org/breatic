@@ -13,11 +13,11 @@ import ja from '../../../../../locales/ja.json';
 import ko from '../../../../../locales/ko.json';
 
 /**
- * Project-chrome i18n (#1339): every icon-button / menu aria-label and
- * the export-menu item labels must resolve through i18n instead of being
- * hardcoded English, so a non-English screen-reader user is announced the
- * UI in their own language. Frozen product nouns (Studio / Space) stay
- * English inside the translated phrase ("返回 Studio").
+ * Project-chrome i18n (#1339): every icon-button / menu aria-label must
+ * resolve through i18n instead of being hardcoded English, so a
+ * non-English screen-reader user is announced the UI in their own
+ * language. Frozen product nouns (Studio / Space) stay English inside the
+ * translated phrase ("返回 Studio").
  */
 const CATALOGS = { en, 'zh-CN': zhCN, 'zh-TW': zhTW, ja, ko } as const;
 
@@ -34,9 +34,6 @@ const NEW_KEYS_EN: ReadonlyArray<readonly [string, string]> = [
   ['chrome.aria.openSpaces', 'Open spaces'],
   ['chrome.aria.language', 'Language: {name}'],
   ['chrome.aria.theme', 'Theme: {theme}'],
-  ['chrome.export.png', 'PNG (current view)'],
-  ['chrome.export.pdf', 'PDF (whole canvas)'],
-  ['chrome.export.json', 'JSON (raw data)'],
   ['spaces.lockedAria', 'Locked'],
   ['spaces.tab.closeAria', 'Close space tab'],
   ['members.stack.triggerAria', 'Project members ({count})'],
@@ -47,7 +44,6 @@ const NEW_KEYS_EN: ReadonlyArray<readonly [string, string]> = [
 const TRANSLATED_ZH_CN: ReadonlyArray<readonly [string, string]> = [
   ['chrome.aria.addCredits', '添加积分'],
   ['chrome.aria.home', '首页'],
-  ['chrome.export.png', 'PNG（当前视图）'],
   ['spaces.lockedAria', '已锁定'],
 ];
 
@@ -72,7 +68,6 @@ function readPath(catalog: unknown, path: string): unknown {
 /** Chrome source files whose aria-labels were de-hardcoded by #1339. */
 const SCANNED_FILES: readonly string[] = [
   'src/pages/project/chrome/top-bar/TopBar.tsx',
-  'src/pages/project/chrome/top-bar/ExportMenu.tsx',
   'src/pages/project/chrome/top-bar/ShareDialog.tsx',
   'src/pages/project/chrome/top-bar/Logo28.tsx',
   'src/pages/project/chrome/top-bar/MembersStack.tsx',

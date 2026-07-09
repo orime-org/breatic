@@ -107,6 +107,7 @@ import {
 import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
 import { CanvasMiniMap } from '@web/spaces/canvas/CanvasMiniMap';
+import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
 import { GroupSelectionToolbar } from '@web/spaces/canvas/GroupSelectionToolbar';
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
@@ -427,6 +428,11 @@ function CanvasSpaceInner({
   // toolbar, consumed here to mount/unmount the map.
   const minimapVisible = useCanvasStore((s) => s.minimapVisible);
   const snapToGrid = useCanvasStore((s) => s.snapToGrid);
+  const openGeneratePanel = useCanvasStore((s) => s.openGeneratePanel);
+  const referencePickForNodeId = useCanvasStore(
+    (s) => s.referencePickForNodeId,
+  );
+  const endReferencePick = useCanvasStore((s) => s.endReferencePick);
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
@@ -715,14 +721,56 @@ function CanvasSpaceInner({
   const onConnect = React.useCallback(
     (connection: Connection): void => {
       if (!connection.source || !connection.target) return;
-      addEdge(projectId, spaceId, {
+      // Edge validity (self-loop + both endpoints must exist) is enforced at
+      // the addEdge write boundary — the only race-free place under collab.
+      const added = addEdge(projectId, spaceId, {
         id: `${connection.source}->${connection.target}`,
         source: connection.source,
         target: connection.target,
-        kind: 'primary',
       });
+      // Surface a deleted-endpoint race like the reference-pick flow does, so a
+      // drag that silently failed doesn't read as a made connection (a self-loop
+      // stays silent — ReactFlow shouldn't offer one).
+      if (!added && connection.source !== connection.target) {
+        toast.error(t('canvas.generatePanel.referenceAddFailed'));
+      }
     },
-    [projectId, spaceId],
+    [projectId, spaceId, t],
+  );
+
+  // Reference-pick mode (Generate panel "add reference from canvas"): while a
+  // generative node awaits a reference pick, the next click on ANOTHER node
+  // wires an incoming edge (clicked → target) — a connection IS a reference —
+  // then exits. Clicking the target itself just cancels. The edge id is
+  // deterministic (`source->target`), so re-picking an existing reference
+  // overwrites in place (no duplicate).
+  const onReferencePickNodeClick = React.useCallback(
+    (_event: React.MouseEvent, node: Node): void => {
+      // Read the pick target FRESH from the store, not the render closure: if
+      // the panel switched to another node between render and this click, the
+      // closure's referencePickForNodeId would wire the reference to the
+      // PREVIOUS node.
+      const target = useCanvasStore.getState().referencePickForNodeId;
+      if (!target) return;
+      // Wire clicked-source → target as a reference, then always exit pick mode.
+      // Self-loop + both-endpoints-still-exist are enforced race-free at the
+      // addEdge write boundary (a collaborator may have deleted either node
+      // between this render and the click, leaving our closure stale).
+      const added = addEdge(projectId, spaceId, {
+        id: `${node.id}->${target}`,
+        source: node.id,
+        target,
+      });
+      // Clicking a DIFFERENT node that still couldn't be wired means it (or the
+      // target) was deleted mid-pick — surface it instead of closing the banner
+      // as if the reference landed. (Clicking the panel node itself is a
+      // deliberate cancel and stays silent.)
+      if (!added && node.id !== target) {
+        toast.error(t('canvas.generatePanel.referenceAddFailed'));
+      }
+      endReferencePick();
+    },
+    [projectId, spaceId, endReferencePick, t],
   );
 
   // ---- Node creation (library mailbox + right-click) ----
@@ -1867,6 +1915,7 @@ function CanvasSpaceInner({
           onConnect={onConnect}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
+          onNodeClick={onReferencePickNodeClick}
           onSelectionContextMenu={onSelectionContextMenu}
           onEdgeContextMenu={onEdgeContextMenu}
           deleteKeyCode={DELETE_KEYS}
@@ -1922,7 +1971,30 @@ function CanvasSpaceInner({
               onPickBg={pickGroupBackground}
             />
           </NodeToolbar>
+          {/* Generate panel: floats below its node via NodeToolbar (no viewport
+              change on open); shows nothing until a node's panel is opened. */}
+          <GeneratePanelContainer
+            nodes={nodes}
+            edges={edges}
+            projectId={projectId}
+            spaceId={spaceId}
+          />
         </ReactFlow>
+        {referencePickForNodeId ? (
+          <div
+            data-testid='reference-pick-banner'
+            className='absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
+          >
+            <span>{t('canvas.generatePanel.selectFromCanvas')}</span>
+            <button
+              type='button'
+              onClick={endReferencePick}
+              className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
+            >
+              {t('canvas.generatePanel.exitSelect')}
+            </button>
+          </div>
+        ) : null}
         {flowNodes.length === 0 ? (
           <div
             data-testid='canvas-empty'
@@ -1959,6 +2031,23 @@ function CanvasSpaceInner({
           // for editors (onNodeContextMenu returns early when read-only), and
           // activateNodeUpload no-ops for read-only / pickerless modalities.
           onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
+          // Generate is offered only on an editable image node (the AIGC
+          // "generate into self" flow) — never on groups, locked nodes, or
+          // for read-only viewers; absent = a disabled placeholder. Lock is
+          // read from the LIVE node (not the menu's captured value) so a node
+          // locked after the menu opened no longer offers Generate.
+          onGenerate={(() => {
+            const genNode = nodes.find((n) => n.id === nodeMenu.nodeId);
+            const genLocked = Boolean(
+              (genNode?.data as { locked?: unknown } | undefined)?.locked,
+            );
+            return !nodeMenu.isGroup &&
+              !genLocked &&
+              !readOnly &&
+              genNode?.type === 'image'
+              ? () => openGeneratePanel(nodeMenu.nodeId)
+              : undefined;
+          })()}
           // Rename is frozen on a locked node / group (the name is on-canvas
           // content); hide it rather than offer a silent no-op.
           onRename={onNodeMenuRename}

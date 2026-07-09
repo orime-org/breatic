@@ -125,7 +125,7 @@ describe('NodeContextMenu', () => {
     expect(screen.getByTestId('node-menu-tools')).toBeInTheDocument();
   });
 
-  it('generate / tools are disabled placeholders; upload is active', () => {
+  it('generate is a disabled placeholder without onGenerate; tools always disabled; upload active', () => {
     setup({ target: 'node', onUpload: () => {} });
     expect(screen.getByTestId('node-menu-generate')).toHaveAttribute(
       'data-disabled',
@@ -136,6 +136,15 @@ describe('NodeContextMenu', () => {
     expect(screen.getByTestId('node-menu-upload')).not.toHaveAttribute(
       'data-disabled',
     );
+  });
+
+  it('generate is enabled and fires onGenerate when a handler is supplied', () => {
+    const onGenerate = vi.fn();
+    setup({ target: 'node', onUpload: () => {}, onGenerate });
+    const item = screen.getByTestId('node-menu-generate');
+    expect(item).not.toHaveAttribute('data-disabled');
+    fireEvent.click(item);
+    expect(onGenerate).toHaveBeenCalledTimes(1);
   });
 
   it('fires onUpload when the upload item is chosen', () => {

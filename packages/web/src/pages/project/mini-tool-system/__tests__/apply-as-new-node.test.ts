@@ -26,7 +26,7 @@ describe('applyAsNewNode (unified Apply contract)', () => {
     expect(out.newNode.data.status).toBe('handling');
   });
 
-  it('emits a primary edge linking source → new node with the toolId', () => {
+  it('emits a lineage edge linking source → new node with the toolId', () => {
     const out = applyAsNewNode({
       sourceNode: { id: 'src', position: { x: 0, y: 0 } },
       toolId: 'transcribe',
@@ -36,7 +36,6 @@ describe('applyAsNewNode (unified Apply contract)', () => {
       id: 'src->n',
       source: 'src',
       target: 'n',
-      kind: 'primary',
       toolId: 'transcribe',
     });
   });

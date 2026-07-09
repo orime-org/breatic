@@ -186,75 +186,17 @@ export interface AttachRef {
   uploadedAt: string;
 }
 
-// ── Content-node Generate helpers (references + prompt) ───────────
-
-/** Source node modality for a content node's Generate references / chip snapshots. */
-export type GenerativeRefSourceType = 'image' | 'video' | 'audio' | 'text';
-
-/**
- * One row in a generative node's reference rail (spec §10.13.2 v13).
- *
- * The rail is the **single source of truth** for the node's incoming
- * edges: adding/removing a row also adds/removes the matching edge,
- * and connecting/disconnecting an edge syncs the rail. Display fields
- * (`sourceNodeName`, `thumbnail`) are *live* — they reflect the upstream
- * node as it currently is; if the user wants a frozen copy, they @-insert
- * the reference into the prompt, which captures a `ChipSnapshot`.
- */
-export interface ReferenceItem {
-  /** Stable id for this row; not the source node id. */
-  refId: string;
-  /** Upstream node currently connected to this slot. */
-  sourceNodeId: string;
-  sourceNodeType: GenerativeRefSourceType;
-  /** Live name of the upstream node; updates as the upstream is renamed. */
-  sourceNodeName: string;
-  /** Live thumbnail / preview URL when available. */
-  thumbnail?: string;
-  /** When the row was added (epoch ms). */
-  addedAt: number;
-}
-
-/**
- * Frozen snapshot of a reference at the moment the user @-inserts it
- * into the prompt (spec §10.13.2 v13). After capture the snapshot is
- * independent — renaming the upstream, deleting the reference rail
- * row, or even deleting the upstream node leaves the chip intact. The
- * `sourceNodeId` field is kept only for "jump to source" UX and the
- * delete-confirmation flow when a user removes the upstream.
- */
-export interface ChipSnapshot {
-  /** Unique id for this chip; each @-insertion produces a new id even when the source is the same. */
-  chipId: string;
-  /** Upstream node at capture time (may now be deleted/renamed; chip remains valid). */
-  sourceNodeId: string;
-  sourceNodeType: GenerativeRefSourceType;
-  /** Frozen display name from the moment of capture. */
-  snapshotName: string;
-  snapshotThumbnail?: string;
-  /** Frozen content excerpt at capture time (text body, URL, etc.). */
-  snapshotContent?: string;
-  /** When the snapshot was taken (epoch ms). */
-  capturedAt: number;
-}
-
-/** One inline run in a {@link PromptDoc} — either plain text or an atomic chip. */
-export type PromptInline =
-  | { type: 'text'; text: string }
-  | { type: 'chip'; attrs: ChipSnapshot };
-
-/**
- * Serialized prompt body. At runtime stored as a Y.XmlFragment in the
- * generative node's data Y.Map under key `prompt` (so collaborators see
- * keystrokes via y-prosemirror). The plain shape mirrors the Tiptap /
- * ProseMirror document so the editor can render it directly. The F2
- * mockup uses a textarea and projects chips to plain `@name` text;
- * the full Tiptap implementation will preserve the inline-atom shape.
- */
-export interface PromptDoc {
-  type: 'doc';
-  content: PromptInline[];
-}
+// ── Content-node Generate: references + prompt ───────────
+//
+// The generative node's reference rail is NOT a stored field. A connection is
+// a reference (a canvas edge `source → target` means `source` is a reference
+// input for `target`), so the rail is derived live from the node's incoming
+// edges — single source of truth = the edges map, zero drift (see the web
+// `deriveReferences` helper). The prompt is stored as an opaque `Y.XmlFragment`
+// (`data.prompt`, typed `unknown` on the wire); its structured shape
+// (PromptDoc / ChipSnapshot) is a FRONTEND rendering concern and lives in web
+// (`spaces/canvas/generate/prompt-types`) — the backend only ever reads the
+// prompt as plain text via `extractPromptText`, never the chip structure.
 
 /**
  * Documents the keys on each node's Y.Map in the canvas document.
@@ -366,10 +308,11 @@ export interface CanvasNodeFields {
 
     // ─── Generate inputs (content nodes) ────────────────────
     // Generate is a toolbar action on a content node (model revision
-    // 2026-06-15). kind / prompt / references / model / params are the
-    // Generate panel's inputs, stored on the content node and shared via Yjs
-    // so collaborators see edits live. There is no `outputType` — the content
-    // node's own modality is its output.
+    // 2026-06-15). kind / prompt / model / params are the Generate panel's
+    // inputs, stored on the content node and shared via Yjs so collaborators
+    // see edits live. There is no `outputType` — the content node's own
+    // modality is its output. The reference rail is NOT stored here — it is
+    // derived live from the node's incoming edges (a connection = a reference).
     /**
      * Generate sub-mode — the variant picked in the Generate panel, one set
      * per content modality (e.g. audio: TTS / Song / SFX / Melody / Clone;
@@ -380,13 +323,6 @@ export interface CanvasNodeFields {
     kind?: string;
     /** Rich text prompt — Y.XmlFragment at runtime (TipTap + y-prosemirror). */
     prompt?: unknown;
-    /**
-     * Reference rail rows — Y.Array of Y.Map at runtime, plain
-     * {@link ReferenceItem}[] when read through `yMapToNode`. Mirrors the
-     * node's incoming edges; see {@link ReferenceItem} for the bidirectional
-     * sync rules.
-     */
-    references?: ReferenceItem[];
     /** Model id from config/models/*.yaml. */
     model?: string;
     /** Model-specific params for the Generate request. */

@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import type { TaskCreateInput } from '@breatic/shared';
+
 import { apiGet, apiPost } from '@web/data/api/request';
 
 export interface CanvasTask {
@@ -16,13 +18,15 @@ export interface CanvasTask {
 }
 
 export const canvasApi = {
-  createTask(body: {
-    projectId: string;
-    spaceId: string;
-    nodeId: string;
-    type: 'image' | 'audio' | 'video' | 'tts' | '3d';
-    params: Record<string, unknown>;
-  }) {
+  /**
+   * Enqueue a canvas generation task. The body is the shared
+   * {@link TaskCreateInput} wire contract (snake_case); build it with
+   * `buildGenerateTaskPayload` for image-node Generate.
+   * @param body - The `POST /canvas/tasks` request body.
+   * @returns The created task (unwrapped from the `{ data }` envelope).
+   * @throws {import('@web/data/api/types').ApiException} On 402 / 409 / 503 etc.
+   */
+  createTask(body: TaskCreateInput): Promise<CanvasTask> {
     return apiPost<CanvasTask>('/canvas/tasks', body);
   },
   understand(body: {

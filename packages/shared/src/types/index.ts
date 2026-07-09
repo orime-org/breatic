@@ -32,14 +32,24 @@ export type {
   OperationLock,
   AttachRef,
   CanvasNodeFields,
-  GenerativeRefSourceType,
-  ReferenceItem,
-  ChipSnapshot,
-  PromptInline,
-  PromptDoc,
   NodeStateUpdateEvent,
   NodeEvent,
 } from "@shared/types/canvas-node.js";
+
+export type {
+  ModelModality,
+  ModelTier,
+  ParamDescriptor,
+  ModelProvider,
+  ModelEntry,
+  ModelCatalog,
+} from "@shared/types/model-catalog.js";
+export {
+  modelCatalogSchema,
+  sanitizeModelCatalog,
+  IMAGE_GENERATION_MODES,
+  isImageGenerationMode,
+} from "@shared/types/model-catalog.js";
 
 export { ROLE_RANK } from "@shared/types/role.js";
 export type { ProjectRole, ProjectMember } from "@shared/types/role.js";

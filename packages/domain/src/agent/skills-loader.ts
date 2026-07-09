@@ -14,6 +14,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
+import { IMAGE_GENERATION_MODES } from "@breatic/shared";
 import type { SkillMeta } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@breatic/core";
 import { getRawEnvVar } from "@breatic/core";
@@ -568,7 +569,9 @@ function getModelsForModality(modality: string): ModelInfo[] {
 
 // ── Dynamic skill builders ──────────────────────────────────────────
 
-const IMAGE_PLAN_MODES: ReadonlySet<string> = new Set(["t2i", "i2i"]);
+// Shared single source of truth (also drives the web Generate picker) for which
+// image modes are generatable (t2i / i2i) versus mini-tool operations.
+const IMAGE_PLAN_MODES: ReadonlySet<string> = new Set(IMAGE_GENERATION_MODES);
 const VIDEO_PLAN_MODES: ReadonlySet<string> = new Set(["t2v", "i2v", "ref"]);
 
 /**

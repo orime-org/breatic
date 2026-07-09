@@ -19,13 +19,20 @@ import {
   resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
+  getOrCreatePromptFragment,
+  isNodeLocked,
+  nodeExists,
+  readCanvasGraph,
+  readNodeLeaseGen,
   setNodeContent,
   setNodeHandling,
   completeNodeHandling,
   failNodeHandling,
   isNodeHandling,
   setNodeLocked,
+  setNodeModel,
   setNodeName,
+  setNodeParams,
   setNodeParent,
   setNodePosition,
 } from '@web/data/yjs/canvas-space';
@@ -253,20 +260,128 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
   });
 
   it('addEdge / removeEdge round-trip under the edgesMap', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'a' }));
+    addNode(PID, SID, sampleFields('image', {}, { id: 'b' }));
     addEdge(PID, SID, {
       id: 'e1',
       source: 'a',
       target: 'b',
-      kind: 'primary',
       toolId: 'crop',
     });
     expect(doc().getMap('edgesMap').size).toBe(1);
     expect(readEdges(doc())).toEqual([
-      { id: 'e1', source: 'a', target: 'b', kind: 'primary', toolId: 'crop' },
+      { id: 'e1', source: 'a', target: 'b', toolId: 'crop' },
     ]);
 
     removeEdge(PID, SID, 'e1');
     expect(readEdges(doc())).toHaveLength(0);
+  });
+
+  it('addEdge returns true when the edge lands and false when rejected', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'a' }));
+    addNode(PID, SID, sampleFields('image', {}, { id: 'b' }));
+    expect(addEdge(PID, SID, { id: 'a->b', source: 'a', target: 'b' })).toBe(
+      true,
+    );
+    // self-loop rejected
+    expect(addEdge(PID, SID, { id: 'a->a', source: 'a', target: 'a' })).toBe(
+      false,
+    );
+    // orphan (missing endpoint) rejected — both directions
+    expect(
+      addEdge(PID, SID, { id: 'a->ghost', source: 'a', target: 'ghost' }),
+    ).toBe(false);
+    expect(
+      addEdge(PID, SID, { id: 'ghost->a', source: 'ghost', target: 'a' }),
+    ).toBe(false);
+    // only the valid edge landed
+    expect(readEdges(doc())).toHaveLength(1);
+  });
+
+  it('readCanvasGraph reads live nodes + edges fresh', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'a' }));
+    addNode(PID, SID, sampleFields('image', {}, { id: 'b' }));
+    addEdge(PID, SID, { id: 'a->b', source: 'a', target: 'b' });
+    const graph = readCanvasGraph(PID, SID);
+    expect(graph.nodes.map((n) => n.id).sort()).toEqual(['a', 'b']);
+    expect(graph.edges).toEqual([{ id: 'a->b', source: 'a', target: 'b' }]);
+  });
+
+  it('setNodeParams writes the generate model params into the node data', () => {
+    addNode(PID, SID, sampleFields('image'));
+    setNodeParams(PID, SID, 'n1', { aspect_ratio: '16:9', resolution: '2K' });
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('params')).toEqual({ aspect_ratio: '16:9', resolution: '2K' });
+  });
+
+  it('setNodeModel writes model + params in one transaction (model-switch reset)', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { model: 'old', params: { aspect_ratio: '1:1' } }),
+    );
+    setNodeModel(PID, SID, 'n1', 'nano_banana_pro', { aspect_ratio: '16:9' });
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('model')).toBe('nano_banana_pro');
+    expect(data.get('params')).toEqual({ aspect_ratio: '16:9' });
+  });
+
+  it('setNodeParams / setNodeModel are no-ops when the node is missing', () => {
+    expect(() => setNodeParams(PID, SID, 'ghost', {})).not.toThrow();
+    expect(() => setNodeModel(PID, SID, 'ghost', 'm', {})).not.toThrow();
+  });
+
+  it('getOrCreatePromptFragment creates + persists a Y.XmlFragment on the node prompt', () => {
+    addNode(PID, SID, sampleFields('image'));
+    const frag = getOrCreatePromptFragment(PID, SID, 'n1');
+    expect(frag).toBeInstanceOf(Y.XmlFragment);
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('prompt')).toBe(frag);
+  });
+
+  it('getOrCreatePromptFragment returns the same fragment on repeat calls (idempotent)', () => {
+    addNode(PID, SID, sampleFields('image'));
+    expect(getOrCreatePromptFragment(PID, SID, 'n1')).toBe(
+      getOrCreatePromptFragment(PID, SID, 'n1'),
+    );
+  });
+
+  it('getOrCreatePromptFragment returns null for a missing node', () => {
+    expect(getOrCreatePromptFragment(PID, SID, 'ghost')).toBeNull();
+  });
+
+  it('readNodeLeaseGen returns 0 for a node with no leaseGen and the stored value otherwise', () => {
+    addNode(PID, SID, sampleFields('image'));
+    expect(readNodeLeaseGen(PID, SID, 'n1')).toBe(0);
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    doc().transact(() => data.set('leaseGen', 4));
+    expect(readNodeLeaseGen(PID, SID, 'n1')).toBe(4);
+  });
+
+  it('readNodeLeaseGen returns 0 for a missing node', () => {
+    expect(readNodeLeaseGen(PID, SID, 'ghost')).toBe(0);
+  });
+
+  it('nodeExists reflects live presence (fresh Yjs read)', () => {
+    expect(nodeExists(PID, SID, 'n1')).toBe(false);
+    addNode(PID, SID, sampleFields('image'));
+    expect(nodeExists(PID, SID, 'n1')).toBe(true);
+  });
+
+  it('isNodeLocked reflects the live lock state (fresh Yjs read)', () => {
+    addNode(PID, SID, sampleFields('image', { locked: false }));
+    expect(isNodeLocked(PID, SID, 'n1')).toBe(false);
+    setNodeLocked(PID, SID, 'n1', true);
+    expect(isNodeLocked(PID, SID, 'n1')).toBe(true);
+    expect(isNodeLocked(PID, SID, 'ghost')).toBe(false);
   });
 
   describe('undo tracking — content / error writes excluded (spec §5, #8)', () => {

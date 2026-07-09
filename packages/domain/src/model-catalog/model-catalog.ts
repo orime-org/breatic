@@ -13,6 +13,12 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "@breatic/core";
+import type {
+  ModelCatalog,
+  ModelEntry,
+  ModelTier,
+  ParamDescriptor,
+} from "@breatic/shared";
 
 /** Root directory for model YAML configs. */
 const MODELS_DIR = resolve(MONOREPO_ROOT, "config/models");
@@ -21,53 +27,12 @@ const MODELS_DIR = resolve(MONOREPO_ROOT, "config/models");
 const MODALITIES = ["image", "video", "audio", "tts", "three_d", "understand"] as const;
 export type Modality = (typeof MODALITIES)[number];
 
-/** Model tier for frontend display filtering. */
-export type ModelTier = "recommended" | "optional" | "internal";
-
-/** Single parameter descriptor (for dynamic frontend form rendering). */
-export interface ParamDescriptor {
-  description: string;
-  values?: readonly (string | number | boolean)[];
-  min?: number;
-  max?: number;
-  type?: string;
-  max_items?: number;
-  default: unknown;
-}
-
-/** Provider entry for a model. */
-export interface ModelProvider {
-  name: string;
-  model_id: string;
-  priority: number;
-  available: boolean;
-}
-
-/** Single model definition (API response shape). */
-export interface ModelEntry {
-  name: string;
-  display_name: string;
-  modality: Modality;
-  mode: string | string[];
-  description: string;
-  guide: string;
-  tier: ModelTier;
-  cost_per_call: number;
-  generation_time: number;
-  params: Record<string, ParamDescriptor>;
-  providers: ModelProvider[];
-}
-
-/** Full catalog grouped by modality. */
-export interface ModelCatalog {
-  image: ModelEntry[];
-  video: ModelEntry[];
-  audio: ModelEntry[];
-  tts: ModelEntry[];
-  three_d: ModelEntry[];
-  understand: ModelEntry[];
-  total: number;
-}
+// ModelTier / ParamDescriptor / ModelProvider / ModelEntry / ModelCatalog are
+// the GET /models wire contract — they live in @breatic/shared (imported
+// above) because the catalog RESPONSE is consumed by server (which builds it
+// here) + web (which renders it). The worker never touches these heavy types:
+// it calls listAvailableModels() below, which returns the lighter
+// SkillModelInfo. This module owns the YAML-loading + the runtime MODALITIES.
 
 /**
  * Map provider name → env var name for API key lookup.

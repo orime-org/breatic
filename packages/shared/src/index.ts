@@ -40,13 +40,14 @@ export type {
   OperationLock,
   AttachRef,
   CanvasNodeFields,
-  GenerativeRefSourceType,
-  ReferenceItem,
-  ChipSnapshot,
-  PromptInline,
-  PromptDoc,
   NodeStateUpdateEvent,
   NodeEvent,
+  ModelModality,
+  ModelTier,
+  ParamDescriptor,
+  ModelProvider,
+  ModelEntry,
+  ModelCatalog,
   ProjectRole,
   ProjectMember,
   Studio,
@@ -119,6 +120,13 @@ export type {
   ProjectActivityEntry,
   ProjectActivityPage,
   ActivityNewSignal,
+} from "@shared/types/index.js";
+
+export {
+  modelCatalogSchema,
+  sanitizeModelCatalog,
+  IMAGE_GENERATION_MODES,
+  isImageGenerationMode,
 } from "@shared/types/index.js";
 
 export type {

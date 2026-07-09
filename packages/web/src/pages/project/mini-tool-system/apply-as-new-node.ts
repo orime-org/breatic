@@ -28,8 +28,7 @@ export interface ApplyMutation {
     id: string;
     source: string;
     target: string;
-    /** Primary edge marks the tool-output relationship (vs `@`-reference). */
-    kind: 'primary';
+    /** Lineage metadata: the mini-tool that produced the target node. */
     toolId: string;
   };
 }
@@ -39,7 +38,7 @@ export interface ApplyMutation {
  * mini-tool-unified-output. Given a source node + tool, produces:
  *   1. a NEW sibling node placed to the right (or below) of the source,
  *      with status `handling` (the worker fills the payload later);
- *   2. a primary edge from source → new node, tagged with the toolId.
+ *   2. a lineage edge from source → new node, tagged with the toolId.
  *
  * The source node is NEVER mutated. Callers compose this with the canvas
  * write adapter (Yjs nodes + edges maps) at the commit step.
@@ -67,7 +66,6 @@ export function applyAsNewNode(input: ApplyMiniToolInput): ApplyMutation {
     id: `${input.sourceNode.id}->${newNode.id}`,
     source: input.sourceNode.id,
     target: newNode.id,
-    kind: 'primary' as const,
     toolId: tool.id,
   };
   const mutation: ApplyMutation = { newNode, edge };

@@ -28,4 +28,4 @@ export { tasksApi } from '@web/data/api/tasks';
 export { skillsApi, type Skill } from '@web/data/api/skills';
 export { paymentApi, type CreditTier, type PaymentRecord } from '@web/data/api/payment';
 export { assetsApi, type PresignResult } from '@web/data/api/assets';
-export { modelsApi, type ModelDef } from '@web/data/api/models';
+export { modelsApi } from '@web/data/api/models';
