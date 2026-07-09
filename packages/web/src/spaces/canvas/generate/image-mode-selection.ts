@@ -28,9 +28,11 @@ export function filterModelsByMode(
 }
 
 /**
- * Picks which model should be selected for a mode: the one the user last chose
- * in that mode if it is still in the catalog, otherwise the first available
- * model for the mode. Returns undefined when no model exists for the mode.
+ * Picks which model should be selected for a mode, in priority order (user
+ * 2026-07-09): the one the user last chose in that mode if still in the
+ * catalog, else the mode's `recommended`-tier model (the config's curation
+ * signal), else the first available model for the mode. Returns undefined when
+ * no model exists for the mode.
  * @param mode - The active generation mode.
  * @param modelByMode - Per-mode memory of the last-chosen model name.
  * @param filteredModels - The models available for this mode (from {@link filterModelsByMode}).
@@ -45,5 +47,6 @@ export function resolveModelForMode(
   if (remembered && filteredModels.some((m) => m.name === remembered)) {
     return remembered;
   }
-  return filteredModels[0]?.name;
+  const recommended = filteredModels.find((m) => m.tier === 'recommended');
+  return recommended?.name ?? filteredModels[0]?.name;
 }

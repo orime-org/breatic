@@ -50,9 +50,9 @@ function imageView(over: Partial<Extract<NodeView, { kind: 'image' }>> = {}): No
 }
 
 describe('buildGeneratePanelViewModel', () => {
-  // Both t2i so the default-t2i view offers them; sdxl is `recommended` to
-  // prove the default pick is now FIRST-of-mode (design §2.3), not the
-  // recommended tier (which drove slice-1's pickModel).
+  // Both t2i so the default-t2i view offers them; flux is first but optional,
+  // sdxl is `recommended` — so the default pick is sdxl (the recommended tier,
+  // user 2026-07-09), NOT merely the first in the list.
   const models = [
     makeModel('flux', { mode: 't2i', tier: 'optional', cost_per_call: 7 }),
     makeModel('sdxl', { mode: 't2i', tier: 'recommended', cost_per_call: 3 }),
@@ -78,17 +78,17 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.creditEstimate).toBe(7);
   });
 
-  it('picks the first model of the mode when the node has none (design §2.3, not recommended-tier)', () => {
+  it('picks the mode\'s recommended model when the node has none (user 2026-07-09)', () => {
     const nodes = [node('n1', imageView())];
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
-    expect(vm.model).toBe('flux'); // first of the t2i list, though sdxl is recommended
-    expect(vm.creditEstimate).toBe(7);
+    expect(vm.model).toBe('sdxl'); // the recommended t2i model, though flux is first
+    expect(vm.creditEstimate).toBe(3);
   });
 
-  it('restores the mode\'s remembered model over the first when nothing is stored', () => {
-    const nodes = [node('n1', imageView({ modelByMode: { t2i: 'sdxl' } }))];
+  it('restores the mode\'s remembered model over the recommended default', () => {
+    const nodes = [node('n1', imageView({ modelByMode: { t2i: 'flux' } }))];
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
-    expect(vm.model).toBe('sdxl'); // remembered t2i pick beats the first-of-mode default
+    expect(vm.model).toBe('flux'); // remembered t2i pick beats the recommended sdxl
   });
 
   it('defaults the mode to t2i when the node stores none', () => {
@@ -190,7 +190,7 @@ describe('buildGeneratePanelViewModel', () => {
 
   it('returns a safe empty view-model when the node is missing', () => {
     const vm = buildGeneratePanelViewModel({ nodeId: 'ghost', nodes: [], edges: [], models });
-    expect(vm.model).toBe('flux'); // first of the default (t2i) mode — picker stays usable
+    expect(vm.model).toBe('sdxl'); // recommended t2i model — picker stays usable
     expect(vm.mode).toBe('t2i');
     expect(vm.references).toEqual([]);
     expect(vm.referenceUrls).toEqual([]);

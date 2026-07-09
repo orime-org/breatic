@@ -94,9 +94,9 @@ function assetUrlOf(data: NodeView | undefined): string | undefined {
 /**
  * Picks the effective model id for the active mode: the node's stored model
  * when it is still offered under this mode, else the mode's remembered pick,
- * else the first model offered for the mode (design 2026-07-09 §2.3 —
- * "first model of the mode"; supersedes slice-1's recommended-tier default).
- * Empty string when the mode offers no model.
+ * else the mode's `recommended` model, else the first model offered for the
+ * mode (user 2026-07-09 — the recommended tier is a curation signal and drives
+ * the default). Empty string when the mode offers no model.
  * @param stored - The node's stored model id (may be absent / stale / wrong-mode).
  * @param mode - The active generation sub-mode.
  * @param modelByMode - The node's per-mode model memory.

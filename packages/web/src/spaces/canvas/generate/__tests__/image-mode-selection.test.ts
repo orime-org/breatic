@@ -86,11 +86,25 @@ describe('resolveModelForMode', () => {
     expect(resolveModelForMode('t2i', remembered, t2iModels)).toBe('t2i-b');
   });
 
-  it('falls back to the first model when the mode was never chosen', () => {
+  it('falls back to the first model when the mode was never chosen and none is recommended', () => {
     expect(resolveModelForMode('t2i', {}, t2iModels)).toBe('t2i-a');
   });
 
-  it('falls back to the first model when the remembered one is gone from the catalog', () => {
+  it('prefers the mode\'s recommended model over the first when never chosen (user 2026-07-09)', () => {
+    // t2i-b is optional-by-default; mark it recommended so it should win over
+    // the first (t2i-a) as the mode's default — the `recommended` tier is a
+    // curation signal, not just badge dressing.
+    const rec: ModelEntry = { ...T2I_B, tier: 'recommended' };
+    expect(resolveModelForMode('t2i', {}, [T2I, rec])).toBe('t2i-b');
+  });
+
+  it('remembered model still beats the recommended one', () => {
+    const rec: ModelEntry = { ...T2I_B, tier: 'recommended' };
+    // the user's own last pick (t2i-a, optional) outranks the recommended t2i-b
+    expect(resolveModelForMode('t2i', { t2i: 't2i-a' }, [T2I, rec])).toBe('t2i-a');
+  });
+
+  it('falls back to the first model when the remembered one is gone and none is recommended', () => {
     const remembered: Partial<Record<ImageGenMode, string>> = { t2i: 'removed' };
     expect(resolveModelForMode('t2i', remembered, t2iModels)).toBe('t2i-a');
   });
