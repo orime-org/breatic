@@ -267,13 +267,13 @@ describe("CanvasNodeFields", () => {
     expect(node.data.sourceNodeId).toBe("node-0");
   });
 
-  it("accepts a content node carrying Generate inputs (prompt/model/kind/params)", () => {
+  it("accepts a content node carrying Generate inputs (prompt/model/mode/params)", () => {
     // Model revision 2026-06-15: Generate is a toolbar action on a content
-    // node, not a separate node type. prompt/model/kind/params live on the
+    // node, not a separate node type. prompt/model/mode/params live on the
     // content node (image/audio/...) as the Generate panel's collaborative
-    // inputs. `kind` is the per-modality generate sub-mode (e.g. audio:
-    // TTS/Song/SFX/Melody/Clone). `outputType` is gone — the content node's
-    // own modality is its output.
+    // inputs. `mode` is the per-modality generation sub-mode (image:
+    // t2i/i2i; audio: TTS/Song/SFX/…). `outputType` is gone — the content
+    // node's own modality is its output.
     const node: CanvasNodeFields = {
       id: "node-3",
       type: "image",
@@ -288,7 +288,7 @@ describe("CanvasNodeFields", () => {
         handlingBy: { userId: "u1", type: "backend", startedAt: 1_700_000_000_000, gen: 1 },
         attachments: [],
         prompt: "a painting of a sunset",
-        kind: "text-to-image",
+        mode: "t2i",
         model: "flux-dev",
         params: { steps: 30, guidance: 7.5 },
       },
@@ -296,7 +296,7 @@ describe("CanvasNodeFields", () => {
     expect(node.data.state).toBe("handling");
     expect(node.data.handlingBy?.userId).toBe("u1");
     expect(node.data.model).toBe("flux-dev");
-    expect(node.data.kind).toBe("text-to-image");
+    expect(node.data.mode).toBe("t2i");
   });
 
   it("accepts a Group (group) node with a backgroundColor tint", () => {

@@ -121,17 +121,17 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     });
   });
 
-  it('projects Generate inputs (prompt/model/generateMode) onto a content view', () => {
+  it('projects Generate inputs (prompt/model) onto a content view', () => {
     // Model revision 2026-06-15: Generate is a toolbar action; its inputs
-    // (prompt/model/sub-mode) live on the content node. Wire `kind` (the
-    // generate sub-mode) projects to view `generateMode` to avoid colliding
-    // with the view's `kind` modality discriminant.
+    // (prompt / model) live on the content node and project onto the view.
+    // The generation sub-mode is stored on wire `data.mode` and read by the
+    // Generate panel straight from the wire node (panel-view-model) — it is
+    // NOT projected onto the view, so `toNodeView` carries no sub-mode field.
     const v = toNodeView(
       fields('image', {
         content: 'x.png',
         prompt: 'a cat',
         model: 'flux-dev',
-        kind: 'text-to-image',
       }),
     );
     expect(v).toMatchObject({
@@ -139,7 +139,6 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
       content: 'x.png',
       prompt: 'a cat',
       model: 'flux-dev',
-      generateMode: 'text-to-image',
     });
   });
 
