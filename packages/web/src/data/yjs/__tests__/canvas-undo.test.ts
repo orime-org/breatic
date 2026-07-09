@@ -101,7 +101,7 @@ describe('canvas undo/redo (Y.UndoManager)', () => {
     setNodePosition(p, s, 'a', { x: 5, y: 5 });
     setNodeName(p, s, 'a', 'renamed');
     setNodeLocked(p, s, 'a', true);
-    addEdge(p, s, { id: 'e1', source: 'a', target: 'b', kind: 'primary' });
+    addEdge(p, s, { id: 'e1', source: 'a', target: 'b' });
     removeEdge(p, s, 'e1');
     removeNode(p, s, 'b');
     // 6 tracked ops (the two creates were before the manager).
@@ -172,7 +172,7 @@ describe('canvas undo/redo (Y.UndoManager)', () => {
     const { p, s, doc } = space();
     addNode(p, s, makeNode('a'));
     addNode(p, s, makeNode('b'));
-    addEdge(p, s, { id: 'e1', source: 'a', target: 'b', kind: 'primary' });
+    addEdge(p, s, { id: 'e1', source: 'a', target: 'b' });
     const um = createCanvasUndoManager(doc);
     // Deleting node 'b' cascades its edge 'e1' — both go in one transaction.
     removeElements(p, s, ['b'], ['e1']);

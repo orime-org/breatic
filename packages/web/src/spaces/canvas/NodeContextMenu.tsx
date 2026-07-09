@@ -51,6 +51,12 @@ interface NodeContextMenuProps {
    * read-only viewer passes none, so the block hides.
    */
   onUpload?: () => void;
+  /**
+   * Open the Generate panel for this node. Passed for content nodes that
+   * support generation (image); when absent the Generate item stays a disabled
+   * placeholder (non-image content nodes, until their slice ships).
+   */
+  onGenerate?: () => void;
   /** Copy the node / group (with its members) to the clipboard. */
   onCopy?: () => void;
   /** Duplicate the node / group (with its members) in place. */
@@ -82,6 +88,7 @@ interface NodeContextMenuProps {
  * @param root0.onRename - Enter inline rename.
  * @param root0.onDelete - Delete the node / group.
  * @param root0.onUpload - Fill / replace the node's content via the file picker (node target only).
+ * @param root0.onGenerate - Open the Generate panel (content nodes that support it, e.g. image).
  * @param root0.onCopy - Copy the node / group (with its members).
  * @param root0.onDuplicate - Duplicate the node / group (with its members).
  * @param root0.onUngroup - Ungroup the group (group target only).
@@ -98,6 +105,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onRename,
   onDelete,
   onUpload,
+  onGenerate,
   onCopy,
   onDuplicate,
   onUngroup,
@@ -132,10 +140,15 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
       >
         {!isGroup && onUpload ? (
           <>
-            {/* Generate / Tools are disabled placeholders (coming soon — no
-                AIGC / mini-tool wired yet); Upload is the only live action.
-                Disabled items have no side effect when clicked. */}
-            <DropdownMenuItem disabled data-testid='node-menu-generate'>
+            {/* Generate is enabled for content nodes that support it (image),
+                gated by the onGenerate handler; Tools is still a disabled
+                placeholder (no mini-tool wired yet). A disabled item has no
+                side effect when clicked. */}
+            <DropdownMenuItem
+              disabled={!onGenerate}
+              data-testid='node-menu-generate'
+              onSelect={onGenerate}
+            >
               <Sparkles className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.nodeMenu.generate')}
             </DropdownMenuItem>

@@ -201,6 +201,30 @@ export default tseslint.config(
     },
   },
   {
+    // model-catalog is a verbatim mirror of the backend's snake_case YAML wire
+    // fields (`cost_per_call` / `display_name` / `three_d` / `model_id` /
+    // `max_items` / `generation_time`). Unlike other shared contracts it is
+    // drift-safe by construction — the front and back mirror the SAME keys, so
+    // there is no camelCase-vs-snake_case split to drift. It is therefore exempt
+    // from the camelCase guardrail above (same rationale as the `tool_calls`
+    // whitelist), scoped to just this file + its test so the rest of types/
+    // stays strictly camelCase. Both formats are allowed so typos in other
+    // shapes are still caught.
+    files: [
+      "packages/shared/src/types/model-catalog.ts",
+      "packages/shared/src/types/__tests__/model-catalog.schema.test.ts",
+    ],
+    rules: {
+      "@typescript-eslint/naming-convention": [
+        "error",
+        {
+          selector: ["objectLiteralProperty", "typeProperty"],
+          format: ["camelCase", "snake_case"],
+        },
+      ],
+    },
+  },
+  {
     ignores: ["**/dist/**", "**/node_modules/**", "**/*.js", "**/*.mjs"],
   },
 );

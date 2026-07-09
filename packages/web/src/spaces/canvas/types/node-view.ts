@@ -31,7 +31,7 @@
  */
 
 import { HANDLING_TIMEOUT_MS } from '@breatic/shared';
-import type { CanvasNodeFields, ReferenceItem } from '@breatic/shared';
+import type { CanvasNodeFields } from '@breatic/shared';
 
 /** The 6 content modalities that own a renderable payload. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
@@ -74,8 +74,6 @@ interface ContentNodeViewBase extends NodeViewCommon {
   prompt?: unknown;
   /** Selected model id. */
   model?: string;
-  /** Reference rail rows feeding the prompt context. */
-  references?: ReferenceItem[];
   /** Model-specific request params. */
   params?: Record<string, unknown>;
   /** Generate sub-mode (wire `kind`), renamed to avoid the `kind` discriminant clash. */
@@ -225,7 +223,6 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     locked,
     prompt: data.prompt,
     model: data.model,
-    references: data.references,
     params: data.params,
     generateMode: data.kind,
   };

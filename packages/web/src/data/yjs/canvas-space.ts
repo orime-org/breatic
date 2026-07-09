@@ -48,11 +48,18 @@ export interface CanvasNodeView {
   data: NodeView;
 }
 
+/**
+ * A canvas connection. Its data meaning IS a reference relationship: an edge
+ * `source → target` means `source` is a reference input for `target`'s
+ * generation. (The former `kind: 'primary' | 'reference'` discriminant was
+ * removed — every connection is a reference; there is no other edge kind.)
+ * `toolId` is optional lineage metadata stamped by a mini-tool that created
+ * the target node.
+ */
 export interface CanvasEdge {
   id: string;
   source: string;
   target: string;
-  kind: 'primary' | 'reference';
   toolId?: string;
 }
 
@@ -511,6 +518,158 @@ export function setNodeLocked(
 }
 
 /**
+ * Set a content node's Generate model params (aspect ratio, resolution, …).
+ * Written as a whole plain object into the nested `data` Y.Map — a scalar,
+ * last-write-wins field (concurrent param edits replace the whole object; an
+ * acceptable trade-off for these low-frequency picks). Frontend-owned.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node whose params to set.
+ * @param params - The model-specific params object.
+ */
+export function setNodeParams(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  params: Record<string, unknown>,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => data.set('params', params), CANVAS_UNDO);
+}
+
+/**
+ * Switch a content node's Generate model, writing the new model id AND the
+ * reconciled params in ONE transaction so collaborators never observe the new
+ * model paired with the old (now-invalid) params. Frontend-owned.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node whose model to switch.
+ * @param model - The new model id.
+ * @param params - The params reconciled for the new model (see resolveParamsForModel).
+ */
+export function setNodeModel(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  model: string,
+  params: Record<string, unknown>,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => {
+    data.set('model', model);
+    data.set('params', params);
+  }, CANVAS_UNDO);
+}
+
+/**
+ * Get (or lazily create) the Y.XmlFragment backing a content node's Generate
+ * prompt. The collaborative prompt editor (TipTap + Collaboration) binds to
+ * this fragment so collaborators see keystrokes live. Created empty on first
+ * open with the content-write origin so the init does NOT enter the canvas undo
+ * stack (prompt edits carry the y-sync origin and are excluded too). Returns
+ * null when the node or its data map is missing.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node whose prompt fragment to get / create.
+ * @returns The prompt Y.XmlFragment, or null when the node is missing.
+ */
+export function getOrCreatePromptFragment(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): Y.XmlFragment | null {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return null;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return null;
+  const existing = data.get('prompt');
+  if (existing instanceof Y.XmlFragment) return existing;
+  const fragment = new Y.XmlFragment();
+  doc.transact(() => data.set('prompt', fragment), CONTENT_WRITE);
+  return fragment;
+}
+
+/**
+ * Reads a node's current persistent lease counter (`data.leaseGen`). The
+ * Generate execute path sends `gen = leaseGen + 1` in the task payload so the
+ * backend's handling-open + the worker's write-back CAS fence out stale
+ * generations (#1580). Read fresh at execute time (not from the reactive view,
+ * which omits `leaseGen`) to avoid racing a render. Absent / non-numeric = 0.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node whose lease counter to read.
+ * @returns The current leaseGen, or 0 when the node or counter is absent.
+ */
+export function readNodeLeaseGen(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): number {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return 0;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return 0;
+  const gen = data.get('leaseGen');
+  return typeof gen === 'number' ? gen : 0;
+}
+
+/**
+ * Whether a node currently exists in the canvas, read FRESH from live Yjs (not
+ * a React closure). The Generate execute path calls this at click time so a
+ * node a collaborator deleted between the last render and the click can't slip
+ * a task through against a non-existent node.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to check.
+ * @returns True when the node is present in the live document.
+ */
+export function nodeExists(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): boolean {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  return doc.getMap<Y.Map<unknown>>(NODES_KEY).has(nodeId);
+}
+
+/**
+ * Whether a node is currently locked, read FRESH from live Yjs. The Generate
+ * flow calls this at click / execute time so a node a collaborator locked after
+ * the context menu opened (or after the panel opened) can't have a task
+ * submitted against it — a locked node is frozen.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to check.
+ * @returns True when the node exists and is locked.
+ */
+export function isNodeLocked(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): boolean {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const node = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId);
+  if (!node) return false;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return false;
+  return data.get('locked') === true;
+}
+
+/**
  * Write a node's content + mark it idle — the "content arrived" transition
  * (frontend-owned upload completion). Sets `content`, flips `state` to `'idle'`
  * and clears any prior `errorMessage`, all in one transaction so collaborators
@@ -913,27 +1072,64 @@ export function expandGroup(
 }
 
 /**
- * Add an edge (e.g. mini-tool primary edge).
+ * Add an edge (a connection = a reference relationship). Rejected (no-op) for a
+ * self-loop or when either endpoint is absent from the live document.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space to add the edge to.
- * @param edge - The edge to insert (id, source, target, kind, optional toolId).
+ * @param edge - The edge to insert (id, source, target, optional toolId).
+ * @returns True when the edge landed; false when it was rejected.
  */
 export function addEdge(
   projectId: string,
   spaceId: string,
   edge: CanvasEdge,
-): void {
+): boolean {
+  // A connection IS a reference: a self-loop is meaningless. Cheap, Yjs-free
+  // check up front.
+  if (edge.source === edge.target) return false;
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
+  let added = false;
   doc.transact(() => {
+    // Validate BOTH endpoints against live Yjs state inside the transaction —
+    // this is the airtight write boundary. A caller's guard reads its React
+    // closure, which goes stale the instant a collaborator deletes a node
+    // (Yjs applies the deletion before React re-creates the handler), so the
+    // only race-free place to reject an orphaned edge is here, atomically with
+    // the write. Returns whether the edge landed so the caller can surface
+    // feedback (a silently-rejected edge must not read as success in the UI).
+    if (!nodesMap.has(edge.source) || !nodesMap.has(edge.target)) return;
     const map = new Y.Map<unknown>();
     map.set('id', edge.id);
     map.set('source', edge.source);
     map.set('target', edge.target);
-    map.set('kind', edge.kind);
     if (edge.toolId) map.set('toolId', edge.toolId);
     edgesMap.set(edge.id, map);
+    added = true;
   }, CANVAS_UNDO);
+  return added;
+}
+
+/**
+ * Reads the canvas graph (nodes + edges) FRESH from live Yjs, by project /
+ * space. Write-callbacks (execute, model / param change) call this at click
+ * time so they never build on a stale render-closure view-model — a
+ * collaborator's edit that React has batched-but-not-rendered is already
+ * visible in the live document.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to read.
+ * @returns The current node views and edges.
+ */
+export function readCanvasGraph(
+  projectId: string,
+  spaceId: string,
+): {
+  nodes: ReadonlyArray<CanvasNodeView>;
+  edges: ReadonlyArray<CanvasEdge>;
+} {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  return { nodes: readNodes(doc), edges: readEdges(doc) };
 }
 
 /**
@@ -1037,7 +1233,6 @@ export function readEdges(doc: Y.Doc): ReadonlyArray<CanvasEdge> {
       id: String(map.get('id') ?? ''),
       source: String(map.get('source') ?? ''),
       target: String(map.get('target') ?? ''),
-      kind: (map.get('kind') as CanvasEdge['kind']) ?? 'primary',
       toolId: (map.get('toolId') as string | undefined) ?? undefined,
     });
   });

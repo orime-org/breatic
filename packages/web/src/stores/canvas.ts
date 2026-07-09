@@ -73,6 +73,20 @@ interface CanvasState {
   canUndo: boolean;
   /** Canvas → chrome mirror: whether a redo is currently available. */
   canRedo: boolean;
+  /**
+   * Per-user Generate panel: the node id whose Generate panel is open for THIS
+   * user, or null. Local UI only (never Yjs) — one collaborator opening a
+   * panel must not open it for others. Only one panel is open at a time; the
+   * panel's collaborative content (prompt / model / params / references) lives
+   * on the node itself.
+   */
+  generatePanelNodeId: string | null;
+  /**
+   * When set, the canvas is in "pick a reference from canvas" mode for this
+   * generative node: the next click on another node wires an edge (clicked →
+   * this node) as a new reference, then exits. Local UI only (never Yjs).
+   */
+  referencePickForNodeId: string | null;
   setSelectedNodeIds: (ids: string[]) => void;
   addSelectedNodeId: (id: string) => void;
   clearSelection: () => void;
@@ -105,6 +119,14 @@ interface CanvasState {
   consumePendingRename: () => void;
   /** Mirror the canvas undo manager's availability flags for the toolbar. */
   setHistoryAvailability: (canUndo: boolean, canRedo: boolean) => void;
+  /** Open the Generate panel for a node (replaces any currently open panel). */
+  openGeneratePanel: (nodeId: string) => void;
+  /** Close the Generate panel (exit button, or execute hands off to handling). */
+  closeGeneratePanel: () => void;
+  /** Enter "pick a reference from canvas" mode for a generative node. */
+  startReferencePick: (nodeId: string) => void;
+  /** Exit reference-pick mode (after a node is picked, or on cancel). */
+  endReferencePick: () => void;
 }
 
 export const useCanvasStore = create<CanvasState>()(
@@ -124,6 +146,8 @@ export const useCanvasStore = create<CanvasState>()(
     pendingRename: null,
     canUndo: false,
     canRedo: false,
+    generatePanelNodeId: null,
+    referencePickForNodeId: null,
     setSelectedNodeIds: (ids) =>
       set((s) => {
         s.selectedNodeIds = ids;
@@ -208,6 +232,27 @@ export const useCanvasStore = create<CanvasState>()(
       set((s) => {
         s.canUndo = canUndo;
         s.canRedo = canRedo;
+      }),
+    openGeneratePanel: (nodeId) =>
+      set((s) => {
+        s.generatePanelNodeId = nodeId;
+        // Switching the panel to another node must exit any in-progress
+        // reference pick — otherwise a stale pick would wire the next click to
+        // the PREVIOUS node (closeGeneratePanel clears it too).
+        s.referencePickForNodeId = null;
+      }),
+    closeGeneratePanel: () =>
+      set((s) => {
+        s.generatePanelNodeId = null;
+        s.referencePickForNodeId = null;
+      }),
+    startReferencePick: (nodeId) =>
+      set((s) => {
+        s.referencePickForNodeId = nodeId;
+      }),
+    endReferencePick: () =>
+      set((s) => {
+        s.referencePickForNodeId = null;
       }),
   })),
 );

@@ -315,6 +315,31 @@
       "lock": "Lock node",
       "unlock": "Unlock node"
     },
+    "generatePanel": {
+      "style": "Style",
+      "mark": "Mark",
+      "focus": "Focus",
+      "reference": "Reference",
+      "exit": "Exit",
+      "promptPlaceholder": "Describe the image you want to generate, @ to reference assets",
+      "selectFromCanvas": "Select a reference from the canvas",
+      "returnToNode": "Return to node",
+      "exitSelect": "Exit",
+      "presets": "Presets",
+      "camera": "Camera",
+      "online": "Web search",
+      "translate": "Translate prompt",
+      "execute": "Generate",
+      "removeReference": "Remove reference",
+      "resolution": "Resolution",
+      "ratio": "Ratio",
+      "errorCredits": "Not enough credits to generate.",
+      "errorBusy": "This node is busy with another generation.",
+      "errorUnavailable": "Generation is temporarily unavailable. Please try again.",
+      "errorFailed": "Couldn't start generation. Please try again.",
+      "referenceAddFailed": "Could not add the reference — that node no longer exists.",
+      "modelUnavailable": "That model is no longer available — pick another."
+    },
     "edge": {
       "delete": "Delete connection"
     },
