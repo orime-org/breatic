@@ -106,17 +106,9 @@
       }
     }
   },
-  "save": "Save",
   "cancel": "Cancel",
-  "delete": "Delete",
-  "confirm": "Confirm",
-  "close": "Close",
   "loading": "Loading...",
-  "search": "Search",
-  "retry": "Retry",
-  "back": "Back",
   "next": "Next",
-  "done": "Done",
   "agent": {
     "placeholder": "Describe what you want to create...",
     "thinking": "Thinking...",
@@ -376,12 +368,6 @@
     "script": "Script",
     "comingSoon": "Editor coming soon"
   },
-  "payment": {
-    "buy_credits": "Buy Credits",
-    "credits_balance": "Credits: {balance}",
-    "per_credit": "{price}/credit",
-    "save_percent": "Save {percent}%"
-  },
   "auth": {
     "email": "Email",
     "password": "Password",
@@ -488,16 +474,6 @@
       }
     }
   },
-  "breatic_slogan": "AI Makes Creativity Visible",
-  "about_us": "About Us",
-  "support_and_service": "Support and Service",
-  "terms_of_use": "Terms of Use",
-  "privacy_policy": "Privacy Policy",
-  "enter_workspace": "Enter Workspace",
-  "enter_editor": "Enter Editor",
-  "all_rights_reserved": "All Rights Reserved.",
-  "common_error_noCredits": "No credits available. Please purchase credits to continue.",
-  "common_error_noLogin": "Please login to continue.",
   "workspace": {
     "label": "Workspace",
     "copy_success": "Project copy success",
@@ -707,242 +683,6 @@
     "fullscreen": "Fullscreen",
     "edit": "Edit"
   },
-  "export": {
-    "title": "Export",
-    "format": "Format",
-    "exportType": "Export Type",
-    "video": "Video",
-    "image": "Image",
-    "videoFormat": "Video Format",
-    "imageFormat": "Image Format",
-    "quality": "Quality",
-    "resolution": "Resolution",
-    "frameRate": "Frame Rate",
-    "bitrate": "Bitrate",
-    "bitrateMode": "Bitrate Mode",
-    "customBitrate": "Custom Bitrate",
-    "codec": "Codec",
-    "audioSampleRate": "Audio Sample Rate",
-    "audioQuality": "Audio Quality",
-    "audio": "Audio",
-    "audioFormat": "Audio Format",
-    "audioBitrate": "Bitrate",
-    "sampleRate": "Sample Rate",
-    "bitrateOptions": {
-      "lower": "Lower",
-      "recommended": "Recommended",
-      "higher": "Higher",
-      "custom": "Custom"
-    },
-    "bitrateModeOptions": {
-      "cbr": "CBR (Constant Bitrate)",
-      "vbr": "VBR (Variable Bitrate)"
-    },
-    "audioQualityOptions": {
-      "pcm": "PCM Lossless"
-    },
-    "exporting": "Exporting",
-    "progress": "Closing the browser will cancel the export.",
-    "success": "Export Complete",
-    "cancelled": "Export Cancelled",
-    "failed": "Export Failed",
-    "download": "Download",
-    "close": "Close",
-    "cancelTitle": "Confirm Cancel Export",
-    "cancelMessage": "Closing will stop the export process. Are you sure?",
-    "exportImage": "Export Image",
-    "exportingImage": "You can download the image to your device.",
-    "exportingVideo": "You can download the video to your device.",
-    "exportingAudio": "Audio exported successfully. You can download the audio to your device.",
-    "uploading": "Uploading",
-    "uploadingToServer": "Uploading to server...",
-    "message": {
-      "workflowIdMissing": "Workflow ID is missing, upload skipped",
-      "failedGetResource": "Failed to get resource URL",
-      "fileUploadFailed": "File upload failed",
-      "imageBackendSoon": "Image export will be provided by backend soon.",
-      "videoBackendSoon": "Video export will be provided by backend soon.",
-      "audioBackendSoon": "Audio export will be provided by backend soon."
-    }
-  },
-  "fontSelector": {
-    "title": "Font",
-    "searchPlaceholder": "Search fonts...",
-    "detecting": "Detecting fonts...",
-    "detectFailed": "Font detection failed",
-    "retry": "Retry",
-    "noFontsFound": "No matching fonts found"
-  },
-  "textStyle": {
-    "title": "Style",
-    "font": "Font",
-    "fontWeight": "Weight",
-    "fontSize": "Size",
-    "color": "Color",
-    "align": "Align",
-    "alignLeft": "Left",
-    "alignCenter": "Center",
-    "alignRight": "Right",
-    "decoration": "Decoration",
-    "case": "Case",
-    "caseNone": "None",
-    "caseUppercase": "Uppercase",
-    "caseLowercase": "Lowercase",
-    "caseCapitalize": "Capitalize",
-    "opacity": "Opacity",
-    "stroke": "Stroke",
-    "strokeColor": "Color",
-    "strokeWidth": "Width",
-    "shadow": "Shadow",
-    "shadowColor": "Color",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "Blur",
-    "fontWeightThin": "Thin",
-    "fontWeightExtraLight": "Extra Light",
-    "fontWeightLight": "Light",
-    "fontWeightNormal": "Normal",
-    "fontWeightMedium": "Medium",
-    "fontWeightSemiBold": "Semi Bold",
-    "fontWeightBold": "Bold",
-    "fontWeightExtraBold": "Extra Bold",
-    "fontWeightBlack": "Black"
-  },
-  "mediaStyle": {
-    "title": "Style",
-    "borderRadius": "Border Radius",
-    "outline": "Outline",
-    "outlineColor": "Color",
-    "outlineWidth": "Width",
-    "shadow": "Shadow",
-    "shadowColor": "Color",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "Blur",
-    "filter": "Filter",
-    "blur": "Blur",
-    "brightness": "Brightness",
-    "opacity": "Opacity"
-  },
-  "toolbar": {
-    "text": "Text",
-    "image": "Image",
-    "video": "Video",
-    "audio": "Audio",
-    "media": "Media Library"
-  },
-  "mediaLibrary": {
-    "title": "Media Library",
-    "upload": "Upload Media",
-    "uploadPrompt": "Upload media to start editing",
-    "dragDrop": "Drag files here",
-    "dragDropImage": "Drag image files here",
-    "dragDropAudio": "Drag audio files here",
-    "dragDropVideo": "Drag video files here",
-    "clickToSelect": "or click to select files",
-    "clickToSelectImage": "or click to select image files",
-    "clickToSelectAudio": "or click to select audio files",
-    "clickToSelectVideo": "or click to select video files",
-    "releaseFile": "Release to upload...",
-    "supportedFormats": "Supported Formats",
-    "videoFormats": "Video: MP4, MOV, AVI",
-    "imageFormats": "Image: JPG, PNG, GIF",
-    "audioFormats": "Audio: MP3, WAV",
-    "addToTimeline": "Add to Timeline",
-    "delete": "Delete",
-    "noMedia": "No Media",
-    "videoAdded": "Video added successfully",
-    "audioAdded": "Audio added successfully",
-    "imageAdded": "Image added successfully",
-    "addText": "Add Text",
-    "textSection": "Text",
-    "imageSection": "Images",
-    "videoSection": "Videos",
-    "audioSection": "Audio"
-  },
-  "timeline": {
-    "track": "Track",
-    "videoTrack": "Video Track",
-    "audioTrack": "Audio Track",
-    "duration": "Duration",
-    "addMediaPrompt": "Add media to timeline to start editing"
-  },
-  "rightPanel": {
-    "selectElement": "Select an Element",
-    "selectToEdit": "Select a clip on the timeline to edit properties",
-    "unknownMediaType": "Unknown Media Type"
-  },
-  "videoStyle": {
-    "title": "Style",
-    "crop": "Crop",
-    "cropVideo": "Crop Video",
-    "volume": "Volume",
-    "speed": "Speed",
-    "borderRadius": "Border Radius",
-    "outline": "Outline",
-    "outlineColor": "Color",
-    "outlineWidth": "Width",
-    "shadow": "Shadow",
-    "shadowColor": "Color",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "Blur",
-    "filter": "Filter",
-    "blur": "Blur",
-    "brightness": "Brightness",
-    "opacity": "Opacity"
-  },
-  "imageStyle": {
-    "title": "Style",
-    "crop": "Crop",
-    "cropImage": "Crop Image",
-    "borderRadius": "Border Radius",
-    "outline": "Outline",
-    "outlineColor": "Color",
-    "outlineWidth": "Width",
-    "shadow": "Shadow",
-    "shadowColor": "Color",
-    "shadowX": "X",
-    "shadowY": "Y",
-    "shadowBlur": "Blur",
-    "filter": "Filter",
-    "blur": "Blur",
-    "brightness": "Brightness",
-    "opacity": "Opacity"
-  },
-  "audioStyle": {
-    "title": "Style",
-    "volume": "Volume",
-    "speed": "Speed",
-    "fadeIn": "Fade In",
-    "fadeOut": "Fade Out"
-  },
-  "cropModal": {
-    "title": "Crop",
-    "cancel": "Cancel",
-    "confirm": "Confirm",
-    "reset": "Reset",
-    "aspect": "Aspect",
-    "free": "Free",
-    "original": "Original"
-  },
-  "playbackControls": {
-    "reset": "Reset Playback",
-    "undo": "Undo",
-    "redo": "Redo",
-    "splitLeft": "Split Left",
-    "splitRight": "Split Right",
-    "split": "Split Clip",
-    "copy": "Copy Clip",
-    "delete": "Delete Clip",
-    "stepBackward": "Step Backward 1s",
-    "stepForward": "Step Forward 1s",
-    "play": "Play",
-    "pause": "Pause",
-    "fullscreen": "Fullscreen Preview",
-    "zoomOut": "Zoom Out",
-    "zoomIn": "Zoom In"
-  },
   "message": {
     "projectSaved": "Project saved",
     "saveProjectFailed": "Failed to save project",
@@ -966,97 +706,6 @@
     "saving": "Saving...",
     "saveSuccess": "Save successful",
     "saveFailed": "Save failed"
-  },
-  "nodeLibraryPanel": {
-    "data_nodes": "Agent Nodes",
-    "editor_nodes": "Editor Nodes"
-  },
-  "userCenter": {
-    "modal": {
-      "logout": {
-        "title": "Logout",
-        "description": "Are you sure you want to logout?",
-        "confirm": "Confirm",
-        "cancel": "Cancel"
-      },
-      "account": {
-        "tabs": {
-          "account": {
-            "label": "Account",
-            "logout": "Logout",
-            "accountInformation": "Account Information",
-            "membershipLevel": "Membership Level",
-            "credits": "Credits",
-            "freeCredits": "Free Credits",
-            "membershipCredits": "Membership Credits",
-            "purchaseCredits": "Purchase Credits"
-          },
-          "creditsObtained": {
-            "label": "Credits Obtained",
-            "tHeader": {
-              "date": "Date",
-              "creditType": "Credit Type",
-              "creditsObtained": "Credits Obtained"
-            }
-          },
-          "creditsUsed": {
-            "label": "Credits Used",
-            "tHeader": {
-              "date": "Date",
-              "taskId": "Task ID",
-              "taskName": "Task Name",
-              "creditType": "Credit Type",
-              "creditsUsed": "Credits Used"
-            }
-          },
-          "billing": {
-            "label": "Billing",
-            "tHeader": {
-              "date": "Date",
-              "serviceName": "Service Name",
-              "paymentAmount": "Payment Amount",
-              "orderNumber": "Order Number",
-              "orderState": "Order State"
-            }
-          }
-        }
-      },
-      "purchase": {
-        "cancelPayment": "Payment Cancelled!",
-        "title": "Purchase Credits",
-        "description": "Friendly Reminder: Purchase credits are non-transferable and non-refunded.",
-        "buy": "Buy Now",
-        "info": "Free credits are reset at the beginning of each month. Membership credits accumulate automatically each month. Credits are used for Breatic's AI-generated images and subsequent AI generation functions for other resources."
-      },
-      "upgrade": {
-        "cancelSubscription": "Subscription Cancelled!",
-        "title": "Upgrade Membership",
-        "monthly": "Monthly",
-        "annual": "Annual",
-        "month": "month",
-        "year": "year",
-        "bestValue": "BEST VALUE",
-        "description": "Friendly Reminder: Membership privileges are non-transferable and non-refunded.",
-        "freeTrial": "Free Trial",
-        "upgradeNow": "Upgrade Now",
-        "features": "Features",
-        "info": "Free credits are reset at the beginning of each month. Membership credits accumulate automatically each month. Credits are used for Breatic's AI-generated images and subsequent AI generation functions for other resources."
-      },
-      "credits": {
-        "title": "Upgrade",
-        "credits": "Credits",
-        "freeCredits": "Free Credits",
-        "membershipCredits": "Membership Credits",
-        "purchaseCredits": "Purchase Credits",
-        "buyBtn": "Purchase Credits"
-      },
-      "userDropdown": {
-        "account": "Account",
-        "termsOfUse": "Terms of Use",
-        "privacyPolicy": "Privacy Policy",
-        "logout": "Logout"
-      }
-    }
   },
   "members": {
     "popover": {
@@ -1110,21 +759,6 @@
     "stack": {
       "triggerAria": "Project members ({count})",
       "removeAria": "Remove {name}"
-    }
-  },
-  "credits": {
-    "pill": {
-      "aria_label": "Credit balance"
-    },
-    "dialog": {
-      "title": "Buy credits",
-      "balance_label": "Current balance",
-      "note": "Credits never expire · One-time purchase",
-      "per100_unit": "/100 credits",
-      "cta_select": "Select",
-      "loading": "Loading pricing…",
-      "no_tiers": "No pricing available",
-      "checkout_failed": "Checkout failed, please try again"
     }
   },
   "spaces": {
@@ -1275,18 +909,6 @@
     "zoomIn": "Zoom in",
     "closePreview": "Close preview"
   },
-  "upload": {
-    "uploading": "Uploading…",
-    "error": "Error",
-    "preview": "Preview",
-    "removeFile": "Remove file",
-    "failed": "Upload failed",
-    "complete": "Upload complete",
-    "fileInput": "File input"
-  },
-  "media": {
-    "noItems": "No items"
-  },
   "document": {
     "editorComingSoon": "Text editor coming soon",
     "imageDialog": {
@@ -1295,9 +917,6 @@
       "embedUrl": "Embed URL",
       "dropOrBrowse": "Drop image here or click to browse"
     }
-  },
-  "mediaUploader": {
-    "fileProcessFailed": "File processing failed"
   },
   "menu": {
     "createAria": "Create menu",
@@ -1338,24 +957,6 @@
     "undo": "Undo",
     "redo": "Redo",
     "zoomCustomAria": "Custom zoom (%)"
-  },
-  "lang": {
-    "en": {
-      "label": "English",
-      "glyph": "EN"
-    },
-    "zhCN": {
-      "label": "Simplified Chinese",
-      "glyph": "中"
-    },
-    "zhTW": {
-      "label": "Traditional Chinese",
-      "glyph": "繁"
-    },
-    "ja": {
-      "label": "Japanese",
-      "glyph": "日"
-    }
   },
   "role": {
     "owner": "Owner",
