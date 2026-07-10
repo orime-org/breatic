@@ -175,6 +175,26 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.referenceUrls).toEqual([]); // but nothing is @-picked → no source sent
   });
 
+  it('i2i drops an @-mentioned NON-image source (never sends a non-image URL as a source image)', () => {
+    // The @ picker pool has no type filter, so a connected audio/video/3d/web
+    // node can be @-mentioned. Its URL must NEVER ride into params.images — an
+    // i2i source is definitionally an image (adversarial 2026-07-10).
+    const nodes = [
+      node('n1', i2iView()),
+      node('aud', { kind: 'audio', status: 'idle', name: 'Song', content: 'https://cdn/x.mp3' }),
+    ];
+    const edges: CanvasEdge[] = [{ id: 'e1', source: 'aud', target: 'n1' }];
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: i2iModels,
+      atMentionedSourceIds: new Set(['aud']),
+    });
+    expect(vm.references).toHaveLength(1); // the audio node is still a connected reference
+    expect(vm.referenceUrls).toEqual([]); // but its URL is NOT an image source
+  });
+
   it('t2i contributes NO reference URLs even with an incoming edge (generates from scratch)', () => {
     // Design §2.5: t2i ignores source images — the rail still renders (greyed in
     // the panel) but no reference URL reaches the execute payload.

@@ -94,23 +94,16 @@ function asContentView(data: NodeView | undefined): ContentNodeView | undefined 
 }
 
 /**
- * Reads a content node's primary asset URL when it carries one (the visual /
- * media modalities). Text content is a body, not a URL, so it is excluded.
+ * Reads an IMAGE node's asset URL — the only valid i2i source. A connected
+ * non-image node (audio / video / 3d / web) can be @-mentioned (the pool has no
+ * type filter), but its URL must never ride into `params.images` as a source
+ * image, so every non-image kind yields undefined (adversarial 2026-07-10). An
+ * i2i source is definitionally an image; text content is a body, not a URL.
  * @param data - The source node view.
- * @returns The asset URL, or undefined when the node has no URL payload.
+ * @returns The image URL, or undefined when the source is not an image node.
  */
-function assetUrlOf(data: NodeView | undefined): string | undefined {
-  if (!data) return undefined;
-  switch (data.kind) {
-    case 'image':
-    case 'audio':
-    case 'video':
-    case '3d':
-    case 'web':
-      return data.content;
-    default:
-      return undefined;
-  }
+function imageUrlOf(data: NodeView | undefined): string | undefined {
+  return data?.kind === 'image' ? data.content : undefined;
 }
 
 /**
@@ -211,7 +204,7 @@ export function buildGeneratePanelViewModel(input: {
       ? []
       : references
         .filter((r) => atMentioned.has(r.sourceNodeId))
-        .map((r) => assetUrlOf(byId.get(r.sourceNodeId)?.data))
+        .map((r) => imageUrlOf(byId.get(r.sourceNodeId)?.data))
       // The source node's content is collaborative Yjs data — untrusted, and
       // NOT covered by the catalog boundary. typeof, not Boolean: a malformed
       // source whose content is a non-string object is truthy and would slip
