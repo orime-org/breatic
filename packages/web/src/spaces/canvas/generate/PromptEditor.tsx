@@ -105,7 +105,14 @@ export function PromptEditor({
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
     },
-    [fragment],
+    // Recreate the editor when the fragment OR a captured translated string
+    // changes. placeholder + mentionEmptyLabel are baked into the extensions at
+    // creation and never re-synced by useEditor (deps-gated), so an in-session
+    // locale switch would otherwise leave them in the old language until the
+    // panel reopened (adversarial round-2). Both change only on a locale switch
+    // (rare); the reference POOL stays a live ref (poolRef) so frequent edge
+    // add/remove never triggers a recreate.
+    [fragment, placeholder, mentionEmptyLabel],
   );
   // Cascade-clear stale @-mention chips: when a reference edge is removed the
   // pool shrinks, so any @-mention pointing at a now-disconnected source must
