@@ -10,8 +10,9 @@
  * is positioned by floating-ui and rendered via TipTap's ReactRenderer.
  */
 
-import { computePosition, flip, offset, shift } from '@floating-ui/dom';
+import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
 import { ReactRenderer } from '@tiptap/react';
+import { exitSuggestion } from '@tiptap/suggestion';
 import type {
   SuggestionKeyDownProps,
   SuggestionOptions,
@@ -78,26 +79,45 @@ export function makeReferenceSuggestion(input: {
     render: () => {
       let component: ReactRenderer<ReferenceMentionListRef> | null = null;
       let el: HTMLDivElement | null = null;
+      /** floating-ui autoUpdate teardown — keeps the popup glued to the caret. */
+      let stopAutoUpdate: (() => void) | null = null;
+      /** Document-level outside-click dismisser. */
+      let onOutsidePointerDown: ((event: PointerEvent) => void) | null = null;
 
       /**
-       * Positions the popup element at the caret rect via floating-ui.
-       * @param clientRect - The suggestion's caret rect getter.
+       * Anchors the popup to the caret and KEEPS it anchored via floating-ui
+       * autoUpdate: a one-shot computePosition would leave the popup at stale
+       * coordinates when the surface moves without a keystroke (canvas pan/zoom
+       * moves the NodeToolbar-anchored editor; the prompt is its own scroll
+       * container). The virtual reference returns the LIVE caret rect each call;
+       * animationFrame polling is needed because the canvas pans via CSS
+       * transform, not scroll events (adversarial 2026-07-10).
+       * @param clientRect - The suggestion's live caret rect getter.
        */
       const place = (
         clientRect: SuggestionProps<ReferenceRailItem>['clientRect'],
       ): void => {
         if (!el || !clientRect) return;
-        const rect = clientRect();
-        if (!rect) return;
-        const reference = { getBoundingClientRect: () => rect };
-        void computePosition(reference, el, {
-          placement: 'bottom-start',
-          middleware: [offset(6), flip(), shift({ padding: 8 })],
-        }).then(({ x, y }) => {
-          if (!el) return;
-          el.style.left = `${x}px`;
-          el.style.top = `${y}px`;
-        });
+        const reference = {
+          getBoundingClientRect: () => clientRect() ?? new DOMRect(),
+        };
+        stopAutoUpdate?.();
+        stopAutoUpdate = autoUpdate(
+          reference,
+          el,
+          () => {
+            if (!el) return;
+            void computePosition(reference, el, {
+              placement: 'bottom-start',
+              middleware: [offset(6), flip(), shift({ padding: 8 })],
+            }).then(({ x, y }) => {
+              if (!el) return;
+              el.style.left = `${x}px`;
+              el.style.top = `${y}px`;
+            });
+          },
+          { animationFrame: true },
+        );
       };
 
       return {
@@ -117,6 +137,24 @@ export function makeReferenceSuggestion(input: {
           el.style.zIndex = '50';
           el.appendChild(component.element);
           document.body.appendChild(el);
+          // Dismiss on click outside the popup AND outside the editor: clicking
+          // a canvas node / panel control does NOT move the ProseMirror
+          // selection, so the suggestion would otherwise stay open floating over
+          // the UI. exitSuggestion is the plugin's own clean-close path (fires
+          // onExit) (adversarial 2026-07-10). Capture phase so we see the click
+          // before ReactFlow stops it.
+          onOutsidePointerDown = (event: PointerEvent): void => {
+            const target = event.target as Node | null;
+            if (
+              el &&
+              target &&
+              !el.contains(target) &&
+              !props.editor.view.dom.contains(target)
+            ) {
+              exitSuggestion(props.editor.view);
+            }
+          };
+          document.addEventListener('pointerdown', onOutsidePointerDown, true);
           place(props.clientRect);
         },
         onUpdate: (props: SuggestionProps<ReferenceRailItem>): void => {
@@ -132,6 +170,16 @@ export function makeReferenceSuggestion(input: {
           return component?.ref?.onKeyDown(props.event) ?? false;
         },
         onExit: (): void => {
+          stopAutoUpdate?.();
+          stopAutoUpdate = null;
+          if (onOutsidePointerDown) {
+            document.removeEventListener(
+              'pointerdown',
+              onOutsidePointerDown,
+              true,
+            );
+            onOutsidePointerDown = null;
+          }
           el?.remove();
           el = null;
           component?.destroy();
