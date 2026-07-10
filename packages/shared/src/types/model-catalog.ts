@@ -143,7 +143,6 @@ export const SOURCE_IMAGE_MODES = ["i2i", "edit"] as const;
  * (e.g. `["i2i", "edit"]`) qualifies.
  * @param mode - The model's `mode` (a single string or an array of modes).
  * @returns True when any of the model's modes requires a source image.
- * @throws Never.
  */
 export function requiresSourceImage(mode: string | string[]): boolean {
   const modes = Array.isArray(mode) ? mode : [mode];

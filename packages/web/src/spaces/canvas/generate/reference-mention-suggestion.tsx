@@ -39,7 +39,6 @@ import {
  *   getter so the editor need not rebuild when the pool changes.
  * @param input.emptyLabel - Localized empty-state text for the popup.
  * @returns The suggestion options (without `editor`, supplied by the extension).
- * @throws Never.
  */
 export function makeReferenceSuggestion(input: {
   getPool: () => ReferenceRailItem[];
@@ -78,7 +77,6 @@ export function makeReferenceSuggestion(input: {
       /**
        * Positions the popup element at the caret rect via floating-ui.
        * @param clientRect - The suggestion's caret rect getter.
-       * @returns Nothing.
        */
       const place = (
         clientRect: SuggestionProps<ReferenceRailItem>['clientRect'],

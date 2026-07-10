@@ -56,6 +56,9 @@ interface PromptEditorProps {
  * @param root0.placeholder - Empty-state placeholder text.
  * @param root0.onTextChange - Receives the current plain-text prompt.
  * @param root0.onAtMentionsChange - Receives the `@`-picked source node ids.
+ * @param root0.references - The current reference pool (the `@` picker options).
+ * @param root0.mode - Active generation sub-mode (t2i greys out `@` chips).
+ * @param root0.mentionEmptyLabel - Localized empty-state text for the `@` popup.
  * @returns The prompt editor.
  */
 export function PromptEditor({

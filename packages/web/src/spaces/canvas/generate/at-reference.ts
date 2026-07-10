@@ -30,13 +30,16 @@ export const MENTION_SOURCE_ID_ATTR = 'sourceNodeId';
  * (collaborative Yjs content is untrusted).
  * @param doc - The prompt editor content as TipTap JSON (`editor.getJSON()`).
  * @returns The `@`-mentioned source node ids, de-duplicated, in document order.
- * @throws Never.
  */
 export function extractAtMentionedSourceIds(
   doc: JSONContent | undefined,
 ): string[] {
   const ordered: string[] = [];
   const seen = new Set<string>();
+  /**
+   * Recursively collects mention source ids into `ordered` (de-duped via `seen`).
+   * @param node - The current TipTap JSON node (undefined at a leaf).
+   */
   const visit = (node: JSONContent | undefined): void => {
     if (!node) return;
     if (node.type === REFERENCE_MENTION_NODE) {
@@ -72,7 +75,6 @@ export interface MentionOccurrence {
  * @param mentions - The mention occurrences currently in the prompt document.
  * @param poolSourceIds - Source node ids still connected (the live reference pool).
  * @returns Ranges of stale mentions to delete, highest position first.
- * @throws Never.
  */
 export function planMentionDeletions(
   mentions: readonly MentionOccurrence[],
