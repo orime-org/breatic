@@ -18,6 +18,9 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
         fragment={fragment}
         placeholder='Describe the image'
         onTextChange={onTextChange}
+        references={[]}
+        mode='t2i'
+        mentionEmptyLabel='No references'
       />,
     );
 

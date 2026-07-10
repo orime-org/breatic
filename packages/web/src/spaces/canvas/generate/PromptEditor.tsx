@@ -10,6 +10,11 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import * as React from 'react';
 import type * as Y from 'yjs';
 
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import { ReferenceMention } from '@web/spaces/canvas/generate/reference-mention';
+import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
+
 interface PromptEditorProps {
   /** The node's prompt Y.XmlFragment — the collaborative binding target. */
   fragment: Y.XmlFragment;
@@ -17,6 +22,12 @@ interface PromptEditorProps {
   placeholder: string;
   /** Called with the current plain-text prompt (drives the execute gate). */
   onTextChange: (text: string) => void;
+  /** Current reference pool (incoming edges) — the `@` picker's options. */
+  references: ReferenceRailItem[];
+  /** Active generation sub-mode; t2i greys out existing `@` mentions (design §2.4 C). */
+  mode: ImageGenMode;
+  /** Localized empty-state text for the `@` picker popup. */
+  mentionEmptyLabel: string;
 }
 
 /**
@@ -36,7 +47,15 @@ export function PromptEditor({
   fragment,
   placeholder,
   onTextChange,
+  references,
+  mode,
+  mentionEmptyLabel,
 }: PromptEditorProps): React.JSX.Element {
+  // The reference pool changes as edges are added / removed, but the editor is
+  // rebuilt only on `fragment` change. A ref keeps the `@` suggestion reading
+  // the CURRENT pool without recreating the editor.
+  const poolRef = React.useRef(references);
+  poolRef.current = references;
   const editor = useEditor(
     {
       extensions: [
@@ -46,6 +65,12 @@ export function PromptEditor({
         // Collaboration provides history (yUndo); do NOT add UndoRedo alongside.
         Collaboration.configure({ fragment }),
         Placeholder.configure({ placeholder }),
+        ReferenceMention.configure({
+          suggestion: makeReferenceSuggestion({
+            getPool: () => poolRef.current,
+            emptyLabel: mentionEmptyLabel,
+          }),
+        }),
       ],
       immediatelyRender: false,
       onCreate: ({ editor: e }) => onTextChange(e.getText()),
@@ -53,11 +78,20 @@ export function PromptEditor({
     },
     [fragment],
   );
+  // t2i greys out existing @-mention chips (design §2.4 C): the mode switch
+  // visually pre-announces they will not take effect; execute filters them out.
+  const dimReferences =
+    mode === 't2i'
+      ? ' [&_.reference-mention]:opacity-40 [&_.reference-mention]:grayscale'
+      : '';
   return (
     <EditorContent
       editor={editor}
       data-testid='generate-prompt-editor'
-      className='nowheel max-h-40 min-h-[3.5rem] overflow-auto rounded-overlay border border-border bg-background px-2.5 py-2 text-sm text-foreground focus-within:ring-1 focus-within:ring-ring [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent [&_.ProseMirror]:min-h-[2.5rem] [&_.ProseMirror]:outline-none [&_p.is-editor-empty:first-child::before]:pointer-events-none [&_p.is-editor-empty:first-child::before]:float-left [&_p.is-editor-empty:first-child::before]:h-0 [&_p.is-editor-empty:first-child::before]:text-muted-foreground [&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]'
+      className={
+        'nowheel max-h-40 min-h-[3.5rem] overflow-auto rounded-overlay border border-border bg-background px-2.5 py-2 text-sm text-foreground focus-within:ring-1 focus-within:ring-ring [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent [&_.ProseMirror]:min-h-[2.5rem] [&_.ProseMirror]:outline-none [&_p.is-editor-empty:first-child::before]:pointer-events-none [&_p.is-editor-empty:first-child::before]:float-left [&_p.is-editor-empty:first-child::before]:h-0 [&_p.is-editor-empty:first-child::before]:text-muted-foreground [&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]' +
+        dimReferences
+      }
     />
   );
 }

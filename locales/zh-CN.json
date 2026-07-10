@@ -309,6 +309,7 @@
       "modeI2i": "图生图",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用素材",
+      "mentionEmpty": "还没有可引用的图 — 先从一张图连线过来",
       "selectFromCanvas": "从画布选择参考",
       "returnToNode": "返回节点",
       "exitSelect": "退出",

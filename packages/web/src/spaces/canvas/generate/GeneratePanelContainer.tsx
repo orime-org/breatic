@@ -336,6 +336,9 @@ function GeneratePanelBody({
             fragment={fragment}
             placeholder={t('canvas.generatePanel.promptPlaceholder')}
             onTextChange={handlePromptChange}
+            references={vm.references}
+            mode={vm.mode}
+            mentionEmptyLabel={t('canvas.generatePanel.mentionEmpty')}
           />
         ) : null
       }
