@@ -125,6 +125,15 @@ function GeneratePanelBody({
     promptTextRef.current = text;
     setPromptText(text);
   }, []);
+  // The `@`-picked source ids, mirrored to a ref for the same reason as the
+  // prompt text: onExecute reads them SYNCHRONOUSLY so the i2i source subset is
+  // the prompt's state at click time (state would lag a frame). No React state
+  // mirror — nothing in the render tree depends on the picks (the rail shows the
+  // full pool; requiresSource is model-derived).
+  const atMentionedRef = React.useRef<string[]>([]);
+  const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
+    atMentionedRef.current = sourceIds;
+  }, []);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
   // Marks this specific mount stale on unmount. Because the body is keyed by
@@ -158,15 +167,19 @@ function GeneratePanelBody({
     () => buildGeneratePanelViewModel({ nodeId, nodes, edges, models }),
     [nodeId, nodes, edges, models],
   );
-  const freshVm = React.useCallback((): GeneratePanelViewModel => {
-    const graph = readCanvasGraph(projectId, spaceId);
-    return buildGeneratePanelViewModel({
-      nodeId,
-      nodes: graph.nodes,
-      edges: graph.edges,
-      models,
-    });
-  }, [projectId, spaceId, nodeId, models]);
+  const freshVm = React.useCallback(
+    (atMentionedSourceIds?: ReadonlySet<string>): GeneratePanelViewModel => {
+      const graph = readCanvasGraph(projectId, spaceId);
+      return buildGeneratePanelViewModel({
+        nodeId,
+        nodes: graph.nodes,
+        edges: graph.edges,
+        models,
+        atMentionedSourceIds,
+      });
+    },
+    [projectId, spaceId, nodeId, models],
+  );
 
   const canExecute = canExecuteGenerate({
     promptText,
@@ -259,8 +272,10 @@ function GeneratePanelBody({
     const freshPrompt = promptTextRef.current;
     // Re-derive model / params / references from LIVE Yjs — never the render
     // closure — so a collaborator's just-deleted reference or changed model
-    // can't ride into the payload.
-    const fresh = freshVm();
+    // can't ride into the payload. The `@`-picked source ids are read
+    // synchronously from the ref (the prompt's state at click time) so i2i sends
+    // exactly the images the prompt @-mentions right now (design B).
+    const fresh = freshVm(new Set(atMentionedRef.current));
     if (
       !canExecuteGenerate({
         promptText: freshPrompt,
@@ -269,6 +284,16 @@ function GeneratePanelBody({
         isSubmitting: false,
       })
     ) {
+      return;
+    }
+    // #1675 execute gate: an i2i / edit model needs a source image. With no
+    // @-picked reference the payload would carry no images, so the model would
+    // fail (Nano Banana Edit requires images ≥ 1) or silently degrade. Reject
+    // with a toast BEFORE the submitting latch — the button stays clickable (not
+    // disabled), so the user gets an actionable message, not a dead control. The
+    // server re-checks this before billing (defence in depth).
+    if (fresh.requiresSource && fresh.referenceUrls.length === 0) {
+      toast.error(t('canvas.generatePanel.errorNoSourceImage'));
       return;
     }
     submittingRef.current = true;
@@ -336,6 +361,10 @@ function GeneratePanelBody({
             fragment={fragment}
             placeholder={t('canvas.generatePanel.promptPlaceholder')}
             onTextChange={handlePromptChange}
+            onAtMentionsChange={handleAtMentionsChange}
+            references={vm.references}
+            mode={vm.mode}
+            mentionEmptyLabel={t('canvas.generatePanel.mentionEmpty')}
           />
         ) : null
       }

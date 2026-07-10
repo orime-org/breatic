@@ -49,6 +49,8 @@ export {
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   isImageGenerationMode,
+  requiresSourceImage,
+  SOURCE_IMAGE_MODES,
 } from "@shared/types/model-catalog.js";
 
 export { ROLE_RANK } from "@shared/types/role.js";

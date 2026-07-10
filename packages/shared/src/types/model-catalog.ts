@@ -124,6 +124,32 @@ export function isImageGenerationMode(mode: string | string[]): boolean {
   return modes.some((m) => generatable.includes(m));
 }
 
+/**
+ * Image model `mode` values that REQUIRE a source image as input:
+ * image-to-image and edit (inpaint). A model qualifies when ANY of its modes is
+ * one of these. Distinct from {@link IMAGE_GENERATION_MODES}: `t2i` generates
+ * but needs no source image; `edit` needs a source image but is not itself a
+ * generation mode.
+ */
+export const SOURCE_IMAGE_MODES = ["i2i", "edit"] as const;
+
+/**
+ * Whether an image model requires a source image to run (image-to-image / edit)
+ * as opposed to text-to-image, which generates from scratch. The single source
+ * of truth (web + backend) behind the #1675 execute gate: the frontend blocks
+ * execution when such a model has no `@`-picked reference, and the backend
+ * pre-charge validation rejects an empty `images` param before billing. A model
+ * qualifies when any single mode requires a source image, so a multi-mode model
+ * (e.g. `["i2i", "edit"]`) qualifies.
+ * @param mode - The model's `mode` (a single string or an array of modes).
+ * @returns True when any of the model's modes requires a source image.
+ */
+export function requiresSourceImage(mode: string | string[]): boolean {
+  const modes = Array.isArray(mode) ? mode : [mode];
+  const needsSource: readonly string[] = SOURCE_IMAGE_MODES;
+  return modes.some((m) => needsSource.includes(m));
+}
+
 // ── Boundary sanitizer ───────────────────────────────────────────────
 //
 // Lenient by design: an entry is only DROPPED when it lacks a usable identity

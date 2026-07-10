@@ -8,7 +8,11 @@
  * all unit-testable without React / Yjs / react-query.
  */
 
-import { isImageGenerationMode, type ModelEntry } from '@breatic/shared';
+import {
+  isImageGenerationMode,
+  requiresSourceImage,
+  type ModelEntry,
+} from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
@@ -28,6 +32,9 @@ import type {
 
 /** Default generation sub-mode for a node with none stored (design 2026-07-09 §2.3). */
 const DEFAULT_IMAGE_GEN_MODE: ImageGenMode = 't2i';
+
+/** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
+const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
 
 /**
  * Reads a node's stored generation sub-mode, defaulting + boundary-sanitizing:
@@ -59,6 +66,13 @@ export interface GeneratePanelViewModel {
   /** Active generation sub-mode (the t2i / i2i toggle state; default t2i). */
   mode: ImageGenMode;
   /**
+   * Whether the effective model needs a source image (i2i / edit modes). Drives
+   * the #1675 execute gate: submitting one of these with no `@`-picked source
+   * image is blocked in the panel (and re-checked server-side before billing).
+   * False when the catalog is empty (no model resolved) — nothing to gate.
+   */
+  requiresSource: boolean;
+  /**
    * Whether the GLOBAL generatable-image catalog is empty (still loading, failed
    * to load, or no generation model configured). Distinct from `models.length`,
    * which is the ACTIVE-mode-filtered subset: the mode toggle gates its disabled
@@ -80,23 +94,16 @@ function asContentView(data: NodeView | undefined): ContentNodeView | undefined 
 }
 
 /**
- * Reads a content node's primary asset URL when it carries one (the visual /
- * media modalities). Text content is a body, not a URL, so it is excluded.
+ * Reads an IMAGE node's asset URL — the only valid i2i source. A connected
+ * non-image node (audio / video / 3d / web) can be @-mentioned (the pool has no
+ * type filter), but its URL must never ride into `params.images` as a source
+ * image, so every non-image kind yields undefined (adversarial 2026-07-10). An
+ * i2i source is definitionally an image; text content is a body, not a URL.
  * @param data - The source node view.
- * @returns The asset URL, or undefined when the node has no URL payload.
+ * @returns The image URL, or undefined when the source is not an image node.
  */
-function assetUrlOf(data: NodeView | undefined): string | undefined {
-  if (!data) return undefined;
-  switch (data.kind) {
-    case 'image':
-    case 'audio':
-    case 'video':
-    case '3d':
-    case 'web':
-      return data.content;
-    default:
-      return undefined;
-  }
+function imageUrlOf(data: NodeView | undefined): string | undefined {
+  return data?.kind === 'image' ? data.content : undefined;
 }
 
 /**
@@ -156,6 +163,7 @@ export function resolveModeSwitch(
  * @param input.nodes - Current canvas node views (target + reference sources).
  * @param input.edges - Current canvas edges (incoming = references).
  * @param input.models - Catalog image models.
+ * @param input.atMentionedSourceIds - Source node ids `@`-picked in the prompt; only these feed the i2i execute payload (design B — no `@` = no source image). Absent = none picked.
  * @returns The derived view-model.
  */
 export function buildGeneratePanelViewModel(input: {
@@ -163,6 +171,7 @@ export function buildGeneratePanelViewModel(input: {
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
   edges: ReadonlyArray<CanvasEdge>;
   models: ModelEntry[];
+  atMentionedSourceIds?: ReadonlySet<string>;
 }): GeneratePanelViewModel {
   // models is trusted: the catalog is sanitized at the API boundary
   // (sanitizeModelCatalog), so it is always a ModelEntry[]. Offer only
@@ -186,11 +195,16 @@ export function buildGeneratePanelViewModel(input: {
   // rail still renders (greyed in the panel) but contributes NO reference URLs
   // to the execute payload. i2i sends them. (Style images — a future slice —
   // will be the one exception that survives t2i.)
+  // i2i sends ONLY the @-picked source images (design B): a reference that is
+  // connected but not @-mentioned contributes nothing; no @ at all → empty, and
+  // the #1675 execute gate then blocks submitting an i2i task with no source.
+  const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
   const referenceUrls =
     mode === 't2i'
       ? []
       : references
-        .map((r) => assetUrlOf(byId.get(r.sourceNodeId)?.data))
+        .filter((r) => atMentioned.has(r.sourceNodeId))
+        .map((r) => imageUrlOf(byId.get(r.sourceNodeId)?.data))
       // The source node's content is collaborative Yjs data — untrusted, and
       // NOT covered by the catalog boundary. typeof, not Boolean: a malformed
       // source whose content is a non-string object is truthy and would slip
@@ -208,6 +222,9 @@ export function buildGeneratePanelViewModel(input: {
     creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
     mode,
+    // Model-derived, independent of `@`-picks: does the SELECTED model's mode
+    // need a source image? No model resolved (empty catalog) → nothing to gate.
+    requiresSource: current ? requiresSourceImage(current.mode) : false,
     catalogEmpty: generatable.length === 0,
   };
 }

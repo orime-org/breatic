@@ -309,6 +309,7 @@
       "modeI2i": "画像から画像",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で素材を参照",
+      "mentionEmpty": "参照できる画像がありません — まず画像から線をつないでください",
       "selectFromCanvas": "キャンバスから参照を選択",
       "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
@@ -324,6 +325,7 @@
       "errorBusy": "このノードは別の生成処理中です。",
       "errorUnavailable": "生成サービスは一時的に利用できません。もう一度お試しください。",
       "errorFailed": "生成を開始できませんでした。もう一度お試しください。",
+      "errorNoSourceImage": "このモデルには元画像が必要です —— プロンプトで @ を入力して接続済みの画像を選んでください。",
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
       "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。"
     },

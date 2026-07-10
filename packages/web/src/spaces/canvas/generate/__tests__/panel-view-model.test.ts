@@ -144,16 +144,55 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.params.bogus).toBeUndefined(); // dropped — model has no such param
   });
 
-  it('derives references from incoming edges and snapshots their asset URLs (i2i)', () => {
+  it('i2i sends ONLY @-mentioned reference URLs (subset of the rail)', () => {
     const nodes = [
       node('n1', i2iView()),
       node('src', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: i2iModels,
+      atMentionedSourceIds: new Set(['src']),
+    });
     expect(vm.references).toHaveLength(1);
     expect(vm.references[0]?.sourceNodeId).toBe('src');
     expect(vm.referenceUrls).toEqual(['https://cdn/x.png']);
+  });
+
+  it('i2i with an incoming edge but NO @-mention submits no source image (design B)', () => {
+    const nodes = [
+      node('n1', i2iView()),
+      node('src', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
+    ];
+    const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
+    // No atMentionedSourceIds → nothing @-picked. Design B: i2i without an
+    // @-reference sends an empty source list (the #1675 gate then blocks execute).
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
+    expect(vm.references).toHaveLength(1); // rail still shows the connected image
+    expect(vm.referenceUrls).toEqual([]); // but nothing is @-picked → no source sent
+  });
+
+  it('i2i drops an @-mentioned NON-image source (never sends a non-image URL as a source image)', () => {
+    // The @ picker pool has no type filter, so a connected audio/video/3d/web
+    // node can be @-mentioned. Its URL must NEVER ride into params.images — an
+    // i2i source is definitionally an image (adversarial 2026-07-10).
+    const nodes = [
+      node('n1', i2iView()),
+      node('aud', { kind: 'audio', status: 'idle', name: 'Song', content: 'https://cdn/x.mp3' }),
+    ];
+    const edges: CanvasEdge[] = [{ id: 'e1', source: 'aud', target: 'n1' }];
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: i2iModels,
+      atMentionedSourceIds: new Set(['aud']),
+    });
+    expect(vm.references).toHaveLength(1); // the audio node is still a connected reference
+    expect(vm.referenceUrls).toEqual([]); // but its URL is NOT an image source
   });
 
   it('t2i contributes NO reference URLs even with an incoming edge (generates from scratch)', () => {
@@ -176,7 +215,13 @@ describe('buildGeneratePanelViewModel', () => {
       node('src', imageView({ name: 'Bad', content: { u: 1 } as unknown as string })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: i2iModels,
+      atMentionedSourceIds: new Set(['src']),
+    });
     expect(vm.referenceUrls).toEqual([]); // the object must not slip into the payload
   });
 
@@ -186,7 +231,13 @@ describe('buildGeneratePanelViewModel', () => {
       node('src', imageView({ name: 'Empty' })), // no content
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: i2iModels,
+      atMentionedSourceIds: new Set(['src']),
+    });
     expect(vm.references).toHaveLength(1); // still shown in the rail
     expect(vm.referenceUrls).toEqual([]); // but no URL to submit
   });
@@ -269,6 +320,33 @@ describe('buildGeneratePanelViewModel', () => {
     const nodes = [node('n1', imageView({ model: 'flux', status: 'handling' }))];
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.nodeStatus).toBe('handling');
+  });
+
+  // requiresSource drives the #1675 execute gate: a model whose mode needs a
+  // source image (i2i / edit) must not submit with an empty image list.
+  it('flags requiresSource=false for a t2i model (generates from scratch)', () => {
+    const nodes = [node('n1', imageView({ model: 'flux' }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.requiresSource).toBe(false);
+  });
+
+  it('flags requiresSource=true for an i2i model (#1675 gate)', () => {
+    const nodes = [node('n1', i2iView())];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: i2iModels });
+    expect(vm.requiresSource).toBe(true);
+  });
+
+  it('flags requiresSource=true for an edit-capable model', () => {
+    const editModels = [makeModel('nano-edit', { mode: ['i2i', 'edit'] })];
+    const nodes = [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: editModels });
+    expect(vm.requiresSource).toBe(true);
+  });
+
+  it('flags requiresSource=false when the catalog is empty (no model resolved)', () => {
+    const nodes = [node('n1', imageView())];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: [] });
+    expect(vm.requiresSource).toBe(false);
   });
 });
 

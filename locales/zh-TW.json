@@ -309,6 +309,7 @@
       "modeI2i": "圖生圖",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的畫面內容，@ 引用素材",
+      "mentionEmpty": "還沒有可引用的圖 — 先從一張圖連線過來",
       "selectFromCanvas": "從畫布選擇參考",
       "returnToNode": "返回節點",
       "exitSelect": "退出",
@@ -324,6 +325,7 @@
       "errorBusy": "此節點正被另一個生成佔用。",
       "errorUnavailable": "生成服務暫時無法使用，請稍後重試。",
       "errorFailed": "生成啟動失敗，請重試。",
+      "errorNoSourceImage": "此模型需要來源圖 —— 在提示詞裡輸入 @ 選擇一張已連線的圖。",
       "referenceAddFailed": "無法加入參考——該節點已不存在。",
       "modelUnavailable": "該模型已無法使用——請另選一個。"
     },

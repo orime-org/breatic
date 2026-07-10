@@ -20,7 +20,11 @@ import {
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { taskService, estimateTaskCredits } from "@breatic/domain";
+import {
+  taskService,
+  estimateTaskCredits,
+  violatesSourceImageRequirement,
+} from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { projectService, authService, precheckCredits } from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";
@@ -73,6 +77,19 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // a task that writes into that project's canvas node and is billed
   // to the attacker's own account.
   await projectService.assertAccess(projectId, user.id, "editor");
+
+  // #1675 execute gate: a model whose mode needs a source image (i2i / edit)
+  // must not be submitted with an empty `params.images`. Reject BEFORE
+  // enqueue — billing is post-worker (markCompletedAndBill), so this means no
+  // task row, no job, no bill for an input the model would reject (e.g. Nano
+  // Banana Edit requires images ≥ 1). Defence in depth behind the Generate
+  // panel's frontend gate; the rule lives once in @breatic/shared's
+  // requiresSourceImage, reused by both layers.
+  if (violatesSourceImageRequirement(body.model, body.params)) {
+    throw new ValidationError(
+      "This model requires at least one source image (params.images).",
+    );
+  }
 
   // #1580 #7 credit pre-check (user decision 2026-07-03): refuse an
   // obviously-insufficient balance BEFORE creating the task. Non-locking

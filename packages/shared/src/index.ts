@@ -127,6 +127,8 @@ export {
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   isImageGenerationMode,
+  requiresSourceImage,
+  SOURCE_IMAGE_MODES,
 } from "@shared/types/index.js";
 
 export type {

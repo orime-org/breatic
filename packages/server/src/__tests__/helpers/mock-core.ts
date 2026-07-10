@@ -122,6 +122,9 @@ export const mocks = {
     markFailed: vi.fn(),
     softDelete: vi.fn(),
   },
+  // #1675 server execute gate (i2i/edit needs a source image). Default: no
+  // violation — existing task-create tests stay green; the #1675 test flips it.
+  violatesSourceImageRequirement: vi.fn().mockReturnValue(false),
   nodeHistoryService: {
     listByNode: vi.fn(),
     recordGenerationSuccess: vi.fn(),
@@ -374,6 +377,7 @@ export const domainMock = () => ({
   // #1580 #7 credit pre-check inputs (canvas + mini-tools routes).
   MIN_TASK_CREDIT_COST: 5,
   estimateTaskCredits: vi.fn().mockReturnValue(5),
+  violatesSourceImageRequirement: mocks.violatesSourceImageRequirement,
   getModel: vi.fn(),
   resolveProvider: vi.fn(),
   buildToolSet: vi.fn().mockReturnValue({}),
