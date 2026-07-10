@@ -17,6 +17,7 @@ import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { ImageOff } from 'lucide-react';
 import * as React from 'react';
 
+import { useTranslation } from '@web/i18n/use-translation';
 import {
   MENTION_SOURCE_ID_ATTR,
   REFERENCE_MENTION_NODE,
@@ -48,8 +49,14 @@ export const MENTION_LABEL_ATTR = 'label';
  * @returns The inline thumbnail chip.
  */
 function ReferenceMentionChip({ node }: NodeViewProps): React.JSX.Element {
+  const t = useTranslation();
   const thumbnail = node.attrs[MENTION_THUMBNAIL_ATTR] as string | null;
-  const label = (node.attrs[MENTION_LABEL_ATTR] as string | null) ?? 'reference';
+  // Localized fallback for a source node with no display name (nameOf → '')
+  // instead of a hardcoded English literal (i18n mandate). useTranslation is a
+  // global-store hook, so it works inside this ReactNodeView.
+  const label =
+    (node.attrs[MENTION_LABEL_ATTR] as string | null) ||
+    t('canvas.generatePanel.reference');
   return (
     <NodeViewWrapper
       as='span'

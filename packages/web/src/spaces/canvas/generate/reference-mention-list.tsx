@@ -12,6 +12,7 @@
 import { ImageOff } from 'lucide-react';
 import * as React from 'react';
 
+import { useTranslation } from '@web/i18n/use-translation';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 
 /** Imperative handle so the suggestion can forward key events into the list. */
@@ -42,6 +43,7 @@ export const ReferenceMentionList = React.forwardRef<
   ReferenceMentionListRef,
   ReferenceMentionListProps
 >(function ReferenceMentionList({ items, command, emptyLabel }, ref): React.JSX.Element {
+  const t = useTranslation();
   const [selected, setSelected] = React.useState(0);
   // Reset the highlight to the top whenever the filtered set changes.
   React.useEffect(() => setSelected(0), [items]);
@@ -113,7 +115,9 @@ export const ReferenceMentionList = React.forwardRef<
               <ImageOff className='h-3 w-3' aria-hidden='true' />
             </span>
           )}
-          <span className='truncate'>{item.sourceNodeName || 'reference'}</span>
+          <span className='truncate'>
+            {item.sourceNodeName || t('canvas.generatePanel.reference')}
+          </span>
         </button>
       ))}
     </div>

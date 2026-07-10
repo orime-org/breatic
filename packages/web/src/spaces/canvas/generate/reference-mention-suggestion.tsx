@@ -106,7 +106,11 @@ export function makeReferenceSuggestion(input: {
           reference,
           el,
           () => {
-            if (!el) return;
+            // Skip repositioning when the caret rect is momentarily unresolvable
+            // — keep the last good position rather than snapping to (0,0) (the
+            // `?? new DOMRect()` fallback would otherwise place the popup at the
+            // viewport corner). Restores the pre-autoUpdate `if (!rect) return`.
+            if (!el || !clientRect()) return;
             void computePosition(reference, el, {
               placement: 'bottom-start',
               middleware: [offset(6), flip(), shift({ padding: 8 })],
