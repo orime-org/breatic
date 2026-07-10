@@ -102,10 +102,10 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
   it('renders the mode toggle and fires onToggleMode when switching to i2i', () => {
     const onToggleMode = vi.fn();
     setup({ mode: 't2i', onToggleMode });
-    expect(screen.getByTestId('generate-mode-t2i')).toHaveAttribute(
-      'aria-pressed',
-      'true',
+    expect(screen.getByTestId('generate-mode-trigger')).toHaveTextContent(
+      'Text to Image',
     );
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
     fireEvent.click(screen.getByTestId('generate-mode-i2i'));
     expect(onToggleMode).toHaveBeenCalledWith('i2i');
   });
@@ -125,8 +125,7 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     // would clobber the node's stored model/params. The toggle is inert while
     // the whole generatable catalog is empty (loading / failed / none configured).
     setup({ catalogEmpty: true, models: [] });
-    expect(screen.getByTestId('generate-mode-t2i')).toBeDisabled();
-    expect(screen.getByTestId('generate-mode-i2i')).toBeDisabled();
+    expect(screen.getByTestId('generate-mode-trigger')).toBeDisabled();
   });
 
   it('keeps the mode toggle ENABLED when the current mode is empty but the catalog is not (escape hatch)', () => {
@@ -136,8 +135,7 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     // no way back. The disable must gate on GLOBAL catalog emptiness so the user
     // can always toggle to the populated mode.
     setup({ mode: 'i2i', models: [], catalogEmpty: false });
-    expect(screen.getByTestId('generate-mode-t2i')).not.toBeDisabled();
-    expect(screen.getByTestId('generate-mode-i2i')).not.toBeDisabled();
+    expect(screen.getByTestId('generate-mode-trigger')).not.toBeDisabled();
   });
 
   it('greys out the reference rail in t2i (edges stay visible but inert)', () => {
