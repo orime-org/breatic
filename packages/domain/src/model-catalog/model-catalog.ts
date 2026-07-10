@@ -13,6 +13,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "@breatic/core";
+import { requiresSourceImage } from "@breatic/shared";
 import type {
   ModelCatalog,
   ModelEntry,
@@ -258,6 +259,42 @@ export function estimateTaskCredits(model?: string): number {
     }
   }
   return MIN_TASK_CREDIT_COST;
+}
+
+/**
+ * #1675 server execute gate: whether `model` needs a source image (i2i / edit
+ * mode) but `params.images` carries none. The /canvas/tasks route runs this
+ * BEFORE enqueue — billing happens post-worker (markCompletedAndBill), so
+ * rejecting here means no task row, no job, no bill for an input the model would
+ * reject (e.g. Nano Banana Edit requires images ≥ 1). Defence in depth behind
+ * the panel's frontend gate; the source-image rule lives once in
+ * {@link requiresSourceImage} (shared), reused by both layers.
+ *
+ * A model not needing a source image (t2i), an unknown model (existence is not
+ * this check's job), or an absent model all pass. `params.images` must be a
+ * non-empty array — anything else (absent / non-array / empty) counts as no
+ * source image, so an i2i model violates.
+ * @param model - The task's model name from the request body, if any.
+ * @param params - The task params (the wire `params.images` is the source list).
+ * @returns True when an i2i/edit model was chosen with no source image.
+ */
+export function violatesSourceImageRequirement(
+  model: string | undefined,
+  params: Record<string, unknown>,
+): boolean {
+  if (!model) return false;
+  const catalog = getModelCatalog();
+  let needsSource = false;
+  for (const modality of MODALITIES) {
+    const entry = catalog[modality].find((m) => m.name === model);
+    if (entry) {
+      needsSource = requiresSourceImage(entry.mode);
+      break;
+    }
+  }
+  if (!needsSource) return false;
+  const images = params.images;
+  return !Array.isArray(images) || images.length === 0;
 }
 
 /** Reset cached catalog (for testing). */

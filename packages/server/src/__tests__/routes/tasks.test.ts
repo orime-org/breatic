@@ -132,6 +132,52 @@ describe("Tasks routes", () => {
       expect(mocks.taskService.create).not.toHaveBeenCalled();
     });
 
+    it("rejects an i2i/edit model with no source image BEFORE enqueue (#1675) — no task, no bill", async () => {
+      // The model needs a source image but params.images is empty. The gate
+      // must fire before taskService.create + enqueue (billing is post-worker),
+      // so nothing is created / queued / billed.
+      mocks.violatesSourceImageRequirement.mockReturnValue(true);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "image",
+          params: {}, // no images
+          model: "nano-banana-pro-edit",
+          source: "canvas",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+
+    it("allows an i2i model that carries a source image (#1675 gate passes)", async () => {
+      mocks.violatesSourceImageRequirement.mockReturnValue(false);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "image",
+          params: { images: ["https://cdn/x.png"] },
+          model: "nano-banana-pro-edit",
+          source: "canvas",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mocks.taskService.create).toHaveBeenCalled();
+    });
+
     it("rejects a node-bound body whose node_gens misses the target (#1580 #7 schema gate)", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {
