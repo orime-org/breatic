@@ -10,6 +10,7 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import * as React from 'react';
 import type * as Y from 'yjs';
 
+import { extractAtMentionedSourceIds } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import { ReferenceMention } from '@web/spaces/canvas/generate/reference-mention';
@@ -22,6 +23,13 @@ interface PromptEditorProps {
   placeholder: string;
   /** Called with the current plain-text prompt (drives the execute gate). */
   onTextChange: (text: string) => void;
+  /**
+   * Called with the source node ids `@`-picked in the prompt (first-appearance
+   * order, de-duped). Fires alongside {@link PromptEditorProps.onTextChange} so
+   * the container can snapshot the i2i source subset at execute time — same
+   * "report the derived value up, keep TipTap encapsulated" contract as the text.
+   */
+  onAtMentionsChange: (sourceIds: string[]) => void;
   /** Current reference pool (incoming edges) — the `@` picker's options. */
   references: ReferenceRailItem[];
   /** Active generation sub-mode; t2i greys out existing `@` mentions (design §2.4 C). */
@@ -41,12 +49,14 @@ interface PromptEditorProps {
  * @param root0.fragment - The prompt Y.XmlFragment to bind to.
  * @param root0.placeholder - Empty-state placeholder text.
  * @param root0.onTextChange - Receives the current plain-text prompt.
+ * @param root0.onAtMentionsChange - Receives the `@`-picked source node ids.
  * @returns The prompt editor.
  */
 export function PromptEditor({
   fragment,
   placeholder,
   onTextChange,
+  onAtMentionsChange,
   references,
   mode,
   mentionEmptyLabel,
@@ -73,8 +83,18 @@ export function PromptEditor({
         }),
       ],
       immediatelyRender: false,
-      onCreate: ({ editor: e }) => onTextChange(e.getText()),
-      onUpdate: ({ editor: e }) => onTextChange(e.getText()),
+      // Report BOTH derived values on every editor change (create + update): the
+      // plain text (execute gate) and the `@`-picked source ids (i2i subset).
+      // Remote collaborator edits also fire onUpdate via y-prosemirror, so the
+      // container's mirrors stay current for both local and remote changes.
+      onCreate: ({ editor: e }) => {
+        onTextChange(e.getText());
+        onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
+      },
+      onUpdate: ({ editor: e }) => {
+        onTextChange(e.getText());
+        onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
+      },
     },
     [fragment],
   );

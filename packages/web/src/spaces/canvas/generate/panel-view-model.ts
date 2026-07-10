@@ -8,7 +8,11 @@
  * all unit-testable without React / Yjs / react-query.
  */
 
-import { isImageGenerationMode, type ModelEntry } from '@breatic/shared';
+import {
+  isImageGenerationMode,
+  requiresSourceImage,
+  type ModelEntry,
+} from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
@@ -61,6 +65,13 @@ export interface GeneratePanelViewModel {
   nodeStatus: string | undefined;
   /** Active generation sub-mode (the t2i / i2i toggle state; default t2i). */
   mode: ImageGenMode;
+  /**
+   * Whether the effective model needs a source image (i2i / edit modes). Drives
+   * the #1675 execute gate: submitting one of these with no `@`-picked source
+   * image is blocked in the panel (and re-checked server-side before billing).
+   * False when the catalog is empty (no model resolved) — nothing to gate.
+   */
+  requiresSource: boolean;
   /**
    * Whether the GLOBAL generatable-image catalog is empty (still loading, failed
    * to load, or no generation model configured). Distinct from `models.length`,
@@ -218,6 +229,9 @@ export function buildGeneratePanelViewModel(input: {
     creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
     mode,
+    // Model-derived, independent of `@`-picks: does the SELECTED model's mode
+    // need a source image? No model resolved (empty catalog) → nothing to gate.
+    requiresSource: current ? requiresSourceImage(current.mode) : false,
     catalogEmpty: generatable.length === 0,
   };
 }

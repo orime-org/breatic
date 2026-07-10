@@ -325,6 +325,7 @@
       "errorBusy": "该节点正被另一个生成占用。",
       "errorUnavailable": "生成服务暂时不可用，请稍后重试。",
       "errorFailed": "生成启动失败，请重试。",
+      "errorNoSourceImage": "该模型需要源图 —— 在提示词里输入 @ 选择一张已连线的图。",
       "referenceAddFailed": "无法添加参考——该节点已不存在。",
       "modelUnavailable": "该模型已不可用——请另选一个。"
     },

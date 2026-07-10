@@ -12,12 +12,14 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
     const doc = new Y.Doc();
     const fragment = doc.getXmlFragment('prompt');
     const onTextChange = vi.fn();
+    const onAtMentionsChange = vi.fn();
 
     render(
       <PromptEditor
         fragment={fragment}
         placeholder='Describe the image'
         onTextChange={onTextChange}
+        onAtMentionsChange={onAtMentionsChange}
         references={[]}
         mode='t2i'
         mentionEmptyLabel='No references'
@@ -28,5 +30,8 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
     // (immediatelyRender: false), after which onTextChange fires from onCreate.
     expect(screen.getByTestId('generate-prompt-editor')).toBeInTheDocument();
     await waitFor(() => expect(onTextChange).toHaveBeenCalled());
+    // The `@`-mention reporter fires alongside the text; an empty prompt picks
+    // nothing, so it reports an empty source-id list.
+    expect(onAtMentionsChange).toHaveBeenCalledWith([]);
   });
 });

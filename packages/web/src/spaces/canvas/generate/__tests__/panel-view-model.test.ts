@@ -301,6 +301,33 @@ describe('buildGeneratePanelViewModel', () => {
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.nodeStatus).toBe('handling');
   });
+
+  // requiresSource drives the #1675 execute gate: a model whose mode needs a
+  // source image (i2i / edit) must not submit with an empty image list.
+  it('flags requiresSource=false for a t2i model (generates from scratch)', () => {
+    const nodes = [node('n1', imageView({ model: 'flux' }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.requiresSource).toBe(false);
+  });
+
+  it('flags requiresSource=true for an i2i model (#1675 gate)', () => {
+    const nodes = [node('n1', i2iView())];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: i2iModels });
+    expect(vm.requiresSource).toBe(true);
+  });
+
+  it('flags requiresSource=true for an edit-capable model', () => {
+    const editModels = [makeModel('nano-edit', { mode: ['i2i', 'edit'] })];
+    const nodes = [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: editModels });
+    expect(vm.requiresSource).toBe(true);
+  });
+
+  it('flags requiresSource=false when the catalog is empty (no model resolved)', () => {
+    const nodes = [node('n1', imageView())];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: [] });
+    expect(vm.requiresSource).toBe(false);
+  });
 });
 
 describe('resolveModeSwitch — model + params to persist on a mode toggle', () => {

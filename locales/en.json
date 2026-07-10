@@ -332,6 +332,7 @@
       "errorBusy": "This node is busy with another generation.",
       "errorUnavailable": "Generation is temporarily unavailable. Please try again.",
       "errorFailed": "Couldn't start generation. Please try again.",
+      "errorNoSourceImage": "This model needs a source image — type @ in the prompt to pick a connected image.",
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
       "modelUnavailable": "That model is no longer available — pick another."
     },
