@@ -10,7 +10,13 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import * as React from 'react';
 import type * as Y from 'yjs';
 
-import { extractAtMentionedSourceIds } from '@web/spaces/canvas/generate/at-reference';
+import {
+  extractAtMentionedSourceIds,
+  planMentionDeletions,
+  MENTION_SOURCE_ID_ATTR,
+  REFERENCE_MENTION_NODE,
+  type MentionOccurrence,
+} from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import { ReferenceMention } from '@web/spaces/canvas/generate/reference-mention';
@@ -98,6 +104,30 @@ export function PromptEditor({
     },
     [fragment],
   );
+  // Cascade-clear stale @-mention chips: when a reference edge is removed the
+  // pool shrinks, so any @-mention pointing at a now-disconnected source must
+  // disappear from the prompt (design §2.1 — a mention only picks from the
+  // pool). Collect the mention occurrences, plan the deletions purely, then
+  // apply them in one transaction (synced to collaborators via Collaboration).
+  React.useEffect(() => {
+    if (!editor) return;
+    const poolIds = new Set(references.map((r) => r.sourceNodeId));
+    const occurrences: MentionOccurrence[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name !== REFERENCE_MENTION_NODE) return;
+      const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
+      if (typeof id === 'string') {
+        occurrences.push({ sourceNodeId: id, from: pos, to: pos + n.nodeSize });
+      }
+    });
+    const deletions = planMentionDeletions(occurrences, poolIds);
+    if (deletions.length === 0) return;
+    // Deletions are sorted highest-position-first, so each delete leaves the
+    // remaining (lower) positions valid.
+    const tr = editor.state.tr;
+    for (const { from, to } of deletions) tr.delete(from, to);
+    editor.view.dispatch(tr);
+  }, [editor, references]);
   // t2i greys out existing @-mention chips (design §2.4 C): the mode switch
   // visually pre-announces they will not take effect; execute filters them out.
   const dimReferences =

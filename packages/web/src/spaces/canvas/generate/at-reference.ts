@@ -51,3 +51,35 @@ export function extractAtMentionedSourceIds(
   visit(doc);
   return ordered;
 }
+
+/** A reference-mention occurrence located in the prompt document. */
+export interface MentionOccurrence {
+  /** The source image node id the mention points at. */
+  sourceNodeId: string;
+  /** ProseMirror start position of the mention node (inclusive). */
+  from: number;
+  /** ProseMirror end position of the mention node (exclusive). */
+  to: number;
+}
+
+/**
+ * Plans which `@`-mention chips to delete when their referenced source has left
+ * the connection pool (its edge was removed). A mention is stale when its
+ * `sourceNodeId` is no longer in `poolSourceIds`; the returned ranges are sorted
+ * DESCENDING by `from` so a caller can delete them sequentially without earlier
+ * deletions shifting the positions of later ones. Pure — the caller collects the
+ * occurrences from the editor and applies the deletions in one transaction.
+ * @param mentions - The mention occurrences currently in the prompt document.
+ * @param poolSourceIds - Source node ids still connected (the live reference pool).
+ * @returns Ranges of stale mentions to delete, highest position first.
+ * @throws Never.
+ */
+export function planMentionDeletions(
+  mentions: readonly MentionOccurrence[],
+  poolSourceIds: ReadonlySet<string>,
+): Array<{ from: number; to: number }> {
+  return mentions
+    .filter((m) => !poolSourceIds.has(m.sourceNodeId))
+    .map((m) => ({ from: m.from, to: m.to }))
+    .sort((a, b) => b.from - a.from);
+}
