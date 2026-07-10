@@ -13,6 +13,7 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
+import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { ImageOff } from 'lucide-react';
 import * as React from 'react';
 
@@ -20,6 +21,17 @@ import {
   MENTION_SOURCE_ID_ATTR,
   REFERENCE_MENTION_NODE,
 } from '@web/spaces/canvas/generate/at-reference';
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+
+/** Options for the {@link ReferenceMention} node. */
+export interface ReferenceMentionOptions {
+  /**
+   * The `@` suggestion config, installed as a ProseMirror plugin so typing `@`
+   * opens the picker. Supplied via `.configure({ suggestion })`; `editor` is
+   * injected by the node itself (see addProseMirrorPlugins).
+   */
+  suggestion: Omit<SuggestionOptions<ReferenceRailItem>, 'editor'>;
+}
 
 /** Attr key on a reference-mention node carrying the snapshot thumbnail URL. */
 export const MENTION_THUMBNAIL_ATTR = 'thumbnail';
@@ -65,16 +77,24 @@ function ReferenceMentionChip({ node }: NodeViewProps): React.JSX.Element {
  * carrying a stable `sourceNodeId` + snapshot `thumbnail` / `label`. Under the
  * Collaboration (Yjs) extension the node + its attributes sync automatically
  * because they are part of the shared ProseMirror schema. Insertion is driven
- * by the `@` suggestion (separate module); this extension only defines the node
- * identity, its attributes, and the React chip view.
+ * by the `@` suggestion, which this extension INSTALLS as a ProseMirror plugin
+ * (addProseMirrorPlugins) — the `.configure({ suggestion })` config alone does
+ * nothing until it is wired into the editor as a plugin.
  */
-export const ReferenceMention = Node.create({
+export const ReferenceMention = Node.create<ReferenceMentionOptions>({
   name: REFERENCE_MENTION_NODE,
   group: 'inline',
   inline: true,
   atom: true,
   selectable: true,
   draggable: false,
+
+  addOptions() {
+    return {
+      // Overridden by .configure({ suggestion: makeReferenceSuggestion(...) }).
+      suggestion: {} as Omit<SuggestionOptions<ReferenceRailItem>, 'editor'>,
+    };
+  },
 
   addAttributes() {
     return {
@@ -118,5 +138,17 @@ export const ReferenceMention = Node.create({
 
   addNodeView() {
     return ReactNodeViewRenderer(ReferenceMentionChip);
+  },
+
+  addProseMirrorPlugins() {
+    // Install the `@` suggestion plugin (the missing wiring that made typing `@`
+    // do nothing). `editor` is injected here; the rest (char / items / command /
+    // render) comes from makeReferenceSuggestion via .configure.
+    return [
+      Suggestion<ReferenceRailItem>({
+        editor: this.editor,
+        ...this.options.suggestion,
+      }),
+    ];
   },
 });
