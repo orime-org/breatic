@@ -61,18 +61,18 @@ function ReferenceMentionChip({ node }: NodeViewProps): React.JSX.Element {
     <NodeViewWrapper
       as='span'
       data-reference-mention=''
-      className='reference-mention mx-0.5 inline-flex h-5 max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted align-middle text-xs text-muted-foreground'
+      className='reference-mention mx-0.5 inline-flex h-5 max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-middle text-xs text-muted-foreground'
       contentEditable={false}
     >
       {typeof thumbnail === 'string' && thumbnail.length > 0 ? (
         <img
           src={thumbnail}
           alt={label}
-          className='h-5 w-5 shrink-0 object-cover'
+          className='h-3.5 w-3.5 shrink-0 rounded-sm object-cover'
           draggable={false}
         />
       ) : (
-        <ImageOff className='ml-1 h-3 w-3 shrink-0' aria-hidden='true' />
+        <ImageOff className='h-3 w-3 shrink-0' aria-hidden='true' />
       )}
       <span className='truncate pr-1.5'>{label}</span>
     </NodeViewWrapper>
