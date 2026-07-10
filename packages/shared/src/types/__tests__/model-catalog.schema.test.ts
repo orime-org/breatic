@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   sanitizeModelCatalog,
   isImageGenerationMode,
+  requiresSourceImage,
 } from "@shared/types/model-catalog.js";
 import type { ModelCatalog, ModelEntry } from "@shared/types/model-catalog.js";
 
@@ -224,6 +225,25 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(isImageGenerationMode("")).toBe(false);
     expect(isImageGenerationMode([])).toBe(false);
     expect(isImageGenerationMode("t2v")).toBe(false); // a video mode, not image
+  });
+
+  it("classifies which image modes REQUIRE a source image (i2i / edit)", () => {
+    // Modes that consume a source image as input.
+    expect(requiresSourceImage("i2i")).toBe(true); // image-to-image
+    expect(requiresSourceImage("edit")).toBe(true); // inpaint / edit
+    expect(requiresSourceImage(["i2i"])).toBe(true);
+    expect(requiresSourceImage(["edit"])).toBe(true);
+    // A multi-mode model qualifies if ANY mode needs a source image.
+    expect(requiresSourceImage(["i2i", "edit"])).toBe(true);
+    expect(requiresSourceImage(["t2i", "edit"])).toBe(true);
+    // text-to-image generates from scratch — needs NO source image.
+    expect(requiresSourceImage("t2i")).toBe(false);
+    expect(requiresSourceImage(["t2i"])).toBe(false);
+    // Unknown / empty / other-modality — not a source-image mode.
+    expect(requiresSourceImage("")).toBe(false);
+    expect(requiresSourceImage([])).toBe(false);
+    expect(requiresSourceImage("remove_bg")).toBe(false);
+    expect(requiresSourceImage("t2v")).toBe(false);
   });
 
   it("drops a __proto__ param key without polluting the result prototype", () => {
