@@ -6,6 +6,7 @@ import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 
 interface ReferenceRailProps {
@@ -58,32 +59,37 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             data-testid={`generate-ref-${ref.refId}`}
             className='group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5'
           >
-            <button
-              type='button'
-              data-testid={`generate-ref-insert-${ref.refId}`}
-              aria-label={t('canvas.generatePanel.insertReference')}
-              // preventDefault on mousedown keeps the prompt editor focused, so
-              // the mention lands at the caret (not appended to the end).
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => onInsert(ref)}
-              disabled={disabled}
-              className='flex items-center gap-1.5 rounded-overlay disabled:cursor-not-allowed'
+            <ThumbnailHoverPreview
+              src={ref.thumbnail}
+              alt={ref.sourceNodeName}
             >
-              {ref.thumbnail ? (
-                <img
-                  src={ref.thumbnail}
-                  alt={ref.sourceNodeName}
-                  className='h-6 w-6 shrink-0 rounded object-cover'
-                />
-              ) : (
-                <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground'>
-                  <NodeIcon className='h-3.5 w-3.5' aria-hidden='true' />
+              <button
+                type='button'
+                data-testid={`generate-ref-insert-${ref.refId}`}
+                aria-label={t('canvas.generatePanel.insertReference')}
+                // preventDefault on mousedown keeps the prompt editor focused, so
+                // the mention lands at the caret (not appended to the end).
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => onInsert(ref)}
+                disabled={disabled}
+                className='flex items-center gap-1.5 rounded-overlay disabled:cursor-not-allowed'
+              >
+                {ref.thumbnail ? (
+                  <img
+                    src={ref.thumbnail}
+                    alt={ref.sourceNodeName}
+                    className='h-6 w-6 shrink-0 rounded object-cover'
+                  />
+                ) : (
+                  <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground'>
+                    <NodeIcon className='h-3.5 w-3.5' aria-hidden='true' />
+                  </span>
+                )}
+                <span className='max-w-[7rem] truncate text-xs text-foreground'>
+                  {ref.sourceNodeName}
                 </span>
-              )}
-              <span className='max-w-[7rem] truncate text-xs text-foreground'>
-                {ref.sourceNodeName}
-              </span>
-            </button>
+              </button>
+            </ThumbnailHoverPreview>
             <button
               type='button'
               data-testid={`generate-ref-remove-${ref.refId}`}

@@ -22,6 +22,7 @@ import {
   REFERENCE_MENTION_NODE,
 } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 
@@ -89,24 +90,26 @@ function ReferenceMentionChip({ node }: NodeViewProps): React.JSX.Element {
   // default to image (the historical @-picker was image-centric).
   const FallbackIcon = getNodeIcon(kind ?? 'image');
   return (
-    <NodeViewWrapper
-      as='span'
-      data-reference-mention=''
-      className='reference-mention mx-0.5 inline-flex h-5 max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-middle text-xs text-muted-foreground'
-      contentEditable={false}
-    >
-      {typeof thumbnail === 'string' && thumbnail.length > 0 ? (
-        <img
-          src={thumbnail}
-          alt={label}
-          className='h-3.5 w-3.5 shrink-0 rounded object-cover'
-          draggable={false}
-        />
-      ) : (
-        <FallbackIcon className='h-3 w-3 shrink-0' aria-hidden='true' />
-      )}
-      <span className='truncate pr-1.5'>{label}</span>
-    </NodeViewWrapper>
+    <ThumbnailHoverPreview src={thumbnail ?? undefined} alt={label}>
+      <NodeViewWrapper
+        as='span'
+        data-reference-mention=''
+        className='reference-mention mx-0.5 inline-flex h-5 max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-middle text-xs text-muted-foreground'
+        contentEditable={false}
+      >
+        {typeof thumbnail === 'string' && thumbnail.length > 0 ? (
+          <img
+            src={thumbnail}
+            alt={label}
+            className='h-3.5 w-3.5 shrink-0 rounded object-cover'
+            draggable={false}
+          />
+        ) : (
+          <FallbackIcon className='h-3 w-3 shrink-0' aria-hidden='true' />
+        )}
+        <span className='truncate pr-1.5'>{label}</span>
+      </NodeViewWrapper>
+    </ThumbnailHoverPreview>
   );
 }
 
