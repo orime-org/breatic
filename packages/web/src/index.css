@@ -172,15 +172,22 @@ body {
    hover. The glow uses the selected-node colour so "selectable here" reads
    consistently. Always plays while hovered — a functional state cue, not
    decoration (cf. the motion ADR: reduce-motion never silences functional canvas
-   cues). */
-.canvas-pick-dimmed {
+   cues).
+
+   Selectors are scoped `.react-flow .react-flow__node.<class>` (specificity
+   0,3,0) ON PURPOSE: ReactFlow ships `.react-flow__node.draggable { cursor: grab }`
+   (0,2,0), so a bare `.canvas-pick-dimmed` (0,1,0) loses the cascade and the
+   dimmed node keeps grab instead of the required not-allowed cursor. The extra
+   `.react-flow` ancestor outranks it regardless of stylesheet import order.
+   Browser smoke 2026-07-10 verified the cursor resolves not-allowed / pointer. */
+.react-flow .react-flow__node.canvas-pick-dimmed {
   opacity: 0.4;
   cursor: not-allowed;
 }
-.canvas-pick-selectable {
+.react-flow .react-flow__node.canvas-pick-selectable {
   cursor: pointer;
 }
-.canvas-pick-selectable:hover {
+.react-flow .react-flow__node.canvas-pick-selectable:hover {
   border-radius: 12px;
   animation: canvas-pick-glow 1.4s ease-in-out infinite;
 }

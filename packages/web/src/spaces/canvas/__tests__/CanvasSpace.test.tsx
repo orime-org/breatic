@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 
@@ -452,5 +455,48 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(useSpaceOperationsStore.getState().hasOperations('s')).toBe(true);
 
     configSpy.mockRestore();
+  });
+});
+
+// Reference-pick mode cursor contract (canvas item 7, user 2026-07-10).
+// jsdom does not resolve the CSS cascade for `cursor`, so the browser smoke
+// (2026-07-10) is the real proof the dimmed node shows not-allowed. This guard
+// pins the *specificity* that the smoke exposed: ReactFlow ships
+// `.react-flow__node.draggable { cursor: grab }` (0,2,0), so the pick-mode
+// cursor rules MUST stay scoped under `.react-flow .react-flow__node` (0,3,0)
+// or the dimmed node silently keeps grab instead of not-allowed. A future
+// "simplification" back to a bare `.canvas-pick-dimmed` selector regresses it.
+describe('reference-pick stylesheet contract (item 7 cursor specificity)', () => {
+  const css = readFileSync(resolve(__dirname, '../../../index.css'), 'utf8');
+
+  it('scopes the dimmed cursor rule under .react-flow__node so it outranks ReactFlow grab', () => {
+    expect(css).toContain(
+      '.react-flow .react-flow__node.canvas-pick-dimmed',
+    );
+    const rule = css.slice(
+      css.indexOf('.react-flow .react-flow__node.canvas-pick-dimmed'),
+    );
+    expect(rule).toContain('cursor: not-allowed');
+    // A bare, unscoped selector (specificity 0,1,0) loses to ReactFlow's grab.
+    expect(css).not.toMatch(/^\.canvas-pick-dimmed\s*\{/m);
+  });
+
+  it('scopes the selectable cursor rule under .react-flow__node so hover reads pointer', () => {
+    expect(css).toContain(
+      '.react-flow .react-flow__node.canvas-pick-selectable',
+    );
+    const rule = css.slice(
+      css.indexOf('.react-flow .react-flow__node.canvas-pick-selectable'),
+    );
+    expect(rule).toContain('cursor: pointer');
+    expect(css).not.toMatch(/^\.canvas-pick-selectable\s*\{/m);
+  });
+
+  it('keeps the breathing glow on the selectable hover state (functional cue)', () => {
+    expect(css).toContain(
+      '.react-flow .react-flow__node.canvas-pick-selectable:hover',
+    );
+    expect(css).toContain('animation: canvas-pick-glow');
+    expect(css).toContain('@keyframes canvas-pick-glow');
   });
 });
