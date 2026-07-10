@@ -429,6 +429,8 @@ function CanvasSpaceInner({
   const minimapVisible = useCanvasStore((s) => s.minimapVisible);
   const snapToGrid = useCanvasStore((s) => s.snapToGrid);
   const openGeneratePanel = useCanvasStore((s) => s.openGeneratePanel);
+  const closeGeneratePanel = useCanvasStore((s) => s.closeGeneratePanel);
+  const generatePanelNodeId = useCanvasStore((s) => s.generatePanelNodeId);
   const referencePickForNodeId = useCanvasStore(
     (s) => s.referencePickForNodeId,
   );
@@ -437,6 +439,18 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     setZoom(rfZoom);
   }, [rfZoom, setZoom]);
+  // Right-clicking a node → Generate opens the panel; also select that node so
+  // the open panel visibly belongs to a selected node (user 2026-07-10 item 6).
+  // Unchanged nodes keep their previous reference so React.memo still bails.
+  React.useEffect(() => {
+    if (generatePanelNodeId == null) return;
+    setFlowNodes((current) =>
+      current.map((n) => {
+        const shouldSelect = n.id === generatePanelNodeId;
+        return n.selected === shouldSelect ? n : { ...n, selected: shouldSelect };
+      }),
+    );
+  }, [generatePanelNodeId, setFlowNodes]);
 
   const pendingViewportCommand = useCanvasStore(
     (s) => s.pendingViewportCommand,
@@ -772,6 +786,28 @@ function CanvasSpaceInner({
     },
     [projectId, spaceId, endReferencePick, t],
   );
+
+  // Node click: in reference-pick mode delegate to the pick handler; otherwise,
+  // if a Generate panel is open on a DIFFERENT node, close it (user 2026-07-10
+  // item 6b — the panel belongs to one selected node at a time).
+  const onNodeClick = React.useCallback(
+    (event: React.MouseEvent, node: Node): void => {
+      const state = useCanvasStore.getState();
+      if (state.referencePickForNodeId) {
+        onReferencePickNodeClick(event, node);
+        return;
+      }
+      if (state.generatePanelNodeId && state.generatePanelNodeId !== node.id) {
+        closeGeneratePanel();
+      }
+    },
+    [onReferencePickNodeClick, closeGeneratePanel],
+  );
+
+  // Clicking the empty canvas closes an open Generate panel (item 6b).
+  const onPaneClick = React.useCallback((): void => {
+    if (useCanvasStore.getState().generatePanelNodeId) closeGeneratePanel();
+  }, [closeGeneratePanel]);
 
   // ---- Node creation (library mailbox + right-click) ----
   // Viewers can't create. The chrome node-library button is already disabled,
@@ -1915,7 +1951,8 @@ function CanvasSpaceInner({
           onConnect={onConnect}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
-          onNodeClick={onReferencePickNodeClick}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
           onSelectionContextMenu={onSelectionContextMenu}
           onEdgeContextMenu={onEdgeContextMenu}
           deleteKeyCode={DELETE_KEYS}
