@@ -416,8 +416,15 @@ function CanvasSpaceInner({
     return () => useCanvasGraphStore.getState().reset();
   }, []);
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition, zoomIn, zoomOut, fitView, zoomTo, setCenter, getNode } =
-    useReactFlow();
+  const {
+    screenToFlowPosition,
+    zoomIn,
+    zoomOut,
+    fitView,
+    zoomTo,
+    setCenter,
+    getInternalNode,
+  } = useReactFlow();
 
   // ---- Zoom bridge (chrome toolbar ↔ ReactFlow) ----
   // The zoom toolbar lives in chrome, outside this ReactFlowProvider, so it
@@ -818,15 +825,22 @@ function CanvasSpaceInner({
   const onLocateSource = React.useCallback((): void => {
     const id = useCanvasStore.getState().referencePickForNodeId;
     if (id == null) return;
-    const node = getNode(id);
-    if (!node) return;
-    const w = node.measured?.width ?? node.width ?? 0;
-    const h = node.measured?.height ?? node.height ?? 0;
-    setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+    // A grouped member stores its position relative to its Group, so
+    // `node.position` is NOT canvas-absolute — setCenter expects absolute
+    // coordinates. Use the internal node's `positionAbsolute` (ReactFlow folds
+    // in every parent offset), which is correct for both top-level and grouped
+    // source nodes. `node.position` alone panned toward the origin for a
+    // grouped source (adversarial finding 2026-07-10).
+    const internal = getInternalNode(id);
+    if (!internal) return;
+    const abs = internal.internals.positionAbsolute;
+    const w = internal.measured?.width ?? internal.width ?? 0;
+    const h = internal.measured?.height ?? internal.height ?? 0;
+    setCenter(abs.x + w / 2, abs.y + h / 2, {
       zoom: rfZoom,
       duration: 300,
     });
-  }, [getNode, setCenter, rfZoom]);
+  }, [getInternalNode, setCenter, rfZoom]);
 
   // ---- Node creation (library mailbox + right-click) ----
   // Viewers can't create. The chrome node-library button is already disabled,

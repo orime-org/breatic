@@ -37,9 +37,20 @@ const ICON_BY_KIND: Record<NodeKind, LucideIcon> = {
 /**
  * Returns the lucide icon representing a node modality, for use where the node
  * has no visual thumbnail to show.
- * @param kind - The source node's modality.
- * @returns The lucide icon component for that modality.
+ *
+ * Accepts an UNTRUSTED value on purpose: the prompt `@` chip reads `kind` from a
+ * Yjs-synced attribute, so a corrupt / forward-incompatible doc can carry any
+ * string (or a prototype key like `constructor`). `Object.hasOwn` gates the
+ * lookup to real own keys so an out-of-range value falls back to a neutral icon
+ * instead of returning `undefined` and crashing the React render with
+ * "Element type is invalid" (adversarial finding 2026-07-10).
+ * @param kind - The source node's modality (may be an unvalidated string).
+ * @returns A lucide icon component; the Image icon for any unknown modality.
  */
-export function getNodeIcon(kind: NodeKind): LucideIcon {
-  return ICON_BY_KIND[kind];
+export function getNodeIcon(
+  kind: NodeKind | string | null | undefined,
+): LucideIcon {
+  return kind != null && Object.hasOwn(ICON_BY_KIND, kind)
+    ? ICON_BY_KIND[kind as NodeKind]
+    : Image;
 }

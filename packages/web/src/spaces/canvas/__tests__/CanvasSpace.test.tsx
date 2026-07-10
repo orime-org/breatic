@@ -500,3 +500,29 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     expect(css).toContain('@keyframes canvas-pick-glow');
   });
 });
+
+// Locate-source absolute-position contract (item 7 locate, adversarial fix
+// 2026-07-10). A grouped node stores a parent-relative position, but setCenter
+// expects absolute canvas coordinates — centering on the bare `.position` panned
+// the viewport toward the origin for a grouped source. jsdom can't render the
+// ReactFlow grouped-node internals, so this source guard pins the fix: locate
+// must read the internal node's `positionAbsolute`, never a bare user-node
+// `.position`, when computing the center.
+describe('onLocateSource absolute-position contract (item 7 grouped source)', () => {
+  const src = readFileSync(
+    resolve(__dirname, '../CanvasSpace.tsx'),
+    'utf8',
+  );
+  const locate = src.slice(
+    src.indexOf('const onLocateSource'),
+    src.indexOf('const onLocateSource') + 900,
+  );
+
+  it('centers on the internal node positionAbsolute, not a parent-relative position', () => {
+    expect(locate).toContain('getInternalNode');
+    expect(locate).toContain('positionAbsolute');
+    // The regression is centering on `node.position` (relative for a grouped
+    // member). setCenter must not be fed a bare `.position.x`.
+    expect(locate).not.toMatch(/setCenter\(\s*node\.position\.x/);
+  });
+});
