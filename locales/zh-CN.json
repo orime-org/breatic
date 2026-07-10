@@ -310,6 +310,7 @@
       "selectFromCanvas": "从画布选择参考",
       "returnToNode": "返回节点",
       "exitSelect": "退出",
+      "locateSource": "定位到源节点",
       "presets": "预设",
       "camera": "摄像机",
       "online": "联网搜索",

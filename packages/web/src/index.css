@@ -165,3 +165,35 @@ body {
   --xy-edge-stroke-default: var(--color-foreground-disabled);
   --xy-edge-stroke-selected-default: var(--color-status-selected);
 }
+
+/* Reference-pick mode (canvas item 7, user 2026-07-10): while picking references
+   from the canvas, the source node + any node already wired to it are dimmed and
+   non-pickable; every OTHER node invites selection with a breathing glow on
+   hover. The glow uses the selected-node colour so "selectable here" reads
+   consistently. Always plays while hovered — a functional state cue, not
+   decoration (cf. the motion ADR: reduce-motion never silences functional canvas
+   cues). */
+.canvas-pick-dimmed {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.canvas-pick-selectable {
+  cursor: pointer;
+}
+.canvas-pick-selectable:hover {
+  border-radius: 12px;
+  animation: canvas-pick-glow 1.4s ease-in-out infinite;
+}
+@keyframes canvas-pick-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--color-status-selected) 55%, transparent),
+      0 0 14px 2px color-mix(in srgb, var(--color-status-selected) 35%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--color-status-selected) 80%, transparent),
+      0 0 26px 7px color-mix(in srgb, var(--color-status-selected) 55%, transparent);
+  }
+}

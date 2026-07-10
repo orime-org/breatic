@@ -310,6 +310,7 @@
       "selectFromCanvas": "캔버스에서 참조 선택",
       "returnToNode": "노드로 돌아가기",
       "exitSelect": "종료",
+      "locateSource": "소스 노드로 이동",
       "presets": "프리셋",
       "camera": "카메라",
       "online": "웹 검색",

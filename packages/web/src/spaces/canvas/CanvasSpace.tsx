@@ -20,6 +20,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
 import { newId } from '@breatic/shared';
@@ -415,7 +416,7 @@ function CanvasSpaceInner({
     return () => useCanvasGraphStore.getState().reset();
   }, []);
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition, zoomIn, zoomOut, fitView, zoomTo } =
+  const { screenToFlowPosition, zoomIn, zoomOut, fitView, zoomTo, setCenter, getNode } =
     useReactFlow();
 
   // ---- Zoom bridge (chrome toolbar ↔ ReactFlow) ----
@@ -766,25 +767,27 @@ function CanvasSpaceInner({
       // PREVIOUS node.
       const target = useCanvasStore.getState().referencePickForNodeId;
       if (!target) return;
-      // Wire clicked-source → target as a reference, then always exit pick mode.
-      // Self-loop + both-endpoints-still-exist are enforced race-free at the
-      // addEdge write boundary (a collaborator may have deleted either node
-      // between this render and the click, leaving our closure stale).
+      // The target itself and any node ALREADY wired to it are dimmed +
+      // non-pickable (item 7) — clicking them is a no-op so the user keeps
+      // picking (continuous select until they press Exit).
+      if (node.id === target) return;
+      const alreadyReferenced = flowEdges.some(
+        (e) => e.target === target && e.source === node.id,
+      );
+      if (alreadyReferenced) return;
+      // Wire clicked-source → target as a reference. Self-loop + both-endpoints-
+      // still-exist are enforced race-free at the addEdge write boundary (a
+      // collaborator may have deleted either node between render and click).
       const added = addEdge(projectId, spaceId, {
         id: `${node.id}->${target}`,
         source: node.id,
         target,
       });
-      // Clicking a DIFFERENT node that still couldn't be wired means it (or the
-      // target) was deleted mid-pick — surface it instead of closing the banner
-      // as if the reference landed. (Clicking the panel node itself is a
-      // deliberate cancel and stays silent.)
-      if (!added && node.id !== target) {
-        toast.error(t('canvas.generatePanel.referenceAddFailed'));
-      }
-      endReferencePick();
+      // Couldn't wire = the node (or target) was deleted mid-pick — surface it.
+      // Stay in pick mode either way; Exit is the only way out (item 7).
+      if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
     },
-    [projectId, spaceId, endReferencePick, t],
+    [projectId, spaceId, flowEdges, t],
   );
 
   // Node click: in reference-pick mode delegate to the pick handler; otherwise,
@@ -808,6 +811,22 @@ function CanvasSpaceInner({
   const onPaneClick = React.useCallback((): void => {
     if (useCanvasStore.getState().generatePanelNodeId) closeGeneratePanel();
   }, [closeGeneratePanel]);
+
+  // Recenter the picking node so it stays findable while selecting references
+  // across a large canvas (user 2026-07-10 item 7 locate). Pans only — keeps the
+  // current zoom.
+  const onLocateSource = React.useCallback((): void => {
+    const id = useCanvasStore.getState().referencePickForNodeId;
+    if (id == null) return;
+    const node = getNode(id);
+    if (!node) return;
+    const w = node.measured?.width ?? node.width ?? 0;
+    const h = node.measured?.height ?? node.height ?? 0;
+    setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+      zoom: rfZoom,
+      duration: 300,
+    });
+  }, [getNode, setCenter, rfZoom]);
 
   // ---- Node creation (library mailbox + right-click) ----
   // Viewers can't create. The chrome node-library button is already disabled,
@@ -1849,6 +1868,30 @@ function CanvasSpaceInner({
     ];
   }, [flowNodes, readOnly]);
 
+  // Reference-pick mode overlay (user 2026-07-10 item 7): the node whose panel
+  // is picking + any node ALREADY wired to it are dimmed + non-pickable; every
+  // other node gets a hover glow inviting selection. Off pick mode this returns
+  // the same reference (no-op) so nothing re-renders.
+  const pickedNodes = React.useMemo<Node[]>(() => {
+    if (referencePickForNodeId == null) return renderNodes;
+    const alreadyReferenced = new Set(
+      flowEdges
+        .filter((e) => e.target === referencePickForNodeId)
+        .map((e) => e.source),
+    );
+    return renderNodes.map((node) => {
+      const dimmed =
+        node.id === referencePickForNodeId || alreadyReferenced.has(node.id);
+      const pickClass = dimmed
+        ? 'canvas-pick-dimmed'
+        : 'canvas-pick-selectable';
+      return {
+        ...node,
+        className: [node.className, pickClass].filter(Boolean).join(' '),
+      };
+    });
+  }, [renderNodes, referencePickForNodeId, flowEdges]);
+
   // Stable menu-callback references (#1647 step 4E): the context menus are
   // React.memo'd, so their `onOpenChange` / action props must be stable
   // references to let the memo bail — a fresh inline arrow each render would
@@ -1916,7 +1959,7 @@ function CanvasSpaceInner({
           onChange={onUploadInputChange}
         />
         <ReactFlow
-          nodes={renderNodes}
+          nodes={pickedNodes}
           edges={flowEdges}
           nodeTypes={FLOW_NODE_TYPES}
           edgeTypes={EDGE_TYPES}
@@ -2023,6 +2066,15 @@ function CanvasSpaceInner({
             className='absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
           >
             <span>{t('canvas.generatePanel.selectFromCanvas')}</span>
+            <button
+              type='button'
+              data-testid='reference-pick-locate'
+              aria-label={t('canvas.generatePanel.locateSource')}
+              onClick={onLocateSource}
+              className='flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground'
+            >
+              <LocateFixed className='h-4 w-4' aria-hidden='true' />
+            </button>
             <button
               type='button'
               onClick={endReferencePick}

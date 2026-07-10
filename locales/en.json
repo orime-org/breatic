@@ -317,6 +317,7 @@
       "selectFromCanvas": "Select a reference from the canvas",
       "returnToNode": "Return to node",
       "exitSelect": "Exit",
+      "locateSource": "Recenter the source node",
       "presets": "Presets",
       "camera": "Camera",
       "online": "Web search",

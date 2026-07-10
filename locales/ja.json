@@ -310,6 +310,7 @@
       "selectFromCanvas": "キャンバスから参照を選択",
       "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
+      "locateSource": "ソースノードに移動",
       "presets": "プリセット",
       "camera": "カメラ",
       "online": "ウェブ検索",
