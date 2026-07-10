@@ -74,7 +74,12 @@ export const ModelPicker = React.memo(function ModelPicker({
                     onChange(m.name);
                     setOpen(false);
                   }}
-                  className='flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent'
+                  className={
+                    'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent ' +
+                    (m.name === value
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-popover-foreground')
+                  }
                 >
                   <Check
                     className={`h-3.5 w-3.5 shrink-0 ${m.name === value ? 'opacity-100' : 'opacity-0'}`}

@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ImageOff, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 
 interface ReferenceRailProps {
   /** The node's derived reference rows (from {@link deriveReferences}). */
@@ -44,39 +45,42 @@ export const ReferenceRail = React.memo(function ReferenceRail({
       role='list'
       data-testid='generate-reference-rail'
     >
-      {references.map((ref) => (
-        <div
-          key={ref.refId}
-          role='listitem'
-          data-testid={`generate-ref-${ref.refId}`}
-          className='group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5'
-        >
-          {ref.thumbnail ? (
-            <img
-              src={ref.thumbnail}
-              alt={ref.sourceNodeName}
-              className='h-6 w-6 shrink-0 rounded object-cover'
-            />
-          ) : (
-            <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground'>
-              <ImageOff className='h-3.5 w-3.5' aria-hidden='true' />
-            </span>
-          )}
-          <span className='max-w-[7rem] truncate text-xs text-foreground'>
-            {ref.sourceNodeName}
-          </span>
-          <button
-            type='button'
-            data-testid={`generate-ref-remove-${ref.refId}`}
-            aria-label={t('canvas.generatePanel.removeReference')}
-            onClick={() => onRemove(ref.refId)}
-            disabled={disabled}
-            className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed'
+      {references.map((ref) => {
+        const NodeIcon = getNodeIcon(ref.sourceNodeType);
+        return (
+          <div
+            key={ref.refId}
+            role='listitem'
+            data-testid={`generate-ref-${ref.refId}`}
+            className='group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5'
           >
-            <X className='h-3 w-3' aria-hidden='true' />
-          </button>
-        </div>
-      ))}
+            {ref.thumbnail ? (
+              <img
+                src={ref.thumbnail}
+                alt={ref.sourceNodeName}
+                className='h-6 w-6 shrink-0 rounded object-cover'
+              />
+            ) : (
+              <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground'>
+                <NodeIcon className='h-3.5 w-3.5' aria-hidden='true' />
+              </span>
+            )}
+            <span className='max-w-[7rem] truncate text-xs text-foreground'>
+              {ref.sourceNodeName}
+            </span>
+            <button
+              type='button'
+              data-testid={`generate-ref-remove-${ref.refId}`}
+              aria-label={t('canvas.generatePanel.removeReference')}
+              onClick={() => onRemove(ref.refId)}
+              disabled={disabled}
+              className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed'
+            >
+              <X className='h-3 w-3' aria-hidden='true' />
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 });

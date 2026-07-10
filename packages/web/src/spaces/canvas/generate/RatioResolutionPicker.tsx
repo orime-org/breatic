@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
@@ -87,6 +88,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
         className='flex h-8 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
       >
         {label}
+        <ChevronDown className='h-3.5 w-3.5 shrink-0 opacity-60' aria-hidden='true' />
       </button>
       {open ? (
         <>

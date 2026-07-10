@@ -14,7 +14,6 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
-import { ImageOff } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
@@ -23,6 +22,8 @@ import {
   REFERENCE_MENTION_NODE,
 } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
+import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 
 /** Options for the {@link ReferenceMention} node. */
 export interface ReferenceMentionOptions {
@@ -38,6 +39,8 @@ export interface ReferenceMentionOptions {
 export const MENTION_THUMBNAIL_ATTR = 'thumbnail';
 /** Attr key on a reference-mention node carrying the source node's display name. */
 export const MENTION_LABEL_ATTR = 'label';
+/** Attr key on a reference-mention node carrying the source node modality (icon fallback). */
+export const MENTION_KIND_ATTR = 'kind';
 
 /**
  * Inline chip NodeView for an `@`-picked reference image: a small thumbnail (or
@@ -51,12 +54,17 @@ export const MENTION_LABEL_ATTR = 'label';
 function ReferenceMentionChip({ node }: NodeViewProps): React.JSX.Element {
   const t = useTranslation();
   const thumbnail = node.attrs[MENTION_THUMBNAIL_ATTR] as string | null;
+  const kind = node.attrs[MENTION_KIND_ATTR] as NodeKind | null;
   // Localized fallback for a source node with no display name (nameOf → '')
   // instead of a hardcoded English literal (i18n mandate). useTranslation is a
   // global-store hook, so it works inside this ReactNodeView.
   const label =
     (node.attrs[MENTION_LABEL_ATTR] as string | null) ||
     t('canvas.generatePanel.reference');
+  // A non-image source (text / audio / …) has no thumbnail — show its modality
+  // icon rather than a broken-image placeholder. Old mentions carry no kind, so
+  // default to image (the historical @-picker was image-centric).
+  const FallbackIcon = getNodeIcon(kind ?? 'image');
   return (
     <NodeViewWrapper
       as='span'
@@ -68,11 +76,11 @@ function ReferenceMentionChip({ node }: NodeViewProps): React.JSX.Element {
         <img
           src={thumbnail}
           alt={label}
-          className='h-3.5 w-3.5 shrink-0 rounded-sm object-cover'
+          className='h-3.5 w-3.5 shrink-0 rounded object-cover'
           draggable={false}
         />
       ) : (
-        <ImageOff className='h-3 w-3 shrink-0' aria-hidden='true' />
+        <FallbackIcon className='h-3 w-3 shrink-0' aria-hidden='true' />
       )}
       <span className='truncate pr-1.5'>{label}</span>
     </NodeViewWrapper>
@@ -127,6 +135,14 @@ export const ReferenceMention = Node.create<ReferenceMentionOptions>({
         renderHTML: (attrs) =>
           attrs[MENTION_LABEL_ATTR]
             ? { 'data-label': attrs[MENTION_LABEL_ATTR] as string }
+            : {},
+      },
+      [MENTION_KIND_ATTR]: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-kind'),
+        renderHTML: (attrs) =>
+          attrs[MENTION_KIND_ATTR]
+            ? { 'data-kind': attrs[MENTION_KIND_ATTR] as string }
             : {},
       },
     };

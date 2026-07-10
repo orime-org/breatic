@@ -25,6 +25,7 @@ import {
 } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
+  MENTION_KIND_ATTR,
   MENTION_LABEL_ATTR,
   MENTION_THUMBNAIL_ATTR,
 } from '@web/spaces/canvas/generate/reference-mention';
@@ -70,6 +71,7 @@ export function makeReferenceSuggestion(input: {
               [MENTION_SOURCE_ID_ATTR]: props.sourceNodeId,
               [MENTION_THUMBNAIL_ATTR]: props.thumbnail ?? null,
               [MENTION_LABEL_ATTR]: props.sourceNodeName || null,
+              [MENTION_KIND_ATTR]: props.sourceNodeType,
             },
           },
           { type: 'text', text: ' ' },
