@@ -54,4 +54,15 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       editor.destroy();
     }
   });
+
+  it('triggers @ after ANY character, not only after a space (allowedPrefixes null)', () => {
+    // @tiptap/suggestion defaults allowedPrefixes to [" "], so `@` only fires
+    // when preceded by a space or at block start — typing `text@` (e.g. CJK
+    // "额@") would NOT open the picker. Setting null lets `@` trigger anywhere.
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [],
+      emptyLabel: 'No references',
+    });
+    expect(suggestion.allowedPrefixes).toBeNull();
+  });
 });
