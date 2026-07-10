@@ -51,6 +51,8 @@ interface GeneratePanelProps {
   onAddReference: () => void;
   /** Remove a reference by id. */
   onRemoveReference: (refId: string) => void;
+  /** Insert a reference's @-mention into the prompt at the cursor (rail click). */
+  onInsertReference: (item: ReferenceRailItem) => void;
   /** Execute: close the panel, put the node into handling, submit the task. */
   onExecute: () => void;
 }
@@ -89,6 +91,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   onChangeParams,
   onAddReference,
   onRemoveReference,
+  onInsertReference,
   onExecute,
 }: GeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
@@ -120,6 +123,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
       <ReferenceRail
         references={references}
         onRemove={onRemoveReference}
+        onInsert={onInsertReference}
         disabled={referencesOff}
       />
 

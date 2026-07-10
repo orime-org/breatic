@@ -319,6 +319,7 @@
       "translate": "翻译提示词",
       "execute": "生成",
       "removeReference": "移除参考",
+      "insertReference": "插入到提示词",
       "resolution": "分辨率",
       "ratio": "比例",
       "errorCredits": "积分不足，无法生成。",

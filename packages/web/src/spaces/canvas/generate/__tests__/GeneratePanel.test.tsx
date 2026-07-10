@@ -44,6 +44,7 @@ function setup(
       canExecute
       promptSlot={<div data-testid='prompt-slot'>prompt</div>}
       onExit={() => {}}
+      onInsertReference={() => {}}
       onSelectModel={() => {}}
       onToggleMode={() => {}}
       onChangeParams={() => {}}

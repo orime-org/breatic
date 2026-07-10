@@ -34,7 +34,11 @@ import {
   resolveModeSwitch,
   type GeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
-import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import {
+  PromptEditor,
+  type PromptEditorHandle,
+} from '@web/spaces/canvas/generate/PromptEditor';
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
 
@@ -133,6 +137,12 @@ function GeneratePanelBody({
   const atMentionedRef = React.useRef<string[]>([]);
   const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
     atMentionedRef.current = sourceIds;
+  }, []);
+  // Click a reference-rail chip → insert its @-mention at the prompt cursor
+  // (user 2026-07-10 item 8); the editor places it at the caret or the end.
+  const promptEditorRef = React.useRef<PromptEditorHandle>(null);
+  const handleInsertReference = React.useCallback((item: ReferenceRailItem) => {
+    promptEditorRef.current?.insertReference(item);
   }, []);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
@@ -358,6 +368,7 @@ function GeneratePanelBody({
       promptSlot={
         fragment ? (
           <PromptEditor
+            ref={promptEditorRef}
             fragment={fragment}
             placeholder={t('canvas.generatePanel.promptPlaceholder')}
             onTextChange={handlePromptChange}
@@ -374,6 +385,7 @@ function GeneratePanelBody({
       onChangeParams={onChangeParams}
       onAddReference={onAddReference}
       onRemoveReference={onRemoveReference}
+      onInsertReference={handleInsertReference}
       onExecute={onExecute}
     />
   );

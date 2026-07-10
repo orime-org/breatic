@@ -3,6 +3,7 @@
 
 import { Collaboration } from '@tiptap/extension-collaboration';
 import { Document } from '@tiptap/extension-document';
+import { Gapcursor } from '@tiptap/extension-gapcursor';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Text } from '@tiptap/extension-text';
@@ -19,8 +20,21 @@ import {
 } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
-import { ReferenceMention } from '@web/spaces/canvas/generate/reference-mention';
+import {
+  ReferenceMention,
+  referenceMentionContent,
+} from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
+
+/** Imperative handle exposed to the container to insert a reference at the cursor. */
+export interface PromptEditorHandle {
+  /**
+   * Inserts a reference-mention at the current cursor, or appends it to the end
+   * when the editor has no live cursor (user 2026-07-10 item 8).
+   * @param item - The reference pool row to insert.
+   */
+  insertReference: (item: ReferenceRailItem) => void;
+}
 
 interface PromptEditorProps {
   /** The node's prompt Y.XmlFragment — the collaborative binding target. */
@@ -59,17 +73,24 @@ interface PromptEditorProps {
  * @param root0.references - The current reference pool (the `@` picker options).
  * @param root0.mode - Active generation sub-mode (t2i greys out `@` chips).
  * @param root0.mentionEmptyLabel - Localized empty-state text for the `@` popup.
+ * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
-export function PromptEditor({
-  fragment,
-  placeholder,
-  onTextChange,
-  onAtMentionsChange,
-  references,
-  mode,
-  mentionEmptyLabel,
-}: PromptEditorProps): React.JSX.Element {
+export const PromptEditor = React.forwardRef<
+  PromptEditorHandle,
+  PromptEditorProps
+>(function PromptEditor(
+  {
+    fragment,
+    placeholder,
+    onTextChange,
+    onAtMentionsChange,
+    references,
+    mode,
+    mentionEmptyLabel,
+  }: PromptEditorProps,
+  ref,
+): React.JSX.Element {
   // The reference pool changes as edges are added / removed, but the editor is
   // rebuilt only on `fragment` change. A ref keeps the `@` suggestion reading
   // the CURRENT pool without recreating the editor.
@@ -81,6 +102,11 @@ export function PromptEditor({
         Document,
         Paragraph,
         Text,
+        // Lets a text cursor land between two adjacent inline atom chips (two
+        // @-mentions with no space between) — without it the caret has no DOM
+        // home there and vanishes on click (TipTap #2978). Pairs with dropping
+        // the auto-inserted trailing space (user 2026-07-10 item 5).
+        Gapcursor,
         // Collaboration provides history (yUndo); do NOT add UndoRedo alongside.
         Collaboration.configure({ fragment }),
         Placeholder.configure({ placeholder }),
@@ -113,6 +139,27 @@ export function PromptEditor({
     // (rare); the reference POOL stays a live ref (poolRef) so frequent edge
     // add/remove never triggers a recreate.
     [fragment, placeholder, mentionEmptyLabel],
+  );
+  // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
+  // narrow imperative handle rather than the raw editor, keeping TipTap
+  // encapsulated (same boundary as the onTextChange / onAtMentionsChange
+  // "report derived values up" contract).
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      insertReference: (item: ReferenceRailItem): void => {
+        if (!editor) return;
+        const content = referenceMentionContent(item);
+        // Focused → insert at the caret; unfocused (no live cursor) → append to
+        // the end. The rail button preventDefaults mousedown so it never blurs.
+        if (editor.isFocused) {
+          editor.chain().insertContent(content).run();
+        } else {
+          editor.chain().focus('end').insertContent(content).run();
+        }
+      },
+    }),
+    [editor],
   );
   // Cascade-clear stale @-mention chips: when a reference edge is removed the
   // pool shrinks, so any @-mention pointing at a now-disconnected source must
@@ -154,4 +201,4 @@ export function PromptEditor({
       }
     />
   );
-}
+});

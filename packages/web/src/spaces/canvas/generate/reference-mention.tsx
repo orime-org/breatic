@@ -43,6 +43,29 @@ export const MENTION_LABEL_ATTR = 'label';
 export const MENTION_KIND_ATTR = 'kind';
 
 /**
+ * Builds the ProseMirror content for a reference-mention atom from a pool row,
+ * so the `@` suggestion and the click-to-insert path (reference rail) stay in
+ * sync on the exact same attrs. No trailing space is added — adjacent chips are
+ * navigable via the Gapcursor extension (user 2026-07-10: no auto space).
+ * @param item - The picked reference pool row.
+ * @returns The reference-mention node content (attrs = id / thumbnail / label / kind).
+ */
+export function referenceMentionContent(item: ReferenceRailItem): {
+  type: string;
+  attrs: Record<string, string | null>;
+} {
+  return {
+    type: REFERENCE_MENTION_NODE,
+    attrs: {
+      [MENTION_SOURCE_ID_ATTR]: item.sourceNodeId,
+      [MENTION_THUMBNAIL_ATTR]: item.thumbnail ?? null,
+      [MENTION_LABEL_ATTR]: item.sourceNodeName || null,
+      [MENTION_KIND_ATTR]: item.sourceNodeType,
+    },
+  };
+}
+
+/**
  * Inline chip NodeView for an `@`-picked reference image: a small thumbnail (or
  * a broken-image fallback) labelled by the source node name. Rendered by
  * ReactNodeViewRenderer; `data-reference-mention` marks it for the CSS t2i

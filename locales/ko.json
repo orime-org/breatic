@@ -319,6 +319,7 @@
       "translate": "프롬프트 번역",
       "execute": "생성",
       "removeReference": "참조 제거",
+      "insertReference": "프롬프트에 삽입",
       "resolution": "해상도",
       "ratio": "비율",
       "errorCredits": "크레딧이 부족하여 생성할 수 없습니다.",

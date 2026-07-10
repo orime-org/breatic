@@ -19,16 +19,8 @@ import type {
   SuggestionProps,
 } from '@tiptap/suggestion';
 
-import {
-  MENTION_SOURCE_ID_ATTR,
-  REFERENCE_MENTION_NODE,
-} from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import {
-  MENTION_KIND_ATTR,
-  MENTION_LABEL_ATTR,
-  MENTION_THUMBNAIL_ATTR,
-} from '@web/spaces/canvas/generate/reference-mention';
+import { referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
 import {
   ReferenceMentionList,
   type ReferenceMentionListRef,
@@ -61,21 +53,12 @@ export function makeReferenceSuggestion(input: {
         .slice(0, 8);
     },
     command: ({ editor, range, props }): void => {
+      // No trailing space (user 2026-07-10): adjacent chips are navigable via
+      // the Gapcursor extension installed on the prompt editor.
       editor
         .chain()
         .focus()
-        .insertContentAt(range, [
-          {
-            type: REFERENCE_MENTION_NODE,
-            attrs: {
-              [MENTION_SOURCE_ID_ATTR]: props.sourceNodeId,
-              [MENTION_THUMBNAIL_ATTR]: props.thumbnail ?? null,
-              [MENTION_LABEL_ATTR]: props.sourceNodeName || null,
-              [MENTION_KIND_ATTR]: props.sourceNodeType,
-            },
-          },
-          { type: 'text', text: ' ' },
-        ])
+        .insertContentAt(range, referenceMentionContent(props))
         .run();
     },
     render: () => {

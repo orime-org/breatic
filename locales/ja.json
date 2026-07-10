@@ -319,6 +319,7 @@
       "translate": "プロンプトを翻訳",
       "execute": "生成",
       "removeReference": "参照を削除",
+      "insertReference": "プロンプトに挿入",
       "resolution": "解像度",
       "ratio": "比率",
       "errorCredits": "クレジットが不足しているため生成できません。",
