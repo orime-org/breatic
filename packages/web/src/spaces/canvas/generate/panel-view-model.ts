@@ -29,6 +29,9 @@ import type {
 /** Default generation sub-mode for a node with none stored (design 2026-07-09 §2.3). */
 const DEFAULT_IMAGE_GEN_MODE: ImageGenMode = 't2i';
 
+/** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
+const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
+
 /**
  * Reads a node's stored generation sub-mode, defaulting + boundary-sanitizing:
  * anything that is not the literal `'i2i'` (undefined, `'t2i'`, or a malformed
@@ -156,6 +159,7 @@ export function resolveModeSwitch(
  * @param input.nodes - Current canvas node views (target + reference sources).
  * @param input.edges - Current canvas edges (incoming = references).
  * @param input.models - Catalog image models.
+ * @param input.atMentionedSourceIds - Source node ids `@`-picked in the prompt; only these feed the i2i execute payload (design B — no `@` = no source image). Absent = none picked.
  * @returns The derived view-model.
  */
 export function buildGeneratePanelViewModel(input: {
@@ -163,6 +167,7 @@ export function buildGeneratePanelViewModel(input: {
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
   edges: ReadonlyArray<CanvasEdge>;
   models: ModelEntry[];
+  atMentionedSourceIds?: ReadonlySet<string>;
 }): GeneratePanelViewModel {
   // models is trusted: the catalog is sanitized at the API boundary
   // (sanitizeModelCatalog), so it is always a ModelEntry[]. Offer only
@@ -186,10 +191,15 @@ export function buildGeneratePanelViewModel(input: {
   // rail still renders (greyed in the panel) but contributes NO reference URLs
   // to the execute payload. i2i sends them. (Style images — a future slice —
   // will be the one exception that survives t2i.)
+  // i2i sends ONLY the @-picked source images (design B): a reference that is
+  // connected but not @-mentioned contributes nothing; no @ at all → empty, and
+  // the #1675 execute gate then blocks submitting an i2i task with no source.
+  const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
   const referenceUrls =
     mode === 't2i'
       ? []
       : references
+        .filter((r) => atMentioned.has(r.sourceNodeId))
         .map((r) => assetUrlOf(byId.get(r.sourceNodeId)?.data))
       // The source node's content is collaborative Yjs data — untrusted, and
       // NOT covered by the catalog boundary. typeof, not Boolean: a malformed

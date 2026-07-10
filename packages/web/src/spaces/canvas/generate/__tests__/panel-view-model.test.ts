@@ -144,16 +144,35 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.params.bogus).toBeUndefined(); // dropped — model has no such param
   });
 
-  it('derives references from incoming edges and snapshots their asset URLs (i2i)', () => {
+  it('i2i sends ONLY @-mentioned reference URLs (subset of the rail)', () => {
     const nodes = [
       node('n1', i2iView()),
       node('src', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: i2iModels,
+      atMentionedSourceIds: new Set(['src']),
+    });
     expect(vm.references).toHaveLength(1);
     expect(vm.references[0]?.sourceNodeId).toBe('src');
     expect(vm.referenceUrls).toEqual(['https://cdn/x.png']);
+  });
+
+  it('i2i with an incoming edge but NO @-mention submits no source image (design B)', () => {
+    const nodes = [
+      node('n1', i2iView()),
+      node('src', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
+    ];
+    const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
+    // No atMentionedSourceIds → nothing @-picked. Design B: i2i without an
+    // @-reference sends an empty source list (the #1675 gate then blocks execute).
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
+    expect(vm.references).toHaveLength(1); // rail still shows the connected image
+    expect(vm.referenceUrls).toEqual([]); // but nothing is @-picked → no source sent
   });
 
   it('t2i contributes NO reference URLs even with an incoming edge (generates from scratch)', () => {
@@ -176,7 +195,13 @@ describe('buildGeneratePanelViewModel', () => {
       node('src', imageView({ name: 'Bad', content: { u: 1 } as unknown as string })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: i2iModels,
+      atMentionedSourceIds: new Set(['src']),
+    });
     expect(vm.referenceUrls).toEqual([]); // the object must not slip into the payload
   });
 
@@ -186,7 +211,13 @@ describe('buildGeneratePanelViewModel', () => {
       node('src', imageView({ name: 'Empty' })), // no content
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: i2iModels,
+      atMentionedSourceIds: new Set(['src']),
+    });
     expect(vm.references).toHaveLength(1); // still shown in the rail
     expect(vm.referenceUrls).toEqual([]); // but no URL to submit
   });
