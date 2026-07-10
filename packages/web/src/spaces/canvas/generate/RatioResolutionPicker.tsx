@@ -76,7 +76,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   const optionClass =
     'rounded-overlay border border-border px-2 py-1 text-xs text-foreground transition-colors ' +
     'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
-    'aria-[current=true]:border-primary aria-[current=true]:bg-accent';
+    'aria-[current=true]:border-active-border aria-[current=true]:bg-accent';
   return (
     <div className='relative shrink-0'>
       <button
