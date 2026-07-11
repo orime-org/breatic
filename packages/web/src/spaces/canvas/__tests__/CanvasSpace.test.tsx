@@ -655,6 +655,69 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
   });
 
+  // Round-2 adversarial: opening the panel on an ALREADY-selected host used
+  // to skip the sole-selection assert entirely — a co-selected node (or edge)
+  // kept its Delete-key claim under the open panel. A multi-node paste
+  // selects the whole pasted group (real path), so opening Generate on one of
+  // them must deselect the rest.
+  it('opening the panel on a co-selected host clears the co-selection', async () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    const addNode = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => undefined);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    // Paste TWO nodes — both get auto-selected once mirrored back.
+    dispatchPaste(
+      serializeNodes([
+        { type: 'image', position: { x: 0, y: 0 }, name: 'One', content: 'a.png' },
+        { type: 'image', position: { x: 100, y: 0 }, name: 'Two', content: 'b.png' },
+      ]),
+    );
+    await waitFor(() => expect(addNode).toHaveBeenCalledTimes(2));
+    const one = addNode.mock
+      .calls[0][2] as unknown as canvasSpace.CanvasNodeView;
+    const two = addNode.mock
+      .calls[1][2] as unknown as canvasSpace.CanvasNodeView;
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [one, two] }));
+    rerender(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(
+        document.querySelector(`[data-id="${one.id}"]`)?.className,
+      ).toContain('selected');
+      expect(
+        document.querySelector(`[data-id="${two.id}"]`)?.className,
+      ).toContain('selected');
+    });
+    // Open Generate on node ONE (host already selected, node TWO co-selected).
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: one.id,
+        referencePickForNodeId: null,
+      });
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector(`[data-id="${two.id}"]`)?.className,
+      ).not.toContain('selected'),
+    );
+    expect(
+      document.querySelector(`[data-id="${one.id}"]`)?.className,
+    ).toContain('selected');
+    expect(useCanvasStore.getState().generatePanelNodeId).toBe(one.id);
+    addNode.mockRestore();
+  });
+
   // Round-1 adversarial: an idle pane click (nothing selected) must not
   // publish a fresh flowNodes identity — map-always-allocates would re-render
   // every node on every misclick (reference-stability discipline).
@@ -953,6 +1016,80 @@ describe('reference-pick interaction contract', () => {
     // the continuous-pick contract). The prop must be pick-gated.
     expect(src).toContain('selectionOnDrag={referencePickForNodeId == null}');
   });
+
+  it('NEVER toggles selectionKeyCode dynamically (xyflow latches mid-keyhold)', () => {
+    // Round-3 adversarial: a round-2 fix gated selectionKeyCode on pick mode
+    // ('Shift' → null). xyflow's useKeyPress detaches its listeners on the
+    // flip WITHOUT resetting keyPressed, so flipping mid-Shift-hold (Shift+
+    // clicking the add-reference button) latched the key permanently true and
+    // every subsequent drag became a marquee hijack — with no recovery path
+    // during the pick. Key-code props must stay CONSTANT; the pick dead zone
+    // is neutralized at the render layer instead (canvas-picking CSS).
+    // Matched as a JSX prop assignment — comments may (and do) mention the
+    // prop name to document the trap.
+    expect(src).not.toMatch(/selectionKeyCode=/);
+    expect(src).toContain('canvas-picking');
+  });
+
+  it('clears the NodesSelection rect on programmatic sole-select and pane deselect', () => {
+    // Round-2 adversarial: a native single node click clears xyflow's
+    // nodesSelectionActive, but the programmatic assert (selectOnlyNode)
+    // bypassed that lifecycle — after a pre-open marquee the rect shrank onto
+    // the host and swallowed clicks until a pane click. Both programmatic
+    // selection writes must clear the flag. Matched as the full setState call
+    // (not a raw substring, which a comment could satisfy — round-3 finding).
+    const calls = src.match(
+      /rfStoreApi\.setState\(\{ nodesSelectionActive: false \}\)/g,
+    );
+    expect(calls?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it('marks the canvas wrapper as canvas-picking while a pick session is active', async () => {
+    // The pick-mode stylesheet (NodesSelection hidden) is scoped by this
+    // class — assert the wrapper actually carries it during a pick.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByTestId('canvas-space').className).not.toContain(
+      'canvas-picking',
+    );
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: 'target',
+        referencePickForNodeId: 'target',
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('canvas-space').className).toContain(
+        'canvas-picking',
+      ),
+    );
+    // Store is module-global — clear so later suites start clean.
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: null,
+        referencePickForNodeId: null,
+      });
+    });
+  });
 });
 
 describe('reference-pick stylesheet contract (item 7 cursor specificity)', () => {
@@ -979,6 +1116,19 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     );
     expect(rule).toContain('cursor: pointer');
     expect(css).not.toMatch(/^\.canvas-pick-selectable\s*\{/m);
+  });
+
+  it('hides the NodesSelection rect during a pick (marquee dead-zone neutralizer)', () => {
+    // Round-3: the Shift marquee stays enabled during a pick (gating
+    // selectionKeyCode latches xyflow's key state mid-hold), so the
+    // click-swallowing rect must simply never render while picking.
+    // display:none must sit INSIDE this rule block (round-4 adversarial: a
+    // slice-to-EOF check passed with the rule weakened to `opacity: 0` —
+    // which keeps the rect's pointer-events:all hit-target alive — as soon
+    // as any later rule in the file used display:none).
+    expect(css).toMatch(
+      /\.canvas-picking \.react-flow__nodesselection\s*\{[^}]*display:\s*none/,
+    );
   });
 
   it('keeps the breathing glow on the selectable hover state (functional cue)', () => {

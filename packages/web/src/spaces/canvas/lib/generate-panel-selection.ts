@@ -13,22 +13,27 @@
  * paste auto-select the new node), which left the panel orphaned on an
  * unselected node.
  *
- * The binding is a STATE MACHINE, not a pair of one-shot effects (round-1
- * adversarial, 2026-07-11): a first cut selected the host once on open (keyed
- * on the id changing) and closed on the selected → deselected edge. Two real
- * holes followed from "once": a space-tab round-trip remounts the canvas with
- * the panel id persisted in the store, so the open-shot fired against a
- * not-yet-mirrored EMPTY buffer and never again; and re-choosing Generate on
- * the SAME host mid-pick kept the id unchanged so the shot never re-fired.
- * Both left an open panel on an unselected host with the edge guard
- * permanently disarmed (prev was never true). The machine below closes the
- * gap: while the binding has not been ESTABLISHED (host never seen selected),
- * it keeps asserting the selection; once established, losing it closes.
+ * The binding is a STATE MACHINE, not a pair of one-shot effects (adversarial
+ * rounds 1-3, 2026-07-11). Holes closed per round:
+ * - Round 1: a one-shot open effect (keyed on the id changing) missed the
+ *   canvas-remount and same-host-reopen paths, leaving an open panel on an
+ *   unselected host with the close edge permanently disarmed. The machine
+ *   keeps asserting until the binding is established.
+ * - Round 2: opening on an ALREADY-selected host skipped the sole-selection
+ *   assert (a pre-open Cmd-multi-select left co-selected nodes/edges holding
+ *   a Delete-key claim under the panel). Fresh-binding frames now assert
+ *   unconditionally — the assert is idempotent and reference-stable, so an
+ *   already-sole host costs nothing.
+ * - Round 3: the same co-selection could be BUILT during a pick (Cmd-click
+ *   with the host still selected) and survive Exit, because the machine only
+ *   re-asserted when the host was deselected. Leaving a pick is a REBINDING
+ *   moment exactly like opening: the pick-exit frame now asserts
+ *   unconditionally too.
  *
  * Reference-pick mode holds the machine entirely: picking clicks move
  * selection to candidate source nodes by design, and the ratified pick
- * contract says Exit is the only way out — on exit (or on reopening the panel,
- * which clears the pick), the assert branch re-establishes the binding.
+ * contract says Exit is the only way out — the exit frame (or reopening the
+ * panel, which clears the pick) re-establishes the binding via the assert.
  */
 
 /** One frame of the panel↔selection binding, compared across renders. */
@@ -41,6 +46,8 @@ export interface PanelSelectionSnapshot {
    * is the node-gone guard's job, not this machine's).
    */
   hostSelected: boolean | null;
+  /** Whether reference-pick mode was active this frame. */
+  picking: boolean;
 }
 
 /** What the binding machine wants done this frame. */
@@ -48,32 +55,37 @@ export type PanelSelectionAction = 'close' | 'select' | 'none';
 
 /**
  * Advances the panel⇄selection binding one frame and returns the action due:
- * `'select'` re-asserts the host as the selection while the binding has not
- * yet been established (open gesture, canvas remount with a persisted panel,
- * same-host reopen, pick exit); `'close'` fires on the established binding's
- * selected → deselected edge; `'none'` otherwise. Pick mode holds the machine.
+ * `'select'` re-asserts the host as the sole selection on every REBINDING
+ * frame (panel opened / switched host / pick just exited) and while the
+ * binding has not yet been established; `'close'` fires on the established
+ * binding's selected → deselected edge; `'none'` otherwise. Pick mode holds
+ * the machine.
  * @param prev - The previous frame's snapshot.
  * @param next - The current frame's snapshot.
- * @param picking - Whether reference-pick mode is active (machine held: Exit
- *   is the only way out of a pick session).
  * @returns The action due this frame.
  */
 export function resolvePanelSelectionAction(
   prev: PanelSelectionSnapshot,
   next: PanelSelectionSnapshot,
-  picking: boolean,
 ): PanelSelectionAction {
-  if (next.panelNodeId == null || picking) return 'none';
-  // Binding holds (host selected) or the host is gone (node-gone guard's
-  // job — selecting or closing on a vanished host would fight it).
-  if (next.hostSelected !== false) return 'none';
+  if (next.panelNodeId == null || next.picking) return 'none';
+  // A vanished host is the node-gone guard's job — selecting or closing here
+  // would fight it.
+  if (next.hostSelected === null) return 'none';
+  // Rebinding frames assert UNCONDITIONALLY — the host may already be
+  // selected yet not be the SOLE selection (a Cmd-multi-select before opening
+  // or during a pick leaves co-selected nodes/edges holding a Delete-key
+  // claim under the panel; rounds 2-3). The assert is idempotent and
+  // reference-stable, so an already-sole host costs nothing. Two rebinding
+  // edges exist: the panel id changed (open / host switch), and the pick just
+  // ended (Exit or a reopen clearing it).
+  if (prev.panelNodeId !== next.panelNodeId || prev.picking) return 'select';
+  // Binding holds (host still selected).
+  if (next.hostSelected === true) return 'none';
   // Established binding (same host was selected last frame) → losing the
   // selection closes the panel.
-  if (prev.panelNodeId === next.panelNodeId && prev.hostSelected === true) {
-    return 'close';
-  }
+  if (prev.hostSelected === true) return 'close';
   // Binding not yet established → keep asserting the host selection until it
-  // lands (the buffer may not even contain the host yet on remount; the
-  // assert is idempotent and reference-stable, so retrying is free).
+  // lands (the buffer may not even contain the host yet on remount).
   return 'select';
 }

@@ -14,62 +14,53 @@ import {
  * @returns The snapshot.
  */
 function snap(over: Partial<PanelSelectionSnapshot>): PanelSelectionSnapshot {
-  return { panelNodeId: 'host', hostSelected: true, ...over };
+  return { panelNodeId: 'host', hostSelected: true, picking: false, ...over };
 }
 
 // Selection-driven panel lifecycle (user 2026-07-11): the panel closes when
-// its host LOSES selection — through any path — and keeps ASSERTING the host
-// selection while the binding has not yet been established (round-1
-// adversarial holes: canvas remount / same-host reopen left a one-shot open
-// effect unfired and the guard permanently disarmed). See the module TSDoc.
+// its host LOSES selection — through any path — and asserts the host as the
+// SOLE selection on every rebinding frame (open / host switch / pick exit)
+// plus while the binding has not yet been established. Adversarial rounds
+// 1-3 each closed a hole here; see the module TSDoc for the history.
 describe('resolvePanelSelectionAction', () => {
   it('closes on the established binding losing selection (the core rule)', () => {
     expect(
-      resolvePanelSelectionAction(snap({}), snap({ hostSelected: false }), false),
+      resolvePanelSelectionAction(snap({}), snap({ hostSelected: false })),
     ).toBe('close');
   });
 
   it('holds while reference-pick is active (Exit is the only way out)', () => {
     expect(
-      resolvePanelSelectionAction(snap({}), snap({ hostSelected: false }), true),
+      resolvePanelSelectionAction(
+        snap({ picking: true }),
+        snap({ hostSelected: false, picking: true }),
+      ),
     ).toBe('none');
   });
 
   it('asserts selection on the opening frame instead of closing', () => {
-    // The open gesture writes the store id first; the machine must select the
-    // host, not treat "open + unselected" as a lost binding.
     expect(
       resolvePanelSelectionAction(
-        { panelNodeId: null, hostSelected: null },
+        { panelNodeId: null, hostSelected: null, picking: false },
         snap({ hostSelected: false }),
-        false,
       ),
     ).toBe('select');
   });
 
-  it('asserts selection after a canvas remount with a persisted panel (adversarial hole 1)', () => {
-    // Space-tab round-trip: the store keeps the panel id across the canvas
-    // unmount; on remount the buffer mirrors back with the host UNSELECTED and
-    // the previous frame never saw it selected — the machine must re-assert,
-    // not sit disarmed forever.
+  it('asserts after a canvas remount with a persisted panel (round-1 hole)', () => {
     expect(
       resolvePanelSelectionAction(
         snap({ hostSelected: false }),
         snap({ hostSelected: false }),
-        false,
       ),
     ).toBe('select');
   });
 
-  it('asserts selection after a same-host reopen mid-pick (adversarial hole 2)', () => {
-    // Pick moved selection to a candidate (prev {host,false}); re-choosing
-    // Generate on the SAME host clears the pick — the machine must re-assert
-    // the host selection even though the id never changed.
+  it('asserts after a same-host reopen mid-pick (round-1 hole)', () => {
     expect(
       resolvePanelSelectionAction(
-        { panelNodeId: 'host', hostSelected: false },
-        { panelNodeId: 'host', hostSelected: false },
-        false,
+        snap({ hostSelected: false, picking: true }),
+        snap({ hostSelected: false }),
       ),
     ).toBe('select');
   });
@@ -77,38 +68,86 @@ describe('resolvePanelSelectionAction', () => {
   it('asserts a fresh binding when the panel switches host A → B', () => {
     expect(
       resolvePanelSelectionAction(
-        { panelNodeId: 'a', hostSelected: true },
-        { panelNodeId: 'b', hostSelected: false },
-        false,
+        { panelNodeId: 'a', hostSelected: true, picking: false },
+        { panelNodeId: 'b', hostSelected: false, picking: false },
       ),
     ).toBe('select');
   });
 
-  it('does nothing while the host remains selected (multi-select keeps it too)', () => {
-    // Shift-clicking another node ADDS to the selection — the host is still
-    // selected, so the binding holds.
-    expect(resolvePanelSelectionAction(snap({}), snap({}), false)).toBe('none');
+  it('asserts on the opening frame even when the host is ALREADY selected (round-2 hole)', () => {
+    // Click A (selected), Cmd-add an edge or another node, right-click A →
+    // Generate: the host is selected but NOT the sole selection — the fresh
+    // binding must assert unconditionally (idempotent when already sole).
+    expect(
+      resolvePanelSelectionAction(
+        { panelNodeId: null, hostSelected: null, picking: false },
+        snap({ hostSelected: true }),
+      ),
+    ).toBe('select');
+    expect(
+      resolvePanelSelectionAction(
+        { panelNodeId: 'a', hostSelected: true, picking: false },
+        { panelNodeId: 'b', hostSelected: true, picking: false },
+      ),
+    ).toBe('select');
   });
 
-  it('leaves a vanished host to the node-gone guard (hostSelected null)', () => {
+  it('asserts on the pick-EXIT frame even when the host stayed selected (round-3 hole)', () => {
+    // During a pick the user Cmd-clicks another node (adds to the selection,
+    // host still selected). Exit must re-assert the sole selection — leaving
+    // the pick is a rebinding moment exactly like opening — or the co-selected
+    // node keeps its Delete-key claim under the panel.
     expect(
-      resolvePanelSelectionAction(snap({}), snap({ hostSelected: null }), false),
+      resolvePanelSelectionAction(
+        snap({ hostSelected: true, picking: true }),
+        snap({ hostSelected: true, picking: false }),
+      ),
+    ).toBe('select');
+  });
+
+  it('asserts on the pick-EXIT frame when the host was deselected during the pick', () => {
+    expect(
+      resolvePanelSelectionAction(
+        snap({ hostSelected: false, picking: true }),
+        snap({ hostSelected: false, picking: false }),
+      ),
+    ).toBe('select');
+  });
+
+  it('does not treat a vanished host as a rebinding assert (node-gone guard owns it)', () => {
+    expect(
+      resolvePanelSelectionAction(
+        { panelNodeId: null, hostSelected: null, picking: false },
+        snap({ hostSelected: null }),
+      ),
     ).toBe('none');
+    expect(
+      resolvePanelSelectionAction(
+        snap({ hostSelected: true, picking: true }),
+        snap({ hostSelected: null, picking: false }),
+      ),
+    ).toBe('none');
+  });
+
+  it('does nothing while the host remains selected (multi-select keeps it too)', () => {
+    // Shift-clicking another node ADDS to the selection AFTER the binding is
+    // established — the host is still selected, so the panel stays and the
+    // user's deliberate multi-select is not fought.
+    expect(resolvePanelSelectionAction(snap({}), snap({}))).toBe('none');
   });
 
   it('does nothing when no panel is open', () => {
     expect(
       resolvePanelSelectionAction(
-        { panelNodeId: null, hostSelected: null },
-        { panelNodeId: null, hostSelected: null },
-        false,
+        { panelNodeId: null, hostSelected: null, picking: false },
+        { panelNodeId: null, hostSelected: null, picking: false },
       ),
     ).toBe('none');
   });
 
   it('ignores the rising edge (assert already landed)', () => {
     expect(
-      resolvePanelSelectionAction(snap({ hostSelected: false }), snap({}), false),
+      resolvePanelSelectionAction(snap({ hostSelected: false }), snap({})),
     ).toBe('none');
   });
 });
