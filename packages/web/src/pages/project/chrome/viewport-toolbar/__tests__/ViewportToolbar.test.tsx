@@ -215,4 +215,26 @@ describe('ViewportToolbar', () => {
       screen.queryByLabelText('Enable alignment guides'),
     ).not.toBeInTheDocument();
   });
+
+  // Reference-pick concealment (batch-2 item 13): during a pick the toolbar
+  // slides out through the BOTTOM edge but STAYS MOUNTED (its zoom / toggle
+  // state must survive the pick). `inert` takes it out of the tab order and
+  // the a11y tree while off-screen — an invisible-but-focusable toolbar would
+  // strand keyboard users.
+  it('concealed: slides out via translate-y, stays mounted, and goes inert', () => {
+    setup(1, { concealed: true });
+    const bar = screen.getByTestId('viewport-toolbar');
+    expect(bar).toBeInTheDocument();
+    expect(bar.className).toContain('translate-y-24');
+    expect(bar.className).toContain('transition-transform');
+    expect(bar.hasAttribute('inert')).toBe(true);
+  });
+
+  it('not concealed: no slide-out transform, not inert, but ready to animate', () => {
+    setup();
+    const bar = screen.getByTestId('viewport-toolbar');
+    expect(bar.className).not.toContain('translate-y-24');
+    expect(bar.className).toContain('transition-transform');
+    expect(bar.hasAttribute('inert')).toBe(false);
+  });
 });

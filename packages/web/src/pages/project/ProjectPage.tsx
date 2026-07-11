@@ -184,6 +184,13 @@ function ProjectWorkspace({
   // synchronously inside the button click to keep the browser's user-
   // activation) and posts the picked files to the canvas via this mailbox.
   const requestUpload = useCanvasStore((s) => s.requestUpload);
+  // A running reference pick slides the floating chrome out of the way
+  // (batch-2 item 13): the canvas is a selection surface for that session and
+  // the menus would only distract / steal clicks. Boolean selector so chrome
+  // re-renders on pick enter/exit only, not on every picked-node change.
+  const pickingReference = useCanvasStore(
+    (s) => s.referencePickForNodeId !== null,
+  );
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const {
     spaces,
@@ -654,7 +661,13 @@ function ProjectWorkspace({
               currentUserRole={role}
               onRestoreSpace={onRestoreSpace}
             />
-            <div className='relative flex-1'>
+            {/* overflow-hidden: the pick-mode chrome slide-out (batch-2 item
+                13) must exit THROUGH this section's edges — without the clip
+                the left menu slides on top of the chat sidebar instead of
+                disappearing (caught by the real-browser screenshot). Floating
+                UI that must escape the box (menus / tooltips) portals to
+                document.body and is unaffected. */}
+            <div className='relative flex-1 overflow-hidden'>
               {activeSpace ? (
                 // key on the Space id so switching tabs REMOUNTS the body —
                 // ReactFlow re-runs fitView so the camera frames the new
@@ -695,6 +708,7 @@ function ProjectWorkspace({
                   />
                   <LeftFloatingMenu
                     disabled={isViewer}
+                    concealed={pickingReference}
                     onCreateNode={requestNodeCreate}
                     onPick={(tool) => {
                       // Open the file picker synchronously inside the click so
@@ -711,6 +725,7 @@ function ProjectWorkspace({
                   />
                   <ViewportToolbar
                     zoom={zoom}
+                    concealed={pickingReference}
                     minimapVisible={minimapVisible}
                     snapToGrid={snapToGrid}
                     canUndo={canUndo}

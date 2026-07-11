@@ -51,6 +51,12 @@ interface ViewportToolbarProps {
   onUndo?: () => void;
   /** Optional — wired when the history engine lands. */
   onRedo?: () => void;
+  /**
+   * When `true` (a reference pick is running — batch-2 item 13), the toolbar
+   * slides out through the BOTTOM edge but stays mounted (zoom / toggle state
+   * survives) and goes `inert` (off-screen controls leave the tab order).
+   */
+  concealed?: boolean;
 }
 
 /**
@@ -92,6 +98,7 @@ interface ViewportToolbarProps {
  * @param root0.onToggleMinimap - Toggles minimap visibility.
  * @param root0.onUndo - Undo handler, wired when the canvas history engine lands.
  * @param root0.onRedo - Redo handler, wired when the canvas history engine lands.
+ * @param root0.concealed - When `true` (reference pick running), the toolbar slides off through the bottom edge and goes inert.
  * @returns The floating canvas viewport toolbar.
  */
 export function ViewportToolbar({
@@ -108,6 +115,7 @@ export function ViewportToolbar({
   onToggleMinimap,
   onUndo,
   onRedo,
+  concealed = false,
 }: ViewportToolbarProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -115,7 +123,12 @@ export function ViewportToolbar({
       data-testid='viewport-toolbar'
       role='toolbar'
       aria-label={t('viewportToolbar.aria')}
-      className='absolute bottom-4 right-4 z-10 flex rounded-md border border-border bg-popover py-1 shadow'
+      // Concealment slides, never unmounts (state survives the pick).
+      inert={concealed}
+      className={cn(
+        'absolute bottom-4 right-4 z-10 flex rounded-md border border-border bg-popover py-1 shadow transition-transform',
+        concealed && 'translate-y-24',
+      )}
     >
       <Group>
         <VtButton

@@ -133,4 +133,31 @@ describe('LeftFloatingMenu', () => {
     await user.click(screen.getByTestId('tool-nodes'));
     expect(screen.queryByTestId('create-node-text')).toBeNull();
   });
+
+  // Reference-pick concealment (batch-2 item 13): during a pick the menu
+  // slides out through the LEFT edge but STAYS MOUNTED, and goes `inert` so
+  // keyboard users cannot tab into an off-screen control. The slide-out
+  // translate must COMPOSE with the menu's own -translate-y-1/2 vertical
+  // centering (replacing it would also fling the menu vertically).
+  it('concealed: slides out via -translate-x, keeps vertical centering, stays mounted, inert', () => {
+    render(
+      <TooltipProvider>
+        <LeftFloatingMenu onPick={vi.fn()} onCreateNode={vi.fn()} concealed />
+      </TooltipProvider>,
+    );
+    const nav = screen.getByTestId('left-floating-menu');
+    expect(nav).toBeInTheDocument();
+    expect(nav.className).toContain('-translate-x-24');
+    expect(nav.className).toContain('-translate-y-1/2');
+    expect(nav.className).toContain('transition-transform');
+    expect(nav.hasAttribute('inert')).toBe(true);
+  });
+
+  it('not concealed: on-screen, not inert, ready to animate', () => {
+    setup();
+    const nav = screen.getByTestId('left-floating-menu');
+    expect(nav.className).not.toContain('-translate-x-24');
+    expect(nav.className).toContain('transition-transform');
+    expect(nav.hasAttribute('inert')).toBe(false);
+  });
 });
