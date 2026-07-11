@@ -129,6 +129,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       pendingHistoryCommand: null,
       canUndo: false,
       canRedo: false,
+      // Panel / pick state is global zustand — a test that leaves a panel
+      // open would leak into the next one (the open-selects-host effect keys
+      // on the id CHANGING, so a stale identical id suppresses it entirely).
+      generatePanelNodeId: null,
+      referencePickForNodeId: null,
     });
     useSpaceOperationsStore.setState({ operations: {} });
     useCurrentUserStore.getState().setUser({
@@ -365,6 +370,170 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(pane).not.toBeNull();
     clickPane(pane as Element);
     expect(useCanvasStore.getState().generatePanelNodeId).toBeNull();
+  });
+
+  // Selection-driven panel lifecycle (user bug report 2026-07-11): the panel
+  // binds to its host's SELECTION — any path that moves selection away from
+  // the host must close it. The old design enumerated close triggers per
+  // event handler and missed the programmatic-selection paths below.
+  it('closes the panel when a library-menu node creation moves selection away (repro)', async () => {
+    const target = {
+      id: 'target',
+      type: 'image',
+      position: { x: 0, y: 0 },
+      data: { kind: 'image', status: 'idle' },
+    } as const;
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target] }));
+    const addNode = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => undefined);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: 'target',
+        referencePickForNodeId: null,
+      });
+    });
+    // The panel-open effect selects the host.
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-id="target"]')?.className,
+      ).toContain('selected'),
+    );
+    // Library menu → create-node mailbox → CanvasSpace writes the node to
+    // Yjs and flags it for auto-selection once mirrored back.
+    act(() => {
+      useCanvasStore.getState().requestNodeCreate('image');
+    });
+    await waitFor(() => expect(addNode).toHaveBeenCalledTimes(1));
+    // The written node (CanvasNodeFields) carries kind/status at runtime;
+    // the static read shape (CanvasNodeView) just doesn't overlap — cast for
+    // the mocked mirror round-trip.
+    const created = addNode.mock
+      .calls[0][2] as unknown as canvasSpace.CanvasNodeView;
+    // The Yjs mirror hands the created node back → the auto-select effect
+    // selects it (deselecting the host) → the panel must close.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({ nodes: [target, created] }),
+    );
+    rerender(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(useCanvasStore.getState().generatePanelNodeId).toBeNull(),
+    );
+    addNode.mockRestore();
+  });
+
+  it('closes the panel when pasting a node moves selection away (repro)', async () => {
+    const target = {
+      id: 'target',
+      type: 'image',
+      position: { x: 0, y: 0 },
+      data: { kind: 'image', status: 'idle' },
+    } as const;
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target] }));
+    const addNode = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => undefined);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: 'target',
+        referencePickForNodeId: null,
+      });
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-id="target"]')?.className,
+      ).toContain('selected'),
+    );
+    // Right-click paste on empty canvas → clone written to Yjs + flagged for
+    // auto-selection on mirror-back (same mechanism as ⌘V).
+    dispatchPaste(
+      serializeNodes([
+        {
+          type: 'image',
+          position: { x: 10, y: 20 },
+          name: 'Pasted',
+          content: 'a.png',
+        },
+      ]),
+    );
+    await waitFor(() => expect(addNode).toHaveBeenCalledTimes(1));
+    const pasted = addNode.mock
+      .calls[0][2] as unknown as canvasSpace.CanvasNodeView;
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target, pasted] }));
+    rerender(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(useCanvasStore.getState().generatePanelNodeId).toBeNull(),
+    );
+    addNode.mockRestore();
+  });
+
+  it('Exit from reference-pick keeps the panel open and restores host selection', async () => {
+    // Pick clicks move selection to candidate nodes by design (exempt from the
+    // selection rule); Exit must restore the host as the sole selection so the
+    // panel⇄selection invariant re-establishes — otherwise the guard would
+    // close the panel the moment the pick session ends.
+    const target = {
+      id: 'target',
+      type: 'image',
+      position: { x: 0, y: 0 },
+      data: { kind: 'image', status: 'idle' },
+    } as const;
+    const other = {
+      id: 'other',
+      type: 'image',
+      position: { x: 200, y: 0 },
+      data: { kind: 'image', status: 'idle' },
+    } as const;
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target, other] }));
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: 'target',
+        referencePickForNodeId: 'target',
+      });
+    });
+    act(() => {
+      screen.getByTestId('reference-pick-exit').click();
+    });
+    expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
+    expect(useCanvasStore.getState().referencePickForNodeId).toBeNull();
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-id="target"]')?.className,
+      ).toContain('selected'),
+    );
   });
 
   // Viewer gate (the canvas-internal backstop for the HIGH review finding):

@@ -86,6 +86,10 @@ import {
   canConnect,
   resolveClickConnectRejection,
 } from '@web/spaces/canvas/lib/connection-rules';
+import {
+  shouldCloseOnSelectionEdge,
+  type PanelSelectionSnapshot,
+} from '@web/spaces/canvas/lib/generate-panel-selection';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import { planGroupDrag, type DragNode } from '@web/spaces/canvas/group-drag';
@@ -469,18 +473,59 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     setZoom(rfZoom);
   }, [rfZoom, setZoom]);
-  // Right-clicking a node → Generate opens the panel; also select that node so
-  // the open panel visibly belongs to a selected node (user 2026-07-10 item 6).
-  // Unchanged nodes keep their previous reference so React.memo still bails.
+  // Panel ⇄ selection binding — opening half (item 6 + selection rebind,
+  // user-ratified 2026-07-11): an open panel's host node is the sole
+  // selection. Unchanged nodes keep their previous reference so React.memo
+  // still bails.
+  const selectOnlyNode = React.useCallback(
+    (nodeId: string): void => {
+      setFlowNodes((current) =>
+        current.map((n) => {
+          const shouldSelect = n.id === nodeId;
+          return n.selected === shouldSelect
+            ? n
+            : { ...n, selected: shouldSelect };
+        }),
+      );
+    },
+    [setFlowNodes],
+  );
   React.useEffect(() => {
     if (generatePanelNodeId == null) return;
-    setFlowNodes((current) =>
-      current.map((n) => {
-        const shouldSelect = n.id === generatePanelNodeId;
-        return n.selected === shouldSelect ? n : { ...n, selected: shouldSelect };
-      }),
-    );
-  }, [generatePanelNodeId, setFlowNodes]);
+    selectOnlyNode(generatePanelNodeId);
+  }, [generatePanelNodeId, selectOnlyNode]);
+
+  // Panel ⇄ selection binding — closing half (user-ratified 2026-07-11): the
+  // host LOSING selection closes the panel, through ANY path that moves
+  // selection (clicking another node, clicking empty canvas, menu-create /
+  // paste auto-selecting the new node, grouping…). Edge-triggered per host id
+  // so the open gesture (store id first, selection a beat later) never
+  // self-destructs; pick mode is exempt and Exit restores the host selection.
+  // Rationale + rule table live in lib/generate-panel-selection.ts.
+  const hostSelected = React.useMemo((): boolean | null => {
+    if (generatePanelNodeId == null) return null;
+    const host = flowNodes.find((n) => n.id === generatePanelNodeId);
+    return host ? host.selected === true : null;
+  }, [flowNodes, generatePanelNodeId]);
+  const panelSelectionRef = React.useRef<PanelSelectionSnapshot>({
+    panelNodeId: null,
+    hostSelected: null,
+  });
+  React.useEffect(() => {
+    const prev = panelSelectionRef.current;
+    const next = { panelNodeId: generatePanelNodeId, hostSelected };
+    panelSelectionRef.current = next;
+    if (
+      shouldCloseOnSelectionEdge(prev, next, referencePickForNodeId != null)
+    ) {
+      closeGeneratePanel();
+    }
+  }, [
+    generatePanelNodeId,
+    hostSelected,
+    referencePickForNodeId,
+    closeGeneratePanel,
+  ]);
 
   const pendingViewportCommand = useCanvasStore(
     (s) => s.pendingViewportCommand,
@@ -953,33 +998,40 @@ function CanvasSpaceInner({
     [projectId, spaceId, flowEdges, t, kindLabel],
   );
 
-  // Node click: in reference-pick mode delegate to the pick handler; otherwise,
-  // if a Generate panel is open on a DIFFERENT node, close it (user 2026-07-10
-  // item 6b — the panel belongs to one selected node at a time).
+  // Node click: in reference-pick mode delegate to the pick handler. Off pick
+  // mode there is nothing to do here — clicking a node moves selection
+  // natively, and the selection-edge rule closes an open panel whose host
+  // lost selection (no per-handler close enumeration).
   const onNodeClick = React.useCallback(
     (event: React.MouseEvent, node: Node): void => {
-      const state = useCanvasStore.getState();
-      if (state.referencePickForNodeId) {
+      if (useCanvasStore.getState().referencePickForNodeId) {
         onReferencePickNodeClick(event, node);
-        return;
-      }
-      if (state.generatePanelNodeId && state.generatePanelNodeId !== node.id) {
-        closeGeneratePanel();
       }
     },
-    [onReferencePickNodeClick, closeGeneratePanel],
+    [onReferencePickNodeClick],
   );
 
-  // Clicking the empty canvas closes an open Generate panel (item 6b) —
-  // EXCEPT during a reference pick (spec §9.2): picking spans a large canvas,
-  // so a stray click between nodes is a natural misclick and must not abort
-  // the session (item 7: the Exit button is the only way out of pick mode).
+  // Clicking the empty canvas deselects everything; the selection-edge rule
+  // then closes an open panel (single close path — this handler never closes
+  // directly). EXCEPT during a reference pick (spec §9.2): picking spans a
+  // large canvas, so a stray click between nodes is a natural misclick and
+  // must not abort the session (item 7: Exit is the only way out).
   const onPaneClick = React.useCallback((): void => {
-    const { generatePanelNodeId, referencePickForNodeId } =
-      useCanvasStore.getState();
-    if (referencePickForNodeId != null) return;
-    if (generatePanelNodeId) closeGeneratePanel();
-  }, [closeGeneratePanel]);
+    if (useCanvasStore.getState().referencePickForNodeId != null) return;
+    setFlowNodes((current) =>
+      current.map((n) => (n.selected ? { ...n, selected: false } : n)),
+    );
+  }, [setFlowNodes]);
+
+  // Leaving pick mode restores the host as the sole selection so the
+  // panel⇄selection invariant re-establishes — pick clicks move selection to
+  // candidate nodes by design, and returning with the host deselected would
+  // otherwise leave the panel one selection-edge away from a phantom close.
+  const onExitReferencePick = React.useCallback((): void => {
+    const host = useCanvasStore.getState().generatePanelNodeId;
+    endReferencePick();
+    if (host != null) selectOnlyNode(host);
+  }, [endReferencePick, selectOnlyNode]);
 
   // Recenter the picking node so it stays findable while selecting references
   // across a large canvas (user 2026-07-10 item 7 locate). Pans only — keeps the
@@ -2263,7 +2315,8 @@ function CanvasSpaceInner({
             </button>
             <button
               type='button'
-              onClick={endReferencePick}
+              data-testid='reference-pick-exit'
+              onClick={onExitReferencePick}
               className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
             >
               {t('canvas.generatePanel.exitSelect')}
