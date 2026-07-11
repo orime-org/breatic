@@ -2318,7 +2318,19 @@ function CanvasSpaceInner({
         {referencePickForNodeId ? (
           <div
             data-testid='reference-pick-banner'
-            className='absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
+            // Palette violet (the status-selected identity — same hue as the
+            // pick glow) instead of neutral card chrome: the banner is the
+            // mode indicator for an exclusive session and must read as one
+            // (user 2026-07-11 item 11). The stock `-bg` token is a 14% tint
+            // over TRANSPARENT (built for group surfaces); a floating banner
+            // needs a SOLID surface, so the tint is mixed into the popover
+            // base instead.
+            style={{
+              backgroundColor:
+                'color-mix(in srgb, var(--color-palette-violet) 14%, var(--color-popover))',
+              borderColor: 'var(--color-palette-violet-border)',
+            }}
+            className='absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-3 rounded-md border px-4 py-2 text-sm text-foreground shadow-md'
           >
             <span>{t('canvas.generatePanel.selectFromCanvas')}</span>
             <button

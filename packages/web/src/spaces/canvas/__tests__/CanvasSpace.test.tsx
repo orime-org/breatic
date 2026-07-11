@@ -334,6 +334,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     clickPane(pane as Element);
     expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
     expect(useCanvasStore.getState().referencePickForNodeId).toBe('target');
+    // The banner is the exclusive-session mode indicator and reads in palette
+    // violet — a SOLID popover-mixed surface, not the transparent group tint
+    // (batch-2 item 11).
+    const banner = screen.getByTestId('reference-pick-banner');
+    expect(banner.style.backgroundColor).toContain('--color-palette-violet');
+    expect(banner.style.backgroundColor).toContain('--color-popover');
+    expect(banner.style.borderColor).toContain('--color-palette-violet-border');
   });
 
   it('pane click with the panel open but NOT picking closes the panel (item 6b)', () => {
@@ -1137,6 +1144,15 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     );
     expect(css).toContain('animation: canvas-pick-glow');
     expect(css).toContain('@keyframes canvas-pick-glow');
+  });
+
+  it('glow corner follows the node radius token, not a hardcoded value (batch-2 item 6)', () => {
+    // A hardcoded 12px drew the halo at 2x the node card's 6px rounded-sm
+    // corner (user screenshot 2026-07-11). Block-scoped match so the pin
+    // cannot be satisfied by an unrelated later rule.
+    expect(css).toMatch(
+      /\.canvas-pick-selectable:hover\s*\{[^}]*border-radius:\s*var\(--radius-sm\)/,
+    );
   });
 });
 

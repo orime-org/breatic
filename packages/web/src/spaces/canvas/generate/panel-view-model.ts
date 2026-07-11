@@ -109,9 +109,9 @@ function imageUrlOf(data: NodeView | undefined): string | undefined {
 /**
  * Picks the effective model id for the active mode: the node's stored model
  * when it is still offered under this mode, else the mode's remembered pick,
- * else the mode's `recommended` model, else the first model offered for the
- * mode (user 2026-07-09 — the recommended tier is a curation signal and drives
- * the default). Empty string when the mode offers no model.
+ * else the first model offered for the mode (user 2026-07-11 — `recommended`
+ * is a curation badge, not a default rule). Empty string when the mode
+ * offers no model.
  * @param stored - The node's stored model id (may be absent / stale / wrong-mode).
  * @param mode - The active generation sub-mode.
  * @param modelByMode - The node's per-mode model memory.
@@ -134,7 +134,7 @@ function pickModelForMode(
  * model/params derivation but for an ARBITRARY target mode (not the node's
  * stored one), so the container can compute what `setNodeMode` should write.
  * The node's current model is intentionally NOT preferred — a toggle resolves
- * fresh for the target mode (its remembered pick → recommended → first).
+ * fresh for the target mode (its remembered pick → first).
  * @param content - The node's current content view, read for `modelByMode` + `params` (may be undefined).
  * @param mode - The target generation sub-mode.
  * @param models - The full catalog image models (unfiltered).

@@ -86,25 +86,25 @@ describe('resolveModelForMode', () => {
     expect(resolveModelForMode('t2i', remembered, t2iModels)).toBe('t2i-b');
   });
 
-  it('falls back to the first model when the mode was never chosen and none is recommended', () => {
+  it('falls back to the first model when the mode was never chosen', () => {
     expect(resolveModelForMode('t2i', {}, t2iModels)).toBe('t2i-a');
   });
 
-  it('prefers the mode\'s recommended model over the first when never chosen (user 2026-07-09)', () => {
-    // t2i-b is optional-by-default; mark it recommended so it should win over
-    // the first (t2i-a) as the mode's default — the `recommended` tier is a
-    // curation signal, not just badge dressing.
+  it('ignores the recommended TIER for defaulting — first model wins (user 2026-07-11)', () => {
+    // `tier: recommended` is a curation BADGE (a mode may carry several), not
+    // a default-selection rule — the earlier recommended-first resolution
+    // misread it (corrected 2026-07-11). With no remembered pick, the first
+    // offered model is the default even when a later one is recommended.
     const rec: ModelEntry = { ...T2I_B, tier: 'recommended' };
-    expect(resolveModelForMode('t2i', {}, [T2I, rec])).toBe('t2i-b');
+    expect(resolveModelForMode('t2i', {}, [T2I, rec])).toBe('t2i-a');
   });
 
-  it('remembered model still beats the recommended one', () => {
+  it('remembered model always wins', () => {
     const rec: ModelEntry = { ...T2I_B, tier: 'recommended' };
-    // the user's own last pick (t2i-a, optional) outranks the recommended t2i-b
-    expect(resolveModelForMode('t2i', { t2i: 't2i-a' }, [T2I, rec])).toBe('t2i-a');
+    expect(resolveModelForMode('t2i', { t2i: 't2i-b' }, [T2I, rec])).toBe('t2i-b');
   });
 
-  it('falls back to the first model when the remembered one is gone and none is recommended', () => {
+  it('falls back to the first model when the remembered one is gone', () => {
     const remembered: Partial<Record<ImageGenMode, string>> = { t2i: 'removed' };
     expect(resolveModelForMode('t2i', remembered, t2iModels)).toBe('t2i-a');
   });

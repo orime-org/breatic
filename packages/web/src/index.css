@@ -196,7 +196,9 @@ body {
   cursor: pointer;
 }
 .react-flow .react-flow__node.canvas-pick-selectable:hover {
-  border-radius: 12px;
+  /* Match the node card's real corner (NodeShell rounded-sm) — a hardcoded
+     12px drew the glow ring at 2x the node's 6px radius (user 2026-07-11). */
+  border-radius: var(--radius-sm);
   animation: canvas-pick-glow 1.4s ease-in-out infinite;
 }
 @keyframes canvas-pick-glow {

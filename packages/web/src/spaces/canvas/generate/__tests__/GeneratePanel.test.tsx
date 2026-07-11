@@ -57,6 +57,21 @@ function setup(
 }
 
 describe('GeneratePanel — the collaborative image-node Generate panel shell (slice 1)', () => {
+  it('is 600px wide with squeeze-proof footer icons (batch-2 item 8)', () => {
+    // At 560px the fixed-size footer icons were squeezed by long picker
+    // labels (no flex-wrap by design); 600px + shrink-0 keeps them intact.
+    const { container } = setup();
+    expect(
+      (container.firstChild as HTMLElement).className,
+    ).toContain('w-[min(600px,92vw)]');
+    expect(screen.getByTestId('generate-presets').className).toContain(
+      'shrink-0',
+    );
+    expect(screen.getByTestId('generate-execute').className).toContain(
+      'shrink-0',
+    );
+  });
+
   it('renders the exit button, prompt slot, model picker and credit estimate', () => {
     setup();
     expect(screen.getByTestId('generate-exit')).toBeInTheDocument();
