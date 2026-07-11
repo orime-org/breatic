@@ -406,7 +406,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
             aria-label={t('viewportToolbar.zoomCustomAria')}
             placeholder='100'
             data-testid='zoom-custom-input'
-            className='h-7 w-full rounded-chrome border border-border bg-transparent px-2 text-xs tabular-nums text-foreground outline-none transition-colors focus-visible:border-foreground'
+            className='h-7 w-full rounded-chrome border border-border bg-transparent px-2 text-xs tabular-nums text-foreground outline-none transition-colors focus-visible:border-active-border'
           />
           <span className='text-xs text-muted-foreground'>%</span>
         </div>

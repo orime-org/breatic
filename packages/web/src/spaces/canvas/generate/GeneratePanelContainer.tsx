@@ -187,6 +187,24 @@ function GeneratePanelBody({
     () => selectModeModels(models, vm.mode),
     [models, vm.mode],
   );
+  // Same discipline for the sibling props (round-3 adversarial): params and
+  // references are rebuilt with the vm every canvas mutation; without a
+  // content-stable identity they defeat the React.memo on GeneratePanel /
+  // ReferenceRail / RatioResolutionPicker each frame of any node drag.
+  const aspectRatio = asStr(vm.params.aspect_ratio);
+  const resolution = asStr(vm.params.resolution);
+  const stableParams = React.useMemo(
+    () => ({ aspect_ratio: aspectRatio, resolution }),
+    [aspectRatio, resolution],
+  );
+  // References change identity on every derive; key the memo on their CONTENT
+  // (small array — a stringify key is cheap and exact).
+  const referencesKey = JSON.stringify(vm.references);
+  const stableReferences = React.useMemo(
+    () => vm.references,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS vm.references, serialized
+    [referencesKey],
+  );
   const freshVm = React.useCallback(
     (atMentionedSourceIds?: ReadonlySet<string>): GeneratePanelViewModel => {
       const graph = readCanvasGraph(projectId, spaceId);
@@ -378,11 +396,8 @@ function GeneratePanelBody({
       model={vm.model}
       mode={vm.mode}
       catalogEmpty={vm.catalogEmpty}
-      params={{
-        aspect_ratio: asStr(vm.params.aspect_ratio),
-        resolution: asStr(vm.params.resolution),
-      }}
-      references={vm.references}
+      params={stableParams}
+      references={stableReferences}
       creditEstimate={vm.creditEstimate}
       canExecute={canExecute}
       promptSlot={
@@ -393,7 +408,7 @@ function GeneratePanelBody({
             placeholder={t('canvas.generatePanel.promptPlaceholder')}
             onTextChange={handlePromptChange}
             onAtMentionsChange={handleAtMentionsChange}
-            references={vm.references}
+            references={stableReferences}
             mode={vm.mode}
             mentionEmptyLabel={t('canvas.generatePanel.mentionEmpty')}
           />

@@ -19,6 +19,7 @@ import {
   type Node,
   type NodeChange,
   type OnConnectEnd,
+  type OnConnectStart,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
@@ -81,7 +82,10 @@ import {
   hasRetryFile,
 } from '@web/spaces/canvas/upload-retry-files';
 import { extractText } from '@web/spaces/canvas/text-extract';
-import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
+import {
+  canConnect,
+  resolveClickConnectRejection,
+} from '@web/spaces/canvas/lib/connection-rules';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import { planGroupDrag, type DragNode } from '@web/spaces/canvas/group-drag';
@@ -790,14 +794,13 @@ function CanvasSpaceInner({
     [t],
   );
 
-  // A connection refused by the rules gets a WHY (user 2026-07-10):
+  // A DRAG-connect refused by the rules gets a WHY (user 2026-07-10):
   // "Audio can't connect into Image". Fired once on release — never during the
   // drag (isValidConnection runs per pointer-move; toasting there would spam).
   // A release over empty canvas (toNode null) is a normal cancel, not a toast.
-  // Wired to BOTH onConnectEnd (drag-connect) and onClickConnectEnd
-  // (click-connect: tap a source handle, then a target handle — xyflow's
-  // connectOnClick is on by default), so the same rejection explains itself
-  // identically on either gesture.
+  // Click-connect has its OWN handler below: xyflow's onClickConnectEnd hands
+  // over the DRAG connection state, which a pure tap-tap gesture never
+  // populates (round-3 adversarial — reusing this handler there was a no-op).
   const onConnectEnd = React.useCallback<OnConnectEnd>(
     (_event, state) => {
       if (state.isValid !== false || !state.fromNode || !state.toNode) return;
@@ -814,6 +817,53 @@ function CanvasSpaceInner({
         t('canvas.connection.rejected', {
           source: kindLabel(sourceKind),
           target: kindLabel(targetKind),
+        }),
+      );
+    },
+    [t, kindLabel],
+  );
+
+  // CLICK-connect rejection toast (round-3 adversarial): reconstruct the
+  // tap-tap gesture ourselves — record the armed handle on click-start, and on
+  // click-end resolve the second click's node from the event target. The pure
+  // resolver decides whether the pair was refused by the rules; cancels /
+  // self taps / allowed pairs stay silent (a valid pair writes its edge via
+  // onConnect as usual).
+  const clickConnectFromRef = React.useRef<{
+    nodeId: string;
+    handleType: 'source' | 'target';
+  } | null>(null);
+  const onClickConnectStart = React.useCallback<OnConnectStart>(
+    (_event, params) => {
+      clickConnectFromRef.current = params.nodeId
+        ? {
+          nodeId: params.nodeId,
+          handleType: params.handleType ?? 'source',
+        }
+        : null;
+    },
+    [],
+  );
+  const onClickConnectEnd = React.useCallback<OnConnectEnd>(
+    (event) => {
+      const from = clickConnectFromRef.current;
+      clickConnectFromRef.current = null;
+      const targetEl =
+        event.target instanceof Element
+          ? event.target.closest('.react-flow__node')
+          : null;
+      const rejection = resolveClickConnectRejection({
+        from,
+        toNodeId: targetEl?.getAttribute('data-id') ?? null,
+        kindOf: (id) =>
+          useCanvasGraphStore.getState().flowNodes.find((n) => n.id === id)
+            ?.type,
+      });
+      if (!rejection) return;
+      toast.error(
+        t('canvas.connection.rejected', {
+          source: kindLabel(rejection.sourceKind),
+          target: kindLabel(rejection.targetKind),
         }),
       );
     },
@@ -2125,7 +2175,8 @@ function CanvasSpaceInner({
           onBeforeDelete={onBeforeDelete}
           onConnect={onConnect}
           onConnectEnd={onConnectEnd}
-          onClickConnectEnd={onConnectEnd}
+          onClickConnectStart={onClickConnectStart}
+          onClickConnectEnd={onClickConnectEnd}
           isValidConnection={isValidConnection}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}

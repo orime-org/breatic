@@ -128,6 +128,7 @@ export {
   IMAGE_GENERATION_MODES,
   isImageGenerationMode,
   requiresSourceImage,
+  supportsTextToImage,
   SOURCE_IMAGE_MODES,
 } from "@shared/types/index.js";
 

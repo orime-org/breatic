@@ -13,7 +13,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "@breatic/core";
-import { requiresSourceImage } from "@breatic/shared";
+import { requiresSourceImage,
+  supportsTextToImage } from "@breatic/shared";
 import type {
   ModelCatalog,
   ModelEntry,
@@ -288,7 +289,14 @@ export function violatesSourceImageRequirement(
   for (const modality of MODALITIES) {
     const entry = catalog[modality].find((m) => m.name === model);
     if (entry) {
-      needsSource = requiresSourceImage(entry.mode);
+      // A HYBRID model (t2i+i2i) satisfies requiresSourceImage via its i2i
+      // capability, but an image-less submission is a valid t2i run — only a
+      // model that CANNOT generate from scratch is gated (round-3
+      // adversarial: the frontend keys this on the active panel mode; the
+      // server, which has no mode field on the wire, keys it on "the model
+      // has no image-less way to run").
+      needsSource =
+        requiresSourceImage(entry.mode) && !supportsTextToImage(entry.mode);
       break;
     }
   }

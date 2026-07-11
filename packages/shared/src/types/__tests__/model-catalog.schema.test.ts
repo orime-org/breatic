@@ -7,6 +7,7 @@ import {
   sanitizeModelCatalog,
   isImageGenerationMode,
   requiresSourceImage,
+  supportsTextToImage,
 } from "@shared/types/model-catalog.js";
 import type { ModelCatalog, ModelEntry } from "@shared/types/model-catalog.js";
 
@@ -257,5 +258,26 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     const params = out.image[0]?.params;
     expect(Object.getPrototypeOf(params)).toBe(Object.prototype); // not polluted
     expect(params?.aspect_ratio?.values).toEqual(["1:1"]); // legit sibling kept
+  });
+});
+
+// supportsTextToImage — the counterpart predicate to requiresSourceImage: a
+// HYBRID model (mode: ['t2i','i2i']) can run WITHOUT a source image (a t2i
+// submission), so the server's #1675 gate must not demand images from it
+// (round-3 adversarial: the frontend keyed the gate on the ACTIVE panel mode,
+// but the server still keyed on the capability list alone and would 400 a
+// hybrid t2i submission at the sibling layer).
+describe("supportsTextToImage", () => {
+  it("is true for a plain t2i model", () => {
+    expect(supportsTextToImage("t2i")).toBe(true);
+  });
+
+  it("is true for a hybrid t2i+i2i model", () => {
+    expect(supportsTextToImage(["t2i", "i2i"])).toBe(true);
+  });
+
+  it("is false for i2i / edit-only models", () => {
+    expect(supportsTextToImage("i2i")).toBe(false);
+    expect(supportsTextToImage(["i2i", "edit"])).toBe(false);
   });
 });

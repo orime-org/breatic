@@ -3,7 +3,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
+import {
+  canConnect,
+  resolveClickConnectRejection,
+} from '@web/spaces/canvas/lib/connection-rules';
 
 // Node-type connection rules (user 2026-07-10, spec §9.1 + same-day
 // extension): what may wire into a node's input is a product rule —
@@ -89,5 +92,72 @@ describe('canConnect', () => {
     expect(canConnect('sticker' as never, 'image')).toBe(false);
     expect(canConnect('sticker' as never, 'audio')).toBe(false);
     expect(canConnect('sticker' as never, '3d')).toBe(true);
+  });
+});
+
+// Click-connect rejection resolution (round-3 adversarial): xyflow's
+// onClickConnectEnd hands over the DRAG connection state, which a pure
+// tap-tap gesture never populates — so the drag handler could never toast.
+// This pure resolver recovers the gesture from the click-start params + the
+// second click's node and decides whether a rule-rejection toast is due.
+describe('resolveClickConnectRejection', () => {
+  const kinds: Record<string, string> = {
+    aud: 'audio',
+    img: 'image',
+    txt: 'text',
+  };
+  const kindOf = (id: string): string | undefined => kinds[id];
+
+  it('resolves a rejected audio→image click pair (started from the source handle)', () => {
+    expect(
+      resolveClickConnectRejection({
+        from: { nodeId: 'aud', handleType: 'source' },
+        toNodeId: 'img',
+        kindOf,
+      }),
+    ).toEqual({ sourceKind: 'audio', targetKind: 'image' });
+  });
+
+  it('resolves direction when the gesture started from the TARGET handle', () => {
+    expect(
+      resolveClickConnectRejection({
+        from: { nodeId: 'img', handleType: 'target' },
+        toNodeId: 'aud',
+        kindOf,
+      }),
+    ).toEqual({ sourceKind: 'audio', targetKind: 'image' });
+  });
+
+  it('stays silent for an allowed pair (text→image)', () => {
+    expect(
+      resolveClickConnectRejection({
+        from: { nodeId: 'txt', handleType: 'source' },
+        toNodeId: 'img',
+        kindOf,
+      }),
+    ).toBeNull();
+  });
+
+  it('stays silent on cancel (no second node) and on a self tap', () => {
+    expect(
+      resolveClickConnectRejection({
+        from: { nodeId: 'aud', handleType: 'source' },
+        toNodeId: null,
+        kindOf,
+      }),
+    ).toBeNull();
+    expect(
+      resolveClickConnectRejection({
+        from: { nodeId: 'aud', handleType: 'source' },
+        toNodeId: 'aud',
+        kindOf,
+      }),
+    ).toBeNull();
+  });
+
+  it('stays silent when there was no click-start (drag path owns that toast)', () => {
+    expect(
+      resolveClickConnectRejection({ from: null, toNodeId: 'img', kindOf }),
+    ).toBeNull();
   });
 });
