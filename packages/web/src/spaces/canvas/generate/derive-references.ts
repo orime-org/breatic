@@ -68,14 +68,18 @@ function thumbnailOf(view: NodeView): string | undefined {
 /**
  * Derives a node's reference rail from its incoming edges. Every edge whose
  * `target` is `nodeId` becomes one rail row resolved against the current node
- * set; a dangling edge (source node absent) is skipped. Edge order is
- * preserved. Pure — display fields reflect the source nodes as passed in.
+ * set; a dangling edge (source node absent) is skipped. Rows are ordered by
+ * connection time (`createdAt` ascending, newest last — batch-2 item 7), NOT
+ * by array position: the edges array mirrors Y.Map struct-store order, which
+ * diverges from insertion order after reload / cross-client sync. A legacy
+ * edge without a stamp sorts as oldest (stable among its peers). Pure —
+ * display fields reflect the source nodes as passed in.
  * @param nodeId - The generative node whose reference rail to build.
  * @param nodes - The current canvas node views (source of live display
  *   fields). Only `id` + `data` are read, so both the stored
  *   {@link CanvasNodeView} shape and ReactFlow's `Node<NodeView>` satisfy it.
  * @param edges - The current canvas edges.
- * @returns The reference rail rows, in incoming-edge order.
+ * @returns The reference rail rows, in connection-time order (newest last).
  */
 export function deriveReferences(
   nodeId: string,
@@ -83,9 +87,14 @@ export function deriveReferences(
   edges: ReadonlyArray<CanvasEdge>,
 ): ReferenceRailItem[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  // filter() returns a fresh array, so the in-place sort never mutates the
+  // caller's edges. Array.prototype.sort is stable, so unstamped legacy edges
+  // (?? 0) keep their relative order while preceding every stamped edge.
+  const incoming = edges
+    .filter((e) => e.target === nodeId)
+    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
   const rail: ReferenceRailItem[] = [];
-  for (const edge of edges) {
-    if (edge.target !== nodeId) continue;
+  for (const edge of incoming) {
     const source = byId.get(edge.source);
     if (!source) continue;
     rail.push({

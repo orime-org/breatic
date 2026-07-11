@@ -3,7 +3,6 @@
 
 import { Collaboration } from '@tiptap/extension-collaboration';
 import { Document } from '@tiptap/extension-document';
-import { Gapcursor } from '@tiptap/extension-gapcursor';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Text } from '@tiptap/extension-text';
@@ -111,11 +110,11 @@ export const PromptEditor = React.forwardRef<
         Document,
         Paragraph,
         Text,
-        // Lets a text cursor land between two adjacent inline atom chips (two
-        // @-mentions with no space between) — without it the caret has no DOM
-        // home there and vanishes on click (TipTap #2978). Pairs with dropping
-        // the auto-inserted trailing space (user 2026-07-10 item 5).
-        Gapcursor,
+        // The caret between two adjacent chips (no auto space — user
+        // 2026-07-10 item 5) is handled by the chip-boundary caret plugin
+        // that ReferenceMention installs (reference-mention-caret.ts).
+        // Gapcursor was the wrong tool: its valid() rejects textblock
+        // parents, so it never fired inside the paragraph (batch-2 item 5).
         // Collaboration provides history (yUndo); do NOT add UndoRedo alongside.
         Collaboration.configure({ fragment }),
         Placeholder.configure({ placeholder }),

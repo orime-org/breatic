@@ -62,8 +62,9 @@ export function makeReferenceSuggestion(input: {
         .slice(0, 8);
     },
     command: ({ editor, range, props }): void => {
-      // No trailing space (user 2026-07-10): adjacent chips are navigable via
-      // the Gapcursor extension installed on the prompt editor.
+      // No trailing space (user 2026-07-10): the gap between adjacent chips
+      // stays clickable + visible via the chip-boundary caret plugin
+      // (reference-mention-caret.ts).
       editor
         .chain()
         .focus()

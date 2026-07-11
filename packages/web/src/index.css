@@ -214,3 +214,29 @@ body {
       0 0 26px 7px color-mix(in srgb, var(--color-status-selected) 55%, transparent);
   }
 }
+/* Fake caret between adjacent reference chips in the generate prompt
+   (reference-mention-caret.ts). Browsers cannot paint a native caret at a
+   position with no adjacent text node (TipTap #2978), so a widget decoration
+   draws one: a zero-width span whose left border is the caret line. */
+.reference-mention-caret {
+  display: inline-block;
+  width: 0;
+  height: 1.2em;
+  vertical-align: text-bottom;
+  border-left: 1.5px solid currentColor;
+  pointer-events: none;
+  animation: reference-mention-caret-blink 1.06s step-end infinite;
+}
+@keyframes reference-mention-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+/* While the fake caret shows, hide the native one — at some element
+   boundaries a browser does paint natively, and two carets is worse than
+   none. Scoped by the plugin's editor-root marker class, so the native caret
+   stays untouched everywhere else (incl. IME composition, which inserts a
+   text node and flips this class off). */
+.reference-mention-caret-active {
+  caret-color: transparent;
+}

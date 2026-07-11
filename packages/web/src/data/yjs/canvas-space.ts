@@ -61,6 +61,13 @@ export interface CanvasEdge {
   source: string;
   target: string;
   toolId?: string;
+  /**
+   * Epoch ms when the connection was drawn (stamped by {@link addEdge}). The
+   * reference rail orders rows by it — Y.Map iteration is struct-store order
+   * (clientID + clock), which diverges from insertion order after reload /
+   * cross-client sync. Absent on legacy edges, which sort as oldest.
+   */
+  createdAt?: number;
 }
 
 interface CanvasSpaceState {
@@ -1154,6 +1161,9 @@ export function addEdge(
     map.set('source', edge.source);
     map.set('target', edge.target);
     if (edge.toolId) map.set('toolId', edge.toolId);
+    // Connection time drives reference-rail order (undo re-inserts the map
+    // with its original stamp, so an undone+redone edge keeps its place).
+    map.set('createdAt', edge.createdAt ?? Date.now());
     edgesMap.set(edge.id, map);
     added = true;
   }, CANVAS_UNDO);
@@ -1283,6 +1293,7 @@ export function readEdges(doc: Y.Doc): ReadonlyArray<CanvasEdge> {
       source: String(map.get('source') ?? ''),
       target: String(map.get('target') ?? ''),
       toolId: (map.get('toolId') as string | undefined) ?? undefined,
+      createdAt: (map.get('createdAt') as number | undefined) ?? undefined,
     });
   });
   return out;
