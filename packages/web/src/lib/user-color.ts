@@ -58,7 +58,7 @@ const SIX_DIGIT_HEX = /^#[0-9a-fA-F]{6}$/;
  * awareness payloads must carry. Never used for on-screen rendering by
  * breatic clients — they re-derive the token var from the hue.
  */
-const WIRE_FALLBACK_HEX = '#888888';
+const WIRE_FALLBACK_HEX = '#888888'; // design-value: allow — wire-protocol constant, never rendered by breatic clients
 
 /**
  * Resolves a palette hue to its CURRENT concrete hex value from the live
