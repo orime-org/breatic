@@ -84,6 +84,39 @@ describe('resolvePanelSelectionAction', () => {
     ).toBe('select');
   });
 
+  it('asserts on the opening frame even when the host is ALREADY selected (round-2 hole)', () => {
+    // Round-2 adversarial: click A (selected), Cmd-add an edge or another
+    // node, right-click A → Generate. The host is selected but NOT the sole
+    // selection — the co-selected edge keeps its scissors + Delete claim
+    // under the panel unless the fresh binding asserts unconditionally.
+    // The assert is idempotent (reference-stable when already sole), so
+    // selecting an already-sole host costs nothing.
+    expect(
+      resolvePanelSelectionAction(
+        { panelNodeId: null, hostSelected: null },
+        snap({ hostSelected: true }),
+        false,
+      ),
+    ).toBe('select');
+    expect(
+      resolvePanelSelectionAction(
+        { panelNodeId: 'a', hostSelected: true },
+        { panelNodeId: 'b', hostSelected: true },
+        false,
+      ),
+    ).toBe('select');
+  });
+
+  it('does not assert a fresh binding on a vanished host (node-gone guard owns it)', () => {
+    expect(
+      resolvePanelSelectionAction(
+        { panelNodeId: null, hostSelected: null },
+        snap({ hostSelected: null }),
+        false,
+      ),
+    ).toBe('none');
+  });
+
   it('does nothing while the host remains selected (multi-select keeps it too)', () => {
     // Shift-clicking another node ADDS to the selection — the host is still
     // selected, so the binding holds.

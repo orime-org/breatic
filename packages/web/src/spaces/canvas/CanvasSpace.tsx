@@ -13,6 +13,7 @@ import {
   applyNodeChanges,
   useReactFlow,
   useStore,
+  useStoreApi,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -485,6 +486,7 @@ function CanvasSpaceInner({
   // an unselected host. Pick mode holds the machine; exiting the pick (or
   // reopening the panel, which clears it) re-asserts the binding. Rationale +
   // rule table live in lib/generate-panel-selection.ts.
+  const rfStoreApi = useStoreApi();
   const selectOnlyNode = React.useCallback(
     (nodeId: string): void => {
       setFlowNodes((current) =>
@@ -494,8 +496,12 @@ function CanvasSpaceInner({
       // keep its scissors affordance + Delete-key claim under the open panel
       // (native node clicks clear edge selection the same way).
       setFlowEdges((current) => reconcileSelection(current, () => false));
+      // A native single node click also clears xyflow's marquee state; the
+      // programmatic path must too, or a pre-open marquee's NodesSelection
+      // rect shrinks onto the host and swallows clicks (round-2 adversarial).
+      rfStoreApi.setState({ nodesSelectionActive: false });
     },
-    [setFlowNodes, setFlowEdges],
+    [setFlowNodes, setFlowEdges, rfStoreApi],
   );
   const hostSelected = React.useMemo((): boolean | null => {
     if (generatePanelNodeId == null) return null;
@@ -1023,7 +1029,8 @@ function CanvasSpaceInner({
     if (useCanvasStore.getState().referencePickForNodeId != null) return;
     setFlowNodes((current) => reconcileSelection(current, () => false));
     setFlowEdges((current) => reconcileSelection(current, () => false));
-  }, [setFlowNodes, setFlowEdges]);
+    rfStoreApi.setState({ nodesSelectionActive: false });
+  }, [setFlowNodes, setFlowEdges, rfStoreApi]);
 
   // Recenter the picking node so it stays findable while selecting references
   // across a large canvas (user 2026-07-10 item 7 locate). Pans only — keeps the
@@ -1399,11 +1406,11 @@ function CanvasSpaceInner({
     if (!selectAfterCreate.every((id) => nodes.some((node) => node.id === id)))
       return;
     const targets = new Set(selectAfterCreate);
+    // reconcileSelection keeps untouched nodes' references so React.memo
+    // bails on the rest of the canvas (same discipline as the other
+    // programmatic selection writes).
     setFlowNodes((current) =>
-      current.map((node) => ({
-        ...node,
-        selected: targets.has(node.id),
-      })),
+      reconcileSelection(current, (node) => targets.has(node.id)),
     );
     setSelectAfterCreate(null);
   }, [selectAfterCreate, nodes, setFlowNodes]);
@@ -2248,7 +2255,10 @@ function CanvasSpaceInner({
           // Marquee-select is disabled during a reference pick: xyflow's
           // NodesSelection rect would overlay the picked bounding box and
           // swallow subsequent pick clicks (round-1 adversarial dead zone).
+          // BOTH activation paths need the gate — drag AND the Shift key
+          // (selectionKeyCode is an independent path; round-2 adversarial).
           selectionOnDrag={referencePickForNodeId == null}
+          selectionKeyCode={referencePickForNodeId == null ? 'Shift' : null}
           panOnDrag={false}
           panOnScroll
           panOnScrollMode={PanOnScrollMode.Free}
@@ -2368,7 +2378,16 @@ function CanvasSpaceInner({
               !genLocked &&
               !readOnly &&
               genNode?.type === 'image'
-              ? () => openGeneratePanel(nodeMenu.nodeId)
+              ? () => {
+                // Open + assert in one gesture: the machine's fresh-binding
+                // assert covers id CHANGES, but a same-host reopen (store id
+                // unchanged, e.g. re-choosing Generate with the panel already
+                // open after Cmd-adding a co-selection) is invisible to it —
+                // the action layer asserts unconditionally; both writes are
+                // idempotent.
+                openGeneratePanel(nodeMenu.nodeId);
+                selectOnlyNode(nodeMenu.nodeId);
+              }
               : undefined;
           })()}
           // Rename is frozen on a locked node / group (the name is on-canvas

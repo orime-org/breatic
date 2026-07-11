@@ -64,16 +64,22 @@ export function resolvePanelSelectionAction(
   picking: boolean,
 ): PanelSelectionAction {
   if (next.panelNodeId == null || picking) return 'none';
-  // Binding holds (host selected) or the host is gone (node-gone guard's
-  // job — selecting or closing on a vanished host would fight it).
-  if (next.hostSelected !== false) return 'none';
+  // A vanished host is the node-gone guard's job — selecting or closing here
+  // would fight it.
+  if (next.hostSelected === null) return 'none';
+  // Fresh binding (the panel just opened / switched host): assert
+  // UNCONDITIONALLY — the host may already be selected yet not be the SOLE
+  // selection (a pre-open Cmd-multi-select leaves co-selected nodes/edges
+  // holding a Delete-key claim under the panel; round-2 adversarial). The
+  // assert is idempotent and reference-stable, so an already-sole host costs
+  // nothing.
+  if (prev.panelNodeId !== next.panelNodeId) return 'select';
+  // Binding holds (host still selected).
+  if (next.hostSelected === true) return 'none';
   // Established binding (same host was selected last frame) → losing the
   // selection closes the panel.
-  if (prev.panelNodeId === next.panelNodeId && prev.hostSelected === true) {
-    return 'close';
-  }
+  if (prev.hostSelected === true) return 'close';
   // Binding not yet established → keep asserting the host selection until it
-  // lands (the buffer may not even contain the host yet on remount; the
-  // assert is idempotent and reference-stable, so retrying is free).
+  // lands (the buffer may not even contain the host yet on remount).
   return 'select';
 }

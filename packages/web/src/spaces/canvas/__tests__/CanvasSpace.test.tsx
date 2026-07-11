@@ -655,6 +655,69 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
   });
 
+  // Round-2 adversarial: opening the panel on an ALREADY-selected host used
+  // to skip the sole-selection assert entirely — a co-selected node (or edge)
+  // kept its Delete-key claim under the open panel. A multi-node paste
+  // selects the whole pasted group (real path), so opening Generate on one of
+  // them must deselect the rest.
+  it('opening the panel on a co-selected host clears the co-selection', async () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [] }));
+    const addNode = vi
+      .spyOn(canvasSpace, 'addNode')
+      .mockImplementation(() => undefined);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    // Paste TWO nodes — both get auto-selected once mirrored back.
+    dispatchPaste(
+      serializeNodes([
+        { type: 'image', position: { x: 0, y: 0 }, name: 'One', content: 'a.png' },
+        { type: 'image', position: { x: 100, y: 0 }, name: 'Two', content: 'b.png' },
+      ]),
+    );
+    await waitFor(() => expect(addNode).toHaveBeenCalledTimes(2));
+    const one = addNode.mock
+      .calls[0][2] as unknown as canvasSpace.CanvasNodeView;
+    const two = addNode.mock
+      .calls[1][2] as unknown as canvasSpace.CanvasNodeView;
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [one, two] }));
+    rerender(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(
+        document.querySelector(`[data-id="${one.id}"]`)?.className,
+      ).toContain('selected');
+      expect(
+        document.querySelector(`[data-id="${two.id}"]`)?.className,
+      ).toContain('selected');
+    });
+    // Open Generate on node ONE (host already selected, node TWO co-selected).
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: one.id,
+        referencePickForNodeId: null,
+      });
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector(`[data-id="${two.id}"]`)?.className,
+      ).not.toContain('selected'),
+    );
+    expect(
+      document.querySelector(`[data-id="${one.id}"]`)?.className,
+    ).toContain('selected');
+    expect(useCanvasStore.getState().generatePanelNodeId).toBe(one.id);
+    addNode.mockRestore();
+  });
+
   // Round-1 adversarial: an idle pane click (nothing selected) must not
   // publish a fresh flowNodes identity — map-always-allocates would re-render
   // every node on every misclick (reference-stability discipline).
@@ -952,6 +1015,26 @@ describe('reference-pick interaction contract', () => {
     // subsequent pick clicks hit the rect instead of the nodes (a dead zone in
     // the continuous-pick contract). The prop must be pick-gated.
     expect(src).toContain('selectionOnDrag={referencePickForNodeId == null}');
+  });
+
+  it('gates the Shift marquee path while picking too (selectionKeyCode)', () => {
+    // Round-2 adversarial: selectionOnDrag only disables the DRAG activation
+    // path — xyflow's selectionKeyCode (default 'Shift') is an independent
+    // second path, so Shift-drag mid-pick still opened the marquee dead zone.
+    // Both activation paths must be pick-gated.
+    expect(src).toContain(
+      'selectionKeyCode={referencePickForNodeId == null ? \'Shift\' : null}',
+    );
+  });
+
+  it('clears the NodesSelection rect on programmatic sole-select and pane deselect', () => {
+    // Round-2 adversarial: a native single node click clears xyflow's
+    // nodesSelectionActive, but the programmatic assert (selectOnlyNode)
+    // bypassed that lifecycle — after a pre-open marquee the rect shrank onto
+    // the host and swallowed clicks until a pane click. Both programmatic
+    // selection writes must clear the flag.
+    const occurrences = src.split('nodesSelectionActive: false').length - 1;
+    expect(occurrences).toBeGreaterThanOrEqual(2);
   });
 });
 
