@@ -319,6 +319,22 @@ function GeneratePanelBody({
     [startReferencePick, nodeId],
   );
 
+  // End a running pick the moment the mode becomes t2i (adversarial round-2):
+  // t2i ignores image references and DISABLES the reference button, so a pick
+  // started in i2i and left running after a t2i switch is a zombie session —
+  // its banner lingers and its Exit trigger is disabled (which is what left
+  // keyboard focus stranded). The mode can flip locally or via a collaborator
+  // writing setNodeMode, so react to vm.mode, not just the local toggle.
+  const endReferencePick = useCanvasStore((s) => s.endReferencePick);
+  React.useEffect(() => {
+    if (
+      vm.mode === 't2i' &&
+      useCanvasStore.getState().referencePickForNodeId === nodeId
+    ) {
+      endReferencePick();
+    }
+  }, [vm.mode, nodeId, endReferencePick]);
+
   const onRemoveReference = React.useCallback(
     (refId: string) => removeEdge(projectId, spaceId, refId),
     [projectId, spaceId],

@@ -37,6 +37,21 @@ export interface ReferenceRailItem {
 }
 
 /**
+ * Compares two edge ids by CODE UNIT (ordinal), not locale. The tiebreak must
+ * be identical on every client, and `String.prototype.localeCompare` collates
+ * in the runtime's default locale — under da/nb the 'aa' hex digraph sorts
+ * after 'z', so a Danish client would order tied references differently than
+ * an English one, defeating the cross-client determinism this exists for
+ * (adversarial round-2).
+ * @param a - First edge id.
+ * @param b - Second edge id.
+ * @returns Negative, zero, or positive per ordinal order.
+ */
+function ordinalCompare(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
  * Reads a source node view's display name. Content and group views carry an
  * optional `name`; an annotation sticky has none, so it resolves to empty.
  * @param view - The source node's view.
@@ -98,7 +113,7 @@ export function deriveReferences(
     .filter((e) => e.target === nodeId)
     .sort(
       (a, b) =>
-        (a.createdAt ?? 0) - (b.createdAt ?? 0) || a.id.localeCompare(b.id),
+        (a.createdAt ?? 0) - (b.createdAt ?? 0) || ordinalCompare(a.id, b.id),
     );
   const rail: ReferenceRailItem[] = [];
   for (const edge of incoming) {

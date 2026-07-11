@@ -44,8 +44,32 @@ export function connectableCreatableTypes(
  */
 export function isBlankCanvasRelease(el: Element | null): boolean {
   if (el === null || el.closest('.react-flow__pane') === null) return false;
+  // Not blank when the release lands on a node, the floating generate panel
+  // (NodeToolbar portal), or a VISIBLE edge control — the scissors chip lives
+  // in the edge-label renderer and matches neither of the first two
+  // (adversarial round-2).
   return (
-    el.closest('.react-flow__node, .react-flow__node-toolbar') === null
+    el.closest(
+      '.react-flow__node, .react-flow__node-toolbar, .react-flow__edgelabel-renderer',
+    ) === null
+  );
+}
+
+/**
+ * Resolves the real element under a release point from an elementsFromPoint
+ * STACK, skipping the transient connection-line SVG (z-index 1001) that sits
+ * on top during a connection drag — `document.elementFromPoint` (singular)
+ * can return that layer instead of what the user aimed at (adversarial
+ * round-2). The caller passes `document.elementsFromPoint(x, y)`.
+ * @param stack - The hit-test stack, topmost first.
+ * @returns The topmost non-transient element, or null when the stack is empty.
+ */
+export function resolveReleaseElement(
+  stack: ReadonlyArray<Element>,
+): Element | null {
+  return (
+    stack.find((el) => el.closest('.react-flow__connectionline') === null) ??
+    null
   );
 }
 

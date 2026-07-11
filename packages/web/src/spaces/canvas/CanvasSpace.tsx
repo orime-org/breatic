@@ -122,6 +122,7 @@ import { CanvasMiniMap } from '@web/spaces/canvas/CanvasMiniMap';
 import { ConnectCreateMenu } from '@web/spaces/canvas/ConnectCreateMenu';
 import {
   isBlankCanvasRelease,
+  resolveReleaseElement,
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
@@ -487,6 +488,25 @@ function CanvasSpaceInner({
       .querySelector<HTMLElement>('[data-testid="generate-tool-reference"]')
       ?.focus();
   }, [endReferencePick]);
+  // Pick-end focus catch-all (adversarial round-2, a11y): the Exit hand-off
+  // only works when the trigger is enabled + mounted. When it is disabled (a
+  // t2i switch mid-pick) or the pick ends by another path (panel X, host node
+  // deleted), focus drops to <body>. Whenever a pick ENDS with focus orphaned
+  // there, return it to the canvas container so keyboard users stay in
+  // context. Focus already placed (the Exit hand-off succeeded) is left alone.
+  const wasPickingRef = React.useRef(false);
+  React.useEffect(() => {
+    const wasPicking = wasPickingRef.current;
+    wasPickingRef.current = referencePickForNodeId != null;
+    if (
+      wasPicking &&
+      referencePickForNodeId == null &&
+      (document.activeElement == null ||
+        document.activeElement === document.body)
+    ) {
+      containerRef.current?.focus();
+    }
+  }, [referencePickForNodeId]);
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
@@ -890,14 +910,18 @@ function CanvasSpaceInner({
       // strokes, the NodesSelection rect) the user perceives as blank.
       const point =
         'changedTouches' in event ? event.changedTouches[0] : event;
+      // elementsFromPoint (the STACK) + skip the transient connection-line
+      // SVG that sits on top during the drag — elementFromPoint (singular)
+      // can return that layer instead of the real target (adversarial r2).
+      const releaseEl = resolveReleaseElement(
+        document.elementsFromPoint(point.clientX, point.clientY),
+      );
       const intent = resolveConnectCreateIntent({
         fromNodeId: state.fromNode?.id ?? null,
         fromNodeKind: state.fromNode?.type,
         fromHandleType: state.fromHandle?.type ?? null,
         toNodeId: state.toNode?.id ?? null,
-        releasedOnPane: isBlankCanvasRelease(
-          document.elementFromPoint(point.clientX, point.clientY),
-        ),
+        releasedOnPane: isBlankCanvasRelease(releaseEl),
         readOnly,
       });
       if (intent) {
@@ -2289,6 +2313,9 @@ function CanvasSpaceInner({
         data-project-id={projectId}
         data-space-id={spaceId}
         data-readonly={readOnly ? 'true' : undefined}
+        // Programmatically focusable (not tab-reachable) so the pick-end focus
+        // catch-all can return focus here instead of dropping it on <body>.
+        tabIndex={-1}
         // canvas-picking scopes the pick-mode stylesheet: it hides xyflow's
         // NodesSelection rect (see index.css) so a marquee mid-pick cannot
         // create a click-swallowing dead zone. The rect is neutralized at the

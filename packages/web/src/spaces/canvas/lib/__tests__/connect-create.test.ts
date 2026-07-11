@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   connectableCreatableTypes,
   isBlankCanvasRelease,
+  resolveReleaseElement,
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
 
@@ -96,6 +97,17 @@ describe('isBlankCanvasRelease — what counts as visually blank canvas', () => 
     ).toBe(false);
   });
 
+  it('a VISIBLE edge control (scissors chip in the edge-label renderer) is NOT blank', () => {
+    // Adversarial round-2: the scissors chip is a visible 24px button that
+    // matches neither node nor node-toolbar — without excluding the
+    // edge-label renderer, releasing on it opens the menu over a control.
+    expect(
+      isBlankCanvasRelease(
+        nested('react-flow__pane', 'react-flow__edgelabel-renderer', 'scissors-btn'),
+      ),
+    ).toBe(false);
+  });
+
   it('the floating generate panel (NodeToolbar portal) is NOT blank', () => {
     expect(
       isBlankCanvasRelease(
@@ -110,6 +122,38 @@ describe('isBlankCanvasRelease — what counts as visually blank canvas', () => 
     );
     expect(isBlankCanvasRelease(nested('some-chrome'))).toBe(false);
     expect(isBlankCanvasRelease(null)).toBe(false);
+  });
+});
+
+// Adversarial round-2: the connection-line SVG (z-index 1001) sits on top
+// during the drag and elementFromPoint can return it, hiding the real element
+// underneath. resolveReleaseElement walks the elementsFromPoint STACK and
+// skips that transient layer so the classifier sees what the user aimed at.
+describe('resolveReleaseElement — skips the transient connection-line layer', () => {
+  /**
+   * Builds an element with the given class.
+   * @param cls - The class name.
+   * @returns The element.
+   */
+  function el(cls: string): Element {
+    const node = document.createElement('div');
+    node.className = cls;
+    return node;
+  }
+
+  it('skips the connection-line SVG and returns the element beneath', () => {
+    const line = el('react-flow__connectionline');
+    const node = el('react-flow__node');
+    expect(resolveReleaseElement([line, node])).toBe(node);
+  });
+
+  it('returns the topmost real element when there is no line layer', () => {
+    const pane = el('react-flow__pane');
+    expect(resolveReleaseElement([pane])).toBe(pane);
+  });
+
+  it('returns null for an empty stack', () => {
+    expect(resolveReleaseElement([])).toBeNull();
   });
 });
 

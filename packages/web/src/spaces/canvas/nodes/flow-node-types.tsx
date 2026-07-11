@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Handle, Position, useStore, type NodeProps } from '@xyflow/react';
+import { useStore, type NodeProps } from '@xyflow/react';
 import type { ComponentType } from 'react';
 import * as React from 'react';
 
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
 import { GroupResizer } from '@web/spaces/canvas/nodes/GroupResizer';
+import { MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
@@ -162,40 +163,22 @@ function makeFlowNode(
                 handle placed BEFORE the body has its inner half covered by the
                 body's surface and reads as a half-circle (the left-handle bug);
                 painting both on top of the body shows each as a full dot. */}
-            {/* Hot zone ≫ dot (batch-2 item 10, geometry re-cut after the
-                adversarial round): the Handle element stays the 8px visible
-                dot (xyflow centers it on the border = exact edge anchor);
-                an invisible ::before pseudo EXPANDS its hit area to 16×24,
-                asymmetrically — 12px OUTWARD into the inter-node gap, only
-                4px inward (the dot's own historical inset). A border-
-                centered 24px box put a 12px live strip OVER the node body,
-                which armed click-connect from ordinary selection clicks,
-                swallowed double-clicks, and hijacked edge-midline drags. */}
-            {/* Connectability MUST be forwarded (adversarial round-1 HIGH):
-                xyflow resolves nodesConnectable store→NodeWrapper→this prop
-                and <Handle> defaults to TRUE when the node component drops
-                it — leaving handles live through both the viewer backstop
-                and the pick-session connect gate. All THREE flags matter:
-                the drag-start and click-connect gestures gate on
-                isConnectableStart / isConnectableEnd, while isConnectable
-                only drives the styling class. */}
+            {/* Magnetic handles (user 2026-07-11): a 36px outside-the-border
+                hit zone whose visible dot spring-follows the cursor, while
+                the 8px anchor keeps the wire attachment on the border.
+                MagneticHandle forwards all three connectable flags — the
+                gesture gates sit on Start/End, so a viewer / pick session
+                that drops them keeps handles live (adversarial round-1). See
+                MagneticHandle for the three-layer decoupling. */}
             {!isGroup ? (
               <>
-                <Handle
+                <MagneticHandle
                   type='target'
-                  position={Position.Left}
                   isConnectable={props.isConnectable}
-                  isConnectableStart={props.isConnectable}
-                  isConnectableEnd={props.isConnectable}
-                  className="!h-2 !w-2 !border-border !bg-muted before:absolute before:-left-2 before:-top-2 before:h-6 before:w-4 before:content-['']"
                 />
-                <Handle
+                <MagneticHandle
                   type='source'
-                  position={Position.Right}
                   isConnectable={props.isConnectable}
-                  isConnectableStart={props.isConnectable}
-                  isConnectableEnd={props.isConnectable}
-                  className="!h-2 !w-2 !border-border !bg-muted before:absolute before:-top-2 before:left-0 before:h-6 before:w-4 before:content-['']"
                 />
               </>
             ) : null}

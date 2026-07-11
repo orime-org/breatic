@@ -306,7 +306,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
+            data: { kind: 'image', status: 'idle', mode: 'i2i' },
           },
         ],
       }),
@@ -508,7 +508,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       id: 'target',
       type: 'image',
       position: { x: 0, y: 0 },
-      data: { kind: 'image', status: 'idle' },
+      data: { kind: 'image', status: 'idle', mode: 'i2i' },
     } as const;
     const other = {
       id: 'other',
@@ -1001,14 +1001,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     configSpy.mockRestore();
   });
 
-  // ---- Handle hot zone (batch-2 item 10, re-cut after adversarial) ----
-  // The Handle element stays the 8px dot (its center = the edge anchor); an
-  // invisible ::before expands the hit area 12px OUTWARD and only 4px inward
-  // — the earlier border-centered 24px box put a 12px live strip OVER the
-  // node body (armed click-connect from selection clicks, swallowed
-  // double-clicks, hijacked drags). jsdom sees classes, not geometry; the
-  // browser smoke measures the real rects.
-  it('connection handles keep the 8px anchor dot and grow an outward-biased ::before hot zone', () => {
+  // ---- Magnetic handle (user 2026-07-11) ----
+  // The 8px anchor element is invisible (its center is the edge attachment);
+  // the visible dot is a spring-following child, and the 36px outside-the-
+  // border hit zone is the ::before. jsdom sees classes, not geometry; the
+  // magnetic behavior + geometry are covered in MagneticHandle.test.tsx and
+  // the real-browser smoke.
+  it('mounts magnetic connection handles with an outside-the-border hit zone and a dot child', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -1027,17 +1026,17 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(target).not.toBeNull();
     expect(source).not.toBeNull();
     for (const handle of [target, source]) {
-      expect(handle?.className).toContain('!h-2');
-      expect(handle?.className).toContain('!w-2');
-      expect(handle?.className).toContain('before:h-6');
-      expect(handle?.className).toContain('before:w-4');
-      expect(handle?.className).toContain('before:absolute');
+      expect(handle?.className).toContain('!bg-transparent');
+      expect(handle?.className).toContain('before:h-9');
+      expect(handle?.className).toContain('before:w-9');
+      expect(
+        handle?.querySelector('[data-testid="handle-dot"]'),
+      ).not.toBeNull();
     }
-    // Outward bias: the target (left) zone reaches LEFT (-left-2), the
-    // source (right) zone reaches RIGHT (left-0 on an 8px element = the
-    // remaining 8px extends past the right edge).
-    expect(target?.className).toContain('before:-left-2');
-    expect(source?.className).toContain('before:left-0');
+    // Zone fully outside the border: source reaches right (before:left-1 =
+    // starts at the border), target reaches left (before:-left-8).
+    expect(target?.className).toContain('before:-left-8');
+    expect(source?.className).toContain('before:left-1');
   });
 
   // ---- Pick session owns ALL connect gestures (adversarial round-1 HIGH) ----
@@ -1168,6 +1167,68 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     }
   });
 
+  // ---- Pick-end focus catch-all (adversarial round-2, a11y) ----
+  // The banner Exit hand-off focuses the pick trigger, but when the trigger
+  // is disabled (t2i switch mid-pick) or the pick ends by another path (panel
+  // X, host node deleted) focus dropped to <body>. A catch-all restores focus
+  // to the canvas container whenever a pick ends with focus orphaned.
+  it('restores focus to the canvas container when a pick ends with focus on <body>', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.setState({ referencePickForNodeId: 'target' });
+    });
+    // Simulate an orphaned focus (the disabled-trigger / panel-X / node-gone
+    // paths all land here) and end the pick WITHOUT the banner hand-off.
+    act(() => {
+      document.body.focus();
+      useCanvasStore.setState({ referencePickForNodeId: null });
+    });
+    expect(document.activeElement).toBe(screen.getByTestId('canvas-space'));
+  });
+
+  it('does not steal focus when a pick ends with focus already placed (Exit hand-off)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const elsewhere = document.createElement('button');
+    document.body.appendChild(elsewhere);
+    try {
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: 'target' });
+      });
+      act(() => {
+        elsewhere.focus();
+        useCanvasStore.setState({ referencePickForNodeId: null });
+      });
+      // Focus was NOT on body, so the catch-all leaves it alone.
+      expect(document.activeElement).toBe(elsewhere);
+    } finally {
+      elsewhere.remove();
+    }
+  });
+
   // ---- Reference-pick double-click gate (batch-2 item 12) ----
   // onNodeClick / onPaneClick already delegate to the pick session, but a
   // DOUBLE-click on an empty node's placeholder went straight to
@@ -1284,7 +1345,7 @@ describe('reference-pick interaction contract', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
+            data: { kind: 'image', status: 'idle', mode: 'i2i' },
           },
         ],
       }),

@@ -132,4 +132,60 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     expect(call?.name).toBe(docName.canvasSpace('p', 's'));
     listSpy.mockRestore();
   });
+
+  // Pick ends on a t2i switch (adversarial round-2): t2i ignores references
+  // and disables the reference button, so a pick left running after the mode
+  // flips to t2i is a zombie session (its Exit trigger disabled = the stranded
+  // focus). vm.mode drives it, so a collaborator's setNodeMode ends it too.
+  it('ends a running reference pick when the node mode becomes t2i', async () => {
+    const emptyCatalog = {
+      image: [],
+      video: [],
+      audio: [],
+      tts: [],
+      three_d: [],
+      understand: [],
+      total: 0,
+    };
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(emptyCatalog);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    /**
+     * Renders the container with the target node in the given mode.
+     * @param mode - The node's generation sub-mode.
+     * @returns The render tree.
+     */
+    const tree = (mode: 'i2i' | 't2i'): React.JSX.Element => (
+      <QueryClientProvider client={client}>
+        <ReactFlow
+          nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
+          edges={[]}
+        >
+          <GeneratePanelContainer
+            projectId='p'
+            spaceId='s'
+            nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode } }]}
+            edges={[]}
+          />
+        </ReactFlow>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree('i2i'));
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target');
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    await waitFor(() =>
+      expect(useCanvasStore.getState().referencePickForNodeId).toBe('target'),
+    );
+    // Mode flips to t2i (local toggle or a collaborator's setNodeMode).
+    rerender(tree('t2i'));
+    await waitFor(() =>
+      expect(useCanvasStore.getState().referencePickForNodeId).toBeNull(),
+    );
+    listSpy.mockRestore();
+  });
 });

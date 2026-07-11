@@ -113,14 +113,15 @@ describe('FLOW_NODE_TYPES', () => {
         body.compareDocumentPosition(handle) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
-      // The element IS the neutral 8px dot (its center = the edge anchor);
-      // the enlarged hit area lives in an invisible ::before that reaches
-      // mostly OUTWARD (batch-2 item 10, re-cut after adversarial round-1 —
-      // a body-overlapping zone hijacked clicks meant for the node).
-      expect(handle.className).toContain('!border-border');
-      expect(handle.className).toContain('!bg-muted');
+      // Magnetic handle (user 2026-07-11): the anchor ELEMENT is invisible
+      // (its center is the edge attachment); the visible neutral dot is a
+      // child span, and the 36px hit zone is the ::before. Full geometry +
+      // spring behavior are covered in MagneticHandle.test.tsx.
+      expect(handle.className).toContain('!bg-transparent');
       expect(handle.className).toContain('before:absolute');
-      expect(handle.className).not.toContain('!bg-background');
+      const dot = handle.querySelector('[data-testid="handle-dot"]');
+      expect(dot?.className).toContain('border-border');
+      expect(dot?.className).toContain('bg-muted');
     });
   });
 
