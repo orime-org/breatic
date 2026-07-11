@@ -7,6 +7,7 @@ import type { Edge, Node } from '@xyflow/react';
 import {
   mergeMirroredEdgeSelection,
   mergeMirroredSelection,
+  reconcileSelection,
 } from '@web/spaces/canvas/mirror-selection';
 
 describe('mergeMirroredSelection', () => {
@@ -167,5 +168,42 @@ describe('mergeMirroredEdgeSelection', () => {
     expect(merged.find((e) => e.id === 'e2')?.selected).toBe(false);
     // A brand-new edge (not in prev) stays unselected.
     expect(merged.find((e) => e.id === 'e3')?.selected).toBeUndefined();
+  });
+});
+
+// reconcileSelection backs the panel⇄selection binding's programmatic writes
+// (host assert / pane-click deselect). Reference stability is load-bearing:
+// these run on high-frequency paths and a no-op write must NOT publish a new
+// buffer identity (round-1 adversarial: every idle pane click re-rendered the
+// whole canvas).
+describe('reconcileSelection', () => {
+  it('selects only the target and deselects the rest', () => {
+    const nodes = [
+      { id: 'a', selected: true },
+      { id: 'b' },
+      { id: 'c', selected: false },
+    ];
+    const out = reconcileSelection(nodes, (n) => n.id === 'b');
+    expect(out.map((n) => [n.id, n.selected === true])).toEqual([
+      ['a', false],
+      ['b', true],
+      ['c', false],
+    ]);
+  });
+
+  it('returns the SAME array reference when nothing changes (no-op write)', () => {
+    const nodes = [{ id: 'a', selected: true }, { id: 'b', selected: false }];
+    expect(reconcileSelection(nodes, (n) => n.id === 'a')).toBe(nodes);
+    const none = [{ id: 'a' }, { id: 'b', selected: false }];
+    expect(reconcileSelection(none, () => false)).toBe(none);
+  });
+
+  it('reuses untouched item references so React.memo still bails', () => {
+    const a = { id: 'a', selected: false };
+    const b = { id: 'b', selected: true };
+    const out = reconcileSelection([a, b], () => false);
+    expect(out[0]).toBe(a); // untouched keeps its reference
+    expect(out[1]).not.toBe(b); // rewritten item is a fresh object
+    expect(out[1].selected).toBe(false);
   });
 });

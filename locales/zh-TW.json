@@ -305,20 +305,20 @@
       "mark": "標記",
       "focus": "聚焦",
       "reference": "參考",
-      "modeT2i": "文生圖",
-      "modeI2i": "圖生圖",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的畫面內容，@ 引用素材",
       "mentionEmpty": "還沒有可引用的圖 — 先從一張圖連線過來",
       "selectFromCanvas": "從畫布選擇參考",
       "returnToNode": "返回節點",
       "exitSelect": "退出",
+      "locateSource": "定位到來源節點",
       "presets": "預設",
       "camera": "攝影機",
       "online": "聯網搜尋",
       "translate": "翻譯提示詞",
       "execute": "生成",
       "removeReference": "移除參考",
+      "insertReference": "插入到提示詞",
       "resolution": "解析度",
       "ratio": "比例",
       "errorCredits": "點數不足，無法生成。",
@@ -327,7 +327,8 @@
       "errorFailed": "生成啟動失敗，請重試。",
       "errorNoSourceImage": "此模型需要來源圖 —— 在提示詞裡輸入 @ 選擇一張已連線的圖。",
       "referenceAddFailed": "無法加入參考——該節點已不存在。",
-      "modelUnavailable": "該模型已無法使用——請另選一個。"
+      "modelUnavailable": "該模型已無法使用——請另選一個。",
+      "catalogUnavailable": "模型清單載入失敗,請稍後再試"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -354,6 +355,17 @@
     },
     "activity": {
       "reportFailed": "上傳未能記錄到 Project 活動"
+    },
+    "connection": {
+      "rejected": "{source}無法接入{target}",
+      "kindText": "文字",
+      "kindImage": "圖片",
+      "kindAudio": "音訊",
+      "kindVideo": "影片",
+      "kind3d": "3D",
+      "kindWeb": "網頁",
+      "kindAnnotation": "註解",
+      "kindGroup": "群組"
     }
   },
   "editor": {

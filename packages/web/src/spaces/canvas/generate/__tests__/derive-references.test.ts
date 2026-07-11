@@ -99,6 +99,25 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
     expect(refs[0].thumbnail).toBeUndefined();
   });
 
+  // Text-chip serialization + hover (spec §9.1): a text reference carries its
+  // source node's live text body so the prompt serializer can substitute the
+  // chip with the content and the rail hover can preview it.
+  it('carries the text body for a text source (textContent), nothing for other kinds', () => {
+    const nodes: CanvasNodeView[] = [
+      node('txt', { kind: 'text', name: 'Notes', status: 'idle', content: 'some words' }),
+      node('img1', { kind: 'image', name: 'Pic', status: 'idle', content: 'x.png' }),
+      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+    ];
+    const edges: CanvasEdge[] = [
+      edge('txt->me', 'txt', 'me'),
+      edge('img1->me', 'img1', 'me'),
+    ];
+
+    const refs = deriveReferences('me', nodes, edges);
+    expect(refs[0].textContent).toBe('some words');
+    expect(refs[1].textContent).toBeUndefined();
+  });
+
   it('reflects a live rename of the source node (display fields are live, not frozen)', () => {
     const before: CanvasNodeView[] = [
       node('img1', { kind: 'image', name: 'Old', status: 'idle', content: 'x.png' }),

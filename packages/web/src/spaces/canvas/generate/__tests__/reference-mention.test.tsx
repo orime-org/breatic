@@ -8,8 +8,13 @@ import { Paragraph } from '@tiptap/extension-paragraph';
 import { Text } from '@tiptap/extension-text';
 import { SuggestionPluginKey } from '@tiptap/suggestion';
 
-import { ReferenceMention } from '@web/spaces/canvas/generate/reference-mention';
+import {
+  ReferenceMention,
+  referenceMentionContent,
+  serializePromptText,
+} from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 
 /**
  * Mounts a bare editor carrying the ReferenceMention extension configured with
@@ -64,5 +69,124 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       emptyLabel: 'No references',
     });
     expect(suggestion.allowedPrefixes).toBeNull();
+  });
+
+  // Connection rules (spec §9.1): new audio/video wires into an image node are
+  // rejected at the wire level, but LEGACY edges created before the rules may
+  // still exist in old documents. The @ picker must not offer a reference that
+  // can never satisfy image generation (the adversarial dead-end: pick an
+  // audio ref → execute reports "no source image"). The rail still shows the
+  // legacy row so the user can see and remove it.
+  it('filters type-incompatible legacy references out of the @ picker (image target keeps image/text)', () => {
+    const pool = [
+      {
+        refId: 'e1',
+        sourceNodeId: 'a',
+        sourceNodeType: 'image',
+        sourceNodeName: 'Pic',
+      },
+      {
+        refId: 'e2',
+        sourceNodeId: 'b',
+        sourceNodeType: 'text',
+        sourceNodeName: 'Note',
+      },
+      {
+        refId: 'e3',
+        sourceNodeId: 'c',
+        sourceNodeType: 'audio',
+        sourceNodeName: 'Song',
+      },
+      {
+        refId: 'e4',
+        sourceNodeId: 'd',
+        sourceNodeType: 'video',
+        sourceNodeName: 'Clip',
+      },
+    ];
+    const suggestion = makeReferenceSuggestion({
+      getPool: () =>
+        pool as unknown as ReturnType<
+          Parameters<typeof makeReferenceSuggestion>[0]['getPool']
+        >,
+      emptyLabel: 'No references',
+    });
+    const items = (
+      suggestion.items as unknown as (input: {
+        query: string;
+      }) => { refId: string }[]
+    )({ query: '' });
+    expect(items.map((i) => i.refId)).toEqual(['e1', 'e2']);
+  });
+});
+
+// Text-chip serialization (spec §9.1, user 2026-07-10): the chip STAYS a chip
+// in the editor; only the backend-bound prompt string substitutes a text chip
+// with the source text node's CURRENT content. An image chip contributes
+// nothing to the string (it feeds the i2i source subset, not the prompt).
+describe('serializePromptText — backend prompt string with text-chip substitution', () => {
+  const textRef: ReferenceRailItem = {
+    refId: 'txt->me',
+    sourceNodeId: 'txt',
+    sourceNodeType: 'text',
+    sourceNodeName: 'Notes',
+    textContent: 'a red panda on a bike',
+  };
+  const imageRef: ReferenceRailItem = {
+    refId: 'img->me',
+    sourceNodeId: 'img',
+    sourceNodeType: 'image',
+    sourceNodeName: 'Pic',
+    thumbnail: 'x.png',
+  };
+
+  /**
+   * Mounts an editor and seeds it with `draw` + text chip + image chip.
+   * @returns The editor (caller destroys).
+   */
+  function seededEditor(): Editor {
+    const editor = makeEditor();
+    editor
+      .chain()
+      .insertContent('draw ')
+      .insertContent(referenceMentionContent(textRef))
+      .insertContent(' next to ')
+      .insertContent(referenceMentionContent(imageRef))
+      .run();
+    return editor;
+  }
+
+  it('substitutes a text chip with the source node content and drops an image chip', () => {
+    const editor = seededEditor();
+    try {
+      const out = serializePromptText(editor, [textRef, imageRef]);
+      expect(out).toBe('draw a red panda on a bike next to ');
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('reads the CURRENT pool content (a later edit of the text node lands in the string)', () => {
+    const editor = seededEditor();
+    try {
+      const edited = { ...textRef, textContent: 'a blue whale' };
+      expect(serializePromptText(editor, [edited, imageRef])).toBe(
+        'draw a blue whale next to ',
+      );
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('substitutes an empty string for a text chip whose node is empty or no longer in the pool', () => {
+    const editor = seededEditor();
+    try {
+      // Pool row gone (edge removed between report and read) → no content.
+      expect(serializePromptText(editor, [imageRef])).toBe(
+        'draw  next to ',
+      );
+    } finally {
+      editor.destroy();
+    }
   });
 });

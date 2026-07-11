@@ -1,10 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /** The subset of generate params this picker edits. */
@@ -54,97 +60,84 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
 }: RatioResolutionPickerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
-  // Escape closes the popover. Handled at the document level (not on the
-  // dialog element) so it works regardless of focus and keeps the dialog
-  // container free of direct keyboard listeners.
-  React.useEffect(() => {
-    if (!open) return undefined;
-    /**
-     * Document keydown handler: Escape closes the popover.
-     * @param e - The keyboard event.
-     */
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open]);
   const ratios = paramValues(model, 'aspect_ratio');
   const resolutions = paramValues(model, 'resolution');
   const label = [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ');
+  // max-w + truncate: catalog values carry no length cap at the sanitize
+  // boundary — a verbose value must clip inside the w-64 popover, not overflow
+  // it (same class as the ModelPicker display_name fix).
   const optionClass =
-    'rounded-overlay border border-border px-2 py-1 text-xs text-foreground transition-colors ' +
+    'max-w-full truncate rounded-overlay border border-border px-2 py-1 text-xs text-foreground transition-colors ' +
     'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
-    'aria-[current=true]:border-primary aria-[current=true]:bg-accent';
+    'aria-[current=true]:border-active-border aria-[current=true]:bg-accent';
   return (
-    <div className='relative shrink-0'>
-      <button
-        type='button'
-        data-testid='generate-ratio-trigger'
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup='dialog'
-        aria-expanded={open}
-        className='flex h-8 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-      >
-        {label}
-      </button>
-      {open ? (
-        <>
-          <div
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type='button'
+          data-testid='generate-ratio-trigger'
+          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+        >
+          {/* truncate: catalog aspect_ratio/resolution values carry no length
+              cap at the sanitize boundary — unbounded, a verbose value would
+              stretch the panel footer row (same class as the ModelPicker
+              display_name fix). */}
+          <span className='max-w-[10rem] truncate'>{label}</span>
+          <ChevronDown
+            className='h-3.5 w-3.5 shrink-0 opacity-60'
             aria-hidden='true'
-            className='fixed inset-0 z-40'
-            onClick={() => setOpen(false)}
           />
-          <div
-            role='dialog'
-            aria-label={t('canvas.generatePanel.ratio')}
-            className='absolute bottom-full left-0 z-50 mb-1 w-64 rounded-overlay border border-border bg-popover p-3 shadow-md'
-          >
-            {resolutions.length > 0 ? (
-              <div className='mb-3'>
-                <p className='mb-1.5 text-xs font-medium text-muted-foreground'>
-                  {t('canvas.generatePanel.resolution')}
-                </p>
-                <div className='flex gap-1.5'>
-                  {resolutions.map((r) => (
-                    <button
-                      key={r}
-                      type='button'
-                      data-testid={`generate-resolution-option-${r}`}
-                      aria-current={value.resolution === r}
-                      onClick={() => onChange({ resolution: r })}
-                      className={optionClass}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            {ratios.length > 0 ? (
-              <div>
-                <p className='mb-1.5 text-xs font-medium text-muted-foreground'>
-                  {t('canvas.generatePanel.ratio')}
-                </p>
-                <div className='flex flex-wrap gap-1.5'>
-                  {ratios.map((r) => (
-                    <button
-                      key={r}
-                      type='button'
-                      data-testid={`generate-ratio-option-${r}`}
-                      aria-current={value.aspect_ratio === r}
-                      onClick={() => onChange({ aspect_ratio: r })}
-                      className={optionClass}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side='top'
+        align='start'
+        aria-label={t('canvas.generatePanel.ratio')}
+        className='w-64 p-3'
+      >
+        {resolutions.length > 0 ? (
+          <div className='mb-3'>
+            <p className='mb-1.5 text-xs font-medium text-muted-foreground'>
+              {t('canvas.generatePanel.resolution')}
+            </p>
+            <div className='flex flex-wrap gap-1.5'>
+              {resolutions.map((r) => (
+                <button
+                  key={r}
+                  type='button'
+                  data-testid={`generate-resolution-option-${r}`}
+                  aria-current={value.resolution === r}
+                  onClick={() => onChange({ resolution: r })}
+                  className={optionClass}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
           </div>
-        </>
-      ) : null}
-    </div>
+        ) : null}
+        {ratios.length > 0 ? (
+          <div>
+            <p className='mb-1.5 text-xs font-medium text-muted-foreground'>
+              {t('canvas.generatePanel.ratio')}
+            </p>
+            <div className='flex flex-wrap gap-1.5'>
+              {ratios.map((r) => (
+                <button
+                  key={r}
+                  type='button'
+                  data-testid={`generate-ratio-option-${r}`}
+                  aria-current={value.aspect_ratio === r}
+                  onClick={() => onChange({ aspect_ratio: r })}
+                  className={optionClass}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </PopoverContent>
+    </Popover>
   );
 });

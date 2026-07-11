@@ -305,20 +305,20 @@
       "mark": "マーク",
       "focus": "フォーカス",
       "reference": "参照",
-      "modeT2i": "テキストから画像",
-      "modeI2i": "画像から画像",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で素材を参照",
       "mentionEmpty": "参照できる画像がありません — まず画像から線をつないでください",
       "selectFromCanvas": "キャンバスから参照を選択",
       "returnToNode": "ノードに戻る",
       "exitSelect": "終了",
+      "locateSource": "ソースノードに移動",
       "presets": "プリセット",
       "camera": "カメラ",
       "online": "ウェブ検索",
       "translate": "プロンプトを翻訳",
       "execute": "生成",
       "removeReference": "参照を削除",
+      "insertReference": "プロンプトに挿入",
       "resolution": "解像度",
       "ratio": "比率",
       "errorCredits": "クレジットが不足しているため生成できません。",
@@ -327,7 +327,8 @@
       "errorFailed": "生成を開始できませんでした。もう一度お試しください。",
       "errorNoSourceImage": "このモデルには元画像が必要です —— プロンプトで @ を入力して接続済みの画像を選んでください。",
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
-      "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。"
+      "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。",
+      "catalogUnavailable": "モデル一覧を読み込めませんでした。後でもう一度お試しください"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -354,6 +355,17 @@
     },
     "activity": {
       "reportFailed": "アップロードを Project アクティビティに記録できませんでした"
+    },
+    "connection": {
+      "rejected": "{source}は{target}に接続できません",
+      "kindText": "テキスト",
+      "kindImage": "画像",
+      "kindAudio": "オーディオ",
+      "kindVideo": "動画",
+      "kind3d": "3D",
+      "kindWeb": "ウェブ",
+      "kindAnnotation": "注釈",
+      "kindGroup": "グループ"
     }
   },
   "editor": {

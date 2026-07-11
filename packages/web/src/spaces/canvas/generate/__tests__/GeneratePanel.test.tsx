@@ -44,6 +44,7 @@ function setup(
       canExecute
       promptSlot={<div data-testid='prompt-slot'>prompt</div>}
       onExit={() => {}}
+      onInsertReference={() => {}}
       onSelectModel={() => {}}
       onToggleMode={() => {}}
       onChangeParams={() => {}}
@@ -101,10 +102,10 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
   it('renders the mode toggle and fires onToggleMode when switching to i2i', () => {
     const onToggleMode = vi.fn();
     setup({ mode: 't2i', onToggleMode });
-    expect(screen.getByTestId('generate-mode-t2i')).toHaveAttribute(
-      'aria-pressed',
-      'true',
+    expect(screen.getByTestId('generate-mode-trigger')).toHaveTextContent(
+      'Text to Image',
     );
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
     fireEvent.click(screen.getByTestId('generate-mode-i2i'));
     expect(onToggleMode).toHaveBeenCalledWith('i2i');
   });
@@ -124,8 +125,7 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     // would clobber the node's stored model/params. The toggle is inert while
     // the whole generatable catalog is empty (loading / failed / none configured).
     setup({ catalogEmpty: true, models: [] });
-    expect(screen.getByTestId('generate-mode-t2i')).toBeDisabled();
-    expect(screen.getByTestId('generate-mode-i2i')).toBeDisabled();
+    expect(screen.getByTestId('generate-mode-trigger')).toBeDisabled();
   });
 
   it('keeps the mode toggle ENABLED when the current mode is empty but the catalog is not (escape hatch)', () => {
@@ -135,11 +135,13 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     // no way back. The disable must gate on GLOBAL catalog emptiness so the user
     // can always toggle to the populated mode.
     setup({ mode: 'i2i', models: [], catalogEmpty: false });
-    expect(screen.getByTestId('generate-mode-t2i')).not.toBeDisabled();
-    expect(screen.getByTestId('generate-mode-i2i')).not.toBeDisabled();
+    expect(screen.getByTestId('generate-mode-trigger')).not.toBeDisabled();
   });
 
-  it('greys out the reference rail in t2i (edges stay visible but inert)', () => {
+  it('dims only the IMAGE reference rows in t2i (text rows stay insertable)', () => {
+    // Round-3 R3-4, user ruled A (2026-07-11): t2i ignores source images but
+    // text references still feed the prompt via @-chips — the panel must pass
+    // the scoped flag so image rows go inert while text rows stay live.
     setup({
       mode: 't2i',
       references: [
@@ -149,10 +151,15 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
           sourceNodeType: 'image',
           sourceNodeName: 'Src',
         },
+        {
+          refId: 'e2',
+          sourceNodeId: 's2',
+          sourceNodeType: 'text',
+          sourceNodeName: 'Notes',
+        },
       ],
     });
-    expect(screen.getByTestId('generate-reference-rail')).toHaveClass(
-      'opacity-50',
-    );
+    expect(screen.getByTestId('generate-ref-insert-e1')).toBeDisabled();
+    expect(screen.getByTestId('generate-ref-insert-e2')).not.toBeDisabled();
   });
 });

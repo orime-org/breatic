@@ -19,15 +19,9 @@ import type {
   SuggestionProps,
 } from '@tiptap/suggestion';
 
-import {
-  MENTION_SOURCE_ID_ATTR,
-  REFERENCE_MENTION_NODE,
-} from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import {
-  MENTION_LABEL_ATTR,
-  MENTION_THUMBNAIL_ATTR,
-} from '@web/spaces/canvas/generate/reference-mention';
+import { referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
+import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
 import {
   ReferenceMentionList,
   type ReferenceMentionListRef,
@@ -49,31 +43,31 @@ export function makeReferenceSuggestion(input: {
     char: '@',
     // @tiptap/suggestion defaults allowedPrefixes to [" "], which only fires `@`
     // when preceded by a space or at block start — so typing `@` right after
-    // text (e.g. CJK "额@") never opened the picker. null lets `@` trigger after
-    // any character (Notion / Feishu behaviour).
+    // text (e.g. directly after a CJK character, where no space precedes it)
+    // never opened the picker. null lets `@` trigger after any character
+    // (Notion / Feishu behaviour).
     allowedPrefixes: null,
     items: ({ query }): ReferenceRailItem[] => {
       const q = query.toLowerCase();
       return input
         .getPool()
+        // Connection rules (spec §9.1): new incompatible wires are rejected at
+        // the wire level, but a LEGACY edge (audio/video → image, created
+        // before the rules) may survive in old documents. Never offer it in
+        // the picker — an @-pick that can't feed image generation dead-ends at
+        // execute ("no source image"). The rail still lists the legacy row so
+        // the user can see and remove it.
+        .filter((r) => canConnect(r.sourceNodeType, 'image'))
         .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
         .slice(0, 8);
     },
     command: ({ editor, range, props }): void => {
+      // No trailing space (user 2026-07-10): adjacent chips are navigable via
+      // the Gapcursor extension installed on the prompt editor.
       editor
         .chain()
         .focus()
-        .insertContentAt(range, [
-          {
-            type: REFERENCE_MENTION_NODE,
-            attrs: {
-              [MENTION_SOURCE_ID_ATTR]: props.sourceNodeId,
-              [MENTION_THUMBNAIL_ATTR]: props.thumbnail ?? null,
-              [MENTION_LABEL_ATTR]: props.sourceNodeName || null,
-            },
-          },
-          { type: 'text', text: ' ' },
-        ])
+        .insertContentAt(range, referenceMentionContent(props))
         .run();
     },
     render: () => {

@@ -312,20 +312,20 @@
       "mark": "Mark",
       "focus": "Focus",
       "reference": "Reference",
-      "modeT2i": "Text to Image",
-      "modeI2i": "Image to Image",
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to reference assets",
       "mentionEmpty": "No connected references — draw an edge from an image first",
       "selectFromCanvas": "Select a reference from the canvas",
       "returnToNode": "Return to node",
       "exitSelect": "Exit",
+      "locateSource": "Recenter the source node",
       "presets": "Presets",
       "camera": "Camera",
       "online": "Web search",
       "translate": "Translate prompt",
       "execute": "Generate",
       "removeReference": "Remove reference",
+      "insertReference": "Insert into prompt",
       "resolution": "Resolution",
       "ratio": "Ratio",
       "errorCredits": "Not enough credits to generate.",
@@ -334,7 +334,8 @@
       "errorFailed": "Couldn't start generation. Please try again.",
       "errorNoSourceImage": "This model needs a source image — type @ in the prompt to pick a connected image.",
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
-      "modelUnavailable": "That model is no longer available — pick another."
+      "modelUnavailable": "That model is no longer available — pick another.",
+      "catalogUnavailable": "Model list unavailable — please try again later"
     },
     "edge": {
       "delete": "Delete connection"
@@ -354,6 +355,17 @@
     },
     "activity": {
       "reportFailed": "Failed to record the upload in project activity"
+    },
+    "connection": {
+      "rejected": "{source} can't connect into {target}",
+      "kindText": "Text",
+      "kindImage": "Image",
+      "kindAudio": "Audio",
+      "kindVideo": "Video",
+      "kind3d": "3D",
+      "kindWeb": "Web",
+      "kindAnnotation": "Annotation",
+      "kindGroup": "Group"
     }
   },
   "editor": {

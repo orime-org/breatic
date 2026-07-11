@@ -22,6 +22,7 @@
     "lint:no-raw-design-values": "bash scripts/lint-no-raw-design-values.sh",
     "lint:no-extreme-token-value": "bash scripts/lint-no-extreme-token-value.sh && bash scripts/lint-no-extreme-token-value.sh --self-test",
     "lint:1px-border": "bash scripts/lint-1px-border.sh",
+    "lint:active-border": "bash scripts/lint-active-border.sh",
     "lint:overlay-surface": "bash scripts/lint-overlay-surface.sh",
     "lint:no-cjk": "bash scripts/lint-no-cjk.sh",
     "lint:no-collab-auth-table-sql": "bash scripts/lint-no-collab-auth-table-sql.sh",

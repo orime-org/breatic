@@ -25,9 +25,10 @@ interface StudioTabBarProps {
 
 /**
  * The studio container tab bar (spec §2.2) — a horizontal 5-tab strip (4 for
- * personal studios). The active tab gets a neutral foreground bottom border
- * (the studio chrome is neutral — visual ADR 2026-06-06, no longer
- * brand-exempt); inactive tabs are muted and darken on hover. Each label may
+ * personal studios). The active tab gets the neutral activation border
+ * (`border-active-border`, the single source for neutral selected/active
+ * borders — ruled 2026-07-11, enforced by lint:active-border); inactive tabs
+ * are muted and darken on hover. Each label may
  * carry a muted count chip. Renders into a parent `<Tabs>` Root, which
  * supplies keyboard arrow navigation + the ARIA tablist roles.
  * @param props the studio type and optional per-tab counts.
@@ -51,7 +52,7 @@ export function StudioTabBar({
           <TabsTrigger
             key={tab.key}
             value={tab.key}
-            className='-mb-px gap-1.5 border-b border-transparent px-3 py-2.5 font-semibold text-muted-foreground hover:text-foreground data-[state=active]:border-foreground data-[state=active]:text-foreground'
+            className='-mb-px gap-1.5 border-b border-transparent px-3 py-2.5 font-semibold text-muted-foreground hover:text-foreground data-[state=active]:border-active-border data-[state=active]:text-foreground'
           >
             {t(tab.labelKey)}
             {count !== undefined ? (

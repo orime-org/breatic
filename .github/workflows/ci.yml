@@ -145,6 +145,14 @@ jobs:
         # border width >= 2. See scripts/lint-1px-border.sh.
         run: pnpm lint:1px-border
 
+      - name: Lint active-border consistency (one neutral activation border)
+        # A NEUTRAL border expressing selection/activation must be
+        # border-active-border (the Input focus colour) — no border-primary /
+        # border-foreground stand-ins (user-ratified 2026-07-11). Colour
+        # borders (border-status-*) are a separate system. shadcn vendor
+        # (components/ui) exempt per ADR 14. See scripts/lint-active-border.sh.
+        run: pnpm lint:active-border
+
       - name: Lint overlay surface (popover panel unification)
         # Every popover/overlay panel surface uses bg-popover (tooltip inverse
         # is the only exception): bans bg-elevated / bg-card as a panel bg in

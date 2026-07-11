@@ -150,6 +150,21 @@ export function requiresSourceImage(mode: string | string[]): boolean {
   return modes.some((m) => needsSource.includes(m));
 }
 
+/**
+ * Whether a model can generate WITHOUT a source image (carries a `t2i` mode).
+ *
+ * The counterpart predicate to {@link requiresSourceImage} for HYBRID models
+ * (`mode: ['t2i','i2i']`): such a model satisfies `requiresSourceImage` via
+ * its i2i capability, yet an image-less submission is a perfectly valid t2i
+ * run — gates must not demand a source image from it.
+ * @param mode - The model's `mode` (a single string or an array of modes).
+ * @returns True when any of the model's modes is `t2i`.
+ */
+export function supportsTextToImage(mode: string | string[]): boolean {
+  const modes = Array.isArray(mode) ? mode : [mode];
+  return modes.includes("t2i");
+}
+
 // ── Boundary sanitizer ───────────────────────────────────────────────
 //
 // Lenient by design: an entry is only DROPPED when it lacks a usable identity
