@@ -18,8 +18,10 @@
  *      back to the border on leave and the instant a connection drag starts.
  */
 
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
+
+import { cn } from '@web/lib/utils';
 
 /** The anchor element (and the dot) are 8px — matches the historic handle dot. */
 const ANCHOR_PX = 8;
@@ -71,11 +73,28 @@ export function MagneticHandle({
 }: MagneticHandleProps): React.JSX.Element {
   const handleRef = React.useRef<HTMLDivElement>(null);
   const dotRef = React.useRef<HTMLSpanElement>(null);
+  // Whether ANY connection drag is in progress (boolean selector → this only
+  // re-renders on the flip, not per pointer-move). The magnetic zone must
+  // stand down during one (adversarial round-3): xyflow resolves the wire's
+  // target via elementFromPoint (topmost handle wins), so a 36px zone painting
+  // over a neighbor would hijack targeting and could silently wire the wrong
+  // node. Disabling the ::before hit expansion falls target resolution back to
+  // the 8px anchor + connectionRadius.
+  const connecting = useStore((s) => s.connection.inProgress);
 
   /** Springs the dot back to the border (home) — leave / drag-start / dead. */
   const rest = React.useCallback((): void => {
     if (dotRef.current) dotRef.current.style.transform = '';
   }, []);
+
+  // Declaratively rest the dot whenever it must not be displaced: a dead
+  // handle (isConnectable false) or any connection drag. The transform is
+  // written imperatively, so a re-render alone would not clear a dot already
+  // sprung out when the state flips (adversarial round-3: it would freeze off
+  // the border).
+  React.useEffect(() => {
+    if (!isConnectable || connecting) rest();
+  }, [isConnectable, connecting, rest]);
 
   /**
    * Moves the dot toward the cursor, clamped inside the zone. Reads geometry
@@ -87,7 +106,9 @@ export function MagneticHandle({
    */
   const chase = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>): void => {
-      if (!isConnectable) return;
+      // Dead handle, or a connection drag is in progress → the dot rests
+      // (round-3: chasing mid-drag detached the dot from the wire endpoint).
+      if (!isConnectable || connecting) return;
       const el = handleRef.current;
       const dot = dotRef.current;
       if (!el || !dot) return;
@@ -104,7 +125,7 @@ export function MagneticHandle({
       const dy = clamp(rawY, -MAX_V, MAX_V);
       dot.style.transform = `translate(${dx}px, ${dy}px)`;
     },
-    [isConnectable, type],
+    [isConnectable, connecting, type],
   );
 
   // The 8px element is invisible (bg-transparent, border-0); the visual is the
@@ -114,8 +135,8 @@ export function MagneticHandle({
   // centered on the anchor (top-1/2 + -translate-y-1/2).
   const zoneClass =
     type === 'source'
-      ? "!h-2 !w-2 !border-0 !bg-transparent before:absolute before:left-1 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-['']"
-      : "!h-2 !w-2 !border-0 !bg-transparent before:absolute before:-left-8 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-['']";
+      ? '!h-2 !w-2 !border-0 !bg-transparent before:absolute before:left-1 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]'
+      : '!h-2 !w-2 !border-0 !bg-transparent before:absolute before:-left-8 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]';
 
   return (
     <Handle
@@ -128,7 +149,9 @@ export function MagneticHandle({
       onPointerMove={chase}
       onPointerLeave={rest}
       onPointerDown={rest}
-      className={zoneClass}
+      // Stand the 36px zone down during a connection drag so it cannot hijack
+      // xyflow's elementFromPoint target resolution for a nearby node.
+      className={cn(zoneClass, connecting && 'before:pointer-events-none')}
     >
       {/* Visible dot: fills the 8px anchor (inset-0 = centered on the border),
           springs toward the cursor via transform with overshoot easing. */}

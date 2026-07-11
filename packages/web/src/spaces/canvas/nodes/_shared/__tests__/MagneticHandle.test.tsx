@@ -3,19 +3,52 @@
 
 import { describe, it, expect } from 'vitest';
 import { act, render } from '@testing-library/react';
-import { ReactFlowProvider } from '@xyflow/react';
+import { ReactFlowProvider, useStoreApi } from '@xyflow/react';
 import * as React from 'react';
 
 import { MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
+
+/** Captures the xyflow store api so a test can drive connection state. */
+let storeApi: ReturnType<typeof useStoreApi> | null = null;
+
+/**
+ * Grabs the xyflow store api into `storeApi` (rendered inside the provider).
+ * @returns Nothing.
+ */
+function StoreGrabber(): null {
+  storeApi = useStoreApi();
+  return null;
+}
+
+/**
+ * Flips xyflow's connection.inProgress so a test can simulate an active
+ * connection drag (the magnetic zone must stand down during one).
+ * @param inProgress - The connection-in-progress flag.
+ */
+function setConnecting(inProgress: boolean): void {
+  const state = storeApi?.getState();
+  if (!state) return;
+  act(() => {
+    storeApi?.setState({
+      connection: { ...state.connection, inProgress },
+    } as Parameters<NonNullable<typeof storeApi>['setState']>[0]);
+  });
+}
 
 /**
  * Mounts a MagneticHandle inside the ReactFlow context the Handle needs.
  * @param connectable - Whether the handle is connectable.
  * @returns The handle element and its visible dot.
  */
-function mount(connectable = true): { handle: HTMLElement; dot: HTMLElement } {
-  const { container } = render(
+function mount(connectable = true): {
+  handle: HTMLElement;
+  dot: HTMLElement;
+  rerender: (next: boolean) => void;
+} {
+  storeApi = null;
+  const { container, rerender: rerenderRaw } = render(
     <ReactFlowProvider>
+      <StoreGrabber />
       <MagneticHandle type='source' isConnectable={connectable} />
     </ReactFlowProvider>,
   );
@@ -23,7 +56,17 @@ function mount(connectable = true): { handle: HTMLElement; dot: HTMLElement } {
   const dot = handle.querySelector(
     '[data-testid="handle-dot"]',
   ) as HTMLElement;
-  return { handle, dot };
+  const rerender = (next: boolean): void => {
+    act(() => {
+      rerenderRaw(
+        <ReactFlowProvider>
+          <StoreGrabber />
+          <MagneticHandle type='source' isConnectable={next} />
+        </ReactFlowProvider>,
+      );
+    });
+  };
+  return { handle, dot, rerender };
 }
 
 /**
@@ -174,6 +217,53 @@ describe('MagneticHandle — anchor / zone / dot decoupling', () => {
     const { handle, dot } = mount(false);
     stubAnchorRect(handle);
     firePointer(handle, 'pointermove', 120, 106);
+    expect(dot.style.transform).toBe('');
+  });
+
+  // Adversarial round-3: the imperatively-written transform is NOT reset by a
+  // re-render, so a dot sprung out when isConnectable flips true→false (a pick
+  // arms / the viewer downgrades mid-hover) would freeze off the border. A
+  // dead handle must sit on the border.
+  it('springs the dot back when isConnectable flips true→false while displaced', () => {
+    const { handle, dot, rerender } = mount(true);
+    stubAnchorRect(handle);
+    firePointer(handle, 'pointermove', 120, 106);
+    expect(dot.style.transform).toBe('translate(20px, 6px)');
+    rerender(false);
+    expect(dot.style.transform).toBe('');
+  });
+});
+
+// Adversarial round-3: the 36px zone must STAND DOWN during a connection drag.
+// xyflow resolves the wire's target via elementFromPoint (topmost handle
+// wins); a 36px zone painting over a neighbor would hijack targeting and could
+// silently wire the wrong node. During a drag the ::before hit expansion is
+// disabled so target resolution falls back to the 8px anchor + connectionRadius,
+// and the dot rests (it must not chase mid-drag).
+describe('MagneticHandle — stands down during a connection drag', () => {
+  it('disables the ::before hit zone while a connection is in progress', () => {
+    const { handle } = mount(true);
+    expect(handle.className).not.toContain('before:pointer-events-none');
+    setConnecting(true);
+    expect(handle.className).toContain('before:pointer-events-none');
+    setConnecting(false);
+    expect(handle.className).not.toContain('before:pointer-events-none');
+  });
+
+  it('does not chase the cursor while a connection is in progress', () => {
+    const { handle, dot } = mount(true);
+    stubAnchorRect(handle);
+    setConnecting(true);
+    firePointer(handle, 'pointermove', 120, 106);
+    expect(dot.style.transform).toBe('');
+  });
+
+  it('springs a displaced dot back to rest the moment a connection starts', () => {
+    const { handle, dot } = mount(true);
+    stubAnchorRect(handle);
+    firePointer(handle, 'pointermove', 120, 106);
+    expect(dot.style.transform).toBe('translate(20px, 6px)');
+    setConnecting(true);
     expect(dot.style.transform).toBe('');
   });
 });
