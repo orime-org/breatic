@@ -1,9 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, it, expect, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import * as React from 'react';
+import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import {
@@ -142,6 +146,144 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
     );
     await waitFor(() =>
       expect(onTextChange).toHaveBeenLastCalledWith('a red fox'),
+    );
+  });
+});
+
+// Remote collaborator carets (batch-2 item 14, CRITICAL PATH — Yjs collab):
+// the prompt editor mounts the CollaborationCaret extension when the canvas-
+// space doc's provider (awareness) is supplied, publishing this user's
+// identity (name + deterministic palette color) and rendering other clients'
+// carets. Without a provider (e.g. the socket has not connected yet) the
+// extension must be ABSENT — it throws in onCreate when provider is null.
+describe('PromptEditor — collaborator carets (awareness)', () => {
+  /**
+   * Mounts the editor with an optional caret provider built on a REAL
+   * y-protocols Awareness over the fragment's own doc.
+   * @param withProvider - Whether to supply the awareness provider.
+   * @returns The awareness (to inspect the published local state).
+   */
+  async function mountWithAwareness(
+    withProvider: boolean,
+  ): Promise<{ awareness: Awareness; editorEl: HTMLElement }> {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('prompt');
+    // Pre-populate the shared fragment: y-prosemirror renders NO cursor
+    // decorations while its binding mapping is empty (createDecorations
+    // bails on mapping.size === 0), so an empty prompt cannot host a caret.
+    const paragraph = new Y.XmlElement('paragraph');
+    paragraph.insert(0, [new Y.XmlText('hello world')]);
+    fragment.insert(0, [paragraph]);
+    const awareness = new Awareness(doc);
+    render(
+      <PromptEditor
+        fragment={fragment}
+        placeholder='p'
+        onTextChange={vi.fn()}
+        onAtMentionsChange={vi.fn()}
+        references={[]}
+        mode='t2i'
+        mentionEmptyLabel='none'
+        caretProvider={withProvider ? { awareness } : null}
+        caretUser={{ name: 'Ada', color: '#008573', hue: 'teal' }}
+      />,
+    );
+    const editorEl = screen.getByTestId('generate-prompt-editor');
+    await waitFor(() =>
+      expect(editorEl.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+    return { awareness, editorEl };
+  }
+
+  it('publishes the local user identity into awareness when the provider is supplied', async () => {
+    const { awareness } = await mountWithAwareness(true);
+    await waitFor(() => {
+      const local = awareness.getLocalState() as {
+        user?: { name: string; color: string };
+      } | null;
+      // The published color is a concrete 6-digit hex (y-prosemirror's
+      // validator warns on anything else); the hue rides along so receiving
+      // breatic clients render the viewer-theme-adaptive palette token.
+      expect(local?.user).toEqual({
+        name: 'Ada',
+        color: '#008573',
+        hue: 'teal',
+      });
+    });
+  });
+
+  it('renders a remote client caret with the remote user name and color', async () => {
+    const { awareness, editorEl } = await mountWithAwareness(true);
+    // Simulate ANOTHER client on the same doc: y-prosemirror keys remote
+    // carets by awareness client id + that client's cursor (relative anchor
+    // into the shared fragment type).
+    const doc = awareness.doc;
+    const fragment = doc.getXmlFragment('prompt');
+    // Anchor INSIDE the pre-populated text (a position the ySync mapping can
+    // translate into the ProseMirror doc).
+    const text = (fragment.get(0) as Y.XmlElement).get(0) as Y.XmlText;
+    const anchor = Y.createRelativePositionFromTypeIndex(text, 3);
+    const REMOTE_CLIENT = awareness.clientID + 1;
+    const states = new Map(awareness.getStates());
+    states.set(REMOTE_CLIENT, {
+      user: { name: 'Grace', color: '#c2298a', hue: 'pink' },
+      cursor: {
+        anchor: JSON.parse(
+          JSON.stringify(Y.relativePositionToJSON(anchor)),
+        ) as unknown,
+        head: JSON.parse(
+          JSON.stringify(Y.relativePositionToJSON(anchor)),
+        ) as unknown,
+      },
+    });
+    // Push the synthetic remote state through the awareness change pipeline.
+    act(() => {
+      awareness.states = states;
+      awareness.emit('change', [
+        { added: [REMOTE_CLIENT], updated: [], removed: [] },
+        'remote',
+      ]);
+    });
+    await waitFor(() => {
+      const caret = editorEl.querySelector('.collaboration-carets__caret');
+      expect(caret).not.toBeNull();
+      const label = caret?.querySelector('.collaboration-carets__label');
+      expect(label?.textContent).toBe('Grace');
+      // Receiver-side rendering resolves the WHITELISTED hue to the palette
+      // token var — the viewer's own theme picks the light/dark value. The
+      // raw remote color string is never inlined when a valid hue exists
+      // (style-attribute injection from a hostile collaborator).
+      expect(label?.getAttribute('style')).toContain(
+        'var(--color-palette-pink)',
+      );
+    });
+  });
+
+  it('mounts NO caret extension without a provider (the extension throws on null)', async () => {
+    const { editorEl } = await mountWithAwareness(false);
+    // The editor is alive and usable...
+    expect(editorEl.querySelector('.ProseMirror')).not.toBeNull();
+    // ...and no caret machinery is present.
+    expect(editorEl.querySelector('.collaboration-carets__caret')).toBeNull();
+  });
+});
+
+// The caret / label classes come from the extension's default render; their
+// look lives in index.css. Block-scoped regexes (R4 lesson: substring-
+// anywhere assertions are gameable) pin that both blocks exist and carry the
+// load-bearing properties.
+describe('collaboration caret CSS contract (index.css)', () => {
+  const css = readFileSync(resolve(__dirname, '../../../../index.css'), 'utf8');
+
+  it('draws the remote caret line', () => {
+    expect(css).toMatch(
+      /\.collaboration-carets__caret\s*\{[^}]*border-left:[^}]*\}/,
+    );
+  });
+
+  it('floats the name label above the caret in the user color', () => {
+    expect(css).toMatch(
+      /\.collaboration-carets__label\s*\{[^}]*position:\s*absolute[^}]*\}/,
     );
   });
 });

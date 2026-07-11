@@ -240,3 +240,32 @@ body {
 .reference-mention-caret-active {
   caret-color: transparent;
 }
+/* Remote collaborator carets in the generate prompt (batch-2 item 14,
+   @tiptap/extension-collaboration-caret): the extension's default render
+   emits these classes and inlines each user's identity color (border-color
+   on the caret, background-color on the label) — layout + typography live
+   here. White label text is deliberate: the label bg is always one of the 7
+   saturated palette identity colors in both modes. */
+.collaboration-carets__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  word-break: normal;
+  pointer-events: none;
+}
+.collaboration-carets__label {
+  position: absolute;
+  top: -1.35em;
+  left: -1px;
+  border-radius: 3px 3px 3px 0;
+  padding: 0.1rem 0.3rem;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: normal;
+  white-space: nowrap;
+  color: white;
+  user-select: none;
+  pointer-events: none;
+}

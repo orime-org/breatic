@@ -24,7 +24,10 @@ import {
   type CanvasEdge,
   type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
+import { docName, getDoc } from '@web/data/yjs/manager';
+import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
+import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
@@ -42,6 +45,7 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 interface GeneratePanelContainerProps {
   /** Live canvas node views (target + reference sources). */
@@ -109,6 +113,34 @@ function GeneratePanelBody({
   const t = useTranslation();
   const closeGeneratePanel = useCanvasStore((s) => s.closeGeneratePanel);
   const startReferencePick = useCanvasStore((s) => s.startReferencePick);
+
+  // Collaborator carets (batch-2 item 14): the prompt fragment lives in the
+  // canvas-space doc, so its provider's AWARENESS is the caret channel.
+  // useSocket ref-counts the shared provider (SpaceDocSync already holds a
+  // ref while the tab is open, so this acquire is a cheap share, never a
+  // second socket). Identity = display name + deterministic palette color.
+  const canvasDocName = docName.canvasSpace(projectId, spaceId);
+  const canvasDoc = React.useMemo(
+    () => getDoc(canvasDocName),
+    [canvasDocName],
+  );
+  const { provider: caretProvider } = useSocket({
+    name: canvasDocName,
+    doc: canvasDoc,
+  });
+  const currentUser = useCurrentUserStore((s) => s.user);
+  const caretUser = React.useMemo(() => {
+    if (!currentUser) return null;
+    const hue = userPaletteHue(currentUser.id);
+    return {
+      name: currentUser.name || currentUser.email,
+      // The wire carries a concrete hex (y-prosemirror validates user.color
+      // as 6-digit hex — anything else warns on every caret update) + the
+      // hue breatic receivers actually render from (viewer-theme adaptive).
+      color: resolvePaletteHex(hue),
+      hue,
+    };
+  }, [currentUser]);
 
   const { data: catalog } = useQuery({
     queryKey: ['models'],
@@ -411,6 +443,8 @@ function GeneratePanelBody({
             references={stableReferences}
             mode={vm.mode}
             mentionEmptyLabel={t('canvas.generatePanel.mentionEmpty')}
+            caretProvider={caretProvider}
+            caretUser={caretUser}
           />
         ) : null
       }

@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { Collaboration } from '@tiptap/extension-collaboration';
+import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
 import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Placeholder } from '@tiptap/extension-placeholder';
@@ -17,6 +19,7 @@ import {
   REFERENCE_MENTION_NODE,
   type MentionOccurrence,
 } from '@web/spaces/canvas/generate/at-reference';
+import { renderCollabCaret } from '@web/spaces/canvas/generate/caret-render';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
@@ -64,6 +67,19 @@ interface PromptEditorProps {
   mode: ImageGenMode;
   /** Localized empty-state text for the `@` picker popup. */
   mentionEmptyLabel: string;
+  /**
+   * The canvas-space doc's provider (its awareness carries collaborator
+   * carets — batch-2 item 14). Null until the socket connects; the caret
+   * extension mounts only when present (it throws on a null provider).
+   */
+  caretProvider?: Pick<HocuspocusProvider, 'awareness'> | null;
+  /**
+   * This user's identity shown at their caret on OTHER clients: display name,
+   * a concrete 6-digit hex (what the wire carries — y-prosemirror validates
+   * it), and the palette hue breatic receivers actually render from (see
+   * `user-color.ts` / `caret-render.ts`).
+   */
+  caretUser?: { name: string; color: string; hue: string } | null;
 }
 
 /**
@@ -81,6 +97,8 @@ interface PromptEditorProps {
  * @param root0.references - The current reference pool (the `@` picker options).
  * @param root0.mode - Active generation sub-mode (t2i greys out `@` chips).
  * @param root0.mentionEmptyLabel - Localized empty-state text for the `@` popup.
+ * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
+ * @param root0.caretUser - This user's caret identity (name + palette color) published to other clients.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
@@ -96,6 +114,8 @@ export const PromptEditor = React.forwardRef<
     references,
     mode,
     mentionEmptyLabel,
+    caretProvider = null,
+    caretUser = null,
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -117,6 +137,21 @@ export const PromptEditor = React.forwardRef<
         // parents, so it never fired inside the paragraph (batch-2 item 5).
         // Collaboration provides history (yUndo); do NOT add UndoRedo alongside.
         Collaboration.configure({ fragment }),
+        // Remote collaborator carets (batch-2 item 14): mounted only when the
+        // canvas-space doc's awareness is available — the extension THROWS in
+        // onCreate on a null provider, and before the socket's first connect
+        // there is genuinely nothing to publish carets through.
+        ...(caretProvider?.awareness && caretUser
+          ? [
+            CollaborationCaret.configure({
+              provider: caretProvider,
+              user: caretUser,
+              // Receiver-side safe render: whitelisted hue → theme-adaptive
+              // palette var; never inlines free-form remote color strings.
+              render: renderCollabCaret,
+            }),
+          ]
+          : []),
         Placeholder.configure({ placeholder }),
         ReferenceMention.configure({
           suggestion: makeReferenceSuggestion({
@@ -150,8 +185,10 @@ export const PromptEditor = React.forwardRef<
     // locale switch would otherwise leave them in the old language until the
     // panel reopened (adversarial round-2). Both change only on a locale switch
     // (rare); the reference POOL stays a live ref (poolRef) so frequent edge
-    // add/remove never triggers a recreate.
-    [fragment, placeholder, mentionEmptyLabel],
+    // add/remove never triggers a recreate. caretProvider flips null→provider
+    // once on first socket connect (mounting the caret extension); caretUser is
+    // memoized by the container so it never churns per render.
+    [fragment, placeholder, mentionEmptyLabel, caretProvider, caretUser],
   );
   // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
   // narrow imperative handle rather than the raw editor, keeping TipTap
