@@ -1122,9 +1122,13 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     // Round-3: the Shift marquee stays enabled during a pick (gating
     // selectionKeyCode latches xyflow's key state mid-hold), so the
     // click-swallowing rect must simply never render while picking.
-    const idx = css.indexOf('.canvas-picking .react-flow__nodesselection');
-    expect(idx).toBeGreaterThanOrEqual(0);
-    expect(css.slice(idx)).toContain('display: none');
+    // display:none must sit INSIDE this rule block (round-4 adversarial: a
+    // slice-to-EOF check passed with the rule weakened to `opacity: 0` —
+    // which keeps the rect's pointer-events:all hit-target alive — as soon
+    // as any later rule in the file used display:none).
+    expect(css).toMatch(
+      /\.canvas-picking \.react-flow__nodesselection\s*\{[^}]*display:\s*none/,
+    );
   });
 
   it('keeps the breathing glow on the selectable hover state (functional cue)', () => {
