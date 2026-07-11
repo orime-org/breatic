@@ -7,6 +7,7 @@ import * as React from 'react';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
+import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 
 interface ReferenceRailProps {
@@ -52,6 +53,12 @@ export const ReferenceRail = React.memo(function ReferenceRail({
     >
       {references.map((ref) => {
         const NodeIcon = getNodeIcon(ref.sourceNodeType);
+        // Legacy-edge parity with the @ picker (round-2 adversarial): a
+        // pre-rules incompatible edge (audio/video → image) stays listed so
+        // the user can REMOVE it, but inserting it as an @-mention would
+        // recreate the execute-time dead-end the connection rules eliminated
+        // — the picker refuses to offer it, so the rail refuses to insert it.
+        const insertable = canConnect(ref.sourceNodeType, 'image');
         return (
           <div
             key={ref.refId}
@@ -72,7 +79,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 // the mention lands at the caret (not appended to the end).
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onInsert(ref)}
-                disabled={disabled}
+                disabled={disabled || !insertable}
                 className='flex items-center gap-1.5 rounded-overlay disabled:cursor-not-allowed'
               >
                 {ref.thumbnail ? (

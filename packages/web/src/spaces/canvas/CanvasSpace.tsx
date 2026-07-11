@@ -765,6 +765,11 @@ function CanvasSpaceInner({
   // every pointer move of an in-flight drag.
   const isValidConnection = React.useCallback(
     (connection: Connection | Edge): boolean => {
+      // Self-loop: xyflow's STRICT mode only checks handle types, so a drag
+      // from a node's source handle onto its own target handle would show a
+      // valid snap and then silently no-op at the addEdge write boundary —
+      // reject it here so the gesture reads invalid while still in-flight.
+      if (connection.source === connection.target) return false;
       const { flowNodes } = useCanvasGraphStore.getState();
       const sourceKind =
         flowNodes.find((n) => n.id === connection.source)?.type ?? '';
@@ -785,10 +790,14 @@ function CanvasSpaceInner({
     [t],
   );
 
-  // A drop refused by the connection rules gets a WHY (user 2026-07-10):
+  // A connection refused by the rules gets a WHY (user 2026-07-10):
   // "Audio can't connect into Image". Fired once on release — never during the
   // drag (isValidConnection runs per pointer-move; toasting there would spam).
   // A release over empty canvas (toNode null) is a normal cancel, not a toast.
+  // Wired to BOTH onConnectEnd (drag-connect) and onClickConnectEnd
+  // (click-connect: tap a source handle, then a target handle — xyflow's
+  // connectOnClick is on by default), so the same rejection explains itself
+  // identically on either gesture.
   const onConnectEnd = React.useCallback<OnConnectEnd>(
     (_event, state) => {
       if (state.isValid !== false || !state.fromNode || !state.toNode) return;
@@ -842,11 +851,11 @@ function CanvasSpaceInner({
   );
 
   // Reference-pick mode (Generate panel "add reference from canvas"): while a
-  // generative node awaits a reference pick, the next click on ANOTHER node
-  // wires an incoming edge (clicked → target) — a connection IS a reference —
-  // then exits. Clicking the target itself just cancels. The edge id is
-  // deterministic (`source->target`), so re-picking an existing reference
-  // overwrites in place (no duplicate).
+  // generative node is picking, each click on a compatible node wires an
+  // incoming edge (clicked → target) — a connection IS a reference — and the
+  // session CONTINUES (item 7 continuous select; the banner's Exit button is
+  // the only way out). Clicks on the target itself, an already-wired node, or
+  // a type-incompatible source are no-ops (all dimmed by the overlay).
   const onReferencePickNodeClick = React.useCallback(
     (_event: React.MouseEvent, node: Node): void => {
       // Read the pick target FRESH from the store, not the render closure: if
@@ -2116,6 +2125,7 @@ function CanvasSpaceInner({
           onBeforeDelete={onBeforeDelete}
           onConnect={onConnect}
           onConnectEnd={onConnectEnd}
+          onClickConnectEnd={onConnectEnd}
           isValidConnection={isValidConnection}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}

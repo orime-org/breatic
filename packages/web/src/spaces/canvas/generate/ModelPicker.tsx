@@ -63,7 +63,7 @@ export const ModelPicker = React.memo(function ModelPicker({
       <PopoverContent
         side='top'
         align='start'
-        className='max-h-52 w-auto min-w-[13rem] overflow-auto p-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent'
+        className='max-h-52 w-auto min-w-[13rem] max-w-[20rem] overflow-auto p-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent'
       >
         {/* Same option pattern as LangSwitcher / ThemeToggle (spec §9.4): a
             gap-0.5 column of ghost menu-item Buttons — the gap keeps the hover
@@ -87,7 +87,10 @@ export const ModelPicker = React.memo(function ModelPicker({
                 aria-hidden='true'
               />
               <ModelIcon name={m.icon} className='h-4 w-4 shrink-0' />
-              {m.display_name}
+              {/* truncate: the catalog puts no length cap on display_name and
+                  Button's base carries whitespace-nowrap — unbounded, one long
+                  name would stretch the popover past the viewport. */}
+              <span className='min-w-0 truncate'>{m.display_name}</span>
             </Button>
           ))}
         </div>

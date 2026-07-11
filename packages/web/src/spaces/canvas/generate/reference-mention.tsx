@@ -153,6 +153,9 @@ function ReferenceMentionChip({
       <NodeViewWrapper
         as='span'
         data-reference-mention=''
+        // data-kind lets the t2i grey-out target IMAGE chips only — a text
+        // chip's substitution still takes effect in t2i (round-2 adversarial).
+        data-kind={kind ?? 'image'}
         className='reference-mention mx-0.5 inline-flex h-5 max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-middle text-xs text-muted-foreground'
         contentEditable={false}
       >

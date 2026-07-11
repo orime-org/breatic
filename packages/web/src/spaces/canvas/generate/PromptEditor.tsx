@@ -177,6 +177,18 @@ export const PromptEditor = React.forwardRef<
     }),
     [editor],
   );
+  // Re-report the substituted prompt text when the POOL changes (round-2
+  // adversarial): a text chip resolves its source node's content at
+  // serialization time, and that content can change with NO prompt-document
+  // edit (the user types into the text node on the canvas) — onUpdate never
+  // fires, so the container's execute-gate mirror would stay stuck on the
+  // stale substitution (an empty node @-ed keeps the button dead after the
+  // node gains words; an emptied node leaves the button lit but dead).
+  React.useEffect(() => {
+    if (!editor) return;
+    onTextChange(serializePromptText(editor, references));
+  }, [editor, references, onTextChange]);
+
   // Cascade-clear stale @-mention chips: when a reference edge is removed the
   // pool shrinks, so any @-mention pointing at a now-disconnected source must
   // disappear from the prompt (design §2.1 — a mention only picks from the
@@ -201,11 +213,14 @@ export const PromptEditor = React.forwardRef<
     for (const { from, to } of deletions) tr.delete(from, to);
     editor.view.dispatch(tr);
   }, [editor, references]);
-  // t2i greys out existing @-mention chips (design §2.4 C): the mode switch
-  // visually pre-announces they will not take effect; execute filters them out.
+  // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
+  // switch visually pre-announces they will not take effect (execute forces
+  // referenceUrls=[] in t2i). TEXT chips stay full-strength — their
+  // substitution still feeds the prompt string and the submitted payload in
+  // every mode (round-2 adversarial: dimming them lied about their effect).
   const dimReferences =
     mode === 't2i'
-      ? ' [&_.reference-mention]:opacity-40 [&_.reference-mention]:grayscale'
+      ? ' [&_.reference-mention[data-kind=image]]:opacity-40 [&_.reference-mention[data-kind=image]]:grayscale'
       : '';
   return (
     <EditorContent

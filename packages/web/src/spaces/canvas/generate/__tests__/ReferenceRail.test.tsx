@@ -89,6 +89,39 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     ).not.toHaveAttribute('data-state');
   });
 
+  // Legacy-edge parity with the @ picker (round-2 adversarial): a pre-rules
+  // audio/video→image edge stays LISTED so the user can remove it, but its
+  // insert button must be disabled — the @ picker already refuses to offer
+  // such a reference, and inserting it from the rail would recreate the exact
+  // execute-time dead-end the connection rules eliminated.
+  it('disables insert (but not remove) for a type-incompatible legacy reference', () => {
+    const refs: ReferenceRailItem[] = [
+      {
+        refId: 'aud->me',
+        sourceNodeId: 'aud',
+        sourceNodeType: 'audio',
+        sourceNodeName: 'Song',
+      },
+      {
+        refId: 'img->me',
+        sourceNodeId: 'img',
+        sourceNodeType: 'image',
+        sourceNodeName: 'Pic',
+        thumbnail: 'x.png',
+      },
+    ];
+    const onInsert = vi.fn();
+    render(
+      <ReferenceRail references={refs} onRemove={() => {}} onInsert={onInsert} />,
+    );
+    const legacyInsert = screen.getByTestId('generate-ref-insert-aud->me');
+    expect(legacyInsert).toBeDisabled();
+    fireEvent.click(legacyInsert);
+    expect(onInsert).not.toHaveBeenCalled();
+    expect(screen.getByTestId('generate-ref-remove-aud->me')).not.toBeDisabled();
+    expect(screen.getByTestId('generate-ref-insert-img->me')).not.toBeDisabled();
+  });
+
   it('greys out + de-activates the rail when disabled (text-to-image, §2.5)', () => {
     render(
       <ReferenceRail

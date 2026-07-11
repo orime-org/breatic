@@ -348,6 +348,26 @@ describe('buildGeneratePanelViewModel', () => {
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: [] });
     expect(vm.requiresSource).toBe(false);
   });
+
+  // Round-2 adversarial: a HYBRID model (mode: ['t2i','i2i'] — real models
+  // like Seedream / Flux are hybrid) offered under the t2i toggle must NOT
+  // demand a source image: the ACTIVE PANEL MODE decides the submission
+  // semantics, not the model's capability list. Keying the gate on the
+  // capability array made t2i permanently unexecutable for hybrids (t2i
+  // clears referenceUrls, so the "needs source image" gate could never pass).
+  it('requiresSource=false for a hybrid (t2i+i2i) model running under t2i', () => {
+    const hybrid = [makeModel('seedream', { mode: ['t2i', 'i2i'] })];
+    const nodes = [node('n1', imageView({ mode: 't2i', model: 'seedream' }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: hybrid });
+    expect(vm.requiresSource).toBe(false);
+  });
+
+  it('requiresSource=true for the same hybrid model running under i2i', () => {
+    const hybrid = [makeModel('seedream', { mode: ['t2i', 'i2i'] })];
+    const nodes = [node('n1', imageView({ mode: 'i2i', model: 'seedream' }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: hybrid });
+    expect(vm.requiresSource).toBe(true);
+  });
 });
 
 describe('resolveModeSwitch — model + params to persist on a mode toggle', () => {

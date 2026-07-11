@@ -82,4 +82,19 @@ describe('ModelPicker — pick the generation model from the catalog', () => {
     expect(document.querySelector('[role="listbox"]')).toBeNull();
     expect(document.querySelector('[role="option"]')).toBeNull();
   });
+
+  // Round-2 adversarial: the catalog boundary puts NO length cap on
+  // display_name, and Button's base cva carries whitespace-nowrap while
+  // Radix's popper wrapper enforces min-width:max-content — one long name
+  // would stretch the popover past the viewport. The label must truncate
+  // inside a bounded popover instead.
+  it('truncates a pathologically long display name inside a bounded popover', () => {
+    const long = [model('long', 'A'.repeat(300))];
+    render(<ModelPicker models={long} value='long' onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    const option = screen.getByTestId('generate-model-option-long');
+    const label = option.querySelector('span.truncate');
+    expect(label).not.toBeNull();
+    expect(label?.textContent).toBe('A'.repeat(300));
+  });
 });

@@ -31,6 +31,7 @@ import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-select
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import {
   buildGeneratePanelViewModel,
+  selectModeModels,
   resolveModeSwitch,
   type GeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
@@ -176,6 +177,15 @@ function GeneratePanelBody({
   const vm: GeneratePanelViewModel = React.useMemo(
     () => buildGeneratePanelViewModel({ nodeId, nodes, edges, models }),
     [nodeId, nodes, edges, models],
+  );
+  // Stable model-list identity for the memo'd pickers: the vm rebuilds on
+  // EVERY canvas graph mutation (nodes/edges deps), and its freshly-filtered
+  // models array would defeat ModelPicker's React.memo each frame of any node
+  // drag (memo discipline: a memo'd component's props must all be stable).
+  // Same selection as vm.models, memoized on [models, mode] alone.
+  const stableModels = React.useMemo(
+    () => selectModeModels(models, vm.mode),
+    [models, vm.mode],
   );
   const freshVm = React.useCallback(
     (atMentionedSourceIds?: ReadonlySet<string>): GeneratePanelViewModel => {
@@ -338,13 +348,18 @@ function GeneratePanelBody({
         closeGeneratePanel();
       }
     } catch (err) {
-      if (!isMountedRef.current) return; // stale mount — don't toast / setState
+      // The failure toast is UNCONDITIONAL (silent-fail mandate): sonner is a
+      // global outlet, so a submit that failed AFTER the user closed the panel
+      // (fire-and-move-on, then 402/409/503) still explains itself — the old
+      // stale-mount early-return silently swallowed exactly those failures
+      // (round-2 adversarial). Only the React state writes stay gated.
       toast.error(
         executeErrorMessage(
           err instanceof ApiException ? err.status : undefined,
           t,
         ),
       );
+      if (!isMountedRef.current) return; // stale mount — skip setState only
       submittingRef.current = false;
       setIsSubmitting(false);
     }
@@ -359,7 +374,7 @@ function GeneratePanelBody({
 
   return (
     <GeneratePanel
-      models={vm.models}
+      models={stableModels}
       model={vm.model}
       mode={vm.mode}
       catalogEmpty={vm.catalogEmpty}
@@ -439,13 +454,22 @@ function CatalogGatedPanel(
 ): React.JSX.Element | null {
   const t = useTranslation();
   const closeGeneratePanel = useCanvasStore((s) => s.closeGeneratePanel);
-  const { isError: catalogError } = useQuery({
+  const { isError, data } = useQuery({
     queryKey: ['models'],
     queryFn: () => modelsApi.list(),
   });
+  // Gate on "errored AND nothing cached": a BACKGROUND refetch failure keeps
+  // the previously-fetched catalog in `data`, and the panel keeps working off
+  // it — closing a fully-functional panel over a refresh hiccup would be
+  // worse than the silent failure this gate fixes (round-2 adversarial).
+  const catalogError = isError && data === undefined;
   React.useEffect(() => {
     if (catalogError) {
-      toast.error(t('canvas.generatePanel.catalogUnavailable'));
+      // A fixed toast id de-duplicates the StrictMode double-effect and rapid
+      // re-open attempts while the API stays down (sonner replaces in place).
+      toast.error(t('canvas.generatePanel.catalogUnavailable'), {
+        id: 'generate-catalog-unavailable',
+      });
       closeGeneratePanel();
     }
   }, [catalogError, closeGeneratePanel, t]);

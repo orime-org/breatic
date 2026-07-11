@@ -157,6 +157,29 @@ export function resolveModeSwitch(
 }
 
 /**
+ * Narrows the sanitized catalog to the models offered under a panel mode.
+ *
+ * models is trusted (sanitizeModelCatalog at the API boundary). Offers only
+ * generatable image models — text-to-image / image-to-image / edit — dropping
+ * pure tools (background removal, upscale), which belong in the mini-tool
+ * system; then narrows to the ACTIVE mode (mode toggle 2026-07-09) so the
+ * picker shows one clean list per mode. Exported so the container can memoize
+ * the SAME selection on [models, mode] alone — the view-model rebuilds every
+ * canvas graph mutation, and a freshly-filtered array each time would defeat
+ * the React.memo on the pickers (round-2 adversarial; memo discipline).
+ * @param models - The sanitized catalog models.
+ * @param mode - The active generation sub-mode.
+ * @returns The models offered under that mode.
+ */
+export function selectModeModels(
+  models: ModelEntry[],
+  mode: ImageGenMode,
+): ModelEntry[] {
+  const generatable = models.filter((m) => isImageGenerationMode(m.mode));
+  return filterModelsByMode(generatable, mode);
+}
+
+/**
  * Derives the Generate panel's render inputs from a node's live data.
  * @param input - The target node id, current nodes / edges, and catalog models.
  * @param input.nodeId - The node whose panel is open.
@@ -173,15 +196,12 @@ export function buildGeneratePanelViewModel(input: {
   models: ModelEntry[];
   atMentionedSourceIds?: ReadonlySet<string>;
 }): GeneratePanelViewModel {
-  // models is trusted: the catalog is sanitized at the API boundary
-  // (sanitizeModelCatalog), so it is always a ModelEntry[]. Offer only
-  // generatable image models — text-to-image / image-to-image / edit — dropping
-  // pure tools (background removal, upscale), which belong in the mini-tool
-  // system. Then narrow to the ACTIVE mode (mode toggle 2026-07-09) so the
-  // picker shows one clean list per mode instead of every t2i/i2i variant.
   const { nodeId, nodes, edges } = input;
   const content = asContentView(nodes.find((n) => n.id === nodeId)?.data);
   const mode = resolveMode(content?.mode);
+  // Wide filter kept separately: catalogEmpty means "no generatable model in
+  // ANY mode" (it gates the whole panel), while `models` narrows to the
+  // active mode via the same selection the container memoizes.
   const generatable = input.models.filter((m) => isImageGenerationMode(m.mode));
   const models = filterModelsByMode(generatable, mode);
 
@@ -222,9 +242,14 @@ export function buildGeneratePanelViewModel(input: {
     creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
     mode,
-    // Model-derived, independent of `@`-picks: does the SELECTED model's mode
-    // need a source image? No model resolved (empty catalog) → nothing to gate.
-    requiresSource: current ? requiresSourceImage(current.mode) : false,
+    // Source-image gate (#1675): the ACTIVE PANEL MODE decides the submission
+    // semantics — under t2i nothing needs a source image, even for a HYBRID
+    // model whose capability list also spans i2i (round-2 adversarial: keying
+    // on the capability array alone made t2i permanently unexecutable for
+    // hybrids, since t2i clears referenceUrls). Under i2i, defer to the
+    // model's declared modes. No model resolved (empty catalog) → no gate.
+    requiresSource:
+      mode === 'i2i' && current ? requiresSourceImage(current.mode) : false,
     catalogEmpty: generatable.length === 0,
   };
 }
