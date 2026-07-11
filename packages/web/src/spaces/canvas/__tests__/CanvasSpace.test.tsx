@@ -1316,12 +1316,26 @@ describe('reference-pick interaction contract', () => {
     // class must be added imperatively in onConnectStart (which runs
     // synchronously before that first target resolution) and removed on end.
     expect(src).toContain('onConnectStart={onConnectDragStart}');
-    expect(src).toMatch(
-      /classList\.add\(['"]canvas-connecting['"]\)/,
+    expect(src).toMatch(/classList\.add\(['"]canvas-connecting['"]\)/);
+    expect(src).toMatch(/classList\.remove\(['"]canvas-connecting['"]\)/);
+  });
+
+  it('gates the magnetic zone on the DRAG path ONLY, never the click-connect path (round-5)', () => {
+    // The click-connect path resolves each tap by a literal Handle onClick (no
+    // connectionRadius net), so the 36px ::before zone must stay live to arm /
+    // complete a tap in the zone — disabling it broke click-connect and, since
+    // its cleanup only fires on the second tap, stuck the class on an abandoned
+    // pick. Exactly ONE add and ONE remove (the drag pair) may exist.
+    expect(src.match(/classList\.add\(['"]canvas-connecting['"]\)/g)).toHaveLength(1);
+    expect(
+      src.match(/classList\.remove\(['"]canvas-connecting['"]\)/g),
+    ).toHaveLength(1);
+    // The add lives in the drag-start callback, not the click-start one.
+    const clickStart = src.slice(
+      src.indexOf('const onClickConnectStart'),
+      src.indexOf('const onClickConnectEnd'),
     );
-    expect(src).toMatch(
-      /classList\.remove\(['"]canvas-connecting['"]\)/,
-    );
+    expect(clickStart).not.toContain('canvas-connecting');
   });
 
   it('NEVER toggles selectionKeyCode dynamically (xyflow latches mid-keyhold)', () => {

@@ -989,15 +989,19 @@ function CanvasSpaceInner({
           handleType: params.handleType ?? 'source',
         }
         : null;
-      // Same zone stand-down for the click-connect path: the second tap
-      // resolves its target via elementFromPoint too (round-4).
-      containerRef.current?.classList.add('canvas-connecting');
+      // The zone stand-down is DRAG-only (adversarial round-5): the
+      // click-connect path resolves each tap by a LITERAL Handle onClick (no
+      // connectionRadius proximity net), so the 36px ::before zone must stay
+      // live for a tap in the zone to arm / complete a connection at all —
+      // disabling it broke click-connect. And its cleanup fires only on the
+      // second tap, so gating here also stuck the class on an abandoned pick.
+      // The round-4 hijack is drag-specific (elementFromPoint during the
+      // continuous onPointerMove), so only the drag path needs the gate.
     },
     [],
   );
   const onClickConnectEnd = React.useCallback<OnConnectEnd>(
     (event) => {
-      clearConnectingClass();
       const from = clickConnectFromRef.current;
       clickConnectFromRef.current = null;
       const targetEl =
@@ -1019,7 +1023,7 @@ function CanvasSpaceInner({
         }),
       );
     },
-    [t, kindLabel, clearConnectingClass],
+    [t, kindLabel],
   );
 
   const onConnect = React.useCallback(
