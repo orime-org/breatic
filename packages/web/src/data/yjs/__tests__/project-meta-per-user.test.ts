@@ -7,21 +7,20 @@ import { destroyDoc, docName, getDoc, _resetForTests } from '@web/data/yjs/manag
 import {
   closeSpaceTab,
   openSpaceTab,
-  setActiveSpace,
   appendSpace,
   planVanishedSpaceReconcile,
 } from '@web/data/yjs/project-meta';
 
 /**
  * Critical-path invariants for the per-user Y.Doc subtree
- * (`perUser[userId].openTabIds + activeSpaceId`).
+ * (`perUser[userId].openTabIds`; the active tab is local page state
+ * since 2026-07-11 — see project-meta-local-active.test.tsx).
  *
  * Why property-based: Yjs collaboration is one of the 6 critical-path
  * categories (memory `[[CLAUDE.md TDD-MANDATE]]`). Per-user tab state
  * is part of the workspace restore guarantee — if any sequence of
- * open / close / setActive can produce a state where activeSpaceId
- * points outside `spaces`, or `openTabIds` has duplicates, the user
- * lands on a wedged UI after sync.
+ * open / close can produce duplicates in `openTabIds`, the user lands
+ * on a wedged UI after sync.
  *
  * fast-check randomly composes sequences of operations and checks
  * invariants after each one — much more thorough than hand-picked
@@ -97,19 +96,12 @@ describe('project-meta per-user state machine', () => {
     expect(openTabIds).not.toContain('s1');
   });
 
-  it('setActiveSpace stores the id (and null clears the entry)', () => {
-    setActiveSpace(projectId, userId, 's2');
-    expect(readUserState().activeSpaceId).toBe('s2');
-    setActiveSpace(projectId, userId, null);
-    expect(readUserState().activeSpaceId).toBeNull();
-  });
-
   // Property-based via 100 vanilla random op sequences (fast-check would
   // be the idiomatic tool but the workspace does not currently depend on
   // it; loop coverage is sufficient for now — follow-up PR adds the dep
   // + rewrites these two as fc.property).
   it('property: openTabIds never contains duplicates after any random op sequence', () => {
-    const ops = ['open', 'close', 'active'] as const;
+    const ops = ['open', 'close'] as const;
     const ids = ['s1', 's2', 's3'] as const;
     for (let iter = 0; iter < 100; iter++) {
       _resetForTests();
@@ -122,7 +114,6 @@ describe('project-meta per-user state machine', () => {
         const id = ids[Math.floor(Math.random() * ids.length)];
         if (op === 'open') openSpaceTab(projectId, userId, id);
         if (op === 'close') closeSpaceTab(projectId, userId, id);
-        if (op === 'active') setActiveSpace(projectId, userId, id);
       }
       const { openTabIds } = readUserState();
       const unique = new Set(openTabIds);
@@ -151,22 +142,18 @@ describe('project-meta per-user state machine', () => {
   });
 });
 
-function readUserState(): {
-  openTabIds: string[];
-  activeSpaceId: string | null;
-  } {
+function readUserState(): { openTabIds: string[] } {
   // Read state directly from the Y.Doc (the hook needs a React tree to
   // run; tests sidestep React by reading the doc).
   const doc = getDoc(docName.projectMeta('p1'));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const perUser = doc.getMap<any>('perUser');
   const userMap = perUser.get('u1');
-  if (!userMap) return { openTabIds: [], activeSpaceId: null };
+  if (!userMap) return { openTabIds: [] };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const arr = userMap.get('openTabIds') as any;
   const openTabIds = arr ? (arr.toArray() as string[]) : [];
-  const activeSpaceId = (userMap.get('activeSpaceId') as string | null) ?? null;
-  return { openTabIds, activeSpaceId };
+  return { openTabIds };
 }
 
 // Suppress unused: destroyDoc imported for symmetry with manager test

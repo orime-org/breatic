@@ -31,7 +31,6 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     useProjectMeta: () => ({
       spaces: [],
       openTabIds: [],
-      activeSpaceId: null,
       users: new Map(),
       synced: true,
       provider: null,

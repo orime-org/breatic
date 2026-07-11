@@ -12,25 +12,29 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 
 /**
  * Project meta Yjs document — single source of truth for the project's
- * spaces list, plus per-user UI state (tab bar + active tab).
+ * spaces list, plus per-user UI state (the open-tab bar).
  *
  * Y.Doc structure:
  *
  *   spaces:  Y.Map<spaceId, Y.Map<{ id, name, type, locked? }>>  shared (all members)
- *   perUser: Y.Map<userId, Y.Map<{                            per-user (each
- *     openTabIds:    Y.Array<string>,                          user has their
- *     activeSpaceId: string | null,                            own tab bar +
- *   }>>                                                        active across
- *                                                              machines)
+ *   perUser: Y.Map<userId, Y.Map<{ openTabIds: Y.Array<string> }>>  per-user tab bar
  *
- * Why per-user state lives in the same shared doc (not localStorage or
- * an isolated awareness state):
+ * The ACTIVE tab is deliberately NOT in this doc (user 2026-07-11): it is
+ * local window state (`ProjectPage` useState). It used to live here as
+ * `perUser[userId].activeSpaceId`, but two machines on the SAME account
+ * both live-subscribe to the same subtree — machine A clicking a tab
+ * flipped machine B's active tab and remounted B's running space body,
+ * interrupting its in-flight work. A legacy `activeSpaceId` key may still
+ * exist in old docs; it is never read or written anymore. Opening a
+ * project defaults to the first open tab.
+ *
+ * Why the tab list still lives in the shared doc (not localStorage or an
+ * isolated awareness state):
  *   - Awareness is session-scoped — switching machines loses the work
- *     scene (which tabs were open, which one was active).
+ *     scene (which tabs were open).
  *   - Hocuspocus persists the Y.Doc to PG, so per-user keys persist by
  *     default — a user logging in on a new machine receives the full
- *     Y.Doc on sync and can restore their open tabs + active tab in
- *     one round trip.
+ *     Y.Doc on sync and restores their open tabs in one round trip.
  *   - Yjs CRDT semantics scope writes by Y.Map key (userId); a malicious
  *     client trying to write another user's key is rejected by the
  *     Hocuspocus `beforeHandleMessage` extension (collab F.2 hook).
@@ -42,16 +46,14 @@ import { useCurrentUserStore } from '@web/stores/current-user';
  *     2026-05-23 yjs-collab-only-write-authz): collab authorizes the role,
  *     applies the privileged Yjs write + audit entry, and Yjs broadcasts
  *     the change. The client does NOT write `spaces` directly.
- *   - Per-user writes (`openSpaceTab` / `closeSpaceTab` /
- *     `setActiveSpace`) write the client's OWN `perUser[userId]`
- *     subtree directly; the Hocuspocus extension ensures the user
- *     can't write another user's subtree.
+ *   - Per-user writes (`openSpaceTab` / `closeSpaceTab`) write the
+ *     client's OWN `perUser[userId]` subtree directly; the Hocuspocus
+ *     extension ensures the user can't write another user's subtree.
  */
 
 const SPACES_KEY = 'spaces';
 const PER_USER_KEY = 'perUser';
 const OPEN_TAB_IDS_KEY = 'openTabIds';
-const ACTIVE_SPACE_ID_KEY = 'activeSpaceId';
 /**
  * Y.Map<userId, { name, avatarUrl }> seeded at project creation by the
  * meta bootstrap and kept live by collab's awareness projection
@@ -89,8 +91,6 @@ export interface ProjectMetaState {
   spaces: ReadonlyArray<ProjectSpace>;
   /** Spaces the current user has open in their tab bar. */
   openTabIds: ReadonlyArray<string>;
-  /** Currently active tab for the current user (null when no tab open). */
-  activeSpaceId: string | null;
   /**
    * Live map of `userId → { name, avatarUrl, lastSeenAt }` for
    * everyone who has connected to this project's meta doc.
@@ -125,12 +125,12 @@ export interface ProjectMetaState {
 
 /**
  * Subscribe to a project's meta document. Returns the live spaces list
- * + this user's open tabs + their active tab; updates trigger
- * re-renders.
+ * + this user's open tabs; updates trigger re-renders. The ACTIVE tab is
+ * local page state, not part of this projection (see the module doc).
  *
  * `userId` is required to read the per-user subtree. If undefined (e.g.
- * pre-auth dev mode), the hook falls back to "all spaces open, first
- * one active" so the UI doesn't blank out.
+ * pre-auth dev mode), the hook falls back to "all spaces open" so the UI
+ * doesn't blank out.
  * @param projectId - Project whose meta document to subscribe to.
  * @param userId - Current user, used to read their per-user tab subtree; optional pre-auth.
  * @returns Live meta state: spaces, this user's tabs, online users, provider, and connection status.
@@ -151,7 +151,6 @@ export function useProjectMeta(
   const [state, setState] = React.useState<{
     spaces: ReadonlyArray<ProjectSpace>;
     openTabIds: ReadonlyArray<string>;
-    activeSpaceId: string | null;
     users: ReadonlyMap<string, ProjectUser>;
   }>(() => readMetaState(doc, userId));
 
@@ -347,27 +346,6 @@ export function closeSpaceTab(
 }
 
 /**
- * Set the active Space tab for the given user. Setting to a Space not
- * in `openTabIds` is allowed; the caller is expected to also
- * `openSpaceTab` first.
- * @param projectId - Project whose meta document holds the per-user state.
- * @param userId - User whose active Space to set.
- * @param spaceId - Space to activate, or null to clear the active tab.
- */
-export function setActiveSpace(
-  projectId: string,
-  userId: string,
-  spaceId: string | null,
-): void {
-  const doc = getDoc(docName.projectMeta(projectId));
-  doc.transact(() => {
-    const userMap = ensureUserMap(doc, userId);
-    if (spaceId === null) userMap.delete(ACTIVE_SPACE_ID_KEY);
-    else userMap.set(ACTIVE_SPACE_ID_KEY, spaceId);
-  });
-}
-
-/**
  * Legacy direct-write helper, kept for tests and demo scaffolding only.
  * Production code creates Spaces via
  * `sendSpaceRpc({ type: 'space:create', ... })`; a direct client write
@@ -464,10 +442,13 @@ function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
 
 /**
  * Project the meta doc into the React-facing state shape for one user,
- * applying the pre-auth and first-visit "all spaces open" fallbacks.
+ * applying the pre-auth and first-visit "all spaces open" fallbacks. The
+ * active tab is NOT part of this projection — it is local page state, so a
+ * remote machine's writes can never flip it (a legacy `activeSpaceId` key in
+ * old docs is deliberately ignored).
  * @param doc - The project meta Y.Doc to read from.
  * @param userId - Current user whose per-user subtree to read; undefined pre-auth.
- * @returns The spaces, the user's open tabs, their active tab, and the users map.
+ * @returns The spaces, the user's open tabs, and the users map.
  */
 function readMetaState(
   doc: Y.Doc,
@@ -475,19 +456,13 @@ function readMetaState(
 ): {
   spaces: ReadonlyArray<ProjectSpace>;
   openTabIds: ReadonlyArray<string>;
-  activeSpaceId: string | null;
   users: ReadonlyMap<string, ProjectUser>;
 } {
   const spaces = readSpaces(doc);
   const users = readUsers(doc);
   if (!userId) {
-    // Pre-auth fallback: open every space, first one active.
-    return {
-      spaces,
-      openTabIds: spaces.map((s) => s.id),
-      activeSpaceId: spaces[0]?.id ?? null,
-      users,
-    };
+    // Pre-auth fallback: open every space.
+    return { spaces, openTabIds: spaces.map((s) => s.id), users };
   }
   const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
   const userMap = perUser.get(userId);
@@ -500,18 +475,11 @@ function readMetaState(
     // the original Space silently disappear (Q6). The `openSpaceTab`
     // snapshot persists this state to the perUser subtree the moment
     // the user clicks anything.
-    return {
-      spaces,
-      openTabIds: spaces.map((s) => s.id),
-      activeSpaceId: spaces[0]?.id ?? null,
-      users,
-    };
+    return { spaces, openTabIds: spaces.map((s) => s.id), users };
   }
   const openTabIdsArr = userMap.get(OPEN_TAB_IDS_KEY) as
     | Y.Array<string>
     | undefined;
   const openTabIds = openTabIdsArr ? openTabIdsArr.toArray() : [];
-  const activeSpaceId = (userMap.get(ACTIVE_SPACE_ID_KEY) as string | null) ??
-    (openTabIds[0] ?? spaces[0]?.id ?? null);
-  return { spaces, openTabIds, activeSpaceId, users };
+  return { spaces, openTabIds, users };
 }

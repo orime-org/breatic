@@ -22,11 +22,11 @@ import { useTranslation } from '@web/i18n/use-translation';
 import {
   closeSpaceTab,
   openSpaceTab,
-  setActiveSpace,
   planVanishedSpaceReconcile,
   useProjectMeta,
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
+import { resolveEffectiveActiveSpace } from '@web/pages/project/active-space';
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import type { SpaceType } from '@web/spaces';
@@ -56,11 +56,11 @@ import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
  * State model (2026-05-21 redesign):
  *   - Shared `spaces` list  → Yjs project-meta `Y.Array('spaces')`
  *   - Per-user `openTabIds` → Yjs project-meta `perUser[userId].openTabIds`
- *   - Per-user `activeSpaceId` → same subtree, same key
- *   - URL `:spaceId` param is treated as a *navigation request* - when
- *     present it triggers `setActiveSpace` (and `openSpaceTab` if needed)
- *     so deep links work, but the source of truth lives in Yjs so the
- *     tab bar + active tab can be restored across machines.
+ *   - Active tab → LOCAL page state (user 2026-07-11): it used to live in
+ *     the shared per-user subtree, but two machines on the same account
+ *     both subscribe to it — machine A's tab click flipped machine B's
+ *     active tab and remounted B's running space body. Opening a project
+ *     defaults to the first open tab.
  *
  * Collab-only write flow (ADR 2026-05-23 yjs-collab-only-write-authz):
  *   - Create / delete / lock / restore + projectMessages clear all go
@@ -188,10 +188,15 @@ function ProjectWorkspace({
   const {
     spaces,
     openTabIds,
-    activeSpaceId,
     provider,
     status: connectionStatus,
   } = useProjectMeta(projectId, userId);
+  // The active tab is LOCAL window state — deliberately NOT in the synced
+  // meta doc (see module doc). null = no local choice yet → the effective
+  // active falls back to the first open tab.
+  const [activeSpaceId, setActiveSpaceId] = React.useState<string | null>(
+    null,
+  );
 
   // Tabs shown in the tab bar = each open tab id resolved against the
   // shared spaces list (drop missing ids - happens if another user
@@ -204,8 +209,10 @@ function ProjectWorkspace({
     [openTabIds, spaces],
   );
 
-  const activeSpace: ProjectSpace | undefined =
-    spaces.find((s) => s.id === activeSpaceId) ?? openTabs[0];
+  const activeSpace: ProjectSpace | undefined = resolveEffectiveActiveSpace(
+    openTabs,
+    activeSpaceId,
+  );
 
   // Clear the undo history of spaces that have VANISHED (deleted locally or by
   // a collaborator) while still in this user's openTabIds. Such a tab drops out
@@ -241,15 +248,15 @@ function ProjectWorkspace({
     );
     for (const id of tabsToClose) closeSpaceTab(projectId, userId, id);
     if (reactivateTo !== undefined) {
-      setActiveSpace(projectId, userId, reactivateTo);
+      setActiveSpaceId(reactivateTo);
     }
   }, [userId, projectId, openTabIds, spaces, activeSpaceId]);
 
   // Note: NO URL ↔ active-space reconcile. Per user decision
   // `[[feedback_space_type_vs_route]]`, Space is a type/template, not
-  // a route segment; the active tab + open-tab list are per-user UI
-  // state living in Yjs `meta.perUser[userId]`, which already syncs
-  // across the same user's machines. URL stays `/project/:id`.
+  // a route segment; the open-tab LIST is per-user Yjs state (syncs
+  // across the same user's machines), while the ACTIVE tab is local
+  // window state only. URL stays `/project/:id`.
 
   // ---- Loading overlay tracking ----
   const spaceOpInProgress = useUIStore((s) => s.spaceOpInProgress);
@@ -273,7 +280,7 @@ function ProjectWorkspace({
         setSpaceOpInProgress(null);
         if (userId) {
           openSpaceTab(projectId, userId, id);
-          setActiveSpace(projectId, userId, id);
+          setActiveSpaceId(id);
         }
       }
     }
@@ -351,7 +358,7 @@ function ProjectWorkspace({
   const onActivate = (id: string): void => {
     if (!userId) return; // pre-auth no-op (per-user UI state needs userId)
     openSpaceTab(projectId, userId, id);
-    setActiveSpace(projectId, userId, id);
+    setActiveSpaceId(id);
   };
 
   /**
@@ -377,9 +384,9 @@ function ProjectWorkspace({
     // spaces, which have no manager). The space's Y.Doc stays cached for an
     // instant reopen — only the undo stack is discarded.
     evictCanvasUndoManager(docName.canvasSpace(projectId, id));
-    if (id === activeSpaceId) {
+    if (id === activeSpace?.id) {
       const next = openTabs.find((s) => s.id !== id);
-      setActiveSpace(projectId, userId, next?.id ?? null);
+      setActiveSpaceId(next?.id ?? null);
     }
   };
 
@@ -634,7 +641,7 @@ function ProjectWorkspace({
               spaces={openTabs}
               allSpaces={spaces}
               openTabIds={openTabIds}
-              activeSpaceId={activeSpaceId ?? ''}
+              activeSpaceId={activeSpace?.id ?? ''}
               projectId={projectId}
               onActivate={onActivate}
               onCreate={onCreateSpace}
