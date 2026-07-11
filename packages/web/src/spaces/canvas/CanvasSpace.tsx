@@ -18,6 +18,7 @@ import {
   type EdgeChange,
   type Node,
   type NodeChange,
+  type OnConnectEnd,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
@@ -80,6 +81,7 @@ import {
   hasRetryFile,
 } from '@web/spaces/canvas/upload-retry-files';
 import { extractText } from '@web/spaces/canvas/text-extract';
+import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import { planGroupDrag, type DragNode } from '@web/spaces/canvas/group-drag';
@@ -324,6 +326,22 @@ function planDuplicateGroupGrowth(
   }
   return planGroupGrowth(inputs);
 }
+
+/**
+ * Node kind → localized display-name key, for the connection-rules rejection
+ * toast ("Audio can't connect into Image"). An unknown (corrupt Yjs) kind
+ * falls back to the raw string at the call site.
+ */
+const KIND_LABEL_KEY: Record<string, string> = {
+  text: 'canvas.connection.kindText',
+  image: 'canvas.connection.kindImage',
+  audio: 'canvas.connection.kindAudio',
+  video: 'canvas.connection.kindVideo',
+  '3d': 'canvas.connection.kind3d',
+  web: 'canvas.connection.kindWeb',
+  annotation: 'canvas.connection.kindAnnotation',
+  group: 'canvas.connection.kindGroup',
+};
 
 /**
  * Project a Yjs canvas node view into a ReactFlow node. ReactFlow's
@@ -740,9 +758,72 @@ function CanvasSpaceInner({
     [projectId, spaceId, reportDeletedAssets],
   );
 
+  // Connection rules (spec §9.1): consulted live during a connection drag —
+  // ReactFlow styles an invalid target and refuses the drop, so an audio /
+  // video output visibly can't wire into an image input. Reads the mirror
+  // via getState() (not a render closure) because ReactFlow calls this on
+  // every pointer move of an in-flight drag.
+  const isValidConnection = React.useCallback(
+    (connection: Connection | Edge): boolean => {
+      const { flowNodes } = useCanvasGraphStore.getState();
+      const sourceKind =
+        flowNodes.find((n) => n.id === connection.source)?.type ?? '';
+      const targetKind =
+        flowNodes.find((n) => n.id === connection.target)?.type ?? '';
+      return canConnect(sourceKind, targetKind);
+    },
+    [],
+  );
+
+  // Localized node-kind display name for the connection-rules toast; an
+  // unknown (corrupt Yjs) kind falls back to the raw string.
+  const kindLabel = React.useCallback(
+    (kind: string): string => {
+      const key = KIND_LABEL_KEY[kind];
+      return key ? t(key) : kind;
+    },
+    [t],
+  );
+
+  // A drop refused by the connection rules gets a WHY (user 2026-07-10):
+  // "Audio can't connect into Image". Fired once on release — never during the
+  // drag (isValidConnection runs per pointer-move; toasting there would spam).
+  // A release over empty canvas (toNode null) is a normal cancel, not a toast.
+  const onConnectEnd = React.useCallback<OnConnectEnd>(
+    (_event, state) => {
+      if (state.isValid !== false || !state.fromNode || !state.toNode) return;
+      // A drag may start from either end — resolve which node is the source.
+      const fromIsSource = state.fromHandle?.type === 'source';
+      const sourceKind =
+        (fromIsSource ? state.fromNode : state.toNode).type ?? '';
+      const targetKind =
+        (fromIsSource ? state.toNode : state.fromNode).type ?? '';
+      // Only explain OUR rule rejections; an invalid drop for any other
+      // ReactFlow reason keeps the default silent snap-back.
+      if (canConnect(sourceKind, targetKind)) return;
+      toast.error(
+        t('canvas.connection.rejected', {
+          source: kindLabel(sourceKind),
+          target: kindLabel(targetKind),
+        }),
+      );
+    },
+    [t, kindLabel],
+  );
+
   const onConnect = React.useCallback(
     (connection: Connection): void => {
       if (!connection.source || !connection.target) return;
+      // Connection-rules backstop (spec §9.1). isValidConnection already
+      // blocks an invalid drop in the UI, so this only fires if ReactFlow
+      // hands over a connection that bypassed the drag validation — reject
+      // silently rather than write a rule-breaking edge.
+      const { flowNodes } = useCanvasGraphStore.getState();
+      const sourceKind =
+        flowNodes.find((n) => n.id === connection.source)?.type ?? '';
+      const targetKind =
+        flowNodes.find((n) => n.id === connection.target)?.type ?? '';
+      if (!canConnect(sourceKind, targetKind)) return;
       // Edge validity (self-loop + both endpoints must exist) is enforced at
       // the addEdge write boundary — the only race-free place under collab.
       const added = addEdge(projectId, spaceId, {
@@ -774,7 +855,8 @@ function CanvasSpaceInner({
       // PREVIOUS node.
       const target = useCanvasStore.getState().referencePickForNodeId;
       if (!target) return;
-      // The target itself and any node ALREADY wired to it are dimmed +
+      // The target itself, any node ALREADY wired to it, and any
+      // type-incompatible source (connection rules, spec §9.1) are dimmed +
       // non-pickable (item 7) — clicking them is a no-op so the user keeps
       // picking (continuous select until they press Exit).
       if (node.id === target) return;
@@ -782,6 +864,21 @@ function CanvasSpaceInner({
         (e) => e.target === target && e.source === node.id,
       );
       if (alreadyReferenced) return;
+      const targetKind =
+        useCanvasGraphStore
+          .getState()
+          .flowNodes.find((n) => n.id === target)?.type ?? '';
+      if (!canConnect(node.type ?? '', targetKind)) {
+        // Dimmed by the overlay already; explain WHY on an insisting click
+        // (same wording as the drag-connect rejection toast).
+        toast.error(
+          t('canvas.connection.rejected', {
+            source: kindLabel(node.type ?? ''),
+            target: kindLabel(targetKind),
+          }),
+        );
+        return;
+      }
       // Wire clicked-source → target as a reference. Self-loop + both-endpoints-
       // still-exist are enforced race-free at the addEdge write boundary (a
       // collaborator may have deleted either node between render and click).
@@ -794,7 +891,7 @@ function CanvasSpaceInner({
       // Stay in pick mode either way; Exit is the only way out (item 7).
       if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
     },
-    [projectId, spaceId, flowEdges, t],
+    [projectId, spaceId, flowEdges, t, kindLabel],
   );
 
   // Node click: in reference-pick mode delegate to the pick handler; otherwise,
@@ -1883,9 +1980,11 @@ function CanvasSpaceInner({
   }, [flowNodes, readOnly]);
 
   // Reference-pick mode overlay (user 2026-07-10 item 7): the node whose panel
-  // is picking + any node ALREADY wired to it are dimmed + non-pickable; every
-  // other node gets a hover glow inviting selection. Off pick mode this returns
-  // the same reference (no-op) so nothing re-renders.
+  // is picking + any node ALREADY wired to it + any type-incompatible source
+  // (connection rules, spec §9.1 — e.g. audio/video can't feed an image input)
+  // are dimmed + non-pickable; every other node gets a hover glow inviting
+  // selection. Off pick mode this returns the same reference (no-op) so
+  // nothing re-renders.
   const pickedNodes = React.useMemo<Node[]>(() => {
     if (referencePickForNodeId == null) return renderNodes;
     const alreadyReferenced = new Set(
@@ -1893,9 +1992,13 @@ function CanvasSpaceInner({
         .filter((e) => e.target === referencePickForNodeId)
         .map((e) => e.source),
     );
+    const targetKind =
+      renderNodes.find((n) => n.id === referencePickForNodeId)?.type ?? '';
     return renderNodes.map((node) => {
       const dimmed =
-        node.id === referencePickForNodeId || alreadyReferenced.has(node.id);
+        node.id === referencePickForNodeId ||
+        alreadyReferenced.has(node.id) ||
+        !canConnect(node.type ?? '', targetKind);
       const pickClass = dimmed
         ? 'canvas-pick-dimmed'
         : 'canvas-pick-selectable';
@@ -2006,6 +2109,8 @@ function CanvasSpaceInner({
           onDelete={onDelete}
           onBeforeDelete={onBeforeDelete}
           onConnect={onConnect}
+          onConnectEnd={onConnectEnd}
+          isValidConnection={isValidConnection}
           onPaneContextMenu={onPaneContextMenu}
           onNodeContextMenu={onNodeContextMenu}
           onNodeClick={onNodeClick}

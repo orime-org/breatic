@@ -304,7 +304,8 @@
       "style": "风格",
       "mark": "标记",
       "focus": "聚焦",
-      "reference": "参考",      "exit": "退出",
+      "reference": "参考",
+      "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用素材",
       "mentionEmpty": "还没有可引用的图 — 先从一张图连线过来",
       "selectFromCanvas": "从画布选择参考",
@@ -353,6 +354,17 @@
     },
     "activity": {
       "reportFailed": "上传未能记录到 Project 活动"
+    },
+    "connection": {
+      "rejected": "{source}无法接入{target}",
+      "kindText": "文本",
+      "kindImage": "图片",
+      "kindAudio": "音频",
+      "kindVideo": "视频",
+      "kind3d": "3D",
+      "kindWeb": "网页",
+      "kindAnnotation": "批注",
+      "kindGroup": "编组"
     }
   },
   "editor": {

@@ -21,6 +21,7 @@ import type {
 
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
+import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
 import {
   ReferenceMentionList,
   type ReferenceMentionListRef,
@@ -49,6 +50,13 @@ export function makeReferenceSuggestion(input: {
       const q = query.toLowerCase();
       return input
         .getPool()
+        // Connection rules (spec §9.1): new incompatible wires are rejected at
+        // the wire level, but a LEGACY edge (audio/video → image, created
+        // before the rules) may survive in old documents. Never offer it in
+        // the picker — an @-pick that can't feed image generation dead-ends at
+        // execute ("no source image"). The rail still lists the legacy row so
+        // the user can see and remove it.
+        .filter((r) => canConnect(r.sourceNodeType, 'image'))
         .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
         .slice(0, 8);
     },

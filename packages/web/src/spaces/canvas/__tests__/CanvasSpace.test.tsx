@@ -207,6 +207,59 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(node?.className).toContain('draggable');
   });
 
+  // Connection rules in reference-pick mode (spec §9.1, user 2026-07-10): an
+  // image node's input accepts only image / text sources, so while picking
+  // references for an image node, an audio / video node must be dimmed +
+  // non-pickable exactly like an already-wired node — not glowing as if it
+  // were selectable and then dead-ending at execute time.
+  it('pick mode dims type-incompatible sources (audio/video) and keeps image/text selectable', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-audio',
+            type: 'audio',
+            position: { x: 300, y: 0 },
+            data: { kind: 'audio', content: 'a.mp3', status: 'idle' },
+          },
+          {
+            id: 'src-text',
+            type: 'text',
+            position: { x: 600, y: 0 },
+            data: { kind: 'text', content: 'hello', status: 'idle' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 900, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    // Enter pick mode directly — the overlay keys off referencePickForNodeId
+    // alone (opening the real panel would drag in the models useQuery, which
+    // needs a QueryClientProvider this mount doesn't have).
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    expect(cls('target')).toContain('canvas-pick-dimmed');
+    expect(cls('src-audio')).toContain('canvas-pick-dimmed');
+    expect(cls('src-audio')).not.toContain('canvas-pick-selectable');
+    expect(cls('src-text')).toContain('canvas-pick-selectable');
+    expect(cls('src-image')).toContain('canvas-pick-selectable');
+  });
+
   // Viewer gate (the canvas-internal backstop for the HIGH review finding):
   // a read-only canvas must drop a library create intent without ever
   // writing to Yjs. The `consumed` assertion proves the effect actually ran

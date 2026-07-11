@@ -29,6 +29,11 @@ export interface ReferenceRailItem {
   sourceNodeName: string;
   /** Live thumbnail / preview URL when the upstream carries a visual payload. */
   thumbnail?: string;
+  /**
+   * Live text body when the upstream is a text node (spec §9.1): feeds the
+   * backend-prompt chip substitution and the rail hover preview.
+   */
+  textContent?: string;
 }
 
 /**
@@ -89,6 +94,8 @@ export function deriveReferences(
       sourceNodeType: source.data.kind,
       sourceNodeName: nameOf(source.data),
       thumbnail: thumbnailOf(source.data),
+      textContent:
+        source.data.kind === 'text' ? source.data.content : undefined,
     });
   }
   return rail;

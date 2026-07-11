@@ -23,6 +23,7 @@ import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-select
 import {
   ReferenceMention,
   referenceMentionContent,
+  serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 
@@ -34,6 +35,14 @@ export interface PromptEditorHandle {
    * @param item - The reference pool row to insert.
    */
   insertReference: (item: ReferenceRailItem) => void;
+  /**
+   * Serializes the backend-bound prompt string RIGHT NOW (spec §9.1): text
+   * chips substitute their source node's current content, image chips
+   * contribute nothing. Called at execute-click so a text node edited since
+   * the last prompt keystroke still lands its latest words.
+   * @returns The backend prompt string, or null when the editor is not ready.
+   */
+  serializePrompt: () => string | null;
 }
 
 interface PromptEditorProps {
@@ -119,15 +128,17 @@ export const PromptEditor = React.forwardRef<
       ],
       immediatelyRender: false,
       // Report BOTH derived values on every editor change (create + update): the
-      // plain text (execute gate) and the `@`-picked source ids (i2i subset).
-      // Remote collaborator edits also fire onUpdate via y-prosemirror, so the
-      // container's mirrors stay current for both local and remote changes.
+      // backend-bound prompt text (execute gate — text chips substitute their
+      // source content, so "@ a non-empty text node" alone is a valid prompt)
+      // and the `@`-picked source ids (i2i subset). Remote collaborator edits
+      // also fire onUpdate via y-prosemirror, so the container's mirrors stay
+      // current for both local and remote changes.
       onCreate: ({ editor: e }) => {
-        onTextChange(e.getText());
+        onTextChange(serializePromptText(e, poolRef.current));
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
       onUpdate: ({ editor: e }) => {
-        onTextChange(e.getText());
+        onTextChange(serializePromptText(e, poolRef.current));
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
     },
@@ -158,6 +169,8 @@ export const PromptEditor = React.forwardRef<
           editor.chain().focus('end').insertContent(content).run();
         }
       },
+      serializePrompt: (): string | null =>
+        editor ? serializePromptText(editor, poolRef.current) : null,
     }),
     [editor],
   );

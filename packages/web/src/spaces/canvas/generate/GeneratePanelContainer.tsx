@@ -279,7 +279,12 @@ function GeneratePanelBody({
     // A node a collaborator locked after the panel opened is frozen — never
     // submit against it (fresh Yjs read, not a captured menu / render value).
     if (isNodeLocked(projectId, spaceId, nodeId)) return;
-    const freshPrompt = promptTextRef.current;
+    // Serialize the backend prompt AT CLICK TIME (spec §9.1): a text chip
+    // substitutes its source node's CURRENT words, and that node may have been
+    // edited since the last prompt keystroke — the ref would carry the stale
+    // substitution. Falls back to the ref when the editor is gone (unmounting).
+    const freshPrompt =
+      promptEditorRef.current?.serializePrompt() ?? promptTextRef.current;
     // Re-derive model / params / references from LIVE Yjs — never the render
     // closure — so a collaborator's just-deleted reference or changed model
     // can't ride into the payload. The `@`-picked source ids are read

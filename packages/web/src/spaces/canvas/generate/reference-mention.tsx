@@ -10,7 +10,7 @@
  * container's `data-mode` + CSS, so the chip itself never reads the mode.
  */
 
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node, mergeAttributes, type Editor } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
@@ -64,6 +64,40 @@ export function referenceMentionContent(item: ReferenceRailItem): {
       [MENTION_KIND_ATTR]: item.sourceNodeType,
     },
   };
+}
+
+/**
+ * Serializes the prompt for the BACKEND (spec §9.1, user 2026-07-10): the chip
+ * stays a chip in the editor, but the string sent to generation substitutes a
+ * TEXT chip with its source text node's current content — "@ a text node" means
+ * "insert that node's words here". An image chip contributes nothing to the
+ * string (it feeds the i2i source-image subset instead), and a text chip whose
+ * pool row vanished (edge removed mid-flight) or whose node is empty resolves
+ * to an empty string. Pool content is read at CALL time, so invoking this at
+ * execute-click picks up the text node's latest words even when the prompt doc
+ * itself never changed.
+ * @param editor - The prompt editor.
+ * @param pool - The current reference pool (source of live text content).
+ * @returns The backend-bound prompt string.
+ */
+export function serializePromptText(
+  editor: Editor,
+  pool: ReadonlyArray<ReferenceRailItem>,
+): string {
+  const textById = new Map(
+    pool
+      .filter((r) => r.sourceNodeType === 'text')
+      .map((r) => [r.sourceNodeId, r.textContent ?? '']),
+  );
+  return editor.getText({
+    textSerializers: {
+      [REFERENCE_MENTION_NODE]: ({ node }): string => {
+        if (node.attrs[MENTION_KIND_ATTR] !== 'text') return '';
+        const id = node.attrs[MENTION_SOURCE_ID_ATTR] as string | null;
+        return (id != null ? textById.get(id) : undefined) ?? '';
+      },
+    },
+  });
 }
 
 /**
