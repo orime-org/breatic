@@ -18,12 +18,14 @@ interface ReferenceRailProps {
   /** Insert this reference's @-mention into the prompt at the cursor (chip click). */
   onInsert: (item: ReferenceRailItem) => void;
   /**
-   * Grey out + de-activate the rail — set in text-to-image, which ignores
-   * source images (mode toggle 2026-07-09 §2.5). The chips still render (so the
-   * node's edges stay visible) but are non-interactive; switch to image-to-image
-   * to manage them.
+   * Dim + de-activate the IMAGE rows only — set in text-to-image, which
+   * ignores source images (mode toggle §2.5; scope ruled 2026-07-11, round-3
+   * R3-4 = A). Text rows stay fully interactive because their @-chips still
+   * serialize into the prompt in t2i — the same scoping as the editor's chip
+   * dim, which greys image chips only. Dimmed image chips still render (edges
+   * stay visible); switch to image-to-image to manage them.
    */
-  disabled?: boolean;
+  imageRefsDisabled?: boolean;
 }
 
 /**
@@ -35,19 +37,20 @@ interface ReferenceRailProps {
  * @param root0.references - The derived reference rows.
  * @param root0.onRemove - Remove a reference by id.
  * @param root0.onInsert - Insert a reference's @-mention into the prompt.
+ * @param root0.imageRefsDisabled - Dim + de-activate the image rows (t2i).
  * @returns The reference rail, or null when empty.
  */
 export const ReferenceRail = React.memo(function ReferenceRail({
   references,
   onRemove,
   onInsert,
-  disabled = false,
+  imageRefsDisabled = false,
 }: ReferenceRailProps): React.JSX.Element | null {
   const t = useTranslation();
   if (references.length === 0) return null;
   return (
     <div
-      className={`flex flex-wrap gap-1.5 ${disabled ? 'opacity-50' : ''}`}
+      className='flex flex-wrap gap-1.5'
       role='list'
       data-testid='generate-reference-rail'
     >
@@ -59,12 +62,13 @@ export const ReferenceRail = React.memo(function ReferenceRail({
         // recreate the execute-time dead-end the connection rules eliminated
         // — the picker refuses to offer it, so the rail refuses to insert it.
         const insertable = canConnect(ref.sourceNodeType, 'image');
+        const inert = imageRefsDisabled && ref.sourceNodeType === 'image';
         return (
           <div
             key={ref.refId}
             role='listitem'
             data-testid={`generate-ref-${ref.refId}`}
-            className='group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5'
+            className={`group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5 ${inert ? 'opacity-50' : ''}`}
           >
             <ThumbnailHoverPreview
               src={ref.thumbnail}
@@ -79,7 +83,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 // the mention lands at the caret (not appended to the end).
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onInsert(ref)}
-                disabled={disabled || !insertable}
+                disabled={inert || !insertable}
                 className='flex items-center gap-1.5 rounded-overlay disabled:cursor-not-allowed'
               >
                 {ref.thumbnail ? (
@@ -103,7 +107,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               data-testid={`generate-ref-remove-${ref.refId}`}
               aria-label={t('canvas.generatePanel.removeReference')}
               onClick={() => onRemove(ref.refId)}
-              disabled={disabled}
+              disabled={inert}
               className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed'
             >
               <X className='h-3 w-3' aria-hidden='true' />

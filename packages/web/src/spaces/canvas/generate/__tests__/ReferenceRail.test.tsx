@@ -122,21 +122,40 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     expect(screen.getByTestId('generate-ref-insert-img->me')).not.toBeDisabled();
   });
 
-  it('greys out + de-activates the rail when disabled (text-to-image, §2.5)', () => {
+  // Text-to-image scoping (round-3 R3-4, user ruled A 2026-07-11): t2i only
+  // ignores SOURCE IMAGES — text references still serialize into the prompt
+  // through their @-chips, so only the image rows go inert. Same口径 as the
+  // editor's chip dim, which greys image chips only.
+  it('dims + de-activates only the IMAGE rows when imageRefsDisabled (t2i)', () => {
+    const onInsert = vi.fn();
+    const onRemove = vi.fn();
     render(
       <ReferenceRail
         references={REFS}
-        onRemove={() => {}}
-        onInsert={() => {}}
-        disabled
+        onRemove={onRemove}
+        onInsert={onInsert}
+        imageRefsDisabled
       />,
     );
-    const rail = screen.getByTestId('generate-reference-rail');
-    // Still renders the chips (edges stay visible) but dimmed + non-interactive:
-    // the remove buttons are disabled (blocks mouse AND keyboard).
+    // Both rows still render (edges stay visible); the rail itself is NOT
+    // blanket-dimmed — the dim lives on the image row.
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
-    expect(rail).toHaveClass('opacity-50');
-    expect(screen.getByTestId('generate-ref-remove-a->me')).toBeDisabled();
+    expect(screen.getByTestId('generate-reference-rail')).not.toHaveClass(
+      'opacity-50',
+    );
+    // Image row: dimmed + non-interactive (switch to i2i to manage it).
+    expect(screen.getByTestId('generate-ref-a->me')).toHaveClass('opacity-50');
     expect(screen.getByTestId('generate-ref-insert-a->me')).toBeDisabled();
+    expect(screen.getByTestId('generate-ref-remove-a->me')).toBeDisabled();
+    // Text row: fully interactive — insert lands the @-chip, remove works.
+    expect(screen.getByTestId('generate-ref-b->me')).not.toHaveClass(
+      'opacity-50',
+    );
+    const textInsert = screen.getByTestId('generate-ref-insert-b->me');
+    expect(textInsert).not.toBeDisabled();
+    fireEvent.click(textInsert);
+    expect(onInsert).toHaveBeenCalledWith(REFS[1]);
+    fireEvent.click(screen.getByTestId('generate-ref-remove-b->me'));
+    expect(onRemove).toHaveBeenCalledWith('b->me');
   });
 });

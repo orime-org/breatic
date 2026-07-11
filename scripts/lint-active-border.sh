@@ -9,17 +9,19 @@
 # Fails on, anywhere in packages/web/src (tests + shadcn vendor excluded):
 #   state-variant : neutral-border-class, i.e.
 #     (focus|focus-within|focus-visible|aria-[current…]|aria-selected|
-#      data-[state=checked]|data-[state=selected]|data-[state=on]) :
+#      data-[state=checked]|data-[state=selected]|data-[state=on]|
+#      data-[state=active]) :
 #     border-(primary|secondary|accent|muted|muted-foreground|foreground|
 #             input|ring|border|neutral-N|white|black)
+#
+# data-[state=active] (tab underlines) is IN scope — user ruled 2026-07-11
+# that the active-tab underline joins the single neutral activation-border
+# system (border-active-border), not a text-colour indicator exemption.
 #
 # Exemptions (by design, not loopholes):
 #   - components/ui/ (shadcn vendor): ADR 14 keeps primitives untouched; a
 #     checked checkbox/radio border is part of its FILL system (border+bg move
 #     together), not an independent border indicator.
-#   - data-[state=active] tab underlines are NOT scanned yet — a tab's active
-#     underline moves with its text colour (an indicator, not a framing
-#     border); pending an explicit user ruling before inclusion.
 #   - Runtime-composed conditionals (selected ? 'border-…') are beyond a line
 #     grep; the CLAUDE.md mandate covers them (this guard catches the
 #     high-frequency variant-prefixed form).
@@ -38,7 +40,7 @@ ROOT="${1:-packages/web/src}"
 # State variants that make a border colour EXPRESS activation/selection,
 # followed by a neutral border class. `border-active-border` itself never
 # matches (not in the neutral list). Left boundary avoids partial words.
-VARIANT='(focus|focus-within|focus-visible|aria-\[current[^]]*\]|aria-selected|data-\[state=(checked|selected|on)\])'
+VARIANT='(focus|focus-within|focus-visible|aria-\[current[^]]*\]|aria-selected|data-\[state=(checked|selected|on|active)\])'
 NEUTRAL='border-(primary|secondary|accent|muted|muted-foreground|foreground|input|ring|border|neutral-[0-9]+|white|black)'
 PAT="${VARIANT}:${NEUTRAL}([^a-zA-Z-]|$)"
 

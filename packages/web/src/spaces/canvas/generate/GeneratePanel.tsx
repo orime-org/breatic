@@ -97,7 +97,8 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   const t = useTranslation();
   const currentModel = models.find((m) => m.name === model);
   // Text-to-image generates from scratch and ignores source images (§2.5): the
-  // reference add-button is disabled and the rail is greyed out.
+  // reference add-button is disabled and the rail dims its IMAGE rows (text
+  // rows stay insertable — their @-chips still feed the prompt; R3-4 = A).
   const referencesOff = mode === 't2i';
   const placeholderClass =
     'flex h-8 w-8 items-center justify-center rounded-full border border-border ' +
@@ -124,7 +125,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        disabled={referencesOff}
+        imageRefsDisabled={referencesOff}
       />
 
       {promptSlot}

@@ -455,7 +455,7 @@ export function GeneratePanelContainer(
  * Model-catalog failure gate (spec §9.3, user-ratified): a panel without a
  * catalog is a dead end (blank model pill, no ratio picker, execute
  * permanently disabled), so a failed fetch EXPLAINS itself with a toast and
- * the panel never opens — 禁 silent fail. Mounted only while a panel is OPEN
+ * the panel never opens — no silent fail. Mounted only while a panel is OPEN
  * (inside the nodeId gate), so the always-rendered container never touches
  * react-query — a closed panel needs no QueryClient. Same queryKey as the
  * body's query (one cache entry); remounting per open attempt re-fires the

@@ -85,4 +85,18 @@ describe('StudioTabBar', () => {
       screen.getByRole('tab', { name: 'Collections' }),
     ).toBeInTheDocument();
   });
+
+  it('underlines the active tab with border-active-border (neutral activation border rule)', () => {
+    // User ruling 2026-07-11: a NEUTRAL border expressing activation must be
+    // border-active-border — the tab underline is part of that system, not an
+    // exempt text-colour indicator (lint:active-border scans data-[state=active]).
+    setup('team');
+    const active = screen.getByRole('tab', { name: 'Projects' });
+    expect(active.className).toContain(
+      'data-[state=active]:border-active-border',
+    );
+    expect(active.className).not.toContain(
+      'data-[state=active]:border-foreground',
+    );
+  });
 });

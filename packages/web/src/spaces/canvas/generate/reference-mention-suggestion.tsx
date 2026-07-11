@@ -43,8 +43,9 @@ export function makeReferenceSuggestion(input: {
     char: '@',
     // @tiptap/suggestion defaults allowedPrefixes to [" "], which only fires `@`
     // when preceded by a space or at block start — so typing `@` right after
-    // text (e.g. CJK "额@") never opened the picker. null lets `@` trigger after
-    // any character (Notion / Feishu behaviour).
+    // text (e.g. directly after a CJK character, where no space precedes it)
+    // never opened the picker. null lets `@` trigger after any character
+    // (Notion / Feishu behaviour).
     allowedPrefixes: null,
     items: ({ query }): ReferenceRailItem[] => {
       const q = query.toLowerCase();

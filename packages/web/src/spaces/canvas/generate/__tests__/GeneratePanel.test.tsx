@@ -138,7 +138,10 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.getByTestId('generate-mode-trigger')).not.toBeDisabled();
   });
 
-  it('greys out the reference rail in t2i (edges stay visible but inert)', () => {
+  it('dims only the IMAGE reference rows in t2i (text rows stay insertable)', () => {
+    // Round-3 R3-4, user ruled A (2026-07-11): t2i ignores source images but
+    // text references still feed the prompt via @-chips — the panel must pass
+    // the scoped flag so image rows go inert while text rows stay live.
     setup({
       mode: 't2i',
       references: [
@@ -148,10 +151,15 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
           sourceNodeType: 'image',
           sourceNodeName: 'Src',
         },
+        {
+          refId: 'e2',
+          sourceNodeId: 's2',
+          sourceNodeType: 'text',
+          sourceNodeName: 'Notes',
+        },
       ],
     });
-    expect(screen.getByTestId('generate-reference-rail')).toHaveClass(
-      'opacity-50',
-    );
+    expect(screen.getByTestId('generate-ref-insert-e1')).toBeDisabled();
+    expect(screen.getByTestId('generate-ref-insert-e2')).not.toBeDisabled();
   });
 });
