@@ -162,17 +162,23 @@ function makeFlowNode(
                 handle placed BEFORE the body has its inner half covered by the
                 body's surface and reads as a half-circle (the left-handle bug);
                 painting both on top of the body shows each as a full dot. */}
+            {/* Hot zone ≫ dot (batch-2 item 10): the Handle element — the
+                actual hit target — is a 24×24 invisible circle; the visible
+                8px dot is drawn centered by an ::after pseudo. No position
+                override: xyflow centers the handle on the node border via
+                `translate(-50%,-50%)`, so ANY size keeps the center (= the
+                edge anchor) exactly where the 8px dot was. */}
             {!isGroup ? (
               <>
                 <Handle
                   type='target'
                   position={Position.Left}
-                  className='!h-2 !w-2 !border-border !bg-muted'
+                  className="!h-6 !w-6 !rounded-full !border-0 !bg-transparent after:absolute after:left-1/2 after:top-1/2 after:h-2 after:w-2 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:border after:border-border after:bg-muted after:content-['']"
                 />
                 <Handle
                   type='source'
                   position={Position.Right}
-                  className='!h-2 !w-2 !border-border !bg-muted'
+                  className="!h-6 !w-6 !rounded-full !border-0 !bg-transparent after:absolute after:left-1/2 after:top-1/2 after:h-2 after:w-2 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:border after:border-border after:bg-muted after:content-['']"
                 />
               </>
             ) : null}

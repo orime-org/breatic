@@ -113,9 +113,13 @@ describe('FLOW_NODE_TYPES', () => {
         body.compareDocumentPosition(handle) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
-      // Original neutral dot restored (reverses the higher-contrast patch).
-      expect(handle.className).toContain('!border-border');
-      expect(handle.className).toContain('!bg-muted');
+      // The neutral 8px dot moved into an ::after pseudo when the handle
+      // element grew into a 24px invisible hot zone (batch-2 item 10): the
+      // ELEMENT is transparent (it is pure hit target), the DOT keeps the
+      // original neutral border-border / bg-muted pair.
+      expect(handle.className).toContain('!bg-transparent');
+      expect(handle.className).toContain('after:border-border');
+      expect(handle.className).toContain('after:bg-muted');
       expect(handle.className).not.toContain('!bg-background');
     });
   });

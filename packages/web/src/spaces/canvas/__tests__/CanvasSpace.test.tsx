@@ -1000,6 +1000,101 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
     configSpy.mockRestore();
   });
+
+  // ---- Handle hot zone (batch-2 item 10) ----
+  // The 8×8 dot was the ENTIRE hit target — precise-pointing misery. The
+  // handle element grows to a 24×24 invisible hot zone while the visible 8px
+  // dot is drawn centered by an ::after pseudo. NO position override: xyflow
+  // centers the handle on the node border via translate(-50%,-50%), so any
+  // size keeps the center (= the edge anchor) where the dot was — a manual
+  // -left-3 offset actually shifted the hot zone 12px OFF the border (caught
+  // by real-browser geometry). jsdom sees classes, not geometry; the browser
+  // smoke measures the real rects.
+  it('connection handles carry a 24px hot zone, centered dot, and edge-preserving offsets', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const target = document.querySelector('.react-flow__handle.target');
+    const source = document.querySelector('.react-flow__handle.source');
+    expect(target).not.toBeNull();
+    expect(source).not.toBeNull();
+    for (const handle of [target, source]) {
+      expect(handle?.className).toContain('!h-6');
+      expect(handle?.className).toContain('!w-6');
+      expect(handle?.className).toContain('!bg-transparent');
+      expect(handle?.className).toContain('after:h-2');
+      expect(handle?.className).toContain('after:w-2');
+      // No manual position override — xyflow's own translate(-50%,-50%)
+      // centering is what keeps the edge anchor on the node border.
+      expect(handle?.className).not.toMatch(/!-left-|!-right-/);
+    }
+  });
+
+  // ---- Reference-pick double-click gate (batch-2 item 12) ----
+  // onNodeClick / onPaneClick already delegate to the pick session, but a
+  // DOUBLE-click on an empty node's placeholder went straight to
+  // activateNodeUpload and popped the file picker over the running pick. The
+  // gate lives in activateNodeUpload itself (single choke point: placeholder
+  // double-click AND the node-menu Upload both route through it).
+  it('a double-click on an empty node during a reference pick does not open the file picker', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    const clickSpy = vi
+      .spyOn(HTMLInputElement.prototype, 'click')
+      .mockImplementation(() => {});
+    // finally-cleanup: a failing assertion mid-test must not leak the pick
+    // state / prototype spy into later tests (bit us in the red phase).
+    try {
+      render(<CanvasSpace projectId='p' spaceId='s' />);
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: 'other' });
+      });
+      const placeholder = screen.getByTestId('node-placeholder');
+      act(() => {
+        placeholder.dispatchEvent(
+          new MouseEvent('dblclick', { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(clickSpy).not.toHaveBeenCalled();
+
+      // Control: off pick mode the same double-click opens the picker — proves
+      // the gate (not a broken wire) is what suppressed it above.
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: null });
+      });
+      act(() => {
+        placeholder.dispatchEvent(
+          new MouseEvent('dblclick', { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: null });
+      });
+      clickSpy.mockRestore();
+    }
+  });
 });
 
 // Reference-pick mode cursor contract (canvas item 7, user 2026-07-10).

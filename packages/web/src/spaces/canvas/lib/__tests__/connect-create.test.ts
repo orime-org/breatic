@@ -1,0 +1,103 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+import { describe, it, expect } from 'vitest';
+
+import {
+  connectableCreatableTypes,
+  resolveConnectCreateIntent,
+} from '@web/spaces/canvas/lib/connect-create';
+
+// Batch-2 item 3: dragging a wire from an OUTPUT stub and releasing over
+// blank canvas offers a "create + connect" menu. Its rows = the creatable
+// modalities (text/image/audio/video, library order) whose INPUT accepts the
+// dragged source's kind (connection rules §9.1) — never a row that would be
+// rejected the moment the edge is written.
+describe('connectableCreatableTypes — creatable ∩ rule-compatible targets', () => {
+  it('image source can feed text / image / video (audio accepts text only)', () => {
+    expect(connectableCreatableTypes('image')).toEqual([
+      'text',
+      'image',
+      'video',
+    ]);
+  });
+
+  it('text source can feed all four creatable modalities', () => {
+    expect(connectableCreatableTypes('text')).toEqual([
+      'text',
+      'image',
+      'audio',
+      'video',
+    ]);
+  });
+
+  it('audio source can feed text / video only', () => {
+    expect(connectableCreatableTypes('audio')).toEqual(['text', 'video']);
+  });
+
+  it('video source can feed text / video only', () => {
+    expect(connectableCreatableTypes('video')).toEqual(['text', 'video']);
+  });
+
+  it('a source no creatable input accepts (3d / unknown) yields no rows', () => {
+    // 3d / web ARE unrestricted as targets, but they are not creatable — and
+    // no creatable modality's whitelist admits them as sources.
+    expect(connectableCreatableTypes('3d')).toEqual([]);
+    expect(connectableCreatableTypes('')).toEqual([]);
+  });
+});
+
+describe('resolveConnectCreateIntent — when a blank release opens the menu', () => {
+  const base = {
+    fromNodeId: 'a',
+    fromNodeKind: 'image',
+    fromHandleType: 'source' as string | null,
+    toNodeId: null as string | null,
+    releasedOnPane: true,
+    readOnly: false,
+  };
+
+  it('opens for a source-handle drag released on the blank pane', () => {
+    expect(resolveConnectCreateIntent(base)).toEqual({
+      sourceId: 'a',
+      sourceKind: 'image',
+      types: ['text', 'image', 'video'],
+    });
+  });
+
+  it('declines a drag that ended on a node (a normal connect / reject, not a create)', () => {
+    expect(resolveConnectCreateIntent({ ...base, toNodeId: 'b' })).toBeNull();
+  });
+
+  it('declines a drag that started from an INPUT stub (only outputs create downstream)', () => {
+    expect(
+      resolveConnectCreateIntent({ ...base, fromHandleType: 'target' }),
+    ).toBeNull();
+  });
+
+  it('declines a release over a node body / chrome (not the blank pane)', () => {
+    expect(
+      resolveConnectCreateIntent({ ...base, releasedOnPane: false }),
+    ).toBeNull();
+  });
+
+  it('declines for a read-only viewer (cannot create nodes)', () => {
+    expect(resolveConnectCreateIntent({ ...base, readOnly: true })).toBeNull();
+  });
+
+  it('declines when no creatable modality accepts the source (empty menu never opens)', () => {
+    expect(
+      resolveConnectCreateIntent({ ...base, fromNodeKind: '3d' }),
+    ).toBeNull();
+  });
+
+  it('declines when the drag carries no source node (defensive)', () => {
+    expect(
+      resolveConnectCreateIntent({
+        ...base,
+        fromNodeId: null,
+        fromNodeKind: undefined,
+      }),
+    ).toBeNull();
+  });
+});

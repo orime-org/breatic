@@ -119,6 +119,8 @@ import {
 import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
 import { CanvasMiniMap } from '@web/spaces/canvas/CanvasMiniMap';
+import { ConnectCreateMenu } from '@web/spaces/canvas/ConnectCreateMenu';
+import { resolveConnectCreateIntent } from '@web/spaces/canvas/lib/connect-create';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
 import { GroupSelectionToolbar } from '@web/spaces/canvas/GroupSelectionToolbar';
@@ -847,15 +849,50 @@ function CanvasSpaceInner({
     [t],
   );
 
+  // Drag-to-blank create + connect (batch-2 item 3): armed by onConnectEnd
+  // when an output-stub drag releases over the blank pane.
+  const [connectCreate, setConnectCreate] = React.useState({
+    open: false,
+    x: 0,
+    y: 0,
+    sourceId: '',
+    sourceKind: '',
+  });
+
   // A DRAG-connect refused by the rules gets a WHY (user 2026-07-10):
   // "Audio can't connect into Image". Fired once on release — never during the
   // drag (isValidConnection runs per pointer-move; toasting there would spam).
-  // A release over empty canvas (toNode null) is a normal cancel, not a toast.
   // Click-connect has its OWN handler below: xyflow's onClickConnectEnd hands
   // over the DRAG connection state, which a pure tap-tap gesture never
   // populates (round-3 adversarial — reusing this handler there was a no-op).
   const onConnectEnd = React.useCallback<OnConnectEnd>(
-    (_event, state) => {
+    (event, state) => {
+      // An OUTPUT-stub drag released over the BLANK pane is not a cancel: it
+      // opens the create + connect menu at the release point (batch-2 item 3).
+      // The pure resolver gates it (source stub only / editors only / at least
+      // one rule-compatible creatable type).
+      const intent = resolveConnectCreateIntent({
+        fromNodeId: state.fromNode?.id ?? null,
+        fromNodeKind: state.fromNode?.type,
+        fromHandleType: state.fromHandle?.type ?? null,
+        toNodeId: state.toNode?.id ?? null,
+        releasedOnPane:
+          event.target instanceof Element &&
+          event.target.classList.contains('react-flow__pane'),
+        readOnly,
+      });
+      if (intent) {
+        const point =
+          'changedTouches' in event ? event.changedTouches[0] : event;
+        setConnectCreate({
+          open: true,
+          x: point.clientX,
+          y: point.clientY,
+          sourceId: intent.sourceId,
+          sourceKind: intent.sourceKind,
+        });
+        return;
+      }
       if (state.isValid !== false || !state.fromNode || !state.toNode) return;
       // A drag may start from either end — resolve which node is the source.
       const fromIsSource = state.fromHandle?.type === 'source';
@@ -873,7 +910,7 @@ function CanvasSpaceInner({
         }),
       );
     },
-    [t, kindLabel],
+    [t, kindLabel, readOnly],
   );
 
   // CLICK-connect rejection toast (round-3 adversarial): reconstruct the
@@ -1102,6 +1139,47 @@ function CanvasSpaceInner({
       setSelectAfterCreate([createNodeAt(type, position)]);
     },
     [createNodeAt],
+  );
+
+  // The connect-create menu's pick: create the node CENTERED on the release
+  // point and wire source → new node — as ONE undo entry (one gesture, one
+  // action; undoing must remove the node and its wire together).
+  const onConnectCreatePick = React.useCallback(
+    (type: CreatableNodeType): void => {
+      // Same convert-at-pick-time convention as the right-click create menu.
+      const point = screenToFlowPosition({
+        x: connectCreate.x,
+        y: connectCreate.y,
+      });
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        const id = createNodeAt(type, point);
+        const added = addEdge(projectId, spaceId, {
+          id: `${connectCreate.sourceId}->${id}`,
+          source: connectCreate.sourceId,
+          target: id,
+        });
+        // Source deleted while the menu was open (collaborator race): the node
+        // still lands; surface the missing wire like every failed reference.
+        if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
+        setSelectAfterCreate([id]);
+      });
+    },
+    [
+      connectCreate.x,
+      connectCreate.y,
+      connectCreate.sourceId,
+      screenToFlowPosition,
+      createNodeAt,
+      projectId,
+      spaceId,
+      t,
+    ],
+  );
+  const onConnectCreateOpenChange = React.useCallback(
+    (open: boolean): void => {
+      setConnectCreate((prev) => ({ ...prev, open }));
+    },
+    [],
   );
 
   // ---- Upload (canvas-level: left button / drag-drop / file paste) ----
@@ -1848,6 +1926,11 @@ function CanvasSpaceInner({
   const activateNodeUpload = React.useCallback(
     (nodeId: string, modality: Modality): void => {
       if (readOnly) return;
+      // A reference pick owns node interactions (batch-2 item 12): a
+      // double-click on an empty node — or the node-menu Upload, both funnel
+      // here — must not pop the file picker over the running pick session.
+      // Read fresh from the store; the render closure can be stale.
+      if (useCanvasStore.getState().referencePickForNodeId) return;
       const accept = UPLOAD_ACCEPT[modality];
       const input = uploadInputRef.current;
       if (!accept || !input) return; // 3d / web have no picker yet
@@ -2374,6 +2457,14 @@ function CanvasSpaceInner({
           onOpenChange={onContextMenuOpenChange}
           onPick={onContextMenuPick}
           onPaste={pasteAtCursor}
+        />
+        <ConnectCreateMenu
+          open={connectCreate.open}
+          x={connectCreate.x}
+          y={connectCreate.y}
+          sourceKind={connectCreate.sourceKind}
+          onOpenChange={onConnectCreateOpenChange}
+          onPick={onConnectCreatePick}
         />
         <NodeContextMenu
           open={nodeMenu.open}

@@ -25,24 +25,31 @@ const NODE_LABEL_KEY: Record<CreatableNodeType, string> = {
 interface CreatableNodeMenuItemsProps {
   /** Called with the chosen creatable node type when a row is selected. */
   onPick: (type: CreatableNodeType) => void;
+  /**
+   * The types to offer, in the given order. Defaults to all 4 creatable
+   * modalities; the connect-create menu passes the rule-compatible subset.
+   */
+  types?: readonly CreatableNodeType[];
 }
 
 /**
- * The 4 creatable-node rows (modality icon + localized label), shared by the
- * node-library dropdown (chrome) and the canvas right-click menu so both
- * offer the same set in the same order. Renders `DropdownMenuItem`s, so it
- * must live inside a `DropdownMenuContent`.
+ * Creatable-node rows (modality icon + localized label), shared by the
+ * node-library dropdown (chrome), the canvas right-click menu, and the
+ * connect-create menu so all offer the same rows in the same order. Renders
+ * `DropdownMenuItem`s, so it must live inside a `DropdownMenuContent`.
  * @param root0 - Component props.
  * @param root0.onPick - Called with the chosen creatable node type.
- * @returns The 4 creatable-node dropdown items.
+ * @param root0.types - The types to offer (defaults to all 4).
+ * @returns The creatable-node dropdown items.
  */
 export function CreatableNodeMenuItems({
   onPick,
+  types = CREATABLE_NODE_TYPES,
 }: CreatableNodeMenuItemsProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <>
-      {CREATABLE_NODE_TYPES.map((type) => {
+      {types.map((type) => {
         const Icon = MODALITY_ICONS[type];
         return (
           <DropdownMenuItem
