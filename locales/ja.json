@@ -327,7 +327,8 @@
       "errorFailed": "生成を開始できませんでした。もう一度お試しください。",
       "errorNoSourceImage": "このモデルには元画像が必要です —— プロンプトで @ を入力して接続済みの画像を選んでください。",
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
-      "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。"
+      "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。",
+      "catalogUnavailable": "モデル一覧を読み込めませんでした。後でもう一度お試しください"
     },
     "nodeMenu": {
       "generate": "生成",

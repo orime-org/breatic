@@ -4,11 +4,13 @@
 import { Check, ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { cn } from '@web/lib/utils';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 
 interface ImageModeToggleProps {
@@ -79,34 +81,31 @@ export const ImageModeToggle = React.memo(function ImageModeToggle({
         </button>
       </PopoverTrigger>
       <PopoverContent side='top' align='start' className='w-auto min-w-[10rem] p-1'>
-        <ul role='listbox'>
+        {/* Same option pattern as LangSwitcher / ThemeToggle (spec §9.4): a
+            gap-0.5 column of ghost menu-item Buttons — the gap keeps the hover
+            and selected highlights visually separate. */}
+        <div className='flex flex-col gap-0.5'>
           {OPTIONS.map(({ mode, testId }) => (
-            <li key={mode}>
-              <button
-                type='button'
-                role='option'
-                aria-selected={mode === value}
-                data-testid={testId}
-                onClick={() => {
-                  if (mode !== value) onChange(mode);
-                  setOpen(false);
-                }}
-                className={
-                  'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent ' +
-                  (mode === value
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-popover-foreground')
-                }
-              >
-                <Check
-                  className={`h-3.5 w-3.5 shrink-0 ${mode === value ? 'opacity-100' : 'opacity-0'}`}
-                  aria-hidden='true'
-                />
-                {MODE_LABELS[mode]}
-              </button>
-            </li>
+            <Button
+              key={mode}
+              variant='ghost'
+              size='menu-item'
+              aria-pressed={mode === value}
+              data-testid={testId}
+              className={cn('justify-start', mode === value && 'bg-accent')}
+              onClick={() => {
+                if (mode !== value) onChange(mode);
+                setOpen(false);
+              }}
+            >
+              <Check
+                className={`h-3.5 w-3.5 shrink-0 ${mode === value ? 'opacity-100' : 'opacity-0'}`}
+                aria-hidden='true'
+              />
+              {MODE_LABELS[mode]}
+            </Button>
           ))}
-        </ul>
+        </div>
       </PopoverContent>
     </Popover>
   );

@@ -334,7 +334,8 @@
       "errorFailed": "Couldn't start generation. Please try again.",
       "errorNoSourceImage": "This model needs a source image — type @ in the prompt to pick a connected image.",
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
-      "modelUnavailable": "That model is no longer available — pick another."
+      "modelUnavailable": "That model is no longer available — pick another.",
+      "catalogUnavailable": "Model list unavailable — please try again later"
     },
     "edge": {
       "delete": "Delete connection"

@@ -418,13 +418,45 @@ export function GeneratePanelContainer(
     if (nodeGone) closeGeneratePanel();
   }, [nodeGone, closeGeneratePanel]);
   if (nodeId == null || nodeGone) return null;
+  return <CatalogGatedPanel {...props} nodeId={nodeId} />;
+}
+
+/**
+ * Model-catalog failure gate (spec §9.3, user-ratified): a panel without a
+ * catalog is a dead end (blank model pill, no ratio picker, execute
+ * permanently disabled), so a failed fetch EXPLAINS itself with a toast and
+ * the panel never opens — 禁 silent fail. Mounted only while a panel is OPEN
+ * (inside the nodeId gate), so the always-rendered container never touches
+ * react-query — a closed panel needs no QueryClient. Same queryKey as the
+ * body's query (one cache entry); remounting per open attempt re-fires the
+ * effect, so re-trying the right-click keeps telling the user while the API
+ * is down.
+ * @param props - The container props + the open panel's node id.
+ * @returns The floating panel, or null while the catalog is failed.
+ */
+function CatalogGatedPanel(
+  props: GeneratePanelContainerProps & { nodeId: string },
+): React.JSX.Element | null {
+  const t = useTranslation();
+  const closeGeneratePanel = useCanvasStore((s) => s.closeGeneratePanel);
+  const { isError: catalogError } = useQuery({
+    queryKey: ['models'],
+    queryFn: () => modelsApi.list(),
+  });
+  React.useEffect(() => {
+    if (catalogError) {
+      toast.error(t('canvas.generatePanel.catalogUnavailable'));
+      closeGeneratePanel();
+    }
+  }, [catalogError, closeGeneratePanel, t]);
+  if (catalogError) return null;
   return (
-    <NodeToolbar nodeId={nodeId} isVisible position={Position.Bottom}>
+    <NodeToolbar nodeId={props.nodeId} isVisible position={Position.Bottom}>
       {/* key={nodeId} makes switching the panel to another node a full REMOUNT:
           promptText / promptTextRef / submittingRef all reset to the new node's
           fresh state, so a prompt typed for node A can never be submitted to
           node B (nor can the execute button show A's enabled state on B). */}
-      <GeneratePanelBody {...props} key={nodeId} nodeId={nodeId} />
+      <GeneratePanelBody {...props} key={props.nodeId} />
     </NodeToolbar>
   );
 }

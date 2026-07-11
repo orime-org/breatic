@@ -911,9 +911,15 @@ function CanvasSpaceInner({
     [onReferencePickNodeClick, closeGeneratePanel],
   );
 
-  // Clicking the empty canvas closes an open Generate panel (item 6b).
+  // Clicking the empty canvas closes an open Generate panel (item 6b) —
+  // EXCEPT during a reference pick (spec §9.2): picking spans a large canvas,
+  // so a stray click between nodes is a natural misclick and must not abort
+  // the session (item 7: the Exit button is the only way out of pick mode).
   const onPaneClick = React.useCallback((): void => {
-    if (useCanvasStore.getState().generatePanelNodeId) closeGeneratePanel();
+    const { generatePanelNodeId, referencePickForNodeId } =
+      useCanvasStore.getState();
+    if (referencePickForNodeId != null) return;
+    if (generatePanelNodeId) closeGeneratePanel();
   }, [closeGeneratePanel]);
 
   // Recenter the picking node so it stays findable while selecting references

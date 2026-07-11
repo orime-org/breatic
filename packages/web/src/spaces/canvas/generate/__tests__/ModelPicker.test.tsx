@@ -62,4 +62,24 @@ describe('ModelPicker — pick the generation model from the catalog', () => {
       'unknown_model',
     );
   });
+
+  // Popover item consistency (spec §9.4, user-ratified: copy the language /
+  // theme switcher exactly). Their pattern is a gap-0.5 column of ghost
+  // Buttons — the gap keeps the hover and selected highlights from gluing
+  // into one block (user's screenshot); role=listbox / <li> were a semantics
+  // lie (no listbox keyboard model), so the plain button column replaces them.
+  it('marks the selected model (aria-pressed) and lays options out like the language switcher', () => {
+    render(
+      <ModelPicker models={MODELS} value='nano_banana_pro' onChange={() => {}} />,
+    );
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    const selected = screen.getByTestId('generate-model-option-nano_banana_pro');
+    const other = screen.getByTestId('generate-model-option-midjourney_v7');
+    expect(selected).toHaveAttribute('aria-pressed', 'true');
+    expect(other).toHaveAttribute('aria-pressed', 'false');
+    expect(selected.parentElement?.className).toContain('gap-0.5');
+    expect(selected.className).toContain('py-1.5');
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+    expect(document.querySelector('[role="option"]')).toBeNull();
+  });
 });

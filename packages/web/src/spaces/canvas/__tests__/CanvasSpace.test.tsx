@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Mock the Yjs binding so the component test never opens a real WebSocket
 // (useCanvasSpace → useSocket → HocuspocusProvider). The write helpers
@@ -71,6 +72,30 @@ function dispatchKeyDown(
         cancelable: true,
       }),
     );
+  });
+}
+
+/**
+ * Simulate a real user click on the ReactFlow pane. With `selectionOnDrag`
+ * (our Figma-like left-drag marquee) ReactFlow disables the pane's plain
+ * `click` handler and instead fires `onPaneClick` from the pointerup of a
+ * no-move pointerdown→pointerup pair — so a bare click event never reaches
+ * it. The pointerdown must look primary (`isPrimary`, button 0) to pass the
+ * Pane's guards; jsdom has no PointerEvent, so a MouseEvent is dressed with
+ * the pointer fields React reads.
+ * @param pane - The `.react-flow__pane` element.
+ */
+function clickPane(pane: Element): void {
+  const pointerInit = { bubbles: true, cancelable: true, button: 0 };
+  const down = new MouseEvent('pointerdown', pointerInit);
+  Object.defineProperty(down, 'isPrimary', { value: true });
+  Object.defineProperty(down, 'pointerId', { value: 1 });
+  const up = new MouseEvent('pointerup', pointerInit);
+  Object.defineProperty(up, 'isPrimary', { value: true });
+  Object.defineProperty(up, 'pointerId', { value: 1 });
+  act(() => {
+    pane.dispatchEvent(down);
+    pane.dispatchEvent(up);
   });
 }
 
@@ -258,6 +283,88 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-audio')).not.toContain('canvas-pick-selectable');
     expect(cls('src-text')).toContain('canvas-pick-selectable');
     expect(cls('src-image')).toContain('canvas-pick-selectable');
+  });
+
+  // Pick-mode pane-click guard (spec §9.2, user-ratified): while picking
+  // references across a large canvas a stray click on empty space is a natural
+  // misclick — it must NOT close the panel + abort the pick session (item 7:
+  // Exit is the only way out). Off pick mode, the pane click still closes an
+  // open panel (item 6b).
+  it('pane click during reference-pick keeps the panel + pick session alive', () => {
+    // The panel node must EXIST — the container's node-gone guard closes the
+    // panel for a vanished node, which would mask what this test pins.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    // The open panel renders the models useQuery — needs a QueryClient.
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: 'target',
+        referencePickForNodeId: 'target',
+      });
+    });
+    const pane = document.querySelector('.react-flow__pane');
+    expect(pane).not.toBeNull();
+    // With selectionOnDrag (our Figma-like left-drag marquee) ReactFlow routes
+    // pane clicks through pointerdown→pointerup, not the click event.
+    clickPane(pane as Element);
+    expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
+    expect(useCanvasStore.getState().referencePickForNodeId).toBe('target');
+  });
+
+  it('pane click with the panel open but NOT picking closes the panel (item 6b)', () => {
+    // The panel node must EXIST (otherwise the container's node-gone guard
+    // closes the panel by itself and this test would pass without exercising
+    // the pane click at all).
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: 'target',
+        referencePickForNodeId: null,
+      });
+    });
+    const pane = document.querySelector('.react-flow__pane');
+    expect(pane).not.toBeNull();
+    clickPane(pane as Element);
+    expect(useCanvasStore.getState().generatePanelNodeId).toBeNull();
   });
 
   // Viewer gate (the canvas-internal backstop for the HIGH review finding):

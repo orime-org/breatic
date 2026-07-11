@@ -124,6 +124,9 @@ export const PromptEditor = React.forwardRef<
             getPool: () => poolRef.current,
             emptyLabel: mentionEmptyLabel,
           }),
+          // The chip's text-reference hover resolves live content through the
+          // same pool ref (spec §9.1).
+          getPool: () => poolRef.current,
         }),
       ],
       immediatelyRender: false,

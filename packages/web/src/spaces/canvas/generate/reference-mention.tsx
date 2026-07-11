@@ -34,6 +34,12 @@ export interface ReferenceMentionOptions {
    * injected by the node itself (see addProseMirrorPlugins).
    */
   suggestion: Omit<SuggestionOptions<ReferenceRailItem>, 'editor'>;
+  /**
+   * Reads the CURRENT reference pool — the chip's hover preview resolves a
+   * text reference's live content through it (spec §9.1) instead of freezing
+   * the content into an attr that would go stale on later edits.
+   */
+  getPool?: () => ReferenceRailItem[];
 }
 
 /** Attr key on a reference-mention node carrying the snapshot thumbnail URL. */
@@ -107,9 +113,13 @@ export function serializePromptText(
  * grey-out. Non-editable content — the atom node is selected/deleted as a unit.
  * @param root0 - NodeView props from TipTap.
  * @param root0.node - The reference-mention ProseMirror node.
+ * @param root0.extension - The ReferenceMention extension (carries getPool).
  * @returns The inline thumbnail chip.
  */
-function ReferenceMentionChip({ node }: NodeViewProps): React.JSX.Element {
+function ReferenceMentionChip({
+  node,
+  extension,
+}: NodeViewProps): React.JSX.Element {
   const t = useTranslation();
   const thumbnail = node.attrs[MENTION_THUMBNAIL_ATTR] as string | null;
   const kind = node.attrs[MENTION_KIND_ATTR] as NodeKind | null;
@@ -123,8 +133,23 @@ function ReferenceMentionChip({ node }: NodeViewProps): React.JSX.Element {
   // icon rather than a broken-image placeholder. Old mentions carry no kind, so
   // default to image (the historical @-picker was image-centric).
   const FallbackIcon = getNodeIcon(kind ?? 'image');
+  // Text-reference hover (spec §9.1): resolve the source node's content LIVE
+  // from the pool (not from an attr snapshot). Read at render — the small
+  // staleness window (source edited while this chip never re-rendered) only
+  // affects the preview; the backend serialization resolves live at execute.
+  const sourceId = node.attrs[MENTION_SOURCE_ID_ATTR] as string | null;
+  const options = extension.options as ReferenceMentionOptions;
+  const textContent =
+    kind === 'text' && sourceId != null
+      ? options.getPool?.().find((r) => r.sourceNodeId === sourceId)
+        ?.textContent
+      : undefined;
   return (
-    <ThumbnailHoverPreview src={thumbnail ?? undefined} alt={label}>
+    <ThumbnailHoverPreview
+      src={thumbnail ?? undefined}
+      text={textContent}
+      alt={label}
+    >
       <NodeViewWrapper
         as='span'
         data-reference-mention=''

@@ -61,6 +61,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
           >
             <ThumbnailHoverPreview
               src={ref.thumbnail}
+              text={ref.textContent}
               alt={ref.sourceNodeName}
             >
               <button

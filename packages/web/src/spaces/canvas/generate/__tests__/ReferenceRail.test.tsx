@@ -58,6 +58,37 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     expect(container).toBeEmptyDOMElement();
   });
 
+  // Text-reference hover (spec §9.1): hovering a text reference previews its
+  // CONTENT (not an image). Being wrapped by the Tooltip trigger stamps
+  // Radix's data-state on the chip button — a text ref with content carries
+  // it; a text ref without content (nothing to preview) stays unwrapped.
+  it('wraps a text reference with content in a hover preview (Tooltip trigger)', () => {
+    const refs: ReferenceRailItem[] = [
+      {
+        refId: 'txt->me',
+        sourceNodeId: 'txt',
+        sourceNodeType: 'text',
+        sourceNodeName: 'Notes',
+        textContent: 'a red panda on a bike',
+      },
+      {
+        refId: 'empty->me',
+        sourceNodeId: 'empty',
+        sourceNodeType: 'text',
+        sourceNodeName: 'Empty',
+      },
+    ];
+    render(
+      <ReferenceRail references={refs} onRemove={() => {}} onInsert={() => {}} />,
+    );
+    expect(screen.getByTestId('generate-ref-insert-txt->me')).toHaveAttribute(
+      'data-state',
+    );
+    expect(
+      screen.getByTestId('generate-ref-insert-empty->me'),
+    ).not.toHaveAttribute('data-state');
+  });
+
   it('greys out + de-activates the rail when disabled (text-to-image, §2.5)', () => {
     render(
       <ReferenceRail

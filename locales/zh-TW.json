@@ -327,7 +327,8 @@
       "errorFailed": "生成啟動失敗，請重試。",
       "errorNoSourceImage": "此模型需要來源圖 —— 在提示詞裡輸入 @ 選擇一張已連線的圖。",
       "referenceAddFailed": "無法加入參考——該節點已不存在。",
-      "modelUnavailable": "該模型已無法使用——請另選一個。"
+      "modelUnavailable": "該模型已無法使用——請另選一個。",
+      "catalogUnavailable": "模型清單載入失敗,請稍後再試"
     },
     "nodeMenu": {
       "generate": "生成",

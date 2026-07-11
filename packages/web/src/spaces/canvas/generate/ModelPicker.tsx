@@ -6,11 +6,13 @@ import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
+import { Button } from '@web/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { cn } from '@web/lib/utils';
 import { ModelIcon } from '@web/spaces/canvas/generate/ModelIcon';
 
 interface ModelPickerProps {
@@ -63,35 +65,32 @@ export const ModelPicker = React.memo(function ModelPicker({
         align='start'
         className='max-h-52 w-auto min-w-[13rem] overflow-auto p-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent'
       >
-        <ul role='listbox'>
+        {/* Same option pattern as LangSwitcher / ThemeToggle (spec §9.4): a
+            gap-0.5 column of ghost menu-item Buttons — the gap keeps the hover
+            and selected highlights visually separate. */}
+        <div className='flex flex-col gap-0.5'>
           {models.map((m) => (
-            <li key={m.name}>
-              <button
-                type='button'
-                role='option'
-                aria-selected={m.name === value}
-                data-testid={`generate-model-option-${m.name}`}
-                onClick={() => {
-                  onChange(m.name);
-                  setOpen(false);
-                }}
-                className={
-                  'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent ' +
-                  (m.name === value
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-popover-foreground')
-                }
-              >
-                <Check
-                  className={`h-3.5 w-3.5 shrink-0 ${m.name === value ? 'opacity-100' : 'opacity-0'}`}
-                  aria-hidden='true'
-                />
-                <ModelIcon name={m.icon} className='h-4 w-4 shrink-0' />
-                {m.display_name}
-              </button>
-            </li>
+            <Button
+              key={m.name}
+              variant='ghost'
+              size='menu-item'
+              aria-pressed={m.name === value}
+              data-testid={`generate-model-option-${m.name}`}
+              className={cn('justify-start', m.name === value && 'bg-accent')}
+              onClick={() => {
+                onChange(m.name);
+                setOpen(false);
+              }}
+            >
+              <Check
+                className={`h-3.5 w-3.5 shrink-0 ${m.name === value ? 'opacity-100' : 'opacity-0'}`}
+                aria-hidden='true'
+              />
+              <ModelIcon name={m.icon} className='h-4 w-4 shrink-0' />
+              {m.display_name}
+            </Button>
           ))}
-        </ul>
+        </div>
       </PopoverContent>
     </Popover>
   );

@@ -35,17 +35,33 @@ describe('ImageModeToggle — the t2i / i2i mode popover', () => {
     expect(screen.getByTestId('generate-mode-i2i')).toBeInTheDocument();
   });
 
-  it('marks the active mode option as selected', () => {
+  it('marks the active mode option as selected (aria-pressed)', () => {
     setup('i2i');
     fireEvent.click(screen.getByTestId('generate-mode-trigger'));
     expect(screen.getByTestId('generate-mode-i2i')).toHaveAttribute(
-      'aria-selected',
+      'aria-pressed',
       'true',
     );
     expect(screen.getByTestId('generate-mode-t2i')).toHaveAttribute(
-      'aria-selected',
+      'aria-pressed',
       'false',
     );
+  });
+
+  // Popover item consistency (spec §9.4, user-ratified: copy the language /
+  // theme switcher exactly). Their pattern is a gap-0.5 column of ghost
+  // Buttons — the gap is what keeps the hover and selected highlights from
+  // gluing into one block (user's screenshot). role=listbox / <li> were a
+  // semantics lie (no listbox keyboard model was implemented) — the plain
+  // button column matches LangSwitcher / ThemeToggle.
+  it('lays the options out like the language/theme switchers (gap column, no fake listbox)', () => {
+    setup('t2i');
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+    const option = screen.getByTestId('generate-mode-i2i');
+    expect(option.parentElement?.className).toContain('gap-0.5');
+    expect(option.className).toContain('py-1.5');
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+    expect(document.querySelector('[role="option"]')).toBeNull();
   });
 
   it('fires onChange with the picked mode when switching to the other', () => {
