@@ -29,6 +29,26 @@ export function connectableCreatableTypes(
   return CREATABLE_NODE_TYPES.filter((type) => canConnect(sourceKind, type));
 }
 
+/**
+ * Classifies the element under a connection-drag release as "visually blank
+ * canvas". The caller resolves that element via `document.elementFromPoint`
+ * at the RELEASE coordinates — never `event.target`, which lies twice
+ * (adversarial round-1): a touchend's target is the element the touch
+ * STARTED on (the source handle), and mouse releases land on invisible hit
+ * layers the user cannot see (a 20px edge interaction stroke, the
+ * post-marquee NodesSelection rect). Blank = inside the pane, not on a node,
+ * not on the floating panel (NodeToolbar portal). Invisible overlays inside
+ * the pane deliberately count as blank — they LOOK blank.
+ * @param el - The element under the release point (null = nothing hit).
+ * @returns Whether the release lands on visually blank canvas.
+ */
+export function isBlankCanvasRelease(el: Element | null): boolean {
+  if (el === null || el.closest('.react-flow__pane') === null) return false;
+  return (
+    el.closest('.react-flow__node, .react-flow__node-toolbar') === null
+  );
+}
+
 /** What the create-menu needs to open: the source to wire from + its rows. */
 export interface ConnectCreateIntent {
   /** The dragged source node id (the new node wires source → new). */

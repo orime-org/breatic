@@ -113,14 +113,49 @@ describe('FLOW_NODE_TYPES', () => {
         body.compareDocumentPosition(handle) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
-      // The neutral 8px dot moved into an ::after pseudo when the handle
-      // element grew into a 24px invisible hot zone (batch-2 item 10): the
-      // ELEMENT is transparent (it is pure hit target), the DOT keeps the
-      // original neutral border-border / bg-muted pair.
-      expect(handle.className).toContain('!bg-transparent');
-      expect(handle.className).toContain('after:border-border');
-      expect(handle.className).toContain('after:bg-muted');
+      // The element IS the neutral 8px dot (its center = the edge anchor);
+      // the enlarged hit area lives in an invisible ::before that reaches
+      // mostly OUTWARD (batch-2 item 10, re-cut after adversarial round-1 —
+      // a body-overlapping zone hijacked clicks meant for the node).
+      expect(handle.className).toContain('!border-border');
+      expect(handle.className).toContain('!bg-muted');
+      expect(handle.className).toContain('before:absolute');
       expect(handle.className).not.toContain('!bg-background');
+    });
+  });
+
+  // nodesConnectable (viewer backstop + pick-session connect gate) flows
+  // store → NodeWrapper → the node component's isConnectable prop — and DIES
+  // there unless the component forwards it to <Handle>, whose own default is
+  // TRUE (adversarial round-1 HIGH: handles stayed live during a pick).
+  it('forwards isConnectable to both handles (false disables their connectable state)', () => {
+    const Text = FLOW_NODE_TYPES.text;
+    const data: TextNodeView = {
+      kind: 'text',
+      content: 'hello',
+      status: 'idle',
+      name: 'N',
+    };
+    const { container } = render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+        >
+          <Text
+            {...({
+              id: 'n1',
+              data,
+              selected: false,
+              isConnectable: false,
+            } as unknown as NodeProps)}
+          />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+    const handles = container.querySelectorAll('.react-flow__handle');
+    expect(handles.length).toBe(2);
+    handles.forEach((handle) => {
+      expect(handle.className).not.toContain('connectable');
     });
   });
 

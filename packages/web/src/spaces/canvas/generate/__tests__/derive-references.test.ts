@@ -117,8 +117,8 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
       node('me', { kind: 'image', name: 'Target', status: 'idle' }),
     ];
     const edges: CanvasEdge[] = [
-      edge('txt->me', 'txt', 'me'),
-      edge('img1->me', 'img1', 'me'),
+      edge('txt->me', 'txt', 'me', 1000),
+      edge('img1->me', 'img1', 'me', 2000),
     ];
 
     const refs = deriveReferences('me', nodes, edges);
@@ -153,17 +153,47 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
       ]);
     });
 
-    it('treats a missing createdAt as oldest (legacy edges sort first, stable among themselves)', () => {
+    it('treats a missing createdAt as oldest (legacy edges precede stamped ones)', () => {
       const edges: CanvasEdge[] = [
         edge('c->me', 'c', 'me', 3000),
         edge('a->me', 'a', 'me'),
         edge('b->me', 'b', 'me'),
       ];
-      // Legacy a, b keep their relative order and both precede the stamped c.
       expect(deriveReferences('me', nodes, edges).map((r) => r.sourceNodeId)).toEqual([
         'a',
         'b',
         'c',
+      ]);
+    });
+
+    // Adversarial (round-1): "stable among themselves" was an illusion — the
+    // input order IS Y.Map struct-store order, which differs across clients
+    // mid-session and flips on reload. Ties (all legacy edges; same-ms stamps)
+    // need a DETERMINISTIC tiebreak that every client derives identically:
+    // the edge id.
+    it('breaks createdAt ties by edge id — same order regardless of input order', () => {
+      const scrambled: CanvasEdge[] = [
+        edge('b->me', 'b', 'me'),
+        edge('a->me', 'a', 'me'),
+      ];
+      const reversed: CanvasEdge[] = [
+        edge('a->me', 'a', 'me'),
+        edge('b->me', 'b', 'me'),
+      ];
+      const fromScrambled = deriveReferences('me', nodes, scrambled).map((r) => r.refId);
+      const fromReversed = deriveReferences('me', nodes, reversed).map((r) => r.refId);
+      expect(fromScrambled).toEqual(fromReversed);
+      expect(fromScrambled).toEqual(['a->me', 'b->me']);
+    });
+
+    it('breaks a same-millisecond stamp tie by edge id too', () => {
+      const edges: CanvasEdge[] = [
+        edge('c->me', 'c', 'me', 500),
+        edge('b->me', 'b', 'me', 500),
+      ];
+      expect(deriveReferences('me', nodes, edges).map((r) => r.refId)).toEqual([
+        'b->me',
+        'c->me',
       ]);
     });
 

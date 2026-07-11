@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   connectableCreatableTypes,
+  isBlankCanvasRelease,
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
 
@@ -44,6 +45,71 @@ describe('connectableCreatableTypes — creatable ∩ rule-compatible targets', 
     // no creatable modality's whitelist admits them as sources.
     expect(connectableCreatableTypes('3d')).toEqual([]);
     expect(connectableCreatableTypes('')).toEqual([]);
+  });
+});
+
+// Adversarial (batch-2 round-1): the release element comes from
+// document.elementFromPoint(release coords), NOT event.target — a touchend's
+// target is the element the touch STARTED on (the handle), and mouse releases
+// can land on invisible hit layers. This classifier decides what counts as
+// "visually blank": inside the pane, not a node, not the floating panel.
+describe('isBlankCanvasRelease — what counts as visually blank canvas', () => {
+  /**
+   * Builds a chain of nested divs (outermost first) and returns the innermost.
+   * @param classes - Class names, outermost first ('' = no class).
+   * @returns The innermost element.
+   */
+  function nested(...classes: string[]): Element {
+    let parent: HTMLElement = document.createElement('div');
+    const root = parent;
+    for (const cls of classes) {
+      const el = document.createElement('div');
+      if (cls) el.className = cls;
+      parent.appendChild(el);
+      parent = el;
+    }
+    document.body.appendChild(root);
+    return parent;
+  }
+
+  it('the bare pane is blank', () => {
+    expect(isBlankCanvasRelease(nested('react-flow__pane'))).toBe(true);
+  });
+
+  it('an edge interaction stroke (invisible 20px hit layer) counts as blank', () => {
+    expect(
+      isBlankCanvasRelease(
+        nested('react-flow__pane', 'react-flow__edge', 'react-flow__edge-interaction'),
+      ),
+    ).toBe(true);
+  });
+
+  it('the NodesSelection rect (post-marquee overlay over blank canvas) counts as blank', () => {
+    expect(
+      isBlankCanvasRelease(nested('react-flow__pane', 'react-flow__nodesselection')),
+    ).toBe(true);
+  });
+
+  it('a node body is NOT blank', () => {
+    expect(
+      isBlankCanvasRelease(nested('react-flow__pane', 'react-flow__node', 'inner')),
+    ).toBe(false);
+  });
+
+  it('the floating generate panel (NodeToolbar portal) is NOT blank', () => {
+    expect(
+      isBlankCanvasRelease(
+        nested('react-flow__pane', 'react-flow__node-toolbar', 'panel-body'),
+      ),
+    ).toBe(false);
+  });
+
+  it('anything outside the pane (chrome, minimap panel, page) is NOT blank', () => {
+    expect(isBlankCanvasRelease(nested('react-flow__panel', 'react-flow__minimap'))).toBe(
+      false,
+    );
+    expect(isBlankCanvasRelease(nested('some-chrome'))).toBe(false);
+    expect(isBlankCanvasRelease(null)).toBe(false);
   });
 });
 

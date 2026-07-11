@@ -162,23 +162,40 @@ function makeFlowNode(
                 handle placed BEFORE the body has its inner half covered by the
                 body's surface and reads as a half-circle (the left-handle bug);
                 painting both on top of the body shows each as a full dot. */}
-            {/* Hot zone ≫ dot (batch-2 item 10): the Handle element — the
-                actual hit target — is a 24×24 invisible circle; the visible
-                8px dot is drawn centered by an ::after pseudo. No position
-                override: xyflow centers the handle on the node border via
-                `translate(-50%,-50%)`, so ANY size keeps the center (= the
-                edge anchor) exactly where the 8px dot was. */}
+            {/* Hot zone ≫ dot (batch-2 item 10, geometry re-cut after the
+                adversarial round): the Handle element stays the 8px visible
+                dot (xyflow centers it on the border = exact edge anchor);
+                an invisible ::before pseudo EXPANDS its hit area to 16×24,
+                asymmetrically — 12px OUTWARD into the inter-node gap, only
+                4px inward (the dot's own historical inset). A border-
+                centered 24px box put a 12px live strip OVER the node body,
+                which armed click-connect from ordinary selection clicks,
+                swallowed double-clicks, and hijacked edge-midline drags. */}
+            {/* Connectability MUST be forwarded (adversarial round-1 HIGH):
+                xyflow resolves nodesConnectable store→NodeWrapper→this prop
+                and <Handle> defaults to TRUE when the node component drops
+                it — leaving handles live through both the viewer backstop
+                and the pick-session connect gate. All THREE flags matter:
+                the drag-start and click-connect gestures gate on
+                isConnectableStart / isConnectableEnd, while isConnectable
+                only drives the styling class. */}
             {!isGroup ? (
               <>
                 <Handle
                   type='target'
                   position={Position.Left}
-                  className="!h-6 !w-6 !rounded-full !border-0 !bg-transparent after:absolute after:left-1/2 after:top-1/2 after:h-2 after:w-2 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:border after:border-border after:bg-muted after:content-['']"
+                  isConnectable={props.isConnectable}
+                  isConnectableStart={props.isConnectable}
+                  isConnectableEnd={props.isConnectable}
+                  className="!h-2 !w-2 !border-border !bg-muted before:absolute before:-left-2 before:-top-2 before:h-6 before:w-4 before:content-['']"
                 />
                 <Handle
                   type='source'
                   position={Position.Right}
-                  className="!h-6 !w-6 !rounded-full !border-0 !bg-transparent after:absolute after:left-1/2 after:top-1/2 after:h-2 after:w-2 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:border after:border-border after:bg-muted after:content-['']"
+                  isConnectable={props.isConnectable}
+                  isConnectableStart={props.isConnectable}
+                  isConnectableEnd={props.isConnectable}
+                  className="!h-2 !w-2 !border-border !bg-muted before:absolute before:-top-2 before:left-0 before:h-6 before:w-4 before:content-['']"
                 />
               </>
             ) : null}

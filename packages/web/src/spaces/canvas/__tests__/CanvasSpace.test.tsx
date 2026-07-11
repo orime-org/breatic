@@ -1001,16 +1001,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     configSpy.mockRestore();
   });
 
-  // ---- Handle hot zone (batch-2 item 10) ----
-  // The 8×8 dot was the ENTIRE hit target — precise-pointing misery. The
-  // handle element grows to a 24×24 invisible hot zone while the visible 8px
-  // dot is drawn centered by an ::after pseudo. NO position override: xyflow
-  // centers the handle on the node border via translate(-50%,-50%), so any
-  // size keeps the center (= the edge anchor) where the dot was — a manual
-  // -left-3 offset actually shifted the hot zone 12px OFF the border (caught
-  // by real-browser geometry). jsdom sees classes, not geometry; the browser
-  // smoke measures the real rects.
-  it('connection handles carry a 24px hot zone, centered dot, and edge-preserving offsets', () => {
+  // ---- Handle hot zone (batch-2 item 10, re-cut after adversarial) ----
+  // The Handle element stays the 8px dot (its center = the edge anchor); an
+  // invisible ::before expands the hit area 12px OUTWARD and only 4px inward
+  // — the earlier border-centered 24px box put a 12px live strip OVER the
+  // node body (armed click-connect from selection clicks, swallowed
+  // double-clicks, hijacked drags). jsdom sees classes, not geometry; the
+  // browser smoke measures the real rects.
+  it('connection handles keep the 8px anchor dot and grow an outward-biased ::before hot zone', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -1029,14 +1027,144 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(target).not.toBeNull();
     expect(source).not.toBeNull();
     for (const handle of [target, source]) {
-      expect(handle?.className).toContain('!h-6');
-      expect(handle?.className).toContain('!w-6');
-      expect(handle?.className).toContain('!bg-transparent');
-      expect(handle?.className).toContain('after:h-2');
-      expect(handle?.className).toContain('after:w-2');
-      // No manual position override — xyflow's own translate(-50%,-50%)
-      // centering is what keeps the edge anchor on the node border.
-      expect(handle?.className).not.toMatch(/!-left-|!-right-/);
+      expect(handle?.className).toContain('!h-2');
+      expect(handle?.className).toContain('!w-2');
+      expect(handle?.className).toContain('before:h-6');
+      expect(handle?.className).toContain('before:w-4');
+      expect(handle?.className).toContain('before:absolute');
+    }
+    // Outward bias: the target (left) zone reaches LEFT (-left-2), the
+    // source (right) zone reaches RIGHT (left-0 on an 8px element = the
+    // remaining 8px extends past the right edge).
+    expect(target?.className).toContain('before:-left-2');
+    expect(source?.className).toContain('before:left-0');
+  });
+
+  // ---- Pick session owns ALL connect gestures (adversarial round-1 HIGH) ----
+  // The item-12 gate covered only uploads; handles stayed live during a pick,
+  // so two candidate clicks in their hot zones ARMED xyflow click-connect and
+  // silently wrote a candidate-to-candidate edge the user never drew (and a
+  // 1px hot-zone drag released on blank could pop the create menu mid-pick).
+  // nodesConnectable=false during the pick kills both at the gesture source.
+  it('a reference pick disables the connection handles (no connectable state)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'candidate',
+            type: 'image',
+            position: { x: 400, y: 0 },
+            data: { kind: 'image', content: 'c.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const handle = document.querySelector('.react-flow__handle');
+    expect(handle?.className).toContain('connectable');
+    // Pick state only — the panel (its own catalog/query stack) is not
+    // needed to prove the gesture gate.
+    act(() => {
+      useCanvasStore.setState({ referencePickForNodeId: 'target' });
+    });
+    expect(
+      document.querySelector('.react-flow__handle')?.className,
+    ).not.toContain('connectable');
+    act(() => {
+      useCanvasStore.setState({ referencePickForNodeId: null });
+    });
+    expect(
+      document.querySelector('.react-flow__handle')?.className,
+    ).toContain('connectable');
+  });
+
+  // ---- Pick session suppresses the context menus (adversarial round-1) ----
+  // A node right-click mid-pick opened the full action menu (whose Upload
+  // silently no-ops behind the item-12 gate, and whose Delete would mutate
+  // the pick surface). The pick session owns pointer interactions until Exit.
+  it('a reference pick suppresses the node and pane context menus', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.setState({ referencePickForNodeId: 'target' });
+    });
+    const node = document.querySelector('.react-flow__node');
+    act(() => {
+      node?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(screen.queryByTestId('node-menu-generate')).toBeNull();
+    const pane = document.querySelector('.react-flow__pane');
+    act(() => {
+      pane?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(screen.queryByTestId('create-node-text')).toBeNull();
+    act(() => {
+      useCanvasStore.setState({ referencePickForNodeId: null });
+    });
+  });
+
+  // ---- Exit restores keyboard focus (adversarial round-1, a11y) ----
+  // The Exit button unmounts with the banner; without a hand-off, focus
+  // drops to <body> and a keyboard user is stranded. Exit passes focus to
+  // the panel's pick trigger (still mounted — the pick kept the panel open).
+  it('exiting the pick via the banner hands focus to the pick trigger', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    // The real trigger lives in the Generate panel (kept open by the pick);
+    // this test plants a stand-in so the hand-off contract is provable
+    // without mounting the full panel stack (catalog fetch + socket).
+    const trigger = document.createElement('button');
+    trigger.setAttribute('data-testid', 'generate-tool-reference');
+    document.body.appendChild(trigger);
+    try {
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: 'target' });
+      });
+      const exit = screen.getByTestId('reference-pick-exit');
+      act(() => {
+        exit.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(useCanvasStore.getState().referencePickForNodeId).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      trigger.remove();
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: null });
+      });
     }
   });
 

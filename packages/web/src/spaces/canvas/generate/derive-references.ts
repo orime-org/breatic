@@ -88,11 +88,18 @@ export function deriveReferences(
 ): ReferenceRailItem[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   // filter() returns a fresh array, so the in-place sort never mutates the
-  // caller's edges. Array.prototype.sort is stable, so unstamped legacy edges
-  // (?? 0) keep their relative order while preceding every stamped edge.
+  // caller's edges. Ties (all unstamped legacy edges; same-ms stamps) break
+  // by edge id — the input order is Y.Map struct-store order, which DIFFERS
+  // across clients mid-session and flips on reload, so "stable sort keeps
+  // legacy order" would just reproduce the nondeterminism the stamp exists
+  // to remove (adversarial round-1). The id tiebreak gives every client the
+  // identical rail (and i2i payload) order.
   const incoming = edges
     .filter((e) => e.target === nodeId)
-    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+    .sort(
+      (a, b) =>
+        (a.createdAt ?? 0) - (b.createdAt ?? 0) || a.id.localeCompare(b.id),
+    );
   const rail: ReferenceRailItem[] = [];
   for (const edge of incoming) {
     const source = byId.get(edge.source);

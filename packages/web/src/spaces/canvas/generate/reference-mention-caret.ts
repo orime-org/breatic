@@ -25,8 +25,13 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 
-/** Identifies the caret plugin (tests resolve the live plugin through it). */
-export const referenceMentionCaretKey = new PluginKey('referenceMentionCaret');
+/**
+ * Identifies the caret plugin (tests resolve the live plugin through it).
+ * Its plugin state is the focus flag mirrored from TipTap's focus/blur metas.
+ */
+export const referenceMentionCaretKey = new PluginKey<boolean>(
+  'referenceMentionCaret',
+);
 
 /** CSS class of the fake-caret widget (drawn + blinked in index.css). */
 export const REFERENCE_MENTION_CARET_CLASS = 'reference-mention-caret';
@@ -91,9 +96,24 @@ function renderCaret(): HTMLElement {
  * NodeSelection behavior (the chip selects as a unit).
  * @returns The ProseMirror plugin.
  */
-export function createReferenceMentionCaret(): Plugin {
-  return new Plugin({
+export function createReferenceMentionCaret(): Plugin<boolean> {
+  return new Plugin<boolean>({
     key: referenceMentionCaretKey,
+    // Focus gate (adversarial round-1): a native caret never renders in an
+    // unfocused editor, so neither may the fake one — without this it blinked
+    // on panel open (initial selection lands before a leading chip while the
+    // editor is unfocused) and kept blinking after blur, showing two carets
+    // at once. TipTap's core focusEvents plugin dispatches `focus` / `blur`
+    // transaction metas on the real DOM events; the plugin state mirrors
+    // them (no duplicate DOM listeners).
+    state: {
+      init: (): boolean => false,
+      apply: (tr, focused): boolean => {
+        if (tr.getMeta('focus') !== undefined) return true;
+        if (tr.getMeta('blur') !== undefined) return false;
+        return focused;
+      },
+    },
     props: {
       handleClick: (view, pos, event): boolean => {
         // A click on the chip itself must keep selecting the chip as a unit.
@@ -118,7 +138,8 @@ export function createReferenceMentionCaret(): Plugin {
         );
         return true;
       },
-      decorations: (state): DecorationSet | null => {
+      decorations(state): DecorationSet | null {
+        if (!referenceMentionCaretKey.getState(state)) return null;
         const pos = caretBlindPos(state);
         if (pos === null) return null;
         return DecorationSet.create(state.doc, [
@@ -129,10 +150,12 @@ export function createReferenceMentionCaret(): Plugin {
       },
       // Class attrs from multiple sources concatenate, so this only ever ADDS
       // the marker class; {} contributes nothing while the caret is idle.
-      attributes: (state): Record<string, string> =>
-        caretBlindPos(state) === null
+      attributes(state): Record<string, string> {
+        if (!referenceMentionCaretKey.getState(state)) return {};
+        return caretBlindPos(state) === null
           ? {}
-          : { class: REFERENCE_MENTION_CARET_ACTIVE_CLASS },
+          : { class: REFERENCE_MENTION_CARET_ACTIVE_CLASS };
+      },
     },
   });
 }

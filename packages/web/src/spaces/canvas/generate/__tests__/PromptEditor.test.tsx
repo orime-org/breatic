@@ -11,6 +11,10 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import {
+  renderCollabCaret,
+  renderCollabSelection,
+} from '@web/spaces/canvas/generate/caret-render';
+import {
   PromptEditor,
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
@@ -257,6 +261,25 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
         'var(--color-palette-pink)',
       );
     });
+  });
+
+  it('wires BOTH safe builders into the caret extension (cursor render + selection render)', async () => {
+    const { editorEl } = await mountWithAwareness(true);
+    // Runtime binding, not source text: the mounted extension instance must
+    // carry the hardened builders — the default selectionRender inlines the
+    // raw remote user.color (adversarial round-1 HIGH).
+    const pm = editorEl.querySelector('.ProseMirror');
+    expect(pm).not.toBeNull();
+    // Resolve the live editor through the TipTap element binding.
+    const editor = (
+      pm as unknown as { editor?: { extensionManager: { extensions: Array<{ name: string; options: Record<string, unknown> }> } } }
+    ).editor;
+    const caretExt = editor?.extensionManager.extensions.find(
+      (e) => e.name === 'collaborationCaret',
+    );
+    expect(caretExt).toBeDefined();
+    expect(caretExt?.options.render).toBe(renderCollabCaret);
+    expect(caretExt?.options.selectionRender).toBe(renderCollabSelection);
   });
 
   it('mounts NO caret extension without a provider (the extension throws on null)', async () => {

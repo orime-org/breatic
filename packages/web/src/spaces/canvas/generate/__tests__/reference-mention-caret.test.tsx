@@ -79,6 +79,20 @@ function seedAdjacentChips(editor: Editor): void {
 // Gapcursor was the wrong tool (its valid() rejects textblock parents, so it
 // never fires inside a paragraph). The fix draws the caret ourselves, scoped
 // to exactly the caret-blind chip boundaries; native caret rules elsewhere.
+
+/**
+ * Marks the editor's caret plugin as focused/blurred by dispatching the same
+ * `focus` / `blur` transaction metas TipTap's core focusEvents plugin emits
+ * on the real DOM events (jsdom focus on contenteditable is unreliable).
+ * @param editor - The editor.
+ * @param focused - The focus state to set.
+ */
+function setEditorFocusState(editor: Editor, focused: boolean): void {
+  editor.view.dispatch(
+    editor.state.tr.setMeta(focused ? 'focus' : 'blur', {}),
+  );
+}
+
 describe('caretBlindPos — where the fake caret must render', () => {
   it('returns the position between two adjacent chips', () => {
     const editor = makeEditor();
@@ -231,10 +245,11 @@ describe('reference-mention caret plugin — wiring, clicks, decorations', () =>
     }
   });
 
-  it('renders exactly one caret widget decoration at the caret-blind position', () => {
+  it('renders exactly one caret widget decoration at the caret-blind position (focused)', () => {
     const editor = makeEditor();
     try {
       seedAdjacentChips(editor);
+      setEditorFocusState(editor, true);
       editor.commands.setTextSelection(2);
       const plugin = referenceMentionCaretKey.get(editor.state);
       const decos = plugin?.props.decorations?.call(plugin, editor.state);
@@ -266,6 +281,7 @@ describe('reference-mention caret plugin — wiring, clicks, decorations', () =>
     const editor = makeEditor();
     try {
       seedAdjacentChips(editor);
+      setEditorFocusState(editor, true);
       editor.commands.setTextSelection(2);
       expect(editor.view.dom.classList.contains(REFERENCE_MENTION_CARET_ACTIVE_CLASS)).toBe(
         true,
@@ -274,6 +290,65 @@ describe('reference-mention caret plugin — wiring, clicks, decorations', () =>
       expect(editor.view.dom.classList.contains(REFERENCE_MENTION_CARET_ACTIVE_CLASS)).toBe(
         false,
       );
+    } finally {
+      editor.destroy();
+    }
+  });
+});
+
+// Focus gating (adversarial round-1): a native caret NEVER renders in an
+// unfocused editor. Without the gate the fake caret blinked on panel open
+// (initial selection lands before a leading chip, editor unfocused) and kept
+// blinking after blur — two carets at once, falsely signalling where
+// keystrokes land. The plugin tracks TipTap's focus/blur transaction metas.
+describe('reference-mention caret plugin — focus gating', () => {
+  it('renders NO decoration while the editor is unfocused (panel open, initial selection)', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      // Initial selection in a chip-leading doc IS caret-blind — but the
+      // editor was never focused, so nothing may render.
+      editor.commands.setTextSelection(1);
+      const plugin = referenceMentionCaretKey.get(editor.state);
+      const decos = plugin?.props.decorations?.call(plugin, editor.state);
+      expect(decos ?? null).toBeNull();
+      expect(
+        editor.view.dom.classList.contains(
+          REFERENCE_MENTION_CARET_ACTIVE_CLASS,
+        ),
+      ).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('blur removes the caret and the native-caret suppression, focus restores them', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      setEditorFocusState(editor, true);
+      editor.commands.setTextSelection(2);
+      const plugin = referenceMentionCaretKey.get(editor.state);
+      expect(
+        (plugin?.props.decorations?.call(plugin, editor.state) as
+          | { find: () => unknown[] }
+          | null
+          | undefined)?.find(),
+      ).toHaveLength(1);
+      setEditorFocusState(editor, false);
+      expect(plugin?.props.decorations?.call(plugin, editor.state) ?? null).toBeNull();
+      expect(
+        editor.view.dom.classList.contains(
+          REFERENCE_MENTION_CARET_ACTIVE_CLASS,
+        ),
+      ).toBe(false);
+      setEditorFocusState(editor, true);
+      expect(
+        (plugin?.props.decorations?.call(plugin, editor.state) as
+          | { find: () => unknown[] }
+          | null
+          | undefined)?.find(),
+      ).toHaveLength(1);
     } finally {
       editor.destroy();
     }

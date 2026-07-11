@@ -19,7 +19,10 @@ import {
   REFERENCE_MENTION_NODE,
   type MentionOccurrence,
 } from '@web/spaces/canvas/generate/at-reference';
-import { renderCollabCaret } from '@web/spaces/canvas/generate/caret-render';
+import {
+  renderCollabCaret,
+  renderCollabSelection,
+} from '@web/spaces/canvas/generate/caret-render';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
@@ -148,7 +151,10 @@ export const PromptEditor = React.forwardRef<
               user: caretUser,
               // Receiver-side safe render: whitelisted hue → theme-adaptive
               // palette var; never inlines free-form remote color strings.
+              // BOTH builders — the default selectionRender inlines the raw
+              // remote color too (adversarial round-1 HIGH).
               render: renderCollabCaret,
+              selectionRender: renderCollabSelection,
             }),
           ]
           : []),

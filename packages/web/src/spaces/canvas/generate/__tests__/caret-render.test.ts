@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   renderCollabCaret,
+  renderCollabSelection,
   safeCaretColor,
 } from '@web/spaces/canvas/generate/caret-render';
 
@@ -64,5 +65,28 @@ describe('renderCollabCaret — caret DOM for a remote collaborator', () => {
     const label = el.querySelector('.collaboration-carets__label');
     expect(label?.textContent).toBe('<img src=x onerror=alert(1)>');
     expect(label?.querySelector('img')).toBeNull();
+  });
+});
+
+// Adversarial round-1 HIGH: hardening only the cursor widget left the
+// SELECTION highlight on the extension's default builder, which inlines the
+// raw remote user.color into a style attribute — the exact
+// `;background:url(...)` beacon vector caret-render defends against, through
+// the second door. The selection builder must route through safeCaretColor.
+describe('renderCollabSelection — remote selection highlight attrs', () => {
+  it('builds the highlight from the whitelisted hue, translucent via color-mix', () => {
+    const attrs = renderCollabSelection({ hue: 'pink', color: '#c2298a' });
+    expect(attrs.class).toBe('collaboration-carets__selection');
+    expect(attrs.style).toContain('var(--color-palette-pink)');
+    expect(attrs.style).toContain('color-mix');
+  });
+
+  it('never inlines a style-injection payload (neutral token instead)', () => {
+    const attrs = renderCollabSelection({
+      hue: 'red;background:url(https://evil.example)',
+      color: '#000;background-image:url(https://evil.example/beacon)',
+    });
+    expect(attrs.style).not.toContain('evil.example');
+    expect(attrs.style).toContain('var(--color-muted-foreground)');
   });
 });

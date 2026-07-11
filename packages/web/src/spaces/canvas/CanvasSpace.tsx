@@ -120,7 +120,10 @@ import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
 import { CanvasMiniMap } from '@web/spaces/canvas/CanvasMiniMap';
 import { ConnectCreateMenu } from '@web/spaces/canvas/ConnectCreateMenu';
-import { resolveConnectCreateIntent } from '@web/spaces/canvas/lib/connect-create';
+import {
+  isBlankCanvasRelease,
+  resolveConnectCreateIntent,
+} from '@web/spaces/canvas/lib/connect-create';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
 import { GroupSelectionToolbar } from '@web/spaces/canvas/GroupSelectionToolbar';
@@ -473,6 +476,17 @@ function CanvasSpaceInner({
     (s) => s.referencePickForNodeId,
   );
   const endReferencePick = useCanvasStore((s) => s.endReferencePick);
+  // Banner Exit (a11y, adversarial round-1): the Exit button unmounts with
+  // the banner, dropping keyboard focus to <body>. Hand focus to the panel's
+  // pick trigger — still mounted, because the pick keeps the panel open. The
+  // trigger is in the DOM right now (setState re-renders later), so the
+  // synchronous focus lands before the banner unmounts.
+  const onExitReferencePick = React.useCallback((): void => {
+    endReferencePick();
+    document
+      .querySelector<HTMLElement>('[data-testid="generate-tool-reference"]')
+      ?.focus();
+  }, [endReferencePick]);
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
@@ -867,23 +881,26 @@ function CanvasSpaceInner({
   // populates (round-3 adversarial — reusing this handler there was a no-op).
   const onConnectEnd = React.useCallback<OnConnectEnd>(
     (event, state) => {
-      // An OUTPUT-stub drag released over the BLANK pane is not a cancel: it
+      // An OUTPUT-stub drag released over BLANK canvas is not a cancel: it
       // opens the create + connect menu at the release point (batch-2 item 3).
-      // The pure resolver gates it (source stub only / editors only / at least
-      // one rule-compatible creatable type).
+      // The release element comes from elementFromPoint at the RELEASE
+      // coordinates — event.target lies twice (adversarial round-1): a
+      // touchend targets the element the touch STARTED on (the handle), and
+      // mouse releases land on invisible hit layers (edge interaction
+      // strokes, the NodesSelection rect) the user perceives as blank.
+      const point =
+        'changedTouches' in event ? event.changedTouches[0] : event;
       const intent = resolveConnectCreateIntent({
         fromNodeId: state.fromNode?.id ?? null,
         fromNodeKind: state.fromNode?.type,
         fromHandleType: state.fromHandle?.type ?? null,
         toNodeId: state.toNode?.id ?? null,
-        releasedOnPane:
-          event.target instanceof Element &&
-          event.target.classList.contains('react-flow__pane'),
+        releasedOnPane: isBlankCanvasRelease(
+          document.elementFromPoint(point.clientX, point.clientY),
+        ),
         readOnly,
       });
       if (intent) {
-        const point =
-          'changedTouches' in event ? event.changedTouches[0] : event;
         setConnectCreate({
           open: true,
           x: point.clientX,
@@ -1405,6 +1422,10 @@ function CanvasSpaceInner({
     (event: React.MouseEvent | MouseEvent): void => {
       event.preventDefault();
       if (readOnly) return;
+      // A reference pick owns pointer interactions until Exit (adversarial
+      // round-1): the create/paste menu would mutate the pick surface and its
+      // creations auto-select mid-session. Fresh store read — closures stale.
+      if (useCanvasStore.getState().referencePickForNodeId) return;
       setContextMenu({ open: true, x: event.clientX, y: event.clientY });
     },
     [readOnly],
@@ -1433,6 +1454,10 @@ function CanvasSpaceInner({
       if (isEditableTarget(event.target as Element | null)) return;
       event.preventDefault();
       if (readOnly) return;
+      // Pick session gate (adversarial round-1): the node menu's Upload
+      // silently no-ops behind the item-12 gate and its Delete would mutate
+      // the pick surface — the pick owns node interactions until Exit.
+      if (useCanvasStore.getState().referencePickForNodeId) return;
       const locked = Boolean((node.data as { locked?: unknown }).locked);
       setNodeMenu({
         open: true,
@@ -1453,6 +1478,8 @@ function CanvasSpaceInner({
     (event: React.MouseEvent): void => {
       event.preventDefault();
       if (readOnly) return;
+      // Same pick-session gate as the node / pane menus.
+      if (useCanvasStore.getState().referencePickForNodeId) return;
       setSelectionMenu({ open: true, x: event.clientX, y: event.clientY });
     },
     [readOnly],
@@ -1462,6 +1489,8 @@ function CanvasSpaceInner({
     (event: React.MouseEvent, edge: Edge): void => {
       event.preventDefault();
       if (readOnly) return;
+      // Same pick-session gate — deleting an edge mid-pick mutates the rail.
+      if (useCanvasStore.getState().referencePickForNodeId) return;
       setEdgeMenu({
         open: true,
         x: event.clientX,
@@ -2311,7 +2340,12 @@ function CanvasSpaceInner({
           // the server reject it and snap it back. elementsSelectable stays on
           // so viewers can still click a node to inspect it.
           nodesDraggable={!readOnly}
-          nodesConnectable={!readOnly}
+          // A reference pick owns ALL connect gestures (adversarial round-1
+          // HIGH): live handles let two candidate hot-zone clicks arm xyflow
+          // click-connect and silently write a candidate-to-candidate edge
+          // mid-pick. Plain boolean store prop — safe to flip, unlike the
+          // key-code props (see web-frontend-traps).
+          nodesConnectable={!readOnly && referencePickForNodeId == null}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragStop}
@@ -2376,7 +2410,15 @@ function CanvasSpaceInner({
               a selected group (mirrors the Cmd/Ctrl+G shortcuts). */}
           <NodeToolbar
             nodeId={selectedIds}
-            isVisible={groupOffer.kind !== 'none' && !readOnly}
+            // Hidden during a reference pick (adversarial round-1): floating
+            // chrome over the pick surface swallows candidate clicks and its
+            // group/ungroup actions mutate mid-session — same concealment
+            // rule as the left menu / viewport toolbar (item 13).
+            isVisible={
+              groupOffer.kind !== 'none' &&
+              !readOnly &&
+              referencePickForNodeId == null
+            }
             position={Position.Top}
           >
             <GroupSelectionToolbar
@@ -2428,7 +2470,7 @@ function CanvasSpaceInner({
             <button
               type='button'
               data-testid='reference-pick-exit'
-              onClick={endReferencePick}
+              onClick={onExitReferencePick}
               className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
             >
               {t('canvas.generatePanel.exitSelect')}

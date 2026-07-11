@@ -1156,6 +1156,13 @@ export function addEdge(
     // the write. Returns whether the edge landed so the caller can surface
     // feedback (a silently-rejected edge must not read as success in the UI).
     if (!nodesMap.has(edge.source) || !nodesMap.has(edge.target)) return;
+    // Deterministic ids make a duplicate drag map onto the EXISTING entry —
+    // rewriting it would replace createdAt (the reference silently jumps to
+    // the rail's end) and push a spurious undo entry. Idempotent success.
+    if (edgesMap.has(edge.id)) {
+      added = true;
+      return;
+    }
     const map = new Y.Map<unknown>();
     map.set('id', edge.id);
     map.set('source', edge.source);
@@ -1288,12 +1295,20 @@ export function readEdges(doc: Y.Doc): ReadonlyArray<CanvasEdge> {
   const out: CanvasEdge[] = [];
   edgesMap.forEach((map) => {
     if (!(map instanceof Y.Map)) return;
+    // createdAt is untrusted collaborative data (same convention as
+    // readNodeLeaseGen): a corrupt stamp (string / NaN) would make the rail
+    // sort comparator return NaN, which TimSort treats as "equal" — silently
+    // un-sorting HEALTHY edges around it. Drop anything non-finite.
+    const rawCreatedAt = map.get('createdAt');
     out.push({
       id: String(map.get('id') ?? ''),
       source: String(map.get('source') ?? ''),
       target: String(map.get('target') ?? ''),
       toolId: (map.get('toolId') as string | undefined) ?? undefined,
-      createdAt: (map.get('createdAt') as number | undefined) ?? undefined,
+      createdAt:
+        typeof rawCreatedAt === 'number' && Number.isFinite(rawCreatedAt)
+          ? rawCreatedAt
+          : undefined,
     });
   });
   return out;

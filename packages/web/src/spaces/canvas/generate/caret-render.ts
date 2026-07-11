@@ -50,6 +50,26 @@ export function safeCaretColor(user: CaretUser): string {
 }
 
 /**
+ * Builds the SELECTION-highlight decoration attrs for a remote collaborator
+ * (CollaborationCaret `selectionRender` option). The extension's default
+ * builder inlines the raw remote `user.color` into the style attribute — the
+ * same injection door the cursor render closes, so this override must exist
+ * alongside it (adversarial round-1 HIGH). Translucency comes from color-mix
+ * so the safe color can stay a token var.
+ * @param user - The remote user's awareness identity payload.
+ * @returns The selection decoration attributes.
+ */
+export function renderCollabSelection(user: CaretUser): {
+  style: string;
+  class: string;
+} {
+  return {
+    style: `background-color: color-mix(in srgb, ${safeCaretColor(user)} 25%, transparent)`,
+    class: 'collaboration-carets__selection',
+  };
+}
+
+/**
  * Builds the caret DOM for a remote collaborator (CollaborationCaret `render`
  * option): the caret line + a floating name label, both colored via
  * {@link safeCaretColor}. The name lands as a TEXT NODE (no markup path).
