@@ -22,6 +22,7 @@ import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { serializeNodes } from '@web/spaces/canvas/node-clipboard';
 import { useCanvasStore } from '@web/stores';
+import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { assetsApi } from '@web/data/api';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -536,6 +537,150 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
   });
 
+  // Round-1 adversarial hole 1: a space-tab round-trip unmounts the canvas
+  // while the panel id persists in the global store; on remount the one-shot
+  // open effect used to fire against the reset-EMPTY buffer and never again,
+  // leaving an open panel on an unselected host with the close guard
+  // permanently disarmed. The binding machine must re-assert the selection
+  // after the mirror lands — and the guard must be re-armed (pane click
+  // closes again).
+  it('re-establishes the binding after a canvas remount with a persisted panel', async () => {
+    const target = {
+      id: 'target',
+      type: 'image',
+      position: { x: 0, y: 0 },
+      data: { kind: 'image', status: 'idle' },
+    } as const;
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target] }));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: 'target',
+        referencePickForNodeId: null,
+      });
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-id="target"]')?.className,
+      ).toContain('selected'),
+    );
+    // Space-tab switch away and back: unmount + fresh mount, store untouched.
+    view.unmount();
+    render(
+      <QueryClientProvider client={client}>
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    // The machine re-asserts the host selection once the mirror lands…
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-id="target"]')?.className,
+      ).toContain('selected'),
+    );
+    // …and the close guard is armed again: pane click closes the panel.
+    const pane = document.querySelector('.react-flow__pane');
+    clickPane(pane as Element);
+    await waitFor(() =>
+      expect(useCanvasStore.getState().generatePanelNodeId).toBeNull(),
+    );
+  });
+
+  // Round-1 adversarial hole 2: during a pick the selection sits on a
+  // candidate (host deselected, machine held). Re-choosing Generate on the
+  // SAME host clears the pick (store semantics) but the host id never
+  // changes — the machine must still re-assert the host selection.
+  it('re-establishes the binding on a same-host reopen mid-pick', async () => {
+    const target = {
+      id: 'target',
+      type: 'image',
+      position: { x: 0, y: 0 },
+      data: { kind: 'image', status: 'idle' },
+    } as const;
+    const other = {
+      id: 'other',
+      type: 'image',
+      position: { x: 200, y: 0 },
+      data: { kind: 'image', status: 'idle' },
+    } as const;
+    mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target, other] }));
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: 'target',
+        referencePickForNodeId: null,
+      });
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-id="target"]')?.className,
+      ).toContain('selected'),
+    );
+    // Enter pick; a pick click moves selection to the candidate by design —
+    // simulate the selection move via the machine-visible path (ReactFlow's
+    // native click-select), then reopen Generate on the SAME host.
+    act(() => {
+      useCanvasStore.setState({ referencePickForNodeId: 'target' });
+    });
+    const otherEl = document.querySelector('[data-id="other"]');
+    act(() => {
+      otherEl?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    });
+    // Reopen on the same host (context menu → Generate): clears the pick.
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target');
+    });
+    expect(useCanvasStore.getState().referencePickForNodeId).toBeNull();
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-id="target"]')?.className,
+      ).toContain('selected'),
+    );
+    expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
+  });
+
+  // Round-1 adversarial: an idle pane click (nothing selected) must not
+  // publish a fresh flowNodes identity — map-always-allocates would re-render
+  // every node on every misclick (reference-stability discipline).
+  it('idle pane click keeps the flowNodes buffer identity (no-op deselect)', async () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    await waitFor(() =>
+      expect(useCanvasGraphStore.getState().flowNodes).toHaveLength(1),
+    );
+    const before = useCanvasGraphStore.getState().flowNodes;
+    const pane = document.querySelector('.react-flow__pane');
+    clickPane(pane as Element);
+    expect(useCanvasGraphStore.getState().flowNodes).toBe(before);
+  });
+
   // Viewer gate (the canvas-internal backstop for the HIGH review finding):
   // a read-only canvas must drop a library create intent without ever
   // writing to Yjs. The `consumed` assertion proves the effect actually ran
@@ -795,6 +940,21 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 // cursor rules MUST stay scoped under `.react-flow .react-flow__node` (0,3,0)
 // or the dimmed node silently keeps grab instead of not-allowed. A future
 // "simplification" back to a bare `.canvas-pick-dimmed` selector regresses it.
+describe('reference-pick interaction contract', () => {
+  const src = readFileSync(
+    resolve(__dirname, '../CanvasSpace.tsx'),
+    'utf8',
+  );
+
+  it('disables marquee select while picking (NodesSelection rect would swallow pick clicks)', () => {
+    // Round-1 adversarial: with selectionOnDrag always on, a marquee during a
+    // pick leaves xyflow's NodesSelection rect overlaying the candidates and
+    // subsequent pick clicks hit the rect instead of the nodes (a dead zone in
+    // the continuous-pick contract). The prop must be pick-gated.
+    expect(src).toContain('selectionOnDrag={referencePickForNodeId == null}');
+  });
+});
+
 describe('reference-pick stylesheet contract (item 7 cursor specificity)', () => {
   const css = readFileSync(resolve(__dirname, '../../../index.css'), 'utf8');
 

@@ -13,18 +13,22 @@
  * paste auto-select the new node), which left the panel orphaned on an
  * unselected node.
  *
- * The rule is EDGE-triggered, not level-triggered: it closes only on the
- * host's selected → deselected transition. A level rule ("not selected =
- * close") would race the open gesture — the store opens the panel first and
- * the selection effect writes `selected` a beat later, so the first render
- * after opening would read "open + unselected" and kill the panel instantly.
- * The edge form is immune to open ordering and to switching the panel from
- * node A directly to node B (the transition is compared per host id).
+ * The binding is a STATE MACHINE, not a pair of one-shot effects (round-1
+ * adversarial, 2026-07-11): a first cut selected the host once on open (keyed
+ * on the id changing) and closed on the selected → deselected edge. Two real
+ * holes followed from "once": a space-tab round-trip remounts the canvas with
+ * the panel id persisted in the store, so the open-shot fired against a
+ * not-yet-mirrored EMPTY buffer and never again; and re-choosing Generate on
+ * the SAME host mid-pick kept the id unchanged so the shot never re-fired.
+ * Both left an open panel on an unselected host with the edge guard
+ * permanently disarmed (prev was never true). The machine below closes the
+ * gap: while the binding has not been ESTABLISHED (host never seen selected),
+ * it keeps asserting the selection; once established, losing it closes.
  *
- * Reference-pick mode is exempt: picking clicks move selection to candidate
- * source nodes by design, and the ratified pick contract says Exit is the only
- * way out — the Exit handler restores the host's selection so the invariant
- * re-establishes on the way back.
+ * Reference-pick mode holds the machine entirely: picking clicks move
+ * selection to candidate source nodes by design, and the ratified pick
+ * contract says Exit is the only way out — on exit (or on reopening the panel,
+ * which clears the pick), the assert branch re-establishes the binding.
  */
 
 /** One frame of the panel↔selection binding, compared across renders. */
@@ -34,29 +38,42 @@ export interface PanelSelectionSnapshot {
   /**
    * Whether the host node exists in the render buffer AND is selected;
    * null when the panel is closed or the host node is gone (a vanished host
-   * is the node-gone guard's job, not this rule's).
+   * is the node-gone guard's job, not this machine's).
    */
   hostSelected: boolean | null;
 }
 
+/** What the binding machine wants done this frame. */
+export type PanelSelectionAction = 'close' | 'select' | 'none';
+
 /**
- * Decides whether the Generate panel must auto-close because its host node
- * just LOST selection (selected → deselected edge on the same host, outside
- * reference-pick mode).
- * @param prev - The previous render's snapshot.
- * @param next - The current render's snapshot.
- * @param picking - Whether reference-pick mode is active (exempt: Exit is the
- *   only way out of a pick session).
- * @returns True when the panel should close.
+ * Advances the panel⇄selection binding one frame and returns the action due:
+ * `'select'` re-asserts the host as the selection while the binding has not
+ * yet been established (open gesture, canvas remount with a persisted panel,
+ * same-host reopen, pick exit); `'close'` fires on the established binding's
+ * selected → deselected edge; `'none'` otherwise. Pick mode holds the machine.
+ * @param prev - The previous frame's snapshot.
+ * @param next - The current frame's snapshot.
+ * @param picking - Whether reference-pick mode is active (machine held: Exit
+ *   is the only way out of a pick session).
+ * @returns The action due this frame.
  */
-export function shouldCloseOnSelectionEdge(
+export function resolvePanelSelectionAction(
   prev: PanelSelectionSnapshot,
   next: PanelSelectionSnapshot,
   picking: boolean,
-): boolean {
-  if (next.panelNodeId == null || picking) return false;
-  // Edges only count within the SAME host: switching the panel to another
-  // node starts a fresh binding (its selection effect runs this same commit).
-  if (prev.panelNodeId !== next.panelNodeId) return false;
-  return prev.hostSelected === true && next.hostSelected === false;
+): PanelSelectionAction {
+  if (next.panelNodeId == null || picking) return 'none';
+  // Binding holds (host selected) or the host is gone (node-gone guard's
+  // job — selecting or closing on a vanished host would fight it).
+  if (next.hostSelected !== false) return 'none';
+  // Established binding (same host was selected last frame) → losing the
+  // selection closes the panel.
+  if (prev.panelNodeId === next.panelNodeId && prev.hostSelected === true) {
+    return 'close';
+  }
+  // Binding not yet established → keep asserting the host selection until it
+  // lands (the buffer may not even contain the host yet on remount; the
+  // assert is idempotent and reference-stable, so retrying is free).
+  return 'select';
 }

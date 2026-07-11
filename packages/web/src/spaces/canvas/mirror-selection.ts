@@ -98,6 +98,31 @@ export function mergeMirroredSelection(
 }
 
 /**
+ * Rewrites the `selected` flag across a render buffer, reusing the previous
+ * array reference when nothing changes. Programmatic selection writes (panel
+ * host assert, pane-click deselect) run on high-frequency paths, and
+ * publishing a fresh array identity for a no-op write would re-render the
+ * whole canvas (reference-stability discipline, #1647). Unchanged items keep
+ * their object reference so `React.memo` on node bodies still bails.
+ * @param current - The current render buffer (nodes or edges).
+ * @param shouldSelect - Decides each item's target selected state.
+ * @returns The rewritten buffer, or `current` itself when nothing changed.
+ */
+export function reconcileSelection<T extends { id: string; selected?: boolean }>(
+  current: ReadonlyArray<T>,
+  shouldSelect: (item: T) => boolean,
+): T[] {
+  let changed = false;
+  const mapped = current.map((item) => {
+    const target = shouldSelect(item);
+    if ((item.selected === true) === target) return item;
+    changed = true;
+    return { ...item, selected: target };
+  });
+  return changed ? mapped : (current as T[]);
+}
+
+/**
  * Edge counterpart of {@link mergeMirroredSelection}: carry the per-user local
  * `selected` flag forward by id when rebuilding the edge array from the Yjs
  * mirror. Without this the freshly-mirrored edges (rebuilt on every Yjs change)

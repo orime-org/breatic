@@ -87,7 +87,7 @@ import {
   resolveClickConnectRejection,
 } from '@web/spaces/canvas/lib/connection-rules';
 import {
-  shouldCloseOnSelectionEdge,
+  resolvePanelSelectionAction,
   type PanelSelectionSnapshot,
 } from '@web/spaces/canvas/lib/generate-panel-selection';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
@@ -126,6 +126,7 @@ import { SelectionContextMenu } from '@web/spaces/canvas/SelectionContextMenu';
 import {
   mergeMirroredEdgeSelection,
   mergeMirroredSelection,
+  reconcileSelection,
 } from '@web/spaces/canvas/mirror-selection';
 import {
   captureClipboard,
@@ -473,35 +474,29 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     setZoom(rfZoom);
   }, [rfZoom, setZoom]);
-  // Panel ⇄ selection binding — opening half (item 6 + selection rebind,
-  // user-ratified 2026-07-11): an open panel's host node is the sole
-  // selection. Unchanged nodes keep their previous reference so React.memo
-  // still bails.
+  // Panel ⇄ selection binding (user-ratified 2026-07-11) — one state machine,
+  // not one-shot effects: while the binding is not yet ESTABLISHED (host never
+  // seen selected), keep asserting the host as the sole selection; once
+  // established, the host losing selection closes the panel through ANY path
+  // (another node clicked, empty canvas clicked, menu-create / paste
+  // auto-selecting the new node, grouping…). Round-1 adversarial: a one-shot
+  // open effect (keyed on the id changing) missed the canvas-remount and
+  // same-host-reopen paths and left the close guard permanently disarmed on
+  // an unselected host. Pick mode holds the machine; exiting the pick (or
+  // reopening the panel, which clears it) re-asserts the binding. Rationale +
+  // rule table live in lib/generate-panel-selection.ts.
   const selectOnlyNode = React.useCallback(
     (nodeId: string): void => {
       setFlowNodes((current) =>
-        current.map((n) => {
-          const shouldSelect = n.id === nodeId;
-          return n.selected === shouldSelect
-            ? n
-            : { ...n, selected: shouldSelect };
-        }),
+        reconcileSelection(current, (n) => n.id === nodeId),
       );
+      // "Sole selection" includes edges: a selected edge left behind would
+      // keep its scissors affordance + Delete-key claim under the open panel
+      // (native node clicks clear edge selection the same way).
+      setFlowEdges((current) => reconcileSelection(current, () => false));
     },
-    [setFlowNodes],
+    [setFlowNodes, setFlowEdges],
   );
-  React.useEffect(() => {
-    if (generatePanelNodeId == null) return;
-    selectOnlyNode(generatePanelNodeId);
-  }, [generatePanelNodeId, selectOnlyNode]);
-
-  // Panel ⇄ selection binding — closing half (user-ratified 2026-07-11): the
-  // host LOSING selection closes the panel, through ANY path that moves
-  // selection (clicking another node, clicking empty canvas, menu-create /
-  // paste auto-selecting the new node, grouping…). Edge-triggered per host id
-  // so the open gesture (store id first, selection a beat later) never
-  // self-destructs; pick mode is exempt and Exit restores the host selection.
-  // Rationale + rule table live in lib/generate-panel-selection.ts.
   const hostSelected = React.useMemo((): boolean | null => {
     if (generatePanelNodeId == null) return null;
     const host = flowNodes.find((n) => n.id === generatePanelNodeId);
@@ -515,16 +510,22 @@ function CanvasSpaceInner({
     const prev = panelSelectionRef.current;
     const next = { panelNodeId: generatePanelNodeId, hostSelected };
     panelSelectionRef.current = next;
-    if (
-      shouldCloseOnSelectionEdge(prev, next, referencePickForNodeId != null)
-    ) {
+    const action = resolvePanelSelectionAction(
+      prev,
+      next,
+      referencePickForNodeId != null,
+    );
+    if (action === 'close') {
       closeGeneratePanel();
+    } else if (action === 'select' && generatePanelNodeId != null) {
+      selectOnlyNode(generatePanelNodeId);
     }
   }, [
     generatePanelNodeId,
     hostSelected,
     referencePickForNodeId,
     closeGeneratePanel,
+    selectOnlyNode,
   ]);
 
   const pendingViewportCommand = useCanvasStore(
@@ -1011,27 +1012,18 @@ function CanvasSpaceInner({
     [onReferencePickNodeClick],
   );
 
-  // Clicking the empty canvas deselects everything; the selection-edge rule
-  // then closes an open panel (single close path — this handler never closes
-  // directly). EXCEPT during a reference pick (spec §9.2): picking spans a
-  // large canvas, so a stray click between nodes is a natural misclick and
-  // must not abort the session (item 7: Exit is the only way out).
+  // Clicking the empty canvas deselects everything (nodes AND edges — native
+  // pane-click semantics); the binding machine then closes an open panel
+  // (single close path — this handler never closes directly). EXCEPT during a
+  // reference pick (spec §9.2): picking spans a large canvas, so a stray
+  // click between nodes is a natural misclick and must not abort the session
+  // (item 7: Exit is the only way out). reconcileSelection keeps the buffer
+  // identity when nothing was selected, so idle misclicks re-render nothing.
   const onPaneClick = React.useCallback((): void => {
     if (useCanvasStore.getState().referencePickForNodeId != null) return;
-    setFlowNodes((current) =>
-      current.map((n) => (n.selected ? { ...n, selected: false } : n)),
-    );
-  }, [setFlowNodes]);
-
-  // Leaving pick mode restores the host as the sole selection so the
-  // panel⇄selection invariant re-establishes — pick clicks move selection to
-  // candidate nodes by design, and returning with the host deselected would
-  // otherwise leave the panel one selection-edge away from a phantom close.
-  const onExitReferencePick = React.useCallback((): void => {
-    const host = useCanvasStore.getState().generatePanelNodeId;
-    endReferencePick();
-    if (host != null) selectOnlyNode(host);
-  }, [endReferencePick, selectOnlyNode]);
+    setFlowNodes((current) => reconcileSelection(current, () => false));
+    setFlowEdges((current) => reconcileSelection(current, () => false));
+  }, [setFlowNodes, setFlowEdges]);
 
   // Recenter the picking node so it stays findable while selecting references
   // across a large canvas (user 2026-07-10 item 7 locate). Pans only — keeps the
@@ -2253,7 +2245,10 @@ function CanvasSpaceInner({
           // zooms. With panOnScroll on, a plain wheel / two-finger scroll pans
           // and a ctrl-wheel / pinch zooms (zoomOnPinch, default) — ReactFlow
           // routes the two automatically, so zoomOnScroll stays at its default.
-          selectionOnDrag
+          // Marquee-select is disabled during a reference pick: xyflow's
+          // NodesSelection rect would overlay the picked bounding box and
+          // swallow subsequent pick clicks (round-1 adversarial dead zone).
+          selectionOnDrag={referencePickForNodeId == null}
           panOnDrag={false}
           panOnScroll
           panOnScrollMode={PanOnScrollMode.Free}
@@ -2316,7 +2311,7 @@ function CanvasSpaceInner({
             <button
               type='button'
               data-testid='reference-pick-exit'
-              onClick={onExitReferencePick}
+              onClick={endReferencePick}
               className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
             >
               {t('canvas.generatePanel.exitSelect')}
