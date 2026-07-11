@@ -240,16 +240,7 @@ describe('MagneticHandle — anchor / zone / dot decoupling', () => {
 // silently wire the wrong node. During a drag the ::before hit expansion is
 // disabled so target resolution falls back to the 8px anchor + connectionRadius,
 // and the dot rests (it must not chase mid-drag).
-describe('MagneticHandle — stands down during a connection drag', () => {
-  it('disables the ::before hit zone while a connection is in progress', () => {
-    const { handle } = mount(true);
-    expect(handle.className).not.toContain('before:pointer-events-none');
-    setConnecting(true);
-    expect(handle.className).toContain('before:pointer-events-none');
-    setConnecting(false);
-    expect(handle.className).not.toContain('before:pointer-events-none');
-  });
-
+describe('MagneticHandle — dot rests during a connection drag', () => {
   it('does not chase the cursor while a connection is in progress', () => {
     const { handle, dot } = mount(true);
     stubAnchorRect(handle);

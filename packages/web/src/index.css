@@ -192,6 +192,16 @@ body {
 .canvas-picking .react-flow__nodesselection {
   display: none;
 }
+/* Magnetic-handle zone stand-down during a connection drag (adversarial
+   round-4): the canvas adds `.canvas-connecting` synchronously in
+   onConnectStart, BEFORE xyflow's same-tick elementFromPoint target
+   resolution (which forces a style flush, so this applies immediately). With
+   the 36px ::before hit zone non-interactive, target resolution falls back to
+   the 8px anchor + connectionRadius — a neighbor's zone can no longer hijack
+   the wire's endpoint, with no first-frame window a React class would leave. */
+.canvas-connecting .react-flow__handle::before {
+  pointer-events: none;
+}
 .react-flow .react-flow__node.canvas-pick-selectable {
   cursor: pointer;
 }

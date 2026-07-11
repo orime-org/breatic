@@ -1308,6 +1308,22 @@ describe('reference-pick interaction contract', () => {
     expect(src).toContain('selectionOnDrag={referencePickForNodeId == null}');
   });
 
+  it('adds the canvas-connecting class SYNCHRONOUSLY on connect-start so the magnetic zone stands down (round-4)', () => {
+    // xyflow resolves a wire's target via elementFromPoint in the SAME tick it
+    // starts the connection (onConnectStart → isValidHandle). A React class off
+    // connection.inProgress commits one frame late, so the first move still
+    // hit-tests the live 36px handle zones and could hijack to a neighbor. The
+    // class must be added imperatively in onConnectStart (which runs
+    // synchronously before that first target resolution) and removed on end.
+    expect(src).toContain('onConnectStart={onConnectDragStart}');
+    expect(src).toMatch(
+      /classList\.add\(['"]canvas-connecting['"]\)/,
+    );
+    expect(src).toMatch(
+      /classList\.remove\(['"]canvas-connecting['"]\)/,
+    );
+  });
+
   it('NEVER toggles selectionKeyCode dynamically (xyflow latches mid-keyhold)', () => {
     // Round-3 adversarial: a round-2 fix gated selectionKeyCode on pick mode
     // ('Shift' → null). xyflow's useKeyPress detaches its listeners on the
@@ -1407,6 +1423,16 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     );
     expect(rule).toContain('cursor: pointer');
     expect(css).not.toMatch(/^\.canvas-pick-selectable\s*\{/m);
+  });
+
+  it('stands the magnetic handle ::before zone down while connecting (round-4)', () => {
+    // The synchronous .canvas-connecting class disables the 36px handle hit
+    // zone during a drag so it cannot hijack xyflow's elementFromPoint target
+    // resolution for a nearby node. Block-scoped so a decoy elsewhere can't
+    // satisfy the substring (R4 gameable-contract lesson).
+    expect(css).toMatch(
+      /\.canvas-connecting \.react-flow__handle::before\s*\{[^}]*pointer-events:\s*none/,
+    );
   });
 
   it('hides the NodesSelection rect during a pick (marquee dead-zone neutralizer)', () => {

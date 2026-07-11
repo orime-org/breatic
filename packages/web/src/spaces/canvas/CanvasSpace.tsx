@@ -893,6 +893,22 @@ function CanvasSpaceInner({
     sourceKind: '',
   });
 
+  // Magnetic-handle zone gate (adversarial round-4): xyflow resolves a wire's
+  // target via elementFromPoint SYNCHRONOUSLY in the same tick it starts the
+  // connection (startConnection → onConnectStart → isValidHandle, all in one
+  // onPointerMove). A React class toggled off connection.inProgress commits one
+  // frame too late, so the first move still hit-tests the live 36px handle
+  // zones and could hijack to a neighbor. onConnectStart runs synchronously
+  // BEFORE that first isValidHandle, so adding the class here — which
+  // elementFromPoint's own style flush applies immediately — stands every
+  // handle's ::before zone down for the whole drag, with no first-frame window.
+  const onConnectDragStart = React.useCallback<OnConnectStart>(() => {
+    containerRef.current?.classList.add('canvas-connecting');
+  }, []);
+  const clearConnectingClass = React.useCallback((): void => {
+    containerRef.current?.classList.remove('canvas-connecting');
+  }, []);
+
   // A DRAG-connect refused by the rules gets a WHY (user 2026-07-10):
   // "Audio can't connect into Image". Fired once on release — never during the
   // drag (isValidConnection runs per pointer-move; toasting there would spam).
@@ -901,6 +917,7 @@ function CanvasSpaceInner({
   // populates (round-3 adversarial — reusing this handler there was a no-op).
   const onConnectEnd = React.useCallback<OnConnectEnd>(
     (event, state) => {
+      clearConnectingClass();
       // An OUTPUT-stub drag released over BLANK canvas is not a cancel: it
       // opens the create + connect menu at the release point (batch-2 item 3).
       // The release element comes from elementFromPoint at the RELEASE
@@ -951,7 +968,7 @@ function CanvasSpaceInner({
         }),
       );
     },
-    [t, kindLabel, readOnly],
+    [t, kindLabel, readOnly, clearConnectingClass],
   );
 
   // CLICK-connect rejection toast (round-3 adversarial): reconstruct the
@@ -972,11 +989,15 @@ function CanvasSpaceInner({
           handleType: params.handleType ?? 'source',
         }
         : null;
+      // Same zone stand-down for the click-connect path: the second tap
+      // resolves its target via elementFromPoint too (round-4).
+      containerRef.current?.classList.add('canvas-connecting');
     },
     [],
   );
   const onClickConnectEnd = React.useCallback<OnConnectEnd>(
     (event) => {
+      clearConnectingClass();
       const from = clickConnectFromRef.current;
       clickConnectFromRef.current = null;
       const targetEl =
@@ -998,7 +1019,7 @@ function CanvasSpaceInner({
         }),
       );
     },
-    [t, kindLabel],
+    [t, kindLabel, clearConnectingClass],
   );
 
   const onConnect = React.useCallback(
@@ -2379,6 +2400,7 @@ function CanvasSpaceInner({
           onDelete={onDelete}
           onBeforeDelete={onBeforeDelete}
           onConnect={onConnect}
+          onConnectStart={onConnectDragStart}
           onConnectEnd={onConnectEnd}
           onClickConnectStart={onClickConnectStart}
           onClickConnectEnd={onClickConnectEnd}

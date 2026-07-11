@@ -21,8 +21,6 @@
 import { Handle, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
-import { cn } from '@web/lib/utils';
-
 /** The anchor element (and the dot) are 8px — matches the historic handle dot. */
 const ANCHOR_PX = 8;
 /** Dot radius, used to keep the dot fully inside the zone while chasing. */
@@ -74,12 +72,15 @@ export function MagneticHandle({
   const handleRef = React.useRef<HTMLDivElement>(null);
   const dotRef = React.useRef<HTMLSpanElement>(null);
   // Whether ANY connection drag is in progress (boolean selector → this only
-  // re-renders on the flip, not per pointer-move). The magnetic zone must
-  // stand down during one (adversarial round-3): xyflow resolves the wire's
-  // target via elementFromPoint (topmost handle wins), so a 36px zone painting
-  // over a neighbor would hijack targeting and could silently wire the wrong
-  // node. Disabling the ::before hit expansion falls target resolution back to
-  // the 8px anchor + connectionRadius.
+  // re-renders on the flip, not per pointer-move). Used to REST the dot during
+  // a drag (cosmetic — a one-frame lag is invisible). The correctness-critical
+  // half — standing the 36px ::before hit zone down so it cannot hijack
+  // xyflow's elementFromPoint target resolution for a nearby node — is NOT
+  // done here: a React class commits one frame too late, and xyflow resolves
+  // the target synchronously in the SAME tick it starts the connection
+  // (adversarial round-4). That gate is a synchronous class the canvas adds in
+  // onConnectStart (see `.canvas-connecting .react-flow__handle::before` in
+  // index.css), which elementFromPoint's style flush picks up immediately.
   const connecting = useStore((s) => s.connection.inProgress);
 
   /** Springs the dot back to the border (home) — leave / drag-start / dead. */
@@ -149,9 +150,7 @@ export function MagneticHandle({
       onPointerMove={chase}
       onPointerLeave={rest}
       onPointerDown={rest}
-      // Stand the 36px zone down during a connection drag so it cannot hijack
-      // xyflow's elementFromPoint target resolution for a nearby node.
-      className={cn(zoneClass, connecting && 'before:pointer-events-none')}
+      className={zoneClass}
     >
       {/* Visible dot: fills the 8px anchor (inset-0 = centered on the border),
           springs toward the cursor via transform with overshoot easing. */}
