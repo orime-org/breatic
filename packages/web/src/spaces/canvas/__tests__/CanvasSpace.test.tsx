@@ -1017,14 +1017,18 @@ describe('reference-pick interaction contract', () => {
     expect(src).toContain('selectionOnDrag={referencePickForNodeId == null}');
   });
 
-  it('gates the Shift marquee path while picking too (selectionKeyCode)', () => {
-    // Round-2 adversarial: selectionOnDrag only disables the DRAG activation
-    // path — xyflow's selectionKeyCode (default 'Shift') is an independent
-    // second path, so Shift-drag mid-pick still opened the marquee dead zone.
-    // Both activation paths must be pick-gated.
-    expect(src).toContain(
-      'selectionKeyCode={referencePickForNodeId == null ? \'Shift\' : null}',
-    );
+  it('NEVER toggles selectionKeyCode dynamically (xyflow latches mid-keyhold)', () => {
+    // Round-3 adversarial: a round-2 fix gated selectionKeyCode on pick mode
+    // ('Shift' → null). xyflow's useKeyPress detaches its listeners on the
+    // flip WITHOUT resetting keyPressed, so flipping mid-Shift-hold (Shift+
+    // clicking the add-reference button) latched the key permanently true and
+    // every subsequent drag became a marquee hijack — with no recovery path
+    // during the pick. Key-code props must stay CONSTANT; the pick dead zone
+    // is neutralized at the render layer instead (canvas-picking CSS).
+    // Matched as a JSX prop assignment — comments may (and do) mention the
+    // prop name to document the trap.
+    expect(src).not.toMatch(/selectionKeyCode=/);
+    expect(src).toContain('canvas-picking');
   });
 
   it('clears the NodesSelection rect on programmatic sole-select and pane deselect', () => {
@@ -1032,9 +1036,59 @@ describe('reference-pick interaction contract', () => {
     // nodesSelectionActive, but the programmatic assert (selectOnlyNode)
     // bypassed that lifecycle — after a pre-open marquee the rect shrank onto
     // the host and swallowed clicks until a pane click. Both programmatic
-    // selection writes must clear the flag.
-    const occurrences = src.split('nodesSelectionActive: false').length - 1;
-    expect(occurrences).toBeGreaterThanOrEqual(2);
+    // selection writes must clear the flag. Matched as the full setState call
+    // (not a raw substring, which a comment could satisfy — round-3 finding).
+    const calls = src.match(
+      /rfStoreApi\.setState\(\{ nodesSelectionActive: false \}\)/g,
+    );
+    expect(calls?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it('marks the canvas wrapper as canvas-picking while a pick session is active', async () => {
+    // The pick-mode stylesheet (NodesSelection hidden) is scoped by this
+    // class — assert the wrapper actually carries it during a pick.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <CanvasSpace projectId='p' spaceId='s' />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByTestId('canvas-space').className).not.toContain(
+      'canvas-picking',
+    );
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: 'target',
+        referencePickForNodeId: 'target',
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('canvas-space').className).toContain(
+        'canvas-picking',
+      ),
+    );
+    // Store is module-global — clear so later suites start clean.
+    act(() => {
+      useCanvasStore.setState({
+        generatePanelNodeId: null,
+        referencePickForNodeId: null,
+      });
+    });
   });
 });
 
@@ -1062,6 +1116,15 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     );
     expect(rule).toContain('cursor: pointer');
     expect(css).not.toMatch(/^\.canvas-pick-selectable\s*\{/m);
+  });
+
+  it('hides the NodesSelection rect during a pick (marquee dead-zone neutralizer)', () => {
+    // Round-3: the Shift marquee stays enabled during a pick (gating
+    // selectionKeyCode latches xyflow's key state mid-hold), so the
+    // click-swallowing rect must simply never render while picking.
+    const idx = css.indexOf('.canvas-picking .react-flow__nodesselection');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(css.slice(idx)).toContain('display: none');
   });
 
   it('keeps the breathing glow on the selectable hover state (functional cue)', () => {

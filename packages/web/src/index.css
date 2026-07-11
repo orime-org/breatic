@@ -184,6 +184,14 @@ body {
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* During a reference pick the NodesSelection rect (xyflow's post-marquee
+   overlay, pointer-events: all) must never render: it would sit over the
+   candidates and swallow pick clicks — the round-1 dead zone. Neutralized at
+   the render layer because gating selectionKeyCode dynamically latches
+   xyflow's internal key state mid-Shift-hold (round-3 adversarial). */
+.canvas-picking .react-flow__nodesselection {
+  display: none;
+}
 .react-flow .react-flow__node.canvas-pick-selectable {
   cursor: pointer;
 }

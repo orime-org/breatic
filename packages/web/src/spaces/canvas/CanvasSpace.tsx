@@ -511,16 +511,17 @@ function CanvasSpaceInner({
   const panelSelectionRef = React.useRef<PanelSelectionSnapshot>({
     panelNodeId: null,
     hostSelected: null,
+    picking: false,
   });
   React.useEffect(() => {
     const prev = panelSelectionRef.current;
-    const next = { panelNodeId: generatePanelNodeId, hostSelected };
+    const next = {
+      panelNodeId: generatePanelNodeId,
+      hostSelected,
+      picking: referencePickForNodeId != null,
+    };
     panelSelectionRef.current = next;
-    const action = resolvePanelSelectionAction(
-      prev,
-      next,
-      referencePickForNodeId != null,
-    );
+    const action = resolvePanelSelectionAction(prev, next);
     if (action === 'close') {
       closeGeneratePanel();
     } else if (action === 'select' && generatePanelNodeId != null) {
@@ -2176,7 +2177,16 @@ function CanvasSpaceInner({
         data-project-id={projectId}
         data-space-id={spaceId}
         data-readonly={readOnly ? 'true' : undefined}
-        className='relative h-full w-full bg-canvas'
+        // canvas-picking scopes the pick-mode stylesheet: it hides xyflow's
+        // NodesSelection rect (see index.css) so a marquee mid-pick cannot
+        // create a click-swallowing dead zone. The rect is neutralized at the
+        // RENDER layer on purpose — round-3 adversarial proved that toggling
+        // selectionKeyCode to disable the Shift marquee latches xyflow's
+        // internal key state when the flip happens mid-keyhold (useKeyPress
+        // detaches its listeners without resetting keyPressed), hijacking
+        // every drag until the next Shift press. Keep xyflow's key props
+        // CONSTANT; make the marquee harmless instead.
+        className={`relative h-full w-full bg-canvas ${referencePickForNodeId != null ? 'canvas-picking' : ''}`}
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
@@ -2252,13 +2262,15 @@ function CanvasSpaceInner({
           // zooms. With panOnScroll on, a plain wheel / two-finger scroll pans
           // and a ctrl-wheel / pinch zooms (zoomOnPinch, default) — ReactFlow
           // routes the two automatically, so zoomOnScroll stays at its default.
-          // Marquee-select is disabled during a reference pick: xyflow's
-          // NodesSelection rect would overlay the picked bounding box and
-          // swallow subsequent pick clicks (round-1 adversarial dead zone).
-          // BOTH activation paths need the gate — drag AND the Shift key
-          // (selectionKeyCode is an independent path; round-2 adversarial).
+          // Drag-marquee is disabled during a reference pick (round-1
+          // adversarial dead zone). The Shift marquee path stays ENABLED on
+          // purpose: gating selectionKeyCode dynamically latches xyflow's
+          // useKeyPress state when the flip happens mid-Shift-hold (round-3
+          // adversarial — listeners detach without resetting keyPressed,
+          // hijacking every drag afterwards). A Shift marquee mid-pick is
+          // harmless instead: the machine holds, and the canvas-picking CSS
+          // hides the NodesSelection rect so no dead zone forms.
           selectionOnDrag={referencePickForNodeId == null}
-          selectionKeyCode={referencePickForNodeId == null ? 'Shift' : null}
           panOnDrag={false}
           panOnScroll
           panOnScrollMode={PanOnScrollMode.Free}
