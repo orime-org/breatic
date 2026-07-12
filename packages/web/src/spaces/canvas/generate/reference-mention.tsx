@@ -179,15 +179,23 @@ function ReferenceMentionChip({
   const FallbackIcon = getNodeIcon(kind ?? 'image');
   const sourceId = node.attrs[MENTION_SOURCE_ID_ATTR] as string | null;
   const options = extension.options as ReferenceMentionOptions;
-  // Live-at-open hover (design 2026-07-12 invariant, decision C; batch-5 I5):
-  // resolve the preview body + empty hint from the CURRENT pool each time the
-  // tooltip opens, so a text source edited on the canvas shows its latest
-  // content even though this NodeView never re-renders (its body is
-  // deliberately NOT frozen into a synced attr — that would duplicate it into
-  // the Yjs prompt doc). Modality-agnostic: text → its live content (else the
-  // empty hint); image / video → the empty hint only while there is still no
-  // thumbnail (the image itself previews from the synced `src`).
-  const resolveHoverContent = React.useCallback((): {
+  const isVisual = kind === 'image' || kind === 'video';
+  // A visual chip with no thumbnail shows a static "not yet filled" hint. It is
+  // attr-backed (the F sync writes the live thumbnail, so this re-computes on the
+  // ensuing re-render), so it needs no live resolver and never blanks on the
+  // tooltip's fade-out.
+  const staticEmptyHint =
+    isVisual && !thumbnail
+      ? t('canvas.generatePanel.emptyImageReference')
+      : undefined;
+  // Only a TEXT chip resolves live at hover-open (design 2026-07-12 invariant,
+  // decision C; batch-5 I5): its body is NOT a synced attr (freezing it would
+  // duplicate it into the Yjs prompt doc), so the NodeView cannot re-render on a
+  // source edit — read the pool live on open instead. Image / video read from
+  // the synced `src` / `emptyHint` above; an unhandled modality (audio / 3d /
+  // web / legacy) passes neither, so it gets NO tooltip rather than an empty box
+  // (batch-5 adversarial finding 2).
+  const resolveTextHover = React.useCallback((): {
     text?: string;
     emptyHint?: string;
   } => {
@@ -195,25 +203,17 @@ function ReferenceMentionChip({
       sourceId != null
         ? options.getPool?.().find((r) => r.sourceNodeId === sourceId)
         : undefined;
-    if (kind === 'text') {
-      const content = row?.textContent;
-      return content
-        ? { text: content }
-        : { emptyHint: t('canvas.generatePanel.emptyTextReference') };
-    }
-    if (
-      (kind === 'image' || kind === 'video') &&
-      !(row?.thumbnail ?? thumbnail)
-    ) {
-      return { emptyHint: t('canvas.generatePanel.emptyImageReference') };
-    }
-    return {};
-  }, [options, sourceId, kind, thumbnail, t]);
+    const content = row?.textContent;
+    return content
+      ? { text: content }
+      : { emptyHint: t('canvas.generatePanel.emptyTextReference') };
+  }, [options, sourceId, t]);
   return (
     <ThumbnailHoverPreview
       src={thumbnail ?? undefined}
       alt={label}
-      resolveOnOpen={resolveHoverContent}
+      emptyHint={staticEmptyHint}
+      resolveOnOpen={kind === 'text' ? resolveTextHover : undefined}
     >
       <NodeViewWrapper
         as='span'

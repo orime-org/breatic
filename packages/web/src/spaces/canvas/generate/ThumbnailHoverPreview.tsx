@@ -43,14 +43,15 @@ export interface ThumbnailHoverPreviewProps {
   emptyHint?: string;
   /**
    * Resolves the text body + empty hint at HOVER-OPEN time from the LIVE pool
-   * (design 2026-07-12 invariant, decision C; batch-5 I5). A prompt `@` chip is
-   * a ProseMirror NodeView that does not re-render when the source text node's
-   * body changes (its body is deliberately not frozen into a synced attr — that
-   * would duplicate it into the Yjs prompt doc). Reading on open keeps the hover
-   * a live projection of the source without any cached copy. When present it
+   * (design 2026-07-12 invariant, decision C; batch-5 I5). A prompt `@` text
+   * chip is a ProseMirror NodeView that does not re-render when the source text
+   * node's body changes (its body is deliberately not frozen into a synced attr
+   * — that would duplicate it into the Yjs prompt doc). The resolved value is
+   * cached in state (seeded at mount, refreshed on open, kept on close) so the
+   * preview is live yet does not blank during the fade-out. When present it
    * OVERRIDES {@link ThumbnailHoverPreviewProps.text} /
-   * {@link ThumbnailHoverPreviewProps.emptyHint} and the wrapper always mounts
-   * (content is unknown until open).
+   * {@link ThumbnailHoverPreviewProps.emptyHint}. Only the TEXT chip passes it;
+   * image / video use the static (attr-backed) `src` / `emptyHint` instead.
    */
   resolveOnOpen?: () => { text?: string; emptyHint?: string };
   /** The trigger element (the chip). Must accept a ref + hover handlers. */
@@ -81,21 +82,29 @@ export function ThumbnailHoverPreview({
   resolveOnOpen,
   children,
 }: ThumbnailHoverPreviewProps): React.JSX.Element {
-  const [open, setOpen] = React.useState(false);
-  // Live-at-open (decision C): re-resolve the body/hint from the pool each time
-  // the tooltip opens, so the chip's preview reflects the source's CURRENT
-  // content without the NodeView ever re-rendering. Static props are the
-  // fallback for the rail path (no resolver).
-  const resolved = open && resolveOnOpen ? resolveOnOpen() : undefined;
-  const previewText = resolved ? resolved.text : text;
-  const previewHint = resolved ? resolved.emptyHint : emptyHint;
-  // Empty source AND no hint AND no live resolver → render the trigger unchanged
-  // (no preview). With a resolver the wrapper always mounts because the content
-  // is unknown until open.
+  // Live-at-open (decision C), CACHED so it survives the close animation. The
+  // body/hint is resolved from the live pool and kept in state: seeded at mount,
+  // refreshed on every open, and NEVER cleared on close. Radix keeps the content
+  // mounted ~150ms after open→false to play the fade-out (tooltip.tsx
+  // data-[state=closed]:animate-out); an open-gated resolve would blank the box
+  // mid-fade (batch-5 adversarial finding 1). Static props are the fallback for
+  // the rail path (no resolver — the rail re-renders on pool change).
+  const [resolved, setResolved] = React.useState<
+    { text?: string; emptyHint?: string } | undefined
+  >(() => resolveOnOpen?.());
+  const previewText = resolveOnOpen ? resolved?.text : text;
+  const previewHint = resolveOnOpen ? resolved?.emptyHint : emptyHint;
+  // No image, no text, no hint, no resolver → render the trigger unchanged (no
+  // preview). A chip of an unhandled modality passes none of these, so it gets
+  // NO tooltip rather than an empty box (batch-5 adversarial finding 2).
   if (!src && !text && !emptyHint && !resolveOnOpen) return <>{children}</>;
   return (
     <TooltipProvider delayDuration={200}>
-      <Tooltip onOpenChange={setOpen}>
+      <Tooltip
+        onOpenChange={(open) => {
+          if (open && resolveOnOpen) setResolved(resolveOnOpen());
+        }}
+      >
         <TooltipTrigger asChild>{children}</TooltipTrigger>
         <TooltipContent
           side='top'
@@ -112,11 +121,11 @@ export function ThumbnailHoverPreview({
             <div className='max-h-[220px] max-w-[220px] overflow-hidden whitespace-pre-wrap p-1 text-xs text-popover-foreground'>
               {previewText}
             </div>
-          ) : (
+          ) : previewHint ? (
             <div className='px-2 py-1 text-xs text-muted-foreground'>
               {previewHint}
             </div>
-          )}
+          ) : null}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
