@@ -291,10 +291,12 @@ body {
 /* A chip caught inside a text range selection (I2, user 2026-07-12): the atom's
    select-none opts it out of the browser's native selection paint, so a range
    covering it left it un-highlighted while the surrounding text turned blue. A
-   local ProseMirror node decoration adds this class so the chip reads as part of
-   the selection. The two-class selector out-specifies the chip's own bg-muted.
-   Uses the selection semantic token (classification color — no contrast math). */
-.reference-mention.reference-mention--range-selected {
+   local ProseMirror node decoration adds this class to the OUTER NodeView
+   wrapper (.node-referenceMention); the visible pill is the inner
+   .reference-mention (opaque bg-muted), so the highlight is painted on the inner
+   pill via a descendant selector. Uses the selection semantic token
+   (classification color — no contrast math). */
+.reference-mention--range-selected .reference-mention {
   background-color: color-mix(in srgb, var(--color-status-selected) 35%, transparent);
 }
 /* Remote collaborator carets in the generate prompt (batch-2 item 14,
