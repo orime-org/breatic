@@ -289,14 +289,20 @@ body {
    the same atom-skips-native-paint problem as the local I2 case, but for
    @tiptap/extension-collaboration-caret's remote-selection decoration. That
    decoration lands its `collaboration-carets__selection` class + the remote
-   user's identity background-color (color-mix, see renderCollabSelection in
-   caret-render.ts) on the chip's OUTER NodeView wrapper; the opaque inner pill
-   hid it, so a remote user selecting a chip showed nothing while the surrounding
-   text was tinted. Make the inner pill semi-transparent while the wrapper is
-   remote-selected so that per-user identity color tints through the pill too. */
+   user's identity color on the chip's OUTER NodeView wrapper; the opaque inner
+   pill hid it, so a remote user selecting a chip showed nothing while the
+   surrounding text was tinted. Paint the inner pill with the per-user color so
+   its FULL box is tinted (via the --collab-selection-bg custom property from
+   renderCollabSelection — a var() inherits through any nesting, unlike relying on
+   the decoration's own background box, which only covers the atom's baseline
+   inline box and left the taller pill's bottom edge untinted, user 2026-07-12).
+   Fallback to a neutral tint if the property is absent. */
 .collaboration-carets__selection .reference-mention,
 .reference-mention.collaboration-carets__selection {
-  background-color: color-mix(in srgb, var(--color-muted) 45%, transparent);
+  background-color: var(
+    --collab-selection-bg,
+    color-mix(in srgb, var(--color-muted) 45%, transparent)
+  );
 }
 /* Remote collaborator carets in the generate prompt (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render

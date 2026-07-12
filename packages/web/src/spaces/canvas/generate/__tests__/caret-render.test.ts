@@ -83,6 +83,15 @@ describe('renderCollabSelection — remote selection highlight attrs', () => {
     expect(attrs.style).toContain('color-mix');
   });
 
+  // The per-user color is also exposed as a custom property so an inline chip's
+  // inner pill can paint its full box with it via var() regardless of NodeView
+  // wrapper nesting (B, user 2026-07-12 — the pill's bottom edge was untinted).
+  it('exposes the per-user color as the --collab-selection-bg custom property', () => {
+    const attrs = renderCollabSelection({ hue: 'pink', color: '#c2298a' });
+    expect(attrs.style).toContain('--collab-selection-bg:');
+    expect(attrs.style).toContain('background-color: var(--collab-selection-bg)');
+  });
+
   it('never inlines a style-injection payload (neutral token instead)', () => {
     const attrs = renderCollabSelection({
       hue: 'red;background:url(https://evil.example)',

@@ -64,7 +64,14 @@ export function renderCollabSelection(user: CaretUser): {
   class: string;
 } {
   return {
-    style: `background-color: color-mix(in srgb, ${safeCaretColor(user)} 25%, transparent)`,
+    // Also expose the per-user color as a CSS custom property. Custom properties
+    // inherit through the whole DOM subtree (unlike `inherit`, which only reads
+    // the immediate parent), so an inline atom's inner pill can paint its FULL box
+    // with this color via var() regardless of the NodeView's wrapper nesting. The
+    // decoration's own background box only covers the atom's baseline-aligned
+    // inline box, so a taller pill (h-5 + align-middle, ~4px below that box) would
+    // otherwise leave its bottom edge untinted (B, user 2026-07-12).
+    style: `--collab-selection-bg: color-mix(in srgb, ${safeCaretColor(user)} 25%, transparent); background-color: var(--collab-selection-bg)`,
     class: 'collaboration-carets__selection',
   };
 }
