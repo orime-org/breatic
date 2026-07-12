@@ -7,6 +7,7 @@ import {
   renderCollabCaret,
   renderCollabSelection,
   safeCaretColor,
+  shouldRenderLabelBelow,
 } from '@web/spaces/canvas/generate/caret-render';
 
 // Awareness payloads are UNTRUSTED wire data from other clients (CRITICAL
@@ -88,5 +89,24 @@ describe('renderCollabSelection — remote selection highlight attrs', () => {
     });
     expect(attrs.style).not.toContain('evil.example');
     expect(attrs.style).toContain('var(--color-muted-foreground)');
+  });
+});
+
+// First-line label flip (D, user 2026-07-12): a caret whose top sits within the
+// clip threshold of the scroll-viewport top would have its above-label clipped,
+// so the label flips below instead. Pure geometry decision (the caller measures).
+describe('shouldRenderLabelBelow — first-line clip → flip below', () => {
+  it('flips below when the caret is within the threshold of the viewport top', () => {
+    // caret 8px below the viewport top (first line, py-2) < 20px threshold.
+    expect(shouldRenderLabelBelow(108, 100, 20)).toBe(true);
+  });
+
+  it('stays above once the caret clears the threshold (later lines)', () => {
+    // caret 26px below the viewport top (second line) > 20px threshold.
+    expect(shouldRenderLabelBelow(126, 100, 20)).toBe(false);
+  });
+
+  it('flips below at the exact viewport top (a caret scrolled flush to the edge)', () => {
+    expect(shouldRenderLabelBelow(100, 100, 20)).toBe(true);
   });
 });

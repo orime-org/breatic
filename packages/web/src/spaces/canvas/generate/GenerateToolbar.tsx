@@ -14,8 +14,13 @@ const PLACEHOLDER_TOOLS = [
 ] as const;
 
 interface GenerateToolbarProps {
-  /** Enter the "select a reference from the canvas" mode (participates in the reference rail). */
+  /** Toggle the "select a reference from the canvas" mode (enter, or exit while active). */
   onReference: () => void;
+  /**
+   * Whether the reference pick is running — renders the button in its active
+   * (highlighted) state so it reads as a toggle (user 2026-07-12 G).
+   */
+  referenceActive?: boolean;
   /**
    * Disable the Reference button — set in text-to-image, which generates from
    * scratch and ignores source images (mode toggle 2026-07-09 §2.5).
@@ -34,6 +39,7 @@ interface GenerateToolbarProps {
  */
 export const GenerateToolbar = React.memo(function GenerateToolbar({
   onReference,
+  referenceActive = false,
   referenceDisabled = false,
 }: GenerateToolbarProps): React.JSX.Element {
   const t = useTranslation();
@@ -61,7 +67,11 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         data-testid='generate-tool-reference'
         onClick={onReference}
         disabled={referenceDisabled}
-        className={buttonClass}
+        aria-pressed={referenceActive}
+        className={
+          buttonClass +
+          (referenceActive ? ' bg-accent text-accent-foreground' : '')
+        }
       >
         <Plus className='h-4 w-4' aria-hidden='true' />
         {t('canvas.generatePanel.reference')}

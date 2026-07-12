@@ -31,6 +31,12 @@ export interface ThumbnailHoverPreviewProps {
   text?: string;
   /** Alt text for an image preview. */
   alt: string;
+  /**
+   * Shown when the source is EMPTY (no `src`, no `text`) — a hint that the node
+   * is not yet generated / uploaded, so the user knows why the reference is
+   * blank instead of seeing nothing (user 2026-07-12 H). Absent → no preview.
+   */
+  emptyHint?: string;
   /** The trigger element (the chip). Must accept a ref + hover handlers. */
   children: React.ReactNode;
 }
@@ -43,6 +49,7 @@ export interface ThumbnailHoverPreviewProps {
  * @param root0.src - The image URL to preview.
  * @param root0.text - The text body to preview (used when `src` is absent).
  * @param root0.alt - Alt text for an image preview.
+ * @param root0.emptyHint - Hint shown when the source is empty (no src/text).
  * @param root0.children - The trigger element (the chip).
  * @returns The trigger with (when it has content) a hover preview.
  */
@@ -50,9 +57,13 @@ export function ThumbnailHoverPreview({
   src,
   text,
   alt,
+  emptyHint,
   children,
 }: ThumbnailHoverPreviewProps): React.JSX.Element {
-  if (!src && !text) return <>{children}</>;
+  // Empty source AND no hint → render the trigger unchanged (no preview). An
+  // empty source WITH a hint shows the hint so the user learns the node is not
+  // yet filled (H) rather than getting no feedback at all.
+  if (!src && !text && !emptyHint) return <>{children}</>;
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
@@ -68,9 +79,13 @@ export function ThumbnailHoverPreview({
               className='max-h-[220px] max-w-[220px] rounded-sm object-contain'
               draggable={false}
             />
-          ) : (
+          ) : text ? (
             <div className='max-h-[220px] max-w-[220px] overflow-hidden whitespace-pre-wrap p-1 text-xs text-popover-foreground'>
               {text}
+            </div>
+          ) : (
+            <div className='px-2 py-1 text-xs text-muted-foreground'>
+              {emptyHint}
             </div>
           )}
         </TooltipContent>

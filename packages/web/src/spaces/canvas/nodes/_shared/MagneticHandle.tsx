@@ -116,7 +116,11 @@ export function MagneticHandle({
       if (!el || !dot) return;
       const rect = el.getBoundingClientRect();
       const zoom = rect.width / ANCHOR_PX || 1;
-      const cx = rect.left + rect.width / 2;
+      // Spring from the BORDER (the anchor's outer edge = the dot's rest centre,
+      // which straddles the border — A, user 2026-07-12), NOT the anchor's own
+      // centre: rect.right is the border for a source, rect.left for a target.
+      // At the border the offset is 0, so the dot sits at rest straddling it.
+      const cx = type === 'source' ? rect.right : rect.left;
       const cy = rect.top + rect.height / 2;
       const rawX = (event.clientX - cx) / zoom;
       const rawY = (event.clientY - cy) / zoom;
@@ -137,16 +141,26 @@ export function MagneticHandle({
   // handle's OUTER edge (Position.Right → x + width), so an 8px handle CENTERED
   // on the border put the wire 4px OUTSIDE it — a visible gap. `!right-1` /
   // `!left-1` shift the anchor 4px inward so its outer edge (the attachment
-  // point) sits ON the border and the wire is flush against it. The dot then
-  // rests just inside the border (covering the attachment) and springs OUTWARD
-  // past it (leaving the node — an accepted look). The ::before offsets gain
-  // +4px (source left-1→left-2, target -left-8→-left-9) so the 36px zone still
-  // spans exactly the border → border+36 outside. Vertically centered
-  // (top-1/2 + -translate-y-1/2).
+  // point) sits ON the border and the wire is flush against it. The visible dot
+  // is offset back OUT by 4px (source left-1, target -left-1) so its CENTRE sits
+  // ON the border, straddling it (user 2026-07-12 A — restores the pre-P1 look
+  // where the dot midpoint is on the line, while keeping the wire flush). The
+  // ::before offsets gain +4px (source left-1→left-2, target -left-8→-left-9) so
+  // the 36px zone still spans exactly the border → border+36 outside. Vertically
+  // centered (top-1/2 + -translate-y-1/2).
   const zoneClass =
     type === 'source'
       ? '!h-2 !w-2 !right-1 !border-0 !bg-transparent before:absolute before:left-2 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]'
       : '!h-2 !w-2 !left-1 !border-0 !bg-transparent before:absolute before:-left-9 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]';
+
+  // The 8px dot, offset +4px OUTWARD from the anchor so its centre straddles the
+  // border (source left-1, target -left-1) — the anchor's outer edge is the
+  // border, and half the dot sits each side of it. It springs further out via
+  // transform (written by `chase`), back to this base on rest.
+  const dotBase =
+    'pointer-events-none absolute inset-y-0 w-2 rounded-full border border-border bg-muted transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]';
+  const dotClass =
+    type === 'source' ? `${dotBase} left-1` : `${dotBase} -left-1`;
 
   return (
     <Handle
@@ -161,13 +175,12 @@ export function MagneticHandle({
       onPointerDown={rest}
       className={zoneClass}
     >
-      {/* Visible dot: fills the 8px anchor (inset-0 = centered on the border),
-          springs toward the cursor via transform with overshoot easing. */}
+      {/* Visible dot: centre straddles the border, springs toward the cursor. */}
       <span
         ref={dotRef}
         data-testid='handle-dot'
         aria-hidden='true'
-        className='pointer-events-none absolute inset-0 rounded-full border border-border bg-muted transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]'
+        className={dotClass}
       />
     </Handle>
   );

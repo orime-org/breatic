@@ -12,8 +12,10 @@ import {
   ReferenceMention,
   referenceMentionContent,
   serializePromptText,
+  stripForeignReferenceChips,
 } from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
+import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 
 /**
@@ -185,6 +187,66 @@ describe('serializePromptText — backend prompt string with text-chip substitut
       expect(serializePromptText(editor, [imageRef])).toBe(
         'draw  next to ',
       );
+    } finally {
+      editor.destroy();
+    }
+  });
+});
+
+// Cross-node paste (E, user 2026-07-12): copying a chip from node A's prompt
+// into node B — which is NOT wired to that source — must drop the chip (a chip
+// means "this node references that source"), keeping the surrounding words. A
+// chip whose source IS in the target pool (same-node paste) survives.
+describe('stripForeignReferenceChips — cross-node paste', () => {
+  const chip = (id: string): ReferenceRailItem => ({
+    refId: `${id}->x`,
+    sourceNodeId: id,
+    sourceNodeType: 'image',
+    sourceNodeName: id,
+    thumbnail: `${id}.png`,
+  });
+
+  it('drops chips whose source is not in the target pool, keeps in-pool chips and text', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent(referenceMentionContent(chip('A')))
+        .insertContent('hi')
+        .insertContent(referenceMentionContent(chip('B')))
+        .run();
+      const slice = editor.state.doc.slice(0, editor.state.doc.content.size);
+      const stripped = stripForeignReferenceChips(slice, new Set(['A']));
+      let chips = 0;
+      let text = '';
+      stripped.content.descendants((n) => {
+        if (n.type.name === REFERENCE_MENTION_NODE) chips += 1;
+        if (n.isText) text += n.text ?? '';
+        return true;
+      });
+      expect(chips).toBe(1); // only A (in pool) survives; B (foreign) dropped
+      expect(text).toBe('hi'); // surrounding text kept
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('keeps every chip when all sources are in the pool (same-node paste)', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent(referenceMentionContent(chip('A')))
+        .insertContent(referenceMentionContent(chip('B')))
+        .run();
+      const slice = editor.state.doc.slice(0, editor.state.doc.content.size);
+      const stripped = stripForeignReferenceChips(slice, new Set(['A', 'B']));
+      let chips = 0;
+      stripped.content.descendants((n) => {
+        if (n.type.name === REFERENCE_MENTION_NODE) chips += 1;
+        return true;
+      });
+      expect(chips).toBe(2);
     } finally {
       editor.destroy();
     }

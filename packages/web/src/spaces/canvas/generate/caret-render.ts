@@ -69,10 +69,60 @@ export function renderCollabSelection(user: CaretUser): {
   };
 }
 
+/** Modifier class flipping the name label BELOW its caret (index.css). */
+const LABEL_BELOW_CLASS = 'collaboration-carets__label--below';
+/**
+ * How close (px) the caret's top may be to the editor's scroll-viewport top
+ * before the above-label would clip and must flip below. Covers a caret on the
+ * first line (top padding + a margin) but not the second.
+ */
+const LABEL_FLIP_THRESHOLD_PX = 20;
+
+/**
+ * Whether a caret's name label must render BELOW it instead of above: true when
+ * the caret sits within `threshold` px of the scroll viewport's top, where an
+ * above-label would clip (D, user 2026-07-12). Pure — the caller measures.
+ * @param caretTop - The caret's top in viewport px.
+ * @param containerTop - The scroll viewport's top in viewport px.
+ * @param threshold - Clip margin (defaults to {@link LABEL_FLIP_THRESHOLD_PX}).
+ * @returns True when the label should flip below.
+ */
+export function shouldRenderLabelBelow(
+  caretTop: number,
+  containerTop: number,
+  threshold: number = LABEL_FLIP_THRESHOLD_PX,
+): boolean {
+  return caretTop - containerTop < threshold;
+}
+
+/**
+ * After the caret mounts, flips its label below when a first-line caret would
+ * clip the above-label at the scroll-viewport top (D). Re-runs on every caret
+ * render (y-prosemirror re-renders on each move), so the label tracks the line.
+ * @param caret - The caret element (already built).
+ * @param label - The name label to toggle.
+ */
+function scheduleLabelFlip(caret: HTMLElement, label: HTMLElement): void {
+  if (typeof requestAnimationFrame !== 'function') return;
+  requestAnimationFrame(() => {
+    const container = caret.closest('[data-testid="generate-prompt-editor"]');
+    if (!container) return;
+    label.classList.toggle(
+      LABEL_BELOW_CLASS,
+      shouldRenderLabelBelow(
+        caret.getBoundingClientRect().top,
+        container.getBoundingClientRect().top,
+      ),
+    );
+  });
+}
+
 /**
  * Builds the caret DOM for a remote collaborator (CollaborationCaret `render`
  * option): the caret line + a floating name label, both colored via
- * {@link safeCaretColor}. The name lands as a TEXT NODE (no markup path).
+ * {@link safeCaretColor}. The name lands as a TEXT NODE (no markup path). The
+ * label renders above the caret, flipping BELOW on the first line where the
+ * above position would clip at the scroll-viewport top (D, user 2026-07-12).
  * @param user - The remote user's awareness identity payload.
  * @returns The caret element (label nested inside).
  */
@@ -88,5 +138,6 @@ export function renderCollabCaret(user: CaretUser): HTMLElement {
     document.createTextNode(typeof user.name === 'string' ? user.name : ''),
   );
   caret.appendChild(label);
+  scheduleLabelFlip(caret, label);
   return caret;
 }

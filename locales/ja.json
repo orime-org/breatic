@@ -305,6 +305,8 @@
       "mark": "マーク",
       "focus": "フォーカス",
       "reference": "参照",
+      "emptyImageReference": "まだ生成・アップロードされていません",
+      "emptyTextReference": "内容がありません",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で素材を参照",
       "mentionEmpty": "参照できる画像がありません — まず画像から線をつないでください",

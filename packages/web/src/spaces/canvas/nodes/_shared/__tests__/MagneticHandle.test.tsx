@@ -181,9 +181,11 @@ describe('MagneticHandle — anchor / zone / dot decoupling', () => {
   it('the dot chases the cursor inside the zone (outward offset, zoom-normalized)', () => {
     const { handle, dot } = mount();
     stubAnchorRect(handle);
-    // Cursor 20px right / 6px down of the anchor center (100,100).
+    // Cursor 16px right of the BORDER (a source's border = the anchor's right
+    // edge = 104) / 6px down of the vertical centre (100). The dot springs from
+    // the border it straddles, not the anchor centre (A, user 2026-07-12).
     firePointer(handle, 'pointermove', 120, 106);
-    expect(dot.style.transform).toBe('translate(20px, 6px)');
+    expect(dot.style.transform).toBe('translate(16px, 6px)');
   });
 
   it('clamps the chase so the dot stays inside the zone', () => {
@@ -232,7 +234,7 @@ describe('MagneticHandle — anchor / zone / dot decoupling', () => {
     const { handle, dot, rerender } = mount(true);
     stubAnchorRect(handle);
     firePointer(handle, 'pointermove', 120, 106);
-    expect(dot.style.transform).toBe('translate(20px, 6px)');
+    expect(dot.style.transform).toBe('translate(16px, 6px)');
     rerender(false);
     expect(dot.style.transform).toBe('');
   });
@@ -257,7 +259,7 @@ describe('MagneticHandle — dot rests during a connection drag', () => {
     const { handle, dot } = mount(true);
     stubAnchorRect(handle);
     firePointer(handle, 'pointermove', 120, 106);
-    expect(dot.style.transform).toBe('translate(20px, 6px)');
+    expect(dot.style.transform).toBe('translate(16px, 6px)');
     setConnecting(true);
     expect(dot.style.transform).toBe('');
   });

@@ -26,6 +26,7 @@ import {
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
+  MENTION_THUMBNAIL_ATTR,
   ReferenceMention,
   referenceMentionContent,
   serializePromptText,
@@ -255,6 +256,36 @@ export const PromptEditor = React.forwardRef<
     for (const { from, to } of deletions) tr.delete(from, to);
     editor.view.dispatch(tr);
   }, [editor, references]);
+
+  // Keep each reference chip's snapshot thumbnail in sync with its source's
+  // LIVE pool value (F, user 2026-07-12): re-uploading / regenerating a
+  // referenced image changes its thumbnail, and the prompt chip must reflect it
+  // like the rail already does (both read the same live pool). Runs on pool
+  // change; setting the attr re-renders the ReactNodeView — without this the
+  // chip froze on the thumbnail captured at insert time. Chips whose source
+  // left the pool are removed by the cascade-clear effect above (skipped here).
+  React.useEffect(() => {
+    if (!editor) return;
+    const thumbById = new Map(
+      references.map((r) => [r.sourceNodeId, r.thumbnail ?? null]),
+    );
+    const updates: Array<{ pos: number; thumbnail: string | null }> = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name !== REFERENCE_MENTION_NODE) return;
+      const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
+      if (typeof id !== 'string' || !thumbById.has(id)) return;
+      const live = thumbById.get(id) ?? null;
+      if (n.attrs[MENTION_THUMBNAIL_ATTR] !== live) {
+        updates.push({ pos, thumbnail: live });
+      }
+    });
+    if (updates.length === 0) return;
+    const tr = editor.state.tr;
+    for (const u of updates) {
+      tr.setNodeAttribute(u.pos, MENTION_THUMBNAIL_ATTR, u.thumbnail);
+    }
+    editor.view.dispatch(tr);
+  }, [editor, references]);
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
   // switch visually pre-announces they will not take effect (execute forces
   // referenceUrls=[] in t2i). TEXT chips stay full-strength — their
@@ -274,12 +305,12 @@ export const PromptEditor = React.forwardRef<
         // ProseMirror content plus its py-2, and still caps at max-h-40 (scrolls
         // past 4). ProseMirror's own min-h carries the 4-line floor so the empty
         // editor renders at full height, not just the placeholder line.
-        // pt-5 (not py-2): a remote collaborator caret's name label floats ~15px
-        // ABOVE its caret (index.css .collaboration-carets__label top:-1.35em),
-        // and a caret on the FIRST line pushed the label past the scroll
-        // container's top edge, clipping the name (user 2026-07-12 P3). The
-        // extra top padding gives the first-line label room inside the scrollport.
-        'nowheel max-h-40 min-h-[6.5rem] overflow-auto rounded-overlay border border-border bg-background px-2.5 pb-2 pt-5 text-sm text-foreground transition-colors focus-within:border-active-border [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent [&_.ProseMirror]:min-h-[5.25rem] [&_.ProseMirror]:outline-none [&_p.is-editor-empty:first-child::before]:pointer-events-none [&_p.is-editor-empty:first-child::before]:float-left [&_p.is-editor-empty:first-child::before]:h-0 [&_p.is-editor-empty:first-child::before]:text-muted-foreground [&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]' +
+        // Original symmetric padding (D, user 2026-07-12): the P3 top padding
+        // (pt-5) that gave a first-line collaborator caret's above-label room is
+        // reverted — the label now FLIPS below the caret on the first line
+        // (caret-render.ts + .collaboration-carets__label--below), so no extra
+        // top gap is needed and the prompt keeps its original edges.
+        'nowheel max-h-40 min-h-[6.5rem] overflow-auto rounded-overlay border border-border bg-background px-2.5 py-2 text-sm text-foreground transition-colors focus-within:border-active-border [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent [&_.ProseMirror]:min-h-[5.25rem] [&_.ProseMirror]:outline-none [&_p.is-editor-empty:first-child::before]:pointer-events-none [&_p.is-editor-empty:first-child::before]:float-left [&_p.is-editor-empty:first-child::before]:h-0 [&_p.is-editor-empty:first-child::before]:text-muted-foreground [&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]' +
         dimReferences
       }
     />

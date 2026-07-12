@@ -47,8 +47,10 @@ interface GeneratePanelProps {
   onToggleMode: (mode: ImageGenMode) => void;
   /** Change ratio / resolution. */
   onChangeParams: (partial: { aspect_ratio?: string; resolution?: string }) => void;
-  /** Enter the canvas reference-pick mode. */
+  /** Toggle the canvas reference-pick mode (enter, or exit when already picking). */
   onAddReference: () => void;
+  /** Whether THIS node's reference pick is running — highlights the button. */
+  referencePicking: boolean;
   /** Remove a reference by id. */
   onRemoveReference: (refId: string) => void;
   /** Insert a reference's @-mention into the prompt at the cursor (rail click). */
@@ -90,6 +92,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   onToggleMode,
   onChangeParams,
   onAddReference,
+  referencePicking,
   onRemoveReference,
   onInsertReference,
   onExecute,
@@ -110,6 +113,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
       <div className='flex items-start justify-between'>
         <GenerateToolbar
           onReference={onAddReference}
+          referenceActive={referencePicking}
           referenceDisabled={referencesOff}
         />
         <button

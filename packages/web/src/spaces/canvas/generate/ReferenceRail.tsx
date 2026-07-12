@@ -63,6 +63,17 @@ export const ReferenceRail = React.memo(function ReferenceRail({
         // — the picker refuses to offer it, so the rail refuses to insert it.
         const insertable = canConnect(ref.sourceNodeType, 'image');
         const inert = imageRefsDisabled && ref.sourceNodeType === 'image';
+        // Empty-source hint (H, user 2026-07-12): an image / video with no
+        // thumbnail or a text node with no content has no preview to show, so
+        // tell the user it's not yet filled instead of showing nothing.
+        const emptyHint =
+          (ref.sourceNodeType === 'image' ||
+            ref.sourceNodeType === 'video') &&
+          !ref.thumbnail
+            ? t('canvas.generatePanel.emptyImageReference')
+            : ref.sourceNodeType === 'text' && !ref.textContent
+              ? t('canvas.generatePanel.emptyTextReference')
+              : undefined;
         return (
           <div
             key={ref.refId}
@@ -74,6 +85,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               src={ref.thumbnail}
               text={ref.textContent}
               alt={ref.sourceNodeName}
+              emptyHint={emptyHint}
             >
               <button
                 type='button'
