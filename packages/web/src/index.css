@@ -351,3 +351,15 @@ body {
   bottom: auto;
   border-radius: 0 3px 3px 3px;
 }
+/* Right-edge flip (B4, user 2026-07-12): a caret near the prompt's right edge
+   would clip its right-extending label, so caret-render.ts adds this class to
+   anchor the label to the caret's RIGHT and extend it LEFT instead. The corner
+   mirrors to the right so the tab still points at the caret. */
+.collaboration-carets__label.collaboration-carets__label--flip-left {
+  left: auto;
+  right: -1px;
+  border-radius: 3px 3px 0 3px;
+}
+.collaboration-carets__label.collaboration-carets__label--below.collaboration-carets__label--flip-left {
+  border-radius: 3px 0 3px 3px;
+}

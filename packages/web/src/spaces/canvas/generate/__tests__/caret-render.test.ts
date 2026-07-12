@@ -8,6 +8,7 @@ import {
   renderCollabSelection,
   safeCaretColor,
   shouldRenderLabelBelow,
+  shouldFlipLabelLeft,
 } from '@web/spaces/canvas/generate/caret-render';
 
 // Awareness payloads are UNTRUSTED wire data from other clients (CRITICAL
@@ -108,5 +109,22 @@ describe('shouldRenderLabelBelow — first-line clip → flip below', () => {
 
   it('flips below at the exact viewport top (a caret scrolled flush to the edge)', () => {
     expect(shouldRenderLabelBelow(100, 100, 20)).toBe(true);
+  });
+});
+
+describe('shouldFlipLabelLeft — right-edge clip → flip left (B4)', () => {
+  it('flips left when a left-anchored label would overrun the viewport right', () => {
+    // caret at 380, 60px label → right edge 440 > container right 400 - 8.
+    expect(shouldFlipLabelLeft(380, 60, 400, 8)).toBe(true);
+  });
+
+  it('stays right-extending when the label fits before the right edge', () => {
+    // caret at 200, 60px label → right edge 260, well within 400 - 8.
+    expect(shouldFlipLabelLeft(200, 60, 400, 8)).toBe(false);
+  });
+
+  it('flips within the threshold margin (padding + scrollbar) before the exact edge', () => {
+    // right edge 395 is inside the 8px margin of container right 400.
+    expect(shouldFlipLabelLeft(335, 60, 400, 8)).toBe(true);
   });
 });

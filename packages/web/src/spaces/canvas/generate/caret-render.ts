@@ -95,10 +95,42 @@ export function shouldRenderLabelBelow(
   return caretTop - containerTop < threshold;
 }
 
+/** Modifier class flipping the name label to extend LEFT of its caret (index.css). */
+const LABEL_FLIP_LEFT_CLASS = 'collaboration-carets__label--flip-left';
 /**
- * After the caret mounts, flips its label below when a first-line caret would
- * clip the above-label at the scroll-viewport top (D). Re-runs on every caret
- * render (y-prosemirror re-renders on each move), so the label tracks the line.
+ * How close (px) a left-anchored label's right edge may come to the scroll
+ * viewport's right before it would clip and must flip left — covers the prompt's
+ * right padding + scrollbar.
+ */
+const LABEL_EDGE_THRESHOLD_PX = 8;
+
+/**
+ * Whether a caret's name label must flip to extend LEFT of the caret instead of
+ * right: true when a left-anchored label (caret left + its width) would overflow
+ * the scroll viewport's right edge and clip (B4, user 2026-07-12). Pure — the
+ * caller measures.
+ * @param caretLeft - The caret's left in viewport px.
+ * @param labelWidth - The label's rendered width in px.
+ * @param containerRight - The scroll viewport's right in viewport px.
+ * @param threshold - Clip margin (defaults to {@link LABEL_EDGE_THRESHOLD_PX}).
+ * @returns True when the label should flip left.
+ */
+export function shouldFlipLabelLeft(
+  caretLeft: number,
+  labelWidth: number,
+  containerRight: number,
+  threshold: number = LABEL_EDGE_THRESHOLD_PX,
+): boolean {
+  return caretLeft + labelWidth > containerRight - threshold;
+}
+
+/**
+ * After the caret mounts, flips its label (a) BELOW the caret when a first-line
+ * caret would clip the above-label at the scroll-viewport top (D), and (b) to
+ * the LEFT of the caret when a right-extending label would clip at the viewport
+ * right edge (B4). Re-runs on every caret render (y-prosemirror re-renders on
+ * each move), so the label tracks the caret. The width measurement is invariant
+ * to the current flip state, so the decision is stable.
  * @param caret - The caret element (already built).
  * @param label - The name label to toggle.
  */
@@ -107,11 +139,18 @@ function scheduleLabelFlip(caret: HTMLElement, label: HTMLElement): void {
   requestAnimationFrame(() => {
     const container = caret.closest('[data-testid="generate-prompt-editor"]');
     if (!container) return;
+    const caretRect = caret.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
     label.classList.toggle(
       LABEL_BELOW_CLASS,
-      shouldRenderLabelBelow(
-        caret.getBoundingClientRect().top,
-        container.getBoundingClientRect().top,
+      shouldRenderLabelBelow(caretRect.top, containerRect.top),
+    );
+    label.classList.toggle(
+      LABEL_FLIP_LEFT_CLASS,
+      shouldFlipLabelLeft(
+        caretRect.left,
+        label.getBoundingClientRect().width,
+        containerRect.right,
       ),
     );
   });
