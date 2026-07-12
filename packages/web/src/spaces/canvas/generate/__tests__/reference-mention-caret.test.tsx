@@ -355,6 +355,100 @@ describe('reference-mention caret plugin — focus gating', () => {
   });
 });
 
+// P5 (user 2026-07-12): a reference chip is an ATOM, so a plain ArrowRight from
+// before it lands a NodeSelection ON the chip first (chip highlighted, no
+// caret) and only a SECOND press moves the text cursor past it — "hitting a
+// chip needs two presses to show the caret". The plugin's keymap collapses that
+// into ONE press: when the caret's immediate neighbour in the arrow direction
+// is a chip, it steps the TEXT cursor straight to the far boundary, skipping the
+// atom NodeSelection. The chip is still deletable (Backspace at the boundary)
+// and still selectable by click.
+describe('reference-mention caret plugin — one-press chip crossing (P5)', () => {
+  const arrow = (editor: Editor, key: string, shiftKey = false): boolean => {
+    const plugin = referenceMentionCaretKey.get(editor.state);
+    return (
+      plugin?.props.handleKeyDown?.call(
+        plugin,
+        editor.view,
+        new KeyboardEvent('keydown', { key, shiftKey }),
+      ) ?? false
+    );
+  };
+
+  it('ArrowRight from before a leading chip lands the text cursor past it in ONE press (no NodeSelection stop)', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      editor.commands.setTextSelection(1); // before chip A
+      expect(arrow(editor, 'ArrowRight')).toBe(true);
+      const sel = editor.state.selection;
+      expect(sel).toBeInstanceOf(TextSelection);
+      expect(sel.empty).toBe(true);
+      expect(sel.from).toBe(2); // between A and B — the caret-blind position
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('ArrowRight from between two chips lands after the trailing chip in one press', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      editor.commands.setTextSelection(2);
+      expect(arrow(editor, 'ArrowRight')).toBe(true);
+      expect(editor.state.selection.from).toBe(3);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('ArrowLeft from after a trailing chip lands between the chips in one press', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      editor.commands.setTextSelection(3);
+      expect(arrow(editor, 'ArrowLeft')).toBe(true);
+      expect(editor.state.selection.from).toBe(2);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('ArrowLeft from between chips lands before the leading chip', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      editor.commands.setTextSelection(2);
+      expect(arrow(editor, 'ArrowLeft')).toBe(true);
+      expect(editor.state.selection.from).toBe(1);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('does not intercept when the caret is not adjacent to a chip (plain text keeps native arrows)', () => {
+    const editor = makeEditor();
+    try {
+      editor.chain().insertContent('hello').run();
+      editor.commands.setTextSelection(3);
+      expect(arrow(editor, 'ArrowRight')).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('does not intercept while Shift is held (selection extension keeps native behavior)', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      editor.commands.setTextSelection(1);
+      expect(arrow(editor, 'ArrowRight', true)).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+});
+
 // Contract tests bind STRUCTURALLY (block-scoped regex, not
 // substring-anywhere) — the R4 adversarial lesson: an assertion that scans to
 // end-of-file goes green on a decoy rule.
@@ -377,6 +471,19 @@ describe('caret CSS contract (index.css)', () => {
   it('suppresses the native caret only while the fake one is active', () => {
     expect(css).toMatch(
       /\.reference-mention-caret-active\s*\{[^}]*caret-color:\s*transparent[^}]*\}/,
+    );
+  });
+
+  // P5 (user 2026-07-12): the 1.5px caret line, inserted as a real inline box
+  // between two chips, pushed the following chip ~1.5px to the right. Negative
+  // horizontal margins (-0.75px each side) absorb the border so the caret
+  // occupies ZERO net inline width — clicking a gap no longer nudges a chip.
+  it('the caret occupies zero net inline width (negative margins offset its 1.5px border)', () => {
+    expect(css).toMatch(
+      /\.reference-mention-caret\s*\{[^}]*margin-left:\s*-0\.75px[^}]*\}/,
+    );
+    expect(css).toMatch(
+      /\.reference-mention-caret\s*\{[^}]*margin-right:\s*-0\.75px[^}]*\}/,
     );
   });
 });

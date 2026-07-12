@@ -45,11 +45,12 @@ export const REFERENCE_MENTION_CARET_ACTIVE_CLASS =
   'reference-mention-caret-active';
 
 /**
- * Whether a node is a reference-mention chip.
+ * Whether a node is a reference-mention chip. A type guard: a true result also
+ * narrows the node to non-null (the arrow-key handler steps past `node.nodeSize`).
  * @param node - The adjacent node (null at a paragraph edge).
  * @returns True for a reference-mention atom.
  */
-function isChip(node: PMNode | null): boolean {
+function isChip(node: PMNode | null): node is PMNode {
   return node?.type.name === REFERENCE_MENTION_NODE;
 }
 
@@ -115,6 +116,56 @@ export function createReferenceMentionCaret(): Plugin<boolean> {
       },
     },
     props: {
+      // One-press chip crossing (P5, user 2026-07-12): a reference chip is an
+      // atom, so a plain ArrowRight from before it lands a NodeSelection ON the
+      // chip (highlighted, no caret) and only a SECOND press steps the text
+      // cursor past it. When the caret's immediate neighbour in the arrow
+      // direction is a chip, move the TEXT cursor straight to the far boundary,
+      // skipping the atom stop — one press shows the caret past the chip. The
+      // chip stays deletable (Backspace at the boundary) and click-selectable.
+      // Shift / modifier chords fall through to native behavior (selection
+      // extension, word jumps), and non-chip neighbours keep native arrows.
+      handleKeyDown: (view, event): boolean => {
+        if (
+          event.shiftKey ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.altKey
+        ) {
+          return false;
+        }
+        const sel = view.state.selection;
+        if (!(sel instanceof TextSelection) || !sel.empty) return false;
+        const $pos = sel.$from;
+        if (event.key === 'ArrowRight') {
+          const after = $pos.nodeAfter;
+          if (!isChip(after)) return false;
+          view.dispatch(
+            view.state.tr
+              .setSelection(
+                TextSelection.create(view.state.doc, $pos.pos + after.nodeSize),
+              )
+              .scrollIntoView(),
+          );
+          return true;
+        }
+        if (event.key === 'ArrowLeft') {
+          const before = $pos.nodeBefore;
+          if (!isChip(before)) return false;
+          view.dispatch(
+            view.state.tr
+              .setSelection(
+                TextSelection.create(
+                  view.state.doc,
+                  $pos.pos - before.nodeSize,
+                ),
+              )
+              .scrollIntoView(),
+          );
+          return true;
+        }
+        return false;
+      },
       handleClick: (view, pos, event): boolean => {
         // A click on the chip itself must keep selecting the chip as a unit.
         const target = event.target;

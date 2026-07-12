@@ -1033,10 +1033,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         handle?.querySelector('[data-testid="handle-dot"]'),
       ).not.toBeNull();
     }
-    // Zone fully outside the border: source reaches right (before:left-1 =
-    // starts at the border), target reaches left (before:-left-8).
-    expect(target?.className).toContain('before:-left-8');
-    expect(source?.className).toContain('before:left-1');
+    // Border-pinned anchors (P1, user 2026-07-12): both shifted 4px inward
+    // (!left-1 / !right-1) so the outer edge — the wire attachment — sits ON the
+    // border, and the 36px zone offsets gain +4px to still start at the border:
+    // source before:left-2, target before:-left-9.
+    expect(target?.className).toContain('!left-1');
+    expect(source?.className).toContain('!right-1');
+    expect(target?.className).toContain('before:-left-9');
+    expect(source?.className).toContain('before:left-2');
   });
 
   // ---- Pick session owns ALL connect gestures (adversarial round-1 HIGH) ----

@@ -5,10 +5,11 @@
  * Magnetic connection handle (user 2026-07-11). Three DECOUPLED layers so the
  * dot can spring toward the cursor without moving the wire attachment point:
  *
- *   1. ANCHOR — the 8px `<Handle>` element itself, invisible, its CENTER kept
- *      on the node border by xyflow (translate(-50%,-50%)). This is the edge
- *      attachment point; the wire always starts/ends here regardless of where
- *      the visible dot has drifted.
+ *   1. ANCHOR — the 8px `<Handle>` element itself, invisible, shifted 4px inward
+ *      (!right-1 / !left-1) so its OUTER edge — the point xyflow attaches the
+ *      edge to (Position.Right → x + width) — sits ON the node border, flush,
+ *      no gap (user 2026-07-12 P1). The wire always starts/ends here regardless
+ *      of where the visible dot has drifted.
  *   2. HIT ZONE — a 36×36 `::before` pseudo fully OUTSIDE the border (source
  *      reaches right, target reaches left). Pointer events on the pseudo
  *      forward to the parent, so the whole zone triggers connect gestures.
@@ -130,14 +131,22 @@ export function MagneticHandle({
   );
 
   // The 8px element is invisible (bg-transparent, border-0); the visual is the
-  // dot child. The ::before is the 36px outside-the-border hit zone. Source
-  // (element spans border±4): zone from the border (left-1 = +4px) outward;
-  // target: zone ends at the border (-left-8 = -32px) reaching left. Vertically
-  // centered on the anchor (top-1/2 + -translate-y-1/2).
+  // dot child. The ::before is the 36px outside-the-border hit zone.
+  //
+  // Border-pinned anchor (user 2026-07-12 P1): xyflow attaches the edge at the
+  // handle's OUTER edge (Position.Right → x + width), so an 8px handle CENTERED
+  // on the border put the wire 4px OUTSIDE it — a visible gap. `!right-1` /
+  // `!left-1` shift the anchor 4px inward so its outer edge (the attachment
+  // point) sits ON the border and the wire is flush against it. The dot then
+  // rests just inside the border (covering the attachment) and springs OUTWARD
+  // past it (leaving the node — an accepted look). The ::before offsets gain
+  // +4px (source left-1→left-2, target -left-8→-left-9) so the 36px zone still
+  // spans exactly the border → border+36 outside. Vertically centered
+  // (top-1/2 + -translate-y-1/2).
   const zoneClass =
     type === 'source'
-      ? '!h-2 !w-2 !border-0 !bg-transparent before:absolute before:left-1 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]'
-      : '!h-2 !w-2 !border-0 !bg-transparent before:absolute before:-left-8 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]';
+      ? '!h-2 !w-2 !right-1 !border-0 !bg-transparent before:absolute before:left-2 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]'
+      : '!h-2 !w-2 !left-1 !border-0 !bg-transparent before:absolute before:-left-9 before:top-1/2 before:h-9 before:w-9 before:-translate-y-1/2 before:content-[""]';
 
   return (
     <Handle

@@ -5,6 +5,7 @@ import { useStore, type NodeProps } from '@xyflow/react';
 import type { ComponentType } from 'react';
 import * as React from 'react';
 
+import { useCanvasStore } from '@web/stores';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
 import { GroupResizer } from '@web/spaces/canvas/nodes/GroupResizer';
@@ -136,10 +137,29 @@ function makeFlowNode(
       ): void => commitGroupResize(props.id, params),
       [commitGroupResize, props.id],
     );
+    // During a reference pick the pick owns node interaction: a double-click
+    // must NOT enter inline edit / open the upload picker (user 2026-07-12 P2b —
+    // a text empty node still entered edit, the upload placeholder still fired).
+    // Capture-phase
+    // stop blocks the body's / placeholder's onDoubleClick before it runs; the
+    // native double-click text selection is separately killed by user-select:none
+    // (index.css .canvas-picking). Read the flag lazily so no node re-renders on
+    // pick toggle.
+    const onDoubleClickCapture = React.useCallback(
+      (event: React.MouseEvent): void => {
+        if (useCanvasStore.getState().referencePickForNodeId != null) {
+          event.stopPropagation();
+        }
+      },
+      [],
+    );
     return (
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
-          <div className={isGroup ? 'relative size-full' : 'relative'}>
+          <div
+            className={isGroup ? 'relative size-full' : 'relative'}
+            onDoubleClickCapture={onDoubleClickCapture}
+          >
             {isGroup &&
             Boolean(props.selected) &&
             !data.locked &&

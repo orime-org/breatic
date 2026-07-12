@@ -192,6 +192,14 @@ body {
 .canvas-picking .react-flow__nodesselection {
   display: none;
 }
+/* During a reference pick a node double-click natively selected its placeholder
+   / body text (the upload placeholder highlighted — user 2026-07-12 P2b). The
+   pick owns node interaction, so text is non-selectable while picking. The
+   double-click EDIT itself is gated in flow-node-types (onDoubleClickCapture);
+   this kills only the native text-selection the click would otherwise leave. */
+.canvas-picking .react-flow__node {
+  user-select: none;
+}
 /* Magnetic-handle zone stand-down during a connection drag (adversarial
    round-4): the canvas adds `.canvas-connecting` synchronously in
    onConnectStart, BEFORE xyflow's same-tick elementFromPoint target
@@ -234,6 +242,12 @@ body {
   height: 1.2em;
   vertical-align: text-bottom;
   border-left: 1.5px solid currentColor;
+  /* Zero NET inline width (P5, user 2026-07-12): the 1.5px border is a real
+     inline box, so inserting the caret between two chips pushed the following
+     chip ~1.5px right. Negative margins (-0.75px each side) absorb the border
+     so the caret takes no horizontal space — clicking a gap never nudges a chip. */
+  margin-left: -0.75px;
+  margin-right: -0.75px;
   pointer-events: none;
   animation: reference-mention-caret-blink 1.06s step-end infinite;
 }

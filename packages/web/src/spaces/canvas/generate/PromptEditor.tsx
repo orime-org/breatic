@@ -269,7 +269,17 @@ export const PromptEditor = React.forwardRef<
       editor={editor}
       data-testid='generate-prompt-editor'
       className={
-        'nowheel max-h-40 min-h-[3.5rem] overflow-auto rounded-overlay border border-border bg-background px-2.5 py-2 text-sm text-foreground transition-colors focus-within:border-active-border [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent [&_.ProseMirror]:min-h-[2.5rem] [&_.ProseMirror]:outline-none [&_p.is-editor-empty:first-child::before]:pointer-events-none [&_p.is-editor-empty:first-child::before]:float-left [&_p.is-editor-empty:first-child::before]:h-0 [&_p.is-editor-empty:first-child::before]:text-muted-foreground [&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]' +
+        // min height = 4 text-sm lines (user 2026-07-12 P6): the panel opened at
+        // ~2 lines which felt cramped for a prompt. The wrapper holds 4 lines of
+        // ProseMirror content plus its py-2, and still caps at max-h-40 (scrolls
+        // past 4). ProseMirror's own min-h carries the 4-line floor so the empty
+        // editor renders at full height, not just the placeholder line.
+        // pt-5 (not py-2): a remote collaborator caret's name label floats ~15px
+        // ABOVE its caret (index.css .collaboration-carets__label top:-1.35em),
+        // and a caret on the FIRST line pushed the label past the scroll
+        // container's top edge, clipping the name (user 2026-07-12 P3). The
+        // extra top padding gives the first-line label room inside the scrollport.
+        'nowheel max-h-40 min-h-[6.5rem] overflow-auto rounded-overlay border border-border bg-background px-2.5 pb-2 pt-5 text-sm text-foreground transition-colors focus-within:border-active-border [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent [&_.ProseMirror]:min-h-[5.25rem] [&_.ProseMirror]:outline-none [&_p.is-editor-empty:first-child::before]:pointer-events-none [&_p.is-editor-empty:first-child::before]:float-left [&_p.is-editor-empty:first-child::before]:h-0 [&_p.is-editor-empty:first-child::before]:text-muted-foreground [&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]' +
         dimReferences
       }
     />
