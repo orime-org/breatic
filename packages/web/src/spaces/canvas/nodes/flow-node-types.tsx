@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Handle, Position, useStore, type NodeProps } from '@xyflow/react';
+import { useStore, type NodeProps } from '@xyflow/react';
 import type { ComponentType } from 'react';
 import * as React from 'react';
 
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
 import { GroupResizer } from '@web/spaces/canvas/nodes/GroupResizer';
+import { MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
@@ -162,17 +163,22 @@ function makeFlowNode(
                 handle placed BEFORE the body has its inner half covered by the
                 body's surface and reads as a half-circle (the left-handle bug);
                 painting both on top of the body shows each as a full dot. */}
+            {/* Magnetic handles (user 2026-07-11): a 36px outside-the-border
+                hit zone whose visible dot spring-follows the cursor, while
+                the 8px anchor keeps the wire attachment on the border.
+                MagneticHandle forwards all three connectable flags — the
+                gesture gates sit on Start/End, so a viewer / pick session
+                that drops them keeps handles live (adversarial round-1). See
+                MagneticHandle for the three-layer decoupling. */}
             {!isGroup ? (
               <>
-                <Handle
+                <MagneticHandle
                   type='target'
-                  position={Position.Left}
-                  className='!h-2 !w-2 !border-border !bg-muted'
+                  isConnectable={props.isConnectable}
                 />
-                <Handle
+                <MagneticHandle
                   type='source'
-                  position={Position.Right}
-                  className='!h-2 !w-2 !border-border !bg-muted'
+                  isConnectable={props.isConnectable}
                 />
               </>
             ) : null}

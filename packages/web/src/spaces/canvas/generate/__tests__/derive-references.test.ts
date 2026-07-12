@@ -22,10 +22,18 @@ function node(id: string, data: NodeView): CanvasNodeView {
  * @param id - Edge id.
  * @param source - Source node id.
  * @param target - Target node id.
+ * @param createdAt - Optional connection timestamp (epoch ms).
  * @returns A CanvasEdge.
  */
-function edge(id: string, source: string, target: string): CanvasEdge {
-  return { id, source, target };
+function edge(
+  id: string,
+  source: string,
+  target: string,
+  createdAt?: number,
+): CanvasEdge {
+  return createdAt === undefined
+    ? { id, source, target }
+    : { id, source, target, createdAt };
 }
 
 describe('deriveReferences — reference rail derived from incoming edges (connection = reference)', () => {
@@ -109,13 +117,94 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
       node('me', { kind: 'image', name: 'Target', status: 'idle' }),
     ];
     const edges: CanvasEdge[] = [
-      edge('txt->me', 'txt', 'me'),
-      edge('img1->me', 'img1', 'me'),
+      edge('txt->me', 'txt', 'me', 1000),
+      edge('img1->me', 'img1', 'me', 2000),
     ];
 
     const refs = deriveReferences('me', nodes, edges);
     expect(refs[0].textContent).toBe('some words');
     expect(refs[1].textContent).toBeUndefined();
+  });
+
+  // Reference order = connection time (batch-2 item 7, user 2026-07-11): the
+  // rail and the @ picker must list references in the order they were drawn,
+  // newest LAST. Y.Map iteration order is struct-store order (clientID+clock),
+  // which diverges from insertion order after reload / cross-client sync — so
+  // ordering must come from the createdAt stamp, never from array position.
+  describe('ordering by createdAt (connection time)', () => {
+    const nodes: CanvasNodeView[] = [
+      node('a', { kind: 'image', name: 'A', status: 'idle', content: 'a.png' }),
+      node('b', { kind: 'image', name: 'B', status: 'idle', content: 'b.png' }),
+      node('c', { kind: 'image', name: 'C', status: 'idle', content: 'c.png' }),
+      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+    ];
+
+    it('sorts rows by createdAt ascending regardless of the edges-array order (Y.Map order independence)', () => {
+      // Scrambled array order (as a reload can produce): c(3000), a(1000), b(2000).
+      const edges: CanvasEdge[] = [
+        edge('c->me', 'c', 'me', 3000),
+        edge('a->me', 'a', 'me', 1000),
+        edge('b->me', 'b', 'me', 2000),
+      ];
+      expect(deriveReferences('me', nodes, edges).map((r) => r.sourceNodeId)).toEqual([
+        'a',
+        'b',
+        'c',
+      ]);
+    });
+
+    it('treats a missing createdAt as oldest (legacy edges precede stamped ones)', () => {
+      const edges: CanvasEdge[] = [
+        edge('c->me', 'c', 'me', 3000),
+        edge('a->me', 'a', 'me'),
+        edge('b->me', 'b', 'me'),
+      ];
+      expect(deriveReferences('me', nodes, edges).map((r) => r.sourceNodeId)).toEqual([
+        'a',
+        'b',
+        'c',
+      ]);
+    });
+
+    // Adversarial (round-1): "stable among themselves" was an illusion — the
+    // input order IS Y.Map struct-store order, which differs across clients
+    // mid-session and flips on reload. Ties (all legacy edges; same-ms stamps)
+    // need a DETERMINISTIC tiebreak that every client derives identically:
+    // the edge id.
+    it('breaks createdAt ties by edge id — same order regardless of input order', () => {
+      const scrambled: CanvasEdge[] = [
+        edge('b->me', 'b', 'me'),
+        edge('a->me', 'a', 'me'),
+      ];
+      const reversed: CanvasEdge[] = [
+        edge('a->me', 'a', 'me'),
+        edge('b->me', 'b', 'me'),
+      ];
+      const fromScrambled = deriveReferences('me', nodes, scrambled).map((r) => r.refId);
+      const fromReversed = deriveReferences('me', nodes, reversed).map((r) => r.refId);
+      expect(fromScrambled).toEqual(fromReversed);
+      expect(fromScrambled).toEqual(['a->me', 'b->me']);
+    });
+
+    it('breaks a same-millisecond stamp tie by edge id too', () => {
+      const edges: CanvasEdge[] = [
+        edge('c->me', 'c', 'me', 500),
+        edge('b->me', 'b', 'me', 500),
+      ];
+      expect(deriveReferences('me', nodes, edges).map((r) => r.refId)).toEqual([
+        'b->me',
+        'c->me',
+      ]);
+    });
+
+    it('does not mutate the caller-owned edges array while sorting', () => {
+      const edges: CanvasEdge[] = [
+        edge('c->me', 'c', 'me', 3000),
+        edge('a->me', 'a', 'me', 1000),
+      ];
+      deriveReferences('me', nodes, edges);
+      expect(edges.map((e) => e.id)).toEqual(['c->me', 'a->me']);
+    });
   });
 
   it('reflects a live rename of the source node (display fields are live, not frozen)', () => {

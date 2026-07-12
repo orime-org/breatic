@@ -53,9 +53,10 @@ function imageView(over: Partial<Extract<NodeView, { kind: 'image' }>> = {}): No
 }
 
 describe('buildGeneratePanelViewModel', () => {
-  // Both t2i so the default-t2i view offers them; flux is first but optional,
-  // sdxl is `recommended` — so the default pick is sdxl (the recommended tier,
-  // user 2026-07-09), NOT merely the first in the list.
+  // Both t2i so the default-t2i view offers them; sdxl carries the
+  // `recommended` BADGE but the default pick is flux — the FIRST offered
+  // model (user 2026-07-11: recommended is curation dressing, a mode may
+  // carry several; it is not a default-selection rule).
   const models = [
     makeModel('flux', { mode: 't2i', tier: 'optional', cost_per_call: 7 }),
     makeModel('sdxl', { mode: 't2i', tier: 'recommended', cost_per_call: 3 }),
@@ -81,17 +82,17 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.creditEstimate).toBe(7);
   });
 
-  it('picks the mode\'s recommended model when the node has none (user 2026-07-09)', () => {
+  it('picks the FIRST offered model when the node has none (user 2026-07-11)', () => {
     const nodes = [node('n1', imageView())];
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
-    expect(vm.model).toBe('sdxl'); // the recommended t2i model, though flux is first
-    expect(vm.creditEstimate).toBe(3);
+    expect(vm.model).toBe('flux'); // first in the list; sdxl's badge does not promote it
+    expect(vm.creditEstimate).toBe(7);
   });
 
-  it('restores the mode\'s remembered model over the recommended default', () => {
-    const nodes = [node('n1', imageView({ modelByMode: { t2i: 'flux' } }))];
+  it('restores the mode\'s remembered model over the first', () => {
+    const nodes = [node('n1', imageView({ modelByMode: { t2i: 'sdxl' } }))];
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
-    expect(vm.model).toBe('flux'); // remembered t2i pick beats the recommended sdxl
+    expect(vm.model).toBe('sdxl'); // remembered t2i pick beats list order
   });
 
   it('defaults the mode to t2i when the node stores none', () => {
@@ -244,7 +245,7 @@ describe('buildGeneratePanelViewModel', () => {
 
   it('returns a safe empty view-model when the node is missing', () => {
     const vm = buildGeneratePanelViewModel({ nodeId: 'ghost', nodes: [], edges: [], models });
-    expect(vm.model).toBe('sdxl'); // recommended t2i model — picker stays usable
+    expect(vm.model).toBe('flux'); // first t2i model — picker stays usable
     expect(vm.mode).toBe('t2i');
     expect(vm.references).toEqual([]);
     expect(vm.referenceUrls).toEqual([]);
@@ -377,18 +378,19 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
     makeModel('nano-i2i', { mode: ['i2i'], tier: 'recommended' }),
   ];
 
-  it('resolves the target mode\'s recommended model when there is no memory', () => {
+  it('resolves the target mode\'s FIRST model when there is no memory (user 2026-07-11)', () => {
     const r = resolveModeSwitch({ modelByMode: {}, params: {} }, 'i2i', catalog);
-    expect(r.model).toBe('nano-i2i'); // the recommended i2i model
+    // mj-i2i is first for i2i; nano-i2i's recommended badge does not promote it.
+    expect(r.model).toBe('mj-i2i');
   });
 
-  it('restores the target mode\'s remembered model over the recommended', () => {
+  it('restores the target mode\'s remembered model over the first', () => {
     const r = resolveModeSwitch(
-      { modelByMode: { i2i: 'mj-i2i' }, params: {} },
+      { modelByMode: { i2i: 'nano-i2i' }, params: {} },
       'i2i',
       catalog,
     );
-    expect(r.model).toBe('mj-i2i'); // remembered i2i pick beats the recommended
+    expect(r.model).toBe('nano-i2i'); // remembered i2i pick beats list order
   });
 
   it('reconciles params against the resolved model (keeps valid, drops unknown)', () => {

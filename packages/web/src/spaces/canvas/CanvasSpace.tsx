@@ -119,6 +119,12 @@ import {
 import { EDGE_TYPES } from '@web/spaces/canvas/edges/edge-types';
 import { CanvasContextMenu } from '@web/spaces/canvas/CanvasContextMenu';
 import { CanvasMiniMap } from '@web/spaces/canvas/CanvasMiniMap';
+import { ConnectCreateMenu } from '@web/spaces/canvas/ConnectCreateMenu';
+import {
+  isBlankCanvasRelease,
+  resolveReleaseElement,
+  resolveConnectCreateIntent,
+} from '@web/spaces/canvas/lib/connect-create';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
 import { GroupSelectionToolbar } from '@web/spaces/canvas/GroupSelectionToolbar';
@@ -471,6 +477,36 @@ function CanvasSpaceInner({
     (s) => s.referencePickForNodeId,
   );
   const endReferencePick = useCanvasStore((s) => s.endReferencePick);
+  // Banner Exit (a11y, adversarial round-1): the Exit button unmounts with
+  // the banner, dropping keyboard focus to <body>. Hand focus to the panel's
+  // pick trigger — still mounted, because the pick keeps the panel open. The
+  // trigger is in the DOM right now (setState re-renders later), so the
+  // synchronous focus lands before the banner unmounts.
+  const onExitReferencePick = React.useCallback((): void => {
+    endReferencePick();
+    document
+      .querySelector<HTMLElement>('[data-testid="generate-tool-reference"]')
+      ?.focus();
+  }, [endReferencePick]);
+  // Pick-end focus catch-all (adversarial round-2, a11y): the Exit hand-off
+  // only works when the trigger is enabled + mounted. When it is disabled (a
+  // t2i switch mid-pick) or the pick ends by another path (panel X, host node
+  // deleted), focus drops to <body>. Whenever a pick ENDS with focus orphaned
+  // there, return it to the canvas container so keyboard users stay in
+  // context. Focus already placed (the Exit hand-off succeeded) is left alone.
+  const wasPickingRef = React.useRef(false);
+  React.useEffect(() => {
+    const wasPicking = wasPickingRef.current;
+    wasPickingRef.current = referencePickForNodeId != null;
+    if (
+      wasPicking &&
+      referencePickForNodeId == null &&
+      (document.activeElement == null ||
+        document.activeElement === document.body)
+    ) {
+      containerRef.current?.focus();
+    }
+  }, [referencePickForNodeId]);
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
@@ -847,15 +883,74 @@ function CanvasSpaceInner({
     [t],
   );
 
+  // Drag-to-blank create + connect (batch-2 item 3): armed by onConnectEnd
+  // when an output-stub drag releases over the blank pane.
+  const [connectCreate, setConnectCreate] = React.useState({
+    open: false,
+    x: 0,
+    y: 0,
+    sourceId: '',
+    sourceKind: '',
+  });
+
+  // Magnetic-handle zone gate (adversarial round-4): xyflow resolves a wire's
+  // target via elementFromPoint SYNCHRONOUSLY in the same tick it starts the
+  // connection (startConnection → onConnectStart → isValidHandle, all in one
+  // onPointerMove). A React class toggled off connection.inProgress commits one
+  // frame too late, so the first move still hit-tests the live 36px handle
+  // zones and could hijack to a neighbor. onConnectStart runs synchronously
+  // BEFORE that first isValidHandle, so adding the class here — which
+  // elementFromPoint's own style flush applies immediately — stands every
+  // handle's ::before zone down for the whole drag, with no first-frame window.
+  const onConnectDragStart = React.useCallback<OnConnectStart>(() => {
+    containerRef.current?.classList.add('canvas-connecting');
+  }, []);
+  const clearConnectingClass = React.useCallback((): void => {
+    containerRef.current?.classList.remove('canvas-connecting');
+  }, []);
+
   // A DRAG-connect refused by the rules gets a WHY (user 2026-07-10):
   // "Audio can't connect into Image". Fired once on release — never during the
   // drag (isValidConnection runs per pointer-move; toasting there would spam).
-  // A release over empty canvas (toNode null) is a normal cancel, not a toast.
   // Click-connect has its OWN handler below: xyflow's onClickConnectEnd hands
   // over the DRAG connection state, which a pure tap-tap gesture never
   // populates (round-3 adversarial — reusing this handler there was a no-op).
   const onConnectEnd = React.useCallback<OnConnectEnd>(
-    (_event, state) => {
+    (event, state) => {
+      clearConnectingClass();
+      // An OUTPUT-stub drag released over BLANK canvas is not a cancel: it
+      // opens the create + connect menu at the release point (batch-2 item 3).
+      // The release element comes from elementFromPoint at the RELEASE
+      // coordinates — event.target lies twice (adversarial round-1): a
+      // touchend targets the element the touch STARTED on (the handle), and
+      // mouse releases land on invisible hit layers (edge interaction
+      // strokes, the NodesSelection rect) the user perceives as blank.
+      const point =
+        'changedTouches' in event ? event.changedTouches[0] : event;
+      // elementsFromPoint (the STACK) + skip the transient connection-line
+      // SVG that sits on top during the drag — elementFromPoint (singular)
+      // can return that layer instead of the real target (adversarial r2).
+      const releaseEl = resolveReleaseElement(
+        document.elementsFromPoint(point.clientX, point.clientY),
+      );
+      const intent = resolveConnectCreateIntent({
+        fromNodeId: state.fromNode?.id ?? null,
+        fromNodeKind: state.fromNode?.type,
+        fromHandleType: state.fromHandle?.type ?? null,
+        toNodeId: state.toNode?.id ?? null,
+        releasedOnPane: isBlankCanvasRelease(releaseEl),
+        readOnly,
+      });
+      if (intent) {
+        setConnectCreate({
+          open: true,
+          x: point.clientX,
+          y: point.clientY,
+          sourceId: intent.sourceId,
+          sourceKind: intent.sourceKind,
+        });
+        return;
+      }
       if (state.isValid !== false || !state.fromNode || !state.toNode) return;
       // A drag may start from either end — resolve which node is the source.
       const fromIsSource = state.fromHandle?.type === 'source';
@@ -873,7 +968,7 @@ function CanvasSpaceInner({
         }),
       );
     },
-    [t, kindLabel],
+    [t, kindLabel, readOnly, clearConnectingClass],
   );
 
   // CLICK-connect rejection toast (round-3 adversarial): reconstruct the
@@ -894,6 +989,14 @@ function CanvasSpaceInner({
           handleType: params.handleType ?? 'source',
         }
         : null;
+      // The zone stand-down is DRAG-only (adversarial round-5): the
+      // click-connect path resolves each tap by a LITERAL Handle onClick (no
+      // connectionRadius proximity net), so the 36px ::before zone must stay
+      // live for a tap in the zone to arm / complete a connection at all —
+      // disabling it broke click-connect. And its cleanup fires only on the
+      // second tap, so gating here also stuck the class on an abandoned pick.
+      // The round-4 hijack is drag-specific (elementFromPoint during the
+      // continuous onPointerMove), so only the drag path needs the gate.
     },
     [],
   );
@@ -1102,6 +1205,47 @@ function CanvasSpaceInner({
       setSelectAfterCreate([createNodeAt(type, position)]);
     },
     [createNodeAt],
+  );
+
+  // The connect-create menu's pick: create the node CENTERED on the release
+  // point and wire source → new node — as ONE undo entry (one gesture, one
+  // action; undoing must remove the node and its wire together).
+  const onConnectCreatePick = React.useCallback(
+    (type: CreatableNodeType): void => {
+      // Same convert-at-pick-time convention as the right-click create menu.
+      const point = screenToFlowPosition({
+        x: connectCreate.x,
+        y: connectCreate.y,
+      });
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        const id = createNodeAt(type, point);
+        const added = addEdge(projectId, spaceId, {
+          id: `${connectCreate.sourceId}->${id}`,
+          source: connectCreate.sourceId,
+          target: id,
+        });
+        // Source deleted while the menu was open (collaborator race): the node
+        // still lands; surface the missing wire like every failed reference.
+        if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
+        setSelectAfterCreate([id]);
+      });
+    },
+    [
+      connectCreate.x,
+      connectCreate.y,
+      connectCreate.sourceId,
+      screenToFlowPosition,
+      createNodeAt,
+      projectId,
+      spaceId,
+      t,
+    ],
+  );
+  const onConnectCreateOpenChange = React.useCallback(
+    (open: boolean): void => {
+      setConnectCreate((prev) => ({ ...prev, open }));
+    },
+    [],
   );
 
   // ---- Upload (canvas-level: left button / drag-drop / file paste) ----
@@ -1327,6 +1471,10 @@ function CanvasSpaceInner({
     (event: React.MouseEvent | MouseEvent): void => {
       event.preventDefault();
       if (readOnly) return;
+      // A reference pick owns pointer interactions until Exit (adversarial
+      // round-1): the create/paste menu would mutate the pick surface and its
+      // creations auto-select mid-session. Fresh store read — closures stale.
+      if (useCanvasStore.getState().referencePickForNodeId) return;
       setContextMenu({ open: true, x: event.clientX, y: event.clientY });
     },
     [readOnly],
@@ -1355,6 +1503,10 @@ function CanvasSpaceInner({
       if (isEditableTarget(event.target as Element | null)) return;
       event.preventDefault();
       if (readOnly) return;
+      // Pick session gate (adversarial round-1): the node menu's Upload
+      // silently no-ops behind the item-12 gate and its Delete would mutate
+      // the pick surface — the pick owns node interactions until Exit.
+      if (useCanvasStore.getState().referencePickForNodeId) return;
       const locked = Boolean((node.data as { locked?: unknown }).locked);
       setNodeMenu({
         open: true,
@@ -1375,6 +1527,8 @@ function CanvasSpaceInner({
     (event: React.MouseEvent): void => {
       event.preventDefault();
       if (readOnly) return;
+      // Same pick-session gate as the node / pane menus.
+      if (useCanvasStore.getState().referencePickForNodeId) return;
       setSelectionMenu({ open: true, x: event.clientX, y: event.clientY });
     },
     [readOnly],
@@ -1384,6 +1538,8 @@ function CanvasSpaceInner({
     (event: React.MouseEvent, edge: Edge): void => {
       event.preventDefault();
       if (readOnly) return;
+      // Same pick-session gate — deleting an edge mid-pick mutates the rail.
+      if (useCanvasStore.getState().referencePickForNodeId) return;
       setEdgeMenu({
         open: true,
         x: event.clientX,
@@ -1848,6 +2004,11 @@ function CanvasSpaceInner({
   const activateNodeUpload = React.useCallback(
     (nodeId: string, modality: Modality): void => {
       if (readOnly) return;
+      // A reference pick owns node interactions (batch-2 item 12): a
+      // double-click on an empty node — or the node-menu Upload, both funnel
+      // here — must not pop the file picker over the running pick session.
+      // Read fresh from the store; the render closure can be stale.
+      if (useCanvasStore.getState().referencePickForNodeId) return;
       const accept = UPLOAD_ACCEPT[modality];
       const input = uploadInputRef.current;
       if (!accept || !input) return; // 3d / web have no picker yet
@@ -2177,6 +2338,9 @@ function CanvasSpaceInner({
         data-project-id={projectId}
         data-space-id={spaceId}
         data-readonly={readOnly ? 'true' : undefined}
+        // Programmatically focusable (not tab-reachable) so the pick-end focus
+        // catch-all can return focus here instead of dropping it on <body>.
+        tabIndex={-1}
         // canvas-picking scopes the pick-mode stylesheet: it hides xyflow's
         // NodesSelection rect (see index.css) so a marquee mid-pick cannot
         // create a click-swallowing dead zone. The rect is neutralized at the
@@ -2228,13 +2392,19 @@ function CanvasSpaceInner({
           // the server reject it and snap it back. elementsSelectable stays on
           // so viewers can still click a node to inspect it.
           nodesDraggable={!readOnly}
-          nodesConnectable={!readOnly}
+          // A reference pick owns ALL connect gestures (adversarial round-1
+          // HIGH): live handles let two candidate hot-zone clicks arm xyflow
+          // click-connect and silently write a candidate-to-candidate edge
+          // mid-pick. Plain boolean store prop — safe to flip, unlike the
+          // key-code props (see web-frontend-traps).
+          nodesConnectable={!readOnly && referencePickForNodeId == null}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragStop}
           onDelete={onDelete}
           onBeforeDelete={onBeforeDelete}
           onConnect={onConnect}
+          onConnectStart={onConnectDragStart}
           onConnectEnd={onConnectEnd}
           onClickConnectStart={onClickConnectStart}
           onClickConnectEnd={onClickConnectEnd}
@@ -2293,7 +2463,15 @@ function CanvasSpaceInner({
               a selected group (mirrors the Cmd/Ctrl+G shortcuts). */}
           <NodeToolbar
             nodeId={selectedIds}
-            isVisible={groupOffer.kind !== 'none' && !readOnly}
+            // Hidden during a reference pick (adversarial round-1): floating
+            // chrome over the pick surface swallows candidate clicks and its
+            // group/ungroup actions mutate mid-session — same concealment
+            // rule as the left menu / viewport toolbar (item 13).
+            isVisible={
+              groupOffer.kind !== 'none' &&
+              !readOnly &&
+              referencePickForNodeId == null
+            }
             position={Position.Top}
           >
             <GroupSelectionToolbar
@@ -2318,7 +2496,19 @@ function CanvasSpaceInner({
         {referencePickForNodeId ? (
           <div
             data-testid='reference-pick-banner'
-            className='absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
+            // Palette violet (the status-selected identity — same hue as the
+            // pick glow) instead of neutral card chrome: the banner is the
+            // mode indicator for an exclusive session and must read as one
+            // (user 2026-07-11 item 11). The stock `-bg` token is a 14% tint
+            // over TRANSPARENT (built for group surfaces); a floating banner
+            // needs a SOLID surface, so the tint is mixed into the popover
+            // base instead.
+            style={{
+              backgroundColor:
+                'color-mix(in srgb, var(--color-palette-violet) 14%, var(--color-popover))',
+              borderColor: 'var(--color-palette-violet-border)',
+            }}
+            className='absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-3 rounded-md border px-4 py-2 text-sm text-foreground shadow-md'
           >
             <span>{t('canvas.generatePanel.selectFromCanvas')}</span>
             <button
@@ -2333,7 +2523,7 @@ function CanvasSpaceInner({
             <button
               type='button'
               data-testid='reference-pick-exit'
-              onClick={endReferencePick}
+              onClick={onExitReferencePick}
               className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
             >
               {t('canvas.generatePanel.exitSelect')}
@@ -2362,6 +2552,14 @@ function CanvasSpaceInner({
           onOpenChange={onContextMenuOpenChange}
           onPick={onContextMenuPick}
           onPaste={pasteAtCursor}
+        />
+        <ConnectCreateMenu
+          open={connectCreate.open}
+          x={connectCreate.x}
+          y={connectCreate.y}
+          sourceKind={connectCreate.sourceKind}
+          onOpenChange={onConnectCreateOpenChange}
+          onPick={onConnectCreatePick}
         />
         <NodeContextMenu
           open={nodeMenu.open}

@@ -61,6 +61,13 @@ export interface CanvasEdge {
   source: string;
   target: string;
   toolId?: string;
+  /**
+   * Epoch ms when the connection was drawn (stamped by {@link addEdge}). The
+   * reference rail orders rows by it — Y.Map iteration is struct-store order
+   * (clientID + clock), which diverges from insertion order after reload /
+   * cross-client sync. Absent on legacy edges, which sort as oldest.
+   */
+  createdAt?: number;
 }
 
 interface CanvasSpaceState {
@@ -1149,11 +1156,21 @@ export function addEdge(
     // the write. Returns whether the edge landed so the caller can surface
     // feedback (a silently-rejected edge must not read as success in the UI).
     if (!nodesMap.has(edge.source) || !nodesMap.has(edge.target)) return;
+    // Deterministic ids make a duplicate drag map onto the EXISTING entry —
+    // rewriting it would replace createdAt (the reference silently jumps to
+    // the rail's end) and push a spurious undo entry. Idempotent success.
+    if (edgesMap.has(edge.id)) {
+      added = true;
+      return;
+    }
     const map = new Y.Map<unknown>();
     map.set('id', edge.id);
     map.set('source', edge.source);
     map.set('target', edge.target);
     if (edge.toolId) map.set('toolId', edge.toolId);
+    // Connection time drives reference-rail order (undo re-inserts the map
+    // with its original stamp, so an undone+redone edge keeps its place).
+    map.set('createdAt', edge.createdAt ?? Date.now());
     edgesMap.set(edge.id, map);
     added = true;
   }, CANVAS_UNDO);
@@ -1278,11 +1295,20 @@ export function readEdges(doc: Y.Doc): ReadonlyArray<CanvasEdge> {
   const out: CanvasEdge[] = [];
   edgesMap.forEach((map) => {
     if (!(map instanceof Y.Map)) return;
+    // createdAt is untrusted collaborative data (same convention as
+    // readNodeLeaseGen): a corrupt stamp (string / NaN) would make the rail
+    // sort comparator return NaN, which TimSort treats as "equal" — silently
+    // un-sorting HEALTHY edges around it. Drop anything non-finite.
+    const rawCreatedAt = map.get('createdAt');
     out.push({
       id: String(map.get('id') ?? ''),
       source: String(map.get('source') ?? ''),
       target: String(map.get('target') ?? ''),
       toolId: (map.get('toolId') as string | undefined) ?? undefined,
+      createdAt:
+        typeof rawCreatedAt === 'number' && Number.isFinite(rawCreatedAt)
+          ? rawCreatedAt
+          : undefined,
     });
   });
   return out;

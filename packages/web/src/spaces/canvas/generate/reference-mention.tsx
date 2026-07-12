@@ -22,6 +22,7 @@ import {
   REFERENCE_MENTION_NODE,
 } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { createReferenceMentionCaret } from '@web/spaces/canvas/generate/reference-mention-caret';
 import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import type { NodeKind } from '@web/spaces/canvas/types/node-view';
@@ -52,8 +53,9 @@ export const MENTION_KIND_ATTR = 'kind';
 /**
  * Builds the ProseMirror content for a reference-mention atom from a pool row,
  * so the `@` suggestion and the click-to-insert path (reference rail) stay in
- * sync on the exact same attrs. No trailing space is added — adjacent chips are
- * navigable via the Gapcursor extension (user 2026-07-10: no auto space).
+ * sync on the exact same attrs. No trailing space is added (user 2026-07-10:
+ * no auto space) — the gap between adjacent chips stays reachable via the
+ * chip-boundary caret plugin (reference-mention-caret.ts).
  * @param item - The picked reference pool row.
  * @returns The reference-mention node content (attrs = id / thumbnail / label / kind).
  */
@@ -254,12 +256,15 @@ export const ReferenceMention = Node.create<ReferenceMentionOptions>({
   addProseMirrorPlugins() {
     // Install the `@` suggestion plugin (the missing wiring that made typing `@`
     // do nothing). `editor` is injected here; the rest (char / items / command /
-    // render) comes from makeReferenceSuggestion via .configure.
+    // render) comes from makeReferenceSuggestion via .configure. The caret
+    // plugin makes the gap between adjacent chips clickable and visible —
+    // browsers cannot paint a native caret with no text node to anchor to.
     return [
       Suggestion<ReferenceRailItem>({
         editor: this.editor,
         ...this.options.suggestion,
       }),
+      createReferenceMentionCaret(),
     ];
   },
 });

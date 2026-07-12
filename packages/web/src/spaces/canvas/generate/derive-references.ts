@@ -37,6 +37,21 @@ export interface ReferenceRailItem {
 }
 
 /**
+ * Compares two edge ids by CODE UNIT (ordinal), not locale. The tiebreak must
+ * be identical on every client, and `String.prototype.localeCompare` collates
+ * in the runtime's default locale — under da/nb the 'aa' hex digraph sorts
+ * after 'z', so a Danish client would order tied references differently than
+ * an English one, defeating the cross-client determinism this exists for
+ * (adversarial round-2).
+ * @param a - First edge id.
+ * @param b - Second edge id.
+ * @returns Negative, zero, or positive per ordinal order.
+ */
+function ordinalCompare(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
  * Reads a source node view's display name. Content and group views carry an
  * optional `name`; an annotation sticky has none, so it resolves to empty.
  * @param view - The source node's view.
@@ -68,14 +83,18 @@ function thumbnailOf(view: NodeView): string | undefined {
 /**
  * Derives a node's reference rail from its incoming edges. Every edge whose
  * `target` is `nodeId` becomes one rail row resolved against the current node
- * set; a dangling edge (source node absent) is skipped. Edge order is
- * preserved. Pure — display fields reflect the source nodes as passed in.
+ * set; a dangling edge (source node absent) is skipped. Rows are ordered by
+ * connection time (`createdAt` ascending, newest last — batch-2 item 7), NOT
+ * by array position: the edges array mirrors Y.Map struct-store order, which
+ * diverges from insertion order after reload / cross-client sync. A legacy
+ * edge without a stamp sorts as oldest (stable among its peers). Pure —
+ * display fields reflect the source nodes as passed in.
  * @param nodeId - The generative node whose reference rail to build.
  * @param nodes - The current canvas node views (source of live display
  *   fields). Only `id` + `data` are read, so both the stored
  *   {@link CanvasNodeView} shape and ReactFlow's `Node<NodeView>` satisfy it.
  * @param edges - The current canvas edges.
- * @returns The reference rail rows, in incoming-edge order.
+ * @returns The reference rail rows, in connection-time order (newest last).
  */
 export function deriveReferences(
   nodeId: string,
@@ -83,9 +102,21 @@ export function deriveReferences(
   edges: ReadonlyArray<CanvasEdge>,
 ): ReferenceRailItem[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  // filter() returns a fresh array, so the in-place sort never mutates the
+  // caller's edges. Ties (all unstamped legacy edges; same-ms stamps) break
+  // by edge id — the input order is Y.Map struct-store order, which DIFFERS
+  // across clients mid-session and flips on reload, so "stable sort keeps
+  // legacy order" would just reproduce the nondeterminism the stamp exists
+  // to remove (adversarial round-1). The id tiebreak gives every client the
+  // identical rail (and i2i payload) order.
+  const incoming = edges
+    .filter((e) => e.target === nodeId)
+    .sort(
+      (a, b) =>
+        (a.createdAt ?? 0) - (b.createdAt ?? 0) || ordinalCompare(a.id, b.id),
+    );
   const rail: ReferenceRailItem[] = [];
-  for (const edge of edges) {
-    if (edge.target !== nodeId) continue;
+  for (const edge of incoming) {
     const source = byId.get(edge.source);
     if (!source) continue;
     rail.push({

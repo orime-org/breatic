@@ -100,11 +100,13 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   // reference add-button is disabled and the rail dims its IMAGE rows (text
   // rows stay insertable — their @-chips still feed the prompt; R3-4 = A).
   const referencesOff = mode === 't2i';
+  // shrink-0 keeps the fixed-size footer icons from being squeezed when the
+  // pickers' labels run long (the footer row has no flex-wrap by design).
   const placeholderClass =
-    'flex h-8 w-8 items-center justify-center rounded-full border border-border ' +
+    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border ' +
     'text-muted-foreground opacity-50 cursor-not-allowed';
   return (
-    <div className='flex w-[min(560px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
+    <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
       <div className='flex items-start justify-between'>
         <GenerateToolbar
           onReference={onAddReference}
@@ -183,7 +185,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
             aria-label={t('canvas.generatePanel.execute')}
             disabled={!canExecute}
             onClick={onExecute}
-            className='flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
+            className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
           >
             <ArrowUp className='h-4 w-4' aria-hidden='true' />
           </button>

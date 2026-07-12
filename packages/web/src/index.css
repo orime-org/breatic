@@ -192,11 +192,23 @@ body {
 .canvas-picking .react-flow__nodesselection {
   display: none;
 }
+/* Magnetic-handle zone stand-down during a connection drag (adversarial
+   round-4): the canvas adds `.canvas-connecting` synchronously in
+   onConnectStart, BEFORE xyflow's same-tick elementFromPoint target
+   resolution (which forces a style flush, so this applies immediately). With
+   the 36px ::before hit zone non-interactive, target resolution falls back to
+   the 8px anchor + connectionRadius — a neighbor's zone can no longer hijack
+   the wire's endpoint, with no first-frame window a React class would leave. */
+.canvas-connecting .react-flow__handle::before {
+  pointer-events: none;
+}
 .react-flow .react-flow__node.canvas-pick-selectable {
   cursor: pointer;
 }
 .react-flow .react-flow__node.canvas-pick-selectable:hover {
-  border-radius: 12px;
+  /* Match the node card's real corner (NodeShell rounded-sm) — a hardcoded
+     12px drew the glow ring at 2x the node's 6px radius (user 2026-07-11). */
+  border-radius: var(--radius-sm);
   animation: canvas-pick-glow 1.4s ease-in-out infinite;
 }
 @keyframes canvas-pick-glow {
@@ -211,4 +223,59 @@ body {
       0 0 0 3px color-mix(in srgb, var(--color-status-selected) 80%, transparent),
       0 0 26px 7px color-mix(in srgb, var(--color-status-selected) 55%, transparent);
   }
+}
+/* Fake caret between adjacent reference chips in the generate prompt
+   (reference-mention-caret.ts). Browsers cannot paint a native caret at a
+   position with no adjacent text node (TipTap #2978), so a widget decoration
+   draws one: a zero-width span whose left border is the caret line. */
+.reference-mention-caret {
+  display: inline-block;
+  width: 0;
+  height: 1.2em;
+  vertical-align: text-bottom;
+  border-left: 1.5px solid currentColor;
+  pointer-events: none;
+  animation: reference-mention-caret-blink 1.06s step-end infinite;
+}
+@keyframes reference-mention-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+/* While the fake caret shows, hide the native one — at some element
+   boundaries a browser does paint natively, and two carets is worse than
+   none. Scoped by the plugin's editor-root marker class, so the native caret
+   stays untouched everywhere else (incl. IME composition, which inserts a
+   text node and flips this class off). */
+.reference-mention-caret-active {
+  caret-color: transparent;
+}
+/* Remote collaborator carets in the generate prompt (batch-2 item 14,
+   @tiptap/extension-collaboration-caret): the extension's default render
+   emits these classes and inlines each user's identity color (border-color
+   on the caret, background-color on the label) — layout + typography live
+   here. White label text is deliberate: the label bg is always one of the 7
+   saturated palette identity colors in both modes. */
+.collaboration-carets__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  word-break: normal;
+  pointer-events: none;
+}
+.collaboration-carets__label {
+  position: absolute;
+  top: -1.35em;
+  left: -1px;
+  border-radius: 3px 3px 3px 0;
+  padding: 0.1rem 0.3rem;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: normal;
+  white-space: nowrap;
+  color: white;
+  user-select: none;
+  pointer-events: none;
 }

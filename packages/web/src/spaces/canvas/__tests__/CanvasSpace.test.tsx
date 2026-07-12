@@ -306,7 +306,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
+            data: { kind: 'image', status: 'idle', mode: 'i2i' },
           },
         ],
       }),
@@ -334,6 +334,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     clickPane(pane as Element);
     expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
     expect(useCanvasStore.getState().referencePickForNodeId).toBe('target');
+    // The banner is the exclusive-session mode indicator and reads in palette
+    // violet — a SOLID popover-mixed surface, not the transparent group tint
+    // (batch-2 item 11).
+    const banner = screen.getByTestId('reference-pick-banner');
+    expect(banner.style.backgroundColor).toContain('--color-palette-violet');
+    expect(banner.style.backgroundColor).toContain('--color-popover');
+    expect(banner.style.borderColor).toContain('--color-palette-violet-border');
   });
 
   it('pane click with the panel open but NOT picking closes the panel (item 6b)', () => {
@@ -501,7 +508,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       id: 'target',
       type: 'image',
       position: { x: 0, y: 0 },
-      data: { kind: 'image', status: 'idle' },
+      data: { kind: 'image', status: 'idle', mode: 'i2i' },
     } as const;
     const other = {
       id: 'other',
@@ -993,6 +1000,290 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
     configSpy.mockRestore();
   });
+
+  // ---- Magnetic handle (user 2026-07-11) ----
+  // The 8px anchor element is invisible (its center is the edge attachment);
+  // the visible dot is a spring-following child, and the 36px outside-the-
+  // border hit zone is the ::before. jsdom sees classes, not geometry; the
+  // magnetic behavior + geometry are covered in MagneticHandle.test.tsx and
+  // the real-browser smoke.
+  it('mounts magnetic connection handles with an outside-the-border hit zone and a dot child', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const target = document.querySelector('.react-flow__handle.target');
+    const source = document.querySelector('.react-flow__handle.source');
+    expect(target).not.toBeNull();
+    expect(source).not.toBeNull();
+    for (const handle of [target, source]) {
+      expect(handle?.className).toContain('!bg-transparent');
+      expect(handle?.className).toContain('before:h-9');
+      expect(handle?.className).toContain('before:w-9');
+      expect(
+        handle?.querySelector('[data-testid="handle-dot"]'),
+      ).not.toBeNull();
+    }
+    // Zone fully outside the border: source reaches right (before:left-1 =
+    // starts at the border), target reaches left (before:-left-8).
+    expect(target?.className).toContain('before:-left-8');
+    expect(source?.className).toContain('before:left-1');
+  });
+
+  // ---- Pick session owns ALL connect gestures (adversarial round-1 HIGH) ----
+  // The item-12 gate covered only uploads; handles stayed live during a pick,
+  // so two candidate clicks in their hot zones ARMED xyflow click-connect and
+  // silently wrote a candidate-to-candidate edge the user never drew (and a
+  // 1px hot-zone drag released on blank could pop the create menu mid-pick).
+  // nodesConnectable=false during the pick kills both at the gesture source.
+  it('a reference pick disables the connection handles (no connectable state)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'candidate',
+            type: 'image',
+            position: { x: 400, y: 0 },
+            data: { kind: 'image', content: 'c.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const handle = document.querySelector('.react-flow__handle');
+    expect(handle?.className).toContain('connectable');
+    // Pick state only — the panel (its own catalog/query stack) is not
+    // needed to prove the gesture gate.
+    act(() => {
+      useCanvasStore.setState({ referencePickForNodeId: 'target' });
+    });
+    expect(
+      document.querySelector('.react-flow__handle')?.className,
+    ).not.toContain('connectable');
+    act(() => {
+      useCanvasStore.setState({ referencePickForNodeId: null });
+    });
+    expect(
+      document.querySelector('.react-flow__handle')?.className,
+    ).toContain('connectable');
+  });
+
+  // ---- Pick session suppresses the context menus (adversarial round-1) ----
+  // A node right-click mid-pick opened the full action menu (whose Upload
+  // silently no-ops behind the item-12 gate, and whose Delete would mutate
+  // the pick surface). The pick session owns pointer interactions until Exit.
+  it('a reference pick suppresses the node and pane context menus', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.setState({ referencePickForNodeId: 'target' });
+    });
+    const node = document.querySelector('.react-flow__node');
+    act(() => {
+      node?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(screen.queryByTestId('node-menu-generate')).toBeNull();
+    const pane = document.querySelector('.react-flow__pane');
+    act(() => {
+      pane?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(screen.queryByTestId('create-node-text')).toBeNull();
+    act(() => {
+      useCanvasStore.setState({ referencePickForNodeId: null });
+    });
+  });
+
+  // ---- Exit restores keyboard focus (adversarial round-1, a11y) ----
+  // The Exit button unmounts with the banner; without a hand-off, focus
+  // drops to <body> and a keyboard user is stranded. Exit passes focus to
+  // the panel's pick trigger (still mounted — the pick kept the panel open).
+  it('exiting the pick via the banner hands focus to the pick trigger', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    // The real trigger lives in the Generate panel (kept open by the pick);
+    // this test plants a stand-in so the hand-off contract is provable
+    // without mounting the full panel stack (catalog fetch + socket).
+    const trigger = document.createElement('button');
+    trigger.setAttribute('data-testid', 'generate-tool-reference');
+    document.body.appendChild(trigger);
+    try {
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: 'target' });
+      });
+      const exit = screen.getByTestId('reference-pick-exit');
+      act(() => {
+        exit.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(useCanvasStore.getState().referencePickForNodeId).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      trigger.remove();
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: null });
+      });
+    }
+  });
+
+  // ---- Pick-end focus catch-all (adversarial round-2, a11y) ----
+  // The banner Exit hand-off focuses the pick trigger, but when the trigger
+  // is disabled (t2i switch mid-pick) or the pick ends by another path (panel
+  // X, host node deleted) focus dropped to <body>. A catch-all restores focus
+  // to the canvas container whenever a pick ends with focus orphaned.
+  it('restores focus to the canvas container when a pick ends with focus on <body>', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.setState({ referencePickForNodeId: 'target' });
+    });
+    // Simulate an orphaned focus (the disabled-trigger / panel-X / node-gone
+    // paths all land here) and end the pick WITHOUT the banner hand-off.
+    act(() => {
+      document.body.focus();
+      useCanvasStore.setState({ referencePickForNodeId: null });
+    });
+    expect(document.activeElement).toBe(screen.getByTestId('canvas-space'));
+  });
+
+  it('does not steal focus when a pick ends with focus already placed (Exit hand-off)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const elsewhere = document.createElement('button');
+    document.body.appendChild(elsewhere);
+    try {
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: 'target' });
+      });
+      act(() => {
+        elsewhere.focus();
+        useCanvasStore.setState({ referencePickForNodeId: null });
+      });
+      // Focus was NOT on body, so the catch-all leaves it alone.
+      expect(document.activeElement).toBe(elsewhere);
+    } finally {
+      elsewhere.remove();
+    }
+  });
+
+  // ---- Reference-pick double-click gate (batch-2 item 12) ----
+  // onNodeClick / onPaneClick already delegate to the pick session, but a
+  // DOUBLE-click on an empty node's placeholder went straight to
+  // activateNodeUpload and popped the file picker over the running pick. The
+  // gate lives in activateNodeUpload itself (single choke point: placeholder
+  // double-click AND the node-menu Upload both route through it).
+  it('a double-click on an empty node during a reference pick does not open the file picker', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    const clickSpy = vi
+      .spyOn(HTMLInputElement.prototype, 'click')
+      .mockImplementation(() => {});
+    // finally-cleanup: a failing assertion mid-test must not leak the pick
+    // state / prototype spy into later tests (bit us in the red phase).
+    try {
+      render(<CanvasSpace projectId='p' spaceId='s' />);
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: 'other' });
+      });
+      const placeholder = screen.getByTestId('node-placeholder');
+      act(() => {
+        placeholder.dispatchEvent(
+          new MouseEvent('dblclick', { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(clickSpy).not.toHaveBeenCalled();
+
+      // Control: off pick mode the same double-click opens the picker — proves
+      // the gate (not a broken wire) is what suppressed it above.
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: null });
+      });
+      act(() => {
+        placeholder.dispatchEvent(
+          new MouseEvent('dblclick', { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      act(() => {
+        useCanvasStore.setState({ referencePickForNodeId: null });
+      });
+      clickSpy.mockRestore();
+    }
+  });
 });
 
 // Reference-pick mode cursor contract (canvas item 7, user 2026-07-10).
@@ -1015,6 +1306,36 @@ describe('reference-pick interaction contract', () => {
     // subsequent pick clicks hit the rect instead of the nodes (a dead zone in
     // the continuous-pick contract). The prop must be pick-gated.
     expect(src).toContain('selectionOnDrag={referencePickForNodeId == null}');
+  });
+
+  it('adds the canvas-connecting class SYNCHRONOUSLY on connect-start so the magnetic zone stands down (round-4)', () => {
+    // xyflow resolves a wire's target via elementFromPoint in the SAME tick it
+    // starts the connection (onConnectStart → isValidHandle). A React class off
+    // connection.inProgress commits one frame late, so the first move still
+    // hit-tests the live 36px handle zones and could hijack to a neighbor. The
+    // class must be added imperatively in onConnectStart (which runs
+    // synchronously before that first target resolution) and removed on end.
+    expect(src).toContain('onConnectStart={onConnectDragStart}');
+    expect(src).toMatch(/classList\.add\(['"]canvas-connecting['"]\)/);
+    expect(src).toMatch(/classList\.remove\(['"]canvas-connecting['"]\)/);
+  });
+
+  it('gates the magnetic zone on the DRAG path ONLY, never the click-connect path (round-5)', () => {
+    // The click-connect path resolves each tap by a literal Handle onClick (no
+    // connectionRadius net), so the 36px ::before zone must stay live to arm /
+    // complete a tap in the zone — disabling it broke click-connect and, since
+    // its cleanup only fires on the second tap, stuck the class on an abandoned
+    // pick. Exactly ONE add and ONE remove (the drag pair) may exist.
+    expect(src.match(/classList\.add\(['"]canvas-connecting['"]\)/g)).toHaveLength(1);
+    expect(
+      src.match(/classList\.remove\(['"]canvas-connecting['"]\)/g),
+    ).toHaveLength(1);
+    // The add lives in the drag-start callback, not the click-start one.
+    const clickStart = src.slice(
+      src.indexOf('const onClickConnectStart'),
+      src.indexOf('const onClickConnectEnd'),
+    );
+    expect(clickStart).not.toContain('canvas-connecting');
   });
 
   it('NEVER toggles selectionKeyCode dynamically (xyflow latches mid-keyhold)', () => {
@@ -1054,7 +1375,7 @@ describe('reference-pick interaction contract', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
+            data: { kind: 'image', status: 'idle', mode: 'i2i' },
           },
         ],
       }),
@@ -1118,6 +1439,16 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     expect(css).not.toMatch(/^\.canvas-pick-selectable\s*\{/m);
   });
 
+  it('stands the magnetic handle ::before zone down while connecting (round-4)', () => {
+    // The synchronous .canvas-connecting class disables the 36px handle hit
+    // zone during a drag so it cannot hijack xyflow's elementFromPoint target
+    // resolution for a nearby node. Block-scoped so a decoy elsewhere can't
+    // satisfy the substring (R4 gameable-contract lesson).
+    expect(css).toMatch(
+      /\.canvas-connecting \.react-flow__handle::before\s*\{[^}]*pointer-events:\s*none/,
+    );
+  });
+
   it('hides the NodesSelection rect during a pick (marquee dead-zone neutralizer)', () => {
     // Round-3: the Shift marquee stays enabled during a pick (gating
     // selectionKeyCode latches xyflow's key state mid-hold), so the
@@ -1137,6 +1468,15 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     );
     expect(css).toContain('animation: canvas-pick-glow');
     expect(css).toContain('@keyframes canvas-pick-glow');
+  });
+
+  it('glow corner follows the node radius token, not a hardcoded value (batch-2 item 6)', () => {
+    // A hardcoded 12px drew the halo at 2x the node card's 6px rounded-sm
+    // corner (user screenshot 2026-07-11). Block-scoped match so the pin
+    // cannot be satisfied by an unrelated later rule.
+    expect(css).toMatch(
+      /\.canvas-pick-selectable:hover\s*\{[^}]*border-radius:\s*var\(--radius-sm\)/,
+    );
   });
 });
 

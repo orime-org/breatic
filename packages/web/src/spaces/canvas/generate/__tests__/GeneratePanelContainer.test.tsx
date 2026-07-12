@@ -4,15 +4,37 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReactFlowProvider } from '@xyflow/react';
+import { ReactFlow } from '@xyflow/react';
 
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
+// The container acquires the canvas-space doc's shared provider for the
+// collaborator-caret awareness channel (batch-2 item 14) — mocked so the
+// component test never opens a real WebSocket. Provider null = the caret
+// extension simply doesn't mount (its pre-connect state).
+vi.mock('@web/data/yjs/use-socket', () => ({
+  useSocket: vi.fn(
+    (): {
+      provider: null;
+      synced: boolean;
+      status: 'connecting';
+      authFailedReason: null;
+    } => ({
+      provider: null,
+      synced: false,
+      status: 'connecting',
+      authFailedReason: null,
+    }),
+  ),
+}));
+
 import { toast } from 'sonner';
 
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
+import { useSocket } from '@web/data/yjs/use-socket';
+import { docName } from '@web/data/yjs/manager';
 import { modelsApi } from '@web/data/api';
 import { useCanvasStore } from '@web/stores';
 
@@ -28,7 +50,16 @@ function mountContainer(): ReturnType<typeof render> {
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <ReactFlowProvider>
+      {/* A REAL ReactFlow with the target node: GeneratePanelBody mounts
+          inside a NodeToolbar, which renders its children only when the node
+          exists in ReactFlow's store — a bare provider never mounts the
+          body (caught wiring the caret-awareness test). */}
+      <ReactFlow
+        nodes={[
+          { id: 'target', position: { x: 0, y: 0 }, data: {} },
+        ]}
+        edges={[]}
+      >
         <GeneratePanelContainer
           projectId='p'
           spaceId='s'
@@ -40,7 +71,7 @@ function mountContainer(): ReturnType<typeof render> {
           ]}
           edges={[]}
         />
-      </ReactFlowProvider>
+      </ReactFlow>
     </QueryClientProvider>,
   );
 }
@@ -73,6 +104,88 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     expect(
       screen.queryByTestId('generate-prompt-editor'),
     ).not.toBeInTheDocument();
+    listSpy.mockRestore();
+  });
+
+  // Collaborator carets (batch-2 item 14): the prompt fragment lives in the
+  // CANVAS-SPACE doc, so the caret awareness channel must be that exact
+  // doc's shared provider — acquiring any other doc name would publish carets
+  // into the wrong awareness (or open a second socket).
+  it('acquires the canvas-space doc provider for the caret awareness channel', async () => {
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
+      image: [],
+      video: [],
+      audio: [],
+      tts: [],
+      three_d: [],
+      understand: [],
+      total: 0,
+    });
+    mountContainer();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target');
+    });
+    await waitFor(() => {
+      expect(vi.mocked(useSocket)).toHaveBeenCalled();
+    });
+    const call = vi.mocked(useSocket).mock.calls.at(-1)?.[0];
+    expect(call?.name).toBe(docName.canvasSpace('p', 's'));
+    listSpy.mockRestore();
+  });
+
+  // Pick ends on a t2i switch (adversarial round-2): t2i ignores references
+  // and disables the reference button, so a pick left running after the mode
+  // flips to t2i is a zombie session (its Exit trigger disabled = the stranded
+  // focus). vm.mode drives it, so a collaborator's setNodeMode ends it too.
+  it('ends a running reference pick when the node mode becomes t2i', async () => {
+    const emptyCatalog = {
+      image: [],
+      video: [],
+      audio: [],
+      tts: [],
+      three_d: [],
+      understand: [],
+      total: 0,
+    };
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(emptyCatalog);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    /**
+     * Renders the container with the target node in the given mode.
+     * @param mode - The node's generation sub-mode.
+     * @returns The render tree.
+     */
+    const tree = (mode: 'i2i' | 't2i'): React.JSX.Element => (
+      <QueryClientProvider client={client}>
+        <ReactFlow
+          nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
+          edges={[]}
+        >
+          <GeneratePanelContainer
+            projectId='p'
+            spaceId='s'
+            nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode } }]}
+            edges={[]}
+          />
+        </ReactFlow>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree('i2i'));
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target');
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    await waitFor(() =>
+      expect(useCanvasStore.getState().referencePickForNodeId).toBe('target'),
+    );
+    // Mode flips to t2i (local toggle or a collaborator's setNodeMode).
+    rerender(tree('t2i'));
+    await waitFor(() =>
+      expect(useCanvasStore.getState().referencePickForNodeId).toBeNull(),
+    );
     listSpy.mockRestore();
   });
 });

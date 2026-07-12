@@ -110,6 +110,12 @@ interface LeftFloatingMenuProps {
    * spec § 6.2 viewers see the menu but can't fire any action.
    */
   disabled?: boolean;
+  /**
+   * When `true` (a reference pick is running — batch-2 item 13), the menu
+   * slides out through the LEFT edge but stays mounted (its dropdown state
+   * survives) and goes `inert` (off-screen controls leave the tab order).
+   */
+  concealed?: boolean;
 }
 
 /**
@@ -154,12 +160,14 @@ function toolButtonClassName(item: MenuItem): string {
  * @param root0.onPick - Fired once with the picked tool id when a menu button is clicked.
  * @param root0.onCreateNode - Fired with the picked node type from the node-library dropdown.
  * @param root0.disabled - When `true`, every tool button is disabled with an editor-permission-required tooltip.
+ * @param root0.concealed - When `true` (reference pick running), the menu slides off through the left edge and goes inert.
  * @returns The floating left tool menu with upper action zone, divider, and lower placeholder zone.
  */
 export function LeftFloatingMenu({
   onPick,
   onCreateNode,
   disabled = false,
+  concealed = false,
 }: LeftFloatingMenuProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -167,7 +175,13 @@ export function LeftFloatingMenu({
       aria-label={t('menu.createAria')}
       data-testid='left-floating-menu'
       data-disabled={disabled ? 'true' : undefined}
-      className='absolute left-3 top-1/2 z-10 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-lg border border-border bg-popover py-1.5 shadow-sm'
+      // Concealment slides, never unmounts (state survives the pick). The
+      // -translate-x COMPOSES with the -translate-y-1/2 vertical centering.
+      inert={concealed}
+      className={cn(
+        'absolute left-3 top-1/2 z-10 flex w-[52px] -translate-y-1/2 flex-col items-center gap-1 rounded-lg border border-border bg-popover py-1.5 shadow-sm transition-transform',
+        concealed && '-translate-x-24',
+      )}
     >
       {UPPER_ITEMS.map((it) =>
         it.id === 'nodes' ? (

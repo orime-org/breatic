@@ -271,11 +271,89 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     });
     expect(doc().getMap('edgesMap').size).toBe(1);
     expect(readEdges(doc())).toEqual([
-      { id: 'e1', source: 'a', target: 'b', toolId: 'crop' },
+      {
+        id: 'e1',
+        source: 'a',
+        target: 'b',
+        toolId: 'crop',
+        createdAt: expect.any(Number) as number,
+      },
     ]);
 
     removeEdge(PID, SID, 'e1');
     expect(readEdges(doc())).toHaveLength(0);
+  });
+
+  // Connection timestamp (batch-2 item 7): the reference rail orders rows by
+  // when the connection was drawn. Y.Map iteration order is struct-store order
+  // (clientID+clock), NOT insertion order after reload / sync, so the fact
+  // "when was this edge created" must be stored on the edge itself.
+  it('addEdge stamps createdAt (epoch ms) and readEdges round-trips it', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'a' }));
+    addNode(PID, SID, sampleFields('image', {}, { id: 'b' }));
+    const t0 = Date.now();
+    addEdge(PID, SID, { id: 'a->b', source: 'a', target: 'b' });
+    const t1 = Date.now();
+    const [read] = readEdges(doc());
+    expect(typeof read.createdAt).toBe('number');
+    expect(read.createdAt).toBeGreaterThanOrEqual(t0);
+    expect(read.createdAt).toBeLessThanOrEqual(t1);
+  });
+
+  // Adversarial (batch-2 round-1): a corrupt stamp written by a modified
+  // client (string / NaN) must not pass the read boundary — the sort
+  // comparator would return NaN and TimSort silently leaves HEALTHY edges
+  // around it un-sorted. Same untrusted-Yjs convention as readNodeLeaseGen.
+  it('readEdges drops a non-finite / non-number createdAt (corrupt collaborative data)', () => {
+    for (const [id, bad] of [
+      ['corrupt-str', '2026-07-11'],
+      ['corrupt-nan', Number.NaN],
+    ] as const) {
+      const map = new Y.Map<unknown>();
+      map.set('id', id);
+      map.set('source', 'a');
+      map.set('target', 'b');
+      map.set('createdAt', bad);
+      doc().getMap<Y.Map<unknown>>('edgesMap').set(id, map);
+    }
+    for (const read of readEdges(doc())) {
+      expect(read.createdAt).toBeUndefined();
+    }
+  });
+
+  // Adversarial (batch-2 round-1): the deterministic id `source->target`
+  // means a duplicate drag maps to an EXISTING map entry. An unconditional
+  // set() would replace it with a fresh createdAt — silently teleporting the
+  // reference from first to last in the rail and pushing a spurious undo
+  // entry. A duplicate connect is an idempotent success instead.
+  it('addEdge is idempotent for an existing edge id (keeps the original stamp, no rewrite)', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'a' }));
+    addNode(PID, SID, sampleFields('image', {}, { id: 'b' }));
+    expect(addEdge(PID, SID, { id: 'a->b', source: 'a', target: 'b' })).toBe(
+      true,
+    );
+    const first = readEdges(doc())[0].createdAt;
+    expect(
+      addEdge(PID, SID, {
+        id: 'a->b',
+        source: 'a',
+        target: 'b',
+        createdAt: (first ?? 0) + 99999,
+      }),
+    ).toBe(true);
+    expect(readEdges(doc())).toHaveLength(1);
+    expect(readEdges(doc())[0].createdAt).toBe(first);
+  });
+
+  it('readEdges leaves createdAt undefined for a legacy edge that predates the stamp', () => {
+    // Simulate an old-document edge written before createdAt existed.
+    const map = new Y.Map<unknown>();
+    map.set('id', 'legacy');
+    map.set('source', 'a');
+    map.set('target', 'b');
+    doc().getMap<Y.Map<unknown>>('edgesMap').set('legacy', map);
+    const [read] = readEdges(doc());
+    expect(read.createdAt).toBeUndefined();
   });
 
   it('addEdge returns true when the edge lands and false when rejected', () => {
@@ -305,7 +383,14 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     addEdge(PID, SID, { id: 'a->b', source: 'a', target: 'b' });
     const graph = readCanvasGraph(PID, SID);
     expect(graph.nodes.map((n) => n.id).sort()).toEqual(['a', 'b']);
-    expect(graph.edges).toEqual([{ id: 'a->b', source: 'a', target: 'b' }]);
+    expect(graph.edges).toEqual([
+      {
+        id: 'a->b',
+        source: 'a',
+        target: 'b',
+        createdAt: expect.any(Number) as number,
+      },
+    ]);
   });
 
   it('setNodeParams writes the generate model params into the node data', () => {

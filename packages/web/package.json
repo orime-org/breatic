@@ -52,10 +52,9 @@
     "@tiptap/extension-code-block": "3.22.3",
     "@tiptap/extension-code-block-lowlight": "^3.22.3",
     "@tiptap/extension-collaboration": "^3.22.3",
-    "@tiptap/extension-collaboration-cursor": "^2.26.2",
+    "@tiptap/extension-collaboration-caret": "^3.22.3",
     "@tiptap/extension-document": "3.22.3",
     "@tiptap/extension-floating-menu": "^3.22.3",
-    "@tiptap/extension-gapcursor": "^3.22.3",
     "@tiptap/extension-heading": "3.22.3",
     "@tiptap/extension-highlight": "^3.22.3",
     "@tiptap/extension-horizontal-rule": "3.22.3",
@@ -192,7 +191,8 @@
     "vite": "^5.2.0",
     "vite-plugin-svg-icons": "^2.0.1",
     "vitest": "^3.0.0",
-    "vitest-axe": "^0.1.0"
+    "vitest-axe": "^0.1.0",
+    "y-protocols": "1.0.7"
   },
   "overrides": {
     "react-slider": {

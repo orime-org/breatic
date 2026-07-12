@@ -113,10 +113,50 @@ describe('FLOW_NODE_TYPES', () => {
         body.compareDocumentPosition(handle) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
-      // Original neutral dot restored (reverses the higher-contrast patch).
-      expect(handle.className).toContain('!border-border');
-      expect(handle.className).toContain('!bg-muted');
-      expect(handle.className).not.toContain('!bg-background');
+      // Magnetic handle (user 2026-07-11): the anchor ELEMENT is invisible
+      // (its center is the edge attachment); the visible neutral dot is a
+      // child span, and the 36px hit zone is the ::before. Full geometry +
+      // spring behavior are covered in MagneticHandle.test.tsx.
+      expect(handle.className).toContain('!bg-transparent');
+      expect(handle.className).toContain('before:absolute');
+      const dot = handle.querySelector('[data-testid="handle-dot"]');
+      expect(dot?.className).toContain('border-border');
+      expect(dot?.className).toContain('bg-muted');
+    });
+  });
+
+  // nodesConnectable (viewer backstop + pick-session connect gate) flows
+  // store → NodeWrapper → the node component's isConnectable prop — and DIES
+  // there unless the component forwards it to <Handle>, whose own default is
+  // TRUE (adversarial round-1 HIGH: handles stayed live during a pick).
+  it('forwards isConnectable to both handles (false disables their connectable state)', () => {
+    const Text = FLOW_NODE_TYPES.text;
+    const data: TextNodeView = {
+      kind: 'text',
+      content: 'hello',
+      status: 'idle',
+      name: 'N',
+    };
+    const { container } = render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+        >
+          <Text
+            {...({
+              id: 'n1',
+              data,
+              selected: false,
+              isConnectable: false,
+            } as unknown as NodeProps)}
+          />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+    const handles = container.querySelectorAll('.react-flow__handle');
+    expect(handles.length).toBe(2);
+    handles.forEach((handle) => {
+      expect(handle.className).not.toContain('connectable');
     });
   });
 

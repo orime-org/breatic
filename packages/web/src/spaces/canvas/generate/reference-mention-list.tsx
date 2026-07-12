@@ -45,8 +45,14 @@ export const ReferenceMentionList = React.forwardRef<
 >(function ReferenceMentionList({ items, command, emptyLabel }, ref): React.JSX.Element {
   const t = useTranslation();
   const [selected, setSelected] = React.useState(0);
-  // Reset the highlight to the top whenever the filtered set changes.
-  React.useEffect(() => setSelected(0), [items]);
+  // Reset the highlight when the row CONTENT changes — never on array
+  // identity. @tiptap/suggestion re-runs items() (a fresh array) whenever the
+  // suggestion range MOVES, and a collaborator typing anywhere before the `@`
+  // in the shared prompt moves it; an identity-keyed reset made that remote
+  // keystroke silently snap the highlight to row 0 so Enter inserted the
+  // wrong reference (adversarial round-1).
+  const contentKey = items.map((i) => i.sourceNodeId).join('\u001f');
+  React.useEffect(() => setSelected(0), [contentKey]);
 
   const pick = React.useCallback(
     (index: number): void => {
