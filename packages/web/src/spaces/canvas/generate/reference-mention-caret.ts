@@ -22,6 +22,7 @@ import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { EditorView } from '@tiptap/pm/view';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 
@@ -104,6 +105,57 @@ export function caretBlindPos(state: EditorState): number | null {
   if (!isCaretBlind($pos)) return null;
   if (isTrailingCaretBlind($pos)) return null; // native caret via PM separator
   return $pos.pos;
+}
+
+/**
+ * Resolves the doc position of a caret-blind chip gap under a pointer, robust to
+ * browsers whose native hit-test mis-resolves a click in a chip gap to the
+ * paragraph START (Safari, #1756). Fast path: `posAtCoords` when it already
+ * lands on a caret-blind position (Chrome). Fallback: pick the gap by GEOMETRY —
+ * the chip rects on the clicked line — so it never trusts the broken native
+ * position. The result is verified caret-blind, so a click on ordinary text (or
+ * a gap that is not caret-blind) returns null and native handling stays. Pure
+ * read of the view; used by the mousedown takeover.
+ * @param view - The editor view.
+ * @param clientX - Pointer X in viewport px.
+ * @param clientY - Pointer Y in viewport px.
+ * @returns The caret-blind doc position under the pointer, or null.
+ */
+function caretBlindPosFromClick(
+  view: EditorView,
+  clientX: number,
+  clientY: number,
+): number | null {
+  const at = view.posAtCoords({ left: clientX, top: clientY });
+  if (at && isCaretBlind(view.state.doc.resolve(at.pos))) return at.pos;
+  // Geometry fallback: collect the chips on the clicked line, then place the
+  // anchor in the gap the pointer falls in (before the first, after the last, or
+  // between two adjacent chips).
+  const line: Array<{ before: number; after: number; rect: DOMRect }> = [];
+  view.state.doc.descendants((node, pos) => {
+    if (node.type.name !== REFERENCE_MENTION_NODE) return;
+    const dom = view.nodeDOM(pos);
+    if (!(dom instanceof HTMLElement)) return;
+    const rect = dom.getBoundingClientRect();
+    if (clientY >= rect.top && clientY <= rect.bottom) {
+      line.push({ before: pos, after: pos + node.nodeSize, rect });
+    }
+  });
+  if (line.length === 0) return null;
+  line.sort((a, b) => a.rect.left - b.rect.left);
+  let pos: number | null = null;
+  if (clientX <= line[0].rect.left) pos = line[0].before;
+  else if (clientX >= line[line.length - 1].rect.right) {
+    pos = line[line.length - 1].after;
+  } else {
+    for (let i = 0; i < line.length - 1; i += 1) {
+      if (clientX >= line[i].rect.right && clientX <= line[i + 1].rect.left) {
+        pos = line[i].after;
+        break;
+      }
+    }
+  }
+  return pos !== null && isCaretBlind(view.state.doc.resolve(pos)) ? pos : null;
 }
 
 /**
@@ -220,19 +272,20 @@ export function createReferenceMentionCaret(): Plugin<boolean> {
         return true;
       },
       handleDOMEvents: {
-        // Mouse-selection takeover for the TRAILING after-chip position (B1,
-        // user 2026-07-12). ProseMirror has no mouse-selection code of its own —
-        // it delegates drag-select to the browser — and Chrome refuses to extend
-        // a native drag past an uneditable inline atom at the END of a line
-        // (prosemirror #1152/#1199), so dragging left FROM after a trailing chip
-        // selected nothing. PM hand-wrote the KEYBOARD takeover for crossing
-        // these atoms (selectHorizontally, #937; mirrored in handleKeyDown
-        // above); this is the mouse sibling it never wrote — we compute the
-        // TextSelection ourselves instead of trusting the broken native drag.
-        // Scoped tightly: we ONLY take over when the press lands at the trailing
-        // after-chip spot. Everywhere else (plain text, and between-chip
-        // positions, which drag fine natively) we return false and the native
-        // drag is untouched, so the blast radius is exactly the broken case.
+        // Mouse-selection takeover for CARET-BLIND chip gaps (B1 + Safari
+        // #1756, user 2026-07-12). ProseMirror has no mouse-selection code of
+        // its own — it delegates click placement + drag-select to the browser —
+        // and browsers mishandle uneditable inline atoms: Chrome refuses to
+        // extend a native drag past a trailing atom (dragging left from after a
+        // trailing chip selected nothing, #1152/#1199), and Safari drops a click
+        // BETWEEN two chips at the paragraph start. PM hand-wrote the KEYBOARD
+        // takeover for crossing these atoms (selectHorizontally, #937; mirrored
+        // in handleKeyDown above); this is the mouse sibling it never wrote — we
+        // place the caret + compute the TextSelection ourselves. Scoped tightly
+        // by caretBlindPosFromClick, which returns a position ONLY at a
+        // verified caret-blind gap (and via GEOMETRY, not the browser's broken
+        // hit-test, so Safari lands the right spot). A press on plain text or ON
+        // a chip returns false → native handling + chip node-selection untouched.
         // Selection-only transactions never enter the y-prosemirror undo stack.
         mousedown: (view, event: MouseEvent): boolean => {
           if (
@@ -252,16 +305,13 @@ export function createReferenceMentionCaret(): Plugin<boolean> {
           ) {
             return false;
           }
-          const at = view.posAtCoords({
-            left: event.clientX,
-            top: event.clientY,
-          });
-          if (!at) return false;
-          if (!isTrailingCaretBlind(view.state.doc.resolve(at.pos))) {
-            return false;
-          }
+          const anchor = caretBlindPosFromClick(
+            view,
+            event.clientX,
+            event.clientY,
+          );
+          if (anchor === null) return false;
           event.preventDefault();
-          const anchor = at.pos;
           view.focus();
           view.dispatch(
             view.state.tr.setSelection(
