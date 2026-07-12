@@ -184,7 +184,14 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       );
       expect(el.style.display).toBe('none'); // hidden
       expect(document.body.contains(el)).toBe(true); // NOT removed → still alive
-      // Re-focus + keep typing (@Im): onUpdate fires and the popup re-shows.
+      // Re-focusing the editor (clicking back in) re-shows the popup WITHOUT any
+      // keystroke (B2 residual, user 2026-07-12): the fresh-panel behavior is that
+      // clicking to activate immediately shows the picker.
+      editor.view.dom.dispatchEvent(new FocusEvent('focus'));
+      expect(el.style.display).toBe('');
+      // And after another hide, continuing to type (onUpdate) also re-shows.
+      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      expect(el.style.display).toBe('none');
       handlers.onUpdate?.(props([row], editor));
       expect(el.style.display).toBe('');
     } finally {

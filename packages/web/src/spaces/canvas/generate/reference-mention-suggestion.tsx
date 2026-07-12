@@ -77,6 +77,10 @@ export function makeReferenceSuggestion(input: {
       let stopAutoUpdate: (() => void) | null = null;
       /** Document-level outside-click dismisser. */
       let onOutsidePointerDown: ((event: PointerEvent) => void) | null = null;
+      /** Re-shows the popup when the editor regains focus (B2). */
+      let onEditorFocus: (() => void) | null = null;
+      /** Whether the last render had ≥1 matching row (drives re-show on focus). */
+      let hasItems = false;
 
       /**
        * Anchors the popup to the caret and KEEPS it anchored via floating-ui
@@ -158,11 +162,23 @@ export function makeReferenceSuggestion(input: {
             }
           };
           document.addEventListener('pointerdown', onOutsidePointerDown, true);
+          // Re-show on re-focus (B2 residual, user 2026-07-12): the outside-click
+          // handler HIDES the popup (display:none) without exiting the suggestion.
+          // Re-focusing the editor (clicking back in) does not fire onUpdate — only
+          // typing does — so the popup would stay hidden until a keystroke. On
+          // focus, if the suggestion is still active with matches, re-show it (the
+          // autoUpdate loop keeps it caret-positioned), matching a freshly-opened
+          // panel where clicking to activate immediately shows the picker.
+          onEditorFocus = (): void => {
+            if (el && hasItems) el.style.display = '';
+          };
+          props.editor.view.dom.addEventListener('focus', onEditorFocus);
           // Show the popup ONLY when the pool has ≥1 matching row (I3, user
           // 2026-07-12): typing `@` as ordinary text (nothing matches) must not
           // pop an empty "no references" box. Zero matches → hidden, so plain
           // `@` typing is uninterrupted; a match → shown.
-          el.style.display = props.items.length > 0 ? '' : 'none';
+          hasItems = props.items.length > 0;
+          el.style.display = hasItems ? '' : 'none';
           place(props.clientRect);
         },
         onUpdate: (props: SuggestionProps<ReferenceRailItem>): void => {
@@ -171,14 +187,15 @@ export function makeReferenceSuggestion(input: {
             command: (item: ReferenceRailItem) => props.command(item),
             emptyLabel: input.emptyLabel,
           });
-          if (el) el.style.display = props.items.length > 0 ? '' : 'none';
+          hasItems = props.items.length > 0;
+          if (el) el.style.display = hasItems ? '' : 'none';
           place(props.clientRect);
         },
         onKeyDown: (props: SuggestionKeyDownProps): boolean => {
           if (props.event.key === 'Escape') return true;
           return component?.ref?.onKeyDown(props.event) ?? false;
         },
-        onExit: (): void => {
+        onExit: (props: SuggestionProps<ReferenceRailItem>): void => {
           stopAutoUpdate?.();
           stopAutoUpdate = null;
           if (onOutsidePointerDown) {
@@ -189,6 +206,11 @@ export function makeReferenceSuggestion(input: {
             );
             onOutsidePointerDown = null;
           }
+          if (onEditorFocus) {
+            props.editor.view.dom.removeEventListener('focus', onEditorFocus);
+            onEditorFocus = null;
+          }
+          hasItems = false;
           el?.remove();
           el = null;
           component?.destroy();
