@@ -476,20 +476,12 @@ describe('separator CSS contract (index.css)', () => {
     'utf8',
   );
 
-  it('keeps the separator WIDTH 0 (a non-zero width nudges chips + re-breaks Chrome drag, tiptap #4646)', () => {
+  it('keeps the separator 0x0 (non-zero width nudges chips + breaks Chrome drag #4646; a height gives no caret benefit and perturbs layout)', () => {
     expect(css).toMatch(
       /img\.ProseMirror-separator\s*\{[^}]*width:\s*0[^}]*\}/,
     );
-  });
-
-  it('sizes the separator HEIGHT to the text caret so the gap caret is not chip-tall (user 2026-07-12)', () => {
-    // height 0 let the native caret fall back to the adjacent chip (~22px) and
-    // render ~5px too tall; a text-caret-height, text-bottom-aligned box fixes it.
     expect(css).toMatch(
-      /img\.ProseMirror-separator\s*\{[^}]*height:\s*1\.2em[^}]*\}/,
-    );
-    expect(css).toMatch(
-      /img\.ProseMirror-separator\s*\{[^}]*vertical-align:\s*text-bottom[^}]*\}/,
+      /img\.ProseMirror-separator\s*\{[^}]*height:\s*0[^}]*\}/,
     );
   });
 

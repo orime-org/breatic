@@ -44,10 +44,10 @@ import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference
 export const referenceMentionCaretKey = new PluginKey('referenceMentionCaret');
 
 /**
- * CSS class of PM's separator img — the native-caret anchor. index.css sizes its
- * WIDTH 0 (a non-zero width nudges the following chip AND re-breaks Chrome's
- * native drag hit-test, tiptap #4646) and its HEIGHT to the text caret (else the
- * native caret at the gap falls back to the adjacent chip and renders too tall).
+ * CSS class of PM's separator img — the native-caret anchor. index.css keeps it
+ * 0x0: a non-zero WIDTH nudges the following chip AND re-breaks Chrome's native
+ * drag hit-test (tiptap #4646); a non-zero HEIGHT gives no benefit — the gap
+ * caret takes the adjacent chip's height, not this 0-width img's.
  */
 export const REFERENCE_MENTION_SEPARATOR_CLASS = 'ProseMirror-separator';
 
