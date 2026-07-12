@@ -275,10 +275,18 @@ body {
 /* I-beam over the editable prompt (C, user 2026-07-12): the gap between two
    adjacent chips is a real text-insertion point, so the cursor must read as
    "click to insert here" (text), not the default arrow the panel surface would
-   otherwise inherit. Chips are contentEditable=false, so the browser keeps the
-   default cursor over the chips themselves. */
+   otherwise inherit. */
 [data-testid='generate-prompt-editor'] .ProseMirror {
   cursor: text;
+}
+/* A reference chip is an ATOM selected as a unit, not editable text. `cursor`
+   is inherited and contentEditable=false does NOT override an explicitly-set
+   cursor (only `auto` resolution), so the I-beam above would leak onto the chip
+   and its thumbnail, falsely signalling an insertion point (batch-4 adversarial).
+   Reset the chip + its children to the default arrow. */
+[data-testid='generate-prompt-editor'] .reference-mention,
+[data-testid='generate-prompt-editor'] .reference-mention * {
+  cursor: default;
 }
 /* Remote collaborator carets in the generate prompt (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render

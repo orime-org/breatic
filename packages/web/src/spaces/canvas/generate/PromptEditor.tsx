@@ -254,6 +254,11 @@ export const PromptEditor = React.forwardRef<
     // remaining (lower) positions valid.
     const tr = editor.state.tr;
     for (const { from, to } of deletions) tr.delete(from, to);
+    // Edge-driven chip removal (the edge left the pool) is a CONSEQUENCE of a
+    // canvas action, not a prompt edit — keep it out of the prompt's undo stack
+    // so Cmd+Z can't resurrect an orphan chip whose reference is gone (same
+    // machine-derived-edit invariant as the thumbnail sync; batch-4 adversarial).
+    tr.setMeta('addToHistory', false);
     editor.view.dispatch(tr);
   }, [editor, references]);
 
@@ -284,6 +289,11 @@ export const PromptEditor = React.forwardRef<
     for (const u of updates) {
       tr.setNodeAttribute(u.pos, MENTION_THUMBNAIL_ATTR, u.thumbnail);
     }
+    // Machine-derived cosmetic sync — keep it OUT of the prompt's collaborative
+    // undo stack (batch-4 adversarial): otherwise Cmd+Z would revert a thumbnail
+    // refresh instead of the user's own edit, and (this effect is gated on
+    // `references`, not the doc) that revert would never self-heal.
+    tr.setMeta('addToHistory', false);
     editor.view.dispatch(tr);
   }, [editor, references]);
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
