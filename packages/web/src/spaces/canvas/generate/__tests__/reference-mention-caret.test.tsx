@@ -12,10 +12,11 @@ import { Text } from '@tiptap/extension-text';
 import { TextSelection } from '@tiptap/pm/state';
 
 import {
-  caretBlindPos,
+  caretBlindGaps,
   isTrailingCaretBlind,
+  renderSeparator,
   referenceMentionCaretKey,
-  REFERENCE_MENTION_CARET_ACTIVE_CLASS,
+  REFERENCE_MENTION_SEPARATOR_CLASS,
 } from '@web/spaces/canvas/generate/reference-mention-caret';
 import {
   ReferenceMention,
@@ -41,7 +42,7 @@ const chipB: ReferenceRailItem = {
 
 /**
  * Mounts a bare editor carrying the ReferenceMention extension (which installs
- * the chip-boundary caret plugin).
+ * the chip-boundary caret/anchor plugin).
  * @returns The editor (caller destroys).
  */
 function makeEditor(): Editor {
@@ -74,66 +75,40 @@ function seedAdjacentChips(editor: Editor): void {
     .run();
 }
 
-// The bug (batch-2 item 5, TipTap #2978): a text cursor BETWEEN two adjacent
-// chips is a real document position (typing lands there) but browsers cannot
-// paint a native caret — the DOM selection has no text node to anchor to.
-// Gapcursor was the wrong tool (its valid() rejects textblock parents, so it
-// never fires inside a paragraph). The fix draws the caret ourselves, scoped
-// to exactly the caret-blind chip boundaries; native caret rules elsewhere.
+// Root cause (WebKit bug 15256 / TipTap #2978): a text caret at a gap between two
+// adjacent chips — or before a leading chip at paragraph start — is a real
+// document position (typing lands there) but the DOM has no text node to anchor a
+// native caret to. Chrome holds the model selection but paints nothing; WebKit
+// snaps the caret AND typed input to paragraph start. The fix injects PM's own
+// img.ProseMirror-separator (a raw, model-invisible replaced element the browser
+// CAN anchor a native caret next to) at every such gap EXCEPT trailing, where PM's
+// addTextblockHacks already injects one. This replaced the earlier display-only
+// fake caret, which never participated in the native selection (A, user 2026-07-12).
 
-/**
- * Marks the editor's caret plugin as focused/blurred by dispatching the same
- * `focus` / `blur` transaction metas TipTap's core focusEvents plugin emits
- * on the real DOM events (jsdom focus on contenteditable is unreliable).
- * @param editor - The editor.
- * @param focused - The focus state to set.
- */
-function setEditorFocusState(editor: Editor, focused: boolean): void {
-  editor.view.dispatch(
-    editor.state.tr.setMeta(focused ? 'focus' : 'blur', {}),
-  );
-}
-
-describe('caretBlindPos — where the fake caret must render', () => {
-  it('returns the position between two adjacent chips', () => {
+describe('caretBlindGaps — every gap that needs a native-caret anchor', () => {
+  it('returns the leading + between-chip gaps for two adjacent chips (not the trailing one)', () => {
     const editor = makeEditor();
     try {
-      seedAdjacentChips(editor);
-      editor.commands.setTextSelection(2);
-      expect(caretBlindPos(editor.state)).toBe(2);
+      seedAdjacentChips(editor); // A(1-2) B(2-3): pos 1 leading, 2 between, 3 trailing
+      // Structural, not selection-gated: the anchors exist regardless of where the
+      // caret sits, so a click/arrow into any gap lands natively.
+      expect(caretBlindGaps(editor.state.doc)).toEqual([1, 2]);
     } finally {
       editor.destroy();
     }
   });
 
-  it('returns the paragraph-start position before a leading chip (no text anchor there either)', () => {
+  it('excludes the trailing after-chip position (PM separator anchors the native caret there, B1)', () => {
     const editor = makeEditor();
     try {
       seedAdjacentChips(editor);
-      editor.commands.setTextSelection(1);
-      expect(caretBlindPos(editor.state)).toBe(1);
+      expect(caretBlindGaps(editor.state.doc)).not.toContain(3);
     } finally {
       editor.destroy();
     }
   });
 
-  it('returns NULL after a trailing chip — PM separator anchors the native caret there (B1, user 2026-07-12)', () => {
-    const editor = makeEditor();
-    try {
-      seedAdjacentChips(editor);
-      editor.commands.setTextSelection(3);
-      // The trailing after-chip position (end of textblock) now retires the fake
-      // caret: PM's img.ProseMirror-separator gives a native caret, and drawing
-      // our fake one over it both hid the native caret AND obstructed Chrome's
-      // native drag hit-test. Between-chip / leading-chip positions still return
-      // their pos (no separator there).
-      expect(caretBlindPos(editor.state)).toBeNull();
-    } finally {
-      editor.destroy();
-    }
-  });
-
-  it('returns null at a chip|text boundary (the adjacent text node anchors the native caret)', () => {
+  it('returns only the leading gap for a leading chip followed by text', () => {
     const editor = makeEditor();
     try {
       editor
@@ -141,48 +116,64 @@ describe('caretBlindPos — where the fake caret must render', () => {
         .insertContent(referenceMentionContent(chipA))
         .insertContent('hi')
         .run();
-      editor.commands.setTextSelection(2);
-      expect(caretBlindPos(editor.state)).toBeNull();
+      // chip 1-2, 'hi' 2-4: pos 1 is caret-blind (leading), pos 2 has a text
+      // anchor (the 'h'), so only [1].
+      expect(caretBlindGaps(editor.state.doc)).toEqual([1]);
     } finally {
       editor.destroy();
     }
   });
 
-  it('returns null inside plain text', () => {
+  it('returns nothing for a trailing chip after text (text anchors before, PM separator after)', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('hi')
+        .insertContent(referenceMentionContent(chipA))
+        .run();
+      expect(caretBlindGaps(editor.state.doc)).toEqual([]);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('returns nothing for plain text', () => {
     const editor = makeEditor();
     try {
       editor.chain().insertContent('hello').run();
-      editor.commands.setTextSelection(3);
-      expect(caretBlindPos(editor.state)).toBeNull();
+      expect(caretBlindGaps(editor.state.doc)).toEqual([]);
     } finally {
       editor.destroy();
     }
   });
 
-  it('returns null in an empty paragraph (trailing-break keeps the native caret visible)', () => {
+  it('returns nothing for an empty paragraph', () => {
     const editor = makeEditor();
     try {
-      expect(caretBlindPos(editor.state)).toBeNull();
-    } finally {
-      editor.destroy();
-    }
-  });
-
-  it('returns null for a NodeSelection (a selected chip renders its own selection ring)', () => {
-    const editor = makeEditor();
-    try {
-      seedAdjacentChips(editor);
-      editor.commands.setNodeSelection(1);
-      expect(caretBlindPos(editor.state)).toBeNull();
+      expect(caretBlindGaps(editor.state.doc)).toEqual([]);
     } finally {
       editor.destroy();
     }
   });
 });
 
-// B1 (user 2026-07-12): the trailing after-chip position both retires the fake
-// caret (native caret via PM's separator) and is the only spot the mouse-drag
-// takeover engages — Chrome refuses to native-drag FROM there.
+describe('renderSeparator — the native-caret anchor is a real separator img, not a painted caret', () => {
+  it('builds a bare img.ProseMirror-separator, silent to assistive tech', () => {
+    const el = renderSeparator();
+    expect(el.tagName).toBe('IMG');
+    expect(el.classList.contains(REFERENCE_MENTION_SEPARATOR_CLASS)).toBe(true);
+    // alt="" (not a broken-image placeholder) + aria-hidden → no AT announcement.
+    expect(el.getAttribute('alt')).toBe('');
+    expect(el.getAttribute('aria-hidden')).toBe('true');
+    // No `src`: an unresolved replaced element the browser anchors a caret next to.
+    expect(el.hasAttribute('src')).toBe(false);
+  });
+});
+
+// B1 (user 2026-07-12): the trailing after-chip position both keeps its native
+// caret via PM's separator (so caretBlindGaps skips it) and is the only spot the
+// mouse-drag takeover engages — Chrome refuses to native-drag FROM there.
 describe('isTrailingCaretBlind — the trailing after-chip position', () => {
   it('is true after a trailing chip (end of the textblock)', () => {
     const editor = makeEditor();
@@ -194,7 +185,7 @@ describe('isTrailingCaretBlind — the trailing after-chip position', () => {
     }
   });
 
-  it('is false between two chips (no separator there → the fake caret stays)', () => {
+  it('is false between two chips (our separator anchors it there)', () => {
     const editor = makeEditor();
     try {
       seedAdjacentChips(editor);
@@ -230,7 +221,9 @@ describe('isTrailingCaretBlind — the trailing after-chip position', () => {
   });
 });
 
-// The mouse-drag takeover is scoped to the trailing after-chip press only; the
+// The mouse-drag takeover is retained (ship1) for the Chrome trailing-drag defect
+// (#1152/#1199) + the Safari gap click, until real-Safari testing confirms the
+// separator makes native drag/click work (then it can be deleted — ship2). The
 // full drag needs a real browser (posAtCoords needs layout — synthetic events
 // can't drive native PM drag), so these cover the guard branches that decline.
 describe('reference-mention caret plugin — mousedown takeover scoping (B1)', () => {
@@ -350,110 +343,29 @@ describe('reference-mention caret plugin — wiring, clicks, decorations', () =>
     }
   });
 
-  it('renders exactly one caret widget decoration at the caret-blind position (focused)', () => {
+  it('renders a separator anchor at EVERY caret-blind gap, structurally (no selection/focus gate)', () => {
     const editor = makeEditor();
     try {
       seedAdjacentChips(editor);
-      setEditorFocusState(editor, true);
-      editor.commands.setTextSelection(2);
+      // No focus meta, no selection at a gap: the anchors are structural.
       const plugin = referenceMentionCaretKey.get(editor.state);
       const decos = plugin?.props.decorations?.call(plugin, editor.state);
-      // DecorationSet.find() lists the concrete decorations.
       const found = (
         decos as { find: () => Array<{ from: number }> } | null | undefined
       )?.find();
-      expect(found).toHaveLength(1);
-      expect(found?.[0].from).toBe(2);
+      expect(found?.map((d) => d.from).sort((a, b) => a - b)).toEqual([1, 2]);
     } finally {
       editor.destroy();
     }
   });
 
-  it('renders no decoration while the native caret is in charge', () => {
+  it('renders no decoration while the native caret is in charge (plain text)', () => {
     const editor = makeEditor();
     try {
       editor.chain().insertContent('hello').run();
-      editor.commands.setTextSelection(3);
       const plugin = referenceMentionCaretKey.get(editor.state);
       const decos = plugin?.props.decorations?.call(plugin, editor.state);
       expect(decos ?? null).toBeNull();
-    } finally {
-      editor.destroy();
-    }
-  });
-
-  it('marks the editor root while the fake caret shows (hides the native caret — never two carets)', () => {
-    const editor = makeEditor();
-    try {
-      seedAdjacentChips(editor);
-      setEditorFocusState(editor, true);
-      editor.commands.setTextSelection(2);
-      expect(editor.view.dom.classList.contains(REFERENCE_MENTION_CARET_ACTIVE_CLASS)).toBe(
-        true,
-      );
-      editor.commands.setNodeSelection(1);
-      expect(editor.view.dom.classList.contains(REFERENCE_MENTION_CARET_ACTIVE_CLASS)).toBe(
-        false,
-      );
-    } finally {
-      editor.destroy();
-    }
-  });
-});
-
-// Focus gating (adversarial round-1): a native caret NEVER renders in an
-// unfocused editor. Without the gate the fake caret blinked on panel open
-// (initial selection lands before a leading chip, editor unfocused) and kept
-// blinking after blur — two carets at once, falsely signalling where
-// keystrokes land. The plugin tracks TipTap's focus/blur transaction metas.
-describe('reference-mention caret plugin — focus gating', () => {
-  it('renders NO decoration while the editor is unfocused (panel open, initial selection)', () => {
-    const editor = makeEditor();
-    try {
-      seedAdjacentChips(editor);
-      // Initial selection in a chip-leading doc IS caret-blind — but the
-      // editor was never focused, so nothing may render.
-      editor.commands.setTextSelection(1);
-      const plugin = referenceMentionCaretKey.get(editor.state);
-      const decos = plugin?.props.decorations?.call(plugin, editor.state);
-      expect(decos ?? null).toBeNull();
-      expect(
-        editor.view.dom.classList.contains(
-          REFERENCE_MENTION_CARET_ACTIVE_CLASS,
-        ),
-      ).toBe(false);
-    } finally {
-      editor.destroy();
-    }
-  });
-
-  it('blur removes the caret and the native-caret suppression, focus restores them', () => {
-    const editor = makeEditor();
-    try {
-      seedAdjacentChips(editor);
-      setEditorFocusState(editor, true);
-      editor.commands.setTextSelection(2);
-      const plugin = referenceMentionCaretKey.get(editor.state);
-      expect(
-        (plugin?.props.decorations?.call(plugin, editor.state) as
-          | { find: () => unknown[] }
-          | null
-          | undefined)?.find(),
-      ).toHaveLength(1);
-      setEditorFocusState(editor, false);
-      expect(plugin?.props.decorations?.call(plugin, editor.state) ?? null).toBeNull();
-      expect(
-        editor.view.dom.classList.contains(
-          REFERENCE_MENTION_CARET_ACTIVE_CLASS,
-        ),
-      ).toBe(false);
-      setEditorFocusState(editor, true);
-      expect(
-        (plugin?.props.decorations?.call(plugin, editor.state) as
-          | { find: () => unknown[] }
-          | null
-          | undefined)?.find(),
-      ).toHaveLength(1);
     } finally {
       editor.destroy();
     }
@@ -466,8 +378,8 @@ describe('reference-mention caret plugin — focus gating', () => {
 // chip needs two presses to show the caret". The plugin's keymap collapses that
 // into ONE press: when the caret's immediate neighbour in the arrow direction
 // is a chip, it steps the TEXT cursor straight to the far boundary, skipping the
-// atom NodeSelection. The chip is still deletable (Backspace at the boundary)
-// and still selectable by click.
+// atom NodeSelection. This is an independent UX choice, unrelated to caret
+// anchoring (it stays regardless of the separator).
 describe('reference-mention caret plugin — one-press chip crossing (P5)', () => {
   const arrow = (editor: Editor, key: string, shiftKey = false): boolean => {
     const plugin = referenceMentionCaretKey.get(editor.state);
@@ -554,41 +466,26 @@ describe('reference-mention caret plugin — one-press chip crossing (P5)', () =
   });
 });
 
-// Contract tests bind STRUCTURALLY (block-scoped regex, not
-// substring-anywhere) — the R4 adversarial lesson: an assertion that scans to
-// end-of-file goes green on a decoy rule.
-describe('caret CSS contract (index.css)', () => {
+// Contract tests bind STRUCTURALLY (block-scoped regex, not substring-anywhere) —
+// the R4 adversarial lesson: an assertion that scans to end-of-file goes green on
+// a decoy rule.
+describe('separator CSS contract (index.css)', () => {
   const css = readFileSync(
     resolve(__dirname, '../../../../index.css'),
     'utf8',
   );
 
-  it('draws the caret line and blinks it', () => {
+  it('sizes the separator anchor 0x0 (a non-zero box nudges chips + re-breaks Chrome drag, tiptap #4646)', () => {
     expect(css).toMatch(
-      /\.reference-mention-caret\s*\{[^}]*border-left:[^}]*\}/,
+      /img\.ProseMirror-separator\s*\{[^}]*width:\s*0[^}]*\}/,
     );
     expect(css).toMatch(
-      /\.reference-mention-caret\s*\{[^}]*animation:[^}]*reference-mention-caret-blink[^}]*\}/,
-    );
-    expect(css).toMatch(/@keyframes reference-mention-caret-blink/);
-  });
-
-  it('suppresses the native caret only while the fake one is active', () => {
-    expect(css).toMatch(
-      /\.reference-mention-caret-active\s*\{[^}]*caret-color:\s*transparent[^}]*\}/,
+      /img\.ProseMirror-separator\s*\{[^}]*height:\s*0[^}]*\}/,
     );
   });
 
-  // P5 (user 2026-07-12): the 1.5px caret line, inserted as a real inline box
-  // between two chips, pushed the following chip ~1.5px to the right. Negative
-  // horizontal margins (-0.75px each side) absorb the border so the caret
-  // occupies ZERO net inline width — clicking a gap no longer nudges a chip.
-  it('the caret occupies zero net inline width (negative margins offset its 1.5px border)', () => {
-    expect(css).toMatch(
-      /\.reference-mention-caret\s*\{[^}]*margin-left:\s*-0\.75px[^}]*\}/,
-    );
-    expect(css).toMatch(
-      /\.reference-mention-caret\s*\{[^}]*margin-right:\s*-0\.75px[^}]*\}/,
-    );
+  it('no longer paints a fake caret (retired in favour of the native caret, A)', () => {
+    expect(css).not.toMatch(/\.reference-mention-caret\s*\{/);
+    expect(css).not.toMatch(/caret-color:\s*transparent/);
   });
 });

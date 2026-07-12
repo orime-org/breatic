@@ -2,48 +2,49 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Fake caret for the caret-blind positions around reference chips.
+ * Native-caret anchor for the caret-blind positions around reference chips.
  *
- * Root cause (TipTap #2978, batch-2 item 5): a text cursor between two
- * adjacent inline atoms is a real document position — typing lands there —
- * but the DOM selection has no text node to anchor to, so browsers do not
- * paint a native caret. Gapcursor is the wrong tool: its `valid()` rejects
- * any position whose parent is a textblock, so it never fires inside a
- * paragraph. The proven technique (prosemirror-codemark /
- * prosemirror-virtual-cursor, both MIT) is to draw the caret yourself as a
- * widget decoration; this plugin scopes that technique to exactly the
- * caret-blind chip boundaries, leaving the native caret in charge everywhere
- * else (zero IME surface — the moment a typed/composed character lands, a
- * text node exists and the plugin steps aside). All imports come from
- * `@tiptap/pm` so the plugin shares TipTap's single prosemirror instance.
+ * Root cause (WebKit bug 15256 / TipTap #2978): a text caret at a gap between
+ * two adjacent inline atoms — or before a leading atom at paragraph start — is a
+ * real document position (typing lands there) but the DOM has no text node to
+ * anchor a native caret to. Chrome holds the model selection but paints nothing;
+ * WebKit canonicalises the endpoint to the nearest editable text and snaps the
+ * caret AND typed input to paragraph start.
+ *
+ * PM's own fix at a textblock END is `img.ProseMirror-separator`
+ * (addTextblockHacks) — a raw, view-only, model-invisible replaced element the
+ * browser CAN anchor a native caret next to. PM injects it only at the trailing
+ * position; this plugin extends the SAME first-party technique to the gaps PM
+ * leaves uncovered (between two chips, before a leading chip) by emitting a raw
+ * 0px separator img widget decoration at each. The widget's `raw: true` skips
+ * PM's contentEditable=false wrapping (which would re-create the unanchorable
+ * island), and its parseRule `{ignore: true}` keeps it out of the model — zero
+ * Yjs sync, zero offset drift. This replaced the earlier display-only fake caret,
+ * which never participated in the native selection so it could not fix WebKit's
+ * wrong insertion point (A, user 2026-07-12). All imports come from `@tiptap/pm`
+ * so the plugin shares TipTap's single prosemirror instance.
+ *
+ * NOTE (Safari, unverified): PM proves the separator anchors a WebKit caret only
+ * at the trailing position; whether it holds mid-line must be verified on real
+ * WebKit. The mouse takeover + one-press chip crossing are retained meanwhile.
  */
 
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
-import type { EditorState } from '@tiptap/pm/state';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 
-/**
- * Identifies the caret plugin (tests resolve the live plugin through it).
- * Its plugin state is the focus flag mirrored from TipTap's focus/blur metas.
- */
-export const referenceMentionCaretKey = new PluginKey<boolean>(
-  'referenceMentionCaret',
-);
-
-/** CSS class of the fake-caret widget (drawn + blinked in index.css). */
-export const REFERENCE_MENTION_CARET_CLASS = 'reference-mention-caret';
+/** Identifies the caret/anchor plugin (tests resolve the live plugin through it). */
+export const referenceMentionCaretKey = new PluginKey('referenceMentionCaret');
 
 /**
- * Editor-root class while the fake caret shows — hides the native caret
- * (index.css) so the two never double-render at boundaries where a browser
- * happens to paint one.
+ * CSS class of PM's separator img — the native-caret anchor. index.css sizes it
+ * 0x0 (a non-zero box nudges the following chip AND re-breaks Chrome's native
+ * drag hit-test, tiptap #4646).
  */
-export const REFERENCE_MENTION_CARET_ACTIVE_CLASS =
-  'reference-mention-caret-active';
+export const REFERENCE_MENTION_SEPARATOR_CLASS = 'ProseMirror-separator';
 
 /**
  * Whether a node is a reference-mention chip. A type guard: a true result also
@@ -90,21 +91,28 @@ export function isTrailingCaretBlind($pos: ResolvedPos): boolean {
 }
 
 /**
- * Resolves the document position where the fake caret must render: a caret-blind
- * chip boundary EXCEPT the trailing after-chip position, where PM's separator
- * anchors a native caret (B1). Everywhere else — including an empty paragraph,
- * where ProseMirror's trailing break keeps the native caret visible — the native
- * caret is in charge and this returns null.
- * @param state - The editor state.
- * @returns The caret-blind position, or null when the native caret suffices.
+ * Every caret-blind gap position in the document that needs a native-caret
+ * anchor: each position flanking a reference chip that is caret-blind (no
+ * adjacent text node) EXCEPT the trailing after-chip position, where PM's
+ * addTextblockHacks already injects its own separator. STRUCTURAL, not
+ * selection-gated — the anchors exist regardless of where the caret sits, so a
+ * click or arrow into any gap lands the native caret there. Deduped (the
+ * position between two adjacent chips flanks both) and ascending.
+ * @param doc - The document node.
+ * @returns The gap positions needing a separator anchor, ascending.
  */
-export function caretBlindPos(state: EditorState): number | null {
-  const sel = state.selection;
-  if (!(sel instanceof TextSelection) || !sel.empty) return null;
-  const $pos = sel.$from;
-  if (!isCaretBlind($pos)) return null;
-  if (isTrailingCaretBlind($pos)) return null; // native caret via PM separator
-  return $pos.pos;
+export function caretBlindGaps(doc: PMNode): number[] {
+  const gaps = new Set<number>();
+  doc.descendants((node, pos) => {
+    if (!isChip(node)) return;
+    // A chip's caret-blind neighbours are the positions immediately before and
+    // after it; keep the ones with no text anchor and no PM separator (trailing).
+    for (const at of [pos, pos + node.nodeSize]) {
+      const $at = doc.resolve(at);
+      if (isCaretBlind($at) && !isTrailingCaretBlind($at)) gaps.add(at);
+    }
+  });
+  return [...gaps].sort((a, b) => a - b);
 }
 
 /**
@@ -159,44 +167,34 @@ function caretBlindPosFromClick(
 }
 
 /**
- * Builds the fake-caret DOM: a zero-width inline span whose left border is
- * the caret line (styled + blinked by `.reference-mention-caret` in
- * index.css). Purely visual — hidden from the accessibility tree.
- * @returns The caret element.
+ * Builds the native-caret anchor: a bare `img.ProseMirror-separator` (0px,
+ * `alt=""` → silent to assistive tech, no `src` → an unresolved replaced element
+ * the browser anchors a caret next to), the same element PM injects at a trailing
+ * chip. Handed to a `raw` widget decoration so PM does not wrap it in a
+ * contentEditable=false span (which would re-create the unanchorable island).
+ * @returns The separator img.
  */
-function renderCaret(): HTMLElement {
-  const el = document.createElement('span');
-  el.className = REFERENCE_MENTION_CARET_CLASS;
-  el.setAttribute('aria-hidden', 'true');
-  return el;
+export function renderSeparator(): HTMLElement {
+  const img = document.createElement('img');
+  img.className = REFERENCE_MENTION_SEPARATOR_CLASS;
+  img.setAttribute('alt', '');
+  img.setAttribute('aria-hidden', 'true');
+  return img;
 }
 
 /**
- * Creates the chip-boundary caret plugin (installed by the ReferenceMention
- * extension): draws a fake caret at caret-blind chip boundaries, hides the
- * native caret while doing so, and turns a click landing in the gap between
- * chips into a text cursor there. Clicks ON a chip keep the default
- * NodeSelection behavior (the chip selects as a unit).
+ * Creates the chip-boundary caret/anchor plugin (installed by the
+ * ReferenceMention extension): injects a raw 0px `img.ProseMirror-separator` at
+ * every caret-blind chip gap so the browser anchors a NATIVE caret there, and
+ * turns a click landing in the gap between chips into a text cursor there. Clicks
+ * ON a chip keep the default NodeSelection behavior (the chip selects as a unit).
+ * The separator anchors are structural (no focus gate is needed: a native caret
+ * only renders in a focused editor, and the 0px anchor is invisible otherwise).
  * @returns The ProseMirror plugin.
  */
-export function createReferenceMentionCaret(): Plugin<boolean> {
-  return new Plugin<boolean>({
+export function createReferenceMentionCaret(): Plugin {
+  return new Plugin({
     key: referenceMentionCaretKey,
-    // Focus gate (adversarial round-1): a native caret never renders in an
-    // unfocused editor, so neither may the fake one — without this it blinked
-    // on panel open (initial selection lands before a leading chip while the
-    // editor is unfocused) and kept blinking after blur, showing two carets
-    // at once. TipTap's core focusEvents plugin dispatches `focus` / `blur`
-    // transaction metas on the real DOM events; the plugin state mirrors
-    // them (no duplicate DOM listeners).
-    state: {
-      init: (): boolean => false,
-      apply: (tr, focused): boolean => {
-        if (tr.getMeta('focus') !== undefined) return true;
-        if (tr.getMeta('blur') !== undefined) return false;
-        return focused;
-      },
-    },
     props: {
       // One-press chip crossing (P5, user 2026-07-12): a reference chip is an
       // atom, so a plain ArrowRight from before it lands a NodeSelection ON the
@@ -345,22 +343,22 @@ export function createReferenceMentionCaret(): Plugin<boolean> {
         },
       },
       decorations(state): DecorationSet | null {
-        if (!referenceMentionCaretKey.getState(state)) return null;
-        const pos = caretBlindPos(state);
-        if (pos === null) return null;
-        return DecorationSet.create(state.doc, [
-          Decoration.widget(pos, renderCaret, {
-            key: 'reference-mention-caret',
-          }),
-        ]);
-      },
-      // Class attrs from multiple sources concatenate, so this only ever ADDS
-      // the marker class; {} contributes nothing while the caret is idle.
-      attributes(state): Record<string, string> {
-        if (!referenceMentionCaretKey.getState(state)) return {};
-        return caretBlindPos(state) === null
-          ? {}
-          : { class: REFERENCE_MENTION_CARET_ACTIVE_CLASS };
+        const gaps = caretBlindGaps(state.doc);
+        if (gaps.length === 0) return null;
+        // `raw: true` skips PM's contentEditable=false widget wrapping (which
+        // would re-create the unanchorable island); `side: -1` places the anchor
+        // on the caret's left; the per-position key keeps the DecorationSet
+        // stable across transactions.
+        return DecorationSet.create(
+          state.doc,
+          gaps.map((pos) =>
+            Decoration.widget(pos, renderSeparator, {
+              raw: true,
+              side: -1,
+              key: `refsep@${pos}`,
+            }),
+          ),
+        );
       },
     },
   });
