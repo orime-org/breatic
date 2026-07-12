@@ -85,3 +85,76 @@ export function planMentionDeletions(
     .map((m) => ({ from: m.from, to: m.to }))
     .sort((a, b) => b.from - a.from);
 }
+
+/** A reference-mention chip's current display attrs located in the prompt doc. */
+export interface ChipDisplaySnapshot {
+  /** ProseMirror position of the chip node. */
+  pos: number;
+  /** The source node id the chip points at. */
+  sourceNodeId: string;
+  /** The chip's current `label` attr (frozen display name; null when none). */
+  label: string | null;
+  /** The chip's current `thumbnail` attr (frozen URL; null when none). */
+  thumbnail: string | null;
+}
+
+/** A planned display-attr update for one chip — only CHANGED fields are present. */
+export interface ChipDisplayUpdate {
+  /** ProseMirror position of the chip node. */
+  pos: number;
+  /** New label, present only when it differs from the chip's current value. */
+  label?: string | null;
+  /** New thumbnail, present only when it differs from the chip's current value. */
+  thumbnail?: string | null;
+}
+
+/** The live pool fields a chip projects (structural — avoids a derive-references dep). */
+interface ChipProjectionSource {
+  /** The upstream node id. */
+  sourceNodeId: string;
+  /** The upstream node's live display name. */
+  sourceNodeName: string;
+  /** The upstream node's live thumbnail, when it has a visual payload. */
+  thumbnail?: string;
+}
+
+/**
+ * Plans the display-attr writes that keep each reference-mention chip a live
+ * projection of its source node's pool row (design 2026-07-12 invariant). For
+ * every chip still backed by a pool row, it diffs the chip's frozen `label` /
+ * `thumbnail` attrs against the source's LIVE name / thumbnail and reports only
+ * the fields that changed. MODALITY-AGNOSTIC: a text source carries no
+ * thumbnail (null on both sides → no thumbnail write) but its name syncs like
+ * any other, so a rename tracks for text / audio / video, not just images. A
+ * chip whose source left the pool is skipped — the cascade-clear pass removes
+ * it (a chip must be in the reference pool). Pure — the caller reads the chips
+ * from the editor and applies the updates in one history-excluded transaction.
+ * @param chips - The reference-mention chips currently in the prompt document.
+ * @param pool - The live reference pool (source of current name / thumbnail).
+ * @returns Per-chip updates carrying only the changed display fields.
+ */
+export function planChipDisplayUpdates(
+  chips: readonly ChipDisplaySnapshot[],
+  pool: ReadonlyArray<ChipProjectionSource>,
+): ChipDisplayUpdate[] {
+  const byId = new Map(pool.map((r) => [r.sourceNodeId, r]));
+  const updates: ChipDisplayUpdate[] = [];
+  for (const chip of chips) {
+    const row = byId.get(chip.sourceNodeId);
+    if (!row) continue; // source left the pool → cascade-clear removes the chip
+    const liveLabel = row.sourceNodeName || null;
+    const liveThumbnail = row.thumbnail ?? null;
+    const update: ChipDisplayUpdate = { pos: chip.pos };
+    let changed = false;
+    if (liveLabel !== chip.label) {
+      update.label = liveLabel;
+      changed = true;
+    }
+    if (liveThumbnail !== chip.thumbnail) {
+      update.thumbnail = liveThumbnail;
+      changed = true;
+    }
+    if (changed) updates.push(update);
+  }
+  return updates;
+}

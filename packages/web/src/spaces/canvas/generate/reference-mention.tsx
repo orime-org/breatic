@@ -25,6 +25,7 @@ import {
 } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { createReferenceMentionCaret } from '@web/spaces/canvas/generate/reference-mention-caret';
+import { createReferenceMentionRangeHighlight } from '@web/spaces/canvas/generate/reference-mention-range-decoration';
 import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import type { NodeKind } from '@web/spaces/canvas/types/node-view';
@@ -176,32 +177,43 @@ function ReferenceMentionChip({
   // icon rather than a broken-image placeholder. Old mentions carry no kind, so
   // default to image (the historical @-picker was image-centric).
   const FallbackIcon = getNodeIcon(kind ?? 'image');
-  // Text-reference hover (spec §9.1): resolve the source node's content LIVE
-  // from the pool (not from an attr snapshot). Read at render — the small
-  // staleness window (source edited while this chip never re-rendered) only
-  // affects the preview; the backend serialization resolves live at execute.
   const sourceId = node.attrs[MENTION_SOURCE_ID_ATTR] as string | null;
   const options = extension.options as ReferenceMentionOptions;
-  const textContent =
-    kind === 'text' && sourceId != null
-      ? options.getPool?.().find((r) => r.sourceNodeId === sourceId)
-        ?.textContent
-      : undefined;
-  // Empty-source hint (H, user 2026-07-12): an image chip with no thumbnail or a
-  // text chip with no content has no preview, so tell the user it's not yet
-  // filled instead of showing nothing on hover.
-  const emptyHint =
-    (kind === 'image' || kind === 'video') && !thumbnail
-      ? t('canvas.generatePanel.emptyImageReference')
-      : kind === 'text' && !textContent
-        ? t('canvas.generatePanel.emptyTextReference')
+  // Live-at-open hover (design 2026-07-12 invariant, decision C; batch-5 I5):
+  // resolve the preview body + empty hint from the CURRENT pool each time the
+  // tooltip opens, so a text source edited on the canvas shows its latest
+  // content even though this NodeView never re-renders (its body is
+  // deliberately NOT frozen into a synced attr — that would duplicate it into
+  // the Yjs prompt doc). Modality-agnostic: text → its live content (else the
+  // empty hint); image / video → the empty hint only while there is still no
+  // thumbnail (the image itself previews from the synced `src`).
+  const resolveHoverContent = React.useCallback((): {
+    text?: string;
+    emptyHint?: string;
+  } => {
+    const row =
+      sourceId != null
+        ? options.getPool?.().find((r) => r.sourceNodeId === sourceId)
         : undefined;
+    if (kind === 'text') {
+      const content = row?.textContent;
+      return content
+        ? { text: content }
+        : { emptyHint: t('canvas.generatePanel.emptyTextReference') };
+    }
+    if (
+      (kind === 'image' || kind === 'video') &&
+      !(row?.thumbnail ?? thumbnail)
+    ) {
+      return { emptyHint: t('canvas.generatePanel.emptyImageReference') };
+    }
+    return {};
+  }, [options, sourceId, kind, thumbnail, t]);
   return (
     <ThumbnailHoverPreview
       src={thumbnail ?? undefined}
-      text={textContent}
       alt={label}
-      emptyHint={emptyHint}
+      resolveOnOpen={resolveHoverContent}
     >
       <NodeViewWrapper
         as='span'
@@ -317,6 +329,10 @@ export const ReferenceMention = Node.create<ReferenceMentionOptions>({
         ...this.options.suggestion,
       }),
       createReferenceMentionCaret(),
+      // Highlight chips caught inside a text range selection (I2, user
+      // 2026-07-12): a select-none atom is skipped by the browser's native
+      // selection paint, so without this a selected chip reads as un-selected.
+      createReferenceMentionRangeHighlight(),
       // Strip chips referencing a source this node isn't wired to when pasting
       // across nodes (E, user 2026-07-12): the words survive, the invalid chip
       // does not — a chip must be in the reference pool (same invariant the

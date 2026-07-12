@@ -45,6 +45,7 @@ export const ReferenceMentionList = React.forwardRef<
 >(function ReferenceMentionList({ items, command, emptyLabel }, ref): React.JSX.Element {
   const t = useTranslation();
   const [selected, setSelected] = React.useState(0);
+  const listRef = React.useRef<HTMLDivElement>(null);
   // Reset the highlight when the row CONTENT changes — never on array
   // identity. @tiptap/suggestion re-runs items() (a fresh array) whenever the
   // suggestion range MOVES, and a collaborator typing anywhere before the `@`
@@ -53,6 +54,13 @@ export const ReferenceMentionList = React.forwardRef<
   // wrong reference (adversarial round-1).
   const contentKey = items.map((i) => i.sourceNodeId).join('\u001f');
   React.useEffect(() => setSelected(0), [contentKey]);
+  // Keep the keyboard-selected row visible (I1, user 2026-07-12): arrow keys
+  // moved the highlight but the list only scrolled with the mouse, so selecting
+  // past the visible rows left the choice off-screen. `block: 'nearest'` scrolls
+  // the minimum within the popup's own scroll container without moving the page.
+  React.useEffect(() => {
+    listRef.current?.children[selected]?.scrollIntoView({ block: 'nearest' });
+  }, [selected]);
 
   const pick = React.useCallback(
     (index: number): void => {
@@ -94,7 +102,10 @@ export const ReferenceMentionList = React.forwardRef<
   }
 
   return (
-    <div className='max-h-56 w-56 overflow-auto rounded-overlay border border-border bg-popover p-1 shadow-md [scrollbar-width:thin]'>
+    <div
+      ref={listRef}
+      className='max-h-56 w-56 overflow-auto rounded-overlay border border-border bg-popover p-1 shadow-md [scrollbar-width:thin]'
+    >
       {items.map((item, i) => {
         // A source with no thumbnail (text / audio / …) shows its MODALITY icon,
         // not a blanket broken-image glyph — the same getNodeIcon the prompt

@@ -288,6 +288,15 @@ body {
 [data-testid='generate-prompt-editor'] .reference-mention * {
   cursor: default;
 }
+/* A chip caught inside a text range selection (I2, user 2026-07-12): the atom's
+   select-none opts it out of the browser's native selection paint, so a range
+   covering it left it un-highlighted while the surrounding text turned blue. A
+   local ProseMirror node decoration adds this class so the chip reads as part of
+   the selection. The two-class selector out-specifies the chip's own bg-muted.
+   Uses the selection semantic token (classification color — no contrast math). */
+.reference-mention.reference-mention--range-selected {
+  background-color: color-mix(in srgb, var(--color-status-selected) 35%, transparent);
+}
 /* Remote collaborator carets in the generate prompt (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render
    emits these classes and inlines each user's identity color (border-color

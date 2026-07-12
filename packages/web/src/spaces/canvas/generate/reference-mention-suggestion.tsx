@@ -154,6 +154,11 @@ export function makeReferenceSuggestion(input: {
             }
           };
           document.addEventListener('pointerdown', onOutsidePointerDown, true);
+          // Show the popup ONLY when the pool has ≥1 matching row (I3, user
+          // 2026-07-12): typing `@` as ordinary text (nothing matches) must not
+          // pop an empty "no references" box. Zero matches → hidden, so plain
+          // `@` typing is uninterrupted; a match → shown.
+          el.style.display = props.items.length > 0 ? '' : 'none';
           place(props.clientRect);
         },
         onUpdate: (props: SuggestionProps<ReferenceRailItem>): void => {
@@ -162,6 +167,7 @@ export function makeReferenceSuggestion(input: {
             command: (item: ReferenceRailItem) => props.command(item),
             emptyLabel: input.emptyLabel,
           });
+          if (el) el.style.display = props.items.length > 0 ? '' : 'none';
           place(props.clientRect);
         },
         onKeyDown: (props: SuggestionKeyDownProps): boolean => {

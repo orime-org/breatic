@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
@@ -119,6 +119,71 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       }) => { refId: string }[]
     )({ query: '' });
     expect(items.map((i) => i.refId)).toEqual(['e1', 'e2']);
+  });
+});
+
+// I3 (batch-5, user 2026-07-12): typing `@` as ordinary text (no matching
+// reference in the pool) still popped a "No connected references" box, which
+// was noise. The popup must appear ONLY when the pool has ≥1 matching row —
+// zero matches shows nothing at all, so plain `@` typing is uninterrupted.
+describe('makeReferenceSuggestion — popup hidden when no items match', () => {
+  const row: ReferenceRailItem = {
+    refId: 'a->me',
+    sourceNodeId: 'a',
+    sourceNodeType: 'image',
+    sourceNodeName: 'Pic',
+    thumbnail: 'a.png',
+  };
+
+  type RenderHandlers = ReturnType<
+    NonNullable<ReturnType<typeof makeReferenceSuggestion>['render']>
+  >;
+  type StartProps = Parameters<NonNullable<RenderHandlers['onStart']>>[0];
+
+  /**
+   * Builds a minimal SuggestionProps for driving the render() handlers.
+   * @param items - The current suggestion items.
+   * @param editor - The host editor.
+   * @returns A props object cast to the suggestion props shape.
+   */
+  function props(items: ReferenceRailItem[], editor: Editor): StartProps {
+    return {
+      editor,
+      items,
+      command: vi.fn(),
+      clientRect: () => new DOMRect(0, 0, 10, 10),
+      query: '',
+      text: '',
+      range: { from: 0, to: 0 },
+      decorationNode: null,
+    } as unknown as StartProps;
+  }
+
+  it('hides the popup on start with zero items and shows it once items arrive', () => {
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [],
+      emptyLabel: 'No references',
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      handlers.onStart?.(props([], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el).toBeDefined();
+      expect(el.style.display).toBe('none'); // zero matches → hidden
+      handlers.onUpdate?.(props([row], editor));
+      expect(el.style.display).toBe(''); // a match arrived → shown
+      handlers.onUpdate?.(props([], editor));
+      expect(el.style.display).toBe('none'); // narrowed back to zero → hidden
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
   });
 });
 
@@ -247,6 +312,43 @@ describe('stripForeignReferenceChips — cross-node paste', () => {
         return true;
       });
       expect(chips).toBe(2);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  // The paste pool-membership invariant is MODALITY-AGNOSTIC (design 2026-07-12;
+  // batch-5 I6): stripping keys off the REFERENCE_MENTION node type + source id,
+  // never the modality, so a foreign TEXT chip is dropped and an in-pool text
+  // chip survives exactly like an image chip. This is the paste-side twin of the
+  // live-projection invariant the display sync enforces.
+  it('drops a foreign TEXT chip and keeps an in-pool text chip (modality-agnostic)', () => {
+    const textChip = (id: string): ReferenceRailItem => ({
+      refId: `${id}->x`,
+      sourceNodeId: id,
+      sourceNodeType: 'text',
+      sourceNodeName: id,
+      textContent: `body of ${id}`,
+    });
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent(referenceMentionContent(textChip('T1'))) // in pool
+        .insertContent('mid')
+        .insertContent(referenceMentionContent(textChip('T2'))) // foreign
+        .run();
+      const slice = editor.state.doc.slice(0, editor.state.doc.content.size);
+      const stripped = stripForeignReferenceChips(slice, new Set(['T1']));
+      let chips = 0;
+      let text = '';
+      stripped.content.descendants((n) => {
+        if (n.type.name === REFERENCE_MENTION_NODE) chips += 1;
+        if (n.isText) text += n.text ?? '';
+        return true;
+      });
+      expect(chips).toBe(1); // T1 survives, foreign T2 dropped
+      expect(text).toBe('mid');
     } finally {
       editor.destroy();
     }

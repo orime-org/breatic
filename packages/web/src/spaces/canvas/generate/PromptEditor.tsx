@@ -15,9 +15,11 @@ import type * as Y from 'yjs';
 import {
   extractAtMentionedSourceIds,
   planMentionDeletions,
+  planChipDisplayUpdates,
   MENTION_SOURCE_ID_ATTR,
   REFERENCE_MENTION_NODE,
   type MentionOccurrence,
+  type ChipDisplaySnapshot,
 } from '@web/spaces/canvas/generate/at-reference';
 import {
   renderCollabCaret,
@@ -26,6 +28,7 @@ import {
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
+  MENTION_LABEL_ATTR,
   MENTION_THUMBNAIL_ATTR,
   ReferenceMention,
   referenceMentionContent,
@@ -262,37 +265,47 @@ export const PromptEditor = React.forwardRef<
     editor.view.dispatch(tr);
   }, [editor, references]);
 
-  // Keep each reference chip's snapshot thumbnail in sync with its source's
-  // LIVE pool value (F, user 2026-07-12): re-uploading / regenerating a
-  // referenced image changes its thumbnail, and the prompt chip must reflect it
-  // like the rail already does (both read the same live pool). Runs on pool
-  // change; setting the attr re-renders the ReactNodeView — without this the
-  // chip froze on the thumbnail captured at insert time. Chips whose source
-  // left the pool are removed by the cascade-clear effect above (skipped here).
+  // Keep every reference chip a LIVE PROJECTION of its source node's pool row —
+  // for EVERY modality, not just images (design 2026-07-12 invariant; batch-5
+  // I5). The chip's cheap synced display attrs (name + thumbnail) are frozen at
+  // insert time, so a renamed / re-generated source must be re-synced here; the
+  // pure planner diffs each chip against the live pool and reports only changed
+  // fields (a text source has no thumbnail — its name still syncs, which the
+  // old thumbnail-only effect missed). Setting an attr re-renders the
+  // ReactNodeView. Chips whose source left the pool are removed by the
+  // cascade-clear effect above (the planner skips them). The text chip's hover
+  // CONTENT is not synced here — it is read live at hover-open (see
+  // ThumbnailHoverPreview), keeping the source node the single truth (freezing
+  // the body into an attr would duplicate it into the Yjs prompt doc).
   React.useEffect(() => {
     if (!editor) return;
-    const thumbById = new Map(
-      references.map((r) => [r.sourceNodeId, r.thumbnail ?? null]),
-    );
-    const updates: Array<{ pos: number; thumbnail: string | null }> = [];
+    const chips: ChipDisplaySnapshot[] = [];
     editor.state.doc.descendants((n, pos) => {
       if (n.type.name !== REFERENCE_MENTION_NODE) return;
       const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
-      if (typeof id !== 'string' || !thumbById.has(id)) return;
-      const live = thumbById.get(id) ?? null;
-      if (n.attrs[MENTION_THUMBNAIL_ATTR] !== live) {
-        updates.push({ pos, thumbnail: live });
-      }
+      if (typeof id !== 'string') return;
+      chips.push({
+        pos,
+        sourceNodeId: id,
+        label: (n.attrs[MENTION_LABEL_ATTR] as string | null) ?? null,
+        thumbnail: (n.attrs[MENTION_THUMBNAIL_ATTR] as string | null) ?? null,
+      });
     });
+    const updates = planChipDisplayUpdates(chips, references);
     if (updates.length === 0) return;
     const tr = editor.state.tr;
     for (const u of updates) {
-      tr.setNodeAttribute(u.pos, MENTION_THUMBNAIL_ATTR, u.thumbnail);
+      if ('label' in u) {
+        tr.setNodeAttribute(u.pos, MENTION_LABEL_ATTR, u.label ?? null);
+      }
+      if ('thumbnail' in u) {
+        tr.setNodeAttribute(u.pos, MENTION_THUMBNAIL_ATTR, u.thumbnail ?? null);
+      }
     }
     // Machine-derived cosmetic sync — keep it OUT of the prompt's collaborative
-    // undo stack (batch-4 adversarial): otherwise Cmd+Z would revert a thumbnail
-    // refresh instead of the user's own edit, and (this effect is gated on
-    // `references`, not the doc) that revert would never self-heal.
+    // undo stack (batch-4 adversarial): otherwise Cmd+Z would revert a name /
+    // thumbnail refresh instead of the user's own edit, and (this effect is
+    // gated on `references`, not the doc) that revert would never self-heal.
     tr.setMeta('addToHistory', false);
     editor.view.dispatch(tr);
   }, [editor, references]);
