@@ -51,7 +51,7 @@ export const ReferenceMentionList = React.forwardRef<
   // in the shared prompt moves it; an identity-keyed reset made that remote
   // keystroke silently snap the highlight to row 0 so Enter inserted the
   // wrong reference (adversarial round-1).
-  const contentKey = items.map((i) => i.sourceNodeId).join('');
+  const contentKey = items.map((i) => i.sourceNodeId).join('\u001f');
   React.useEffect(() => setSelected(0), [contentKey]);
 
   const pick = React.useCallback(
