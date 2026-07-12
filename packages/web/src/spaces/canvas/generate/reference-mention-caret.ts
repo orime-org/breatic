@@ -16,7 +16,7 @@
  * browser CAN anchor a native caret next to. PM injects it only at the trailing
  * position; this plugin extends the SAME first-party technique to the gaps PM
  * leaves uncovered (between two chips, before a leading chip) by emitting a raw
- * 0px separator img widget decoration at each. The widget's `raw: true` skips
+ * separator img widget decoration at each. The widget's `raw: true` skips
  * PM's contentEditable=false wrapping (which would re-create the unanchorable
  * island), and its parseRule `{ignore: true}` keeps it out of the model — zero
  * Yjs sync, zero offset drift. This replaced the earlier display-only fake caret,
@@ -40,9 +40,10 @@ import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference
 export const referenceMentionCaretKey = new PluginKey('referenceMentionCaret');
 
 /**
- * CSS class of PM's separator img — the native-caret anchor. index.css sizes it
- * 0x0 (a non-zero box nudges the following chip AND re-breaks Chrome's native
- * drag hit-test, tiptap #4646).
+ * CSS class of PM's separator img — the native-caret anchor. index.css sizes its
+ * WIDTH 0 (a non-zero width nudges the following chip AND re-breaks Chrome's
+ * native drag hit-test, tiptap #4646) and its HEIGHT to the text caret (else the
+ * native caret at the gap falls back to the adjacent chip and renders too tall).
  */
 export const REFERENCE_MENTION_SEPARATOR_CLASS = 'ProseMirror-separator';
 
@@ -184,12 +185,12 @@ export function renderSeparator(): HTMLElement {
 
 /**
  * Creates the chip-boundary caret/anchor plugin (installed by the
- * ReferenceMention extension): injects a raw 0px `img.ProseMirror-separator` at
+ * ReferenceMention extension): injects a raw `img.ProseMirror-separator` at
  * every caret-blind chip gap so the browser anchors a NATIVE caret there, and
  * turns a click landing in the gap between chips into a text cursor there. Clicks
  * ON a chip keep the default NodeSelection behavior (the chip selects as a unit).
  * The separator anchors are structural (no focus gate is needed: a native caret
- * only renders in a focused editor, and the 0px anchor is invisible otherwise).
+ * only renders in a focused editor, and the 0-width anchor is invisible otherwise).
  * @returns The ProseMirror plugin.
  */
 export function createReferenceMentionCaret(): Plugin {
