@@ -13,6 +13,7 @@ import { TextSelection } from '@tiptap/pm/state';
 
 import {
   caretBlindPos,
+  isTrailingCaretBlind,
   referenceMentionCaretKey,
   REFERENCE_MENTION_CARET_ACTIVE_CLASS,
 } from '@web/spaces/canvas/generate/reference-mention-caret';
@@ -116,12 +117,17 @@ describe('caretBlindPos — where the fake caret must render', () => {
     }
   });
 
-  it('returns the paragraph-end position after a trailing chip', () => {
+  it('returns NULL after a trailing chip — PM separator anchors the native caret there (B1, user 2026-07-12)', () => {
     const editor = makeEditor();
     try {
       seedAdjacentChips(editor);
       editor.commands.setTextSelection(3);
-      expect(caretBlindPos(editor.state)).toBe(3);
+      // The trailing after-chip position (end of textblock) now retires the fake
+      // caret: PM's img.ProseMirror-separator gives a native caret, and drawing
+      // our fake one over it both hid the native caret AND obstructed Chrome's
+      // native drag hit-test. Between-chip / leading-chip positions still return
+      // their pos (no separator there).
+      expect(caretBlindPos(editor.state)).toBeNull();
     } finally {
       editor.destroy();
     }
@@ -168,6 +174,105 @@ describe('caretBlindPos — where the fake caret must render', () => {
       seedAdjacentChips(editor);
       editor.commands.setNodeSelection(1);
       expect(caretBlindPos(editor.state)).toBeNull();
+    } finally {
+      editor.destroy();
+    }
+  });
+});
+
+// B1 (user 2026-07-12): the trailing after-chip position both retires the fake
+// caret (native caret via PM's separator) and is the only spot the mouse-drag
+// takeover engages — Chrome refuses to native-drag FROM there.
+describe('isTrailingCaretBlind — the trailing after-chip position', () => {
+  it('is true after a trailing chip (end of the textblock)', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor); // A(1-2) B(2-3); end of content = pos 3
+      expect(isTrailingCaretBlind(editor.state.doc.resolve(3))).toBe(true);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('is false between two chips (no separator there → the fake caret stays)', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      expect(isTrailingCaretBlind(editor.state.doc.resolve(2))).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('is false before a leading chip (nodeAfter is the chip, not null)', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      expect(isTrailingCaretBlind(editor.state.doc.resolve(1))).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('is false at the end of a trailing TEXT run (nodeBefore is text, not a chip)', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('hi')
+        .run();
+      // chip 1-2, 'hi' 2-4; end of content = 4, nodeBefore is the text.
+      expect(isTrailingCaretBlind(editor.state.doc.resolve(4))).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+});
+
+// The mouse-drag takeover is scoped to the trailing after-chip press only; the
+// full drag needs a real browser (posAtCoords needs layout — synthetic events
+// can't drive native PM drag), so these cover the guard branches that decline.
+describe('reference-mention caret plugin — mousedown takeover scoping (B1)', () => {
+  const mousedown = (editor: Editor, event: Partial<MouseEvent>): boolean => {
+    const plugin = referenceMentionCaretKey.get(editor.state);
+    return (
+      plugin?.props.handleDOMEvents?.mousedown?.call(plugin, editor.view, {
+        button: 0,
+        target: editor.view.dom,
+        preventDefault: (): void => {},
+        ...event,
+      } as unknown as MouseEvent) ?? false
+    );
+  };
+
+  it('declines when a modifier is held (leaves native selection extension)', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      expect(mousedown(editor, { shiftKey: true })).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('declines a press ON a chip (keeps the default node-selection)', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      const chipEl = document.createElement('span');
+      chipEl.setAttribute('data-reference-mention', '');
+      expect(mousedown(editor, { target: chipEl })).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('declines a non-left button', () => {
+    const editor = makeEditor();
+    try {
+      seedAdjacentChips(editor);
+      expect(mousedown(editor, { button: 2 })).toBe(false);
     } finally {
       editor.destroy();
     }
