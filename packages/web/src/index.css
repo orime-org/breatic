@@ -299,6 +299,19 @@ body {
 .reference-mention--range-selected .reference-mention {
   background-color: color-mix(in srgb, var(--color-status-selected) 35%, transparent);
 }
+/* A chip caught inside a REMOTE collaborator's selection (B3, user 2026-07-12):
+   the same atom-skips-native-paint problem as the local I2 case, but for
+   @tiptap/extension-collaboration-caret's remote-selection decoration. That
+   decoration lands its `collaboration-carets__selection` class + the remote
+   user's identity background-color (color-mix, see renderCollabSelection in
+   caret-render.ts) on the chip's OUTER NodeView wrapper; the opaque inner pill
+   hid it, so a remote user selecting a chip showed nothing while the surrounding
+   text was tinted. Make the inner pill semi-transparent while the wrapper is
+   remote-selected so that per-user identity color tints through the pill too. */
+.collaboration-carets__selection .reference-mention,
+.reference-mention.collaboration-carets__selection {
+  background-color: color-mix(in srgb, var(--color-muted) 45%, transparent);
+}
 /* Remote collaborator carets in the generate prompt (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render
    emits these classes and inlines each user's identity color (border-color
