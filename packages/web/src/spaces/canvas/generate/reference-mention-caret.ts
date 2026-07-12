@@ -32,7 +32,6 @@
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import type { EditorView } from '@tiptap/pm/view';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 
@@ -116,57 +115,6 @@ export function caretBlindGaps(doc: PMNode): number[] {
 }
 
 /**
- * Resolves the doc position of a caret-blind chip gap under a pointer, robust to
- * browsers whose native hit-test mis-resolves a click in a chip gap to the
- * paragraph START (Safari, #1756). Fast path: `posAtCoords` when it already
- * lands on a caret-blind position (Chrome). Fallback: pick the gap by GEOMETRY —
- * the chip rects on the clicked line — so it never trusts the broken native
- * position. The result is verified caret-blind, so a click on ordinary text (or
- * a gap that is not caret-blind) returns null and native handling stays. Pure
- * read of the view; used by the mousedown takeover.
- * @param view - The editor view.
- * @param clientX - Pointer X in viewport px.
- * @param clientY - Pointer Y in viewport px.
- * @returns The caret-blind doc position under the pointer, or null.
- */
-function caretBlindPosFromClick(
-  view: EditorView,
-  clientX: number,
-  clientY: number,
-): number | null {
-  const at = view.posAtCoords({ left: clientX, top: clientY });
-  if (at && isCaretBlind(view.state.doc.resolve(at.pos))) return at.pos;
-  // Geometry fallback: collect the chips on the clicked line, then place the
-  // anchor in the gap the pointer falls in (before the first, after the last, or
-  // between two adjacent chips).
-  const line: Array<{ before: number; after: number; rect: DOMRect }> = [];
-  view.state.doc.descendants((node, pos) => {
-    if (node.type.name !== REFERENCE_MENTION_NODE) return;
-    const dom = view.nodeDOM(pos);
-    if (!(dom instanceof HTMLElement)) return;
-    const rect = dom.getBoundingClientRect();
-    if (clientY >= rect.top && clientY <= rect.bottom) {
-      line.push({ before: pos, after: pos + node.nodeSize, rect });
-    }
-  });
-  if (line.length === 0) return null;
-  line.sort((a, b) => a.rect.left - b.rect.left);
-  let pos: number | null = null;
-  if (clientX <= line[0].rect.left) pos = line[0].before;
-  else if (clientX >= line[line.length - 1].rect.right) {
-    pos = line[line.length - 1].after;
-  } else {
-    for (let i = 0; i < line.length - 1; i += 1) {
-      if (clientX >= line[i].rect.right && clientX <= line[i + 1].rect.left) {
-        pos = line[i].after;
-        break;
-      }
-    }
-  }
-  return pos !== null && isCaretBlind(view.state.doc.resolve(pos)) ? pos : null;
-}
-
-/**
  * Builds the native-caret anchor: a bare `img.ProseMirror-separator` (0px,
  * `alt=""` → silent to assistive tech, no `src` → an unresolved replaced element
  * the browser anchors a caret next to), the same element PM injects at a trailing
@@ -184,12 +132,15 @@ export function renderSeparator(): HTMLElement {
 
 /**
  * Creates the chip-boundary caret/anchor plugin (installed by the
- * ReferenceMention extension): injects a raw 0px `img.ProseMirror-separator` at
- * every caret-blind chip gap so the browser anchors a NATIVE caret there, and
- * turns a click landing in the gap between chips into a text cursor there. Clicks
- * ON a chip keep the default NodeSelection behavior (the chip selects as a unit).
- * The separator anchors are structural (no focus gate is needed: a native caret
- * only renders in a focused editor, and the 0px anchor is invisible otherwise).
+ * ReferenceMention extension): injects a raw `img.ProseMirror-separator` at every
+ * caret-blind chip gap so the browser anchors + places a NATIVE caret there —
+ * click, drag-select and typing all flow through native selection once the anchor
+ * exists (the earlier fake caret + mouse takeover + click/geometry handlers were
+ * retired in A once real-browser verification confirmed native works, user
+ * 2026-07-12). Its one keymap — one-press chip crossing (P5) — is an independent
+ * UX choice unrelated to anchoring. The anchors are structural (no focus gate: a
+ * native caret only renders in a focused editor, and the 0-width anchor is
+ * invisible otherwise).
  * @returns The ProseMirror plugin.
  */
 export function createReferenceMentionCaret(): Plugin {
@@ -245,102 +196,6 @@ export function createReferenceMentionCaret(): Plugin {
           return true;
         }
         return false;
-      },
-      handleClick: (view, pos, event): boolean => {
-        // A click on the chip itself must keep selecting the chip as a unit.
-        const target = event.target;
-        if (
-          target instanceof Element &&
-          target.closest('[data-reference-mention]') !== null
-        ) {
-          return false;
-        }
-        const $pos = view.state.doc.resolve(pos);
-        if (!$pos.parent.inlineContent) return false;
-        const before = $pos.nodeBefore;
-        const after = $pos.nodeAfter;
-        // With a text anchor the default click handling places a fine caret.
-        if (before?.isText === true || after?.isText === true) return false;
-        if (!isChip(before) && !isChip(after)) return false;
-        view.dispatch(
-          view.state.tr.setSelection(
-            TextSelection.create(view.state.doc, pos),
-          ),
-        );
-        return true;
-      },
-      handleDOMEvents: {
-        // Mouse-selection takeover for CARET-BLIND chip gaps (B1 + Safari
-        // #1756, user 2026-07-12). ProseMirror has no mouse-selection code of
-        // its own — it delegates click placement + drag-select to the browser —
-        // and browsers mishandle uneditable inline atoms: Chrome refuses to
-        // extend a native drag past a trailing atom (dragging left from after a
-        // trailing chip selected nothing, #1152/#1199), and Safari drops a click
-        // BETWEEN two chips at the paragraph start. PM hand-wrote the KEYBOARD
-        // takeover for crossing these atoms (selectHorizontally, #937; mirrored
-        // in handleKeyDown above); this is the mouse sibling it never wrote — we
-        // place the caret + compute the TextSelection ourselves. Scoped tightly
-        // by caretBlindPosFromClick, which returns a position ONLY at a
-        // verified caret-blind gap (and via GEOMETRY, not the browser's broken
-        // hit-test, so Safari lands the right spot). A press on plain text or ON
-        // a chip returns false → native handling + chip node-selection untouched.
-        // Selection-only transactions never enter the y-prosemirror undo stack.
-        mousedown: (view, event: MouseEvent): boolean => {
-          if (
-            event.button !== 0 ||
-            event.shiftKey ||
-            event.metaKey ||
-            event.ctrlKey ||
-            event.altKey
-          ) {
-            return false;
-          }
-          // A press ON a chip keeps the default NodeSelection (mirror handleClick).
-          const target = event.target;
-          if (
-            target instanceof Element &&
-            target.closest('[data-reference-mention]') !== null
-          ) {
-            return false;
-          }
-          const anchor = caretBlindPosFromClick(
-            view,
-            event.clientX,
-            event.clientY,
-          );
-          if (anchor === null) return false;
-          event.preventDefault();
-          view.focus();
-          view.dispatch(
-            view.state.tr.setSelection(
-              TextSelection.create(view.state.doc, anchor),
-            ),
-          );
-          /**
-           * Extends the takeover selection to the mouse's current position.
-           * @param move - The mousemove event.
-           */
-          const onMove = (move: MouseEvent): void => {
-            const head = view.posAtCoords({
-              left: move.clientX,
-              top: move.clientY,
-            });
-            if (!head) return;
-            view.dispatch(
-              view.state.tr.setSelection(
-                TextSelection.create(view.state.doc, anchor, head.pos),
-              ),
-            );
-          };
-          /** Tears down the takeover's document listeners on mouse release. */
-          const onUp = (): void => {
-            document.removeEventListener('mousemove', onMove, true);
-            document.removeEventListener('mouseup', onUp, true);
-          };
-          document.addEventListener('mousemove', onMove, true);
-          document.addEventListener('mouseup', onUp, true);
-          return true;
-        },
       },
       decorations(state): DecorationSet | null {
         const gaps = caretBlindGaps(state.doc);
