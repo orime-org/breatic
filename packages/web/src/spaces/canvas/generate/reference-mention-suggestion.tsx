@@ -12,7 +12,6 @@
 
 import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
 import { ReactRenderer } from '@tiptap/react';
-import { exitSuggestion } from '@tiptap/suggestion';
 import type {
   SuggestionKeyDownProps,
   SuggestionOptions,
@@ -136,12 +135,17 @@ export function makeReferenceSuggestion(input: {
           el.style.zIndex = '50';
           el.appendChild(component.element);
           document.body.appendChild(el);
-          // Dismiss on click outside the popup AND outside the editor: clicking
-          // a canvas node / panel control does NOT move the ProseMirror
-          // selection, so the suggestion would otherwise stay open floating over
-          // the UI. exitSuggestion is the plugin's own clean-close path (fires
-          // onExit) (adversarial 2026-07-10). Capture phase so we see the click
-          // before ReactFlow stops it.
+          // Clicking outside the popup AND the editor (a canvas node / panel
+          // control) does NOT move the ProseMirror selection, so the suggestion
+          // would otherwise stay open floating over the UI. Just HIDE the popup
+          // — do NOT exitSuggestion (B2, user 2026-07-12): exitSuggestion marks
+          // the active `@` range permanently dismissed, so after a blur-and-back
+          // the user's continued typing never re-opened the picker until the
+          // editor remounted (close/reopen panel). Hiding keeps the plugin
+          // active, so re-focusing and typing re-shows it via onUpdate; a
+          // genuine break of the `@` match (space, deleting the `@`, cursor
+          // leaving the range) still exits the plugin naturally → onExit removes
+          // the popup. Capture phase so we see the click before ReactFlow stops it.
           onOutsidePointerDown = (event: PointerEvent): void => {
             const target = event.target as Node | null;
             if (
@@ -150,7 +154,7 @@ export function makeReferenceSuggestion(input: {
               !el.contains(target) &&
               !props.editor.view.dom.contains(target)
             ) {
-              exitSuggestion(props.editor.view);
+              el.style.display = 'none';
             }
           };
           document.addEventListener('pointerdown', onOutsidePointerDown, true);

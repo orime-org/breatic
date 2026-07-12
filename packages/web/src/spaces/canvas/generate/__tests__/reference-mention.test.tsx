@@ -159,6 +159,40 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
     } as unknown as StartProps;
   }
 
+  it('on outside-click HIDES the popup but keeps the suggestion alive so re-typing re-shows it (B2)', () => {
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [row],
+      emptyLabel: 'No references',
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      handlers.onStart?.(props([row], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe(''); // shown while typing @I
+      // Blur / click a panel control: a capture-phase pointerdown outside the
+      // popup AND the editor. It must HIDE the popup, NOT remove it (that would
+      // mean exitSuggestion killed the range → the picker never comes back until
+      // the editor remounts — the B2 bug).
+      document.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true }),
+      );
+      expect(el.style.display).toBe('none'); // hidden
+      expect(document.body.contains(el)).toBe(true); // NOT removed → still alive
+      // Re-focus + keep typing (@Im): onUpdate fires and the popup re-shows.
+      handlers.onUpdate?.(props([row], editor));
+      expect(el.style.display).toBe('');
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
   it('hides the popup on start with zero items and shows it once items arrive', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [],
