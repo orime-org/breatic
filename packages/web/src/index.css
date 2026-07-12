@@ -243,15 +243,21 @@ body {
 /* Native-caret anchor between adjacent reference chips in the generate prompt
    (reference-mention-caret.ts). A browser cannot paint a native caret at a gap
    with no adjacent text node (WebKit bug 15256 / TipTap #2978), so a raw widget
-   decoration injects PM's own img.ProseMirror-separator there — a 0px replaced
-   element the browser anchors a native caret next to (A, user 2026-07-12). It
-   MUST be 0x0: a non-zero box at this spot both nudges the following chip and
-   re-breaks Chrome's native drag hit-test (tiptap #4646). This also pins PM's own
-   trailing separator to 0x0 (TipTap does not ship prosemirror-view's CSS). */
+   decoration injects PM's own img.ProseMirror-separator there — a replaced element
+   the browser anchors a native caret next to (A, user 2026-07-12).
+   WIDTH MUST be 0: a non-zero-WIDTH box nudges the following chip and re-breaks
+   Chrome's native drag hit-test (tiptap #4646). HEIGHT is set to the text caret's
+   height (a chip is h-5/~22px, taller than the 14px-text caret): the native caret
+   takes the height of the inline box it anchors to, so with height 0 it fell back
+   to the adjacent chip and rendered ~5px too tall (user 2026-07-12). text-bottom
+   aligns it to the text baseline box so the gap caret matches the text caret.
+   This also styles PM's own trailing separator (TipTap ships no prosemirror-view
+   CSS); trailing already sits on a text baseline, so the height is harmless there. */
 [data-testid='generate-prompt-editor'] img.ProseMirror-separator {
   display: inline;
   width: 0;
-  height: 0;
+  height: 1.2em;
+  vertical-align: text-bottom;
   border: none;
   margin: 0;
   padding: 0;
