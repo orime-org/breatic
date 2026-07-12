@@ -221,11 +221,12 @@ describe('isTrailingCaretBlind — the trailing after-chip position', () => {
   });
 });
 
-// The mouse-drag takeover is retained (ship1) for the Chrome trailing-drag defect
-// (#1152/#1199) + the Safari gap click, until real-Safari testing confirms the
-// separator makes native drag/click work (then it can be deleted — ship2). The
-// full drag needs a real browser (posAtCoords needs layout — synthetic events
-// can't drive native PM drag), so these cover the guard branches that decline.
+// The mouse takeover is a PERMANENT pointer layer, not a stopgap: the separator
+// anchor fixes caret DISPLAY / hold / typing but NOT the native pointer — a gap
+// click resolves to the adjacent chip and a native drag cannot pass a trailing
+// atom (verified 2026-07-12: deleting the takeover regressed every gap click /
+// drag). The full drag needs a real browser (posAtCoords needs layout — synthetic
+// events can't drive native PM drag), so these cover the guard branches that decline.
 describe('reference-mention caret plugin — mousedown takeover scoping (B1)', () => {
   const mousedown = (editor: Editor, event: Partial<MouseEvent>): boolean => {
     const plugin = referenceMentionCaretKey.get(editor.state);

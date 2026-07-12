@@ -24,9 +24,13 @@
  * wrong insertion point (A, user 2026-07-12). All imports come from `@tiptap/pm`
  * so the plugin shares TipTap's single prosemirror instance.
  *
- * NOTE (Safari, unverified): PM proves the separator anchors a WebKit caret only
- * at the trailing position; whether it holds mid-line must be verified on real
- * WebKit. The mouse takeover + one-press chip crossing are retained meanwhile.
+ * NOTE (verified 2026-07-12, real Chrome + Safari): the separator anchors + holds
+ * a native caret mid-line and accepts typing. But it does NOT make the native
+ * POINTER work — a click in a gap resolves to the adjacent chip (NodeSelection)
+ * and a native drag cannot pass a trailing atom. So the mouse takeover
+ * (handleClick + mousedown + geometry, below) is a PERMANENT pointer layer, not a
+ * stopgap: deleting it regressed every gap click / drag. One-press chip crossing
+ * is an independent keyboard UX.
  */
 
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
