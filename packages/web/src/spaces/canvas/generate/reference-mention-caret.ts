@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * ProseMirror plugin that keeps reference chips wrapped in real spaces + makes
- * deletion consistent — the wiring around the pure planners in
- * reference-mention-whitespace.ts.
+ * ProseMirror plugin that keeps reference chips wrapped in real spaces, makes
+ * deletion consistent, and enforces the D cursor model — the wiring around the
+ * pure planners in reference-mention-whitespace.ts.
  *
  * Root cause (browser-engine layer): a reference chip is an inline uneditable
  * atom; a caret position next to it is a real document position but has no
@@ -14,32 +14,50 @@
  * space (U+0020 — a real text node) on every side of every chip, which restores
  * full text-caret semantics an img/ZWSP anchor cannot.
  *
- * Two orthogonal mechanisms:
+ * Three mechanisms:
  * - appendTransaction runs {@link planWhitespaceInsertions} after every edit to
  *   ADD any missing chip spaces (only-adds, idempotent). Covers insert / paste /
  *   collab / @ / click-insert. Not history-excluded: the added space is a direct
  *   consequence of the user's chip insertion and undoes together with it.
  * - handleKeyDown Backspace/Delete uses {@link resolveDeletionUnit} so a chip +
- *   its exclusive owned spaces delete as one unit (no residue, no "un-deletable"
- *   space); a space shared with an adjacent chip stays for the neighbour.
+ *   its exclusive owned spaces delete as one unit, in the delete direction only
+ *   (no residue, no reverse-direction delete); a shared space stays for the
+ *   neighbour.
+ * - the D cursor model (an owned space is TRANSPARENT to the cursor — it may only
+ *   rest on the side of an owned space away from its chip): handleKeyDown arrows
+ *   cross a chip + its spaces in ONE press via {@link findNextStoppable};
+ *   handleClick snaps a pointer landing to the nearest stoppable position; and
+ *   appendTransaction {@link normalizeSelection} is the backstop for programmatic
+ *   landings (@ insertion / collab / command) on an unstoppable position.
  *
- * KEPT PENDING REAL-MACHINE VERIFICATION (design 2026-07-13 §7): the mouse
- * takeover (handleClick + mousedown geometry + auto-scroll) and one-press chip
- * crossing were written for the old caret-blind gaps. With real spaces flanking
- * every chip those gaps no longer exist, so the native pointer/caret should just
- * work — but per the "separator removal regressed every gap click" lesson these
- * are NOT pre-deleted; a Chrome + Safari pass decides their removal. The
- * separator-img anchoring they replaced IS removed here.
+ * KEPT PENDING REAL-MACHINE VERIFICATION (design 2026-07-13 §7): the mouse-drag
+ * takeover (mousedown geometry + auto-scroll) was written for the old caret-blind
+ * gaps left by the img separator. With real spaces flanking every chip those gaps
+ * no longer exist, so native drag-selection across a chip should just work — but
+ * per the "separator removal regressed every gap click" lesson it is NOT
+ * pre-deleted; a Chrome + Safari drag-select pass decides its removal. The
+ * separator-img anchoring it replaced IS removed.
  */
 
 import type { ResolvedPos } from '@tiptap/pm/model';
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import {
+  NodeSelection,
+  Plugin,
+  PluginKey,
+  TextSelection,
+} from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import {
+  chipAt,
+  chipDeletionUnit,
+  findNextStoppable,
   isChip,
+  isSpaceAt,
+  isStoppable,
+  nearestStoppable,
   planWhitespaceInsertions,
   resolveDeletionUnit,
 } from '@web/spaces/canvas/generate/reference-mention-whitespace';
@@ -158,6 +176,32 @@ function appendWhitespace(
 }
 
 /**
+ * Snaps an empty selection that landed on an UNSTOPPABLE position (D model) to
+ * the nearest stoppable one — the backstop for programmatic landings the arrow /
+ * click handlers don't cover: an @ insertion, a collab or command selection, or a
+ * pointer resolve that fell on a chip-side of an owned space. Runs when the
+ * selection or the doc changed. History-excluded (a pure caret correction, never
+ * a user undo step). Converges: after the snap the selection is stoppable, so the
+ * next pass finds nothing to move.
+ * @param transactions - The transactions just applied.
+ * @param newState - The resulting editor state.
+ * @returns A transaction snapping the caret, or null.
+ */
+function normalizeSelection(
+  transactions: readonly Transaction[],
+  newState: EditorState,
+): Transaction | null {
+  if (!transactions.some((tr) => tr.selectionSet || tr.docChanged)) return null;
+  const sel = newState.selection;
+  if (!(sel instanceof TextSelection) || !sel.empty) return null;
+  const snapped = nearestStoppable(newState.doc, sel.from);
+  if (snapped === null || snapped === sel.from) return null;
+  return newState.tr
+    .setSelection(TextSelection.create(newState.doc, snapped))
+    .setMeta('addToHistory', false);
+}
+
+/**
  * Creates the chip whitespace/caret plugin (installed by the ReferenceMention
  * extension): enforces the space-around-every-chip invariant, deletes a chip
  * plus its owned spaces as one unit, and retains the (pending-verification)
@@ -168,10 +212,32 @@ export function createReferenceMentionCaret(): Plugin {
   return new Plugin({
     key: referenceMentionCaretKey,
     appendTransaction(transactions, _oldState, newState): Transaction | null {
-      return appendWhitespace(transactions, newState);
+      // Whitespace first (structure): once the doc is stable, the next pass runs
+      // normalization on the settled positions.
+      return (
+        appendWhitespace(transactions, newState) ??
+        normalizeSelection(transactions, newState)
+      );
     },
     props: {
       handleKeyDown: (view, event): boolean => {
+        const sel = view.state.selection;
+        // Node-selected chip (click-to-select) + Backspace/Delete: delete it as a
+        // unit (chip + owned spaces), REGARDLESS of modifiers — a node selection has
+        // no "delete word" meaning, and native deleteSelection would remove only the
+        // chip node and orphan its spaces (deletion-path parity, design 2026-07-13
+        // §5; R3: this must precede the modifier gate so Cmd/Ctrl+Delete on a
+        // node-selected chip does not fall through to native).
+        if (sel instanceof NodeSelection && isChip(sel.node)) {
+          if (event.key === 'Backspace' || event.key === 'Delete') {
+            const range = chipDeletionUnit(view.state.doc, sel.from);
+            view.dispatch(
+              view.state.tr.delete(range.from, range.to).scrollIntoView(),
+            );
+            return true;
+          }
+          return false; // arrows etc. on a node-selected chip stay native
+        }
         if (
           event.shiftKey ||
           event.metaKey ||
@@ -180,45 +246,47 @@ export function createReferenceMentionCaret(): Plugin {
         ) {
           return false;
         }
-        const sel = view.state.selection;
         if (!(sel instanceof TextSelection) || !sel.empty) return false;
+        const { doc } = view.state;
+        const pos = sel.from;
         // Deletion unit (design 2026-07-13 §5): a chip + its exclusive owned
-        // spaces delete together, so a chip leaves no residue and its space is
-        // never re-added by the invariant ("un-deletable"). A shared space stays.
+        // spaces delete together, in the DELETE DIRECTION only (D removed the
+        // reverse-direction branches). A shared space stays for the neighbour.
         if (event.key === 'Backspace' || event.key === 'Delete') {
           const dir = event.key === 'Backspace' ? 'backward' : 'forward';
-          const range = resolveDeletionUnit(view.state.doc, sel.from, dir);
+          const range = resolveDeletionUnit(doc, pos, dir);
           if (range === null) return false;
-          view.dispatch(
-            view.state.tr.delete(range.from, range.to).scrollIntoView(),
-          );
+          view.dispatch(view.state.tr.delete(range.from, range.to).scrollIntoView());
           return true;
         }
-        // One-press chip crossing (P5): a chip is an atom, so a plain arrow lands
-        // a NodeSelection ON it first and only a SECOND press steps the text
-        // cursor past. Move the TEXT cursor straight to the far boundary in one
-        // press. Kept pending real-machine verification (§7).
-        const $pos = sel.$from;
+        // Arrow crossing (D cursor model): an owned space is transparent to the
+        // cursor, so a chip + its spaces is crossed in ONE press to the next
+        // stoppable position. Take over ONLY when the arrow is about to enter a
+        // chip region; plain-text moves stay native (grapheme clusters / RTL).
         if (event.key === 'ArrowRight') {
-          const after = $pos.nodeAfter;
-          if (!isChip(after)) return false;
+          const entersChip =
+            chipAt(doc, pos) !== null ||
+            (isSpaceAt(doc, pos) && chipAt(doc, pos + 1) !== null);
+          if (!entersChip) return false;
+          const target = findNextStoppable(doc, pos, 'forward');
+          if (target === null) return false;
           view.dispatch(
             view.state.tr
-              .setSelection(
-                TextSelection.create(view.state.doc, $pos.pos + after.nodeSize),
-              )
+              .setSelection(TextSelection.create(doc, target))
               .scrollIntoView(),
           );
           return true;
         }
         if (event.key === 'ArrowLeft') {
-          const before = $pos.nodeBefore;
-          if (!isChip(before)) return false;
+          const entersChip =
+            chipAt(doc, pos - 1) !== null ||
+            (isSpaceAt(doc, pos - 1) && chipAt(doc, pos - 2) !== null);
+          if (!entersChip) return false;
+          const target = findNextStoppable(doc, pos, 'backward');
+          if (target === null) return false;
           view.dispatch(
             view.state.tr
-              .setSelection(
-                TextSelection.create(view.state.doc, $pos.pos - before.nodeSize),
-              )
+              .setSelection(TextSelection.create(doc, target))
               .scrollIntoView(),
           );
           return true;
@@ -231,17 +299,18 @@ export function createReferenceMentionCaret(): Plugin {
           target instanceof Element &&
           target.closest('[data-reference-mention]') !== null
         ) {
-          return false;
+          return false; // click ON a chip → default node-selection handling
         }
-        const $pos = view.state.doc.resolve(pos);
-        if (!$pos.parent.inlineContent) return false;
-        const before = $pos.nodeBefore;
-        const after = $pos.nodeAfter;
-        if (before?.isText === true || after?.isText === true) return false;
-        if (!isChip(before) && !isChip(after)) return false;
+        // A click resolving onto an UNSTOPPABLE position (a chip side of an owned
+        // space) snaps to the nearest stoppable one right away, so the caret never
+        // flashes on the transparent space. The appendTransaction normalization is
+        // the backstop; this avoids the two-frame flicker.
+        if (isStoppable(view.state.doc, pos)) return false;
+        const snapped = nearestStoppable(view.state.doc, pos);
+        if (snapped === null) return false;
         view.dispatch(
           view.state.tr.setSelection(
-            TextSelection.create(view.state.doc, pos),
+            TextSelection.create(view.state.doc, snapped),
           ),
         );
         return true;

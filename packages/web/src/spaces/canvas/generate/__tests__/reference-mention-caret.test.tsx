@@ -12,7 +12,11 @@ import * as Y from 'yjs';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import { referenceMentionCaretKey } from '@web/spaces/canvas/generate/reference-mention-caret';
-import { planWhitespaceInsertions } from '@web/spaces/canvas/generate/reference-mention-whitespace';
+import {
+  isStoppable,
+  planCascadeDeletion,
+  planWhitespaceInsertions,
+} from '@web/spaces/canvas/generate/reference-mention-whitespace';
 import {
   ReferenceMention,
   referenceMentionContent,
@@ -125,6 +129,24 @@ describe('whitespace invariant (appendTransaction) — every chip gets flanking 
     }
   });
 
+  it('after inserting a chip the caret converges to a stoppable position (appendWhitespace ?? normalizeSelection)', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .run();
+      // Two-pass appendTransaction: spaces are added, then the caret is snapped
+      // off any unstoppable landing. End state: invariant satisfied AND the caret
+      // rests at a stoppable position (never on a chip side of an owned space).
+      expect(planWhitespaceInsertions(editor.state.doc)).toEqual([]);
+      expect(isStoppable(editor.state.doc, editor.state.selection.from)).toBe(true);
+    } finally {
+      editor.destroy();
+    }
+  });
+
   it('does not touch plain text (no chip → no spaces added)', () => {
     const editor = makeEditor();
     try {
@@ -154,8 +176,8 @@ describe('whitespace invariant (appendTransaction) — every chip gets flanking 
   });
 });
 
-describe('deletion unit (handleKeyDown) — chip + owned spaces delete as one', () => {
-  it('Backspace on a chip between text removes the chip AND both owned spaces (no residue)', () => {
+describe('deletion (handleKeyDown) — D: delete direction always matches chip position', () => {
+  it('form ③ `文␣▢␣|` Backspace removes the chip AND both owned spaces (no residue)', () => {
     const editor = makeEditor();
     try {
       editor
@@ -164,8 +186,10 @@ describe('deletion unit (handleKeyDown) — chip + owned spaces delete as one', 
         .insertContent(referenceMentionContent(chipA))
         .insertContent('y')
         .run();
+      // `x [A] y`; caret after the chip's right space (form ③, stoppable).
       const p = chipPosOf(editor, 'a');
-      editor.commands.setTextSelection(p + 1); // right after the chip
+      editor.commands.setTextSelection(p + 2); // chip␣|y
+      expect(editor.state.selection.from).toBe(p + 2); // stoppable — not normalized away
       expect(keydown(editor, 'Backspace')).toBe(true);
       expect(editor.state.doc.textContent).toBe('xy'); // both owned spaces gone
       expect(chipPosOf(editor, 'a')).toBe(-1);
@@ -174,7 +198,7 @@ describe('deletion unit (handleKeyDown) — chip + owned spaces delete as one', 
     }
   });
 
-  it('Backspace on the left owned space still deletes the chip unit (never "un-deletable")', () => {
+  it('form ① `文|␣▢` Delete removes the chip AND its owned spaces', () => {
     const editor = makeEditor();
     try {
       editor
@@ -184,15 +208,38 @@ describe('deletion unit (handleKeyDown) — chip + owned spaces delete as one', 
         .insertContent('y')
         .run();
       const p = chipPosOf(editor, 'a');
-      editor.commands.setTextSelection(p); // between left space and the chip
-      expect(keydown(editor, 'Backspace')).toBe(true);
+      editor.commands.setTextSelection(p - 1); // x|␣A (form ①, stoppable)
+      expect(editor.state.selection.from).toBe(p - 1);
+      expect(keydown(editor, 'Delete')).toBe(true);
       expect(editor.state.doc.textContent).toBe('xy');
+      expect(chipPosOf(editor, 'a')).toBe(-1);
     } finally {
       editor.destroy();
     }
   });
 
-  it('deleting one of two adjacent chips KEEPS the shared space for the survivor', () => {
+  it('REGRESSION `文␣|▢`: caret is normalized off it, and Backspace no longer deletes the chip', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a');
+      editor.commands.setTextSelection(p); // `x␣|A` — unstoppable
+      // normalization snaps the caret left to the form-① position (x|␣A)
+      expect(editor.state.selection.from).toBe(p - 1);
+      // and Backspace there is native (would delete 'x'), never the chip (reverse-direction gone)
+      expect(keydown(editor, 'Backspace')).toBe(false);
+      expect(chipPosOf(editor, 'a')).toBeGreaterThan(-1); // chip survives
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('form ② deleting one of two adjacent chips KEEPS the shared space for the survivor', () => {
     const editor = makeEditor();
     try {
       editor
@@ -200,14 +247,15 @@ describe('deletion unit (handleKeyDown) — chip + owned spaces delete as one', 
         .insertContent(referenceMentionContent(chipA))
         .insertContent(referenceMentionContent(chipB))
         .run();
-      const pb = chipPosOf(editor, 'b');
-      editor.commands.setTextSelection(pb + 1); // right after B
-      expect(keydown(editor, 'Backspace')).toBe(true);
-      // B gone; A survives still flanked by spaces (invariant holds, no re-add churn).
-      expect(chipPosOf(editor, 'b')).toBe(-1);
-      expect(chipPosOf(editor, 'a')).toBeGreaterThan(-1);
+      // ` [A][B] `; caret between the chips (A|␣B, form ②, stoppable).
+      const pa = chipPosOf(editor, 'a');
+      editor.commands.setTextSelection(pa + 1);
+      expect(editor.state.selection.from).toBe(pa + 1); // stoppable
+      expect(keydown(editor, 'Backspace')).toBe(true); // deletes A leftward
+      expect(chipPosOf(editor, 'a')).toBe(-1);
+      expect(chipPosOf(editor, 'b')).toBeGreaterThan(-1);
       expect(planWhitespaceInsertions(editor.state.doc)).toEqual([]);
-      expect(editor.state.doc.textContent).toBe('  '); // ` [A] `
+      expect(editor.state.doc.textContent).toBe('  '); // ` [B] `
     } finally {
       editor.destroy();
     }
@@ -234,7 +282,7 @@ describe('deletion unit (handleKeyDown) — chip + owned spaces delete as one', 
         .insertContent('y')
         .run();
       const p = chipPosOf(editor, 'a');
-      editor.commands.setTextSelection(p + 1);
+      editor.commands.setTextSelection(p + 2);
       const plugin = referenceMentionCaretKey.get(editor.state);
       const handled = plugin?.props.handleKeyDown?.call(
         plugin,
@@ -242,6 +290,156 @@ describe('deletion unit (handleKeyDown) — chip + owned spaces delete as one', 
         new KeyboardEvent('keydown', { key: 'Backspace', metaKey: true }),
       );
       expect(handled).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('Backspace on a NODE-SELECTED chip (click-to-select) deletes the chip AND its owned spaces (no orphan)', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a'); // `x [A] y`
+      editor.commands.setNodeSelection(p); // click-to-select → NodeSelection on the chip
+      expect(keydown(editor, 'Backspace')).toBe(true);
+      expect(editor.state.doc.textContent).toBe('xy'); // both owned spaces gone, no orphan
+      expect(chipPosOf(editor, 'a')).toBe(-1);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('Delete on a node-selected chip also deletes the chip unit', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a');
+      editor.commands.setNodeSelection(p);
+      expect(keydown(editor, 'Delete')).toBe(true);
+      expect(editor.state.doc.textContent).toBe('xy');
+      expect(chipPosOf(editor, 'a')).toBe(-1);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('Cmd/Ctrl+Backspace on a node-selected chip STILL deletes the chip unit (no orphan; R3)', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a');
+      editor.commands.setNodeSelection(p);
+      // A modifier held: the node-selected chip delete must still fire (it precedes
+      // the modifier gate) — else native deleteSelection orphans the spaces.
+      const plugin = referenceMentionCaretKey.get(editor.state);
+      const handled = plugin?.props.handleKeyDown?.call(
+        plugin,
+        editor.view,
+        new KeyboardEvent('keydown', { key: 'Backspace', metaKey: true }),
+      );
+      expect(handled).toBe(true);
+      expect(editor.state.doc.textContent).toBe('xy');
+      expect(chipPosOf(editor, 'a')).toBe(-1);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('applying planCascadeDeletion for a stale RUN heals the live doc (invariant holds, no orphan double space)', () => {
+    const editor = makeEditor();
+    try {
+      const mk = (id: string, name: string): ReturnType<typeof referenceMentionContent> =>
+        referenceMentionContent({
+          refId: id,
+          sourceNodeId: id,
+          sourceNodeType: 'image',
+          sourceNodeName: name,
+          thumbnail: `${id}.png`,
+        });
+      editor
+        .chain()
+        .insertContent(mk('a', 'A'))
+        .insertContent(mk('b', 'B'))
+        .insertContent(mk('c', 'C'))
+        .insertContent(mk('d', 'D'))
+        .run();
+      // B and C go stale together (adjacent run flanked by surviving A and D)
+      const stale = new Set([chipPosOf(editor, 'b'), chipPosOf(editor, 'c')]);
+      const ranges = planCascadeDeletion(editor.state.doc, stale);
+      const tr = editor.state.tr;
+      for (const { from, to } of ranges) tr.delete(from, to); // descending → safe
+      editor.view.dispatch(tr);
+      // healed end-state: A and D survive, adjacent, sharing exactly ONE space
+      expect(chipPosOf(editor, 'b')).toBe(-1);
+      expect(chipPosOf(editor, 'c')).toBe(-1);
+      expect(chipPosOf(editor, 'd')).toBe(chipPosOf(editor, 'a') + 2);
+      expect(planWhitespaceInsertions(editor.state.doc)).toEqual([]); // no unhealed gap
+      expect(editor.state.doc.textContent).toBe('   '); // ` [A] [D] ` = 3 spaces, no double
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('a non-delete key on a node-selected chip is left to native (plugin declines)', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a');
+      editor.commands.setNodeSelection(p);
+      expect(keydown(editor, 'ArrowRight')).toBe(false); // arrows on a node-selected chip stay native
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('Backspace on a node-selected DOUBLE-shared middle chip heals A—C to one shared space', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent(referenceMentionContent(chipB))
+        .insertContent(
+          referenceMentionContent({
+            refId: 'c',
+            sourceNodeId: 'c',
+            sourceNodeType: 'image',
+            sourceNodeName: 'C',
+            thumbnail: 'c.png',
+          }),
+        )
+        .run();
+      // ` [A][B][C] `; node-select the middle chip B and delete it
+      const pb = chipPosOf(editor, 'b');
+      editor.commands.setNodeSelection(pb);
+      expect(keydown(editor, 'Backspace')).toBe(true);
+      expect(chipPosOf(editor, 'b')).toBe(-1);
+      expect(chipPosOf(editor, 'a')).toBeGreaterThan(-1);
+      expect(chipPosOf(editor, 'c')).toBeGreaterThan(-1);
+      // A and C now adjacent sharing exactly ONE space (no orphan double space)
+      expect(chipPosOf(editor, 'c')).toBe(chipPosOf(editor, 'a') + 2);
+      expect(planWhitespaceInsertions(editor.state.doc)).toEqual([]);
+      expect(editor.state.doc.textContent).toBe('   '); // ` [A] [C] ` = 3 spaces
     } finally {
       editor.destroy();
     }
@@ -258,16 +456,186 @@ describe('reference-mention caret plugin — wiring + retained interactions', ()
     }
   });
 
-  it('one-press ArrowRight crosses a chip atom in a single press (P5, retained)', () => {
+  it('ArrowRight crosses the whole chip `文|␣▢` → `▢␣|文` in one press (form ① → ③)', () => {
     const editor = makeEditor();
     try {
-      editor.chain().insertContent(referenceMentionContent(chipA)).run();
-      const p = chipPosOf(editor, 'a');
-      editor.commands.setTextSelection(p); // before the chip
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a'); // `x [A] y`; chip at p
+      editor.commands.setTextSelection(p - 1); // x|␣A (form ①)
       expect(keydown(editor, 'ArrowRight')).toBe(true);
       const sel = editor.state.selection;
       expect(sel).toBeInstanceOf(TextSelection);
-      expect(sel.from).toBe(p + 1); // past the chip in one press
+      expect(sel.from).toBe(p + 2); // A␣|y (form ③), past the whole chip
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('ArrowLeft mirrors: `▢␣|文` → `文|␣▢` in one press', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a');
+      editor.commands.setTextSelection(p + 2); // A␣|y (form ③)
+      expect(keydown(editor, 'ArrowLeft')).toBe(true);
+      expect(editor.state.selection.from).toBe(p - 1); // x|␣A (form ①)
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('ArrowRight stops BETWEEN two adjacent chips (form ②), then past both', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent(referenceMentionContent(chipB))
+        .insertContent('y')
+        .run();
+      const pa = chipPosOf(editor, 'a'); // `x [A][B] y`; A at pa, shared pa+1, B pa+2
+      editor.commands.setTextSelection(pa - 1); // x|␣A (form ①)
+      expect(keydown(editor, 'ArrowRight')).toBe(true);
+      expect(editor.state.selection.from).toBe(pa + 1); // A|␣B (form ②, between the chips)
+      expect(keydown(editor, 'ArrowRight')).toBe(true);
+      expect(editor.state.selection.from).toBe(pa + 4); // B␣|y (form ③)
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('ArrowRight in plain text is left to native (plugin declines away from chips)', () => {
+    const editor = makeEditor();
+    try {
+      editor.chain().insertContent('hello').run();
+      editor.commands.setTextSelection(2);
+      expect(keydown(editor, 'ArrowRight')).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('normalizes a programmatic caret that lands on an unstoppable position', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a'); // `x [A] y`
+      editor.commands.setTextSelection(p); // `x␣|A` — unstoppable
+      expect(editor.state.selection.from).toBe(p - 1); // snapped left to x|␣A
+      editor.commands.setTextSelection(p + 1); // `A|␣y` — unstoppable
+      expect(editor.state.selection.from).toBe(p + 2); // snapped right to A␣|y (nearer)
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('handleClick snaps a click on an unstoppable position before the chip to the left stoppable', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a'); // `x [A] y`; pos p = x␣|A (unstoppable)
+      const plugin = referenceMentionCaretKey.get(editor.state);
+      const handled = plugin?.props.handleClick?.call(
+        plugin,
+        editor.view,
+        p,
+        { target: editor.view.dom } as unknown as MouseEvent,
+      );
+      expect(handled).toBe(true);
+      expect(editor.state.selection.from).toBe(p - 1); // snapped to x|␣A
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('handleClick snaps a click after the chip (A|␣y) to the nearer right stoppable', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a');
+      const plugin = referenceMentionCaretKey.get(editor.state);
+      const handled = plugin?.props.handleClick?.call(
+        plugin,
+        editor.view,
+        p + 1,
+        { target: editor.view.dom } as unknown as MouseEvent,
+      );
+      expect(handled).toBe(true);
+      expect(editor.state.selection.from).toBe(p + 2); // snapped to A␣|y
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('handleClick declines a click on a stoppable position (leaves native caret)', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a');
+      const plugin = referenceMentionCaretKey.get(editor.state);
+      const handled = plugin?.props.handleClick?.call(
+        plugin,
+        editor.view,
+        p - 1, // x|␣A, stoppable
+        { target: editor.view.dom } as unknown as MouseEvent,
+      );
+      expect(handled).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('handleClick declines a click ON the chip (keeps default node selection)', () => {
+    const editor = makeEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a');
+      const chipEl = document.createElement('span');
+      chipEl.setAttribute('data-reference-mention', '');
+      const plugin = referenceMentionCaretKey.get(editor.state);
+      const handled = plugin?.props.handleClick?.call(
+        plugin,
+        editor.view,
+        p, // even at an unstoppable pos, a click on the chip is left to node handling
+        { target: chipEl } as unknown as MouseEvent,
+      );
+      expect(handled).toBe(false);
     } finally {
       editor.destroy();
     }
@@ -374,6 +742,33 @@ describe('undo — a chip and its invariant spaces undo together (Yjs yUndo)', (
       editor.commands.undo();
       expect(chipPosOf(editor, 'a')).toBe(-1); // chip gone
       expect(editor.state.doc.textContent).toBe(''); // spaces gone too — no orphan
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  // The cascade-clear + display-sync effects (PromptEditor.tsx) dispatch
+  // machine-derived doc changes with setMeta('addToHistory', false) so Cmd+Z never
+  // reverts them (batch-4: undo resurrecting an orphan chip / reverting a thumbnail
+  // sync). This asserts that MECHANISM at the plugin/editor level; the component
+  // effects' own dispatches are exercised behaviourally by PromptEditor.test.tsx and
+  // the Cmd+Z keyboard path is a real-machine check (the narrow handle exposes no undo).
+  it('a machine-derived edit (addToHistory:false, like cascade-clear / display-sync) is EXCLUDED from undo', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent('U').run(); // user edit → undoable
+      // machine-derived edit mirroring the cascade-clear / display-sync dispatches:
+      // insert 'M' with addToHistory:false so it is NOT captured into the undo stack.
+      editor.view.dispatch(
+        editor.state.tr.insertText('M', 2).setMeta('addToHistory', false),
+      );
+      expect(editor.state.doc.textContent).toBe('UM');
+      // Undo reverts the USER 'U' insert and LEAVES the machine 'M' — proving the
+      // machine edit was excluded. If it were tracked it would group with 'U' and
+      // undo to '' (probe-verified), so asserting 'M' FAILS the moment setMeta is
+      // removed = a true-green regression guard, not the earlier false-green ''.
+      editor.commands.undo();
+      expect(editor.state.doc.textContent).toBe('M');
     } finally {
       editor.destroy();
     }
