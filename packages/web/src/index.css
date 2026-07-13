@@ -304,6 +304,17 @@ body {
     color-mix(in srgb, var(--color-muted) 45%, transparent)
   );
 }
+/* A remote selection over PLAIN TEXT paints the per-user rectangle (the normal
+   selection band). A chip is EXCLUDED here via :has(.reference-mention) — its
+   NodeView wrapper (.react-renderer.node-referenceMention) carries the class but
+   is a rectangle (radius 0), so painting the band on it squared off the rounded
+   pill; the rule above tints the rounded pill itself instead, so a remote
+   selection follows the chip's shape (B, user 2026-07-13). renderCollabSelection
+   sets ONLY the --collab-selection-bg property (no direct background-color), so
+   the shape is decided entirely by these two rules. */
+.collaboration-carets__selection:not(:has(.reference-mention)) {
+  background-color: var(--collab-selection-bg);
+}
 /* Remote collaborator carets in the generate prompt (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render
    emits these classes and inlines each user's identity color (border-color
