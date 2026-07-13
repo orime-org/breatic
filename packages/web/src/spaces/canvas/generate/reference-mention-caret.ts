@@ -188,14 +188,15 @@ export function renderSeparator(): HTMLElement {
 }
 
 /**
- * The nearest vertically-scrollable ancestor of a node (the prompt's scroll
- * viewport), or null when nothing scrolls. Used by the mouse-drag takeover to
- * auto-scroll while selecting past an edge.
+ * The nearest vertically-scrollable element at or above a node (the prompt's
+ * scroll viewport), or null when nothing scrolls. Used by the mouse-drag takeover
+ * to auto-scroll while selecting past an edge. Starts at `node` itself, since the
+ * editor DOM (`.ProseMirror`) can be the scroll container.
  * @param node - The starting element.
  * @returns The scroll container, or null.
  */
 function findScrollParent(node: HTMLElement): HTMLElement | null {
-  let el: HTMLElement | null = node.parentElement;
+  let el: HTMLElement | null = node;
   while (el !== null) {
     const overflowY = getComputedStyle(el).overflowY;
     if (
