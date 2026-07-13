@@ -174,3 +174,49 @@ export function resolveDeletionUnit(
       : targetChipForward(doc, pos);
   return chipPos === null ? null : chipDeletionUnit(doc, chipPos);
 }
+
+/**
+ * Deletion ranges for a CASCADE clear — an edge left the pool, so its @-chips
+ * must all go. Like {@link chipDeletionUnit} but for a SET of chips at once: each
+ * stale chip is removed with its owned spaces; a space shared with ANOTHER STALE
+ * chip is also removed, a space shared with a SURVIVING chip is kept (so the
+ * survivor keeps its anchor). This makes the cascade path leave no orphan space,
+ * matching the keyboard deletion-unit path. Ranges are descending and merged, so
+ * a caller can `tr.delete` each in order without shifting the rest.
+ * @param doc - The document node.
+ * @param stalePositions - Start positions of the chips being cascaded away.
+ * @returns The merged `[from, to)` ranges to delete, descending.
+ */
+export function planCascadeDeletion(
+  doc: PMNode,
+  stalePositions: ReadonlySet<number>,
+): DocRange[] {
+  const ranges: DocRange[] = [];
+  for (const p of stalePositions) {
+    let from = p;
+    let to = p + 1;
+    // Left space at [p-1, p]: keep only if the chip beyond it SURVIVES.
+    if (isSpaceAt(doc, p - 1)) {
+      const survives = chipAt(doc, p - 2) !== null && !stalePositions.has(p - 2);
+      if (!survives) from = p - 1;
+    }
+    // Right space at [p+1, p+2]: keep only if the chip beyond it SURVIVES.
+    if (isSpaceAt(doc, p + 1)) {
+      const survives = chipAt(doc, p + 2) !== null && !stalePositions.has(p + 2);
+      if (!survives) to = p + 2;
+    }
+    ranges.push({ from, to });
+  }
+  ranges.sort((a, b) => b.from - a.from); // descending
+  const merged: DocRange[] = [];
+  for (const r of ranges) {
+    const last = merged[merged.length - 1];
+    if (last !== undefined && r.to >= last.from) {
+      last.from = Math.min(last.from, r.from);
+      last.to = Math.max(last.to, r.to);
+    } else {
+      merged.push({ ...r });
+    }
+  }
+  return merged;
+}

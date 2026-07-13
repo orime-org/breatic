@@ -20,6 +20,7 @@ import {
   planWhitespaceInsertions,
   resolveDeletionUnit,
   chipDeletionUnit,
+  planCascadeDeletion,
 } from '@web/spaces/canvas/generate/reference-mention-whitespace';
 
 const chipA: ReferenceRailItem = {
@@ -242,6 +243,74 @@ describe('resolveDeletionUnit — chip + exclusive owned spaces delete as one un
       const doc = docOf(s, [s.text('hello')]);
       expect(resolveDeletionUnit(doc, 3, 'backward')).toBeNull();
       expect(resolveDeletionUnit(doc, 3, 'forward')).toBeNull();
+    });
+  });
+});
+
+describe('planCascadeDeletion — edge-removal cascade deletes chips WITH owned spaces', () => {
+  /**
+   * Maps each chip's source id to its doc position.
+   * @param doc - The document node.
+   * @returns sourceNodeId → position.
+   */
+  function chipPositions(doc: PMNode): Record<string, number> {
+    const out: Record<string, number> = {};
+    doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) {
+        out[n.attrs.sourceNodeId as string] = pos;
+      }
+    });
+    return out;
+  }
+
+  it('lone stale chip: removes the chip + both owned spaces (no residue, matches keyboard)', () => {
+    withSchema((s) => {
+      const doc = docOf(s, [s.text('sky '), chip(s, chipA), s.text(' ocean')]);
+      const p = chipPositions(doc);
+      expect(planCascadeDeletion(doc, new Set([p.a]))).toEqual([
+        { from: p.a - 1, to: p.a + 2 },
+      ]);
+    });
+  });
+
+  it('two adjacent chips BOTH stale: deletes both + all spaces, no orphan (the adversarial case)', () => {
+    withSchema((s) => {
+      const doc = docOf(s, [
+        s.text('sky '),
+        chip(s, chipA),
+        s.text(' '),
+        chip(s, chipB),
+        s.text(' ocean'),
+      ]);
+      const p = chipPositions(doc);
+      // merged into one range: ` [A] [B] ` → skyocean
+      expect(planCascadeDeletion(doc, new Set([p.a, p.b]))).toEqual([
+        { from: p.a - 1, to: p.b + 2 },
+      ]);
+    });
+  });
+
+  it('one of two adjacent chips stale: KEEPS the shared space for the survivor', () => {
+    withSchema((s) => {
+      const doc = docOf(s, [
+        s.text('sky '),
+        chip(s, chipA),
+        s.text(' '),
+        chip(s, chipB),
+        s.text(' ocean'),
+      ]);
+      const p = chipPositions(doc);
+      // deletes ` [A]` but keeps the shared space → sky [B] ocean
+      expect(planCascadeDeletion(doc, new Set([p.a]))).toEqual([
+        { from: p.a - 1, to: p.a + 1 },
+      ]);
+    });
+  });
+
+  it('returns [] for an empty stale set', () => {
+    withSchema((s) => {
+      const doc = docOf(s, [s.text('sky '), chip(s, chipA), s.text(' ocean')]);
+      expect(planCascadeDeletion(doc, new Set())).toEqual([]);
     });
   });
 });
