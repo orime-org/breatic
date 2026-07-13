@@ -257,6 +257,12 @@ body {
   border: none;
   margin: 0;
   padding: 0;
+  /* Keep the 0x0 anchor out of a text selection: a native selection spanning the
+     gap painted a thin highlight bar over this img (it looked like a selectable
+     stray caret, user 2026-07-13). It stays the caret's DOM anchor (that is the
+     DOM position, unaffected by user-select) and the drag hit-test stays width-0. */
+  -webkit-user-select: none;
+  user-select: none;
 }
 /* I-beam over the editable prompt (C, user 2026-07-12): the gap between two
    adjacent chips is a real text-insertion point, so the cursor must read as
