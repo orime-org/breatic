@@ -136,22 +136,24 @@ function firePointerLeave(el: HTMLElement): void {
 // the cursor inside the zone) are three decoupled layers. Moving the dot must
 // never move the wire anchor.
 describe('MagneticHandle — anchor / zone / dot decoupling', () => {
-  it('keeps the anchor element 8px (edge anchor stays on the border) with a 36px outside-only zone', () => {
+  it('keeps the anchor element 8px, pins its outer edge to the border (!right-1), with a 36px outside-only zone', () => {
     const { handle } = mount();
     expect(handle.className).toContain('!h-2');
     expect(handle.className).toContain('!w-2');
-    // Zone: 36x36 (w-9/h-9) starting AT the border and reaching outward —
-    // for a source (right) handle the element spans border±4, so the zone's
-    // left edge sits at +4px from the element (before:left-1).
+    // Border-pinned anchor (P1): shifted 4px inward so its OUTER edge — where
+    // xyflow attaches the wire — sits ON the border (no gap). The element then
+    // spans border-8..border, so the fully-outside 36px zone starts at the
+    // border = element left + 8px (before:left-2).
+    expect(handle.className).toContain('!right-1');
     expect(handle.className).toContain('before:h-9');
     expect(handle.className).toContain('before:w-9');
-    expect(handle.className).toContain('before:left-1');
+    expect(handle.className).toContain('before:left-2');
     expect(handle.className).toContain('before:absolute');
     // The element itself is invisible — the visual lives in the dot child.
     expect(handle.className).toContain('!bg-transparent');
   });
 
-  it('mirrors the zone for a target (left) handle', () => {
+  it('mirrors the border-pinned anchor + zone for a target (left) handle', () => {
     const { container } = render(
       <ReactFlowProvider>
         <MagneticHandle type='target' isConnectable />
@@ -160,9 +162,11 @@ describe('MagneticHandle — anchor / zone / dot decoupling', () => {
     const handle = container.querySelector(
       '.react-flow__handle',
     ) as HTMLElement;
-    // Element spans border±4; a fully-outside 36px zone ends at the border =
-    // element left + 4 → left = 4 - 36 = -32px (before:-left-8).
-    expect(handle.className).toContain('before:-left-8');
+    // Shifted 4px inward (!left-1) so the outer (left) edge sits on the border;
+    // element spans border..border+8, so a fully-outside 36px zone ends at the
+    // border = element left - 36px (before:-left-9).
+    expect(handle.className).toContain('!left-1');
+    expect(handle.className).toContain('before:-left-9');
     expect(handle.className).toContain('before:w-9');
   });
 
@@ -177,9 +181,11 @@ describe('MagneticHandle — anchor / zone / dot decoupling', () => {
   it('the dot chases the cursor inside the zone (outward offset, zoom-normalized)', () => {
     const { handle, dot } = mount();
     stubAnchorRect(handle);
-    // Cursor 20px right / 6px down of the anchor center (100,100).
+    // Cursor 16px right of the BORDER (a source's border = the anchor's right
+    // edge = 104) / 6px down of the vertical centre (100). The dot springs from
+    // the border it straddles, not the anchor centre (A, user 2026-07-12).
     firePointer(handle, 'pointermove', 120, 106);
-    expect(dot.style.transform).toBe('translate(20px, 6px)');
+    expect(dot.style.transform).toBe('translate(16px, 6px)');
   });
 
   it('clamps the chase so the dot stays inside the zone', () => {
@@ -228,7 +234,7 @@ describe('MagneticHandle — anchor / zone / dot decoupling', () => {
     const { handle, dot, rerender } = mount(true);
     stubAnchorRect(handle);
     firePointer(handle, 'pointermove', 120, 106);
-    expect(dot.style.transform).toBe('translate(20px, 6px)');
+    expect(dot.style.transform).toBe('translate(16px, 6px)');
     rerender(false);
     expect(dot.style.transform).toBe('');
   });
@@ -253,7 +259,7 @@ describe('MagneticHandle — dot rests during a connection drag', () => {
     const { handle, dot } = mount(true);
     stubAnchorRect(handle);
     firePointer(handle, 'pointermove', 120, 106);
-    expect(dot.style.transform).toBe('translate(20px, 6px)');
+    expect(dot.style.transform).toBe('translate(16px, 6px)');
     setConnecting(true);
     expect(dot.style.transform).toBe('');
   });

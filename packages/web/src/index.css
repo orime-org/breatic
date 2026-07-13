@@ -184,6 +184,14 @@ body {
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* Force the not-allowed cursor onto the dimmed node's CHILDREN too (B, user
+   2026-07-12): a child (placeholder button, node body) carrying its own cursor
+   would win over the wrapper rule, so an already-referenced / type-incompatible
+   node wouldn't read as "can't pick this". The circle-with-slash tells the user
+   the pick is refused before they click. */
+.react-flow .react-flow__node.canvas-pick-dimmed * {
+  cursor: not-allowed;
+}
 /* During a reference pick the NodesSelection rect (xyflow's post-marquee
    overlay, pointer-events: all) must never render: it would sit over the
    candidates and swallow pick clicks — the round-1 dead zone. Neutralized at
@@ -191,6 +199,14 @@ body {
    xyflow's internal key state mid-Shift-hold (round-3 adversarial). */
 .canvas-picking .react-flow__nodesselection {
   display: none;
+}
+/* During a reference pick a node double-click natively selected its placeholder
+   / body text (the upload placeholder highlighted — user 2026-07-12 P2b). The
+   pick owns node interaction, so text is non-selectable while picking. The
+   double-click EDIT itself is gated in flow-node-types (onDoubleClickCapture);
+   this kills only the native text-selection the click would otherwise leave. */
+.canvas-picking .react-flow__node {
+  user-select: none;
 }
 /* Magnetic-handle zone stand-down during a connection drag (adversarial
    round-4): the canvas adds `.canvas-connecting` synchronously in
@@ -224,31 +240,86 @@ body {
       0 0 26px 7px color-mix(in srgb, var(--color-status-selected) 55%, transparent);
   }
 }
-/* Fake caret between adjacent reference chips in the generate prompt
-   (reference-mention-caret.ts). Browsers cannot paint a native caret at a
-   position with no adjacent text node (TipTap #2978), so a widget decoration
-   draws one: a zero-width span whose left border is the caret line. */
-.reference-mention-caret {
-  display: inline-block;
+/* Native-caret anchor between adjacent reference chips in the generate prompt
+   (reference-mention-caret.ts). A browser cannot paint a native caret at a gap
+   with no adjacent text node (WebKit bug 15256 / TipTap #2978), so a raw widget
+   decoration injects PM's own img.ProseMirror-separator there — a replaced element
+   the browser anchors a native caret next to (A, user 2026-07-12).
+   Kept 0x0. A non-zero WIDTH nudges the following chip and re-breaks Chrome's
+   native drag hit-test (tiptap #4646). A non-zero HEIGHT does NOT help either: the
+   gap caret takes the height of the adjacent CHIP (h-5/~22px), not this 0-width
+   img, so sizing it never shrank the caret — it only perturbed line layout. This
+   also styles PM's own trailing separator (TipTap ships no prosemirror-view CSS). */
+[data-testid='generate-prompt-editor'] img.ProseMirror-separator {
+  display: inline;
   width: 0;
-  height: 1.2em;
-  vertical-align: text-bottom;
-  border-left: 1.5px solid currentColor;
-  pointer-events: none;
-  animation: reference-mention-caret-blink 1.06s step-end infinite;
+  height: 0;
+  border: none;
+  margin: 0;
+  padding: 0;
+  /* Keep the 0x0 anchor out of a text selection: a native selection spanning the
+     gap painted a thin highlight bar over this img (it looked like a selectable
+     stray caret, user 2026-07-13). It stays the caret's DOM anchor (that is the
+     DOM position, unaffected by user-select) and the drag hit-test stays width-0. */
+  -webkit-user-select: none;
+  user-select: none;
 }
-@keyframes reference-mention-caret-blink {
-  50% {
-    opacity: 0;
-  }
+/* I-beam over the editable prompt (C, user 2026-07-12): the gap between two
+   adjacent chips is a real text-insertion point, so the cursor must read as
+   "click to insert here" (text), not the default arrow the panel surface would
+   otherwise inherit. */
+[data-testid='generate-prompt-editor'] .ProseMirror {
+  cursor: text;
 }
-/* While the fake caret shows, hide the native one — at some element
-   boundaries a browser does paint natively, and two carets is worse than
-   none. Scoped by the plugin's editor-root marker class, so the native caret
-   stays untouched everywhere else (incl. IME composition, which inserts a
-   text node and flips this class off). */
-.reference-mention-caret-active {
-  caret-color: transparent;
+/* A reference chip is an ATOM selected as a unit, not editable text. `cursor`
+   is inherited and contentEditable=false does NOT override an explicitly-set
+   cursor (only `auto` resolution), so the I-beam above would leak onto the chip
+   and its thumbnail, falsely signalling an insertion point (batch-4 adversarial).
+   Reset the chip + its children to the default arrow. */
+[data-testid='generate-prompt-editor'] .reference-mention,
+[data-testid='generate-prompt-editor'] .reference-mention * {
+  cursor: default;
+}
+/* A chip caught inside a text range selection (I2, user 2026-07-12): the atom's
+   select-none opts it out of the browser's native selection paint, so a range
+   covering it left it un-highlighted while the surrounding text turned blue. A
+   local ProseMirror node decoration adds this class to the OUTER NodeView
+   wrapper (.node-referenceMention); the visible pill is the inner
+   .reference-mention (opaque bg-muted), so the highlight is painted on the inner
+   pill via a descendant selector. Uses the selection semantic token
+   (classification color — no contrast math). */
+.reference-mention--range-selected .reference-mention {
+  background-color: color-mix(in srgb, var(--color-status-selected) 35%, transparent);
+}
+/* A chip caught inside a REMOTE collaborator's selection (B3, user 2026-07-12):
+   the same atom-skips-native-paint problem as the local I2 case, but for
+   @tiptap/extension-collaboration-caret's remote-selection decoration. That
+   decoration lands its `collaboration-carets__selection` class + the remote
+   user's identity color on the chip's OUTER NodeView wrapper; the opaque inner
+   pill hid it, so a remote user selecting a chip showed nothing while the
+   surrounding text was tinted. Paint the inner pill with the per-user color so
+   its FULL box is tinted (via the --collab-selection-bg custom property from
+   renderCollabSelection — a var() inherits through any nesting, unlike relying on
+   the decoration's own background box, which only covers the atom's baseline
+   inline box and left the taller pill's bottom edge untinted, user 2026-07-12).
+   Fallback to a neutral tint if the property is absent. */
+.collaboration-carets__selection .reference-mention,
+.reference-mention.collaboration-carets__selection {
+  background-color: var(
+    --collab-selection-bg,
+    color-mix(in srgb, var(--color-muted) 45%, transparent)
+  );
+}
+/* A remote selection over PLAIN TEXT paints the per-user rectangle (the normal
+   selection band). A chip is EXCLUDED here via :has(.reference-mention) — its
+   NodeView wrapper (.react-renderer.node-referenceMention) carries the class but
+   is a rectangle (radius 0), so painting the band on it squared off the rounded
+   pill; the rule above tints the rounded pill itself instead, so a remote
+   selection follows the chip's shape (B, user 2026-07-13). renderCollabSelection
+   sets ONLY the --collab-selection-bg property (no direct background-color), so
+   the shape is decided entirely by these two rules. */
+.collaboration-carets__selection:not(:has(.reference-mention)) {
+  background-color: var(--collab-selection-bg);
 }
 /* Remote collaborator carets in the generate prompt (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render
@@ -265,6 +336,22 @@ body {
   word-break: normal;
   pointer-events: none;
 }
+/* When a remote caret sits at the very document start (before the first block),
+   the collaboration-caret extension renders its inline widget as a DIRECT child of
+   the block editor, before the <p>. An inline box before a block gets its own
+   anonymous line, pushing every line down by one — a blank first line for
+   collaborators (user 2026-07-13, real-DOM confirmed: the caret span is the
+   editor's first child, the <p> its second; repro measured the editor 21px taller
+   and the paragraph one line lower). Take THAT direct-child caret out of flow so it
+   overlays the first line's start instead of adding a line; its label stays
+   positioned relative to it (an absolutely-positioned box is still a containing
+   block for its absolute children). In-paragraph carets (not a direct child) keep
+   position:relative and are unaffected. */
+[data-testid='generate-prompt-editor']
+  .ProseMirror
+  > .collaboration-carets__caret {
+  position: absolute;
+}
 .collaboration-carets__label {
   position: absolute;
   top: -1.35em;
@@ -278,4 +365,26 @@ body {
   color: white;
   user-select: none;
   pointer-events: none;
+}
+/* First-line flip (D, user 2026-07-12): a caret at the top of the scroll
+   viewport would clip its above-label, so caret-render.ts adds this class to
+   render the label BELOW the caret line instead (user-chosen over adding
+   permanent top padding; it may sit over the next line's text on line 1). The
+   corner mirrors to the top so the tab still points at the caret. */
+.collaboration-carets__label.collaboration-carets__label--below {
+  top: 100%;
+  bottom: auto;
+  border-radius: 0 3px 3px 3px;
+}
+/* Right-edge flip (B4, user 2026-07-12): a caret near the prompt's right edge
+   would clip its right-extending label, so caret-render.ts adds this class to
+   anchor the label to the caret's RIGHT and extend it LEFT instead. The corner
+   mirrors to the right so the tab still points at the caret. */
+.collaboration-carets__label.collaboration-carets__label--flip-left {
+  left: auto;
+  right: -1px;
+  border-radius: 3px 3px 0 3px;
+}
+.collaboration-carets__label.collaboration-carets__label--below.collaboration-carets__label--flip-left {
+  border-radius: 3px 0 3px 3px;
 }

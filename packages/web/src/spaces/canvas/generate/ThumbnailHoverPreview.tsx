@@ -27,22 +27,50 @@ export interface ThumbnailHoverPreviewProps {
   /**
    * The text body to preview (text source, spec §9.1). Used when `src` is
    * absent; long content is clamped to the same footprint as an image preview.
+   * STATIC path (the reference rail, which re-renders on every pool change so
+   * this prop is always live). For a ProseMirror NodeView chip — which does NOT
+   * re-render on pool change — pass {@link ThumbnailHoverPreviewProps.resolveOnOpen}
+   * instead so the body reads live at hover time.
    */
   text?: string;
   /** Alt text for an image preview. */
   alt: string;
+  /**
+   * Shown when the source is EMPTY (no `src`, no `text`) — a hint that the node
+   * is not yet generated / uploaded, so the user knows why the reference is
+   * blank instead of seeing nothing (user 2026-07-12 H). Absent → no preview.
+   */
+  emptyHint?: string;
+  /**
+   * Resolves the text body + empty hint at HOVER-OPEN time from the LIVE pool
+   * (design 2026-07-12 invariant, decision C; batch-5 I5). A prompt `@` text
+   * chip is a ProseMirror NodeView that does not re-render when the source text
+   * node's body changes (its body is deliberately not frozen into a synced attr
+   * — that would duplicate it into the Yjs prompt doc). The resolved value is
+   * cached in state (seeded at mount, refreshed on open, kept on close) so the
+   * preview is live yet does not blank during the fade-out. When present it
+   * OVERRIDES {@link ThumbnailHoverPreviewProps.text} /
+   * {@link ThumbnailHoverPreviewProps.emptyHint}. Only the TEXT chip passes it;
+   * image / video use the static (attr-backed) `src` / `emptyHint` instead.
+   */
+  resolveOnOpen?: () => { text?: string; emptyHint?: string };
   /** The trigger element (the chip). Must accept a ref + hover handlers. */
   children: React.ReactNode;
 }
 
 /**
  * Wraps a chip so hovering it previews the source content — an image when
- * `src` is present, the text body when only `text` is. With neither (an empty
- * source) it renders the trigger unchanged — no preview.
+ * `src` is present, the text body otherwise. The text body + empty hint come
+ * from the static `text` / `emptyHint` props (the rail, always live because it
+ * re-renders) OR, for a NodeView chip, are resolved live at open via
+ * `resolveOnOpen` (decision C). With no content and no resolver it renders the
+ * trigger unchanged — no preview.
  * @param root0 - Component props.
  * @param root0.src - The image URL to preview.
- * @param root0.text - The text body to preview (used when `src` is absent).
+ * @param root0.text - The static text body to preview (used when `src` is absent).
  * @param root0.alt - Alt text for an image preview.
+ * @param root0.emptyHint - Static hint shown when the source is empty (no src/text).
+ * @param root0.resolveOnOpen - Live text/hint resolver read at hover-open (overrides text/emptyHint).
  * @param root0.children - The trigger element (the chip).
  * @returns The trigger with (when it has content) a hover preview.
  */
@@ -50,12 +78,33 @@ export function ThumbnailHoverPreview({
   src,
   text,
   alt,
+  emptyHint,
+  resolveOnOpen,
   children,
 }: ThumbnailHoverPreviewProps): React.JSX.Element {
-  if (!src && !text) return <>{children}</>;
+  // Live-at-open (decision C), CACHED so it survives the close animation. The
+  // body/hint is resolved from the live pool and kept in state: seeded at mount,
+  // refreshed on every open, and NEVER cleared on close. Radix keeps the content
+  // mounted ~150ms after open→false to play the fade-out (tooltip.tsx
+  // data-[state=closed]:animate-out); an open-gated resolve would blank the box
+  // mid-fade (batch-5 adversarial finding 1). Static props are the fallback for
+  // the rail path (no resolver — the rail re-renders on pool change).
+  const [resolved, setResolved] = React.useState<
+    { text?: string; emptyHint?: string } | undefined
+  >(() => resolveOnOpen?.());
+  const previewText = resolveOnOpen ? resolved?.text : text;
+  const previewHint = resolveOnOpen ? resolved?.emptyHint : emptyHint;
+  // No image, no text, no hint, no resolver → render the trigger unchanged (no
+  // preview). A chip of an unhandled modality passes none of these, so it gets
+  // NO tooltip rather than an empty box (batch-5 adversarial finding 2).
+  if (!src && !text && !emptyHint && !resolveOnOpen) return <>{children}</>;
   return (
     <TooltipProvider delayDuration={200}>
-      <Tooltip>
+      <Tooltip
+        onOpenChange={(open) => {
+          if (open && resolveOnOpen) setResolved(resolveOnOpen());
+        }}
+      >
         <TooltipTrigger asChild>{children}</TooltipTrigger>
         <TooltipContent
           side='top'
@@ -68,11 +117,15 @@ export function ThumbnailHoverPreview({
               className='max-h-[220px] max-w-[220px] rounded-sm object-contain'
               draggable={false}
             />
-          ) : (
+          ) : previewText ? (
             <div className='max-h-[220px] max-w-[220px] overflow-hidden whitespace-pre-wrap p-1 text-xs text-popover-foreground'>
-              {text}
+              {previewText}
             </div>
-          )}
+          ) : previewHint ? (
+            <div className='px-2 py-1 text-xs text-muted-foreground'>
+              {previewHint}
+            </div>
+          ) : null}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

@@ -15,9 +15,11 @@ import type * as Y from 'yjs';
 import {
   extractAtMentionedSourceIds,
   planMentionDeletions,
+  planChipDisplayUpdates,
   MENTION_SOURCE_ID_ATTR,
   REFERENCE_MENTION_NODE,
   type MentionOccurrence,
+  type ChipDisplaySnapshot,
 } from '@web/spaces/canvas/generate/at-reference';
 import {
   renderCollabCaret,
@@ -26,6 +28,8 @@ import {
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
+  MENTION_LABEL_ATTR,
+  MENTION_THUMBNAIL_ATTR,
   ReferenceMention,
   referenceMentionContent,
   serializePromptText,
@@ -253,6 +257,56 @@ export const PromptEditor = React.forwardRef<
     // remaining (lower) positions valid.
     const tr = editor.state.tr;
     for (const { from, to } of deletions) tr.delete(from, to);
+    // Edge-driven chip removal (the edge left the pool) is a CONSEQUENCE of a
+    // canvas action, not a prompt edit — keep it out of the prompt's undo stack
+    // so Cmd+Z can't resurrect an orphan chip whose reference is gone (same
+    // machine-derived-edit invariant as the thumbnail sync; batch-4 adversarial).
+    tr.setMeta('addToHistory', false);
+    editor.view.dispatch(tr);
+  }, [editor, references]);
+
+  // Keep every reference chip a LIVE PROJECTION of its source node's pool row —
+  // for EVERY modality, not just images (design 2026-07-12 invariant; batch-5
+  // I5). The chip's cheap synced display attrs (name + thumbnail) are frozen at
+  // insert time, so a renamed / re-generated source must be re-synced here; the
+  // pure planner diffs each chip against the live pool and reports only changed
+  // fields (a text source has no thumbnail — its name still syncs, which the
+  // old thumbnail-only effect missed). Setting an attr re-renders the
+  // ReactNodeView. Chips whose source left the pool are removed by the
+  // cascade-clear effect above (the planner skips them). The text chip's hover
+  // CONTENT is not synced here — it is read live at hover-open (see
+  // ThumbnailHoverPreview), keeping the source node the single truth (freezing
+  // the body into an attr would duplicate it into the Yjs prompt doc).
+  React.useEffect(() => {
+    if (!editor) return;
+    const chips: ChipDisplaySnapshot[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name !== REFERENCE_MENTION_NODE) return;
+      const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
+      if (typeof id !== 'string') return;
+      chips.push({
+        pos,
+        sourceNodeId: id,
+        label: (n.attrs[MENTION_LABEL_ATTR] as string | null) ?? null,
+        thumbnail: (n.attrs[MENTION_THUMBNAIL_ATTR] as string | null) ?? null,
+      });
+    });
+    const updates = planChipDisplayUpdates(chips, references);
+    if (updates.length === 0) return;
+    const tr = editor.state.tr;
+    for (const u of updates) {
+      if ('label' in u) {
+        tr.setNodeAttribute(u.pos, MENTION_LABEL_ATTR, u.label ?? null);
+      }
+      if ('thumbnail' in u) {
+        tr.setNodeAttribute(u.pos, MENTION_THUMBNAIL_ATTR, u.thumbnail ?? null);
+      }
+    }
+    // Machine-derived cosmetic sync — keep it OUT of the prompt's collaborative
+    // undo stack (batch-4 adversarial): otherwise Cmd+Z would revert a name /
+    // thumbnail refresh instead of the user's own edit, and (this effect is
+    // gated on `references`, not the doc) that revert would never self-heal.
+    tr.setMeta('addToHistory', false);
     editor.view.dispatch(tr);
   }, [editor, references]);
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
@@ -269,7 +323,17 @@ export const PromptEditor = React.forwardRef<
       editor={editor}
       data-testid='generate-prompt-editor'
       className={
-        'nowheel max-h-40 min-h-[3.5rem] overflow-auto rounded-overlay border border-border bg-background px-2.5 py-2 text-sm text-foreground transition-colors focus-within:border-active-border [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent [&_.ProseMirror]:min-h-[2.5rem] [&_.ProseMirror]:outline-none [&_p.is-editor-empty:first-child::before]:pointer-events-none [&_p.is-editor-empty:first-child::before]:float-left [&_p.is-editor-empty:first-child::before]:h-0 [&_p.is-editor-empty:first-child::before]:text-muted-foreground [&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]' +
+        // min height = 4 text-sm lines (user 2026-07-12 P6): the panel opened at
+        // ~2 lines which felt cramped for a prompt. The wrapper holds 4 lines of
+        // ProseMirror content plus its py-2, and still caps at max-h-40 (scrolls
+        // past 4). ProseMirror's own min-h carries the 4-line floor so the empty
+        // editor renders at full height, not just the placeholder line.
+        // Original symmetric padding (D, user 2026-07-12): the P3 top padding
+        // (pt-5) that gave a first-line collaborator caret's above-label room is
+        // reverted — the label now FLIPS below the caret on the first line
+        // (caret-render.ts + .collaboration-carets__label--below), so no extra
+        // top gap is needed and the prompt keeps its original edges.
+        'nowheel max-h-40 min-h-[6.5rem] overflow-auto rounded-overlay border border-border bg-background px-2.5 py-2 text-sm text-foreground transition-colors focus-within:border-active-border [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent [&_.ProseMirror]:min-h-[5.25rem] [&_.ProseMirror]:outline-none [&_p.is-editor-empty:first-child::before]:pointer-events-none [&_p.is-editor-empty:first-child::before]:float-left [&_p.is-editor-empty:first-child::before]:h-0 [&_p.is-editor-empty:first-child::before]:text-muted-foreground [&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]' +
         dimReferences
       }
     />

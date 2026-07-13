@@ -12,7 +12,6 @@
 
 import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
 import { ReactRenderer } from '@tiptap/react';
-import { exitSuggestion } from '@tiptap/suggestion';
 import type {
   SuggestionKeyDownProps,
   SuggestionOptions,
@@ -78,6 +77,10 @@ export function makeReferenceSuggestion(input: {
       let stopAutoUpdate: (() => void) | null = null;
       /** Document-level outside-click dismisser. */
       let onOutsidePointerDown: ((event: PointerEvent) => void) | null = null;
+      /** Re-shows the popup when the editor regains focus (B2). */
+      let onEditorFocus: (() => void) | null = null;
+      /** Whether the last render had ≥1 matching row (drives re-show on focus). */
+      let hasItems = false;
 
       /**
        * Anchors the popup to the caret and KEEPS it anchored via floating-ui
@@ -136,12 +139,17 @@ export function makeReferenceSuggestion(input: {
           el.style.zIndex = '50';
           el.appendChild(component.element);
           document.body.appendChild(el);
-          // Dismiss on click outside the popup AND outside the editor: clicking
-          // a canvas node / panel control does NOT move the ProseMirror
-          // selection, so the suggestion would otherwise stay open floating over
-          // the UI. exitSuggestion is the plugin's own clean-close path (fires
-          // onExit) (adversarial 2026-07-10). Capture phase so we see the click
-          // before ReactFlow stops it.
+          // Clicking outside the popup AND the editor (a canvas node / panel
+          // control) does NOT move the ProseMirror selection, so the suggestion
+          // would otherwise stay open floating over the UI. Just HIDE the popup
+          // — do NOT exitSuggestion (B2, user 2026-07-12): exitSuggestion marks
+          // the active `@` range permanently dismissed, so after a blur-and-back
+          // the user's continued typing never re-opened the picker until the
+          // editor remounted (close/reopen panel). Hiding keeps the plugin
+          // active, so re-focusing and typing re-shows it via onUpdate; a
+          // genuine break of the `@` match (space, deleting the `@`, cursor
+          // leaving the range) still exits the plugin naturally → onExit removes
+          // the popup. Capture phase so we see the click before ReactFlow stops it.
           onOutsidePointerDown = (event: PointerEvent): void => {
             const target = event.target as Node | null;
             if (
@@ -150,10 +158,27 @@ export function makeReferenceSuggestion(input: {
               !el.contains(target) &&
               !props.editor.view.dom.contains(target)
             ) {
-              exitSuggestion(props.editor.view);
+              el.style.display = 'none';
             }
           };
           document.addEventListener('pointerdown', onOutsidePointerDown, true);
+          // Re-show on re-focus (B2 residual, user 2026-07-12): the outside-click
+          // handler HIDES the popup (display:none) without exiting the suggestion.
+          // Re-focusing the editor (clicking back in) does not fire onUpdate — only
+          // typing does — so the popup would stay hidden until a keystroke. On
+          // focus, if the suggestion is still active with matches, re-show it (the
+          // autoUpdate loop keeps it caret-positioned), matching a freshly-opened
+          // panel where clicking to activate immediately shows the picker.
+          onEditorFocus = (): void => {
+            if (el && hasItems) el.style.display = '';
+          };
+          props.editor.view.dom.addEventListener('focus', onEditorFocus);
+          // Show the popup ONLY when the pool has ≥1 matching row (I3, user
+          // 2026-07-12): typing `@` as ordinary text (nothing matches) must not
+          // pop an empty "no references" box. Zero matches → hidden, so plain
+          // `@` typing is uninterrupted; a match → shown.
+          hasItems = props.items.length > 0;
+          el.style.display = hasItems ? '' : 'none';
           place(props.clientRect);
         },
         onUpdate: (props: SuggestionProps<ReferenceRailItem>): void => {
@@ -162,13 +187,15 @@ export function makeReferenceSuggestion(input: {
             command: (item: ReferenceRailItem) => props.command(item),
             emptyLabel: input.emptyLabel,
           });
+          hasItems = props.items.length > 0;
+          if (el) el.style.display = hasItems ? '' : 'none';
           place(props.clientRect);
         },
         onKeyDown: (props: SuggestionKeyDownProps): boolean => {
           if (props.event.key === 'Escape') return true;
           return component?.ref?.onKeyDown(props.event) ?? false;
         },
-        onExit: (): void => {
+        onExit: (props: SuggestionProps<ReferenceRailItem>): void => {
           stopAutoUpdate?.();
           stopAutoUpdate = null;
           if (onOutsidePointerDown) {
@@ -179,6 +206,11 @@ export function makeReferenceSuggestion(input: {
             );
             onOutsidePointerDown = null;
           }
+          if (onEditorFocus) {
+            props.editor.view.dom.removeEventListener('focus', onEditorFocus);
+            onEditorFocus = null;
+          }
+          hasItems = false;
           el?.remove();
           el = null;
           component?.destroy();

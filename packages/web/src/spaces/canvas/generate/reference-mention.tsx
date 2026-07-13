@@ -11,6 +11,8 @@
  */
 
 import { Node, mergeAttributes, type Editor } from '@tiptap/core';
+import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
+import { Plugin } from '@tiptap/pm/state';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
@@ -23,6 +25,7 @@ import {
 } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { createReferenceMentionCaret } from '@web/spaces/canvas/generate/reference-mention-caret';
+import { createReferenceMentionRangeHighlight } from '@web/spaces/canvas/generate/reference-mention-range-decoration';
 import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import type { NodeKind } from '@web/spaces/canvas/types/node-view';
@@ -109,6 +112,45 @@ export function serializePromptText(
 }
 
 /**
+ * Strips reference-mention chips whose source node is NOT in `poolIds` from a
+ * pasted slice (E, user 2026-07-12), keeping the surrounding text. A chip means
+ * "this node references that source", so pasting one into a node not wired to
+ * the source (copy from node A's prompt into node B) is a contradiction — drop
+ * the chip, keep the words. Chips whose source IS in the pool (same-node paste)
+ * survive untouched, mirroring the cascade-clear invariant (a chip must be in
+ * the reference pool).
+ * @param slice - The pasted slice.
+ * @param poolIds - The target node's current reference-pool source ids.
+ * @returns A slice with foreign chips removed.
+ */
+export function stripForeignReferenceChips(
+  slice: Slice,
+  poolIds: ReadonlySet<string>,
+): Slice {
+  /**
+   * Recursively rebuilds a fragment, dropping foreign reference-mention chips
+   * and recursing into block content.
+   * @param fragment - The fragment to filter.
+   * @returns The fragment without foreign chips.
+   */
+  const rebuild = (fragment: Fragment): Fragment => {
+    const kept: PMNode[] = [];
+    fragment.forEach((child) => {
+      if (child.type.name === REFERENCE_MENTION_NODE) {
+        const id = child.attrs[MENTION_SOURCE_ID_ATTR] as string | null;
+        if (typeof id === 'string' && poolIds.has(id)) kept.push(child);
+        return; // foreign chip → dropped (its text neighbours stay)
+      }
+      kept.push(
+        child.content.size > 0 ? child.copy(rebuild(child.content)) : child,
+      );
+    });
+    return Fragment.fromArray(kept);
+  };
+  return new Slice(rebuild(slice.content), slice.openStart, slice.openEnd);
+}
+
+/**
  * Inline chip NodeView for an `@`-picked reference image: a small thumbnail (or
  * a broken-image fallback) labelled by the source node name. Rendered by
  * ReactNodeViewRenderer; `data-reference-mention` marks it for the CSS t2i
@@ -135,22 +177,43 @@ function ReferenceMentionChip({
   // icon rather than a broken-image placeholder. Old mentions carry no kind, so
   // default to image (the historical @-picker was image-centric).
   const FallbackIcon = getNodeIcon(kind ?? 'image');
-  // Text-reference hover (spec §9.1): resolve the source node's content LIVE
-  // from the pool (not from an attr snapshot). Read at render — the small
-  // staleness window (source edited while this chip never re-rendered) only
-  // affects the preview; the backend serialization resolves live at execute.
   const sourceId = node.attrs[MENTION_SOURCE_ID_ATTR] as string | null;
   const options = extension.options as ReferenceMentionOptions;
-  const textContent =
-    kind === 'text' && sourceId != null
-      ? options.getPool?.().find((r) => r.sourceNodeId === sourceId)
-        ?.textContent
+  const isVisual = kind === 'image' || kind === 'video';
+  // A visual chip with no thumbnail shows a static "not yet filled" hint. It is
+  // attr-backed (the F sync writes the live thumbnail, so this re-computes on the
+  // ensuing re-render), so it needs no live resolver and never blanks on the
+  // tooltip's fade-out.
+  const staticEmptyHint =
+    isVisual && !thumbnail
+      ? t('canvas.generatePanel.emptyImageReference')
       : undefined;
+  // Only a TEXT chip resolves live at hover-open (design 2026-07-12 invariant,
+  // decision C; batch-5 I5): its body is NOT a synced attr (freezing it would
+  // duplicate it into the Yjs prompt doc), so the NodeView cannot re-render on a
+  // source edit — read the pool live on open instead. Image / video read from
+  // the synced `src` / `emptyHint` above; an unhandled modality (audio / 3d /
+  // web / legacy) passes neither, so it gets NO tooltip rather than an empty box
+  // (batch-5 adversarial finding 2).
+  const resolveTextHover = React.useCallback((): {
+    text?: string;
+    emptyHint?: string;
+  } => {
+    const row =
+      sourceId != null
+        ? options.getPool?.().find((r) => r.sourceNodeId === sourceId)
+        : undefined;
+    const content = row?.textContent;
+    return content
+      ? { text: content }
+      : { emptyHint: t('canvas.generatePanel.emptyTextReference') };
+  }, [options, sourceId, t]);
   return (
     <ThumbnailHoverPreview
       src={thumbnail ?? undefined}
-      text={textContent}
       alt={label}
+      emptyHint={staticEmptyHint}
+      resolveOnOpen={kind === 'text' ? resolveTextHover : undefined}
     >
       <NodeViewWrapper
         as='span'
@@ -259,12 +322,30 @@ export const ReferenceMention = Node.create<ReferenceMentionOptions>({
     // render) comes from makeReferenceSuggestion via .configure. The caret
     // plugin makes the gap between adjacent chips clickable and visible —
     // browsers cannot paint a native caret with no text node to anchor to.
+    const getPool = this.options.getPool;
     return [
       Suggestion<ReferenceRailItem>({
         editor: this.editor,
         ...this.options.suggestion,
       }),
       createReferenceMentionCaret(),
+      // Highlight chips caught inside a text range selection (I2, user
+      // 2026-07-12): a select-none atom is skipped by the browser's native
+      // selection paint, so without this a selected chip reads as un-selected.
+      createReferenceMentionRangeHighlight(),
+      // Strip chips referencing a source this node isn't wired to when pasting
+      // across nodes (E, user 2026-07-12): the words survive, the invalid chip
+      // does not — a chip must be in the reference pool (same invariant the
+      // cascade-clear effect enforces for edge removals).
+      new Plugin({
+        props: {
+          transformPasted: (slice): Slice =>
+            stripForeignReferenceChips(
+              slice,
+              new Set((getPool?.() ?? []).map((r) => r.sourceNodeId)),
+            ),
+        },
+      }),
     ];
   },
 });

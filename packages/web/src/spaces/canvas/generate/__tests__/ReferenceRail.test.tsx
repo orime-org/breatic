@@ -59,10 +59,11 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
   });
 
   // Text-reference hover (spec §9.1): hovering a text reference previews its
-  // CONTENT (not an image). Being wrapped by the Tooltip trigger stamps
-  // Radix's data-state on the chip button — a text ref with content carries
-  // it; a text ref without content (nothing to preview) stays unwrapped.
-  it('wraps a text reference with content in a hover preview (Tooltip trigger)', () => {
+  // CONTENT (not an image). Being wrapped by the Tooltip trigger stamps Radix's
+  // data-state on the chip button. A text ref WITH content carries it; a text
+  // ref WITHOUT content now also carries it — it shows the empty-state hint
+  // instead of nothing (H, user 2026-07-12).
+  it('wraps a text reference (with content OR empty) in a hover preview (Tooltip trigger)', () => {
     const refs: ReferenceRailItem[] = [
       {
         refId: 'txt->me',
@@ -84,9 +85,10 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     expect(screen.getByTestId('generate-ref-insert-txt->me')).toHaveAttribute(
       'data-state',
     );
+    // Empty source → still wrapped, now showing the empty-state hint (H).
     expect(
       screen.getByTestId('generate-ref-insert-empty->me'),
-    ).not.toHaveAttribute('data-state');
+    ).toHaveAttribute('data-state');
   });
 
   // Legacy-edge parity with the @ picker (round-2 adversarial): a pre-rules

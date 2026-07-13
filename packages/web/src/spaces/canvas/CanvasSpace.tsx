@@ -2398,6 +2398,14 @@ function CanvasSpaceInner({
           // mid-pick. Plain boolean store prop — safe to flip, unlike the
           // key-code props (see web-frontend-traps).
           nodesConnectable={!readOnly && referencePickForNodeId == null}
+          // No node selection during a reference pick (user 2026-07-12 P2c):
+          // clicking a candidate wires a reference (onNodeClick → addEdge), it
+          // must not ALSO xyflow-select the node — a click on a type-incompatible
+          // (dimmed) node still turned its border the selected violet, reading as
+          // if the incompatible pick had taken. onNodeClick still fires with
+          // selection off, so the pick + rejection-toast paths are untouched.
+          // Off pick this stays the default (true) so viewers can click-inspect.
+          elementsSelectable={referencePickForNodeId == null}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragStop}

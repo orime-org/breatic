@@ -1,12 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, it, expect } from 'vitest';
 
 import {
   renderCollabCaret,
   renderCollabSelection,
   safeCaretColor,
+  shouldRenderLabelBelow,
+  shouldFlipLabelLeft,
 } from '@web/spaces/canvas/generate/caret-render';
 
 // Awareness payloads are UNTRUSTED wire data from other clients (CRITICAL
@@ -81,6 +86,16 @@ describe('renderCollabSelection — remote selection highlight attrs', () => {
     expect(attrs.style).toContain('color-mix');
   });
 
+  // The per-user color is exposed ONLY as a custom property, with NO direct
+  // background-color: index.css decides the shape per element (rectangle on text,
+  // rounded pill on a chip — never the chip's rectangular wrapper), so a remote
+  // selection over a chip follows the pill's rounded shape (B, user 2026-07-13).
+  it('exposes only the --collab-selection-bg custom property, no direct background', () => {
+    const attrs = renderCollabSelection({ hue: 'pink', color: '#c2298a' });
+    expect(attrs.style).toContain('--collab-selection-bg:');
+    expect(attrs.style).not.toContain('background-color');
+  });
+
   it('never inlines a style-injection payload (neutral token instead)', () => {
     const attrs = renderCollabSelection({
       hue: 'red;background:url(https://evil.example)',
@@ -88,5 +103,55 @@ describe('renderCollabSelection — remote selection highlight attrs', () => {
     });
     expect(attrs.style).not.toContain('evil.example');
     expect(attrs.style).toContain('var(--color-muted-foreground)');
+  });
+});
+
+// First-line label flip (D, user 2026-07-12): a caret whose top sits within the
+// clip threshold of the scroll-viewport top would have its above-label clipped,
+// so the label flips below instead. Pure geometry decision (the caller measures).
+describe('shouldRenderLabelBelow — first-line clip → flip below', () => {
+  it('flips below when the caret is within the threshold of the viewport top', () => {
+    // caret 8px below the viewport top (first line, py-2) < 20px threshold.
+    expect(shouldRenderLabelBelow(108, 100, 20)).toBe(true);
+  });
+
+  it('stays above once the caret clears the threshold (later lines)', () => {
+    // caret 26px below the viewport top (second line) > 20px threshold.
+    expect(shouldRenderLabelBelow(126, 100, 20)).toBe(false);
+  });
+
+  it('flips below at the exact viewport top (a caret scrolled flush to the edge)', () => {
+    expect(shouldRenderLabelBelow(100, 100, 20)).toBe(true);
+  });
+});
+
+describe('shouldFlipLabelLeft — right-edge clip → flip left (B4)', () => {
+  it('flips left when a left-anchored label would overrun the viewport right', () => {
+    // caret at 380, 60px label → right edge 440 > container right 400 - 8.
+    expect(shouldFlipLabelLeft(380, 60, 400, 8)).toBe(true);
+  });
+
+  it('stays right-extending when the label fits before the right edge', () => {
+    // caret at 200, 60px label → right edge 260, well within 400 - 8.
+    expect(shouldFlipLabelLeft(200, 60, 400, 8)).toBe(false);
+  });
+
+  it('flips within the threshold margin (padding + scrollbar) before the exact edge', () => {
+    // right edge 395 is inside the 8px margin of container right 400.
+    expect(shouldFlipLabelLeft(335, 60, 400, 8)).toBe(true);
+  });
+});
+
+describe('collaboration caret CSS contract (index.css)', () => {
+  const css = readFileSync(resolve(__dirname, '../../../../index.css'), 'utf8');
+
+  // A remote caret at the document start renders as a DIRECT child of the block
+  // editor (before the <p>); an inline box before a block takes its own line,
+  // adding a blank first line for collaborators. It must be taken out of flow
+  // (user 2026-07-13, real-DOM + repro confirmed).
+  it('takes a document-start caret (direct editor child) out of flow (no blank first line)', () => {
+    expect(css).toMatch(
+      /\.ProseMirror\s*>\s*\.collaboration-carets__caret\s*\{[^}]*position:\s*absolute[^}]*\}/,
+    );
   });
 });

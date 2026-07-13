@@ -14,8 +14,13 @@ const PLACEHOLDER_TOOLS = [
 ] as const;
 
 interface GenerateToolbarProps {
-  /** Enter the "select a reference from the canvas" mode (participates in the reference rail). */
+  /** Toggle the "select a reference from the canvas" mode (enter, or exit while active). */
   onReference: () => void;
+  /**
+   * Whether the reference pick is running — renders the button in its active
+   * (highlighted) state so it reads as a toggle (user 2026-07-12 G).
+   */
+  referenceActive?: boolean;
   /**
    * Disable the Reference button — set in text-to-image, which generates from
    * scratch and ignores source images (mode toggle 2026-07-09 §2.5).
@@ -34,14 +39,21 @@ interface GenerateToolbarProps {
  */
 export const GenerateToolbar = React.memo(function GenerateToolbar({
   onReference,
+  referenceActive = false,
   referenceDisabled = false,
 }: GenerateToolbarProps): React.JSX.Element {
   const t = useTranslation();
-  const buttonClass =
+  // Shared layout / focus / disabled; color + hover are applied per-state below.
+  const base =
     'flex flex-col items-center gap-1 rounded-overlay px-2 py-1.5 text-xs ' +
-    'text-muted-foreground transition-colors focus-visible:outline-none ' +
-    'focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 ' +
-    'disabled:cursor-not-allowed enabled:hover:bg-accent enabled:hover:text-accent-foreground';
+    'transition-colors focus-visible:outline-none focus-visible:ring-1 ' +
+    'focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed';
+  const inactive =
+    ' text-muted-foreground enabled:hover:bg-accent enabled:hover:text-accent-foreground';
+  // Active toggle = the minimap's white fill (ViewportToolbar VtButton), a solid
+  // `bg-foreground text-background` with NO accent hover — the two toggles must
+  // read identically (I4, user 2026-07-12).
+  const active = ' bg-foreground text-background';
   return (
     <div className='flex items-center gap-1' role='group'>
       {PLACEHOLDER_TOOLS.map(({ key, testId, Icon }) => (
@@ -50,7 +62,7 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
           type='button'
           data-testid={testId}
           disabled
-          className={buttonClass}
+          className={base + inactive}
         >
           <Icon className='h-4 w-4' aria-hidden='true' />
           {t(`canvas.generatePanel.${key}`)}
@@ -61,7 +73,8 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         data-testid='generate-tool-reference'
         onClick={onReference}
         disabled={referenceDisabled}
-        className={buttonClass}
+        aria-pressed={referenceActive}
+        className={base + (referenceActive ? active : inactive)}
       >
         <Plus className='h-4 w-4' aria-hidden='true' />
         {t('canvas.generatePanel.reference')}

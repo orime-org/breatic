@@ -34,4 +34,25 @@ describe('GenerateToolbar — Reference is live; Style / Mark / Focus are disabl
     render(<GenerateToolbar onReference={() => {}} referenceDisabled />);
     expect(screen.getByTestId('generate-tool-reference')).toBeDisabled();
   });
+
+  // I4 (batch-5, user 2026-07-12): the active Reference button used bg-accent,
+  // which looked different from the minimap toggle (ViewportToolbar VtButton),
+  // whose pressed state is the white-fill `bg-foreground text-background`. The
+  // two toggles must read identically. Active must NOT keep the accent-hover
+  // override either — a solid fill, like the minimap.
+  it('renders the active Reference in the minimap white-fill style (not bg-accent)', () => {
+    render(<GenerateToolbar onReference={() => {}} referenceActive />);
+    const btn = screen.getByTestId('generate-tool-reference');
+    expect(btn.className).toContain('bg-foreground');
+    expect(btn.className).toContain('text-background');
+    expect(btn.className).not.toContain('bg-accent');
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('renders the inactive Reference without the fill', () => {
+    render(<GenerateToolbar onReference={() => {}} />);
+    const btn = screen.getByTestId('generate-tool-reference');
+    expect(btn.className).not.toContain('bg-foreground');
+    expect(btn).toHaveAttribute('aria-pressed', 'false');
+  });
 });

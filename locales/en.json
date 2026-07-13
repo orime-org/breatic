@@ -312,6 +312,8 @@
       "mark": "Mark",
       "focus": "Focus",
       "reference": "Reference",
+      "emptyImageReference": "Not generated or uploaded yet",
+      "emptyTextReference": "No content yet",
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to reference assets",
       "mentionEmpty": "No connected references — draw an edge from an image first",

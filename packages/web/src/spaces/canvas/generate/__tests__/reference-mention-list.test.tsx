@@ -126,3 +126,77 @@ describe('ReferenceMentionList — keyboard highlight vs re-rendered pools', () 
     expect(highlighted()).toBe('a');
   });
 });
+
+// I1 (batch-5, user 2026-07-12): arrow-key navigation moved the highlight but
+// never scrolled it into view, so selecting past the visible rows left the
+// chosen row off-screen (the list scrolls with the mouse but not the keyboard).
+// The selected row must scroll into view on every keyboard move.
+describe('ReferenceMentionList — keyboard selection scrolls into view', () => {
+  it('scrolls the newly-selected row into view on ArrowDown', () => {
+    const original = HTMLElement.prototype.scrollIntoView;
+    const scrolled: Element[] = [];
+    HTMLElement.prototype.scrollIntoView = function scrollIntoView(): void {
+      scrolled.push(this as Element);
+    };
+    try {
+      const ref = React.createRef<ReferenceMentionListRef>();
+      const items = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(row);
+      render(
+        <ReferenceMentionList
+          ref={ref}
+          items={items}
+          command={vi.fn()}
+          emptyLabel='none'
+        />,
+      );
+      scrolled.length = 0; // ignore the mount-time scroll of row 0
+      sendKey(ref, 'ArrowDown'); // → row 1 (b)
+      sendKey(ref, 'ArrowDown'); // → row 2 (c)
+      const last = scrolled[scrolled.length - 1];
+      expect(last?.getAttribute('data-testid')).toBe(
+        'reference-mention-option-c',
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+});
+
+// P4 (batch-3, user 2026-07-12): a source with no thumbnail (text / audio / …)
+// showed a blanket ImageOff broken-image glyph in the @-picker, inconsistent
+// with the prompt chip, which already reads its modality icon via getNodeIcon.
+// The picker must show the same per-modality icon so a text node reads as text.
+describe('ReferenceMentionList — no-thumbnail modality icon', () => {
+  const noThumb = (
+    id: string,
+    sourceNodeType: ReferenceRailItem['sourceNodeType'],
+  ): ReferenceRailItem => ({
+    refId: `${id}->me`,
+    sourceNodeId: id,
+    sourceNodeType,
+    sourceNodeName: id.toUpperCase(),
+  });
+
+  it('shows the text modality icon (not the broken-image glyph) for a text source', () => {
+    const { container } = render(
+      <ReferenceMentionList
+        items={[noThumb('t', 'text')]}
+        command={vi.fn()}
+        emptyLabel='none'
+      />,
+    );
+    expect(container.querySelector('.lucide-file-text')).not.toBeNull();
+    expect(container.querySelector('.lucide-image-off')).toBeNull();
+  });
+
+  it('shows the audio modality icon for an audio source with no thumbnail', () => {
+    const { container } = render(
+      <ReferenceMentionList
+        items={[noThumb('a', 'audio')]}
+        command={vi.fn()}
+        emptyLabel='none'
+      />,
+    );
+    expect(container.querySelector('.lucide-music')).not.toBeNull();
+  });
+});

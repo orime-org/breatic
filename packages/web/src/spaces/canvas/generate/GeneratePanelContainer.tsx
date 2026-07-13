@@ -314,10 +314,21 @@ function GeneratePanelBody({
     [projectId, spaceId, nodeId, freshVm],
   );
 
-  const onAddReference = React.useCallback(
-    () => startReferencePick(nodeId),
-    [startReferencePick, nodeId],
+  // The reference button is a TOGGLE (G, user 2026-07-12): start the pick when
+  // this node isn't picking, else exit it. `referencePicking` is read
+  // reactively so the button highlights while active and un-highlights when a
+  // collaborator / mode-switch / Exit ends the pick — not just on local click.
+  const endReferencePick = useCanvasStore((s) => s.endReferencePick);
+  const referencePicking = useCanvasStore(
+    (s) => s.referencePickForNodeId === nodeId,
   );
+  const onAddReference = React.useCallback(() => {
+    if (useCanvasStore.getState().referencePickForNodeId === nodeId) {
+      endReferencePick();
+    } else {
+      startReferencePick(nodeId);
+    }
+  }, [startReferencePick, endReferencePick, nodeId]);
 
   // End a running pick the moment the mode becomes t2i (adversarial round-2):
   // t2i ignores image references and DISABLES the reference button, so a pick
@@ -325,7 +336,6 @@ function GeneratePanelBody({
   // its banner lingers and its Exit trigger is disabled (which is what left
   // keyboard focus stranded). The mode can flip locally or via a collaborator
   // writing setNodeMode, so react to vm.mode, not just the local toggle.
-  const endReferencePick = useCanvasStore((s) => s.endReferencePick);
   React.useEffect(() => {
     if (
       vm.mode === 't2i' &&
@@ -469,6 +479,7 @@ function GeneratePanelBody({
       onToggleMode={onToggleMode}
       onChangeParams={onChangeParams}
       onAddReference={onAddReference}
+      referencePicking={referencePicking}
       onRemoveReference={onRemoveReference}
       onInsertReference={handleInsertReference}
       onExecute={onExecute}

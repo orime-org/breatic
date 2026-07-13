@@ -49,6 +49,7 @@ function setup(
       onToggleMode={() => {}}
       onChangeParams={() => {}}
       onAddReference={() => {}}
+      referencePicking={false}
       onRemoveReference={() => {}}
       onExecute={() => {}}
       {...overrides}
