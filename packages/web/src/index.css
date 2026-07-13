@@ -330,6 +330,22 @@ body {
   word-break: normal;
   pointer-events: none;
 }
+/* When a remote caret sits at the very document start (before the first block),
+   the collaboration-caret extension renders its inline widget as a DIRECT child of
+   the block editor, before the <p>. An inline box before a block gets its own
+   anonymous line, pushing every line down by one — a blank first line for
+   collaborators (user 2026-07-13, real-DOM confirmed: the caret span is the
+   editor's first child, the <p> its second; repro measured the editor 21px taller
+   and the paragraph one line lower). Take THAT direct-child caret out of flow so it
+   overlays the first line's start instead of adding a line; its label stays
+   positioned relative to it (an absolutely-positioned box is still a containing
+   block for its absolute children). In-paragraph carets (not a direct child) keep
+   position:relative and are unaffected. */
+[data-testid='generate-prompt-editor']
+  .ProseMirror
+  > .collaboration-carets__caret {
+  position: absolute;
+}
 .collaboration-carets__label {
   position: absolute;
   top: -1.35em;

@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, it, expect } from 'vitest';
 
 import {
@@ -136,5 +139,19 @@ describe('shouldFlipLabelLeft — right-edge clip → flip left (B4)', () => {
   it('flips within the threshold margin (padding + scrollbar) before the exact edge', () => {
     // right edge 395 is inside the 8px margin of container right 400.
     expect(shouldFlipLabelLeft(335, 60, 400, 8)).toBe(true);
+  });
+});
+
+describe('collaboration caret CSS contract (index.css)', () => {
+  const css = readFileSync(resolve(__dirname, '../../../../index.css'), 'utf8');
+
+  // A remote caret at the document start renders as a DIRECT child of the block
+  // editor (before the <p>); an inline box before a block takes its own line,
+  // adding a blank first line for collaborators. It must be taken out of flow
+  // (user 2026-07-13, real-DOM + repro confirmed).
+  it('takes a document-start caret (direct editor child) out of flow (no blank first line)', () => {
+    expect(css).toMatch(
+      /\.ProseMirror\s*>\s*\.collaboration-carets__caret\s*\{[^}]*position:\s*absolute[^}]*\}/,
+    );
   });
 });
