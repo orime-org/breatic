@@ -154,6 +154,41 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       expect(onTextChange).toHaveBeenLastCalledWith(' a red fox '),
     );
   });
+
+  it('cascade-clears a chip AND its flanking spaces when its edge leaves the pool (no orphan)', async () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('prompt');
+    const onTextChange = vi.fn();
+    const imgRef = (): ReferenceRailItem => ({
+      refId: 'e->me',
+      sourceNodeId: 'e',
+      sourceNodeType: 'image',
+      sourceNodeName: 'E',
+      thumbnail: 'e.png',
+    });
+    const ref = React.createRef<PromptEditorHandle>();
+    const props = {
+      fragment,
+      placeholder: 'Describe',
+      onTextChange,
+      onAtMentionsChange: vi.fn(),
+      mode: 'i2i' as const,
+      mentionEmptyLabel: 'No references',
+    };
+    const { rerender } = render(
+      <PromptEditor {...props} ref={ref} references={[imgRef()]} />,
+    );
+    await waitFor(() => expect(ref.current).not.toBeNull());
+    act(() => {
+      ref.current?.insertReference(imgRef());
+    });
+    // Image chip contributes no text; flanked by the invariant spaces → '  '.
+    await waitFor(() => expect(onTextChange).toHaveBeenLastCalledWith('  '));
+    // The edge leaves the pool → the cascade must remove the chip AND its spaces,
+    // not just the chip node (adversarial finding). Serialized text back to ''.
+    rerender(<PromptEditor {...props} ref={ref} references={[]} />);
+    await waitFor(() => expect(onTextChange).toHaveBeenLastCalledWith(''));
+  });
 });
 
 // Remote collaborator carets (batch-2 item 14, CRITICAL PATH — Yjs collab):
