@@ -188,6 +188,28 @@ export function renderSeparator(): HTMLElement {
 }
 
 /**
+ * The nearest vertically-scrollable ancestor of a node (the prompt's scroll
+ * viewport), or null when nothing scrolls. Used by the mouse-drag takeover to
+ * auto-scroll while selecting past an edge.
+ * @param node - The starting element.
+ * @returns The scroll container, or null.
+ */
+function findScrollParent(node: HTMLElement): HTMLElement | null {
+  let el: HTMLElement | null = node.parentElement;
+  while (el !== null) {
+    const overflowY = getComputedStyle(el).overflowY;
+    if (
+      (overflowY === 'auto' || overflowY === 'scroll') &&
+      el.scrollHeight > el.clientHeight
+    ) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
+/**
  * Creates the chip-boundary caret/anchor plugin (installed by the
  * ReferenceMention extension): injects a raw `img.ProseMirror-separator` at
  * every caret-blind chip gap so the browser anchors a NATIVE caret there, and
@@ -321,15 +343,22 @@ export function createReferenceMentionCaret(): Plugin {
               TextSelection.create(view.state.doc, anchor),
             ),
           );
+          // Auto-scroll the prompt viewport while dragging near/past an edge (B,
+          // user 2026-07-13). PM's own drag-select does this; the takeover
+          // replaced native drag at caret-blind gaps and did not, so dragging up
+          // from a gap could not scroll up — a caret past the visible top makes
+          // posAtCoords return null → the selection neither extended nor scrolled.
+          const scroller = findScrollParent(view.dom);
+          let scrollRaf = 0;
+          let lastX = event.clientX;
+          let lastY = event.clientY;
           /**
-           * Extends the takeover selection to the mouse's current position.
-           * @param move - The mousemove event.
+           * Extends the takeover selection to a viewport point.
+           * @param clientX - Pointer X in viewport px.
+           * @param clientY - Pointer Y in viewport px.
            */
-          const onMove = (move: MouseEvent): void => {
-            const head = view.posAtCoords({
-              left: move.clientX,
-              top: move.clientY,
-            });
+          const extendTo = (clientX: number, clientY: number): void => {
+            const head = view.posAtCoords({ left: clientX, top: clientY });
             if (!head) return;
             view.dispatch(
               view.state.tr.setSelection(
@@ -337,8 +366,43 @@ export function createReferenceMentionCaret(): Plugin {
               ),
             );
           };
-          /** Tears down the takeover's document listeners on mouse release. */
+          /**
+           * One auto-scroll frame: while the pointer sits in the top/bottom edge
+           * band, scroll the viewport and re-extend the selection to a point
+           * clamped inside the viewport (so posAtCoords resolves); reschedules
+           * itself until the pointer leaves the band or the drag ends.
+           */
+          const scrollTick = (): void => {
+            scrollRaf = 0;
+            if (scroller === null) return;
+            const rect = scroller.getBoundingClientRect();
+            const EDGE_PX = 24;
+            const STEP_PX = 10;
+            let dy = 0;
+            if (lastY < rect.top + EDGE_PX) dy = -STEP_PX;
+            else if (lastY > rect.bottom - EDGE_PX) dy = STEP_PX;
+            if (dy === 0) return;
+            scroller.scrollTop += dy;
+            extendTo(
+              lastX,
+              Math.max(rect.top + 2, Math.min(rect.bottom - 2, lastY)),
+            );
+            scrollRaf = requestAnimationFrame(scrollTick);
+          };
+          /**
+           * Extends the takeover selection and (re)starts edge auto-scroll.
+           * @param move - The mousemove event.
+           */
+          const onMove = (move: MouseEvent): void => {
+            lastX = move.clientX;
+            lastY = move.clientY;
+            extendTo(move.clientX, move.clientY);
+            if (scrollRaf === 0) scrollRaf = requestAnimationFrame(scrollTick);
+          };
+          /** Tears down the takeover's listeners + auto-scroll on mouse release. */
           const onUp = (): void => {
+            if (scrollRaf !== 0) cancelAnimationFrame(scrollRaf);
+            scrollRaf = 0;
             document.removeEventListener('mousemove', onMove, true);
             document.removeEventListener('mouseup', onUp, true);
           };
