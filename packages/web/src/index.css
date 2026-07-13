@@ -240,30 +240,6 @@ body {
       0 0 26px 7px color-mix(in srgb, var(--color-status-selected) 55%, transparent);
   }
 }
-/* Native-caret anchor between adjacent reference chips in the generate prompt
-   (reference-mention-caret.ts). A browser cannot paint a native caret at a gap
-   with no adjacent text node (WebKit bug 15256 / TipTap #2978), so a raw widget
-   decoration injects PM's own img.ProseMirror-separator there — a replaced element
-   the browser anchors a native caret next to (A, user 2026-07-12).
-   Kept 0x0. A non-zero WIDTH nudges the following chip and re-breaks Chrome's
-   native drag hit-test (tiptap #4646). A non-zero HEIGHT does NOT help either: the
-   gap caret takes the height of the adjacent CHIP (h-5/~22px), not this 0-width
-   img, so sizing it never shrank the caret — it only perturbed line layout. This
-   also styles PM's own trailing separator (TipTap ships no prosemirror-view CSS). */
-[data-testid='generate-prompt-editor'] img.ProseMirror-separator {
-  display: inline;
-  width: 0;
-  height: 0;
-  border: none;
-  margin: 0;
-  padding: 0;
-  /* Keep the 0x0 anchor out of a text selection: a native selection spanning the
-     gap painted a thin highlight bar over this img (it looked like a selectable
-     stray caret, user 2026-07-13). It stays the caret's DOM anchor (that is the
-     DOM position, unaffected by user-select) and the drag hit-test stays width-0. */
-  -webkit-user-select: none;
-  user-select: none;
-}
 /* I-beam over the editable prompt (C, user 2026-07-12): the gap between two
    adjacent chips is a real text-insertion point, so the cursor must read as
    "click to insert here" (text), not the default arrow the panel surface would

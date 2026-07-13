@@ -83,6 +83,43 @@ if (typeof Element !== 'undefined') {
   Element.prototype.scrollIntoView ??= () => {};
 }
 
+// jsdom lacks layout APIs on non-Element nodes AND on Range. ProseMirror's
+// coordsAtPos (reached via a focus() scrollIntoView) calls getClientRects /
+// getBoundingClientRect on the node OR a text Range at the caret — once
+// reference chips are flanked by real spaces (reference-mention-whitespace.ts),
+// the caret can land on a text node / text range at the doc edge. jsdom
+// implements these on neither Text nodes nor Range. Stub both (Element has them
+// natively, so `??=` won't override) → scroll-into-view no-ops in tests, real
+// browsers compute real rects.
+{
+  const zeroRect = (): DOMRect =>
+    ({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: 0,
+      height: 0,
+      toJSON: () => ({}),
+    }) as DOMRect;
+  const emptyRects = (): DOMRectList => [] as unknown as DOMRectList;
+  const protos = [
+    typeof Node !== 'undefined' ? Node.prototype : null,
+    typeof Range !== 'undefined' ? Range.prototype : null,
+  ];
+  for (const proto of protos) {
+    if (!proto) continue;
+    const p = proto as unknown as {
+      getClientRects?: () => DOMRectList;
+      getBoundingClientRect?: () => DOMRect;
+    };
+    p.getClientRects ??= emptyRects;
+    p.getBoundingClientRect ??= zeroRect;
+  }
+}
+
 if (typeof window !== 'undefined' && !window.matchMedia) {
   window.matchMedia = (query: string) => ({
     matches: false,

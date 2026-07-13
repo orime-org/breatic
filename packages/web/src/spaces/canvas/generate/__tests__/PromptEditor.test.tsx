@@ -139,9 +139,11 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
     act(() => {
       ref.current?.insertReference(textRef(''));
     });
-    // The empty text node substitutes to '' — reported text is empty.
+    // The empty text node substitutes to '' — but the chip is flanked by the
+    // whitespace-invariant spaces, so the reported string is those spaces
+    // (design 2026-07-13 §8; the execute gate trims, so it stays non-executable).
     await waitFor(() =>
-      expect(onTextChange).toHaveBeenLastCalledWith(''),
+      expect(onTextChange).toHaveBeenLastCalledWith('  '),
     );
     // The user types into the text node ON THE CANVAS: the prompt document
     // never changes, only the pool row's textContent does.
@@ -149,7 +151,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       <PromptEditor {...props} ref={ref} references={[textRef('a red fox')]} />,
     );
     await waitFor(() =>
-      expect(onTextChange).toHaveBeenLastCalledWith('a red fox'),
+      expect(onTextChange).toHaveBeenLastCalledWith(' a red fox '),
     );
   });
 });

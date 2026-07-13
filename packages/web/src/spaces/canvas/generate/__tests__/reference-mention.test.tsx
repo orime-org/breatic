@@ -268,7 +268,11 @@ describe('serializePromptText — backend prompt string with text-chip substitut
     const editor = seededEditor();
     try {
       const out = serializePromptText(editor, [textRef, imageRef]);
-      expect(out).toBe('draw a red panda on a bike next to ');
+      // Extra trailing space: the image chip sits at paragraph end, so the
+      // whitespace invariant adds a space after it (design 2026-07-13 §8 —
+      // chip-flanking spaces enter the serialized string; the execute gate
+      // trims, so a whitespace-only prompt stays non-executable).
+      expect(out).toBe('draw a red panda on a bike next to  ');
     } finally {
       editor.destroy();
     }
@@ -279,7 +283,7 @@ describe('serializePromptText — backend prompt string with text-chip substitut
     try {
       const edited = { ...textRef, textContent: 'a blue whale' };
       expect(serializePromptText(editor, [edited, imageRef])).toBe(
-        'draw a blue whale next to ',
+        'draw a blue whale next to  ',
       );
     } finally {
       editor.destroy();
@@ -291,7 +295,7 @@ describe('serializePromptText — backend prompt string with text-chip substitut
     try {
       // Pool row gone (edge removed between report and read) → no content.
       expect(serializePromptText(editor, [imageRef])).toBe(
-        'draw  next to ',
+        'draw  next to  ',
       );
     } finally {
       editor.destroy();
@@ -331,7 +335,9 @@ describe('stripForeignReferenceChips — cross-node paste', () => {
         return true;
       });
       expect(chips).toBe(1); // only A (in pool) survives; B (foreign) dropped
-      expect(text).toBe('hi'); // surrounding text kept
+      // The chip-flanking whitespace invariant put spaces around A/B in the
+      // source doc, so the kept text carries them (design 2026-07-13 §8).
+      expect(text).toBe('  hi  '); // surrounding text kept (with invariant spaces)
     } finally {
       editor.destroy();
     }
@@ -389,7 +395,7 @@ describe('stripForeignReferenceChips — cross-node paste', () => {
         return true;
       });
       expect(chips).toBe(1); // T1 survives, foreign T2 dropped
-      expect(text).toBe('mid');
+      expect(text).toBe('  mid  '); // kept text carries the invariant spaces (§8)
     } finally {
       editor.destroy();
     }
