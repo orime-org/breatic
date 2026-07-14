@@ -230,18 +230,20 @@ function ReferenceMentionChip({
         // whitespace.ts) keeps a real space on each side, so the chip's spacing
         // comes from that space, not a CSS margin (design 2026-07-13 §6 — avoids
         // margin + space double-gap).
-        // align-[-1.25px]: measured on the real machine — `align-middle` sat the
-        // chip's centerline 1.2px BELOW the text centerline (Inter metrics at
-        // 13px/18px pitch); the numeric value zeroes the delta exactly (user
-        // 2026-07-14: text and chip must share one horizontal centerline).
-        className='reference-mention inline-flex h-5 max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-[-1.25px] text-xs text-muted-foreground'
+        // h-[18px]: exactly the 18px line pitch so the chip no longer stretches
+        // the line box (user 2026-07-14 — a 20px chip made Safari paint the
+        // native selection highlight with all the extra space above the text).
+        // align value: measured on the real machine to put the chip's
+        // centerline exactly on the TEXT centerline (numeric vertical-align;
+        // `align-middle` sat it ~1.2px low under Inter 13px metrics).
+        className='reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-[-1.25px] text-xs text-muted-foreground'
         contentEditable={false}
       >
         {typeof thumbnail === 'string' && thumbnail.length > 0 ? (
           <img
             src={thumbnail}
             alt={label}
-            className='h-3.5 w-3.5 shrink-0 rounded object-cover'
+            className='h-3 w-3 shrink-0 rounded object-cover'
             draggable={false}
           />
         ) : (
