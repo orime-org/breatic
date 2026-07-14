@@ -332,13 +332,26 @@ function setChipDragImage(view: EditorView, event: Event): void {
     const editorStyle = getComputedStyle(view.dom);
     const ghost = document.createElement('div');
     ghost.style.cssText =
-      'position:absolute;top:-9999px;left:-9999px;pointer-events:none;' +
-      'opacity:0.6;'; // native drag images are translucent — match them
+      'position:absolute;top:-9999px;left:-9999px;pointer-events:none;';
     ghost.style.width = `${Math.ceil(rect.width)}px`;
-    ghost.style.font = editorStyle.font;
-    ghost.style.lineHeight = editorStyle.lineHeight;
-    ghost.style.whiteSpace = 'pre-wrap';
-    ghost.appendChild(range.cloneContents());
+    // Translucency lives on a CHILD layer: Chrome ignores opacity on the
+    // drag-image ROOT when snapshotting (Safari respects it) — a descendant's
+    // opacity survives on both engines (user 2026-07-14: Chrome ghost was
+    // opaque while Safari's was translucent).
+    const inner = document.createElement('div');
+    inner.style.opacity = '0.6';
+    inner.style.whiteSpace = 'pre-wrap';
+    // Font LONGHANDS, never the shorthand: Chrome's computed `font` is often
+    // the EMPTY string (unrepresentable sub-property combos), which left the
+    // ghost inheriting the body's 16px — the ghost text rendered larger than
+    // the 13px source (user 2026-07-14; Safari returns a full shorthand).
+    inner.style.fontFamily = editorStyle.fontFamily;
+    inner.style.fontSize = editorStyle.fontSize;
+    inner.style.fontWeight = editorStyle.fontWeight;
+    inner.style.lineHeight = editorStyle.lineHeight;
+    inner.style.color = editorStyle.color;
+    inner.appendChild(range.cloneContents());
+    ghost.appendChild(inner);
     document.body.appendChild(ghost);
     const pointer = event as DragEvent;
     const offsetX = Math.max(0, pointer.clientX - rect.left);
