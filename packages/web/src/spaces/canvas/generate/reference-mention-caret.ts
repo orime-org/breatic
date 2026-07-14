@@ -114,6 +114,21 @@ function appendWhitespace(
 }
 
 /**
+ * The element a pointer/drag event actually concerns: the target itself, or —
+ * when the browser dispatches the event on a bare TEXT node (real Chrome does
+ * this for dragstart when the press landed on a chip's label text) — its
+ * parent element. A `target instanceof Element` guard alone silently skips the
+ * whole handler in that case (adversarial: real-machine trace, 2026-07-14).
+ * @param target - The raw event target.
+ * @returns The target element, or null.
+ */
+function targetElement(target: EventTarget | null): Element | null {
+  if (target instanceof Element) return target;
+  if (target instanceof Node) return target.parentElement;
+  return null;
+}
+
+/**
  * The document position of the chip rendered by `chipEl`, or null. Resolved
  * through posAtDOM (pure DOM-tree walk, layout-free); the result is verified
  * against the doc since posAtDOM's convention for uneditable leaves differs by
@@ -198,8 +213,8 @@ export function createReferenceMentionCaret(): Plugin {
         mousedown: (view, event): boolean => {
           recordedDragSelection = null;
           if (event.button !== 0) return false;
-          const target = event.target;
-          if (!(target instanceof Element)) return false;
+          const target = targetElement(event.target);
+          if (target === null) return false;
           const chipEl = target.closest('[data-reference-mention]');
           if (chipEl === null) return false;
           const sel = view.state.selection;
@@ -218,8 +233,8 @@ export function createReferenceMentionCaret(): Plugin {
           const record = recordedDragSelection;
           recordedDragSelection = null;
           if (record === null) return false;
-          const target = event.target;
-          if (!(target instanceof Element)) return false;
+          const target = targetElement(event.target);
+          if (target === null) return false;
           const chipEl =
             target.closest('[data-reference-mention]') ??
             target.querySelector('[data-reference-mention]');

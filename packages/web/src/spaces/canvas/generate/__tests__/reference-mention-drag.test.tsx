@@ -358,6 +358,47 @@ describe('multi-chip selection drag (item ⑦)', () => {
     expect(editor.state.selection.constructor.name).toContain('TextSelection');
   });
 
+  it('a dragstart TARGETED AT A TEXT NODE (real Chrome) still runs the guard — selection survives and React never overwrites it', async () => {
+    // Real-machine trace (Chrome, 2026-07-14): the browser dispatches
+    // dragstart on the BARE TEXT NODE of the chip label, not on an Element. A
+    // `target instanceof Element` guard silently skipped the whole handler, so
+    // the event reached React and tiptap's NodeView.onDragStart overwrote the
+    // chip-spanning selection with a single-chip NodeSelection (and stamped
+    // the single-chip drag image the user saw following the mouse).
+    const { editor, chipEls } = await mountWithTwoChips();
+    const positions: number[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) positions.push(pos);
+    });
+    const from = positions[0];
+    const to = positions[1] + 1;
+    act(() => {
+      editor.commands.setTextSelection({ from, to });
+    });
+    const labelText = [...chipEls[0].querySelectorAll('span')]
+      .map((el) => el.firstChild)
+      .find((n2): n2 is Text => n2 instanceof Text);
+    expect(labelText).toBeDefined();
+    act(() => {
+      chipEls[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragstart, 'dataTransfer', {
+      value: { clearData: (): void => undefined, setData: (): void => undefined, effectAllowed: 'copyMove', files: [] },
+    });
+    act(() => {
+      (labelText as Text).dispatchEvent(dragstart); // Chrome's real target shape
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    // The guard must have handled it: selection intact (no NodeSelection
+    // overwrite from React), still spanning both chips.
+    expect(editor.state.selection.from).toBe(from);
+    expect(editor.state.selection.to).toBe(to);
+    expect(editor.state.selection.constructor.name).toContain('TextSelection');
+  });
+
   it('select-all (AllSelection) dragging by a chip restores the full-doc selection too', async () => {
     const { editor, chipEls } = await mountWithTwoChips();
     const cmds = editor.commands as unknown as { selectAll: () => boolean; setNodeSelection: (p: number) => boolean };
