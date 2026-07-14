@@ -218,6 +218,11 @@ function ReferenceMentionChip({
       <NodeViewWrapper
         as='span'
         data-reference-mention=''
+        // The whole atomic chip is its own drag handle: tiptap's stopEvent
+        // preventDefault()s a NodeView drag unless the preceding mousedown
+        // landed inside a [data-drag-handle] (item ⑥, user 2026-07-14 — a
+        // selected chip could not be dragged in any browser).
+        data-drag-handle=''
         // data-kind lets the t2i grey-out target IMAGE chips only — a text
         // chip's substitution still takes effect in t2i (round-2 adversarial).
         data-kind={kind ?? 'image'}
@@ -245,7 +250,7 @@ function ReferenceMentionChip({
 }
 
 /**
- * The reference-mention custom node: an inline, atomic, non-draggable node
+ * The reference-mention custom node: an inline, atomic, DRAGGABLE node
  * carrying a stable `sourceNodeId` + snapshot `thumbnail` / `label`. Under the
  * Collaboration (Yjs) extension the node + its attributes sync automatically
  * because they are part of the shared ProseMirror schema. Insertion is driven
@@ -259,7 +264,16 @@ export const ReferenceMention = Node.create<ReferenceMentionOptions>({
   inline: true,
   atom: true,
   selectable: true,
-  draggable: false,
+  // Draggable so a selected chip (or a chip-only selection) can be moved by
+  // mouse (item ⑥). With `false`, tiptap's NodeView.stopEvent preventDefault()s
+  // EVERY drag event on the chip and swallows it from ProseMirror — the drag
+  // never starts in any browser. `true` makes PM keep a standing
+  // draggable=true on the outer wrapper and lets the drag through, provided
+  // the mousedown hit the [data-drag-handle] (the whole chip, see the
+  // NodeViewWrapper). Dropping is a plain PM move transaction, so the
+  // whitespace invariant (appendTransaction) heals both ends and yUndo
+  // reverts it as one step.
+  draggable: true,
 
   addOptions() {
     return {
