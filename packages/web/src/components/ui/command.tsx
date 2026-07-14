@@ -3,6 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Command as CommandPrimitive } from 'cmdk';
 import { Search } from 'lucide-react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { cn } from '@web/lib/utils';
 
 /**
@@ -85,12 +86,18 @@ CommandInput.displayName = CommandPrimitive.Input.displayName;
 const CommandList = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
->(({ className, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <CommandPrimitive.List
     ref={ref}
-    className={cn('max-h-[300px] overflow-y-auto overflow-x-hidden', className)}
+    className={cn('overflow-hidden', className)}
     {...props}
-  />
+  >
+    {/* ScrollArea (#1773): overlay scrollbar — appears only while scrolling,
+        no layout space, hover changes color only. The height cap moves to
+        the Radix viewport (the scroller); cmdk's active-item scrollIntoView
+        scrolls the nearest scrollable ancestor, which is that viewport. */}
+    <ScrollArea viewportClassName='max-h-[300px]'>{children}</ScrollArea>
+  </CommandPrimitive.List>
 ));
 CommandList.displayName = CommandPrimitive.List.displayName;
 

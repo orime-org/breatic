@@ -4,6 +4,7 @@
 import { Clock, FileText, Palette } from 'lucide-react';
 import type * as React from 'react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Sheet,
   SheetContent,
@@ -91,12 +92,16 @@ export function SpaceReadOnlySheet({
             {t('spaces.readonly.description')}
           </SheetDescription>
         </SheetHeader>
-        <div
-          className='flex-1 overflow-auto p-4 text-sm text-muted-foreground'
-          data-testid='space-read-only-body'
-        >
-          {space ? <ReadOnlyBody space={space} /> : null}
-        </div>
+        {/* ScrollArea (#1773): overlay scrollbar — appears only while
+            scrolling, no layout space, hover changes color only. */}
+        <ScrollArea className='min-h-0 flex-1'>
+          <div
+            className='p-4 text-sm text-muted-foreground'
+            data-testid='space-read-only-body'
+          >
+            {space ? <ReadOnlyBody space={space} /> : null}
+          </div>
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   );

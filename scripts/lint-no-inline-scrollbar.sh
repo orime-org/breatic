@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# no-inline-scrollbar guard — scrollbar styling has ONE owner: the global
-# rules in packages/web/src/index.css (#1773, user-ratified 2026-07-15).
-# Every scroller shows the NATIVE thin overlay scrollbar with pinned colors
-# (`* { scrollbar-width: thin; scrollbar-color: ... }` + `color-scheme` on
-# the theme roots): appears only while scrolling, no layout space, no hover
-# shape change in either engine.
+# no-inline-scrollbar guard — every visible scroller goes through the
+# ScrollArea primitive (#1773, user-ratified 2026-07-14): the scrollbar
+# appears only while scrolling, takes no layout space, and hover changes
+# COLOR only, never shape. Native scrollbars cannot deliver that (macOS
+# overlay bars widen with a track on hover; ::-webkit-scrollbar custom
+# painting forces an always-visible space-consuming classic bar), so this
+# guard bans BOTH halves in packages/web/src ts/tsx (tests excluded):
 #
-# Why component-level scrollbar styling is banned:
-#   - ANY ::-webkit-scrollbar paint rule that took effect would force a
-#     CLASSIC always-visible, space-consuming bar. (With the global standard
-#     properties set it is dead code instead — CSS Scrollbars L1: a non-auto
-#     standard property DISABLES webkit pseudo styling, real-engine probes
-#     2026-07-14 — either way it must not exist.)
-#   - scrollbar-width / scrollbar-color re-declarations fork the single
-#     source of truth; the pinned scrollbar-color is also what suppresses
-#     Chrome's hover widen-with-track (author-colored bars take Chrome's
-#     simplified painter — round-3 A/B probe), so a re-declaration can
-#     silently reintroduce the hover morph.
+#   1. Scrollbar style re-declarations:
+#      - ANY ::-webkit-scrollbar paint rule (forces the classic scrollbar).
+#      - scrollbar-width:thin / scrollbar-color (redundant with the global
+#        index.css fallback; stacking a standard property with webkit rules
+#        silently DISABLES the webkit styling per CSS Scrollbars L1 —
+#        real-engine probes 2026-07-14 proved the pre-#1773 pattern shipped
+#        dead rules and dropped Safari to an invisible black thumb in dark).
+#   2. New NATIVE scrollers: overflow-auto / overflow-y-auto /
+#      overflow-x-auto / overflow-scroll utility classes — a native
+#      scroller shows the platform scrollbar and regresses the ratified
+#      behaviour. Wrap the content in <ScrollArea> instead.
 #
 # Allowed (by design, not a loophole):
-#   - scrollbar-width:none + [&::-webkit-scrollbar]:hidden — HIDING a
-#     scrollbar entirely is a legitimate per-element layout decision
-#     (SpaceTabBar). Both spellings of "hide" are needed: `none` hides in
-#     engines implementing the standard property, the webkit `hidden` form
-#     covers engines that don't (pre-18.2 Safari).
+#   - A scroller whose scrollbar is HIDDEN entirely: the line carries
+#     [scrollbar-width:none] (+ [&::-webkit-scrollbar]:hidden fallback for
+#     engines without the standard property). Hiding is a legitimate
+#     per-element layout decision (SpaceTabBar).
 #
 # Exit: 0 clean · 1 violation · 2 misconfiguration.
 #
@@ -36,11 +36,13 @@ set -euo pipefail
 ROOT="${1:-packages/web/src}"
 [ -d "$ROOT" ] || { echo "lint-no-inline-scrollbar: dir not found: $ROOT" >&2; exit 2; }
 
-# webkit pseudo anywhere, or a standard scrollbar property EXCEPT width:none.
-PAT='::-webkit-scrollbar|scrollbar-width:(thin|auto)|scrollbar-color'
-# The one allowed webkit form (hide, not paint) — stripped from matched lines
-# before the final violation test, so a line carrying ONLY the hide form
-# passes while hide + paint on the same line still fails.
+# webkit pseudo anywhere, a standard scrollbar property EXCEPT width:none,
+# or a native-scroller overflow utility.
+PAT='::-webkit-scrollbar|scrollbar-width:(thin|auto)|scrollbar-color|overflow-(auto|y-auto|x-auto|scroll)'
+# Lines carrying the hidden-scrollbar marker are exempt in full (a scroller
+# with a hidden bar shows no scrollbar, so overflow-* is fine there); the
+# webkit hide form alone is stripped so hide + paint on one line still fails.
+HIDDEN_MARKER='\[scrollbar-width:none\]'
 ALLOWED='\[&::-webkit-scrollbar\]:hidden'
 
 # BSD-grep safe (find then grep), LC_ALL=C for stable byte-class matching.
@@ -48,15 +50,16 @@ HITS=$(find "$ROOT" \( -name '*.tsx' -o -name '*.ts' \) \
   -not -name '*.test.ts' -not -name '*.test.tsx' \
   -not -path '*/__tests__/*' -print0 \
   | LC_ALL=C xargs -0 grep -nE "$PAT" 2>/dev/null \
+  | LC_ALL=C grep -vE "$HIDDEN_MARKER" \
   | LC_ALL=C sed -E "s/${ALLOWED}//g" \
   | LC_ALL=C grep -E "$PAT" || true)
 
 if [ -n "$HITS" ]; then
   echo "$HITS"
   echo ""
-  echo "lint-no-inline-scrollbar: FAIL — scrollbar styling has one owner: the global rules in index.css (#1773)"
-  echo "  fix: delete the inline scrollbar classes; every scroller gets the native thin overlay bar with pinned colors"
-  echo "  hiding one entirely stays allowed via [scrollbar-width:none] (+ [&::-webkit-scrollbar]:hidden fallback)"
+  echo "lint-no-inline-scrollbar: FAIL — visible scrollers must use the ScrollArea primitive (#1773: overlay bar, scroll-only, no layout space, hover = color only)"
+  echo "  fix: wrap the scrolling content in <ScrollArea> (components/ui/scroll-area) instead of overflow-* / scrollbar styling"
+  echo "  a scroller with a HIDDEN scrollbar stays allowed: keep [scrollbar-width:none] on the same line"
   exit 1
 fi
-echo "lint-no-inline-scrollbar: clean ✅ (native thin overlay scrollbars, one owner: index.css)"
+echo "lint-no-inline-scrollbar: clean ✅ (all visible scrollers go through ScrollArea)"

@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
@@ -22,13 +23,13 @@ interface TextNodeProps {
  * editing, not the canvas) + `nodrag` (a pointer press selects text instead of
  * dragging the node) + `cursor-text` (contenteditable has no UA cursor of its
  * own and would inherit the ReactFlow node wrapper's grab hand — user bug
- * 2026-07-04) + `overflow-y-auto` (the global native thin scrollbar,
- * index.css #1773). The
- * display state has NONE of these — it clips (overflow-hidden) with a fade hint
- * and leaves the wheel to ReactFlow so it zooms the canvas (#1470 / #1479).
+ * 2026-07-04). The editing body scrolls inside a ScrollArea (#1773: overlay
+ * scrollbar — appears only while scrolling, no layout space, hover changes
+ * color only). The display state has NONE of these — it clips
+ * (overflow-hidden) with a fade hint and leaves the wheel to ReactFlow so it
+ * zooms the canvas (#1470 / #1479).
  */
-const EDIT_BODY_CLASS =
-  'nowheel nodrag cursor-text overflow-y-auto focus:bg-accent/30';
+const EDIT_BODY_CLASS = 'cursor-text focus:bg-accent/30';
 
 /**
  * Text node — modality body that supports inline contenteditable
@@ -124,40 +125,57 @@ export const TextNode = React.memo(function TextNode({
         content={
           // Relative wrapper so the display-state fade can overlay the body's
           // bottom edge without affecting layout.
+          //
+          // Two-state body (#1470 / #1479): always cap at 576px (`max-h-144` =
+          // width 288 × 2), start at the empty-state height (`min-h-48` =
+          // 192px) and grow with content, and wrap long unbreakable tokens
+          // (`break-words`) so text never scrolls horizontally.
+          //   - editing → the contenteditable scrolls inside a ScrollArea
+          //     (#1773 overlay scrollbar; the max cap moves to the Radix
+          //     viewport — the scroller — while min-h stays on the body so the
+          //     whole empty area takes the caret). `nowheel` (wheel scrolls
+          //     the text) + `nodrag` (pointer selects text) sit on the
+          //     ScrollArea root — ReactFlow checks ancestors.
+          //   - display → `overflow-hidden` (clip, no scrollbar) + NO
+          //     `nowheel`, so the wheel zooms the canvas like other nodes; a
+          //     bottom fade hints there's more (double-click to edit+scroll).
+          //
+          // Editable affordances mount ONLY while editing. A non-editing body
+          // must carry neither `contenteditable` (React renders even `={false}`
+          // as the literal attribute `contenteditable="false"`) nor a tabindex:
+          // ReactFlow's isInputDOMNode flags ANY element with a
+          // `contenteditable` attribute as an input — value ignored — and
+          // swallows Delete, while a focusable body steals click focus from
+          // node selection. Both block deleting a filled node. The edit body
+          // remounts on entry (structure swap) — startEdit's queued focus runs
+          // after the swap, so focus lands on the fresh element.
           <div className='relative'>
-            <div
-              ref={ref}
-              data-testid='text-node-body'
-              // Editable affordances mount ONLY while editing. A non-editing body
-              // must carry neither `contenteditable` (React renders even
-              // `={false}` as the literal attribute `contenteditable="false"`)
-              // nor a tabindex: ReactFlow's isInputDOMNode flags ANY element with
-              // a `contenteditable` attribute as an input — value ignored — and
-              // swallows Delete, while a focusable body steals click focus from
-              // node selection. Both block deleting a filled node, so both gate
-              // on `editing`.
-              role={editing ? 'textbox' : undefined}
-              tabIndex={editing ? 0 : undefined}
-              aria-multiline={editing ? 'true' : undefined}
-              contentEditable={editing || undefined}
-              suppressContentEditableWarning
-              onDoubleClick={startEdit}
-              onBlur={commit}
-              // Two-state body (#1470 / #1479): always cap at 576px (`max-h-144`
-              // = width 288 × 2), start at the empty-state height (`min-h-48` =
-              // 192px) and grow with content, and wrap long unbreakable tokens
-              // (`break-words`) so text never scrolls horizontally.
-              //   - editing → `overflow-y-auto` (global native scrollbar) + `nowheel`
-              //     (wheel scrolls the text) + `nodrag` (pointer selects text).
-              //   - display → `overflow-hidden` (clip, no scrollbar) + NO
-              //     `nowheel`, so the wheel zooms the canvas like other nodes; a
-              //     bottom fade hints there's more (double-click to edit+scroll).
-              className={`max-h-144 min-h-48 whitespace-pre-wrap break-words p-3 text-sm outline-none ${
-                editing ? EDIT_BODY_CLASS : 'overflow-hidden'
-              }`}
-            >
-              {shownContent}
-            </div>
+            {editing ? (
+              <ScrollArea className='nowheel nodrag' viewportClassName='max-h-144'>
+                <div
+                  ref={ref}
+                  data-testid='text-node-body'
+                  role='textbox'
+                  tabIndex={0}
+                  aria-multiline='true'
+                  contentEditable
+                  suppressContentEditableWarning
+                  onBlur={commit}
+                  className={`min-h-48 whitespace-pre-wrap break-words p-3 text-sm outline-none ${EDIT_BODY_CLASS}`}
+                >
+                  {shownContent}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div
+                ref={ref}
+                data-testid='text-node-body'
+                onDoubleClick={startEdit}
+                className='max-h-144 min-h-48 overflow-hidden whitespace-pre-wrap break-words p-3 text-sm outline-none'
+              >
+                {shownContent}
+              </div>
+            )}
             {!editing && clipped ? (
               <div
                 data-testid='text-node-fade'
