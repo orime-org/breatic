@@ -298,7 +298,12 @@ describe('multi-chip selection drag (item ⑦)', () => {
     expect(editor.state.selection.constructor.name).toContain('TextSelection');
   });
 
-  it('a mousedown on a chip inside the selection prevents the native selection clear', async () => {
+  it('mousedown NEVER preventDefaults — PM must keep handling the press (click-to-select alive)', async () => {
+    // Adversarial R1 (high): prosemirror-view's runCustomHandler treats
+    // `event.defaultPrevented` as "handled" even when the plugin handler
+    // returns false, so a preventDefault here would make PM skip its OWN
+    // MouseDown tracking — clicking a chip inside a selection went inert.
+    // The contract is record-only: no default is ever cancelled.
     const { editor, chipEls } = await mountWithTwoChips();
     const positions: number[] = [];
     editor.state.doc.descendants((n, pos) => {
@@ -311,10 +316,82 @@ describe('multi-chip selection drag (item ⑦)', () => {
     act(() => {
       chipEls[0].dispatchEvent(down);
     });
-    expect(down.defaultPrevented).toBe(true);
+    expect(down.defaultPrevented).toBe(false);
   });
 
-  it('a mousedown on a chip OUTSIDE any selection stays native (click-to-select intact)', async () => {
+  it('a dragstart AFTER the selection collapsed restores the recorded chip-spanning selection (real browser chain)', async () => {
+    // The real collapse chain: the browser clears the native selection on a
+    // true mousedown over a select-none atom, and PM follows. The plugin
+    // records the selection at mousedown and restores it at dragstart, so
+    // PM's own dragstart handler drags the WHOLE range.
+    const { editor, chipEls } = await mountWithTwoChips();
+    const positions: number[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) positions.push(pos);
+    });
+    const from = positions[0];
+    const to = positions[1] + 1;
+    act(() => {
+      editor.commands.setTextSelection({ from, to });
+    });
+    act(() => {
+      chipEls[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    // Simulate the browser-side collapse PM mirrors after the native clear.
+    act(() => {
+      editor.commands.setNodeSelection(from);
+    });
+    const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
+      ?.parentElement as HTMLElement;
+    const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragstart, 'dataTransfer', {
+      value: { clearData: (): void => undefined, setData: (): void => undefined, effectAllowed: 'copyMove', files: [] },
+    });
+    act(() => {
+      wrapper.dispatchEvent(dragstart);
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    expect(editor.state.selection.from).toBe(from);
+    expect(editor.state.selection.to).toBe(to);
+    expect(editor.state.selection.constructor.name).toContain('TextSelection');
+  });
+
+  it('select-all (AllSelection) dragging by a chip restores the full-doc selection too', async () => {
+    const { editor, chipEls } = await mountWithTwoChips();
+    const cmds = editor.commands as unknown as { selectAll: () => boolean; setNodeSelection: (p: number) => boolean };
+    act(() => {
+      cmds.selectAll();
+    });
+    const selBefore = { from: editor.state.selection.from, to: editor.state.selection.to };
+    act(() => {
+      chipEls[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    let chipPos0 = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE && chipPos0 < 0) chipPos0 = pos;
+    });
+    act(() => {
+      cmds.setNodeSelection(chipPos0);
+    });
+    const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
+      ?.parentElement as HTMLElement;
+    const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragstart, 'dataTransfer', {
+      value: { clearData: (): void => undefined, setData: (): void => undefined, effectAllowed: 'copyMove', files: [] },
+    });
+    act(() => {
+      wrapper.dispatchEvent(dragstart);
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    expect(editor.state.selection.from).toBe(selBefore.from);
+    expect(editor.state.selection.to).toBe(selBefore.to);
+  });
+
+  it('a mousedown on a chip OUTSIDE any selection records nothing — a later dragstart does not restore', async () => {
     const { editor, chipEls } = await mountWithTwoChips();
     act(() => {
       editor.commands.setTextSelection({ from: 1, to: 1 });
@@ -324,6 +401,24 @@ describe('multi-chip selection drag (item ⑦)', () => {
       chipEls[0].dispatchEvent(down);
     });
     expect(down.defaultPrevented).toBe(false);
+    let chipPos0 = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE && chipPos0 < 0) chipPos0 = pos;
+    });
+    act(() => {
+      editor.commands.setNodeSelection(chipPos0);
+    });
+    const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
+      ?.parentElement as HTMLElement;
+    const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragstart, 'dataTransfer', {
+      value: { clearData: (): void => undefined, setData: (): void => undefined, effectAllowed: 'copyMove', files: [] },
+    });
+    act(() => {
+      wrapper.dispatchEvent(dragstart);
+    });
+    // NodeSelection stays — nothing was recorded, nothing restored.
+    expect(editor.state.selection.constructor.name).toContain('NodeSelection');
   });
 });
 
@@ -446,6 +541,95 @@ describe('drop residue heal (D1)', () => {
       expect(hasDoubleSpaceInsideTextNode(editor)).toBe(false);
       expect(editor.state.doc.textContent.endsWith(' ')).toBe(false);
       expect(onlyChipPos(editor)).toBeGreaterThan(-1);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('partial-flank drag from the paragraph START heals the stranded far-side space', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent(referenceMentionContent(imgRef)).run();
+      editor.chain().insertContent('tail').run();
+      // '␣[X]␣tail' → drag [chip + RIGHT anchor] to the end; the LEFT anchor
+      // strands against the paragraph start and must go.
+      const p = onlyChipPos(editor);
+      const chip = editor.state.doc.nodeAt(p);
+      const tr = editor.state.tr;
+      tr.delete(p, p + 2); // chip + its right space travel
+      tr.insert(tr.mapping.map(editor.state.doc.content.size - 1), chip!);
+      tr.setMeta('uiEvent', 'drop');
+      editor.view.dispatch(tr);
+      expect(editor.state.doc.textContent.startsWith(' ')).toBe(false);
+      expect(hasDoubleSpaceInsideTextNode(editor)).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('partial-flank drag from the paragraph END heals the stranded far-side space', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent('head ').run();
+      editor.chain().insertContent(referenceMentionContent(imgRef)).run();
+      // 'head␣[X]␣' → drag [LEFT anchor + chip] to the start; the RIGHT anchor
+      // strands against the paragraph end and must go.
+      const p = onlyChipPos(editor);
+      const chip = editor.state.doc.nodeAt(p);
+      const tr = editor.state.tr;
+      tr.delete(p - 1, p + 1); // left space + chip travel
+      tr.insert(1, chip!);
+      tr.setMeta('uiEvent', 'drop');
+      editor.view.dispatch(tr);
+      expect(editor.state.doc.textContent.endsWith(' ')).toBe(false);
+      expect(hasDoubleSpaceInsideTextNode(editor)).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('partial-flank drag MID-TEXT keeps the surviving space as the word gap (no over-heal)', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent('aa ').run();
+      editor.chain().insertContent(referenceMentionContent(imgRef)).run();
+      editor.chain().insertContent('bb').run();
+      // 'aa␣[X]␣bb' → drag [chip + right anchor]; the left anchor doubles as
+      // the word gap between aa and bb and must STAY.
+      const p = onlyChipPos(editor);
+      const chip = editor.state.doc.nodeAt(p);
+      const tr = editor.state.tr;
+      tr.delete(p, p + 2);
+      tr.insert(tr.mapping.map(editor.state.doc.content.size - 1), chip!);
+      tr.setMeta('uiEvent', 'drop');
+      editor.view.dispatch(tr);
+      expect(editor.state.doc.textContent.startsWith('aa bb')).toBe(true);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('a drag that carries BOTH anchors along never touches the user-typed spaces at the gap', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent('a  ').run(); // 'a' + user space + (anchor-to-be)
+      editor.chain().insertContent(referenceMentionContent(imgRef)).run();
+      editor.chain().insertContent('  b').run(); // (anchor) + user space + 'b'
+      // 'a␣␣[X]␣␣b' → drag [␣X␣] (both anchors travel): nothing at the gap is
+      // residue, the user's double spaces stay untouched.
+      const p = onlyChipPos(editor);
+      const before = editor.state.doc.textContent;
+      const slice = editor.state.doc.slice(p - 1, p + 2);
+      const tr = editor.state.tr;
+      tr.delete(p - 1, p + 2);
+      tr.insert(tr.mapping.map(editor.state.doc.content.size - 1), slice.content);
+      tr.setMeta('uiEvent', 'drop');
+      editor.view.dispatch(tr);
+      // Both anchors travelled with the chip, so NOTHING at the gap is
+      // residue: the remaining three spaces (the user's own spacing) stay
+      // byte-exact — the heal must not fire here at all.
+      expect(editor.state.doc.textContent.startsWith('a   b')).toBe(true);
+      void before;
     } finally {
       editor.destroy();
     }

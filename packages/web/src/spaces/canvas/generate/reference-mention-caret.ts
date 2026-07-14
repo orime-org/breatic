@@ -168,6 +168,17 @@ function normalizeSelection(
  * @returns The ProseMirror plugin.
  */
 export function createReferenceMentionCaret(): Plugin {
+  // Multi-chip selection dragging (item ⑦, user 2026-07-14): on a REAL
+  // mousedown over a select-none atom the browser clears the native selection
+  // and PM follows, so by dragstart the chip-spanning selection has collapsed
+  // and PM would drag a single chip. The plugin RECORDS the selection at
+  // mousedown (record-only: preventDefault would make prosemirror-view's
+  // runCustomHandler treat the event as handled — `handler(view, event) ||
+  // event.defaultPrevented` — killing PM's own MouseDown tracking, i.e.
+  // click-to-select went inert; adversarial R1 high) and RESTORES it at
+  // dragstart, right before PM's own handler reads the selection to drag.
+  // Plain clicks (no dragstart) are untouched; mouseup clears the record.
+  let recordedDragSelection: { from: number; to: number } | null = null;
   return new Plugin({
     key: referenceMentionCaretKey,
     appendTransaction(transactions, _oldState, newState): Transaction | null {
@@ -180,45 +191,62 @@ export function createReferenceMentionCaret(): Plugin {
       );
     },
     props: {
-      // Multi-chip selection dragging (item ⑦, user 2026-07-14): two chains
-      // collapse a chip-spanning TextSelection before PM's dragstart handler
-      // can drag it as a whole — the browser clears the native selection on
-      // mousedown over a select-none atom, and tiptap's NodeView.onDragStart
-      // (React-side) overwrites the selection with a single-chip
-      // NodeSelection. Both are cut here; PM's own handlers still run
-      // (both handlers return false).
       handleDOMEvents: {
+        // Record-only (see the plugin-closure comment): a press on a chip
+        // inside a non-empty, non-node selection remembers the range for the
+        // upcoming dragstart. Never preventDefault, never handle.
         mousedown: (view, event): boolean => {
+          recordedDragSelection = null;
+          if (event.button !== 0) return false;
           const target = event.target;
           if (!(target instanceof Element)) return false;
           const chipEl = target.closest('[data-reference-mention]');
           if (chipEl === null) return false;
           const sel = view.state.selection;
-          if (sel.empty || !(sel instanceof TextSelection)) return false;
+          if (sel.empty || sel instanceof NodeSelection) return false;
           const pos = chipPosFromDom(view, chipEl);
           if (pos === null || pos < sel.from || pos >= sel.to) return false;
-          // Keep the native selection alive so the browser drags the range.
-          event.preventDefault();
+          recordedDragSelection = { from: sel.from, to: sel.to };
+          return false;
+        },
+        mouseup: (): boolean => {
+          // A completed click never consumed the record — drop it.
+          recordedDragSelection = null;
           return false;
         },
         dragstart: (view, event): boolean => {
+          const record = recordedDragSelection;
+          recordedDragSelection = null;
+          if (record === null) return false;
           const target = event.target;
           if (!(target instanceof Element)) return false;
-          // The drag source is the chip's OUTER wrapper (it holds
-          // draggable=true), so the chip element is inside the target.
           const chipEl =
             target.closest('[data-reference-mention]') ??
             target.querySelector('[data-reference-mention]');
           if (chipEl === null) return false;
-          const sel = view.state.selection;
-          if (sel.empty || !(sel instanceof TextSelection)) return false;
           const pos = chipPosFromDom(view, chipEl);
-          if (pos === null || pos < sel.from || pos >= sel.to) return false;
-          // Stop the event from reaching React's root listener: tiptap's
+          if (pos === null || pos < record.from || pos >= record.to) {
+            return false;
+          }
+          const { doc } = view.state;
+          const from = Math.min(record.from, doc.content.size);
+          const to = Math.min(record.to, doc.content.size);
+          if (from >= to) return false;
+          const sel = view.state.selection;
+          if (sel.from !== from || sel.to !== to) {
+            // The browser's native-clear collapsed the selection after the
+            // press — restore it so PM's own dragstart handler (same native
+            // listener chain, runs after this returns false) drags the WHOLE
+            // recorded range. A pure selection restore, never an undo step.
+            view.dispatch(
+              view.state.tr
+                .setSelection(TextSelection.create(doc, from, to))
+                .setMeta('addToHistory', false),
+            );
+          }
+          // Also cut the event off from React's root listener: tiptap's
           // NodeView.onDragStart would overwrite the selection with a
-          // single-chip NodeSelection (and stamp a single-chip drag image).
-          // PM's dragstart handler (same native listener chain, runs after
-          // this returns false) then drags the WHOLE selection.
+          // single-chip NodeSelection if it ever received the event.
           event.stopPropagation();
           return false;
         },
