@@ -200,6 +200,49 @@ function normalizeSelection(
 }
 
 /**
+ * Gives a chip-bearing drag a mouse-following drag image on EVERY browser.
+ * tiptap's NodeView.onDragStart only sets one when React receives the event —
+ * true in Chrome (the Text-node target routes into React) but never in Safari,
+ * so a chip drag showed no ghost there (user 2026-07-14). Cloning the dragged
+ * range's rendered DOM keeps single- and multi-chip drags consistent across
+ * browsers; plain-text drags keep the browser's native ghost. Best-effort: any
+ * failure silently falls back to the native ghost (a visual enhancement, not a
+ * business error).
+ * @param view - The editor view.
+ * @param event - The dragstart event.
+ */
+function setChipDragImage(view: EditorView, event: Event): void {
+  const dt = (event as DragEvent).dataTransfer;
+  if (!dt || typeof dt.setDragImage !== 'function') return;
+  const sel = view.state.selection;
+  if (sel.empty) return;
+  let hasChip = false;
+  view.state.doc.nodesBetween(sel.from, sel.to, (n) => {
+    if (isChip(n)) hasChip = true;
+  });
+  if (!hasChip) return;
+  try {
+    const range = document.createRange();
+    const fromDom = view.domAtPos(sel.from);
+    const toDom = view.domAtPos(sel.to);
+    range.setStart(fromDom.node, fromDom.offset);
+    range.setEnd(toDom.node, toDom.offset);
+    const ghost = document.createElement('div');
+    ghost.style.cssText =
+      'position:absolute;top:-9999px;left:-9999px;pointer-events:none;' +
+      'display:flex;align-items:center;gap:2px;white-space:nowrap;';
+    ghost.appendChild(range.cloneContents());
+    document.body.appendChild(ghost);
+    dt.setDragImage(ghost, 0, 0);
+    setTimeout(() => {
+      ghost.remove();
+    }, 0);
+  } catch {
+    // Native ghost stays — the enhancement must never break the drag.
+  }
+}
+
+/**
  * Creates the chip whitespace/caret plugin (installed by the ReferenceMention
  * extension): enforces the space-around-every-chip invariant, deletes a chip
  * plus its owned spaces as one unit, and implements the D cursor model
@@ -380,6 +423,7 @@ export function createReferenceMentionCaret(): Plugin {
           patchDragState(view, {
             source: sel.empty ? null : { from: sel.from, to: sel.to },
           });
+          setChipDragImage(view, event);
           return false;
         },
         dragend: (view): boolean => {

@@ -395,15 +395,30 @@ export function planDropResidueHeal(
       before.nodesBetween(step.from, step.to, (node) => {
         if (isChip(node)) removedChip = true;
       });
-      if (!removedChip) continue;
-      // A side's anchor is stranded at the gap only when the range's edge
-      // cell on that side was the chip itself.
-      const leftStranded = chipAt(before, step.from) !== null;
-      const rightStranded = chipAt(before, step.to - 1) !== null;
       let gap = tr.mapping.slice(i + 1).map(step.from);
       for (let j = t + 1; j < transactions.length; j += 1) {
         gap = transactions[j].mapping.map(gap);
       }
+      if (!removedChip) {
+        // TEXT dragged out from between two chips (user 2026-07-14): the two
+        // chips' anchors meet as a space pair (`[A]``[B]`) — under the D
+        // model adjacent chips SHARE one space, so the pair collapses. Only
+        // this exact shape (both outer neighbours are chips) is touched; a
+        // user-typed double space elsewhere at the gap is left alone.
+        if (
+          isSpaceAt(doc, gap - 1) &&
+          isSpaceAt(doc, gap) &&
+          chipAt(doc, gap - 2) !== null &&
+          chipAt(doc, gap + 1) !== null
+        ) {
+          return { from: gap, to: gap + 1 };
+        }
+        continue;
+      }
+      // A side's anchor is stranded at the gap only when the range's edge
+      // cell on that side was the chip itself.
+      const leftStranded = chipAt(before, step.from) !== null;
+      const rightStranded = chipAt(before, step.to - 1) !== null;
       const heal = residueDeletionAt(doc, gap, leftStranded, rightStranded);
       if (heal !== null) return heal;
     }

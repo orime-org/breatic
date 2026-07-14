@@ -760,6 +760,37 @@ describe('drop residue heal (D1)', () => {
     }
   });
 
+  it('text dragged out from BETWEEN two chips collapses their meeting anchors to one shared space', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent(referenceMentionContent(imgRef)).run();
+      editor.chain().insertContent('word').run();
+      editor.chain().insertContent(referenceMentionContent(chipRefB)).run();
+      // '␣[A]␣word␣[B]␣' → drag 'word' (text only) to the end.
+      const chips: number[] = [];
+      editor.state.doc.descendants((n, pos) => {
+        if (n.type.name === REFERENCE_MENTION_NODE) chips.push(pos);
+      });
+      const wordFrom = chips[0] + 2; // after A and its right anchor
+      const wordTo = wordFrom + 4;
+      const slice = editor.state.doc.slice(wordFrom, wordTo);
+      const tr = editor.state.tr;
+      tr.delete(wordFrom, wordTo);
+      tr.insert(tr.mapping.map(editor.state.doc.content.size - 1), slice.content);
+      tr.setMeta('uiEvent', 'drop');
+      editor.view.dispatch(tr);
+      expect(hasDoubleSpaceInsideTextNode(editor)).toBe(false);
+      const after: number[] = [];
+      editor.state.doc.descendants((n, pos) => {
+        if (n.type.name === REFERENCE_MENTION_NODE) after.push(pos);
+      });
+      // Adjacent chips share a single space: B sits exactly 2 past A.
+      expect(after[1] - after[0]).toBe(2);
+    } finally {
+      editor.destroy();
+    }
+  });
+
   it('undo restores the pre-drag doc in ONE step (heal shares the drop undo group)', () => {
     const editor = makeCollabEditor();
     try {
@@ -896,6 +927,67 @@ describe('drag source restore on drop (#1776, Safari selection-follows-drop-care
       handleDropOf(editor)(editor.view, {}, null, true);
       expect(editor.state.selection.from).toBe(4); // 2 + 2
       expect(editor.state.selection.to).toBe(9); // 7 + 2
+    } finally {
+      editor.destroy();
+    }
+  });
+});
+
+
+describe('unified chip drag ghost (Safari had none — tiptap only sets one via React)', () => {
+  it('a chip-bearing drag sets a drag image through the plugin (browser-independent)', async () => {
+    const { editor, chipEls } = await mountWithTwoChips();
+    const positions: number[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) positions.push(pos);
+    });
+    act(() => {
+      editor.commands.setTextSelection({ from: positions[0], to: positions[1] + 1 });
+    });
+    act(() => {
+      chipEls[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    const setDragImage = vi.fn();
+    const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
+      ?.parentElement as HTMLElement;
+    const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragstart, 'dataTransfer', {
+      value: { clearData: (): void => undefined, setData: (): void => undefined, setDragImage, effectAllowed: 'copyMove', files: [] },
+    });
+    act(() => {
+      wrapper.dispatchEvent(dragstart);
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    expect(setDragImage).toHaveBeenCalled();
+  });
+
+  it('a plain-text drag keeps the native ghost (no setDragImage)', () => {
+    // A chip-free editor removes any selection ambiguity: no range in this
+    // doc can contain a chip, so the ghost must never be replaced.
+    const editor = new CoreEditor({
+      element: document.createElement('div'),
+      extensions: [
+        PMDocument,
+        Paragraph,
+        PMText,
+        Collaboration.configure({ fragment: new Y.Doc().getXmlFragment('prompt') }),
+        ReferenceMention.configure({
+          suggestion: makeReferenceSuggestion({ getPool: () => [], emptyLabel: 'No references' }),
+        }),
+      ],
+    });
+    try {
+      editor.chain().insertContent('plain words only').run();
+      editor.commands.setTextSelection({ from: 2, to: 8 });
+      const setDragImage = vi.fn();
+      const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
+      Object.defineProperty(dragstart, 'dataTransfer', {
+        value: { clearData: (): void => undefined, setData: (): void => undefined, setDragImage, effectAllowed: 'copyMove', files: [] },
+      });
+      editor.view.dom.dispatchEvent(dragstart);
+      expect(setDragImage).not.toHaveBeenCalled();
     } finally {
       editor.destroy();
     }
