@@ -365,23 +365,44 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     await waitFor(() =>
       expect(editorEl.querySelector('.collaboration-carets__caret')).not.toBeNull(),
     );
-    // Flip to blurred, then IMMEDIATELY land a local doc change (the yCursor
-    // refresh is batched into setTimeout(0)) — the widget rebuilt from the
-    // stale pre-flip thunk must still end up dimmed via the transaction resync.
-    pushRemote(false);
-    act(() => {
-      doc.transact(() => {
-        text.insert(0, 'Z'); // structural change before the widget
+    // Reaching the STALE-thunk branch needs precise staging (adversarial R3 —
+    // a Y-origin doc.transact recreates decorations from CURRENT awareness and
+    // can never exercise it, which made the first version of this test pass
+    // even with the fix deleted):
+    // 1. park the batched yCursor refresh with fake timers, so the flip's
+    //    fresh decorations never land;
+    // 2. flip focused=false — the awareness handler dims the existing DOM;
+    // 3. dispatch a PM-SIDE structural transaction (split forces the widget's
+    //    parent desc to rebuild; plain insertText reuses the widget DOM) —
+    //    the widget rebuilds from the PRE-FLIP thunk (focused=true), and only
+    //    the transaction resync re-dims it: this assertion goes RED without
+    //    editor.on('transaction', applyDim);
+    // 4. release the batched refresh — key-equality DOM reuse must not
+    //    resurrect the pre-flip class either.
+    vi.useFakeTimers();
+    try {
+      pushRemote(false);
+      const blurred = (): boolean | undefined =>
+        editorEl
+          .querySelector('.collaboration-carets__caret')
+          ?.classList.contains('collaboration-carets__caret--blurred');
+      expect(blurred()).toBe(true); // awareness-handler path
+      const editor = (
+        editorEl.querySelector('.ProseMirror') as unknown as {
+          editor: { view: { dispatch: (tr: unknown) => void; state: { tr: { split: (pos: number) => unknown } } } };
+        }
+      ).editor;
+      act(() => {
+        editor.view.dispatch(editor.view.state.tr.split(2));
       });
-    });
-    await new Promise((r) => setTimeout(r, 30)); // flush the batched refresh
-    await waitFor(() => {
-      const caret = editorEl.querySelector('.collaboration-carets__caret');
-      expect(caret).not.toBeNull();
-      expect(
-        caret?.classList.contains('collaboration-carets__caret--blurred'),
-      ).toBe(true);
-    });
+      expect(blurred()).toBe(true); // stale-thunk rebuild, re-dimmed by the resync
+      act(() => {
+        vi.runOnlyPendingTimers(); // batched yCursor refresh (DOM reuse path)
+      });
+      expect(blurred()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('renders a remote client caret with the remote user name and color', async () => {
