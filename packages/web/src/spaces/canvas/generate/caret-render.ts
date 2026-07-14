@@ -180,16 +180,27 @@ function scheduleLabelFlip(caret: HTMLElement, label: HTMLElement): void {
  * label renders above the caret, flipping BELOW on the first line where the
  * above position would clip at the scroll-viewport top (D, user 2026-07-12).
  * @param user - The remote user's awareness identity payload.
+ * @param clientId - The remote awareness client id (stamped as data-client-id
+ * so the focus-dim awareness listener can find this caret's reused DOM).
  * @returns The caret element (label nested inside).
  */
-export function renderCollabCaret(user: CaretUser): HTMLElement {
+export function renderCollabCaret(user: CaretUser, clientId?: number): HTMLElement {
   const color = safeCaretColor(user);
   const caret = document.createElement('span');
   caret.classList.add('collaboration-carets__caret');
   // Dim the whole caret+label when the collaborator's window lost focus (they
   // switched tabs/apps) — presence stays visible, activity reads as paused.
+  // NOTE: this build-time branch only covers NEWLY built widgets. A PARKED
+  // caret's widget is keyed by clientId and prosemirror-view reuses its DOM on
+  // key equality WITHOUT re-invoking this builder, so a focused flip alone
+  // never reaches here — the awareness listener in PromptEditor toggles the
+  // class on the existing DOM via the data-client-id stamped below
+  // (adversarial round: both flip directions were dead without it).
   if (user.focused === false) {
     caret.classList.add('collaboration-carets__caret--blurred');
+  }
+  if (clientId !== undefined) {
+    caret.dataset.clientId = String(clientId);
   }
   caret.style.borderColor = color;
   const label = document.createElement('div');

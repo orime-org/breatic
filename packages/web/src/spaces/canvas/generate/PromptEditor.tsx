@@ -239,6 +239,42 @@ export const PromptEditor = React.forwardRef<
       window.removeEventListener('blur', onBlur);
     };
   }, [editor, caretProvider, caretUser]);
+  // Receiver side of the focus dim: a PARKED remote caret's widget is keyed by
+  // clientId and prosemirror-view reuses its DOM on key equality WITHOUT
+  // re-invoking the builder, so a collaborator's focused flip never re-renders
+  // it (adversarial round — both directions were dead). Toggle the class on
+  // the EXISTING caret DOM from the awareness change pipeline instead; newly
+  // built widgets get the class from the builder itself (caret-render.ts).
+  React.useEffect(() => {
+    const awareness = caretProvider?.awareness as
+      | {
+          getStates: () => Map<number, { user?: { focused?: boolean } }>;
+          on: (ev: string, fn: () => void) => void;
+          off: (ev: string, fn: () => void) => void;
+        }
+      | null
+      | undefined;
+    if (!editor || !awareness) return undefined;
+    /** Syncs every rendered remote caret's dim class to its client's focus state. */
+    const applyDim = (): void => {
+      if (editor.isDestroyed) return;
+      const states = awareness.getStates();
+      editor.view.dom
+        .querySelectorAll<HTMLElement>('.collaboration-carets__caret[data-client-id]')
+        .forEach((el) => {
+          const state = states.get(Number(el.dataset.clientId));
+          el.classList.toggle(
+            'collaboration-carets__caret--blurred',
+            state?.user?.focused === false,
+          );
+        });
+    };
+    awareness.on('change', applyDim);
+    applyDim();
+    return (): void => {
+      awareness.off('change', applyDim);
+    };
+  }, [editor, caretProvider]);
   // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
   // narrow imperative handle rather than the raw editor, keeping TipTap
   // encapsulated (same boundary as the onTextChange / onAtMentionsChange
