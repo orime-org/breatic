@@ -263,8 +263,13 @@ body {
    wrapper (.node-referenceMention); the visible pill is the inner
    .reference-mention (opaque bg-muted), so the highlight is painted on the inner
    pill via a descendant selector. Uses the selection semantic token
-   (classification color — no contrast math). */
-.reference-mention--range-selected .reference-mention {
+   (classification color — no contrast math).
+   FOCUSED-only (user 2026-07-14): on blur the browser hides the native text
+   selection paint but ProseMirror keeps its selection state (a feature — it
+   restores on refocus), so an unscoped rule left the chips highlighted while
+   the text highlight vanished; scoping to .ProseMirror-focused (a class PM
+   maintains itself) keeps the chip highlight in lockstep with the text. */
+.ProseMirror-focused .reference-mention--range-selected .reference-mention {
   background-color: color-mix(in srgb, var(--color-status-selected) 35%, transparent);
 }
 /* A chip caught inside a REMOTE collaborator's selection (B3, user 2026-07-12):
