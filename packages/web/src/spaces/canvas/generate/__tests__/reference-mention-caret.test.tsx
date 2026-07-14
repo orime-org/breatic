@@ -715,8 +715,7 @@ describe('undo — a chip and its invariant spaces undo together (Yjs yUndo)', (
    * Mounts a collaborative editor; Collaboration provides yUndo history.
    * @returns The editor (caller destroys).
    */
-  function makeCollabEditor(): Editor {
-    const ydoc = new Y.Doc();
+  function makeCollabEditor(ydoc: Y.Doc = new Y.Doc()): Editor {
     return new Editor({
       element: document.createElement('div'),
       extensions: [
@@ -859,6 +858,36 @@ describe('undo — a chip and its invariant spaces undo together (Yjs yUndo)', (
         binding: { beforeTransactionSelection: unknown };
       }).binding;
       expect(binding.beforeTransactionSelection).toBeNull();
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('a REMOTE update after an undo maps the local selection normally (fix never touches remote restores)', async () => {
+    const ydoc = new Y.Doc();
+    const editor = makeCollabEditor(ydoc);
+    try {
+      editor.chain().insertContent('hello').run();
+      undoManagerOf(editor).stopCapturing();
+      editor.commands.setTextSelection({ from: 2, to: 4 });
+      editor.commands.deleteSelection();
+      editor.commands.undo(); // selection restored to [2,4]
+      await Promise.resolve(); // stale handoff cleared
+      expect(editor.state.selection.from).toBe(2);
+      expect(editor.state.selection.to).toBe(4);
+      // A collaborator prepends 'AB' at the paragraph start and their update
+      // arrives as a REMOTE transaction (origin ≠ this undo manager).
+      const remote = new Y.Doc();
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(ydoc));
+      const para = remote.getXmlFragment('prompt').get(0) as Y.XmlElement;
+      const text = para.get(0) as Y.XmlText;
+      text.insert(0, 'AB');
+      Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(ydoc)), 'remote');
+      // The local selection maps THROUGH the remote change (shifted by 2) —
+      // never teleported to a stale undo handoff.
+      expect(editor.state.doc.textContent).toBe('ABhello');
+      expect(editor.state.selection.from).toBe(4);
+      expect(editor.state.selection.to).toBe(6);
     } finally {
       editor.destroy();
     }
