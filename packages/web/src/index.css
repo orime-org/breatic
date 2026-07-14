@@ -296,6 +296,14 @@ body {
    the shape is decided entirely by these two rules. */
 .collaboration-carets__selection:not(:has(.reference-mention)) {
   background-color: var(--collab-selection-bg);
+  /* Native selection paint stretches to the FULL line box (leading included);
+     an inline decoration's background only covers the text box, leaving a gap
+     between wrapped lines (user 2026-07-14 item 10). Half-leading vertical
+     padding on a non-replaced inline paints background WITHOUT affecting
+     layout, so adjacent lines meet like the native paint. Chip wrappers are
+     excluded above (atomic boxes WOULD grow from vertical padding). */
+  padding-top: 0.35em;
+  padding-bottom: 0.35em;
 }
 /* Remote collaborator carets in the generate prompt (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render
