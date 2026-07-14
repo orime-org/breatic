@@ -116,8 +116,9 @@ export function shouldRenderLabelBelow(
 const LABEL_FLIP_LEFT_CLASS = 'collaboration-carets__label--flip-left';
 /**
  * How close (px) a left-anchored label's right edge may come to the scroll
- * viewport's right before it would clip and must flip left — covers the prompt's
- * right padding + scrollbar.
+ * viewport's visible-content right before it would clip and must flip left —
+ * covers the prompt's right padding (any scrollbar gutter is excluded by the
+ * caller's clientWidth-based measurement, #1773).
  */
 const LABEL_EDGE_THRESHOLD_PX = 8;
 
@@ -128,7 +129,8 @@ const LABEL_EDGE_THRESHOLD_PX = 8;
  * caller measures.
  * @param caretLeft - The caret's left in viewport px.
  * @param labelWidth - The label's rendered width in px.
- * @param containerRight - The scroll viewport's right in viewport px.
+ * @param containerRight - The scroll viewport's visible-content right edge in
+ * viewport px (excludes the scrollbar gutter).
  * @param threshold - Clip margin (defaults to {@link LABEL_EDGE_THRESHOLD_PX}).
  * @returns True when the label should flip left.
  */
@@ -162,13 +164,15 @@ function scheduleLabelFlip(caret: HTMLElement, label: HTMLElement): void {
       LABEL_BELOW_CLASS,
       shouldRenderLabelBelow(caretRect.top, containerRect.top),
     );
+    // Visible-content right edge, NOT containerRect.right: the border-box
+    // right includes the scrollbar gutter whenever one takes layout space
+    // (overlay scrollbars normally don't, but macOS "always show scrollbars"
+    // renders classic ones that do, #1773) — content, and therefore the
+    // label, cannot render there.
+    const contentRight = containerRect.left + container.clientLeft + container.clientWidth;
     label.classList.toggle(
       LABEL_FLIP_LEFT_CLASS,
-      shouldFlipLabelLeft(
-        caretRect.left,
-        label.getBoundingClientRect().width,
-        containerRect.right,
-      ),
+      shouldFlipLabelLeft(caretRect.left, label.getBoundingClientRect().width, contentRight),
     );
   });
 }

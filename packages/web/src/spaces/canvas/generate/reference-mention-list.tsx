@@ -104,7 +104,7 @@ export const ReferenceMentionList = React.forwardRef<
   return (
     <div
       ref={listRef}
-      className='max-h-56 w-56 overflow-auto rounded-overlay border border-border bg-popover p-1 shadow-md [scrollbar-width:thin]'
+      className='max-h-56 w-56 overflow-auto rounded-overlay border border-border bg-popover p-1 shadow-md'
     >
       {items.map((item, i) => {
         // A source with no thumbnail (text / audio / …) shows its MODALITY icon,

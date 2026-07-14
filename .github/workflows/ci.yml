@@ -153,6 +153,16 @@ jobs:
         # (components/ui) exempt per ADR 14. See scripts/lint-active-border.sh.
         run: pnpm lint:active-border
 
+      - name: Lint no-inline-scrollbar (scrollbar single owner)
+        # Scrollbar styling has one owner — the global native thin overlay
+        # rules in index.css (#1773, user-ratified 2026-07-15). Component
+        # ::-webkit-scrollbar paint rules and scrollbar-width / scrollbar-color
+        # re-declarations are banned (webkit paint would force a classic
+        # space-consuming bar; re-declared colors can silently reintroduce
+        # Chrome's hover widen). Hiding via scrollbar-width:none stays
+        # allowed. See scripts/lint-no-inline-scrollbar.sh.
+        run: pnpm lint:no-inline-scrollbar
+
       - name: Lint overlay surface (popover panel unification)
         # Every popover/overlay panel surface uses bg-popover (tooltip inverse
         # is the only exception): bans bg-elevated / bg-card as a panel bg in

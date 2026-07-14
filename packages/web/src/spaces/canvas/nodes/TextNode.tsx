@@ -22,12 +22,13 @@ interface TextNodeProps {
  * editing, not the canvas) + `nodrag` (a pointer press selects text instead of
  * dragging the node) + `cursor-text` (contenteditable has no UA cursor of its
  * own and would inherit the ReactFlow node wrapper's grab hand — user bug
- * 2026-07-04) + `overflow-y-auto` with a slim custom scrollbar. The
+ * 2026-07-04) + `overflow-y-auto` (the global native thin scrollbar,
+ * index.css #1773). The
  * display state has NONE of these — it clips (overflow-hidden) with a fade hint
  * and leaves the wheel to ReactFlow so it zooms the canvas (#1470 / #1479).
  */
 const EDIT_BODY_CLASS =
-  'nowheel nodrag cursor-text overflow-y-auto focus:bg-accent/30 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent';
+  'nowheel nodrag cursor-text overflow-y-auto focus:bg-accent/30';
 
 /**
  * Text node — modality body that supports inline contenteditable
@@ -146,7 +147,7 @@ export const TextNode = React.memo(function TextNode({
               // = width 288 × 2), start at the empty-state height (`min-h-48` =
               // 192px) and grow with content, and wrap long unbreakable tokens
               // (`break-words`) so text never scrolls horizontally.
-              //   - editing → `overflow-y-auto` + slim scrollbar + `nowheel`
+              //   - editing → `overflow-y-auto` (global native scrollbar) + `nowheel`
               //     (wheel scrolls the text) + `nodrag` (pointer selects text).
               //   - display → `overflow-hidden` (clip, no scrollbar) + NO
               //     `nowheel`, so the wheel zooms the canvas like other nodes; a

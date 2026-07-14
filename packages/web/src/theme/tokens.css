@@ -60,6 +60,14 @@
    ============================================================ */
 :root,
 html[data-theme='light'] {
+  /* Declare the effective scheme to the BROWSER (not just our tokens): native
+     UI we don't custom-paint (scrollbars, form-control internals, autofill,
+     caret) picks its light/dark variant from this. The app's theme is a
+     `data-theme` class toggle, invisible to the UA without this declaration —
+     Safari dark mode rendered LIGHT-scheme (black) overlay scrollbar thumbs
+     on dark surfaces, i.e. invisible (#1773). */
+  color-scheme: light;
+
   /* Neutral · pure-neutral 12-step R=G=B (light; dark reverses). Off-extreme
      bounded: top #f5f5f5 (never #fff), bottom #141414 (above the #121212
      floor). Surfaces / text / border / ring / primary all derive from this
@@ -376,6 +384,9 @@ html[data-theme='light'] {
    tokens that don't auto-invert.
    ============================================================ */
 html[data-theme='dark'] {
+  /* Native-UI scheme flip — see the light block's color-scheme note (#1773). */
+  color-scheme: dark;
+
   /* neutral reversal (= light scale reversed, same temperature). */
   --neutral-0: #141414;
   --neutral-50: #1e1e1e;
