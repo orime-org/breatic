@@ -88,13 +88,46 @@ function collabInternals(
  * TipTap extension installing the undo/redo selection-restore fix. Added AFTER
  * Collaboration in the extension list; no-ops when collaboration is absent.
  */
+/** Key for this extension's own plugin state (the unpolluted pre-edit selection). */
+const collabUndoSelectionKey = new PluginKey<{ preEditSel: unknown }>(
+  'collabUndoSelectionRestore',
+);
+
 export const CollabUndoSelection = Extension.create({
   name: 'collabUndoSelection',
 
   addProseMirrorPlugins() {
     return [
       new Plugin({
-        key: new PluginKey('collabUndoSelectionRestore'),
+        key: collabUndoSelectionKey,
+        state: {
+          init: (): { preEditSel: unknown } => ({ preEditSel: null }),
+          /**
+           * Tracks the UNPOLLUTED pre-edit selection. The y-undo plugin's
+           * `prevSel` is overwritten by EVERY transaction — including our own
+           * appendTransaction follow-ups (whitespace invariant / selection
+           * normalization), which replace "selection before the user's edit"
+           * with "selection after it" whenever a dispatch carries appended
+           * transactions (an upstream blind spot: the library assumes one
+           * dispatch = one user transaction). Here we copy the library's
+           * freshly-computed relative selection ONLY on a NON-appended
+           * doc-changing transaction, so appended follow-ups cannot pollute it.
+           * @param tr - The transaction being applied.
+           * @param val - The previous plugin state.
+           * @param _oldState - The state before the transaction.
+           * @param newState - The state after (y-undo's field already updated).
+           * @returns The next plugin state.
+           */
+          apply: (tr, val, _oldState, newState): { preEditSel: unknown } => {
+            if (!tr.docChanged || tr.getMeta('appendedTransaction') !== undefined) {
+              return val;
+            }
+            const undo = newState.plugins
+              .find((pl) => (pl as unknown as { key?: string }).key === 'y-undo$')
+              ?.getState(newState) as { prevSel?: unknown } | undefined;
+            return undo?.prevSel != null ? { preEditSel: undo.prevSel } : val;
+          },
+        },
         view: (view) => {
           const internals = collabInternals(view.state);
           if (!internals) {
@@ -135,12 +168,31 @@ export const CollabUndoSelection = Extension.create({
               binding.beforeTransactionSelection = null;
             });
           };
+          /**
+           * Overwrites the freshly-added stack item's stored selection with the
+           * UNPOLLUTED pre-edit selection (see the plugin state above). This
+           * handler registers after the library's (extension order), so it runs
+           * after the polluted write and wins.
+           * @param payload - The undo-manager event payload.
+           * @param payload.stackItem - The stack item just pushed.
+           * @param payload.stackItem.meta - The item's per-binding meta map.
+           */
+          const onAdded = ({
+            stackItem,
+          }: {
+            stackItem: { meta: Map<unknown, unknown> };
+          }): void => {
+            const preEditSel = collabUndoSelectionKey.getState(view.state)?.preEditSel;
+            if (preEditSel != null) stackItem.meta.set(binding, preEditSel);
+          };
           binding.doc.on('beforeObserverCalls', onBeforeObserverCalls);
           undoManager.on('stack-item-popped', onPopped);
+          undoManager.on('stack-item-added', onAdded as never);
           return {
             destroy: (): void => {
               binding.doc.off('beforeObserverCalls', onBeforeObserverCalls);
               undoManager.off('stack-item-popped', onPopped);
+              undoManager.off('stack-item-added', onAdded as never);
             },
           };
         },

@@ -811,6 +811,123 @@ describe('undo — a chip and its invariant spaces undo together (Yjs yUndo)', (
     }
   });
 
+  /**
+   * Simulates a ProseMirror drag-move: one transaction deleting [from,to) and
+   * inserting the slice at `target` (mapped through the delete), exactly what a
+   * drop of an in-editor selection dispatches.
+   * @param editor - The editor.
+   * @param from - Selection start.
+   * @param to - Selection end.
+   * @param target - Drop position in the PRE-move doc.
+   */
+  function dragMove(editor: Editor, from: number, to: number, target: number): void {
+    const slice = editor.state.doc.slice(from, to);
+    const tr = editor.state.tr.deleteRange(from, to);
+    tr.insert(tr.mapping.map(target), slice.content);
+    editor.view.dispatch(tr);
+  }
+
+  it('undo of a PLAIN-TEXT drag-move restores the original range selection (control)', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent('hello world').run();
+      undoManagerOf(editor).stopCapturing();
+      editor.commands.setTextSelection({ from: 2, to: 4 }); // 'el'
+      dragMove(editor, 2, 4, 8); // move 'el' after the 'w'
+      expect(editor.state.doc.textContent).toBe('hlo welorld');
+      editor.commands.undo();
+      expect(editor.state.doc.textContent).toBe('hello world');
+      expect(editor.state.selection.from).toBe(2);
+      expect(editor.state.selection.to).toBe(4);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('undo of a CHIP-containing drag-move restores the original range selection (user bug ⑤)', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y and tail')
+        .run();
+      // `x [A] y and tail`: x[1,2] ␣[2,3] A[3,4] ␣[4,5] y[5,6] …
+      undoManagerOf(editor).stopCapturing();
+      const p = chipPosOf(editor, 'a');
+      const from = p - 1; // x|␣A (form ①)
+      const to = p + 2; // A␣|y (form ③) — range covers space+chip+space
+      const before = editor.state.doc.textContent;
+      editor.commands.setTextSelection({ from, to });
+      dragMove(editor, from, to, editor.state.doc.content.size - 2); // move near the end
+      expect(chipPosOf(editor, 'a')).toBeGreaterThan(p); // chip moved right
+      editor.commands.undo();
+      // Doc restored…
+      expect(editor.state.doc.textContent).toBe(before);
+      expect(chipPosOf(editor, 'a')).toBe(p);
+      // …and the ORIGINAL range is selected again, same as the plain-text case.
+      expect(editor.state.selection.from).toBe(from);
+      expect(editor.state.selection.to).toBe(to);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('undo of a PARTIAL-FLANK chip drag-move (chip + right space only) restores the original range (⑤ variant)', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y and tail')
+        .run();
+      undoManagerOf(editor).stopCapturing();
+      const p = chipPosOf(editor, 'a');
+      const from = p; // ␣‸A — range starts AT the chip (left owned space stays behind)
+      const to = p + 2; // covers chip + right space
+      const before = editor.state.doc.textContent;
+      editor.commands.setTextSelection({ from, to });
+      dragMove(editor, from, to, editor.state.doc.content.size - 2);
+      // The moved chip lacks its LEFT flank at the target → the invariant appends
+      // a space in the SAME undo capture group (the interesting difference).
+      expect(planWhitespaceInsertions(editor.state.doc)).toEqual([]);
+      editor.commands.undo();
+      expect(editor.state.doc.textContent).toBe(before);
+      expect(chipPosOf(editor, 'a')).toBe(p);
+      expect(editor.state.selection.from).toBe(from);
+      expect(editor.state.selection.to).toBe(to);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('undo of a BARE-chip drag-move (no flanking spaces in the slice) restores the original range (⑤ variant)', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y and tail')
+        .run();
+      undoManagerOf(editor).stopCapturing();
+      const p = chipPosOf(editor, 'a');
+      const before = editor.state.doc.textContent;
+      editor.commands.setTextSelection({ from: p, to: p + 1 });
+      dragMove(editor, p, p + 1, editor.state.doc.content.size - 2);
+      expect(planWhitespaceInsertions(editor.state.doc)).toEqual([]);
+      editor.commands.undo();
+      expect(editor.state.doc.textContent).toBe(before);
+      expect(chipPosOf(editor, 'a')).toBe(p);
+      expect(editor.state.selection.from).toBe(p);
+      expect(editor.state.selection.to).toBe(p + 1);
+    } finally {
+      editor.destroy();
+    }
+  });
+
   it('warns in dev when the collab internals cannot be located (silent-no-op guard)', () => {
     const warnings: string[] = [];
     const original = console.warn;
