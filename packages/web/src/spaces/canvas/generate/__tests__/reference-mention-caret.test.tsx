@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import * as Y from 'yjs';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { CollabUndoSelection } from '@web/spaces/canvas/generate/collab-undo-selection';
 import { referenceMentionCaretKey } from '@web/spaces/canvas/generate/reference-mention-caret';
 import {
   isStoppable,
@@ -723,6 +724,7 @@ describe('undo — a chip and its invariant spaces undo together (Yjs yUndo)', (
         Paragraph,
         Text,
         Collaboration.configure({ fragment: ydoc.getXmlFragment('prompt') }),
+        CollabUndoSelection, // same wiring as PromptEditor (undo restores pre-edit selection)
         ReferenceMention.configure({
           suggestion: makeReferenceSuggestion({
             getPool: () => [],
@@ -753,6 +755,115 @@ describe('undo — a chip and its invariant spaces undo together (Yjs yUndo)', (
   // sync). This asserts that MECHANISM at the plugin/editor level; the component
   // effects' own dispatches are exercised behaviourally by PromptEditor.test.tsx and
   // the Cmd+Z keyboard path is a real-machine check (the narrow handle exposes no undo).
+  /**
+   * The yUndo manager from the live editor (y-prosemirror is a transitive dep,
+   * so the plugin is located by its key name instead of an import).
+   * @param editor - The collab editor.
+   * @returns The Yjs UndoManager.
+   */
+  function undoManagerOf(editor: Editor): { stopCapturing: () => void } {
+    const plugin = editor.state.plugins.find(
+      (pl) => (pl as unknown as { key?: string }).key === 'y-undo$',
+    );
+    const state = plugin?.getState(editor.state) as
+      | { undoManager: { stopCapturing: () => void } }
+      | undefined;
+    if (!state) throw new Error('y-undo plugin not found');
+    return state.undoManager;
+  }
+
+  it('undo of a chip deletion restores the caret to its PRE-DELETE position (after the restored content)', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a'); // `x [A] y`
+      // Separate the upcoming delete into its OWN undo stack item.
+      undoManagerOf(editor).stopCapturing();
+      editor.commands.setTextSelection(p + 2); // form ③: chip␣‸y (pre-delete caret)
+      expect(keydown(editor, 'Backspace')).toBe(true);
+      expect(chipPosOf(editor, 'a')).toBe(-1);
+      editor.commands.undo();
+      // Content restored…
+      expect(chipPosOf(editor, 'a')).toBe(p);
+      // …and the caret returns to where it was BEFORE the delete: AFTER the
+      // restored content (standard undo semantics — the real-machine bug put it
+      // before the restored content).
+      expect(editor.state.selection.from).toBe(p + 2);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('undo of a RANGE deletion restores the SELECTION (highlighted range), not a collapsed caret', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent('hello').run();
+      undoManagerOf(editor).stopCapturing();
+      editor.commands.setTextSelection({ from: 2, to: 4 }); // select 'el'
+      editor.commands.deleteSelection();
+      expect(editor.state.doc.textContent).toBe('hlo');
+      editor.commands.undo();
+      expect(editor.state.doc.textContent).toBe('hello');
+      // The pre-delete selection was a RANGE — undo restores it as a range.
+      expect(editor.state.selection.from).toBe(2);
+      expect(editor.state.selection.to).toBe(4);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('redo returns the caret to its POST-EDIT position (standard redo semantics)', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor
+        .chain()
+        .insertContent('x')
+        .insertContent(referenceMentionContent(chipA))
+        .insertContent('y')
+        .run();
+      const p = chipPosOf(editor, 'a');
+      undoManagerOf(editor).stopCapturing();
+      editor.commands.setTextSelection(p + 2);
+      expect(keydown(editor, 'Backspace')).toBe(true); // delete the chip unit
+      editor.commands.undo(); // chip back, caret at p+2
+      editor.commands.redo(); // chip gone again
+      expect(chipPosOf(editor, 'a')).toBe(-1);
+      // caret back where the user was after the original delete
+      expect(editor.state.selection.from).toBe(p - 1);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('the undo selection handoff does not linger into later transactions (stale-restore guard)', async () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent('hello').run();
+      undoManagerOf(editor).stopCapturing();
+      editor.commands.setTextSelection({ from: 2, to: 4 });
+      editor.commands.deleteSelection();
+      editor.commands.undo();
+      // The upstream late stack-item-popped write is cleared in a microtask —
+      // after it, the binding holds no stale selection to force onto the NEXT
+      // (e.g. remote) restore transaction.
+      await Promise.resolve();
+      const sync = editor.state.plugins.find(
+        (pl) => (pl as unknown as { key?: string }).key === 'y-sync$',
+      );
+      const binding = (sync?.getState(editor.state) as {
+        binding: { beforeTransactionSelection: unknown };
+      }).binding;
+      expect(binding.beforeTransactionSelection).toBeNull();
+    } finally {
+      editor.destroy();
+    }
+  });
+
   it('a machine-derived edit (addToHistory:false, like cascade-clear / display-sync) is EXCLUDED from undo', () => {
     const editor = makeCollabEditor();
     try {

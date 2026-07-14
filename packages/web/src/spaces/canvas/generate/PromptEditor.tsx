@@ -25,6 +25,7 @@ import {
   renderCollabCaret,
   renderCollabSelection,
 } from '@web/spaces/canvas/generate/caret-render';
+import { CollabUndoSelection } from '@web/spaces/canvas/generate/collab-undo-selection';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
@@ -145,6 +146,10 @@ export const PromptEditor = React.forwardRef<
         // parents, so it never fired inside the paragraph (batch-2 item 5).
         // Collaboration provides history (yUndo); do NOT add UndoRedo alongside.
         Collaboration.configure({ fragment }),
+        // Undo/redo must restore the PRE-EDIT selection; upstream yjs emits
+        // stack-item-popped after the restore transaction already ran, so this
+        // hands the stored selection over in time (see the module doc).
+        CollabUndoSelection,
         // Remote collaborator carets (batch-2 item 14): mounted only when the
         // canvas-space doc's awareness is available — the extension THROWS in
         // onCreate on a null provider, and before the socket's first connect
