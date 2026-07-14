@@ -811,6 +811,30 @@ describe('undo — a chip and its invariant spaces undo together (Yjs yUndo)', (
     }
   });
 
+  it('warns in dev when the collab internals cannot be located (silent-no-op guard)', () => {
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (msg: string): void => {
+      warnings.push(String(msg));
+    };
+    let editor: Editor | null = null;
+    try {
+      // CollabUndoSelection WITHOUT Collaboration → the y-sync/y-undo plugin
+      // keys don't exist, mirroring a duplicate-y-tiptap bundle where the keys
+      // mint as 'y-sync$1' and the lookup silently fails.
+      editor = new Editor({
+        element: document.createElement('div'),
+        extensions: [Document, Paragraph, Text, CollabUndoSelection],
+      });
+      expect(
+        warnings.some((w) => w.includes('undo selection restore is INACTIVE')),
+      ).toBe(true);
+    } finally {
+      console.warn = original;
+      editor?.destroy();
+    }
+  });
+
   it('a REMOTE update after an undo maps the local selection normally (fix never touches remote restores)', async () => {
     const ydoc = new Y.Doc();
     const editor = makeCollabEditor(ydoc);

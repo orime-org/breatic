@@ -97,7 +97,22 @@ export const CollabUndoSelection = Extension.create({
         key: new PluginKey('collabUndoSelectionRestore'),
         view: (view) => {
           const internals = collabInternals(view.state);
-          if (!internals) return {};
+          if (!internals) {
+            // This extension is only installed alongside Collaboration, so a
+            // failed lookup means the y-sync/y-undo plugin keys were not found
+            // — most likely a SECOND @tiptap/y-tiptap copy entered the bundle
+            // (pnpm mints per-peer-set instances; the second copy's keys mint
+            // as 'y-sync$1'). Without this warning the whole undo selection
+            // restore would silently no-op. Dev-only; stripped from prod.
+            if (import.meta.env.DEV) {
+              console.warn(
+                '[collab-undo-selection] y-sync/y-undo plugin state not found — ' +
+                  'undo selection restore is INACTIVE. Is a duplicate ' +
+                  '@tiptap/y-tiptap copy in the bundle?',
+              );
+            }
+            return {};
+          }
           const { binding, undoManager } = internals;
           /**
            * Hands the popped stack item's stored selection to the binding
