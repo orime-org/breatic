@@ -206,6 +206,39 @@ export const PromptEditor = React.forwardRef<
     // memoized by the container so it never churns per render.
     [fragment, placeholder, mentionEmptyLabel, caretProvider, caretUser],
   );
+  // Publish window focus into the awareness `user` payload so collaborators see
+  // this user dim when they switch tabs/apps (user 2026-07-14 item 4). Receivers
+  // dim on the literal `false` only (caret-render.ts), so old clients that never
+  // publish the field render normally.
+  React.useEffect(() => {
+    if (!editor || !caretProvider || !caretUser) return undefined;
+    /**
+     * Publishes the current focus state into the awareness user field.
+     * @param focused - Whether this window has focus.
+     */
+    const publish = (focused: boolean): void => {
+      if (editor.isDestroyed) return;
+      editor.commands.updateUser({ ...caretUser, focused });
+    };
+    /**
+     * Publishes focused=true on window focus.
+     * @returns Nothing.
+     */
+    const onFocus = (): void => publish(true);
+    /**
+     * Publishes focused=false on window blur.
+     * @returns Nothing.
+     */
+    const onBlur = (): void => publish(false);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    // Seed the real state on mount (the panel can open in a background window).
+    publish(document.hasFocus());
+    return (): void => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [editor, caretProvider, caretUser]);
   // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
   // narrow imperative handle rather than the raw editor, keeping TipTap
   // encapsulated (same boundary as the onTextChange / onAtMentionsChange

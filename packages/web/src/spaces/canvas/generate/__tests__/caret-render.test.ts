@@ -104,6 +104,23 @@ describe('renderCollabSelection — remote selection highlight attrs', () => {
     expect(attrs.style).not.toContain('evil.example');
     expect(attrs.style).toContain('var(--color-muted-foreground)');
   });
+
+  it('dims a BLURRED collaborator via a lower mix ratio (never CSS opacity on the text)', () => {
+    expect(renderCollabSelection({ hue: 'pink', focused: false }).style).toContain('12%');
+    expect(renderCollabSelection({ hue: 'pink', focused: true }).style).toContain('25%');
+    expect(renderCollabSelection({ hue: 'pink' }).style).toContain('25%'); // old clients
+  });
+});
+
+describe('renderCollabCaret — blurred (window unfocused) collaborator dims', () => {
+  it('adds the --blurred modifier ONLY on the literal focused === false', () => {
+    const blurred = renderCollabCaret({ name: 'A', hue: 'teal', focused: false });
+    expect(blurred.classList.contains('collaboration-carets__caret--blurred')).toBe(true);
+    const focused = renderCollabCaret({ name: 'A', hue: 'teal', focused: true });
+    expect(focused.classList.contains('collaboration-carets__caret--blurred')).toBe(false);
+    const legacy = renderCollabCaret({ name: 'A', hue: 'teal' }); // field absent
+    expect(legacy.classList.contains('collaboration-carets__caret--blurred')).toBe(false);
+  });
 });
 
 // First-line label flip (D, user 2026-07-12): a caret whose top sits within the

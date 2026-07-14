@@ -244,13 +244,36 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
       } | null;
       // The published color is a concrete 6-digit hex (y-prosemirror's
       // validator warns on anything else); the hue rides along so receiving
-      // breatic clients render the viewer-theme-adaptive palette token.
+      // breatic clients render the viewer-theme-adaptive palette token, and
+      // `focused` publishes this window's focus, seeded from the REAL
+      // document.hasFocus() on mount — false under jsdom (item 4).
       expect(local?.user).toEqual({
         name: 'Ada',
         color: '#008573',
         hue: 'teal',
+        focused: false,
       });
     });
+  });
+
+  it('publishes focused=true on window focus and false again on blur (item 4)', async () => {
+    const { awareness } = await mountWithAwareness(true);
+    /**
+     * Reads the published focus flag from the local awareness state.
+     * @returns The `user.focused` field.
+     */
+    const focusedField = (): boolean | undefined =>
+      (awareness.getLocalState() as { user?: { focused?: boolean } } | null)
+        ?.user?.focused;
+    await waitFor(() => expect(focusedField()).toBe(false)); // jsdom seed
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(focusedField()).toBe(true));
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    await waitFor(() => expect(focusedField()).toBe(false));
   });
 
   it('renders a remote client caret with the remote user name and color', async () => {

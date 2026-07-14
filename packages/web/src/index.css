@@ -312,6 +312,13 @@ body {
   word-break: normal;
   pointer-events: none;
 }
+/* A collaborator whose window lost focus (switched tab/app) dims: presence
+   stays visible, activity reads as paused. The selection highlight dims via a
+   lower color-mix ratio in caret-render.ts (its class sits on the selected
+   TEXT, where opacity would fade the words themselves). */
+.collaboration-carets__caret--blurred {
+  opacity: 0.4;
+}
 /* When a remote caret sits at the very document start (before the first block),
    the collaboration-caret extension renders its inline widget as a DIRECT child of
    the block editor, before the <p>. An inline box before a block gets its own

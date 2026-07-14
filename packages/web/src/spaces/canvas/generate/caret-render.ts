@@ -25,6 +25,12 @@ export interface CaretUser {
   color?: string;
   /** Palette hue for receiver-side token rendering (whitelisted here). */
   hue?: string;
+  /**
+   * Whether the user's window currently has focus (published on window
+   * blur/focus). Untrusted wire data: ONLY the literal `false` dims the remote
+   * caret/selection — anything else (missing / old clients) renders normally.
+   */
+  focused?: boolean;
 }
 
 const SIX_DIGIT_HEX = /^#[0-9a-fA-F]{6}$/;
@@ -63,6 +69,10 @@ export function renderCollabSelection(user: CaretUser): {
   style: string;
   class: string;
 } {
+  // A blurred collaborator's selection dims via a LOWER mix ratio (not CSS
+  // opacity — the decoration class sits on the selected TEXT's wrapper, so
+  // opacity would fade the user's own words).
+  const ratio = user.focused === false ? '12%' : '25%';
   return {
     // Expose the per-user color ONLY as a CSS custom property — NO direct
     // background-color. index.css then decides the SHAPE per element: a plain
@@ -71,7 +81,7 @@ export function renderCollabSelection(user: CaretUser): {
     // Without this, the wrapper's own background drew a rectangle over the rounded
     // pill (B, user 2026-07-13). A custom property inherits through the whole
     // subtree, so the pill picks up the color regardless of wrapper nesting.
-    style: `--collab-selection-bg: color-mix(in srgb, ${safeCaretColor(user)} 25%, transparent)`,
+    style: `--collab-selection-bg: color-mix(in srgb, ${safeCaretColor(user)} ${ratio}, transparent)`,
     class: 'collaboration-carets__selection',
   };
 }
@@ -176,6 +186,11 @@ export function renderCollabCaret(user: CaretUser): HTMLElement {
   const color = safeCaretColor(user);
   const caret = document.createElement('span');
   caret.classList.add('collaboration-carets__caret');
+  // Dim the whole caret+label when the collaborator's window lost focus (they
+  // switched tabs/apps) — presence stays visible, activity reads as paused.
+  if (user.focused === false) {
+    caret.classList.add('collaboration-carets__caret--blurred');
+  }
   caret.style.borderColor = color;
   const label = document.createElement('div');
   label.classList.add('collaboration-carets__label');
