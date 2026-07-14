@@ -206,6 +206,84 @@ export const PromptEditor = React.forwardRef<
     // memoized by the container so it never churns per render.
     [fragment, placeholder, mentionEmptyLabel, caretProvider, caretUser],
   );
+  // Publish window focus into the awareness `user` payload so collaborators see
+  // this user dim when they switch tabs/apps (user 2026-07-14 item 4). Receivers
+  // dim on the literal `false` only (caret-render.ts), so old clients that never
+  // publish the field render normally.
+  React.useEffect(() => {
+    if (!editor || !caretProvider || !caretUser) return undefined;
+    /**
+     * Publishes the current focus state into the awareness user field.
+     * @param focused - Whether this window has focus.
+     */
+    const publish = (focused: boolean): void => {
+      if (editor.isDestroyed) return;
+      editor.commands.updateUser({ ...caretUser, focused });
+    };
+    /**
+     * Publishes focused=true on window focus.
+     * @returns Nothing.
+     */
+    const onFocus = (): void => publish(true);
+    /**
+     * Publishes focused=false on window blur.
+     * @returns Nothing.
+     */
+    const onBlur = (): void => publish(false);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    // Seed the real state on mount (the panel can open in a background window).
+    publish(document.hasFocus());
+    return (): void => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [editor, caretProvider, caretUser]);
+  // Receiver side of the focus dim: a PARKED remote caret's widget is keyed by
+  // clientId and prosemirror-view reuses its DOM on key equality WITHOUT
+  // re-invoking the builder, so a collaborator's focused flip never re-renders
+  // it (adversarial round — both directions were dead). Toggle the class on
+  // the EXISTING caret DOM from the awareness change pipeline instead; newly
+  // built widgets get the class from the builder itself (caret-render.ts).
+  React.useEffect(() => {
+    const awareness = caretProvider?.awareness as
+      | {
+          getStates: () => Map<number, { user?: { focused?: boolean } }>;
+          on: (ev: string, fn: () => void) => void;
+          off: (ev: string, fn: () => void) => void;
+        }
+      | null
+      | undefined;
+    if (!editor || !awareness) return undefined;
+    /** Syncs every rendered remote caret's dim class to its client's focus state. */
+    const applyDim = (): void => {
+      if (editor.isDestroyed) return;
+      const states = awareness.getStates();
+      editor.view.dom
+        .querySelectorAll<HTMLElement>('.collaboration-carets__caret[data-client-id]')
+        .forEach((el) => {
+          const state = states.get(Number(el.dataset.clientId));
+          el.classList.toggle(
+            'collaboration-carets__caret--blurred',
+            state?.user?.focused === false,
+          );
+        });
+    };
+    awareness.on('change', applyDim);
+    // ALSO re-sync after every editor transaction: the yCursorPlugin refresh is
+    // BATCHED into a setTimeout(0), and a local transaction inside that window
+    // rebuilds a caret widget from a thunk that captured the PRE-FLIP user —
+    // its build-time class would overwrite applyDim's correction and stick
+    // (an away client's heartbeats are deep-equal → 'update' only, never
+    // 'change', so nothing else would heal it). Reconciling on transaction
+    // covers every DOM rebuild path (adversarial round 2, jsdom-reproduced).
+    editor.on('transaction', applyDim);
+    applyDim();
+    return (): void => {
+      awareness.off('change', applyDim);
+      editor.off('transaction', applyDim);
+    };
+  }, [editor, caretProvider]);
   // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
   // narrow imperative handle rather than the raw editor, keeping TipTap
   // encapsulated (same boundary as the onTextChange / onAtMentionsChange

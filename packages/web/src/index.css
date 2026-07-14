@@ -263,8 +263,13 @@ body {
    wrapper (.node-referenceMention); the visible pill is the inner
    .reference-mention (opaque bg-muted), so the highlight is painted on the inner
    pill via a descendant selector. Uses the selection semantic token
-   (classification color — no contrast math). */
-.reference-mention--range-selected .reference-mention {
+   (classification color — no contrast math).
+   FOCUSED-only (user 2026-07-14): on blur the browser hides the native text
+   selection paint but ProseMirror keeps its selection state (a feature — it
+   restores on refocus), so an unscoped rule left the chips highlighted while
+   the text highlight vanished; scoping to .ProseMirror-focused (a class PM
+   maintains itself) keeps the chip highlight in lockstep with the text. */
+.ProseMirror-focused .reference-mention--range-selected .reference-mention {
   background-color: color-mix(in srgb, var(--color-status-selected) 35%, transparent);
 }
 /* A chip caught inside a REMOTE collaborator's selection (B3, user 2026-07-12):
@@ -296,6 +301,18 @@ body {
    the shape is decided entirely by these two rules. */
 .collaboration-carets__selection:not(:has(.reference-mention)) {
   background-color: var(--collab-selection-bg);
+  /* Native selection paint stretches to the FULL line box (leading included);
+     an inline decoration's background only covers the text box, leaving a gap
+     between wrapped lines (user 2026-07-14 item 10). Half-leading vertical
+     padding on a non-replaced inline paints background WITHOUT affecting
+     layout, so adjacent lines MEET like the native paint. Sized to the real
+     measured gap (text-sm 13px/18px: shipped Inter's content box measures
+     15.5px in the 18px pitch → 1.25px per side ≈ 0.096em) — anything larger makes the translucent fragments
+     OVERLAP and double-composite into darker stripes at every wrap boundary
+     (adversarial rounds, pixel-verified twice). Chip wrappers are excluded
+     above (atomic boxes WOULD grow from vertical padding). */
+  padding-top: 0.096em;
+  padding-bottom: 0.096em;
 }
 /* Remote collaborator carets in the generate prompt (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render
@@ -311,6 +328,13 @@ body {
   border-right: 1px solid;
   word-break: normal;
   pointer-events: none;
+}
+/* A collaborator whose window lost focus (switched tab/app) dims: presence
+   stays visible, activity reads as paused. The selection highlight dims via a
+   lower color-mix ratio in caret-render.ts (its class sits on the selected
+   TEXT, where opacity would fade the words themselves). */
+.collaboration-carets__caret--blurred {
+  opacity: 0.4;
 }
 /* When a remote caret sits at the very document start (before the first block),
    the collaboration-caret extension renders its inline widget as a DIRECT child of

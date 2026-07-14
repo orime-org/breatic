@@ -244,13 +244,165 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
       } | null;
       // The published color is a concrete 6-digit hex (y-prosemirror's
       // validator warns on anything else); the hue rides along so receiving
-      // breatic clients render the viewer-theme-adaptive palette token.
-      expect(local?.user).toEqual({
+      // breatic clients render the viewer-theme-adaptive palette token, and
+      // `focused` seeds from the REAL document.hasFocus() on mount (its jsdom
+      // value depends on what earlier tests focused — assert the type only).
+      expect(local?.user).toMatchObject({
         name: 'Ada',
         color: '#008573',
         hue: 'teal',
       });
+      expect(typeof (local?.user as { focused?: unknown })?.focused).toBe('boolean');
     });
+  });
+
+  it('publishes focused=false on window blur and true on focus (item 4)', async () => {
+    const { awareness } = await mountWithAwareness(true);
+    /**
+     * Reads the published focus flag from the local awareness state.
+     * @returns The `user.focused` field.
+     */
+    const focusedField = (): boolean | undefined =>
+      (awareness.getLocalState() as { user?: { focused?: boolean } } | null)
+        ?.user?.focused;
+    // Don't assume the seed (document.hasFocus() is environment-dependent):
+    // drive to a known state first, then flip both ways.
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    await waitFor(() => expect(focusedField()).toBe(false));
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(focusedField()).toBe(true));
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    await waitFor(() => expect(focusedField()).toBe(false));
+  });
+
+  it('dims and un-dims a PARKED remote caret when its client flips focused (receiver side)', async () => {
+    const { awareness, editorEl } = await mountWithAwareness(true);
+    const doc = awareness.doc;
+    const fragment = doc.getXmlFragment('prompt');
+    const text = (fragment.get(0) as Y.XmlElement).get(0) as Y.XmlText;
+    const anchor = Y.createRelativePositionFromTypeIndex(text, 3);
+    const REMOTE_CLIENT = awareness.clientID + 1;
+    /**
+     * Pushes the remote client's state (fixed parked cursor) through the
+     * awareness change pipeline with the given focus flag.
+     * @param focused - The remote client's published focus state.
+     */
+    const pushRemote = (focused: boolean): void => {
+      const states = new Map(awareness.getStates());
+      states.set(REMOTE_CLIENT, {
+        user: { name: 'Grace', color: '#c2298a', hue: 'pink', focused },
+        cursor: {
+          anchor: JSON.parse(JSON.stringify(Y.relativePositionToJSON(anchor))) as unknown,
+          head: JSON.parse(JSON.stringify(Y.relativePositionToJSON(anchor))) as unknown,
+        },
+      });
+      act(() => {
+        awareness.states = states;
+        awareness.emit('change', [
+          { added: [], updated: [REMOTE_CLIENT], removed: [] },
+          'remote',
+        ]);
+      });
+    };
+    pushRemote(true);
+    await waitFor(() =>
+      expect(editorEl.querySelector('.collaboration-carets__caret')).not.toBeNull(),
+    );
+    const caret = (): Element | null =>
+      editorEl.querySelector('.collaboration-carets__caret');
+    expect(caret()?.classList.contains('collaboration-carets__caret--blurred')).toBe(false);
+    // The PARKED caret's widget DOM is reused on key equality (builder never
+    // re-invoked) — the awareness listener must toggle the class in place.
+    pushRemote(false);
+    await waitFor(() =>
+      expect(
+        caret()?.classList.contains('collaboration-carets__caret--blurred'),
+      ).toBe(true),
+    );
+    pushRemote(true);
+    await waitFor(() =>
+      expect(
+        caret()?.classList.contains('collaboration-carets__caret--blurred'),
+      ).toBe(false),
+    );
+  });
+
+  it('keeps the dim after a local transaction rebuilds the caret from a stale thunk (resurrection race)', async () => {
+    const { awareness, editorEl } = await mountWithAwareness(true);
+    const doc = awareness.doc;
+    const fragment = doc.getXmlFragment('prompt');
+    const text = (fragment.get(0) as Y.XmlElement).get(0) as Y.XmlText;
+    const anchor = Y.createRelativePositionFromTypeIndex(text, 3);
+    const REMOTE_CLIENT = awareness.clientID + 1;
+    /**
+     * Pushes the remote client's parked-cursor state with the given focus flag.
+     * @param focused - The remote client's published focus state.
+     */
+    const pushRemote = (focused: boolean): void => {
+      const states = new Map(awareness.getStates());
+      states.set(REMOTE_CLIENT, {
+        user: { name: 'Grace', color: '#c2298a', hue: 'pink', focused },
+        cursor: {
+          anchor: JSON.parse(JSON.stringify(Y.relativePositionToJSON(anchor))) as unknown,
+          head: JSON.parse(JSON.stringify(Y.relativePositionToJSON(anchor))) as unknown,
+        },
+      });
+      act(() => {
+        awareness.states = states;
+        awareness.emit('change', [
+          { added: [], updated: [REMOTE_CLIENT], removed: [] },
+          'remote',
+        ]);
+      });
+    };
+    pushRemote(true);
+    await waitFor(() =>
+      expect(editorEl.querySelector('.collaboration-carets__caret')).not.toBeNull(),
+    );
+    // Reaching the STALE-thunk branch needs precise staging (adversarial R3 —
+    // a Y-origin doc.transact recreates decorations from CURRENT awareness and
+    // can never exercise it, which made the first version of this test pass
+    // even with the fix deleted):
+    // 1. park the batched yCursor refresh with fake timers, so the flip's
+    //    fresh decorations never land;
+    // 2. flip focused=false — the awareness handler dims the existing DOM;
+    // 3. dispatch a PM-SIDE structural transaction (split forces the widget's
+    //    parent desc to rebuild; plain insertText reuses the widget DOM) —
+    //    the widget rebuilds from the PRE-FLIP thunk (focused=true), and only
+    //    the transaction resync re-dims it: this assertion goes RED without
+    //    editor.on('transaction', applyDim);
+    // 4. release the batched refresh — key-equality DOM reuse must not
+    //    resurrect the pre-flip class either.
+    vi.useFakeTimers();
+    try {
+      pushRemote(false);
+      const blurred = (): boolean | undefined =>
+        editorEl
+          .querySelector('.collaboration-carets__caret')
+          ?.classList.contains('collaboration-carets__caret--blurred');
+      expect(blurred()).toBe(true); // awareness-handler path
+      const editor = (
+        editorEl.querySelector('.ProseMirror') as unknown as {
+          editor: { view: { dispatch: (tr: unknown) => void; state: { tr: { split: (pos: number) => unknown } } } };
+        }
+      ).editor;
+      act(() => {
+        editor.view.dispatch(editor.view.state.tr.split(2));
+      });
+      expect(blurred()).toBe(true); // stale-thunk rebuild, re-dimmed by the resync
+      act(() => {
+        vi.runOnlyPendingTimers(); // batched yCursor refresh (DOM reuse path)
+      });
+      expect(blurred()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('renders a remote client caret with the remote user name and color', async () => {

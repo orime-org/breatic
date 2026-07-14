@@ -218,6 +218,11 @@ function ReferenceMentionChip({
       <NodeViewWrapper
         as='span'
         data-reference-mention=''
+        // The whole atomic chip is its own drag handle: tiptap's stopEvent
+        // preventDefault()s a NodeView drag unless the preceding mousedown
+        // landed inside a [data-drag-handle] (item ⑥, user 2026-07-14 — a
+        // selected chip could not be dragged in any browser).
+        data-drag-handle=''
         // data-kind lets the t2i grey-out target IMAGE chips only — a text
         // chip's substitution still takes effect in t2i (round-2 adversarial).
         data-kind={kind ?? 'image'}
@@ -225,14 +230,20 @@ function ReferenceMentionChip({
         // whitespace.ts) keeps a real space on each side, so the chip's spacing
         // comes from that space, not a CSS margin (design 2026-07-13 §6 — avoids
         // margin + space double-gap).
-        className='reference-mention inline-flex h-5 max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-middle text-xs text-muted-foreground'
+        // h-[18px]: exactly the 18px line pitch so the chip no longer stretches
+        // the line box (user 2026-07-14 — a 20px chip made Safari paint the
+        // native selection highlight with all the extra space above the text).
+        // align value: measured on the real machine to put the chip's
+        // centerline exactly on the TEXT centerline (numeric vertical-align;
+        // `align-middle` sat it ~1.2px low under Inter 13px metrics).
+        className='reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-[-1.25px] text-xs text-muted-foreground'
         contentEditable={false}
       >
         {typeof thumbnail === 'string' && thumbnail.length > 0 ? (
           <img
             src={thumbnail}
             alt={label}
-            className='h-3.5 w-3.5 shrink-0 rounded object-cover'
+            className='h-3 w-3 shrink-0 rounded object-cover'
             draggable={false}
           />
         ) : (
@@ -245,7 +256,7 @@ function ReferenceMentionChip({
 }
 
 /**
- * The reference-mention custom node: an inline, atomic, non-draggable node
+ * The reference-mention custom node: an inline, atomic, DRAGGABLE node
  * carrying a stable `sourceNodeId` + snapshot `thumbnail` / `label`. Under the
  * Collaboration (Yjs) extension the node + its attributes sync automatically
  * because they are part of the shared ProseMirror schema. Insertion is driven
@@ -259,7 +270,16 @@ export const ReferenceMention = Node.create<ReferenceMentionOptions>({
   inline: true,
   atom: true,
   selectable: true,
-  draggable: false,
+  // Draggable so a selected chip (or a chip-only selection) can be moved by
+  // mouse (item ⑥). With `false`, tiptap's NodeView.stopEvent preventDefault()s
+  // EVERY drag event on the chip and swallows it from ProseMirror — the drag
+  // never starts in any browser. `true` makes PM keep a standing
+  // draggable=true on the outer wrapper and lets the drag through, provided
+  // the mousedown hit the [data-drag-handle] (the whole chip, see the
+  // NodeViewWrapper). Dropping is a plain PM move transaction, so the
+  // whitespace invariant (appendTransaction) heals both ends and yUndo
+  // reverts it as one step.
+  draggable: true,
 
   addOptions() {
     return {

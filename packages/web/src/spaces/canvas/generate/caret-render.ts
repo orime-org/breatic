@@ -25,6 +25,12 @@ export interface CaretUser {
   color?: string;
   /** Palette hue for receiver-side token rendering (whitelisted here). */
   hue?: string;
+  /**
+   * Whether the user's window currently has focus (published on window
+   * blur/focus). Untrusted wire data: ONLY the literal `false` dims the remote
+   * caret/selection — anything else (missing / old clients) renders normally.
+   */
+  focused?: boolean;
 }
 
 const SIX_DIGIT_HEX = /^#[0-9a-fA-F]{6}$/;
@@ -63,6 +69,10 @@ export function renderCollabSelection(user: CaretUser): {
   style: string;
   class: string;
 } {
+  // A blurred collaborator's selection dims via a LOWER mix ratio (not CSS
+  // opacity — the decoration class sits on the selected TEXT's wrapper, so
+  // opacity would fade the user's own words).
+  const ratio = user.focused === false ? '12%' : '25%';
   return {
     // Expose the per-user color ONLY as a CSS custom property — NO direct
     // background-color. index.css then decides the SHAPE per element: a plain
@@ -71,7 +81,7 @@ export function renderCollabSelection(user: CaretUser): {
     // Without this, the wrapper's own background drew a rectangle over the rounded
     // pill (B, user 2026-07-13). A custom property inherits through the whole
     // subtree, so the pill picks up the color regardless of wrapper nesting.
-    style: `--collab-selection-bg: color-mix(in srgb, ${safeCaretColor(user)} 25%, transparent)`,
+    style: `--collab-selection-bg: color-mix(in srgb, ${safeCaretColor(user)} ${ratio}, transparent)`,
     class: 'collaboration-carets__selection',
   };
 }
@@ -170,12 +180,28 @@ function scheduleLabelFlip(caret: HTMLElement, label: HTMLElement): void {
  * label renders above the caret, flipping BELOW on the first line where the
  * above position would clip at the scroll-viewport top (D, user 2026-07-12).
  * @param user - The remote user's awareness identity payload.
+ * @param clientId - The remote awareness client id (stamped as data-client-id
+ * so the focus-dim awareness listener can find this caret's reused DOM).
  * @returns The caret element (label nested inside).
  */
-export function renderCollabCaret(user: CaretUser): HTMLElement {
+export function renderCollabCaret(user: CaretUser, clientId?: number): HTMLElement {
   const color = safeCaretColor(user);
   const caret = document.createElement('span');
   caret.classList.add('collaboration-carets__caret');
+  // Dim the whole caret+label when the collaborator's window lost focus (they
+  // switched tabs/apps) — presence stays visible, activity reads as paused.
+  // NOTE: this build-time branch only covers NEWLY built widgets. A PARKED
+  // caret's widget is keyed by clientId and prosemirror-view reuses its DOM on
+  // key equality WITHOUT re-invoking this builder, so a focused flip alone
+  // never reaches here — the awareness listener in PromptEditor toggles the
+  // class on the existing DOM via the data-client-id stamped below
+  // (adversarial round: both flip directions were dead without it).
+  if (user.focused === false) {
+    caret.classList.add('collaboration-carets__caret--blurred');
+  }
+  if (clientId !== undefined) {
+    caret.dataset.clientId = String(clientId);
+  }
   caret.style.borderColor = color;
   const label = document.createElement('div');
   label.classList.add('collaboration-carets__label');

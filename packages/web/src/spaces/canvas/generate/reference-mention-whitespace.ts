@@ -28,6 +28,8 @@
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Transaction } from '@tiptap/pm/state';
+import { ReplaceStep } from '@tiptap/pm/transform';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 
@@ -347,4 +349,160 @@ export function planCascadeDeletion(
       ? { from: r.from, to: r.to + 1 }
       : r;
   });
+}
+
+/**
+ * Plans the source-gap heal after a chip is MOVED by drag-and-drop (D1, user
+ * 2026-07-14): ProseMirror's drop-move deletes only the dragged range, leaving
+ * the chip's stranded anchor spaces behind — a double space mid-text, or a
+ * stray leading / trailing space at a paragraph edge, that would reach the
+ * backend prompt. Scans `uiEvent: 'drop'` transactions for deletion steps that
+ * removed a chip, maps each gap into the CURRENT doc, and returns the space
+ * deletion that heals it.
+ *
+ * A gap-side space counts as residue only when the departed range's EDGE CELL
+ * on that side was a CHIP — only then is the space beyond the gap that chip's
+ * stranded anchor (adversarial R2: an edge-char space test conflated "edge is
+ * not a space" with "anchor stranded"; a range edged by TEXT, e.g. dragging
+ * `bb ▢` out of `aa␣␣bb␣▢␣cc`, strands NO left anchor, and the space at the
+ * gap's left is the user's own word gap which must never be touched). Each
+ * residue candidate then passes two gates before deletion: it must not be an
+ * adjacent chip's anchor, and deleting it must not weld two words together
+ * (then it IS the word gap and stays).
+ *
+ * One-shot semantics: ProseMirror hands each later appendTransaction round
+ * only the trs added since this plugin's previous call (trs.slice(n)), so the
+ * drop transaction is visible EXACTLY ONCE — the returned range must heal the
+ * gap completely in this single pass; there is no second chance.
+ * @param transactions - The transactions that produced the current state.
+ * @param doc - The CURRENT document.
+ * @returns A deletion range (1 or 2 spaces), or null when nothing needs healing.
+ */
+export function planDropResidueHeal(
+  transactions: readonly Transaction[],
+  doc: PMNode,
+): DocRange | null {
+  for (let t = 0; t < transactions.length; t += 1) {
+    const tr = transactions[t];
+    if (tr.getMeta('uiEvent') !== 'drop') continue;
+    for (let i = 0; i < tr.steps.length; i += 1) {
+      const step = tr.steps[i];
+      if (!(step instanceof ReplaceStep)) continue;
+      // Pure deletions only (the drop's move-delete half).
+      if (step.from === step.to || step.slice.size !== 0) continue;
+      const before = tr.docs[i];
+      let removedChip = false;
+      before.nodesBetween(step.from, step.to, (node) => {
+        if (isChip(node)) removedChip = true;
+      });
+      let gap = tr.mapping.slice(i + 1).map(step.from);
+      for (let j = t + 1; j < transactions.length; j += 1) {
+        gap = transactions[j].mapping.map(gap);
+      }
+      if (!removedChip) {
+        // TEXT dragged out from between two chips (user 2026-07-14): the two
+        // chips' anchors meet as a space pair (`[A]``[B]`) — under the D
+        // model adjacent chips SHARE one space, so the pair collapses. Only
+        // this exact shape (both outer neighbours are chips) is touched; a
+        // user-typed double space elsewhere at the gap is left alone.
+        if (
+          isSpaceAt(doc, gap - 1) &&
+          isSpaceAt(doc, gap) &&
+          chipAt(doc, gap - 2) !== null &&
+          chipAt(doc, gap + 1) !== null
+        ) {
+          return { from: gap, to: gap + 1 };
+        }
+        continue;
+      }
+      // A side's anchor is stranded at the gap only when the range's edge
+      // cell on that side was the chip itself.
+      const leftStranded = chipAt(before, step.from) !== null;
+      const rightStranded = chipAt(before, step.to - 1) !== null;
+      const heal = residueDeletionAt(doc, gap, leftStranded, rightStranded);
+      if (heal !== null) return heal;
+    }
+  }
+  return null;
+}
+
+/** What occupies the position next to a candidate space. */
+type Neighbour = 'chip' | 'space' | 'text' | 'edge';
+
+/**
+ * Classifies the document cell at `pos` inside `$ref`'s textblock.
+ * @param doc - The document.
+ * @param pos - The candidate cell start.
+ * @param parentStart - The textblock's content start position.
+ * @param parentEnd - The textblock's content end position.
+ * @returns The neighbour kind.
+ */
+function neighbourAt(
+  doc: PMNode,
+  pos: number,
+  parentStart: number,
+  parentEnd: number,
+): Neighbour {
+  if (pos < parentStart || pos >= parentEnd) return 'edge';
+  if (chipAt(doc, pos) !== null) return 'chip';
+  if (isSpaceAt(doc, pos)) return 'space';
+  return 'text';
+}
+
+/**
+ * The space deletion healing the residue at a chip-departure gap, or null.
+ * Residue candidates = the gap-side spaces stranded by a chip at the departed
+ * range's edge. Each candidate is kept when an adjacent chip still needs it as
+ * its anchor, or when deleting it would weld text to text (it doubles as the
+ * word gap). A candidate pair keeps at most one survivor under the same rules.
+ * @param doc - The current document.
+ * @param gap - The departure position in current coordinates.
+ * @param leftStranded - Whether the range's FIRST cell was a chip (its left
+ * anchor is stranded at the gap's left).
+ * @param rightStranded - Whether the range's LAST cell was a chip (its right
+ * anchor is stranded at the gap's right).
+ * @returns The deletion range, or null.
+ */
+function residueDeletionAt(
+  doc: PMNode,
+  gap: number,
+  leftStranded: boolean,
+  rightStranded: boolean,
+): DocRange | null {
+  if (gap < 0 || gap > doc.content.size) return null;
+  const $gap = doc.resolve(gap);
+  if (!$gap.parent.isTextblock) return null;
+  const parentStart = $gap.start();
+  const parentEnd = $gap.start() + $gap.parent.content.size;
+  const leftCand = leftStranded && isSpaceAt(doc, gap - 1);
+  const rightCand = rightStranded && isSpaceAt(doc, gap);
+  /**
+   * Whether the single candidate space at `pos` must STAY: an adjacent chip
+   * still needs it as its anchor, or its removal would weld text to text.
+   * @param pos - The candidate space start.
+   * @returns True when the space must be kept.
+   */
+  const mustKeep = (pos: number): boolean => {
+    const before = neighbourAt(doc, pos - 1, parentStart, parentEnd);
+    const after = neighbourAt(doc, pos + 1, parentStart, parentEnd);
+    if (before === 'chip' || after === 'chip') return true;
+    return before === 'text' && after === 'text';
+  };
+  if (leftCand && rightCand) {
+    // Evaluate the pair right-first: with the right one gone, the left
+    // candidate's effective right neighbour is whatever sits past it.
+    const outerLeft = neighbourAt(doc, gap - 2, parentStart, parentEnd);
+    const outerRight = neighbourAt(doc, gap + 1, parentStart, parentEnd);
+    if (outerLeft === 'chip' || outerRight === 'chip') {
+      // The survivor doubles as the adjacent chip's anchor — collapse to one.
+      return { from: gap, to: gap + 1 };
+    }
+    const keepSurvivor = outerLeft === 'text' && outerRight === 'text';
+    return keepSurvivor
+      ? { from: gap, to: gap + 1 }
+      : { from: gap - 1, to: gap + 1 };
+  }
+  if (rightCand && !mustKeep(gap)) return { from: gap, to: gap + 1 };
+  if (leftCand && !mustKeep(gap - 1)) return { from: gap - 1, to: gap };
+  return null;
 }
