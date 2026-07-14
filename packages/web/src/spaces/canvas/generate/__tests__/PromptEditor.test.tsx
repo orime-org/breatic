@@ -245,18 +245,18 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
       // The published color is a concrete 6-digit hex (y-prosemirror's
       // validator warns on anything else); the hue rides along so receiving
       // breatic clients render the viewer-theme-adaptive palette token, and
-      // `focused` publishes this window's focus, seeded from the REAL
-      // document.hasFocus() on mount — false under jsdom (item 4).
-      expect(local?.user).toEqual({
+      // `focused` seeds from the REAL document.hasFocus() on mount (its jsdom
+      // value depends on what earlier tests focused — assert the type only).
+      expect(local?.user).toMatchObject({
         name: 'Ada',
         color: '#008573',
         hue: 'teal',
-        focused: false,
       });
+      expect(typeof (local?.user as { focused?: unknown })?.focused).toBe('boolean');
     });
   });
 
-  it('publishes focused=true on window focus and false again on blur (item 4)', async () => {
+  it('publishes focused=false on window blur and true on focus (item 4)', async () => {
     const { awareness } = await mountWithAwareness(true);
     /**
      * Reads the published focus flag from the local awareness state.
@@ -265,7 +265,12 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     const focusedField = (): boolean | undefined =>
       (awareness.getLocalState() as { user?: { focused?: boolean } } | null)
         ?.user?.focused;
-    await waitFor(() => expect(focusedField()).toBe(false)); // jsdom seed
+    // Don't assume the seed (document.hasFocus() is environment-dependent):
+    // drive to a known state first, then flip both ways.
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    await waitFor(() => expect(focusedField()).toBe(false));
     act(() => {
       window.dispatchEvent(new Event('focus'));
     });
