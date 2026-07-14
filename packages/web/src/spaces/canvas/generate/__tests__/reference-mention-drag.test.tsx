@@ -432,6 +432,62 @@ describe('multi-chip selection drag (item ⑦)', () => {
     expect(editor.state.selection.to).toBe(selBefore.to);
   });
 
+  it('a remote Yjs edit between mousedown and dragstart maps the record — the restore never captures remote text (R2, collab critical path)', async () => {
+    const { editor, chipEls } = await mountWithTwoChips();
+    const positions: number[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) positions.push(pos);
+    });
+    const from = positions[0];
+    const to = positions[1] + 1;
+    act(() => {
+      editor.commands.setTextSelection({ from, to });
+    });
+    act(() => {
+      chipEls[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    // A co-editor inserts text INSIDE the recorded window (the shared space
+    // between the chips) mid-press.
+    const liveEditor = editor as unknown as {
+      view: { dispatch: (tr: unknown) => void; state: { tr: { insertText: (t: string, p: number) => unknown } } };
+    };
+    act(() => {
+      liveEditor.view.dispatch(
+        (liveEditor.view.state.tr as unknown as { insertText: (t: string, p: number) => { setMeta: (k: string, v: boolean) => unknown } })
+          // Space-padded so the whitespace invariant stays satisfied (no
+          // appended correction muddying the mapping under test).
+          .insertText(' zzzz ', from + 2)
+          .setMeta('addToHistory', false),
+      );
+    });
+    // browser-collapse simulation, then dragstart
+    const chipsNow: number[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) chipsNow.push(pos);
+    });
+    act(() => {
+      (editor.commands as unknown as { setNodeSelection: (p: number) => boolean }).setNodeSelection(chipsNow[0]);
+    });
+    const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
+      ?.parentElement as HTMLElement;
+    const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragstart, 'dataTransfer', {
+      value: { clearData: (): void => undefined, setData: (): void => undefined, effectAllowed: 'copyMove', files: [] },
+    });
+    act(() => {
+      wrapper.dispatchEvent(dragstart);
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    // The restored range must be the MAPPED window: still starts at the first
+    // chip, still ENDS after the second chip (which moved +4), i.e. chip B is
+    // still inside the drag and no boundary cuts through the remote text.
+    expect(editor.state.selection.from).toBe(from);
+    expect(editor.state.selection.to).toBe(to + 6);
+    expect(editor.state.selection.constructor.name).toContain('TextSelection');
+  });
+
   it('a mousedown on a chip OUTSIDE any selection records nothing — a later dragstart does not restore', async () => {
     const { editor, chipEls } = await mountWithTwoChips();
     act(() => {
@@ -671,6 +727,28 @@ describe('drop residue heal (D1)', () => {
       // byte-exact — the heal must not fire here at all.
       expect(editor.state.doc.textContent.startsWith('a   b')).toBe(true);
       void before;
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('a drag whose edge is TEXT strands no anchor on that side — the user word-gap space survives (R2)', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent('aa  bb').run(); // user double space between aa/bb
+      editor.chain().insertContent(referenceMentionContent(imgRef)).run();
+      editor.chain().insertContent('cc').run();
+      // 'aa␣␣bb␣▢␣cc' → drag [bb␣▢] (text-edged range) to the end. The space
+      // left of the gap is the USER's word gap (never this chip's anchor) and
+      // must stay; only the chip's stranded RIGHT anchor goes.
+      const p = onlyChipPos(editor);
+      const slice = editor.state.doc.slice(p - 3, p + 1); // 'bb ▢'
+      const tr = editor.state.tr;
+      tr.delete(p - 3, p + 1);
+      tr.insert(tr.mapping.map(editor.state.doc.content.size - 1), slice.content);
+      tr.setMeta('uiEvent', 'drop');
+      editor.view.dispatch(tr);
+      expect(editor.state.doc.textContent.startsWith('aa  cc')).toBe(true);
     } finally {
       editor.destroy();
     }

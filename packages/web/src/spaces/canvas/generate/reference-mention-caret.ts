@@ -63,8 +63,18 @@ import {
   resolveDeletionUnit,
 } from '@web/spaces/canvas/generate/reference-mention-whitespace';
 
+/** The chip-spanning selection recorded at mousedown for the upcoming drag. */
+interface DragRecord {
+  /** Recorded selection start (kept mapped through every transaction). */
+  from: number;
+  /** Recorded selection end (kept mapped through every transaction). */
+  to: number;
+}
+
 /** Identifies the caret/whitespace plugin (tests resolve the live plugin through it). */
-export const referenceMentionCaretKey = new PluginKey('referenceMentionCaret');
+export const referenceMentionCaretKey = new PluginKey<DragRecord | null>(
+  'referenceMentionCaret',
+);
 
 /**
  * Appends a transaction that adds any missing chip-flanking spaces, enforcing
@@ -182,6 +192,36 @@ function normalizeSelection(
  * (one-press arrow crossing, click snapping, selection normalization).
  * @returns The ProseMirror plugin.
  */
+/**
+ * Writes the drag record into the plugin state (a pure-meta transaction: no
+ * doc change, never an undo step). Skipped when the state already holds an
+ * equal value, so plain presses dispatch nothing.
+ * @param view - The editor view.
+ * @param record - The record to store, or null to clear.
+ */
+function setDragRecord(view: EditorView, record: DragRecord | null): void {
+  const current = referenceMentionCaretKey.getState(view.state) ?? null;
+  if (current === record) return;
+  if (
+    current !== null &&
+    record !== null &&
+    current.from === record.from &&
+    current.to === record.to
+  ) {
+    return;
+  }
+  view.dispatch(view.state.tr.setMeta(referenceMentionCaretKey, record));
+}
+
+/**
+ * Creates the chip whitespace/caret plugin (installed by the ReferenceMention
+ * extension): enforces the space-around-every-chip invariant + the drop-residue
+ * heal, deletes a chip plus its owned spaces as one unit, implements the D
+ * cursor model (one-press arrow crossing, click snapping, selection
+ * normalization), and carries the multi-chip drag record (mousedown record →
+ * dragstart restore) in its plugin state, mapped through every transaction.
+ * @returns The ProseMirror plugin.
+ */
 export function createReferenceMentionCaret(): Plugin {
   // Multi-chip selection dragging (item ⑦, user 2026-07-14): on a REAL
   // mousedown over a select-none atom the browser clears the native selection
@@ -193,9 +233,26 @@ export function createReferenceMentionCaret(): Plugin {
   // click-to-select went inert; adversarial R1 high) and RESTORES it at
   // dragstart, right before PM's own handler reads the selection to drag.
   // Plain clicks (no dragstart) are untouched; mouseup clears the record.
-  let recordedDragSelection: { from: number; to: number } | null = null;
-  return new Plugin({
+  // The record lives in PLUGIN STATE and is mapped through every transaction
+  // (adversarial R2: a remote Yjs edit landing between mousedown and dragstart
+  // drifted a raw closure record onto the WRONG content — collab critical path).
+  return new Plugin<DragRecord | null>({
     key: referenceMentionCaretKey,
+    state: {
+      init: (): DragRecord | null => null,
+      apply: (tr, value): DragRecord | null => {
+        const meta = tr.getMeta(referenceMentionCaretKey) as
+          | DragRecord
+          | null
+          | undefined;
+        if (meta !== undefined) return meta;
+        if (value === null || !tr.docChanged) return value;
+        return {
+          from: tr.mapping.map(value.from),
+          to: tr.mapping.map(value.to),
+        };
+      },
+    },
     appendTransaction(transactions, _oldState, newState): Transaction | null {
       // Structure first (whitespace invariant + drop-residue heal, one
       // combined transaction — see appendWhitespace for why they must share a
@@ -211,28 +268,36 @@ export function createReferenceMentionCaret(): Plugin {
         // inside a non-empty, non-node selection remembers the range for the
         // upcoming dragstart. Never preventDefault, never handle.
         mousedown: (view, event): boolean => {
-          recordedDragSelection = null;
-          if (event.button !== 0) return false;
+          if (event.button !== 0) {
+            setDragRecord(view, null);
+            return false;
+          }
           const target = targetElement(event.target);
-          if (target === null) return false;
-          const chipEl = target.closest('[data-reference-mention]');
-          if (chipEl === null) return false;
+          const chipEl = target?.closest('[data-reference-mention]') ?? null;
           const sel = view.state.selection;
-          if (sel.empty || sel instanceof NodeSelection) return false;
-          const pos = chipPosFromDom(view, chipEl);
-          if (pos === null || pos < sel.from || pos >= sel.to) return false;
-          recordedDragSelection = { from: sel.from, to: sel.to };
+          const pos = chipEl !== null ? chipPosFromDom(view, chipEl) : null;
+          const qualifies =
+            chipEl !== null &&
+            !sel.empty &&
+            !(sel instanceof NodeSelection) &&
+            pos !== null &&
+            pos >= sel.from &&
+            pos < sel.to;
+          setDragRecord(
+            view,
+            qualifies ? { from: sel.from, to: sel.to } : null,
+          );
           return false;
         },
-        mouseup: (): boolean => {
+        mouseup: (view): boolean => {
           // A completed click never consumed the record — drop it.
-          recordedDragSelection = null;
+          setDragRecord(view, null);
           return false;
         },
         dragstart: (view, event): boolean => {
-          const record = recordedDragSelection;
-          recordedDragSelection = null;
+          const record = referenceMentionCaretKey.getState(view.state) ?? null;
           if (record === null) return false;
+          setDragRecord(view, null);
           const target = targetElement(event.target);
           if (target === null) return false;
           const chipEl =
@@ -252,7 +317,8 @@ export function createReferenceMentionCaret(): Plugin {
             // The browser's native-clear collapsed the selection after the
             // press — restore it so PM's own dragstart handler (same native
             // listener chain, runs after this returns false) drags the WHOLE
-            // recorded range. A pure selection restore, never an undo step.
+            // recorded range (mapped through any transactions since the
+            // press). A pure selection restore, never an undo step.
             view.dispatch(
               view.state.tr
                 .setSelection(TextSelection.create(doc, from, to))
