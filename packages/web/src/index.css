@@ -39,6 +39,32 @@ body {
   overscroll-behavior: none;
 }
 
+/* Scrollbars (#1773, user-ratified 2026-07-14): every visible scroller uses
+   the ScrollArea primitive (components/ui/scroll-area.tsx) — a custom OVERLAY
+   scrollbar that appears only while scrolling, takes no layout space, fades
+   in/out, and responds to hover with a COLOR change only. Native scrollbars
+   cannot deliver that: macOS overlay bars widen with a track on hover, and
+   ::-webkit-scrollbar custom painting forces an always-visible
+   space-consuming classic bar. lint:no-inline-scrollbar enforces both halves
+   (no webkit/standard scrollbar re-declarations, no new native `overflow-*`
+   scrollers outside ScrollArea).
+
+   The rules below are the FALLBACK for whatever still scrolls natively (the
+   root document, anything not yet wrapped): thin + scheme-correct colors.
+   `color-scheme` on the theme roots (tokens.css) is the root fix for the
+   original bug — the theme is a data-theme class toggle the UA cannot see,
+   so Safari picked its LIGHT-scheme (black) overlay thumb on dark surfaces =
+   invisible. Historical note: the pre-#1773 per-component styling stacked
+   `scrollbar-width: thin` ON TOP of `::-webkit-scrollbar` rules, and per CSS
+   Scrollbars L1 a non-auto standard property DISABLES webkit styling — real
+   engine probes (Chrome CDP + Playwright WebKit, archived
+   2026-07-14-scrollbar-probe) confirmed those webkit rules were dead code in
+   BOTH engines. Hiding a native scrollbar entirely (SpaceTabBar) stays
+   allowed via scrollbar-width: none (class specificity beats this * rule). */
+* {
+  scrollbar-width: thin;
+}
+
 /* Sonner top-center fit-content centering override.
    sonner v2 ships:
      [data-sonner-toaster] { width: var(--width); }

@@ -83,21 +83,21 @@ export function chipAt(doc: PMNode, from: number): PMNode | null {
  *
  * The three UNstoppable shapes (the cursor may never sit on the chip side of an
  * owned space) are:
- * - `文本␣|▢` — right neighbour is a chip AND left neighbour is a space; OR
- * - `▢|␣文本` — left neighbour is a chip AND right neighbour is an owned
+ * - `text␣|▢` — right neighbour is a chip AND left neighbour is a space; OR
+ * - `▢|␣text` — left neighbour is a chip AND right neighbour is an owned
  *   (non-shared) space, i.e. the cell past the space is NOT another chip; and the
  *   derived `▢␣|▢` (after a shared space, before the next chip) which reduces to
  *   the first shape and therefore "does not exist" as a resting position.
  * Everything else — plain text, paragraph start / end, and the three stoppable
- * shapes `文本/行首/段首|␣▢`, `▢|␣▢` (shared), `▢␣|文本/段尾/行尾` — is stoppable.
+ * shapes `text/line-start/para-start|␣▢`, `▢|␣▢` (shared), `▢␣|text/para-end/line-end` — is stoppable.
  * @param doc - The document node.
  * @param pos - The candidate inline cursor position.
  * @returns True when the cursor may rest at `pos`.
  */
 export function isStoppable(doc: PMNode, pos: number): boolean {
-  // `文本␣|▢` / `▢␣|▢`: right neighbour is a chip, left neighbour is a space.
+  // `text␣|▢` / `▢␣|▢`: right neighbour is a chip, left neighbour is a space.
   if (chipAt(doc, pos) !== null && isSpaceAt(doc, pos - 1)) return false;
-  // `▢|␣文本`: left neighbour is a chip, right is its exclusive (non-shared) space.
+  // `▢|␣text`: left neighbour is a chip, right is its exclusive (non-shared) space.
   if (
     chipAt(doc, pos - 1) !== null &&
     isSpaceAt(doc, pos) &&
@@ -223,7 +223,7 @@ export function chipDeletionUnit(doc: PMNode, chipPos: number): DocRange {
  * chips the LEFT chip is targeted; its exclusive spaces go, the shared one stays
  * for the right chip. There is NO reverse-direction case (a chip to the RIGHT is
  * never deleted by Backspace) — under the D model the cursor never rests on the
- * chip side of an owned space, so `文本␣|▢` is unreachable and, if reached, is
+ * chip side of an owned space, so `text␣|▢` is unreachable and, if reached, is
  * left to native (which just removes the space, re-added by the invariant).
  * @param doc - The document node.
  * @param pos - The collapsed cursor position.
@@ -243,7 +243,7 @@ function targetChipBackward(doc: PMNode, pos: number): number | null {
  * chip owning the space directly after the cursor. For a shared space the RIGHT
  * chip is targeted; its exclusive spaces go, the shared one stays for the left
  * chip. Mirror of {@link targetChipBackward}: there is NO reverse-direction case
- * (a chip to the LEFT is never deleted by Delete) — the `▢|␣文本` position is
+ * (a chip to the LEFT is never deleted by Delete) — the `▢|␣text` position is
  * unstoppable under the D model and, if reached, is left to native.
  * @param doc - The document node.
  * @param pos - The collapsed cursor position.

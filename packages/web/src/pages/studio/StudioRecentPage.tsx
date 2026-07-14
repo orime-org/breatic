@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 import { Loader2 } from 'lucide-react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { studiosApi } from '@web/data/api/studios';
 import { useTranslation } from '@web/i18n/use-translation';
 import { RecentLanding } from '@web/pages/studio/recent/RecentLanding';
@@ -36,22 +37,24 @@ export default function StudioRecentPage(): React.JSX.Element {
     [recentQuery.data],
   );
 
-  return (
-    <div className='h-full overflow-auto'>
-      {recentQuery.isPending ? (
-        <div className='flex h-full items-center justify-center'>
-          <Loader2
-            className='h-5 w-5 animate-spin text-muted-foreground'
-            aria-label={t('loading')}
-          />
-        </div>
-      ) : recentQuery.isError ? (
-        <div className='flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground'>
-          {t('studio.recent.loadError')}
-        </div>
-      ) : (
-        <RecentLanding projects={projects} collections={[]} />
-      )}
+  // Pending / error center with h-full OUTSIDE the ScrollArea — Radix's
+  // viewport wraps children in an auto-height block, so percentage-height
+  // centering must not live inside it. Only the loaded landing scrolls
+  // (#1773 overlay scrollbar: scroll-only, no layout space, hover = color).
+  return recentQuery.isPending ? (
+    <div className='flex h-full items-center justify-center'>
+      <Loader2
+        className='h-5 w-5 animate-spin text-muted-foreground'
+        aria-label={t('loading')}
+      />
     </div>
+  ) : recentQuery.isError ? (
+    <div className='flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground'>
+      {t('studio.recent.loadError')}
+    </div>
+  ) : (
+    <ScrollArea className='h-full'>
+      <RecentLanding projects={projects} collections={[]} />
+    </ScrollArea>
   );
 }

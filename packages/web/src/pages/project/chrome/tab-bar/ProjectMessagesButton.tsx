@@ -16,6 +16,7 @@ import {
   type ProjectRole,
 } from '@breatic/shared';
 import { activitiesApi } from '@web/data/api/activities';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Sheet,
   SheetContent,
@@ -352,99 +353,103 @@ export function ProjectMessagesButton({
             {t('activity.description')}
           </SheetDescription>
         </header>
-        <ul
-          className='flex flex-1 flex-col overflow-y-auto'
-          role='list'
-          data-testid='project-messages-list'
-        >
-          {entries.length === 0 ? (
-            <li className='px-4 py-3 text-sm text-muted-foreground'>
-              {feed.isLoading
-                ? t('activity.loading')
-                : t('spaces.history.empty')}
-            </li>
-          ) : (
-            entries.map((m) => {
-              const rel = relativeTime(m.createdAt);
-              const alreadyRestored =
-                m.type === 'space:deleted' && m.restored === true;
-              const canRestore =
-                isOwner &&
-                m.type === 'space:deleted' &&
-                Boolean(m.spaceId) &&
-                !alreadyRestored;
-              const showRestoredBadge =
-                isOwner && m.type === 'space:deleted' && alreadyRestored;
-              const msg = entryMessage(m);
-              return (
-                <li
-                  key={m.id}
-                  role='listitem'
-                  data-testid={`project-messages-entry-${m.id}`}
-                  className='flex items-start gap-3 border-b border-border px-4 py-3 last:border-b-0'
-                >
-                  <span
-                    className={cn(
-                      'mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full',
-                      TYPE_DOT_CLASS[m.type],
-                    )}
-                    aria-hidden
-                    data-testid={`project-messages-dot-${m.id}`}
-                  />
-                  {m.type === 'generation:failed' ? (
-                    <AlertTriangle
-                      className='mt-0.5 h-4 w-4 shrink-0 text-status-warning-foreground'
+        {/* ScrollArea (#1773): overlay scrollbar — appears only while
+            scrolling, no layout space, hover changes color only. */}
+        <ScrollArea className='min-h-0 flex-1'>
+          <ul
+            className='flex flex-col'
+            role='list'
+            data-testid='project-messages-list'
+          >
+            {entries.length === 0 ? (
+              <li className='px-4 py-3 text-sm text-muted-foreground'>
+                {feed.isLoading
+                  ? t('activity.loading')
+                  : t('spaces.history.empty')}
+              </li>
+            ) : (
+              entries.map((m) => {
+                const rel = relativeTime(m.createdAt);
+                const alreadyRestored =
+                  m.type === 'space:deleted' && m.restored === true;
+                const canRestore =
+                  isOwner &&
+                  m.type === 'space:deleted' &&
+                  Boolean(m.spaceId) &&
+                  !alreadyRestored;
+                const showRestoredBadge =
+                  isOwner && m.type === 'space:deleted' && alreadyRestored;
+                const msg = entryMessage(m);
+                return (
+                  <li
+                    key={m.id}
+                    role='listitem'
+                    data-testid={`project-messages-entry-${m.id}`}
+                    className='flex items-start gap-3 border-b border-border px-4 py-3 last:border-b-0'
+                  >
+                    <span
+                      className={cn(
+                        'mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full',
+                        TYPE_DOT_CLASS[m.type],
+                      )}
                       aria-hidden
+                      data-testid={`project-messages-dot-${m.id}`}
                     />
-                  ) : null}
-                  <div className='flex min-w-0 flex-1 flex-col gap-1'>
-                    <p className='text-sm leading-relaxed text-foreground'>
-                      {t(msg.key, msg.params)}
-                    </p>
-                    <p className='text-2xs tabular-nums text-muted-foreground'>
-                      {t(rel.key, rel.params)}
-                    </p>
-                  </div>
-                  {canRestore ? (
-                    <button
-                      type='button'
-                      onClick={() => m.spaceId && onClickRestore(m.spaceId)}
-                      disabled={busyId === m.spaceId}
-                      data-testid={`project-messages-restore-${m.id}`}
-                      className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover:bg-accent disabled:opacity-50'
-                    >
-                      <RotateCcw className='h-3 w-3' aria-hidden />
-                      {t('spaces.history.action.restore')}
-                    </button>
-                  ) : showRestoredBadge ? (
-                    <button
-                      type='button'
-                      disabled
-                      aria-disabled
-                      data-testid={`project-messages-restored-badge-${m.id}`}
-                      className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-muted-foreground opacity-60 cursor-not-allowed'
-                    >
-                      <RotateCcw className='h-3 w-3' aria-hidden />
-                      {t('spaces.history.action.restored')}
-                    </button>
-                  ) : null}
-                </li>
-              );
-            })
-          )}
-          {/* Tail sentinel: entering the viewport loads the next page. */}
-          {feed.hasNextPage ? (
-            <li
-              ref={sentinelRef}
-              role='listitem'
-              aria-hidden
-              data-testid='project-messages-load-more'
-              className='px-4 py-2 text-center text-2xs text-muted-foreground'
-            >
-              {feed.isFetchingNextPage ? t('activity.loading') : ''}
-            </li>
-          ) : null}
-        </ul>
+                    {m.type === 'generation:failed' ? (
+                      <AlertTriangle
+                        className='mt-0.5 h-4 w-4 shrink-0 text-status-warning-foreground'
+                        aria-hidden
+                      />
+                    ) : null}
+                    <div className='flex min-w-0 flex-1 flex-col gap-1'>
+                      <p className='text-sm leading-relaxed text-foreground'>
+                        {t(msg.key, msg.params)}
+                      </p>
+                      <p className='text-2xs tabular-nums text-muted-foreground'>
+                        {t(rel.key, rel.params)}
+                      </p>
+                    </div>
+                    {canRestore ? (
+                      <button
+                        type='button'
+                        onClick={() => m.spaceId && onClickRestore(m.spaceId)}
+                        disabled={busyId === m.spaceId}
+                        data-testid={`project-messages-restore-${m.id}`}
+                        className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover:bg-accent disabled:opacity-50'
+                      >
+                        <RotateCcw className='h-3 w-3' aria-hidden />
+                        {t('spaces.history.action.restore')}
+                      </button>
+                    ) : showRestoredBadge ? (
+                      <button
+                        type='button'
+                        disabled
+                        aria-disabled
+                        data-testid={`project-messages-restored-badge-${m.id}`}
+                        className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-muted-foreground opacity-60 cursor-not-allowed'
+                      >
+                        <RotateCcw className='h-3 w-3' aria-hidden />
+                        {t('spaces.history.action.restored')}
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              })
+            )}
+            {/* Tail sentinel: entering the viewport loads the next page. */}
+            {feed.hasNextPage ? (
+              <li
+                ref={sentinelRef}
+                role='listitem'
+                aria-hidden
+                data-testid='project-messages-load-more'
+                className='px-4 py-2 text-center text-2xs text-muted-foreground'
+              >
+                {feed.isFetchingNextPage ? t('activity.loading') : ''}
+              </li>
+            ) : null}
+          </ul>
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   );

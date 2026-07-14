@@ -6,6 +6,7 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import type { ProjectSummary } from '@breatic/shared';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Tabs, TabsContent } from '@web/components/ui/tabs';
 import { studiosApi } from '@web/data/api/studios';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -143,9 +144,11 @@ export default function StudioContainerPage(): React.JSX.Element {
         // works empty state, NO tabs (spec §6.3). No studio data is rendered.
         <div className='flex w-full min-h-0 flex-1 flex-col'>
           <StudioHeader studio={view.studio} />
-          <div className='min-h-0 flex-1 overflow-auto'>
+          {/* ScrollArea (#1773): overlay scrollbar — appears only while
+              scrolling, no layout space, hover changes color only. */}
+          <ScrollArea className='min-h-0 flex-1'>
             <NonMemberView />
-          </div>
+          </ScrollArea>
         </div>
       ) : (
         <Tabs
@@ -162,7 +165,7 @@ export default function StudioContainerPage(): React.JSX.Element {
               members: members.length,
             }}
           />
-          <div className='min-h-0 flex-1 overflow-auto'>
+          <ScrollArea className='min-h-0 flex-1'>
             <div className={`${CENTER_COLUMN} pt-[18px] pb-12`}>
               <TabsContent value='projects'>
                 <ProjectsTab
@@ -201,7 +204,7 @@ export default function StudioContainerPage(): React.JSX.Element {
                 <SettingsTab studio={view.studio} members={members} />
               </TabsContent>
             </div>
-          </div>
+          </ScrollArea>
         </Tabs>
       )}
     </div>

@@ -153,6 +153,16 @@ jobs:
         # (components/ui) exempt per ADR 14. See scripts/lint-active-border.sh.
         run: pnpm lint:active-border
 
+      - name: Lint no-inline-scrollbar (native overlay scrollbars)
+        # Scrollbars are native overlay repo-wide (#1773, user-ratified
+        # 2026-07-14): visible only while scrolling, no layout space, thin,
+        # scheme-correct via color-scheme. Component-level
+        # ::-webkit-scrollbar paint rules are banned (they force a classic
+        # space-consuming scrollbar), as are scrollbar-width:thin /
+        # scrollbar-color re-declarations. Hiding via scrollbar-width:none
+        # stays allowed. See scripts/lint-no-inline-scrollbar.sh.
+        run: pnpm lint:no-inline-scrollbar
+
       - name: Lint overlay surface (popover panel unification)
         # Every popover/overlay panel surface uses bg-popover (tooltip inverse
         # is the only exception): bans bg-elevated / bg-card as a panel bg in

@@ -119,6 +119,19 @@ SH_FILES=$(find scripts \
   -not -name 'lint-no-cjk.sh' \
   2>/dev/null || true)
 
+# Matcher self-test — MUST run before the scan. The multibyte character
+# class is locale-dependent, and the scan pipeline suppresses grep errors
+# (`2>/dev/null || true`) because "no match" and "error" share that path:
+# on 2026-07-14 the CI runner's grep failed the class SILENTLY and the
+# guard reported clean while production source carried CJK comments (caught
+# only by a local macOS run). If this environment's grep cannot match a
+# known CJK sample, refuse to report anything — loud misconfiguration beats
+# a false green.
+if ! printf 'x\xe6\x96\x87x' | grep -qE "$CJK_REGEX"; then
+  echo "lint:no-cjk — matcher self-test FAILED: this grep/locale cannot match the CJK character class; refusing to scan (a clean result would be meaningless)" >&2
+  exit 2
+fi
+
 MATCHES=$(
   printf '%s\n%s\n%s\n' "$FILES" "$YAML_FILES" "$SH_FILES" \
     | grep -vE '^$' \

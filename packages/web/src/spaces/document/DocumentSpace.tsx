@@ -5,6 +5,7 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import * as React from 'react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import type { SpaceBodyProps } from '@web/spaces';
 import { DocumentToolbar } from '@web/spaces/document/DocumentToolbar';
 
@@ -49,13 +50,15 @@ export function DocumentSpace({
       className='flex h-full w-full flex-col bg-background'
     >
       <DocumentToolbar editor={editor} />
-      <div className='flex-1 overflow-auto'>
+      {/* ScrollArea (#1773): overlay scrollbar — appears only while
+          scrolling, no layout space, hover changes color only. */}
+      <ScrollArea className='flex-1'>
         <EditorContent
           editor={editor}
           data-testid='document-editor-content'
           className='prose prose-sm mx-auto max-w-3xl px-6 py-4 focus:outline-none'
         />
-      </div>
+      </ScrollArea>
     </div>
   );
 }

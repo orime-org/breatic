@@ -12,6 +12,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { cn } from '@web/lib/utils';
 import { ModelIcon } from '@web/spaces/canvas/generate/ModelIcon';
 
@@ -63,37 +64,42 @@ export const ModelPicker = React.memo(function ModelPicker({
       <PopoverContent
         side='top'
         align='start'
-        className='max-h-52 w-auto min-w-[13rem] max-w-[20rem] overflow-auto p-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/40 [&::-webkit-scrollbar-track]:bg-transparent'
+        className='w-auto min-w-[13rem] max-w-[20rem] p-0'
       >
-        {/* Same option pattern as LangSwitcher / ThemeToggle (spec §9.4): a
-            gap-0.5 column of ghost menu-item Buttons — the gap keeps the hover
-            and selected highlights visually separate. */}
-        <div className='flex flex-col gap-0.5'>
-          {models.map((m) => (
-            <Button
-              key={m.name}
-              variant='ghost'
-              size='menu-item'
-              aria-pressed={m.name === value}
-              data-testid={`generate-model-option-${m.name}`}
-              className={cn('justify-start', m.name === value && 'bg-accent')}
-              onClick={() => {
-                onChange(m.name);
-                setOpen(false);
-              }}
-            >
-              <Check
-                className={`h-3.5 w-3.5 shrink-0 ${m.name === value ? 'opacity-100' : 'opacity-0'}`}
-                aria-hidden='true'
-              />
-              <ModelIcon name={m.icon} className='h-4 w-4 shrink-0' />
-              {/* truncate: the catalog puts no length cap on display_name and
-                  Button's base carries whitespace-nowrap — unbounded, one long
-                  name would stretch the popover past the viewport. */}
-              <span className='min-w-0 truncate'>{m.display_name}</span>
-            </Button>
-          ))}
-        </div>
+        {/* ScrollArea (#1773): overlay scrollbar (scroll-only, no layout
+            space, hover = color change). The height cap and inner padding
+            live on the viewport — the element that actually scrolls. */}
+        <ScrollArea viewportClassName='max-h-52 p-1'>
+          {/* Same option pattern as LangSwitcher / ThemeToggle (spec §9.4): a
+              gap-0.5 column of ghost menu-item Buttons — the gap keeps the hover
+              and selected highlights visually separate. */}
+          <div className='flex flex-col gap-0.5'>
+            {models.map((m) => (
+              <Button
+                key={m.name}
+                variant='ghost'
+                size='menu-item'
+                aria-pressed={m.name === value}
+                data-testid={`generate-model-option-${m.name}`}
+                className={cn('justify-start', m.name === value && 'bg-accent')}
+                onClick={() => {
+                  onChange(m.name);
+                  setOpen(false);
+                }}
+              >
+                <Check
+                  className={`h-3.5 w-3.5 shrink-0 ${m.name === value ? 'opacity-100' : 'opacity-0'}`}
+                  aria-hidden='true'
+                />
+                <ModelIcon name={m.icon} className='h-4 w-4 shrink-0' />
+                {/* truncate: the catalog puts no length cap on display_name and
+                    Button's base carries whitespace-nowrap — unbounded, one long
+                    name would stretch the popover past the viewport. */}
+                <span className='min-w-0 truncate'>{m.display_name}</span>
+              </Button>
+            ))}
+          </div>
+        </ScrollArea>
       </PopoverContent>
     </Popover>
   );
