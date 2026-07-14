@@ -301,13 +301,13 @@ body {
      between wrapped lines (user 2026-07-14 item 10). Half-leading vertical
      padding on a non-replaced inline paints background WITHOUT affecting
      layout, so adjacent lines MEET like the native paint. Sized to the real
-     measured gap (text-sm: Inter content box ~15px in an 18px line pitch →
-     ~1.5px per side ≈ 0.11em) — anything larger makes the translucent
-     fragments OVERLAP and double-composite into darker stripes at every wrap
-     boundary (adversarial round, pixel-verified). Chip wrappers are excluded
+     measured gap (text-sm 13px/18px: shipped Inter's content box measures
+     15.5px in the 18px pitch → 1.25px per side ≈ 0.096em) — anything larger makes the translucent fragments
+     OVERLAP and double-composite into darker stripes at every wrap boundary
+     (adversarial rounds, pixel-verified twice). Chip wrappers are excluded
      above (atomic boxes WOULD grow from vertical padding). */
-  padding-top: 0.11em;
-  padding-bottom: 0.11em;
+  padding-top: 0.096em;
+  padding-bottom: 0.096em;
 }
 /* Remote collaborator carets in the generate prompt (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render

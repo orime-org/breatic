@@ -333,6 +333,57 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     );
   });
 
+  it('keeps the dim after a local transaction rebuilds the caret from a stale thunk (resurrection race)', async () => {
+    const { awareness, editorEl } = await mountWithAwareness(true);
+    const doc = awareness.doc;
+    const fragment = doc.getXmlFragment('prompt');
+    const text = (fragment.get(0) as Y.XmlElement).get(0) as Y.XmlText;
+    const anchor = Y.createRelativePositionFromTypeIndex(text, 3);
+    const REMOTE_CLIENT = awareness.clientID + 1;
+    /**
+     * Pushes the remote client's parked-cursor state with the given focus flag.
+     * @param focused - The remote client's published focus state.
+     */
+    const pushRemote = (focused: boolean): void => {
+      const states = new Map(awareness.getStates());
+      states.set(REMOTE_CLIENT, {
+        user: { name: 'Grace', color: '#c2298a', hue: 'pink', focused },
+        cursor: {
+          anchor: JSON.parse(JSON.stringify(Y.relativePositionToJSON(anchor))) as unknown,
+          head: JSON.parse(JSON.stringify(Y.relativePositionToJSON(anchor))) as unknown,
+        },
+      });
+      act(() => {
+        awareness.states = states;
+        awareness.emit('change', [
+          { added: [], updated: [REMOTE_CLIENT], removed: [] },
+          'remote',
+        ]);
+      });
+    };
+    pushRemote(true);
+    await waitFor(() =>
+      expect(editorEl.querySelector('.collaboration-carets__caret')).not.toBeNull(),
+    );
+    // Flip to blurred, then IMMEDIATELY land a local doc change (the yCursor
+    // refresh is batched into setTimeout(0)) — the widget rebuilt from the
+    // stale pre-flip thunk must still end up dimmed via the transaction resync.
+    pushRemote(false);
+    act(() => {
+      doc.transact(() => {
+        text.insert(0, 'Z'); // structural change before the widget
+      });
+    });
+    await new Promise((r) => setTimeout(r, 30)); // flush the batched refresh
+    await waitFor(() => {
+      const caret = editorEl.querySelector('.collaboration-carets__caret');
+      expect(caret).not.toBeNull();
+      expect(
+        caret?.classList.contains('collaboration-carets__caret--blurred'),
+      ).toBe(true);
+    });
+  });
+
   it('renders a remote client caret with the remote user name and color', async () => {
     const { awareness, editorEl } = await mountWithAwareness(true);
     // Simulate ANOTHER client on the same doc: y-prosemirror keys remote

@@ -270,9 +270,18 @@ export const PromptEditor = React.forwardRef<
         });
     };
     awareness.on('change', applyDim);
+    // ALSO re-sync after every editor transaction: the yCursorPlugin refresh is
+    // BATCHED into a setTimeout(0), and a local transaction inside that window
+    // rebuilds a caret widget from a thunk that captured the PRE-FLIP user —
+    // its build-time class would overwrite applyDim's correction and stick
+    // (an away client's heartbeats are deep-equal → 'update' only, never
+    // 'change', so nothing else would heal it). Reconciling on transaction
+    // covers every DOM rebuild path (adversarial round 2, jsdom-reproduced).
+    editor.on('transaction', applyDim);
     applyDim();
     return (): void => {
       awareness.off('change', applyDim);
+      editor.off('transaction', applyDim);
     };
   }, [editor, caretProvider]);
   // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
