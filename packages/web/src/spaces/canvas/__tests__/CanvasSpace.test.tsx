@@ -334,13 +334,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     clickPane(pane as Element);
     expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
     expect(useCanvasStore.getState().referencePickForNodeId).toBe('target');
-    // The banner is the exclusive-session mode indicator and reads in palette
-    // violet — a SOLID popover-mixed surface, not the transparent group tint
-    // (batch-2 item 11).
+    // The banner is neutral card chrome (user 2026-07-14, reversing the
+    // batch-2 item-11 violet tint) — the violet pick glow on candidate nodes
+    // stays the mode indicator.
     const banner = screen.getByTestId('reference-pick-banner');
-    expect(banner.style.backgroundColor).toContain('--color-palette-violet');
-    expect(banner.style.backgroundColor).toContain('--color-popover');
-    expect(banner.style.borderColor).toContain('--color-palette-violet-border');
+    expect(banner.className).toContain('bg-card');
+    expect(banner.className).toContain('border-border');
+    expect(banner.style.backgroundColor).toBe('');
   });
 
   it('pane click with the panel open but NOT picking closes the panel (item 6b)', () => {
