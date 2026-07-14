@@ -48,6 +48,7 @@ import {
   TextSelection,
 } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 
 import {
   chipAt,
@@ -57,6 +58,7 @@ import {
   isSpaceAt,
   isStoppable,
   nearestStoppable,
+  planDropResidueHeal,
   planWhitespaceInsertions,
   resolveDeletionUnit,
 } from '@web/spaces/canvas/generate/reference-mention-whitespace';
@@ -81,10 +83,55 @@ function appendWhitespace(
 ): Transaction | null {
   if (!transactions.some((tr) => tr.docChanged)) return null;
   const inserts = planWhitespaceInsertions(newState.doc);
-  if (inserts.length === 0) return null;
+  // The drop-residue heal (D1, user 2026-07-14) MUST ride the same appended
+  // transaction: ProseMirror hands each later appendTransaction round only the
+  // trs added SINCE the plugin's previous call (trs.slice(n)), so the
+  // `uiEvent: 'drop'` transaction is only visible in the round that also adds
+  // the landing-side spaces — a separate later pass would never see it.
+  const heal = planDropResidueHeal(transactions, newState.doc);
+  if (inserts.length === 0 && heal === null) return null;
+  // Apply all edits highest-position-first so lower positions stay valid.
+  const ops: { pos: number; run: (tr: Transaction) => void }[] = [
+    ...inserts.map((pos) => ({
+      pos,
+      run: (tr: Transaction): void => {
+        tr.insertText(' ', pos);
+      },
+    })),
+  ];
+  if (heal !== null) {
+    ops.push({
+      pos: heal.from,
+      run: (tr: Transaction): void => {
+        tr.delete(heal.from, heal.to);
+      },
+    });
+  }
+  ops.sort((a, b) => b.pos - a.pos);
   const tr = newState.tr;
-  for (const pos of inserts) tr.insertText(' ', pos);
+  for (const op of ops) op.run(tr);
   return tr;
+}
+
+/**
+ * The document position of the chip rendered by `chipEl`, or null. Resolved
+ * through posAtDOM (pure DOM-tree walk, layout-free); the result is verified
+ * against the doc since posAtDOM's convention for uneditable leaves differs by
+ * a step depending on which wrapper element is passed.
+ * @param view - The editor view.
+ * @param chipEl - An element inside the chip's NodeView.
+ * @returns The chip's start position, or null.
+ */
+function chipPosFromDom(view: EditorView, chipEl: Element): number | null {
+  let raw: number;
+  try {
+    raw = view.posAtDOM(chipEl, 0);
+  } catch {
+    return null;
+  }
+  if (chipAt(view.state.doc, raw) !== null) return raw;
+  if (chipAt(view.state.doc, raw - 1) !== null) return raw - 1;
+  return null;
 }
 
 /**
@@ -124,14 +171,58 @@ export function createReferenceMentionCaret(): Plugin {
   return new Plugin({
     key: referenceMentionCaretKey,
     appendTransaction(transactions, _oldState, newState): Transaction | null {
-      // Whitespace first (structure): once the doc is stable, the next pass runs
-      // normalization on the settled positions.
+      // Structure first (whitespace invariant + drop-residue heal, one
+      // combined transaction — see appendWhitespace for why they must share a
+      // round), then normalization on the settled positions.
       return (
         appendWhitespace(transactions, newState) ??
         normalizeSelection(transactions, newState)
       );
     },
     props: {
+      // Multi-chip selection dragging (item ⑦, user 2026-07-14): two chains
+      // collapse a chip-spanning TextSelection before PM's dragstart handler
+      // can drag it as a whole — the browser clears the native selection on
+      // mousedown over a select-none atom, and tiptap's NodeView.onDragStart
+      // (React-side) overwrites the selection with a single-chip
+      // NodeSelection. Both are cut here; PM's own handlers still run
+      // (both handlers return false).
+      handleDOMEvents: {
+        mousedown: (view, event): boolean => {
+          const target = event.target;
+          if (!(target instanceof Element)) return false;
+          const chipEl = target.closest('[data-reference-mention]');
+          if (chipEl === null) return false;
+          const sel = view.state.selection;
+          if (sel.empty || !(sel instanceof TextSelection)) return false;
+          const pos = chipPosFromDom(view, chipEl);
+          if (pos === null || pos < sel.from || pos >= sel.to) return false;
+          // Keep the native selection alive so the browser drags the range.
+          event.preventDefault();
+          return false;
+        },
+        dragstart: (view, event): boolean => {
+          const target = event.target;
+          if (!(target instanceof Element)) return false;
+          // The drag source is the chip's OUTER wrapper (it holds
+          // draggable=true), so the chip element is inside the target.
+          const chipEl =
+            target.closest('[data-reference-mention]') ??
+            target.querySelector('[data-reference-mention]');
+          if (chipEl === null) return false;
+          const sel = view.state.selection;
+          if (sel.empty || !(sel instanceof TextSelection)) return false;
+          const pos = chipPosFromDom(view, chipEl);
+          if (pos === null || pos < sel.from || pos >= sel.to) return false;
+          // Stop the event from reaching React's root listener: tiptap's
+          // NodeView.onDragStart would overwrite the selection with a
+          // single-chip NodeSelection (and stamp a single-chip drag image).
+          // PM's dragstart handler (same native listener chain, runs after
+          // this returns false) then drags the WHOLE selection.
+          event.stopPropagation();
+          return false;
+        },
+      },
       handleKeyDown: (view, event): boolean => {
         const sel = view.state.selection;
         // Node-selected chip (click-to-select) + Backspace/Delete: delete it as a

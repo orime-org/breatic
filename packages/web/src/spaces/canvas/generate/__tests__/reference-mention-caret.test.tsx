@@ -642,12 +642,31 @@ describe('reference-mention caret plugin — wiring + retained interactions', ()
     }
   });
 
-  it('installs NO mousedown takeover — native drag-selection owns the pointer (real spaces everywhere)', () => {
+  it('never TAKES OVER the pointer — native drag-selection stays in charge (real spaces everywhere)', () => {
+    // Evolution note: the #323-era guard asserted NO mousedown handler at all
+    // (the separator-era drag-selection takeover was proven dead and deleted).
+    // Item ⑦ (2026-07-14) legitimately added a mousedown handler back with a
+    // DIFFERENT contract: it only preventDefault()s to keep the native
+    // selection alive when the press lands on a chip INSIDE the selection, and
+    // ALWAYS returns false — PM's own pointer handling (and the browser's
+    // drag-selection over plain text) is never taken over. This pins that
+    // contract instead of the handler's absence.
     const editor = makeEditor();
     try {
+      editor.chain().insertContent('plain words ').run();
       editor.chain().insertContent(referenceMentionContent(chipA)).run();
       const plugin = referenceMentionCaretKey.get(editor.state);
-      expect(plugin?.props.handleDOMEvents?.mousedown).toBeUndefined();
+      const handler = plugin?.props.handleDOMEvents?.mousedown as
+        | ((view: unknown, event: MouseEvent) => boolean)
+        | undefined;
+      expect(handler).toBeDefined();
+      // A press on PLAIN TEXT: not handled, not defaultPrevented — the
+      // browser's native drag-selection owns the pointer.
+      const textEl = editor.view.dom.querySelector('p') as HTMLElement;
+      const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+      Object.defineProperty(down, 'target', { value: textEl });
+      expect(handler?.(editor.view, down)).toBe(false);
+      expect(down.defaultPrevented).toBe(false);
     } finally {
       editor.destroy();
     }

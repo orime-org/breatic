@@ -28,6 +28,8 @@
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Transaction } from '@tiptap/pm/state';
+import { ReplaceStep } from '@tiptap/pm/transform';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 
@@ -347,4 +349,92 @@ export function planCascadeDeletion(
       ? { from: r.from, to: r.to + 1 }
       : r;
   });
+}
+
+/**
+ * Plans the source-gap heal after a chip is MOVED by drag-and-drop (D1, user
+ * 2026-07-14): ProseMirror's drop-move deletes only the dragged nodes, leaving
+ * the chip's owned spaces behind — a double space mid-text, or a stray
+ * leading / trailing space at a paragraph edge, that would reach the backend
+ * prompt. Scans `uiEvent: 'drop'` transactions for deletion steps that removed
+ * a chip, maps each gap into the CURRENT doc, and returns the one-space
+ * deletion that heals it. A space still needed by an adjacent chip (its owned /
+ * shared anchor) is never touched; when two spaces collapsed together the
+ * survivor doubles as the neighbour's anchor, so deleting either is safe.
+ * Naturally idempotent: after the heal the trigger shape no longer matches
+ * (the appendTransaction chain re-runs this until it returns null).
+ * @param transactions - The transactions that produced the current state.
+ * @param doc - The CURRENT document.
+ * @returns A one-space deletion range, or null when nothing needs healing.
+ */
+export function planDropResidueHeal(
+  transactions: readonly Transaction[],
+  doc: PMNode,
+): DocRange | null {
+  for (let t = 0; t < transactions.length; t += 1) {
+    const tr = transactions[t];
+    if (tr.getMeta('uiEvent') !== 'drop') continue;
+    for (let i = 0; i < tr.steps.length; i += 1) {
+      const step = tr.steps[i];
+      if (!(step instanceof ReplaceStep)) continue;
+      // Pure deletions only (the drop's move-delete half).
+      if (step.from === step.to || step.slice.size !== 0) continue;
+      let removedChip = false;
+      tr.docs[i].nodesBetween(step.from, step.to, (node) => {
+        if (isChip(node)) removedChip = true;
+      });
+      if (!removedChip) continue;
+      let gap = tr.mapping.slice(i + 1).map(step.from);
+      for (let j = t + 1; j < transactions.length; j += 1) {
+        gap = transactions[j].mapping.map(gap);
+      }
+      const heal = residueDeletionAt(doc, gap);
+      if (heal !== null) return heal;
+    }
+  }
+  return null;
+}
+
+/**
+ * The one-space deletion healing the residue at a chip-departure gap, or null.
+ * Shapes: `␣␣` mid-text collapses to one (deleting either half is equivalent,
+ * and the survivor keeps serving any adjacent chip); a stray space at a
+ * paragraph START/END goes entirely — unless a chip right next to it still
+ * needs it as its anchor.
+ * @param doc - The current document.
+ * @param gap - The departure position in current coordinates.
+ * @returns The deletion range, or null.
+ */
+function residueDeletionAt(doc: PMNode, gap: number): DocRange | null {
+  if (gap < 0 || gap > doc.content.size) return null;
+  const $gap = doc.resolve(gap);
+  if (!$gap.parent.isTextblock) return null;
+  const left = isSpaceAt(doc, gap - 1);
+  const right = isSpaceAt(doc, gap);
+  if (left && right) {
+    // A space pair. KEEP one only when something still needs it: plain text on
+    // BOTH outer sides (the survivor is the word gap) or an adjacent chip (the
+    // survivor is its anchor). A pair against a paragraph edge is pure residue
+    // (the departed chip owned both) and goes entirely.
+    const leftEdge = doc.resolve(gap - 1).parentOffset === 0;
+    const rightEdge =
+      doc.resolve(gap + 1).parentOffset === $gap.parent.content.size;
+    const leftChip = chipAt(doc, gap - 2) !== null;
+    const rightChip = chipAt(doc, gap + 1) !== null;
+    const leftText = !leftEdge && !leftChip;
+    const rightText = !rightEdge && !rightChip;
+    const keepOne = leftChip || rightChip || (leftText && rightText);
+    return keepOne
+      ? { from: gap, to: gap + 1 }
+      : { from: gap - 1, to: gap + 1 };
+  }
+  const atStart = $gap.parentOffset === 0;
+  const atEnd = $gap.parentOffset === $gap.parent.content.size;
+  if (atStart && right && chipAt(doc, gap + 1) === null) {
+    return { from: gap, to: gap + 1 };
+  }
+  if (atEnd && left && chipAt(doc, gap - 2) === null) {
+    return { from: gap - 1, to: gap };
+  }
+  return null;
 }

@@ -183,3 +183,295 @@ describe('reference chip — PM dragstart pipeline (item ⑥)', () => {
     expect(first?.type.name).toBe(REFERENCE_MENTION_NODE);
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// Multi-chip selection dragging (item ⑦, user 2026-07-14): a TextSelection
+// spanning several chips must drag AS A WHOLE. Two collapse chains break it:
+// tiptap's NodeView.onDragStart unconditionally overwrites the selection with
+// a single-chip NodeSelection (it only runs once a [data-drag-handle] exists —
+// enabled by item ⑥), and the browser clears the native selection on a real
+// mousedown over a select-none atom. The plugin kills both: dragstart inside a
+// chip-containing TextSelection stops propagation (React never sees it), and
+// mousedown on a chip inside the selection preventDefault()s the native clear.
+
+import { Editor as CoreEditor } from '@tiptap/core';
+import { Collaboration } from '@tiptap/extension-collaboration';
+import { Document as PMDocument } from '@tiptap/extension-document';
+import { Paragraph } from '@tiptap/extension-paragraph';
+import { Text as PMText } from '@tiptap/extension-text';
+
+import {
+  ReferenceMention,
+  referenceMentionContent,
+} from '@web/spaces/canvas/generate/reference-mention';
+import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
+
+const chipRefB: ReferenceRailItem = {
+  refId: 'b->me',
+  sourceNodeId: 'b',
+  sourceNodeType: 'image',
+  sourceNodeName: 'B',
+  thumbnail: 'b.png',
+};
+
+/**
+ * Mounts a PromptEditor with two references and inserts both chips (adjacent,
+ * sharing a space).
+ * @returns The live editor + both chip positions.
+ */
+async function mountWithTwoChips(): Promise<{
+  editor: EditorViaDom & {
+    commands: { setTextSelection: (r: { from: number; to: number }) => boolean };
+    state: {
+      doc: { textContent: string; descendants: (cb: (node: { type: { name: string } }, pos: number) => void) => void };
+      selection: { from: number; to: number; constructor: { name: string } };
+    };
+  };
+  chipEls: HTMLElement[];
+}> {
+  const doc = new Y.Doc();
+  const fragment = doc.getXmlFragment('prompt');
+  const ref = React.createRef<PromptEditorHandle>();
+  render(
+    <PromptEditor
+      ref={ref}
+      fragment={fragment}
+      placeholder='Describe'
+      onTextChange={vi.fn()}
+      onAtMentionsChange={vi.fn()}
+      references={[imgRef, chipRefB]}
+      mode='i2i'
+      mentionEmptyLabel='No references'
+    />,
+  );
+  await waitFor(() => expect(ref.current).not.toBeNull());
+  act(() => {
+    ref.current?.insertReference(imgRef);
+    ref.current?.insertReference(chipRefB);
+  });
+  const chipEls = await waitFor(() => {
+    const els = [...document.querySelectorAll('[data-reference-mention]')];
+    expect(els.length).toBe(2);
+    return els as HTMLElement[];
+  });
+  const pmEl = document.querySelector('.ProseMirror') as unknown as {
+    editor: Awaited<ReturnType<typeof mountWithTwoChips>>['editor'];
+  };
+  return { editor: pmEl.editor, chipEls };
+}
+
+describe('multi-chip selection drag (item ⑦)', () => {
+  it('a real-path dragstart (outer wrapper target, after mousedown) leaves the chip-spanning selection intact', async () => {
+    // The drag source is the OUTER wrapper (the only element carrying
+    // draggable=true; the inner NodeViewWrapper has none), so a real
+    // browser's dragstart always targets it. Nothing on that path may
+    // overwrite the selection — this pins it against regressions (e.g. the
+    // inner wrapper gaining draggable, which would re-route the event into
+    // React and tiptap's selection-overwriting NodeView.onDragStart).
+    const { editor, chipEls } = await mountWithTwoChips();
+    const positions: number[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) positions.push(pos);
+    });
+    const from = positions[0];
+    const to = positions[1] + 1;
+    act(() => {
+      editor.commands.setTextSelection({ from, to });
+    });
+    const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
+      ?.parentElement as HTMLElement;
+    act(() => {
+      chipEls[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragstart, 'dataTransfer', {
+      value: { clearData: (): void => undefined, setData: (): void => undefined, effectAllowed: 'copyMove', files: [] },
+    });
+    act(() => {
+      wrapper.dispatchEvent(dragstart);
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    expect(editor.state.selection.from).toBe(from);
+    expect(editor.state.selection.to).toBe(to);
+    expect(editor.state.selection.constructor.name).toContain('TextSelection');
+  });
+
+  it('a mousedown on a chip inside the selection prevents the native selection clear', async () => {
+    const { editor, chipEls } = await mountWithTwoChips();
+    const positions: number[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) positions.push(pos);
+    });
+    act(() => {
+      editor.commands.setTextSelection({ from: positions[0], to: positions[1] + 1 });
+    });
+    const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    act(() => {
+      chipEls[0].dispatchEvent(down);
+    });
+    expect(down.defaultPrevented).toBe(true);
+  });
+
+  it('a mousedown on a chip OUTSIDE any selection stays native (click-to-select intact)', async () => {
+    const { editor, chipEls } = await mountWithTwoChips();
+    act(() => {
+      editor.commands.setTextSelection({ from: 1, to: 1 });
+    });
+    const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    act(() => {
+      chipEls[0].dispatchEvent(down);
+    });
+    expect(down.defaultPrevented).toBe(false);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Drop residue heal (D1, user decision 2026-07-14): PM's move-delete removes
+// only the dragged nodes, leaving the chip's owned spaces behind — a double
+// space mid-text (or a stray leading/trailing one) that would reach the
+// backend prompt. The whitespace plugin heals the source gap of a `uiEvent:
+// 'drop'` transaction, in the same undo step as the drop.
+
+describe('drop residue heal (D1)', () => {
+  /**
+   * Mounts a collaborative core editor with the chip extension.
+   * @returns The editor (caller destroys).
+   */
+  function makeCollabEditor(): CoreEditor {
+    return new CoreEditor({
+      element: document.createElement('div'),
+      extensions: [
+        PMDocument,
+        Paragraph,
+        PMText,
+        Collaboration.configure({ fragment: new Y.Doc().getXmlFragment('prompt') }),
+        ReferenceMention.configure({
+          suggestion: makeReferenceSuggestion({ getPool: () => [], emptyLabel: 'No references' }),
+        }),
+      ],
+    });
+  }
+
+  /**
+   * The position of the only chip in the doc, or -1.
+   * @param editor - The editor.
+   * @returns The chip position.
+   */
+  function onlyChipPos(editor: CoreEditor): number {
+    let found = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) found = pos;
+    });
+    return found;
+  }
+
+  /**
+   * Whether any single TEXT NODE contains a run of two-plus spaces — chip-split
+   * spaces (one on each side of a zero-width chip) legitimately sit adjacent in
+   * textContent, so a plain textContent regex would false-positive on them.
+   * @param editor - The editor.
+   * @returns True when a real double space exists inside one text node.
+   */
+  function hasDoubleSpaceInsideTextNode(editor: CoreEditor): boolean {
+    let found = false;
+    editor.state.doc.descendants((n) => {
+      if (n.isText && / {2}/.test(n.text ?? '')) found = true;
+    });
+    return found;
+  }
+
+  /**
+   * Simulates PM's drop-move of the chip at `from` to (mapped) `target`:
+   * one transaction, delete + insert, tagged uiEvent: 'drop' like the real
+   * handler.
+   * @param editor - The editor.
+   * @param from - The chip's current position.
+   * @param target - The insert position (pre-delete coordinates).
+   */
+  function dropMoveChip(editor: CoreEditor, from: number, target: number): void {
+    const chip = editor.state.doc.nodeAt(from);
+    if (!chip) throw new Error('no chip at from');
+    const tr = editor.state.tr;
+    tr.delete(from, from + 1);
+    tr.insert(tr.mapping.map(target), chip);
+    tr.setMeta('uiEvent', 'drop');
+    editor.view.dispatch(tr);
+  }
+
+  it('mid-text: the double space left behind collapses to one', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent('head ').run();
+      editor.chain().insertContent(referenceMentionContent(imgRef)).run();
+      editor.chain().insertContent('tail').run();
+      // 'head ␣[X]␣tail' → move X after 'tail'
+      const p = onlyChipPos(editor);
+      dropMoveChip(editor, p, editor.state.doc.content.size - 1);
+      // No double space INSIDE any text node (the landed chip's flanking
+      // spaces legitimately read adjacent in textContent, split by the chip).
+      expect(hasDoubleSpaceInsideTextNode(editor)).toBe(false);
+      expect(editor.state.doc.textContent.startsWith('head tail')).toBe(true);
+      expect(onlyChipPos(editor)).toBeGreaterThan(-1); // chip landed
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('paragraph start: the stray leading space is removed', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent(referenceMentionContent(imgRef)).run();
+      editor.chain().insertContent('tail').run();
+      // '␣[X]␣tail'? invariant puts a space on both sides → after move the
+      // leading residue must go: expect 'tail' + landed chip, no leading space.
+      const p = onlyChipPos(editor);
+      dropMoveChip(editor, p, editor.state.doc.content.size - 1);
+      expect(hasDoubleSpaceInsideTextNode(editor)).toBe(false);
+      expect(editor.state.doc.textContent.startsWith(' ')).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('paragraph end: the stray trailing space pair is removed entirely', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent('head ').run();
+      editor.chain().insertContent(referenceMentionContent(imgRef)).run();
+      // 'head ␣[X]␣' → move X to the paragraph start
+      const p = onlyChipPos(editor);
+      dropMoveChip(editor, p, 1);
+      expect(hasDoubleSpaceInsideTextNode(editor)).toBe(false);
+      expect(editor.state.doc.textContent.endsWith(' ')).toBe(false);
+      expect(onlyChipPos(editor)).toBeGreaterThan(-1);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('undo restores the pre-drag doc in ONE step (heal shares the drop undo group)', () => {
+    const editor = makeCollabEditor();
+    try {
+      editor.chain().insertContent('head ').run();
+      editor.chain().insertContent(referenceMentionContent(imgRef)).run();
+      editor.chain().insertContent('tail').run();
+      const before = editor.state.doc.textContent;
+      const p = onlyChipPos(editor);
+      // Isolate the move into its own undo capture.
+      const plugin = editor.state.plugins.find(
+        (pl) => (pl as unknown as { key?: string }).key === 'y-undo$',
+      );
+      (plugin?.getState(editor.state) as { undoManager: { stopCapturing: () => void } })
+        .undoManager.stopCapturing();
+      dropMoveChip(editor, p, editor.state.doc.content.size - 1);
+      expect(editor.state.doc.textContent).not.toBe(before); // moved + healed
+      editor.commands.undo();
+      expect(editor.state.doc.textContent).toBe(before);
+      expect(onlyChipPos(editor)).toBe(p);
+    } finally {
+      editor.destroy();
+    }
+  });
+});
