@@ -642,64 +642,12 @@ describe('reference-mention caret plugin — wiring + retained interactions', ()
     }
   });
 
-  it('mousedown takeover declines when a modifier is held', () => {
+  it('installs NO mousedown takeover — native drag-selection owns the pointer (real spaces everywhere)', () => {
     const editor = makeEditor();
     try {
       editor.chain().insertContent(referenceMentionContent(chipA)).run();
       const plugin = referenceMentionCaretKey.get(editor.state);
-      const handled = plugin?.props.handleDOMEvents?.mousedown?.call(
-        plugin,
-        editor.view,
-        {
-          button: 0,
-          shiftKey: true,
-          target: editor.view.dom,
-          preventDefault: (): void => {},
-        } as unknown as MouseEvent,
-      );
-      expect(handled).toBe(false);
-    } finally {
-      editor.destroy();
-    }
-  });
-
-  it('mousedown takeover declines a press ON a chip (keeps default node-selection)', () => {
-    const editor = makeEditor();
-    try {
-      editor.chain().insertContent(referenceMentionContent(chipA)).run();
-      const chipEl = document.createElement('span');
-      chipEl.setAttribute('data-reference-mention', '');
-      const plugin = referenceMentionCaretKey.get(editor.state);
-      const handled = plugin?.props.handleDOMEvents?.mousedown?.call(
-        plugin,
-        editor.view,
-        {
-          button: 0,
-          target: chipEl,
-          preventDefault: (): void => {},
-        } as unknown as MouseEvent,
-      );
-      expect(handled).toBe(false);
-    } finally {
-      editor.destroy();
-    }
-  });
-
-  it('mousedown takeover declines a non-left button', () => {
-    const editor = makeEditor();
-    try {
-      editor.chain().insertContent(referenceMentionContent(chipA)).run();
-      const plugin = referenceMentionCaretKey.get(editor.state);
-      const handled = plugin?.props.handleDOMEvents?.mousedown?.call(
-        plugin,
-        editor.view,
-        {
-          button: 2,
-          target: editor.view.dom,
-          preventDefault: (): void => {},
-        } as unknown as MouseEvent,
-      );
-      expect(handled).toBe(false);
+      expect(plugin?.props.handleDOMEvents?.mousedown).toBeUndefined();
     } finally {
       editor.destroy();
     }
