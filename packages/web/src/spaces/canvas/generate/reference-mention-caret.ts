@@ -49,6 +49,12 @@ import {
 } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
+import {
+  absolutePositionToRelativePosition,
+  relativePositionToAbsolutePosition,
+} from '@tiptap/y-tiptap';
+import { compareRelativePositions } from 'yjs';
+import type { Doc as YDoc, RelativePosition, XmlFragment } from 'yjs';
 
 import {
   chipAt,
@@ -63,15 +69,105 @@ import {
   resolveDeletionUnit,
 } from '@web/spaces/canvas/generate/reference-mention-whitespace';
 
-/** A recorded selection range (kept mapped through every transaction). */
+/**
+ * A recorded selection range as Yjs RELATIVE positions. Absolute positions
+ * cannot survive the real collab pipeline: y-prosemirror delivers EVERY
+ * Yjs-origin change (a remote wire edit, a yUndo undo/redo) as one full-doc
+ * ReplaceStep, whose StepMap collapses all interior positions (adversarial
+ * R3, probe-proven on the real two-doc wire path — a co-editor edit in a
+ * DIFFERENT paragraph destroyed the record). Relative positions are
+ * y-prosemirror's own tool for surviving that (its selection restore uses
+ * them) and need no per-transaction mapping at all.
+ */
 interface DragRecord {
-  /** Recorded selection start. */
-  from: number;
-  /** Recorded selection end. */
-  to: number;
+  /** Recorded selection start (Yjs relative position). */
+  from: RelativePosition;
+  /** Recorded selection end (Yjs relative position). */
+  to: RelativePosition;
 }
 
-/** The plugin's drag-tracking state (both slots mapped through every tr). */
+/** The y-sync plugin state internals needed for position conversion. */
+interface YSyncState {
+  /** The bound Y.XmlFragment. */
+  type: XmlFragment;
+  /** The live binding (null until the view attaches). */
+  binding: { mapping: unknown } | null;
+  /** The Y.Doc. */
+  doc: YDoc;
+}
+
+/**
+ * The y-sync plugin state, located by KEY NAME (same duplicate-copy-safe
+ * pattern as collab-undo-selection.ts — an imported ySyncPluginKey instance
+ * would silently miss if the bundle ever carried a second y-tiptap copy).
+ * @param state - The editor state.
+ * @returns The y-sync state, or null when Collaboration is absent.
+ */
+function ySyncStateOf(state: EditorState): YSyncState | null {
+  const plugin = state.plugins.find(
+    (pl) => (pl as unknown as { key?: string }).key === 'y-sync$',
+  );
+  return (plugin?.getState(state) as YSyncState | undefined) ?? null;
+}
+
+/**
+ * Converts an absolute selection range into a relative-position record.
+ * @param state - The editor state.
+ * @param from - Absolute range start.
+ * @param to - Absolute range end.
+ * @returns The record, or null when the y-sync binding is not ready.
+ */
+function recordFromRange(
+  state: EditorState,
+  from: number,
+  to: number,
+): DragRecord | null {
+  const y = ySyncStateOf(state);
+  if (y === null || y.binding === null) return null;
+  return {
+    from: absolutePositionToRelativePosition(
+      from,
+      y.type,
+      y.binding.mapping as never,
+    ),
+    to: absolutePositionToRelativePosition(
+      to,
+      y.type,
+      y.binding.mapping as never,
+    ),
+  };
+}
+
+/**
+ * Resolves a relative-position record back to absolute positions in the
+ * CURRENT document.
+ * @param state - The editor state.
+ * @param record - The record to resolve.
+ * @returns The absolute range, or null when either end no longer resolves.
+ */
+function recordToRange(
+  state: EditorState,
+  record: DragRecord,
+): { from: number; to: number } | null {
+  const y = ySyncStateOf(state);
+  if (y === null || y.binding === null) return null;
+  const from = relativePositionToAbsolutePosition(
+    y.doc,
+    y.type,
+    record.from,
+    y.binding.mapping as never,
+  );
+  const to = relativePositionToAbsolutePosition(
+    y.doc,
+    y.type,
+    record.to,
+    y.binding.mapping as never,
+  );
+  if (from === null || to === null) return null;
+  return { from, to };
+}
+
+/** The plugin's drag-tracking state (relative positions — no mapping needed). */
 interface DragPluginState {
   /** mousedown -> dragstart: the chip-spanning selection to restore (item 7). */
   record: DragRecord | null;
@@ -257,7 +353,10 @@ function setChipDragImage(view: EditorView, event: Event): void {
  */
 function sameRecord(a: DragRecord | null, b: DragRecord | null): boolean {
   if (a === null || b === null) return a === b;
-  return a.from === b.from && a.to === b.to;
+  return (
+    compareRelativePositions(a.from, b.from) &&
+    compareRelativePositions(a.to, b.to)
+  );
 }
 
 /**
@@ -308,11 +407,13 @@ function restoreChipSpanSelection(view: EditorView, event: Event): void {
     target.closest('[data-reference-mention]') ??
     target.querySelector('[data-reference-mention]');
   if (chipEl === null) return;
+  const range = recordToRange(view.state, record);
+  if (range === null) return;
   const pos = chipPosFromDom(view, chipEl);
-  if (pos === null || pos < record.from || pos >= record.to) return;
+  if (pos === null || pos < range.from || pos >= range.to) return;
   const { doc } = view.state;
-  const from = Math.min(record.from, doc.content.size);
-  const to = Math.min(record.to, doc.content.size);
+  const from = Math.min(range.from, doc.content.size);
+  const to = Math.min(range.to, doc.content.size);
   if (from >= to) return;
   const sel = view.state.selection;
   if (sel.from !== from || sel.to !== to) {
@@ -354,24 +455,13 @@ export function createReferenceMentionCaret(): Plugin {
     state: {
       init: (): DragPluginState => ({ record: null, source: null }),
       apply: (tr, value): DragPluginState => {
+        // Relative positions track the Yjs document by identity — no
+        // per-transaction mapping (which a full-doc y-sync ReplaceStep would
+        // destroy anyway, adversarial R3).
         const meta = tr.getMeta(referenceMentionCaretKey) as
           | DragPluginState
           | undefined;
-        const next = meta !== undefined ? meta : value;
-        if (!tr.docChanged) return next;
-        /**
-         * Maps one slot through this transaction's position mapping.
-         * @param r - The slot value.
-         * @returns The mapped slot value.
-         */
-        const mapRecord = (r: DragRecord | null): DragRecord | null =>
-          r === null
-            ? null
-            : { from: tr.mapping.map(r.from), to: tr.mapping.map(r.to) };
-        return {
-          record: mapRecord(next.record),
-          source: mapRecord(next.source),
-        };
+        return meta !== undefined ? meta : value;
       },
     },
     appendTransaction(transactions, _oldState, newState): Transaction | null {
@@ -405,7 +495,9 @@ export function createReferenceMentionCaret(): Plugin {
             pos >= sel.from &&
             pos < sel.to;
           patchDragState(view, {
-            record: qualifies ? { from: sel.from, to: sel.to } : null,
+            record: qualifies
+              ? recordFromRange(view.state, sel.from, sel.to)
+              : null,
           });
           return false;
         },
@@ -421,7 +513,9 @@ export function createReferenceMentionCaret(): Plugin {
           // so PM's move-delete would otherwise delete nothing (drag -> copy).
           const sel = view.state.selection;
           patchDragState(view, {
-            source: sel.empty ? null : { from: sel.from, to: sel.to },
+            source: sel.empty
+              ? null
+              : recordFromRange(view.state, sel.from, sel.to),
           });
           setChipDragImage(view, event);
           return false;
@@ -454,9 +548,11 @@ export function createReferenceMentionCaret(): Plugin {
           referenceMentionCaretKey.getState(view.state)?.source ?? null;
         if (source !== null) patchDragState(view, { source: null });
         if (!moved || source === null) return false;
+        const range = recordToRange(view.state, source);
+        if (range === null) return false;
         const { doc } = view.state;
-        const from = Math.min(source.from, doc.content.size);
-        const to = Math.min(source.to, doc.content.size);
+        const from = Math.min(range.from, doc.content.size);
+        const to = Math.min(range.to, doc.content.size);
         if (from >= to) return false;
         const sel = view.state.selection;
         if (sel.from !== from || sel.to !== to) {

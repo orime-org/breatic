@@ -220,6 +220,7 @@ const chipRefB: ReferenceRailItem = {
  * @returns The live editor + both chip positions.
  */
 async function mountWithTwoChips(): Promise<{
+  ydoc: Y.Doc;
   editor: EditorViaDom & {
     commands: { setTextSelection: (r: { from: number; to: number }) => boolean };
     state: {
@@ -257,7 +258,7 @@ async function mountWithTwoChips(): Promise<{
   const pmEl = document.querySelector('.ProseMirror') as unknown as {
     editor: Awaited<ReturnType<typeof mountWithTwoChips>>['editor'];
   };
-  return { editor: pmEl.editor, chipEls };
+  return { editor: pmEl.editor, chipEls, ydoc: doc };
 }
 
 describe('multi-chip selection drag (item ⑦)', () => {
@@ -491,6 +492,61 @@ describe('multi-chip selection drag (item ⑦)', () => {
     // still inside the drag and no boundary cuts through the remote text.
     expect(editor.state.selection.from).toBe(from);
     expect(editor.state.selection.to).toBe(to + 6);
+    expect(editor.state.selection.constructor.name).toContain('TextSelection');
+  });
+
+  it('the record survives the REAL Yjs wire path — a remote co-editor edit collapses absolute maps, relative positions do not (R3)', async () => {
+    const { editor, chipEls, ydoc } = await mountWithTwoChips();
+    const positions: number[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) positions.push(pos);
+    });
+    act(() => {
+      editor.commands.setTextSelection({ from: positions[0], to: positions[1] + 1 });
+    });
+    act(() => {
+      chipEls[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    // REAL wire: a replica doc applies an edit and syncs back — y-prosemirror
+    // delivers this as ONE full-doc ReplaceStep whose StepMap collapses every
+    // absolute position (the R2 absolute-mapping version silently lost the
+    // record here even though the edit was in a DIFFERENT paragraph).
+    act(() => {
+      const docB = new Y.Doc();
+      Y.applyUpdate(docB, Y.encodeStateAsUpdate(ydoc));
+      const frag = docB.getXmlFragment('prompt');
+      const para = new Y.XmlElement('paragraph');
+      const text = new Y.XmlText();
+      text.insert(0, 'remote words');
+      para.insert(0, [text]);
+      frag.push([para]);
+      Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(docB, Y.encodeStateVector(ydoc)));
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    // browser-collapse simulation, then dragstart
+    const chipsNow: number[] = [];
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === REFERENCE_MENTION_NODE) chipsNow.push(pos);
+    });
+    act(() => {
+      (editor.commands as unknown as { setNodeSelection: (p: number) => boolean }).setNodeSelection(chipsNow[0]);
+    });
+    const wrapper = chipEls[0].closest('[data-node-view-wrapper]')
+      ?.parentElement as HTMLElement;
+    const dragstart = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragstart, 'dataTransfer', {
+      value: { clearData: (): void => undefined, setData: (): void => undefined, setDragImage: (): void => undefined, effectAllowed: 'copyMove', files: [] },
+    });
+    act(() => {
+      wrapper.dispatchEvent(dragstart);
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    // The restored selection must still span BOTH chips at their CURRENT
+    // positions — the whole point of relative positions.
+    expect(editor.state.selection.from).toBe(chipsNow[0]);
+    expect(editor.state.selection.to).toBe(chipsNow[1] + 1);
     expect(editor.state.selection.constructor.name).toContain('TextSelection');
   });
 
