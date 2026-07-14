@@ -25,6 +25,7 @@ import {
   renderCollabCaret,
   renderCollabSelection,
 } from '@web/spaces/canvas/generate/caret-render';
+import { CollabUndoSelection } from '@web/spaces/canvas/generate/collab-undo-selection';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
@@ -35,6 +36,7 @@ import {
   serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
+import { planCascadeDeletion } from '@web/spaces/canvas/generate/reference-mention-whitespace';
 
 /** Imperative handle exposed to the container to insert a reference at the cursor. */
 export interface PromptEditorHandle {
@@ -144,6 +146,10 @@ export const PromptEditor = React.forwardRef<
         // parents, so it never fired inside the paragraph (batch-2 item 5).
         // Collaboration provides history (yUndo); do NOT add UndoRedo alongside.
         Collaboration.configure({ fragment }),
+        // Undo/redo must restore the PRE-EDIT selection; upstream yjs emits
+        // stack-item-popped after the restore transaction already ran, so this
+        // hands the stored selection over in time (see the module doc).
+        CollabUndoSelection,
         // Remote collaborator carets (batch-2 item 14): mounted only when the
         // canvas-space doc's awareness is available — the extension THROWS in
         // onCreate on a null provider, and before the socket's first connect
@@ -253,10 +259,16 @@ export const PromptEditor = React.forwardRef<
     });
     const deletions = planMentionDeletions(occurrences, poolIds);
     if (deletions.length === 0) return;
-    // Deletions are sorted highest-position-first, so each delete leaves the
-    // remaining (lower) positions valid.
+    // Delete each stale chip WITH its owned spaces (same deletion-unit model as
+    // the keyboard path), so a cascade clear leaves NO orphan space — a space
+    // shared with a SURVIVING chip is kept (design 2026-07-13 §5; adversarial
+    // finding: the old chip-node-only delete left orphan spaces, diverging from
+    // the keyboard path). Ranges are descending + merged, so each delete leaves
+    // the remaining (lower) positions valid.
+    const stalePositions = new Set(deletions.map((d) => d.from));
+    const ranges = planCascadeDeletion(editor.state.doc, stalePositions);
     const tr = editor.state.tr;
-    for (const { from, to } of deletions) tr.delete(from, to);
+    for (const { from, to } of ranges) tr.delete(from, to);
     // Edge-driven chip removal (the edge left the pool) is a CONSEQUENCE of a
     // canvas action, not a prompt edit — keep it out of the prompt's undo stack
     // so Cmd+Z can't resurrect an orphan chip whose reference is gone (same

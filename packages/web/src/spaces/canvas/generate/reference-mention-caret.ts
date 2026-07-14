@@ -2,69 +2,75 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Native-caret anchor for the caret-blind positions around reference chips.
+ * ProseMirror plugin that keeps reference chips wrapped in real spaces, makes
+ * deletion consistent, and enforces the D cursor model — the wiring around the
+ * pure planners in reference-mention-whitespace.ts.
  *
- * Root cause (WebKit bug 15256 / TipTap #2978): a text caret at a gap between
- * two adjacent inline atoms — or before a leading atom at paragraph start — is a
- * real document position (typing lands there) but the DOM has no text node to
- * anchor a native caret to. Chrome holds the model selection but paints nothing;
- * WebKit canonicalises the endpoint to the nearest editable text and snaps the
- * caret AND typed input to paragraph start.
+ * Root cause (browser-engine layer): a reference chip is an inline uneditable
+ * atom; a caret position next to it is a real document position but has no
+ * adjacent DOM text node, so at a soft-wrap boundary the browser cannot use
+ * caret affinity to disambiguate (snaps to the next line), IME has no compose
+ * host, and the native pointer mis-hits the gap. The fix is one visible ordinary
+ * space (U+0020 — a real text node) on every side of every chip, which restores
+ * full text-caret semantics an img/ZWSP anchor cannot.
  *
- * PM's own fix at a textblock END is `img.ProseMirror-separator`
- * (addTextblockHacks) — a raw, view-only, model-invisible replaced element the
- * browser CAN anchor a native caret next to. PM injects it only at the trailing
- * position; this plugin extends the SAME first-party technique to the gaps PM
- * leaves uncovered (between two chips, before a leading chip) by emitting a raw
- * separator img widget decoration at each. The widget's `raw: true` skips
- * PM's contentEditable=false wrapping (which would re-create the unanchorable
- * island), and its parseRule `{ignore: true}` keeps it out of the model — zero
- * Yjs sync, zero offset drift. This replaced the earlier display-only fake caret,
- * which never participated in the native selection so it could not fix WebKit's
- * wrong insertion point (A, user 2026-07-12). All imports come from `@tiptap/pm`
- * so the plugin shares TipTap's single prosemirror instance.
+ * Three mechanisms:
+ * - appendTransaction runs {@link planWhitespaceInsertions} after every edit to
+ *   ADD any missing chip spaces (only-adds, idempotent). Covers insert / paste /
+ *   collab / @ / click-insert. Not history-excluded: the added space is a direct
+ *   consequence of the user's chip insertion and undoes together with it.
+ * - handleKeyDown Backspace/Delete uses {@link resolveDeletionUnit} so a chip +
+ *   its exclusive owned spaces delete as one unit, in the delete direction only
+ *   (no residue, no reverse-direction delete); a shared space stays for the
+ *   neighbour.
+ * - the D cursor model (an owned space is TRANSPARENT to the cursor — it may only
+ *   rest on the side of an owned space away from its chip): handleKeyDown arrows
+ *   cross a chip + its spaces in ONE press via {@link findNextStoppable};
+ *   handleClick snaps a pointer landing to the nearest stoppable position; and
+ *   appendTransaction {@link normalizeSelection} is the backstop for programmatic
+ *   landings (@ insertion / collab / command) on an unstoppable position.
  *
- * NOTE (verified 2026-07-12, real Chrome + Safari): the separator anchors + holds
- * a native caret mid-line and accepts typing. But it does NOT make the native
- * POINTER work — a click in a gap resolves to the adjacent chip (NodeSelection)
- * and a native drag cannot pass a trailing atom. So the mouse takeover
- * (handleClick + mousedown + geometry, below) is a PERMANENT pointer layer, not a
- * stopgap: deleting it regressed every gap click / drag. One-press chip crossing
- * is an independent keyboard UX.
+ * KEPT PENDING REAL-MACHINE VERIFICATION (design 2026-07-13 §7): the mouse-drag
+ * takeover (mousedown geometry + auto-scroll) was written for the old caret-blind
+ * gaps left by the img separator. With real spaces flanking every chip those gaps
+ * no longer exist, so native drag-selection across a chip should just work — but
+ * per the "separator removal regressed every gap click" lesson it is NOT
+ * pre-deleted; a Chrome + Safari drag-select pass decides its removal. The
+ * separator-img anchoring it replaced IS removed.
  */
 
-import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { ResolvedPos } from '@tiptap/pm/model';
+import {
+  NodeSelection,
+  Plugin,
+  PluginKey,
+  TextSelection,
+} from '@tiptap/pm/state';
+import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import {
+  chipAt,
+  chipDeletionUnit,
+  findNextStoppable,
+  isChip,
+  isSpaceAt,
+  isStoppable,
+  nearestStoppable,
+  planWhitespaceInsertions,
+  resolveDeletionUnit,
+} from '@web/spaces/canvas/generate/reference-mention-whitespace';
 
-/** Identifies the caret/anchor plugin (tests resolve the live plugin through it). */
+/** Identifies the caret/whitespace plugin (tests resolve the live plugin through it). */
 export const referenceMentionCaretKey = new PluginKey('referenceMentionCaret');
 
 /**
- * CSS class of PM's separator img — the native-caret anchor. index.css keeps it
- * 0x0: a non-zero WIDTH nudges the following chip AND re-breaks Chrome's native
- * drag hit-test (tiptap #4646); a non-zero HEIGHT gives no benefit — the gap
- * caret takes the adjacent chip's height, not this 0-width img's.
- */
-export const REFERENCE_MENTION_SEPARATOR_CLASS = 'ProseMirror-separator';
-
-/**
- * Whether a node is a reference-mention chip. A type guard: a true result also
- * narrows the node to non-null (the arrow-key handler steps past `node.nodeSize`).
- * @param node - The adjacent node (null at a paragraph edge).
- * @returns True for a reference-mention atom.
- */
-function isChip(node: PMNode | null): node is PMNode {
-  return node?.type.name === REFERENCE_MENTION_NODE;
-}
-
-/**
  * Whether a resolved position is "caret-blind": an inline position with NO
- * adjacent text node (nothing for the browser to anchor a native caret to) and
- * at least one adjacent reference chip.
+ * adjacent text node and at least one adjacent reference chip. With the
+ * whitespace invariant active a chip is always flanked by spaces, so this is
+ * normally false — the pointer takeover below is retained pending real-machine
+ * verification (§7), not because caret-blind gaps are expected.
  * @param $pos - The resolved position.
  * @returns True at a caret-blind chip boundary.
  */
@@ -77,58 +83,13 @@ function isCaretBlind($pos: ResolvedPos): boolean {
 }
 
 /**
- * Whether a resolved position is the TRAILING caret-blind position: the end of
- * the textblock (`nodeAfter === null`) right after a chip. PM's addTextblockHacks
- * injects an `img.ProseMirror-separator` here that anchors a NATIVE caret, so
- * (a) the fake caret is RETIRED at this spot — the native caret takes over — and
- * (b) it is the exact position Chrome refuses to native-drag FROM (B1, user
- * 2026-07-12). Between-chip and leading-chip caret-blind positions have no
- * separator, so the fake caret stays there.
- * @param $pos - The resolved position.
- * @returns True at the trailing after-chip position.
- */
-export function isTrailingCaretBlind($pos: ResolvedPos): boolean {
-  return (
-    $pos.parent.inlineContent &&
-    $pos.nodeAfter === null &&
-    isChip($pos.nodeBefore)
-  );
-}
-
-/**
- * Every caret-blind gap position in the document that needs a native-caret
- * anchor: each position flanking a reference chip that is caret-blind (no
- * adjacent text node) EXCEPT the trailing after-chip position, where PM's
- * addTextblockHacks already injects its own separator. STRUCTURAL, not
- * selection-gated — the anchors exist regardless of where the caret sits, so a
- * click or arrow into any gap lands the native caret there. Deduped (the
- * position between two adjacent chips flanks both) and ascending.
- * @param doc - The document node.
- * @returns The gap positions needing a separator anchor, ascending.
- */
-export function caretBlindGaps(doc: PMNode): number[] {
-  const gaps = new Set<number>();
-  doc.descendants((node, pos) => {
-    if (!isChip(node)) return;
-    // A chip's caret-blind neighbours are the positions immediately before and
-    // after it; keep the ones with no text anchor and no PM separator (trailing).
-    for (const at of [pos, pos + node.nodeSize]) {
-      const $at = doc.resolve(at);
-      if (isCaretBlind($at) && !isTrailingCaretBlind($at)) gaps.add(at);
-    }
-  });
-  return [...gaps].sort((a, b) => a - b);
-}
-
-/**
  * Resolves the doc position of a caret-blind chip gap under a pointer, robust to
  * browsers whose native hit-test mis-resolves a click in a chip gap to the
- * paragraph START (Safari, #1756). Fast path: `posAtCoords` when it already
- * lands on a caret-blind position (Chrome). Fallback: pick the gap by GEOMETRY —
- * the chip rects on the clicked line — so it never trusts the broken native
- * position. The result is verified caret-blind, so a click on ordinary text (or
- * a gap that is not caret-blind) returns null and native handling stays. Pure
- * read of the view; used by the mousedown takeover.
+ * paragraph START (Safari). Fast path: `posAtCoords` when it already lands on a
+ * caret-blind position (Chrome). Fallback: pick the gap by GEOMETRY — the chip
+ * rects on the clicked line — so it never trusts the broken native position. The
+ * result is verified caret-blind, so a click on ordinary text returns null and
+ * native handling stays. Pure read of the view; used by the mousedown takeover.
  * @param view - The editor view.
  * @param clientX - Pointer X in viewport px.
  * @param clientY - Pointer Y in viewport px.
@@ -141,9 +102,6 @@ function caretBlindPosFromClick(
 ): number | null {
   const at = view.posAtCoords({ left: clientX, top: clientY });
   if (at && isCaretBlind(view.state.doc.resolve(at.pos))) return at.pos;
-  // Geometry fallback: collect the chips on the clicked line, then place the
-  // anchor in the gap the pointer falls in (before the first, after the last, or
-  // between two adjacent chips).
   const line: Array<{ before: number; after: number; rect: DOMRect }> = [];
   view.state.doc.descendants((node, pos) => {
     if (node.type.name !== REFERENCE_MENTION_NODE) return;
@@ -172,22 +130,6 @@ function caretBlindPosFromClick(
 }
 
 /**
- * Builds the native-caret anchor: a bare `img.ProseMirror-separator` (0px,
- * `alt=""` → silent to assistive tech, no `src` → an unresolved replaced element
- * the browser anchors a caret next to), the same element PM injects at a trailing
- * chip. Handed to a `raw` widget decoration so PM does not wrap it in a
- * contentEditable=false span (which would re-create the unanchorable island).
- * @returns The separator img.
- */
-export function renderSeparator(): HTMLElement {
-  const img = document.createElement('img');
-  img.className = REFERENCE_MENTION_SEPARATOR_CLASS;
-  img.setAttribute('alt', '');
-  img.setAttribute('aria-hidden', 'true');
-  return img;
-}
-
-/**
  * The nearest vertically-scrollable element at or above a node (the prompt's
  * scroll viewport), or null when nothing scrolls. Used by the mouse-drag takeover
  * to auto-scroll while selecting past an edge. Starts at `node` itself, since the
@@ -211,29 +153,91 @@ function findScrollParent(node: HTMLElement): HTMLElement | null {
 }
 
 /**
- * Creates the chip-boundary caret/anchor plugin (installed by the
- * ReferenceMention extension): injects a raw `img.ProseMirror-separator` at
- * every caret-blind chip gap so the browser anchors a NATIVE caret there, and
- * turns a click landing in the gap between chips into a text cursor there. Clicks
- * ON a chip keep the default NodeSelection behavior (the chip selects as a unit).
- * The separator anchors are structural (no focus gate is needed: a native caret
- * only renders in a focused editor, and the 0-width anchor is invisible otherwise).
+ * Appends a transaction that adds any missing chip-flanking spaces, enforcing
+ * the whitespace invariant after every doc-changing edit. Only-adds + idempotent
+ * (positions come from {@link planWhitespaceInsertions}, descending so inserts
+ * never invalidate lower positions; an already-satisfied doc yields none, so no
+ * infinite append loop). Left un-history-excluded so the added space undoes with
+ * the edit that introduced the chip.
+ * @param transactions - The transactions just applied.
+ * @param newState - The resulting editor state.
+ * @returns A transaction adding the missing spaces, or null.
+ */
+function appendWhitespace(
+  transactions: readonly Transaction[],
+  newState: EditorState,
+): Transaction | null {
+  if (!transactions.some((tr) => tr.docChanged)) return null;
+  const inserts = planWhitespaceInsertions(newState.doc);
+  if (inserts.length === 0) return null;
+  const tr = newState.tr;
+  for (const pos of inserts) tr.insertText(' ', pos);
+  return tr;
+}
+
+/**
+ * Snaps an empty selection that landed on an UNSTOPPABLE position (D model) to
+ * the nearest stoppable one — the backstop for programmatic landings the arrow /
+ * click handlers don't cover: an @ insertion, a collab or command selection, or a
+ * pointer resolve that fell on a chip-side of an owned space. Runs when the
+ * selection or the doc changed. History-excluded (a pure caret correction, never
+ * a user undo step). Converges: after the snap the selection is stoppable, so the
+ * next pass finds nothing to move.
+ * @param transactions - The transactions just applied.
+ * @param newState - The resulting editor state.
+ * @returns A transaction snapping the caret, or null.
+ */
+function normalizeSelection(
+  transactions: readonly Transaction[],
+  newState: EditorState,
+): Transaction | null {
+  if (!transactions.some((tr) => tr.selectionSet || tr.docChanged)) return null;
+  const sel = newState.selection;
+  if (!(sel instanceof TextSelection) || !sel.empty) return null;
+  const snapped = nearestStoppable(newState.doc, sel.from);
+  if (snapped === null || snapped === sel.from) return null;
+  return newState.tr
+    .setSelection(TextSelection.create(newState.doc, snapped))
+    .setMeta('addToHistory', false);
+}
+
+/**
+ * Creates the chip whitespace/caret plugin (installed by the ReferenceMention
+ * extension): enforces the space-around-every-chip invariant, deletes a chip
+ * plus its owned spaces as one unit, and retains the (pending-verification)
+ * one-press chip crossing + mouse takeover.
  * @returns The ProseMirror plugin.
  */
 export function createReferenceMentionCaret(): Plugin {
   return new Plugin({
     key: referenceMentionCaretKey,
+    appendTransaction(transactions, _oldState, newState): Transaction | null {
+      // Whitespace first (structure): once the doc is stable, the next pass runs
+      // normalization on the settled positions.
+      return (
+        appendWhitespace(transactions, newState) ??
+        normalizeSelection(transactions, newState)
+      );
+    },
     props: {
-      // One-press chip crossing (P5, user 2026-07-12): a reference chip is an
-      // atom, so a plain ArrowRight from before it lands a NodeSelection ON the
-      // chip (highlighted, no caret) and only a SECOND press steps the text
-      // cursor past it. When the caret's immediate neighbour in the arrow
-      // direction is a chip, move the TEXT cursor straight to the far boundary,
-      // skipping the atom stop — one press shows the caret past the chip. The
-      // chip stays deletable (Backspace at the boundary) and click-selectable.
-      // Shift / modifier chords fall through to native behavior (selection
-      // extension, word jumps), and non-chip neighbours keep native arrows.
       handleKeyDown: (view, event): boolean => {
+        const sel = view.state.selection;
+        // Node-selected chip (click-to-select) + Backspace/Delete: delete it as a
+        // unit (chip + owned spaces), REGARDLESS of modifiers — a node selection has
+        // no "delete word" meaning, and native deleteSelection would remove only the
+        // chip node and orphan its spaces (deletion-path parity, design 2026-07-13
+        // §5; R3: this must precede the modifier gate so Cmd/Ctrl+Delete on a
+        // node-selected chip does not fall through to native).
+        if (sel instanceof NodeSelection && isChip(sel.node)) {
+          if (event.key === 'Backspace' || event.key === 'Delete') {
+            const range = chipDeletionUnit(view.state.doc, sel.from);
+            view.dispatch(
+              view.state.tr.delete(range.from, range.to).scrollIntoView(),
+            );
+            return true;
+          }
+          return false; // arrows etc. on a node-selected chip stay native
+        }
         if (
           event.shiftKey ||
           event.metaKey ||
@@ -242,32 +246,47 @@ export function createReferenceMentionCaret(): Plugin {
         ) {
           return false;
         }
-        const sel = view.state.selection;
         if (!(sel instanceof TextSelection) || !sel.empty) return false;
-        const $pos = sel.$from;
+        const { doc } = view.state;
+        const pos = sel.from;
+        // Deletion unit (design 2026-07-13 §5): a chip + its exclusive owned
+        // spaces delete together, in the DELETE DIRECTION only (D removed the
+        // reverse-direction branches). A shared space stays for the neighbour.
+        if (event.key === 'Backspace' || event.key === 'Delete') {
+          const dir = event.key === 'Backspace' ? 'backward' : 'forward';
+          const range = resolveDeletionUnit(doc, pos, dir);
+          if (range === null) return false;
+          view.dispatch(view.state.tr.delete(range.from, range.to).scrollIntoView());
+          return true;
+        }
+        // Arrow crossing (D cursor model): an owned space is transparent to the
+        // cursor, so a chip + its spaces is crossed in ONE press to the next
+        // stoppable position. Take over ONLY when the arrow is about to enter a
+        // chip region; plain-text moves stay native (grapheme clusters / RTL).
         if (event.key === 'ArrowRight') {
-          const after = $pos.nodeAfter;
-          if (!isChip(after)) return false;
+          const entersChip =
+            chipAt(doc, pos) !== null ||
+            (isSpaceAt(doc, pos) && chipAt(doc, pos + 1) !== null);
+          if (!entersChip) return false;
+          const target = findNextStoppable(doc, pos, 'forward');
+          if (target === null) return false;
           view.dispatch(
             view.state.tr
-              .setSelection(
-                TextSelection.create(view.state.doc, $pos.pos + after.nodeSize),
-              )
+              .setSelection(TextSelection.create(doc, target))
               .scrollIntoView(),
           );
           return true;
         }
         if (event.key === 'ArrowLeft') {
-          const before = $pos.nodeBefore;
-          if (!isChip(before)) return false;
+          const entersChip =
+            chipAt(doc, pos - 1) !== null ||
+            (isSpaceAt(doc, pos - 1) && chipAt(doc, pos - 2) !== null);
+          if (!entersChip) return false;
+          const target = findNextStoppable(doc, pos, 'backward');
+          if (target === null) return false;
           view.dispatch(
             view.state.tr
-              .setSelection(
-                TextSelection.create(
-                  view.state.doc,
-                  $pos.pos - before.nodeSize,
-                ),
-              )
+              .setSelection(TextSelection.create(doc, target))
               .scrollIntoView(),
           );
           return true;
@@ -275,44 +294,36 @@ export function createReferenceMentionCaret(): Plugin {
         return false;
       },
       handleClick: (view, pos, event): boolean => {
-        // A click on the chip itself must keep selecting the chip as a unit.
         const target = event.target;
         if (
           target instanceof Element &&
           target.closest('[data-reference-mention]') !== null
         ) {
-          return false;
+          return false; // click ON a chip → default node-selection handling
         }
-        const $pos = view.state.doc.resolve(pos);
-        if (!$pos.parent.inlineContent) return false;
-        const before = $pos.nodeBefore;
-        const after = $pos.nodeAfter;
-        // With a text anchor the default click handling places a fine caret.
-        if (before?.isText === true || after?.isText === true) return false;
-        if (!isChip(before) && !isChip(after)) return false;
+        // A click resolving onto an UNSTOPPABLE position (a chip side of an owned
+        // space) snaps to the nearest stoppable one right away, so the caret never
+        // flashes on the transparent space. The appendTransaction normalization is
+        // the backstop; this avoids the two-frame flicker.
+        if (isStoppable(view.state.doc, pos)) return false;
+        const snapped = nearestStoppable(view.state.doc, pos);
+        if (snapped === null) return false;
         view.dispatch(
           view.state.tr.setSelection(
-            TextSelection.create(view.state.doc, pos),
+            TextSelection.create(view.state.doc, snapped),
           ),
         );
         return true;
       },
       handleDOMEvents: {
-        // Mouse-selection takeover for CARET-BLIND chip gaps (B1 + Safari
-        // #1756, user 2026-07-12). ProseMirror has no mouse-selection code of
-        // its own — it delegates click placement + drag-select to the browser —
-        // and browsers mishandle uneditable inline atoms: Chrome refuses to
-        // extend a native drag past a trailing atom (dragging left from after a
-        // trailing chip selected nothing, #1152/#1199), and Safari drops a click
-        // BETWEEN two chips at the paragraph start. PM hand-wrote the KEYBOARD
-        // takeover for crossing these atoms (selectHorizontally, #937; mirrored
-        // in handleKeyDown above); this is the mouse sibling it never wrote — we
-        // place the caret + compute the TextSelection ourselves. Scoped tightly
-        // by caretBlindPosFromClick, which returns a position ONLY at a
-        // verified caret-blind gap (and via GEOMETRY, not the browser's broken
-        // hit-test, so Safari lands the right spot). A press on plain text or ON
-        // a chip returns false → native handling + chip node-selection untouched.
-        // Selection-only transactions never enter the y-prosemirror undo stack.
+        // Mouse-selection takeover for CARET-BLIND chip gaps. ProseMirror has no
+        // mouse-selection code of its own; browsers mishandle uneditable inline
+        // atoms (Chrome refuses to extend a native drag past a trailing atom;
+        // Safari drops a click between two chips). Scoped tightly by
+        // caretBlindPosFromClick, which returns a position ONLY at a verified
+        // caret-blind gap. Kept pending real-machine verification (§7); with the
+        // whitespace invariant active it should rarely fire. Selection-only
+        // transactions never enter the y-prosemirror undo stack.
         mousedown: (view, event: MouseEvent): boolean => {
           if (
             event.button !== 0 ||
@@ -323,7 +334,6 @@ export function createReferenceMentionCaret(): Plugin {
           ) {
             return false;
           }
-          // A press ON a chip keeps the default NodeSelection (mirror handleClick).
           const target = event.target;
           if (
             target instanceof Element &&
@@ -344,11 +354,6 @@ export function createReferenceMentionCaret(): Plugin {
               TextSelection.create(view.state.doc, anchor),
             ),
           );
-          // Auto-scroll the prompt viewport while dragging near/past an edge (B,
-          // user 2026-07-13). PM's own drag-select does this; the takeover
-          // replaced native drag at caret-blind gaps and did not, so dragging up
-          // from a gap could not scroll up — a caret past the visible top makes
-          // posAtCoords return null → the selection neither extended nor scrolled.
           const scroller = findScrollParent(view.dom);
           let scrollRaf = 0;
           let lastX = event.clientX;
@@ -370,8 +375,8 @@ export function createReferenceMentionCaret(): Plugin {
           /**
            * One auto-scroll frame: while the pointer sits in the top/bottom edge
            * band, scroll the viewport and re-extend the selection to a point
-           * clamped inside the viewport (so posAtCoords resolves); reschedules
-           * itself until the pointer leaves the band or the drag ends.
+           * clamped inside the viewport; reschedules until the pointer leaves the
+           * band or the drag ends.
            */
           const scrollTick = (): void => {
             scrollRaf = 0;
@@ -411,24 +416,6 @@ export function createReferenceMentionCaret(): Plugin {
           document.addEventListener('mouseup', onUp, true);
           return true;
         },
-      },
-      decorations(state): DecorationSet | null {
-        const gaps = caretBlindGaps(state.doc);
-        if (gaps.length === 0) return null;
-        // `raw: true` skips PM's contentEditable=false widget wrapping (which
-        // would re-create the unanchorable island); `side: -1` places the anchor
-        // on the caret's left; the per-position key keeps the DecorationSet
-        // stable across transactions.
-        return DecorationSet.create(
-          state.doc,
-          gaps.map((pos) =>
-            Decoration.widget(pos, renderSeparator, {
-              raw: true,
-              side: -1,
-              key: `refsep@${pos}`,
-            }),
-          ),
-        );
       },
     },
   });

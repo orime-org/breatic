@@ -221,7 +221,11 @@ function ReferenceMentionChip({
         // data-kind lets the t2i grey-out target IMAGE chips only — a text
         // chip's substitution still takes effect in t2i (round-2 adversarial).
         data-kind={kind ?? 'image'}
-        className='reference-mention mx-0.5 inline-flex h-5 max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-middle text-xs text-muted-foreground'
+        // No horizontal margin: the whitespace invariant (reference-mention-
+        // whitespace.ts) keeps a real space on each side, so the chip's spacing
+        // comes from that space, not a CSS margin (design 2026-07-13 §6 — avoids
+        // margin + space double-gap).
+        className='reference-mention inline-flex h-5 max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-middle text-xs text-muted-foreground'
         contentEditable={false}
       >
         {typeof thumbnail === 'string' && thumbnail.length > 0 ? (
