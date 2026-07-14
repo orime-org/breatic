@@ -323,13 +323,26 @@ function setChipDragImage(view: EditorView, event: Event): void {
     const toDom = view.domAtPos(sel.to);
     range.setStart(fromDom.node, fromDom.offset);
     range.setEnd(toDom.node, toDom.offset);
+    // Mirror the native selection-snapshot semantics (user 2026-07-14: the
+    // Safari-style ghost is the standard): keep the dragged content's own
+    // line layout (same width/font as the source, so soft-wraps reproduce)
+    // and anchor the image at the press point's offset INSIDE the content —
+    // never pin the pointer to the first character.
+    const rect = range.getBoundingClientRect();
+    const editorStyle = getComputedStyle(view.dom);
     const ghost = document.createElement('div');
     ghost.style.cssText =
-      'position:absolute;top:-9999px;left:-9999px;pointer-events:none;' +
-      'display:flex;align-items:center;gap:2px;white-space:nowrap;';
+      'position:absolute;top:-9999px;left:-9999px;pointer-events:none;';
+    ghost.style.width = `${Math.ceil(rect.width)}px`;
+    ghost.style.font = editorStyle.font;
+    ghost.style.lineHeight = editorStyle.lineHeight;
+    ghost.style.whiteSpace = 'pre-wrap';
     ghost.appendChild(range.cloneContents());
     document.body.appendChild(ghost);
-    dt.setDragImage(ghost, 0, 0);
+    const pointer = event as DragEvent;
+    const offsetX = Math.max(0, pointer.clientX - rect.left);
+    const offsetY = Math.max(0, pointer.clientY - rect.top);
+    dt.setDragImage(ghost, offsetX, offsetY);
     setTimeout(() => {
       ghost.remove();
     }, 0);

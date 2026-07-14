@@ -230,7 +230,11 @@ function ReferenceMentionChip({
         // whitespace.ts) keeps a real space on each side, so the chip's spacing
         // comes from that space, not a CSS margin (design 2026-07-13 §6 — avoids
         // margin + space double-gap).
-        className='reference-mention inline-flex h-5 max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-middle text-xs text-muted-foreground'
+        // align-[-1.25px]: measured on the real machine — `align-middle` sat the
+        // chip's centerline 1.2px BELOW the text centerline (Inter metrics at
+        // 13px/18px pitch); the numeric value zeroes the delta exactly (user
+        // 2026-07-14: text and chip must share one horizontal centerline).
+        className='reference-mention inline-flex h-5 max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-[-1.25px] text-xs text-muted-foreground'
         contentEditable={false}
       >
         {typeof thumbnail === 'string' && thumbnail.length > 0 ? (
