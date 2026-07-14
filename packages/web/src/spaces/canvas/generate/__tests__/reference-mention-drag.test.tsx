@@ -784,3 +784,120 @@ describe('drop residue heal (D1)', () => {
     }
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// Safari drag-copies-instead-of-moving (#1776, user real-Safari trace): PM's
+// drop-move deletes the CURRENT selection, but Safari moves the live document
+// selection to the drop caret while hovering — the delete no-ops and the drag
+// pastes a copy. The plugin records the drag's SOURCE selection at dragstart
+// (plugin state, mapped through transactions) and handleDrop restores it just
+// before PM's native drop logic. Chrome's selection never follows the drop
+// caret, so the restore branch is a no-op there.
+
+describe('drag source restore on drop (#1776, Safari selection-follows-drop-caret)', () => {
+  /** Mounts a collaborative core editor (no chips needed — plain text drag). */
+  function makePlainEditor(): CoreEditor {
+    return new CoreEditor({
+      element: document.createElement('div'),
+      extensions: [
+        PMDocument,
+        Paragraph,
+        PMText,
+        Collaboration.configure({ fragment: new Y.Doc().getXmlFragment('prompt') }),
+        ReferenceMention.configure({
+          suggestion: makeReferenceSuggestion({ getPool: () => [], emptyLabel: 'No references' }),
+        }),
+      ],
+    });
+  }
+
+  /** The plugin's handleDrop prop, bound for direct invocation. */
+  function handleDropOf(editor: CoreEditor): (view: unknown, event: unknown, slice: unknown, moved: boolean) => boolean {
+    const plugin = editor.state.plugins.find(
+      (pl) => (pl as unknown as { key?: string }).key === 'referenceMentionCaret$',
+    );
+    const fn = (plugin?.props as { handleDrop?: unknown }).handleDrop;
+    if (typeof fn !== 'function') throw new Error('handleDrop prop missing');
+    return fn.bind(plugin) as ReturnType<typeof handleDropOf>;
+  }
+
+  it('restores the source selection before PM deletes it (moved drop after Safari drifted the selection)', () => {
+    const editor = makePlainEditor();
+    try {
+      editor.chain().insertContent('hello world').run();
+      editor.commands.setTextSelection({ from: 2, to: 7 });
+      // dragstart records the source range in plugin state
+      editor.view.dom.dispatchEvent(new Event('dragstart', { bubbles: true, cancelable: true }));
+      // Safari: the live selection follows the drop caret while hovering
+      editor.commands.setTextSelection({ from: 9, to: 9 });
+      const handled = handleDropOf(editor)(editor.view, {}, null, true);
+      expect(handled).toBe(false); // PM's native drop logic must still run
+      expect(editor.state.selection.from).toBe(2);
+      expect(editor.state.selection.to).toBe(7);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('a COPY drop (moved=false) leaves the drifted selection alone', () => {
+    const editor = makePlainEditor();
+    try {
+      editor.chain().insertContent('hello world').run();
+      editor.commands.setTextSelection({ from: 2, to: 7 });
+      editor.view.dom.dispatchEvent(new Event('dragstart', { bubbles: true, cancelable: true }));
+      editor.commands.setTextSelection({ from: 9, to: 9 });
+      handleDropOf(editor)(editor.view, {}, null, false);
+      expect(editor.state.selection.from).toBe(9); // untouched
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('the source is consumed by the drop — a second drop restores nothing', () => {
+    const editor = makePlainEditor();
+    try {
+      editor.chain().insertContent('hello world').run();
+      editor.commands.setTextSelection({ from: 2, to: 7 });
+      editor.view.dom.dispatchEvent(new Event('dragstart', { bubbles: true, cancelable: true }));
+      editor.commands.setTextSelection({ from: 9, to: 9 });
+      handleDropOf(editor)(editor.view, {}, null, true);
+      editor.commands.setTextSelection({ from: 4, to: 4 });
+      handleDropOf(editor)(editor.view, {}, null, true);
+      expect(editor.state.selection.from).toBe(4); // no stale restore
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('a dragend without a drop clears the recorded source (dropped outside the editor)', () => {
+    const editor = makePlainEditor();
+    try {
+      editor.chain().insertContent('hello world').run();
+      editor.commands.setTextSelection({ from: 2, to: 7 });
+      editor.view.dom.dispatchEvent(new Event('dragstart', { bubbles: true, cancelable: true }));
+      editor.view.dom.dispatchEvent(new Event('dragend', { bubbles: true, cancelable: true }));
+      editor.commands.setTextSelection({ from: 9, to: 9 });
+      handleDropOf(editor)(editor.view, {}, null, true);
+      expect(editor.state.selection.from).toBe(9); // nothing restored
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('the source range maps through a remote edit between dragstart and drop', () => {
+    const editor = makePlainEditor();
+    try {
+      editor.chain().insertContent('hello world').run();
+      editor.commands.setTextSelection({ from: 2, to: 7 });
+      editor.view.dom.dispatchEvent(new Event('dragstart', { bubbles: true, cancelable: true }));
+      // a co-editor inserts before the range mid-drag
+      editor.view.dispatch(editor.state.tr.insertText('AB', 1));
+      editor.commands.setTextSelection({ from: 11, to: 11 });
+      handleDropOf(editor)(editor.view, {}, null, true);
+      expect(editor.state.selection.from).toBe(4); // 2 + 2
+      expect(editor.state.selection.to).toBe(9); // 7 + 2
+    } finally {
+      editor.destroy();
+    }
+  });
+});

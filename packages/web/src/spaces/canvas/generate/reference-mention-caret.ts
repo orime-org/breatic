@@ -63,16 +63,30 @@ import {
   resolveDeletionUnit,
 } from '@web/spaces/canvas/generate/reference-mention-whitespace';
 
-/** The chip-spanning selection recorded at mousedown for the upcoming drag. */
+/** A recorded selection range (kept mapped through every transaction). */
 interface DragRecord {
-  /** Recorded selection start (kept mapped through every transaction). */
+  /** Recorded selection start. */
   from: number;
-  /** Recorded selection end (kept mapped through every transaction). */
+  /** Recorded selection end. */
   to: number;
 }
 
+/** The plugin's drag-tracking state (both slots mapped through every tr). */
+interface DragPluginState {
+  /** mousedown -> dragstart: the chip-spanning selection to restore (item 7). */
+  record: DragRecord | null;
+  /**
+   * dragstart -> drop: the drag's SOURCE selection. Safari moves the live
+   * document selection to the drop caret while hovering, so PM's move-delete
+   * (deleteSelection) becomes a no-op and the drag turns into a COPY (#1776,
+   * user real-Safari trace: view.dragging present at drop, yet the source
+   * stayed). handleDrop restores this range before PM's native drop runs.
+   */
+  source: DragRecord | null;
+}
+
 /** Identifies the caret/whitespace plugin (tests resolve the live plugin through it). */
-export const referenceMentionCaretKey = new PluginKey<DragRecord | null>(
+export const referenceMentionCaretKey = new PluginKey<DragPluginState>(
   'referenceMentionCaret',
 );
 
@@ -193,24 +207,79 @@ function normalizeSelection(
  * @returns The ProseMirror plugin.
  */
 /**
- * Writes the drag record into the plugin state (a pure-meta transaction: no
- * doc change, never an undo step). Skipped when the state already holds an
- * equal value, so plain presses dispatch nothing.
- * @param view - The editor view.
- * @param record - The record to store, or null to clear.
+ * Whether two records hold the same range (or are both null).
+ * @param a - One record.
+ * @param b - The other record.
+ * @returns True when equal.
  */
-function setDragRecord(view: EditorView, record: DragRecord | null): void {
-  const current = referenceMentionCaretKey.getState(view.state) ?? null;
-  if (current === record) return;
+function sameRecord(a: DragRecord | null, b: DragRecord | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.from === b.from && a.to === b.to;
+}
+
+/**
+ * Patches the drag-tracking plugin state (a pure-meta transaction: no doc
+ * change, never an undo step). Skipped when the patch changes nothing, so
+ * plain presses dispatch nothing.
+ * @param view - The editor view.
+ * @param patch - The slots to update (omitted slots keep their value).
+ */
+function patchDragState(
+  view: EditorView,
+  patch: Partial<DragPluginState>,
+): void {
+  const current = referenceMentionCaretKey.getState(view.state) ?? {
+    record: null,
+    source: null,
+  };
+  const next: DragPluginState = {
+    record: patch.record !== undefined ? patch.record : current.record,
+    source: patch.source !== undefined ? patch.source : current.source,
+  };
   if (
-    current !== null &&
-    record !== null &&
-    current.from === record.from &&
-    current.to === record.to
+    sameRecord(next.record, current.record) &&
+    sameRecord(next.source, current.source)
   ) {
     return;
   }
-  view.dispatch(view.state.tr.setMeta(referenceMentionCaretKey, record));
+  view.dispatch(view.state.tr.setMeta(referenceMentionCaretKey, next));
+}
+
+/**
+ * The item-7 dragstart half: consumes the mousedown record and, when the
+ * press-time chip-spanning selection has collapsed (the browser's native
+ * clear), restores it so PM's own dragstart handler drags the WHOLE recorded
+ * range; also stops propagation so tiptap's NodeView.onDragStart (React side)
+ * cannot overwrite the selection with a single-chip NodeSelection. Handles
+ * real Chrome's bare-TEXT-node dragstart target via {@link targetElement}.
+ * @param view - The editor view.
+ * @param event - The dragstart event.
+ */
+function restoreChipSpanSelection(view: EditorView, event: Event): void {
+  const record = referenceMentionCaretKey.getState(view.state)?.record ?? null;
+  if (record === null) return;
+  patchDragState(view, { record: null });
+  const target = targetElement(event.target);
+  if (target === null) return;
+  const chipEl =
+    target.closest('[data-reference-mention]') ??
+    target.querySelector('[data-reference-mention]');
+  if (chipEl === null) return;
+  const pos = chipPosFromDom(view, chipEl);
+  if (pos === null || pos < record.from || pos >= record.to) return;
+  const { doc } = view.state;
+  const from = Math.min(record.from, doc.content.size);
+  const to = Math.min(record.to, doc.content.size);
+  if (from >= to) return;
+  const sel = view.state.selection;
+  if (sel.from !== from || sel.to !== to) {
+    view.dispatch(
+      view.state.tr
+        .setSelection(TextSelection.create(doc, from, to))
+        .setMeta('addToHistory', false),
+    );
+  }
+  event.stopPropagation();
 }
 
 /**
@@ -218,8 +287,9 @@ function setDragRecord(view: EditorView, record: DragRecord | null): void {
  * extension): enforces the space-around-every-chip invariant + the drop-residue
  * heal, deletes a chip plus its owned spaces as one unit, implements the D
  * cursor model (one-press arrow crossing, click snapping, selection
- * normalization), and carries the multi-chip drag record (mousedown record →
- * dragstart restore) in its plugin state, mapped through every transaction.
+ * normalization), and carries the drag-tracking state (mousedown record →
+ * dragstart restore; dragstart source → drop restore, #1776) in its plugin
+ * state, mapped through every transaction.
  * @returns The ProseMirror plugin.
  */
 export function createReferenceMentionCaret(): Plugin {
@@ -236,20 +306,28 @@ export function createReferenceMentionCaret(): Plugin {
   // The record lives in PLUGIN STATE and is mapped through every transaction
   // (adversarial R2: a remote Yjs edit landing between mousedown and dragstart
   // drifted a raw closure record onto the WRONG content — collab critical path).
-  return new Plugin<DragRecord | null>({
+  return new Plugin<DragPluginState>({
     key: referenceMentionCaretKey,
     state: {
-      init: (): DragRecord | null => null,
-      apply: (tr, value): DragRecord | null => {
+      init: (): DragPluginState => ({ record: null, source: null }),
+      apply: (tr, value): DragPluginState => {
         const meta = tr.getMeta(referenceMentionCaretKey) as
-          | DragRecord
-          | null
+          | DragPluginState
           | undefined;
-        if (meta !== undefined) return meta;
-        if (value === null || !tr.docChanged) return value;
+        const next = meta !== undefined ? meta : value;
+        if (!tr.docChanged) return next;
+        /**
+         * Maps one slot through this transaction's position mapping.
+         * @param r - The slot value.
+         * @returns The mapped slot value.
+         */
+        const mapRecord = (r: DragRecord | null): DragRecord | null =>
+          r === null
+            ? null
+            : { from: tr.mapping.map(r.from), to: tr.mapping.map(r.to) };
         return {
-          from: tr.mapping.map(value.from),
-          to: tr.mapping.map(value.to),
+          record: mapRecord(next.record),
+          source: mapRecord(next.source),
         };
       },
     },
@@ -269,7 +347,7 @@ export function createReferenceMentionCaret(): Plugin {
         // upcoming dragstart. Never preventDefault, never handle.
         mousedown: (view, event): boolean => {
           if (event.button !== 0) {
-            setDragRecord(view, null);
+            patchDragState(view, { record: null });
             return false;
           }
           const target = targetElement(event.target);
@@ -283,54 +361,68 @@ export function createReferenceMentionCaret(): Plugin {
             pos !== null &&
             pos >= sel.from &&
             pos < sel.to;
-          setDragRecord(
-            view,
-            qualifies ? { from: sel.from, to: sel.to } : null,
-          );
+          patchDragState(view, {
+            record: qualifies ? { from: sel.from, to: sel.to } : null,
+          });
           return false;
         },
         mouseup: (view): boolean => {
           // A completed click never consumed the record — drop it.
-          setDragRecord(view, null);
+          patchDragState(view, { record: null });
           return false;
         },
         dragstart: (view, event): boolean => {
-          const record = referenceMentionCaretKey.getState(view.state) ?? null;
-          if (record === null) return false;
-          setDragRecord(view, null);
-          const target = targetElement(event.target);
-          if (target === null) return false;
-          const chipEl =
-            target.closest('[data-reference-mention]') ??
-            target.querySelector('[data-reference-mention]');
-          if (chipEl === null) return false;
-          const pos = chipPosFromDom(view, chipEl);
-          if (pos === null || pos < record.from || pos >= record.to) {
-            return false;
-          }
-          const { doc } = view.state;
-          const from = Math.min(record.from, doc.content.size);
-          const to = Math.min(record.to, doc.content.size);
-          if (from >= to) return false;
+          restoreChipSpanSelection(view, event);
+          // Remember the drag's SOURCE selection for handleDrop (#1776):
+          // Safari moves the live selection to the drop caret while hovering,
+          // so PM's move-delete would otherwise delete nothing (drag -> copy).
           const sel = view.state.selection;
-          if (sel.from !== from || sel.to !== to) {
-            // The browser's native-clear collapsed the selection after the
-            // press — restore it so PM's own dragstart handler (same native
-            // listener chain, runs after this returns false) drags the WHOLE
-            // recorded range (mapped through any transactions since the
-            // press). A pure selection restore, never an undo step.
-            view.dispatch(
-              view.state.tr
-                .setSelection(TextSelection.create(doc, from, to))
-                .setMeta('addToHistory', false),
-            );
-          }
-          // Also cut the event off from React's root listener: tiptap's
-          // NodeView.onDragStart would overwrite the selection with a
-          // single-chip NodeSelection if it ever received the event.
-          event.stopPropagation();
+          patchDragState(view, {
+            source: sel.empty ? null : { from: sel.from, to: sel.to },
+          });
           return false;
         },
+        dragend: (view): boolean => {
+          // A drag that never dropped inside the editor (cancelled / dropped
+          // outside) must not leave a stale source behind.
+          patchDragState(view, { source: null });
+          return false;
+        },
+      },
+      /**
+       * Restores the drag's source selection before ProseMirror's native drop
+       * logic runs (#1776, real-Safari trace): with `view.dragging` present PM
+       * treats the drop as a MOVE and deletes the CURRENT selection — but
+       * Safari has already moved the live selection to the drop caret, so the
+       * delete was a no-op and the drag pasted a copy. Restoring the recorded
+       * source (mapped through any transactions since dragstart) makes PM's
+       * own deleteSelection remove the dragged content. Never handles the
+       * event (always returns false); a no-op on Chrome, whose selection does
+       * not follow the drop caret.
+       * @param view - The editor view.
+       * @param _event - The drop event (unused).
+       * @param _slice - The dropped slice (unused).
+       * @param moved - Whether ProseMirror will treat the drop as a MOVE.
+       * @returns Always false — ProseMirror's native drop logic continues.
+       */
+      handleDrop: (view, _event, _slice, moved): boolean => {
+        const source =
+          referenceMentionCaretKey.getState(view.state)?.source ?? null;
+        if (source !== null) patchDragState(view, { source: null });
+        if (!moved || source === null) return false;
+        const { doc } = view.state;
+        const from = Math.min(source.from, doc.content.size);
+        const to = Math.min(source.to, doc.content.size);
+        if (from >= to) return false;
+        const sel = view.state.selection;
+        if (sel.from !== from || sel.to !== to) {
+          view.dispatch(
+            view.state.tr
+              .setSelection(TextSelection.create(doc, from, to))
+              .setMeta('addToHistory', false),
+          );
+        }
+        return false;
       },
       handleKeyDown: (view, event): boolean => {
         const sel = view.state.selection;
