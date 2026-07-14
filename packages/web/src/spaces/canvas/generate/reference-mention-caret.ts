@@ -30,16 +30,17 @@
  *   appendTransaction {@link normalizeSelection} is the backstop for programmatic
  *   landings (@ insertion / collab / command) on an unstoppable position.
  *
- * KEPT PENDING REAL-MACHINE VERIFICATION (design 2026-07-13 §7): the mouse-drag
- * takeover (mousedown geometry + auto-scroll) was written for the old caret-blind
- * gaps left by the img separator. With real spaces flanking every chip those gaps
- * no longer exist, so native drag-selection across a chip should just work — but
- * per the "separator removal regressed every gap click" lesson it is NOT
- * pre-deleted; a Chrome + Safari drag-select pass decides its removal. The
- * separator-img anchoring it replaced IS removed.
+ * The separator-era mouse-drag takeover (mousedown geometry resolver +
+ * auto-scroll) was REMOVED (2026-07-14, after #322 shipped): it only fired at
+ * "caret-blind" positions (a chip neighbour with NO adjacent text node), and the
+ * whitespace invariant makes such positions unreachable — every chip side is a
+ * real space text node between transactions, so the guard was provably always
+ * false. Native drag-selection works on real text; the Chrome "can't drag past a
+ * trailing atom" bug (#1152/#1199) required an atom at the line end, which the
+ * trailing space now prevents. handleClick + arrow handling above are NOT part
+ * of that takeover — they implement the D cursor model and stay.
  */
 
-import type { ResolvedPos } from '@tiptap/pm/model';
 import {
   NodeSelection,
   Plugin,
@@ -47,9 +48,7 @@ import {
   TextSelection,
 } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
-import type { EditorView } from '@tiptap/pm/view';
 
-import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import {
   chipAt,
   chipDeletionUnit,
@@ -64,93 +63,6 @@ import {
 
 /** Identifies the caret/whitespace plugin (tests resolve the live plugin through it). */
 export const referenceMentionCaretKey = new PluginKey('referenceMentionCaret');
-
-/**
- * Whether a resolved position is "caret-blind": an inline position with NO
- * adjacent text node and at least one adjacent reference chip. With the
- * whitespace invariant active a chip is always flanked by spaces, so this is
- * normally false — the pointer takeover below is retained pending real-machine
- * verification (§7), not because caret-blind gaps are expected.
- * @param $pos - The resolved position.
- * @returns True at a caret-blind chip boundary.
- */
-function isCaretBlind($pos: ResolvedPos): boolean {
-  if (!$pos.parent.inlineContent) return false;
-  const before = $pos.nodeBefore;
-  const after = $pos.nodeAfter;
-  if (before?.isText === true || after?.isText === true) return false;
-  return isChip(before) || isChip(after);
-}
-
-/**
- * Resolves the doc position of a caret-blind chip gap under a pointer, robust to
- * browsers whose native hit-test mis-resolves a click in a chip gap to the
- * paragraph START (Safari). Fast path: `posAtCoords` when it already lands on a
- * caret-blind position (Chrome). Fallback: pick the gap by GEOMETRY — the chip
- * rects on the clicked line — so it never trusts the broken native position. The
- * result is verified caret-blind, so a click on ordinary text returns null and
- * native handling stays. Pure read of the view; used by the mousedown takeover.
- * @param view - The editor view.
- * @param clientX - Pointer X in viewport px.
- * @param clientY - Pointer Y in viewport px.
- * @returns The caret-blind doc position under the pointer, or null.
- */
-function caretBlindPosFromClick(
-  view: EditorView,
-  clientX: number,
-  clientY: number,
-): number | null {
-  const at = view.posAtCoords({ left: clientX, top: clientY });
-  if (at && isCaretBlind(view.state.doc.resolve(at.pos))) return at.pos;
-  const line: Array<{ before: number; after: number; rect: DOMRect }> = [];
-  view.state.doc.descendants((node, pos) => {
-    if (node.type.name !== REFERENCE_MENTION_NODE) return;
-    const dom = view.nodeDOM(pos);
-    if (!(dom instanceof HTMLElement)) return;
-    const rect = dom.getBoundingClientRect();
-    if (clientY >= rect.top && clientY <= rect.bottom) {
-      line.push({ before: pos, after: pos + node.nodeSize, rect });
-    }
-  });
-  if (line.length === 0) return null;
-  line.sort((a, b) => a.rect.left - b.rect.left);
-  let pos: number | null = null;
-  if (clientX <= line[0].rect.left) pos = line[0].before;
-  else if (clientX >= line[line.length - 1].rect.right) {
-    pos = line[line.length - 1].after;
-  } else {
-    for (let i = 0; i < line.length - 1; i += 1) {
-      if (clientX >= line[i].rect.right && clientX <= line[i + 1].rect.left) {
-        pos = line[i].after;
-        break;
-      }
-    }
-  }
-  return pos !== null && isCaretBlind(view.state.doc.resolve(pos)) ? pos : null;
-}
-
-/**
- * The nearest vertically-scrollable element at or above a node (the prompt's
- * scroll viewport), or null when nothing scrolls. Used by the mouse-drag takeover
- * to auto-scroll while selecting past an edge. Starts at `node` itself, since the
- * editor DOM (`.ProseMirror`) can be the scroll container.
- * @param node - The starting element.
- * @returns The scroll container, or null.
- */
-function findScrollParent(node: HTMLElement): HTMLElement | null {
-  let el: HTMLElement | null = node;
-  while (el !== null) {
-    const overflowY = getComputedStyle(el).overflowY;
-    if (
-      (overflowY === 'auto' || overflowY === 'scroll') &&
-      el.scrollHeight > el.clientHeight
-    ) {
-      return el;
-    }
-    el = el.parentElement;
-  }
-  return null;
-}
 
 /**
  * Appends a transaction that adds any missing chip-flanking spaces, enforcing
@@ -204,8 +116,8 @@ function normalizeSelection(
 /**
  * Creates the chip whitespace/caret plugin (installed by the ReferenceMention
  * extension): enforces the space-around-every-chip invariant, deletes a chip
- * plus its owned spaces as one unit, and retains the (pending-verification)
- * one-press chip crossing + mouse takeover.
+ * plus its owned spaces as one unit, and implements the D cursor model
+ * (one-press arrow crossing, click snapping, selection normalization).
  * @returns The ProseMirror plugin.
  */
 export function createReferenceMentionCaret(): Plugin {
@@ -314,108 +226,6 @@ export function createReferenceMentionCaret(): Plugin {
           ),
         );
         return true;
-      },
-      handleDOMEvents: {
-        // Mouse-selection takeover for CARET-BLIND chip gaps. ProseMirror has no
-        // mouse-selection code of its own; browsers mishandle uneditable inline
-        // atoms (Chrome refuses to extend a native drag past a trailing atom;
-        // Safari drops a click between two chips). Scoped tightly by
-        // caretBlindPosFromClick, which returns a position ONLY at a verified
-        // caret-blind gap. Kept pending real-machine verification (§7); with the
-        // whitespace invariant active it should rarely fire. Selection-only
-        // transactions never enter the y-prosemirror undo stack.
-        mousedown: (view, event: MouseEvent): boolean => {
-          if (
-            event.button !== 0 ||
-            event.shiftKey ||
-            event.metaKey ||
-            event.ctrlKey ||
-            event.altKey
-          ) {
-            return false;
-          }
-          const target = event.target;
-          if (
-            target instanceof Element &&
-            target.closest('[data-reference-mention]') !== null
-          ) {
-            return false;
-          }
-          const anchor = caretBlindPosFromClick(
-            view,
-            event.clientX,
-            event.clientY,
-          );
-          if (anchor === null) return false;
-          event.preventDefault();
-          view.focus();
-          view.dispatch(
-            view.state.tr.setSelection(
-              TextSelection.create(view.state.doc, anchor),
-            ),
-          );
-          const scroller = findScrollParent(view.dom);
-          let scrollRaf = 0;
-          let lastX = event.clientX;
-          let lastY = event.clientY;
-          /**
-           * Extends the takeover selection to a viewport point.
-           * @param clientX - Pointer X in viewport px.
-           * @param clientY - Pointer Y in viewport px.
-           */
-          const extendTo = (clientX: number, clientY: number): void => {
-            const head = view.posAtCoords({ left: clientX, top: clientY });
-            if (!head) return;
-            view.dispatch(
-              view.state.tr.setSelection(
-                TextSelection.create(view.state.doc, anchor, head.pos),
-              ),
-            );
-          };
-          /**
-           * One auto-scroll frame: while the pointer sits in the top/bottom edge
-           * band, scroll the viewport and re-extend the selection to a point
-           * clamped inside the viewport; reschedules until the pointer leaves the
-           * band or the drag ends.
-           */
-          const scrollTick = (): void => {
-            scrollRaf = 0;
-            if (scroller === null) return;
-            const rect = scroller.getBoundingClientRect();
-            const EDGE_PX = 24;
-            const STEP_PX = 10;
-            let dy = 0;
-            if (lastY < rect.top + EDGE_PX) dy = -STEP_PX;
-            else if (lastY > rect.bottom - EDGE_PX) dy = STEP_PX;
-            if (dy === 0) return;
-            scroller.scrollTop += dy;
-            extendTo(
-              lastX,
-              Math.max(rect.top + 2, Math.min(rect.bottom - 2, lastY)),
-            );
-            scrollRaf = requestAnimationFrame(scrollTick);
-          };
-          /**
-           * Extends the takeover selection and (re)starts edge auto-scroll.
-           * @param move - The mousemove event.
-           */
-          const onMove = (move: MouseEvent): void => {
-            lastX = move.clientX;
-            lastY = move.clientY;
-            extendTo(move.clientX, move.clientY);
-            if (scrollRaf === 0) scrollRaf = requestAnimationFrame(scrollTick);
-          };
-          /** Tears down the takeover's listeners + auto-scroll on mouse release. */
-          const onUp = (): void => {
-            if (scrollRaf !== 0) cancelAnimationFrame(scrollRaf);
-            scrollRaf = 0;
-            document.removeEventListener('mousemove', onMove, true);
-            document.removeEventListener('mouseup', onUp, true);
-          };
-          document.addEventListener('mousemove', onMove, true);
-          document.addEventListener('mouseup', onUp, true);
-          return true;
-        },
       },
     },
   });
