@@ -332,7 +332,8 @@ function setChipDragImage(view: EditorView, event: Event): void {
     const editorStyle = getComputedStyle(view.dom);
     const ghost = document.createElement('div');
     ghost.style.cssText =
-      'position:absolute;top:-9999px;left:-9999px;pointer-events:none;';
+      'position:absolute;top:-9999px;left:-9999px;pointer-events:none;' +
+      'opacity:0.6;'; // native drag images are translucent — match them
     ghost.style.width = `${Math.ceil(rect.width)}px`;
     ghost.style.font = editorStyle.font;
     ghost.style.lineHeight = editorStyle.lineHeight;
@@ -398,6 +399,58 @@ function patchDragState(
     return;
   }
   view.dispatch(view.state.tr.setMeta(referenceMentionCaretKey, next));
+}
+
+/** Pointer proximity (px) to a scroller edge that starts drag auto-scroll. */
+const DRAG_SCROLL_EDGE_PX = 24;
+/** Max auto-scroll step (px per dragover event) at the very edge. */
+const DRAG_SCROLL_MAX_STEP_PX = 16;
+
+/**
+ * The auto-scroll step for a drag pointer near a scroller's edge: 0 outside
+ * the edge zones, ramping linearly to the max step at (or past) the edge.
+ * Browsers provide no native drag auto-scroll inside a scrollable container,
+ * so without this a long prompt cannot be dragged across its own fold (user
+ * 2026-07-14). Pure — the caller applies the delta.
+ * @param pointerY - The drag pointer's clientY.
+ * @param top - The scroller's viewport top.
+ * @param bottom - The scroller's viewport bottom.
+ * @returns The scrollTop delta (negative scrolls up).
+ */
+export function dragScrollDelta(
+  pointerY: number,
+  top: number,
+  bottom: number,
+): number {
+  const fromTop = pointerY - top;
+  if (fromTop < DRAG_SCROLL_EDGE_PX) {
+    const intensity = Math.min(1, (DRAG_SCROLL_EDGE_PX - fromTop) / DRAG_SCROLL_EDGE_PX);
+    return -Math.ceil(intensity * DRAG_SCROLL_MAX_STEP_PX);
+  }
+  const fromBottom = bottom - pointerY;
+  if (fromBottom < DRAG_SCROLL_EDGE_PX) {
+    const intensity = Math.min(1, (DRAG_SCROLL_EDGE_PX - fromBottom) / DRAG_SCROLL_EDGE_PX);
+    return Math.ceil(intensity * DRAG_SCROLL_MAX_STEP_PX);
+  }
+  return 0;
+}
+
+/**
+ * The nearest scrollable ancestor (vertical) of the editor DOM, including the
+ * editor element itself, or null.
+ * @param start - The element to search from.
+ * @returns The scroller, or null.
+ */
+function scrollableAncestor(start: HTMLElement): HTMLElement | null {
+  let el: HTMLElement | null = start;
+  while (el !== null && el !== document.body) {
+    if (el.scrollHeight > el.clientHeight) {
+      const overflowY = getComputedStyle(el).overflowY;
+      if (overflowY === 'auto' || overflowY === 'scroll') return el;
+    }
+    el = el.parentElement;
+  }
+  return null;
 }
 
 /**
@@ -531,6 +584,22 @@ export function createReferenceMentionCaret(): Plugin {
               : recordFromRange(view.state, sel.from, sel.to),
           });
           setChipDragImage(view, event);
+          return false;
+        },
+        dragover: (view, event): boolean => {
+          // Drag auto-scroll (user 2026-07-14): browsers do not scroll a
+          // scrollable container during a drag, so a long prompt could not be
+          // dragged across its own fold.
+          const scroller = scrollableAncestor(view.dom);
+          if (scroller !== null) {
+            const rect = scroller.getBoundingClientRect();
+            const delta = dragScrollDelta(
+              (event as DragEvent).clientY,
+              rect.top,
+              rect.bottom,
+            );
+            if (delta !== 0) scroller.scrollTop += delta;
+          }
           return false;
         },
         dragend: (view): boolean => {

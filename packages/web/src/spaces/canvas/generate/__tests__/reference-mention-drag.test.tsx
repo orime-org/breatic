@@ -19,6 +19,7 @@ import * as React from 'react';
 import * as Y from 'yjs';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { dragScrollDelta } from '@web/spaces/canvas/generate/reference-mention-caret';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -1047,5 +1048,32 @@ describe('unified chip drag ghost (Safari had none — tiptap only sets one via 
     } finally {
       editor.destroy();
     }
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Drag auto-scroll (user 2026-07-14): browsers give no native auto-scroll in
+// a scrollable container during a drag — the pure ramp is pinned here, the
+// wiring (dragover → scrollTop) is a real-machine check.
+
+describe('dragScrollDelta — the drag auto-scroll ramp', () => {
+  it('is 0 away from both edges', () => {
+    expect(dragScrollDelta(100, 0, 200)).toBe(0);
+  });
+  it('scrolls UP near the top edge, harder the closer', () => {
+    const near = dragScrollDelta(20, 0, 200);
+    const nearer = dragScrollDelta(4, 0, 200);
+    expect(near).toBeLessThan(0);
+    expect(nearer).toBeLessThan(near);
+  });
+  it('scrolls DOWN near the bottom edge, harder the closer', () => {
+    const near = dragScrollDelta(180, 0, 200);
+    const nearer = dragScrollDelta(197, 0, 200);
+    expect(near).toBeGreaterThan(0);
+    expect(nearer).toBeGreaterThan(near);
+  });
+  it('clamps at the max step when the pointer passes the edge', () => {
+    expect(dragScrollDelta(-50, 0, 200)).toBe(-16);
+    expect(dragScrollDelta(250, 0, 200)).toBe(16);
   });
 });
