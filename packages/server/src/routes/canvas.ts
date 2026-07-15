@@ -24,6 +24,7 @@ import {
   taskService,
   estimateTaskCredits,
   violatesSourceRequirementForModel,
+  violatesReferenceCountForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { projectService, authService, precheckCredits } from "@server/modules";
@@ -90,8 +91,37 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // the rule is the same per-mode `sourcesByMode` the frontend reads, applied
   // here to params.
   if (violatesSourceRequirementForModel(body.model, body.params)) {
+    // Structured record for security monitoring: a rejection here means the
+    // frontend gate was bypassed (crafted request) or drifted — worth a trace.
+    logger.warn(
+      { userId: user.id, projectId, model: body.model, reason: "missing_source" },
+      "execute_gate_rejected",
+    );
     throw new ValidationError(
       "This model requires a source input (e.g. params.images / video_url / audio_url).",
+    );
+  }
+
+  // #1735 reference-count gate: a submission that over-fills a capped list
+  // param (e.g. more reference images than the model's `max_items`) is rejected
+  // BEFORE enqueue so the user is told, rather than the worker silently
+  // truncating (providers/shared.ts). Same gate location as the source check.
+  const countViolation = violatesReferenceCountForModel(body.model, body.params);
+  if (countViolation) {
+    logger.warn(
+      {
+        userId: user.id,
+        projectId,
+        model: body.model,
+        reason: "too_many_references",
+        field: countViolation.field,
+        limit: countViolation.limit,
+        actual: countViolation.actual,
+      },
+      "execute_gate_rejected",
+    );
+    throw new ValidationError(
+      `This model accepts at most ${countViolation.limit} '${countViolation.field}'; ${countViolation.actual} were provided.`,
     );
   }
 

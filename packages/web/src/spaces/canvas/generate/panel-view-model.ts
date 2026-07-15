@@ -72,6 +72,14 @@ export interface GeneratePanelViewModel {
    */
   requiresSource: boolean;
   /**
+   * Max reference images the active model accepts, read off the model's
+   * `images` param `max_items` on the wire (backend-computed from config).
+   * Drives the #1735 count gate: submitting more `@`-picked sources than this
+   * is blocked in the panel (and re-checked server-side before enqueue, which
+   * otherwise silently truncates). Undefined when the model caps nothing.
+   */
+  maxReferences?: number;
+  /**
    * Whether the GLOBAL generatable-image catalog is empty (still loading, failed
    * to load, or no generation model configured). Distinct from `models.length`,
    * which is the ACTIVE-mode-filtered subset: the mode toggle gates its disabled
@@ -249,6 +257,9 @@ export function buildGeneratePanelViewModel(input: {
     // catalog) → no gate. The rule itself lives backend-side; the panel only
     // reads the wire field, never runs it.
     requiresSource: current ? (current.sourcesByMode[mode]?.length ?? 0) > 0 : false,
+    // #1735 count gate: the active model's reference-image cap (the `images`
+    // param's `max_items`, backend-computed on the wire). Undefined = uncapped.
+    maxReferences: current?.params.images?.max_items,
     catalogEmpty: generatable.length === 0,
   };
 }

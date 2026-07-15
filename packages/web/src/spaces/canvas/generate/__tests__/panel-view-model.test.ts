@@ -423,3 +423,31 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
     expect(r.params).toEqual({});
   });
 });
+
+describe('buildGeneratePanelViewModel — maxReferences (#1735 count gate)', () => {
+  it('exposes the active model images-param max_items as maxReferences', () => {
+    const capped = makeModel('nano-edit', {
+      mode: 'i2i',
+      params: { images: { description: '', default: null, max_items: 3 } },
+    });
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes: [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))],
+      edges: [],
+      models: [capped],
+    });
+    expect(vm.model).toBe('nano-edit');
+    expect(vm.maxReferences).toBe(3);
+  });
+
+  it('leaves maxReferences undefined when the active model caps nothing', () => {
+    // The default makeModel params carry aspect_ratio / resolution — no images cap.
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes: [node('n1', imageView({ mode: 't2i', model: 'flux' }))],
+      edges: [],
+      models: [makeModel('flux', { mode: 't2i' })],
+    });
+    expect(vm.maxReferences).toBeUndefined();
+  });
+});

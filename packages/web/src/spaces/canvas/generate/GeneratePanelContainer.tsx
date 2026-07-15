@@ -397,6 +397,21 @@ function GeneratePanelBody({
       toast.error(t('canvas.generatePanel.errorNoSourceImage'));
       return;
     }
+    // #1735 count gate: too many @-picked reference images for this model. Toast
+    // BEFORE the submitting latch (button stays clickable, actionable message).
+    // The server re-checks before enqueue — otherwise the worker silently
+    // truncates the extras (design decision A: toast, not a node error state).
+    if (
+      typeof fresh.maxReferences === 'number' &&
+      fresh.referenceUrls.length > fresh.maxReferences
+    ) {
+      toast.error(
+        t('canvas.generatePanel.errorTooManyReferences', {
+          limit: fresh.maxReferences,
+        }),
+      );
+      return;
+    }
     submittingRef.current = true;
     setIsSubmitting(true);
     try {

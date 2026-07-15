@@ -17,6 +17,10 @@ import {
   computeSourcesByMode,
   violatesSourceRequirement,
 } from "@domain/model-catalog/source-requirement.js";
+import {
+  violatesReferenceCount,
+  type ReferenceCountViolation,
+} from "@domain/model-catalog/reference-count.js";
 import type {
   ModelCatalog,
   ModelEntry,
@@ -387,6 +391,32 @@ export function violatesSourceRequirementForModel(
     if (entry) return violatesSourceRequirement(entry.sourcesByMode, params);
   }
   return false; // unknown model — existence is not this gate's job
+}
+
+/**
+ * #1735 server reference-count gate: whether the submitted params carry more
+ * items in a capped list param than the model's `max_items` allows. The
+ * /canvas/tasks route runs this BEFORE enqueue so an over-picked submission is
+ * rejected (with a message naming the limit) rather than silently truncated by
+ * the worker (providers/shared.ts). Sits at the same gate as
+ * {@link violatesSourceRequirementForModel}, reading the model's per-param
+ * `max_items` off the wire {@link ParamDescriptor}. An unknown / absent model
+ * passes (existence is not this gate's job).
+ * @param model - The task's model name from the request body, if any.
+ * @param params - The task params (`params.images` etc. carry the capped lists).
+ * @returns The first overflow (field + limit + actual), or null when within limits.
+ */
+export function violatesReferenceCountForModel(
+  model: string | undefined,
+  params: Record<string, unknown>,
+): ReferenceCountViolation | null {
+  if (!model) return null;
+  const catalog = getModelCatalog();
+  for (const modality of MODALITIES) {
+    const entry = catalog[modality].find((m) => m.name === model);
+    if (entry) return violatesReferenceCount(entry.params, params);
+  }
+  return null; // unknown model — existence is not this gate's job
 }
 
 /** Reset cached catalog and full-config caches (for testing). */

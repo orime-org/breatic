@@ -125,6 +125,9 @@ export const mocks = {
   // #1675 server execute gate (i2i/edit needs a source image). Default: no
   // violation — existing task-create tests stay green; the #1675 test flips it.
   violatesSourceRequirementForModel: vi.fn().mockReturnValue(false),
+  // #1735 server reference-count gate (too many reference images). Default: no
+  // violation (null) — existing tests stay green; the #1735 test flips it.
+  violatesReferenceCountForModel: vi.fn().mockReturnValue(null),
   nodeHistoryService: {
     listByNode: vi.fn(),
     recordGenerationSuccess: vi.fn(),
@@ -378,6 +381,7 @@ export const domainMock = () => ({
   MIN_TASK_CREDIT_COST: 5,
   estimateTaskCredits: vi.fn().mockReturnValue(5),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
+  violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
   getModel: vi.fn(),
   resolveProvider: vi.fn(),
   buildToolSet: vi.fn().mockReturnValue({}),
