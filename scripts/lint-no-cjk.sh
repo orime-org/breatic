@@ -38,27 +38,17 @@
 #     BSD grep (macOS) treats --exclude placed after --include as a no-op,
 #     so the old script scanned test files locally while excluding them in
 #     CI — inconsistent and surprising.
-#   - LC_ALL is forced to a real UTF-8 locale before grepping. The CJK
-#     character class is multibyte and its matching is locale-dependent:
-#     under a C / POSIX locale the class silently fails to match (the CI
-#     false-green that let CJK comments accumulate), while under macOS's
-#     UTF-8 default it matches. Pinning a UTF-8 locale makes the result
-#     deterministic on every machine.
+#   - The grep locale is selected by BEHAVIOUR (positive + negative
+#     sample probes), not by name: the CJK character class is multibyte
+#     and locale-dependent — GNU grep errors on it in the C locale, BSD
+#     grep byte-matches it (false positives) — and name-matching
+#     `locale -a` output missed the CI runner's spelling ("C.utf8"),
+#     which is exactly how the guard once reported a false CLEAN.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
-
-# Force a real UTF-8 locale so the multibyte character class below matches
-# deterministically. ubuntu CI ships C.UTF-8; macOS ships en_US.UTF-8 —
-# pick whichever exists first.
-for _loc in C.UTF-8 en_US.UTF-8 en_US.utf8 C.utf8; do
-  if locale -a 2>/dev/null | grep -qix "$_loc"; then
-    export LC_ALL="$_loc"
-    break
-  fi
-done
 
 # Forbidden character classes (Unicode blocks that commonly leak into
 # source as comments / string literals / class names):
@@ -119,16 +109,37 @@ SH_FILES=$(find scripts \
   -not -name 'lint-no-cjk.sh' \
   2>/dev/null || true)
 
-# Matcher self-test — MUST run before the scan. The multibyte character
-# class is locale-dependent, and the scan pipeline suppresses grep errors
-# (`2>/dev/null || true`) because "no match" and "error" share that path:
-# on 2026-07-14 the CI runner's grep failed the class SILENTLY and the
-# guard reported clean while production source carried CJK comments (caught
-# only by a local macOS run). If this environment's grep cannot match a
-# known CJK sample, refuse to report anything — loud misconfiguration beats
-# a false green.
-if ! printf 'x\xe6\x96\x87x' | grep -qE "$CJK_REGEX"; then
-  echo "lint:no-cjk — matcher self-test FAILED: this grep/locale cannot match the CJK character class; refusing to scan (a clean result would be meaningless)" >&2
+# Matcher self-test + locale selection by BEHAVIOUR — MUST run before the
+# scan. The multibyte character class is locale-dependent, and the scan
+# pipeline suppresses grep errors (`2>/dev/null || true`) because "no
+# match" and "error" share that path. Two ways this has silently broken:
+#   - The old name-based selection (`locale -a | grep -qix C.UTF-8`) never
+#     matched the CI runner's actual spelling ("C.utf8"), LC_ALL was never
+#     exported, GNU grep ran in the C locale, raised "Invalid collation
+#     character", the error was swallowed, and the guard reported CLEAN
+#     while production source carried CJK comments (false green until
+#     2026-07-15, caught only by a local macOS run).
+#   - A positive probe alone is not enough: BSD grep in the C/POSIX locale
+#     interprets the class as BYTES, which matches the CJK sample but ALSO
+#     matches unrelated multibyte characters (em dash, accented letters) —
+#     accepting such a locale would flood the scan with false positives.
+# So each candidate locale must pass BOTH probes (samples are printf byte
+# escapes, independent of this file's own encoding):
+#   positive: matches CJK        (U+6587, bytes e6 96 87)
+#   negative: ignores an em dash (U+2014, bytes e2 80 94)
+# If no candidate passes, refuse to report anything — loud
+# misconfiguration beats a false green.
+GREP_LOCALE=''
+for _loc in "${LC_ALL:-}" "${LANG:-}" C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+  [ -n "$_loc" ] || continue
+  if printf 'x\xe6\x96\x87x' | LC_ALL="$_loc" grep -qE "$CJK_REGEX" 2>/dev/null \
+    && ! printf 'x\xe2\x80\x94x' | LC_ALL="$_loc" grep -qE "$CJK_REGEX" 2>/dev/null; then
+    GREP_LOCALE="$_loc"
+    break
+  fi
+done
+if [ -z "$GREP_LOCALE" ]; then
+  echo "lint:no-cjk — matcher self-test FAILED: no available locale lets grep match the CJK class correctly (tried LC_ALL, LANG, C.UTF-8, C.utf8, en_US.UTF-8, en_US.utf8); refusing to scan (a clean result would be meaningless)" >&2
   exit 2
 fi
 
@@ -137,7 +148,7 @@ MATCHES=$(
     | grep -vE '^$' \
     | grep -vE "$ALLOWLIST_REGEX" \
     | tr '\n' '\0' \
-    | xargs -0 grep -EnH "$CJK_REGEX" 2>/dev/null \
+    | LC_ALL="$GREP_LOCALE" xargs -0 grep -EnH "$CJK_REGEX" 2>/dev/null \
     || true
 )
 
