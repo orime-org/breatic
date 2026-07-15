@@ -392,7 +392,7 @@ function checkAvailability(skill: InternalSkillMeta): boolean {
 
 // ── Model list formatting ───────────────────────────────────────────
 
-/** Model info as returned by provider `listAvailable*Models()`. */
+/** Model info as returned by `listAvailableModels()`. */
 interface ModelInfo {
   name: string;
   mode: string | string[];
