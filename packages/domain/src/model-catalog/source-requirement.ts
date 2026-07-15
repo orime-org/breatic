@@ -143,12 +143,15 @@ function hasSource(type: SourceType, params: Record<string, unknown>): boolean {
  * `["t2i","i2i"]`, or any t2i/t2v/…) is NOT gated: an image-less submission is
  * a valid text-to-X run. Only a model whose EVERY mode needs a source is
  * gated, and then every required source type (across its modes) must be present
- * in params. Applied by the server BEFORE enqueue so no task row / bill is
- * created for an input the model would reject. The SAME `sourcesByMode` the
- * frontend reads drives this — one rule, checked here against params.
+ * in params. Applied by the server BEFORE enqueue so no task row / job is
+ * created for an input the model would reject. (Not a billing guard: billing is
+ * post-success, so a source-less run that reached the worker would fail and
+ * never bill anyway — the gate saves the doomed attempt, not the credits.) The
+ * SAME `sourcesByMode` the frontend reads drives this — one rule, checked here
+ * against params.
  * @param sourcesByMode - The model's per-mode source requirements ({@link computeSourcesByMode}); the catalog carries it precomputed.
  * @param params - The submitted task params (`params.images` / `video_url` / … are the source carriers).
- * @returns True when a required source type is missing → reject before billing.
+ * @returns True when a required source type is missing → reject before enqueue.
  */
 export function violatesSourceRequirement(
   sourcesByMode: Record<string, SourceType[]>,

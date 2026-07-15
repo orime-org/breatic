@@ -5,8 +5,9 @@
  * Cross-modality execute-gate rule (#1675). Pins the (modality, mode) → source
  * type mapping, the wire `sourcesByMode` computation, and the server gate
  * `violatesSourceRequirement` — including the multi-source `talking_head`
- * (image + audio) and the hybrid (t2i+i2i) source-less escape hatch. Critical
- * path (billing pre-check gate), so every branch is pinned.
+ * (image + audio) and the hybrid (t2i+i2i) source-less escape hatch. This is an
+ * AIGC-execute input guard (AI-tool-call path) — a wrong verdict either enqueues
+ * a doomed task or blocks a valid run — so every branch is pinned.
  */
 
 import { describe, it, expect } from "vitest";

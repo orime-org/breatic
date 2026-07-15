@@ -79,12 +79,16 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   await projectService.assertAccess(projectId, user.id, "editor");
 
   // #1675 execute gate (cross-modality): a model whose modes all need a source
-  // input (image / video / audio) must not be submitted without it. Reject
-  // BEFORE enqueue — billing is post-worker (markCompletedAndBill), so this
-  // means no task row, no job, no bill for an input the model would reject
-  // (e.g. Nano Banana Edit needs an image; a video-edit needs a video).
-  // Defence in depth behind the Generate panel's frontend gate; the rule is the
-  // same per-mode `sourcesByMode` the frontend reads, applied here to params.
+  // input (image / video / audio) must not be submitted without it (e.g. Nano
+  // Banana Edit needs an image; a video-edit needs a video). Reject BEFORE
+  // enqueue so a doomed submission never creates a task row, burns a worker
+  // slot, or leaves the user waiting for a node that can only fail — the client
+  // gets an immediate 400 instead. This is NOT a billing guard: billing is
+  // post-success (markCompletedAndBill), so a source-less run that reached the
+  // worker would fail and never bill anyway — the gate saves the doomed attempt,
+  // not the credits. Defence in depth behind the Generate panel's frontend gate;
+  // the rule is the same per-mode `sourcesByMode` the frontend reads, applied
+  // here to params.
   if (violatesSourceRequirementForModel(body.model, body.params)) {
     throw new ValidationError(
       "This model requires a source input (e.g. params.images / video_url / audio_url).",

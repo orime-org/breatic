@@ -3,7 +3,7 @@
 
 /**
  * violatesSourceRequirementForModel (#1675 server execute gate) — the model-
- * lookup wrapper the /canvas/tasks route runs BEFORE enqueue/billing. It reads
+ * lookup wrapper the /canvas/tasks route runs BEFORE enqueue. It reads
  * the model's catalog `sourcesByMode` and applies the same rule the frontend
  * gets on the wire. Exercised against the real config catalog, picking a real
  * source-requiring model and a real source-less (t2i-capable) model dynamically
