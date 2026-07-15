@@ -15,6 +15,7 @@ import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "@breatic/core";
 import { requiresSourceImage,
   supportsTextToImage } from "@breatic/shared";
+import { computeSourcesByMode } from "@domain/model-catalog/source-requirement.js";
 import type {
   ModelCatalog,
   ModelEntry,
@@ -215,6 +216,9 @@ function projectModelEntry(
     // mirrors what is literally on disk.
     params: (m.params ?? {}) as unknown as Record<string, ParamDescriptor>,
     providers,
+    // #1675 cross-modality execute gate: precompute per-mode source needs so
+    // the frontend reads them off the wire (the rule stays backend-side).
+    sourcesByMode: computeSourcesByMode(modality, m.mode as string | string[]),
     icon: m.icon,
   };
 }

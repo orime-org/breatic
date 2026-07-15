@@ -26,6 +26,7 @@ function model(name: string, displayName: string): ModelEntry {
     generation_time: 30,
     params: {},
     providers: [],
+    sourcesByMode: {},
   };
 }
 

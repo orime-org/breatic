@@ -30,6 +30,7 @@ function model(name: string, mode: string | string[]): ModelEntry {
     generation_time: 10,
     params: {},
     providers: [],
+    sourcesByMode: {},
   };
 }
 

@@ -43,6 +43,7 @@ export type {
   ModelProvider,
   ModelEntry,
   ModelCatalog,
+  SourceType,
 } from "@shared/types/model-catalog.js";
 export {
   modelCatalogSchema,

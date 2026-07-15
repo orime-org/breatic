@@ -22,6 +22,7 @@ const MODEL: ModelEntry = {
     resolution: { description: '', values: ['1K', '2K'], default: '1K' },
   },
   providers: [],
+  sourcesByMode: {},
 };
 
 /**

@@ -33,6 +33,7 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
       resolution: { description: '', values: ['1k', '2k'], default: '1k' },
     },
     providers: [],
+    sourcesByMode: {},
     ...over,
   };
 }

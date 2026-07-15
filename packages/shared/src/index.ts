@@ -48,6 +48,7 @@ export type {
   ModelProvider,
   ModelEntry,
   ModelCatalog,
+  SourceType,
   ProjectRole,
   ProjectMember,
   Studio,
