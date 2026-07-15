@@ -11,17 +11,18 @@
  * - aspect_ratio -> pass-through
  * - resolution   -> stripped
  * - stylize, chaos, weird, sref, seed -> pass-through
- * - image, iw (img2img variants) -> pass-through
  */
 
 import type { ModelFamily } from "@worker/providers/shared.js";
 
-/** Set of model names belonging to this family. */
+/**
+ * Set of model names belonging to this family.
+ *
+ * WaveSpeed delisted the niji variant and both img2img endpoints
+ * (2026-07-15 audit, #1683) — only V7 text-to-image remains live.
+ */
 export const MODELS: ReadonlySet<string> = new Set([
   "midjourney-v7",
-  "midjourney-niji-v7",
-  "midjourney-v7-img2img",
-  "midjourney-niji-v7-img2img",
 ]);
 
 /**

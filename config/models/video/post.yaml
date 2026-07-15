@@ -38,5 +38,7 @@ models:
         default: null
     providers:
       - name: wavespeed
-        model_id: "wavespeed-ai/rife/video-interpolation"
+        # Renamed upstream from wavespeed-ai/rife/video-interpolation
+        # (2026-07-15 audit #1683).
+        model_id: "wavespeed-ai/rife"
         priority: 1
