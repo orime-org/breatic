@@ -3,6 +3,7 @@
 
 import type * as React from 'react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 import { StudioRailContent } from '@web/pages/studio/rail/StudioRailContent';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
@@ -42,14 +43,21 @@ export function StudioRail({
   return (
     <nav
       aria-label={t('studio.rail.navLabel')}
-      className='hidden w-60 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-background p-2 md:flex'
+      className='hidden w-60 shrink-0 border-r border-border bg-background md:block'
     >
-      <StudioRailContent
-        studios={studios}
-        activeSlug={activeSlug}
-        onCreateProject={onCreateProject}
-        onCreateStudio={onCreateStudio}
-      />
+      {/* ScrollArea (#1773): overlay scrollbar — appears only while
+          scrolling, no layout space, hover changes color only. The padding
+          and the column layout move inside so they scroll with the items. */}
+      <ScrollArea className='h-full' viewportClassName='p-2'>
+        <div className='flex flex-col gap-0.5'>
+          <StudioRailContent
+            studios={studios}
+            activeSlug={activeSlug}
+            onCreateProject={onCreateProject}
+            onCreateStudio={onCreateStudio}
+          />
+        </div>
+      </ScrollArea>
     </nav>
   );
 }

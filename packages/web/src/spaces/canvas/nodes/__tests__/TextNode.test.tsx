@@ -86,8 +86,10 @@ describe('TextNode', () => {
         onChange={onChange}
       />,
     );
+    await user.dblClick(screen.getByTestId('text-node-body'));
+    // Entering edit mode remounts the body inside a ScrollArea (#1773) —
+    // re-query instead of holding the pre-click element.
     const body = screen.getByTestId('text-node-body');
-    await user.dblClick(body);
     expect(body.getAttribute('contenteditable')).toBe('true');
     body.blur();
     expect(onChange).toHaveBeenCalled();
@@ -168,9 +170,9 @@ describe('TextNode', () => {
     render(
       <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
     );
-    expect(screen.getByTestId('text-node-body').className).not.toContain(
-      'nowheel',
-    );
+    const body = screen.getByTestId('text-node-body');
+    expect(body.className).not.toContain('nowheel');
+    expect(body.closest('.nowheel')).toBeNull();
   });
 
   it('adds `nowheel` on the body ONLY while editing (wheel scrolls the text you are editing)', async () => {
@@ -178,27 +180,37 @@ describe('TextNode', () => {
     render(
       <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
     );
+    await user.dblClick(screen.getByTestId('text-node-body'));
+    // While editing, `nowheel` + `nodrag` sit on the ScrollArea root (#1773)
+    // — ReactFlow checks ancestors, so the gate still covers the body.
     const body = screen.getByTestId('text-node-body');
-    await user.dblClick(body);
-    expect(body.className).toContain('nowheel');
+    expect(body.closest('.nowheel')).not.toBeNull();
+    expect(body.closest('.nodrag')).not.toBeNull();
   });
 
   it('edit state caps at 576 (max-h-144), SCROLLS, wraps long tokens, starts at the empty-state height (#1470)', async () => {
-    // Double-click → editing: same 576px cap, but overflow SCROLLS (a scrollbar
-    // shows only here, in edit state — the GLOBAL native thin scrollbar,
-    // index.css #1773, so `overflow-y-auto` alone is the whole contract) so
-    // the full content is reachable while editing; long unbreakable tokens
-    // wrap (break-words). The box starts at the
-    // empty-state height (min-h-48 = 192px), not the old cramped 48px, and grows
-    // with content up to the cap.
+    // Double-click → editing: same 576px cap, but overflow SCROLLS — inside a
+    // ScrollArea (#1773 overlay scrollbar: appears only while scrolling, no
+    // layout space, hover changes color only) so the full content is reachable
+    // while editing; long unbreakable tokens wrap (break-words). The box starts
+    // at the empty-state height (min-h-48 = 192px), not the old cramped 48px,
+    // and grows with content up to the cap.
     const user = userEvent.setup();
     render(
       <TextNode data={{ kind: 'text', content: 'long text', status: 'idle' }} />,
     );
+    await user.dblClick(screen.getByTestId('text-node-body'));
     const body = screen.getByTestId('text-node-body');
-    await user.dblClick(body);
-    expect(body.className).toContain('max-h-144');
-    expect(body.className).toContain('overflow-y-auto');
+    // The 576px cap sits on the ScrollArea VIEWPORT (the scroller); the body
+    // keeps the min height + wrapping so the whole empty area takes the caret.
+    const viewport = body.closest('[data-radix-scroll-area-viewport]');
+    expect(viewport).not.toBeNull();
+    expect((viewport as HTMLElement).className).toContain('max-h-144');
+    // Real scroll capability, not just classes: Radix sets overflowY:scroll
+    // only while a vertical ScrollBar is mounted — if the bar is ever
+    // removed/conditioned, text past 576px becomes unreachable while
+    // className assertions stay green (adversarial finding, 2026-07-14).
+    expect((viewport as HTMLElement).style.overflowY).toBe('scroll');
     expect(body.className).toContain('break-words');
     expect(body.className).toContain('min-h-48');
     expect(body.className).not.toContain('min-h-[3rem]');
@@ -207,8 +219,8 @@ describe('TextNode', () => {
   it('editing body shows the text cursor, not the inherited grab hand (user bug 2026-07-04)', async () => {
     const user = userEvent.setup();
     render(<TextNode data={{ kind: 'text', status: 'idle', content: 'hello' }} />);
+    await user.dblClick(screen.getByTestId('text-node-body'));
     const body = screen.getByTestId('text-node-body');
-    await user.dblClick(body);
     // contenteditable has NO UA cursor of its own - it inherits the ReactFlow
     // node wrapper's grab hand unless the editing class declares cursor-text.
     expect(body.getAttribute('contenteditable')).toBe('true');

@@ -39,36 +39,49 @@ body {
   overscroll-behavior: none;
 }
 
-/* Scrollbars — NATIVE overlay, thin, colors pinned; ONE owner (#1773,
-   user-ratified 2026-07-15). Behaviour delivered: appears only while
-   scrolling, takes no layout space, fades in/out, and hover does NOT change
-   its shape in either engine. All of it rides the two standard properties:
+/* Scrollbars (#1773, user-ratified 2026-07-15): every visible scroller in
+   the app uses OUR Scroller component (components/ui/scroll-area.tsx — our
+   wrapper around the Radix scroll-area primitive), vertical AND horizontal:
+   a custom OVERLAY scrollbar that appears only while scrolling, takes no
+   layout space, fades in/out, hover changes COLOR only (never shape), and
+   NEVER disturbs input state (focus / selection) when dragged. Native
+   scrollbars cannot deliver this: CSS Scrollbars L1 standardizes only the
+   thickness bucket and two static colors — interaction states (hover
+   geometry / hover shading) are UA-private and vary between browser builds
+   (probed: MCP Chrome 150 did not widen author-colored bars on hover, the
+   user's Chrome did). lint:no-inline-scrollbar enforces the single owner
+   (no scrollbar re-declarations, no raw overflow-* scrollers outside the
+   component).
 
-   - `color-scheme` on the theme roots (tokens.css) is the ROOT fix: the
-     theme is a data-theme class toggle the UA cannot see, so Safari painted
-     its LIGHT-scheme (black) overlay thumb on dark surfaces = invisible.
-   - `scrollbar-width: thin` picks the slim native bar. On Safari the thin
-     indicator has NO hover expansion (the original bug's widen-with-track
-     was the full `auto` overlay, pre-thin).
-   - `scrollbar-color` pins thumb/track to our semantic token. Side effect
-     that makes this whole route viable (real-Chrome A/B probe, archived
-     2026-07-14-scrollbar-probe round-3): an author-colored scrollbar takes
-     Chrome's SIMPLIFIED painter, which drops the macOS-style hover
-     widen-with-track while STAYING overlay (0 layout px) — hover morph gone
-     in both engines, pure CSS.
-
-   History (same probe set): the pre-#1773 per-component styling stacked
-   `scrollbar-width: thin` ON TOP of `::-webkit-scrollbar` rules, and per
-   CSS Scrollbars L1 a non-auto standard property DISABLES webkit pseudo
-   styling — those webkit rules were dead code in BOTH engines. That is also
-   why component-level scrollbar styling is banned outright
-   (lint:no-inline-scrollbar): a webkit rule that ever took effect would
-   force a classic space-consuming bar, and standard-property re-declarations
-   fork the single source of truth. Hiding a scrollbar entirely stays allowed
-   via scrollbar-width: none (class specificity beats this * rule). */
+   The rules below are the FALLBACK for whatever still scrolls natively (the
+   root document, anything not wrappable): thin + scheme-correct pinned
+   colors. `color-scheme` on the theme roots (tokens.css) is the root fix
+   for the original bug — the theme is a data-theme class toggle the UA
+   cannot see, so Safari painted its LIGHT-scheme (black) overlay thumb on
+   dark surfaces = invisible. Historical note: the pre-#1773 per-component
+   styling stacked `scrollbar-width: thin` ON TOP of `::-webkit-scrollbar`
+   rules, and per CSS Scrollbars L1 a non-auto standard property DISABLES
+   webkit styling — real-engine probes (archived in inner
+   2026-07-14-scrollbar-probe) confirmed those webkit rules were dead code
+   in BOTH engines. Hiding a native scrollbar entirely (SpaceTabBar) stays
+   allowed via scrollbar-width: none (class specificity beats this * rule). */
 * {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-muted-foreground) 50%, transparent) transparent;
+}
+
+/* Scroller component internals (#1773): Radix wraps viewport children in an
+   auto-height `display:table` div (inline style) so content can grow past
+   the viewport for HORIZONTAL scrolling. In vertical-only scrollers that
+   table breaks the width-constraint chain `truncate` depends on (a table
+   sizes to its content), so force the wrapper back to block there. The
+   `data-scrollbars` stamp comes from our ScrollArea wrapper; !important is
+   required to beat Radix's inline style. Child combinators on BOTH hops on
+   purpose: the viewport is always the Root's direct child, and a descendant
+   combinator would leak into a horizontal/both ScrollArea nested inside a
+   vertical one and break its wide-content sizing (adversarial round). */
+[data-scrollbars='vertical'] > [data-radix-scroll-area-viewport] > div {
+  display: block !important;
 }
 
 /* Sonner top-center fit-content centering override.

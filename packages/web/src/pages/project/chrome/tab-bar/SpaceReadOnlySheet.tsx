@@ -91,8 +91,14 @@ export function SpaceReadOnlySheet({
             {t('spaces.readonly.description')}
           </SheetDescription>
         </SheetHeader>
+        {/* Centered placeholder OUTSIDE any ScrollArea (#1773 Radix trap:
+            the viewport's inner auto-height table wrapper collapses h-full
+            centering — adversarially confirmed here). Today's body is always
+            a centered placeholder card, nothing scrolls; when real read-only
+            viewers land, wrap THAT content in <ScrollArea> and keep the
+            placeholder branch out here (StudioRecentPage pattern). */}
         <div
-          className='flex-1 overflow-auto p-4 text-sm text-muted-foreground'
+          className='flex min-h-0 flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground'
           data-testid='space-read-only-body'
         >
           {space ? <ReadOnlyBody space={space} /> : null}
@@ -113,41 +119,35 @@ function ReadOnlyBody({ space }: { space: ProjectSpace }): React.JSX.Element | n
   switch (space.type) {
     case 'canvas':
       return (
-        <div className='flex h-full items-center justify-center text-center'>
-          <div className='max-w-[420px] rounded-lg border border-dashed border-border bg-popover px-6 py-4'>
-            <strong className='block text-foreground'>
-              {t('spaces.readonly.canvas.title')}
-            </strong>
-            <span className='text-xs'>
-              {t('spaces.readonly.canvas.description')}
-            </span>
-          </div>
+        <div className='max-w-[420px] rounded-lg border border-dashed border-border bg-popover px-6 py-4'>
+          <strong className='block text-foreground'>
+            {t('spaces.readonly.canvas.title')}
+          </strong>
+          <span className='text-xs'>
+            {t('spaces.readonly.canvas.description')}
+          </span>
         </div>
       );
     case 'document':
       return (
-        <div className='flex h-full items-center justify-center text-center'>
-          <div className='max-w-[420px] rounded-lg border border-dashed border-border bg-popover px-6 py-4'>
-            <strong className='block text-foreground'>
-              {t('spaces.readonly.document.title')}
-            </strong>
-            <span className='text-xs'>
-              {t('spaces.readonly.document.description')}
-            </span>
-          </div>
+        <div className='max-w-[420px] rounded-lg border border-dashed border-border bg-popover px-6 py-4'>
+          <strong className='block text-foreground'>
+            {t('spaces.readonly.document.title')}
+          </strong>
+          <span className='text-xs'>
+            {t('spaces.readonly.document.description')}
+          </span>
         </div>
       );
     case 'timeline':
       return (
-        <div className='flex h-full items-center justify-center text-center'>
-          <div className='max-w-[420px] rounded-lg border border-dashed border-border bg-popover px-6 py-4'>
-            <strong className='block text-foreground'>
-              {t('spaces.readonly.timeline.title')}
-            </strong>
-            <span className='text-xs'>
-              {t('spaces.readonly.timeline.description')}
-            </span>
-          </div>
+        <div className='max-w-[420px] rounded-lg border border-dashed border-border bg-popover px-6 py-4'>
+          <strong className='block text-foreground'>
+            {t('spaces.readonly.timeline.title')}
+          </strong>
+          <span className='text-xs'>
+            {t('spaces.readonly.timeline.description')}
+          </span>
         </div>
       );
     default:

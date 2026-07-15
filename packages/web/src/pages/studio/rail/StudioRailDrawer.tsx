@@ -5,6 +5,7 @@ import * as React from 'react';
 import { Menu } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Sheet,
   SheetContent,
@@ -70,31 +71,38 @@ export function StudioRailDrawer({
       <SheetContent
         side='left'
         aria-describedby={undefined}
-        className='flex w-64 flex-col gap-0.5 overflow-y-auto p-2'
+        className='w-64 p-0'
         data-testid='studio-rail-drawer'
       >
-        <SheetTitle className='sr-only'>{t('studio.rail.navLabel')}</SheetTitle>
-        {/* Drawer header — brand on the left; the vendor Sheet close (X,
-            absolute right-3 top-3) lands in the pr-10 gap on the right, so it
-            gets its own row instead of overlapping the first rail item. */}
-        <div className='mb-1 flex h-9 shrink-0 items-center pl-1.5 pr-10'>
-          <Link
-            to='/studio'
-            aria-label={t('studio.topBar.home')}
-            className='flex items-center gap-[7px]'
-          >
-            <BrandMark size={24} />
-            <span className='text-sm font-semibold text-foreground'>
-              Breatic
-            </span>
-          </Link>
-        </div>
-        <StudioRailContent
-          studios={studios}
-          activeSlug={activeSlug}
-          onCreateProject={onCreateProject}
-          onCreateStudio={onCreateStudio}
-        />
+        {/* ScrollArea (#1773): overlay scrollbar — appears only while
+            scrolling, no layout space, hover changes color only. Padding and
+            the column layout move inside so they scroll with the content. */}
+        <ScrollArea className='h-full' viewportClassName='p-2'>
+          <div className='flex flex-col gap-0.5'>
+            <SheetTitle className='sr-only'>{t('studio.rail.navLabel')}</SheetTitle>
+            {/* Drawer header — brand on the left; the vendor Sheet close (X,
+                absolute right-3 top-3) lands in the pr-10 gap on the right, so it
+                gets its own row instead of overlapping the first rail item. */}
+            <div className='mb-1 flex h-9 shrink-0 items-center pl-1.5 pr-10'>
+              <Link
+                to='/studio'
+                aria-label={t('studio.topBar.home')}
+                className='flex items-center gap-[7px]'
+              >
+                <BrandMark size={24} />
+                <span className='text-sm font-semibold text-foreground'>
+                  Breatic
+                </span>
+              </Link>
+            </div>
+            <StudioRailContent
+              studios={studios}
+              activeSlug={activeSlug}
+              onCreateProject={onCreateProject}
+              onCreateStudio={onCreateStudio}
+            />
+          </div>
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   );

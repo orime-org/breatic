@@ -3,6 +3,7 @@
 
 import type * as React from 'react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Sheet,
   SheetContent,
@@ -113,7 +114,9 @@ export function ConversationHistorySheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side='left-floating'
-        className='w-80 p-0'
+        // flex column so the header stays fixed and the ScrollArea below
+        // (flex-1 min-h-0) takes exactly the remaining height (#1773).
+        className='flex w-80 flex-col p-0'
         data-testid='conversation-history-sheet'
       >
         <SheetHeader className='px-4 py-3'>
@@ -124,55 +127,59 @@ export function ConversationHistorySheet({
             {t('chat.history.description')}
           </SheetDescription>
         </SheetHeader>
-        <ul
-          className='flex flex-col gap-px overflow-y-auto'
-          data-testid='conversation-history-list'
-          role='list'
-        >
-          {conversations.length === 0 ? (
-            <li className='px-4 py-3 text-sm text-muted-foreground'>
-              {t('chat.history.empty')}
-            </li>
-          ) : (
-            conversations.map((c) => {
-              const isActive = c.id === activeId;
-              const rel = relativeTime(c.updatedAt);
-              return (
-                <li key={c.id} role='listitem'>
-                  <button
-                    type='button'
-                    onClick={() => onPick(c.id)}
-                    aria-current={isActive ? 'true' : undefined}
-                    className={`flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-accent ${
-                      isActive ? 'bg-muted' : ''
-                    }`}
-                    data-testid={`conversation-${c.id}`}
-                  >
-                    <span
-                      aria-hidden
-                      className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${
-                        isActive ? 'bg-foreground' : 'bg-muted-foreground/40'
+        {/* ScrollArea (#1773): overlay scrollbar — appears only while
+            scrolling, no layout space, hover changes color only. */}
+        <ScrollArea className='min-h-0 flex-1'>
+          <ul
+            className='flex flex-col gap-px'
+            data-testid='conversation-history-list'
+            role='list'
+          >
+            {conversations.length === 0 ? (
+              <li className='px-4 py-3 text-sm text-muted-foreground'>
+                {t('chat.history.empty')}
+              </li>
+            ) : (
+              conversations.map((c) => {
+                const isActive = c.id === activeId;
+                const rel = relativeTime(c.updatedAt);
+                return (
+                  <li key={c.id} role='listitem'>
+                    <button
+                      type='button'
+                      onClick={() => onPick(c.id)}
+                      aria-current={isActive ? 'true' : undefined}
+                      className={`flex w-full items-start gap-3 border-b border-border px-4 py-3 text-left transition-colors hover:bg-accent ${
+                        isActive ? 'bg-muted' : ''
                       }`}
-                    />
-                    <span className='flex min-w-0 flex-1 flex-col gap-1'>
-                      <span className='truncate text-base font-semibold text-foreground'>
-                        {c.name}
-                      </span>
-                      {c.preview ? (
-                        <span className='truncate text-xs text-muted-foreground'>
-                          {c.preview}
+                      data-testid={`conversation-${c.id}`}
+                    >
+                      <span
+                        aria-hidden
+                        className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${
+                          isActive ? 'bg-foreground' : 'bg-muted-foreground/40'
+                        }`}
+                      />
+                      <span className='flex min-w-0 flex-1 flex-col gap-1'>
+                        <span className='truncate text-base font-semibold text-foreground'>
+                          {c.name}
                         </span>
-                      ) : null}
-                      <span className='text-2xs tabular-nums text-muted-foreground'>
-                        {t(rel.key, rel.params)}
+                        {c.preview ? (
+                          <span className='truncate text-xs text-muted-foreground'>
+                            {c.preview}
+                          </span>
+                        ) : null}
+                        <span className='text-2xs tabular-nums text-muted-foreground'>
+                          {t(rel.key, rel.params)}
+                        </span>
                       </span>
-                    </span>
-                  </button>
-                </li>
-              );
-            })
-          )}
-        </ul>
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   );

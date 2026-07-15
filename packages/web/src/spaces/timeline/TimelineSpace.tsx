@@ -4,6 +4,7 @@
 import { Film } from 'lucide-react';
 import type * as React from 'react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import type { SpaceBodyProps } from '@web/spaces';
 import type { TimelineTrack } from '@web/spaces/timeline/types';
 
@@ -57,7 +58,9 @@ export function TimelineSpace({
         data-testid='timeline-ruler'
         className='h-8 border-b border-border bg-muted/40 text-2xs tabular-nums text-muted-foreground'
       />
-      <div className='flex-1 overflow-auto'>
+      {/* ScrollArea (#1773): overlay scrollbar — appears only while
+          scrolling, no layout space, hover changes color only. */}
+      <ScrollArea className='flex-1' scrollbars='both'>
         {tracks.map((track) => (
           <div
             key={track.id}
@@ -85,7 +88,7 @@ export function TimelineSpace({
             </div>
           </div>
         ))}
-      </div>
+      </ScrollArea>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { ChatEmpty } from '@web/pages/project/chat/ChatEmpty';
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import type { ChatMessage } from '@web/pages/project/chat/types';
@@ -33,11 +34,7 @@ export function MessageList({
   }, [count]);
 
   return (
-    // Native scroller (#1773, user-ratified 2026-07-15): every scrollbar in
-    // the app is the native thin overlay styled by the global rules in
-    // index.css — one look repo-wide (this previously rendered a Radix
-    // ScrollArea bar that looked different from the native bars elsewhere).
-    <div className='min-h-0 flex-1 overflow-y-auto' data-testid='message-list'>
+    <ScrollArea className='min-h-0 flex-1' data-testid='message-list'>
       {count === 0 ? (
         <ChatEmpty onQuickAction={onQuickAction} />
       ) : (
@@ -48,6 +45,6 @@ export function MessageList({
           <div ref={bottomRef} />
         </div>
       )}
-    </div>
+    </ScrollArea>
   );
 }

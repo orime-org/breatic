@@ -26,6 +26,7 @@ import {
   AlertDialogTrigger,
 } from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Sheet,
   SheetContent,
@@ -174,43 +175,47 @@ export function SpaceDrawer({
             {t('spaces.drawer.description', { count: spaces.length })}
           </SheetDescription>
         </SheetHeader>
-        <ul
-          className='flex flex-col overflow-y-auto'
-          data-testid='space-drawer-list'
-          role='list'
-        >
-          {spaces.length === 0 ? (
-            <li className='px-4 py-3 text-sm text-muted-foreground'>
-              {t('spaces.drawer.empty')}
-            </li>
-          ) : (
-            spaces.map((s) => (
-              <SpaceDrawerRow
-                key={s.id}
-                space={s}
-                isActive={s.id === activeSpaceId}
-                isOpen={openTabIds.includes(s.id)}
-                isLastSpace={spaces.length === 1}
-                onActivate={() => {
-                  onActivate(s.id);
-                  setOpen(false);
-                }}
-                onView={() => {
-                  if (openTabIds.includes(s.id)) {
+        {/* ScrollArea (#1773): overlay scrollbar — appears only while
+            scrolling, no layout space, hover changes color only. */}
+        <ScrollArea className='min-h-0 flex-1'>
+          <ul
+            className='flex flex-col'
+            data-testid='space-drawer-list'
+            role='list'
+          >
+            {spaces.length === 0 ? (
+              <li className='px-4 py-3 text-sm text-muted-foreground'>
+                {t('spaces.drawer.empty')}
+              </li>
+            ) : (
+              spaces.map((s) => (
+                <SpaceDrawerRow
+                  key={s.id}
+                  space={s}
+                  isActive={s.id === activeSpaceId}
+                  isOpen={openTabIds.includes(s.id)}
+                  isLastSpace={spaces.length === 1}
+                  onActivate={() => {
                     onActivate(s.id);
                     setOpen(false);
-                  } else {
-                    onView(s.id);
-                    setOpen(false);
-                  }
-                }}
-                onDeleteSpace={onDeleteSpace}
-                onSetSpaceLocked={onSetSpaceLocked}
-                onConfirmCloseAutoFocus={handleConfirmCloseAutoFocus}
-              />
-            ))
-          )}
-        </ul>
+                  }}
+                  onView={() => {
+                    if (openTabIds.includes(s.id)) {
+                      onActivate(s.id);
+                      setOpen(false);
+                    } else {
+                      onView(s.id);
+                      setOpen(false);
+                    }
+                  }}
+                  onDeleteSpace={onDeleteSpace}
+                  onSetSpaceLocked={onSetSpaceLocked}
+                  onConfirmCloseAutoFocus={handleConfirmCloseAutoFocus}
+                />
+              ))
+            )}
+          </ul>
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   );

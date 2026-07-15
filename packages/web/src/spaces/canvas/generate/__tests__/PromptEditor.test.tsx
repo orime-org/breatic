@@ -100,7 +100,13 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
         mentionEmptyLabel='No references'
       />,
     );
-    const cls = screen.getByTestId('generate-prompt-editor').className;
+    // The dim classes live on the ScrollArea VIEWPORT (#1773) — the element
+    // whose padding/content styles scroll with the prompt.
+    const viewport = screen
+      .getByTestId('generate-prompt-editor')
+      .querySelector('[data-radix-scroll-area-viewport]');
+    expect(viewport).not.toBeNull();
+    const cls = (viewport as HTMLElement).className;
     expect(cls).toContain('[data-kind=image]');
     expect(cls).not.toMatch(/\[&_\.reference-mention\]:opacity/);
   });

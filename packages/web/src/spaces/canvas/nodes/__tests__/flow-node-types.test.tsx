@@ -72,8 +72,10 @@ describe('FLOW_NODE_TYPES', () => {
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
     );
+    fireEvent.doubleClick(screen.getByTestId('text-node-body'));
+    // Entering edit mode remounts the body inside a ScrollArea (#1773) —
+    // re-query instead of holding the pre-click element.
     const body = screen.getByTestId('text-node-body');
-    fireEvent.doubleClick(body);
     body.innerText = 'A edited';
     fireEvent.blur(body);
     // The node id must reach the canvas write (jsdom innerText is layout-flaky,

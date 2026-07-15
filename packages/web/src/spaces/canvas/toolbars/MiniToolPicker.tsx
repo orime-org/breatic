@@ -10,6 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { miniToolsForModality } from '@web/pages/project/mini-tool-system/catalog';
 import type { Modality } from '@web/spaces/canvas/types/node-view';
 
@@ -53,9 +54,7 @@ export function MiniToolPicker({
         className='w-56 p-1'
         data-testid='mini-tool-popover'
       >
-        {/* Native scroller (#1773): the global thin overlay scrollbar
-            (index.css) — one scrollbar look repo-wide. */}
-        <div className='max-h-64 overflow-y-auto'>
+        <ScrollArea viewportClassName='max-h-64'>
           <div className='flex flex-col gap-0.5 pr-2'>
             {tools.map((t) => (
               <Button
@@ -73,7 +72,7 @@ export function MiniToolPicker({
               </Button>
             ))}
           </div>
-        </div>
+        </ScrollArea>
       </PopoverContent>
     </Popover>
   );
