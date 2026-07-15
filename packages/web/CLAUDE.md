@@ -27,6 +27,9 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 ## 组件复用:先查 `components/ui/` 再造(MANDATORY)
 写任何**浮层 / 表单 / 交互控件**(popover · dropdown · dialog · tooltip · select · menu · command · sheet 等)前,**必须先 grep `components/ui/` 看有没有现成 shadcn primitive,有就复用**。**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。判定题:**这 UI 是浮层 / 表单 / 交互控件吗?是 → 先 grep `components/ui/`,别手写**。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
 
+## 滚动条唯一入口:Scroller 组件(MANDATORY,CI 强制)
+全站**每个可见滚动容器(纵向 + 横向)一律用 `components/ui/scroll-area.tsx` 的 `ScrollArea`**(`scrollbars` 属性选轴),**严禁**裸 `overflow-auto`/`overflow-y-auto`/`overflow-x-auto`/`overflow-scroll` 滚动容器和任何组件级滚动条样式重声明(user 2026-07-15 拍板)。判定题:**这个元素会出现滚动条吗?会 → 包 `<ScrollArea>`,没有第二个选项**(故意隐藏滚动条的滚动容器如 SpaceTabBar 用 `[scrollbar-width:none]` 豁免)。行为契约(滚动/悬停出现 · overlay 零占位 · hover/拖拽只变色 · 不扰动输入态 · 缩放安全拖拽)全部内建在组件里,细节见 [docs/ARCHITECTURE.md#key-conventions](../../docs/ARCHITECTURE.md#frontend)。`lint:no-inline-scrollbar` CI 强制。**布局陷阱**:Radix viewport 内层是自动高度 `display:table` 包裹层,`h-full` 垂直居中在里面会塌陷 —— 居中空态/加载态放 ScrollArea **外面**(StudioRecentPage 模式);内容 padding / 高度上限放 `viewportClassName`(真正滚动的元素)。
+
 ## 产品术语「不翻译表」(DNT glossary,MANDATORY)
 8 个产品实体 / 类型名 + 角色名是**品牌词汇,全语言永远英文**(含非英文 locale 的句子内嵌),不本地化。这是工业界 DNT(do-not-translate)惯例(Figma "Frame" / GitHub "Repository" / Notion "Database"):一份术语表 + 一个固定写法 + CI 机器守,保证全站一个名字。
 
