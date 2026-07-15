@@ -85,4 +85,25 @@ describe("violatesSourceRequirement (#1675 server gate)", () => {
     expect(violatesSourceRequirement(sbm, { ref_audio_url: "u" })).toBe(false);
     expect(violatesSourceRequirement(sbm, {})).toBe(true);
   });
+
+  it("does NOT accept a malformed non-array `images` (a bare string) — the worker reads `images` as an array, so a string is not a usable source", () => {
+    // `params` is `z.record(z.unknown())` on the wire — zod does not shape-check
+    // it, so a crafted request can send `images: "garbage"`. The worker iterates
+    // `images` as an array (google/byteplus transports), so a bare string is a
+    // guaranteed-failure input, not a source. The gate must still reject it.
+    const sbm = computeSourcesByMode("image", "i2i");
+    expect(violatesSourceRequirement(sbm, { images: "https://cdn/x.png" })).toBe(true);
+    // an array whose entries are not usable strings is likewise no source
+    expect(violatesSourceRequirement(sbm, { images: [123] })).toBe(true);
+    expect(violatesSourceRequirement(sbm, { images: [""] })).toBe(true);
+    // the correct array shape still passes
+    expect(violatesSourceRequirement(sbm, { images: ["https://cdn/x.png"] })).toBe(false);
+  });
+
+  it("still accepts a bare string in a STRING-convention field (image / video_url / audio)", () => {
+    // The singular fields are string-convention (mini-tool + provider read them
+    // as a single URL), so a bare string there IS a valid source.
+    expect(violatesSourceRequirement(computeSourcesByMode("image", "i2i"), { image: "u" })).toBe(false);
+    expect(violatesSourceRequirement(computeSourcesByMode("video", "edit"), { video_url: "u" })).toBe(false);
+  });
 });

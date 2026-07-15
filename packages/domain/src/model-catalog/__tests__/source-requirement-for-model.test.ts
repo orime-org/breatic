@@ -86,4 +86,14 @@ describe("violatesSourceRequirementForModel (#1675)", () => {
       violatesSourceRequirementForModel(model, { video_url: "https://cdn/v.mp4" }),
     ).toBe(true);
   });
+
+  it("does not accept a malformed non-array `images` (a crafted bare string) — still a violation", () => {
+    const model = aGatedImageModel();
+    if (!model) return;
+    // `params` is unvalidated on the wire; a bare string in the array-shaped
+    // `images` field is a guaranteed-failure input, so the gate rejects it.
+    expect(
+      violatesSourceRequirementForModel(model, { images: "https://cdn/x.png" }),
+    ).toBe(true);
+  });
 });

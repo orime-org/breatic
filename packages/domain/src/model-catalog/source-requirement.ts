@@ -58,15 +58,27 @@ const MODE_REQUIRED_SOURCES: Readonly<
 };
 
 /**
- * source type → the param field names that carry it on the wire. A source of a
- * type is "present" when ANY of its fields holds a non-empty value. Grounded in
- * config source params (image: images/image/end_image; video: video/video_url;
- * audio: audio/audio_url/ref_audio_url).
+ * Wire shape a source param field carries — `"list"` (an array of URL strings,
+ * e.g. `images`) or `"single"` (one URL string, e.g. `image` / `video_url`).
+ * The worker reads each field by exactly this shape (list fields are iterated,
+ * single fields used directly), so the gate must mirror it: a bare string in a
+ * `"list"` field is a guaranteed-failure input, not a source.
  */
-const SOURCE_TYPE_PARAM_FIELDS: Readonly<Record<SourceType, readonly string[]>> = {
-  image: ["images", "image", "end_image"],
-  video: ["video", "video_url"],
-  audio: ["audio", "audio_url", "ref_audio_url"],
+type SourceFieldShape = "list" | "single";
+
+/**
+ * source type → the param fields that carry it on the wire, each tagged with the
+ * shape the worker reads it as. A source of a type is "present" when ANY of its
+ * fields holds a value shaped the way the worker will consume it. Grounded in
+ * config source params + worker transports (image: `images` is a list, `image` /
+ * `end_image` single; video / audio fields all single).
+ */
+const SOURCE_TYPE_PARAM_FIELDS: Readonly<
+  Record<SourceType, ReadonlyArray<readonly [field: string, shape: SourceFieldShape]>>
+> = {
+  image: [["images", "list"], ["image", "single"], ["end_image", "single"]],
+  video: [["video", "single"], ["video_url", "single"]],
+  audio: [["audio", "single"], ["audio_url", "single"], ["ref_audio_url", "single"]],
 };
 
 /**
@@ -100,19 +112,25 @@ export function computeSourcesByMode(
 }
 
 /**
- * Whether a source of `type` is present in a submitted params payload — true
- * when any of the type's carrier fields holds a non-empty value (non-empty
- * array, or a non-empty string).
+ * Whether a source of `type` is present in a submitted params payload, checking
+ * each carrier field by the shape the worker reads it as. `params` is
+ * `z.record(z.unknown())` on the wire (zod does not shape-check it), so this
+ * guards against a crafted request putting the wrong shape in a source field:
+ * a `"list"` field counts only as a non-empty array with at least one non-empty
+ * string URL; a `"single"` field counts only as a non-empty string.
  * @param type - The source type to look for.
  * @param params - The submitted task params.
- * @returns True when the params carry at least one source of that type.
+ * @returns True when the params carry at least one usable source of that type.
  */
 function hasSource(type: SourceType, params: Record<string, unknown>): boolean {
-  for (const field of SOURCE_TYPE_PARAM_FIELDS[type]) {
+  for (const [field, shape] of SOURCE_TYPE_PARAM_FIELDS[type]) {
     const value = params[field];
-    if (Array.isArray(value) ? value.length > 0 : typeof value === "string" && value.length > 0) {
-      return true;
-    }
+    const present =
+      shape === "list"
+        ? Array.isArray(value) &&
+          value.some((entry) => typeof entry === "string" && entry.length > 0)
+        : typeof value === "string" && value.length > 0;
+    if (present) return true;
   }
   return false;
 }
