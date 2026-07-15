@@ -36,6 +36,17 @@ const DEFAULT_IMAGE_GEN_MODE: ImageGenMode = 't2i';
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
 
 /**
+ * Normalizes a wire `max_items` to a real cap: a positive finite number, else
+ * undefined (uncapped). Mirrors the server rule's `limit >= 1` guard and the
+ * worker's truthy `spec.max_items`, so the frontend count gate agrees with both.
+ * @param cap - The `max_items` read off the wire ParamDescriptor (may be 0 / negative / NaN / undefined).
+ * @returns The positive cap, or undefined when the param is effectively uncapped.
+ */
+function positiveCap(cap: number | undefined): number | undefined {
+  return typeof cap === 'number' && Number.isFinite(cap) && cap >= 1 ? cap : undefined;
+}
+
+/**
  * Reads a node's stored generation sub-mode, defaulting + boundary-sanitizing:
  * anything that is not the literal `'i2i'` (undefined, `'t2i'`, or a malformed
  * value from untrusted Yjs) resolves to the default `'t2i'`.
@@ -72,11 +83,12 @@ export interface GeneratePanelViewModel {
    */
   requiresSource: boolean;
   /**
-   * Max reference images the active model accepts, read off the model's
-   * `images` param `max_items` on the wire (backend-computed from config).
-   * Drives the #1735 count gate: submitting more `@`-picked sources than this
-   * is blocked in the panel (and re-checked server-side before enqueue, which
-   * otherwise silently truncates). Undefined when the model caps nothing.
+   * Max reference images the active model accepts — the `images` param
+   * `max_items` on the wire (backend-computed from config), normalized so only
+   * a POSITIVE finite cap is set (0 / negative / absent → undefined = uncapped,
+   * matching the server rule + worker guard). Drives the #1735 count gate:
+   * submitting more `@`-picked sources than this is blocked in the panel (and
+   * re-checked server-side before enqueue, which otherwise silently truncates).
    */
   maxReferences?: number;
   /**
@@ -258,8 +270,12 @@ export function buildGeneratePanelViewModel(input: {
     // reads the wire field, never runs it.
     requiresSource: current ? (current.sourcesByMode[mode]?.length ?? 0) > 0 : false,
     // #1735 count gate: the active model's reference-image cap (the `images`
-    // param's `max_items`, backend-computed on the wire). Undefined = uncapped.
-    maxReferences: current?.params.images?.max_items,
+    // param's `max_items`, backend-computed on the wire). Only a POSITIVE finite
+    // cap counts — 0 / negative / NaN / undefined all mean "uncapped", matching
+    // the server rule (reference-count.ts, `limit >= 1`) and the worker's truthy
+    // `spec.max_items` guard, so all three layers agree (else a `max_items: 0`
+    // would block every submit here with a nonsensical "limit: 0" toast).
+    maxReferences: positiveCap(current?.params.images?.max_items),
     catalogEmpty: generatable.length === 0,
   };
 }

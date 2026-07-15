@@ -450,4 +450,25 @@ describe('buildGeneratePanelViewModel — maxReferences (#1735 count gate)', () 
     });
     expect(vm.maxReferences).toBeUndefined();
   });
+
+  it('treats a non-positive images max_items as uncapped (undefined) — aligns with the server rule + worker guard', () => {
+    // 0 / negative / NaN all mean "uncapped" server-side (reference-count.ts
+    // limit >= 1) and worker-side (truthy spec.max_items). The frontend must
+    // agree, or a max_items: 0 would block every submit with a nonsensical
+    // "limit: 0" toast while the server accepts it.
+    for (const cap of [0, -1, Number.NaN]) {
+      const vm = buildGeneratePanelViewModel({
+        nodeId: 'n1',
+        nodes: [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))],
+        edges: [],
+        models: [
+          makeModel('nano-edit', {
+            mode: 'i2i',
+            params: { images: { description: '', default: null, max_items: cap } },
+          }),
+        ],
+      });
+      expect(vm.maxReferences).toBeUndefined();
+    }
+  });
 });

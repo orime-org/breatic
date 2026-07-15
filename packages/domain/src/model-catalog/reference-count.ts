@@ -8,10 +8,15 @@
  * {@link ParamDescriptor.max_items}; the frontend reads it to gate the picker,
  * the server calls {@link violatesReferenceCount} to reject before enqueue.
  *
- * This mirrors EXACTLY the condition the worker silently truncates on
+ * This mirrors the condition the worker silently truncates on
  * (`spec.max_items && Array.isArray(value) && value.length > spec.max_items`,
- * packages/worker/src/providers/shared.ts) — but rejects instead of truncating,
- * so a user who over-picks is told, not silently handed a degraded result.
+ * packages/worker/src/providers/shared.ts) for every `max_items` value that can
+ * occur — a positive integer authored in yaml — but rejects instead of
+ * truncating, so a user who over-picks is told, not silently handed a degraded
+ * result. (The worker's truthy `spec.max_items` and this rule's `limit >= 1`
+ * both treat 0 / undefined / NaN as uncapped, so they agree for every reachable
+ * value; they would only diverge for a truthy non-number, which the numeric
+ * `max_items` wire type + integer yaml convention never produce.)
  */
 
 import type { ParamDescriptor } from "@breatic/shared";
