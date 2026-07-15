@@ -42,7 +42,7 @@ ROOT="${1:-packages/web/src}"
 
 # webkit pseudo anywhere, a standard scrollbar property EXCEPT width:none,
 # or a native-scroller overflow utility.
-PAT='::-webkit-scrollbar|scrollbar-width:(thin|auto)|scrollbar-color|overflow-(auto|y-auto|x-auto|scroll)'
+PAT='::-webkit-scrollbar|scrollbar-width:(thin|auto)|scrollbar-color|overflow-(auto|scroll|y-auto|y-scroll|x-auto|x-scroll)'
 # Lines carrying the hidden-scrollbar marker are exempt in full (a scroller
 # with a hidden bar shows no scrollbar, so overflow-* is fine there); the
 # webkit hide form alone is stripped so hide + paint on one line still fails.

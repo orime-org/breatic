@@ -76,8 +76,11 @@ body {
    table breaks the width-constraint chain `truncate` depends on (a table
    sizes to its content), so force the wrapper back to block there. The
    `data-scrollbars` stamp comes from our ScrollArea wrapper; !important is
-   required to beat Radix's inline style. */
-[data-scrollbars='vertical'] [data-radix-scroll-area-viewport] > div {
+   required to beat Radix's inline style. Child combinators on BOTH hops on
+   purpose: the viewport is always the Root's direct child, and a descendant
+   combinator would leak into a horizontal/both ScrollArea nested inside a
+   vertical one and break its wide-content sizing (adversarial round). */
+[data-scrollbars='vertical'] > [data-radix-scroll-area-viewport] > div {
   display: block !important;
 }
 

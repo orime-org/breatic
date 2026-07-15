@@ -120,6 +120,54 @@ describe('ScrollArea', () => {
     expect(screen.getByTestId('root').getAttribute('data-scrollbars')).toBe('vertical');
   });
 
+  it('vertical-only does NOT mount the horizontal axis (overflowX stays hidden)', () => {
+    // Mutation-caught gap (adversarial round): mounting BOTH ScrollBars
+    // unconditionally passed every prior test. The axis prop must actually
+    // gate the bars — Radix flips viewport overflow per mounted bar.
+    render(
+      <ScrollArea data-testid='root'>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    const viewport = screen
+      .getByTestId('root')
+      .querySelector('[data-radix-scroll-area-viewport]');
+    expect((viewport as HTMLElement).style.overflowX).toBe('hidden');
+    expect((viewport as HTMLElement).style.overflowY).toBe('scroll');
+  });
+
+  it('defaults to type "scroll" — the bar shows only while scrolling (ratified visibility contract)', () => {
+    // With type='scroll' and no scroll activity, jsdom renders NO scrollbar
+    // rail; type='always' would mount it immediately. Pins the default so a
+    // silent switch to an always-visible bar cannot ship green.
+    const { container } = render(
+      <ScrollArea>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    expect(container.querySelector('[data-orientation]')).toBeNull();
+  });
+
+  it('thumb hover response is opacity-only and the rail carries the fade animation classes (ratified: hover = color, never shape)', () => {
+    const { container } = render(
+      <ScrollAreaPrimitive.Root type='always'>
+        <ScrollAreaPrimitive.Viewport />
+        <ScrollBar forceMount orientation='vertical' />
+      </ScrollAreaPrimitive.Root>,
+    );
+    const bar = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
+    expect(bar.className).toContain('data-[state=hidden]:fade-out-0');
+    expect(bar.className).toContain('data-[state=visible]:fade-in-0');
+    // Fixed geometry: the rail never changes thickness.
+    expect(bar.className).toContain('w-2');
+    const thumb = bar.firstElementChild as HTMLElement;
+    expect(thumb.className).toContain('opacity-40');
+    expect(thumb.className).toContain('hover:opacity-60');
+    expect(thumb.className).toContain('transition-opacity');
+    // No scale/width hover response anywhere on the thumb.
+    expect(thumb.className).not.toMatch(/hover:(w-|h-|scale)/);
+  });
+
   describe('input-state contract (user-ratified 2026-07-15): scrollbar interaction never disturbs focus/selection', () => {
     it('prevents mousedown default on the scrollbar rail (the focus/selection-changing action)', () => {
       const { container } = render(
