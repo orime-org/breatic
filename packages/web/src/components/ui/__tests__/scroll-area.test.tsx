@@ -174,6 +174,9 @@ describe('ScrollArea', () => {
     const thumb = bar.firstElementChild as HTMLElement;
     expect(thumb.className).toContain('opacity-40');
     expect(thumb.className).toContain('hover:opacity-60');
+    // An active drag keeps the hover color even when the pointer strays off
+    // the thumb (rail data-dragging stamp, user 2026-07-15).
+    expect(thumb.className).toContain('group-data-[dragging=true]/rail:opacity-60');
     expect(thumb.className).toContain('transition-opacity');
     // No scale/width hover response anywhere on the thumb.
     expect(thumb.className).not.toMatch(/hover:(w-|h-|scale)/);

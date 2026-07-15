@@ -249,7 +249,7 @@ const ScrollBar = React.forwardRef<
         // cursor). The per-axis scrollable gate turns pointer-events off
         // when there is nothing to scroll, so a non-scrollable rail can
         // neither hover-reveal nor swallow edge clicks.
-        'flex touch-none select-none p-px cursor-default opacity-0 transition-opacity duration-300 hover:opacity-100 hover:duration-150 data-[state=visible]:opacity-100 data-[state=visible]:duration-150 data-[dragging=true]:opacity-100',
+        'group/rail flex touch-none select-none p-px cursor-default opacity-0 transition-opacity duration-300 hover:opacity-100 hover:duration-150 data-[state=visible]:opacity-100 data-[state=visible]:duration-150 data-[dragging=true]:opacity-100',
         orientation === 'vertical' &&
           'h-full w-2 group-data-[scrollable-y=false]/scroller:pointer-events-none',
         orientation === 'horizontal' &&
@@ -259,13 +259,17 @@ const ScrollBar = React.forwardRef<
     >
       {/* Hover response is opacity-only (40% → 60%): the sanctioned hover
           pattern (inner ADR 2026-05-21) AND the #1773 mandate that hover
-          changes color, never shape. forceMount is behaviour-neutral — the
-          RAIL already gates all visibility (scroll activity + scrollability)
-          — and lets jsdom tests pin this thumb contract (Radix otherwise
-          skips the thumb when layout sizes are 0). */}
+          changes color, never shape. An ACTIVE DRAG keeps the hover color
+          via the rail's data-dragging stamp (user 2026-07-15) — during a
+          captured drag the pointer routinely strays off the thumb, and
+          losing :hover mid-drag read as a false release. forceMount is
+          behaviour-neutral — the RAIL already gates all visibility (scroll
+          activity + scrollability) — and lets jsdom tests pin this thumb
+          contract (Radix otherwise skips the thumb when layout sizes are
+          0). */}
       <ScrollAreaPrimitive.ScrollAreaThumb
         forceMount
-        className='relative flex-1 rounded-full bg-muted-foreground opacity-40 transition-opacity hover:opacity-60'
+        className='relative flex-1 rounded-full bg-muted-foreground opacity-40 transition-opacity hover:opacity-60 group-data-[dragging=true]/rail:opacity-60'
       />
     </ScrollAreaPrimitive.ScrollAreaScrollbar>
   );
