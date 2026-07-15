@@ -206,6 +206,11 @@ describe('TextNode', () => {
     const viewport = body.closest('[data-radix-scroll-area-viewport]');
     expect(viewport).not.toBeNull();
     expect((viewport as HTMLElement).className).toContain('max-h-144');
+    // Real scroll capability, not just classes: Radix sets overflowY:scroll
+    // only while a vertical ScrollBar is mounted — if the bar is ever
+    // removed/conditioned, text past 576px becomes unreachable while
+    // className assertions stay green (adversarial finding, 2026-07-14).
+    expect((viewport as HTMLElement).style.overflowY).toBe('scroll');
     expect(body.className).toContain('break-words');
     expect(body.className).toContain('min-h-48');
     expect(body.className).not.toContain('min-h-[3rem]');

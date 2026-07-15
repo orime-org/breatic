@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# no-inline-scrollbar guard — every visible scroller goes through the
-# ScrollArea primitive (#1773, user-ratified 2026-07-14): the scrollbar
-# appears only while scrolling, takes no layout space, and hover changes
-# COLOR only, never shape. Native scrollbars cannot deliver that (macOS
-# overlay bars widen with a track on hover; ::-webkit-scrollbar custom
-# painting forces an always-visible space-consuming classic bar), so this
-# guard bans BOTH halves in packages/web/src ts/tsx (tests excluded):
+# no-inline-scrollbar guard — every visible scroller, vertical AND
+# horizontal, goes through OUR Scroller component
+# (components/ui/scroll-area.tsx; user-ratified 2026-07-15). The component
+# owns the whole scrollbar behaviour contract: scroll-only visibility, no
+# layout space, fade in/out, hover changes COLOR only, and scrollbar
+# interaction never disturbs input state (focus/selection). Native
+# scrollbars cannot deliver this — CSS Scrollbars L1 standardizes only
+# thickness + two static colors; hover geometry/shading is UA-private and
+# varies between browser builds. So this guard bans BOTH halves in
+# packages/web/src ts/tsx (tests excluded):
 #
 #   1. Scrollbar style re-declarations:
 #      - ANY ::-webkit-scrollbar paint rule (forces the classic scrollbar).
@@ -17,7 +20,8 @@
 #   2. New NATIVE scrollers: overflow-auto / overflow-y-auto /
 #      overflow-x-auto / overflow-scroll utility classes — a native
 #      scroller shows the platform scrollbar and regresses the ratified
-#      behaviour. Wrap the content in <ScrollArea> instead.
+#      behaviour. Wrap the content in <ScrollArea> instead
+#      (scrollbars='horizontal' / 'both' for horizontal axes).
 #
 # Allowed (by design, not a loophole):
 #   - A scroller whose scrollbar is HIDDEN entirely: the line carries

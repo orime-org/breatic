@@ -70,6 +70,17 @@ body {
   scrollbar-color: color-mix(in srgb, var(--color-muted-foreground) 50%, transparent) transparent;
 }
 
+/* Scroller component internals (#1773): Radix wraps viewport children in an
+   auto-height `display:table` div (inline style) so content can grow past
+   the viewport for HORIZONTAL scrolling. In vertical-only scrollers that
+   table breaks the width-constraint chain `truncate` depends on (a table
+   sizes to its content), so force the wrapper back to block there. The
+   `data-scrollbars` stamp comes from our ScrollArea wrapper; !important is
+   required to beat Radix's inline style. */
+[data-scrollbars='vertical'] [data-radix-scroll-area-viewport] > div {
+  display: block !important;
+}
+
 /* Sonner top-center fit-content centering override.
    sonner v2 ships:
      [data-sonner-toaster] { width: var(--width); }

@@ -60,7 +60,7 @@ export function TimelineSpace({
       />
       {/* ScrollArea (#1773): overlay scrollbar — appears only while
           scrolling, no layout space, hover changes color only. */}
-      <ScrollArea className='flex-1'>
+      <ScrollArea className='flex-1' scrollbars='both'>
         {tracks.map((track) => (
           <div
             key={track.id}
