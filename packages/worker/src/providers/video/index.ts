@@ -12,14 +12,12 @@
  *
  * - {@link validateVideoParams} -- validate and fill defaults
  * - {@link generateAsync} -- resolve -> build_request -> transport.generate
- * - {@link listAvailableVideoModels} -- list models with active API keys
  */
 
 import {
   resolveModel,
   acquireSemaphore,
   validateParams,
-  listAvailableModels,
   type ModelFamily,
   type ResumeContext,
   type Transport,
@@ -141,10 +139,3 @@ export function validateVideoParams(
   return validateParams("video", modelName, params);
 }
 
-/**
- * List all video models that have at least one provider with an active API key.
- * @returns Array of model info dicts for skill injection
- */
-export function listAvailableVideoModels(): ReturnType<typeof listAvailableModels> {
-  return listAvailableModels("video");
-}

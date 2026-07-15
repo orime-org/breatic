@@ -26,7 +26,7 @@ import {
   generateRecoveryCode,
   hashRecoveryCode,
   verifyRecoveryCode,
-} from "./recovery-code.service.js";
+} from "../recovery-code.service.js";
 
 describe("RecoveryCodeService — generate", () => {
   it("returns string matching XXXX-XXXX-XXXX-XXXX base32 format", () => {

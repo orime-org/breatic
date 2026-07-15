@@ -11,14 +11,12 @@
  *
  * - {@link validateThreeDParams} -- validate and fill defaults
  * - {@link generateAsync} -- resolve -> build_request -> transport.generate
- * - {@link listAvailableThreeDModels} -- list models with active API keys
  */
 
 import {
   resolveModel,
   acquireSemaphore,
   validateParams,
-  listAvailableModels,
   type ModelFamily,
   type ResumeContext,
 } from "@worker/providers/shared.js";
@@ -125,10 +123,3 @@ export function validateThreeDParams(
   return validateParams("three_d", modelName, params);
 }
 
-/**
- * List all 3D models that have at least one provider with an active API key.
- * @returns Array of model info dicts for skill injection
- */
-export function listAvailableThreeDModels(): ReturnType<typeof listAvailableModels> {
-  return listAvailableModels("three_d");
-}

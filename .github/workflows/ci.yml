@@ -342,6 +342,15 @@ jobs:
         # scripts/lint-no-relative-import.sh for rationale + exclusions.
         run: pnpm lint:no-relative-import
 
+      - name: Lint test-file-location (all test files under __tests__/)
+        # Every *.test.ts(x) / *.spec.ts(x) lives in a __tests__/ directory,
+        # never colocated next to its source (2026-07-15, user-ratified):
+        # 93% of tests already did, and the unwritten+unguarded convention
+        # let core/domain/server stragglers drift in. Doc alone recurs; this
+        # guard is the enforcement half. Runs --self-test too, so a broken
+        # checker fails CI. See scripts/lint-test-file-location.sh.
+        run: pnpm lint:test-file-location
+
       - name: Lint no-cors-wildcard-credentials (security)
         # Enforce CLAUDE.md prohibition list #5 (CI maximal-strictness
         # guard suite, inner ADR 2026-06-01): a CORS config must NOT pair

@@ -20,7 +20,7 @@ import {
   encodeInitialMetaState,
   encodeInitialSpaceContentState,
   writeSpaceEntry,
-} from "./yjs-bootstrap.js";
+} from "../yjs-bootstrap.js";
 
 describe("encodeInitialMetaState", () => {
   it("produces a binary that loads into spaces[spaceId] = entry", () => {

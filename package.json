@@ -47,6 +47,7 @@
     "lint:schema-timestamps": "bash scripts/lint-schema-timestamps.sh",
     "lint:no-unresolved-alias-in-dist": "bash scripts/lint-no-unresolved-alias-in-dist.sh",
     "lint:storage-key-prefix": "bash scripts/lint-storage-key-prefix.sh",
+    "lint:test-file-location": "bash scripts/lint-test-file-location.sh && bash scripts/lint-test-file-location.sh --self-test",
     "typecheck": "turbo run typecheck",
     "docs": "turbo run docs",
     "clean": "turbo run clean",

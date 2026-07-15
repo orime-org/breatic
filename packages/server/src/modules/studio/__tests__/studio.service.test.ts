@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("./studio.repo.js", () => ({
+vi.mock("../studio.repo.js", () => ({
   createPersonalStudio: vi.fn(),
   getPersonalByCreator: vi.fn(),
   getPersonalNamesByCreators: vi.fn(),
@@ -54,7 +54,7 @@ vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, u
   t: (k: string) => k,
 }));
 
-import * as studioRepo from "./studio.repo.js";
+import * as studioRepo from "../studio.repo.js";
 import {
   createPersonalStudio,
   getPersonalStudio,
@@ -62,7 +62,7 @@ import {
   getPersonalStudioProfilesByUserIds,
   getStudioDetail,
   listUserStudios,
-} from "./studio.service.js";
+} from "../studio.service.js";
 import type { Studio } from "@breatic/shared";
 
 const STUDIO: Studio = {

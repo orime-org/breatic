@@ -21,12 +21,12 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("./projectMembers.repo.js", () => ({
+vi.mock("../projectMembers.repo.js", () => ({
   getRole: vi.fn(),
 }));
 
-import * as projectMembersRepo from "./projectMembers.repo.js";
-import { loadProjectRole } from "./projectAuth.service.js";
+import * as projectMembersRepo from "../projectMembers.repo.js";
+import { loadProjectRole } from "../projectAuth.service.js";
 
 beforeEach(() => {
   vi.clearAllMocks();

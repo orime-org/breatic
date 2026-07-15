@@ -20,7 +20,7 @@ import {
   acquireCanvasNodeLock,
   reacquireCanvasNodeLock,
   canvasNodeLockKey,
-} from "./canvas-lock.js";
+} from "../canvas-lock.js";
 
 beforeAll(() => {
   initCore(process.env);

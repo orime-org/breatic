@@ -24,7 +24,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import type * as NotificationServiceModule from "../notification/notification.service.js";
+import type * as NotificationServiceModule from "../../notification/notification.service.js";
 
 // `db` (transaction), `projectMembersRepo`, and the error classes all
 // come from `@breatic/core` (the repo + db handle live there; the repo
@@ -59,12 +59,12 @@ vi.mock("@breatic/core", () => {
     ValidationError,
   };
 });
-vi.mock("../notification/notification.repo.js", () => ({
+vi.mock("../../notification/notification.repo.js", () => ({
   create: vi.fn(),
   findById: vi.fn(),
   markRead: vi.fn(),
 }));
-vi.mock("../notification/notification.service.js", async (importOriginal) => {
+vi.mock("../../notification/notification.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof NotificationServiceModule>();
   return {
     ...actual,
@@ -75,15 +75,15 @@ vi.mock("../notification/notification.service.js", async (importOriginal) => {
 });
 // The request / approve / reject paths resolve the actor's display identity
 // (name + personal-studio slug = @handle) for the bell payload via studio.service.
-vi.mock("../studio/studio.service.js", () => ({
+vi.mock("../../studio/studio.service.js", () => ({
   getPersonalStudioProfilesByUserIds: vi.fn(),
 }));
 
-import * as notificationRepo from "../notification/notification.repo.js";
-import * as notificationService from "../notification/notification.service.js";
-import * as studioService from "../studio/studio.service.js";
+import * as notificationRepo from "../../notification/notification.repo.js";
+import * as notificationService from "../../notification/notification.service.js";
+import * as studioService from "../../studio/studio.service.js";
 import { projectMembersRepo } from "@breatic/core";
-import * as roleUpgradeRequestService from "./roleUpgradeRequest.service.js";
+import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
 import {
   NotFoundError,
   ForbiddenError,

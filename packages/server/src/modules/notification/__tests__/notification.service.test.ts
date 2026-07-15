@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("./notification.repo.js", () => ({
+vi.mock("../notification.repo.js", () => ({
   create: vi.fn(),
   listUnreadByUser: vi.fn(),
   listAllByUser: vi.fn(),
@@ -24,8 +24,8 @@ vi.mock("./notification.repo.js", () => ({
   findById: vi.fn(),
 }));
 
-import * as notificationRepo from "./notification.repo.js";
-import * as notificationService from "./notification.service.js";
+import * as notificationRepo from "../notification.repo.js";
+import * as notificationService from "../notification.service.js";
 import { NotFoundError } from "@breatic/core";
 
 const OWNER = "u-owner";

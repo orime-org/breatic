@@ -14,14 +14,12 @@
  *
  * - {@link validateUnderstandParams} -- validate and fill defaults
  * - {@link generateAsync} -- resolve -> build -> transport.generate
- * - {@link listAvailableUnderstandModels} -- list models with active API keys
  */
 
 import {
   resolveModel,
   acquireSemaphore,
   validateParams,
-  listAvailableModels,
   type ResumeContext,
 } from "@worker/providers/shared.js";
 import type { AnyUnderstandFamily } from "@worker/providers/understand/models/types.js";
@@ -139,10 +137,3 @@ export function validateUnderstandParams(
   return validateParams("understand", modelName, params);
 }
 
-/**
- * List all understand models that have at least one provider with an active API key.
- * @returns Array of model info dicts for skill injection
- */
-export function listAvailableUnderstandModels(): ReturnType<typeof listAvailableModels> {
-  return listAvailableModels("understand");
-}

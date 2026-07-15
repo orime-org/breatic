@@ -53,7 +53,7 @@ import { projectMembersRepo, ConflictError, NotFoundError } from "@breatic/core"
 import {
   changeRole,
   remove,
-} from "./projectMembers.service.js";
+} from "../projectMembers.service.js";
 
 const PID = "p1";
 

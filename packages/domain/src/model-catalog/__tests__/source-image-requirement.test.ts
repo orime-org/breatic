@@ -16,7 +16,7 @@ import { requiresSourceImage } from "@breatic/shared";
 import {
   violatesSourceImageRequirement,
   getModelCatalog,
-} from "./model-catalog.js";
+} from "../model-catalog.js";
 
 beforeAll(() => {
   initCore(process.env);

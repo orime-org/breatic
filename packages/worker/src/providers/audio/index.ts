@@ -11,14 +11,12 @@
  *
  * - {@link validateAudioParams} -- validate and fill defaults
  * - {@link generateAsync} -- resolve -> build_request -> transport.generate
- * - {@link listAvailableAudioModels} -- list models with active API keys
  */
 
 import {
   resolveModel,
   acquireSemaphore,
   validateParams,
-  listAvailableModels,
   type ModelFamily,
   type ResumeContext,
   type Transport,
@@ -134,10 +132,3 @@ export function validateAudioParams(
   return validateParams("audio", modelName, params);
 }
 
-/**
- * List all audio models that have at least one provider with an active API key.
- * @returns Array of model info dicts for skill injection
- */
-export function listAvailableAudioModels(): ReturnType<typeof listAvailableModels> {
-  return listAvailableModels("audio");
-}
