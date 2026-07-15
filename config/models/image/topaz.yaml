@@ -44,10 +44,12 @@ models:
         description: "Original image height in pixels"
         default: null
     providers:
+      # Single provider: WaveSpeed delisted its Topaz mirror
+      # (topaz/image/enhance, 2026-07-15 audit #1683), and its other
+      # upscalers expose a different param shape than what this family
+      # builds (Topaz-native source_url/output_width), so no drop-in
+      # fallback exists.
       - name: topaz
         model_id: "enhance"
         credit_price: 0.0005
         priority: 1
-      - name: wavespeed
-        model_id: "topaz/image/enhance"
-        priority: 2
