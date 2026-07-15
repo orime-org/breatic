@@ -48,8 +48,8 @@ export { extractPromptText } from "@domain/agent/extract-prompt.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
-export { listAvailableModels, estimateTaskCredits, violatesSourceImageRequirement, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
-export type { SkillModelInfo } from "@domain/model-catalog/model-catalog.js";
+export { listAvailableModels, estimateTaskCredits, violatesSourceImageRequirement, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
+export type { SkillModelInfo, FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
 
 // ── Canvas node lock (overwrite lock; prevents concurrent-overwrite credit loss; spec §10.15.2) ──
 export {

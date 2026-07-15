@@ -4,15 +4,17 @@
 /**
  * Shared AIGC provider utilities.
  *
- * Provides config loading, parameter validation, model resolution,
- * and semaphore management — shared across all 6 AIGC providers.
+ * Provides parameter validation, model resolution, and semaphore
+ * management — shared across all 6 AIGC providers. Model config comes
+ * from domain's getFullModelConfig (#1672): domain is the single
+ * config/models YAML reader; this module only turns that config into
+ * transport-ready connections.
  */
 
-import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { resolve, join } from "node:path";
-import { parse } from "yaml";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
+import { getFullModelConfig } from "@breatic/domain";
+import type { FullModelEntry } from "@breatic/domain";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -30,7 +32,7 @@ export interface ResolvedModel {
   creditPrice?: number;
   extraParams?: Record<string, unknown>;
   litellmModel?: string;
-  mode?: string;
+  mode?: string | string[];
 }
 
 /** Model family interface — one per model family file. */
@@ -91,73 +93,6 @@ export interface TransportResult {
   cost: number;
 }
 
-/** Raw YAML model config. */
-interface ModelConfig {
-  name: string;
-  display_name?: string;
-  mode?: string;
-  description?: string;
-  guide?: string;
-  cost_per_call?: number;
-  params?: Record<string, ParamSpec>;
-  providers?: Array<{
-    name: string;
-    model_id: string;
-    priority?: number;
-    token_price?: number;
-    credit_price?: number;
-    extra_params?: Record<string, unknown>;
-    litellm_model?: string;
-  }>;
-}
-
-interface ParamSpec {
-  default?: unknown;
-  values?: unknown[];
-  max_items?: number;
-}
-
-interface ProviderConfig {
-  base_url?: string;
-  api_key_env?: string;
-  timeout?: number;
-  max_concurrency?: number;
-}
-
-// ── Config Loading ───────────────────────────────────────────────────
-
-const _configCache = new Map<string, { models: ModelConfig[]; providers: Record<string, ProviderConfig> }>();
-
-/**
- * Load provider config from YAML directory.
- * @param modality - Provider modality (e.g. "image", "video")
- * @returns Merged config with models and providers
- */
-export function loadConfig(modality: string): { models: ModelConfig[]; providers: Record<string, ProviderConfig> } {
-  if (_configCache.has(modality)) return _configCache.get(modality)!;
-
-  const configDir = resolve(import.meta.dirname, "../../../../config/models", modality);
-  if (!existsSync(configDir)) return { models: [], providers: {} };
-
-  const allModels: ModelConfig[] = [];
-  for (const file of readdirSync(configDir).sort()) {
-    if (!file.endsWith(".yaml") || file === "providers.yaml") continue;
-    const raw = readFileSync(join(configDir, file), "utf-8");
-    const data = parse(raw) as { models?: ModelConfig[] } | null;
-    if (data?.models) allModels.push(...data.models);
-  }
-
-  const providersFile = join(configDir, "providers.yaml");
-  let providers: Record<string, ProviderConfig> = {};
-  if (existsSync(providersFile)) {
-    providers = (parse(readFileSync(providersFile, "utf-8")) as Record<string, ProviderConfig>) ?? {};
-  }
-
-  const config = { models: allModels, providers };
-  _configCache.set(modality, config);
-  return config;
-}
-
 // ── Parameter Validation (Lenient) ───────────────────────────────────
 
 /**
@@ -168,7 +103,7 @@ export function loadConfig(modality: string): { models: ModelConfig[]; providers
  * @returns A `[resolvedName, modelConfig]` tuple for the matched model
  * @throws {Error} when `modelName` is missing or no model matches
  */
-function findModelConfig(config: { models: ModelConfig[] }, modelName: string | undefined): [string, ModelConfig] {
+function findModelConfig(config: { models: FullModelEntry[] }, modelName: string | undefined): [string, FullModelEntry] {
   if (!modelName) throw new Error("model_name is required");
   const model = config.models.find((m) => m.name === modelName);
   if (!model) throw new Error(`Model '${modelName}' not found`);
@@ -187,7 +122,7 @@ export function validateParams(
   modelName: string | undefined,
   params?: Record<string, unknown>,
 ): [string, Record<string, unknown>] {
-  const config = loadConfig(modality);
+  const config = getFullModelConfig(modality);
   const [name, modelCfg] = findModelConfig(config, modelName);
   const paramSpecs = modelCfg.params ?? {};
   const cleaned: Record<string, unknown> = {};
@@ -242,7 +177,7 @@ function getApiKey(envVarName: string): string {
  * @throws {Error} if no provider has an active API key
  */
 export function resolveModel(modality: string, modelName: string | undefined): ResolvedModel {
-  const config = loadConfig(modality);
+  const config = getFullModelConfig(modality);
   const [name, modelCfg] = findModelConfig(config, modelName);
 
   const sorted = [...(modelCfg.providers ?? [])].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
@@ -270,42 +205,6 @@ export function resolveModel(modality: string, modelName: string | undefined): R
   }
 
   throw new Error(`No provider with active API key for model '${name}'. Check your .env file.`);
-}
-
-/**
- * List models that have at least one provider with an active API key.
- * @param modality - Provider modality
- * @returns Model info dicts for skill injection
- */
-export function listAvailableModels(modality: string): Array<{
-  name: string;
-  displayName: string;
-  mode: string;
-  description: string;
-  guide: string;
-  params: Record<string, unknown>;
-}> {
-  const config = loadConfig(modality);
-  const result: ReturnType<typeof listAvailableModels> = [];
-
-  for (const model of config.models) {
-    const hasKey = (model.providers ?? []).some((p) => {
-      const pcfg = config.providers[p.name] ?? {};
-      return !!getApiKey(pcfg.api_key_env ?? "");
-    });
-    if (!hasKey) continue;
-
-    result.push({
-      name: model.name,
-      displayName: model.display_name ?? model.name,
-      mode: model.mode ?? "t2i",
-      description: model.description ?? "",
-      guide: model.guide ?? "",
-      params: model.params ?? {},
-    });
-  }
-
-  return result;
 }
 
 // ── Semaphore ────────────────────────────────────────────────────────

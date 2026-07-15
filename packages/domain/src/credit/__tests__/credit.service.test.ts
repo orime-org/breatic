@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { REFKEY_PATTERN } from "./credit.service.js";
+import { REFKEY_PATTERN } from "../credit.service.js";
 
 describe("REFKEY_PATTERN", () => {
   // BUG-047 — values that must be rejected

@@ -15,7 +15,7 @@ import {
   estimateTaskCredits,
   getModelCatalog,
   MIN_TASK_CREDIT_COST,
-} from "./model-catalog.js";
+} from "../model-catalog.js";
 
 // getModelCatalog resolves config YAML via core's injected config; tests
 // stand in for the application entry (same pattern as fs-sandbox.test).

@@ -129,7 +129,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
       return { id: "u-new", email: data.email, avatarUrl: null };
     });
 
-    const { register } = await import("./auth.service.js");
+    const { register } = await import("../auth.service.js");
     await register("new@example.com", "validPassword123");
 
     expect(capturedHash).toBeDefined();
@@ -149,7 +149,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
       return { id: "u-new", email: data.email, avatarUrl: null };
     });
 
-    const { register } = await import("./auth.service.js");
+    const { register } = await import("../auth.service.js");
     await register("noname@example.com", "validPassword123");
 
     expect(captured).toBeDefined();
@@ -169,7 +169,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
       avatarUrl: null,
     });
 
-    const { register } = await import("./auth.service.js");
+    const { register } = await import("../auth.service.js");
     await register("new@example.com", "validPassword123");
 
     expect(mockCreatePersonalStudio).not.toHaveBeenCalled();
@@ -183,7 +183,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
       avatarUrl: null,
     });
 
-    const { register } = await import("./auth.service.js");
+    const { register } = await import("../auth.service.js");
     const result = await register("new@example.com", "validPassword123");
 
     // Returned recovery code is plaintext, base32 XXXX-XXXX-XXXX-XXXX
@@ -206,7 +206,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
       avatarUrl: null,
     });
 
-    const { register } = await import("./auth.service.js");
+    const { register } = await import("../auth.service.js");
     await register("new@example.com", "validPassword123");
 
     // PR3 moved credits out of the users table into credit_balances;
@@ -223,7 +223,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
       capturedHash = hashed;
     });
 
-    const { resetPassword } = await import("./auth.service.js");
+    const { resetPassword } = await import("../auth.service.js");
     await resetPassword("valid-token", "newPassword123");
 
     expect(capturedHash).toBeDefined();
@@ -239,7 +239,7 @@ describe("auth.service invariant — forgotPassword anti-enumeration (锁现状�
   it("when email not registered: returns { status: 'unknown_email' } — no throw, no sendMail, no Redis SET (anti-enumeration via discriminated result, caller still echoes generic response)", async () => {
     mockGetUserByEmail.mockResolvedValue(null);
 
-    const { forgotPassword } = await import("./auth.service.js");
+    const { forgotPassword } = await import("../auth.service.js");
     await expect(
       forgotPassword("unknown@nowhere.com", "https://app.example/reset"),
     ).resolves.toEqual({ status: "unknown_email" });
@@ -255,7 +255,7 @@ describe("auth.service invariant — forgotPassword anti-enumeration (锁现状�
       avatarUrl: null,
     });
 
-    const { forgotPassword } = await import("./auth.service.js");
+    const { forgotPassword } = await import("../auth.service.js");
     await forgotPassword("real@example.com", "https://app.example/reset");
 
     expect(mockRedis.set).toHaveBeenCalledOnce();
@@ -276,7 +276,7 @@ describe("auth.service invariant — resetPassword token contract (锁现状回�
   it("rejects when Redis returns null (token expired / never existed / already used)", async () => {
     mockRedis.get.mockResolvedValue(null);
 
-    const { resetPassword } = await import("./auth.service.js");
+    const { resetPassword } = await import("../auth.service.js");
     await expect(
       resetPassword("expired-or-invalid-token", "newPassword123"),
     ).rejects.toThrow();
@@ -289,7 +289,7 @@ describe("auth.service invariant — resetPassword token contract (锁现状回�
   it("on success: updatePassword + Redis DEL + deleteAllSessions all called (atomic semantics — no partial cleanup)", async () => {
     mockRedis.get.mockResolvedValue("u-1");
 
-    const { resetPassword } = await import("./auth.service.js");
+    const { resetPassword } = await import("../auth.service.js");
     await resetPassword("valid-token", "newPassword123");
 
     expect(mockUpdatePassword).toHaveBeenCalledOnce();

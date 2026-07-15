@@ -59,7 +59,7 @@ describe("mailer — EMAIL_BACKEND 3-state contract", () => {
   it("EMAIL_BACKEND=disabled — returns skipped/backend_disabled, nodemailer never invoked", async () => {
     mockEnv.EMAIL_BACKEND = "disabled";
 
-    const { sendMail } = await import("./mailer.js");
+    const { sendMail } = await import("../mailer.js");
     const result = await sendMail({
       to: "user@example.com",
       subject: "Verify your email",
@@ -73,7 +73,7 @@ describe("mailer — EMAIL_BACKEND 3-state contract", () => {
   it("EMAIL_BACKEND=console — returns backend_console with content, nodemailer never invoked", async () => {
     mockEnv.EMAIL_BACKEND = "console";
 
-    const { sendMail } = await import("./mailer.js");
+    const { sendMail } = await import("../mailer.js");
     const result = await sendMail({
       to: "user@example.com",
       subject: "Reset link",
@@ -95,7 +95,7 @@ describe("mailer — EMAIL_BACKEND 3-state contract", () => {
     mockEnv.SMTP_USER = "smtp-user";
     mockEnv.SMTP_PASSWORD = "smtp-pass";
 
-    const { sendMail } = await import("./mailer.js");
+    const { sendMail } = await import("../mailer.js");
     const result = await sendMail({
       to: "user@example.com",
       subject: "Verify",
@@ -113,7 +113,7 @@ describe("mailer — EMAIL_BACKEND 3-state contract", () => {
     mockEnv.EMAIL_BACKEND = "smtp";
     mockEnv.SMTP_HOST = "";
 
-    const { sendMail } = await import("./mailer.js");
+    const { sendMail } = await import("../mailer.js");
     const result = await sendMail({
       to: "user@example.com",
       subject: "Verify",

@@ -9,7 +9,7 @@
  * @module
  */
 
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "@breatic/core";
@@ -36,26 +36,130 @@ export type Modality = (typeof MODALITIES)[number];
 // it calls listAvailableModels() below, which returns the lighter
 // SkillModelInfo. This module owns the YAML-loading + the runtime MODALITIES.
 
+// ── Full config (backend-only, #1672) ────────────────────────────────
+
+/** Full param spec as authored in yaml — backend-only superset of the wire ParamDescriptor. */
+export interface FullParamSpec {
+  type?: string;
+  description?: string;
+  values?: unknown[];
+  default?: unknown;
+  min?: number;
+  max?: number;
+  max_items?: number;
+  [extra: string]: unknown;
+}
+
+/** One provider endpoint on a model with every yaml field preserved (backend-only). */
+export interface FullProviderEndpoint {
+  name: string;
+  model_id: string;
+  priority?: number;
+  token_price?: number;
+  credit_price?: number;
+  extra_params?: Record<string, unknown>;
+  litellm_model?: string;
+  [extra: string]: unknown;
+}
+
+/** One model entry with every yaml field preserved (backend-only). */
+export interface FullModelEntry {
+  name: string;
+  display_name?: string;
+  mode?: string | string[];
+  tier?: string;
+  description?: string;
+  guide?: string;
+  cost_per_call?: number;
+  generation_time?: number;
+  icon?: string;
+  params?: Record<string, FullParamSpec>;
+  providers?: FullProviderEndpoint[];
+  [extra: string]: unknown;
+}
+
+/**
+ * Connection config for one provider from providers.yaml. Carries secrets
+ * plumbing (api_key_env) and vendor endpoints — backend-only; must never be
+ * projected into `@breatic/shared` or any web-facing response.
+ */
+export interface ProviderConnectionConfig {
+  base_url?: string;
+  api_key_env?: string;
+  timeout?: number;
+  max_concurrency?: number;
+  [extra: string]: unknown;
+}
+
+/** Full config for one modality: all models plus provider connection configs. */
+export interface FullModalityConfig {
+  models: FullModelEntry[];
+  providers: Record<string, ProviderConnectionConfig>;
+}
+
+const _fullConfigCache = new Map<string, FullModalityConfig>();
+
+/**
+ * Load the complete, unprojected model config for one modality.
+ *
+ * Domain is the single config/models YAML reader (#1672): the catalog
+ * projections below and the worker's resolveModel/validateParams all
+ * consume this accessor instead of parsing YAML themselves. Results are
+ * cached per modality; {@link resetModelCatalog} clears the cache.
+ * @param modality - Modality directory name (e.g. "image"); unknown values yield an empty config
+ * @returns Models with every yaml field plus provider connection configs
+ * @throws {Error} when a yaml file is malformed (fail-fast; the application boot path logs)
+ */
+export function getFullModelConfig(modality: string): FullModalityConfig {
+  const cached = _fullConfigCache.get(modality);
+  if (cached) return cached;
+
+  const dir = resolve(MODELS_DIR, modality);
+  let files: string[];
+  try {
+    files = readdirSync(dir)
+      .filter((f) => extname(f) === ".yaml" && f !== "providers.yaml")
+      .sort();
+  } catch {
+    // Unknown modality / missing directory — an empty config lets callers
+    // fail with their own "model not found" semantics.
+    return { models: [], providers: {} };
+  }
+
+  const models: FullModelEntry[] = [];
+  for (const file of files) {
+    const parsed = parse(readFileSync(resolve(dir, file), "utf-8")) as {
+      models?: FullModelEntry[];
+    } | null;
+    if (parsed?.models) models.push(...parsed.models);
+  }
+
+  let providers: Record<string, ProviderConnectionConfig> = {};
+  const providersPath = resolve(dir, "providers.yaml");
+  if (existsSync(providersPath)) {
+    providers =
+      (parse(readFileSync(providersPath, "utf-8")) as Record<string, ProviderConnectionConfig>) ??
+      {};
+  }
+
+  const config = { models, providers };
+  _fullConfigCache.set(modality, config);
+  return config;
+}
+
 /**
  * Map provider name → env var name for API key lookup.
- * Built from providers.yaml in each modality directory.
+ * Built from each modality's provider connection configs.
  * @returns A map from provider name to its `api_key_env` variable name.
  */
 function loadProviderKeyMap(): ReadonlyMap<string, string> {
   const keyMap = new Map<string, string>();
 
   for (const modality of MODALITIES) {
-    const providersPath = resolve(MODELS_DIR, modality, "providers.yaml");
-    try {
-      const raw = readFileSync(providersPath, "utf-8");
-      const providers = parse(raw) as Record<string, { api_key_env?: string }>;
-      for (const [name, config] of Object.entries(providers)) {
-        if (config.api_key_env) {
-          keyMap.set(name, config.api_key_env);
-        }
+    for (const [name, config] of Object.entries(getFullModelConfig(modality).providers)) {
+      if (config.api_key_env) {
+        keyMap.set(name, config.api_key_env);
       }
-    } catch {
-      // providers.yaml may not exist for all modalities
     }
   }
 
@@ -76,44 +180,43 @@ function isProviderAvailable(providerName: string, keyMap: ReadonlyMap<string, s
 }
 
 /**
- * Load all models from a single YAML file.
- * @param filePath - Absolute path to the model YAML file.
- * @param modality - Modality the file belongs to (stamped onto each entry).
+ * Project a full yaml model entry onto the shared wire {@link ModelEntry},
+ * dropping backend-only fields (provider prices, extra_params, litellm ids)
+ * and resolving per-provider availability.
+ * @param m - Full model entry from {@link getFullModelConfig}.
+ * @param modality - Modality the entry belongs to (stamped onto the projection).
  * @param keyMap - Provider→env-var map used to resolve provider availability.
- * @returns The parsed {@link ModelEntry} list, or an empty array if the file has no models.
+ * @returns The wire-facing catalog entry.
  */
-function loadModelsFromFile(
-  filePath: string,
+function projectModelEntry(
+  m: FullModelEntry,
   modality: Modality,
   keyMap: ReadonlyMap<string, string>,
-): ModelEntry[] {
-  const raw = readFileSync(filePath, "utf-8");
-  const parsed = parse(raw) as { models?: Array<Record<string, unknown>> };
-  if (!parsed?.models) return [];
+): ModelEntry {
+  const providers = (m.providers ?? []).map((p) => ({
+    name: p.name,
+    model_id: p.model_id,
+    priority: p.priority ?? 99,
+    available: isProviderAvailable(p.name, keyMap),
+  }));
 
-  return parsed.models.map((m) => {
-    const providers = ((m.providers as Array<Record<string, unknown>>) ?? []).map((p) => ({
-      name: p.name as string,
-      model_id: p.model_id as string,
-      priority: (p.priority as number) ?? 99,
-      available: isProviderAvailable(p.name as string, keyMap),
-    }));
-
-    return {
-      name: m.name as string,
-      display_name: (m.display_name as string) ?? (m.name as string),
-      modality,
-      mode: m.mode as string | string[],
-      description: (m.description as string) ?? "",
-      guide: (m.guide as string) ?? "",
-      tier: (m.tier as ModelTier) ?? "optional",
-      cost_per_call: (m.cost_per_call as number) ?? 0,
-      generation_time: (m.generation_time as number) ?? 60,
-      params: (m.params as Record<string, ParamDescriptor>) ?? {},
-      providers,
-      icon: m.icon as string | undefined,
-    };
-  });
+  return {
+    name: m.name,
+    display_name: m.display_name ?? m.name,
+    modality,
+    mode: m.mode as string | string[],
+    description: m.description ?? "",
+    guide: m.guide ?? "",
+    tier: (m.tier as ModelTier) ?? "optional",
+    cost_per_call: m.cost_per_call ?? 0,
+    generation_time: m.generation_time ?? 60,
+    // Same blind cast as the yaml guidelines promise (every param has
+    // description + default); FullParamSpec keeps them optional because it
+    // mirrors what is literally on disk.
+    params: (m.params ?? {}) as unknown as Record<string, ParamDescriptor>,
+    providers,
+    icon: m.icon,
+  };
 }
 
 let _cache: ModelCatalog | null = null;
@@ -140,25 +243,14 @@ export function getModelCatalog(): ModelCatalog {
   };
 
   for (const modality of MODALITIES) {
-    const dir = resolve(MODELS_DIR, modality);
-    let files: string[];
-    try {
-      files = readdirSync(dir).filter(
-        (f) => extname(f) === ".yaml" && f !== "providers.yaml",
-      );
-    } catch {
-      continue;
-    }
-
-    for (const file of files) {
-      // Per CLAUDE.md "core/shared/domain write no logs" mandate, parse
-      // errors throw so the application boot path catches + logs
-      // with the right context (catalog load is at server startup —
-      // a malformed YAML should fail-fast, not silently drop the
-      // affected modality).
-      const models = loadModelsFromFile(resolve(dir, file), modality, keyMap);
-      catalog[modality].push(...models);
-    }
+    // Per CLAUDE.md "core/shared/domain write no logs" mandate, parse
+    // errors throw inside getFullModelConfig so the application boot path
+    // catches + logs with the right context (catalog load is at server
+    // startup — a malformed YAML should fail-fast, not silently drop the
+    // affected modality).
+    catalog[modality] = getFullModelConfig(modality).models.map((m) =>
+      projectModelEntry(m, modality, keyMap),
+    );
   }
 
   // Check if any keys are configured at all
@@ -305,7 +397,8 @@ export function violatesSourceImageRequirement(
   return !Array.isArray(images) || images.length === 0;
 }
 
-/** Reset cached catalog (for testing). */
+/** Reset cached catalog and full-config caches (for testing). */
 export function resetModelCatalog(): void {
   _cache = null;
+  _fullConfigCache.clear();
 }

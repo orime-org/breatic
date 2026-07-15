@@ -249,8 +249,10 @@ lib/        工具(cn / format / env / analytics)
 | React 组件 `.tsx` | `PascalCase`(= 导出名) | `Button.tsx` `ProjectMembersPanel.tsx` |
 | React hook `.ts/.tsx` | `useFooBar`(= 导出名) | `useProjectSpaces.ts` `useCanvasActions.ts` |
 | 其他 `.ts`(util / data / config / store) | `kebab-case` | `mini-tools.ts` `oss-client.ts` |
-| 测试 | 跟被测对象同名 + `.test` | `useProjectSpaces.test.ts` |
+| 测试 | 跟被测对象同名 + `.test`,**放被测对象同级的 `__tests__/` 目录**(不与源码平铺) | `space/__tests__/useProjectSpaces.test.ts` |
 | 目录 | `kebab-case` | `data/yjs/` `domain/space/` `features/project-members/` |
+
+**测试文件位置(MANDATORY,2026-07-15 拍板)**:所有 `*.test.{ts,tsx}` / `*.spec.{ts,tsx}` 一律放**被测对象同级的 `__tests__/` 子目录**,禁止与源码平铺 colocated。判定题:**这是测试文件吗?是 → 放同级 `__tests__/`,没有第二个位置**。`lint:test-file-location` CI 强制(扫 `packages/*/src` 出现任何 `__tests__/` 外的测试文件即 fail;guard 自带 `--self-test`)。命名(`.test` 后缀)与位置(`__tests__/`)是两个正交维度,都强制。
 
 ### Routing
 

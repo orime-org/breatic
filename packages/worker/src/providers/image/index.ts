@@ -12,14 +12,12 @@
  *
  * - {@link validateImageParams} -- validate and fill defaults
  * - {@link generateAsync} -- resolve -> build_request -> transport.generate
- * - {@link listAvailableImageModels} -- list models with active API keys
  */
 
 import {
   resolveModel,
   acquireSemaphore,
   validateParams,
-  listAvailableModels,
   type ModelFamily,
   type ResumeContext,
   type Transport,
@@ -150,10 +148,3 @@ export function validateImageParams(
   return validateParams("image", modelName, params);
 }
 
-/**
- * List all image models that have at least one provider with an active API key.
- * @returns Array of model info dicts for skill injection
- */
-export function listAvailableImageModels(): ReturnType<typeof listAvailableModels> {
-  return listAvailableModels("image");
-}
