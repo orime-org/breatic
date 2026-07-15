@@ -23,7 +23,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import {
   taskService,
   estimateTaskCredits,
-  violatesSourceImageRequirement,
+  violatesSourceRequirementForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { projectService, authService, precheckCredits } from "@server/modules";
@@ -78,16 +78,16 @@ canvas.post("/tasks", zValidator("json", taskCreateSchema), async (c) => {
   // to the attacker's own account.
   await projectService.assertAccess(projectId, user.id, "editor");
 
-  // #1675 execute gate: a model whose mode needs a source image (i2i / edit)
-  // must not be submitted with an empty `params.images`. Reject BEFORE
-  // enqueue — billing is post-worker (markCompletedAndBill), so this means no
-  // task row, no job, no bill for an input the model would reject (e.g. Nano
-  // Banana Edit requires images ≥ 1). Defence in depth behind the Generate
-  // panel's frontend gate; the rule lives once in @breatic/shared's
-  // requiresSourceImage, reused by both layers.
-  if (violatesSourceImageRequirement(body.model, body.params)) {
+  // #1675 execute gate (cross-modality): a model whose modes all need a source
+  // input (image / video / audio) must not be submitted without it. Reject
+  // BEFORE enqueue — billing is post-worker (markCompletedAndBill), so this
+  // means no task row, no job, no bill for an input the model would reject
+  // (e.g. Nano Banana Edit needs an image; a video-edit needs a video).
+  // Defence in depth behind the Generate panel's frontend gate; the rule is the
+  // same per-mode `sourcesByMode` the frontend reads, applied here to params.
+  if (violatesSourceRequirementForModel(body.model, body.params)) {
     throw new ValidationError(
-      "This model requires at least one source image (params.images).",
+      "This model requires a source input (e.g. params.images / video_url / audio_url).",
     );
   }
 

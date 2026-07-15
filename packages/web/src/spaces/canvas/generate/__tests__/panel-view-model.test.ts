@@ -18,11 +18,11 @@ import type { NodeView } from '@web/spaces/canvas/types/node-view';
  * @returns A minimal image ModelEntry.
  */
 function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
+  const mode = over.mode ?? 't2i';
   return {
     name,
     display_name: name.toUpperCase(),
     modality: 'image',
-    mode: 't2i',
     description: '',
     guide: '',
     tier: 'optional',
@@ -33,8 +33,19 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
       resolution: { description: '', values: ['1k', '2k'], default: '1k' },
     },
     providers: [],
-    sourcesByMode: {},
     ...over,
+    mode,
+    // Mirror the backend `computeSourcesByMode` for image modes so the gate
+    // (which reads `sourcesByMode[activeMode]`) is exercised realistically:
+    // i2i / edit need an image, t2i generates from scratch.
+    sourcesByMode:
+      over.sourcesByMode ??
+      Object.fromEntries(
+        (Array.isArray(mode) ? mode : [mode]).map((m) => [
+          m,
+          m === 'i2i' || m === 'edit' ? (['image'] as const) : [],
+        ]),
+      ),
   };
 }
 

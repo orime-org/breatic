@@ -10,7 +10,6 @@
 
 import {
   isImageGenerationMode,
-  requiresSourceImage,
   type ModelEntry,
 } from '@breatic/shared';
 
@@ -242,14 +241,14 @@ export function buildGeneratePanelViewModel(input: {
     creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
     mode,
-    // Source-image gate (#1675): the ACTIVE PANEL MODE decides the submission
-    // semantics — under t2i nothing needs a source image, even for a HYBRID
-    // model whose capability list also spans i2i (round-2 adversarial: keying
-    // on the capability array alone made t2i permanently unexecutable for
-    // hybrids, since t2i clears referenceUrls). Under i2i, defer to the
-    // model's declared modes. No model resolved (empty catalog) → no gate.
-    requiresSource:
-      mode === 'i2i' && current ? requiresSourceImage(current.mode) : false,
+    // Execute gate (#1675, cross-modality): the ACTIVE PANEL MODE decides the
+    // submission semantics — read the model's precomputed per-mode source needs
+    // (`sourcesByMode`, backend-computed on the wire) for the active mode. Under
+    // t2i that is `[]` (no source), even for a HYBRID whose capability array
+    // also spans i2i; under i2i it is `["image"]`. No model resolved (empty
+    // catalog) → no gate. The rule itself lives backend-side; the panel only
+    // reads the wire field, never runs it.
+    requiresSource: current ? (current.sourcesByMode[mode]?.length ?? 0) > 0 : false,
     catalogEmpty: generatable.length === 0,
   };
 }

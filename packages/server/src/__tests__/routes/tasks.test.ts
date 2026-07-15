@@ -136,7 +136,7 @@ describe("Tasks routes", () => {
       // The model needs a source image but params.images is empty. The gate
       // must fire before taskService.create + enqueue (billing is post-worker),
       // so nothing is created / queued / billed.
-      mocks.violatesSourceImageRequirement.mockReturnValue(true);
+      mocks.violatesSourceRequirementForModel.mockReturnValue(true);
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {
         method: "POST",
@@ -158,7 +158,7 @@ describe("Tasks routes", () => {
     });
 
     it("allows an i2i model that carries a source image (#1675 gate passes)", async () => {
-      mocks.violatesSourceImageRequirement.mockReturnValue(false);
+      mocks.violatesSourceRequirementForModel.mockReturnValue(false);
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {
         method: "POST",
