@@ -185,8 +185,10 @@ describe('TextNode', () => {
 
   it('edit state caps at 576 (max-h-144), SCROLLS, wraps long tokens, starts at the empty-state height (#1470)', async () => {
     // Double-click → editing: same 576px cap, but overflow SCROLLS (a scrollbar
-    // shows only here, in edit state) so the full content is reachable while
-    // editing; long unbreakable tokens wrap (break-words). The box starts at the
+    // shows only here, in edit state — the GLOBAL native thin scrollbar,
+    // index.css #1773, so `overflow-y-auto` alone is the whole contract) so
+    // the full content is reachable while editing; long unbreakable tokens
+    // wrap (break-words). The box starts at the
     // empty-state height (min-h-48 = 192px), not the old cramped 48px, and grows
     // with content up to the cap.
     const user = userEvent.setup();
@@ -198,7 +200,6 @@ describe('TextNode', () => {
     expect(body.className).toContain('max-h-144');
     expect(body.className).toContain('overflow-y-auto');
     expect(body.className).toContain('break-words');
-    expect(body.className).toMatch(/scrollbar/);
     expect(body.className).toContain('min-h-48');
     expect(body.className).not.toContain('min-h-[3rem]');
   });

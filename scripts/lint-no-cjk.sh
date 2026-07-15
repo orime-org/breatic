@@ -18,9 +18,8 @@
 #
 # Shell guard scripts are scanned too (scripts/*.sh): they are code that
 # developers read and run, so their comments and echo strings must be
-# English. The sole exception is THIS file — a CJK detector necessarily
-# embeds the CJK range characters in its matcher (CJK_REGEX below), so it
-# cannot scan itself; its prose is kept English by review.
+# English. THIS file is scanned like any other — the matcher is written
+# with \x{...} codepoint escapes, so it carries no raw CJK itself.
 #
 # Three categories are LEGITIMATELY non-English and are exempt:
 #   1. i18n locale catalogs (`locales/*.json`) — product translations.
@@ -38,41 +37,31 @@
 #     BSD grep (macOS) treats --exclude placed after --include as a no-op,
 #     so the old script scanned test files locally while excluding them in
 #     CI — inconsistent and surprising.
-#   - LC_ALL is forced to a real UTF-8 locale before grepping. The CJK
-#     character class is multibyte and its matching is locale-dependent:
-#     under a C / POSIX locale the class silently fails to match (the CI
-#     false-green that let CJK comments accumulate), while under macOS's
-#     UTF-8 default it matches. Pinning a UTF-8 locale makes the result
-#     deterministic on every machine.
+#   - Matching is done by PERL with \x{...} codepoint escapes, NOT by a
+#     grep bracket range of raw CJK literals. GNU grep cannot match
+#     multibyte bracket ranges in ANY locale (glibc defines no collating
+#     elements for CJK: "Invalid collation character"), and BSD grep in
+#     C/POSIX byte-matches them (false positives). The original grep
+#     implementation therefore NEVER worked on CI — its error was
+#     swallowed by `2>/dev/null || true` into a false CLEAN (exposed
+#     2026-07-15 by the matcher self-test below). Perl's codepoint
+#     semantics are locale-independent and identical on macOS + CI.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Force a real UTF-8 locale so the multibyte character class below matches
-# deterministically. ubuntu CI ships C.UTF-8; macOS ships en_US.UTF-8 —
-# pick whichever exists first.
-for _loc in C.UTF-8 en_US.UTF-8 en_US.utf8 C.utf8; do
-  if locale -a 2>/dev/null | grep -qix "$_loc"; then
-    export LC_ALL="$_loc"
-    break
-  fi
-done
-
 # Forbidden character classes (Unicode blocks that commonly leak into
-# source as comments / string literals / class names):
-#   U+3000-303F  CJK Symbols and Punctuation
-#   U+3040-309F  Hiragana
-#   U+30A0-30FF  Katakana
+# source as comments / string literals / class names), as perl codepoint
+# escapes (locale-independent; no raw CJK literals in this file):
+#   U+3040-30FF  Hiragana + Katakana
 #   U+4E00-9FFF  CJK Unified Ideographs
-#   U+AC00-D7AF  Hangul Syllables
+#   U+AC00-D7A3  Hangul Syllables
 #   U+FF00-FFEF  Halfwidth and Fullwidth Forms
-# NOTE: the literal range characters below are unavoidable (the regex has
-# to span the blocks) and bash 3.2 on macOS lacks `$'\uXXXX'`, so they are
-# written as raw UTF-8. This is exactly why this file excludes itself from
-# the scripts/*.sh scan (it necessarily contains CJK in CJK_REGEX).
-CJK_REGEX='[぀-ヿ一-鿿가-힣＀-￯]'
+# (Same blocks the retired grep bracket range spanned — behaviour kept
+# identical on purpose.)
+CJK_PERL_CLASS='[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}\x{AC00}-\x{D7A3}\x{FF00}-\x{FFEF}]'
 
 # Allowlist — production files permitted to carry non-English by deliberate
 # design (category 3 above). Keep this short and justify every entry in the
@@ -112,19 +101,37 @@ YAML_FILES=$(find config .github docker-compose.yml pnpm-workspace.yaml \
   2>/dev/null || true)
 
 # Shell guard scripts (scripts/*.sh): code developers read and run, so
-# their comments and echo strings must be English. lint-no-cjk.sh excludes
-# itself — a CJK detector necessarily embeds CJK in its matcher (see above).
+# their comments and echo strings must be English. This file scans itself
+# too — the perl matcher uses codepoint escapes, no raw CJK (see above).
 SH_FILES=$(find scripts \
   -type f -name '*.sh' \
-  -not -name 'lint-no-cjk.sh' \
   2>/dev/null || true)
 
+# Matcher self-test — MUST run before the scan, because the scan suppresses
+# stderr and "no match" would be indistinguishable from "matcher broken".
+# History of silent breakage this guards against: the original grep bracket
+# range never worked on CI at all (GNU grep: "Invalid collation character"
+# in every locale — glibc has no CJK collating elements), and the error was
+# swallowed into a false CLEAN for weeks. The perl matcher below is
+# locale-independent, but the self-test stays: if perl/flags ever stop
+# matching the positive sample (U+6587, bytes e6 96 87) or start matching
+# the negative one (em dash U+2014 — catches accidental byte-mode
+# regressions), refuse to scan. Samples are printf byte escapes,
+# independent of this file's encoding.
+if ! printf 'x\xe6\x96\x87x' | perl -CSD -ne "exit(/$CJK_PERL_CLASS/ ? 0 : 1)" 2>/dev/null \
+  || printf 'x\xe2\x80\x94x' | perl -CSD -ne "exit(/$CJK_PERL_CLASS/ ? 0 : 1)" 2>/dev/null; then
+  echo "lint:no-cjk — matcher self-test FAILED: perl codepoint matching is broken in this environment; refusing to scan (a clean result would be meaningless)" >&2
+  exit 2
+fi
+
+# -CSD: treat input as UTF-8 so \x{...} classes see CODEPOINTS, not bytes.
+# `close ARGV if eof` resets $. per file so line numbers are correct.
 MATCHES=$(
   printf '%s\n%s\n%s\n' "$FILES" "$YAML_FILES" "$SH_FILES" \
     | grep -vE '^$' \
     | grep -vE "$ALLOWLIST_REGEX" \
     | tr '\n' '\0' \
-    | xargs -0 grep -EnH "$CJK_REGEX" 2>/dev/null \
+    | xargs -0 perl -CSD -ne "print \"\$ARGV:\$.:\$_\" if /$CJK_PERL_CLASS/; close ARGV if eof" 2>/dev/null \
     || true
 )
 
