@@ -44,8 +44,12 @@ export default function App(): React.JSX.Element {
               content; 3s is long enough to read a short message and
               short enough not to linger on the canvas.
               No `closeButton` — top-center toasts auto-dismiss; the X
-              in the corner only added clutter without helping. */}
-          <Toaster richColors position='top-center' duration={3000} />
+              in the corner only added clutter without helping.
+              No `richColors`: type is signalled by a colored left border +
+              icon (design B), styled by `data-type` in index.css using the
+              design status tokens — a quieter accent than sonner's full-color
+              fill, and consistent with the app's status palette. */}
+          <Toaster position='top-center' duration={3000} />
         </AuthBootstrap>
       </TooltipProvider>
     </QueryClientProvider>

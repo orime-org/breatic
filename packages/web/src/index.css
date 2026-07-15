@@ -108,6 +108,42 @@ body {
   position: relative !important;
 }
 
+/* Toast type accent (2026-07-15, design B). The toast surface stays the neutral
+   compact popover bar (bg set inline in components/ui/sonner.tsx); type is
+   signalled by a 3px colored LEFT border + a colored type icon, keyed on
+   sonner's `data-type` (set by toast.error / .warning / .success / .info —
+   plain toast() has none and stays neutral). Colors come from the design status
+   tokens (the five defined status hues), so error/warning/success/info read
+   consistently with the rest of the app. `!important` is required: it beats
+   sonner's inline `borderColor` (non-important, so !important wins) and its
+   `[data-sonner-toast][data-styled]` vendor selector — same override discipline
+   as the centering rules above. richColors is off (App.tsx); this is the single
+   source of toast coloring. */
+[data-sonner-toast][data-type='error'] {
+  border-left: 3px solid var(--color-status-error) !important;
+}
+[data-sonner-toast][data-type='warning'] {
+  border-left: 3px solid var(--color-status-warning) !important;
+}
+[data-sonner-toast][data-type='success'] {
+  border-left: 3px solid var(--color-status-success) !important;
+}
+[data-sonner-toast][data-type='info'] {
+  border-left: 3px solid var(--color-status-info) !important;
+}
+[data-sonner-toast][data-type='error'] [data-icon] {
+  color: var(--color-status-error) !important;
+}
+[data-sonner-toast][data-type='warning'] [data-icon] {
+  color: var(--color-status-warning) !important;
+}
+[data-sonner-toast][data-type='success'] [data-icon] {
+  color: var(--color-status-success) !important;
+}
+[data-sonner-toast][data-type='info'] [data-icon] {
+  color: var(--color-status-info) !important;
+}
+
 /* Canvas node drag-lift. A static node card is flat — NodeShell drops its
    shadow per the design system (containers carry no shadow). ONLY a node being
    dragged lifts off the canvas. Targets ReactFlow's `.dragging` class on the
