@@ -136,16 +136,24 @@ describe('ScrollArea', () => {
     expect((viewport as HTMLElement).style.overflowY).toBe('scroll');
   });
 
-  it('defaults to type "scroll" — the bar shows only while scrolling (ratified visibility contract)', () => {
-    // With type='scroll' and no scroll activity, jsdom renders NO scrollbar
-    // rail; type='always' would mount it immediately. Pins the default so a
-    // silent switch to an always-visible bar cannot ship green.
+  it('rail idles HIDDEN with its hover zone gated until content is scrollable (ratified visibility contract)', () => {
+    // The rail is force-mounted so its hover zone can reveal a hidden bar
+    // (2026-07-15), but at idle it must be data-state hidden (opacity-0 via
+    // the transition classes) and — in jsdom, where nothing is scrollable —
+    // the per-axis gate must disable its pointer events so a non-scrollable
+    // rail can neither hover-reveal nor swallow edge clicks.
     const { container } = render(
-      <ScrollArea>
+      <ScrollArea data-testid='root'>
         <p>x</p>
       </ScrollArea>,
     );
-    expect(container.querySelector('[data-orientation]')).toBeNull();
+    const rail = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
+    expect(rail).not.toBeNull();
+    expect(rail.getAttribute('data-state')).toBe('hidden');
+    expect(rail.className).toContain('opacity-0');
+    expect(rail.className).toContain('hover:opacity-100');
+    expect(rail.className).toContain('group-data-[scrollable-y=false]/scroller:pointer-events-none');
+    expect(screen.getByTestId('root').getAttribute('data-scrollable-y')).toBe('false');
   });
 
   it('thumb hover response is opacity-only and the rail carries the fade animation classes (ratified: hover = color, never shape)', () => {
@@ -156,8 +164,11 @@ describe('ScrollArea', () => {
       </ScrollAreaPrimitive.Root>,
     );
     const bar = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
-    expect(bar.className).toContain('data-[state=hidden]:fade-out-0');
-    expect(bar.className).toContain('data-[state=visible]:fade-in-0');
+    expect(bar.className).toContain('transition-opacity');
+    expect(bar.className).toContain('data-[state=visible]:opacity-100');
+    // Native-scrollbar pointer: always the default arrow, never inherited
+    // text/grab cursors (user 2026-07-15).
+    expect(bar.className).toContain('cursor-default');
     // Fixed geometry: the rail never changes thickness.
     expect(bar.className).toContain('w-2');
     const thumb = bar.firstElementChild as HTMLElement;
