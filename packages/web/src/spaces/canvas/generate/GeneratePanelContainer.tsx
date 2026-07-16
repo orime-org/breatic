@@ -11,6 +11,7 @@ import { canvasApi } from '@web/data/api/canvas';
 import { modelsApi } from '@web/data/api/models';
 import { ApiException } from '@web/data/api/types';
 import {
+  clearNodeStyleImage,
   getOrCreatePromptFragment,
   isNodeHandling,
   isNodeLocked,
@@ -114,6 +115,7 @@ function GeneratePanelBody({
   const t = useTranslation();
   const closeGeneratePanel = useCanvasStore((s) => s.closeGeneratePanel);
   const startReferencePick = useCanvasStore((s) => s.startReferencePick);
+  const startStylePick = useCanvasStore((s) => s.startStylePick);
 
   // Collaborator carets (batch-2 item 14): the prompt fragment lives in the
   // canvas-space doc, so its provider's AWARENESS is the caret channel.
@@ -315,40 +317,78 @@ function GeneratePanelBody({
     [projectId, spaceId, nodeId, freshVm],
   );
 
-  // The reference button is a TOGGLE (G, user 2026-07-12): start the pick when
-  // this node isn't picking, else exit it. `referencePicking` is read
-  // reactively so the button highlights while active and un-highlights when a
-  // collaborator / mode-switch / Exit ends the pick — not just on local click.
-  const endReferencePick = useCanvasStore((s) => s.endReferencePick);
+  // The Reference / Style buttons are TOGGLES (G, user 2026-07-12): start the
+  // pick when this node isn't already in that pick, else exit it. Both flags are
+  // read reactively so the button highlights while active and un-highlights when
+  // a collaborator / mode-switch / Exit ends the pick — not just on local click.
+  // A pick is a single session, so starting one purpose replaces the other.
+  const endPick = useCanvasStore((s) => s.endPick);
   const referencePicking = useCanvasStore(
-    (s) => s.referencePickForNodeId === nodeId,
+    (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
+  );
+  const stylePicking = useCanvasStore(
+    (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'style',
   );
   const onAddReference = React.useCallback(() => {
-    if (useCanvasStore.getState().referencePickForNodeId === nodeId) {
-      endReferencePick();
+    const session = useCanvasStore.getState().pickSession;
+    if (session?.nodeId === nodeId && session.purpose === 'reference') {
+      endPick();
     } else {
       startReferencePick(nodeId);
     }
-  }, [startReferencePick, endReferencePick, nodeId]);
+  }, [startReferencePick, endPick, nodeId]);
+  const onStyle = React.useCallback(() => {
+    const session = useCanvasStore.getState().pickSession;
+    if (session?.nodeId === nodeId && session.purpose === 'style') {
+      endPick();
+    } else {
+      startStylePick(nodeId);
+    }
+  }, [startStylePick, endPick, nodeId]);
 
-  // End a running pick the moment the mode becomes t2i (adversarial round-2):
-  // t2i ignores image references and DISABLES the reference button, so a pick
-  // started in i2i and left running after a t2i switch is a zombie session —
-  // its banner lingers and its Exit trigger is disabled (which is what left
-  // keyboard focus stranded). The mode can flip locally or via a collaborator
-  // writing setNodeMode, so react to vm.mode, not just the local toggle.
+  // End a running REFERENCE pick the moment the mode becomes t2i (adversarial
+  // round-2): t2i ignores image references and DISABLES the reference button, so
+  // a reference pick left running after a t2i switch is a zombie session — its
+  // banner lingers and its Exit trigger is disabled (which is what left keyboard
+  // focus stranded). A STYLE pick is exempt: style images SURVIVE t2i (#1664),
+  // and the Style button stays enabled — ending it on t2i would be wrong. The
+  // mode can flip locally or via a collaborator writing setNodeMode, so react to
+  // vm.mode, not just the local toggle.
   React.useEffect(() => {
+    const session = useCanvasStore.getState().pickSession;
     if (
       vm.mode === 't2i' &&
-      useCanvasStore.getState().referencePickForNodeId === nodeId
+      session?.nodeId === nodeId &&
+      session.purpose === 'reference'
     ) {
-      endReferencePick();
+      endPick();
     }
-  }, [vm.mode, nodeId, endReferencePick]);
+  }, [vm.mode, nodeId, endPick]);
+  // Same zombie guard for the STYLE pick (adversarial 2026-07-16): switching to
+  // a model without style capability (locally or via a collaborator's
+  // setNodeModel) DISABLES the Style trigger, so a running style pick would
+  // strand its banner + keyboard focus exactly like the t2i reference case.
+  React.useEffect(() => {
+    const session = useCanvasStore.getState().pickSession;
+    if (
+      !vm.styleSupported &&
+      session?.nodeId === nodeId &&
+      session.purpose === 'style'
+    ) {
+      endPick();
+    }
+  }, [vm.styleSupported, nodeId, endPick]);
 
   const onRemoveReference = React.useCallback(
     (refId: string) => removeEdge(projectId, spaceId, refId),
     [projectId, spaceId],
+  );
+  // The Style slot's ✕ (#1664): clears the node's pick-time copy. Always
+  // available — even when the active model gates picking off, a stale copy
+  // must be removable.
+  const onClearStyle = React.useCallback(
+    () => clearNodeStyleImage(projectId, spaceId, nodeId),
+    [projectId, spaceId, nodeId],
   );
 
   const onExecute = React.useCallback(async () => {
@@ -440,6 +480,11 @@ function GeneratePanelBody({
         params: fresh.params,
         promptText: freshPrompt,
         referenceUrls: fresh.referenceUrls,
+        // Capability gate (#1664): the style copy rides the payload ONLY when
+        // the active model declares style_images — a stale copy under a
+        // non-style model must not be sent (the server would reject or the
+        // worker silently drop it).
+        styleImageUrl: fresh.styleSupported ? fresh.styleImageUrl : undefined,
         leaseGen: readNodeLeaseGen(projectId, spaceId, nodeId),
       });
       await canvasApi.createTask(payload);
@@ -511,6 +556,11 @@ function GeneratePanelBody({
       referencePicking={referencePicking}
       onRemoveReference={onRemoveReference}
       onInsertReference={handleInsertReference}
+      onStyle={onStyle}
+      stylePicking={stylePicking}
+      styleImageUrl={vm.styleImageUrl}
+      onClearStyle={onClearStyle}
+      styleSupported={vm.styleSupported}
       onExecute={onExecute}
     />
   );

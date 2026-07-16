@@ -261,6 +261,53 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.mode).toBe('t2i');
     expect(vm.references).toEqual([]);
     expect(vm.referenceUrls).toEqual([]);
+    expect(vm.styleImageUrl).toBeUndefined();
+    expect(vm.styleSupported).toBe(false);
+  });
+
+  // ── Style image (#1664) — pick-time URL copy, capability-gated ──
+  const styleModels = [
+    makeModel('flux-style', {
+      mode: 't2i',
+      params: {
+        aspect_ratio: { description: '', values: ['1:1'], default: '1:1' },
+        style_images: { description: '', type: 'list', max_items: 1, default: null },
+      },
+    }),
+  ];
+
+  it('reads the stored style image URL off the node (t2i — style survives every mode)', () => {
+    const nodes = [
+      node('n1', imageView({ model: 'flux-style', styleImageUrl: 'https://cdn/style.png' })),
+    ];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: styleModels });
+    expect(vm.styleImageUrl).toBe('https://cdn/style.png');
+    expect(vm.styleSupported).toBe(true);
+  });
+
+  it('styleSupported is false when the active model declares no style_images param', () => {
+    // Capability gate: the copy stays on the node, but the panel must not offer
+    // Style nor send it for a model that cannot take a style reference.
+    const nodes = [
+      node('n1', imageView({ model: 'flux', styleImageUrl: 'https://cdn/style.png' })),
+    ];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.styleSupported).toBe(false);
+    expect(vm.styleImageUrl).toBe('https://cdn/style.png'); // copy still readable
+  });
+
+  it('sanitizes a malformed non-string styleImageUrl to undefined (untrusted Yjs)', () => {
+    const nodes = [
+      node(
+        'n1',
+        imageView({
+          model: 'flux-style',
+          styleImageUrl: { u: 1 } as unknown as string,
+        }),
+      ),
+    ];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: styleModels });
+    expect(vm.styleImageUrl).toBeUndefined();
   });
 
   // Malformed-catalog robustness (non-number cost_per_call, non-array model

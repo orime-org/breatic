@@ -13,7 +13,12 @@
  * Parameter mapping (YAML user-facing vs API):
  * - aspect_ratio   -> aspect_ratio (pass-through)
  * - resolution     -> resolution (pass-through, stripped for original models)
- * - style_images   -> images (rename)
+ * - style_images   -> MERGED into images (content/edit sources FIRST, style
+ *   LAST — never a rename-overwrite, which would clobber i2i sources when
+ *   both ride one request), with a `style_reference` note injected into the
+ *   JSON prompt so Gemini treats the trailing image as aesthetic guidance
+ *   (Gemini has no typed style slot in the request — the role is conveyed by
+ *   the prompt; style-capable per config: Pro only, Flash has no style class)
  * - camera/lens/focal_length/aperture -> fed into JSON prompt
  * - enable_web_search -> pass-through
  */
@@ -58,6 +63,8 @@ function prepareParams(
   lens: string | undefined;
   focalLength: number | undefined;
   aperture: string | undefined;
+  contentImageCount: number;
+  styleImageCount: number;
 } {
   const cleaned = { ...params };
 
@@ -65,11 +72,21 @@ function prepareParams(
     delete cleaned.resolution;
   }
 
-  // Rename style_images -> images
-  const styleImages = cleaned.style_images;
+  // Merge style_images INTO images (content sources first, style last). The
+  // old rename-overwrite (`images = style_images`) silently clobbered i2i
+  // sources when both rode one request (#1664 style-in-edit). The counts feed
+  // the prompt's style_reference note (index-referenced role assignment).
+  const contentImages = Array.isArray(cleaned.images)
+    ? (cleaned.images as string[])
+    : [];
+  const styleImages = Array.isArray(cleaned.style_images)
+    ? (cleaned.style_images as string[])
+    : [];
   delete cleaned.style_images;
-  if (styleImages) {
-    cleaned.images = styleImages;
+  if (contentImages.length + styleImages.length > 0) {
+    cleaned.images = [...contentImages, ...styleImages];
+  } else {
+    delete cleaned.images;
   }
 
   // Pop camera control params
@@ -82,7 +99,45 @@ function prepareParams(
   delete cleaned.focal_length;
   delete cleaned.aperture;
 
-  return { cleaned, camera, lens, focalLength, aperture };
+  return {
+    cleaned,
+    camera,
+    lens,
+    focalLength,
+    aperture,
+    contentImageCount: contentImages.length,
+    styleImageCount: styleImages.length,
+  };
+}
+
+/**
+ * Inject a `style_reference` note into a JSON-structured prompt so Gemini
+ * treats the TRAILING input image(s) as aesthetic guidance rather than
+ * content to copy (Gemini's request has no typed style slot — the role is
+ * conveyed through the prompt). No-op when no style image rides the request
+ * or the prompt string is not parseable JSON (defensive — both builders
+ * produce valid JSON).
+ * @param jsonPrompt - The JSON-structured prompt string.
+ * @param contentImageCount - Number of content images BEFORE the style images.
+ * @param styleImageCount - Number of style images appended AFTER the content images.
+ * @returns The prompt with the style note, or the original on no style / parse failure.
+ */
+function injectStyleReference(
+  jsonPrompt: string,
+  contentImageCount: number,
+  styleImageCount: number,
+): string {
+  if (styleImageCount === 0) return jsonPrompt;
+  try {
+    const obj = JSON.parse(jsonPrompt) as Record<string, unknown>;
+    obj.style_reference =
+      contentImageCount === 0
+        ? "The input image is a style reference: apply its artistic style (color palette, texture, rendering) to the generated image; do not copy its subjects or composition."
+        : `The last input image (image ${contentImageCount + styleImageCount}) is a style reference: apply its artistic style to the result; the preceding image${contentImageCount === 1 ? "" : "s"} ${contentImageCount === 1 ? "is" : "are"} the content to edit.`;
+    return JSON.stringify(obj);
+  } catch {
+    return jsonPrompt;
+  }
 }
 
 /**
@@ -132,15 +187,32 @@ export async function buildRequest(
   modelName: string,
   params: Record<string, unknown>,
 ): Promise<[string, Record<string, unknown>]> {
-  const { cleaned, camera, lens, focalLength, aperture } = prepareParams(modelName, params);
+  const {
+    cleaned,
+    camera,
+    lens,
+    focalLength,
+    aperture,
+    contentImageCount,
+    styleImageCount,
+  } = prepareParams(modelName, params);
+
+  /**
+   * Applies the style-reference note to a finished JSON prompt (curried over
+   * this request's image counts).
+   * @param jsonPrompt - The JSON-structured prompt string.
+   * @returns The prompt with the style note when a style image rides along.
+   */
+  const withStyle = (jsonPrompt: string): string =>
+    injectStyleReference(jsonPrompt, contentImageCount, styleImageCount);
 
   // Edit models have no camera params and don't benefit from LLM enhancement
   if (EDIT_MODELS.has(modelName)) {
-    return [buildJsonPrompt(prompt, camera, lens, focalLength, aperture), cleaned];
+    return [withStyle(buildJsonPrompt(prompt, camera, lens, focalLength, aperture)), cleaned];
   }
 
   // LLM prompt enhancement: convert user description into structured JSON prompt
-  const fallback = buildJsonPrompt(prompt, camera, lens, focalLength, aperture);
+  const fallback = withStyle(buildJsonPrompt(prompt, camera, lens, focalLength, aperture));
   try {
     const cameraContext = [camera, lens, focalLength ? `${focalLength}mm` : undefined, aperture]
       .filter(Boolean)
@@ -161,7 +233,7 @@ export async function buildRequest(
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       JSON.parse(jsonMatch[0]); // validate it's valid JSON
-      return [jsonMatch[0], cleaned];
+      return [withStyle(jsonMatch[0]), cleaned];
     }
     return [fallback, cleaned];
   } catch {

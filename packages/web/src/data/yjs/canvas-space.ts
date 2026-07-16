@@ -550,6 +550,55 @@ export function setNodeParams(
 }
 
 /**
+ * Set a content node's style-reference image URL (image-node style slice
+ * #1664) — a pick-time COPY of the chosen image's asset URL (one style image
+ * max; no relationship to the upstream node). Scalar last-write-wins like
+ * `model`. Setting overwrites any previous pick (re-pick replaces). No-op when
+ * the node or its data map is missing.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the generative node whose style image to set.
+ * @param url - The copied style image URL.
+ */
+export function setNodeStyleImage(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  url: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => data.set('styleImageUrl', url), CANVAS_UNDO);
+}
+
+/**
+ * Clear a content node's style-reference image (the Style slot's ✕). Deletes
+ * the key so "no style" is the field's natural absent state. No-op when the
+ * node / data map is missing or no style image is set.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the generative node whose style image to clear.
+ */
+export function clearNodeStyleImage(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  if (!data.has('styleImageUrl')) return;
+  doc.transact(() => data.delete('styleImageUrl'), CANVAS_UNDO);
+}
+
+/**
  * Switch a content node's Generate model, writing the new model id, the
  * reconciled params, AND recording it as the active mode's remembered model —
  * all in ONE transaction so collaborators never observe a torn state.

@@ -31,6 +31,15 @@ export interface GenerateTaskInput {
   promptText: string;
   /** Reference source image URLs, snapshotted from the reference rail. */
   referenceUrls: string[];
+  /**
+   * Style-reference image URL (image-node style slice #1664) — the node's
+   * pick-time copy, included by the caller ONLY when the active model supports
+   * style references (capability gate). Sent as `params.style_images` (a
+   * one-element list — the wire param is list-typed; the product caps it at
+   * one). Absent → the key is omitted. Rides every mode (style survives t2i),
+   * distinct from `params.images` (the i2i source).
+   */
+  styleImageUrl?: string;
   /** The node's current persistent lease counter; gen = leaseGen + 1. Absent = 0. */
   leaseGen?: number;
 }
@@ -56,6 +65,7 @@ export function buildGenerateTaskPayload(
       ...(input.referenceUrls.length > 0
         ? { images: input.referenceUrls }
         : {}),
+      ...(input.styleImageUrl ? { style_images: [input.styleImageUrl] } : {}),
     },
     node_ids: [input.nodeId],
     project_id: input.projectId,

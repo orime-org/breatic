@@ -23,9 +23,15 @@ import { bearerHeaders } from "@worker/providers/http.js";
 
 /**
  * Build BytePlus images/generations request body.
+ *
+ * The image-input field is `image` (string or string[]) — the official
+ * ModelArk contract (docs.byteplus.com/en/docs/ModelArk/1541523, verified
+ * 2026-07-16; the API has no `image_urls` field — the previous name silently
+ * vanished server-side). The model family (`models/seedream.ts`) merges
+ * content + style images into `params.image` before this runs.
  * @param prompt - Image description prompt
  * @param resolved - Resolved provider endpoint
- * @param params - API-ready parameters (size, images, etc.)
+ * @param params - API-ready parameters (size, image, etc.)
  * @returns Request body for the BytePlus API
  */
 function buildRequestBody(
@@ -41,11 +47,8 @@ function buildRequestBody(
   if ("size" in params) {
     body.size = params.size;
   }
-  if ("images" in params) {
-    body.image_urls = params.images;
-  }
-  if ("image_urls" in params) {
-    body.image_urls = params.image_urls;
+  if ("image" in params) {
+    body.image = params.image;
   }
 
   return body;

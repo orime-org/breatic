@@ -52,6 +52,10 @@ function setup(
       onAddReference={() => {}}
       referencePicking={false}
       onRemoveReference={() => {}}
+      onStyle={() => {}}
+      stylePicking={false}
+      onClearStyle={() => {}}
+      styleSupported
       onExecute={() => {}}
       {...overrides}
     />,

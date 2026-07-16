@@ -313,6 +313,8 @@
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用素材",
       "mentionEmpty": "还没有可引用的图 — 先从一张图连线过来",
       "selectFromCanvas": "从画布选择参考",
+      "selectStyleFromCanvas": "从画布选择风格参考",
+      "removeStyle": "移除风格参考",
       "returnToNode": "返回节点",
       "exitSelect": "退出",
       "locateSource": "定位到源节点",

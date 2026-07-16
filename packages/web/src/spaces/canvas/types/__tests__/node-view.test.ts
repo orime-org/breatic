@@ -148,6 +148,16 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     });
   });
 
+  it('projects the style image URL onto a content view (image-node style slice #1664)', () => {
+    // The style reference is a pick-time COPY of the source image URL stored on
+    // the node itself (no upstream relationship) — the panel reads it via the
+    // view for the Style tool slot + the execute payload's params.style_images.
+    const v = toNodeView(
+      fields('image', { styleImageUrl: 'https://cdn/style.png' }),
+    );
+    expect(v).toMatchObject({ kind: 'image', styleImageUrl: 'https://cdn/style.png' });
+  });
+
   it('returns a group view for group nodes (name / backgroundColor)', () => {
     // Group is rendered (core feature); the group header shows `name`. Members
     // bind back via their own parentId, so the view carries no childIds.

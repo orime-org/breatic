@@ -134,7 +134,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       // open would leak into the next one (the open-selects-host effect keys
       // on the id CHANGING, so a stale identical id suppresses it entirely).
       generatePanelNodeId: null,
-      referencePickForNodeId: null,
+      pickSession: null,
     });
     useSpaceOperationsStore.setState({ operations: {} });
     useCurrentUserStore.getState().setUser({
@@ -275,7 +275,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       }),
     );
     render(<CanvasSpace projectId='p' spaceId='s' />);
-    // Enter pick mode directly — the overlay keys off referencePickForNodeId
+    // Enter pick mode directly — the overlay keys off pickSession
     // alone (opening the real panel would drag in the models useQuery, which
     // needs a QueryClientProvider this mount doesn't have).
     act(() => {
@@ -289,6 +289,173 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-audio')).not.toContain('canvas-pick-selectable');
     expect(cls('src-text')).toContain('canvas-pick-selectable');
     expect(cls('src-image')).toContain('canvas-pick-selectable');
+  });
+
+  // Style pick (#1664): a style reference is a URL COPY of an image node's
+  // asset — so while style-picking only NON-EMPTY image nodes glow. Non-image
+  // nodes, empty images (nothing to copy), and the target itself are dimmed.
+  it('style pick keeps only non-empty image sources selectable; dims non-image + empty + target', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-empty',
+            type: 'image',
+            position: { x: 300, y: 0 },
+            data: { kind: 'image', status: 'idle' }, // no content — nothing to copy
+          },
+          {
+            id: 'src-text',
+            type: 'text',
+            position: { x: 600, y: 0 },
+            data: { kind: 'text', content: 'hello', status: 'idle' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 900, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startStylePick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    expect(cls('target')).toContain('canvas-pick-dimmed');
+    expect(cls('src-empty')).toContain('canvas-pick-dimmed'); // empty image
+    expect(cls('src-text')).toContain('canvas-pick-dimmed'); // not an image
+    expect(cls('src-text')).not.toContain('canvas-pick-selectable');
+    expect(cls('src-image')).toContain('canvas-pick-selectable'); // has an asset
+  });
+
+  // Style pick completion (#1664): clicking a non-empty image COPIES its asset
+  // URL onto the target (no upstream relationship) and AUTO-EXITS the session
+  // (one slot, one pick — unlike the continuous reference pick).
+  it('style pick click copies the image URL and auto-exits the session', async () => {
+    const setStyle = vi
+      .spyOn(canvasSpace, 'setNodeStyleImage')
+      .mockImplementation(() => {});
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 600, y: 0 },
+            data: { kind: 'image', content: 'https://cdn/x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startStylePick('target');
+    });
+    const candidate = document.querySelector(
+      '.react-flow__node[data-id="src-image"]',
+    );
+    expect(candidate).not.toBeNull();
+    act(() => {
+      candidate?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    });
+    await waitFor(() =>
+      expect(setStyle).toHaveBeenCalledWith('p', 's', 'target', 'https://cdn/x.png'),
+    );
+    // One slot — the session ends on selection.
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+    setStyle.mockRestore();
+  });
+
+  it('style pick click on an EMPTY image is a no-op (nothing to copy; stays picking)', () => {
+    const setStyle = vi
+      .spyOn(canvasSpace, 'setNodeStyleImage')
+      .mockImplementation(() => {});
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+          {
+            id: 'src-empty',
+            type: 'image',
+            position: { x: 600, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startStylePick('target');
+    });
+    const candidate = document.querySelector(
+      '.react-flow__node[data-id="src-empty"]',
+    );
+    act(() => {
+      candidate?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(setStyle).not.toHaveBeenCalled();
+    expect(useCanvasStore.getState().pickSession).toEqual({
+      nodeId: 'target',
+      purpose: 'style',
+    });
+    setStyle.mockRestore();
+    act(() => {
+      useCanvasStore.setState({ pickSession: null });
+    });
+  });
+
+  // The pick banner explains the active purpose: style picks read differently
+  // from reference picks so the user knows what a click will wire (#1664).
+  it('shows the style-pick banner text during a style pick', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startStylePick('target');
+    });
+    // en fixture: "Select a style reference from the canvas".
+    expect(screen.getByTestId('reference-pick-banner').textContent).toContain(
+      'style reference',
+    );
+    act(() => {
+      useCanvasStore.setState({ pickSession: null });
+    });
   });
 
   // Pick-mode pane-click guard (spec §9.2, user-ratified): while picking
@@ -324,7 +491,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       useCanvasStore.setState({
         generatePanelNodeId: 'target',
-        referencePickForNodeId: 'target',
+        pickSession: { nodeId: 'target', purpose: 'reference' },
       });
     });
     const pane = document.querySelector('.react-flow__pane');
@@ -333,7 +500,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // pane clicks through pointerdown→pointerup, not the click event.
     clickPane(pane as Element);
     expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
-    expect(useCanvasStore.getState().referencePickForNodeId).toBe('target');
+    expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target');
     // The banner is neutral card chrome (user 2026-07-14, reversing the
     // batch-2 item-11 violet tint) — the violet pick glow on candidate nodes
     // stays the mode indicator.
@@ -371,7 +538,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       useCanvasStore.setState({
         generatePanelNodeId: 'target',
-        referencePickForNodeId: null,
+        pickSession: null,
       });
     });
     const pane = document.querySelector('.react-flow__pane');
@@ -406,7 +573,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       useCanvasStore.setState({
         generatePanelNodeId: 'target',
-        referencePickForNodeId: null,
+        pickSession: null,
       });
     });
     // The panel-open effect selects the host.
@@ -464,7 +631,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       useCanvasStore.setState({
         generatePanelNodeId: 'target',
-        referencePickForNodeId: null,
+        pickSession: null,
       });
     });
     await waitFor(() =>
@@ -529,14 +696,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       useCanvasStore.setState({
         generatePanelNodeId: 'target',
-        referencePickForNodeId: 'target',
+        pickSession: { nodeId: 'target', purpose: 'reference' },
       });
     });
     act(() => {
       screen.getByTestId('reference-pick-exit').click();
     });
     expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
-    expect(useCanvasStore.getState().referencePickForNodeId).toBeNull();
+    expect(useCanvasStore.getState().pickSession).toBeNull();
     await waitFor(() =>
       expect(
         document.querySelector('[data-id="target"]')?.className,
@@ -570,7 +737,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       useCanvasStore.setState({
         generatePanelNodeId: 'target',
-        referencePickForNodeId: null,
+        pickSession: null,
       });
     });
     await waitFor(() =>
@@ -629,7 +796,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       useCanvasStore.setState({
         generatePanelNodeId: 'target',
-        referencePickForNodeId: null,
+        pickSession: null,
       });
     });
     await waitFor(() =>
@@ -641,7 +808,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // simulate the selection move via the machine-visible path (ReactFlow's
     // native click-select), then reopen Generate on the SAME host.
     act(() => {
-      useCanvasStore.setState({ referencePickForNodeId: 'target' });
+      useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
     });
     const otherEl = document.querySelector('[data-id="other"]');
     act(() => {
@@ -653,7 +820,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       useCanvasStore.getState().openGeneratePanel('target');
     });
-    expect(useCanvasStore.getState().referencePickForNodeId).toBeNull();
+    expect(useCanvasStore.getState().pickSession).toBeNull();
     await waitFor(() =>
       expect(
         document.querySelector('[data-id="target"]')?.className,
@@ -710,7 +877,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       useCanvasStore.setState({
         generatePanelNodeId: one.id,
-        referencePickForNodeId: null,
+        pickSession: null,
       });
     });
     await waitFor(() =>
@@ -1074,13 +1241,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // Pick state only — the panel (its own catalog/query stack) is not
     // needed to prove the gesture gate.
     act(() => {
-      useCanvasStore.setState({ referencePickForNodeId: 'target' });
+      useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
     });
     expect(
       document.querySelector('.react-flow__handle')?.className,
     ).not.toContain('connectable');
     act(() => {
-      useCanvasStore.setState({ referencePickForNodeId: null });
+      useCanvasStore.setState({ pickSession: null });
     });
     expect(
       document.querySelector('.react-flow__handle')?.className,
@@ -1106,7 +1273,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     render(<CanvasSpace projectId='p' spaceId='s' />);
     act(() => {
-      useCanvasStore.setState({ referencePickForNodeId: 'target' });
+      useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
     });
     const node = document.querySelector('.react-flow__node');
     act(() => {
@@ -1123,7 +1290,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
     expect(screen.queryByTestId('create-node-text')).toBeNull();
     act(() => {
-      useCanvasStore.setState({ referencePickForNodeId: null });
+      useCanvasStore.setState({ pickSession: null });
     });
   });
 
@@ -1153,7 +1320,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     document.body.appendChild(trigger);
     try {
       act(() => {
-        useCanvasStore.setState({ referencePickForNodeId: 'target' });
+        useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
       });
       const exit = screen.getByTestId('reference-pick-exit');
       act(() => {
@@ -1161,12 +1328,12 @@ describe('CanvasSpace (ReactFlow mount)', () => {
           new MouseEvent('click', { bubbles: true, cancelable: true }),
         );
       });
-      expect(useCanvasStore.getState().referencePickForNodeId).toBeNull();
+      expect(useCanvasStore.getState().pickSession).toBeNull();
       expect(document.activeElement).toBe(trigger);
     } finally {
       trigger.remove();
       act(() => {
-        useCanvasStore.setState({ referencePickForNodeId: null });
+        useCanvasStore.setState({ pickSession: null });
       });
     }
   });
@@ -1191,13 +1358,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     render(<CanvasSpace projectId='p' spaceId='s' />);
     act(() => {
-      useCanvasStore.setState({ referencePickForNodeId: 'target' });
+      useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
     });
     // Simulate an orphaned focus (the disabled-trigger / panel-X / node-gone
     // paths all land here) and end the pick WITHOUT the banner hand-off.
     act(() => {
       document.body.focus();
-      useCanvasStore.setState({ referencePickForNodeId: null });
+      useCanvasStore.setState({ pickSession: null });
     });
     expect(document.activeElement).toBe(screen.getByTestId('canvas-space'));
   });
@@ -1220,11 +1387,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     document.body.appendChild(elsewhere);
     try {
       act(() => {
-        useCanvasStore.setState({ referencePickForNodeId: 'target' });
+        useCanvasStore.setState({ pickSession: { nodeId: 'target', purpose: 'reference' } });
       });
       act(() => {
         elsewhere.focus();
-        useCanvasStore.setState({ referencePickForNodeId: null });
+        useCanvasStore.setState({ pickSession: null });
       });
       // Focus was NOT on body, so the catch-all leaves it alone.
       expect(document.activeElement).toBe(elsewhere);
@@ -1260,7 +1427,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     try {
       render(<CanvasSpace projectId='p' spaceId='s' />);
       act(() => {
-        useCanvasStore.setState({ referencePickForNodeId: 'other' });
+        useCanvasStore.setState({ pickSession: { nodeId: 'other', purpose: 'reference' } });
       });
       const placeholder = screen.getByTestId('node-placeholder');
       act(() => {
@@ -1273,7 +1440,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       // Control: off pick mode the same double-click opens the picker — proves
       // the gate (not a broken wire) is what suppressed it above.
       act(() => {
-        useCanvasStore.setState({ referencePickForNodeId: null });
+        useCanvasStore.setState({ pickSession: null });
       });
       act(() => {
         placeholder.dispatchEvent(
@@ -1283,7 +1450,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       expect(clickSpy).toHaveBeenCalledTimes(1);
     } finally {
       act(() => {
-        useCanvasStore.setState({ referencePickForNodeId: null });
+        useCanvasStore.setState({ pickSession: null });
       });
       clickSpy.mockRestore();
     }
@@ -1388,7 +1555,7 @@ describe('reference-pick interaction contract', () => {
     // pick leaves xyflow's NodesSelection rect overlaying the candidates and
     // subsequent pick clicks hit the rect instead of the nodes (a dead zone in
     // the continuous-pick contract). The prop must be pick-gated.
-    expect(src).toContain('selectionOnDrag={referencePickForNodeId == null}');
+    expect(src).toContain('selectionOnDrag={pickForNodeId == null}');
   });
 
   it('adds the canvas-connecting class SYNCHRONOUSLY on connect-start so the magnetic zone stands down (round-4)', () => {
@@ -1478,7 +1645,7 @@ describe('reference-pick interaction contract', () => {
     act(() => {
       useCanvasStore.setState({
         generatePanelNodeId: 'target',
-        referencePickForNodeId: 'target',
+        pickSession: { nodeId: 'target', purpose: 'reference' },
       });
     });
     await waitFor(() =>
@@ -1490,7 +1657,7 @@ describe('reference-pick interaction contract', () => {
     act(() => {
       useCanvasStore.setState({
         generatePanelNodeId: null,
-        referencePickForNodeId: null,
+        pickSession: null,
       });
     });
   });
