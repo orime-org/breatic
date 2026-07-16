@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { newId } from '@breatic/shared';
 
 import { assetsApi, canvasApi } from '@web/data/api';
+import { MAX_FOCUS_NAME } from '@web/data/focus-images';
 import { getCachedReferencePoolCap } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
@@ -575,7 +576,13 @@ function CanvasSpaceInner({
         toast.error(t('canvas.generatePanel.focusExportFailed'));
         return false;
       }
-      const sourceName = typeof data?.name === 'string' ? data.name : '';
+      // Clamped to the sanitizer's bound (round-5): node names are
+      // unbounded collaborative data (COPY- chains, remote writes), and an
+      // over-long snapshot would make the crop invisible to every reader.
+      const sourceName = (typeof data?.name === 'string' ? data.name : '').slice(
+        0,
+        MAX_FOCUS_NAME,
+      );
       const cap = getCachedReferencePoolCap();
       const store = useCanvasStore.getState();
       if (

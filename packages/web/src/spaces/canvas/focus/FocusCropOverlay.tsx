@@ -128,6 +128,18 @@ export function FocusCropOverlay({
       `.react-flow__node[data-id="${CSS.escape(nodeId)}"] [data-testid=image-node-img]`,
     );
     if (!root || !(img instanceof HTMLImageElement)) {
+      // The target's <img> vanished (node deleted / flipped to handling):
+      // the marquee, the in-flight gesture, and every baseline die with it
+      // (round-5 — the third discard path gets the same abort as its two
+      // siblings; a stale rect here re-anchored onto the REGENERATED image
+      // when the img came back).
+      interactionRef.current = null;
+      setRect(null);
+      measuredSrcRef.current = null;
+      prevBoxRef.current = null;
+      lastImgElRef.current = null;
+      resizeObsRef.current?.disconnect();
+      resizeObsRef.current = null;
       setBox(null);
       return;
     }
@@ -386,6 +398,34 @@ export function FocusCropOverlay({
   };
 
   /**
+   * Forward a wheel over the overlay to the ReactFlow pane (round-5):
+   * the capture layer sits OUTSIDE the canvas DOM, so d3-zoom never sees
+   * wheel events over it — pan / pinch-zoom (the precision-crop gesture)
+   * were dead across the whole image. d3-zoom's wheel handler is a plain
+   * listener, so a cloned dispatch drives it; the resulting transform
+   * change re-measures and rescales the marquee through the normal path.
+   * @param e - The wheel event over the overlay.
+   */
+  const forwardWheel = (e: React.WheelEvent): void => {
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) return;
+    pane.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+        deltaMode: e.deltaMode,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        shiftKey: e.shiftKey,
+      }),
+    );
+  };
+
+  /**
    * Finish the active interaction (pointer up / cancel) — only the owning
    * pointer may end it (a resting second finger lifting must not).
    * @param e - The pointer-up / cancel event.
@@ -463,7 +503,13 @@ export function FocusCropOverlay({
     });
     // A gate rejection (pool full, source gone) keeps the marquee — the
     // user's careful selection must survive a fixable rejection (round-3).
-    if (accepted) setRect(null);
+    if (accepted) {
+      // Clearing the rect disables the focused Confirm button, which drops
+      // DOM focus to <body> (round-5) — hand it to Cancel synchronously
+      // (still enabled, same bar) so keyboard users stay in the session.
+      cancelRef.current?.focus();
+      setRect(null);
+    }
   };
 
   const confirmDisabled = rect === null || !isCropValid(rect);
@@ -473,6 +519,7 @@ export function FocusCropOverlay({
   // the edges). State-guarded write per commit; jsdom (offsetWidth 0)
   // keeps the defaults.
   const barRef = React.useRef<HTMLDivElement>(null);
+  const cancelRef = React.useRef<HTMLButtonElement>(null);
   const [barSize, setBarSize] = React.useState({ width: 360, height: 36 });
   React.useLayoutEffect(() => {
     const w = barRef.current?.offsetWidth ?? 0;
@@ -502,6 +549,7 @@ export function FocusCropOverlay({
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onWheel={forwardWheel}
           >
             {rect ? (
               <div
@@ -572,6 +620,7 @@ export function FocusCropOverlay({
             ))}
             <span aria-hidden='true' className='mx-1 h-4 w-px bg-border' />
             <button
+              ref={cancelRef}
               type='button'
               data-testid='focus-crop-cancel'
               onClick={() => setRect(null)}

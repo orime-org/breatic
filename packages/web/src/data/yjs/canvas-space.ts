@@ -630,7 +630,15 @@ export function addNodeFocusImage(
   // every rewrite HEALS the array through the shared sanitizer so
   // malformed remote entries can never accumulate (adversarial 2026-07-16).
   const list = validFocusImages(data.get('focusImages'));
-  doc.transact(() => data.set('focusImages', [...list, image]), CONTENT_WRITE);
+  // The appended entry rides the SAME sanitizer (round-5): an entry the
+  // readers would reject must never be written — it would be invisible
+  // everywhere (no ✕) and silently healed away on the next rewrite.
+  const appended = validFocusImages([image]);
+  if (appended.length === 0) return;
+  doc.transact(
+    () => data.set('focusImages', [...list, ...appended]),
+    CONTENT_WRITE,
+  );
 }
 
 /**
@@ -645,8 +653,12 @@ export function addNodeFocusImage(
  * @param focusId - Id of the focus crop to remove.
  * @returns True only when the TARGET crop was actually removed — a no-op
  *   (already gone) or a heal-only rewrite returns false, so the caller can
- *   gate the delete-side ledger report and never double-report a race
- *   (adversarial round-3).
+ *   gate the delete-side ledger report. Coverage is SEQUENTIAL races only
+ *   (double-click; a ✕ after the remote removal synced in): the boolean is
+ *   computed from the local snapshot, so two truly concurrent cross-client
+ *   ✕ both return true and both report — an accepted residual (audit-feed
+ *   duplicate row only; closing it needs a server-side idempotency key,
+ *   round-5).
  */
 export function removeNodeFocusImage(
   projectId: string,

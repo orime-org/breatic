@@ -637,6 +637,21 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(data.get('focusImages')).toEqual([crop1]);
   });
 
+  it('addNodeFocusImage refuses an entry its own readers would reject (round-5)', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
+    addNodeFocusImage(PID, SID, 'gen', {
+      ...crop1,
+      name: 'x'.repeat(301),
+    });
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    // Never write an invisible-everywhere entry (no ✕, healed away later).
+    expect(data.has('focusImages')).toBe(false);
+    addNodeFocusImage(PID, SID, 'gen', crop1);
+    expect(data.get('focusImages')).toEqual([crop1]);
+  });
+
   it('a HEAL-ONLY rewrite is not undo-tracked — Cmd+Z must never resurrect junk (round-4)', () => {
     addNode(
       PID,

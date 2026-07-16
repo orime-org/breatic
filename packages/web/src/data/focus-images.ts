@@ -18,8 +18,15 @@ import type { FocusImage } from '@breatic/shared';
  */
 const MAX_ID = 128;
 const MAX_URL = 2048;
-const MAX_NAME = 300;
 const MAX_DIM = 100000;
+
+/**
+ * Max stored snapshot-name length — exported so the WRITE side (the crop
+ * pipeline) clamps to the same bound the read-side sanitizer enforces
+ * (round-5: an unclamped source name made a freshly uploaded crop
+ * invisible to every reader and silently healed out of Yjs).
+ */
+export const MAX_FOCUS_NAME = 300;
 
 /**
  * Narrows an untrusted `focusImages` value to the valid entries: anything
@@ -50,7 +57,7 @@ export function validFocusImages(raw: unknown): FocusImage[] {
         (f as FocusImage).url.length > 0 &&
         (f as FocusImage).url.length <= MAX_URL &&
         typeof (f as FocusImage).name === 'string' &&
-        (f as FocusImage).name.length <= MAX_NAME &&
+        (f as FocusImage).name.length <= MAX_FOCUS_NAME &&
         Number.isFinite((f as FocusImage).width) &&
         (f as FocusImage).width > 0 &&
         (f as FocusImage).width <= MAX_DIM &&

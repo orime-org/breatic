@@ -426,9 +426,13 @@ function GeneratePanelBody({
       if (item.focus === true) {
         const focusId = focusIdOfRefId(item.refId);
         if (focusId === null) return;
-        // Gate everything below on the ACTUAL removal: a double-click or a
-        // cross-client ✕ race hits a no-op here, and reporting it anyway
-        // would append a duplicate asset:deleted activity row (round-3).
+        // Gate everything below on the ACTUAL removal: a double-click (or
+        // a ✕ after the remote removal already synced in) hits a no-op
+        // here, and reporting it anyway would append a duplicate
+        // asset:deleted activity row (round-3). TRULY concurrent
+        // cross-client ✕ (both inside the sync-latency window) still
+        // double-reports — accepted residual, audit-feed row only; a real
+        // fix needs a server-side idempotency key (round-5).
         const removed = removeNodeFocusImage(projectId, spaceId, nodeId, focusId);
         if (!removed) return;
         // Delete-side ledger report (adversarial round-2): a crop is an

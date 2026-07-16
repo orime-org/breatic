@@ -273,6 +273,47 @@ describe('FocusCropOverlay', () => {
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
   });
 
+  it('the img vanishing (node deleted / handling) aborts marquee AND gesture (round-5)', () => {
+    renderOverlay();
+    const layer = screen.getByTestId('focus-crop-layer');
+    // Mid-drag when the img unmounts.
+    fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(layer, { clientX: 250, clientY: 180, pointerId: 1 });
+    screen.getByTestId('image-node-img').remove();
+    fireEvent(window, new Event('resize')); // triggers measure → img-absent path
+    expect(screen.queryByTestId('focus-crop-layer')).toBeNull();
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+  });
+
+  it('wheel over the capture layer forwards to the ReactFlow pane (round-5)', () => {
+    renderOverlay();
+    const pane = document.createElement('div');
+    pane.className = 'react-flow__pane';
+    document.body.appendChild(pane);
+    const received: WheelEvent[] = [];
+    pane.addEventListener('wheel', (e) => received.push(e as WheelEvent));
+    fireEvent.wheel(screen.getByTestId('focus-crop-layer'), {
+      clientX: 200,
+      clientY: 150,
+      deltaY: -120,
+      ctrlKey: true,
+    });
+    expect(received).toHaveLength(1);
+    expect(received[0]!.deltaY).toBe(-120);
+    expect(received[0]!.ctrlKey).toBe(true);
+    pane.remove();
+  });
+
+  it('an accepted confirm hands focus to Cancel (Confirm disables, round-5)', () => {
+    renderOverlay(vi.fn(() => true));
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 800 });
+    Object.defineProperty(img, 'naturalHeight', { value: 600 });
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    expect(document.activeElement).toBe(screen.getByTestId('focus-crop-cancel'));
+  });
+
   it('a second pointer cannot hijack or end the active interaction (adversarial)', () => {
     renderOverlay();
     const layer = screen.getByTestId('focus-crop-layer');
