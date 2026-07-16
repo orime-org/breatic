@@ -68,7 +68,11 @@ function clamp(v: number, min: number, max: number): number {
  * dimension derives from the ratio) and the rect shrinks to fit the
  * available room toward the drag direction while keeping the ratio exact.
  * @param anchor - Where the drag started (display px).
+ * @param anchor.x - Anchor x (display px).
+ * @param anchor.y - Anchor y (display px).
  * @param cursor - The current pointer position (display px).
+ * @param cursor.x - Cursor x (display px).
+ * @param cursor.y - Cursor y (display px).
  * @param bounds - The image's display size.
  * @param ratio - Width/height constraint, or null for free-form.
  * @returns The normalized, clamped marquee rect.
@@ -138,6 +142,8 @@ export function moveRect(
  * @param rect - The rect being resized.
  * @param handle - Which handle is dragged.
  * @param cursor - The current pointer position (display px).
+ * @param cursor.x - Cursor x (display px).
+ * @param cursor.y - Cursor y (display px).
  * @param bounds - The image's display size.
  * @param ratio - Width/height constraint, or null for free-form.
  * @returns The resized, normalized, clamped rect.

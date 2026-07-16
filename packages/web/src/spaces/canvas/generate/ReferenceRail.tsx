@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { X } from 'lucide-react';
+import { Crop, Loader2, X } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
@@ -26,6 +26,12 @@ interface ReferenceRailProps {
    * stay visible); switch to image-to-image to manage them.
    */
   imageRefsDisabled?: boolean;
+  /**
+   * Focus crops whose upload is still in flight (#1782) — rendered as
+   * disabled placeholder rows after the real entries; each disappears when
+   * its upload lands (a real focus row replaces it) or fails (toast).
+   */
+  pendingFocus?: ReadonlyArray<{ id: string; name: string }>;
 }
 
 /**
@@ -45,9 +51,10 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   onRemove,
   onInsert,
   imageRefsDisabled = false,
+  pendingFocus = [],
 }: ReferenceRailProps): React.JSX.Element | null {
   const t = useTranslation();
-  if (references.length === 0) return null;
+  if (references.length === 0 && pendingFocus.length === 0) return null;
   return (
     <div
       className='flex flex-wrap gap-1.5'
@@ -112,6 +119,15 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 <span className='max-w-[7rem] truncate text-xs text-foreground'>
                   {ref.sourceNodeName}
                 </span>
+                {ref.focus ? (
+                  // Focus badge (F, user 2026-07-16): a crop glyph tells a
+                  // standalone focus copy apart from a live node reference.
+                  <Crop
+                    data-testid={`generate-ref-focus-badge-${ref.refId}`}
+                    className='h-3 w-3 shrink-0 text-muted-foreground'
+                    aria-hidden='true'
+                  />
+                ) : null}
               </button>
             </ThumbnailHoverPreview>
             <button
@@ -127,6 +143,25 @@ export const ReferenceRail = React.memo(function ReferenceRail({
           </div>
         );
       })}
+      {pendingFocus.map((p) => (
+        <div
+          key={p.id}
+          role='listitem'
+          data-testid={`generate-focus-pending-${p.id}`}
+          className='flex items-center gap-1.5 rounded-overlay border border-dashed border-border bg-background/60 py-1 pl-1 pr-1.5 opacity-70'
+        >
+          <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground'>
+            <Loader2 className='h-3.5 w-3.5 animate-spin' aria-hidden='true' />
+          </span>
+          <span className='max-w-[7rem] truncate text-xs text-muted-foreground'>
+            {p.name}
+          </span>
+          <Crop
+            className='h-3 w-3 shrink-0 text-muted-foreground'
+            aria-hidden='true'
+          />
+        </div>
+      ))}
     </div>
   );
 });

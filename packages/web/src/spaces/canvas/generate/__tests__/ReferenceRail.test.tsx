@@ -23,6 +23,60 @@ const REFS: ReferenceRailItem[] = [
   },
 ];
 
+const FOCUS_ROW: ReferenceRailItem = {
+  refId: 'focus:f1',
+  sourceNodeId: 'focus:f1',
+  sourceNodeType: 'image',
+  sourceNodeName: 'Hero',
+  thumbnail: 'https://cdn/crop.png',
+  focus: true,
+};
+
+describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => {
+  it('renders a crop badge on focus rows only', () => {
+    render(
+      <ReferenceRail
+        references={[...REFS, FOCUS_ROW]}
+        onRemove={() => {}}
+        onInsert={() => {}}
+      />,
+    );
+    expect(
+      screen.getByTestId('generate-ref-focus-badge-focus:f1'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-ref-focus-badge-a->me')).toBeNull();
+  });
+
+  it('a focus row ✕ fires onRemove with the focus: id (caller routes to the crop)', () => {
+    const onRemove = vi.fn();
+    render(
+      <ReferenceRail
+        references={[FOCUS_ROW]}
+        onRemove={onRemove}
+        onInsert={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('generate-ref-remove-focus:f1'));
+    expect(onRemove).toHaveBeenCalledWith('focus:f1');
+  });
+
+  it('renders pending focus placeholders (dashed, non-interactive) and shows the rail with only them', () => {
+    render(
+      <ReferenceRail
+        references={[]}
+        onRemove={() => {}}
+        onInsert={() => {}}
+        pendingFocus={[{ id: 'tmp1', name: 'Uploading crop' }]}
+      />,
+    );
+    const pending = screen.getByTestId('generate-focus-pending-tmp1');
+    expect(pending).toBeInTheDocument();
+    expect(screen.getByText('Uploading crop')).toBeInTheDocument();
+    // Placeholder carries no insert / remove controls.
+    expect(pending.querySelector('button')).toBeNull();
+  });
+});
+
 describe('ReferenceRail — renders the derived reference rows with a remove control', () => {
   it('renders one row per reference with its source name', () => {
     render(

@@ -193,12 +193,12 @@ export function FocusCropOverlay({
    */
   const onHandlePointerDown =
     (handle: CropHandle) =>
-    (e: React.PointerEvent): void => {
-      if (e.button !== 0) return;
-      e.stopPropagation();
-      e.currentTarget.setPointerCapture?.(e.pointerId);
-      interactionRef.current = { type: 'resize', handle };
-    };
+      (e: React.PointerEvent): void => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        interactionRef.current = { type: 'resize', handle };
+      };
 
   /**
    * Route pointer movement to the active interaction's pure-math update.
@@ -263,82 +263,82 @@ export function FocusCropOverlay({
     >
       {box === null ? null : (
         <>
-      {/* Capture layer over the image: draws the marquee, eats canvas gestures. */}
-      <div
-        data-testid='focus-crop-layer'
-        className='pointer-events-auto absolute cursor-crosshair'
-        style={{ left: box.x, top: box.y, width: box.width, height: box.height }}
-        onPointerDown={onLayerPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-      >
-        {rect ? (
+          {/* Capture layer over the image: draws the marquee, eats canvas gestures. */}
           <div
-            data-testid='focus-crop-rect'
-            className='absolute cursor-move border border-background outline outline-1 outline-foreground'
-            style={{
-              left: rect.x,
-              top: rect.y,
-              width: rect.width,
-              height: rect.height,
-              boxShadow: '0 0 0 100000px rgb(0 0 0 / 0.4)',
-            }}
-            onPointerDown={onRectPointerDown}
+            data-testid='focus-crop-layer'
+            className='pointer-events-auto absolute cursor-crosshair'
+            style={{ left: box.x, top: box.y, width: box.width, height: box.height }}
+            onPointerDown={onLayerPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
           >
-            {HANDLES.map(({ id, className }) => (
+            {rect ? (
               <div
-                key={id}
-                data-testid={`focus-crop-handle-${id}`}
-                className={`absolute h-2 w-2 rounded-full border border-foreground bg-background ${className}`}
-                onPointerDown={onHandlePointerDown(id)}
-              />
-            ))}
+                data-testid='focus-crop-rect'
+                className='absolute cursor-move border border-background outline outline-1 outline-foreground'
+                style={{
+                  left: rect.x,
+                  top: rect.y,
+                  width: rect.width,
+                  height: rect.height,
+                  boxShadow: '0 0 0 100000px rgb(0 0 0 / 0.4)',
+                }}
+                onPointerDown={onRectPointerDown}
+              >
+                {HANDLES.map(({ id, className }) => (
+                  <div
+                    key={id}
+                    data-testid={`focus-crop-handle-${id}`}
+                    className={`absolute h-2 w-2 rounded-full border border-foreground bg-background ${className}`}
+                    onPointerDown={onHandlePointerDown(id)}
+                  />
+                ))}
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
-      {/* Controls bar below the image: ratio presets + cancel / confirm. */}
-      <div
-        data-testid='focus-crop-controls'
-        className='pointer-events-auto absolute flex -translate-x-1/2 items-center gap-1 rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
-        style={{ left: box.x + box.width / 2, top: box.y + box.height + 8 }}
-      >
-        {CROP_RATIOS.map(({ key, value }) => (
-          <button
-            key={key}
-            type='button'
-            data-testid={`focus-ratio-${key}`}
-            aria-pressed={ratio === value}
-            onClick={() => onRatioClick(value)}
-            className={
-              'rounded-sm px-1.5 py-0.5 tabular-nums transition-colors ' +
+          {/* Controls bar below the image: ratio presets + cancel / confirm. */}
+          <div
+            data-testid='focus-crop-controls'
+            className='pointer-events-auto absolute flex -translate-x-1/2 items-center gap-1 rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
+            style={{ left: box.x + box.width / 2, top: box.y + box.height + 8 }}
+          >
+            {CROP_RATIOS.map(({ key, value }) => (
+              <button
+                key={key}
+                type='button'
+                data-testid={`focus-ratio-${key}`}
+                aria-pressed={ratio === value}
+                onClick={() => onRatioClick(value)}
+                className={
+                  'rounded-sm px-1.5 py-0.5 tabular-nums transition-colors ' +
               (ratio === value
                 ? 'bg-foreground text-background'
                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')
-            }
-          >
-            {key}
-          </button>
-        ))}
-        <span aria-hidden='true' className='mx-1 h-4 w-px bg-border' />
-        <button
-          type='button'
-          data-testid='focus-crop-cancel'
-          onClick={() => setRect(null)}
-          className='rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-        >
-          {t('canvas.generatePanel.focusCancel')}
-        </button>
-        <button
-          type='button'
-          data-testid='focus-crop-confirm'
-          onClick={onConfirmClick}
-          disabled={confirmDisabled}
-          className='rounded-sm bg-foreground px-2 py-0.5 text-background disabled:cursor-not-allowed disabled:opacity-50'
-        >
-          {t('canvas.generatePanel.focusConfirm')}
-        </button>
-      </div>
+                }
+              >
+                {key}
+              </button>
+            ))}
+            <span aria-hidden='true' className='mx-1 h-4 w-px bg-border' />
+            <button
+              type='button'
+              data-testid='focus-crop-cancel'
+              onClick={() => setRect(null)}
+              className='rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            >
+              {t('canvas.generatePanel.focusCancel')}
+            </button>
+            <button
+              type='button'
+              data-testid='focus-crop-confirm'
+              onClick={onConfirmClick}
+              disabled={confirmDisabled}
+              className='rounded-sm bg-foreground px-2 py-0.5 text-background disabled:cursor-not-allowed disabled:opacity-50'
+            >
+              {t('canvas.generatePanel.focusConfirm')}
+            </button>
+          </div>
         </>
       )}
     </div>

@@ -10,12 +10,14 @@
 
 import {
   isImageGenerationMode,
+  type FocusImage,
   type ModelEntry,
 } from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,
+  focusRefId,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
 import {
@@ -85,6 +87,14 @@ export interface GeneratePanelViewModel {
    * resolved (empty catalog).
    */
   styleSupported: boolean;
+  /**
+   * The node's focus crops (#1782) — standalone copies stored on the node
+   * (`data.focusImages`, zero upstream relationship). Rendered as the rail's
+   * focus entries and offered in the @ mention pool; a crop reaches the
+   * execute payload only when @-mentioned (same explicit-selection rule as
+   * node references). Malformed entries (untrusted Yjs) are dropped.
+   */
+  focusImages: FocusImage[];
   /** Credit cost of one generation with the current model. */
   creditEstimate: number;
   /** The target node's display status — gates execute (no submit while handling). */
@@ -253,18 +263,45 @@ export function buildGeneratePanelViewModel(input: {
   // i2i sends ONLY the @-picked source images (design B): a reference that is
   // connected but not @-mentioned contributes nothing; no @ at all → empty, and
   // the #1675 execute gate then blocks submitting an i2i task with no source.
+  // Focus crops (#1782): stored on the node as a plain array — collaborative
+  // Yjs data, untrusted — so anything but an array is none, and every entry
+  // must carry the full FocusImage shape or it is dropped.
+  const rawFocus = content?.focusImages;
+  const focusImages: FocusImage[] = Array.isArray(rawFocus)
+    ? rawFocus.filter(
+      (f): f is FocusImage =>
+        typeof f === 'object' &&
+          f !== null &&
+          typeof (f as FocusImage).id === 'string' &&
+          (f as FocusImage).id.length > 0 &&
+          typeof (f as FocusImage).url === 'string' &&
+          (f as FocusImage).url.length > 0 &&
+          typeof (f as FocusImage).name === 'string' &&
+          Number.isFinite((f as FocusImage).width) &&
+          Number.isFinite((f as FocusImage).height),
+    )
+    : [];
+
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
   const referenceUrls =
     mode === 't2i'
       ? []
-      : references
-        .filter((r) => atMentioned.has(r.sourceNodeId))
-        .map((r) => imageUrlOf(byId.get(r.sourceNodeId)?.data))
-      // The source node's content is collaborative Yjs data — untrusted, and
-      // NOT covered by the catalog boundary. typeof, not Boolean: a malformed
-      // source whose content is a non-string object is truthy and would slip
-      // a non-URL into the task payload.
-        .filter((u): u is string => typeof u === 'string' && u.length > 0);
+      : [
+        ...references
+          .filter((r) => atMentioned.has(r.sourceNodeId))
+          .map((r) => imageUrlOf(byId.get(r.sourceNodeId)?.data))
+        // The source node's content is collaborative Yjs data — untrusted,
+        // and NOT covered by the catalog boundary. typeof, not Boolean: a
+        // malformed source whose content is a non-string object is truthy
+        // and would slip a non-URL into the task payload.
+          .filter((u): u is string => typeof u === 'string' && u.length > 0),
+        // Focus crops (#1782): the same @-only rule — a crop reaches the
+        // payload only when its focus: pool id is mentioned. Appended after
+        // node references (pool order → payload order).
+        ...focusImages
+          .filter((f) => atMentioned.has(focusRefId(f.id)))
+          .map((f) => f.url),
+      ];
 
   // Style image (#1664): a pick-time URL copy stored on the node itself, so —
   // unlike i2i references — it survives t2i and rides the payload in every
@@ -274,6 +311,7 @@ export function buildGeneratePanelViewModel(input: {
   const styleImageUrl =
     typeof rawStyle === 'string' && rawStyle.length > 0 ? rawStyle : undefined;
 
+
   return {
     models,
     model,
@@ -281,6 +319,7 @@ export function buildGeneratePanelViewModel(input: {
     references,
     referenceUrls,
     styleImageUrl,
+    focusImages,
     // Capability gate (#1664): the model declares `style_images` on the wire →
     // it can take a style reference. Config decides which models (t2i and/or
     // edit) support style; the frontend only reads the capability.

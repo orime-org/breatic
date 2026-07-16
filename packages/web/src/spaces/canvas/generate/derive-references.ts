@@ -34,6 +34,67 @@ export interface ReferenceRailItem {
    * backend-prompt chip substitution and the rail hover preview.
    */
   textContent?: string;
+  /**
+   * True for a FOCUS crop pool row (#1782) — a standalone copy, not an edge
+   * projection: its `refId` / `sourceNodeId` live in the `focus:` namespace,
+   * its name / thumbnail are creation-time snapshots that never follow the
+   * source node, and its ✕ removes the crop (never an edge). Absent = a
+   * normal node-reference row.
+   */
+  focus?: true;
+}
+
+/**
+ * The id namespace marking focus-crop pool rows (#1782). Prefixing keeps
+ * crop ids and node ids unmistakable everywhere one set flows through the
+ * other's plumbing (mention attrs, @ extraction, rail removal routing).
+ */
+export const FOCUS_REF_PREFIX = 'focus:';
+
+/**
+ * Builds the namespaced pool id for a focus crop.
+ * @param focusId - The FocusImage id.
+ * @returns The `focus:`-prefixed id used as refId / sourceNodeId.
+ */
+export function focusRefId(focusId: string): string {
+  return `${FOCUS_REF_PREFIX}${focusId}`;
+}
+
+/**
+ * Extracts the FocusImage id from a namespaced pool id.
+ * @param refId - A pool refId / mention sourceNodeId.
+ * @returns The FocusImage id, or null when the id is not in the focus namespace.
+ */
+export function focusIdOfRefId(refId: string): string | null {
+  return refId.startsWith(FOCUS_REF_PREFIX)
+    ? refId.slice(FOCUS_REF_PREFIX.length)
+    : null;
+}
+
+/**
+ * Maps a focus crop to a pool row (#1782) so the rail, the @ mention
+ * suggestion, the chip live-lookup, and the pool-membership cascade all
+ * handle crops through the exact same plumbing as node references. The
+ * row is static by construction (snapshots — F, user 2026-07-16).
+ * @param crop - The stored FocusImage.
+ * @param crop.id - The FocusImage id.
+ * @param crop.url - The crop asset URL (row thumbnail).
+ * @param crop.name - The creation-time source-name snapshot.
+ * @returns The focus pool row.
+ */
+export function focusToRailItem(crop: {
+  id: string;
+  url: string;
+  name: string;
+}): ReferenceRailItem {
+  return {
+    refId: focusRefId(crop.id),
+    sourceNodeId: focusRefId(crop.id),
+    sourceNodeType: 'image',
+    sourceNodeName: crop.name,
+    thumbnail: crop.url,
+    focus: true,
+  };
 }
 
 /**

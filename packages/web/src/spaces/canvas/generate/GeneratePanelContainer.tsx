@@ -19,6 +19,7 @@ import {
   readCanvasGraph,
   readNodeLeaseGen,
   removeEdge,
+  removeNodeFocusImage,
   setNodeMode,
   setNodeModel,
   setNodeParams,
@@ -40,7 +41,11 @@ import {
   resolveModeSwitch,
   type GeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import {
+  focusIdOfRefId,
+  focusToRailItem,
+  type ReferenceRailItem,
+} from '@web/spaces/canvas/generate/derive-references';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -233,11 +238,14 @@ function GeneratePanelBody({
     [aspectRatio, resolution],
   );
   // References change identity on every derive; key the memo on their CONTENT
-  // (small array — a stringify key is cheap and exact).
-  const referencesKey = JSON.stringify(vm.references);
+  // (small array — a stringify key is cheap and exact). The pool the rail /
+  // mention plumbing consumes is node references + focus crops mapped into
+  // the same row shape (#1782) — one list, one code path downstream.
+  const referencesKey =
+    JSON.stringify(vm.references) + JSON.stringify(vm.focusImages);
   const stableReferences = React.useMemo(
-    () => vm.references,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS vm.references, serialized
+    () => [...vm.references, ...vm.focusImages.map(focusToRailItem)],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS both inputs, serialized
     [referencesKey],
   );
   const freshVm = React.useCallback(
@@ -332,6 +340,16 @@ function GeneratePanelBody({
   const focusPicking = useCanvasStore(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'focus',
   );
+  // In-flight focus uploads for THIS node → rail placeholders (#1782). The
+  // memo keys on the store array identity (immer replaces it on change).
+  const pendingFocusAll = useCanvasStore((s) => s.pendingFocusUploads);
+  const pendingFocus = React.useMemo(
+    () =>
+      pendingFocusAll
+        .filter((p) => p.nodeId === nodeId)
+        .map((p) => ({ id: p.id, name: p.name })),
+    [pendingFocusAll, nodeId],
+  );
   const onAddReference = React.useCallback(() => {
     const session = useCanvasStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === 'reference') {
@@ -394,8 +412,17 @@ function GeneratePanelBody({
   }, [vm.styleSupported, nodeId, endPick]);
 
   const onRemoveReference = React.useCallback(
-    (refId: string) => removeEdge(projectId, spaceId, refId),
-    [projectId, spaceId],
+    (refId: string) => {
+      // A focus row's ✕ removes the crop from the node (#1782); a node
+      // reference's ✕ deletes the backing edge — one rail, two backings.
+      const focusId = focusIdOfRefId(refId);
+      if (focusId !== null) {
+        removeNodeFocusImage(projectId, spaceId, nodeId, focusId);
+        return;
+      }
+      removeEdge(projectId, spaceId, refId);
+    },
+    [projectId, spaceId, nodeId],
   );
   // The Style slot's ✕ (#1664): clears the node's pick-time copy. Always
   // available — even when the active model gates picking off, a stale copy
@@ -577,6 +604,7 @@ function GeneratePanelBody({
       styleSupported={vm.styleSupported}
       onFocus={onFocus}
       focusPicking={focusPicking}
+      pendingFocus={pendingFocus}
       onExecute={onExecute}
     />
   );

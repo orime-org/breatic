@@ -69,6 +69,8 @@ interface GeneratePanelProps {
   onFocus: () => void;
   /** Whether THIS node's focus pick is running — highlights the Focus button. */
   focusPicking: boolean;
+  /** In-flight focus-crop uploads shown as rail placeholders (#1782). */
+  pendingFocus?: ReadonlyArray<{ id: string; name: string }>;
   /**
    * Execute: submit the task in overwrite mode (the panel closes on success).
    * The node does NOT enter handling here — the server publishes handling only
@@ -121,6 +123,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   styleSupported,
   onFocus,
   focusPicking,
+  pendingFocus,
   onExecute,
 }: GeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
@@ -167,6 +170,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
         imageRefsDisabled={referencesOff}
+        pendingFocus={pendingFocus}
       />
 
       {promptSlot}

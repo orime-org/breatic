@@ -24,7 +24,7 @@ const CROP = { x: 10, y: 20, width: 640, height: 360 };
 function makeDeps(): FocusCropDeps & {
   addFocusImage: ReturnType<typeof vi.fn>;
   onFailure: ReturnType<typeof vi.fn>;
-} {
+  } {
   return {
     exportCrop: vi.fn().mockResolvedValue(new Blob(['x'], { type: 'image/png' })),
     uploadFile: vi.fn().mockResolvedValue('https://cdn/crop-final.png'),
