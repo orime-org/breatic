@@ -342,7 +342,8 @@
       "focusConfirm": "确认",
       "focusExportFailed": "无法裁剪图片——请重试。",
       "focusUploadFailed": "聚焦图上传失败——请重试。",
-      "focusSourceChanged": "源图片已变更——请重新框选。"
+      "focusSourceChanged": "源图片已变更——请重新框选。",
+      "focusCropDiscarded": "节点已被删除——聚焦图已丢弃。"
     },
     "nodeMenu": {
       "generate": "生成",

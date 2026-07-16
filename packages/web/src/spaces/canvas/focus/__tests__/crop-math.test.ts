@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 import {
   CROP_RATIOS,
   MIN_CROP_PX,
+  isNaturalCropValid,
   drawRect,
   moveRect,
   resizeRect,
@@ -230,6 +231,32 @@ describe('toNaturalCrop — display px → source-resolution px', () => {
     expect(c.y + c.height).toBeLessThanOrEqual(301);
     expect(c.width).toBeGreaterThanOrEqual(1);
     expect(c.height).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('isNaturalCropValid — zoom-independent confirm gauge (round-8)', () => {
+  it('a tiny display rect selecting a large natural region stays valid', () => {
+    // Zoomed way out: 4×4 display px over a 4000×3000 natural image at a
+    // 40×30 display box = 400×400 natural px — clearly confirmable.
+    expect(
+      isNaturalCropValid(
+        { x: 0, y: 0, width: 4, height: 4 },
+        { width: 40, height: 30 },
+        { width: 4000, height: 3000 },
+      ),
+    ).toBe(true);
+  });
+
+  it('a large display rect selecting almost no natural pixels is invalid', () => {
+    // Zoomed way in: 100×100 display px over a 20×20 natural image at a
+    // 400×400 display box = 5×5 natural px < the natural minimum.
+    expect(
+      isNaturalCropValid(
+        { x: 0, y: 0, width: 100, height: 100 },
+        { width: 400, height: 400 },
+        { width: 20, height: 20 },
+      ),
+    ).toBe(false);
   });
 });
 

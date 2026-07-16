@@ -564,9 +564,9 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(undo.undoStack.length).toBe(depth);
   });
 
-  it('addNodeFocusImage / removeNodeFocusImage are no-ops when the node is missing', () => {
-    expect(() => addNodeFocusImage(PID, SID, 'ghost', crop1)).not.toThrow();
-    expect(() => removeNodeFocusImage(PID, SID, 'ghost', 'f1')).not.toThrow();
+  it('addNodeFocusImage / removeNodeFocusImage discriminate a missing node (round-8)', () => {
+    expect(addNodeFocusImage(PID, SID, 'ghost', crop1)).toBe('node-missing');
+    expect(removeNodeFocusImage(PID, SID, 'ghost', 'f1')).toBe(false);
   });
 
   it('removeNodeFocusImage never throws on malformed remote entries and heals them (adversarial 2026-07-16)', () => {
@@ -639,10 +639,9 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
 
   it('addNodeFocusImage refuses an entry its own readers would reject (round-5)', () => {
     addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
-    addNodeFocusImage(PID, SID, 'gen', {
-      ...crop1,
-      name: 'x'.repeat(301),
-    });
+    expect(
+      addNodeFocusImage(PID, SID, 'gen', { ...crop1, name: 'x'.repeat(301) }),
+    ).toBe('invalid-entry');
     const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
@@ -667,7 +666,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     );
     // At the ceiling the readers would truncate the append away — the
     // write refuses with a signal instead of silently vanishing the crop.
-    expect(addNodeFocusImage(PID, SID, 'gen', crop1)).toBe(false);
+    expect(addNodeFocusImage(PID, SID, 'gen', crop1)).toBe('pool-full');
     const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;

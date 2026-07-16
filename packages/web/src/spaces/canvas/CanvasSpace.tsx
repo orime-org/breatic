@@ -62,6 +62,7 @@ import {
   useCanvasSpace,
   type CanvasEdge,
   type CanvasNodeView,
+  readCanvasGraph,
 } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
@@ -83,6 +84,8 @@ import {
   computeDeletedAssetEntries,
   type UploadNodeSpec,
   type UploadedInfo,
+  assetUrlSurvives,
+  isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
 import { hashFile } from '@web/data/upload/hash';
 import { putFileWithRetry } from '@web/data/upload/upload-retry';
@@ -523,6 +526,20 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     if (pickSession?.purpose !== 'focus') setFocusCropTargetId(null);
   }, [pickSession]);
+  // A DELETED crop target unmounts the overlay (all its state dies with
+  // it); mere viewport CULLING (onlyRenderVisibleElements unmounts the
+  // node's DOM but the node still exists) keeps it mounted so the marquee
+  // survives a pan-away-and-back (adversarial round-8 — the img-absent
+  // discard was eating careful selections on every pan). Existence is
+  // judged on the graph mirror, which culling never removes from.
+  const focusTargetExists = useCanvasGraphStore(
+    (st) =>
+      focusCropTargetId === null ||
+      st.flowNodes.some((n) => n.id === focusCropTargetId),
+  );
+  React.useEffect(() => {
+    if (!focusTargetExists) setFocusCropTargetId(null);
+  }, [focusTargetExists]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
   // is clicked, leaving Esc silently dead in the banner-only state. Same
@@ -645,16 +662,52 @@ function CanvasSpaceInner({
             }),
           addFocusImage: (image) => {
             useCanvasStore.getState().removePendingFocusUpload(pendingId);
-            // A refused append (node gone / entry ceiling) must be SAID —
-            // the upload already succeeded, and silence here loses the
-            // crop after real side effects (round-7).
-            const added = addNodeFocusImage(projectId, spaceId, panelNodeId, image);
-            if (!added) {
+            // A refused append must be SAID — the upload already succeeded,
+            // and silence here loses the crop after real side effects
+            // (round-7). Each refusal gets its TRUTHFUL message (round-8:
+            // one boolean told "pool full (200)" when the panel node was
+            // deleted mid-upload), and the just-uploaded orphan asset is
+            // reported deleted (ledger parity with the ✕ path) unless the
+            // URL survives elsewhere.
+            const outcome = addNodeFocusImage(
+              projectId,
+              spaceId,
+              panelNodeId,
+              image,
+            );
+            if (outcome === 'added') return;
+            if (outcome === 'pool-full') {
               toast.warning(
                 t('canvas.generatePanel.referencePoolFull', {
                   cap: MAX_FOCUS_ENTRIES,
                 }),
               );
+            } else {
+              toast.warning(t('canvas.generatePanel.focusCropDiscarded'));
+            }
+            if (
+              isReportableAssetUrl(image.url) &&
+              !assetUrlSurvives(
+                image.url,
+                readCanvasGraph(projectId, spaceId).nodes,
+              )
+            ) {
+              void assetsApi
+                .reportDeleted({
+                  projectId,
+                  entries: [
+                    {
+                      fileUrl: image.url,
+                      kind: 'image',
+                      nodeId: panelNodeId,
+                      spaceId,
+                    },
+                  ],
+                })
+                .catch(() => {
+                  // Silent: audit-feed miss at worst (reportDeletedAssets
+                  // parity).
+                });
             }
           },
           onFailure: (stage) => {

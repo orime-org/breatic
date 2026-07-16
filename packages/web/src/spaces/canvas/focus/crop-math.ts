@@ -261,6 +261,32 @@ export function isCropValid(rect: CropRect): boolean {
   return rect.width >= MIN_CROP_PX && rect.height >= MIN_CROP_PX;
 }
 
+/** Minimum crop side length in NATURAL (source) pixels for a confirm. */
+export const MIN_NATURAL_CROP_PX = 8;
+
+/**
+ * Zoom-INDEPENDENT confirm validity (round-8): gauges the marquee by the
+ * natural pixels it selects, not its on-screen size — zooming out rescales
+ * a perfectly valid selection below the display minimum, which is a
+ * gesture heuristic (accidental clicks), not a statement about the crop.
+ * @param rect - The marquee in display px.
+ * @param display - The image's display size.
+ * @param natural - The image's natural (source) size.
+ * @returns True when the selected region is at least
+ *   {@link MIN_NATURAL_CROP_PX} on both natural axes.
+ */
+export function isNaturalCropValid(
+  rect: CropRect,
+  display: CropSize,
+  natural: CropSize,
+): boolean {
+  if (display.width <= 0 || display.height <= 0) return false;
+  return (
+    (rect.width * natural.width) / display.width >= MIN_NATURAL_CROP_PX &&
+    (rect.height * natural.height) / display.height >= MIN_NATURAL_CROP_PX
+  );
+}
+
 /**
  * Map a display-space rect to source-resolution (natural) pixels for the
  * actual canvas crop: scale, round to integers, then clamp so the rect

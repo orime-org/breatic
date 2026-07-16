@@ -613,22 +613,24 @@ export function clearNodeStyleImage(
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the generative node the crop belongs to.
  * @param image - The focus crop to append (see FocusImage copy semantics).
- * @returns True when the crop was written; false when the node is missing,
- *   the entry fails the shared sanitizer, or the list is at the
- *   MAX_FOCUS_ENTRIES ceiling (round-7 — the caller surfaces the refusal).
+ * @returns 'added' on success; a discriminated refusal otherwise
+ *   (round-8 — one boolean collapsed "node deleted mid-upload" into a
+ *   misleading pool-full toast): 'node-missing' (deleted / data map gone),
+ *   'invalid-entry' (fails the shared sanitizer), 'pool-full' (the
+ *   MAX_FOCUS_ENTRIES ceiling). The caller surfaces each truthfully.
  */
 export function addNodeFocusImage(
   projectId: string,
   spaceId: string,
   nodeId: string,
   image: FocusImage,
-): boolean {
+): 'added' | 'node-missing' | 'invalid-entry' | 'pool-full' {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const node = nodesMap.get(nodeId);
-  if (!node) return false;
+  if (!node) return 'node-missing';
   const data = node.get('data');
-  if (!(data instanceof Y.Map)) return false;
+  if (!(data instanceof Y.Map)) return 'node-missing';
   // Whole-array LWW means any client can write any shape (untrusted) —
   // every rewrite HEALS the array through the shared sanitizer so
   // malformed remote entries can never accumulate (adversarial 2026-07-16).
@@ -640,13 +642,13 @@ export function addNodeFocusImage(
   // boolean lets the caller surface the refusal instead of silently
   // losing an uploaded crop.
   const appended = validFocusImages([image]);
-  if (appended.length === 0) return false;
-  if (list.length >= MAX_FOCUS_ENTRIES) return false;
+  if (appended.length === 0) return 'invalid-entry';
+  if (list.length >= MAX_FOCUS_ENTRIES) return 'pool-full';
   doc.transact(
     () => data.set('focusImages', [...list, ...appended]),
     CONTENT_WRITE,
   );
-  return true;
+  return 'added';
 }
 
 /**

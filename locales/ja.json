@@ -342,7 +342,8 @@
       "focusConfirm": "確認",
       "focusExportFailed": "画像を切り抜けませんでした——もう一度お試しください。",
       "focusUploadFailed": "フォーカス画像をアップロードできませんでした——もう一度お試しください。",
-      "focusSourceChanged": "元画像が変更されました——もう一度範囲を選択してください。"
+      "focusSourceChanged": "元画像が変更されました——もう一度範囲を選択してください。",
+      "focusCropDiscarded": "ノードが削除されたため、フォーカス画像は破棄されました。"
     },
     "nodeMenu": {
       "generate": "生成",

@@ -10,6 +10,7 @@ import {
   CROP_RATIOS,
   drawRect,
   isCropValid,
+  isNaturalCropValid,
   moveRect,
   resizeRect,
   applyRatioPreset,
@@ -100,6 +101,10 @@ export function FocusCropOverlay({
   const transform = useStore((s) => s.transform);
   const [box, setBox] = React.useState<CropRect | null>(null);
   const [rootSize, setRootSize] = React.useState<{ width: number; height: number } | null>(null);
+  const [naturalSize, setNaturalSize] = React.useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const [rect, setRect] = React.useState<CropRect | null>(null);
   const [ratio, setRatio] = React.useState<number | null>(null);
   const interactionRef = React.useRef<Interaction | null>(null);
@@ -128,15 +133,15 @@ export function FocusCropOverlay({
       `.react-flow__node[data-id="${CSS.escape(nodeId)}"] [data-testid=image-node-img]`,
     );
     if (!root || !(img instanceof HTMLImageElement)) {
-      // The target's <img> vanished (node deleted / flipped to handling):
-      // the marquee, the in-flight gesture, and every baseline die with it
-      // (round-5 — the third discard path gets the same abort as its two
-      // siblings; a stale rect here re-anchored onto the REGENERATED image
-      // when the img came back).
+      // The target's <img> is ABSENT. Node deletion unmounts the whole
+      // overlay upstream (round-8), so reaching here is viewport CULLING
+      // (onlyRenderVisibleElements) or a handling skeleton: keep the
+      // marquee and the src baseline — a pan-away-and-back must not eat a
+      // careful selection. Only the live gesture and the element-bound
+      // observer die (their element did); the REMOUNT path below compares
+      // the returning img's src against the kept baseline and discards
+      // the marquee only when the content actually changed (round-5).
       interactionRef.current = null;
-      setRect(null);
-      measuredSrcRef.current = null;
-      prevBoxRef.current = null;
       lastImgElRef.current = null;
       resizeObsRef.current?.disconnect();
       resizeObsRef.current = null;
@@ -144,12 +149,15 @@ export function FocusCropOverlay({
       return;
     }
     if (lastImgElRef.current !== img) {
-      if (lastImgElRef.current !== null) {
-        // The img REMOUNTED (handling cycle / regenerate): the marquee and
-        // baselines belong to the dead element — start fresh (round-3).
-        // The in-flight gesture dies with it (round-4): a live draw's next
-        // pointermove would instantly resurrect the discarded rect from a
-        // stale, never-rescaled anchor (the Esc stage-one lesson).
+      if (
+        lastImgElRef.current !== null &&
+        img.getAttribute('src') !== measuredSrcRef.current
+      ) {
+        // The img REMOUNTED with DIFFERENT content (handling cycle /
+        // regenerate): the marquee and baselines belong to the dead
+        // element — start fresh (round-3). The in-flight gesture dies with
+        // it (round-4). A same-src remount (viewport culling return,
+        // round-8) keeps the marquee — only the observer rebinds below.
         interactionRef.current = null;
         setRect(null);
         measuredSrcRef.current = null;
@@ -214,6 +222,15 @@ export function FocusCropOverlay({
     }
     measuredSrcRef.current = src;
     prevBoxRef.current = next;
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      setNaturalSize((prevNat) =>
+        prevNat &&
+        prevNat.width === img.naturalWidth &&
+        prevNat.height === img.naturalHeight
+          ? prevNat
+          : { width: img.naturalWidth, height: img.naturalHeight },
+      );
+    }
     setBox(next);
   }, [nodeId]);
 
@@ -485,7 +502,10 @@ export function FocusCropOverlay({
 
   /** Confirm the current marquee: map to natural pixels and hand off. */
   const onConfirmClick = (): void => {
-    if (!rect || !isCropValid(rect)) return;
+    if (!rect || box === null) return;
+    if (naturalSize ? !isNaturalCropValid(rect, box, naturalSize) : !isCropValid(rect)) {
+      return;
+    }
     const img = document.querySelector(
       `.react-flow__node[data-id="${CSS.escape(nodeId)}"] [data-testid=image-node-img]`,
     );
@@ -531,7 +551,15 @@ export function FocusCropOverlay({
     }
   };
 
-  const confirmDisabled = rect === null || !isCropValid(rect);
+  // Confirm validity is zoom-INDEPENDENT (round-8): a zoom-out rescale
+  // shrinks a valid selection below the display minimum without changing
+  // the natural region it selects — gauge by natural pixels when known.
+  const confirmDisabled =
+    rect === null ||
+    box === null ||
+    (naturalSize
+      ? !isNaturalCropValid(rect, box, naturalSize)
+      : !isCropValid(rect));
 
   // Measured controls-bar size for the viewport clamp (round-3: a guessed
   // half-width let the Confirm end of a ~400px bar overflow the canvas at

@@ -349,7 +349,8 @@
       "focusConfirm": "Confirm",
       "focusExportFailed": "Could not crop the image — please try again.",
       "focusUploadFailed": "Could not upload the focus crop — please try again.",
-      "focusSourceChanged": "Source image changed — draw the marquee again."
+      "focusSourceChanged": "Source image changed — draw the marquee again.",
+      "focusCropDiscarded": "The node was deleted — the focus crop was discarded."
     },
     "edge": {
       "delete": "Delete connection"
