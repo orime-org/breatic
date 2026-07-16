@@ -437,6 +437,8 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     expect(isReportableAssetUrl('https://a b/x.png')).toBe(false);
     expect(isReportableAssetUrl('data:image/png;base64,xx')).toBe(false);
     expect(isReportableAssetUrl('blob:https://a/b')).toBe(false);
+    // Parseable but overlong (server .max(2048)) — round-4.
+    expect(isReportableAssetUrl('https://x/' + 'a'.repeat(2048))).toBe(false);
   });
 
   it('assetUrlSurvives sees content, cover, and focus crops', () => {

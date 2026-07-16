@@ -670,10 +670,14 @@ export function removeNodeFocusImage(
   const next = list.filter((f) => f.id !== focusId);
   const removed = next.length !== list.length;
   if (!removed && list.length === prev.length) return false;
+  // Origin matches the INTENT (round-4): a real user removal is undoable;
+  // a heal-only rewrite (target already gone, malformed entries dropped)
+  // under CANVAS_UNDO would be a phantom undo step whose Cmd+Z re-inserts
+  // the very junk the heal removed.
   doc.transact(() => {
     if (next.length === 0) data.delete('focusImages');
     else data.set('focusImages', next);
-  }, CANVAS_UNDO);
+  }, removed ? CANVAS_UNDO : CONTENT_WRITE);
   return removed;
 }
 

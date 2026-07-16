@@ -7,9 +7,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // envelope, so the mock resolves directly to the inner presign object.
 vi.mock('@web/data/api/request', () => ({
   apiGet: vi.fn(),
+  apiPost: vi.fn(),
 }));
 
-import { apiGet } from '@web/data/api/request';
+import { apiGet, apiPost } from '@web/data/api/request';
 import { assetsApi } from '@web/data/api/assets';
 
 beforeEach(() => {
@@ -181,3 +182,22 @@ describe('assetsApi.putFile — direct PUT to the presigned URL', () => {
     await expect(assetsApi.putFile('https://put', file)).rejects.toThrow(/403/);
   });
 });
+
+describe('assetsApi.reportDeleted — batch chunking (adversarial round-4)', () => {
+  it('splits entries into <=100-entry batches (server .max(100))', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ ok: true });
+    const entries = Array.from({ length: 230 }, (_, i) => ({
+      fileUrl: `https://cdn/a${i}.png`,
+      kind: 'image',
+    }));
+    await assetsApi.reportDeleted({ projectId: 'p1', entries });
+    expect(vi.mocked(apiPost)).toHaveBeenCalledTimes(3);
+    const sizes = vi
+      .mocked(apiPost)
+      .mock.calls.map(
+        (c) => (c[1] as { entries: unknown[] }).entries.length,
+      );
+    expect(sizes).toEqual([100, 100, 30]);
+  });
+});
+

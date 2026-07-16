@@ -135,6 +135,10 @@ export function FocusCropOverlay({
       if (lastImgElRef.current !== null) {
         // The img REMOUNTED (handling cycle / regenerate): the marquee and
         // baselines belong to the dead element — start fresh (round-3).
+        // The in-flight gesture dies with it (round-4): a live draw's next
+        // pointermove would instantly resurrect the discarded rect from a
+        // stale, never-rescaled anchor (the Esc stage-one lesson).
+        interactionRef.current = null;
         setRect(null);
         measuredSrcRef.current = null;
         prevBoxRef.current = null;
@@ -160,7 +164,9 @@ export function FocusCropOverlay({
     if (measuredSrcRef.current !== null && measuredSrcRef.current !== src) {
       // Content swap under the marquee (adversarial 2026-07-16): the old
       // display rect selects an arbitrary region of the NEW image —
-      // discard it rather than crop the wrong thing.
+      // discard it rather than crop the wrong thing. Abort the in-flight
+      // gesture too (round-4: same resurrection mode as the Esc fix).
+      interactionRef.current = null;
       setRect(null);
     } else if (
       prev &&
@@ -215,6 +221,10 @@ export function FocusCropOverlay({
     // node's marquee re-projected onto the new image (round-3, HIGH).
     prevBoxRef.current = null;
     lastImgElRef.current = null;
+    // The previous target's ResizeObserver must die with it (round-4) —
+    // measure() rebinds a fresh one for the new target's img.
+    resizeObsRef.current?.disconnect();
+    resizeObsRef.current = null;
   }, [nodeId]);
 
   // Re-measure on mount, on any viewport change, on node drag, on window
@@ -402,7 +412,15 @@ export function FocusCropOverlay({
     const next = ratio === value ? null : value;
     setRatio(next);
     if (next !== null) {
-      setRect((prev) => (prev ? applyRatioPreset(prev, next, bounds) : prev));
+      // The degenerate-rect invariant covers preset clicks too (round-4):
+      // applyRatioPreset grows the seed to the minimum, but a tiny image
+      // whose bounds cannot hold the minimum at this ratio yields an
+      // invalid rect — discard it rather than strand a sub-minimum sliver.
+      setRect((prev) => {
+        if (!prev) return prev;
+        const shaped = applyRatioPreset(prev, next, bounds);
+        return isCropValid(shaped) ? shaped : null;
+      });
     }
   };
 

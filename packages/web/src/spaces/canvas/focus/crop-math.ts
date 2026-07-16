@@ -226,7 +226,12 @@ export function applyRatioPreset(
   ratio: number,
   bounds: CropSize,
 ): CropRect {
-  let width = rect.width;
+  // Seed at least the minimum on BOTH axes (round-4): keeping a thin
+  // rect's width could derive a sub-MIN_CROP_PX height, stranding the
+  // invisible sliver the degenerate-rect invariant forbids. The bounds
+  // shrink below still wins on tiny images (the caller discards an
+  // invalid result).
+  let width = Math.max(rect.width, MIN_CROP_PX, MIN_CROP_PX * ratio);
   let height = width / ratio;
   // Shrink (keeping the ratio) until both dims fit.
   if (width > bounds.width) {

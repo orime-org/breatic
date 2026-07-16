@@ -296,6 +296,10 @@ export interface DeletedAssetEntry {
  * @returns True for a parseable http(s) URL.
  */
 export function isReportableAssetUrl(url: string): boolean {
+  // Mirrors the FULL server field contract (`z.string().url().max(2048)`,
+  // routes/assets.ts) — a parseable-but-overlong URL still 400s the whole
+  // batch (adversarial round-4).
+  if (url.length > 2048) return false;
   try {
     const parsed = new URL(url);
     return parsed.protocol === 'http:' || parsed.protocol === 'https:';

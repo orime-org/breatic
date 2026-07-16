@@ -522,6 +522,35 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     if (pickSession?.purpose !== 'focus') setFocusCropTargetId(null);
   }, [pickSession]);
+  // Esc during a focus session with NO crop target yet (round-4): the
+  // overlay owns the two-stage Esc but is unmounted until the first image
+  // is clicked, leaving Esc silently dead in the banner-only state. Same
+  // yield rules as the overlay's handler (defaultPrevented + editor /
+  // overlay-content focus win).
+  const focusSessionWithoutTarget =
+    pickSession?.purpose === 'focus' && focusCropTargetId === null;
+  React.useEffect(() => {
+    if (!focusSessionWithoutTarget) return;
+    /**
+     * Keydown listener exiting the target-less focus session on Escape.
+     * @param e - The keyboard event.
+     */
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const active = document.activeElement;
+      if (
+        active &&
+        (active.closest('.ProseMirror') !== null ||
+          active.closest('[role="dialog"],[role="menu"],[role="listbox"]') !==
+            null)
+      ) {
+        return;
+      }
+      onExitPick();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [focusSessionWithoutTarget, onExitPick]);
   // A confirmed focus marquee (#1782): gate the pool cap (counting the
   // in-flight placeholders so a burst of confirms cannot overshoot), park a
   // pending rail entry, then run crop-export → upload → focusImages append.
@@ -1247,14 +1276,17 @@ function CanvasSpaceInner({
       if (node.id === target) return;
 
       if (session.purpose === 'focus') {
-        // Focus (#1782): clicking a non-empty image opens the crop marquee
-        // on it (the overlay does the rest); clicking another image later
-        // just switches the crop target — the session runs until Exit.
-        const content = (node.data as { content?: unknown }).content;
+        // Focus (#1782): clicking a DISPLAYABLE non-empty image opens the
+        // crop marquee on it (the overlay does the rest); clicking another
+        // image later just switches the crop target — the session runs
+        // until Exit. A handling / error node renders no <img> to anchor
+        // the marquee (round-4), matching the dimming rule.
+        const data = node.data as { content?: unknown; status?: unknown };
         if (
           node.type !== 'image' ||
-          typeof content !== 'string' ||
-          content.length === 0
+          typeof data.content !== 'string' ||
+          data.content.length === 0 ||
+          data.status !== 'idle'
         ) {
           return;
         }
@@ -2567,14 +2599,18 @@ function CanvasSpaceInner({
 
     if (pickSession.purpose === 'style' || pickSession.purpose === 'focus') {
       // Style and Focus share the candidate rule: any non-empty image node
-      // except the pick target itself (#1664 / #1782).
+      // except the pick target itself (#1664 / #1782). Focus additionally
+      // needs a RENDERED <img> to anchor the marquee, so a handling / error
+      // node (skeleton / error box, no img) is not a candidate (round-4:
+      // clicking one was a silent no-op).
       return paint((node) => {
-        const content = (node.data as { content?: unknown }).content;
+        const data = node.data as { content?: unknown; status?: unknown };
         return (
           node.id === target ||
           node.type !== 'image' ||
-          typeof content !== 'string' ||
-          content.length === 0
+          typeof data.content !== 'string' ||
+          data.content.length === 0 ||
+          (pickSession.purpose === 'focus' && data.status !== 'idle')
         );
       });
     }
@@ -2812,7 +2848,10 @@ function CanvasSpaceInner({
             // item-11 violet tint): the banner reads better in the original
             // black/white/grey; the violet pick GLOW on candidate nodes stays
             // the mode indicator.
-            className='absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
+            // z-20: the session banner (Exit / Locate) must always win
+            // hit-testing over the z-10 crop capture layer — a zoomed image
+            // extending under the banner made Exit dead (adversarial round-4).
+            className='absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
           >
             <span>
               {t(

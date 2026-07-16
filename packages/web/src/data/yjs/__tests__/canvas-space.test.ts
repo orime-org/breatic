@@ -637,6 +637,27 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(data.get('focusImages')).toEqual([crop1]);
   });
 
+  it('a HEAL-ONLY rewrite is not undo-tracked — Cmd+Z must never resurrect junk (round-4)', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields(
+        'image',
+        { focusImages: [crop1, null] as unknown as typeof crop1[] },
+        { id: 'gen' },
+      ),
+    );
+    const undo = createCanvasUndoManager(doc());
+    const depth = undo.undoStack.length;
+    // Unknown id → removed=false, but the write heals the null entry.
+    expect(removeNodeFocusImage(PID, SID, 'gen', 'ghost')).toBe(false);
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('focusImages')).toEqual([crop1]);
+    expect(undo.undoStack.length).toBe(depth);
+  });
+
   it('removeNodeFocusImage answers whether the TARGET was removed (report gate, round-3)', () => {
     addNode(
       PID,

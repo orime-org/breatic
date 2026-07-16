@@ -195,6 +195,20 @@ describe('applyRatioPreset — re-shape an existing rect', () => {
   });
 });
 
+describe('applyRatioPreset — minimum seeding (round-4)', () => {
+  it('grows a thin rect so BOTH dims meet MIN_CROP_PX at the preset ratio', () => {
+    // 10px wide + 16:9 used to derive a ~5.6px height — a persistent
+    // sub-minimum sliver the degenerate-rect invariant forbids.
+    const r = applyRatioPreset(
+      { x: 100, y: 100, width: 10, height: 10 },
+      16 / 9,
+      BOUNDS,
+    );
+    expect(isCropValid(r)).toBe(true);
+    expect(r.width / r.height).toBeCloseTo(16 / 9, 5);
+  });
+});
+
 describe('toNaturalCrop — display px → source-resolution px', () => {
   it('scales by the display/natural ratio and rounds to integers', () => {
     // Display 400×300, natural 1600×1200 → scale ×4.

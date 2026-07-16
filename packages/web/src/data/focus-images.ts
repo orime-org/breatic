@@ -12,6 +12,16 @@
 import type { FocusImage } from '@breatic/shared';
 
 /**
+ * Field bounds (round-4): a hostile valid-shaped entry with a multi-MB
+ * name/url would survive every heal and be JSON.stringify'd on every panel
+ * keystroke. url mirrors the server ledger contract (`.max(2048)`).
+ */
+const MAX_ID = 128;
+const MAX_URL = 2048;
+const MAX_NAME = 300;
+const MAX_DIM = 100000;
+
+/**
  * Narrows an untrusted `focusImages` value to the valid entries: anything
  * but an array is none, and an entry must carry the full FocusImage shape
  * (non-empty string id + url, string name, finite dimensions). Survivors
@@ -35,11 +45,18 @@ export function validFocusImages(raw: unknown): FocusImage[] {
         f !== null &&
         typeof (f as FocusImage).id === 'string' &&
         (f as FocusImage).id.length > 0 &&
+        (f as FocusImage).id.length <= MAX_ID &&
         typeof (f as FocusImage).url === 'string' &&
         (f as FocusImage).url.length > 0 &&
+        (f as FocusImage).url.length <= MAX_URL &&
         typeof (f as FocusImage).name === 'string' &&
+        (f as FocusImage).name.length <= MAX_NAME &&
         Number.isFinite((f as FocusImage).width) &&
+        (f as FocusImage).width > 0 &&
+        (f as FocusImage).width <= MAX_DIM &&
         Number.isFinite((f as FocusImage).height) &&
+        (f as FocusImage).height > 0 &&
+        (f as FocusImage).height <= MAX_DIM &&
         !seen.has((f as FocusImage).id) &&
         (seen.add((f as FocusImage).id), true),
     )
