@@ -15,6 +15,14 @@
 studio_member_cap: 100
 project_collaborator_cap: 100
 
+# ── Canvas reference pool ──────────────────────────────
+# canvas_reference_pool_cap: max entries in ONE node's reference pool —
+#   incoming reference edges + focus crops combined (#1782). A UI sanity
+#   cap enforced by the frontend at add time (the pool lives in Yjs; the
+#   server never gates collaborative writes). Distinct from the per-model
+#   `images.max_items` payload cap enforced at execute time (#1735).
+canvas_reference_pool_cap: 50
+
 # ── Activity feed paging ───────────────────────────────
 # Keyset page size for GET /projects/:id/activities.
 #   activity_feed_page_default: page size when the client omits ?limit

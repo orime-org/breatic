@@ -341,6 +341,7 @@
       "errorNoSourceImage": "This model needs a source image — type @ in the prompt to pick a connected image.",
       "errorTooManyReferences": "This model accepts at most {limit} reference images — remove some to generate.",
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
+      "referencePoolFull": "Reference pool is full ({cap} max) — remove some references or focus crops first.",
       "modelUnavailable": "That model is no longer available — pick another.",
       "catalogUnavailable": "Model list unavailable — please try again later"
     },

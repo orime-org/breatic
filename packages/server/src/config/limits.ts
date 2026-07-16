@@ -28,6 +28,7 @@ export const limitsConfigSchema = z.object({
   project_collaborator_cap: z.number().int().positive().default(100),
   activity_feed_page_default: z.number().int().positive().default(50),
   activity_feed_page_max: z.number().int().positive().default(100),
+  canvas_reference_pool_cap: z.number().int().positive().default(50),
 });
 
 let _cached: z.infer<typeof limitsConfigSchema> | null = null;
@@ -70,4 +71,15 @@ export function getProjectCollaboratorCap(): number {
 export function getActivityFeedPageLimits(): { default: number; max: number } {
   const c = loadConfig();
   return { default: c.activity_feed_page_default, max: c.activity_feed_page_max };
+}
+
+/**
+ * Max entries in one canvas node's reference pool — incoming reference
+ * edges + focus crops combined (#1782). Served to the frontend via
+ * `GET /canvas/limits`; the frontend enforces it at add time (the pool
+ * lives in Yjs, the server never gates collaborative writes).
+ * @returns The per-node reference-pool cap.
+ */
+export function getCanvasReferencePoolCap(): number {
+  return loadConfig().canvas_reference_pool_cap;
 }

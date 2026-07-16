@@ -158,6 +158,21 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     expect(v).toMatchObject({ kind: 'image', styleImageUrl: 'https://cdn/style.png' });
   });
 
+  it('projects focus images onto a content view (#1782 focus slice)', () => {
+    // Focus crops are standalone copies stored on the node itself (no
+    // upstream relationship) — the panel reads them via the view for the
+    // reference rail's focus entries + the @ mention pool.
+    const crop = {
+      id: 'f1',
+      url: 'https://cdn/crop.png',
+      name: 'Image Node 26',
+      width: 640,
+      height: 360,
+    };
+    const v = toNodeView(fields('image', { focusImages: [crop] }));
+    expect(v).toMatchObject({ kind: 'image', focusImages: [crop] });
+  });
+
   it('returns a group view for group nodes (name / backgroundColor)', () => {
     // Group is rendered (core feature); the group header shows `name`. Members
     // bind back via their own parentId, so the view carries no childIds.

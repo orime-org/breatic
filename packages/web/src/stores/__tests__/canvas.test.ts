@@ -113,6 +113,20 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
 
+  it('startFocusPick enters a focus pick (#1782); endPick exits', () => {
+    // Focus (#1782) is the third pick purpose: continuous like reference
+    // (manual exit — the user may crop several regions across several
+    // nodes), each confirmed crop APPENDS a standalone copy to the panel
+    // node's focusImages (no edge, no source relationship).
+    useCanvasStore.getState().startFocusPick('gen-1');
+    expect(useCanvasStore.getState().pickSession).toEqual({
+      nodeId: 'gen-1',
+      purpose: 'focus',
+    });
+    useCanvasStore.getState().endPick();
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+
   it('starting a pick replaces any in-progress pick (one session at a time)', () => {
     useCanvasStore.getState().startReferencePick('gen-1');
     useCanvasStore.getState().startStylePick('gen-1');

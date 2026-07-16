@@ -1,0 +1,64 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * Reference-pool cap math (#1782).
+ *
+ * One node's reference pool = its incoming reference edges (a connection
+ * IS a reference) + its focus crops (`data.focusImages`) combined. The
+ * pool is capped per node by the `canvas_reference_pool_cap` knob
+ * (config/limits.yaml → GET /canvas/limits) — a UI sanity cap enforced by
+ * the frontend at ADD time (connect / pick click / focus confirm); the
+ * pool lives in Yjs, so the server never gates collaborative writes and a
+ * concurrent-add overshoot is accepted (soft cap). Distinct from the
+ * per-model `images.max_items` payload cap enforced at execute (#1735).
+ */
+
+/** The minimal edge shape the count reads (ReactFlow edge compatible). */
+interface PoolEdge {
+  target: string;
+}
+
+/** The minimal node shape the count reads (graph-store mirror compatible). */
+interface PoolNode {
+  id: string;
+  data?: { focusImages?: unknown };
+}
+
+/**
+ * Count the target node's current reference pool: incoming edges + focus
+ * crops. Malformed `focusImages` (untrusted Yjs data — anything but an
+ * array) counts as none.
+ * @param edges - The canvas edges (only `target` is read).
+ * @param nodes - The canvas nodes (only the target's `data.focusImages` is read).
+ * @param targetId - The node whose pool to count.
+ * @returns The pool entry count.
+ */
+export function referencePoolCount(
+  edges: ReadonlyArray<PoolEdge>,
+  nodes: ReadonlyArray<PoolNode>,
+  targetId: string,
+): number {
+  const edgeCount = edges.filter((e) => e.target === targetId).length;
+  const focusImages = nodes.find((n) => n.id === targetId)?.data?.focusImages;
+  const focusCount = Array.isArray(focusImages) ? focusImages.length : 0;
+  return edgeCount + focusCount;
+}
+
+/**
+ * Whether the target node's reference pool is at (or past) the cap — the
+ * gate check run before adding an entry (a new edge or a focus crop).
+ * @param edges - The canvas edges (only `target` is read).
+ * @param nodes - The canvas nodes (only the target's `data.focusImages` is read).
+ * @param targetId - The node whose pool to check.
+ * @param cap - The pool cap (from {@link getCachedReferencePoolCap}).
+ * @returns True when the pool already holds `cap` or more entries.
+ */
+export function isReferencePoolFull(
+  edges: ReadonlyArray<PoolEdge>,
+  nodes: ReadonlyArray<PoolNode>,
+  targetId: string,
+  cap: number,
+): boolean {
+  return referencePoolCount(edges, nodes, targetId) >= cap;
+}

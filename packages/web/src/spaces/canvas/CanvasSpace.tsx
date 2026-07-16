@@ -28,7 +28,9 @@ import * as React from 'react';
 import { toast } from 'sonner';
 import { newId } from '@breatic/shared';
 
-import { assetsApi } from '@web/data/api';
+import { assetsApi, canvasApi } from '@web/data/api';
+import { getCachedReferencePoolCap } from '@web/data/api/canvas';
+import { isReferencePoolFull } from '@web/spaces/canvas/generate/reference-pool-cap';
 import {
   addEdge,
   addNode,
@@ -507,6 +509,14 @@ function CanvasSpaceInner({
   // deleted), focus drops to <body>. Whenever a pick ENDS with focus orphaned
   // there, return it to the canvas container so keyboard users stay in
   // context. Focus already placed (the Exit hand-off succeeded) is left alone.
+  // Warm the reference-pool cap knob (#1782) once per canvas mount. A
+  // failure leaves the soft cap off (degrade-to-uncapped by design — no
+  // client fallback constant that could drift from the yaml value); the
+  // next canvas mount retries.
+  React.useEffect(() => {
+    void canvasApi.fetchLimits().catch(() => undefined);
+  }, []);
+
   const wasPickingRef = React.useRef(false);
   React.useEffect(() => {
     const wasPicking = wasPickingRef.current;
@@ -1052,6 +1062,22 @@ function CanvasSpaceInner({
       const targetKind =
         flowNodes.find((n) => n.id === connection.target)?.type ?? '';
       if (!canConnect(sourceKind, targetKind)) return;
+      // Pool cap (#1782): a connection IS a reference, so a full pool
+      // (incoming edges + focus crops ≥ the knob) blocks the new edge with
+      // a guard toast. Null cap = knob not loaded → soft cap stays off.
+      const cap = getCachedReferencePoolCap();
+      if (
+        cap !== null &&
+        isReferencePoolFull(
+          useCanvasGraphStore.getState().flowEdges,
+          flowNodes,
+          connection.target,
+          cap,
+        )
+      ) {
+        toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
+        return;
+      }
       // Edge validity (self-loop + both endpoints must exist) is enforced at
       // the addEdge write boundary — the only race-free place under collab.
       const added = addEdge(projectId, spaceId, {
@@ -1131,6 +1157,22 @@ function CanvasSpaceInner({
             target: kindLabel(targetKind),
           }),
         );
+        return;
+      }
+      // Pool cap (#1782): same guard as drag-connect — a full pool blocks
+      // the pick with a toast; the session stays open so the user can
+      // remove entries and continue. Null cap = knob not loaded, no gate.
+      const cap = getCachedReferencePoolCap();
+      if (
+        cap !== null &&
+        isReferencePoolFull(
+          useCanvasGraphStore.getState().flowEdges,
+          useCanvasGraphStore.getState().flowNodes,
+          target,
+          cap,
+        )
+      ) {
+        toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
         return;
       }
       // Wire clicked-source → target as a reference. Self-loop + both-endpoints-

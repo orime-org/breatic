@@ -13,6 +13,7 @@ import {
   limitsConfigSchema,
   getStudioMemberCap,
   getProjectCollaboratorCap,
+  getCanvasReferencePoolCap,
 } from "@server/config/limits.js";
 
 describe("limits config — schema", () => {
@@ -34,6 +35,13 @@ describe("limits config — schema", () => {
   it("rejects a non-positive cap", () => {
     expect(() => limitsConfigSchema.parse({ studio_member_cap: 0 })).toThrow();
   });
+
+  it("defaults the canvas reference-pool cap to 50 and rejects non-positive (#1782)", () => {
+    expect(limitsConfigSchema.parse({}).canvas_reference_pool_cap).toBe(50);
+    expect(() =>
+      limitsConfigSchema.parse({ canvas_reference_pool_cap: 0 }),
+    ).toThrow();
+  });
 });
 
 describe("limits config — accessors read config/limits.yaml", () => {
@@ -45,6 +53,12 @@ describe("limits config — accessors read config/limits.yaml", () => {
 
   it("getProjectCollaboratorCap returns a positive integer", () => {
     const cap = getProjectCollaboratorCap();
+    expect(Number.isInteger(cap)).toBe(true);
+    expect(cap).toBeGreaterThan(0);
+  });
+
+  it("getCanvasReferencePoolCap returns a positive integer (#1782)", () => {
+    const cap = getCanvasReferencePoolCap();
     expect(Number.isInteger(cap)).toBe(true);
     expect(cap).toBeGreaterThan(0);
   });
