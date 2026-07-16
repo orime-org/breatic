@@ -33,6 +33,22 @@ describe('MediaPlayer', () => {
     expect(screen.queryByTestId('waveform')).not.toBeInTheDocument();
   });
 
+  // #1772: pin the metadata-only preload as a contract. The HTML spec leaves
+  // the missing-value default to the UA; explicit `metadata` guarantees the
+  // duration display + video dimension badge work without downloading the
+  // full media file for every node on canvas load.
+  it('audio and video preload metadata only, never the full file (#1772)', () => {
+    const { unmount } = render(<MediaPlayer modality='audio' src='/a.mp3' />);
+    expect(screen.getByTestId('media-element').getAttribute('preload')).toBe(
+      'metadata',
+    );
+    unmount();
+    render(<MediaPlayer modality='video' src='/v.mp4' />);
+    expect(screen.getByTestId('media-element').getAttribute('preload')).toBe(
+      'metadata',
+    );
+  });
+
   it('clicking play calls the element play()', async () => {
     const user = userEvent.setup();
     render(<MediaPlayer modality='audio' src='/a.mp3' />);
