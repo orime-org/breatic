@@ -45,6 +45,7 @@ import {
   completeNodeHandling,
   failNodeHandling,
   isNodeHandling,
+  isNodeLocked,
   setNodeLocked,
   setNodeName,
   setNodeParent,
@@ -106,11 +107,15 @@ import {
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
 import { useStableList } from '@web/spaces/canvas/use-stable-list';
 import {
+  gateBlockedDeletion,
   groupDeletionIds,
-  lockBlockedDeletion,
   lockedNodeIds,
   selectionDeletionIds,
 } from '@web/spaces/canvas/group-membership';
+import {
+  evaluateNodeGate,
+  NODE_GATE_TOAST_KEY,
+} from '@web/spaces/canvas/node-gate';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
@@ -759,18 +764,18 @@ function CanvasSpaceInner({
       edges: Edge[];
     }): Promise<boolean | { nodes: Node[]; edges: Edge[] }> => {
       if (readOnly) return false;
-      const { survivors, blocked } = lockBlockedDeletion(
+      const { survivors, blocked, reason } = gateBlockedDeletion(
         toDelete,
         edgesToDelete,
         flowNodes,
       );
-      // A lock vetoed part (or all) of the deletion — tell the user instead of
-      // silently dropping it (the silent-fail from when lock first shipped).
-      // This path covers ReactFlow-initiated deletes (keyboard Delete); the
-      // right-click menu Delete shares the same `lockBlockedDeletion` guard via
-      // `commitGuardedDelete`, so the lock protection + toast are one rule, not
-      // duplicated per entry point.
-      if (blocked) toast.warning(t('canvas.contextMenu.lockedDeleteBlocked'));
+      // A gate (lock OR a running task) vetoed part (or all) of the deletion —
+      // tell the user why instead of silently dropping it (the silent-fail from
+      // when lock first shipped). This path covers ReactFlow-initiated deletes
+      // (keyboard Delete); the right-click menu Delete shares the same
+      // `gateBlockedDeletion` guard via `commitGuardedDelete`, so the protection
+      // + toast are one rule, not duplicated per entry point.
+      if (blocked && reason) toast.warning(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) {
         return false;
       }
@@ -1791,20 +1796,20 @@ function CanvasSpaceInner({
   const requestRename = useCanvasStore((s) => s.requestRename);
 
   // Every delete entry point (keyboard, node / group / selection / edge menu)
-  // funnels through this one guard so the lock protection + read-only gate can't
-  // be bypassed by a new menu item (spec R3). It mirrors onBeforeDelete: lock-
-  // filter, toast if anything was vetoed (R4), then persist the survivors in one
-  // removeElements transaction. Reads the latest nodes through the ref so the
-  // callback need not re-create on every mirror.
+  // funnels through this one guard so the gate protection + read-only gate can't
+  // be bypassed by a new menu item (spec R3). It mirrors onBeforeDelete: gate-
+  // filter (lock + handling), toast the reason if anything was vetoed (R4), then
+  // persist the survivors in one removeElements transaction. Reads the latest
+  // nodes through the ref so the callback need not re-create on every mirror.
   const commitGuardedDelete = React.useCallback(
     (nodesToDelete: Node[], edgesToDelete: Edge[]): void => {
       if (readOnly) return;
-      const { survivors, blocked } = lockBlockedDeletion(
+      const { survivors, blocked, reason } = gateBlockedDeletion(
         nodesToDelete,
         edgesToDelete,
         flowNodesRef.current,
       );
-      if (blocked) toast.warning(t('canvas.contextMenu.lockedDeleteBlocked'));
+      if (blocked && reason) toast.warning(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
       removeElements(
         projectId,
@@ -2004,6 +2009,22 @@ function CanvasSpaceInner({
   const activateNodeUpload = React.useCallback(
     (nodeId: string, modality: Modality): void => {
       if (readOnly) return;
+      // Node-state gate (bug 4): a locked or handling node refuses an upload —
+      // both the right-click Upload and the empty-node double-click funnel here,
+      // so gating this one entry closes both. Fresh Yjs reads so a node a
+      // collaborator just locked (or a task just started) is caught. Toast the
+      // reason instead of silently popping the picker.
+      const gateBlock = evaluateNodeGate(
+        {
+          locked: isNodeLocked(projectId, spaceId, nodeId),
+          handling: isNodeHandling(projectId, spaceId, nodeId),
+        },
+        'upload',
+      );
+      if (gateBlock) {
+        toast.warning(t(gateBlock.toastKey));
+        return;
+      }
       // A reference pick owns node interactions (batch-2 item 12): a
       // double-click on an empty node — or the node-menu Upload, both funnel
       // here — must not pop the file picker over the running pick session.
@@ -2022,7 +2043,7 @@ function CanvasSpaceInner({
       input.value = '';
       input.click();
     },
-    [readOnly],
+    [readOnly, projectId, spaceId, t],
   );
   // Node menu Upload: open the file picker for the right-clicked node and fill
   // (or replace) its content — the menu form of the empty-node double-click.
@@ -2043,6 +2064,23 @@ function CanvasSpaceInner({
       file: File,
       modality: UploadNodeSpec['nodeType'],
     ): void => {
+      // Re-gate at fill time (adversarial round): activateNodeUpload gates at
+      // picker-OPEN, but the OS picker then stays open for seconds — a
+      // collaborator can lock the node (or a task can start on it) inside that
+      // window. Re-read fresh Yjs here — the single fill choke point for both
+      // the picker-fill and the retry paths — so a node frozen since the picker
+      // opened is never written. Mirrors the generate submit gate.
+      const gateBlock = evaluateNodeGate(
+        {
+          locked: isNodeLocked(projectId, spaceId, nodeId),
+          handling: isNodeHandling(projectId, spaceId, nodeId),
+        },
+        'upload',
+      );
+      if (gateBlock) {
+        toast.warning(t(gateBlock.toastKey));
+        return;
+      }
       // Register SYNCHRONOUSLY (before the config-fetch await) by making the
       // whole flow the tracked work — otherwise the tab-close guard reads "not
       // busy" during the config round-trip and a close in that window loses the
@@ -2070,8 +2108,10 @@ function CanvasSpaceInner({
           // is refused with a local toast (user bug 2026-07-03).
           onTypeMismatch: () => toast.warning(t('canvas.upload.typeMismatch')),
           // #1580 #7 busy gate: a node already handling refuses a second fill.
+          // Backstop for the fill path (retry + any direct fill); the picker
+          // entry (activateNodeUpload) already gates handling before opening.
           isHandling: (id) => isNodeHandling(projectId, spaceId, id),
-          onBusy: () => toast.warning(t('canvas.upload.nodeBusy')),
+          onBusy: () => toast.warning(t(NODE_GATE_TOAST_KEY.handling)),
           setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
           setContent: (id, content, lease) => {
             clearRetryFile(projectId, spaceId, id);
@@ -2110,11 +2150,25 @@ function CanvasSpaceInner({
   const retryNodeUpload = React.useCallback(
     (nodeId: string): void => {
       if (readOnly) return;
+      // Retry is an upload entry point too: a locked node refuses it (a retry
+      // target is in error state, so handling never applies here, but the gate
+      // covers both uniformly).
+      const gateBlock = evaluateNodeGate(
+        {
+          locked: isNodeLocked(projectId, spaceId, nodeId),
+          handling: isNodeHandling(projectId, spaceId, nodeId),
+        },
+        'upload',
+      );
+      if (gateBlock) {
+        toast.warning(t(gateBlock.toastKey));
+        return;
+      }
       const file = getRetryFile(projectId, spaceId, nodeId);
       if (!file) return;
       fillUpload(nodeId, file, fileToNodeSpec(file).nodeType);
     },
-    [readOnly, projectId, spaceId, fillUpload],
+    [readOnly, projectId, spaceId, t, fillUpload],
   );
 
   const actions = React.useMemo<CanvasActions>(
@@ -2574,18 +2628,16 @@ function CanvasSpaceInner({
           // for editors (onNodeContextMenu returns early when read-only), and
           // activateNodeUpload no-ops for read-only / pickerless modalities.
           onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
-          // Generate is offered only on an editable image node (the AIGC
-          // "generate into self" flow) — never on groups, locked nodes, or
-          // for read-only viewers; absent = a disabled placeholder. Lock is
-          // read from the LIVE node (not the menu's captured value) so a node
-          // locked after the menu opened no longer offers Generate.
+          // Generate opens on any editable image node (the AIGC "generate into
+          // self" flow) — INCLUDING a locked or handling one, so the user can
+          // open the panel to view / edit the prompt (bug 2). The panel is a
+          // read surface for the recipe; EXECUTE is what the gate stops
+          // (onExecute toasts for locked, and the button is disabled while
+          // handling). Groups / non-image / read-only get no handler (a disabled
+          // placeholder item).
           onGenerate={(() => {
             const genNode = nodes.find((n) => n.id === nodeMenu.nodeId);
-            const genLocked = Boolean(
-              (genNode?.data as { locked?: unknown } | undefined)?.locked,
-            );
             return !nodeMenu.isGroup &&
-              !genLocked &&
               !readOnly &&
               genNode?.type === 'image'
               ? () => {

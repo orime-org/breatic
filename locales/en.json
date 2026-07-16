@@ -296,8 +296,11 @@
       "deleteNode": "Delete node",
       "deleteGroup": "Delete group",
       "deleteSelection": "Delete selection",
-      "lockedDeleteBlocked": "Locked items can't be deleted — unlock them first.",
       "clipboardError": "Couldn't reach the clipboard. Use the keyboard shortcut instead."
+    },
+    "gate": {
+      "locked": "This item is locked — unlock it to make changes.",
+      "handling": "This item is busy — wait for the current task to finish."
     },
     "nodeMenu": {
       "generate": "Generate",
@@ -346,7 +349,6 @@
       "operationInProgress": "An operation is still in progress — finish it before closing this Space."
     },
     "upload": {
-      "nodeBusy": "This node is busy — another operation is in progress.",
       "ownershipLost": "Upload result was not written — the node was removed or taken over.",
       "typeMismatch": "File type doesn’t match this node.",
       "retry": "Retry upload",

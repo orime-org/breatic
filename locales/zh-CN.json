@@ -296,8 +296,11 @@
       "deleteNode": "删除节点",
       "deleteGroup": "删除编组",
       "deleteSelection": "删除选中",
-      "lockedDeleteBlocked": "锁定的内容不能删除，请先解锁。",
       "clipboardError": "无法访问剪贴板，请改用键盘快捷键。"
+    },
+    "gate": {
+      "locked": "此项已锁定，解锁后才能修改。",
+      "handling": "此项正忙，请等待当前任务完成。"
     },
     "generatePanel": {
       "style": "风格",
@@ -346,7 +349,6 @@
       "operationInProgress": "有操作正在进行 — 请先完成再关闭此 Space。"
     },
     "upload": {
-      "nodeBusy": "该节点正忙 — 另一个操作正在进行中。",
       "ownershipLost": "上传结果未写入 — 节点已被移除或被他人接管。",
       "typeMismatch": "文件类型与节点不符。",
       "retry": "重新上传",
