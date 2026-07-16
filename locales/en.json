@@ -348,7 +348,8 @@
       "focusCancel": "Cancel",
       "focusConfirm": "Confirm",
       "focusExportFailed": "Could not crop the image — please try again.",
-      "focusUploadFailed": "Could not upload the focus crop — please try again."
+      "focusUploadFailed": "Could not upload the focus crop — please try again.",
+      "focusSourceChanged": "Source image changed — draw the marquee again."
     },
     "edge": {
       "delete": "Delete connection"

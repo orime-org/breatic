@@ -2831,12 +2831,13 @@ function CanvasSpaceInner({
         {pickSession?.purpose === 'focus' && focusCropTargetId !== null ? (
           <FocusCropOverlay
             nodeId={focusCropTargetId}
-            nodePosition={
-              renderNodes.find((n) => n.id === focusCropTargetId)?.position ?? {
-                x: 0,
-                y: 0,
-              }
-            }
+            // ABSOLUTE position (member + ancestor group offsets): a member
+            // node's own position is parent-relative, so a GROUP drag moves
+            // the image without touching it — the overlay's re-measure
+            // signal must follow the composed coordinates (adversarial
+            // round-2). The overlay deps on the x/y primitives, so the
+            // fresh object identity per render is harmless.
+            nodePosition={absoluteNodePosition(renderNodes, focusCropTargetId)}
             onConfirm={onFocusCropConfirm}
             onExit={onExitPick}
           />
@@ -2956,6 +2957,38 @@ function pendingFocusCount(nodeId: string): number {
   return useCanvasStore
     .getState()
     .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
+}
+
+/**
+ * Composes a node's ABSOLUTE flow position by walking its parentId chain —
+ * a Group member's own position is parent-relative, so a group drag moves
+ * the node on screen without changing it (adversarial round-2: the focus
+ * overlay re-measures off this signal). Cycle-guarded like ReactFlow's own
+ * resolver; missing nodes contribute nothing.
+ * @param nodes - The current render nodes (position + parentId).
+ * @param nodeId - The node whose absolute position to compose.
+ * @returns The absolute { x, y } flow position (0,0 for a missing node).
+ */
+function absoluteNodePosition(
+  nodes: ReadonlyArray<{
+    id: string;
+    position: { x: number; y: number };
+    parentId?: string;
+  }>,
+  nodeId: string,
+): { x: number; y: number } {
+  let x = 0;
+  let y = 0;
+  const seen = new Set<string>();
+  let current = nodes.find((n) => n.id === nodeId);
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    x += current.position.x;
+    y += current.position.y;
+    const parentId = current.parentId;
+    current = parentId ? nodes.find((n) => n.id === parentId) : undefined;
+  }
+  return { x, y };
 }
 
 /**

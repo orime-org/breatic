@@ -35,7 +35,7 @@ function renderOverlay(
   const result = render(
     <ReactFlowProvider>
       <div className='react-flow__node' data-id='n1'>
-        <img data-testid='image-node-img' alt='' />
+        <img data-testid='image-node-img' src='https://cdn/original.png' alt='' />
       </div>
       <FocusCropOverlay
         nodeId='n1'
@@ -209,6 +209,43 @@ describe('FocusCropOverlay', () => {
     expect(rect.style.top).toBe('100px');
     expect(rect.style.width).toBe('200px');
     expect(rect.style.height).toBe('160px');
+  });
+
+  it('Esc mid-drag cancels the gesture — the next pointermove does not resurrect the rect (adversarial R2)', () => {
+    const onExit = vi.fn();
+    renderOverlay(vi.fn(), onExit);
+    const layer = screen.getByTestId('focus-crop-layer');
+    fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(layer, { clientX: 250, clientY: 180, pointerId: 1 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+    expect(onExit).not.toHaveBeenCalled();
+    // Button still held: further movement must NOT recreate the marquee.
+    fireEvent.pointerMove(layer, { clientX: 300, clientY: 220, pointerId: 1 });
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+  });
+
+  it('a bare click leaves no marquee — a degenerate draw is discarded on release (adversarial R2, HIGH)', () => {
+    renderOverlay();
+    const layer = screen.getByTestId('focus-crop-layer');
+    fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0, pointerId: 1 });
+    fireEvent.pointerUp(layer, { pointerId: 1 });
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+    // Esc with nothing drawn exits directly (no stolen stage).
+  });
+
+  it('confirm discards the marquee when the img src changed since the measure (adversarial R2)', () => {
+    const onConfirm = vi.fn();
+    renderOverlay(onConfirm);
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 800 });
+    Object.defineProperty(img, 'naturalHeight', { value: 600 });
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    // Same-size content swap: no geometry change, only the src differs.
+    img.setAttribute('src', 'https://cdn/regenerated.png');
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
   });
 
   it('a second pointer cannot hijack or end the active interaction (adversarial)', () => {

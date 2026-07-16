@@ -13,8 +13,14 @@ import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 interface ReferenceRailProps {
   /** The node's derived reference rows (from {@link deriveReferences}). */
   references: ReferenceRailItem[];
-  /** Remove a reference by id — the caller deletes the backing edge. */
-  onRemove: (refId: string) => void;
+  /**
+   * Remove a row — the caller routes by the ROW's identity (`focus: true`
+   * → crop removal, else edge deletion). Routing by row, never by parsing
+   * the id string: edge ids are untrusted collaborative data, and a
+   * crafted edge id starting with `focus:` must not misroute the ✕
+   * (adversarial round-2 2026-07-16).
+   */
+  onRemove: (item: ReferenceRailItem) => void;
   /** Insert this reference's @-mention into the prompt at the cursor (chip click). */
   onInsert: (item: ReferenceRailItem) => void;
   /**
@@ -134,7 +140,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               type='button'
               data-testid={`generate-ref-remove-${ref.refId}`}
               aria-label={t('canvas.generatePanel.removeReference')}
-              onClick={() => onRemove(ref.refId)}
+              onClick={() => onRemove(ref)}
               disabled={inert}
               className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed'
             >

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { isDedupHit, type PresignResponse } from '@web/data/api/assets';
+import { validFocusImages } from '@web/data/focus-images';
 import {
   retryTransient,
   type UploadClientConfig,
@@ -274,7 +275,7 @@ export async function fillNodeFromFile(
 export interface AssetNodeLike {
   id: string;
   type?: string;
-  data?: { content?: unknown; coverUrl?: unknown };
+  data?: { content?: unknown; coverUrl?: unknown; focusImages?: unknown };
 }
 
 /** One asset-delete report entry (activity feed). */
@@ -313,20 +314,62 @@ export function computeDeletedAssetEntries(
     if (deletedIds.has(n.id)) continue;
     if (typeof n.data?.content === 'string') survivingUrls.add(n.data.content);
     if (typeof n.data?.coverUrl === 'string') survivingUrls.add(n.data.coverUrl);
+    // Focus crops (#1782) are uploaded assets too — a crop URL held by a
+    // surviving node keeps the asset alive (adversarial round-2).
+    for (const crop of validFocusImages(n.data?.focusImages)) {
+      survivingUrls.add(crop.url);
+    }
   }
   const mediaTypes = new Set(['image', 'video', 'audio']);
   return deletedNodes.flatMap((node) => {
-    if (node.type === undefined || !mediaTypes.has(node.type)) return [];
     const out: DeletedAssetEntry[] = [];
-    for (const url of [node.data?.content, node.data?.coverUrl]) {
-      if (
-        typeof url === 'string' &&
-        /^https?:\/\//.test(url) &&
-        !survivingUrls.has(url)
-      ) {
-        out.push({ fileUrl: url, kind: node.type!, nodeId: node.id, spaceId });
+    if (node.type !== undefined && mediaTypes.has(node.type)) {
+      for (const url of [node.data?.content, node.data?.coverUrl]) {
+        if (
+          typeof url === 'string' &&
+          /^https?:\/\//.test(url) &&
+          !survivingUrls.has(url)
+        ) {
+          out.push({ fileUrl: url, kind: node.type, nodeId: node.id, spaceId });
+        }
+      }
+    }
+    // A deleted node takes its focus crops with it — report each crop asset
+    // unless the same URL survives elsewhere (dedup can share URLs). Crops
+    // are always images regardless of the holding node's type.
+    for (const crop of validFocusImages(node.data?.focusImages)) {
+      if (/^https?:\/\//.test(crop.url) && !survivingUrls.has(crop.url)) {
+        out.push({ fileUrl: crop.url, kind: 'image', nodeId: node.id, spaceId });
       }
     }
     return out;
   });
+}
+
+/**
+ * Whether an asset URL is still referenced by any node — content, cover, or
+ * focus crop (#1782). The rail's crop ✕ reports the asset deleted only when
+ * this is false; call it AFTER the removal write so the removed instance is
+ * naturally excluded (adversarial round-2).
+ * @param url - The asset URL to check.
+ * @param nodes - The current canvas nodes (post-removal).
+ * @returns True when any node still references the URL.
+ */
+export function assetUrlSurvives(
+  url: string,
+  // `data?: object` (not the field shape): the all-optional field object is
+  // a WEAK TYPE, and view variants with none of the fields (GroupNodeView)
+  // would fail assignability even though reading them is safe.
+  nodes: ReadonlyArray<{ data?: object }>,
+): boolean {
+  for (const n of nodes) {
+    const data = n.data as
+      | { content?: unknown; coverUrl?: unknown; focusImages?: unknown }
+      | undefined;
+    if (data?.content === url || data?.coverUrl === url) return true;
+    if (validFocusImages(data?.focusImages).some((c) => c.url === url)) {
+      return true;
+    }
+  }
+  return false;
 }

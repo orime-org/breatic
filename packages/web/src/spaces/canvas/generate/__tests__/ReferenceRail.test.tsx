@@ -47,7 +47,7 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
     expect(screen.queryByTestId('generate-ref-focus-badge-a->me')).toBeNull();
   });
 
-  it('a focus row ✕ fires onRemove with the focus: id (caller routes to the crop)', () => {
+  it('a focus row ✕ fires onRemove with the ROW (focus flag routes to the crop)', () => {
     const onRemove = vi.fn();
     render(
       <ReferenceRail
@@ -57,7 +57,7 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
       />,
     );
     fireEvent.click(screen.getByTestId('generate-ref-remove-focus:f1'));
-    expect(onRemove).toHaveBeenCalledWith('focus:f1');
+    expect(onRemove).toHaveBeenCalledWith(FOCUS_ROW);
   });
 
   it('renders pending focus placeholders (dashed, non-interactive) and shows the rail with only them', () => {
@@ -87,13 +87,13 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
   });
 
-  it('fires onRemove with the reference id when its ✕ is clicked', () => {
+  it('fires onRemove with the ROW when its ✕ is clicked (identity routing, adversarial R2)', () => {
     const onRemove = vi.fn();
     render(
       <ReferenceRail references={REFS} onRemove={onRemove} onInsert={() => {}} />,
     );
     fireEvent.click(screen.getByTestId('generate-ref-remove-b->me'));
-    expect(onRemove).toHaveBeenCalledWith('b->me');
+    expect(onRemove).toHaveBeenCalledWith(REFS[1]);
   });
 
   it('fires onInsert with the reference row when the chip body is clicked', () => {
@@ -212,6 +212,6 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     fireEvent.click(textInsert);
     expect(onInsert).toHaveBeenCalledWith(REFS[1]);
     fireEvent.click(screen.getByTestId('generate-ref-remove-b->me'));
-    expect(onRemove).toHaveBeenCalledWith('b->me');
+    expect(onRemove).toHaveBeenCalledWith(REFS[1]);
   });
 });

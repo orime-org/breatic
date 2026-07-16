@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { useStore } from '@xyflow/react';
+import { toast } from 'sonner';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import {
@@ -144,10 +145,37 @@ export function FocusCropOverlay({
         width: r.width * sx,
         height: r.height * sy,
       });
+      // An in-flight gesture must rescale too, or its stale anchor /
+      // last-point drags the marquee to the wrong region (round-2).
+      const active = interactionRef.current;
+      if (active?.type === 'draw') {
+        interactionRef.current = {
+          ...active,
+          anchor: { x: active.anchor.x * sx, y: active.anchor.y * sy },
+        };
+      } else if (active?.type === 'move') {
+        interactionRef.current = {
+          ...active,
+          last: { x: active.last.x * sx, y: active.last.y * sy },
+        };
+      }
     }
     measuredSrcRef.current = src;
     prevBoxRef.current = next;
     setBox(next);
+  }, [nodeId]);
+
+  // Switching the crop target discards the in-progress marquee. A LAYOUT
+  // effect declared BEFORE the measure effect: layout effects run in
+  // declaration order, so the reset nulls the src baseline first and the
+  // measure below immediately re-records it for the new target — a passive
+  // reset used to run AFTER the mount measure and wipe the baseline, which
+  // silently disabled the confirm-time src-swap check (adversarial R2).
+  React.useLayoutEffect(() => {
+    setRect(null);
+    setRatio(null);
+    interactionRef.current = null;
+    measuredSrcRef.current = null;
   }, [nodeId]);
 
   // Re-measure on mount, on any viewport change, on node drag, on window
@@ -165,19 +193,18 @@ export function FocusCropOverlay({
         ? new ResizeObserver(measure)
         : null;
     if (ro && img) ro.observe(img);
+    // A same-aspect content swap changes NO geometry (w-full h-auto keeps
+    // the box pixel-identical), so watch the src attribute itself — the
+    // ResizeObserver never fires for it (adversarial round-2).
+    const mo = img ? new MutationObserver(measure) : null;
+    if (mo && img) mo.observe(img, { attributes: true, attributeFilter: ['src'] });
     return () => {
       window.removeEventListener('resize', measure);
       ro?.disconnect();
+      mo?.disconnect();
     };
-  }, [measure, transform, nodePosition, nodeId]);
+  }, [measure, transform, nodePosition.x, nodePosition.y, nodeId]);
 
-  // Switching the crop target discards the in-progress marquee.
-  React.useEffect(() => {
-    setRect(null);
-    setRatio(null);
-    interactionRef.current = null;
-    measuredSrcRef.current = null;
-  }, [nodeId]);
 
   // Esc: clear the marquee first; with nothing drawn, exit the session.
   // Bubble phase, never capture (adversarial 2026-07-16: a window CAPTURE
@@ -201,8 +228,15 @@ export function FocusCropOverlay({
       ) {
         return;
       }
-      if (rectRef.current) setRect(null);
-      else onExit();
+      if (rectRef.current || interactionRef.current) {
+        // Stage one also aborts an in-progress gesture — without this the
+        // captured pointer's next move instantly recreated the rect, so
+        // Esc mid-drag never stuck (adversarial round-2).
+        interactionRef.current = null;
+        setRect(null);
+      } else {
+        onExit();
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -300,8 +334,20 @@ export function FocusCropOverlay({
    * @param e - The pointer-up / cancel event.
    */
   const onPointerUp = (e: React.PointerEvent): void => {
-    if (interactionRef.current && e.pointerId !== interactionRef.current.pointerId) return;
+    const interaction = interactionRef.current;
+    if (interaction && e.pointerId !== interaction.pointerId) return;
     interactionRef.current = null;
+    // A bare click (or a sub-minimum scribble) ends a DRAW with a rect too
+    // small to ever confirm — discard it, or an invisible zero-size marquee
+    // dims the whole image, disables Confirm, and eats an Esc stage
+    // (adversarial round-2, HIGH).
+    if (
+      interaction?.type === 'draw' &&
+      rectRef.current &&
+      !isCropValid(rectRef.current)
+    ) {
+      setRect(null);
+    }
     setTick((n) => n + 1);
   };
 
@@ -323,7 +369,25 @@ export function FocusCropOverlay({
     const img = document.querySelector(
       `.react-flow__node[data-id="${CSS.escape(nodeId)}"] [data-testid=image-node-img]`,
     );
-    if (!(img instanceof HTMLImageElement) || img.naturalWidth === 0) return;
+    // Confirm-time swap check (round-2): the MutationObserver discards the
+    // marquee live, but a swap can still land between the last measure and
+    // this click — never crop NEW content at OLD marquee coordinates.
+    if (
+      img instanceof HTMLImageElement &&
+      measuredSrcRef.current !== null &&
+      img.getAttribute('src') !== measuredSrcRef.current
+    ) {
+      setRect(null);
+      toast.warning(t('canvas.generatePanel.focusSourceChanged'));
+      return;
+    }
+    if (!(img instanceof HTMLImageElement) || img.naturalWidth === 0) {
+      // The source exists but is not decodable yet (new bitmap loading /
+      // broken URL) — say so instead of a silent dead button (round-2);
+      // the marquee stays so a loaded image can be confirmed on retry.
+      toast.error(t('canvas.generatePanel.focusExportFailed'));
+      return;
+    }
     const natural = { width: img.naturalWidth, height: img.naturalHeight };
     onConfirm({ crop: toNaturalCrop(rect, bounds, natural), natural });
     setRect(null);

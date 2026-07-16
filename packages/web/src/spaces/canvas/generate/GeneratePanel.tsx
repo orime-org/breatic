@@ -51,8 +51,8 @@ interface GeneratePanelProps {
   onAddReference: () => void;
   /** Whether THIS node's reference pick is running — highlights the button. */
   referencePicking: boolean;
-  /** Remove a reference by id. */
-  onRemoveReference: (refId: string) => void;
+  /** Remove a rail row (routed by the row's identity — crop vs edge). */
+  onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert a reference's @-mention into the prompt at the cursor (rail click). */
   onInsertReference: (item: ReferenceRailItem) => void;
   /** Toggle the canvas style-pick mode (#1664 — enter, or exit when already picking). */

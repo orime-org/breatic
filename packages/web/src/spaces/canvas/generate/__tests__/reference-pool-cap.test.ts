@@ -22,10 +22,20 @@ const focus = (id: string) => ({
   height: 10,
 });
 
+const srcNodes = [{ id: 'a' }, { id: 'b' }, { id: 'gen' }, { id: 'other' }];
+
 describe('referencePoolCount', () => {
   it('counts incoming edges of the target only', () => {
     const edges = [edge('a', 'gen'), edge('b', 'gen'), edge('gen', 'other')];
-    expect(referencePoolCount(edges, [], 'gen')).toBe(2);
+    expect(referencePoolCount(edges, srcNodes, 'gen')).toBe(2);
+  });
+
+  it('excludes dangling edges whose source is gone — the rail renders none (adversarial R2)', () => {
+    // Concurrent connect + source-delete merges into an edge with no source
+    // node: deriveReferences skips it (no row, no ✕), so the count must too
+    // or the phantom occupies an invisible, UI-unremovable cap slot.
+    const edges = [edge('a', 'gen'), edge('ghost-src', 'gen')];
+    expect(referencePoolCount(edges, srcNodes, 'gen')).toBe(1);
   });
 
   it('adds the target node focus crops to the count', () => {
@@ -33,7 +43,9 @@ describe('referencePoolCount', () => {
       { id: 'gen', data: { focusImages: [focus('f1'), focus('f2')] } },
       { id: 'other', data: { focusImages: [focus('f3')] } },
     ];
-    expect(referencePoolCount([edge('a', 'gen')], nodes, 'gen')).toBe(3);
+    expect(
+      referencePoolCount([edge('a', 'gen')], [...nodes, { id: 'a' }], 'gen'),
+    ).toBe(3);
   });
 
   it('is 0 for a missing node with no edges', () => {
@@ -71,12 +83,15 @@ describe('referencePoolCount', () => {
 describe('isReferencePoolFull', () => {
   it('is false below the cap and true at the cap', () => {
     const edges = [edge('a', 'gen'), edge('b', 'gen')];
-    expect(isReferencePoolFull(edges, [], 'gen', 3)).toBe(false);
-    expect(isReferencePoolFull(edges, [], 'gen', 2)).toBe(true);
+    expect(isReferencePoolFull(edges, srcNodes, 'gen', 3)).toBe(false);
+    expect(isReferencePoolFull(edges, srcNodes, 'gen', 2)).toBe(true);
   });
 
   it('counts focus crops toward the cap', () => {
-    const nodes = [{ id: 'gen', data: { focusImages: [focus('f1')] } }];
+    const nodes = [
+      { id: 'a' },
+      { id: 'gen', data: { focusImages: [focus('f1')] } },
+    ];
     expect(isReferencePoolFull([edge('a', 'gen')], nodes, 'gen', 2)).toBe(true);
     expect(isReferencePoolFull([edge('a', 'gen')], nodes, 'gen', 3)).toBe(false);
   });

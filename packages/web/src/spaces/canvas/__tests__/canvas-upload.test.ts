@@ -8,6 +8,7 @@ import {
   fillNodeFromFile,
   runMediaUpload,
   computeDeletedAssetEntries,
+  assetUrlSurvives,
 } from '@web/spaces/canvas/canvas-upload';
 
 describe('fileToNodeSpec — MIME → which node + whether to upload', () => {
@@ -379,6 +380,62 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     const entries = computeDeletedAssetEntries(deleted, deleted, 'sp-1');
     expect(entries.map((e) => e.fileUrl).sort()).toEqual([url('cover'), url('vid')].sort());
     expect(entries.every((e) => e.nodeId === 'v1' && e.spaceId === 'sp-1')).toBe(true);
+  });
+
+  // ── Focus crops (#1782, adversarial R2): crops are uploaded assets too ──
+  const crop = (id: string, u: string) => ({
+    id,
+    url: u,
+    name: 'src',
+    width: 10,
+    height: 10,
+  });
+
+  it('reports a deleted node\'s focus crops (kind image) alongside its content', () => {
+    const deleted = [
+      {
+        id: 'g1',
+        type: 'image',
+        data: { content: url('gen'), focusImages: [crop('f1', url('crop1'))] },
+      },
+    ];
+    const entries = computeDeletedAssetEntries(deleted, deleted, 'sp-1');
+    expect(entries.map((e) => e.fileUrl).sort()).toEqual(
+      [url('crop1'), url('gen')].sort(),
+    );
+    expect(entries.every((e) => e.kind === 'image')).toBe(true);
+  });
+
+  it('a crop URL held by a SURVIVING node keeps the asset alive (both directions)', () => {
+    const shared = url('shared-crop');
+    // Deleted node's crop survives via another node's crop (dedup-shared URL).
+    const deleted = [
+      { id: 'a', type: 'image', data: { focusImages: [crop('f1', shared)] } },
+    ];
+    const all = [
+      ...deleted,
+      { id: 'b', type: 'image', data: { focusImages: [crop('f2', shared)] } },
+    ];
+    expect(computeDeletedAssetEntries(deleted, all, 'sp-1')).toEqual([]);
+    // And a deleted CONTENT url survives via a survivor's crop.
+    const deleted2 = [
+      { id: 'c', type: 'image', data: { content: shared } },
+    ];
+    const all2 = [
+      ...deleted2,
+      { id: 'd', type: 'image', data: { focusImages: [crop('f3', shared)] } },
+    ];
+    expect(computeDeletedAssetEntries(deleted2, all2, 'sp-1')).toEqual([]);
+  });
+
+  it('assetUrlSurvives sees content, cover, and focus crops', () => {
+    const nodes = [
+      { id: 'a', data: { content: url('c') } },
+      { id: 'b', data: { focusImages: [crop('f1', url('f'))] } },
+    ];
+    expect(assetUrlSurvives(url('c'), nodes)).toBe(true);
+    expect(assetUrlSurvives(url('f'), nodes)).toBe(true);
+    expect(assetUrlSurvives(url('ghost'), nodes)).toBe(false);
   });
 
   it('does NOT report a URL still referenced by a surviving node (pasted duplicate)', () => {

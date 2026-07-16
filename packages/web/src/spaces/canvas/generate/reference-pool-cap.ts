@@ -18,6 +18,7 @@ import { validFocusImages } from '@web/data/focus-images';
 
 /** The minimal edge shape the count reads (ReactFlow edge compatible). */
 interface PoolEdge {
+  source: string;
   target: string;
 }
 
@@ -43,7 +44,14 @@ export function referencePoolCount(
   nodes: ReadonlyArray<PoolNode>,
   targetId: string,
 ): number {
-  const edgeCount = edges.filter((e) => e.target === targetId).length;
+  // Count only edges whose SOURCE resolves — the same predicate the rail's
+  // deriveReferences applies. A dangling edge (source deleted concurrently
+  // with the connect) renders no row and has no ✕, so counting it would be
+  // an invisible, UI-unremovable cap slot (adversarial round-2 2026-07-16).
+  const ids = new Set(nodes.map((n) => n.id));
+  const edgeCount = edges.filter(
+    (e) => e.target === targetId && ids.has(e.source),
+  ).length;
   const focusImages = nodes.find((n) => n.id === targetId)?.data?.focusImages;
   return edgeCount + validFocusImages(focusImages).length;
 }

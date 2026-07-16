@@ -7,6 +7,7 @@ import * as React from 'react';
 import { toast } from 'sonner';
 import type * as Y from 'yjs';
 
+import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
 import { modelsApi } from '@web/data/api/models';
 import { ApiException } from '@web/data/api/types';
@@ -26,6 +27,7 @@ import {
   type CanvasEdge,
   type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
+import { assetUrlSurvives } from '@web/spaces/canvas/canvas-upload';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -412,15 +414,40 @@ function GeneratePanelBody({
   }, [vm.styleSupported, nodeId, endPick]);
 
   const onRemoveReference = React.useCallback(
-    (refId: string) => {
-      // A focus row's ✕ removes the crop from the node (#1782); a node
-      // reference's ✕ deletes the backing edge — one rail, two backings.
-      const focusId = focusIdOfRefId(refId);
-      if (focusId !== null) {
+    (item: ReferenceRailItem) => {
+      // Routed by the ROW's identity, never by parsing the id string: edge
+      // ids are untrusted collaborative data, and a crafted edge id starting
+      // with `focus:` must not misroute the ✕ (adversarial round-2). Only a
+      // real focus row carries `focus: true` (built locally from sanitized
+      // crops), so its refId is trusted to parse.
+      if (item.focus === true) {
+        const focusId = focusIdOfRefId(item.refId);
+        if (focusId === null) return;
         removeNodeFocusImage(projectId, spaceId, nodeId, focusId);
+        // Delete-side ledger report (adversarial round-2): a crop is an
+        // uploaded asset — mirror the node-delete accounting. The survivor
+        // check reads the FRESH post-removal graph, so the removed instance
+        // is naturally excluded; dedup-shared URLs still alive elsewhere
+        // are not reported. Silent catch: the removal already succeeded, a
+        // toast would read as a failed remove (reportDeletedAssets parity).
+        const url = item.thumbnail;
+        if (
+          typeof url === 'string' &&
+          url.length > 0 &&
+          !assetUrlSurvives(url, readCanvasGraph(projectId, spaceId).nodes)
+        ) {
+          void assetsApi
+            .reportDeleted({
+              projectId,
+              entries: [{ fileUrl: url, kind: 'image', nodeId, spaceId }],
+            })
+            .catch(() => {
+              // Silent: audit-feed miss at worst (see reportDeletedAssets).
+            });
+        }
         return;
       }
-      removeEdge(projectId, spaceId, refId);
+      removeEdge(projectId, spaceId, item.refId);
     },
     [projectId, spaceId, nodeId],
   );
