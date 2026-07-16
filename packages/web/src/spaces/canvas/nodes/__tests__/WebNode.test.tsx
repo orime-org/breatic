@@ -28,6 +28,24 @@ describe('WebNode', () => {
     expect(f.getAttribute('sandbox')).toContain('allow-same-origin');
   });
 
+  // #1772: an eager iframe loads a FULL web page per node during the initial
+  // all-nodes mount (xyflow #3883) — the heaviest media on the canvas. Native
+  // lazy loading defers offscreen embeds to viewport proximity.
+  it('the iframe is viewport-lazy (#1772)', () => {
+    render(
+      <WebNode
+        data={{
+          kind: 'web',
+          content: 'https://example.com',
+          status: 'idle',
+        }}
+      />,
+    );
+    expect(
+      screen.getByTestId('web-node-iframe').getAttribute('loading'),
+    ).toBe('lazy');
+  });
+
   it('error status surfaces the error message', () => {
     render(
       <WebNode

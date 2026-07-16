@@ -57,6 +57,9 @@ export const WebNode = React.memo(function WebNode({
         content={
           <iframe
             src={data.content ?? 'about:blank'}
+            // A full page per node is the heaviest canvas media — defer
+            // offscreen embeds to viewport proximity (#1772).
+            loading='lazy'
             data-testid='web-node-iframe'
             title='Embedded web page'
             sandbox='allow-scripts allow-same-origin allow-popups'

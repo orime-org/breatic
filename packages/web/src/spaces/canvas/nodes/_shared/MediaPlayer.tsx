@@ -136,6 +136,10 @@ export function MediaPlayer({
           src={src}
           poster={poster}
           playsInline
+          // Explicit contract — the spec leaves the missing-value default to
+          // the UA. Metadata covers the duration display + dimension badge
+          // without downloading the full file per node (#1772).
+          preload='metadata'
           data-testid='media-element'
           className='block w-full'
           onLoadedMetadata={(e) => {
@@ -193,6 +197,8 @@ export function MediaPlayer({
       <audio
         ref={ref as React.RefObject<HTMLAudioElement>}
         src={src}
+        // Same contract as the video element above (#1772).
+        preload='metadata'
         data-testid='media-element'
         className='sr-only'
       />

@@ -79,6 +79,21 @@ describe('ImageNode', () => {
     expect(onActivate).toHaveBeenCalled();
   });
 
+  // #1772: onlyRenderVisibleElements culls offscreen nodes AFTER the initial
+  // mount, but the initial mount renders every node once (xyflow #3883) — an
+  // eager <img> would start fetching every image in the space on load. Native
+  // lazy loading defers offscreen fetches to viewport proximity.
+  it('the image is viewport-lazy and decodes off the main thread (#1772)', () => {
+    render(
+      <ImageNode
+        data={{ kind: 'image', status: 'idle', content: 'https://e.com/x.jpg' }}
+      />,
+    );
+    const img = screen.getByTestId('image-node-img');
+    expect(img.getAttribute('loading')).toBe('lazy');
+    expect(img.getAttribute('decoding')).toBe('async');
+  });
+
   it('the shell clips the filled image - no corner gap (#1550 follow-up)', () => {
     render(
       <ImageNode
