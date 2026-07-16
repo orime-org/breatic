@@ -309,6 +309,19 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm2.focusImages).toEqual([]);
   });
 
+  it('caps the entry COUNT — a hostile mega-array cannot ride every keystroke (round-6)', () => {
+    const many = Array.from({ length: 250 }, (_, i) => ({
+      id: `k${i}`,
+      url: 'https://cdn/x.png',
+      name: 'x',
+      width: 1,
+      height: 1,
+    }));
+    const nodes = [node('n1', imageView({ focusImages: many }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.focusImages).toHaveLength(200);
+  });
+
   it('dedupes duplicate-id focus entries — first occurrence wins (round-3)', () => {
     const a = { id: 'k', url: 'https://cdn/a.png', name: 'a', width: 1, height: 1 };
     const b = { id: 'k', url: 'https://cdn/b.png', name: 'b', width: 1, height: 1 };

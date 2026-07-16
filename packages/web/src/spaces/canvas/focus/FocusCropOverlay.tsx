@@ -289,11 +289,14 @@ export function FocusCropOverlay({
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       const active = document.activeElement;
+      // Yield by Esc OWNERSHIP, not focus location (round-6): consumers
+      // (the @-suggestion, Radix overlays) preventDefault or hold focus in
+      // overlay content; a plain focused prompt editor consumes nothing,
+      // and yielding to it left Esc silently dead there.
       if (
         active &&
-        (active.closest('.ProseMirror') !== null ||
-          active.closest('[role="dialog"],[role="menu"],[role="listbox"]') !==
-            null)
+        active.closest('[role="dialog"],[role="menu"],[role="listbox"]') !==
+          null
       ) {
         return;
       }
@@ -397,33 +400,46 @@ export function FocusCropOverlay({
     }
   };
 
-  /**
-   * Forward a wheel over the overlay to the ReactFlow pane (round-5):
-   * the capture layer sits OUTSIDE the canvas DOM, so d3-zoom never sees
-   * wheel events over it — pan / pinch-zoom (the precision-crop gesture)
-   * were dead across the whole image. d3-zoom's wheel handler is a plain
-   * listener, so a cloned dispatch drives it; the resulting transform
-   * change re-measures and rescales the marquee through the normal path.
-   * @param e - The wheel event over the overlay.
-   */
-  const forwardWheel = (e: React.WheelEvent): void => {
-    const pane = document.querySelector('.react-flow__pane');
-    if (!pane) return;
-    pane.dispatchEvent(
-      new WheelEvent('wheel', {
-        bubbles: true,
-        cancelable: true,
-        clientX: e.clientX,
-        clientY: e.clientY,
-        deltaX: e.deltaX,
-        deltaY: e.deltaY,
-        deltaMode: e.deltaMode,
-        ctrlKey: e.ctrlKey,
-        metaKey: e.metaKey,
-        shiftKey: e.shiftKey,
-      }),
-    );
-  };
+  // Forward wheel over the overlay to the ReactFlow pane (round-5), via a
+  // NATIVE NON-PASSIVE listener (round-6): d3-zoom's own pane listener is
+  // non-passive and preventDefaults ctrl+wheel / trackpad pinch, which is
+  // what suppresses the BROWSER's page zoom over the canvas — a React
+  // onWheel binding is passive at the root by design, so the original
+  // event's default ran and every mid-crop pinch page-zoomed the whole UI
+  // on top of the canvas zoom. preventDefault the ORIGINAL, then drive
+  // d3-zoom with a cancelable clone; the transform change re-measures and
+  // rescales the marquee through the normal path.
+  const layerRef = React.useRef<HTMLDivElement>(null);
+  const hasBox = box !== null;
+  React.useEffect(() => {
+    const layer = layerRef.current;
+    if (!layer || !hasBox) return;
+    /**
+     * Native wheel forwarder: suppress the browser default, drive d3-zoom.
+     * @param e - The original (trusted) wheel event.
+     */
+    const onWheel = (e: WheelEvent): void => {
+      e.preventDefault();
+      const pane = document.querySelector('.react-flow__pane');
+      if (!pane) return;
+      pane.dispatchEvent(
+        new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          deltaX: e.deltaX,
+          deltaY: e.deltaY,
+          deltaMode: e.deltaMode,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+          shiftKey: e.shiftKey,
+        }),
+      );
+    };
+    layer.addEventListener('wheel', onWheel, { passive: false });
+    return () => layer.removeEventListener('wheel', onWheel);
+  }, [hasBox]);
 
   /**
    * Finish the active interaction (pointer up / cancel) — only the owning
@@ -542,6 +558,7 @@ export function FocusCropOverlay({
         <>
           {/* Capture layer over the image: draws the marquee, eats canvas gestures. */}
           <div
+            ref={layerRef}
             data-testid='focus-crop-layer'
             className='pointer-events-auto absolute touch-none cursor-crosshair'
             style={{ left: box.x, top: box.y, width: box.width, height: box.height }}
@@ -549,7 +566,6 @@ export function FocusCropOverlay({
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
-            onWheel={forwardWheel}
           >
             {rect ? (
               <div

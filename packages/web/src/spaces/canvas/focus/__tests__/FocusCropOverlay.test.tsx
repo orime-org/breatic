@@ -172,10 +172,10 @@ describe('FocusCropOverlay', () => {
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
-  it('Esc yields to surfaces that own it: prevented events and editor focus (adversarial)', () => {
+  it('Esc yields by OWNERSHIP: prevented events and overlay content — not a plain focused editor (round-6)', () => {
     const onExit = vi.fn();
     const { container } = renderOverlay(vi.fn(), onExit);
-    // A handler that already consumed Esc (Radix closing a popover) wins.
+    // A handler that already consumed Esc (Radix / the @-suggestion) wins.
     const prevented = new KeyboardEvent('keydown', {
       key: 'Escape',
       cancelable: true,
@@ -184,16 +184,23 @@ describe('FocusCropOverlay', () => {
     prevented.preventDefault();
     window.dispatchEvent(prevented);
     expect(onExit).not.toHaveBeenCalled();
-    // Focus inside the prompt editor (mention popup open) skips the overlay.
+    // Focus inside open overlay content (dialog/menu/listbox) yields.
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    const item = document.createElement('button');
+    menu.appendChild(item);
+    container.appendChild(menu);
+    item.focus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onExit).not.toHaveBeenCalled();
+    menu.remove();
+    // A PLAIN focused editor consumes nothing — Esc must still work there
+    // (the old location-based yield left it silently dead, round-6).
     const editor = document.createElement('div');
     editor.className = 'ProseMirror';
     editor.tabIndex = 0;
     container.appendChild(editor);
     editor.focus();
-    fireEvent.keyDown(window, { key: 'Escape' });
-    expect(onExit).not.toHaveBeenCalled();
-    // Focus back outside: Esc exits as usual.
-    editor.blur();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onExit).toHaveBeenCalledTimes(1);
   });
@@ -285,22 +292,29 @@ describe('FocusCropOverlay', () => {
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
   });
 
-  it('wheel over the capture layer forwards to the ReactFlow pane (round-5)', () => {
+  it('wheel over the capture layer forwards to the pane AND prevents the browser default (round-5/6)', () => {
     renderOverlay();
     const pane = document.createElement('div');
     pane.className = 'react-flow__pane';
     document.body.appendChild(pane);
     const received: WheelEvent[] = [];
     pane.addEventListener('wheel', (e) => received.push(e as WheelEvent));
-    fireEvent.wheel(screen.getByTestId('focus-crop-layer'), {
+    const original = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
       clientX: 200,
       clientY: 150,
       deltaY: -120,
       ctrlKey: true,
     });
+    screen.getByTestId('focus-crop-layer').dispatchEvent(original);
     expect(received).toHaveLength(1);
     expect(received[0]!.deltaY).toBe(-120);
     expect(received[0]!.ctrlKey).toBe(true);
+    // The ORIGINAL default must be suppressed — over the pane d3-zoom's
+    // non-passive listener does this; unprevented, a ctrl+wheel / pinch
+    // page-zoomed the whole browser on top of the canvas zoom (round-6).
+    expect(original.defaultPrevented).toBe(true);
     pane.remove();
   });
 

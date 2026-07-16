@@ -539,11 +539,13 @@ function CanvasSpaceInner({
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       const active = document.activeElement;
+      // Ownership-based yield (round-6, matching the overlay): the
+      // defaultPrevented guard covers Esc consumers; a plain focused
+      // editor consumes nothing and must not deaden Esc.
       if (
         active &&
-        (active.closest('.ProseMirror') !== null ||
-          active.closest('[role="dialog"],[role="menu"],[role="listbox"]') !==
-            null)
+        active.closest('[role="dialog"],[role="menu"],[role="listbox"]') !==
+          null
       ) {
         return;
       }
