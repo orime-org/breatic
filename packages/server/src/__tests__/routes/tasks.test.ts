@@ -136,7 +136,7 @@ describe("Tasks routes", () => {
       // The model needs a source image but params.images is empty. The gate
       // must fire before taskService.create + enqueue (billing is post-worker),
       // so nothing is created / queued / billed.
-      mocks.violatesSourceImageRequirement.mockReturnValue(true);
+      mocks.violatesSourceRequirementForModel.mockReturnValue(true);
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {
         method: "POST",
@@ -158,7 +158,7 @@ describe("Tasks routes", () => {
     });
 
     it("allows an i2i model that carries a source image (#1675 gate passes)", async () => {
-      mocks.violatesSourceImageRequirement.mockReturnValue(false);
+      mocks.violatesSourceRequirementForModel.mockReturnValue(false);
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {
         method: "POST",
@@ -166,6 +166,56 @@ describe("Tasks routes", () => {
         body: JSON.stringify({
           task_type: "image",
           params: { images: ["https://cdn/x.png"] },
+          model: "nano-banana-pro-edit",
+          source: "canvas",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mocks.taskService.create).toHaveBeenCalled();
+    });
+
+    it("rejects a submission with too many reference images BEFORE enqueue (#1735) — no task, no bill", async () => {
+      // The submission over-fills a capped list param; the gate must fire
+      // before taskService.create + enqueue so nothing is created / queued /
+      // billed (the worker would otherwise silently truncate the extras).
+      mocks.violatesReferenceCountForModel.mockReturnValue({
+        field: "images",
+        limit: 14,
+        actual: 15,
+      });
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "image",
+          params: { images: Array.from({ length: 15 }, (_, i) => `https://cdn/${i}.png`) },
+          model: "nano-banana-pro-edit",
+          source: "canvas",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+
+    it("allows a submission within the reference-image cap (#1735 gate passes)", async () => {
+      mocks.violatesReferenceCountForModel.mockReturnValue(null);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "image",
+          params: { images: ["https://cdn/x.png", "https://cdn/y.png"] },
           model: "nano-banana-pro-edit",
           source: "canvas",
           project_id: PID,

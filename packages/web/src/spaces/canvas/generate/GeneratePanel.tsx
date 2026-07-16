@@ -55,7 +55,12 @@ interface GeneratePanelProps {
   onRemoveReference: (refId: string) => void;
   /** Insert a reference's @-mention into the prompt at the cursor (rail click). */
   onInsertReference: (item: ReferenceRailItem) => void;
-  /** Execute: close the panel, put the node into handling, submit the task. */
+  /**
+   * Execute: submit the task in overwrite mode (the panel closes on success).
+   * The node does NOT enter handling here — the server publishes handling only
+   * after it accepts + locks the node, so a rejected submit (gate / credits /
+   * lock) leaves the node untouched and the failure surfaces as a toast.
+   */
   onExecute: () => void;
 }
 

@@ -25,6 +25,7 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
     generation_time: 30,
     params,
     providers: [],
+    sourcesByMode: {},
   };
 }
 

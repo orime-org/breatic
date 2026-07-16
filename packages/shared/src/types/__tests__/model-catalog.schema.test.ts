@@ -6,8 +6,6 @@ import { describe, it, expect } from "vitest";
 import {
   sanitizeModelCatalog,
   isImageGenerationMode,
-  requiresSourceImage,
-  supportsTextToImage,
 } from "@shared/types/model-catalog.js";
 import type { ModelCatalog, ModelEntry } from "@shared/types/model-catalog.js";
 
@@ -228,24 +226,10 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(isImageGenerationMode("t2v")).toBe(false); // a video mode, not image
   });
 
-  it("classifies which image modes REQUIRE a source image (i2i / edit)", () => {
-    // Modes that consume a source image as input.
-    expect(requiresSourceImage("i2i")).toBe(true); // image-to-image
-    expect(requiresSourceImage("edit")).toBe(true); // inpaint / edit
-    expect(requiresSourceImage(["i2i"])).toBe(true);
-    expect(requiresSourceImage(["edit"])).toBe(true);
-    // A multi-mode model qualifies if ANY mode needs a source image.
-    expect(requiresSourceImage(["i2i", "edit"])).toBe(true);
-    expect(requiresSourceImage(["t2i", "edit"])).toBe(true);
-    // text-to-image generates from scratch — needs NO source image.
-    expect(requiresSourceImage("t2i")).toBe(false);
-    expect(requiresSourceImage(["t2i"])).toBe(false);
-    // Unknown / empty / other-modality — not a source-image mode.
-    expect(requiresSourceImage("")).toBe(false);
-    expect(requiresSourceImage([])).toBe(false);
-    expect(requiresSourceImage("remove_bg")).toBe(false);
-    expect(requiresSourceImage("t2v")).toBe(false);
-  });
+  // The source-image predicates (requiresSourceImage / supportsTextToImage)
+  // moved to the cross-modality gate (#1675): the rule now lives backend-side
+  // in domain (source-requirement.ts, tested there) and reaches the frontend as
+  // the precomputed ModelEntry.sourcesByMode wire field.
 
   it("drops a __proto__ param key without polluting the result prototype", () => {
     // JSON.parse yields a REAL own "__proto__" property (an object literal would
@@ -258,26 +242,5 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     const params = out.image[0]?.params;
     expect(Object.getPrototypeOf(params)).toBe(Object.prototype); // not polluted
     expect(params?.aspect_ratio?.values).toEqual(["1:1"]); // legit sibling kept
-  });
-});
-
-// supportsTextToImage — the counterpart predicate to requiresSourceImage: a
-// HYBRID model (mode: ['t2i','i2i']) can run WITHOUT a source image (a t2i
-// submission), so the server's #1675 gate must not demand images from it
-// (round-3 adversarial: the frontend keyed the gate on the ACTIVE panel mode,
-// but the server still keyed on the capability list alone and would 400 a
-// hybrid t2i submission at the sibling layer).
-describe("supportsTextToImage", () => {
-  it("is true for a plain t2i model", () => {
-    expect(supportsTextToImage("t2i")).toBe(true);
-  });
-
-  it("is true for a hybrid t2i+i2i model", () => {
-    expect(supportsTextToImage(["t2i", "i2i"])).toBe(true);
-  });
-
-  it("is false for i2i / edit-only models", () => {
-    expect(supportsTextToImage("i2i")).toBe(false);
-    expect(supportsTextToImage(["i2i", "edit"])).toBe(false);
   });
 });

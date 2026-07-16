@@ -13,8 +13,14 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "@breatic/core";
-import { requiresSourceImage,
-  supportsTextToImage } from "@breatic/shared";
+import {
+  computeSourcesByMode,
+  violatesSourceRequirement,
+} from "@domain/model-catalog/source-requirement.js";
+import {
+  violatesReferenceCount,
+  type ReferenceCountViolation,
+} from "@domain/model-catalog/reference-count.js";
 import type {
   ModelCatalog,
   ModelEntry,
@@ -215,6 +221,9 @@ function projectModelEntry(
     // mirrors what is literally on disk.
     params: (m.params ?? {}) as unknown as Record<string, ParamDescriptor>,
     providers,
+    // #1675 cross-modality execute gate: precompute per-mode source needs so
+    // the frontend reads them off the wire (the rule stays backend-side).
+    sourcesByMode: computeSourcesByMode(modality, m.mode as string | string[]),
     icon: m.icon,
   };
 }
@@ -355,46 +364,59 @@ export function estimateTaskCredits(model?: string): number {
 }
 
 /**
- * #1675 server execute gate: whether `model` needs a source image (i2i / edit
- * mode) but `params.images` carries none. The /canvas/tasks route runs this
- * BEFORE enqueue — billing happens post-worker (markCompletedAndBill), so
- * rejecting here means no task row, no job, no bill for an input the model would
- * reject (e.g. Nano Banana Edit requires images ≥ 1). Defence in depth behind
- * the panel's frontend gate; the source-image rule lives once in
- * {@link requiresSourceImage} (shared), reused by both layers.
+ * #1675 server execute gate (cross-modality): whether a model whose modes all
+ * require a source input was submitted without the required source(s) in
+ * `params`. The /canvas/tasks route runs this BEFORE enqueue — billing happens
+ * post-worker (markCompletedAndBill), so rejecting here means no task row, no
+ * job, no bill for an input the model would reject (e.g. Nano Banana Edit
+ * requires an image; a video-edit requires a video). Defence in depth behind the
+ * panel's frontend gate.
  *
- * A model not needing a source image (t2i), an unknown model (existence is not
- * this check's job), or an absent model all pass. `params.images` must be a
- * non-empty array — anything else (absent / non-array / empty) counts as no
- * source image, so an i2i model violates.
+ * The rule is the SAME `sourcesByMode` the frontend reads off the wire — this
+ * looks the model up and applies {@link violatesSourceRequirement} to the
+ * submitted params. A model that can run source-less (any t2i-like mode / a
+ * hybrid), an unknown model, or an absent model all pass.
  * @param model - The task's model name from the request body, if any.
- * @param params - The task params (the wire `params.images` is the source list).
- * @returns True when an i2i/edit model was chosen with no source image.
+ * @param params - The task params (the wire `params.images` / `video_url` / … carry sources).
+ * @returns True when a required source type is missing → reject before billing.
  */
-export function violatesSourceImageRequirement(
+export function violatesSourceRequirementForModel(
   model: string | undefined,
   params: Record<string, unknown>,
 ): boolean {
   if (!model) return false;
   const catalog = getModelCatalog();
-  let needsSource = false;
   for (const modality of MODALITIES) {
     const entry = catalog[modality].find((m) => m.name === model);
-    if (entry) {
-      // A HYBRID model (t2i+i2i) satisfies requiresSourceImage via its i2i
-      // capability, but an image-less submission is a valid t2i run — only a
-      // model that CANNOT generate from scratch is gated (round-3
-      // adversarial: the frontend keys this on the active panel mode; the
-      // server, which has no mode field on the wire, keys it on "the model
-      // has no image-less way to run").
-      needsSource =
-        requiresSourceImage(entry.mode) && !supportsTextToImage(entry.mode);
-      break;
-    }
+    if (entry) return violatesSourceRequirement(entry.sourcesByMode, params);
   }
-  if (!needsSource) return false;
-  const images = params.images;
-  return !Array.isArray(images) || images.length === 0;
+  return false; // unknown model — existence is not this gate's job
+}
+
+/**
+ * #1735 server reference-count gate: whether the submitted params carry more
+ * items in a capped list param than the model's `max_items` allows. The
+ * /canvas/tasks route runs this BEFORE enqueue so an over-picked submission is
+ * rejected (with a message naming the limit) rather than silently truncated by
+ * the worker (providers/shared.ts). Sits at the same gate as
+ * {@link violatesSourceRequirementForModel}, reading the model's per-param
+ * `max_items` off the wire {@link ParamDescriptor}. An unknown / absent model
+ * passes (existence is not this gate's job).
+ * @param model - The task's model name from the request body, if any.
+ * @param params - The task params (`params.images` etc. carry the capped lists).
+ * @returns The first overflow (field + limit + actual), or null when within limits.
+ */
+export function violatesReferenceCountForModel(
+  model: string | undefined,
+  params: Record<string, unknown>,
+): ReferenceCountViolation | null {
+  if (!model) return null;
+  const catalog = getModelCatalog();
+  for (const modality of MODALITIES) {
+    const entry = catalog[modality].find((m) => m.name === model);
+    if (entry) return violatesReferenceCount(entry.params, params);
+  }
+  return null; // unknown model — existence is not this gate's job
 }
 
 /** Reset cached catalog and full-config caches (for testing). */

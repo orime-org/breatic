@@ -18,11 +18,11 @@ import type { NodeView } from '@web/spaces/canvas/types/node-view';
  * @returns A minimal image ModelEntry.
  */
 function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
+  const mode = over.mode ?? 't2i';
   return {
     name,
     display_name: name.toUpperCase(),
     modality: 'image',
-    mode: 't2i',
     description: '',
     guide: '',
     tier: 'optional',
@@ -34,6 +34,18 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
     },
     providers: [],
     ...over,
+    mode,
+    // Mirror the backend `computeSourcesByMode` for image modes so the gate
+    // (which reads `sourcesByMode[activeMode]`) is exercised realistically:
+    // i2i / edit need an image, t2i generates from scratch.
+    sourcesByMode:
+      over.sourcesByMode ??
+      Object.fromEntries(
+        (Array.isArray(mode) ? mode : [mode]).map((m) => [
+          m,
+          m === 'i2i' || m === 'edit' ? (['image'] as const) : [],
+        ]),
+      ),
   };
 }
 
@@ -409,5 +421,54 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
     const r = resolveModeSwitch({ modelByMode: {}, params: {} }, 'i2i', t2iOnly);
     expect(r.model).toBe('');
     expect(r.params).toEqual({});
+  });
+});
+
+describe('buildGeneratePanelViewModel — maxReferences (#1735 count gate)', () => {
+  it('exposes the active model images-param max_items as maxReferences', () => {
+    const capped = makeModel('nano-edit', {
+      mode: 'i2i',
+      params: { images: { description: '', default: null, max_items: 3 } },
+    });
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes: [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))],
+      edges: [],
+      models: [capped],
+    });
+    expect(vm.model).toBe('nano-edit');
+    expect(vm.maxReferences).toBe(3);
+  });
+
+  it('leaves maxReferences undefined when the active model caps nothing', () => {
+    // The default makeModel params carry aspect_ratio / resolution — no images cap.
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes: [node('n1', imageView({ mode: 't2i', model: 'flux' }))],
+      edges: [],
+      models: [makeModel('flux', { mode: 't2i' })],
+    });
+    expect(vm.maxReferences).toBeUndefined();
+  });
+
+  it('treats a non-positive images max_items as uncapped (undefined) — aligns with the server rule + worker guard', () => {
+    // 0 / negative / NaN all mean "uncapped" server-side (reference-count.ts
+    // limit >= 1) and worker-side (truthy spec.max_items). The frontend must
+    // agree, or a max_items: 0 would block every submit with a nonsensical
+    // "limit: 0" toast while the server accepts it.
+    for (const cap of [0, -1, Number.NaN]) {
+      const vm = buildGeneratePanelViewModel({
+        nodeId: 'n1',
+        nodes: [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))],
+        edges: [],
+        models: [
+          makeModel('nano-edit', {
+            mode: 'i2i',
+            params: { images: { description: '', default: null, max_items: cap } },
+          }),
+        ],
+      });
+      expect(vm.maxReferences).toBeUndefined();
+    }
   });
 });

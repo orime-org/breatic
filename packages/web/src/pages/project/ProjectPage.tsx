@@ -382,7 +382,7 @@ function ProjectWorkspace({
     // server-side collab doc, independent of the tab — so it is deliberately not
     // tracked in this registry (only front-end operations register).
     if (useSpaceOperationsStore.getState().hasOperations(id)) {
-      toast(t('canvas.close.operationInProgress'));
+      toast.warning(t('canvas.close.operationInProgress'));
       return;
     }
     closeSpaceTab(projectId, userId, id);

@@ -10,7 +10,6 @@
 
 import {
   isImageGenerationMode,
-  requiresSourceImage,
   type ModelEntry,
 } from '@breatic/shared';
 
@@ -35,6 +34,17 @@ const DEFAULT_IMAGE_GEN_MODE: ImageGenMode = 't2i';
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
+
+/**
+ * Normalizes a wire `max_items` to a real cap: a positive finite number, else
+ * undefined (uncapped). Mirrors the server rule's `limit >= 1` guard and the
+ * worker's truthy `spec.max_items`, so the frontend count gate agrees with both.
+ * @param cap - The `max_items` read off the wire ParamDescriptor (may be 0 / negative / NaN / undefined).
+ * @returns The positive cap, or undefined when the param is effectively uncapped.
+ */
+function positiveCap(cap: number | undefined): number | undefined {
+  return typeof cap === 'number' && Number.isFinite(cap) && cap >= 1 ? cap : undefined;
+}
 
 /**
  * Reads a node's stored generation sub-mode, defaulting + boundary-sanitizing:
@@ -72,6 +82,15 @@ export interface GeneratePanelViewModel {
    * False when the catalog is empty (no model resolved) — nothing to gate.
    */
   requiresSource: boolean;
+  /**
+   * Max reference images the active model accepts — the `images` param
+   * `max_items` on the wire (backend-computed from config), normalized so only
+   * a POSITIVE finite cap is set (0 / negative / absent → undefined = uncapped,
+   * matching the server rule + worker guard). Drives the #1735 count gate:
+   * submitting more `@`-picked sources than this is blocked in the panel (and
+   * re-checked server-side before enqueue, which otherwise silently truncates).
+   */
+  maxReferences?: number;
   /**
    * Whether the GLOBAL generatable-image catalog is empty (still loading, failed
    * to load, or no generation model configured). Distinct from `models.length`,
@@ -242,14 +261,21 @@ export function buildGeneratePanelViewModel(input: {
     creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
     mode,
-    // Source-image gate (#1675): the ACTIVE PANEL MODE decides the submission
-    // semantics — under t2i nothing needs a source image, even for a HYBRID
-    // model whose capability list also spans i2i (round-2 adversarial: keying
-    // on the capability array alone made t2i permanently unexecutable for
-    // hybrids, since t2i clears referenceUrls). Under i2i, defer to the
-    // model's declared modes. No model resolved (empty catalog) → no gate.
-    requiresSource:
-      mode === 'i2i' && current ? requiresSourceImage(current.mode) : false,
+    // Execute gate (#1675, cross-modality): the ACTIVE PANEL MODE decides the
+    // submission semantics — read the model's precomputed per-mode source needs
+    // (`sourcesByMode`, backend-computed on the wire) for the active mode. Under
+    // t2i that is `[]` (no source), even for a HYBRID whose capability array
+    // also spans i2i; under i2i it is `["image"]`. No model resolved (empty
+    // catalog) → no gate. The rule itself lives backend-side; the panel only
+    // reads the wire field, never runs it.
+    requiresSource: current ? (current.sourcesByMode[mode]?.length ?? 0) > 0 : false,
+    // #1735 count gate: the active model's reference-image cap (the `images`
+    // param's `max_items`, backend-computed on the wire). Only a POSITIVE finite
+    // cap counts — 0 / negative / NaN / undefined all mean "uncapped", matching
+    // the server rule (reference-count.ts, `limit >= 1`) and the worker's truthy
+    // `spec.max_items` guard, so all three layers agree (else a `max_items: 0`
+    // would block every submit here with a nonsensical "limit: 0" toast).
+    maxReferences: positiveCap(current?.params.images?.max_items),
     catalogEmpty: generatable.length === 0,
   };
 }

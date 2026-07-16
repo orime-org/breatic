@@ -43,15 +43,13 @@ export type {
   ModelProvider,
   ModelEntry,
   ModelCatalog,
+  SourceType,
 } from "@shared/types/model-catalog.js";
 export {
   modelCatalogSchema,
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   isImageGenerationMode,
-  requiresSourceImage,
-  supportsTextToImage,
-  SOURCE_IMAGE_MODES,
 } from "@shared/types/model-catalog.js";
 
 export { ROLE_RANK } from "@shared/types/role.js";

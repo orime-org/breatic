@@ -126,7 +126,7 @@ export function SpaceTab({
     e.stopPropagation();
     e.preventDefault();
     if (locked) {
-      toast(t('spaces.rename.locked'));
+      toast.warning(t('spaces.rename.locked'));
       return;
     }
     setDraft(name);

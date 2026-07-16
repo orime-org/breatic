@@ -770,7 +770,7 @@ function CanvasSpaceInner({
       // right-click menu Delete shares the same `lockBlockedDeletion` guard via
       // `commitGuardedDelete`, so the lock protection + toast are one rule, not
       // duplicated per entry point.
-      if (blocked) toast(t('canvas.contextMenu.lockedDeleteBlocked'));
+      if (blocked) toast.warning(t('canvas.contextMenu.lockedDeleteBlocked'));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) {
         return false;
       }
@@ -805,7 +805,7 @@ function CanvasSpaceInner({
             mimeType: file.type,
           },
         })
-        .catch(() => toast(t('canvas.activity.reportFailed')));
+        .catch(() => toast.error(t('canvas.activity.reportFailed')));
     },
     [projectId, spaceId, t],
   );
@@ -1295,7 +1295,7 @@ function CanvasSpaceInner({
         const admitted: File[] = [];
         for (const file of files) {
           if (fileToNodeSpec(file).needsUpload && file.size > maxBytes) {
-            toast(t('canvas.upload.tooLarge', { filename: file.name }));
+            toast.warning(t('canvas.upload.tooLarge', { filename: file.name }));
           } else {
             admitted.push(file);
           }
@@ -1324,7 +1324,7 @@ function CanvasSpaceInner({
                 onSuccess: (fileUrl) => {
                   clearRetryFile(projectId, spaceId, nodeId);
                   if (!completeNodeHandling(projectId, spaceId, nodeId, fileUrl, lease)) {
-                    toast(t('canvas.upload.ownershipLost'));
+                    toast.warning(t('canvas.upload.ownershipLost'));
                   }
                 },
                 // Fixed-English wire string — like AIGC failure messages and the
@@ -1355,7 +1355,7 @@ function CanvasSpaceInner({
                   if (
                     !completeNodeHandling(projectId, spaceId, nodeId, text, lease)
                   ) {
-                    toast(t('canvas.upload.ownershipLost'));
+                    toast.warning(t('canvas.upload.ownershipLost'));
                   }
                 })
                 .catch(() =>
@@ -1804,7 +1804,7 @@ function CanvasSpaceInner({
         edgesToDelete,
         flowNodesRef.current,
       );
-      if (blocked) toast(t('canvas.contextMenu.lockedDeleteBlocked'));
+      if (blocked) toast.warning(t('canvas.contextMenu.lockedDeleteBlocked'));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
       removeElements(
         projectId,
@@ -1847,7 +1847,7 @@ function CanvasSpaceInner({
       if (clipboardNodes.length === 0) return;
       void navigator.clipboard
         .writeText(serializeNodes(clipboardNodes))
-        .catch(() => toast(t('canvas.contextMenu.clipboardError')));
+        .catch(() => toast.error(t('canvas.contextMenu.clipboardError')));
     },
     [t],
   );
@@ -1978,7 +1978,7 @@ function CanvasSpaceInner({
           setSelectAfterCreate([pasteTextAt(text, point)]);
         }
       })
-      .catch(() => toast(t('canvas.contextMenu.clipboardError')));
+      .catch(() => toast.error(t('canvas.contextMenu.clipboardError')));
   }, [
     readOnly,
     screenToFlowPosition,
@@ -2056,7 +2056,7 @@ function CanvasSpaceInner({
           // Server-side 413 remains the authoritative gate.
         }
         if (fileToNodeSpec(file).needsUpload && file.size > maxBytes) {
-          toast(t('canvas.upload.tooLarge', { filename: file.name }));
+          toast.warning(t('canvas.upload.tooLarge', { filename: file.name }));
           return;
         }
         await fillNodeFromFile(nodeId, file, modality, projectId, {
@@ -2068,15 +2068,15 @@ function CanvasSpaceInner({
           // Type gate: the picker's accept is advisory (macOS lets audio/*
           // select .mp4) — a file that doesn't classify to the node's modality
           // is refused with a local toast (user bug 2026-07-03).
-          onTypeMismatch: () => toast(t('canvas.upload.typeMismatch')),
+          onTypeMismatch: () => toast.warning(t('canvas.upload.typeMismatch')),
           // #1580 #7 busy gate: a node already handling refuses a second fill.
           isHandling: (id) => isNodeHandling(projectId, spaceId, id),
-          onBusy: () => toast(t('canvas.upload.nodeBusy')),
+          onBusy: () => toast.warning(t('canvas.upload.nodeBusy')),
           setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
           setContent: (id, content, lease) => {
             clearRetryFile(projectId, spaceId, id);
             const landed = completeNodeHandling(projectId, spaceId, id, content, lease);
-            if (!landed) toast(t('canvas.upload.ownershipLost'));
+            if (!landed) toast.warning(t('canvas.upload.ownershipLost'));
             return landed;
           },
           setError: (id, message, lease) => {

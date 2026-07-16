@@ -59,6 +59,14 @@ export interface ModelProvider {
   available: boolean;
 }
 
+/**
+ * A kind of source input a generation mode may require (#1675 cross-modality
+ * execute gate). i2i/edit/i2v/… need an `image`; video edit/upscale need a
+ * `video`; a2m/voice_clone need an `audio`. A mode may need several (e.g.
+ * `talking_head` needs image + audio).
+ */
+export type SourceType = "image" | "video" | "audio";
+
 /** Single model definition — one entry in the catalog response. */
 export interface ModelEntry {
   name: string;
@@ -72,6 +80,16 @@ export interface ModelEntry {
   generation_time: number;
   params: Record<string, ParamDescriptor>;
   providers: ModelProvider[];
+  /**
+   * Per-mode source requirements (#1675 cross-modality execute gate),
+   * computed backend-side (the rule lives in domain). Maps each of the
+   * model's modes to the source types that mode needs (`t2i` → `[]`,
+   * `i2i` → `["image"]`, `talking_head` → `["image","audio"]`). The frontend
+   * gate reads `sourcesByMode[activePanelMode]` to decide whether to block
+   * execution — it never runs the rule itself. Empty when the catalog entry
+   * carries no recognized mode.
+   */
+  sourcesByMode: Record<string, SourceType[]>;
   /**
    * Brand icon name for the Generate picker (mapped to an inline SVG on the
    * frontend, e.g. `nano-banana` / `midjourney` / `seedream`). Optional so a
@@ -124,46 +142,11 @@ export function isImageGenerationMode(mode: string | string[]): boolean {
   return modes.some((m) => generatable.includes(m));
 }
 
-/**
- * Image model `mode` values that REQUIRE a source image as input:
- * image-to-image and edit (inpaint). A model qualifies when ANY of its modes is
- * one of these. Distinct from {@link IMAGE_GENERATION_MODES}: `t2i` generates
- * but needs no source image; `edit` needs a source image but is not itself a
- * generation mode.
- */
-export const SOURCE_IMAGE_MODES = ["i2i", "edit"] as const;
-
-/**
- * Whether an image model requires a source image to run (image-to-image / edit)
- * as opposed to text-to-image, which generates from scratch. The single source
- * of truth (web + backend) behind the #1675 execute gate: the frontend blocks
- * execution when such a model has no `@`-picked reference, and the backend
- * pre-charge validation rejects an empty `images` param before billing. A model
- * qualifies when any single mode requires a source image, so a multi-mode model
- * (e.g. `["i2i", "edit"]`) qualifies.
- * @param mode - The model's `mode` (a single string or an array of modes).
- * @returns True when any of the model's modes requires a source image.
- */
-export function requiresSourceImage(mode: string | string[]): boolean {
-  const modes = Array.isArray(mode) ? mode : [mode];
-  const needsSource: readonly string[] = SOURCE_IMAGE_MODES;
-  return modes.some((m) => needsSource.includes(m));
-}
-
-/**
- * Whether a model can generate WITHOUT a source image (carries a `t2i` mode).
- *
- * The counterpart predicate to {@link requiresSourceImage} for HYBRID models
- * (`mode: ['t2i','i2i']`): such a model satisfies `requiresSourceImage` via
- * its i2i capability, yet an image-less submission is a perfectly valid t2i
- * run — gates must not demand a source image from it.
- * @param mode - The model's `mode` (a single string or an array of modes).
- * @returns True when any of the model's modes is `t2i`.
- */
-export function supportsTextToImage(mode: string | string[]): boolean {
-  const modes = Array.isArray(mode) ? mode : [mode];
-  return modes.includes("t2i");
-}
+// The source-image predicates (SOURCE_IMAGE_MODES / requiresSourceImage /
+// supportsTextToImage) were replaced by the cross-modality execute gate
+// (#1675): the (modality, mode) → source-type rule now lives backend-side in
+// domain/model-catalog/source-requirement.ts and reaches the frontend as the
+// precomputed ModelEntry.sourcesByMode wire field.
 
 // ── Boundary sanitizer ───────────────────────────────────────────────
 //
@@ -235,6 +218,12 @@ const modelEntrySchema = z.object({
       return out;
     }),
   providers: z.array(modelProviderSchema).catch([]),
+  // Per-mode source requirements (#1675); non-object / garbage → {} so the
+  // entry still survives (a missing gate degrades open, matching the lenient
+  // sanitizer contract — the server gate is the authoritative enforcement).
+  sourcesByMode: z
+    .record(z.string(), z.array(z.enum(["image", "video", "audio"])))
+    .catch({}),
 });
 
 /** One modality bucket: a non-array coerces to [], garbage entries drop out. */
