@@ -131,7 +131,7 @@ function StyleTool({
           'relative overflow-hidden ' +
           TOOL_BASE +
           (active ? TOOL_ACTIVE : TOOL_INACTIVE) +
-          (active && thumbnail ? ' ring-2 ring-foreground' : '')
+          (active && thumbnail ? ' ring-1 ring-foreground' : '')
         }
       >
         {/* The icon + label always lay out (invisible when covered) so the
