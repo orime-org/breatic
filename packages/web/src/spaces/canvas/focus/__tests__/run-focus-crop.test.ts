@@ -93,7 +93,7 @@ describe('focusCropFilename', () => {
   });
 
   it('strips path separators and control chars (presign filename rules)', () => {
-    expect(focusCropFilename('a/b\\cd')).toBe('focus-abcd.png');
+    expect(focusCropFilename('a/b\\c\u0001d')).toBe('focus-abcd.png');
   });
 
   it('falls back to "crop" for an empty-after-sanitize name and trims long names', () => {
