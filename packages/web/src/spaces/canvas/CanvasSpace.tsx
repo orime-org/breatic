@@ -29,7 +29,7 @@ import { toast } from 'sonner';
 import { newId } from '@breatic/shared';
 
 import { assetsApi, canvasApi } from '@web/data/api';
-import { MAX_FOCUS_NAME } from '@web/data/focus-images';
+import { MAX_FOCUS_ENTRIES, MAX_FOCUS_NAME } from '@web/data/focus-images';
 import { getCachedReferencePoolCap } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
@@ -645,7 +645,17 @@ function CanvasSpaceInner({
             }),
           addFocusImage: (image) => {
             useCanvasStore.getState().removePendingFocusUpload(pendingId);
-            addNodeFocusImage(projectId, spaceId, panelNodeId, image);
+            // A refused append (node gone / entry ceiling) must be SAID —
+            // the upload already succeeded, and silence here loses the
+            // crop after real side effects (round-7).
+            const added = addNodeFocusImage(projectId, spaceId, panelNodeId, image);
+            if (!added) {
+              toast.warning(
+                t('canvas.generatePanel.referencePoolFull', {
+                  cap: MAX_FOCUS_ENTRIES,
+                }),
+              );
+            }
           },
           onFailure: (stage) => {
             useCanvasStore.getState().removePendingFocusUpload(pendingId);

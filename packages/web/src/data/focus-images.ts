@@ -21,11 +21,14 @@ const MAX_URL = 2048;
 const MAX_DIM = 100000;
 /**
  * Max entries the sanitizer keeps — comfortably above the configurable
- * pool cap (50 by default) but a hard ceiling against a hostile
- * megabyte-array write whose per-entry fields are all valid (round-6:
- * unbounded COUNT froze the tab while every reader re-projected it).
+ * pool cap (50 by default; the knob is effectively bounded by this hard
+ * ceiling) and a hard ceiling against a hostile megabyte-array write
+ * whose per-entry fields are all valid (round-6: unbounded COUNT froze
+ * the tab while every reader re-projected it). Exported so the WRITE
+ * side (addNodeFocusImage) refuses an append its readers would truncate
+ * away (round-7).
  */
-const MAX_ENTRIES = 200;
+export const MAX_FOCUS_ENTRIES = 200;
 
 /**
  * Max stored snapshot-name length — exported so the WRITE side (the crop
@@ -74,7 +77,7 @@ export function validFocusImages(raw: unknown): FocusImage[] {
         !seen.has((f as FocusImage).id) &&
         (seen.add((f as FocusImage).id), true),
     )
-    .slice(0, MAX_ENTRIES)
+    .slice(0, MAX_FOCUS_ENTRIES)
     .map((f) => ({
       id: f.id,
       url: f.url,

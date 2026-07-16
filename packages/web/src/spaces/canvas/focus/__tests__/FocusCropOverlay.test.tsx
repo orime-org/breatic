@@ -315,6 +315,17 @@ describe('FocusCropOverlay', () => {
     // non-passive listener does this; unprevented, a ctrl+wheel / pinch
     // page-zoomed the whole browser on top of the canvas zoom (round-6).
     expect(original.defaultPrevented).toBe(true);
+    // The CONTROLS BAR is covered too (round-7): the suppressor lives on
+    // the overlay root, which every interactive child bubbles to.
+    const barWheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 60,
+      ctrlKey: true,
+    });
+    screen.getByTestId('focus-crop-controls').dispatchEvent(barWheel);
+    expect(barWheel.defaultPrevented).toBe(true);
+    expect(received).toHaveLength(2);
     pane.remove();
   });
 

@@ -5,7 +5,7 @@ import * as React from 'react';
 import * as Y from 'yjs';
 import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
 
-import { validFocusImages } from '@web/data/focus-images';
+import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
 import { toNodeView } from '@web/spaces/canvas/types/node-view';
@@ -613,32 +613,40 @@ export function clearNodeStyleImage(
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the generative node the crop belongs to.
  * @param image - The focus crop to append (see FocusImage copy semantics).
+ * @returns True when the crop was written; false when the node is missing,
+ *   the entry fails the shared sanitizer, or the list is at the
+ *   MAX_FOCUS_ENTRIES ceiling (round-7 — the caller surfaces the refusal).
  */
 export function addNodeFocusImage(
   projectId: string,
   spaceId: string,
   nodeId: string,
   image: FocusImage,
-): void {
+): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const node = nodesMap.get(nodeId);
-  if (!node) return;
+  if (!node) return false;
   const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!(data instanceof Y.Map)) return false;
   // Whole-array LWW means any client can write any shape (untrusted) —
   // every rewrite HEALS the array through the shared sanitizer so
   // malformed remote entries can never accumulate (adversarial 2026-07-16).
   const list = validFocusImages(data.get('focusImages'));
-  // The appended entry rides the SAME sanitizer (round-5): an entry the
-  // readers would reject must never be written — it would be invisible
-  // everywhere (no ✕) and silently healed away on the next rewrite.
+  // The appended entry rides the SAME sanitizer (round-5) AND the same
+  // COUNT ceiling (round-7): an entry the readers would reject or
+  // truncate away must never be written — it would be invisible
+  // everywhere (no ✕) and silently healed away on the next rewrite. The
+  // boolean lets the caller surface the refusal instead of silently
+  // losing an uploaded crop.
   const appended = validFocusImages([image]);
-  if (appended.length === 0) return;
+  if (appended.length === 0) return false;
+  if (list.length >= MAX_FOCUS_ENTRIES) return false;
   doc.transact(
     () => data.set('focusImages', [...list, ...appended]),
     CONTENT_WRITE,
   );
+  return true;
 }
 
 /**

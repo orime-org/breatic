@@ -409,11 +409,9 @@ export function FocusCropOverlay({
   // on top of the canvas zoom. preventDefault the ORIGINAL, then drive
   // d3-zoom with a cancelable clone; the transform change re-measures and
   // rescales the marquee through the normal path.
-  const layerRef = React.useRef<HTMLDivElement>(null);
-  const hasBox = box !== null;
   React.useEffect(() => {
-    const layer = layerRef.current;
-    if (!layer || !hasBox) return;
+    const root = rootRef.current;
+    if (!root) return;
     /**
      * Native wheel forwarder: suppress the browser default, drive d3-zoom.
      * @param e - The original (trusted) wheel event.
@@ -437,9 +435,14 @@ export function FocusCropOverlay({
         }),
       );
     };
-    layer.addEventListener('wheel', onWheel, { passive: false });
-    return () => layer.removeEventListener('wheel', onWheel);
-  }, [hasBox]);
+    // Bound to the overlay ROOT (round-7): the capture layer AND the
+    // controls bar bubble here, so one listener covers every interactive
+    // surface — the round-6 layer-only binding left pinch over the bar
+    // page-zooming the browser. The root is pointer-events-none, so wheels
+    // over empty overlay area never target it and pass to the canvas.
+    root.addEventListener('wheel', onWheel, { passive: false });
+    return () => root.removeEventListener('wheel', onWheel);
+  }, []);
 
   /**
    * Finish the active interaction (pointer up / cancel) — only the owning
@@ -558,7 +561,6 @@ export function FocusCropOverlay({
         <>
           {/* Capture layer over the image: draws the marquee, eats canvas gestures. */}
           <div
-            ref={layerRef}
             data-testid='focus-crop-layer'
             className='pointer-events-auto absolute touch-none cursor-crosshair'
             style={{ left: box.x, top: box.y, width: box.width, height: box.height }}

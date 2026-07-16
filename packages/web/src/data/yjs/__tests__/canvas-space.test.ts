@@ -652,6 +652,28 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(data.get('focusImages')).toEqual([crop1]);
   });
 
+  it('addNodeFocusImage refuses past the MAX_FOCUS_ENTRIES ceiling and says so (round-7)', () => {
+    const many = Array.from({ length: 200 }, (_, i) => ({
+      id: `k${i}`,
+      url: 'https://cdn/x.png',
+      name: 'x',
+      width: 1,
+      height: 1,
+    }));
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { focusImages: many }, { id: 'gen' }),
+    );
+    // At the ceiling the readers would truncate the append away — the
+    // write refuses with a signal instead of silently vanishing the crop.
+    expect(addNodeFocusImage(PID, SID, 'gen', crop1)).toBe(false);
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect((data.get('focusImages') as unknown[]).length).toBe(200);
+  });
+
   it('a HEAL-ONLY rewrite is not undo-tracked — Cmd+Z must never resurrect junk (round-4)', () => {
     addNode(
       PID,
