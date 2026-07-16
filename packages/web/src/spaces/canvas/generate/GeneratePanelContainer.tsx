@@ -329,6 +329,9 @@ function GeneratePanelBody({
   const stylePicking = useCanvasStore(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'style',
   );
+  const focusPicking = useCanvasStore(
+    (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'focus',
+  );
   const onAddReference = React.useCallback(() => {
     const session = useCanvasStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === 'reference') {
@@ -345,6 +348,15 @@ function GeneratePanelBody({
       startStylePick(nodeId);
     }
   }, [startStylePick, endPick, nodeId]);
+  const startFocusPick = useCanvasStore((s) => s.startFocusPick);
+  const onFocus = React.useCallback(() => {
+    const session = useCanvasStore.getState().pickSession;
+    if (session?.nodeId === nodeId && session.purpose === 'focus') {
+      endPick();
+    } else {
+      startFocusPick(nodeId);
+    }
+  }, [startFocusPick, endPick, nodeId]);
 
   // End a running REFERENCE pick the moment the mode becomes t2i (adversarial
   // round-2): t2i ignores image references and DISABLES the reference button, so
@@ -359,7 +371,9 @@ function GeneratePanelBody({
     if (
       vm.mode === 't2i' &&
       session?.nodeId === nodeId &&
-      session.purpose === 'reference'
+      // Focus (#1782) feeds the same i2i source pool as Reference, so the
+      // same t2i flip strands it identically — one guard covers both.
+      (session.purpose === 'reference' || session.purpose === 'focus')
     ) {
       endPick();
     }
@@ -561,6 +575,8 @@ function GeneratePanelBody({
       styleImageUrl={vm.styleImageUrl}
       onClearStyle={onClearStyle}
       styleSupported={vm.styleSupported}
+      onFocus={onFocus}
+      focusPicking={focusPicking}
       onExecute={onExecute}
     />
   );

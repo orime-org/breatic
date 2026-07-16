@@ -153,6 +153,22 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
 
+  it('pending focus uploads: add renders a rail placeholder, remove clears it (#1782)', () => {
+    // A confirmed crop uploads asynchronously; the rail shows a local
+    // pending entry (never Yjs) until the URL lands or the upload fails.
+    useCanvasStore
+      .getState()
+      .addPendingFocusUpload({ id: 'tmp1', nodeId: 'gen-1', name: 'Img 26' });
+    useCanvasStore
+      .getState()
+      .addPendingFocusUpload({ id: 'tmp2', nodeId: 'gen-1', name: 'Img 27' });
+    expect(useCanvasStore.getState().pendingFocusUploads).toHaveLength(2);
+    useCanvasStore.getState().removePendingFocusUpload('tmp1');
+    expect(useCanvasStore.getState().pendingFocusUploads).toEqual([
+      { id: 'tmp2', nodeId: 'gen-1', name: 'Img 27' },
+    ]);
+  });
+
   it('requestRename posts a node id; consumePendingRename clears it', () => {
     useCanvasStore.getState().requestRename('n-7');
     expect(useCanvasStore.getState().pendingRename).toBe('n-7');

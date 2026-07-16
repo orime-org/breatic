@@ -336,7 +336,12 @@
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
       "referencePoolFull": "参照プールが上限({cap})に達しました——先に参照またはフォーカス画像を削除してください。",
       "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。",
-      "catalogUnavailable": "モデル一覧を読み込めませんでした。後でもう一度お試しください"
+      "catalogUnavailable": "モデル一覧を読み込めませんでした。後でもう一度お試しください",
+      "selectFocusFromCanvas": "フォーカスモード——画像上をドラッグして範囲を選択してください",
+      "focusCancel": "キャンセル",
+      "focusConfirm": "確認",
+      "focusExportFailed": "画像を切り抜けませんでした——もう一度お試しください。",
+      "focusUploadFailed": "フォーカス画像をアップロードできませんでした——もう一度お試しください。"
     },
     "nodeMenu": {
       "generate": "生成",

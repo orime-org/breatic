@@ -65,6 +65,10 @@ interface GeneratePanelProps {
   onClearStyle: () => void;
   /** Whether the active model takes a style reference (capability gate). */
   styleSupported: boolean;
+  /** Toggle the canvas focus-crop mode (#1782 — enter, or exit when already picking). */
+  onFocus: () => void;
+  /** Whether THIS node's focus pick is running — highlights the Focus button. */
+  focusPicking: boolean;
   /**
    * Execute: submit the task in overwrite mode (the panel closes on success).
    * The node does NOT enter handling here — the server publishes handling only
@@ -115,6 +119,8 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   styleImageUrl,
   onClearStyle,
   styleSupported,
+  onFocus,
+  focusPicking,
   onExecute,
 }: GeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
@@ -140,6 +146,10 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           styleThumbnail={styleImageUrl}
           onClearStyle={onClearStyle}
           styleDisabled={!styleSupported}
+          onFocus={onFocus}
+          focusActive={focusPicking}
+          // Focus crops feed the same i2i source pool as references (#1782).
+          focusDisabled={referencesOff}
         />
         <button
           type='button'

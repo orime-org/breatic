@@ -56,6 +56,8 @@ function setup(
       stylePicking={false}
       onClearStyle={() => {}}
       styleSupported
+      onFocus={() => {}}
+      focusPicking={false}
       onExecute={() => {}}
       {...overrides}
     />,
@@ -139,6 +141,16 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
   it('enables the reference add-button in i2i', () => {
     setup({ mode: 'i2i' });
     expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
+  });
+
+  it('gates Focus with the mode exactly like Reference (#1782 — same i2i pool)', () => {
+    setup({ mode: 't2i' });
+    expect(screen.getByTestId('generate-tool-focus')).toBeDisabled();
+  });
+
+  it('enables Focus in i2i (#1782)', () => {
+    setup({ mode: 'i2i' });
+    expect(screen.getByTestId('generate-tool-focus')).not.toBeDisabled();
   });
 
   it('disables the mode toggle while the GLOBAL catalog is empty (loading/failed) — guards the data-clobber', () => {

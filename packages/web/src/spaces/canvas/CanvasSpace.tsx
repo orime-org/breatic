@@ -30,9 +30,17 @@ import { newId } from '@breatic/shared';
 
 import { assetsApi, canvasApi } from '@web/data/api';
 import { getCachedReferencePoolCap } from '@web/data/api/canvas';
-import { isReferencePoolFull } from '@web/spaces/canvas/generate/reference-pool-cap';
+import {
+  isReferencePoolFull,
+  referencePoolCount,
+} from '@web/spaces/canvas/generate/reference-pool-cap';
+import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
+import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
+import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
+import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
 import {
   addEdge,
+  addNodeFocusImage,
   addNode,
   setNodeStyleImage,
   createGroup,
@@ -498,11 +506,97 @@ function CanvasSpaceInner({
     const purpose = useCanvasStore.getState().pickSession?.purpose;
     endPick();
     const triggerTestId =
-      purpose === 'style' ? 'generate-tool-style' : 'generate-tool-reference';
+      purpose === 'style'
+        ? 'generate-tool-style'
+        : purpose === 'focus'
+          ? 'generate-tool-focus'
+          : 'generate-tool-reference';
     document
       .querySelector<HTMLElement>(`[data-testid="${triggerTestId}"]`)
       ?.focus();
   }, [endPick]);
+  // The image node a focus crop marquee is open on (#1782), or null. Local
+  // React state — it only exists while THIS user's focus pick runs; the
+  // effect clears it whenever the session ends or changes purpose (Exit,
+  // zombie guards, a style/reference pick replacing it).
+  const [focusCropTargetId, setFocusCropTargetId] = React.useState<
+    string | null
+  >(null);
+  React.useEffect(() => {
+    if (pickSession?.purpose !== 'focus') setFocusCropTargetId(null);
+  }, [pickSession]);
+  // A confirmed focus marquee (#1782): gate the pool cap (counting the
+  // in-flight placeholders so a burst of confirms cannot overshoot), park a
+  // pending rail entry, then run crop-export → upload → focusImages append.
+  // Everything reads FRESH store state — the upload outlives this closure.
+  const onFocusCropConfirm = React.useCallback(
+    (result: { crop: CropRect }): void => {
+      const session = useCanvasStore.getState().pickSession;
+      if (session?.purpose !== 'focus') return;
+      const panelNodeId = session.nodeId;
+      const graph = useCanvasGraphStore.getState();
+      const source = graph.flowNodes.find((n) => n.id === focusCropTargetId);
+      const data = source?.data as
+        | { content?: unknown; name?: unknown }
+        | undefined;
+      const sourceUrl = typeof data?.content === 'string' ? data.content : '';
+      if (sourceUrl.length === 0) return;
+      const sourceName = typeof data?.name === 'string' ? data.name : '';
+      const cap = getCachedReferencePoolCap();
+      const store = useCanvasStore.getState();
+      const pendingCount = store.pendingFocusUploads.filter(
+        (p) => p.nodeId === panelNodeId,
+      ).length;
+      if (
+        cap !== null &&
+        referencePoolCount(graph.flowEdges, graph.flowNodes, panelNodeId) +
+          pendingCount >=
+          cap
+      ) {
+        toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
+        return;
+      }
+      const pendingId = newId();
+      store.addPendingFocusUpload({
+        id: pendingId,
+        nodeId: panelNodeId,
+        name: sourceName,
+      });
+      void runFocusCrop(
+        { sourceUrl, sourceName, crop: result.crop, projectId },
+        {
+          exportCrop: exportCropBlob,
+          uploadFile: (file, pid) =>
+            new Promise<string>((resolve, reject) => {
+              void runMediaUpload(file, pid, {
+                getUploadConfig: assetsApi.fetchUploadConfig,
+                hashFile,
+                presign: assetsApi.presign,
+                putFile: putFileWithRetry,
+                onSuccess: resolve,
+                onFailure: () => reject(new Error('focus upload failed')),
+              });
+            }),
+          addFocusImage: (image) => {
+            useCanvasStore.getState().removePendingFocusUpload(pendingId);
+            addNodeFocusImage(projectId, spaceId, panelNodeId, image);
+          },
+          onFailure: (stage) => {
+            useCanvasStore.getState().removePendingFocusUpload(pendingId);
+            toast.error(
+              t(
+                stage === 'export'
+                  ? 'canvas.generatePanel.focusExportFailed'
+                  : 'canvas.generatePanel.focusUploadFailed',
+              ),
+            );
+          },
+          makeId: newId,
+        },
+      );
+    },
+    [focusCropTargetId, projectId, spaceId, t],
+  );
   // Pick-end focus catch-all (adversarial round-2, a11y): the Exit hand-off
   // only works when the trigger is enabled + mounted. When it is disabled (a
   // t2i switch mid-pick) or the pick ends by another path (panel X, host node
@@ -1112,6 +1206,22 @@ function CanvasSpaceInner({
       const target = session.nodeId;
       // Clicking the target itself is always a no-op (dimmed for both purposes).
       if (node.id === target) return;
+
+      if (session.purpose === 'focus') {
+        // Focus (#1782): clicking a non-empty image opens the crop marquee
+        // on it (the overlay does the rest); clicking another image later
+        // just switches the crop target — the session runs until Exit.
+        const content = (node.data as { content?: unknown }).content;
+        if (
+          node.type !== 'image' ||
+          typeof content !== 'string' ||
+          content.length === 0
+        ) {
+          return;
+        }
+        setFocusCropTargetId(node.id);
+        return;
+      }
 
       if (session.purpose === 'style') {
         // Copy semantics (#1664, user decision 2026-07-16): snapshot the
@@ -2415,7 +2525,9 @@ function CanvasSpaceInner({
         };
       });
 
-    if (pickSession.purpose === 'style') {
+    if (pickSession.purpose === 'style' || pickSession.purpose === 'focus') {
+      // Style and Focus share the candidate rule: any non-empty image node
+      // except the pick target itself (#1664 / #1782).
       return paint((node) => {
         const content = (node.data as { content?: unknown }).content;
         return (
@@ -2666,7 +2778,9 @@ function CanvasSpaceInner({
               {t(
                 pickSession?.purpose === 'style'
                   ? 'canvas.generatePanel.selectStyleFromCanvas'
-                  : 'canvas.generatePanel.selectFromCanvas',
+                  : pickSession?.purpose === 'focus'
+                    ? 'canvas.generatePanel.selectFocusFromCanvas'
+                    : 'canvas.generatePanel.selectFromCanvas',
               )}
             </span>
             <button
@@ -2687,6 +2801,19 @@ function CanvasSpaceInner({
               {t('canvas.generatePanel.exitSelect')}
             </button>
           </div>
+        ) : null}
+        {pickSession?.purpose === 'focus' && focusCropTargetId !== null ? (
+          <FocusCropOverlay
+            nodeId={focusCropTargetId}
+            nodePosition={
+              renderNodes.find((n) => n.id === focusCropTargetId)?.position ?? {
+                x: 0,
+                y: 0,
+              }
+            }
+            onConfirm={onFocusCropConfirm}
+            onExit={onExitPick}
+          />
         ) : null}
         {flowNodes.length === 0 ? (
           <div

@@ -117,6 +117,12 @@ interface CanvasState {
    * session (continuous select) until Exit. Local UI only (never Yjs).
    */
   pickSession: PickSession | null;
+  /**
+   * Focus crops whose upload is still in flight (#1782) — local rail
+   * placeholders only (never Yjs): the FocusImage copy is written to the
+   * node only once the upload succeeds; a failure just drops the entry.
+   */
+  pendingFocusUploads: Array<{ id: string; nodeId: string; name: string }>;
   setSelectedNodeIds: (ids: string[]) => void;
   addSelectedNodeId: (id: string) => void;
   clearSelection: () => void;
@@ -159,6 +165,10 @@ interface CanvasState {
   startStylePick: (nodeId: string) => void;
   /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
   startFocusPick: (nodeId: string) => void;
+  /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
+  addPendingFocusUpload: (entry: { id: string; nodeId: string; name: string }) => void;
+  /** Drop a focus-upload placeholder (success wrote Yjs, or failure toasted). */
+  removePendingFocusUpload: (id: string) => void;
   /** Exit the current pick session (after a node is picked, or on cancel). */
   endPick: () => void;
 }
@@ -182,6 +192,7 @@ export const useCanvasStore = create<CanvasState>()(
     canRedo: false,
     generatePanelNodeId: null,
     pickSession: null,
+    pendingFocusUploads: [],
     setSelectedNodeIds: (ids) =>
       set((s) => {
         s.selectedNodeIds = ids;
@@ -291,6 +302,16 @@ export const useCanvasStore = create<CanvasState>()(
     startFocusPick: (nodeId) =>
       set((s) => {
         s.pickSession = { nodeId, purpose: 'focus' };
+      }),
+    addPendingFocusUpload: (entry) =>
+      set((s) => {
+        s.pendingFocusUploads.push(entry);
+      }),
+    removePendingFocusUpload: (id) =>
+      set((s) => {
+        s.pendingFocusUploads = s.pendingFocusUploads.filter(
+          (p) => p.id !== id,
+        );
       }),
     endPick: () =>
       set((s) => {

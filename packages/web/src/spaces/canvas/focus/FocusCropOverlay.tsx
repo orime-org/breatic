@@ -1,0 +1,346 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+import * as React from 'react';
+import { useStore } from '@xyflow/react';
+
+import { useTranslation } from '@web/i18n/use-translation';
+import {
+  CROP_RATIOS,
+  drawRect,
+  isCropValid,
+  moveRect,
+  resizeRect,
+  applyRatioPreset,
+  toNaturalCrop,
+  type CropHandle,
+  type CropRect,
+} from '@web/spaces/canvas/focus/crop-math';
+
+/** The eight resize handles with their anchor classes (compass layout). */
+const HANDLES: ReadonlyArray<{ id: CropHandle; className: string }> = [
+  { id: 'nw', className: 'left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize' },
+  { id: 'n', className: 'left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize' },
+  { id: 'ne', className: 'right-0 top-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize' },
+  { id: 'e', className: 'right-0 top-1/2 translate-x-1/2 -translate-y-1/2 cursor-ew-resize' },
+  { id: 'se', className: 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize' },
+  { id: 's', className: 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize' },
+  { id: 'sw', className: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize' },
+  { id: 'w', className: 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize' },
+];
+
+/** What one confirmed marquee hands back to the canvas. */
+export interface FocusCropConfirm {
+  /** The crop in natural (source-resolution) pixels. */
+  crop: CropRect;
+  /** The source image's natural size (for reference / debugging). */
+  natural: { width: number; height: number };
+}
+
+interface FocusCropOverlayProps {
+  /** The image node being cropped (its `data-id` in the ReactFlow DOM). */
+  nodeId: string;
+  /**
+   * The target node's flow position — only used as a re-measure signal
+   * (drag moves the node under the overlay).
+   */
+  nodePosition: { x: number; y: number };
+  /** Confirm the current marquee (upload runs in the canvas layer). */
+  onConfirm: (result: FocusCropConfirm) => void;
+  /** Exit the whole focus session (Esc with no marquee). */
+  onExit: () => void;
+}
+
+/** An in-progress pointer interaction on the marquee layer. */
+type Interaction =
+  | { type: 'draw'; anchor: { x: number; y: number } }
+  | { type: 'move'; last: { x: number; y: number } }
+  | { type: 'resize'; handle: CropHandle };
+
+/**
+ * The focus crop overlay (#1782): an absolutely-positioned marquee editor
+ * aligned to the target node's rendered `<img>`. It lives OUTSIDE the
+ * ReactFlow transform (a sibling of the pick banner inside the canvas
+ * wrapper), so its controls keep a constant screen size at any zoom and
+ * its pointer gestures never fight ReactFlow's — the capture layer eats
+ * them before the canvas sees anything. The box is re-measured whenever
+ * the viewport transform, the node position, or the window changes. All
+ * geometry funnels through the pure crop-math module in the img's screen
+ * pixel space; confirm maps to natural pixels via {@link toNaturalCrop}.
+ * @param root0 - Component props.
+ * @param root0.nodeId - The image node being cropped.
+ * @param root0.nodePosition - The node's flow position (re-measure signal).
+ * @param root0.onConfirm - Receives the confirmed natural-pixel crop.
+ * @param root0.onExit - Exits the focus session (Esc with no marquee).
+ * @returns The overlay, or null until the target img is measurable.
+ */
+export function FocusCropOverlay({
+  nodeId,
+  nodePosition,
+  onConfirm,
+  onExit,
+}: FocusCropOverlayProps): React.JSX.Element | null {
+  const t = useTranslation();
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  // Viewport transform — any pan / zoom re-measures the image box.
+  const transform = useStore((s) => s.transform);
+  const [box, setBox] = React.useState<CropRect | null>(null);
+  const [rect, setRect] = React.useState<CropRect | null>(null);
+  const [ratio, setRatio] = React.useState<number | null>(null);
+  const interactionRef = React.useRef<Interaction | null>(null);
+  // Force a state tick on interaction end so the controls bar re-evaluates.
+  const [, setTick] = React.useState(0);
+
+  const measure = React.useCallback((): void => {
+    const root = rootRef.current;
+    const img = document.querySelector(
+      `.react-flow__node[data-id="${CSS.escape(nodeId)}"] [data-testid=image-node-img]`,
+    );
+    if (!root || !(img instanceof HTMLImageElement)) {
+      setBox(null);
+      return;
+    }
+    const rootRect = root.getBoundingClientRect();
+    const imgRect = img.getBoundingClientRect();
+    setBox({
+      x: imgRect.left - rootRect.left,
+      y: imgRect.top - rootRect.top,
+      width: imgRect.width,
+      height: imgRect.height,
+    });
+  }, [nodeId]);
+
+  // Re-measure on mount, on any viewport change, on node drag, on resize.
+  React.useLayoutEffect(() => {
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [measure, transform, nodePosition]);
+
+  // Switching the crop target discards the in-progress marquee.
+  React.useEffect(() => {
+    setRect(null);
+    setRatio(null);
+    interactionRef.current = null;
+  }, [nodeId]);
+
+  // Esc: clear the marquee first; with nothing drawn, exit the session.
+  React.useEffect(() => {
+    /**
+     * Keydown listener implementing the two-stage Esc behavior.
+     * @param e - The keyboard event.
+     */
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setRect((prev) => {
+        if (prev) return null;
+        onExit();
+        return prev;
+      });
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [onExit]);
+
+  // The root ALWAYS renders (measure needs its rect — a null-return here
+  // would never mount the ref and the overlay could never appear); the
+  // interactive layers below render only once the img box is measured.
+  const bounds = box
+    ? { width: box.width, height: box.height }
+    : { width: 0, height: 0 };
+
+  /**
+   * Pointer position in the img box's local pixel space.
+   * @param e - The pointer event.
+   * @returns Local coordinates relative to the image box.
+   */
+  const localPoint = (e: React.PointerEvent): { x: number; y: number } => {
+    const rootRect = rootRef.current!.getBoundingClientRect();
+    return {
+      x: e.clientX - rootRect.left - (box?.x ?? 0),
+      y: e.clientY - rootRect.top - (box?.y ?? 0),
+    };
+  };
+
+  /**
+   * Begin a marquee draw from an empty area of the capture layer.
+   * @param e - The pointer-down event.
+   */
+  const onLayerPointerDown = (e: React.PointerEvent): void => {
+    if (e.button !== 0) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const p = localPoint(e);
+    interactionRef.current = { type: 'draw', anchor: p };
+    setRect(drawRect(p, p, bounds, ratio));
+  };
+
+  /**
+   * Begin moving the existing marquee (pointer-down on its body).
+   * @param e - The pointer-down event.
+   */
+  const onRectPointerDown = (e: React.PointerEvent): void => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    interactionRef.current = { type: 'move', last: localPoint(e) };
+  };
+
+  /**
+   * Begin resizing via a handle.
+   * @param handle - The grabbed handle.
+   * @returns The pointer-down handler for that handle.
+   */
+  const onHandlePointerDown =
+    (handle: CropHandle) =>
+    (e: React.PointerEvent): void => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      interactionRef.current = { type: 'resize', handle };
+    };
+
+  /**
+   * Route pointer movement to the active interaction's pure-math update.
+   * @param e - The pointer-move event.
+   */
+  const onPointerMove = (e: React.PointerEvent): void => {
+    const interaction = interactionRef.current;
+    if (!interaction) return;
+    const p = localPoint(e);
+    if (interaction.type === 'draw') {
+      setRect(drawRect(interaction.anchor, p, bounds, ratio));
+    } else if (interaction.type === 'move') {
+      const { last } = interaction;
+      interactionRef.current = { type: 'move', last: p };
+      setRect((prev) =>
+        prev ? moveRect(prev, p.x - last.x, p.y - last.y, bounds) : prev,
+      );
+    } else {
+      setRect((prev) =>
+        prev ? resizeRect(prev, interaction.handle, p, bounds, ratio) : prev,
+      );
+    }
+  };
+
+  /** Finish the active interaction (pointer up / cancel). */
+  const onPointerUp = (): void => {
+    interactionRef.current = null;
+    setTick((n) => n + 1);
+  };
+
+  /**
+   * Apply (or clear, when re-clicked) a ratio preset.
+   * @param value - The preset's width/height value.
+   */
+  const onRatioClick = (value: number): void => {
+    const next = ratio === value ? null : value;
+    setRatio(next);
+    if (next !== null) {
+      setRect((prev) => (prev ? applyRatioPreset(prev, next, bounds) : prev));
+    }
+  };
+
+  /** Confirm the current marquee: map to natural pixels and hand off. */
+  const onConfirmClick = (): void => {
+    if (!rect || !isCropValid(rect)) return;
+    const img = document.querySelector(
+      `.react-flow__node[data-id="${CSS.escape(nodeId)}"] [data-testid=image-node-img]`,
+    );
+    if (!(img instanceof HTMLImageElement) || img.naturalWidth === 0) return;
+    const natural = { width: img.naturalWidth, height: img.naturalHeight };
+    onConfirm({ crop: toNaturalCrop(rect, bounds, natural), natural });
+    setRect(null);
+  };
+
+  const confirmDisabled = rect === null || !isCropValid(rect);
+
+  return (
+    <div
+      ref={rootRef}
+      data-testid='focus-crop-overlay'
+      className='pointer-events-none absolute inset-0 z-10'
+    >
+      {box === null ? null : (
+        <>
+      {/* Capture layer over the image: draws the marquee, eats canvas gestures. */}
+      <div
+        data-testid='focus-crop-layer'
+        className='pointer-events-auto absolute cursor-crosshair'
+        style={{ left: box.x, top: box.y, width: box.width, height: box.height }}
+        onPointerDown={onLayerPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        {rect ? (
+          <div
+            data-testid='focus-crop-rect'
+            className='absolute cursor-move border border-background outline outline-1 outline-foreground'
+            style={{
+              left: rect.x,
+              top: rect.y,
+              width: rect.width,
+              height: rect.height,
+              boxShadow: '0 0 0 100000px rgb(0 0 0 / 0.4)',
+            }}
+            onPointerDown={onRectPointerDown}
+          >
+            {HANDLES.map(({ id, className }) => (
+              <div
+                key={id}
+                data-testid={`focus-crop-handle-${id}`}
+                className={`absolute h-2 w-2 rounded-full border border-foreground bg-background ${className}`}
+                onPointerDown={onHandlePointerDown(id)}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {/* Controls bar below the image: ratio presets + cancel / confirm. */}
+      <div
+        data-testid='focus-crop-controls'
+        className='pointer-events-auto absolute flex -translate-x-1/2 items-center gap-1 rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
+        style={{ left: box.x + box.width / 2, top: box.y + box.height + 8 }}
+      >
+        {CROP_RATIOS.map(({ key, value }) => (
+          <button
+            key={key}
+            type='button'
+            data-testid={`focus-ratio-${key}`}
+            aria-pressed={ratio === value}
+            onClick={() => onRatioClick(value)}
+            className={
+              'rounded-sm px-1.5 py-0.5 tabular-nums transition-colors ' +
+              (ratio === value
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')
+            }
+          >
+            {key}
+          </button>
+        ))}
+        <span aria-hidden='true' className='mx-1 h-4 w-px bg-border' />
+        <button
+          type='button'
+          data-testid='focus-crop-cancel'
+          onClick={() => setRect(null)}
+          className='rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+        >
+          {t('canvas.generatePanel.focusCancel')}
+        </button>
+        <button
+          type='button'
+          data-testid='focus-crop-confirm'
+          onClick={onConfirmClick}
+          disabled={confirmDisabled}
+          className='rounded-sm bg-foreground px-2 py-0.5 text-background disabled:cursor-not-allowed disabled:opacity-50'
+        >
+          {t('canvas.generatePanel.focusConfirm')}
+        </button>
+      </div>
+        </>
+      )}
+    </div>
+  );
+}

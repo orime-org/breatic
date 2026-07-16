@@ -343,7 +343,12 @@
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
       "referencePoolFull": "Reference pool is full ({cap} max) — remove some references or focus crops first.",
       "modelUnavailable": "That model is no longer available — pick another.",
-      "catalogUnavailable": "Model list unavailable — please try again later"
+      "catalogUnavailable": "Model list unavailable — please try again later",
+      "selectFocusFromCanvas": "Focus mode — drag a marquee on an image to crop a focus reference",
+      "focusCancel": "Cancel",
+      "focusConfirm": "Confirm",
+      "focusExportFailed": "Could not crop the image — please try again.",
+      "focusUploadFailed": "Could not upload the focus crop — please try again."
     },
     "edge": {
       "delete": "Delete connection"
