@@ -287,6 +287,24 @@ export interface DeletedAssetEntry {
 }
 
 /**
+ * Whether an asset URL is safe to put in a delete-side ledger report — a
+ * parse-level check mirroring the server's `z.string().url()` (round-3: the
+ * old prefix regex accepted strings like `https://a b` that the server
+ * rejects with a whole-batch 400, so ONE malformed remote crop URL poisoned
+ * every other entry in a multi-node delete report).
+ * @param url - The candidate asset URL.
+ * @returns True for a parseable http(s) URL.
+ */
+export function isReportableAssetUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Compute the asset-delete report entries for a set of deleted nodes
  * (ADR 2026-07-04 project-activity-feed).
  *
@@ -327,7 +345,7 @@ export function computeDeletedAssetEntries(
       for (const url of [node.data?.content, node.data?.coverUrl]) {
         if (
           typeof url === 'string' &&
-          /^https?:\/\//.test(url) &&
+          isReportableAssetUrl(url) &&
           !survivingUrls.has(url)
         ) {
           out.push({ fileUrl: url, kind: node.type, nodeId: node.id, spaceId });
@@ -338,7 +356,7 @@ export function computeDeletedAssetEntries(
     // unless the same URL survives elsewhere (dedup can share URLs). Crops
     // are always images regardless of the holding node's type.
     for (const crop of validFocusImages(node.data?.focusImages)) {
-      if (/^https?:\/\//.test(crop.url) && !survivingUrls.has(crop.url)) {
+      if (isReportableAssetUrl(crop.url) && !survivingUrls.has(crop.url)) {
         out.push({ fileUrl: crop.url, kind: 'image', nodeId: node.id, spaceId });
       }
     }

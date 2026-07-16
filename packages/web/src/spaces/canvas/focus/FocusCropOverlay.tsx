@@ -36,6 +36,13 @@ export interface FocusCropConfirm {
   crop: CropRect;
   /** The source image's natural size (for reference / debugging). */
   natural: { width: number; height: number };
+  /**
+   * The src the marquee was drawn + validated against (round-3): the export
+   * MUST crop exactly this URL — the graph store can lead the DOM by a
+   * commit, and exporting the store's newer content at this marquee's
+   * coordinates would crop the wrong image.
+   */
+  sourceSrc: string;
 }
 
 interface FocusCropOverlayProps {
@@ -46,8 +53,13 @@ interface FocusCropOverlayProps {
    * (drag moves the node under the overlay).
    */
   nodePosition: { x: number; y: number };
-  /** Confirm the current marquee (upload runs in the canvas layer). */
-  onConfirm: (result: FocusCropConfirm) => void;
+  /**
+   * Confirm the current marquee (upload runs in the canvas layer). Returns
+   * whether the confirm was ACCEPTED — a gate rejection (pool full, source
+   * gone) returns false and the marquee is kept, so the user's careful
+   * selection survives a fixable rejection (round-3).
+   */
+  onConfirm: (result: FocusCropConfirm) => boolean;
   /** Exit the whole focus session (Esc with no marquee). */
   onExit: () => void;
 }
@@ -102,6 +114,13 @@ export function FocusCropOverlay({
   // Last measured box, read OUTSIDE state updaters (StrictMode-safe: no
   // side effects inside a setState updater).
   const prevBoxRef = React.useRef<CropRect | null>(null);
+  // The img ELEMENT the marquee belongs to: a handling cycle unmounts and
+  // remounts the img, killing element-bound observers and orphaning the
+  // src baseline — measure() rebinds + re-baselines on identity change
+  // (round-3, HIGH). The ResizeObserver is measure-managed for the same
+  // reason (an effect-bound one would stay on the dead element).
+  const lastImgElRef = React.useRef<HTMLImageElement | null>(null);
+  const resizeObsRef = React.useRef<ResizeObserver | null>(null);
 
   const measure = React.useCallback((): void => {
     const root = rootRef.current;
@@ -111,6 +130,21 @@ export function FocusCropOverlay({
     if (!root || !(img instanceof HTMLImageElement)) {
       setBox(null);
       return;
+    }
+    if (lastImgElRef.current !== img) {
+      if (lastImgElRef.current !== null) {
+        // The img REMOUNTED (handling cycle / regenerate): the marquee and
+        // baselines belong to the dead element — start fresh (round-3).
+        setRect(null);
+        measuredSrcRef.current = null;
+        prevBoxRef.current = null;
+      }
+      lastImgElRef.current = img;
+      if (typeof ResizeObserver !== 'undefined') {
+        resizeObsRef.current?.disconnect();
+        resizeObsRef.current = new ResizeObserver(measure);
+        resizeObsRef.current.observe(img);
+      }
     }
     const rootRect = root.getBoundingClientRect();
     const imgRect = img.getBoundingClientRect();
@@ -176,6 +210,11 @@ export function FocusCropOverlay({
     setRatio(null);
     interactionRef.current = null;
     measuredSrcRef.current = null;
+    // The geometry baseline must die with the target too — a surviving
+    // prevBox let the measure's rescale branch resurrect the PREVIOUS
+    // node's marquee re-projected onto the new image (round-3, HIGH).
+    prevBoxRef.current = null;
+    lastImgElRef.current = null;
   }, [nodeId]);
 
   // Re-measure on mount, on any viewport change, on node drag, on window
@@ -185,26 +224,34 @@ export function FocusCropOverlay({
   React.useLayoutEffect(() => {
     measure();
     window.addEventListener('resize', measure);
-    const img = document.querySelector(
-      `.react-flow__node[data-id="${CSS.escape(nodeId)}"] [data-testid=image-node-img]`,
+    // Observe the node CONTAINER, not the img (round-3): a handling cycle
+    // REMOUNTS the img, permanently killing element-bound observers.
+    // childList catches the remount, attributes catches both the src swap
+    // (same-size regenerate, round-2) and node style resizes; the
+    // measure-managed ResizeObserver rebinds itself per img identity.
+    const container = document.querySelector(
+      `.react-flow__node[data-id="${CSS.escape(nodeId)}"]`,
     );
-    const ro =
-      typeof ResizeObserver !== 'undefined' && img
-        ? new ResizeObserver(measure)
-        : null;
-    if (ro && img) ro.observe(img);
-    // A same-aspect content swap changes NO geometry (w-full h-auto keeps
-    // the box pixel-identical), so watch the src attribute itself — the
-    // ResizeObserver never fires for it (adversarial round-2).
-    const mo = img ? new MutationObserver(measure) : null;
-    if (mo && img) mo.observe(img, { attributes: true, attributeFilter: ['src'] });
+    const mo = container ? new MutationObserver(measure) : null;
+    if (mo && container) {
+      mo.observe(container, { childList: true, subtree: true, attributes: true });
+    }
     return () => {
       window.removeEventListener('resize', measure);
-      ro?.disconnect();
       mo?.disconnect();
     };
   }, [measure, transform, nodePosition.x, nodePosition.y, nodeId]);
 
+
+  // Disconnect the measure-managed ResizeObserver on FINAL unmount only —
+  // the measure effect's cleanup runs on every transform change and must
+  // not tear down an observer that outlives it.
+  React.useEffect(
+    () => () => {
+      resizeObsRef.current?.disconnect();
+    },
+    [],
+  );
 
   // Esc: clear the marquee first; with nothing drawn, exit the session.
   // Bubble phase, never capture (adversarial 2026-07-16: a window CAPTURE
@@ -337,15 +384,11 @@ export function FocusCropOverlay({
     const interaction = interactionRef.current;
     if (interaction && e.pointerId !== interaction.pointerId) return;
     interactionRef.current = null;
-    // A bare click (or a sub-minimum scribble) ends a DRAW with a rect too
-    // small to ever confirm — discard it, or an invisible zero-size marquee
-    // dims the whole image, disables Confirm, and eats an Esc stage
-    // (adversarial round-2, HIGH).
-    if (
-      interaction?.type === 'draw' &&
-      rectRef.current &&
-      !isCropValid(rectRef.current)
-    ) {
+    // Invariant (round-2 HIGH + round-3): NO gesture may end with a
+    // non-null sub-minimum rect — a bare click's zero-size draw and a
+    // resize collapsed onto its anchor both leave an invisible marquee
+    // that dims the image, disables Confirm, and eats an Esc stage.
+    if (interaction && rectRef.current && !isCropValid(rectRef.current)) {
       setRect(null);
     }
     setTick((n) => n + 1);
@@ -388,12 +431,41 @@ export function FocusCropOverlay({
       toast.error(t('canvas.generatePanel.focusExportFailed'));
       return;
     }
+    if (measuredSrcRef.current === null) {
+      // No validated baseline (img never carried a src) — same treatment
+      // as a not-yet-decodable source.
+      toast.error(t('canvas.generatePanel.focusExportFailed'));
+      return;
+    }
     const natural = { width: img.naturalWidth, height: img.naturalHeight };
-    onConfirm({ crop: toNaturalCrop(rect, bounds, natural), natural });
-    setRect(null);
+    const accepted = onConfirm({
+      crop: toNaturalCrop(rect, bounds, natural),
+      natural,
+      sourceSrc: measuredSrcRef.current,
+    });
+    // A gate rejection (pool full, source gone) keeps the marquee — the
+    // user's careful selection must survive a fixable rejection (round-3).
+    if (accepted) setRect(null);
   };
 
   const confirmDisabled = rect === null || !isCropValid(rect);
+
+  // Measured controls-bar size for the viewport clamp (round-3: a guessed
+  // half-width let the Confirm end of a ~400px bar overflow the canvas at
+  // the edges). State-guarded write per commit; jsdom (offsetWidth 0)
+  // keeps the defaults.
+  const barRef = React.useRef<HTMLDivElement>(null);
+  const [barSize, setBarSize] = React.useState({ width: 360, height: 36 });
+  React.useLayoutEffect(() => {
+    const w = barRef.current?.offsetWidth ?? 0;
+    const h = barRef.current?.offsetHeight ?? 0;
+    if (w > 0 && (w !== barSize.width || h !== barSize.height)) {
+      setBarSize({ width: w, height: h });
+    }
+    // box: the bar (re)mounts with the measured layers; ratio: the pressed
+    // preset changes button styling. The size-diff guard above makes any
+    // extra run a no-op, never a loop.
+  }, [box, ratio, barSize.width, barSize.height]);
 
   return (
     <div
@@ -439,17 +511,27 @@ export function FocusCropOverlay({
           </div>
           {/* Controls bar below the image: ratio presets + cancel / confirm. */}
           <div
+            ref={barRef}
             data-testid='focus-crop-controls'
             className='pointer-events-auto absolute flex -translate-x-1/2 items-center gap-1 rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
-            // Clamped into the canvas viewport: an image whose bottom edge
-            // sits below the fold must not push Confirm out of reach
-            // (adversarial 2026-07-16). 44px ~ the bar's own height + gap.
+            // Clamped into the canvas viewport with the bar's MEASURED size
+            // (round-3): an image at the fold / the edge must never push the
+            // Confirm end out of reach.
             style={{
               left: rootSize
-                ? Math.min(Math.max(box.x + box.width / 2, 180), rootSize.width - 180)
+                ? Math.min(
+                  Math.max(box.x + box.width / 2, barSize.width / 2 + 8),
+                  rootSize.width - barSize.width / 2 - 8,
+                )
                 : box.x + box.width / 2,
               top: rootSize
-                ? Math.max(8, Math.min(box.y + box.height + 8, rootSize.height - 44))
+                ? Math.max(
+                  8,
+                  Math.min(
+                    box.y + box.height + 8,
+                    rootSize.height - barSize.height - 8,
+                  ),
+                )
                 : box.y + box.height + 8,
             }}
           >

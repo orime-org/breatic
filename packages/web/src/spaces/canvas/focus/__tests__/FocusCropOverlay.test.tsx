@@ -29,7 +29,7 @@ beforeEach(() => {
  * @returns Testing-library render result.
  */
 function renderOverlay(
-  onConfirm = vi.fn(),
+  onConfirm = vi.fn(() => true),
   onExit = vi.fn(),
 ): ReturnType<typeof render> {
   const result = render(
@@ -124,7 +124,7 @@ describe('FocusCropOverlay', () => {
   });
 
   it('confirm maps the marquee to natural pixels and clears it', () => {
-    const onConfirm = vi.fn();
+    const onConfirm = vi.fn(() => true);
     renderOverlay(onConfirm);
     const img = screen.getByTestId('image-node-img');
     // Natural 800×600 vs 400×300 display → ×2 mapping.
@@ -135,6 +135,7 @@ describe('FocusCropOverlay', () => {
     expect(onConfirm).toHaveBeenCalledWith({
       crop: { x: 100, y: 100, width: 200, height: 160 },
       natural: { width: 800, height: 600 },
+      sourceSrc: 'https://cdn/original.png',
     });
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
   });
@@ -245,6 +246,30 @@ describe('FocusCropOverlay', () => {
     img.setAttribute('src', 'https://cdn/regenerated.png');
     fireEvent.click(screen.getByTestId('focus-crop-confirm'));
     expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+  });
+
+  it('a REJECTED confirm keeps the marquee (pool full is fixable — round-3)', () => {
+    const onConfirm = vi.fn(() => false);
+    renderOverlay(onConfirm);
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 800 });
+    Object.defineProperty(img, 'naturalHeight', { value: 600 });
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+  });
+
+  it('a resize collapsed onto its anchor is discarded on release (round-3: any gesture, not just draw)', () => {
+    renderOverlay();
+    const layer = screen.getByTestId('focus-crop-layer');
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    const handle = screen.getByTestId('focus-crop-handle-se');
+    // Drag SE onto the NW anchor: rect collapses below the minimum.
+    fireEvent.pointerDown(handle, { clientX: 250, clientY: 180, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(layer, { clientX: 152, clientY: 102, pointerId: 1 });
+    fireEvent.pointerUp(layer, { pointerId: 1 });
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
   });
 

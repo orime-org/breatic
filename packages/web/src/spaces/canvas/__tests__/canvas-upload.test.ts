@@ -4,6 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import {
+  isReportableAssetUrl,
   fileToNodeSpec,
   fillNodeFromFile,
   runMediaUpload,
@@ -426,6 +427,16 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
       { id: 'd', type: 'image', data: { focusImages: [crop('f3', shared)] } },
     ];
     expect(computeDeletedAssetEntries(deleted2, all2, 'sp-1')).toEqual([]);
+  });
+
+  it('isReportableAssetUrl mirrors the server parse contract (round-3)', () => {
+    expect(isReportableAssetUrl('https://cdn/x.png')).toBe(true);
+    expect(isReportableAssetUrl('http://cdn/x.png')).toBe(true);
+    // Prefix-passing but unparseable / wrong scheme: rejected — one such
+    // URL used to 400 the WHOLE multi-entry delete report batch.
+    expect(isReportableAssetUrl('https://a b/x.png')).toBe(false);
+    expect(isReportableAssetUrl('data:image/png;base64,xx')).toBe(false);
+    expect(isReportableAssetUrl('blob:https://a/b')).toBe(false);
   });
 
   it('assetUrlSurvives sees content, cover, and focus crops', () => {

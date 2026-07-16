@@ -527,22 +527,24 @@ function CanvasSpaceInner({
   // pending rail entry, then run crop-export → upload → focusImages append.
   // Everything reads FRESH store state — the upload outlives this closure.
   const onFocusCropConfirm = React.useCallback(
-    (result: { crop: CropRect }): void => {
+    (result: { crop: CropRect; sourceSrc: string }): boolean => {
       const session = useCanvasStore.getState().pickSession;
-      if (session?.purpose !== 'focus') return;
+      if (session?.purpose !== 'focus') return false;
       const panelNodeId = session.nodeId;
       const graph = useCanvasGraphStore.getState();
       const source = graph.flowNodes.find((n) => n.id === focusCropTargetId);
       const data = source?.data as
         | { content?: unknown; name?: unknown }
         | undefined;
-      const sourceUrl = typeof data?.content === 'string' ? data.content : '';
+      // Export EXACTLY the src the marquee was validated against (round-3):
+      // the graph store can lead the DOM by a commit after a collaborator's
+      // regenerate — exporting the store's newer URL at this marquee's
+      // coordinates would crop the wrong image. Copy semantics make the
+      // validated URL always exportable (assets are never deleted).
+      const sourceUrl = result.sourceSrc;
       if (sourceUrl.length === 0) {
-        // The source vanished between marquee draw and Confirm (a
-        // collaborator deleted / emptied it) — say so instead of a silent
-        // no-op that reads as a lost crop (adversarial 2026-07-16).
         toast.error(t('canvas.generatePanel.focusExportFailed'));
-        return;
+        return false;
       }
       const sourceName = typeof data?.name === 'string' ? data.name : '';
       const cap = getCachedReferencePoolCap();
@@ -553,8 +555,10 @@ function CanvasSpaceInner({
           pendingFocusCount(panelNodeId) >=
           cap
       ) {
+        // Rejection keeps the marquee (the overlay clears only on true) —
+        // the user can free a slot and re-confirm the same selection.
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
-        return;
+        return false;
       }
       const pendingId = newId();
       store.addPendingFocusUpload({
@@ -618,6 +622,7 @@ function CanvasSpaceInner({
           makeId: newId,
         },
       );
+      return true;
     },
     [focusCropTargetId, projectId, spaceId, t],
   );
@@ -1184,7 +1189,16 @@ function CanvasSpaceInner({
       // (incoming edges + focus crops ≥ the knob) blocks the new edge with
       // a guard toast. Null cap = knob not loaded → soft cap stays off.
       const cap = getCachedReferencePoolCap();
+      // A re-drag of an EXISTING connection overwrites the same deterministic
+      // edge id (idempotent) — it adds nothing to the pool, so it must not
+      // trip the cap gate into a false "pool full" rejection (round-3).
+      const duplicateEdge = useCanvasGraphStore
+        .getState()
+        .flowEdges.some(
+          (e) => e.id === `${connection.source}->${connection.target}`,
+        );
       if (
+        !duplicateEdge &&
         cap !== null &&
         referencePoolCount(
           useCanvasGraphStore.getState().flowEdges,

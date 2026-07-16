@@ -27,7 +27,10 @@ import {
   type CanvasEdge,
   type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
-import { assetUrlSurvives } from '@web/spaces/canvas/canvas-upload';
+import {
+  assetUrlSurvives,
+  isReportableAssetUrl,
+} from '@web/spaces/canvas/canvas-upload';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -423,7 +426,11 @@ function GeneratePanelBody({
       if (item.focus === true) {
         const focusId = focusIdOfRefId(item.refId);
         if (focusId === null) return;
-        removeNodeFocusImage(projectId, spaceId, nodeId, focusId);
+        // Gate everything below on the ACTUAL removal: a double-click or a
+        // cross-client ✕ race hits a no-op here, and reporting it anyway
+        // would append a duplicate asset:deleted activity row (round-3).
+        const removed = removeNodeFocusImage(projectId, spaceId, nodeId, focusId);
+        if (!removed) return;
         // Delete-side ledger report (adversarial round-2): a crop is an
         // uploaded asset — mirror the node-delete accounting. The survivor
         // check reads the FRESH post-removal graph, so the removed instance
@@ -433,7 +440,7 @@ function GeneratePanelBody({
         const url = item.thumbnail;
         if (
           typeof url === 'string' &&
-          url.length > 0 &&
+          isReportableAssetUrl(url) &&
           !assetUrlSurvives(url, readCanvasGraph(projectId, spaceId).nodes)
         ) {
           void assetsApi

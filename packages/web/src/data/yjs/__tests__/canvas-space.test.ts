@@ -609,17 +609,50 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(data.get('focusImages')).toEqual([crop1, crop2]);
   });
 
-  it('focus add and remove are undoable structural writes (CANVAS_UNDO)', () => {
+  it('focus APPEND is a content arrival — NOT undo-tracked (CONTENT_WRITE, round-3)', () => {
+    // The append lands asynchronously when the crop upload finishes — the
+    // same rule as upload completion (#8): a slow upload landing seconds
+    // later must not steal the undo top or wipe the redo stack.
     addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
     const undo = createCanvasUndoManager(doc());
     const depth = undo.undoStack.length;
     addNodeFocusImage(PID, SID, 'gen', crop1);
+    expect(undo.undoStack.length).toBe(depth);
+  });
+
+  it('focus REMOVE (a synchronous ✕ click) IS undoable (CANVAS_UNDO)', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { focusImages: [crop1] }, { id: 'gen' }),
+    );
+    const undo = createCanvasUndoManager(doc());
+    const depth = undo.undoStack.length;
+    expect(removeNodeFocusImage(PID, SID, 'gen', 'f1')).toBe(true);
     expect(undo.undoStack.length).toBe(depth + 1);
     undo.undo();
     const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
-    expect(data.has('focusImages')).toBe(false);
+    expect(data.get('focusImages')).toEqual([crop1]);
+  });
+
+  it('removeNodeFocusImage answers whether the TARGET was removed (report gate, round-3)', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields(
+        'image',
+        { focusImages: [crop1, null] as unknown as typeof crop1[] },
+        { id: 'gen' },
+      ),
+    );
+    // Heal-only rewrite (unknown id, malformed entry dropped) = false.
+    expect(removeNodeFocusImage(PID, SID, 'gen', 'ghost')).toBe(false);
+    // Real removal = true; the repeat (already gone) = false.
+    expect(removeNodeFocusImage(PID, SID, 'gen', 'f1')).toBe(true);
+    expect(removeNodeFocusImage(PID, SID, 'gen', 'f1')).toBe(false);
+    expect(removeNodeFocusImage(PID, SID, 'ghost-node', 'f1')).toBe(false);
   });
 
   it('getOrCreatePromptFragment creates + persists a Y.XmlFragment on the node prompt', () => {

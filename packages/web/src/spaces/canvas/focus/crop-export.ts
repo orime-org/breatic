@@ -32,7 +32,12 @@ export async function exportCropBlob(
 ): Promise<Blob> {
   const img = new Image();
   img.crossOrigin = 'anonymous';
-  img.src = `${sourceUrl}${sourceUrl.includes('?') ? '&' : '?'}focus-crop=1`;
+  // URL-API construction (round-3): naive string-append lands the param
+  // AFTER a `#fragment`, where it never reaches the wire — silently
+  // disabling the fresh-CORS-fetch defense for fragment-carrying URLs.
+  const busted = new URL(sourceUrl, window.location.href);
+  busted.searchParams.set('focus-crop', '1');
+  img.src = busted.href;
   await img.decode();
   const canvas = document.createElement('canvas');
   canvas.width = crop.width;

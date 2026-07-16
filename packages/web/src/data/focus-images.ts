@@ -24,6 +24,10 @@ import type { FocusImage } from '@breatic/shared';
  */
 export function validFocusImages(raw: unknown): FocusImage[] {
   if (!Array.isArray(raw)) return [];
+  // First occurrence wins on duplicate ids: two valid-shaped entries sharing
+  // an id (hostile / buggy client) would collide React keys, make the ✕
+  // remove both, and double-count the pool (adversarial round-3).
+  const seen = new Set<string>();
   return raw
     .filter(
       (f): f is FocusImage =>
@@ -35,7 +39,9 @@ export function validFocusImages(raw: unknown): FocusImage[] {
         (f as FocusImage).url.length > 0 &&
         typeof (f as FocusImage).name === 'string' &&
         Number.isFinite((f as FocusImage).width) &&
-        Number.isFinite((f as FocusImage).height),
+        Number.isFinite((f as FocusImage).height) &&
+        !seen.has((f as FocusImage).id) &&
+        (seen.add((f as FocusImage).id), true),
     )
     .map((f) => ({
       id: f.id,

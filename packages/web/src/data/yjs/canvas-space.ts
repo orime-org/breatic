@@ -603,8 +603,12 @@ export function clearNodeStyleImage(
  * Append a focus crop to a node's `focusImages` (#1782) — a plain array
  * value on the data Y.Map, rewritten whole (last-write-wins like `params`;
  * node data holds plain values only, see {@link buildDataMap}). Creates the
- * array on first add. Undoable (CANVAS_UNDO). No-op when the node or its
- * data map is missing.
+ * array on first add. CONTENT_WRITE origin, NOT undo-tracked (adversarial
+ * round-3): the append lands asynchronously when the crop upload finishes —
+ * the same rule as upload completion (#8), or a slow upload landing seconds
+ * later would steal the undo top and wipe the redo stack mid-flow. Removal
+ * (the ✕, a synchronous user action) stays undoable. No-op when the node or
+ * its data map is missing.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the generative node the crop belongs to.
@@ -626,7 +630,7 @@ export function addNodeFocusImage(
   // every rewrite HEALS the array through the shared sanitizer so
   // malformed remote entries can never accumulate (adversarial 2026-07-16).
   const list = validFocusImages(data.get('focusImages'));
-  doc.transact(() => data.set('focusImages', [...list, image]), CANVAS_UNDO);
+  doc.transact(() => data.set('focusImages', [...list, image]), CONTENT_WRITE);
 }
 
 /**
@@ -639,32 +643,38 @@ export function addNodeFocusImage(
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the generative node the crop belongs to.
  * @param focusId - Id of the focus crop to remove.
+ * @returns True only when the TARGET crop was actually removed — a no-op
+ *   (already gone) or a heal-only rewrite returns false, so the caller can
+ *   gate the delete-side ledger report and never double-report a race
+ *   (adversarial round-3).
  */
 export function removeNodeFocusImage(
   projectId: string,
   spaceId: string,
   nodeId: string,
   focusId: string,
-): void {
+): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const node = nodesMap.get(nodeId);
-  if (!node) return;
+  if (!node) return false;
   const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!(data instanceof Y.Map)) return false;
   const prev = data.get('focusImages');
-  if (!Array.isArray(prev)) return;
+  if (!Array.isArray(prev)) return false;
   // Sanitize BEFORE dereferencing — a null/primitive entry from a remote
   // client used to throw on `f.id` here (adversarial 2026-07-16). The
   // rewrite drops the removed id AND heals malformed entries in one write;
   // pure no-op only when nothing would change (no phantom undo entry).
   const list = validFocusImages(prev);
   const next = list.filter((f) => f.id !== focusId);
-  if (next.length === list.length && list.length === prev.length) return;
+  const removed = next.length !== list.length;
+  if (!removed && list.length === prev.length) return false;
   doc.transact(() => {
     if (next.length === 0) data.delete('focusImages');
     else data.set('focusImages', next);
   }, CANVAS_UNDO);
+  return removed;
 }
 
 /**

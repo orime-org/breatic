@@ -309,6 +309,14 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm2.focusImages).toEqual([]);
   });
 
+  it('dedupes duplicate-id focus entries — first occurrence wins (round-3)', () => {
+    const a = { id: 'k', url: 'https://cdn/a.png', name: 'a', width: 1, height: 1 };
+    const b = { id: 'k', url: 'https://cdn/b.png', name: 'b', width: 1, height: 1 };
+    const nodes = [node('n1', imageView({ focusImages: [a, b] }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.focusImages).toEqual([a]);
+  });
+
   it('adds @-mentioned focus crop URLs to the i2i payload after node refs (#1782)', () => {
     const crop = {
       id: 'f1',
