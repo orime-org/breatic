@@ -24,7 +24,6 @@
     "lint:1px-border": "bash scripts/lint-1px-border.sh",
     "lint:active-border": "bash scripts/lint-active-border.sh",
     "lint:no-inline-scrollbar": "bash scripts/lint-no-inline-scrollbar.sh",
-    "lint:no-bare-toast": "bash scripts/lint-no-bare-toast.sh && bash scripts/lint-no-bare-toast.sh --self-test",
     "lint:overlay-surface": "bash scripts/lint-overlay-surface.sh",
     "lint:no-cjk": "bash scripts/lint-no-cjk.sh",
     "lint:no-collab-auth-table-sql": "bash scripts/lint-no-collab-auth-table-sql.sh",

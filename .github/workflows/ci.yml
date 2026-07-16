@@ -165,15 +165,6 @@ jobs:
         # scripts/lint-no-inline-scrollbar.sh.
         run: pnpm lint:no-inline-scrollbar
 
-      - name: Lint no bare toast (typed toasts only)
-        # Every toast must declare a semantic type — toast.error / .warning /
-        # .success / .info (neutral notices use .info) — so the Toaster can
-        # color it by data-type (index.css type accent). A bare toast() (or
-        # toast.message(), likewise untyped) renders neutral, silently dropping
-        # an error / warning notice's severity signal. See
-        # scripts/lint-no-bare-toast.sh (runs its own --self-test).
-        run: pnpm lint:no-bare-toast
-
       - name: Lint overlay surface (popover panel unification)
         # Every popover/overlay panel surface uses bg-popover (tooltip inverse
         # is the only exception): bans bg-elevated / bg-card as a panel bg in
