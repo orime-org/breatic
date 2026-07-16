@@ -23,6 +23,8 @@ import {
   isNodeLocked,
   nodeExists,
   setNodeStyleImage,
+  addNodeFocusImage,
+  removeNodeFocusImage,
   clearNodeStyleImage,
   readCanvasGraph,
   readNodeLeaseGen,
@@ -501,6 +503,83 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
   it('setNodeStyleImage / clearNodeStyleImage are no-ops when the node is missing', () => {
     expect(() => setNodeStyleImage(PID, SID, 'ghost', 'u')).not.toThrow();
     expect(() => clearNodeStyleImage(PID, SID, 'ghost')).not.toThrow();
+  });
+
+  // ── Focus images (#1782): frontend-owned crop copies, plain-array LWW ──
+  const crop1 = {
+    id: 'f1',
+    url: 'https://cdn/crop-1.png',
+    name: 'Image Node 26',
+    width: 640,
+    height: 360,
+  };
+  const crop2 = {
+    id: 'f2',
+    url: 'https://cdn/crop-2.png',
+    name: 'Image Node 27',
+    width: 320,
+    height: 320,
+  };
+
+  it('addNodeFocusImage creates the array on first add and appends in order', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
+    addNodeFocusImage(PID, SID, 'gen', crop1);
+    addNodeFocusImage(PID, SID, 'gen', crop2);
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('focusImages')).toEqual([crop1, crop2]);
+  });
+
+  it('removeNodeFocusImage removes by id and deletes the key when empty', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { focusImages: [crop1, crop2] }, { id: 'gen' }),
+    );
+    removeNodeFocusImage(PID, SID, 'gen', 'f1');
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('focusImages')).toEqual([crop2]);
+    // Removing the last entry deletes the key — absent is the natural
+    // "none created" state (mirrors clearNodeStyleImage).
+    removeNodeFocusImage(PID, SID, 'gen', 'f2');
+    expect(data.has('focusImages')).toBe(false);
+  });
+
+  it('removeNodeFocusImage with an unknown id is a no-op (no write, no undo entry)', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { focusImages: [crop1] }, { id: 'gen' }),
+    );
+    const undo = createCanvasUndoManager(doc());
+    const depth = undo.undoStack.length;
+    removeNodeFocusImage(PID, SID, 'gen', 'ghost-id');
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('focusImages')).toEqual([crop1]);
+    expect(undo.undoStack.length).toBe(depth);
+  });
+
+  it('addNodeFocusImage / removeNodeFocusImage are no-ops when the node is missing', () => {
+    expect(() => addNodeFocusImage(PID, SID, 'ghost', crop1)).not.toThrow();
+    expect(() => removeNodeFocusImage(PID, SID, 'ghost', 'f1')).not.toThrow();
+  });
+
+  it('focus add and remove are undoable structural writes (CANVAS_UNDO)', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
+    const undo = createCanvasUndoManager(doc());
+    const depth = undo.undoStack.length;
+    addNodeFocusImage(PID, SID, 'gen', crop1);
+    expect(undo.undoStack.length).toBe(depth + 1);
+    undo.undo();
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.has('focusImages')).toBe(false);
   });
 
   it('getOrCreatePromptFragment creates + persists a Y.XmlFragment on the node prompt', () => {

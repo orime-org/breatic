@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import * as Y from 'yjs';
-import type { CanvasNodeFields, NodeType } from '@breatic/shared';
+import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
 
 import { docName, getDoc } from '@web/data/yjs/manager';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
@@ -596,6 +596,68 @@ export function clearNodeStyleImage(
   if (!(data instanceof Y.Map)) return;
   if (!data.has('styleImageUrl')) return;
   doc.transact(() => data.delete('styleImageUrl'), CANVAS_UNDO);
+}
+
+/**
+ * Append a focus crop to a node's `focusImages` (#1782) — a plain array
+ * value on the data Y.Map, rewritten whole (last-write-wins like `params`;
+ * node data holds plain values only, see {@link buildDataMap}). Creates the
+ * array on first add. Undoable (CANVAS_UNDO). No-op when the node or its
+ * data map is missing.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the generative node the crop belongs to.
+ * @param image - The focus crop to append (see FocusImage copy semantics).
+ */
+export function addNodeFocusImage(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  image: FocusImage,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  const prev = data.get('focusImages');
+  const list = Array.isArray(prev) ? (prev as FocusImage[]) : [];
+  doc.transact(() => data.set('focusImages', [...list, image]), CANVAS_UNDO);
+}
+
+/**
+ * Remove a focus crop from a node's `focusImages` by id (#1782) — the ✕ on
+ * a focus entry in the reference rail. Deletes the key when the last entry
+ * goes (absent = the natural "none created" state, mirroring
+ * {@link clearNodeStyleImage}). Undoable (CANVAS_UNDO). No-op (no write, no
+ * undo entry) when the node, the array, or the id is missing.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the generative node the crop belongs to.
+ * @param focusId - Id of the focus crop to remove.
+ */
+export function removeNodeFocusImage(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  focusId: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  const prev = data.get('focusImages');
+  if (!Array.isArray(prev)) return;
+  const list = prev as FocusImage[];
+  const next = list.filter((f) => f.id !== focusId);
+  if (next.length === list.length) return;
+  doc.transact(() => {
+    if (next.length === 0) data.delete('focusImages');
+    else data.set('focusImages', next);
+  }, CANVAS_UNDO);
 }
 
 /**
