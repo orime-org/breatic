@@ -569,6 +569,46 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(() => removeNodeFocusImage(PID, SID, 'ghost', 'f1')).not.toThrow();
   });
 
+  it('removeNodeFocusImage never throws on malformed remote entries and heals them (adversarial 2026-07-16)', () => {
+    // Whole-array LWW means any client can write any shape; a null entry
+    // used to make the ✕ click throw on `f.id`. Removal now sanitizes:
+    // drops the removed id AND every malformed entry in the same write.
+    addNode(
+      PID,
+      SID,
+      sampleFields(
+        'image',
+        {
+          focusImages: [crop1, null, { id: '', url: 'u', name: 'x' }, crop2] as unknown as
+            typeof crop1[],
+        },
+        { id: 'gen' },
+      ),
+    );
+    expect(() => removeNodeFocusImage(PID, SID, 'gen', 'f1')).not.toThrow();
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('focusImages')).toEqual([crop2]);
+  });
+
+  it('addNodeFocusImage heals malformed remote entries while appending', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields(
+        'image',
+        { focusImages: [null, crop1] as unknown as typeof crop1[] },
+        { id: 'gen' },
+      ),
+    );
+    addNodeFocusImage(PID, SID, 'gen', crop2);
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('focusImages')).toEqual([crop1, crop2]);
+  });
+
   it('focus add and remove are undoable structural writes (CANVAS_UNDO)', () => {
     addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
     const undo = createCanvasUndoManager(doc());

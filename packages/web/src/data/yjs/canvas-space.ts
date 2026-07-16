@@ -5,6 +5,7 @@ import * as React from 'react';
 import * as Y from 'yjs';
 import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
 
+import { validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
 import { toNodeView } from '@web/spaces/canvas/types/node-view';
@@ -621,8 +622,10 @@ export function addNodeFocusImage(
   if (!node) return;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
-  const prev = data.get('focusImages');
-  const list = Array.isArray(prev) ? (prev as FocusImage[]) : [];
+  // Whole-array LWW means any client can write any shape (untrusted) —
+  // every rewrite HEALS the array through the shared sanitizer so
+  // malformed remote entries can never accumulate (adversarial 2026-07-16).
+  const list = validFocusImages(data.get('focusImages'));
   doc.transact(() => data.set('focusImages', [...list, image]), CANVAS_UNDO);
 }
 
@@ -651,9 +654,13 @@ export function removeNodeFocusImage(
   if (!(data instanceof Y.Map)) return;
   const prev = data.get('focusImages');
   if (!Array.isArray(prev)) return;
-  const list = prev as FocusImage[];
+  // Sanitize BEFORE dereferencing — a null/primitive entry from a remote
+  // client used to throw on `f.id` here (adversarial 2026-07-16). The
+  // rewrite drops the removed id AND heals malformed entries in one write;
+  // pure no-op only when nothing would change (no phantom undo entry).
+  const list = validFocusImages(prev);
   const next = list.filter((f) => f.id !== focusId);
-  if (next.length === list.length) return;
+  if (next.length === list.length && list.length === prev.length) return;
   doc.transact(() => {
     if (next.length === 0) data.delete('focusImages');
     else data.set('focusImages', next);

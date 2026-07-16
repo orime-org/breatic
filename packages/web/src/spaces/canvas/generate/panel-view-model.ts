@@ -20,6 +20,7 @@ import {
   focusRefId,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
+import { validFocusImages } from '@web/data/focus-images';
 import {
   filterModelsByMode,
   resolveModelForMode,
@@ -264,23 +265,9 @@ export function buildGeneratePanelViewModel(input: {
   // connected but not @-mentioned contributes nothing; no @ at all → empty, and
   // the #1675 execute gate then blocks submitting an i2i task with no source.
   // Focus crops (#1782): stored on the node as a plain array — collaborative
-  // Yjs data, untrusted — so anything but an array is none, and every entry
-  // must carry the full FocusImage shape or it is dropped.
-  const rawFocus = content?.focusImages;
-  const focusImages: FocusImage[] = Array.isArray(rawFocus)
-    ? rawFocus.filter(
-      (f): f is FocusImage =>
-        typeof f === 'object' &&
-          f !== null &&
-          typeof (f as FocusImage).id === 'string' &&
-          (f as FocusImage).id.length > 0 &&
-          typeof (f as FocusImage).url === 'string' &&
-          (f as FocusImage).url.length > 0 &&
-          typeof (f as FocusImage).name === 'string' &&
-          Number.isFinite((f as FocusImage).width) &&
-          Number.isFinite((f as FocusImage).height),
-    )
-    : [];
+  // Yjs data, untrusted. ONE sanitizer shared with the pool-cap count so
+  // every reader agrees on what an entry is (validFocusImages).
+  const focusImages: FocusImage[] = validFocusImages(content?.focusImages);
 
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
   const referenceUrls =

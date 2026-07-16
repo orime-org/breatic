@@ -52,10 +52,11 @@ interface FocusCropOverlayProps {
 }
 
 /** An in-progress pointer interaction on the marquee layer. */
-type Interaction =
+type Interaction = { pointerId: number } & (
   | { type: 'draw'; anchor: { x: number; y: number } }
   | { type: 'move'; last: { x: number; y: number } }
-  | { type: 'resize'; handle: CropHandle };
+  | { type: 'resize'; handle: CropHandle }
+);
 
 /**
  * The focus crop overlay (#1782): an absolutely-positioned marquee editor
@@ -85,11 +86,21 @@ export function FocusCropOverlay({
   // Viewport transform — any pan / zoom re-measures the image box.
   const transform = useStore((s) => s.transform);
   const [box, setBox] = React.useState<CropRect | null>(null);
+  const [rootSize, setRootSize] = React.useState<{ width: number; height: number } | null>(null);
   const [rect, setRect] = React.useState<CropRect | null>(null);
   const [ratio, setRatio] = React.useState<number | null>(null);
   const interactionRef = React.useRef<Interaction | null>(null);
   // Force a state tick on interaction end so the controls bar re-evaluates.
   const [, setTick] = React.useState(0);
+  // Mirror of `rect` for listeners that must read it without re-binding.
+  const rectRef = React.useRef<CropRect | null>(null);
+  rectRef.current = rect;
+  // The img src the current marquee was drawn against — a content swap
+  // (collaborator regenerate) invalidates the marquee entirely.
+  const measuredSrcRef = React.useRef<string | null>(null);
+  // Last measured box, read OUTSIDE state updaters (StrictMode-safe: no
+  // side effects inside a setState updater).
+  const prevBoxRef = React.useRef<CropRect | null>(null);
 
   const measure = React.useCallback((): void => {
     const root = rootRef.current;
@@ -102,45 +113,99 @@ export function FocusCropOverlay({
     }
     const rootRect = root.getBoundingClientRect();
     const imgRect = img.getBoundingClientRect();
-    setBox({
+    const next = {
       x: imgRect.left - rootRect.left,
       y: imgRect.top - rootRect.top,
       width: imgRect.width,
       height: imgRect.height,
-    });
+    };
+    setRootSize({ width: rootRect.width, height: rootRect.height });
+    const src = img.getAttribute('src');
+    const prev = prevBoxRef.current;
+    if (measuredSrcRef.current !== null && measuredSrcRef.current !== src) {
+      // Content swap under the marquee (adversarial 2026-07-16): the old
+      // display rect selects an arbitrary region of the NEW image —
+      // discard it rather than crop the wrong thing.
+      setRect(null);
+    } else if (
+      prev &&
+      rectRef.current &&
+      (prev.width !== next.width || prev.height !== next.height)
+    ) {
+      // Zoom / node resize mid-marquee: keep the marquee glued to the SAME
+      // image region by rescaling it with the box (adversarial 2026-07-16:
+      // a stale display-px rect silently crops elsewhere).
+      const sx = next.width / prev.width;
+      const sy = next.height / prev.height;
+      const r = rectRef.current;
+      setRect({
+        x: r.x * sx,
+        y: r.y * sy,
+        width: r.width * sx,
+        height: r.height * sy,
+      });
+    }
+    measuredSrcRef.current = src;
+    prevBoxRef.current = next;
+    setBox(next);
   }, [nodeId]);
 
-  // Re-measure on mount, on any viewport change, on node drag, on resize.
+  // Re-measure on mount, on any viewport change, on node drag, on window
+  // resize — and on IMG layout/content changes the other signals miss (a
+  // collaborator resizing the node or a regenerate swapping the content
+  // never touches the local transform / nodePosition).
   React.useLayoutEffect(() => {
     measure();
     window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [measure, transform, nodePosition]);
+    const img = document.querySelector(
+      `.react-flow__node[data-id="${CSS.escape(nodeId)}"] [data-testid=image-node-img]`,
+    );
+    const ro =
+      typeof ResizeObserver !== 'undefined' && img
+        ? new ResizeObserver(measure)
+        : null;
+    if (ro && img) ro.observe(img);
+    return () => {
+      window.removeEventListener('resize', measure);
+      ro?.disconnect();
+    };
+  }, [measure, transform, nodePosition, nodeId]);
 
   // Switching the crop target discards the in-progress marquee.
   React.useEffect(() => {
     setRect(null);
     setRatio(null);
     interactionRef.current = null;
+    measuredSrcRef.current = null;
   }, [nodeId]);
 
   // Esc: clear the marquee first; with nothing drawn, exit the session.
+  // Bubble phase, never capture (adversarial 2026-07-16: a window CAPTURE
+  // listener with stopPropagation stole Esc from every popover / the @
+  // suggestion while the overlay was mounted). Surfaces that own their own
+  // Esc get priority two ways: a handler that preventDefault()s wins, and
+  // focus inside an editor / open overlay content skips us entirely.
   React.useEffect(() => {
     /**
      * Keydown listener implementing the two-stage Esc behavior.
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return;
-      e.stopPropagation();
-      setRect((prev) => {
-        if (prev) return null;
-        onExit();
-        return prev;
-      });
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const active = document.activeElement;
+      if (
+        active &&
+        (active.closest('.ProseMirror') !== null ||
+          active.closest('[role="dialog"],[role="menu"],[role="listbox"]') !==
+            null)
+      ) {
+        return;
+      }
+      if (rectRef.current) setRect(null);
+      else onExit();
     };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, [onExit]);
 
   // The root ALWAYS renders (measure needs its rect — a null-return here
@@ -168,10 +233,12 @@ export function FocusCropOverlay({
    * @param e - The pointer-down event.
    */
   const onLayerPointerDown = (e: React.PointerEvent): void => {
-    if (e.button !== 0) return;
+    // A second touch mid-interaction must not hijack / destroy the marquee
+    // (adversarial 2026-07-16): the first pointer owns the gesture.
+    if (e.button !== 0 || interactionRef.current) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const p = localPoint(e);
-    interactionRef.current = { type: 'draw', anchor: p };
+    interactionRef.current = { type: 'draw', anchor: p, pointerId: e.pointerId };
     setRect(drawRect(p, p, bounds, ratio));
   };
 
@@ -180,10 +247,14 @@ export function FocusCropOverlay({
    * @param e - The pointer-down event.
    */
   const onRectPointerDown = (e: React.PointerEvent): void => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || interactionRef.current) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    interactionRef.current = { type: 'move', last: localPoint(e) };
+    interactionRef.current = {
+      type: 'move',
+      last: localPoint(e),
+      pointerId: e.pointerId,
+    };
   };
 
   /**
@@ -194,10 +265,10 @@ export function FocusCropOverlay({
   const onHandlePointerDown =
     (handle: CropHandle) =>
       (e: React.PointerEvent): void => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || interactionRef.current) return;
         e.stopPropagation();
         e.currentTarget.setPointerCapture?.(e.pointerId);
-        interactionRef.current = { type: 'resize', handle };
+        interactionRef.current = { type: 'resize', handle, pointerId: e.pointerId };
       };
 
   /**
@@ -206,13 +277,13 @@ export function FocusCropOverlay({
    */
   const onPointerMove = (e: React.PointerEvent): void => {
     const interaction = interactionRef.current;
-    if (!interaction) return;
+    if (!interaction || e.pointerId !== interaction.pointerId) return;
     const p = localPoint(e);
     if (interaction.type === 'draw') {
       setRect(drawRect(interaction.anchor, p, bounds, ratio));
     } else if (interaction.type === 'move') {
       const { last } = interaction;
-      interactionRef.current = { type: 'move', last: p };
+      interactionRef.current = { type: 'move', last: p, pointerId: interaction.pointerId };
       setRect((prev) =>
         prev ? moveRect(prev, p.x - last.x, p.y - last.y, bounds) : prev,
       );
@@ -223,8 +294,13 @@ export function FocusCropOverlay({
     }
   };
 
-  /** Finish the active interaction (pointer up / cancel). */
-  const onPointerUp = (): void => {
+  /**
+   * Finish the active interaction (pointer up / cancel) — only the owning
+   * pointer may end it (a resting second finger lifting must not).
+   * @param e - The pointer-up / cancel event.
+   */
+  const onPointerUp = (e: React.PointerEvent): void => {
+    if (interactionRef.current && e.pointerId !== interactionRef.current.pointerId) return;
     interactionRef.current = null;
     setTick((n) => n + 1);
   };
@@ -266,7 +342,7 @@ export function FocusCropOverlay({
           {/* Capture layer over the image: draws the marquee, eats canvas gestures. */}
           <div
             data-testid='focus-crop-layer'
-            className='pointer-events-auto absolute cursor-crosshair'
+            className='pointer-events-auto absolute touch-none cursor-crosshair'
             style={{ left: box.x, top: box.y, width: box.width, height: box.height }}
             onPointerDown={onLayerPointerDown}
             onPointerMove={onPointerMove}
@@ -301,7 +377,17 @@ export function FocusCropOverlay({
           <div
             data-testid='focus-crop-controls'
             className='pointer-events-auto absolute flex -translate-x-1/2 items-center gap-1 rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
-            style={{ left: box.x + box.width / 2, top: box.y + box.height + 8 }}
+            // Clamped into the canvas viewport: an image whose bottom edge
+            // sits below the fold must not push Confirm out of reach
+            // (adversarial 2026-07-16). 44px ~ the bar's own height + gap.
+            style={{
+              left: rootSize
+                ? Math.min(Math.max(box.x + box.width / 2, 180), rootSize.width - 180)
+                : box.x + box.width / 2,
+              top: rootSize
+                ? Math.max(8, Math.min(box.y + box.height + 8, rootSize.height - 44))
+                : box.y + box.height + 8,
+            }}
           >
             {CROP_RATIOS.map(({ key, value }) => (
               <button

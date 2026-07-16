@@ -185,31 +185,31 @@ export function resizeRect(
   if (ratio === null) return next;
 
   // Ratio on an edge handle: derive the cross dimension around its centre,
-  // then shrink both (keeping the ratio) if the derived side overflows.
+  // capped by the room toward the DRAG direction so the ratio stays exact.
+  // The position is sign-aware relative to the anchor edge — dragging past
+  // the anchor flips the rect to the cursor side, exactly like the
+  // free-form math above (adversarial 2026-07-16: assuming no flip jumped
+  // the rect to the wrong side of the anchor).
   if (handle === 'e' || handle === 'w') {
-    let width = next.width;
-    let height = width / ratio;
+    const anchorX = handle === 'e' ? left : right;
+    const sx = cx >= anchorX ? 1 : -1;
+    const roomX = sx > 0 ? bounds.width - anchorX : anchorX;
+    const width = Math.min(next.width, roomX, bounds.height * ratio);
+    const height = width / ratio;
     const centerY = top + rect.height / 2;
-    if (height > bounds.height) {
-      height = bounds.height;
-      width = height * ratio;
-    }
-    let y = centerY - height / 2;
-    y = clamp(y, 0, bounds.height - height);
-    const x = handle === 'e' ? left : right - width;
-    return { x: clamp(x, 0, bounds.width - width), y, width, height };
+    const y = clamp(centerY - height / 2, 0, bounds.height - height);
+    const x = sx > 0 ? anchorX : anchorX - width;
+    return { x, y, width, height };
   }
-  let height = next.height;
-  let width = height * ratio;
+  const anchorY = handle === 's' ? top : bottom;
+  const sy = cy >= anchorY ? 1 : -1;
+  const roomY = sy > 0 ? bounds.height - anchorY : anchorY;
+  const height = Math.min(next.height, roomY, bounds.width / ratio);
+  const width = height * ratio;
   const centerX = left + rect.width / 2;
-  if (width > bounds.width) {
-    width = bounds.width;
-    height = width / ratio;
-  }
-  let x = centerX - width / 2;
-  x = clamp(x, 0, bounds.width - width);
-  const y = handle === 's' ? top : bottom - height;
-  return { x, y: clamp(y, 0, bounds.height - height), width, height };
+  const x = clamp(centerX - width / 2, 0, bounds.width - width);
+  const y = sy > 0 ? anchorY : anchorY - height;
+  return { x, y, width, height };
 }
 
 /**

@@ -30,10 +30,7 @@ import { newId } from '@breatic/shared';
 
 import { assetsApi, canvasApi } from '@web/data/api';
 import { getCachedReferencePoolCap } from '@web/data/api/canvas';
-import {
-  isReferencePoolFull,
-  referencePoolCount,
-} from '@web/spaces/canvas/generate/reference-pool-cap';
+import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
@@ -540,17 +537,20 @@ function CanvasSpaceInner({
         | { content?: unknown; name?: unknown }
         | undefined;
       const sourceUrl = typeof data?.content === 'string' ? data.content : '';
-      if (sourceUrl.length === 0) return;
+      if (sourceUrl.length === 0) {
+        // The source vanished between marquee draw and Confirm (a
+        // collaborator deleted / emptied it) — say so instead of a silent
+        // no-op that reads as a lost crop (adversarial 2026-07-16).
+        toast.error(t('canvas.generatePanel.focusExportFailed'));
+        return;
+      }
       const sourceName = typeof data?.name === 'string' ? data.name : '';
       const cap = getCachedReferencePoolCap();
       const store = useCanvasStore.getState();
-      const pendingCount = store.pendingFocusUploads.filter(
-        (p) => p.nodeId === panelNodeId,
-      ).length;
       if (
         cap !== null &&
         referencePoolCount(graph.flowEdges, graph.flowNodes, panelNodeId) +
-          pendingCount >=
+          pendingFocusCount(panelNodeId) >=
           cap
       ) {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
@@ -575,6 +575,30 @@ function CanvasSpaceInner({
                 putFile: putFileWithRetry,
                 onSuccess: resolve,
                 onFailure: () => reject(new Error('focus upload failed')),
+                // Ledger handshake (adversarial 2026-07-16): every upload
+                // path must report the asset (#1606 attribution / dedup
+                // re-verify). Deliberately NO nodeId — a crop is a pool
+                // entry, not node content; node_id would write a bogus
+                // node-history record.
+                onUploaded: (info) => {
+                  void assetsApi
+                    .reportUploaded({
+                      projectId: pid,
+                      kind: info.kind,
+                      spaceId,
+                      ...(info.hash !== null && { hash: info.hash }),
+                      ...(info.dedup === true ? { dedup: true as const } : {}),
+                      ...(info.key !== undefined && { key: info.key }),
+                      metadata: {
+                        filename: file.name,
+                        size: file.size,
+                        mimeType: file.type,
+                      },
+                    })
+                    .catch(() =>
+                      toast.error(t('canvas.activity.reportFailed')),
+                    );
+                },
               });
             }),
           addFocusImage: (image) => {
@@ -1162,12 +1186,13 @@ function CanvasSpaceInner({
       const cap = getCachedReferencePoolCap();
       if (
         cap !== null &&
-        isReferencePoolFull(
+        referencePoolCount(
           useCanvasGraphStore.getState().flowEdges,
           flowNodes,
           connection.target,
-          cap,
-        )
+        ) +
+          pendingFocusCount(connection.target) >=
+          cap
       ) {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
         return;
@@ -1275,12 +1300,13 @@ function CanvasSpaceInner({
       const cap = getCachedReferencePoolCap();
       if (
         cap !== null &&
-        isReferencePoolFull(
+        referencePoolCount(
           useCanvasGraphStore.getState().flowEdges,
           useCanvasGraphStore.getState().flowNodes,
           target,
-          cap,
-        )
+        ) +
+          pendingFocusCount(target) >=
+          cap
       ) {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
         return;
@@ -2916,6 +2942,20 @@ function CanvasSpaceInner({
       </div>
     </CanvasActionsContext.Provider>
   );
+}
+
+/**
+ * In-flight focus uploads for a node — counted by every pool-cap gate so a
+ * pending crop occupies its slot BEFORE its Yjs write lands (adversarial
+ * 2026-07-16: the edge gates ignoring pending let a same-client burst
+ * overshoot the cap the confirm gate guards).
+ * @param nodeId - The pool's target node.
+ * @returns The number of in-flight focus uploads for that node.
+ */
+function pendingFocusCount(nodeId: string): number {
+  return useCanvasStore
+    .getState()
+    .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
 }
 
 /**

@@ -122,6 +122,49 @@ describe('resizeRect — 8-handle resize anchored at the opposite side', () => {
     // Vertical centre preserved (was 150).
     expect(r.y + r.height / 2).toBe(150);
   });
+
+  // Adversarial 2026-07-16: the ratio branch used to assume no flip and
+  // recompute the position on the anchor's original side — dragging an edge
+  // handle PAST its anchor with a ratio active jumped the rect to the wrong
+  // side of the anchor (free-form flipped correctly; corners were immune).
+  it('edge e with ratio crossing the anchor flips to the cursor side', () => {
+    // 'e' anchors at the LEFT edge (x=100); cursor at x=40 is left of it.
+    const r = resizeRect(rect, 'e', { x: 40, y: 150 }, BOUNDS, 2);
+    expect(r.x + r.width).toBe(100); // grows leftward from the anchor
+    expect(r.width).toBe(60);
+    expect(r.height).toBe(30);
+  });
+
+  it('edge w with ratio crossing the anchor flips to the cursor side', () => {
+    // 'w' anchors at the RIGHT edge (x=200); cursor at x=260 is right of it.
+    const r = resizeRect(rect, 'w', { x: 260, y: 150 }, BOUNDS, 2);
+    expect(r.x).toBe(200);
+    expect(r.width).toBe(60);
+  });
+
+  it('edge s with ratio crossing the anchor flips upward from the top anchor', () => {
+    // 's' anchors at the TOP edge (y=100); cursor at y=40 is above it.
+    const r = resizeRect(rect, 's', { x: 150, y: 40 }, BOUNDS, 1);
+    expect(r.y + r.height).toBe(100);
+    expect(r.height).toBe(60);
+    expect(r.width).toBe(60);
+  });
+
+  it('edge n with ratio crossing the anchor flips downward from the bottom anchor', () => {
+    // 'n' anchors at the BOTTOM edge (y=200); cursor at y=260 is below it.
+    const r = resizeRect(rect, 'n', { x: 150, y: 260 }, BOUNDS, 1);
+    expect(r.y).toBe(200);
+    expect(r.height).toBe(60);
+  });
+
+  it('edge handle with ratio caps by the room toward the drag direction', () => {
+    // 'e' anchored at x=100 dragged far right: x-room 300, ratio 2 needs
+    // height 150 (fits 300-bounds) → capped at 300×150 exactly at bounds.
+    const r = resizeRect(rect, 'e', { x: 900, y: 150 }, BOUNDS, 2);
+    expect(r.width).toBe(300);
+    expect(r.height).toBe(150);
+    expect(r.x).toBe(100);
+  });
 });
 
 describe('applyRatioPreset — re-shape an existing rect', () => {

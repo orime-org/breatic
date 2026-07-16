@@ -13,8 +13,14 @@ import * as React from 'react';
 
 import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
 
-/** Fixed screen boxes: overlay root at (0,0); node img at (100,50) 400×300. */
+/** Screen boxes: overlay root at (0,0); node img at (100,50) — MUTABLE so
+ * tests can simulate a zoom (box rescale) between measures. */
 const IMG_BOX = { left: 100, top: 50, width: 400, height: 300 };
+
+beforeEach(() => {
+  IMG_BOX.width = 400;
+  IMG_BOX.height = 300;
+});
 
 /**
  * Renders the fake node DOM (what the overlay queries) + the overlay.
@@ -163,5 +169,61 @@ describe('FocusCropOverlay', () => {
     expect(onExit).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('Esc yields to surfaces that own it: prevented events and editor focus (adversarial)', () => {
+    const onExit = vi.fn();
+    const { container } = renderOverlay(vi.fn(), onExit);
+    // A handler that already consumed Esc (Radix closing a popover) wins.
+    const prevented = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      cancelable: true,
+      bubbles: true,
+    });
+    prevented.preventDefault();
+    window.dispatchEvent(prevented);
+    expect(onExit).not.toHaveBeenCalled();
+    // Focus inside the prompt editor (mention popup open) skips the overlay.
+    const editor = document.createElement('div');
+    editor.className = 'ProseMirror';
+    editor.tabIndex = 0;
+    container.appendChild(editor);
+    editor.focus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onExit).not.toHaveBeenCalled();
+    // Focus back outside: Esc exits as usual.
+    editor.blur();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('rescales the marquee when the image box changes size (zoom mid-marquee, adversarial)', () => {
+    renderOverlay();
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    // Zoom ×2: the img box doubles; a re-measure fires (resize signal).
+    IMG_BOX.width = 800;
+    IMG_BOX.height = 600;
+    fireEvent(window, new Event('resize'));
+    const rect = screen.getByTestId('focus-crop-rect');
+    expect(rect.style.left).toBe('100px');
+    expect(rect.style.top).toBe('100px');
+    expect(rect.style.width).toBe('200px');
+    expect(rect.style.height).toBe('160px');
+  });
+
+  it('a second pointer cannot hijack or end the active interaction (adversarial)', () => {
+    renderOverlay();
+    const layer = screen.getByTestId('focus-crop-layer');
+    fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0, pointerId: 1 });
+    // Second finger lands + lifts mid-draw: ignored entirely.
+    fireEvent.pointerDown(layer, { clientX: 400, clientY: 300, button: 0, pointerId: 2 });
+    fireEvent.pointerUp(layer, { pointerId: 2 });
+    // First pointer continues the SAME draw from its original anchor.
+    fireEvent.pointerMove(layer, { clientX: 250, clientY: 180, pointerId: 1 });
+    fireEvent.pointerUp(layer, { pointerId: 1 });
+    const rect = screen.getByTestId('focus-crop-rect');
+    expect(rect.style.left).toBe('50px');
+    expect(rect.style.width).toBe('100px');
+    expect(rect.style.height).toBe('80px');
   });
 });

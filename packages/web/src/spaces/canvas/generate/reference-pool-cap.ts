@@ -14,6 +14,8 @@
  * per-model `images.max_items` payload cap enforced at execute (#1735).
  */
 
+import { validFocusImages } from '@web/data/focus-images';
+
 /** The minimal edge shape the count reads (ReactFlow edge compatible). */
 interface PoolEdge {
   target: string;
@@ -26,9 +28,11 @@ interface PoolNode {
 }
 
 /**
- * Count the target node's current reference pool: incoming edges + focus
- * crops. Malformed `focusImages` (untrusted Yjs data — anything but an
- * array) counts as none.
+ * Count the target node's current reference pool: incoming edges + VALID
+ * focus crops. Counting only what {@link validFocusImages} accepts keeps
+ * this in exact agreement with what the panel renders — counting raw
+ * entries would let malformed remote data occupy invisible, UI-unremovable
+ * cap slots (adversarial 2026-07-16).
  * @param edges - The canvas edges (only `target` is read).
  * @param nodes - The canvas nodes (only the target's `data.focusImages` is read).
  * @param targetId - The node whose pool to count.
@@ -41,8 +45,7 @@ export function referencePoolCount(
 ): number {
   const edgeCount = edges.filter((e) => e.target === targetId).length;
   const focusImages = nodes.find((n) => n.id === targetId)?.data?.focusImages;
-  const focusCount = Array.isArray(focusImages) ? focusImages.length : 0;
-  return edgeCount + focusCount;
+  return edgeCount + validFocusImages(focusImages).length;
 }
 
 /**

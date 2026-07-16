@@ -46,6 +46,26 @@ describe('referencePoolCount', () => {
     ];
     expect(referencePoolCount([], nodes, 'gen')).toBe(0);
   });
+
+  it('counts only VALID entries — malformed remote entries never occupy cap slots', () => {
+    // Adversarial 2026-07-16: the count must agree with what the panel
+    // renders (one shared sanitizer); raw-length counting made invisible,
+    // UI-unremovable entries permanently eat the pool cap.
+    const nodes = [
+      {
+        id: 'gen',
+        data: {
+          focusImages: [
+            focus('ok'),
+            null,
+            { id: '', url: 'https://cdn/x.png', name: 'x', width: 1, height: 1 },
+            { id: 'no-dims', url: 'https://cdn/y.png', name: 'y' },
+          ] as unknown as [],
+        },
+      },
+    ];
+    expect(referencePoolCount([], nodes, 'gen')).toBe(1);
+  });
 });
 
 describe('isReferencePoolFull', () => {
