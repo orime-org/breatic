@@ -28,6 +28,30 @@ export type ViewportCommand =
 export type HistoryCommand = 'undo' | 'redo';
 
 /**
+ * What a canvas node-pick session wires when the user clicks a node:
+ *   - `reference` — an i2i source edge (clicked → target) feeding the reference
+ *     rail (a connection IS a reference).
+ *   - `style` — COPIES the clicked image node's asset URL into the target's
+ *     `styleImageUrl` (image-node style slice #1664, one style image max): a
+ *     pick-time snapshot with NO relationship to the source node, then the
+ *     session auto-exits (single slot, unlike the continuous reference pick).
+ */
+export type PickPurpose = 'reference' | 'style';
+
+/**
+ * An in-progress "pick a node from the canvas" session. Only one is active at a
+ * time — the SAME interaction (click a node, continuous until Exit, locate,
+ * dim non-candidates) with two completion targets discriminated by `purpose`.
+ * One source of truth, never a second parallel field per purpose.
+ */
+export interface PickSession {
+  /** The generative node the pick feeds (the pick target). */
+  nodeId: string;
+  /** What clicking a node wires — a reference edge, or a style source. */
+  purpose: PickPurpose;
+}
+
+/**
  * Canvas UI store — non-Yjs UI state for the canvas viewport.
  *
  * **Important**: real canvas data (nodes / edges / positions) lives in Yjs
@@ -82,11 +106,12 @@ interface CanvasState {
    */
   generatePanelNodeId: string | null;
   /**
-   * When set, the canvas is in "pick a reference from canvas" mode for this
-   * generative node: the next click on another node wires an edge (clicked →
-   * this node) as a new reference, then exits. Local UI only (never Yjs).
+   * The in-progress canvas node-pick session (reference or style), or null.
+   * When set, the canvas is in pick mode for `pickSession.nodeId`: clicking
+   * another node wires the pick per `pickSession.purpose`, staying in the
+   * session (continuous select) until Exit. Local UI only (never Yjs).
    */
-  referencePickForNodeId: string | null;
+  pickSession: PickSession | null;
   setSelectedNodeIds: (ids: string[]) => void;
   addSelectedNodeId: (id: string) => void;
   clearSelection: () => void;
@@ -123,10 +148,12 @@ interface CanvasState {
   openGeneratePanel: (nodeId: string) => void;
   /** Close the Generate panel (exit button, or execute hands off to handling). */
   closeGeneratePanel: () => void;
-  /** Enter "pick a reference from canvas" mode for a generative node. */
+  /** Enter a REFERENCE pick (wires i2i source edges) for a generative node. */
   startReferencePick: (nodeId: string) => void;
-  /** Exit reference-pick mode (after a node is picked, or on cancel). */
-  endReferencePick: () => void;
+  /** Enter a STYLE pick (#1664, copies one image URL into the slot) for a generative node. */
+  startStylePick: (nodeId: string) => void;
+  /** Exit the current pick session (after a node is picked, or on cancel). */
+  endPick: () => void;
 }
 
 export const useCanvasStore = create<CanvasState>()(
@@ -147,7 +174,7 @@ export const useCanvasStore = create<CanvasState>()(
     canUndo: false,
     canRedo: false,
     generatePanelNodeId: null,
-    referencePickForNodeId: null,
+    pickSession: null,
     setSelectedNodeIds: (ids) =>
       set((s) => {
         s.selectedNodeIds = ids;
@@ -236,23 +263,27 @@ export const useCanvasStore = create<CanvasState>()(
     openGeneratePanel: (nodeId) =>
       set((s) => {
         s.generatePanelNodeId = nodeId;
-        // Switching the panel to another node must exit any in-progress
-        // reference pick — otherwise a stale pick would wire the next click to
-        // the PREVIOUS node (closeGeneratePanel clears it too).
-        s.referencePickForNodeId = null;
+        // Switching the panel to another node must exit any in-progress pick —
+        // otherwise a stale pick would wire the next click to the PREVIOUS node
+        // (closeGeneratePanel clears it too).
+        s.pickSession = null;
       }),
     closeGeneratePanel: () =>
       set((s) => {
         s.generatePanelNodeId = null;
-        s.referencePickForNodeId = null;
+        s.pickSession = null;
       }),
     startReferencePick: (nodeId) =>
       set((s) => {
-        s.referencePickForNodeId = nodeId;
+        s.pickSession = { nodeId, purpose: 'reference' };
       }),
-    endReferencePick: () =>
+    startStylePick: (nodeId) =>
       set((s) => {
-        s.referencePickForNodeId = null;
+        s.pickSession = { nodeId, purpose: 'style' };
+      }),
+    endPick: () =>
+      set((s) => {
+        s.pickSession = null;
       }),
   })),
 );

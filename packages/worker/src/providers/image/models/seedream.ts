@@ -9,8 +9,13 @@
  *
  * Parameter mapping (YAML user-facing vs API):
  * - aspect_ratio + resolution -> size (e.g. "2048*2048")
- * - style_images -> image_urls (rename)
- * - images (edit variants) -> pass-through
+ * - images (i2i sources) + style_images -> image (the official ModelArk field;
+ *   verified 2026-07-16 against docs.byteplus.com/en/docs/ModelArk/1541523 --
+ *   the API has no `image_urls` field). Content images come FIRST, style
+ *   images LAST, and a style scaffold is appended to the prompt following the
+ *   officially documented cross-image pattern ("Apply the style of Image 2 to
+ *   Image 1", ModelArk/1829186) so the model treats them as aesthetic
+ *   guidance rather than content to copy.
  */
 
 import type { ModelFamily } from "@worker/providers/shared.js";
@@ -45,16 +50,41 @@ function toSize(aspectRatio: string, resolution: string): string {
   return `${Math.max(Math.floor(w / ALIGN) * ALIGN, ALIGN)}*${Math.max(Math.floor(h / ALIGN) * ALIGN, ALIGN)}`;
 }
 
+/**
+ * Style-reference instruction appended to the prompt when style images ride
+ * the request. Seedream has no typed "style" slot -- content and style images
+ * share the single `image` array, and the officially documented way to assign
+ * roles is index-referencing prose in the prompt (ModelArk/1829186).
+ * @param contentCount - Number of content (i2i source) images BEFORE the style images
+ * @param styleCount - Number of style images appended AFTER the content images
+ * @returns The scaffold sentence to append to the prompt
+ */
+function styleScaffold(contentCount: number, styleCount: number): string {
+  if (contentCount === 0) {
+    return styleCount === 1
+      ? "Use the input image only as a style reference: apply its artistic style (color palette, texture, rendering) to the generated image; do not copy its subjects or composition."
+      : "Use the input images only as style references: apply their artistic style (color palette, texture, rendering) to the generated image; do not copy their subjects or composition.";
+  }
+  const firstStyle = contentCount + 1;
+  const styleRef =
+    styleCount === 1
+      ? `image ${firstStyle}`
+      : `images ${firstStyle}-${contentCount + styleCount}`;
+  const contentRef = contentCount === 1 ? "image 1" : `images 1-${contentCount}`;
+  return `Apply the style of ${styleRef} to the result; ${contentRef} ${contentCount === 1 ? "is" : "are"} the content input${contentCount === 1 ? "" : "s"}.`;
+}
+
 /** Set of model names belonging to this family. */
 export const MODELS: ReadonlySet<string> = new Set([
   "seedream-5.0-lite",
 ]);
 
 /**
- * Convert aspect_ratio + resolution to size, keep text prompt.
+ * Convert aspect_ratio + resolution to size, merge content + style images into
+ * the official `image` field, and append the style scaffold to the prompt.
  * @param prompt - User's image description
  * @param _modelName - Resolved model name (unused; request shaping is the same across Seedream models)
- * @param params - Validated params with aspect_ratio and resolution
+ * @param params - Validated params with aspect_ratio, resolution, and optional images / style_images
  * @returns Tuple of [textPrompt, apiParamsWithSize]
  */
 export async function buildRequest(
@@ -69,14 +99,24 @@ export async function buildRequest(
   delete p.resolution;
   p.size = toSize(ratio, resolution);
 
-  // Rename style_images -> image_urls (Seedream API param name)
-  const styleImages = p.style_images;
+  // Merge i2i sources + style references into the official `image` array
+  // (content first, style last) and scaffold the prompt so the style images
+  // are treated as aesthetic guidance, not content.
+  const contentImages = Array.isArray(p.images) ? (p.images as string[]) : [];
+  const styleImages = Array.isArray(p.style_images)
+    ? (p.style_images as string[])
+    : [];
+  delete p.images;
   delete p.style_images;
-  if (styleImages) {
-    p.image_urls = styleImages;
+  let outPrompt = prompt;
+  if (contentImages.length + styleImages.length > 0) {
+    p.image = [...contentImages, ...styleImages];
+    if (styleImages.length > 0) {
+      outPrompt = `${prompt}\n${styleScaffold(contentImages.length, styleImages.length)}`;
+    }
   }
 
-  return [prompt, p];
+  return [outPrompt, p];
 }
 
 export default { MODELS, buildRequest } satisfies ModelFamily;

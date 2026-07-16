@@ -32,6 +32,7 @@ import { assetsApi } from '@web/data/api';
 import {
   addEdge,
   addNode,
+  setNodeStyleImage,
   createGroup,
   expandGroup,
   removeEdge,
@@ -478,21 +479,28 @@ function CanvasSpaceInner({
   const openGeneratePanel = useCanvasStore((s) => s.openGeneratePanel);
   const closeGeneratePanel = useCanvasStore((s) => s.closeGeneratePanel);
   const generatePanelNodeId = useCanvasStore((s) => s.generatePanelNodeId);
-  const referencePickForNodeId = useCanvasStore(
-    (s) => s.referencePickForNodeId,
-  );
-  const endReferencePick = useCanvasStore((s) => s.endReferencePick);
+  const pickSession = useCanvasStore((s) => s.pickSession);
+  // The node a pick (reference OR style) is running for, or null — stands in
+  // for the mechanical "is a pick active / which node" checks that don't care
+  // about the purpose. The purpose is read separately where completion /
+  // candidate-dimming / banner text branch on it (#1664).
+  const pickForNodeId = pickSession?.nodeId ?? null;
+  const endPick = useCanvasStore((s) => s.endPick);
   // Banner Exit (a11y, adversarial round-1): the Exit button unmounts with
   // the banner, dropping keyboard focus to <body>. Hand focus to the panel's
   // pick trigger — still mounted, because the pick keeps the panel open. The
   // trigger is in the DOM right now (setState re-renders later), so the
-  // synchronous focus lands before the banner unmounts.
-  const onExitReferencePick = React.useCallback((): void => {
-    endReferencePick();
+  // synchronous focus lands before the banner unmounts. The trigger is the
+  // Style or Reference tool button per the active pick's purpose.
+  const onExitPick = React.useCallback((): void => {
+    const purpose = useCanvasStore.getState().pickSession?.purpose;
+    endPick();
+    const triggerTestId =
+      purpose === 'style' ? 'generate-tool-style' : 'generate-tool-reference';
     document
-      .querySelector<HTMLElement>('[data-testid="generate-tool-reference"]')
+      .querySelector<HTMLElement>(`[data-testid="${triggerTestId}"]`)
       ?.focus();
-  }, [endReferencePick]);
+  }, [endPick]);
   // Pick-end focus catch-all (adversarial round-2, a11y): the Exit hand-off
   // only works when the trigger is enabled + mounted. When it is disabled (a
   // t2i switch mid-pick) or the pick ends by another path (panel X, host node
@@ -502,16 +510,16 @@ function CanvasSpaceInner({
   const wasPickingRef = React.useRef(false);
   React.useEffect(() => {
     const wasPicking = wasPickingRef.current;
-    wasPickingRef.current = referencePickForNodeId != null;
+    wasPickingRef.current = pickForNodeId != null;
     if (
       wasPicking &&
-      referencePickForNodeId == null &&
+      pickForNodeId == null &&
       (document.activeElement == null ||
         document.activeElement === document.body)
     ) {
       containerRef.current?.focus();
     }
-  }, [referencePickForNodeId]);
+  }, [pickForNodeId]);
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
@@ -559,7 +567,7 @@ function CanvasSpaceInner({
     const next = {
       panelNodeId: generatePanelNodeId,
       hostSelected,
-      picking: referencePickForNodeId != null,
+      picking: pickForNodeId != null,
     };
     panelSelectionRef.current = next;
     const action = resolvePanelSelectionAction(prev, next);
@@ -571,7 +579,7 @@ function CanvasSpaceInner({
   }, [
     generatePanelNodeId,
     hostSelected,
-    referencePickForNodeId,
+    pickForNodeId,
     closeGeneratePanel,
     selectOnlyNode,
   ]);
@@ -1067,19 +1075,45 @@ function CanvasSpaceInner({
   // session CONTINUES (item 7 continuous select; the banner's Exit button is
   // the only way out). Clicks on the target itself, an already-wired node, or
   // a type-incompatible source are no-ops (all dimmed by the overlay).
-  const onReferencePickNodeClick = React.useCallback(
+  const onPickNodeClick = React.useCallback(
     (_event: React.MouseEvent, node: Node): void => {
-      // Read the pick target FRESH from the store, not the render closure: if
+      // Read the pick session FRESH from the store, not the render closure: if
       // the panel switched to another node between render and this click, the
-      // closure's referencePickForNodeId would wire the reference to the
-      // PREVIOUS node.
-      const target = useCanvasStore.getState().referencePickForNodeId;
-      if (!target) return;
-      // The target itself, any node ALREADY wired to it, and any
+      // closure would wire the pick to the PREVIOUS node. The purpose decides
+      // whether the click wires an i2i reference edge or a style source.
+      const session = useCanvasStore.getState().pickSession;
+      if (!session) return;
+      const target = session.nodeId;
+      // Clicking the target itself is always a no-op (dimmed for both purposes).
+      if (node.id === target) return;
+
+      if (session.purpose === 'style') {
+        // Copy semantics (#1664, user decision 2026-07-16): snapshot the
+        // clicked image's asset URL onto the target node — NO relationship to
+        // the source node (deleting / regenerating it never changes the copy).
+        // Only a non-empty image can be copied (dimming enforces it; this
+        // backstops an insisting click on a dimmed candidate). The setter
+        // no-ops if the target vanished (the panel auto-closes on host
+        // deletion), so no failure toast is needed.
+        const content = (node.data as { content?: unknown }).content;
+        if (
+          node.type !== 'image' ||
+          typeof content !== 'string' ||
+          content.length === 0
+        ) {
+          return;
+        }
+        setNodeStyleImage(projectId, spaceId, target, content);
+        // One slot, one pick: the session completes on selection (unlike the
+        // continuous reference pick, which runs until Exit).
+        endPick();
+        return;
+      }
+
+      // Reference purpose: any node ALREADY wired to the target and any
       // type-incompatible source (connection rules, spec §9.1) are dimmed +
       // non-pickable (item 7) — clicking them is a no-op so the user keeps
       // picking (continuous select until they press Exit).
-      if (node.id === target) return;
       const alreadyReferenced = flowEdges.some(
         (e) => e.target === target && e.source === node.id,
       );
@@ -1111,20 +1145,20 @@ function CanvasSpaceInner({
       // Stay in pick mode either way; Exit is the only way out (item 7).
       if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
     },
-    [projectId, spaceId, flowEdges, t, kindLabel],
+    [projectId, spaceId, flowEdges, t, kindLabel, endPick],
   );
 
-  // Node click: in reference-pick mode delegate to the pick handler. Off pick
-  // mode there is nothing to do here — clicking a node moves selection
-  // natively, and the selection-edge rule closes an open panel whose host
-  // lost selection (no per-handler close enumeration).
+  // Node click: in pick mode delegate to the pick handler. Off pick mode there
+  // is nothing to do here — clicking a node moves selection natively, and the
+  // selection-edge rule closes an open panel whose host lost selection (no
+  // per-handler close enumeration).
   const onNodeClick = React.useCallback(
     (event: React.MouseEvent, node: Node): void => {
-      if (useCanvasStore.getState().referencePickForNodeId) {
-        onReferencePickNodeClick(event, node);
+      if (useCanvasStore.getState().pickSession) {
+        onPickNodeClick(event, node);
       }
     },
-    [onReferencePickNodeClick],
+    [onPickNodeClick],
   );
 
   // Clicking the empty canvas deselects everything (nodes AND edges — native
@@ -1135,7 +1169,7 @@ function CanvasSpaceInner({
   // (item 7: Exit is the only way out). reconcileSelection keeps the buffer
   // identity when nothing was selected, so idle misclicks re-render nothing.
   const onPaneClick = React.useCallback((): void => {
-    if (useCanvasStore.getState().referencePickForNodeId != null) return;
+    if (useCanvasStore.getState().pickSession != null) return;
     setFlowNodes((current) => reconcileSelection(current, () => false));
     setFlowEdges((current) => reconcileSelection(current, () => false));
     rfStoreApi.setState({ nodesSelectionActive: false });
@@ -1145,7 +1179,7 @@ function CanvasSpaceInner({
   // across a large canvas (user 2026-07-10 item 7 locate). Pans only — keeps the
   // current zoom.
   const onLocateSource = React.useCallback((): void => {
-    const id = useCanvasStore.getState().referencePickForNodeId;
+    const id = useCanvasStore.getState().pickSession?.nodeId ?? null;
     if (id == null) return;
     // A grouped member stores its position relative to its Group, so
     // `node.position` is NOT canvas-absolute — setCenter expects absolute
@@ -1479,7 +1513,7 @@ function CanvasSpaceInner({
       // A reference pick owns pointer interactions until Exit (adversarial
       // round-1): the create/paste menu would mutate the pick surface and its
       // creations auto-select mid-session. Fresh store read — closures stale.
-      if (useCanvasStore.getState().referencePickForNodeId) return;
+      if (useCanvasStore.getState().pickSession) return;
       setContextMenu({ open: true, x: event.clientX, y: event.clientY });
     },
     [readOnly],
@@ -1511,7 +1545,7 @@ function CanvasSpaceInner({
       // Pick session gate (adversarial round-1): the node menu's Upload
       // silently no-ops behind the item-12 gate and its Delete would mutate
       // the pick surface — the pick owns node interactions until Exit.
-      if (useCanvasStore.getState().referencePickForNodeId) return;
+      if (useCanvasStore.getState().pickSession) return;
       const locked = Boolean((node.data as { locked?: unknown }).locked);
       setNodeMenu({
         open: true,
@@ -1533,7 +1567,7 @@ function CanvasSpaceInner({
       event.preventDefault();
       if (readOnly) return;
       // Same pick-session gate as the node / pane menus.
-      if (useCanvasStore.getState().referencePickForNodeId) return;
+      if (useCanvasStore.getState().pickSession) return;
       setSelectionMenu({ open: true, x: event.clientX, y: event.clientY });
     },
     [readOnly],
@@ -1544,7 +1578,7 @@ function CanvasSpaceInner({
       event.preventDefault();
       if (readOnly) return;
       // Same pick-session gate — deleting an edge mid-pick mutates the rail.
-      if (useCanvasStore.getState().referencePickForNodeId) return;
+      if (useCanvasStore.getState().pickSession) return;
       setEdgeMenu({
         open: true,
         x: event.clientX,
@@ -2029,7 +2063,7 @@ function CanvasSpaceInner({
       // double-click on an empty node — or the node-menu Upload, both funnel
       // here — must not pop the file picker over the running pick session.
       // Read fresh from the store; the render closure can be stale.
-      if (useCanvasStore.getState().referencePickForNodeId) return;
+      if (useCanvasStore.getState().pickSession) return;
       const accept = UPLOAD_ACCEPT[modality];
       const input = uploadInputRef.current;
       if (!accept || !input) return; // 3d / web have no picker yet
@@ -2311,35 +2345,57 @@ function CanvasSpaceInner({
     ];
   }, [flowNodes, readOnly]);
 
-  // Reference-pick mode overlay (user 2026-07-10 item 7): the node whose panel
-  // is picking + any node ALREADY wired to it + any type-incompatible source
-  // (connection rules, spec §9.1 — e.g. audio/video can't feed an image input)
-  // are dimmed + non-pickable; every other node gets a hover glow inviting
-  // selection. Off pick mode this returns the same reference (no-op) so
-  // nothing re-renders.
+  // Pick-mode overlay (user 2026-07-10 item 7): the node whose panel is picking
+  // + any node ineligible for the active purpose are dimmed + non-pickable;
+  // every other node gets a hover glow inviting selection. Off pick mode this
+  // returns the same reference (no-op) so nothing re-renders.
+  //   - reference: type-incompatible sources (connection rules, spec §9.1 —
+  //     e.g. audio/video can't feed an image input) + already-wired nodes.
+  //   - style (#1664): non-image nodes + EMPTY images (copy semantics — the
+  //     pick snapshots the image URL, so a node with no asset has nothing to
+  //     copy).
   const pickedNodes = React.useMemo<Node[]>(() => {
-    if (referencePickForNodeId == null) return renderNodes;
+    if (pickSession == null) return renderNodes;
+    const target = pickSession.nodeId;
+    /**
+     * Tags every node with its pick class from a per-node dim predicate.
+     * @param isDimmed - True when the node is ineligible for the active pick.
+     * @returns The nodes with `canvas-pick-dimmed` / `-selectable` appended.
+     */
+    const paint = (isDimmed: (node: Node) => boolean): Node[] =>
+      renderNodes.map((node) => {
+        const pickClass = isDimmed(node)
+          ? 'canvas-pick-dimmed'
+          : 'canvas-pick-selectable';
+        return {
+          ...node,
+          className: [node.className, pickClass].filter(Boolean).join(' '),
+        };
+      });
+
+    if (pickSession.purpose === 'style') {
+      return paint((node) => {
+        const content = (node.data as { content?: unknown }).content;
+        return (
+          node.id === target ||
+          node.type !== 'image' ||
+          typeof content !== 'string' ||
+          content.length === 0
+        );
+      });
+    }
+
     const alreadyReferenced = new Set(
-      flowEdges
-        .filter((e) => e.target === referencePickForNodeId)
-        .map((e) => e.source),
+      flowEdges.filter((e) => e.target === target).map((e) => e.source),
     );
-    const targetKind =
-      renderNodes.find((n) => n.id === referencePickForNodeId)?.type ?? '';
-    return renderNodes.map((node) => {
-      const dimmed =
-        node.id === referencePickForNodeId ||
+    const targetKind = renderNodes.find((n) => n.id === target)?.type ?? '';
+    return paint(
+      (node) =>
+        node.id === target ||
         alreadyReferenced.has(node.id) ||
-        !canConnect(node.type ?? '', targetKind);
-      const pickClass = dimmed
-        ? 'canvas-pick-dimmed'
-        : 'canvas-pick-selectable';
-      return {
-        ...node,
-        className: [node.className, pickClass].filter(Boolean).join(' '),
-      };
-    });
-  }, [renderNodes, referencePickForNodeId, flowEdges]);
+        !canConnect(node.type ?? '', targetKind),
+    );
+  }, [renderNodes, pickSession, flowEdges]);
 
   // Stable menu-callback references (#1647 step 4E): the context menus are
   // React.memo'd, so their `onOpenChange` / action props must be stable
@@ -2404,7 +2460,7 @@ function CanvasSpaceInner({
         // detaches its listeners without resetting keyPressed), hijacking
         // every drag until the next Shift press. Keep xyflow's key props
         // CONSTANT; make the marquee harmless instead.
-        className={`relative h-full w-full bg-canvas ${referencePickForNodeId != null ? 'canvas-picking' : ''}`}
+        className={`relative h-full w-full bg-canvas ${pickForNodeId != null ? 'canvas-picking' : ''}`}
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
@@ -2451,7 +2507,7 @@ function CanvasSpaceInner({
           // click-connect and silently write a candidate-to-candidate edge
           // mid-pick. Plain boolean store prop — safe to flip, unlike the
           // key-code props (see web-frontend-traps).
-          nodesConnectable={!readOnly && referencePickForNodeId == null}
+          nodesConnectable={!readOnly && pickForNodeId == null}
           // No node selection during a reference pick (user 2026-07-12 P2c):
           // clicking a candidate wires a reference (onNodeClick → addEdge), it
           // must not ALSO xyflow-select the node — a click on a type-incompatible
@@ -2459,7 +2515,7 @@ function CanvasSpaceInner({
           // if the incompatible pick had taken. onNodeClick still fires with
           // selection off, so the pick + rejection-toast paths are untouched.
           // Off pick this stays the default (true) so viewers can click-inspect.
-          elementsSelectable={referencePickForNodeId == null}
+          elementsSelectable={pickForNodeId == null}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragStop}
@@ -2502,7 +2558,7 @@ function CanvasSpaceInner({
           // hijacking every drag afterwards). A Shift marquee mid-pick is
           // harmless instead: the machine holds, and the canvas-picking CSS
           // hides the NodesSelection rect so no dead zone forms.
-          selectionOnDrag={referencePickForNodeId == null}
+          selectionOnDrag={pickForNodeId == null}
           panOnDrag={false}
           panOnScroll
           panOnScrollMode={PanOnScrollMode.Free}
@@ -2532,7 +2588,7 @@ function CanvasSpaceInner({
             isVisible={
               groupOffer.kind !== 'none' &&
               !readOnly &&
-              referencePickForNodeId == null
+              pickForNodeId == null
             }
             position={Position.Top}
           >
@@ -2555,7 +2611,7 @@ function CanvasSpaceInner({
             spaceId={spaceId}
           />
         </ReactFlow>
-        {referencePickForNodeId ? (
+        {pickForNodeId ? (
           <div
             data-testid='reference-pick-banner'
             // Neutral card chrome (user 2026-07-14, reversing the 2026-07-11
@@ -2564,7 +2620,13 @@ function CanvasSpaceInner({
             // the mode indicator.
             className='absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
           >
-            <span>{t('canvas.generatePanel.selectFromCanvas')}</span>
+            <span>
+              {t(
+                pickSession?.purpose === 'style'
+                  ? 'canvas.generatePanel.selectStyleFromCanvas'
+                  : 'canvas.generatePanel.selectFromCanvas',
+              )}
+            </span>
             <button
               type='button'
               data-testid='reference-pick-locate'
@@ -2577,7 +2639,7 @@ function CanvasSpaceInner({
             <button
               type='button'
               data-testid='reference-pick-exit'
-              onClick={onExitReferencePick}
+              onClick={onExitPick}
               className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
             >
               {t('canvas.generatePanel.exitSelect')}

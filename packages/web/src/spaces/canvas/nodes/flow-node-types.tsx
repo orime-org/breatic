@@ -147,7 +147,7 @@ function makeFlowNode(
     // pick toggle.
     const onDoubleClickCapture = React.useCallback(
       (event: React.MouseEvent): void => {
-        if (useCanvasStore.getState().referencePickForNodeId != null) {
+        if (useCanvasStore.getState().pickSession != null) {
           event.stopPropagation();
         }
       },

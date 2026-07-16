@@ -69,6 +69,22 @@ export interface GeneratePanelViewModel {
   references: ReferenceRailItem[];
   /** Reference source asset URLs, snapshotted for the execute payload. */
   referenceUrls: string[];
+  /**
+   * The node's style-reference image URL (#1664) — a pick-time COPY stored on
+   * the node (`data.styleImageUrl`, one max, no upstream relationship). Unlike
+   * `referenceUrls` (i2i only), style rides the payload in EVERY mode — but
+   * only when {@link GeneratePanelViewModel.styleSupported} (capability gate).
+   * Undefined when none picked or the stored value is malformed (untrusted Yjs).
+   */
+  styleImageUrl?: string;
+  /**
+   * Whether the ACTIVE model supports style-reference images — it declares the
+   * `style_images` param on the wire (capability gate, not a mode gate: config
+   * decides which models take style). Gates the Style tool button and whether
+   * `styleImageUrl` is sent in the execute payload. False when no model
+   * resolved (empty catalog).
+   */
+  styleSupported: boolean;
   /** Credit cost of one generation with the current model. */
   creditEstimate: number;
   /** The target node's display status — gates execute (no submit while handling). */
@@ -250,12 +266,25 @@ export function buildGeneratePanelViewModel(input: {
       // a non-URL into the task payload.
         .filter((u): u is string => typeof u === 'string' && u.length > 0);
 
+  // Style image (#1664): a pick-time URL copy stored on the node itself, so —
+  // unlike i2i references — it survives t2i and rides the payload in every
+  // mode (when the model supports it). The stored value is collaborative Yjs
+  // data — untrusted — so a malformed non-string resolves to undefined.
+  const rawStyle = content?.styleImageUrl;
+  const styleImageUrl =
+    typeof rawStyle === 'string' && rawStyle.length > 0 ? rawStyle : undefined;
+
   return {
     models,
     model,
     params,
     references,
     referenceUrls,
+    styleImageUrl,
+    // Capability gate (#1664): the model declares `style_images` on the wire →
+    // it can take a style reference. Config decides which models (t2i and/or
+    // edit) support style; the frontend only reads the capability.
+    styleSupported: current ? current.params.style_images != null : false,
     // `?? 0` covers only the model-not-found case (empty catalog / stale model);
     // when current is found, cost_per_call is a trusted number (boundary).
     creditEstimate: current?.cost_per_call ?? 0,

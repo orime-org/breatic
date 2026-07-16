@@ -54,6 +54,29 @@ describe('buildGenerateTaskPayload — assembles the POST /canvas/tasks overwrit
     expect('images' in out.params).toBe(false);
   });
 
+  it('puts the style image under params.style_images as a one-element list (#1664)', () => {
+    const out = buildGenerateTaskPayload({
+      ...BASE,
+      styleImageUrl: 'https://cdn/style-a.png',
+    });
+    expect(out.params.style_images).toEqual(['https://cdn/style-a.png']);
+  });
+
+  it('omits params.style_images entirely when no style image is picked', () => {
+    const out = buildGenerateTaskPayload(BASE);
+    expect('style_images' in out.params).toBe(false);
+  });
+
+  it('sends images (i2i sources) and style_images independently in one payload', () => {
+    const out = buildGenerateTaskPayload({
+      ...BASE,
+      referenceUrls: ['https://cdn/src.png'],
+      styleImageUrl: 'https://cdn/style.png',
+    });
+    expect(out.params.images).toEqual(['https://cdn/src.png']);
+    expect(out.params.style_images).toEqual(['https://cdn/style.png']);
+  });
+
   it('defaults a missing leaseGen to 0 so the first generation carries gen = 1', () => {
     const out = buildGenerateTaskPayload({ ...BASE, leaseGen: undefined });
     expect(out.node_gens).toEqual({ 'node-1': 1 });

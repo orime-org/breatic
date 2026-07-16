@@ -188,9 +188,9 @@ function ProjectWorkspace({
   // (batch-2 item 13): the canvas is a selection surface for that session and
   // the menus would only distract / steal clicks. Boolean selector so chrome
   // re-renders on pick enter/exit only, not on every picked-node change.
-  const pickingReference = useCanvasStore(
-    (s) => s.referencePickForNodeId !== null,
-  );
+  // Any canvas pick (reference or style) turns the canvas into a selection
+  // surface, so chrome menus are concealed for the duration of either.
+  const picking = useCanvasStore((s) => s.pickSession !== null);
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const {
     spaces,
@@ -708,7 +708,7 @@ function ProjectWorkspace({
                   />
                   <LeftFloatingMenu
                     disabled={isViewer}
-                    concealed={pickingReference}
+                    concealed={picking}
                     onCreateNode={requestNodeCreate}
                     onPick={(tool) => {
                       // Open the file picker synchronously inside the click so
@@ -725,7 +725,7 @@ function ProjectWorkspace({
                   />
                   <ViewportToolbar
                     zoom={zoom}
-                    concealed={pickingReference}
+                    concealed={picking}
                     minimapVisible={minimapVisible}
                     snapToGrid={snapToGrid}
                     canUndo={canUndo}

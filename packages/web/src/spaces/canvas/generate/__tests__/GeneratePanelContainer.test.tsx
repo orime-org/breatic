@@ -85,7 +85,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     vi.mocked(toast.error).mockClear();
     useCanvasStore.setState({
       generatePanelNodeId: null,
-      referencePickForNodeId: null,
+      pickSession: null,
     });
   });
 
@@ -179,12 +179,106 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       useCanvasStore.getState().startReferencePick('target');
     });
     await waitFor(() =>
-      expect(useCanvasStore.getState().referencePickForNodeId).toBe('target'),
+      expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target'),
     );
     // Mode flips to t2i (local toggle or a collaborator's setNodeMode).
     rerender(tree('t2i'));
     await waitFor(() =>
-      expect(useCanvasStore.getState().referencePickForNodeId).toBeNull(),
+      expect(useCanvasStore.getState().pickSession).toBeNull(),
+    );
+    listSpy.mockRestore();
+  });
+
+  // Same zombie guard for the STYLE pick (adversarial 2026-07-16): a model
+  // switch to one WITHOUT style capability disables the Style trigger, so a
+  // running style pick would strand its banner + focus exactly like the t2i
+  // reference case. vm.styleSupported drives it, so a collaborator's
+  // setNodeModel ends it too.
+  it('ends a running style pick when the model loses style capability', async () => {
+    /**
+     * Builds a minimal catalog image model.
+     * @param name - Model id.
+     * @param withStyle - Whether the model declares the style_images param.
+     * @returns A catalog ModelEntry.
+     */
+    const model = (name: string, withStyle: boolean): Record<string, unknown> => ({
+      name,
+      display_name: name,
+      modality: 'image',
+      mode: 't2i',
+      description: '',
+      guide: '',
+      tier: 'optional',
+      cost_per_call: 5,
+      generation_time: 10,
+      params: {
+        aspect_ratio: { description: '', values: ['1:1'], default: '1:1' },
+        ...(withStyle
+          ? { style_images: { description: '', type: 'list', max_items: 1, default: null } }
+          : {}),
+      },
+      providers: [],
+      sourcesByMode: { t2i: [] },
+    });
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
+      image: [
+        model('styled', true),
+        model('plain', false),
+      ] as unknown as Awaited<ReturnType<typeof modelsApi.list>>['image'],
+      video: [],
+      audio: [],
+      tts: [],
+      three_d: [],
+      understand: [],
+      total: 2,
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    /**
+     * Renders the container with the target node storing the given model.
+     * @param storedModel - The node's stored model id.
+     * @returns The render tree.
+     */
+    const tree = (storedModel: string): React.JSX.Element => (
+      <QueryClientProvider client={client}>
+        <ReactFlow
+          nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
+          edges={[]}
+        >
+          <GeneratePanelContainer
+            projectId='p'
+            spaceId='s'
+            nodes={[
+              {
+                id: 'target',
+                data: { kind: 'image', status: 'idle', model: storedModel },
+              },
+            ]}
+            edges={[]}
+          />
+        </ReactFlow>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree('styled'));
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target');
+    });
+    // Wait for the catalog to resolve (Style button enabled = capability read).
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('generate-tool-style').hasAttribute('disabled'),
+      ).toBe(false),
+    );
+    act(() => {
+      useCanvasStore.getState().startStylePick('target');
+    });
+    expect(useCanvasStore.getState().pickSession?.purpose).toBe('style');
+    // The model flips to one without style capability (local pick or a
+    // collaborator's setNodeModel).
+    rerender(tree('plain'));
+    await waitFor(() =>
+      expect(useCanvasStore.getState().pickSession).toBeNull(),
     );
     listSpy.mockRestore();
   });

@@ -20,7 +20,7 @@ models:
     mode: "t2i"
     tier: recommended
     description: "Flagship quality, 4K, lens control"
-    guide: "Best quality and prompt adherence. Excels at photorealism, text rendering (multilingual), and complex multi-element prompts. Uses reasoning to decompose complex scenes. Supports style reference images (up to 14) for consistent style generation. Slowest and most expensive, but highest fidelity. Choose for professional/print production or text-heavy images."
+    guide: "Best quality and prompt adherence. Excels at photorealism, text rendering (multilingual), and complex multi-element prompts. Uses reasoning to decompose complex scenes. Supports one style reference image for consistent style generation. Slowest and most expensive, but highest fidelity. Choose for professional/print production or text-heavy images."
     cost_per_call: 7
     generation_time: 50
     params:
@@ -32,10 +32,13 @@ models:
         description: "Output resolution"
         values: ["1k", "2k", "4k"]
         default: "1k"
+      # Google caps style references at 3 for Gemini 3 Pro Image (the Flash
+      # tiers have no style-reference category at all); the product caps at 1
+      # (one Style slot, user decision 2026-07-16).
       style_images:
-        description: "Style reference image URLs"
+        description: "Style reference image URL"
         type: "list"
-        max_items: 14
+        max_items: 1
         default: null
       camera:
         description: "Camera body style simulation"
@@ -70,7 +73,7 @@ models:
     mode: "t2i"
     tier: optional
     description: "Fast high-quality, recommended default"
-    guide: "Best all-round default. Pro-level quality at Flash speed (~3-5s). Web search grounding for real-world subjects (landmarks, people, events). Supports style reference images (up to 14) for consistent style generation. Good text rendering, 14 aspect ratios, up to 4K. Recommended for most use cases."
+    guide: "Best all-round default. Pro-level quality at Flash speed (~3-5s). Web search grounding for real-world subjects (landmarks, people, events). Good text rendering, 14 aspect ratios, up to 4K. Recommended for most use cases."
     cost_per_call: 4.5
     generation_time: 25
     params:
@@ -82,11 +85,8 @@ models:
         description: "Output resolution"
         values: ["0.5k", "1k", "2k", "4k"]
         default: "1k"
-      style_images:
-        description: "Style reference image URLs"
-        type: "list"
-        max_items: 14
-        default: null
+      # No style_images: Google's Flash tiers (gemini-3.1-flash-image) have no
+      # style-reference category — only Gemini 3 Pro Image takes style images.
       enable_web_search:
         description: "Enable web search for better results"
         values: [true, false]
@@ -124,7 +124,7 @@ models:
     mode: ["i2i", "edit"]
     tier: recommended
     description: "Flagship editor, 14-image ref"
-    guide: "Most capable editor. Best at inpainting, text overlay editing, and complex multi-constraint edits. Supports up to 14 reference images. Uses reasoning for precise editing. Choose for professional editing requiring highest quality."
+    guide: "Most capable editor. Best at inpainting, text overlay editing, and complex multi-constraint edits. Supports up to 13 reference images plus one style reference image (14 inputs total, the model's cap). Uses reasoning for precise editing. Choose for professional editing requiring highest quality."
     cost_per_call: 7
     generation_time: 50
     params:
@@ -136,10 +136,22 @@ models:
         description: "Output resolution"
         values: ["1k", "2k", "4k"]
         default: "1k"
+      # 13, not 14: Google caps gemini-3-pro-image at 14 input images TOTAL and
+      # the worker merges style into the same array — reserving one slot keeps
+      # references + style from ever exceeding the provider cap (user decision
+      # B 2026-07-16).
       images:
         description: "Input image URLs for editing"
         type: "list"
-        max_items: 14
+        max_items: 13
+        default: null
+      # Style in i2i (#1664, user decision A 2026-07-16): the edit variant is
+      # the SAME gemini-3-pro-image model, whose style-reference slots (up to
+      # 3 per Google; product caps at 1) work alongside edit inputs.
+      style_images:
+        description: "Style reference image URL"
+        type: "list"
+        max_items: 1
         default: null
     providers:
       - name: google

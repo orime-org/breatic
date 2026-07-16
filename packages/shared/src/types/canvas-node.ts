@@ -343,6 +343,19 @@ export interface CanvasNodeFields {
      * available one otherwise).
      */
     modelByMode?: Record<string, string>;
+    /**
+     * Style-reference image URL (image-node style slice, #1664) — a COPY of
+     * the picked image's asset URL, snapshotted at pick time (user decision
+     * 2026-07-16: one style image max; stored as a copy, NO relationship to
+     * the upstream node — deleting or regenerating the source never changes
+     * this snapshot; assets are never deleted, so the URL stays valid).
+     * Frontend-owned like `model` / `params` — the worker never writes it; at
+     * execute time the frontend sends it as `params.style_images` when the
+     * active model supports style references. Distinct from i2i source images
+     * (edges → the reference rail): style guides aesthetics and survives
+     * text-to-image. Scalar last-write-wins. Absent = none picked.
+     */
+    styleImageUrl?: string;
 
     // ─── Group (Group) node fields ──────────────────────────
     // A Group's authoritative size lives in `width`/`height` above; its members

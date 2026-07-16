@@ -320,6 +320,8 @@
       "promptPlaceholder": "Describe the image you want to generate, @ to reference assets",
       "mentionEmpty": "No connected references — draw an edge from an image first",
       "selectFromCanvas": "Select a reference from the canvas",
+      "selectStyleFromCanvas": "Select a style reference from the canvas",
+      "removeStyle": "Remove style reference",
       "returnToNode": "Return to node",
       "exitSelect": "Exit",
       "locateSource": "Recenter the source node",

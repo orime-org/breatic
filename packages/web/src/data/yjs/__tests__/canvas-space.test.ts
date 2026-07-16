@@ -22,6 +22,8 @@ import {
   getOrCreatePromptFragment,
   isNodeLocked,
   nodeExists,
+  setNodeStyleImage,
+  clearNodeStyleImage,
   readCanvasGraph,
   readNodeLeaseGen,
   setNodeContent,
@@ -458,6 +460,47 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(() => setNodeParams(PID, SID, 'ghost', {})).not.toThrow();
     expect(() => setNodeModel(PID, SID, 'ghost', 't2i', 'm', {})).not.toThrow();
     expect(() => setNodeMode(PID, SID, 'ghost', 't2i', 'm', {})).not.toThrow();
+  });
+
+  // ── Style image (#1664): frontend-owned pick-time URL copy, one max ──
+  it('setNodeStyleImage stores the copied URL on the node data', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
+    setNodeStyleImage(PID, SID, 'gen', 'https://cdn/style-a.png');
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('styleImageUrl')).toBe('https://cdn/style-a.png');
+  });
+
+  it('setNodeStyleImage overwrites a previous pick (re-pick replaces, one slot)', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { styleImageUrl: 'https://cdn/old.png' }, { id: 'gen' }),
+    );
+    setNodeStyleImage(PID, SID, 'gen', 'https://cdn/new.png');
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('styleImageUrl')).toBe('https://cdn/new.png');
+  });
+
+  it('clearNodeStyleImage deletes the key (absent = no style picked)', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { styleImageUrl: 'https://cdn/s.png' }, { id: 'gen' }),
+    );
+    clearNodeStyleImage(PID, SID, 'gen');
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.has('styleImageUrl')).toBe(false);
+  });
+
+  it('setNodeStyleImage / clearNodeStyleImage are no-ops when the node is missing', () => {
+    expect(() => setNodeStyleImage(PID, SID, 'ghost', 'u')).not.toThrow();
+    expect(() => clearNodeStyleImage(PID, SID, 'ghost')).not.toThrow();
   });
 
   it('getOrCreatePromptFragment creates + persists a Y.XmlFragment on the node prompt', () => {

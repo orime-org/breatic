@@ -88,6 +88,13 @@ interface ContentNodeViewBase extends NodeViewCommon {
    * keyed by generation sub-mode. Drives model restoration on a mode toggle.
    */
   modelByMode?: Record<string, string>;
+  /**
+   * Style-reference image URL (image-node style slice #1664, wire
+   * `data.styleImageUrl`) — a pick-time COPY of the source image's URL, no
+   * relationship to the upstream node. The panel renders it in the Style tool
+   * slot and sends it as `params.style_images` at execute time.
+   */
+  styleImageUrl?: string;
 }
 
 export interface TextNodeView extends ContentNodeViewBase {
@@ -236,6 +243,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     params: data.params,
     mode: data.mode,
     modelByMode: data.modelByMode,
+    styleImageUrl: data.styleImageUrl,
   };
   switch (type) {
     case 'text':

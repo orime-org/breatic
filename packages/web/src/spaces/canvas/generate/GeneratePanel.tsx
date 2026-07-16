@@ -55,6 +55,16 @@ interface GeneratePanelProps {
   onRemoveReference: (refId: string) => void;
   /** Insert a reference's @-mention into the prompt at the cursor (rail click). */
   onInsertReference: (item: ReferenceRailItem) => void;
+  /** Toggle the canvas style-pick mode (#1664 — enter, or exit when already picking). */
+  onStyle: () => void;
+  /** Whether THIS node's style pick is running — highlights the Style button. */
+  stylePicking: boolean;
+  /** The picked style image URL (pick-time copy) shown in the Style slot (#1664). */
+  styleImageUrl?: string;
+  /** Clear the picked style image (the Style slot's ✕ badge). */
+  onClearStyle: () => void;
+  /** Whether the active model takes a style reference (capability gate). */
+  styleSupported: boolean;
   /**
    * Execute: submit the task in overwrite mode (the panel closes on success).
    * The node does NOT enter handling here — the server publishes handling only
@@ -100,6 +110,11 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   referencePicking,
   onRemoveReference,
   onInsertReference,
+  onStyle,
+  stylePicking,
+  styleImageUrl,
+  onClearStyle,
+  styleSupported,
   onExecute,
 }: GeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
@@ -120,6 +135,11 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           onReference={onAddReference}
           referenceActive={referencePicking}
           referenceDisabled={referencesOff}
+          onStyle={onStyle}
+          styleActive={stylePicking}
+          styleThumbnail={styleImageUrl}
+          onClearStyle={onClearStyle}
+          styleDisabled={!styleSupported}
         />
         <button
           type='button'

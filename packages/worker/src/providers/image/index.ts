@@ -14,6 +14,8 @@
  * - {@link generateAsync} -- resolve -> build_request -> transport.generate
  */
 
+import { logger } from "@breatic/core";
+
 import {
   resolveModel,
   acquireSemaphore,
@@ -94,6 +96,44 @@ function getTransport(providerName: string): Transport {
 }
 
 /**
+ * Strips image-input params a WaveSpeed prompt-only endpoint cannot carry
+ * (#1664 gap 1). WaveSpeed's base generation endpoints take no image inputs —
+ * only the `/edit` variants do — so i2i sources / style references riding a
+ * fallback there would silently vanish server-side. Stripping BEFORE the
+ * family builds the request keeps the prompt consistent too (no stale style
+ * scaffold referencing an image that was never sent), and the warn makes the
+ * degradation observable. Midjourney is exempt: its WaveSpeed t2i endpoint
+ * natively takes a style reference (the family maps `style_images` → `sref`).
+ * @param resolved - The resolved provider endpoint.
+ * @param resolved.providerName - Provider key (e.g. "wavespeed").
+ * @param resolved.modelId - Provider-side endpoint / model id.
+ * @param resolved.modelName - App-level model name.
+ * @param params - The validated task params (returned copy is stripped).
+ * @returns The params, copied + stripped when the endpoint is prompt-only.
+ */
+export function stripWavespeedPromptOnlyInputs(
+  resolved: { providerName: string; modelId: string; modelName: string },
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  const promptOnly =
+    resolved.providerName === "wavespeed" &&
+    !resolved.modelId.includes("/edit") &&
+    !midjourney.MODELS.has(resolved.modelName);
+  if (!promptOnly) return params;
+  const stripped = { ...params };
+  for (const key of ["images", "style_images"]) {
+    if (stripped[key] != null) {
+      delete stripped[key];
+      logger.warn(
+        { model: resolved.modelName, modelId: resolved.modelId, param: key },
+        "wavespeed_image_input_stripped",
+      );
+    }
+  }
+  return stripped;
+}
+
+/**
  * Generate an image asynchronously with concurrency control.
  *
  * Uses a per-provider semaphore to limit concurrent requests.
@@ -122,7 +162,7 @@ export async function generateAsync(
   const [formattedPrompt, apiParams] = await family.buildRequest(
     prompt,
     resolved.modelName,
-    params,
+    stripWavespeedPromptOnlyInputs(resolved, params),
   );
 
   const transport = getTransport(resolved.providerName);

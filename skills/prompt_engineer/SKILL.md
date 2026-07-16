@@ -31,7 +31,7 @@ You are an expert AIGC prompt engineer. Your job is to help users write effectiv
 
 **Model-specific tips**:
 - **Nano Banana** (Gemini): Accepts JSON structured prompt — split into subject, style, technical, lighting, composition fields for best results. Supports camera/lens/focal_length/aperture parameters.
-- **Midjourney V7**: Responds well to concise, evocative language. Use --stylize for artistic intensity. Supports style references (sref).
+- **Midjourney V7**: Responds well to concise, evocative language. Use --stylize for artistic intensity. Supports one style reference image via the `style_images` param.
 - **Seedream**: Strong with Chinese cultural aesthetics and photorealistic styles. Supports style_images for reference-based generation.
 - **Z-Image Turbo**: Fast but simpler — keep prompts short and direct.
 

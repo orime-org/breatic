@@ -25,7 +25,7 @@ models:
     mode: "t2i"
     tier: recommended
     description: "Top aesthetics, artistic imagery"
-    guide: "Highest aesthetic quality among all models. Exceptional at artistic, cinematic, and editorial imagery. Strong compositional awareness, 40% fewer anatomical errors. Weak at text rendering. Supports style reference (sref) and personalization. Choose for marketing visuals, concept art, and images where aesthetic beauty is paramount."
+    guide: "Highest aesthetic quality among all models. Exceptional at artistic, cinematic, and editorial imagery. Strong compositional awareness, 40% fewer anatomical errors. Weak at text rendering. Supports one style reference image (style_images). Choose for marketing visuals, concept art, and images where aesthetic beauty is paramount."
     cost_per_call: 10
     generation_time: 60
     params:
@@ -46,8 +46,10 @@ models:
       weird:
         description: "Surreal experimental level (0-3000)"
         default: 0
-      sref:
+      style_images:
         description: "Style reference image URL"
+        type: "list"
+        max_items: 1
         default: null
       seed:
         description: "Random seed for reproducibility"

@@ -20,7 +20,7 @@ models:
     mode: "t2i"
     tier: recommended
     description: "Latest, reasoning + web search"
-    guide: "Intelligence-first model with web search and spatial reasoning. Best at infographics, diagrams, labeled illustrations, and knowledge-rich content. Supports style reference images via image_urls. Fast (~3-5s). Less photorealistic than 4.5 but better prompt understanding. Choose for content requiring real-time knowledge or complex layouts."
+    guide: "Intelligence-first model with web search and spatial reasoning. Best at infographics, diagrams, labeled illustrations, and knowledge-rich content. Supports one style reference image. Fast (~3-5s). Less photorealistic than 4.5 but better prompt understanding. Choose for content requiring real-time knowledge or complex layouts."
     cost_per_call: 4
     generation_time: 20
     params:
@@ -33,9 +33,9 @@ models:
         values: ["1k", "2k", "4k"]
         default: "2k"
       style_images:
-        description: "Style reference image URLs"
+        description: "Style reference image URL"
         type: "list"
-        max_items: 10
+        max_items: 1
         default: null
     providers:
       - name: byteplus
