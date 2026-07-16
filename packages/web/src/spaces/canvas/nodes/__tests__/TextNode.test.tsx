@@ -1,13 +1,27 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { TextNode } from '@web/spaces/canvas/nodes/TextNode';
 
+vi.mock('sonner', () => ({
+  toast: {
+    warning: vi.fn(),
+    error: vi.fn(),
+    success: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+import { toast } from 'sonner';
+
 describe('TextNode', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('renders placeholder when content is empty + status=idle', () => {
     render(<TextNode data={{ kind: 'text', content: '', status: 'idle' }} />);
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
@@ -111,6 +125,9 @@ describe('TextNode', () => {
     expect(body.className).not.toContain('overflow-y-auto');
     expect(body.className).not.toMatch(/scrollbar/);
     expect(body.className).toContain('break-words');
+    // Justified: both edges align so short lines don't leave a ragged right
+    // margin that reads as an asymmetric "right blank" (user 2026-07-16).
+    expect(body.className).toContain('text-justify');
     // A node is always at least the empty-state height (h-48 = 192px), grows with
     // content up to the cap — never the old cramped 48px (min-h-[3rem]).
     expect(body.className).toContain('min-h-48');
@@ -225,5 +242,37 @@ describe('TextNode', () => {
     // node wrapper's grab hand unless the editing class declares cursor-text.
     expect(body.getAttribute('contenteditable')).toBe('true');
     expect(body.className).toContain('cursor-text');
+  });
+
+  it('locked node: double-clicking the body does NOT enter edit and warns (P2 — was a silent no-op)', async () => {
+    // Node-state gate: a locked text node refuses inline editing. Previously
+    // startEdit silently returned; now it warns so the user knows why the
+    // double-click did nothing (unlock to edit).
+    const user = userEvent.setup();
+    render(
+      <TextNode
+        data={{ kind: 'text', content: 'Hello', status: 'idle' }}
+        locked
+      />,
+    );
+    await user.dblClick(screen.getByTestId('text-node-body'));
+    // Stayed in display mode — the body is the plain div, never the
+    // contenteditable editing body.
+    expect(
+      screen.getByTestId('text-node-body').getAttribute('contenteditable'),
+    ).not.toBe('true');
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+  });
+
+  it('locked empty node: double-clicking the placeholder does NOT enter edit and warns', async () => {
+    const user = userEvent.setup();
+    render(
+      <TextNode data={{ kind: 'text', content: '', status: 'idle' }} locked />,
+    );
+    await user.dblClick(screen.getByTestId('node-placeholder'));
+    // Still the placeholder — never flipped into the editable body.
+    expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
+    expect(screen.queryByTestId('text-node-body')).toBeNull();
+    expect(toast.warning).toHaveBeenCalledTimes(1);
   });
 });

@@ -4,15 +4,16 @@
 import { describe, it, expect } from 'vitest';
 
 import {
-  filterLockedDeletion,
+  filterGatedDeletion,
+  gateBlockedDeletion,
   groupDeletionIds,
-  lockBlockedDeletion,
+  handlingNodeIds,
   lockedGroupMemberIds,
   lockedNodeIds,
   selectionDeletionIds,
 } from '@web/spaces/canvas/group-membership';
 
-describe('filterLockedDeletion — locked structure (nodes + edges) survives delete', () => {
+describe('filterGatedDeletion — locked + handling structure survives delete', () => {
   const allNodes = [
     { id: 'g', type: 'group', data: { locked: true } },
     { id: 'm', type: 'text', parentId: 'g', data: {} },
@@ -25,7 +26,7 @@ describe('filterLockedDeletion — locked structure (nodes + edges) survives del
       { id: 'e1', source: 'm', target: 'x' }, // touches protected member m
       { id: 'e2', source: 'x', target: 'y' }, // safe (no protected endpoint)
     ];
-    const out = filterLockedDeletion(reqNodes, reqEdges, allNodes);
+    const out = filterGatedDeletion(reqNodes, reqEdges, allNodes);
     expect(out.nodes.map((n) => n.id)).toEqual(['x']); // g + m protected
     expect(out.edges.map((e) => e.id)).toEqual(['e2']); // e1 (→ m) protected
   });
@@ -35,7 +36,7 @@ describe('filterLockedDeletion — locked structure (nodes + edges) survives del
       { id: 'g', type: 'group', data: {} },
       { id: 'm', type: 'text', parentId: 'g', data: {} },
     ];
-    const out = filterLockedDeletion(
+    const out = filterGatedDeletion(
       [{ id: 'g' }, { id: 'm' }],
       [{ id: 'e', source: 'm', target: 'm' }],
       unlocked,
@@ -49,7 +50,7 @@ describe('filterLockedDeletion — locked structure (nodes + edges) survives del
       { id: 'a', type: 'text', data: { locked: true } },
       { id: 'b', type: 'text', data: {} },
     ];
-    const out = filterLockedDeletion(
+    const out = filterGatedDeletion(
       [{ id: 'a' }, { id: 'b' }],
       [
         { id: 'e1', source: 'a', target: 'b' }, // touches locked a
@@ -60,35 +61,116 @@ describe('filterLockedDeletion — locked structure (nodes + edges) survives del
     expect(out.nodes.map((n) => n.id)).toEqual(['b']); // locked a protected
     expect(out.edges.map((e) => e.id)).toEqual(['e2']); // e1 (→ a) protected
   });
+
+  it('keeps a HANDLING node AND its edges out of the deletion', () => {
+    const nodes = [
+      { id: 'h', type: 'image', data: { status: 'handling' } },
+      { id: 'b', type: 'text', data: {} },
+    ];
+    const out = filterGatedDeletion(
+      [{ id: 'h' }, { id: 'b' }],
+      [
+        { id: 'e1', source: 'h', target: 'b' }, // touches handling h
+        { id: 'e2', source: 'b', target: 'c' }, // safe
+      ],
+      nodes,
+    );
+    expect(out.nodes.map((n) => n.id)).toEqual(['b']); // handling h protected
+    expect(out.edges.map((e) => e.id)).toEqual(['e2']); // e1 (→ h) protected
+  });
+
+  it('an idle (state absent / not handling) node deletes freely', () => {
+    const nodes = [
+      { id: 'a', type: 'text', data: { status: 'idle' } },
+      { id: 'b', type: 'image', data: {} },
+    ];
+    const out = filterGatedDeletion([{ id: 'a' }, { id: 'b' }], [], nodes);
+    expect(out.nodes.map((n) => n.id)).toEqual(['a', 'b']);
+  });
 });
 
-describe('lockBlockedDeletion — flags when a lock vetoed part of the deletion', () => {
-  it('blocked=true; survivors exclude the locked node', () => {
+describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion + why', () => {
+  it('locked node: blocked=true, reason=locked, survivors exclude it', () => {
     const allNodes = [
       { id: 'a', type: 'text', data: { locked: true } },
       { id: 'b', type: 'text', data: {} },
     ];
-    const out = lockBlockedDeletion([{ id: 'a' }, { id: 'b' }], [], allNodes);
+    const out = gateBlockedDeletion([{ id: 'a' }, { id: 'b' }], [], allNodes);
     expect(out.blocked).toBe(true);
+    expect(out.reason).toBe('locked');
     expect(out.survivors.nodes.map((n) => n.id)).toEqual(['b']);
   });
 
-  it('blocked=false when nothing requested is locked', () => {
+  it('handling node: blocked=true, reason=handling, survivors exclude it', () => {
+    const allNodes = [
+      { id: 'h', type: 'image', data: { status: 'handling' } },
+      { id: 'b', type: 'text', data: {} },
+    ];
+    const out = gateBlockedDeletion([{ id: 'h' }, { id: 'b' }], [], allNodes);
+    expect(out.blocked).toBe(true);
+    expect(out.reason).toBe('handling');
+    expect(out.survivors.nodes.map((n) => n.id)).toEqual(['b']);
+  });
+
+  it('mixed locked + handling: reason=locked (the harder freeze wins)', () => {
+    const allNodes = [
+      { id: 'a', type: 'text', data: { locked: true } },
+      { id: 'h', type: 'image', data: { status: 'handling' } },
+    ];
+    const out = gateBlockedDeletion([{ id: 'a' }, { id: 'h' }], [], allNodes);
+    expect(out.blocked).toBe(true);
+    expect(out.reason).toBe('locked');
+    expect(out.survivors.nodes).toHaveLength(0);
+  });
+
+  it('blocked=false, reason=null when nothing requested is gated', () => {
     const allNodes = [{ id: 'a', type: 'text', data: {} }];
-    const out = lockBlockedDeletion([{ id: 'a' }], [], allNodes);
+    const out = gateBlockedDeletion([{ id: 'a' }], [], allNodes);
     expect(out.blocked).toBe(false);
+    expect(out.reason).toBeNull();
     expect(out.survivors.nodes.map((n) => n.id)).toEqual(['a']);
   });
 
-  it('blocked=true when a locked node protects an edge', () => {
-    const allNodes = [{ id: 'a', type: 'text', data: { locked: true } }];
-    const out = lockBlockedDeletion(
+  it('blocked=true, reason=handling when a handling node protects an edge', () => {
+    const allNodes = [{ id: 'h', type: 'image', data: { status: 'handling' } }];
+    const out = gateBlockedDeletion(
       [],
-      [{ id: 'e1', source: 'a', target: 'b' }],
+      [{ id: 'e1', source: 'h', target: 'b' }],
       allNodes,
     );
     expect(out.blocked).toBe(true);
+    expect(out.reason).toBe('handling');
     expect(out.survivors.edges).toHaveLength(0);
+  });
+});
+
+describe('handlingNodeIds — nodes with a running task', () => {
+  // The delete guards feed VIEW data (the ReactFlow render buffer, a NodeView)
+  // whose derived field is `status` — NOT the wire `state`. Fixtures MUST use
+  // the view shape or they silently test a dead path (adversarial round: a
+  // `data:{state:'handling'}` fixture masked the delete gate being inert).
+  it('returns only nodes whose derived view data.status is handling', () => {
+    const nodes = [
+      { id: 'h1', data: { status: 'handling' } },
+      { id: 'h2', data: { status: 'handling' } },
+      { id: 'i', data: { status: 'idle' } },
+      { id: 'e', data: { status: 'error' } },
+      { id: 'n', data: {} },
+    ];
+    expect(handlingNodeIds(nodes)).toEqual(new Set(['h1', 'h2']));
+  });
+
+  it('IGNORES the wire `state` field (only the derived view `status` counts)', () => {
+    // A node carrying only the wire shape (no `status`) must NOT match — the
+    // guard reads the field the render buffer actually carries. Pins the exact
+    // regression the adversarial pass caught.
+    expect(handlingNodeIds([{ id: 'w', data: { state: 'handling' } }])).toEqual(
+      new Set(),
+    );
+  });
+
+  it('is empty when nothing is handling', () => {
+    expect(handlingNodeIds([{ id: 'a', data: {} }])).toEqual(new Set());
   });
 });
 

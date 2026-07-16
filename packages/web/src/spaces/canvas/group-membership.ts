@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Pure lock logic for the canvas: which nodes a lock freezes — a locked node,
- * or a member of a locked Group (membership via `parentId`, group
- * redesign 2026-06-23). Frozen nodes render non-draggable and resist deletion.
- * Kept ReactFlow-agnostic; the canvas wires the returned sets into `renderNodes`
- * (draggable) and `onBeforeDelete` (the lock veto).
+ * Pure node-state set logic for the canvas: which nodes a lock or an in-flight
+ * task freezes. A LOCK freezes a locked node or a member of a locked Group
+ * (membership via `parentId`, group redesign 2026-06-23) against every mutation;
+ * HANDLING freezes a node with a running task against deletion (and the other
+ * content-affecting ops) but not against move / rename. The per-op decision
+ * lives in {@link ./node-gate}; these helpers materialize the frozen SETS the
+ * canvas wires into `renderNodes` (draggable, lock-only) and the delete guards.
  */
+
+import type { NodeGateReason } from '@web/spaces/canvas/node-gate';
 
 /**
  * Ids of every node that is a member of a *locked* Group — their position is
@@ -62,6 +66,35 @@ export function lockedNodeIds(
 }
 
 /**
+ * Ids of every node currently `handling` a task (a task is writing it). A
+ * handling node resists deletion — deleting it would strand the in-flight
+ * write's result — but, unlike a lock, does NOT freeze position / name and has
+ * no group-membership expansion (only content nodes handle). Kept separate from
+ * {@link lockedNodeIds} so the move-freeze (draggable) path stays lock-only.
+ *
+ * Reads the DERIVED view field `data.status` (`idle` / `handling` / `error`),
+ * NOT the wire field `data.state`: the delete guards feed this the ReactFlow
+ * render buffer, whose data is a `NodeView` where `deriveStatus` has already
+ * collapsed wire `state` into `status` (a lease-expired handling node becomes
+ * `error`, correctly deletable). The wire `state` field is absent on the view —
+ * reading it would silently return the empty set (adversarial round: the delete
+ * gate was dead because a test fixture used the wire shape, masking it).
+ * @param nodes - Canvas node VIEWS (each `data` is a NodeView carrying `status`).
+ * @returns The set of node ids currently in the handling state.
+ */
+export function handlingNodeIds(
+  nodes: ReadonlyArray<{ id: string; data?: unknown }>,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const node of nodes) {
+    if ((node.data as { status?: unknown } | undefined)?.status === 'handling') {
+      ids.add(node.id);
+    }
+  }
+  return ids;
+}
+
+/**
  * The ids to delete when the user deletes one node: just the node itself, UNLESS
  * it is a Group — deleting a Group deletes the WHOLE group (the Group frame plus
  * every member inside it, matched by `parentId`). The separate **ungroup** action
@@ -105,19 +138,19 @@ export function selectionDeletionIds(
 }
 
 /**
- * Partition a requested deletion so locked structure survives: any locked node
- * (a locked group OR a locked standalone node), a locked group's members, AND
- * every edge touching a protected node are kept OUT of the deletion. Wire into
- * ReactFlow's `onBeforeDelete` (the pre-delete veto) — the post-hoc `onDelete`
- * can't stop ReactFlow from removing nodes/edges from the local buffer first,
- * nor from cascading a protected node's edges into the deletion (edges are part
- * of the frozen structure too).
+ * Partition a requested deletion so gated structure survives: any locked node
+ * (a locked group OR a locked standalone node), a locked group's members, any
+ * node currently `handling` a task, AND every edge touching a protected node
+ * are kept OUT of the deletion. Wire into ReactFlow's `onBeforeDelete` (the
+ * pre-delete veto) — the post-hoc `onDelete` can't stop ReactFlow from removing
+ * nodes/edges from the local buffer first, nor from cascading a protected node's
+ * edges into the deletion (edges are part of the frozen structure too).
  * @param nodes - The nodes ReactFlow is about to delete.
  * @param edges - The edges ReactFlow is about to delete (incl. cascaded ones).
- * @param allNodes - All canvas nodes, to resolve which nodes / groups are locked.
+ * @param allNodes - All canvas nodes, to resolve which nodes are locked / handling.
  * @returns The subset safe to delete (protected nodes + their edges removed).
  */
-export function filterLockedDeletion<
+export function filterGatedDeletion<
   N extends { id: string },
   E extends { id: string; source: string; target: string },
 >(
@@ -125,9 +158,12 @@ export function filterLockedDeletion<
   edges: ReadonlyArray<E>,
   allNodes: ReadonlyArray<{ id: string; type?: string; parentId?: string; data?: unknown }>,
 ): { nodes: N[]; edges: E[] } {
-  // The frozen-by-lock set (any locked node + locked group members) is exactly
-  // what can't be deleted — the same set the move-freeze path uses.
-  const protectedIds = lockedNodeIds(allNodes);
+  // The delete-frozen set: everything the node-gate blocks `delete` on — locked
+  // nodes (+ locked group members, the move-freeze set) plus handling nodes.
+  const protectedIds = new Set<string>([
+    ...lockedNodeIds(allNodes),
+    ...handlingNodeIds(allNodes),
+  ]);
   return {
     nodes: nodes.filter((node) => !protectedIds.has(node.id)),
     edges: edges.filter(
@@ -138,26 +174,45 @@ export function filterLockedDeletion<
 }
 
 /**
- * Like {@link filterLockedDeletion}, but also reports whether a lock vetoed any
- * of the requested deletion — so the caller can tell the user (a toast) instead
- * of silently dropping the locked items. `blocked` is true when fewer nodes or
- * edges survive than were requested.
+ * Like {@link filterGatedDeletion}, but also reports whether a gate vetoed any
+ * of the requested deletion, and WHICH reason, so the caller can tell the user
+ * (a toast) instead of silently dropping the items. `blocked` is true when
+ * fewer nodes or edges survive than were requested; `reason` is `locked` when a
+ * locked node/edge was vetoed (the harder freeze wins over `handling`),
+ * `handling` when only handling nodes were, and null when nothing was blocked.
  * @param nodes - The nodes ReactFlow is about to delete.
  * @param edges - The edges ReactFlow is about to delete (incl. cascaded ones).
- * @param allNodes - All canvas nodes, to resolve which nodes / groups are locked.
- * @returns The safe-to-delete subset plus a `blocked` flag.
+ * @param allNodes - All canvas nodes, to resolve which nodes are locked / handling.
+ * @returns The safe-to-delete subset plus a `blocked` flag and the block `reason`.
  */
-export function lockBlockedDeletion<
+export function gateBlockedDeletion<
   N extends { id: string },
   E extends { id: string; source: string; target: string },
 >(
   nodes: ReadonlyArray<N>,
   edges: ReadonlyArray<E>,
   allNodes: ReadonlyArray<{ id: string; type?: string; parentId?: string; data?: unknown }>,
-): { survivors: { nodes: N[]; edges: E[] }; blocked: boolean } {
-  const survivors = filterLockedDeletion(nodes, edges, allNodes);
+): {
+  survivors: { nodes: N[]; edges: E[] };
+  blocked: boolean;
+  reason: NodeGateReason | null;
+} {
+  const survivors = filterGatedDeletion(nodes, edges, allNodes);
   const blocked =
     survivors.nodes.length < nodes.length ||
     survivors.edges.length < edges.length;
-  return { survivors, blocked };
+  let reason: NodeGateReason | null = null;
+  if (blocked) {
+    // `locked` is the harder freeze, so it wins when the vetoed set mixes locked
+    // and handling nodes: a node/edge removed because a LOCKED node protects it
+    // reports `locked`; only handling nodes removed reports `handling`.
+    const lockedIds = lockedNodeIds(allNodes);
+    const lockedRemoved =
+      nodes.some((node) => lockedIds.has(node.id)) ||
+      edges.some(
+        (edge) => lockedIds.has(edge.source) || lockedIds.has(edge.target),
+      );
+    reason = lockedRemoved ? 'locked' : 'handling';
+  }
+  return { survivors, blocked, reason };
 }

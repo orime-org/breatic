@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { toast } from 'sonner';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { useTranslation } from '@web/i18n/use-translation';
+import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
@@ -53,6 +56,7 @@ export const TextNode = React.memo(function TextNode({
   onChange,
   onRename,
 }: TextNodeProps): React.JSX.Element {
+  const t = useTranslation();
   const [editing, setEditing] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   // Optimistic local draft (#1470): commit() flips `editing` off synchronously,
@@ -79,11 +83,20 @@ export const TextNode = React.memo(function TextNode({
   }, [shownContent, editing]);
 
   /**
-   * Enters inline edit mode (unless the node is locked) and focuses the
-   * contenteditable body on the next microtask.
+   * Enters inline edit mode and focuses the contenteditable body on the next
+   * microtask — unless a node-state gate blocks editing the content: a `locked`
+   * node (user froze it) or a `handling` node (a task is writing it) refuses the
+   * edit with a warning toast instead of silently doing nothing.
    */
   const startEdit = (): void => {
-    if (locked) return;
+    const block = evaluateNodeGate(
+      { locked: Boolean(locked), handling: data.status === 'handling' },
+      'editContent',
+    );
+    if (block) {
+      toast.warning(t(block.toastKey));
+      return;
+    }
     setEditing(true);
     queueMicrotask(() => ref.current?.focus());
   };
@@ -95,6 +108,19 @@ export const TextNode = React.memo(function TextNode({
    */
   const commit = (): void => {
     const text = ref.current?.innerText ?? '';
+    // Re-gate at commit (adversarial round): startEdit gates ENTERING an edit,
+    // but a lock or handling task can land WHILE editing. Never write to a
+    // now-frozen node — warn, discard the local edit, and leave edit mode (the
+    // body reverts to data.content). Mirrors the generate submit re-check.
+    const block = evaluateNodeGate(
+      { locked: Boolean(locked), handling: data.status === 'handling' },
+      'editContent',
+    );
+    if (block) {
+      toast.warning(t(block.toastKey));
+      setEditing(false);
+      return;
+    }
     if (onChange) onChange(text);
     setCommittedDraft(text);
     setEditing(false);
@@ -161,7 +187,7 @@ export const TextNode = React.memo(function TextNode({
                   contentEditable
                   suppressContentEditableWarning
                   onBlur={commit}
-                  className={`min-h-48 whitespace-pre-wrap break-words p-3 text-sm outline-none ${EDIT_BODY_CLASS}`}
+                  className={`min-h-48 whitespace-pre-wrap break-words p-3 text-justify text-sm outline-none ${EDIT_BODY_CLASS}`}
                 >
                   {shownContent}
                 </div>
@@ -171,7 +197,7 @@ export const TextNode = React.memo(function TextNode({
                 ref={ref}
                 data-testid='text-node-body'
                 onDoubleClick={startEdit}
-                className='max-h-144 min-h-48 overflow-hidden whitespace-pre-wrap break-words p-3 text-sm outline-none'
+                className='max-h-144 min-h-48 overflow-hidden whitespace-pre-wrap break-words p-3 text-justify text-sm outline-none'
               >
                 {shownContent}
               </div>

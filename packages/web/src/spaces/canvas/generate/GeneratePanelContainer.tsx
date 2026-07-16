@@ -30,6 +30,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
+import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import {
@@ -361,10 +362,23 @@ function GeneratePanelBody({
     //     keystroke may not have flushed into promptText state yet).
     if (submittingRef.current) return;
     if (!nodeExists(projectId, spaceId, nodeId)) return;
-    if (isNodeHandling(projectId, spaceId, nodeId)) return;
-    // A node a collaborator locked after the panel opened is frozen — never
-    // submit against it (fresh Yjs read, not a captured menu / render value).
-    if (isNodeLocked(projectId, spaceId, nodeId)) return;
+    // Node-state gate (bug 2): a locked node — or one a task started writing
+    // since the panel opened — can't submit. Fresh Yjs reads (never a captured
+    // menu / render value). Toast the reason so a locked node's clickable
+    // Execute is an actionable message, not a dead control (the button is
+    // disabled only while handling). Editing the prompt stays allowed; the gate
+    // blocks the submit alone.
+    const gateBlock = evaluateNodeGate(
+      {
+        locked: isNodeLocked(projectId, spaceId, nodeId),
+        handling: isNodeHandling(projectId, spaceId, nodeId),
+      },
+      'generate',
+    );
+    if (gateBlock) {
+      toast.warning(t(gateBlock.toastKey));
+      return;
+    }
     // Serialize the backend prompt AT CLICK TIME (spec §9.1): a text chip
     // substitutes its source node's CURRENT words, and that node may have been
     // edited since the last prompt keystroke — the ref would carry the stale

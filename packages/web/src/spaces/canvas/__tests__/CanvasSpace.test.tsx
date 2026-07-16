@@ -1288,6 +1288,85 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       clickSpy.mockRestore();
     }
   });
+
+  // ---- Node-state gate: Generate menu opens on a LOCKED node (bug 2a) ----
+  // A locked image node still OFFERS Generate so the user can open the panel to
+  // view / edit the prompt; EXECUTE is what the gate stops (in the panel), not
+  // the menu affordance. Previously the item was disabled on locked nodes.
+  it('the Generate menu item is enabled on a locked image node (bug 2a)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'locked-img',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', locked: true },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const node = document.querySelector('.react-flow__node');
+    act(() => {
+      node?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+      );
+    });
+    // Present AND enabled — a Radix disabled item carries data-disabled /
+    // aria-disabled='true'; an enabled item carries neither.
+    const generate = screen.getByTestId('node-menu-generate');
+    expect(generate).not.toHaveAttribute('data-disabled');
+    expect(generate.getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  // ---- Node-state gate: upload refused on a LOCKED node (bug 4) ----
+  // Right-click Upload and the empty-node double-click both funnel through
+  // activateNodeUpload; the gate there refuses a locked node before popping the
+  // file picker. Fresh Yjs read → spied here (the real doc is empty in tests).
+  it('a double-click on a locked empty node does not open the file picker (bug 4)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'locked',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    const clickSpy = vi
+      .spyOn(HTMLInputElement.prototype, 'click')
+      .mockImplementation(() => {});
+    const lockedSpy = vi
+      .spyOn(canvasSpace, 'isNodeLocked')
+      .mockReturnValue(true);
+    try {
+      render(<CanvasSpace projectId='p' spaceId='s' />);
+      const placeholder = screen.getByTestId('node-placeholder');
+      act(() => {
+        placeholder.dispatchEvent(
+          new MouseEvent('dblclick', { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(clickSpy).not.toHaveBeenCalled();
+
+      // Control: unlocked, the same double-click opens the picker — proves the
+      // gate (not a broken wire) is what suppressed it above.
+      lockedSpy.mockReturnValue(false);
+      act(() => {
+        placeholder.dispatchEvent(
+          new MouseEvent('dblclick', { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      clickSpy.mockRestore();
+      lockedSpy.mockRestore();
+    }
+  });
 });
 
 // Reference-pick mode cursor contract (canvas item 7, user 2026-07-10).
