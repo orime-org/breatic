@@ -302,6 +302,36 @@ async function readNodeData(
 }
 
 /**
+ * Wait until a node's live data Y.Map satisfies `check`, then return the
+ * snapshot. The task row reaching a terminal status does NOT mean the node is
+ * settled — the worker's done/failed event still has to travel the Redis
+ * stream → Collab consumer → Yjs leg, so asserting node state right after
+ * waiting on the task status races that application (CI-observed flake
+ * 2026-07-16: task `completed` but node still `handling` at read time).
+ * Waiting on the node data itself removes the race; callers assert exact
+ * values on the returned snapshot afterwards.
+ */
+async function waitForNodeData(
+  hp: Hocuspocus,
+  docName: string,
+  nodeId: string,
+  check: (data: Record<string, unknown>) => boolean,
+  timeoutMs: number,
+  label: string,
+): Promise<Record<string, unknown>> {
+  let last: Record<string, unknown> | null = null;
+  await waitForCondition(
+    async () => {
+      last = await readNodeData(hp, docName, nodeId);
+      return last != null && check(last);
+    },
+    timeoutMs,
+    label,
+  );
+  return last!;
+}
+
+/**
  * Pre-populate a canvas node in a Hocuspocus document.
  *
  * Mirrors the v10 Yjs canvas structure:
@@ -998,10 +1028,18 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     expect(t!.billedAt).toBeNull();
 
     // The node ends idle with an error, NOT pointing at the expiring temp URL.
-    const data = await readNodeData(hocuspocus, docName, nodeId);
-    expect(data!["state"]).toBe("idle");
-    expect(typeof data!["errorMessage"]).toBe("string");
-    expect(data!["content"]).not.toBe(tempUrl);
+    // Wait on the NODE (not just the task row) — the failed event's Redis →
+    // Collab → Yjs application lands after the task status flips.
+    const data = await waitForNodeData(
+      hocuspocus,
+      docName,
+      nodeId,
+      (d) => d["state"] === "idle",
+      10_000,
+      `node ${nodeId} idle after persist failure`,
+    );
+    expect(typeof data["errorMessage"]).toBe("string");
+    expect(data["content"]).not.toBe(tempUrl);
   });
 
   it("Test 5 (asset #1): a within-studio dedup hit collapses to one registry row; node keeps its own URL (reconcile deferred to #1609)", async () => {
@@ -1018,8 +1056,15 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       30_000,
       `task ${taskA} (first dedup gen) completed`,
     );
-    const first = await readNodeData(hocuspocus, docName, nodeA);
-    expect(first!["content"]).toBe(urlA);
+    const first = await waitForNodeData(
+      hocuspocus,
+      docName,
+      nodeA,
+      (d) => d["state"] === "idle",
+      10_000,
+      "first dedup node idle",
+    );
+    expect(first["content"]).toBe(urlA);
 
     // Second gen: same content hash, DIFFERENT provider URL → registry
     // dedups to the first row (usage counted once). The node keeps its OWN
@@ -1133,9 +1178,17 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       30_000,
       `task ${taskId} (no-studio user) completed best-effort`,
     );
-    const data = await readNodeData(hocuspocus, docName, nodeId);
-    expect(data!["state"]).toBe("idle");
-    expect(data!["content"]).toBe(url); // node still got its content
+    // Wait on the NODE, not just the task row (CI flake 2026-07-16: task
+    // completed but the done event's Yjs application had not landed yet).
+    const data = await waitForNodeData(
+      hocuspocus,
+      docName,
+      nodeId,
+      (d) => d["state"] === "idle",
+      10_000,
+      `node ${nodeId} idle (no-studio best-effort)`,
+    );
+    expect(data["content"]).toBe(url); // node still got its content
 
     // But the asset is UNTRACKED — no studio_assets row links to this task.
     const rows = await db
@@ -1163,8 +1216,14 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       30_000,
       `task ${taskId} (own-url output) completed without re-host`,
     );
-    const data = await readNodeData(hocuspocus, docName, nodeId);
-    expect(data!["state"]).toBe("idle");
-    expect(data!["content"]).toBe("https://oss/uploaded");
+    const data = await waitForNodeData(
+      hocuspocus,
+      docName,
+      nodeId,
+      (d) => d["state"] === "idle",
+      10_000,
+      `node ${nodeId} idle (own-url output)`,
+    );
+    expect(data["content"]).toBe("https://oss/uploaded");
   });
 });
