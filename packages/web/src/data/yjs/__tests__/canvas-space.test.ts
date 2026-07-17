@@ -620,7 +620,12 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(undo.undoStack.length).toBe(depth);
   });
 
-  it('focus REMOVE (a synchronous ✕ click) IS undoable (CANVAS_UNDO)', () => {
+  it('focus REMOVE is NOT undo-tracked either — crops live outside canvas undo (round-11)', () => {
+    // On a whole-array LWW key, Yjs undo of a removal is silently
+    // neutralized by ANY later rewrite of the key (the async crop append
+    // is one, landing seconds later in normal use). An undo that
+    // sometimes silently no-ops is worse than none — both directions are
+    // CONTENT_WRITE.
     addNode(
       PID,
       SID,
@@ -629,12 +634,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     const undo = createCanvasUndoManager(doc());
     const depth = undo.undoStack.length;
     expect(removeNodeFocusImage(PID, SID, 'gen', 'f1')).toBe(true);
-    expect(undo.undoStack.length).toBe(depth + 1);
-    undo.undo();
-    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
-      'data',
-    ) as Y.Map<unknown>;
-    expect(data.get('focusImages')).toEqual([crop1]);
+    expect(undo.undoStack.length).toBe(depth);
   });
 
   it('addNodeFocusImage refuses an entry its own readers would reject (round-5)', () => {

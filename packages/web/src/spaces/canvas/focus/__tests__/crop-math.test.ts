@@ -246,6 +246,27 @@ describe('applyRatioPreset — minimum seeding (round-4)', () => {
   });
 });
 
+describe('applyRatioPreset — natural-aware minimums at zoom-in (round-11)', () => {
+  it('reshapes to a natural-valid rect instead of landing below the gauge', () => {
+    // Display 1024² over natural 256² (4× zoom-in): the natural minimum is
+    // 32 display px. A 40×40 marquee + 16:9 with display-only seeding
+    // derived a 22.5px (5.6 natural) height — below the gauge, discarded.
+    const display = { width: 1024, height: 1024 };
+    const natural = { width: 256, height: 256 };
+    const minW = Math.max(MIN_CROP_PX, (8 * display.width) / natural.width);
+    const minH = Math.max(MIN_CROP_PX, (8 * display.height) / natural.height);
+    const r = applyRatioPreset(
+      { x: 100, y: 100, width: 40, height: 40 },
+      16 / 9,
+      display,
+      minW,
+      minH,
+    );
+    expect(isNaturalCropValid(r, display, natural)).toBe(true);
+    expect(r.width / r.height).toBeCloseTo(16 / 9, 5);
+  });
+});
+
 describe('toNaturalCrop — display px → source-resolution px', () => {
   it('scales by the display/natural ratio and rounds to integers', () => {
     // Display 400×300, natural 1600×1200 → scale ×4.

@@ -399,6 +399,40 @@ describe('FocusCropOverlay', () => {
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
+  it('Cancel aborts an in-flight second-pointer gesture — no resurrection (round-11)', () => {
+    renderOverlay();
+    const layer = screen.getByTestId('focus-crop-layer');
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    // A second pointer grabs a handle mid-session…
+    fireEvent.pointerDown(screen.getByTestId('focus-crop-handle-se'), {
+      clientX: 250,
+      clientY: 180,
+      button: 0,
+      pointerId: 5,
+    });
+    // …the user clicks Cancel…
+    fireEvent.click(screen.getByTestId('focus-crop-cancel'));
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+    // …and the captured pointer's next move must NOT resurrect the rect.
+    fireEvent.pointerMove(layer, { clientX: 300, clientY: 220, pointerId: 5 });
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+  });
+
+  it('an IME composition-cancel Escape never clears the marquee (round-11)', () => {
+    const onExit = vi.fn();
+    renderOverlay(vi.fn(() => true), onExit);
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    const composing = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(composing, 'isComposing', { value: true });
+    window.dispatchEvent(composing);
+    expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+    expect(onExit).not.toHaveBeenCalled();
+  });
+
   it('a second pointer cannot hijack or end the active interaction (adversarial)', () => {
     renderOverlay();
     const layer = screen.getByTestId('focus-crop-layer');

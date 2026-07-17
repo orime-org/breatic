@@ -327,19 +327,26 @@ export function resizeFromCapture(
  * @param rect - The current rect.
  * @param ratio - The preset's width/height value.
  * @param bounds - The image's display size.
+ * @param minWidth - Per-axis display-px minimum width (defaults to MIN_CROP_PX).
+ * @param minHeight - Per-axis display-px minimum height (defaults to MIN_CROP_PX).
  * @returns The re-shaped, clamped rect.
  */
 export function applyRatioPreset(
   rect: CropRect,
   ratio: number,
   bounds: CropSize,
+  minWidth: number = MIN_CROP_PX,
+  minHeight: number = MIN_CROP_PX,
 ): CropRect {
   // Seed at least the minimum on BOTH axes (round-4): keeping a thin
-  // rect's width could derive a sub-MIN_CROP_PX height, stranding the
-  // invisible sliver the degenerate-rect invariant forbids. The bounds
-  // shrink below still wins on tiny images (the caller discards an
-  // invalid result).
-  let width = Math.max(rect.width, MIN_CROP_PX, MIN_CROP_PX * ratio);
+  // rect's width could derive a sub-minimum height, stranding the
+  // invisible sliver the degenerate-rect invariant forbids. The minimums
+  // are caller-supplied per axis (round-11): with the validity gauge in
+  // NATURAL pixels, a zoomed-IN image needs display minimums larger than
+  // MIN_CROP_PX or the reshape lands below the gauge and a preset click
+  // destroys a recoverable selection. The bounds shrink below still wins
+  // on genuinely tiny images (the caller discards an invalid result).
+  let width = Math.max(rect.width, minWidth, minHeight * ratio);
   let height = width / ratio;
   // Shrink (keeping the ratio) until both dims fit.
   if (width > bounds.width) {

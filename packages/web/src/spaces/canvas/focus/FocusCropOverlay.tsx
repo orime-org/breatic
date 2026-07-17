@@ -9,6 +9,8 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { CapturedResize } from '@web/spaces/canvas/focus/crop-math';
 import {
   CROP_RATIOS,
+  MIN_CROP_PX,
+  MIN_NATURAL_CROP_PX,
   captureResize,
   drawRect,
   isCropValid,
@@ -107,6 +109,9 @@ export function FocusCropOverlay({
     width: number;
     height: number;
   } | null>(null);
+  // The pick banner's measured bottom edge (0 = none found) — the bar's
+  // top clamp starts below it (round-11).
+  const [bannerBottom, setBannerBottom] = React.useState(0);
   const [rect, setRect] = React.useState<CropRect | null>(null);
   const [ratio, setRatio] = React.useState<number | null>(null);
   const interactionRef = React.useRef<Interaction | null>(null);
@@ -201,6 +206,16 @@ export function FocusCropOverlay({
       height: imgRect.height,
     };
     setRootSize({ width: rootRect.width, height: rootRect.height });
+    // The pick banner's REAL bottom (round-11): the 64px guess assumed a
+    // single-line banner at 16px root font — rem scaling / text wrapping
+    // push it lower and the hit-opaque banner swallowed the bar's top.
+    const banner = document.querySelector(
+      '[data-testid="reference-pick-banner"]',
+    );
+    const bottom = banner
+      ? banner.getBoundingClientRect().bottom - rootRect.top
+      : 0;
+    setBannerBottom((prevB) => (prevB === bottom ? prevB : bottom));
     const src = img.getAttribute('src');
     const prev = prevBoxRef.current;
     if (measuredSrcRef.current !== null && measuredSrcRef.current !== src) {
@@ -339,7 +354,18 @@ export function FocusCropOverlay({
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || e.defaultPrevented || e.repeat) return;
+      // isComposing / 229: an IME composition-cancel Escape must never
+      // leak into the session handlers (round-11 — a CJK user dismissing
+      // the candidate window lost their marquee).
+      if (
+        e.key !== 'Escape' ||
+        e.defaultPrevented ||
+        e.repeat ||
+        e.isComposing ||
+        e.keyCode === 229
+      ) {
+        return;
+      }
       const active = document.activeElement;
       // Yield by Esc OWNERSHIP, not focus location (round-6): consumers
       // (the @-suggestion, Radix overlays) preventDefault or hold focus in
@@ -549,7 +575,20 @@ export function FocusCropOverlay({
       // invalid rect — discard it rather than strand a sub-minimum sliver.
       setRect((prev) => {
         if (!prev) return prev;
-        const shaped = applyRatioPreset(prev, next, bounds);
+        // Seed the reshape with NATURAL-aware display minimums (round-11):
+        // at zoom-in the natural gauge demands more display px than
+        // MIN_CROP_PX, and a display-seeded reshape landed below the gauge
+        // — a preset click destroyed a selection that a valid 16:9 rect
+        // trivially fit.
+        const minW =
+          naturalSize && box
+            ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * box.width) / naturalSize.width)
+            : MIN_CROP_PX;
+        const minH =
+          naturalSize && box
+            ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * box.height) / naturalSize.height)
+            : MIN_CROP_PX;
+        const shaped = applyRatioPreset(prev, next, bounds, minW, minH);
         // The THIRD validity decision joins the unified gauge (round-10):
         // display-px here was eating a zoom-out selection that pointer-up
         // and Confirm deliberately accept.
@@ -608,6 +647,9 @@ export function FocusCropOverlay({
       // Clearing the rect disables the focused Confirm button, which drops
       // DOM focus to <body> (round-5) — hand it to Cancel synchronously
       // (still enabled, same bar) so keyboard users stay in the session.
+      // A second pointer's in-flight gesture dies too (round-11), or its
+      // next move resurrects the cleared marquee.
+      interactionRef.current = null;
       cancelRef.current?.focus();
       setRect(null);
     }
@@ -698,12 +740,12 @@ export function FocusCropOverlay({
                   rootSize.width - barSize.width / 2 - 8,
                 )
                 : box.x + box.width / 2,
-              // Top clamp starts BELOW the pick-banner band (round-10):
-              // the banner is hit-opaque again, so a bar parked under it
-              // would be unreachable — 64px clears top-4 + banner height.
+              // Top clamp starts BELOW the MEASURED banner bottom
+              // (round-11): the banner is hit-opaque, and a fixed 64px
+              // guess broke under rem scaling / banner text wrapping.
               top: rootSize
                 ? Math.max(
-                  64,
+                  bannerBottom + 8,
                   Math.min(
                     box.y + box.height + 8,
                     rootSize.height - barSize.height - 8,
@@ -734,7 +776,12 @@ export function FocusCropOverlay({
               ref={cancelRef}
               type='button'
               data-testid='focus-crop-cancel'
-              onClick={() => setRect(null)}
+              onClick={() => {
+                // Cancel aborts the in-flight gesture too (round-11) — the
+                // captured pointer's next move resurrected the marquee.
+                interactionRef.current = null;
+                setRect(null);
+              }}
               className='rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             >
               {t('canvas.generatePanel.focusCancel')}

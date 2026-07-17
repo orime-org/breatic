@@ -558,7 +558,15 @@ function CanvasSpaceInner({
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || e.defaultPrevented || e.repeat) return;
+      if (
+        e.key !== 'Escape' ||
+        e.defaultPrevented ||
+        e.repeat ||
+        e.isComposing ||
+        e.keyCode === 229
+      ) {
+        return;
+      }
       const active = document.activeElement;
       // Ownership-based yield (round-6, matching the overlay): the
       // defaultPrevented guard covers Esc consumers; a plain focused

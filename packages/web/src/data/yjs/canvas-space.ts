@@ -655,8 +655,9 @@ export function addNodeFocusImage(
  * Remove a focus crop from a node's `focusImages` by id (#1782) — the ✕ on
  * a focus entry in the reference rail. Deletes the key when the last entry
  * goes (absent = the natural "none created" state, mirroring
- * {@link clearNodeStyleImage}). Undoable (CANVAS_UNDO). No-op (no write, no
- * undo entry) when the node, the array, or the id is missing.
+ * {@link clearNodeStyleImage}). NOT undo-tracked (round-11): focus crops
+ * live entirely outside canvas undo — see the origin note in the body.
+ * No-op (no write) when the node, the array, or the id is missing.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the generative node the crop belongs to.
@@ -692,14 +693,17 @@ export function removeNodeFocusImage(
   const next = list.filter((f) => f.id !== focusId);
   const removed = next.length !== list.length;
   if (!removed && list.length === prev.length) return false;
-  // Origin matches the INTENT (round-4): a real user removal is undoable;
-  // a heal-only rewrite (target already gone, malformed entries dropped)
-  // under CANVAS_UNDO would be a phantom undo step whose Cmd+Z re-inserts
-  // the very junk the heal removed.
+  // CONTENT_WRITE unconditionally (round-11, superseding round-4's
+  // removal-is-undoable): on a whole-array LWW key, Yjs undo of a removal
+  // is silently NEUTRALIZED by any later rewrite of the same key — and the
+  // async crop append IS such a rewrite, landing seconds later in normal
+  // use. An undo that sometimes silently no-ops is worse than no undo:
+  // focus crops live entirely outside canvas undo (both directions), and
+  // the ✕ is the one explicit removal surface.
   doc.transact(() => {
     if (next.length === 0) data.delete('focusImages');
     else data.set('focusImages', next);
-  }, removed ? CANVAS_UNDO : CONTENT_WRITE);
+  }, CONTENT_WRITE);
   return removed;
 }
 
