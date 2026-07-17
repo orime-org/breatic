@@ -67,11 +67,11 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
     ).toBeTruthy();
   });
 
-  it('the insert button ACCESSIBLE NAME carries the row name + crop tag (adversarial r2)', () => {
+  it('insert AND remove ACCESSIBLE NAMES carry the row name + crop tag (adversarial r2/r3)', () => {
     // aria-label overrides name-from-content, so an sr-only span INSIDE the
-    // button is dead — every row announced identically as "Insert". The
-    // label itself must carry the row name, plus the crop tag on focus rows,
-    // so a screen reader can tell a crop from its identically-named source.
+    // button is dead and a bare action label announces every row (and every
+    // ✕) identically. The labels are ICU messages (locale owns order and
+    // punctuation) carrying the row name, plus the crop tag on focus rows.
     render(
       <ReferenceRail
         references={[REFS[0], FOCUS_ROW]}
@@ -79,16 +79,36 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
         onInsert={() => {}}
       />,
     );
-    const plain = screen
+    const label = (id: string): string | null =>
+      screen.getByTestId(id).getAttribute('aria-label');
+    // Both rows are named 'Hero' — exactly the collision the tag resolves.
+    const insertPlain = label('generate-ref-insert-a->me');
+    const insertFocus = label('generate-ref-insert-focus:f1');
+    expect(insertPlain).toContain('Hero');
+    expect(insertFocus).toContain('Hero');
+    expect(insertFocus).not.toBe(insertPlain);
+    // The destructive ✕ resolves the same collision (r3 MEDIUM).
+    const removePlain = label('generate-ref-remove-a->me');
+    const removeFocus = label('generate-ref-remove-focus:f1');
+    expect(removePlain).toContain('Hero');
+    expect(removeFocus).toContain('Hero');
+    expect(removeFocus).not.toBe(removePlain);
+  });
+
+  it('an EMPTY source name falls back to the localized "Reference" in the labels (r3)', () => {
+    // nameOf() → '' is a designed-for state; the chip and the @-list both
+    // fall back — the rail labels must not degrade to a dangling separator.
+    render(
+      <ReferenceRail
+        references={[{ ...REFS[0], sourceNodeName: '' }]}
+        onRemove={() => {}}
+        onInsert={() => {}}
+      />,
+    );
+    const insert = screen
       .getByTestId('generate-ref-insert-a->me')
       .getAttribute('aria-label');
-    const focus = screen
-      .getByTestId('generate-ref-insert-focus:f1')
-      .getAttribute('aria-label');
-    // Both rows are named 'Hero' — exactly the collision the tag resolves.
-    expect(plain).toContain('Hero');
-    expect(focus).toContain('Hero');
-    expect(focus).not.toBe(plain);
+    expect(insert).toContain('Reference');
   });
 
   it('a focus row ✕ fires onRemove with the ROW (focus flag routes to the crop)', () => {

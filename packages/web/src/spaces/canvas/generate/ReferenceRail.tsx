@@ -107,11 +107,19 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 // tag (adversarial round-2): aria-label overrides
                 // name-from-content, so a bare action label made every row
                 // announce identically — and an sr-only span inside the
-                // button is dead for the same reason.
-                aria-label={
-                  `${t('canvas.generatePanel.insertReference')}: ` +
-                  `${ref.sourceNodeName}${ref.focus ? ` (${t('canvas.generatePanel.focusCropTag')})` : ''}`
-                }
+                // button is dead for the same reason. ICU messages so each
+                // locale owns order and punctuation (round-3); the empty
+                // name falls back like the chip and the @-list do.
+                aria-label={t(
+                  ref.focus
+                    ? 'canvas.generatePanel.insertFocusCropNamed'
+                    : 'canvas.generatePanel.insertReferenceNamed',
+                  {
+                    name:
+                      ref.sourceNodeName ||
+                      t('canvas.generatePanel.reference'),
+                  },
+                )}
                 // preventDefault on mousedown keeps the prompt editor focused, so
                 // the mention lands at the caret (not appended to the end).
                 onMouseDown={(e) => e.preventDefault()}
@@ -153,7 +161,18 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             <button
               type='button'
               data-testid={`generate-ref-remove-${ref.refId}`}
-              aria-label={t('canvas.generatePanel.removeReference')}
+              // Same identity-carrying label as insert (round-3): the
+              // destructive ✕ must not announce identically across
+              // same-named rows either.
+              aria-label={t(
+                ref.focus
+                  ? 'canvas.generatePanel.removeFocusCropNamed'
+                  : 'canvas.generatePanel.removeReferenceNamed',
+                {
+                  name:
+                    ref.sourceNodeName || t('canvas.generatePanel.reference'),
+                },
+              )}
               onClick={() => onRemove(ref)}
               disabled={inert}
               className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed'
