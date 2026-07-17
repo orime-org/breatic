@@ -205,6 +205,19 @@ export function FocusCropOverlay({
       width: imgRect.width,
       height: imgRect.height,
     };
+    if (next.width <= 0 || next.height <= 0) {
+      // The img is PRESENT but not laid out yet — a lazy-load remount
+      // (#1772 culled-then-return) measures a zero box before decode.
+      // A degenerate box cannot anchor the interactive layers, and
+      // rescaling against it collapses the marquee to zero and then to
+      // NaN on the post-decode measure (round-12). Keep the marquee and
+      // every baseline untouched (this is also the ONLY write path into
+      // `prevBoxRef`, so the rescale divisor stays positive by
+      // construction); the ResizeObserver bound above re-measures the
+      // moment real dimensions arrive.
+      setBox(null);
+      return;
+    }
     setRootSize({ width: rootRect.width, height: rootRect.height });
     // The pick banner's REAL bottom (round-11): the 64px guess assumed a
     // single-line banner at 16px root font — rem scaling / text wrapping

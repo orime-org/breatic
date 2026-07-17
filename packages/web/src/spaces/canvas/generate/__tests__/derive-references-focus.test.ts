@@ -67,5 +67,33 @@ describe('focus: namespace squatting (round-9)', () => {
     const edges = [{ id: 'e', source: 'focus:f1', target: 'gen' }];
     expect(referencePoolCount(edges, nodes, 'gen')).toBe(0);
   });
+
+  it('deriveReferences skips a forged EDGE whose id squats in the focus: namespace (round-12)', async () => {
+    const { deriveReferences } = await import(
+      '@web/spaces/canvas/generate/derive-references'
+    );
+    // The row's refId = the edge id: a forged edge id colliding with a
+    // crop's `focus:` pool id would render two rail rows with the same
+    // React key and misroute the ✕ removal.
+    const nodes = [
+      {
+        id: 'src-1',
+        data: { kind: 'image', status: 'idle', content: 'https://cdn/a.png' },
+      },
+    ] as never[];
+    const edges = [{ id: 'focus:f1', source: 'src-1', target: 'gen' }];
+    expect(deriveReferences('gen', nodes, edges)).toEqual([]);
+  });
+
+  it('referencePoolCount does not let a forged focus:-id edge occupy a cap slot (round-12)', async () => {
+    const { referencePoolCount } = await import(
+      '@web/spaces/canvas/generate/reference-pool-cap'
+    );
+    // The rail refuses to render it (test above) — so it must not occupy a
+    // cap slot either (the round-2 invariant: uncountable = unrenderable).
+    const nodes = [{ id: 'src-1' }, { id: 'gen' }];
+    const edges = [{ id: 'focus:f1', source: 'src-1', target: 'gen' }];
+    expect(referencePoolCount(edges, nodes, 'gen')).toBe(0);
+  });
 });
 

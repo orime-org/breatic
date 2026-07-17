@@ -433,6 +433,45 @@ describe('FocusCropOverlay', () => {
     expect(onExit).not.toHaveBeenCalled();
   });
 
+  it('a lazy-load remount measuring a zero-size box must not destroy the kept marquee (round-12)', () => {
+    renderOverlay();
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 800 });
+    Object.defineProperty(img, 'naturalHeight', { value: 600 });
+    fireEvent(window, new Event('resize')); // capture the natural size
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    // Culling: the img unmounts; the marquee is KEPT (round-8).
+    img.remove();
+    fireEvent(window, new Event('resize'));
+    expect(screen.queryByTestId('focus-crop-layer')).toBeNull();
+    // Return from culling: the img REMOUNTS with the same src, but lazy
+    // loading (#1772) can make its first measure a ZERO box (decode not
+    // finished). Rescaling against it collapsed the marquee to 0, then the
+    // post-decode measure divided by the stored zero → NaN geometry.
+    const node = document.querySelector('.react-flow__node[data-id="n1"]')!;
+    const back = document.createElement('img');
+    back.setAttribute('data-testid', 'image-node-img');
+    back.setAttribute('src', 'https://cdn/original.png');
+    node.appendChild(back);
+    IMG_BOX.width = 0;
+    IMG_BOX.height = 0;
+    fireEvent(window, new Event('resize'));
+    // Decode finishes: the real box lands.
+    IMG_BOX.width = 400;
+    IMG_BOX.height = 300;
+    Object.defineProperty(back, 'naturalWidth', { value: 800 });
+    Object.defineProperty(back, 'naturalHeight', { value: 600 });
+    fireEvent(window, new Event('resize'));
+    const rect = screen.getByTestId('focus-crop-rect');
+    expect(rect.style.left).toBe('50px');
+    expect(rect.style.top).toBe('50px');
+    expect(rect.style.width).toBe('100px');
+    expect(rect.style.height).toBe('80px');
+    expect(
+      (screen.getByTestId('focus-crop-confirm') as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
   it('a second pointer cannot hijack or end the active interaction (adversarial)', () => {
     renderOverlay();
     const layer = screen.getByTestId('focus-crop-layer');

@@ -275,7 +275,12 @@ export async function fillNodeFromFile(
 export interface AssetNodeLike {
   id: string;
   type?: string;
-  data?: { content?: unknown; coverUrl?: unknown; focusImages?: unknown };
+  data?: {
+    content?: unknown;
+    coverUrl?: unknown;
+    focusImages?: unknown;
+    styleImageUrl?: unknown;
+  };
 }
 
 /** One asset-delete report entry (activity feed). */
@@ -336,6 +341,11 @@ export function computeDeletedAssetEntries(
     if (deletedIds.has(n.id)) continue;
     if (typeof n.data?.content === 'string') survivingUrls.add(n.data.content);
     if (typeof n.data?.coverUrl === 'string') survivingUrls.add(n.data.coverUrl);
+    // The style slot (#333) holds a copied URL — dedup can make it equal a
+    // crop's asset URL, so it keeps the asset alive too (round-12).
+    if (typeof n.data?.styleImageUrl === 'string') {
+      survivingUrls.add(n.data.styleImageUrl);
+    }
     // Focus crops (#1782) are uploaded assets too — a crop URL held by a
     // surviving node keeps the asset alive (adversarial round-2).
     for (const crop of validFocusImages(n.data?.focusImages)) {
@@ -369,10 +379,11 @@ export function computeDeletedAssetEntries(
 }
 
 /**
- * Whether an asset URL is still referenced by any node — content, cover, or
- * focus crop (#1782). The rail's crop ✕ reports the asset deleted only when
- * this is false; call it AFTER the removal write so the removed instance is
- * naturally excluded (adversarial round-2).
+ * Whether an asset URL is still referenced by any node — content, cover,
+ * style slot (#333, round-12), or focus crop (#1782). The rail's crop ✕
+ * reports the asset deleted only when this is false; call it AFTER the
+ * removal write so the removed instance is naturally excluded (adversarial
+ * round-2).
  * @param url - The asset URL to check.
  * @param nodes - The current canvas nodes (post-removal).
  * @returns True when any node still references the URL.
@@ -385,10 +396,14 @@ export function assetUrlSurvives(
   nodes: ReadonlyArray<{ data?: object }>,
 ): boolean {
   for (const n of nodes) {
-    const data = n.data as
-      | { content?: unknown; coverUrl?: unknown; focusImages?: unknown }
-      | undefined;
-    if (data?.content === url || data?.coverUrl === url) return true;
+    const data = n.data as AssetNodeLike['data'];
+    if (
+      data?.content === url ||
+      data?.coverUrl === url ||
+      data?.styleImageUrl === url
+    ) {
+      return true;
+    }
     if (validFocusImages(data?.focusImages).some((c) => c.url === url)) {
       return true;
     }

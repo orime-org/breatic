@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import { NodeHeader } from '@web/spaces/canvas/nodes/_shared/NodeHeader';
 
@@ -35,6 +35,39 @@ describe('NodeHeader', () => {
     fireEvent.change(input, { target: { value: 'Discarded' } });
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it('Escape marks the event consumed so window-level Esc handlers yield (round-12)', () => {
+    render(<NodeHeader modality='image' name='Old' onRename={vi.fn()} />);
+    fireEvent.doubleClick(screen.getByTestId('node-header-name'));
+    const input = screen.getByTestId('node-header-input');
+    // A window-level Esc consumer (the focus-session exit, the crop overlay
+    // staging) keys its yield on `defaultPrevented` — canceling a rename
+    // must never ALSO tear down a focus session (round-12).
+    const seen: boolean[] = [];
+    const onWindowKeyDown = (e: KeyboardEvent): void => {
+      seen.push(e.defaultPrevented);
+    };
+    window.addEventListener('keydown', onWindowKeyDown);
+    try {
+      const evt = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      // A raw dispatch (not fireEvent) so the NATIVE event's
+      // defaultPrevented is observable at the window — wrapped in act()
+      // to flush the cancel's state update.
+      act(() => {
+        input.dispatchEvent(evt);
+      });
+      expect(evt.defaultPrevented).toBe(true);
+      expect(seen).toEqual([true]);
+    } finally {
+      window.removeEventListener('keydown', onWindowKeyDown);
+    }
+    // The cancel itself still ran — the editor closed.
+    expect(screen.queryByTestId('node-header-input')).toBeNull();
   });
 
   it('does not commit a blank rename', () => {

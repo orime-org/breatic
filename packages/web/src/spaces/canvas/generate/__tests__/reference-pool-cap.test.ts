@@ -13,7 +13,11 @@ import {
   isReferencePoolFull,
 } from '@web/spaces/canvas/generate/reference-pool-cap';
 
-const edge = (source: string, target: string) => ({ source, target });
+const edge = (source: string, target: string) => ({
+  id: `${source}->${target}`,
+  source,
+  target,
+});
 const focus = (id: string) => ({
   id,
   url: `https://cdn/${id}.png`,

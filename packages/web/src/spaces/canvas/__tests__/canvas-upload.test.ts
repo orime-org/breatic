@@ -429,6 +429,21 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     expect(computeDeletedAssetEntries(deleted2, all2, 'sp-1')).toEqual([]);
   });
 
+  it('a crop URL held by a SURVIVOR\'s style slot keeps the asset alive (round-12)', () => {
+    // #333 style copies + dedup can make a node's styleImageUrl equal a
+    // crop's asset URL — the survivor set must see the style slot, or the
+    // ledger falsely reports the shared asset deleted.
+    const shared = url('style-shared');
+    const deleted = [
+      { id: 'a', type: 'image', data: { focusImages: [crop('f1', shared)] } },
+    ];
+    const all = [
+      ...deleted,
+      { id: 'b', type: 'image', data: { styleImageUrl: shared } },
+    ];
+    expect(computeDeletedAssetEntries(deleted, all, 'sp-1')).toEqual([]);
+  });
+
   it('isReportableAssetUrl mirrors the server parse contract (round-3)', () => {
     expect(isReportableAssetUrl('https://cdn/x.png')).toBe(true);
     expect(isReportableAssetUrl('http://cdn/x.png')).toBe(true);
@@ -441,13 +456,15 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     expect(isReportableAssetUrl('https://x/' + 'a'.repeat(2048))).toBe(false);
   });
 
-  it('assetUrlSurvives sees content, cover, and focus crops', () => {
+  it('assetUrlSurvives sees content, cover, focus crops, and the style slot (round-12)', () => {
     const nodes = [
       { id: 'a', data: { content: url('c') } },
       { id: 'b', data: { focusImages: [crop('f1', url('f'))] } },
+      { id: 'c', data: { styleImageUrl: url('s') } },
     ];
     expect(assetUrlSurvives(url('c'), nodes)).toBe(true);
     expect(assetUrlSurvives(url('f'), nodes)).toBe(true);
+    expect(assetUrlSurvives(url('s'), nodes)).toBe(true);
     expect(assetUrlSurvives(url('ghost'), nodes)).toBe(false);
   });
 

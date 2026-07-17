@@ -171,7 +171,12 @@ export function deriveReferences(
   // to remove (adversarial round-1). The id tiebreak gives every client the
   // identical rail (and i2i payload) order.
   const incoming = edges
-    .filter((e) => e.target === nodeId)
+    // The row's refId = the edge id, so the focus: namespace guard applies
+    // to EDGE ids too (round-12): a forged edge id colliding with a crop's
+    // pool id would render two rail rows with the same React key and
+    // misroute the ✕ removal. Legit edge ids are UUID-based and never
+    // carry the prefix.
+    .filter((e) => e.target === nodeId && !e.id.startsWith(FOCUS_REF_PREFIX))
     .sort(
       (a, b) =>
         (a.createdAt ?? 0) - (b.createdAt ?? 0) || ordinalCompare(a.id, b.id),

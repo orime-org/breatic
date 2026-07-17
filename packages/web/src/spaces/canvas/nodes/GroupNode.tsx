@@ -131,7 +131,14 @@ export const GroupNode = React.memo(function GroupNode({
             onBlur={commit}
             onKeyDown={(e) => {
               if (e.key === 'Enter') commit();
-              else if (e.key === 'Escape') cancel();
+              else if (e.key === 'Escape') {
+                // Mark the key consumed: window-level Esc consumers (the
+                // focus-session exit, the crop overlay staging) yield on
+                // `defaultPrevented` — the same protocol every other Esc
+                // consumer follows (SpaceTab / TitleEditable, round-12).
+                e.preventDefault();
+                cancel();
+              }
             }}
             // `nodrag` lets a pointer press select text instead of dragging the
             // group; the input only renders while editing, so it's always safe.
