@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 
 // Shared layout / focus / disabled classes; color + hover applied per-state.
 const TOOL_BASE =
@@ -63,6 +64,7 @@ function ToggleTool({
         type='button'
         data-testid={testId}
         onClick={onClick}
+        onFocusCapture={suppressTooltipFocusOpen}
         disabled={disabled}
         aria-pressed={active}
         className={TOOL_BASE + (active ? TOOL_ACTIVE : TOOL_INACTIVE)}
@@ -163,6 +165,7 @@ function StyleTool({
           data-testid='generate-tool-style'
           aria-label={label}
           onClick={onStyle}
+          onFocusCapture={suppressTooltipFocusOpen}
           disabled={disabled}
           aria-pressed={active}
           className={

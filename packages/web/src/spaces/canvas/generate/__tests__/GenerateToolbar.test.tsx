@@ -25,7 +25,7 @@ function setup(
   );
 }
 
-describe('GenerateToolbar — Style / Focus / Reference are live; Mark is a disabled placeholder', () => {
+describe('GenerateToolbar — Style / Focus / Reference are the three live tools', () => {
   it('renders exactly the three live tool buttons — Mark was cut (user 2026-07-17, decision C)', () => {
     setup();
     expect(screen.getByTestId('generate-tool-style')).toBeInTheDocument();
@@ -72,6 +72,25 @@ describe('GenerateToolbar — Style / Focus / Reference are live; Mark is a disa
   it('disables Reference when referenceDisabled is set (text-to-image, §2.5)', () => {
     setup({ referenceDisabled: true });
     expect(screen.getByTestId('generate-tool-reference')).toBeDisabled();
+  });
+
+  it('suppresses the focus-opened tooltip on every tool trigger (smoke 2026-07-17)', () => {
+    // Radix Tooltip opens INSTANTLY on trigger focus (bypassing delayDuration).
+    // Real-browser smoke caught the consequence: with a tool button focused
+    // after a click, its tooltip is open and the user's first Escape dismisses
+    // the tooltip instead of the pick session. The shipped pattern for every
+    // tooltip-wrapped chrome button is suppressTooltipFocusOpen on the
+    // trigger (ViewportToolbar & co) — hover still opens the tip.
+    setup();
+    for (const id of [
+      'generate-tool-style',
+      'generate-tool-focus',
+      'generate-tool-reference',
+    ]) {
+      fireEvent.focus(screen.getByTestId(id));
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
+    }
   });
 
   it('Style is gated on the MODEL capability, not the mode (#1664)', () => {
