@@ -36,7 +36,10 @@ import {
 } from '@web/data/focus-images';
 import { getCachedReferencePoolCap } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
-import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
+import {
+  FocusCropOverlay,
+  handOffFocusToPickBanner,
+} from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
@@ -520,6 +523,15 @@ function CanvasSpaceInner({
       .querySelector<HTMLElement>(`[data-testid="${triggerTestId}"]`)
       ?.focus();
   }, [endPick]);
+  /**
+   * Return the focus session to its PICK state (user 2026-07-17 A): drop
+   * the crop target so the overlay unmounts, but keep the session — the
+   * banner stays and another image can be picked. Cancel and the overlay's
+   * bare Esc land here; a further Esc then exits via the pick Esc handler.
+   */
+  const onFocusBackToPick = React.useCallback((): void => {
+    setFocusCropTargetId(null);
+  }, []);
   // The image node a focus crop marquee is open on (#1782), or null. Local
   // React state — it only exists while THIS user's focus pick runs; the
   // effect clears it whenever the session ends or changes purpose (Exit,
@@ -542,22 +554,51 @@ function CanvasSpaceInner({
       st.flowNodes.some((n) => n.id === focusCropTargetId),
   );
   React.useEffect(() => {
-    if (!focusTargetExists) setFocusCropTargetId(null);
+    if (!focusTargetExists) {
+      // Third overlay-unmount path (adversarial round-2): a collaborator
+      // deleting the crop source mid-crop must not orphan keyboard focus to
+      // <body>. Unlike Esc stage-two (a deliberate keypress), this rescue
+      // only fires when focus actually sits INSIDE the dying overlay — a
+      // remote deletion must never grab focus from elsewhere. The effect
+      // runs while the overlay DOM is still mounted (unmount lands next
+      // render), so the containment check still sees it.
+      const overlay = document.querySelector(
+        '[data-testid="focus-crop-overlay"]',
+      );
+      if (overlay?.contains(document.activeElement)) {
+        handOffFocusToPickBanner(overlay);
+      }
+      setFocusCropTargetId(null);
+    }
   }, [focusTargetExists]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
   // is clicked, leaving Esc silently dead in the banner-only state. Same
   // yield rules as the overlay's handler (defaultPrevented + editor /
   // overlay-content focus win).
-  const focusSessionWithoutTarget =
-    pickSession?.purpose === 'focus' && focusCropTargetId === null;
+  // Unified pick-session Esc (user 2026-07-17 #8): EVERY pick purpose
+  // (reference / style / focus) exits on Escape — reference and style had
+  // no listener at all, so their banners showed Exit but Esc was dead.
+  // Active whenever a session runs WITHOUT the crop overlay mounted (the
+  // overlay owns its own two-stage Esc while it is up; its stage two
+  // peels back to this state, so the full chain is marquee → pick state →
+  // session exit).
+  const pickEscActive =
+    pickSession !== null &&
+    (pickSession.purpose !== 'focus' || focusCropTargetId === null);
   React.useEffect(() => {
-    if (!focusSessionWithoutTarget) return;
+    if (!pickEscActive) return;
     /**
-     * Keydown listener exiting the target-less focus session on Escape.
+     * Keydown listener exiting the overlay-less pick session on Escape.
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
+      // Every consumer that preventDefaults owns the press — including an
+      // open Radix tooltip dismissing itself (adversarial round-2 reversal:
+      // a [role=tooltip]-presence bypass misattributed OTHER consumers'
+      // preventDefault under the same single bit, double-acting on one
+      // press). Layered peel: the tooltip visibly dismisses, then the next
+      // press exits the session.
       if (
         e.key !== 'Escape' ||
         e.defaultPrevented ||
@@ -573,8 +614,9 @@ function CanvasSpaceInner({
       // editor consumes nothing and must not deaden Esc.
       if (
         active &&
-        active.closest('[role="dialog"],[role="menu"],[role="listbox"]') !==
-          null
+        active.closest(
+          '[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]',
+        ) !== null
       ) {
         return;
       }
@@ -582,7 +624,7 @@ function CanvasSpaceInner({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [focusSessionWithoutTarget, onExitPick]);
+  }, [pickEscActive, onExitPick]);
   // A confirmed focus marquee (#1782): gate the pool cap (counting the
   // in-flight placeholders so a burst of confirms cannot overshoot), park a
   // pending rail entry, then run crop-export → upload → focusImages append.
@@ -2945,6 +2987,10 @@ function CanvasSpaceInner({
         {pickForNodeId ? (
           <div
             data-testid='reference-pick-banner'
+            // Focus hand-off target (adversarial 2026-07-17): the crop
+            // overlay focuses the banner on back-to-pick so the keyboard
+            // context survives the overlay's unmount.
+            tabIndex={-1}
             // Neutral card chrome (user 2026-07-14, reversing the 2026-07-11
             // item-11 violet tint): the banner reads better in the original
             // black/white/grey; the violet pick GLOW on candidate nodes stays
@@ -2955,9 +3001,10 @@ function CanvasSpaceInner({
             // z-20 and HIT-OPAQUE (round-10, reversing round-9's
             // pointer-events-none): a visually solid card must never let a
             // click mutate hidden content beneath it (reference/style picks
-            // silently wired edges through the banner body). The round-9
-            // controls-under-banner conflict is solved geometrically — the
-            // crop controls bar clamps BELOW the banner band instead.
+            // silently wired edges through the banner body). The crop
+            // controls bar follows its node (user 2026-07-17) and may pass
+            // beneath the banner like any node chrome — the banner wins the
+            // overlap by design.
             className='absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
           >
             <span>
@@ -2999,7 +3046,7 @@ function CanvasSpaceInner({
             // fresh object identity per render is harmless.
             nodePosition={absoluteNodePosition(renderNodes, focusCropTargetId)}
             onConfirm={onFocusCropConfirm}
-            onExit={onExitPick}
+            onBackToPick={onFocusBackToPick}
           />
         ) : null}
         {flowNodes.length === 0 ? (

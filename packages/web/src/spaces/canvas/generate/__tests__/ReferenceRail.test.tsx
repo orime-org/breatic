@@ -47,6 +47,70 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
     expect(screen.queryByTestId('generate-ref-focus-badge-a->me')).toBeNull();
   });
 
+  it('focus row order is thumbnail → crop badge → name (user 2026-07-17 #4)', () => {
+    render(
+      <ReferenceRail
+        references={[FOCUS_ROW]}
+        onRemove={() => {}}
+        onInsert={() => {}}
+      />,
+    );
+    const badge = screen.getByTestId('generate-ref-focus-badge-focus:f1');
+    const img = screen.getByAltText('Hero');
+    const name = screen.getByText('Hero');
+    // DOM order: img precedes badge precedes name.
+    expect(
+      img.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      badge.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('insert AND remove ACCESSIBLE NAMES carry the row name + crop tag (adversarial r2/r3)', () => {
+    // aria-label overrides name-from-content, so an sr-only span INSIDE the
+    // button is dead and a bare action label announces every row (and every
+    // ✕) identically. The labels are ICU messages (locale owns order and
+    // punctuation) carrying the row name, plus the crop tag on focus rows.
+    render(
+      <ReferenceRail
+        references={[REFS[0], FOCUS_ROW]}
+        onRemove={() => {}}
+        onInsert={() => {}}
+      />,
+    );
+    const label = (id: string): string | null =>
+      screen.getByTestId(id).getAttribute('aria-label');
+    // Both rows are named 'Hero' — exactly the collision the tag resolves.
+    const insertPlain = label('generate-ref-insert-a->me');
+    const insertFocus = label('generate-ref-insert-focus:f1');
+    expect(insertPlain).toContain('Hero');
+    expect(insertFocus).toContain('Hero');
+    expect(insertFocus).not.toBe(insertPlain);
+    // The destructive ✕ resolves the same collision (r3 MEDIUM).
+    const removePlain = label('generate-ref-remove-a->me');
+    const removeFocus = label('generate-ref-remove-focus:f1');
+    expect(removePlain).toContain('Hero');
+    expect(removeFocus).toContain('Hero');
+    expect(removeFocus).not.toBe(removePlain);
+  });
+
+  it('an EMPTY source name falls back to the localized "Reference" in the labels (r3)', () => {
+    // nameOf() → '' is a designed-for state; the chip and the @-list both
+    // fall back — the rail labels must not degrade to a dangling separator.
+    render(
+      <ReferenceRail
+        references={[{ ...REFS[0], sourceNodeName: '' }]}
+        onRemove={() => {}}
+        onInsert={() => {}}
+      />,
+    );
+    const insert = screen
+      .getByTestId('generate-ref-insert-a->me')
+      .getAttribute('aria-label');
+    expect(insert).toContain('Reference');
+  });
+
   it('a focus row ✕ fires onRemove with the ROW (focus flag routes to the crop)', () => {
     const onRemove = vi.fn();
     render(

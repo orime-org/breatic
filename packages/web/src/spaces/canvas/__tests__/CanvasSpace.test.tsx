@@ -5,8 +5,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type * as React from 'react';
 
 // Mock the Yjs binding so the component test never opens a real WebSocket
 // (useCanvasSpace → useSocket → HocuspocusProvider). The write helpers
@@ -17,6 +18,17 @@ vi.mock('@web/data/yjs/canvas-space', async (importOriginal) => {
     await importOriginal<typeof import('@web/data/yjs/canvas-space')>();
   return { ...actual, useCanvasSpace: vi.fn() };
 });
+
+// Pass through the tooltip primitives: the real Radix Tooltip throws without
+// the app-level TooltipProvider (App.tsx mounts it; these 38 bare renders
+// don't), and tooltip behavior is pinned precisely in GenerateToolbar.test —
+// not this file's concern.
+vi.mock('@web/components/ui/tooltip', () => ({
+  Tooltip: ({ children }: { children?: React.ReactNode }) => children,
+  TooltipTrigger: ({ children }: { children?: React.ReactNode }) => children,
+  TooltipContent: () => null,
+  TooltipProvider: ({ children }: { children?: React.ReactNode }) => children,
+}));
 
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
@@ -337,6 +349,151 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-text')).toContain('canvas-pick-dimmed'); // not an image
     expect(cls('src-text')).not.toContain('canvas-pick-selectable');
     expect(cls('src-image')).toContain('canvas-pick-selectable'); // has an asset
+  });
+
+  // Unified pick-session Esc (user 2026-07-17 #8): EVERY pick purpose exits on
+  // Escape with the same guard set — reference and style had no listener at
+  // all (only focus did), so their banners showed Exit but Esc was dead.
+  it('Escape exits a REFERENCE pick session (was silently dead — #8)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+
+  it('Escape exits a STYLE pick session with the shared guards (#8)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startStylePick('target');
+    });
+    // Guard set (mirrors the focus handler): a consumed Esc never exits.
+    act(() => {
+      const prevented = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        cancelable: true,
+        bubbles: true,
+      });
+      prevented.preventDefault();
+      window.dispatchEvent(prevented);
+    });
+    expect(useCanvasStore.getState().pickSession).not.toBeNull();
+    // An auto-repeat Esc is ignored too.
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape', repeat: true });
+    });
+    expect(useCanvasStore.getState().pickSession).not.toBeNull();
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+
+  it('an Esc consumed while a tooltip is open stays consumed — layered peel (adversarial r2)', () => {
+    // Round-2 reversal: a [role=tooltip]-presence bypass misattributed the
+    // preventDefault of OTHER consumers (rename editors, the @-suggestion)
+    // whenever a tooltip happened to be open or fading, double-acting on one
+    // press. The codebase-wide protocol stands: every consumer that
+    // preventDefaults owns the press (NodeHeader round-12) — an open tooltip
+    // costs one Esc (it visibly dismisses), the next press exits.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    const tip = document.createElement('div');
+    tip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tip);
+    try {
+      act(() => {
+        const prevented = new KeyboardEvent('keydown', {
+          key: 'Escape',
+          cancelable: true,
+          bubbles: true,
+        });
+        prevented.preventDefault();
+        window.dispatchEvent(prevented);
+      });
+      expect(useCanvasStore.getState().pickSession).not.toBeNull();
+      // The next, unconsumed press exits.
+      act(() => {
+        fireEvent.keyDown(window, { key: 'Escape' });
+      });
+      expect(useCanvasStore.getState().pickSession).toBeNull();
+    } finally {
+      tip.remove();
+    }
+  });
+
+  it('Escape yields to an open alertdialog (adversarial r2 — role was missing from the yield)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    const alert = document.createElement('div');
+    alert.setAttribute('role', 'alertdialog');
+    const btn = document.createElement('button');
+    alert.appendChild(btn);
+    document.body.appendChild(alert);
+    btn.focus();
+    try {
+      act(() => {
+        fireEvent.keyDown(window, { key: 'Escape' });
+      });
+      expect(useCanvasStore.getState().pickSession).not.toBeNull();
+    } finally {
+      alert.remove();
+    }
   });
 
   // Style pick completion (#1664): clicking a non-empty image COPIES its asset

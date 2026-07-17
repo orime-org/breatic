@@ -103,7 +103,23 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               <button
                 type='button'
                 data-testid={`generate-ref-insert-${ref.refId}`}
-                aria-label={t('canvas.generatePanel.insertReference')}
+                // The accessible name must carry the ROW identity + the crop
+                // tag (adversarial round-2): aria-label overrides
+                // name-from-content, so a bare action label made every row
+                // announce identically — and an sr-only span inside the
+                // button is dead for the same reason. ICU messages so each
+                // locale owns order and punctuation (round-3); the empty
+                // name falls back like the chip and the @-list do.
+                aria-label={t(
+                  ref.focus
+                    ? 'canvas.generatePanel.insertFocusCropNamed'
+                    : 'canvas.generatePanel.insertReferenceNamed',
+                  {
+                    name:
+                      ref.sourceNodeName ||
+                      t('canvas.generatePanel.reference'),
+                  },
+                )}
                 // preventDefault on mousedown keeps the prompt editor focused, so
                 // the mention lands at the caret (not appended to the end).
                 onMouseDown={(e) => e.preventDefault()}
@@ -122,24 +138,41 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                     <NodeIcon className='h-3.5 w-3.5' aria-hidden='true' />
                   </span>
                 )}
-                <span className='max-w-[7rem] truncate text-xs text-foreground'>
-                  {ref.sourceNodeName}
-                </span>
                 {ref.focus ? (
                   // Focus badge (F, user 2026-07-16): a crop glyph tells a
                   // standalone focus copy apart from a live node reference.
+                  // Order: thumbnail → crop glyph → name (user 2026-07-17) so
+                  // the badge reads as a prefix marker, consistent across the
+                  // rail, the prompt chip, and the @-suggestion list.
+                  // The SR counterpart lives in the button's aria-label
+                  // above — content inside a labelled button never reaches
+                  // the accessible name (adversarial round-2).
                   <Crop
                     data-testid={`generate-ref-focus-badge-${ref.refId}`}
                     className='h-3 w-3 shrink-0 text-muted-foreground'
                     aria-hidden='true'
                   />
                 ) : null}
+                <span className='max-w-[7rem] truncate text-xs text-foreground'>
+                  {ref.sourceNodeName}
+                </span>
               </button>
             </ThumbnailHoverPreview>
             <button
               type='button'
               data-testid={`generate-ref-remove-${ref.refId}`}
-              aria-label={t('canvas.generatePanel.removeReference')}
+              // Same identity-carrying label as insert (round-3): the
+              // destructive ✕ must not announce identically across
+              // same-named rows either.
+              aria-label={t(
+                ref.focus
+                  ? 'canvas.generatePanel.removeFocusCropNamed'
+                  : 'canvas.generatePanel.removeReferenceNamed',
+                {
+                  name:
+                    ref.sourceNodeName || t('canvas.generatePanel.reference'),
+                },
+              )}
               onClick={() => onRemove(ref)}
               disabled={inert}
               className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed'
@@ -159,13 +192,16 @@ export const ReferenceRail = React.memo(function ReferenceRail({
           <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground'>
             <Loader2 className='h-3.5 w-3.5 animate-spin' aria-hidden='true' />
           </span>
-          <span className='max-w-[7rem] truncate text-xs text-muted-foreground'>
-            {p.name}
-          </span>
           <Crop
             className='h-3 w-3 shrink-0 text-muted-foreground'
             aria-hidden='true'
           />
+          <span className='sr-only'>
+            {t('canvas.generatePanel.focusCropTag')}
+          </span>
+          <span className='max-w-[7rem] truncate text-xs text-muted-foreground'>
+            {p.name}
+          </span>
         </div>
       ))}
     </div>

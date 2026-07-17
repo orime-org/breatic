@@ -5,9 +5,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
+import type { ReactNode } from 'react';
 
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
+}));
+
+// Pass through the tooltip primitives: real Radix Tooltip throws without the
+// app-level TooltipProvider (App.tsx mounts it); tooltip behavior is pinned
+// in GenerateToolbar.test — not this file's concern.
+vi.mock('@web/components/ui/tooltip', () => ({
+  Tooltip: ({ children }: { children?: ReactNode }) => children,
+  TooltipTrigger: ({ children }: { children?: ReactNode }) => children,
+  TooltipContent: () => null,
+  TooltipProvider: ({ children }: { children?: ReactNode }) => children,
 }));
 
 // The container acquires the canvas-space doc's shared provider for the
