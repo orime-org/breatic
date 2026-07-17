@@ -342,6 +342,7 @@
       "selectFocusFromCanvas": "이미지 위를 드래그하여 영역을 선택하세요",
       "focusCancel": "취소",
       "focusConfirm": "확인",
+      "focusCropTag": "포커스 크롭",
       "focusExportFailed": "이미지를 자를 수 없습니다——다시 시도하세요.",
       "focusUploadFailed": "포커스 이미지를 업로드할 수 없습니다——다시 시도하세요.",
       "focusSourceChanged": "원본 이미지가 변경되었습니다——영역을 다시 선택하세요.",

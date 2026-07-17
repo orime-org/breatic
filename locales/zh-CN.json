@@ -342,6 +342,7 @@
       "selectFocusFromCanvas": "请在图片上框选聚焦区域",
       "focusCancel": "取消",
       "focusConfirm": "确认",
+      "focusCropTag": "聚焦裁剪",
       "focusExportFailed": "无法裁剪图片——请重试。",
       "focusUploadFailed": "聚焦图上传失败——请重试。",
       "focusSourceChanged": "源图片已变更——请重新框选。",

@@ -1,13 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { GenerateToolbar } from '@web/spaces/canvas/generate/GenerateToolbar';
 
 /**
- * Renders the toolbar with no-op defaults, overridable per test.
+ * Renders the toolbar with no-op defaults, overridable per test. Wrapped in
+ * the app-level TooltipProvider (App.tsx mounts the real one) — the toolbar
+ * deliberately has no provider of its own, so bare Radix Tooltips throw.
  * @param overrides - Props overriding the defaults.
  * @returns The render result.
  */
@@ -15,15 +18,21 @@ function setup(
   overrides: Partial<React.ComponentProps<typeof GenerateToolbar>> = {},
 ): ReturnType<typeof render> {
   return render(
-    <GenerateToolbar
-      onReference={() => {}}
-      onStyle={() => {}}
-      onClearStyle={() => {}}
-      onFocus={() => {}}
-      {...overrides}
-    />,
+    <TooltipProvider delayDuration={100}>
+      <GenerateToolbar
+        onReference={() => {}}
+        onStyle={() => {}}
+        onClearStyle={() => {}}
+        onFocus={() => {}}
+        {...overrides}
+      />
+    </TooltipProvider>,
   );
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('GenerateToolbar — Style / Focus / Reference are the three live tools', () => {
   it('renders exactly the three live tool buttons — Mark was cut (user 2026-07-17, decision C)', () => {
@@ -72,6 +81,32 @@ describe('GenerateToolbar — Style / Focus / Reference are the three live tools
   it('disables Reference when referenceDisabled is set (text-to-image, §2.5)', () => {
     setup({ referenceDisabled: true });
     expect(screen.getByTestId('generate-tool-reference')).toBeDisabled();
+  });
+
+  it('tooltips inherit the surrounding provider timing — no nested TooltipProvider (user 2026-07-17)', () => {
+    // The app mounts ONE TooltipProvider (App.tsx, delayDuration 100) — the
+    // calibrated timing every chrome tooltip shares (left floating menu & co).
+    // A nested per-button provider overrides it, so the toolbar tips showed
+    // up on their own schedule. Repro: under a fast outer provider, a hover
+    // must open the tip on the OUTER delay; a nested 300ms provider keeps it
+    // closed at this point.
+    vi.useFakeTimers();
+    render(
+      <TooltipProvider delayDuration={5}>
+        <GenerateToolbar
+          onReference={() => {}}
+          onStyle={() => {}}
+          onClearStyle={() => {}}
+          onFocus={() => {}}
+        />
+      </TooltipProvider>,
+    );
+    const btn = screen.getByTestId('generate-tool-focus');
+    fireEvent.pointerMove(btn, { pointerType: 'mouse' });
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(screen.queryAllByRole('tooltip').length).toBeGreaterThan(0);
   });
 
   it('suppresses the focus-opened tooltip on every tool trigger (smoke 2026-07-17)', () => {

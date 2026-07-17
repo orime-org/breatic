@@ -18,6 +18,8 @@ import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
 const IMG_BOX = { left: 100, top: 50, width: 400, height: 300 };
 
 beforeEach(() => {
+  IMG_BOX.left = 100;
+  IMG_BOX.top = 50;
   IMG_BOX.width = 400;
   IMG_BOX.height = 300;
 });
@@ -37,6 +39,9 @@ function renderOverlay(
       <div className='react-flow__node' data-id='n1'>
         <img data-testid='image-node-img' src='https://cdn/original.png' alt='' />
       </div>
+      {/* The pick banner CanvasSpace renders during a session — the overlay
+          hands keyboard focus to it on back-to-pick. */}
+      <div data-testid='reference-pick-banner' tabIndex={-1} />
       <FocusCropOverlay
         nodeId='n1'
         nodePosition={{ x: 0, y: 0 }}
@@ -209,6 +214,50 @@ describe('FocusCropOverlay', () => {
     editor.focus();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onBackToPick).toHaveBeenCalledTimes(1);
+  });
+
+  it('an Esc preventDefaulted by an open tooltip still peels (adversarial 2026-07-17)', () => {
+    // Radix Tooltip's dismiss preventDefaults at document capture; a hover
+    // tooltip is not an Esc owner — the same press peels the marquee too.
+    const onBackToPick = vi.fn();
+    renderOverlay(vi.fn(), onBackToPick);
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    const tip = document.createElement('div');
+    tip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tip);
+    try {
+      const prevented = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        cancelable: true,
+        bubbles: true,
+      });
+      prevented.preventDefault();
+      // fireEvent (not raw dispatchEvent) so the state update flushes.
+      fireEvent(window, prevented);
+      expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+      expect(onBackToPick).not.toHaveBeenCalled();
+    } finally {
+      tip.remove();
+    }
+  });
+
+  it('Cancel / Esc back-to-pick hand keyboard focus to the pick banner (adversarial 2026-07-17)', () => {
+    // The overlay unmounts on back-to-pick with focus inside it — without a
+    // hand-off, document.activeElement falls to <body> and the next Tab
+    // restarts from the top of the page.
+    renderOverlay();
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    const cancel = screen.getByTestId('focus-crop-cancel');
+    cancel.focus();
+    fireEvent.click(cancel);
+    expect(document.activeElement?.getAttribute('data-testid')).toBe(
+      'reference-pick-banner',
+    );
+    // The Esc stage-two path hands off the same way.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(document.activeElement?.getAttribute('data-testid')).toBe(
+      'reference-pick-banner',
+    );
   });
 
   it('rescales the marquee when the image box changes size (zoom mid-marquee, adversarial)', () => {
@@ -478,14 +527,27 @@ describe('FocusCropOverlay', () => {
     ).toBe(false);
   });
 
+  it('controls bar anchors under the node and may overflow the viewport (user 2026-07-17)', () => {
+    // The bar follows the picked node like the generate panel does — always
+    // centered under the img box, allowed off-screen. The old viewport clamp
+    // pulled it away from an edge-parked node (reported with a screenshot).
+    IMG_BOX.left = -150; // node half off-screen left → center x = 50
+    IMG_BOX.top = 800; // low node → bar lands below the 1000px viewport fold
+    renderOverlay();
+    const bar = screen.getByTestId('focus-crop-controls');
+    expect(bar.style.left).toBe('50px');
+    expect(bar.style.top).toBe(`${800 + 300 + 8}px`);
+    expect(bar.className).toContain('-translate-x-1/2');
+  });
+
   it('controls bar: 6px outer radius; every button no-wrap + no-shrink (user 2026-07-17 #1/#3)', () => {
     renderOverlay();
     const bar = screen.getByTestId('focus-crop-controls');
     // rounded-overlay = 6px chrome radius; rounded-md was 12px.
     expect(bar.className).toContain('rounded-overlay');
     expect(bar.className).not.toContain('rounded-md');
-    // Edge-clamped abspos boxes shrink to available width — without
-    // nowrap the CJK 取消/确认 labels wrapped one char per line.
+    // Abspos boxes near the viewport edge shrink to available width —
+    // without nowrap the CJK 取消/确认 labels wrapped one char per line.
     for (const id of ['focus-ratio-16:9', 'focus-crop-cancel', 'focus-crop-confirm']) {
       const el = screen.getByTestId(id);
       expect(el.className).toContain('whitespace-nowrap');

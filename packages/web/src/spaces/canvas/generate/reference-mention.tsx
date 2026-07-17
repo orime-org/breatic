@@ -258,11 +258,18 @@ function ReferenceMentionChip({
         {/* Crop glyph before the name marks a focus copy (user 2026-07-17,
             consistent with the rail + @-suggestion). */}
         {isFocus ? (
-          <Crop
-            data-testid='reference-mention-focus-badge'
-            className='h-2.5 w-2.5 shrink-0'
-            aria-hidden='true'
-          />
+          <>
+            <Crop
+              data-testid='reference-mention-focus-badge'
+              className='h-2.5 w-2.5 shrink-0'
+              aria-hidden='true'
+            />
+            {/* SR counterpart (adversarial 2026-07-17): a crop shares its
+                source node's name — announce the distinction. */}
+            <span className='sr-only'>
+              {t('canvas.generatePanel.focusCropTag')}
+            </span>
+          </>
         ) : null}
         <span className='truncate pr-1.5'>{label}</span>
       </NodeViewWrapper>

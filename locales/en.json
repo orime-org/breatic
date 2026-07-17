@@ -349,6 +349,7 @@
       "selectFocusFromCanvas": "Drag a marquee on an image to crop a focus reference",
       "focusCancel": "Cancel",
       "focusConfirm": "Confirm",
+      "focusCropTag": "Focus crop",
       "focusExportFailed": "Could not crop the image — please try again.",
       "focusUploadFailed": "Could not upload the focus crop — please try again.",
       "focusSourceChanged": "Source image changed — draw the marquee again.",

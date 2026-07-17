@@ -150,11 +150,18 @@ export const ReferenceMentionList = React.forwardRef<
                   focus crop reads apart from a live node reference in the
                   picker (user 2026-07-17, consistent with rail + chip). */}
               {item.focus ? (
-                <Crop
-                  data-testid={`reference-mention-option-focus-badge-${item.sourceNodeId}`}
-                  className='h-3 w-3 shrink-0'
-                  aria-hidden='true'
-                />
+                <>
+                  <Crop
+                    data-testid={`reference-mention-option-focus-badge-${item.sourceNodeId}`}
+                    className='h-3 w-3 shrink-0'
+                    aria-hidden='true'
+                  />
+                  {/* SR counterpart (adversarial 2026-07-17): a crop shares
+                      its source node's name — announce the distinction. */}
+                  <span className='sr-only'>
+                    {t('canvas.generatePanel.focusCropTag')}
+                  </span>
+                </>
               ) : null}
               <span className='truncate'>
                 {item.sourceNodeName || t('canvas.generatePanel.reference')}

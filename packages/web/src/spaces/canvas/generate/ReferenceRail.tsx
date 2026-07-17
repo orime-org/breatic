@@ -128,11 +128,20 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                   // Order: thumbnail → crop glyph → name (user 2026-07-17) so
                   // the badge reads as a prefix marker, consistent across the
                   // rail, the prompt chip, and the @-suggestion list.
-                  <Crop
-                    data-testid={`generate-ref-focus-badge-${ref.refId}`}
-                    className='h-3 w-3 shrink-0 text-muted-foreground'
-                    aria-hidden='true'
-                  />
+                  <>
+                    <Crop
+                      data-testid={`generate-ref-focus-badge-${ref.refId}`}
+                      className='h-3 w-3 shrink-0 text-muted-foreground'
+                      aria-hidden='true'
+                    />
+                    {/* SR counterpart of the visual badge (adversarial
+                        2026-07-17): a crop shares its source node's name,
+                        so without this a screen reader cannot tell the
+                        copy from the live reference. */}
+                    <span className='sr-only'>
+                      {t('canvas.generatePanel.focusCropTag')}
+                    </span>
+                  </>
                 ) : null}
                 <span className='max-w-[7rem] truncate text-xs text-foreground'>
                   {ref.sourceNodeName}
@@ -166,6 +175,9 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             className='h-3 w-3 shrink-0 text-muted-foreground'
             aria-hidden='true'
           />
+          <span className='sr-only'>
+            {t('canvas.generatePanel.focusCropTag')}
+          </span>
           <span className='max-w-[7rem] truncate text-xs text-muted-foreground'>
             {p.name}
           </span>

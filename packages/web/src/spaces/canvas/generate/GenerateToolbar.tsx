@@ -7,7 +7,6 @@ import * as React from 'react';
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -79,8 +78,10 @@ function ToggleTool({
 /**
  * Wraps a tool button in a hover tooltip carrying its one-line description
  * (user 2026-07-17): the toolbar buttons are icon + short label, so the tip
- * spells out what each pick does. Self-contained provider so it works inside
- * the panel without a page-level TooltipProvider.
+ * spells out what each pick does. Deliberately NO nested TooltipProvider —
+ * the app mounts one provider (App.tsx) whose delayDuration is the
+ * calibrated timing every chrome tooltip shares; nesting another here put
+ * these tips on their own schedule (user 2026-07-17).
  * @param root0 - Component props.
  * @param root0.tip - The tooltip text.
  * @param root0.children - The button the tooltip describes.
@@ -94,12 +95,10 @@ function ToolTip({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>{children}</TooltipTrigger>
-        <TooltipContent side='top'>{tip}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side='top'>{tip}</TooltipContent>
+    </Tooltip>
   );
 }
 

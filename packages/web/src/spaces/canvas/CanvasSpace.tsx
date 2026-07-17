@@ -575,9 +575,16 @@ function CanvasSpaceInner({
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
+      // A hover tooltip is NOT an Esc-owning surface (adversarial
+      // 2026-07-17): Radix dismisses it with a capture-phase preventDefault,
+      // which must not read as a consumed Esc — the same press dismisses the
+      // tip AND exits the session. Any [role=tooltip] in the DOM (open or
+      // fading out) marks the preventDefault as the tooltip's.
+      const consumed =
+        e.defaultPrevented && document.querySelector('[role="tooltip"]') === null;
       if (
         e.key !== 'Escape' ||
-        e.defaultPrevented ||
+        consumed ||
         e.repeat ||
         e.isComposing ||
         e.keyCode === 229
@@ -2962,6 +2969,10 @@ function CanvasSpaceInner({
         {pickForNodeId ? (
           <div
             data-testid='reference-pick-banner'
+            // Focus hand-off target (adversarial 2026-07-17): the crop
+            // overlay focuses the banner on back-to-pick so the keyboard
+            // context survives the overlay's unmount.
+            tabIndex={-1}
             // Neutral card chrome (user 2026-07-14, reversing the 2026-07-11
             // item-11 violet tint): the banner reads better in the original
             // black/white/grey; the violet pick GLOW on candidate nodes stays
@@ -2972,9 +2983,10 @@ function CanvasSpaceInner({
             // z-20 and HIT-OPAQUE (round-10, reversing round-9's
             // pointer-events-none): a visually solid card must never let a
             // click mutate hidden content beneath it (reference/style picks
-            // silently wired edges through the banner body). The round-9
-            // controls-under-banner conflict is solved geometrically — the
-            // crop controls bar clamps BELOW the banner band instead.
+            // silently wired edges through the banner body). The crop
+            // controls bar follows its node (user 2026-07-17) and may pass
+            // beneath the banner like any node chrome — the banner wins the
+            // overlap by design.
             className='absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
           >
             <span>

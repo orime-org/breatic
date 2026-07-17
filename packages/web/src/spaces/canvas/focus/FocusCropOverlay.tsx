@@ -84,6 +84,19 @@ type Interaction = { pointerId: number } & (
 );
 
 /**
+ * Hands keyboard focus to the pick banner before the overlay unmounts on a
+ * back-to-pick transition (adversarial 2026-07-17): the overlay disappears
+ * with focus inside it, and without a hand-off document.activeElement falls
+ * to `<body>` — the next Tab restarts from the top of the page. The banner
+ * is the surviving surface of the pick state.
+ */
+function focusPickBanner(): void {
+  document
+    .querySelector<HTMLElement>('[data-testid="reference-pick-banner"]')
+    ?.focus();
+}
+
+/**
  * The focus crop overlay (#1782): an absolutely-positioned marquee editor
  * aligned to the target node's rendered `<img>`. It lives OUTSIDE the
  * ReactFlow transform (a sibling of the pick banner inside the canvas
@@ -111,14 +124,10 @@ export function FocusCropOverlay({
   // Viewport transform — any pan / zoom re-measures the image box.
   const transform = useStore((s) => s.transform);
   const [box, setBox] = React.useState<CropRect | null>(null);
-  const [rootSize, setRootSize] = React.useState<{ width: number; height: number } | null>(null);
   const [naturalSize, setNaturalSize] = React.useState<{
     width: number;
     height: number;
   } | null>(null);
-  // The pick banner's measured bottom edge (0 = none found) — the bar's
-  // top clamp starts below it (round-11).
-  const [bannerBottom, setBannerBottom] = React.useState(0);
   const [rect, setRect] = React.useState<CropRect | null>(null);
   const [ratio, setRatio] = React.useState<number | null>(null);
   const interactionRef = React.useRef<Interaction | null>(null);
@@ -225,17 +234,6 @@ export function FocusCropOverlay({
       setBox(null);
       return;
     }
-    setRootSize({ width: rootRect.width, height: rootRect.height });
-    // The pick banner's REAL bottom (round-11): the 64px guess assumed a
-    // single-line banner at 16px root font — rem scaling / text wrapping
-    // push it lower and the hit-opaque banner swallowed the bar's top.
-    const banner = document.querySelector(
-      '[data-testid="reference-pick-banner"]',
-    );
-    const bottom = banner
-      ? banner.getBoundingClientRect().bottom - rootRect.top
-      : 0;
-    setBannerBottom((prevB) => (prevB === bottom ? prevB : bottom));
     const src = img.getAttribute('src');
     const prev = prevBoxRef.current;
     if (measuredSrcRef.current !== null && measuredSrcRef.current !== src) {
@@ -377,9 +375,17 @@ export function FocusCropOverlay({
       // isComposing / 229: an IME composition-cancel Escape must never
       // leak into the session handlers (round-11 — a CJK user dismissing
       // the candidate window lost their marquee).
+      // A hover tooltip is NOT an Esc-owning surface (adversarial
+      // 2026-07-17): Radix dismisses it with a capture-phase
+      // preventDefault, which must not eat the peel — the same press
+      // dismisses the tip AND acts here. Any [role=tooltip] in the DOM
+      // (open or fading out) marks the preventDefault as the tooltip's.
+      const consumed =
+        e.defaultPrevented &&
+        document.querySelector('[role="tooltip"]') === null;
       if (
         e.key !== 'Escape' ||
-        e.defaultPrevented ||
+        consumed ||
         e.repeat ||
         e.isComposing ||
         e.keyCode === 229
@@ -414,6 +420,7 @@ export function FocusCropOverlay({
         // Stage two = back to the pick state, aligned with Cancel (user
         // 2026-07-17): the session survives; a further Esc in the pick
         // state exits via the canvas-level handler.
+        focusPickBanner();
         onBackToPick();
       }
     };
@@ -688,23 +695,7 @@ export function FocusCropOverlay({
       ? !isNaturalCropValid(rect, box, naturalSize)
       : !isCropValid(rect));
 
-  // Measured controls-bar size for the viewport clamp (round-3: a guessed
-  // half-width let the Confirm end of a ~400px bar overflow the canvas at
-  // the edges). State-guarded write per commit; jsdom (offsetWidth 0)
-  // keeps the defaults.
-  const barRef = React.useRef<HTMLDivElement>(null);
   const cancelRef = React.useRef<HTMLButtonElement>(null);
-  const [barSize, setBarSize] = React.useState({ width: 360, height: 36 });
-  React.useLayoutEffect(() => {
-    const w = barRef.current?.offsetWidth ?? 0;
-    const h = barRef.current?.offsetHeight ?? 0;
-    if (w > 0 && (w !== barSize.width || h !== barSize.height)) {
-      setBarSize({ width: w, height: h });
-    }
-    // box: the bar (re)mounts with the measured layers; ratio: the pressed
-    // preset changes button styling. The size-diff guard above makes any
-    // extra run a no-op, never a loop.
-  }, [box, ratio, barSize.width, barSize.height]);
 
   return (
     <div
@@ -750,33 +741,17 @@ export function FocusCropOverlay({
           </div>
           {/* Controls bar below the image: ratio presets + cancel / confirm. */}
           <div
-            ref={barRef}
             data-testid='focus-crop-controls'
             // rounded-overlay = the 6px chrome radius (user 2026-07-17 #3;
             // rounded-md is 12px in this theme).
             className='pointer-events-auto absolute flex -translate-x-1/2 items-center gap-1 rounded-overlay border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
-            // Clamped into the canvas viewport with the bar's MEASURED size
-            // (round-3): an image at the fold / the edge must never push the
-            // Confirm end out of reach.
+            // Anchored under the picked node like the generate panel (user
+            // 2026-07-17): always centered below the img box, allowed to
+            // overflow the viewport — the earlier viewport clamp pulled the
+            // bar away from an edge-parked node.
             style={{
-              left: rootSize
-                ? Math.min(
-                  Math.max(box.x + box.width / 2, barSize.width / 2 + 8),
-                  rootSize.width - barSize.width / 2 - 8,
-                )
-                : box.x + box.width / 2,
-              // Top clamp starts BELOW the MEASURED banner bottom
-              // (round-11): the banner is hit-opaque, and a fixed 64px
-              // guess broke under rem scaling / banner text wrapping.
-              top: rootSize
-                ? Math.max(
-                  bannerBottom + 8,
-                  Math.min(
-                    box.y + box.height + 8,
-                    rootSize.height - barSize.height - 8,
-                  ),
-                )
-                : box.y + box.height + 8,
+              left: box.x + box.width / 2,
+              top: box.y + box.height + 8,
             }}
           >
             {CROP_RATIOS.map(({ key, value }) => (
@@ -786,10 +761,10 @@ export function FocusCropOverlay({
                 data-testid={`focus-ratio-${key}`}
                 aria-pressed={ratio === value}
                 onClick={() => onRatioClick(value)}
-                // whitespace-nowrap + shrink-0 (user 2026-07-17 #1): the
-                // edge-clamped abspos bar shrinks to the space left of its
-                // `left` offset, and without these the CJK button labels
-                // wrapped one character per line.
+                // whitespace-nowrap + shrink-0 (user 2026-07-17 #1): an
+                // abspos bar near the viewport edge shrink-to-fits against
+                // the available width, and without these the CJK button
+                // labels wrapped one character per line.
                 className={
                   'shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 tabular-nums transition-colors ' +
               (ratio === value
@@ -812,6 +787,7 @@ export function FocusCropOverlay({
                 // banner stays and another image can be picked.
                 interactionRef.current = null;
                 setRect(null);
+                focusPickBanner();
                 onBackToPick();
               }}
               className='shrink-0 whitespace-nowrap rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'

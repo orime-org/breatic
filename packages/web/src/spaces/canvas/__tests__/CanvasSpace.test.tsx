@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type * as React from 'react';
 
 // Mock the Yjs binding so the component test never opens a real WebSocket
 // (useCanvasSpace → useSocket → HocuspocusProvider). The write helpers
@@ -17,6 +18,17 @@ vi.mock('@web/data/yjs/canvas-space', async (importOriginal) => {
     await importOriginal<typeof import('@web/data/yjs/canvas-space')>();
   return { ...actual, useCanvasSpace: vi.fn() };
 });
+
+// Pass through the tooltip primitives: the real Radix Tooltip throws without
+// the app-level TooltipProvider (App.tsx mounts it; these 38 bare renders
+// don't), and tooltip behavior is pinned precisely in GenerateToolbar.test —
+// not this file's concern.
+vi.mock('@web/components/ui/tooltip', () => ({
+  Tooltip: ({ children }: { children?: React.ReactNode }) => children,
+  TooltipTrigger: ({ children }: { children?: React.ReactNode }) => children,
+  TooltipContent: () => null,
+  TooltipProvider: ({ children }: { children?: React.ReactNode }) => children,
+}));
 
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
@@ -402,6 +414,45 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       fireEvent.keyDown(window, { key: 'Escape' });
     });
     expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+
+  it('an Esc preventDefaulted by an OPEN TOOLTIP still exits the pick (adversarial 2026-07-17)', () => {
+    // Radix Tooltip dismisses itself with a capture-phase preventDefault —
+    // but a hover tooltip is not an Esc-owning surface: the same press must
+    // dismiss the tip AND exit the session, not read as a dead key.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    const tip = document.createElement('div');
+    tip.setAttribute('role', 'tooltip');
+    document.body.appendChild(tip);
+    try {
+      act(() => {
+        const prevented = new KeyboardEvent('keydown', {
+          key: 'Escape',
+          cancelable: true,
+          bubbles: true,
+        });
+        prevented.preventDefault();
+        window.dispatchEvent(prevented);
+      });
+      expect(useCanvasStore.getState().pickSession).toBeNull();
+    } finally {
+      tip.remove();
+    }
   });
 
   // Style pick completion (#1664): clicking a non-empty image COPIES its asset

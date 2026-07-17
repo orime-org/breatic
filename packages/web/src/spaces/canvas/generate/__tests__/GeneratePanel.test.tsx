@@ -4,6 +4,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ModelEntry } from '@breatic/shared';
+import type * as React from 'react';
+
+// Pass through the tooltip primitives: real Radix Tooltip throws without the
+// app-level TooltipProvider (App.tsx mounts it); tooltip behavior is pinned
+// in GenerateToolbar.test — not this file's concern.
+vi.mock('@web/components/ui/tooltip', () => ({
+  Tooltip: ({ children }: { children?: React.ReactNode }) => children,
+  TooltipTrigger: ({ children }: { children?: React.ReactNode }) => children,
+  TooltipContent: () => null,
+  TooltipProvider: ({ children }: { children?: React.ReactNode }) => children,
+}));
 
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 

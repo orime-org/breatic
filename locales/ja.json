@@ -342,6 +342,7 @@
       "selectFocusFromCanvas": "画像上をドラッグして範囲を選択してください",
       "focusCancel": "キャンセル",
       "focusConfirm": "確認",
+      "focusCropTag": "フォーカス切り抜き",
       "focusExportFailed": "画像を切り抜けませんでした——もう一度お試しください。",
       "focusUploadFailed": "フォーカス画像をアップロードできませんでした——もう一度お試しください。",
       "focusSourceChanged": "元画像が変更されました——もう一度範囲を選択してください。",
