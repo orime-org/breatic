@@ -84,13 +84,27 @@ type Interaction = { pointerId: number } & (
 );
 
 /**
- * Hands keyboard focus to the pick banner before the overlay unmounts on a
- * back-to-pick transition (adversarial 2026-07-17): the overlay disappears
- * with focus inside it, and without a hand-off document.activeElement falls
- * to `<body>` — the next Tab restarts from the top of the page. The banner
- * is the surviving surface of the pick state.
+ * Hands keyboard focus to the pick banner when the crop overlay is about to
+ * unmount (adversarial 2026-07-17): the overlay disappears with focus inside
+ * it, and without a hand-off document.activeElement falls to `<body>` — the
+ * next Tab restarts from the top of the page. The banner is the surviving
+ * surface of the pick state. Only focus that would otherwise be ORPHANED is
+ * rescued (inside the overlay, or already on `<body>`) — never stolen from a
+ * live surface outside it, like the prompt editor (adversarial round-2).
+ * Exported for the canvas layer's third unmount path (crop target deleted by
+ * a collaborator mid-crop).
+ * @param overlayRoot - The overlay's root element (containment check), or
+ * null when it cannot be resolved — then only `<body>` focus is rescued.
  */
-function focusPickBanner(): void {
+export function handOffFocusToPickBanner(overlayRoot: Element | null): void {
+  const active = document.activeElement;
+  if (
+    active &&
+    active !== document.body &&
+    !(overlayRoot?.contains(active) ?? false)
+  ) {
+    return;
+  }
   document
     .querySelector<HTMLElement>('[data-testid="reference-pick-banner"]')
     ?.focus();
@@ -375,17 +389,16 @@ export function FocusCropOverlay({
       // isComposing / 229: an IME composition-cancel Escape must never
       // leak into the session handlers (round-11 — a CJK user dismissing
       // the candidate window lost their marquee).
-      // A hover tooltip is NOT an Esc-owning surface (adversarial
-      // 2026-07-17): Radix dismisses it with a capture-phase
-      // preventDefault, which must not eat the peel — the same press
-      // dismisses the tip AND acts here. Any [role=tooltip] in the DOM
-      // (open or fading out) marks the preventDefault as the tooltip's.
-      const consumed =
-        e.defaultPrevented &&
-        document.querySelector('[role="tooltip"]') === null;
+      // Every consumer that preventDefaults owns the press — including an
+      // open Radix tooltip dismissing itself (adversarial round-2 reversal:
+      // a [role=tooltip]-presence bypass misattributed OTHER consumers'
+      // preventDefault — rename editors, the @-suggestion — whenever a
+      // tooltip happened to be open, double-acting on one press; the single
+      // defaultPrevented bit cannot say WHO consumed). Layered peel: the
+      // tooltip visibly dismisses on its press, the next press acts here.
       if (
         e.key !== 'Escape' ||
-        consumed ||
+        e.defaultPrevented ||
         e.repeat ||
         e.isComposing ||
         e.keyCode === 229
@@ -399,8 +412,9 @@ export function FocusCropOverlay({
       // and yielding to it left Esc silently dead there.
       if (
         active &&
-        active.closest('[role="dialog"],[role="menu"],[role="listbox"]') !==
-          null
+        active.closest(
+          '[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]',
+        ) !== null
       ) {
         return;
       }
@@ -420,7 +434,7 @@ export function FocusCropOverlay({
         // Stage two = back to the pick state, aligned with Cancel (user
         // 2026-07-17): the session survives; a further Esc in the pick
         // state exits via the canvas-level handler.
-        focusPickBanner();
+        handOffFocusToPickBanner(rootRef.current);
         onBackToPick();
       }
     };
@@ -787,7 +801,7 @@ export function FocusCropOverlay({
                 // banner stays and another image can be picked.
                 interactionRef.current = null;
                 setRect(null);
-                focusPickBanner();
+                handOffFocusToPickBanner(rootRef.current);
                 onBackToPick();
               }}
               className='shrink-0 whitespace-nowrap rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'

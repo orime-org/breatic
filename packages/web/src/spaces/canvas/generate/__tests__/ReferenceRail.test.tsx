@@ -67,6 +67,30 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
     ).toBeTruthy();
   });
 
+  it('the insert button ACCESSIBLE NAME carries the row name + crop tag (adversarial r2)', () => {
+    // aria-label overrides name-from-content, so an sr-only span INSIDE the
+    // button is dead — every row announced identically as "Insert". The
+    // label itself must carry the row name, plus the crop tag on focus rows,
+    // so a screen reader can tell a crop from its identically-named source.
+    render(
+      <ReferenceRail
+        references={[REFS[0], FOCUS_ROW]}
+        onRemove={() => {}}
+        onInsert={() => {}}
+      />,
+    );
+    const plain = screen
+      .getByTestId('generate-ref-insert-a->me')
+      .getAttribute('aria-label');
+    const focus = screen
+      .getByTestId('generate-ref-insert-focus:f1')
+      .getAttribute('aria-label');
+    // Both rows are named 'Hero' — exactly the collision the tag resolves.
+    expect(plain).toContain('Hero');
+    expect(focus).toContain('Hero');
+    expect(focus).not.toBe(plain);
+  });
+
   it('a focus row ✕ fires onRemove with the ROW (focus flag routes to the crop)', () => {
     const onRemove = vi.fn();
     render(

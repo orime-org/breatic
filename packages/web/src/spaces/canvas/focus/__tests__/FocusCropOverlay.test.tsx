@@ -216,9 +216,10 @@ describe('FocusCropOverlay', () => {
     expect(onBackToPick).toHaveBeenCalledTimes(1);
   });
 
-  it('an Esc preventDefaulted by an open tooltip still peels (adversarial 2026-07-17)', () => {
-    // Radix Tooltip's dismiss preventDefaults at document capture; a hover
-    // tooltip is not an Esc owner — the same press peels the marquee too.
+  it('an Esc consumed while a tooltip is open stays consumed — layered peel (adversarial r2)', () => {
+    // Round-2 reversal: presence of a [role=tooltip] cannot attribute WHO
+    // preventDefaulted (rename editors / the @-suggestion consume under the
+    // same single bit) — the consumed press is honored, the next one peels.
     const onBackToPick = vi.fn();
     renderOverlay(vi.fn(), onBackToPick);
     draw({ x: 150, y: 100 }, { x: 250, y: 180 });
@@ -232,13 +233,44 @@ describe('FocusCropOverlay', () => {
         bubbles: true,
       });
       prevented.preventDefault();
-      // fireEvent (not raw dispatchEvent) so the state update flushes.
+      // fireEvent (not raw dispatchEvent) so any state update flushes.
       fireEvent(window, prevented);
+      expect(screen.queryByTestId('focus-crop-rect')).not.toBeNull();
+      // The next, unconsumed press peels stage one.
+      fireEvent.keyDown(window, { key: 'Escape' });
       expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
       expect(onBackToPick).not.toHaveBeenCalled();
     } finally {
       tip.remove();
     }
+  });
+
+  it('Escape yields to focus inside an open alertdialog (adversarial r2)', () => {
+    const onBackToPick = vi.fn();
+    const { container } = renderOverlay(vi.fn(), onBackToPick);
+    const alert = document.createElement('div');
+    alert.setAttribute('role', 'alertdialog');
+    const btn = document.createElement('button');
+    alert.appendChild(btn);
+    container.appendChild(alert);
+    btn.focus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onBackToPick).not.toHaveBeenCalled();
+    alert.remove();
+  });
+
+  it('the focus hand-off never steals focus from a surface outside the overlay (r2)', () => {
+    // Esc stage-two with focus in the prompt editor: the editor keeps focus;
+    // the banner hand-off only rescues focus that would be ORPHANED.
+    const onBackToPick = vi.fn();
+    const { container } = renderOverlay(vi.fn(), onBackToPick);
+    const editor = document.createElement('input');
+    container.appendChild(editor);
+    editor.focus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onBackToPick).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(editor);
+    editor.remove();
   });
 
   it('Cancel / Esc back-to-pick hand keyboard focus to the pick banner (adversarial 2026-07-17)', () => {

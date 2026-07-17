@@ -416,10 +416,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
 
-  it('an Esc preventDefaulted by an OPEN TOOLTIP still exits the pick (adversarial 2026-07-17)', () => {
-    // Radix Tooltip dismisses itself with a capture-phase preventDefault —
-    // but a hover tooltip is not an Esc-owning surface: the same press must
-    // dismiss the tip AND exit the session, not read as a dead key.
+  it('an Esc consumed while a tooltip is open stays consumed — layered peel (adversarial r2)', () => {
+    // Round-2 reversal: a [role=tooltip]-presence bypass misattributed the
+    // preventDefault of OTHER consumers (rename editors, the @-suggestion)
+    // whenever a tooltip happened to be open or fading, double-acting on one
+    // press. The codebase-wide protocol stands: every consumer that
+    // preventDefaults owns the press (NodeHeader round-12) — an open tooltip
+    // costs one Esc (it visibly dismisses), the next press exits.
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -449,9 +452,47 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         prevented.preventDefault();
         window.dispatchEvent(prevented);
       });
+      expect(useCanvasStore.getState().pickSession).not.toBeNull();
+      // The next, unconsumed press exits.
+      act(() => {
+        fireEvent.keyDown(window, { key: 'Escape' });
+      });
       expect(useCanvasStore.getState().pickSession).toBeNull();
     } finally {
       tip.remove();
+    }
+  });
+
+  it('Escape yields to an open alertdialog (adversarial r2 — role was missing from the yield)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    const alert = document.createElement('div');
+    alert.setAttribute('role', 'alertdialog');
+    const btn = document.createElement('button');
+    alert.appendChild(btn);
+    document.body.appendChild(alert);
+    btn.focus();
+    try {
+      act(() => {
+        fireEvent.keyDown(window, { key: 'Escape' });
+      });
+      expect(useCanvasStore.getState().pickSession).not.toBeNull();
+    } finally {
+      alert.remove();
     }
   });
 

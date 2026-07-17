@@ -36,7 +36,10 @@ import {
 } from '@web/data/focus-images';
 import { getCachedReferencePoolCap } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
-import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
+import {
+  FocusCropOverlay,
+  handOffFocusToPickBanner,
+} from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
@@ -551,7 +554,22 @@ function CanvasSpaceInner({
       st.flowNodes.some((n) => n.id === focusCropTargetId),
   );
   React.useEffect(() => {
-    if (!focusTargetExists) setFocusCropTargetId(null);
+    if (!focusTargetExists) {
+      // Third overlay-unmount path (adversarial round-2): a collaborator
+      // deleting the crop source mid-crop must not orphan keyboard focus to
+      // <body>. Unlike Esc stage-two (a deliberate keypress), this rescue
+      // only fires when focus actually sits INSIDE the dying overlay — a
+      // remote deletion must never grab focus from elsewhere. The effect
+      // runs while the overlay DOM is still mounted (unmount lands next
+      // render), so the containment check still sees it.
+      const overlay = document.querySelector(
+        '[data-testid="focus-crop-overlay"]',
+      );
+      if (overlay?.contains(document.activeElement)) {
+        handOffFocusToPickBanner(overlay);
+      }
+      setFocusCropTargetId(null);
+    }
   }, [focusTargetExists]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
@@ -575,16 +593,15 @@ function CanvasSpaceInner({
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
-      // A hover tooltip is NOT an Esc-owning surface (adversarial
-      // 2026-07-17): Radix dismisses it with a capture-phase preventDefault,
-      // which must not read as a consumed Esc — the same press dismisses the
-      // tip AND exits the session. Any [role=tooltip] in the DOM (open or
-      // fading out) marks the preventDefault as the tooltip's.
-      const consumed =
-        e.defaultPrevented && document.querySelector('[role="tooltip"]') === null;
+      // Every consumer that preventDefaults owns the press — including an
+      // open Radix tooltip dismissing itself (adversarial round-2 reversal:
+      // a [role=tooltip]-presence bypass misattributed OTHER consumers'
+      // preventDefault under the same single bit, double-acting on one
+      // press). Layered peel: the tooltip visibly dismisses, then the next
+      // press exits the session.
       if (
         e.key !== 'Escape' ||
-        consumed ||
+        e.defaultPrevented ||
         e.repeat ||
         e.isComposing ||
         e.keyCode === 229
@@ -597,8 +614,9 @@ function CanvasSpaceInner({
       // editor consumes nothing and must not deaden Esc.
       if (
         active &&
-        active.closest('[role="dialog"],[role="menu"],[role="listbox"]') !==
-          null
+        active.closest(
+          '[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]',
+        ) !== null
       ) {
         return;
       }

@@ -103,7 +103,15 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               <button
                 type='button'
                 data-testid={`generate-ref-insert-${ref.refId}`}
-                aria-label={t('canvas.generatePanel.insertReference')}
+                // The accessible name must carry the ROW identity + the crop
+                // tag (adversarial round-2): aria-label overrides
+                // name-from-content, so a bare action label made every row
+                // announce identically — and an sr-only span inside the
+                // button is dead for the same reason.
+                aria-label={
+                  `${t('canvas.generatePanel.insertReference')}: ` +
+                  `${ref.sourceNodeName}${ref.focus ? ` (${t('canvas.generatePanel.focusCropTag')})` : ''}`
+                }
                 // preventDefault on mousedown keeps the prompt editor focused, so
                 // the mention lands at the caret (not appended to the end).
                 onMouseDown={(e) => e.preventDefault()}
@@ -128,20 +136,14 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                   // Order: thumbnail → crop glyph → name (user 2026-07-17) so
                   // the badge reads as a prefix marker, consistent across the
                   // rail, the prompt chip, and the @-suggestion list.
-                  <>
-                    <Crop
-                      data-testid={`generate-ref-focus-badge-${ref.refId}`}
-                      className='h-3 w-3 shrink-0 text-muted-foreground'
-                      aria-hidden='true'
-                    />
-                    {/* SR counterpart of the visual badge (adversarial
-                        2026-07-17): a crop shares its source node's name,
-                        so without this a screen reader cannot tell the
-                        copy from the live reference. */}
-                    <span className='sr-only'>
-                      {t('canvas.generatePanel.focusCropTag')}
-                    </span>
-                  </>
+                  // The SR counterpart lives in the button's aria-label
+                  // above — content inside a labelled button never reaches
+                  // the accessible name (adversarial round-2).
+                  <Crop
+                    data-testid={`generate-ref-focus-badge-${ref.refId}`}
+                    className='h-3 w-3 shrink-0 text-muted-foreground'
+                    aria-hidden='true'
+                  />
                 ) : null}
                 <span className='max-w-[7rem] truncate text-xs text-foreground'>
                   {ref.sourceNodeName}
