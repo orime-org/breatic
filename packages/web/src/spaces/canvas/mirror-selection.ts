@@ -4,15 +4,41 @@
 import type { Edge, Node } from '@xyflow/react';
 
 /**
+ * `Object.is` with ONE array-aware level (encoding adversary 2026-07-17):
+ * the Yjs mirror serializes a nested `Y.Array` (`focusImages`, eager-seeded
+ * on EVERY node) to a FRESH plain array on each `toJSON()` call, so
+ * whole-array identity is false on every doc change even when nothing
+ * changed — which would hand all nodes fresh merged objects and revert the
+ * #1647 R1 reference-stability fix canvas-wide. `Y.Array.toJSON` returns
+ * its ELEMENTS by stored reference (identity-stable until an element
+ * actually changes), so element-wise `Object.is` is exact and cheap; a
+ * plain-array value (legacy encoding) short-circuits on the whole-array
+ * identity first.
+ * @param a - One field value.
+ * @param b - The other field value.
+ * @returns True when the values are identical, or are equal-length arrays
+ *   of identical elements.
+ */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+    return false;
+  }
+  return a.every((v, i) => Object.is(v, b[i]));
+}
+
+/**
  * Shallow-equal two node `data` records by their own enumerable keys (values
- * compared with `Object.is`). The Yjs mirror rebuilds each node's `data` fresh
- * every doc change, so a reference compare is always false; this compares the
- * flat fields (content / status / name / locked / …). A nested object inside
- * data (e.g. an active `handlingBy` lease) compares by reference and so reads as
- * changed — correct, since a handling node IS actively changing.
+ * compared with {@link sameValue}). The Yjs mirror rebuilds each node's `data`
+ * fresh every doc change, so a reference compare is always false; this compares
+ * the flat fields (content / status / name / locked / …) and array fields
+ * element-wise. A nested non-array object inside data (e.g. an active
+ * `handlingBy` lease) compares by reference and so reads as changed — correct,
+ * since a handling node IS actively changing.
  * @param a - One node's data record (or undefined).
  * @param b - The other node's data record (or undefined).
- * @returns True when both have identical own keys with `Object.is`-equal values.
+ * @returns True when both have identical own keys with {@link sameValue}-equal
+ *   values.
  */
 function sameData(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
@@ -28,7 +54,7 @@ function sameData(a: unknown, b: unknown): boolean {
   const bk = Object.keys(b as Record<string, unknown>);
   if (ak.length !== bk.length) return false;
   return ak.every((k) =>
-    Object.is(
+    sameValue(
       (a as Record<string, unknown>)[k],
       (b as Record<string, unknown>)[k],
     ),
