@@ -14,9 +14,19 @@
 // dragstart pipeline filling view.dragging with the chip slice.
 
 import { beforeAll, describe, it, expect, vi } from 'vitest';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, render as baseRender, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
+
+import { TooltipProvider } from '@web/components/ui/tooltip';
+
+// The `@` chips inherit the ONE app-level TooltipProvider at runtime (App.tsx);
+// supply the real Radix provider here (single-provider mandate).
+const render = (
+  ...args: Parameters<typeof baseRender>
+): ReturnType<typeof baseRender> =>
+  // wrapper option (not a manual wrap) so a later rerender() keeps the provider.
+  baseRender(args[0], { ...args[1], wrapper: TooltipProvider });
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import { dragScrollDelta } from '@web/spaces/canvas/generate/reference-mention-caret';
