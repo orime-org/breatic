@@ -25,6 +25,7 @@ import type {
   HandlingPhase,
   OperationLock,
   AttachRef,
+  FocusImage,
   CanvasNodeFields,
   NodeStateUpdateEvent,
   NodeEvent,
@@ -45,6 +46,41 @@ describe("AttachRef", () => {
     };
     expect(ref.id).toBe("a1");
     expect(ref.mimeType).toBe("image/png");
+  });
+});
+
+// ── FocusImage ─────────────────────────────────────────────────────
+
+describe("FocusImage (#1782 focus slice)", () => {
+  it("accepts a focus-crop copy and rides data.focusImages", () => {
+    const crop: FocusImage = {
+      id: "focus-1",
+      url: "https://cdn.example.com/crop.png",
+      name: "Image Node 26",
+      width: 640,
+      height: 360,
+    };
+    const node: CanvasNodeFields = {
+      id: "node-f",
+      type: "image",
+      position: { x: 0, y: 0 },
+      data: {
+        name: "Image Node",
+        createdAt: 1714492800000,
+        createdBy: "user-1",
+        locked: false,
+        operationLocks: [],
+        state: "idle",
+        attachments: [],
+        focusImages: [crop],
+      },
+    };
+    expect(node.data.focusImages).toHaveLength(1);
+    expect(node.data.focusImages?.[0]?.name).toBe("Image Node 26");
+    // Optional field: a node that never focused simply has no array.
+    expectTypeOf<CanvasNodeFields["data"]["focusImages"]>().toEqualTypeOf<
+      FocusImage[] | undefined
+    >();
   });
 });
 

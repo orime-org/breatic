@@ -334,8 +334,16 @@
       "errorNoSourceImage": "此模型需要來源圖 —— 在提示詞裡輸入 @ 選擇一張已連線的圖。",
       "errorTooManyReferences": "此模型最多接受 {limit} 張參考圖 —— 移除一些再生成。",
       "referenceAddFailed": "無法加入參考——該節點已不存在。",
+      "referencePoolFull": "參考池已滿(上限 {cap})——請先移除一些參考或聚焦圖。",
       "modelUnavailable": "該模型已無法使用——請另選一個。",
-      "catalogUnavailable": "模型清單載入失敗,請稍後再試"
+      "catalogUnavailable": "模型清單載入失敗,請稍後再試",
+      "selectFocusFromCanvas": "聚焦編輯模式——請在圖片上框選聚焦區域",
+      "focusCancel": "取消",
+      "focusConfirm": "確認",
+      "focusExportFailed": "無法裁剪圖片——請重試。",
+      "focusUploadFailed": "聚焦圖上傳失敗——請重試。",
+      "focusSourceChanged": "來源圖片已變更——請重新框選。",
+      "focusCropDiscarded": "節點已被刪除——聚焦圖已丟棄。"
     },
     "nodeMenu": {
       "generate": "生成",

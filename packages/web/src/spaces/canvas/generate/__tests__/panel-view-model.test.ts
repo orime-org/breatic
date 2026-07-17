@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect } from 'vitest';
-import type { ModelEntry } from '@breatic/shared';
+import type { FocusImage, ModelEntry } from '@breatic/shared';
 
 import {
   buildGeneratePanelViewModel,
@@ -263,6 +263,125 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.referenceUrls).toEqual([]);
     expect(vm.styleImageUrl).toBeUndefined();
     expect(vm.styleSupported).toBe(false);
+  });
+
+  // ── Focus images (#1782) — standalone crop copies on the node ──
+  it('reads sanitized focus images off the node (i2i pool entries)', () => {
+    const crop = {
+      id: 'f1',
+      url: 'https://cdn/crop.png',
+      name: 'Img 26',
+      width: 640,
+      height: 360,
+    };
+    const nodes = [node('n1', imageView({ focusImages: [crop] }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.focusImages).toEqual([crop]);
+  });
+
+  it('drops malformed focus entries and non-array focusImages (untrusted Yjs)', () => {
+    const good = {
+      id: 'f2',
+      url: 'https://cdn/ok.png',
+      name: 'Img',
+      width: 10,
+      height: 10,
+    };
+    const nodes = [
+      node(
+        'n1',
+        imageView({
+          focusImages: [
+            good,
+            { id: '', url: 'https://cdn/bad.png', name: 'x', width: 1, height: 1 },
+            { id: 'f3', url: 7, name: 'x', width: 1, height: 1 },
+            'junk',
+          ] as unknown as FocusImage[],
+        }),
+      ),
+    ];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.focusImages).toEqual([good]);
+    const nodes2 = [
+      node('n1', imageView({ focusImages: 'nope' as unknown as FocusImage[] })),
+    ];
+    const vm2 = buildGeneratePanelViewModel({ nodeId: 'n1', nodes: nodes2, edges: [], models });
+    expect(vm2.focusImages).toEqual([]);
+  });
+
+  it('caps the entry COUNT — a hostile mega-array cannot ride every keystroke (round-6)', () => {
+    const many = Array.from({ length: 250 }, (_, i) => ({
+      id: `k${i}`,
+      url: 'https://cdn/x.png',
+      name: 'x',
+      width: 1,
+      height: 1,
+    }));
+    const nodes = [node('n1', imageView({ focusImages: many }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.focusImages).toHaveLength(200);
+  });
+
+  it('dedupes duplicate-id focus entries — first occurrence wins (round-3)', () => {
+    const a = { id: 'k', url: 'https://cdn/a.png', name: 'a', width: 1, height: 1 };
+    const b = { id: 'k', url: 'https://cdn/b.png', name: 'b', width: 1, height: 1 };
+    const nodes = [node('n1', imageView({ focusImages: [a, b] }))];
+    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    expect(vm.focusImages).toEqual([a]);
+  });
+
+  it('adds @-mentioned focus crop URLs to the i2i payload after node refs (#1782)', () => {
+    const crop = {
+      id: 'f1',
+      url: 'https://cdn/crop.png',
+      name: 'Img',
+      width: 10,
+      height: 10,
+    };
+    const nodes = [
+      node('n1', imageView({ mode: 'i2i', model: 'mj-i2i', focusImages: [crop] })),
+      node('src', imageView({ content: 'https://cdn/source.png' })),
+    ];
+    const edges = [{ id: 'src->n1', source: 'src', target: 'n1' }];
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models,
+      atMentionedSourceIds: new Set(['src', 'focus:f1']),
+    });
+    expect(vm.referenceUrls).toEqual([
+      'https://cdn/source.png',
+      'https://cdn/crop.png',
+    ]);
+    // Un-mentioned crops stay out (A, user 2026-07-16: @ is the only gate).
+    const vmNone = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models,
+      atMentionedSourceIds: new Set(['src']),
+    });
+    expect(vmNone.referenceUrls).toEqual(['https://cdn/source.png']);
+  });
+
+  it('t2i sends no focus URLs even when @-mentioned (#1782 — same i2i pool rule)', () => {
+    const crop = {
+      id: 'f1',
+      url: 'https://cdn/crop.png',
+      name: 'Img',
+      width: 10,
+      height: 10,
+    };
+    const nodes = [node('n1', imageView({ mode: 't2i', focusImages: [crop] }))];
+    const vm = buildGeneratePanelViewModel({
+      nodeId: 'n1',
+      nodes,
+      edges: [],
+      models,
+      atMentionedSourceIds: new Set(['focus:f1']),
+    });
+    expect(vm.referenceUrls).toEqual([]);
   });
 
   // ── Style image (#1664) — pick-time URL copy, capability-gated ──

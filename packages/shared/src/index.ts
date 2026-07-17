@@ -39,6 +39,7 @@ export type {
   HandlingPhase,
   OperationLock,
   AttachRef,
+  FocusImage,
   CanvasNodeFields,
   NodeStateUpdateEvent,
   NodeEvent,

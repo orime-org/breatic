@@ -7,6 +7,7 @@ import * as React from 'react';
 import { toast } from 'sonner';
 import type * as Y from 'yjs';
 
+import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
 import { modelsApi } from '@web/data/api/models';
 import { ApiException } from '@web/data/api/types';
@@ -19,12 +20,17 @@ import {
   readCanvasGraph,
   readNodeLeaseGen,
   removeEdge,
+  removeNodeFocusImage,
   setNodeMode,
   setNodeModel,
   setNodeParams,
   type CanvasEdge,
   type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
+import {
+  assetUrlSurvives,
+  isReportableAssetUrl,
+} from '@web/spaces/canvas/canvas-upload';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -40,7 +46,11 @@ import {
   resolveModeSwitch,
   type GeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import {
+  focusIdOfRefId,
+  focusToRailItem,
+  type ReferenceRailItem,
+} from '@web/spaces/canvas/generate/derive-references';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -233,11 +243,14 @@ function GeneratePanelBody({
     [aspectRatio, resolution],
   );
   // References change identity on every derive; key the memo on their CONTENT
-  // (small array — a stringify key is cheap and exact).
-  const referencesKey = JSON.stringify(vm.references);
+  // (small array — a stringify key is cheap and exact). The pool the rail /
+  // mention plumbing consumes is node references + focus crops mapped into
+  // the same row shape (#1782) — one list, one code path downstream.
+  const referencesKey =
+    JSON.stringify(vm.references) + JSON.stringify(vm.focusImages);
   const stableReferences = React.useMemo(
-    () => vm.references,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS vm.references, serialized
+    () => [...vm.references, ...vm.focusImages.map(focusToRailItem)],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS both inputs, serialized
     [referencesKey],
   );
   const freshVm = React.useCallback(
@@ -329,6 +342,19 @@ function GeneratePanelBody({
   const stylePicking = useCanvasStore(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'style',
   );
+  const focusPicking = useCanvasStore(
+    (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'focus',
+  );
+  // In-flight focus uploads for THIS node → rail placeholders (#1782). The
+  // memo keys on the store array identity (immer replaces it on change).
+  const pendingFocusAll = useCanvasStore((s) => s.pendingFocusUploads);
+  const pendingFocus = React.useMemo(
+    () =>
+      pendingFocusAll
+        .filter((p) => p.nodeId === nodeId)
+        .map((p) => ({ id: p.id, name: p.name })),
+    [pendingFocusAll, nodeId],
+  );
   const onAddReference = React.useCallback(() => {
     const session = useCanvasStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === 'reference') {
@@ -345,6 +371,15 @@ function GeneratePanelBody({
       startStylePick(nodeId);
     }
   }, [startStylePick, endPick, nodeId]);
+  const startFocusPick = useCanvasStore((s) => s.startFocusPick);
+  const onFocus = React.useCallback(() => {
+    const session = useCanvasStore.getState().pickSession;
+    if (session?.nodeId === nodeId && session.purpose === 'focus') {
+      endPick();
+    } else {
+      startFocusPick(nodeId);
+    }
+  }, [startFocusPick, endPick, nodeId]);
 
   // End a running REFERENCE pick the moment the mode becomes t2i (adversarial
   // round-2): t2i ignores image references and DISABLES the reference button, so
@@ -359,7 +394,9 @@ function GeneratePanelBody({
     if (
       vm.mode === 't2i' &&
       session?.nodeId === nodeId &&
-      session.purpose === 'reference'
+      // Focus (#1782) feeds the same i2i source pool as Reference, so the
+      // same t2i flip strands it identically — one guard covers both.
+      (session.purpose === 'reference' || session.purpose === 'focus')
     ) {
       endPick();
     }
@@ -380,8 +417,50 @@ function GeneratePanelBody({
   }, [vm.styleSupported, nodeId, endPick]);
 
   const onRemoveReference = React.useCallback(
-    (refId: string) => removeEdge(projectId, spaceId, refId),
-    [projectId, spaceId],
+    (item: ReferenceRailItem) => {
+      // Routed by the ROW's identity, never by parsing the id string: edge
+      // ids are untrusted collaborative data, and a crafted edge id starting
+      // with `focus:` must not misroute the ✕ (adversarial round-2). Only a
+      // real focus row carries `focus: true` (built locally from sanitized
+      // crops), so its refId is trusted to parse.
+      if (item.focus === true) {
+        const focusId = focusIdOfRefId(item.refId);
+        if (focusId === null) return;
+        // Gate everything below on the ACTUAL removal: a double-click (or
+        // a ✕ after the remote removal already synced in) hits a no-op
+        // here, and reporting it anyway would append a duplicate
+        // asset:deleted activity row (round-3). TRULY concurrent
+        // cross-client ✕ (both inside the sync-latency window) still
+        // double-reports — accepted residual, audit-feed row only; a real
+        // fix needs a server-side idempotency key (round-5).
+        const removed = removeNodeFocusImage(projectId, spaceId, nodeId, focusId);
+        if (!removed) return;
+        // Delete-side ledger report (adversarial round-2): a crop is an
+        // uploaded asset — mirror the node-delete accounting. The survivor
+        // check reads the FRESH post-removal graph, so the removed instance
+        // is naturally excluded; dedup-shared URLs still alive elsewhere
+        // are not reported. Silent catch: the removal already succeeded, a
+        // toast would read as a failed remove (reportDeletedAssets parity).
+        const url = item.thumbnail;
+        if (
+          typeof url === 'string' &&
+          isReportableAssetUrl(url) &&
+          !assetUrlSurvives(url, readCanvasGraph(projectId, spaceId).nodes)
+        ) {
+          void assetsApi
+            .reportDeleted({
+              projectId,
+              entries: [{ fileUrl: url, kind: 'image', nodeId, spaceId }],
+            })
+            .catch(() => {
+              // Silent: audit-feed miss at worst (see reportDeletedAssets).
+            });
+        }
+        return;
+      }
+      removeEdge(projectId, spaceId, item.refId);
+    },
+    [projectId, spaceId, nodeId],
   );
   // The Style slot's ✕ (#1664): clears the node's pick-time copy. Always
   // available — even when the active model gates picking off, a stale copy
@@ -561,6 +640,9 @@ function GeneratePanelBody({
       styleImageUrl={vm.styleImageUrl}
       onClearStyle={onClearStyle}
       styleSupported={vm.styleSupported}
+      onFocus={onFocus}
+      focusPicking={focusPicking}
+      pendingFocus={pendingFocus}
       onExecute={onExecute}
     />
   );

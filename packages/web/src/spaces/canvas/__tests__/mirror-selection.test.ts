@@ -79,6 +79,89 @@ describe('mergeMirroredSelection reference stability (#1647 — React.memo needs
     expect(merged[0]).toBe(prev[0]); // SAME reference → memo bails, `a` not re-rendered
   });
 
+  it('a fresh-but-equal focusImages array does not defeat reference reuse (Y.Array toJSON freshness)', () => {
+    // The Yjs mirror serializes the focusImages Y.Array to a FRESH plain
+    // array on every dataMap.toJSON() call (Y.Array.toJSON maps a new
+    // array; its ELEMENTS keep their stored references). Whole-array
+    // Object.is would read every eager-seeded node as changed on every
+    // doc change — reverting #1647 R1 canvas-wide (encoding adversary
+    // 2026-07-17).
+    const cropRef = { id: 'f1', url: 'u', name: 'n', width: 1, height: 1 };
+    const prev = [
+      {
+        id: 'a',
+        type: 'image',
+        position: { x: 0, y: 0 },
+        data: { content: 'x.png', status: 'idle', focusImages: [cropRef] },
+        selected: false,
+      },
+    ] as Node[];
+    const fresh = [
+      {
+        id: 'a',
+        type: 'image',
+        position: { x: 0, y: 0 },
+        // A fresh array wrapper around the SAME element references —
+        // exactly what toJSON hands the mirror when nothing changed.
+        data: { content: 'x.png', status: 'idle', focusImages: [cropRef] },
+      },
+    ] as Node[];
+    const merged = mergeMirroredSelection(prev, fresh);
+    expect(merged[0]).toBe(prev[0]);
+    // The eager-seeded EMPTY array is the canvas-wide case: every content
+    // node carries focusImages: [], rebuilt fresh each doc change.
+    const prevEmpty = [
+      {
+        id: 'b',
+        type: 'image',
+        position: { x: 0, y: 0 },
+        data: { content: 'y.png', focusImages: [] },
+        selected: false,
+      },
+    ] as Node[];
+    const freshEmpty = [
+      {
+        id: 'b',
+        type: 'image',
+        position: { x: 0, y: 0 },
+        data: { content: 'y.png', focusImages: [] },
+      },
+    ] as Node[];
+    expect(mergeMirroredSelection(prevEmpty, freshEmpty)[0]).toBe(prevEmpty[0]);
+  });
+
+  it('returns a new reference when a crop was actually added / removed / replaced', () => {
+    const cropA = { id: 'f1', url: 'u1', name: 'n', width: 1, height: 1 };
+    const cropB = { id: 'f2', url: 'u2', name: 'n', width: 1, height: 1 };
+    const at = (focusImages: unknown): Node[] =>
+      [
+        {
+          id: 'a',
+          type: 'image',
+          position: { x: 0, y: 0 },
+          data: { focusImages },
+        },
+      ] as Node[];
+    // Added.
+    expect(mergeMirroredSelection(at([cropA]), at([cropA, cropB]))[0]).not.toBe(
+      at([cropA])[0],
+    );
+    const prevAdd = at([cropA]);
+    expect(mergeMirroredSelection(prevAdd, at([cropA, cropB]))[0]).not.toBe(
+      prevAdd[0],
+    );
+    // Removed.
+    const prevRemove = at([cropA, cropB]);
+    expect(mergeMirroredSelection(prevRemove, at([cropB]))[0]).not.toBe(
+      prevRemove[0],
+    );
+    // Replaced element (a different stored object at the same slot).
+    const prevReplace = at([cropA]);
+    expect(mergeMirroredSelection(prevReplace, at([cropB]))[0]).not.toBe(
+      prevReplace[0],
+    );
+  });
+
   it('returns a new reference when the node data changed', () => {
     const prev = [
       { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: { content: 'hi' } },

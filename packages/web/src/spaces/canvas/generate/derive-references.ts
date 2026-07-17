@@ -34,6 +34,67 @@ export interface ReferenceRailItem {
    * backend-prompt chip substitution and the rail hover preview.
    */
   textContent?: string;
+  /**
+   * True for a FOCUS crop pool row (#1782) — a standalone copy, not an edge
+   * projection: its `refId` / `sourceNodeId` live in the `focus:` namespace,
+   * its name / thumbnail are creation-time snapshots that never follow the
+   * source node, and its ✕ removes the crop (never an edge). Absent = a
+   * normal node-reference row.
+   */
+  focus?: true;
+}
+
+/**
+ * The id namespace marking focus-crop pool rows (#1782). Prefixing keeps
+ * crop ids and node ids unmistakable everywhere one set flows through the
+ * other's plumbing (mention attrs, @ extraction, rail removal routing).
+ */
+export const FOCUS_REF_PREFIX = 'focus:';
+
+/**
+ * Builds the namespaced pool id for a focus crop.
+ * @param focusId - The FocusImage id.
+ * @returns The `focus:`-prefixed id used as refId / sourceNodeId.
+ */
+export function focusRefId(focusId: string): string {
+  return `${FOCUS_REF_PREFIX}${focusId}`;
+}
+
+/**
+ * Extracts the FocusImage id from a namespaced pool id.
+ * @param refId - A pool refId / mention sourceNodeId.
+ * @returns The FocusImage id, or null when the id is not in the focus namespace.
+ */
+export function focusIdOfRefId(refId: string): string | null {
+  return refId.startsWith(FOCUS_REF_PREFIX)
+    ? refId.slice(FOCUS_REF_PREFIX.length)
+    : null;
+}
+
+/**
+ * Maps a focus crop to a pool row (#1782) so the rail, the @ mention
+ * suggestion, the chip live-lookup, and the pool-membership cascade all
+ * handle crops through the exact same plumbing as node references. The
+ * row is static by construction (snapshots — F, user 2026-07-16).
+ * @param crop - The stored FocusImage.
+ * @param crop.id - The FocusImage id.
+ * @param crop.url - The crop asset URL (row thumbnail).
+ * @param crop.name - The creation-time source-name snapshot.
+ * @returns The focus pool row.
+ */
+export function focusToRailItem(crop: {
+  id: string;
+  url: string;
+  name: string;
+}): ReferenceRailItem {
+  return {
+    refId: focusRefId(crop.id),
+    sourceNodeId: focusRefId(crop.id),
+    sourceNodeType: 'image',
+    sourceNodeName: crop.name,
+    thumbnail: crop.url,
+    focus: true,
+  };
 }
 
 /**
@@ -110,7 +171,12 @@ export function deriveReferences(
   // to remove (adversarial round-1). The id tiebreak gives every client the
   // identical rail (and i2i payload) order.
   const incoming = edges
-    .filter((e) => e.target === nodeId)
+    // The row's refId = the edge id, so the focus: namespace guard applies
+    // to EDGE ids too (round-12): a forged edge id colliding with a crop's
+    // pool id would render two rail rows with the same React key and
+    // misroute the ✕ removal. Legit edge ids are UUID-based and never
+    // carry the prefix.
+    .filter((e) => e.target === nodeId && !e.id.startsWith(FOCUS_REF_PREFIX))
     .sort(
       (a, b) =>
         (a.createdAt ?? 0) - (b.createdAt ?? 0) || ordinalCompare(a.id, b.id),
@@ -119,6 +185,12 @@ export function deriveReferences(
   for (const edge of incoming) {
     const source = byId.get(edge.source);
     if (!source) continue;
+    // The focus: namespace belongs to crops exclusively (round-9): a
+    // forged canvas NODE whose id squats in it would collide with a crop's
+    // pool id — one @-mention would then pull BOTH the crop and the forged
+    // node's content into the payload. Legit node ids are UUIDs and never
+    // carry the prefix.
+    if (source.id.startsWith(FOCUS_REF_PREFIX)) continue;
     rail.push({
       refId: edge.id,
       sourceNodeId: source.id,

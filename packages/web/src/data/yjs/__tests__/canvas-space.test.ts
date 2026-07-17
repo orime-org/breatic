@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import * as Y from 'yjs';
 import type { CanvasNodeFields, NodeType } from '@breatic/shared';
 
+import { validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
   addEdge,
@@ -23,6 +24,8 @@ import {
   isNodeLocked,
   nodeExists,
   setNodeStyleImage,
+  addNodeFocusImage,
+  removeNodeFocusImage,
   clearNodeStyleImage,
   readCanvasGraph,
   readNodeLeaseGen,
@@ -116,6 +119,9 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
           status: 'idle',
           errorMessage: undefined,
           locked: false,
+          // Eager-seeded at birth (concurrent-first-crop safety) — the
+          // wire carries an empty array, inert for every reader.
+          focusImages: [],
         },
       },
     ]);
@@ -167,6 +173,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       status: 'idle',
       errorMessage: undefined,
       locked: false,
+      focusImages: [],
     });
   });
 
@@ -501,6 +508,245 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
   it('setNodeStyleImage / clearNodeStyleImage are no-ops when the node is missing', () => {
     expect(() => setNodeStyleImage(PID, SID, 'ghost', 'u')).not.toThrow();
     expect(() => clearNodeStyleImage(PID, SID, 'ghost')).not.toThrow();
+  });
+
+  // ── Focus images (#1782): frontend-owned crop copies, Y.Array CRDT ──
+  // Encoded as a Y.Array sequence (design adversary 2026-07-17), NOT a
+  // whole-array LWW register: concurrent cross-client appends/removals
+  // must all survive the merge (see the concurrency suite below).
+  const crop1 = {
+    id: 'f1',
+    url: 'https://cdn/crop-1.png',
+    name: 'Image Node 26',
+    width: 640,
+    height: 360,
+  };
+  const crop2 = {
+    id: 'f2',
+    url: 'https://cdn/crop-2.png',
+    name: 'Image Node 27',
+    width: 320,
+    height: 320,
+  };
+
+  /**
+   * Reads a node's raw focusImages value as plain JSON (either encoding).
+   * @param nodeId - The node id to read.
+   * @returns The plain-JSON focusImages value.
+   */
+  function focusJson(nodeId: string): unknown {
+    const data = (doc().getMap('nodesMap').get(nodeId) as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    const raw = data.get('focusImages');
+    return raw instanceof Y.Array ? raw.toJSON() : raw;
+  }
+
+  it('node creation seeds an EMPTY focusImages Y.Array (container born with the node)', () => {
+    // Lazy container creation on first append is itself a whole-container
+    // LWW race (two clients cropping a cropless node concurrently would
+    // each create their own array and one crop would vanish) — the
+    // container must be a single replicated creation event.
+    addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('focusImages')).toBeInstanceOf(Y.Array);
+    expect(focusJson('gen')).toEqual([]);
+  });
+
+  it('addNodeFocusImage appends in order into the CRDT sequence', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
+    addNodeFocusImage(PID, SID, 'gen', crop1);
+    addNodeFocusImage(PID, SID, 'gen', crop2);
+    expect(focusJson('gen')).toEqual([crop1, crop2]);
+  });
+
+  it('removeNodeFocusImage removes by id and keeps the (empty) container', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { focusImages: [crop1, crop2] }, { id: 'gen' }),
+    );
+    removeNodeFocusImage(PID, SID, 'gen', 'f1');
+    expect(focusJson('gen')).toEqual([crop2]);
+    // The container STAYS when the last entry goes: deleting the KEY is a
+    // map-level write that would race a concurrent push (the pushed crop
+    // would land in a deleted subtree and vanish).
+    removeNodeFocusImage(PID, SID, 'gen', 'f2');
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('focusImages')).toBeInstanceOf(Y.Array);
+    expect(focusJson('gen')).toEqual([]);
+  });
+
+  it('removeNodeFocusImage with an unknown id is a no-op (no write, no undo entry)', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { focusImages: [crop1] }, { id: 'gen' }),
+    );
+    const undo = createCanvasUndoManager(doc());
+    const depth = undo.undoStack.length;
+    removeNodeFocusImage(PID, SID, 'gen', 'ghost-id');
+    expect(focusJson('gen')).toEqual([crop1]);
+    expect(undo.undoStack.length).toBe(depth);
+  });
+
+  it('addNodeFocusImage / removeNodeFocusImage discriminate a missing node (round-8)', () => {
+    expect(addNodeFocusImage(PID, SID, 'ghost', crop1)).toBe('node-missing');
+    expect(removeNodeFocusImage(PID, SID, 'ghost', 'f1')).toBe(false);
+  });
+
+  it('removeNodeFocusImage never throws on malformed remote entries — readers sanitize them (adversarial 2026-07-16)', () => {
+    // Any client can push any shape into the sequence; a null entry used
+    // to make the ✕ click throw on `f.id`. Removal deletes ONLY the target
+    // id (heal-on-write would rewrite positions and fight concurrent
+    // edits); junk stays in the CRDT and every reader filters it through
+    // validFocusImages.
+    addNode(
+      PID,
+      SID,
+      sampleFields(
+        'image',
+        {
+          focusImages: [crop1, null, { id: '', url: 'u', name: 'x' }, crop2] as unknown as
+            typeof crop1[],
+        },
+        { id: 'gen' },
+      ),
+    );
+    expect(() => removeNodeFocusImage(PID, SID, 'gen', 'f1')).not.toThrow();
+    expect(validFocusImages(focusJson('gen'))).toEqual([crop2]);
+  });
+
+  it('addNodeFocusImage appends past malformed remote entries — readers sanitize them', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields(
+        'image',
+        { focusImages: [null, crop1] as unknown as typeof crop1[] },
+        { id: 'gen' },
+      ),
+    );
+    addNodeFocusImage(PID, SID, 'gen', crop2);
+    expect(validFocusImages(focusJson('gen'))).toEqual([crop1, crop2]);
+  });
+
+  it('a first write onto a LEGACY plain-array value converts it into the CRDT sequence', () => {
+    // A pre-encoding doc (or forged wire data) can hold a plain array
+    // under the key — the first append/removal converts it, sanitized.
+    addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
+    const data = (doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    doc().transact(() => data.set('focusImages', [crop1, null]));
+    addNodeFocusImage(PID, SID, 'gen', crop2);
+    expect(data.get('focusImages')).toBeInstanceOf(Y.Array);
+    expect(focusJson('gen')).toEqual([crop1, crop2]);
+    // And the removal path converts too.
+    doc().transact(() => data.set('focusImages', [crop1, crop2, null]));
+    expect(removeNodeFocusImage(PID, SID, 'gen', 'f1')).toBe(true);
+    expect(data.get('focusImages')).toBeInstanceOf(Y.Array);
+    expect(focusJson('gen')).toEqual([crop2]);
+  });
+
+  it('focus APPEND is a content arrival — NOT undo-tracked (CONTENT_WRITE, round-3)', () => {
+    // The append lands asynchronously when the crop upload finishes — the
+    // same rule as upload completion (#8): a slow upload landing seconds
+    // later must not steal the undo top or wipe the redo stack.
+    addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
+    const undo = createCanvasUndoManager(doc());
+    const depth = undo.undoStack.length;
+    addNodeFocusImage(PID, SID, 'gen', crop1);
+    expect(undo.undoStack.length).toBe(depth);
+  });
+
+  it('focus REMOVE is NOT undo-tracked either — crops live outside canvas undo (round-11)', () => {
+    // Ratified round-11: crops live entirely outside canvas undo. The
+    // append lands asynchronously (a slow upload would steal the undo
+    // top), and a removal that IS undoable next to an append that is not
+    // would leave undo half-covering the feature — both directions are
+    // CONTENT_WRITE; the ✕ is the one explicit removal surface.
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { focusImages: [crop1] }, { id: 'gen' }),
+    );
+    const undo = createCanvasUndoManager(doc());
+    const depth = undo.undoStack.length;
+    expect(removeNodeFocusImage(PID, SID, 'gen', 'f1')).toBe(true);
+    expect(undo.undoStack.length).toBe(depth);
+  });
+
+  it('addNodeFocusImage refuses an entry its own readers would reject (round-5)', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
+    expect(
+      addNodeFocusImage(PID, SID, 'gen', { ...crop1, name: 'x'.repeat(301) }),
+    ).toBe('invalid-entry');
+    // Never write an invisible-everywhere entry (no ✕, filtered by every
+    // reader) — the refusal leaves the born-empty container untouched.
+    expect(focusJson('gen')).toEqual([]);
+    addNodeFocusImage(PID, SID, 'gen', crop1);
+    expect(focusJson('gen')).toEqual([crop1]);
+  });
+
+  it('addNodeFocusImage refuses past the MAX_FOCUS_ENTRIES ceiling and says so (round-7)', () => {
+    const many = Array.from({ length: 200 }, (_, i) => ({
+      id: `k${i}`,
+      url: 'https://cdn/x.png',
+      name: 'x',
+      width: 1,
+      height: 1,
+    }));
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', { focusImages: many }, { id: 'gen' }),
+    );
+    // At the ceiling the readers would truncate the append away — the
+    // write refuses with a signal instead of silently vanishing the crop.
+    expect(addNodeFocusImage(PID, SID, 'gen', crop1)).toBe('pool-full');
+    expect((focusJson('gen') as unknown[]).length).toBe(200);
+  });
+
+  it('an unknown-id removal writes nothing — Cmd+Z must never see a phantom entry (round-4)', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields(
+        'image',
+        { focusImages: [crop1, null] as unknown as typeof crop1[] },
+        { id: 'gen' },
+      ),
+    );
+    const undo = createCanvasUndoManager(doc());
+    const depth = undo.undoStack.length;
+    // Unknown id → removed=false, no write; junk stays for the READERS to
+    // filter (heal-on-write would fight concurrent sequence edits).
+    expect(removeNodeFocusImage(PID, SID, 'gen', 'ghost')).toBe(false);
+    expect(validFocusImages(focusJson('gen'))).toEqual([crop1]);
+    expect(undo.undoStack.length).toBe(depth);
+  });
+
+  it('removeNodeFocusImage answers whether the TARGET was removed (report gate, round-3)', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields(
+        'image',
+        { focusImages: [crop1, null] as unknown as typeof crop1[] },
+        { id: 'gen' },
+      ),
+    );
+    // Unknown id (junk present) = false.
+    expect(removeNodeFocusImage(PID, SID, 'gen', 'ghost')).toBe(false);
+    // Real removal = true; the repeat (already gone) = false.
+    expect(removeNodeFocusImage(PID, SID, 'gen', 'f1')).toBe(true);
+    expect(removeNodeFocusImage(PID, SID, 'gen', 'f1')).toBe(false);
+    expect(removeNodeFocusImage(PID, SID, 'ghost-node', 'f1')).toBe(false);
   });
 
   it('getOrCreatePromptFragment creates + persists a Y.XmlFragment on the node prompt', () => {

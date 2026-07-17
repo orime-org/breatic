@@ -334,8 +334,16 @@
       "errorNoSourceImage": "このモデルには元画像が必要です —— プロンプトで @ を入力して接続済みの画像を選んでください。",
       "errorTooManyReferences": "このモデルは参考画像を最大 {limit} 枚まで受け付けます —— いくつか削除してから生成してください。",
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
+      "referencePoolFull": "参照プールが上限({cap})に達しました——先に参照またはフォーカス画像を削除してください。",
       "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。",
-      "catalogUnavailable": "モデル一覧を読み込めませんでした。後でもう一度お試しください"
+      "catalogUnavailable": "モデル一覧を読み込めませんでした。後でもう一度お試しください",
+      "selectFocusFromCanvas": "フォーカスモード——画像上をドラッグして範囲を選択してください",
+      "focusCancel": "キャンセル",
+      "focusConfirm": "確認",
+      "focusExportFailed": "画像を切り抜けませんでした——もう一度お試しください。",
+      "focusUploadFailed": "フォーカス画像をアップロードできませんでした——もう一度お試しください。",
+      "focusSourceChanged": "元画像が変更されました——もう一度範囲を選択してください。",
+      "focusCropDiscarded": "ノードが削除されたため、フォーカス画像は破棄されました。"
     },
     "nodeMenu": {
       "generate": "生成",

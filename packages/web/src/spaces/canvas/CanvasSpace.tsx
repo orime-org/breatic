@@ -28,9 +28,21 @@ import * as React from 'react';
 import { toast } from 'sonner';
 import { newId } from '@breatic/shared';
 
-import { assetsApi } from '@web/data/api';
+import { assetsApi, canvasApi } from '@web/data/api';
+import {
+  MAX_FOCUS_ENTRIES,
+  MAX_FOCUS_NAME,
+  validFocusImages,
+} from '@web/data/focus-images';
+import { getCachedReferencePoolCap } from '@web/data/api/canvas';
+import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
+import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
+import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
+import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
+import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
 import {
   addEdge,
+  addNodeFocusImage,
   addNode,
   setNodeStyleImage,
   createGroup,
@@ -54,6 +66,7 @@ import {
   useCanvasSpace,
   type CanvasEdge,
   type CanvasNodeView,
+  readCanvasGraph,
 } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
@@ -75,6 +88,8 @@ import {
   computeDeletedAssetEntries,
   type UploadNodeSpec,
   type UploadedInfo,
+  assetUrlSurvives,
+  isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
 import { hashFile } from '@web/data/upload/hash';
 import { putFileWithRetry } from '@web/data/upload/upload-retry';
@@ -496,17 +511,265 @@ function CanvasSpaceInner({
     const purpose = useCanvasStore.getState().pickSession?.purpose;
     endPick();
     const triggerTestId =
-      purpose === 'style' ? 'generate-tool-style' : 'generate-tool-reference';
+      purpose === 'style'
+        ? 'generate-tool-style'
+        : purpose === 'focus'
+          ? 'generate-tool-focus'
+          : 'generate-tool-reference';
     document
       .querySelector<HTMLElement>(`[data-testid="${triggerTestId}"]`)
       ?.focus();
   }, [endPick]);
+  // The image node a focus crop marquee is open on (#1782), or null. Local
+  // React state — it only exists while THIS user's focus pick runs; the
+  // effect clears it whenever the session ends or changes purpose (Exit,
+  // zombie guards, a style/reference pick replacing it).
+  const [focusCropTargetId, setFocusCropTargetId] = React.useState<
+    string | null
+  >(null);
+  React.useEffect(() => {
+    if (pickSession?.purpose !== 'focus') setFocusCropTargetId(null);
+  }, [pickSession]);
+  // A DELETED crop target unmounts the overlay (all its state dies with
+  // it); mere viewport CULLING (onlyRenderVisibleElements unmounts the
+  // node's DOM but the node still exists) keeps it mounted so the marquee
+  // survives a pan-away-and-back (adversarial round-8 — the img-absent
+  // discard was eating careful selections on every pan). Existence is
+  // judged on the graph mirror, which culling never removes from.
+  const focusTargetExists = useCanvasGraphStore(
+    (st) =>
+      focusCropTargetId === null ||
+      st.flowNodes.some((n) => n.id === focusCropTargetId),
+  );
+  React.useEffect(() => {
+    if (!focusTargetExists) setFocusCropTargetId(null);
+  }, [focusTargetExists]);
+  // Esc during a focus session with NO crop target yet (round-4): the
+  // overlay owns the two-stage Esc but is unmounted until the first image
+  // is clicked, leaving Esc silently dead in the banner-only state. Same
+  // yield rules as the overlay's handler (defaultPrevented + editor /
+  // overlay-content focus win).
+  const focusSessionWithoutTarget =
+    pickSession?.purpose === 'focus' && focusCropTargetId === null;
+  React.useEffect(() => {
+    if (!focusSessionWithoutTarget) return;
+    /**
+     * Keydown listener exiting the target-less focus session on Escape.
+     * @param e - The keyboard event.
+     */
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (
+        e.key !== 'Escape' ||
+        e.defaultPrevented ||
+        e.repeat ||
+        e.isComposing ||
+        e.keyCode === 229
+      ) {
+        return;
+      }
+      const active = document.activeElement;
+      // Ownership-based yield (round-6, matching the overlay): the
+      // defaultPrevented guard covers Esc consumers; a plain focused
+      // editor consumes nothing and must not deaden Esc.
+      if (
+        active &&
+        active.closest('[role="dialog"],[role="menu"],[role="listbox"]') !==
+          null
+      ) {
+        return;
+      }
+      onExitPick();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [focusSessionWithoutTarget, onExitPick]);
+  // A confirmed focus marquee (#1782): gate the pool cap (counting the
+  // in-flight placeholders so a burst of confirms cannot overshoot), park a
+  // pending rail entry, then run crop-export → upload → focusImages append.
+  // Everything reads FRESH store state — the upload outlives this closure.
+  const onFocusCropConfirm = React.useCallback(
+    (result: { crop: CropRect; sourceSrc: string }): boolean => {
+      const session = useCanvasStore.getState().pickSession;
+      if (session?.purpose !== 'focus') return false;
+      const panelNodeId = session.nodeId;
+      const graph = useCanvasGraphStore.getState();
+      const source = graph.flowNodes.find((n) => n.id === focusCropTargetId);
+      const data = source?.data as
+        | { content?: unknown; name?: unknown }
+        | undefined;
+      // Export EXACTLY the src the marquee was validated against (round-3):
+      // the graph store can lead the DOM by a commit after a collaborator's
+      // regenerate — exporting the store's newer URL at this marquee's
+      // coordinates would crop the wrong image. Copy semantics make the
+      // validated URL always exportable (assets are never deleted).
+      const sourceUrl = result.sourceSrc;
+      if (sourceUrl.length === 0) {
+        toast.error(t('canvas.generatePanel.focusExportFailed'));
+        return false;
+      }
+      // Clamped to the sanitizer's bound (round-5): node names are
+      // unbounded collaborative data (COPY- chains, remote writes), and an
+      // over-long snapshot would make the crop invisible to every reader.
+      const sourceName = (typeof data?.name === 'string' ? data.name : '').slice(
+        0,
+        MAX_FOCUS_NAME,
+      );
+      const cap = getCachedReferencePoolCap();
+      const store = useCanvasStore.getState();
+      // Crops-only hard ceiling BEFORE the upload (round-9): with the knob
+      // above 200 (or unloaded), the write-side MAX_FOCUS_ENTRIES refusal
+      // used to fire only AFTER a successful upload + ledger report.
+      const panelData = graph.flowNodes.find((n) => n.id === panelNodeId)
+        ?.data as { focusImages?: unknown } | undefined;
+      if (
+        validFocusImages(panelData?.focusImages).length +
+          pendingFocusCount(panelNodeId) >=
+        MAX_FOCUS_ENTRIES
+      ) {
+        toast.warning(
+          t('canvas.generatePanel.referencePoolFull', {
+            cap: MAX_FOCUS_ENTRIES,
+          }),
+        );
+        return false;
+      }
+      if (
+        cap !== null &&
+        referencePoolCount(graph.flowEdges, graph.flowNodes, panelNodeId) +
+          pendingFocusCount(panelNodeId) >=
+          cap
+      ) {
+        // Rejection keeps the marquee (the overlay clears only on true) —
+        // the user can free a slot and re-confirm the same selection.
+        toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
+        return false;
+      }
+      const pendingId = newId();
+      store.addPendingFocusUpload({
+        id: pendingId,
+        nodeId: panelNodeId,
+        name: sourceName,
+      });
+      void runFocusCrop(
+        { sourceUrl, sourceName, crop: result.crop, projectId },
+        {
+          exportCrop: exportCropBlob,
+          uploadFile: (file, pid) =>
+            new Promise<string>((resolve, reject) => {
+              void runMediaUpload(file, pid, {
+                getUploadConfig: assetsApi.fetchUploadConfig,
+                hashFile,
+                presign: assetsApi.presign,
+                putFile: putFileWithRetry,
+                onSuccess: resolve,
+                onFailure: () => reject(new Error('focus upload failed')),
+                // Ledger handshake (adversarial 2026-07-16): every upload
+                // path must report the asset (#1606 attribution / dedup
+                // re-verify). Deliberately NO nodeId — a crop is a pool
+                // entry, not node content; node_id would write a bogus
+                // node-history record.
+                onUploaded: (info) => {
+                  void assetsApi
+                    .reportUploaded({
+                      projectId: pid,
+                      kind: info.kind,
+                      spaceId,
+                      ...(info.hash !== null && { hash: info.hash }),
+                      ...(info.dedup === true ? { dedup: true as const } : {}),
+                      ...(info.key !== undefined && { key: info.key }),
+                      metadata: {
+                        filename: file.name,
+                        size: file.size,
+                        mimeType: file.type,
+                      },
+                    })
+                    .catch(() =>
+                      toast.error(t('canvas.activity.reportFailed')),
+                    );
+                },
+              });
+            }),
+          addFocusImage: (image) => {
+            useCanvasStore.getState().removePendingFocusUpload(pendingId);
+            // A refused append must be SAID — the upload already succeeded,
+            // and silence here loses the crop after real side effects
+            // (round-7). Each refusal gets its TRUTHFUL message (round-8:
+            // one boolean told "pool full (200)" when the panel node was
+            // deleted mid-upload), and the just-uploaded orphan asset is
+            // reported deleted (ledger parity with the ✕ path) unless the
+            // URL survives elsewhere.
+            const outcome = addNodeFocusImage(
+              projectId,
+              spaceId,
+              panelNodeId,
+              image,
+            );
+            if (outcome === 'added') return;
+            if (outcome === 'pool-full') {
+              toast.warning(
+                t('canvas.generatePanel.referencePoolFull', {
+                  cap: MAX_FOCUS_ENTRIES,
+                }),
+              );
+            } else {
+              toast.warning(t('canvas.generatePanel.focusCropDiscarded'));
+            }
+            if (
+              isReportableAssetUrl(image.url) &&
+              !assetUrlSurvives(
+                image.url,
+                readCanvasGraph(projectId, spaceId).nodes,
+              )
+            ) {
+              void assetsApi
+                .reportDeleted({
+                  projectId,
+                  entries: [
+                    {
+                      fileUrl: image.url,
+                      kind: 'image',
+                      nodeId: panelNodeId,
+                      spaceId,
+                    },
+                  ],
+                })
+                .catch(() => {
+                  // Silent: audit-feed miss at worst (reportDeletedAssets
+                  // parity).
+                });
+            }
+          },
+          onFailure: (stage) => {
+            useCanvasStore.getState().removePendingFocusUpload(pendingId);
+            toast.error(
+              t(
+                stage === 'export'
+                  ? 'canvas.generatePanel.focusExportFailed'
+                  : 'canvas.generatePanel.focusUploadFailed',
+              ),
+            );
+          },
+          makeId: newId,
+        },
+      );
+      return true;
+    },
+    [focusCropTargetId, projectId, spaceId, t],
+  );
   // Pick-end focus catch-all (adversarial round-2, a11y): the Exit hand-off
   // only works when the trigger is enabled + mounted. When it is disabled (a
   // t2i switch mid-pick) or the pick ends by another path (panel X, host node
   // deleted), focus drops to <body>. Whenever a pick ENDS with focus orphaned
   // there, return it to the canvas container so keyboard users stay in
   // context. Focus already placed (the Exit hand-off succeeded) is left alone.
+  // Warm the reference-pool cap knob (#1782) once per canvas mount. A
+  // failure leaves the soft cap off (degrade-to-uncapped by design — no
+  // client fallback constant that could drift from the yaml value); the
+  // next canvas mount retries.
+  React.useEffect(() => {
+    void canvasApi.fetchLimits().catch(() => undefined);
+  }, []);
+
   const wasPickingRef = React.useRef(false);
   React.useEffect(() => {
     const wasPicking = wasPickingRef.current;
@@ -1052,6 +1315,32 @@ function CanvasSpaceInner({
       const targetKind =
         flowNodes.find((n) => n.id === connection.target)?.type ?? '';
       if (!canConnect(sourceKind, targetKind)) return;
+      // Pool cap (#1782): a connection IS a reference, so a full pool
+      // (incoming edges + focus crops ≥ the knob) blocks the new edge with
+      // a guard toast. Null cap = knob not loaded → soft cap stays off.
+      const cap = getCachedReferencePoolCap();
+      // A re-drag of an EXISTING connection overwrites the same deterministic
+      // edge id (idempotent) — it adds nothing to the pool, so it must not
+      // trip the cap gate into a false "pool full" rejection (round-3).
+      const duplicateEdge = useCanvasGraphStore
+        .getState()
+        .flowEdges.some(
+          (e) => e.id === `${connection.source}->${connection.target}`,
+        );
+      if (
+        !duplicateEdge &&
+        cap !== null &&
+        referencePoolCount(
+          useCanvasGraphStore.getState().flowEdges,
+          flowNodes,
+          connection.target,
+        ) +
+          pendingFocusCount(connection.target) >=
+          cap
+      ) {
+        toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
+        return;
+      }
       // Edge validity (self-loop + both endpoints must exist) is enforced at
       // the addEdge write boundary — the only race-free place under collab.
       const added = addEdge(projectId, spaceId, {
@@ -1086,6 +1375,25 @@ function CanvasSpaceInner({
       const target = session.nodeId;
       // Clicking the target itself is always a no-op (dimmed for both purposes).
       if (node.id === target) return;
+
+      if (session.purpose === 'focus') {
+        // Focus (#1782): clicking a DISPLAYABLE non-empty image opens the
+        // crop marquee on it (the overlay does the rest); clicking another
+        // image later just switches the crop target — the session runs
+        // until Exit. A handling / error node renders no <img> to anchor
+        // the marquee (round-4), matching the dimming rule.
+        const data = node.data as { content?: unknown; status?: unknown };
+        if (
+          node.type !== 'image' ||
+          typeof data.content !== 'string' ||
+          data.content.length === 0 ||
+          data.status !== 'idle'
+        ) {
+          return;
+        }
+        setFocusCropTargetId(node.id);
+        return;
+      }
 
       if (session.purpose === 'style') {
         // Copy semantics (#1664, user decision 2026-07-16): snapshot the
@@ -1131,6 +1439,23 @@ function CanvasSpaceInner({
             target: kindLabel(targetKind),
           }),
         );
+        return;
+      }
+      // Pool cap (#1782): same guard as drag-connect — a full pool blocks
+      // the pick with a toast; the session stays open so the user can
+      // remove entries and continue. Null cap = knob not loaded, no gate.
+      const cap = getCachedReferencePoolCap();
+      if (
+        cap !== null &&
+        referencePoolCount(
+          useCanvasGraphStore.getState().flowEdges,
+          useCanvasGraphStore.getState().flowNodes,
+          target,
+        ) +
+          pendingFocusCount(target) >=
+          cap
+      ) {
+        toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
         return;
       }
       // Wire clicked-source → target as a reference. Self-loop + both-endpoints-
@@ -2373,14 +2698,20 @@ function CanvasSpaceInner({
         };
       });
 
-    if (pickSession.purpose === 'style') {
+    if (pickSession.purpose === 'style' || pickSession.purpose === 'focus') {
+      // Style and Focus share the candidate rule: any non-empty image node
+      // except the pick target itself (#1664 / #1782). Focus additionally
+      // needs a RENDERED <img> to anchor the marquee, so a handling / error
+      // node (skeleton / error box, no img) is not a candidate (round-4:
+      // clicking one was a silent no-op).
       return paint((node) => {
-        const content = (node.data as { content?: unknown }).content;
+        const data = node.data as { content?: unknown; status?: unknown };
         return (
           node.id === target ||
           node.type !== 'image' ||
-          typeof content !== 'string' ||
-          content.length === 0
+          typeof data.content !== 'string' ||
+          data.content.length === 0 ||
+          (pickSession.purpose === 'focus' && data.status !== 'idle')
         );
       });
     }
@@ -2618,13 +2949,24 @@ function CanvasSpaceInner({
             // item-11 violet tint): the banner reads better in the original
             // black/white/grey; the violet pick GLOW on candidate nodes stays
             // the mode indicator.
-            className='absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
+            // z-20: the session banner (Exit / Locate) must always win
+            // hit-testing over the z-10 crop capture layer — a zoomed image
+            // extending under the banner made Exit dead (adversarial round-4).
+            // z-20 and HIT-OPAQUE (round-10, reversing round-9's
+            // pointer-events-none): a visually solid card must never let a
+            // click mutate hidden content beneath it (reference/style picks
+            // silently wired edges through the banner body). The round-9
+            // controls-under-banner conflict is solved geometrically — the
+            // crop controls bar clamps BELOW the banner band instead.
+            className='absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
           >
             <span>
               {t(
                 pickSession?.purpose === 'style'
                   ? 'canvas.generatePanel.selectStyleFromCanvas'
-                  : 'canvas.generatePanel.selectFromCanvas',
+                  : pickSession?.purpose === 'focus'
+                    ? 'canvas.generatePanel.selectFocusFromCanvas'
+                    : 'canvas.generatePanel.selectFromCanvas',
               )}
             </span>
             <button
@@ -2645,6 +2987,20 @@ function CanvasSpaceInner({
               {t('canvas.generatePanel.exitSelect')}
             </button>
           </div>
+        ) : null}
+        {pickSession?.purpose === 'focus' && focusCropTargetId !== null ? (
+          <FocusCropOverlay
+            nodeId={focusCropTargetId}
+            // ABSOLUTE position (member + ancestor group offsets): a member
+            // node's own position is parent-relative, so a GROUP drag moves
+            // the image without touching it — the overlay's re-measure
+            // signal must follow the composed coordinates (adversarial
+            // round-2). The overlay deps on the x/y primitives, so the
+            // fresh object identity per render is harmless.
+            nodePosition={absoluteNodePosition(renderNodes, focusCropTargetId)}
+            onConfirm={onFocusCropConfirm}
+            onExit={onExitPick}
+          />
         ) : null}
         {flowNodes.length === 0 ? (
           <div
@@ -2747,6 +3103,52 @@ function CanvasSpaceInner({
       </div>
     </CanvasActionsContext.Provider>
   );
+}
+
+/**
+ * In-flight focus uploads for a node — counted by every pool-cap gate so a
+ * pending crop occupies its slot BEFORE its Yjs write lands (adversarial
+ * 2026-07-16: the edge gates ignoring pending let a same-client burst
+ * overshoot the cap the confirm gate guards).
+ * @param nodeId - The pool's target node.
+ * @returns The number of in-flight focus uploads for that node.
+ */
+function pendingFocusCount(nodeId: string): number {
+  return useCanvasStore
+    .getState()
+    .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
+}
+
+/**
+ * Composes a node's ABSOLUTE flow position by walking its parentId chain —
+ * a Group member's own position is parent-relative, so a group drag moves
+ * the node on screen without changing it (adversarial round-2: the focus
+ * overlay re-measures off this signal). Cycle-guarded like ReactFlow's own
+ * resolver; missing nodes contribute nothing.
+ * @param nodes - The current render nodes (position + parentId).
+ * @param nodeId - The node whose absolute position to compose.
+ * @returns The absolute { x, y } flow position (0,0 for a missing node).
+ */
+function absoluteNodePosition(
+  nodes: ReadonlyArray<{
+    id: string;
+    position: { x: number; y: number };
+    parentId?: string;
+  }>,
+  nodeId: string,
+): { x: number; y: number } {
+  let x = 0;
+  let y = 0;
+  const seen = new Set<string>();
+  let current = nodes.find((n) => n.id === nodeId);
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    x += current.position.x;
+    y += current.position.y;
+    const parentId = current.parentId;
+    current = parentId ? nodes.find((n) => n.id === parentId) : undefined;
+  }
+  return { x, y };
 }
 
 /**

@@ -19,12 +19,13 @@ function setup(
       onReference={() => {}}
       onStyle={() => {}}
       onClearStyle={() => {}}
+      onFocus={() => {}}
       {...overrides}
     />,
   );
 }
 
-describe('GenerateToolbar — Style + Reference are live; Mark / Focus are disabled placeholders', () => {
+describe('GenerateToolbar — Style / Focus / Reference are live; Mark is a disabled placeholder', () => {
   it('renders all four tool buttons', () => {
     setup();
     expect(screen.getByTestId('generate-tool-style')).toBeInTheDocument();
@@ -33,12 +34,26 @@ describe('GenerateToolbar — Style + Reference are live; Mark / Focus are disab
     expect(screen.getByTestId('generate-tool-reference')).toBeInTheDocument();
   });
 
-  it('disables Mark / Focus (unbuilt slices) and enables Style + Reference', () => {
+  it('disables Mark (unbuilt slice) and enables Style + Focus + Reference', () => {
     setup();
     expect(screen.getByTestId('generate-tool-style')).not.toBeDisabled();
     expect(screen.getByTestId('generate-tool-mark')).toBeDisabled();
-    expect(screen.getByTestId('generate-tool-focus')).toBeDisabled();
+    expect(screen.getByTestId('generate-tool-focus')).not.toBeDisabled();
     expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
+  });
+
+  it('fires onFocus when Focus is clicked; highlights while active (#1782)', () => {
+    const onFocus = vi.fn();
+    setup({ onFocus, focusActive: true });
+    const btn = screen.getByTestId('generate-tool-focus');
+    fireEvent.click(btn);
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    expect(btn.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('disables Focus when focusDisabled is set (text-to-image — same pool as references)', () => {
+    setup({ focusDisabled: true });
+    expect(screen.getByTestId('generate-tool-focus')).toBeDisabled();
   });
 
   it('fires onReference when Reference is clicked', () => {

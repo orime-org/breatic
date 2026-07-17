@@ -20,6 +20,7 @@ import {
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
+import { getCanvasReferencePoolCap } from "@server/config/limits.js";
 import {
   taskService,
   estimateTaskCredits,
@@ -45,6 +46,24 @@ const canvas = new Hono<{ Variables: AuthVariables }>();
 canvas.use("*", requireAuth);
 
 const tasksQueue = createQueue("tasks");
+
+/**
+ * `GET /canvas/limits` — frontend-consumed canvas knobs from
+ * `config/limits.yaml` (#1782).
+ *
+ * `referencePoolCap`: max entries in one node's reference pool (incoming
+ * reference edges + focus crops combined) — enforced by the frontend at
+ * add time (the pool lives in Yjs; the server never gates collaborative
+ * writes). Distinct from the per-model `images.max_items` payload cap
+ * enforced at execute time (#1735).
+ * @param c - Hono context (auth required, no params)
+ * @returns `200` with `{ data: { referencePoolCap } }`
+ */
+canvas.get("/limits", (c) => {
+  return c.json({
+    data: { referencePoolCap: getCanvasReferencePoolCap() },
+  });
+});
 
 /**
  * `POST /canvas/tasks` — create a task and enqueue it for execution.

@@ -113,6 +113,20 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
 
+  it('startFocusPick enters a focus pick (#1782); endPick exits', () => {
+    // Focus (#1782) is the third pick purpose: continuous like reference
+    // (manual exit — the user may crop several regions across several
+    // nodes), each confirmed crop APPENDS a standalone copy to the panel
+    // node's focusImages (no edge, no source relationship).
+    useCanvasStore.getState().startFocusPick('gen-1');
+    expect(useCanvasStore.getState().pickSession).toEqual({
+      nodeId: 'gen-1',
+      purpose: 'focus',
+    });
+    useCanvasStore.getState().endPick();
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+
   it('starting a pick replaces any in-progress pick (one session at a time)', () => {
     useCanvasStore.getState().startReferencePick('gen-1');
     useCanvasStore.getState().startStylePick('gen-1');
@@ -137,6 +151,22 @@ describe('useCanvasStore', () => {
     useCanvasStore.getState().closeGeneratePanel();
     expect(useCanvasStore.getState().generatePanelNodeId).toBeNull();
     expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+
+  it('pending focus uploads: add renders a rail placeholder, remove clears it (#1782)', () => {
+    // A confirmed crop uploads asynchronously; the rail shows a local
+    // pending entry (never Yjs) until the URL lands or the upload fails.
+    useCanvasStore
+      .getState()
+      .addPendingFocusUpload({ id: 'tmp1', nodeId: 'gen-1', name: 'Img 26' });
+    useCanvasStore
+      .getState()
+      .addPendingFocusUpload({ id: 'tmp2', nodeId: 'gen-1', name: 'Img 27' });
+    expect(useCanvasStore.getState().pendingFocusUploads).toHaveLength(2);
+    useCanvasStore.getState().removePendingFocusUpload('tmp1');
+    expect(useCanvasStore.getState().pendingFocusUploads).toEqual([
+      { id: 'tmp2', nodeId: 'gen-1', name: 'Img 27' },
+    ]);
   });
 
   it('requestRename posts a node id; consumePendingRename clears it', () => {

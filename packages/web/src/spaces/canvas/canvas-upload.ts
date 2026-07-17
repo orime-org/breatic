@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { isDedupHit, type PresignResponse } from '@web/data/api/assets';
+import { validFocusImages } from '@web/data/focus-images';
 import {
   retryTransient,
   type UploadClientConfig,
@@ -274,7 +275,12 @@ export async function fillNodeFromFile(
 export interface AssetNodeLike {
   id: string;
   type?: string;
-  data?: { content?: unknown; coverUrl?: unknown };
+  data?: {
+    content?: unknown;
+    coverUrl?: unknown;
+    focusImages?: unknown;
+    styleImageUrl?: unknown;
+  };
 }
 
 /** One asset-delete report entry (activity feed). */
@@ -283,6 +289,28 @@ export interface DeletedAssetEntry {
   kind: string;
   nodeId: string;
   spaceId: string;
+}
+
+/**
+ * Whether an asset URL is safe to put in a delete-side ledger report — a
+ * parse-level check mirroring the server's `z.string().url()` (round-3: the
+ * old prefix regex accepted strings like `https://a b` that the server
+ * rejects with a whole-batch 400, so ONE malformed remote crop URL poisoned
+ * every other entry in a multi-node delete report).
+ * @param url - The candidate asset URL.
+ * @returns True for a parseable http(s) URL.
+ */
+export function isReportableAssetUrl(url: string): boolean {
+  // Mirrors the FULL server field contract (`z.string().url().max(2048)`,
+  // routes/assets.ts) — a parseable-but-overlong URL still 400s the whole
+  // batch (adversarial round-4).
+  if (url.length > 2048) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -313,20 +341,72 @@ export function computeDeletedAssetEntries(
     if (deletedIds.has(n.id)) continue;
     if (typeof n.data?.content === 'string') survivingUrls.add(n.data.content);
     if (typeof n.data?.coverUrl === 'string') survivingUrls.add(n.data.coverUrl);
+    // The style slot (#333) holds a copied URL — dedup can make it equal a
+    // crop's asset URL, so it keeps the asset alive too (round-12).
+    if (typeof n.data?.styleImageUrl === 'string') {
+      survivingUrls.add(n.data.styleImageUrl);
+    }
+    // Focus crops (#1782) are uploaded assets too — a crop URL held by a
+    // surviving node keeps the asset alive (adversarial round-2).
+    for (const crop of validFocusImages(n.data?.focusImages)) {
+      survivingUrls.add(crop.url);
+    }
   }
   const mediaTypes = new Set(['image', 'video', 'audio']);
   return deletedNodes.flatMap((node) => {
-    if (node.type === undefined || !mediaTypes.has(node.type)) return [];
     const out: DeletedAssetEntry[] = [];
-    for (const url of [node.data?.content, node.data?.coverUrl]) {
-      if (
-        typeof url === 'string' &&
-        /^https?:\/\//.test(url) &&
-        !survivingUrls.has(url)
-      ) {
-        out.push({ fileUrl: url, kind: node.type!, nodeId: node.id, spaceId });
+    if (node.type !== undefined && mediaTypes.has(node.type)) {
+      for (const url of [node.data?.content, node.data?.coverUrl]) {
+        if (
+          typeof url === 'string' &&
+          isReportableAssetUrl(url) &&
+          !survivingUrls.has(url)
+        ) {
+          out.push({ fileUrl: url, kind: node.type, nodeId: node.id, spaceId });
+        }
+      }
+    }
+    // A deleted node takes its focus crops with it — report each crop asset
+    // unless the same URL survives elsewhere (dedup can share URLs). Crops
+    // are always images regardless of the holding node's type.
+    for (const crop of validFocusImages(node.data?.focusImages)) {
+      if (isReportableAssetUrl(crop.url) && !survivingUrls.has(crop.url)) {
+        out.push({ fileUrl: crop.url, kind: 'image', nodeId: node.id, spaceId });
       }
     }
     return out;
   });
+}
+
+/**
+ * Whether an asset URL is still referenced by any node — content, cover,
+ * style slot (#333, round-12), or focus crop (#1782). The rail's crop ✕
+ * reports the asset deleted only when this is false; call it AFTER the
+ * removal write so the removed instance is naturally excluded (adversarial
+ * round-2).
+ * @param url - The asset URL to check.
+ * @param nodes - The current canvas nodes (post-removal).
+ * @returns True when any node still references the URL.
+ */
+export function assetUrlSurvives(
+  url: string,
+  // `data?: object` (not the field shape): the all-optional field object is
+  // a WEAK TYPE, and view variants with none of the fields (GroupNodeView)
+  // would fail assignability even though reading them is safe.
+  nodes: ReadonlyArray<{ data?: object }>,
+): boolean {
+  for (const n of nodes) {
+    const data = n.data as AssetNodeLike['data'];
+    if (
+      data?.content === url ||
+      data?.coverUrl === url ||
+      data?.styleImageUrl === url
+    ) {
+      return true;
+    }
+    if (validFocusImages(data?.focusImages).some((c) => c.url === url)) {
+      return true;
+    }
+  }
+  return false;
 }

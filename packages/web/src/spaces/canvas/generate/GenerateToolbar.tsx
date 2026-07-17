@@ -6,10 +6,9 @@ import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 
-/** The two not-yet-built tool buttons rendered as disabled placeholders (slice-1 decision B). */
+/** The one not-yet-built tool button rendered as a disabled placeholder (Mark; Focus went live in #1782). */
 const PLACEHOLDER_TOOLS = [
   { key: 'mark', testId: 'generate-tool-mark', Icon: MapPin },
-  { key: 'focus', testId: 'generate-tool-focus', Icon: Focus },
 ] as const;
 
 // Shared layout / focus / disabled classes; color + hover applied per-state.
@@ -191,6 +190,12 @@ interface GenerateToolbarProps {
    * capability. A stale thumbnail still renders and its ✕ stays active.
    */
   styleDisabled?: boolean;
+  /** Toggle the focus crop mode (#1782, marquee → focusImages append). */
+  onFocus: () => void;
+  /** Whether the focus pick is running — highlights the Focus button. */
+  focusActive?: boolean;
+  /** Disable Focus — like Reference it feeds i2i source images (t2i off). */
+  focusDisabled?: boolean;
 }
 
 /**
@@ -220,6 +225,9 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
   styleThumbnail,
   onClearStyle,
   styleDisabled = false,
+  onFocus,
+  focusActive = false,
+  focusDisabled = false,
 }: GenerateToolbarProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -245,6 +253,14 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
           {t(`canvas.generatePanel.${key}`)}
         </button>
       ))}
+      <ToggleTool
+        testId='generate-tool-focus'
+        label={t('canvas.generatePanel.focus')}
+        Icon={Focus}
+        onClick={onFocus}
+        active={focusActive}
+        disabled={focusDisabled}
+      />
       <ToggleTool
         testId='generate-tool-reference'
         label={t('canvas.generatePanel.reference')}

@@ -173,9 +173,9 @@ export interface OperationLock {
 }
 
 /**
- * Attachment reference stored in a node's `attachments` Y.Array.
- *
- * Each attachment is a Y.Map at runtime with these keys.
+ * Attachment reference stored in a node's `attachments` array — a plain
+ * array value on the data Y.Map (node data holds plain values only, see
+ * the web `buildDataMap`).
  */
 export interface AttachRef {
   id: string;
@@ -184,6 +184,33 @@ export interface AttachRef {
   mimeType: string;
   size: number;
   uploadedAt: string;
+}
+
+/**
+ * One focus crop stored in a node's `focusImages` Y.Array (#1782 focus
+ * slice) — a standalone image cropped out of a source node's content at
+ * creation time.
+ *
+ * COPY semantics (user decision 2026-07-16, mirroring `styleImageUrl`):
+ * the crop is uploaded as its own asset and keeps ZERO relationship to
+ * the node it was cropped from — deleting, renaming, or regenerating the
+ * source never changes an existing focus image. `name` is a snapshot of
+ * the source node's display name at crop time and never follows renames.
+ * Frontend-owned; the backend never reads or writes this field — focus
+ * images only reach a generate request when the user `@`-mentions them
+ * (same explicit-selection rule as node references).
+ */
+export interface FocusImage {
+  /** Stable id (frontend-generated UUID v4); `@` mentions reference it. */
+  id: string;
+  /** Public URL of the uploaded crop asset. */
+  url: string;
+  /** Source node display name snapshotted at crop time (raw, no suffix). */
+  name: string;
+  /** Crop width in natural (source-resolution) pixels. */
+  width: number;
+  /** Crop height in natural (source-resolution) pixels. */
+  height: number;
 }
 
 // ── Content-node Generate: references + prompt ───────────
@@ -356,6 +383,22 @@ export interface CanvasNodeFields {
      * text-to-image. Scalar last-write-wins. Absent = none picked.
      */
     styleImageUrl?: string;
+    /**
+     * Focus crops created on this node's generate panel (#1782) — maintained
+     * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the
+     * plain-values convention of the web `buildDataMap`): concurrent appends
+     * from two collaborators BOTH survive the merge and the ✕ deletes its
+     * target in place, commuting with concurrent edits — a whole-array LWW
+     * value silently dropped the loser's crop with its asset already
+     * uploaded (design adversary 2026-07-17). The container is eager-seeded
+     * empty at node birth (lazy creation is itself a whole-container LWW
+     * race); a plain-array value (a pre-encoding doc / forged wire) is
+     * converted on its first write. This WIRE type is unchanged either way:
+     * `toJSON()` serializes both encodings to the same plain array, and the
+     * backend never reads or writes the field. See {@link FocusImage} for
+     * the copy semantics. Empty / absent = none created.
+     */
+    focusImages?: FocusImage[];
 
     // ─── Group (Group) node fields ──────────────────────────
     // A Group's authoritative size lives in `width`/`height` above; its members

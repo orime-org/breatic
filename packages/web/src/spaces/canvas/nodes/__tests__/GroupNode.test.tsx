@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import { GroupNode } from '@web/spaces/canvas/nodes/GroupNode';
 
@@ -157,6 +157,40 @@ describe('GroupNode', () => {
     fireEvent.change(input, { target: { value: 'Scenes' } });
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(onRename).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('group-name-input')).toBeNull();
+  });
+
+  it('Escape marks the event consumed so window-level Esc handlers yield (round-12)', () => {
+    render(
+      <GroupNode data={{ kind: 'group', name: 'Group' }} onRename={vi.fn()} />,
+    );
+    fireEvent.doubleClick(screen.getByTestId('group-name'));
+    const input = screen.getByTestId('group-name-input');
+    // Same protocol as the node header (round-12): window-level Esc
+    // consumers yield on `defaultPrevented`, so canceling a group rename
+    // must never also tear down an active focus session.
+    const seen: boolean[] = [];
+    const onWindowKeyDown = (e: KeyboardEvent): void => {
+      seen.push(e.defaultPrevented);
+    };
+    window.addEventListener('keydown', onWindowKeyDown);
+    try {
+      const evt = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      // A raw dispatch (not fireEvent) so the NATIVE event's
+      // defaultPrevented is observable at the window — wrapped in act()
+      // to flush the cancel's state update.
+      act(() => {
+        input.dispatchEvent(evt);
+      });
+      expect(evt.defaultPrevented).toBe(true);
+      expect(seen).toEqual([true]);
+    } finally {
+      window.removeEventListener('keydown', onWindowKeyDown);
+    }
     expect(screen.queryByTestId('group-name-input')).toBeNull();
   });
 

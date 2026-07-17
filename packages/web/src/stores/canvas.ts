@@ -35,8 +35,13 @@ export type HistoryCommand = 'undo' | 'redo';
  *     `styleImageUrl` (image-node style slice #1664, one style image max): a
  *     pick-time snapshot with NO relationship to the source node, then the
  *     session auto-exits (single slot, unlike the continuous reference pick).
+ *   - `focus` — opens a crop marquee on the clicked image node (#1782); each
+ *     confirmed crop uploads a standalone copy and APPENDS it to the target's
+ *     `focusImages` (no edge, no source relationship). Continuous like
+ *     reference — the user may crop several regions on the SAME node and
+ *     across nodes — until manual Exit.
  */
-export type PickPurpose = 'reference' | 'style';
+export type PickPurpose = 'reference' | 'style' | 'focus';
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a
@@ -112,6 +117,12 @@ interface CanvasState {
    * session (continuous select) until Exit. Local UI only (never Yjs).
    */
   pickSession: PickSession | null;
+  /**
+   * Focus crops whose upload is still in flight (#1782) — local rail
+   * placeholders only (never Yjs): the FocusImage copy is written to the
+   * node only once the upload succeeds; a failure just drops the entry.
+   */
+  pendingFocusUploads: Array<{ id: string; nodeId: string; name: string }>;
   setSelectedNodeIds: (ids: string[]) => void;
   addSelectedNodeId: (id: string) => void;
   clearSelection: () => void;
@@ -152,6 +163,12 @@ interface CanvasState {
   startReferencePick: (nodeId: string) => void;
   /** Enter a STYLE pick (#1664, copies one image URL into the slot) for a generative node. */
   startStylePick: (nodeId: string) => void;
+  /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
+  startFocusPick: (nodeId: string) => void;
+  /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
+  addPendingFocusUpload: (entry: { id: string; nodeId: string; name: string }) => void;
+  /** Drop a focus-upload placeholder (success wrote Yjs, or failure toasted). */
+  removePendingFocusUpload: (id: string) => void;
   /** Exit the current pick session (after a node is picked, or on cancel). */
   endPick: () => void;
 }
@@ -175,6 +192,7 @@ export const useCanvasStore = create<CanvasState>()(
     canRedo: false,
     generatePanelNodeId: null,
     pickSession: null,
+    pendingFocusUploads: [],
     setSelectedNodeIds: (ids) =>
       set((s) => {
         s.selectedNodeIds = ids;
@@ -280,6 +298,20 @@ export const useCanvasStore = create<CanvasState>()(
     startStylePick: (nodeId) =>
       set((s) => {
         s.pickSession = { nodeId, purpose: 'style' };
+      }),
+    startFocusPick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'focus' };
+      }),
+    addPendingFocusUpload: (entry) =>
+      set((s) => {
+        s.pendingFocusUploads.push(entry);
+      }),
+    removePendingFocusUpload: (id) =>
+      set((s) => {
+        s.pendingFocusUploads = s.pendingFocusUploads.filter(
+          (p) => p.id !== id,
+        );
       }),
     endPick: () =>
       set((s) => {

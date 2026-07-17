@@ -32,7 +32,7 @@
  */
 
 import { HANDLING_TIMEOUT_MS } from '@breatic/shared';
-import type { CanvasNodeFields } from '@breatic/shared';
+import type { CanvasNodeFields, FocusImage } from '@breatic/shared';
 
 /** The 6 content modalities that own a renderable payload. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
@@ -95,6 +95,13 @@ interface ContentNodeViewBase extends NodeViewCommon {
    * slot and sends it as `params.style_images` at execute time.
    */
   styleImageUrl?: string;
+  /**
+   * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
+   * out of source nodes, zero upstream relationship. The panel renders them
+   * as the reference rail's focus entries and offers them in the @ mention
+   * pool; only @-mentioned crops reach the execute payload.
+   */
+  focusImages?: FocusImage[];
 }
 
 export interface TextNodeView extends ContentNodeViewBase {
@@ -244,6 +251,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     mode: data.mode,
     modelByMode: data.modelByMode,
     styleImageUrl: data.styleImageUrl,
+    focusImages: data.focusImages,
   };
   switch (type) {
     case 'text':

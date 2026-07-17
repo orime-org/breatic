@@ -341,8 +341,16 @@
       "errorNoSourceImage": "This model needs a source image — type @ in the prompt to pick a connected image.",
       "errorTooManyReferences": "This model accepts at most {limit} reference images — remove some to generate.",
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
+      "referencePoolFull": "Reference pool is full ({cap} max) — remove some references or focus crops first.",
       "modelUnavailable": "That model is no longer available — pick another.",
-      "catalogUnavailable": "Model list unavailable — please try again later"
+      "catalogUnavailable": "Model list unavailable — please try again later",
+      "selectFocusFromCanvas": "Focus mode — drag a marquee on an image to crop a focus reference",
+      "focusCancel": "Cancel",
+      "focusConfirm": "Confirm",
+      "focusExportFailed": "Could not crop the image — please try again.",
+      "focusUploadFailed": "Could not upload the focus crop — please try again.",
+      "focusSourceChanged": "Source image changed — draw the marquee again.",
+      "focusCropDiscarded": "The node was deleted — the focus crop was discarded."
     },
     "edge": {
       "delete": "Delete connection"

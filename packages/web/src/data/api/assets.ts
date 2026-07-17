@@ -184,14 +184,20 @@ export const assetsApi = {
       spaceId?: string;
     }>;
   }): Promise<void> {
-    await apiPost<{ ok: boolean }>('/assets/deleted', {
-      project_id: params.projectId,
-      entries: params.entries.map((e) => ({
-        file_url: e.fileUrl,
-        kind: e.kind,
-        ...(e.nodeId !== undefined && { node_id: e.nodeId }),
-        ...(e.spaceId !== undefined && { space_id: e.spaceId }),
-      })),
-    });
+    // The server caps a batch at 100 entries (routes/assets.ts .max(100)) —
+    // chunk here so a mass-delete of crop-heavy nodes (pool cap 50/node)
+    // never 400s the whole audit batch (adversarial round-4).
+    const BATCH = 100;
+    for (let i = 0; i < params.entries.length; i += BATCH) {
+      await apiPost<{ ok: boolean }>('/assets/deleted', {
+        project_id: params.projectId,
+        entries: params.entries.slice(i, i + BATCH).map((e) => ({
+          file_url: e.fileUrl,
+          kind: e.kind,
+          ...(e.nodeId !== undefined && { node_id: e.nodeId }),
+          ...(e.spaceId !== undefined && { space_id: e.spaceId }),
+        })),
+      });
+    }
   },
 };

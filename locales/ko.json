@@ -334,8 +334,16 @@
       "errorNoSourceImage": "이 모델에는 원본 이미지가 필요합니다 —— 프롬프트에 @ 를 입력해 연결된 이미지를 선택하세요.",
       "errorTooManyReferences": "이 모델은 참고 이미지를 최대 {limit}장까지 허용합니다 —— 일부를 제거한 후 생성하세요.",
       "referenceAddFailed": "참조를 추가할 수 없습니다——해당 노드가 존재하지 않습니다.",
+      "referencePoolFull": "참조 풀이 상한({cap})에 도달했습니다——먼저 참조 또는 포커스 이미지를 삭제하세요.",
       "modelUnavailable": "해당 모델은 더 이상 사용할 수 없습니다——다른 모델을 선택하세요.",
-      "catalogUnavailable": "모델 목록을 불러오지 못했습니다. 나중에 다시 시도해 주세요"
+      "catalogUnavailable": "모델 목록을 불러오지 못했습니다. 나중에 다시 시도해 주세요",
+      "selectFocusFromCanvas": "포커스 모드——이미지 위를 드래그하여 영역을 선택하세요",
+      "focusCancel": "취소",
+      "focusConfirm": "확인",
+      "focusExportFailed": "이미지를 자를 수 없습니다——다시 시도하세요.",
+      "focusUploadFailed": "포커스 이미지를 업로드할 수 없습니다——다시 시도하세요.",
+      "focusSourceChanged": "원본 이미지가 변경되었습니다——영역을 다시 선택하세요.",
+      "focusCropDiscarded": "노드가 삭제되어 포커스 이미지가 삭제되었습니다."
     },
     "nodeMenu": {
       "generate": "생성",

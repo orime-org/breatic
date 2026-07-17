@@ -51,8 +51,8 @@ interface GeneratePanelProps {
   onAddReference: () => void;
   /** Whether THIS node's reference pick is running — highlights the button. */
   referencePicking: boolean;
-  /** Remove a reference by id. */
-  onRemoveReference: (refId: string) => void;
+  /** Remove a rail row (routed by the row's identity — crop vs edge). */
+  onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert a reference's @-mention into the prompt at the cursor (rail click). */
   onInsertReference: (item: ReferenceRailItem) => void;
   /** Toggle the canvas style-pick mode (#1664 — enter, or exit when already picking). */
@@ -65,6 +65,12 @@ interface GeneratePanelProps {
   onClearStyle: () => void;
   /** Whether the active model takes a style reference (capability gate). */
   styleSupported: boolean;
+  /** Toggle the canvas focus-crop mode (#1782 — enter, or exit when already picking). */
+  onFocus: () => void;
+  /** Whether THIS node's focus pick is running — highlights the Focus button. */
+  focusPicking: boolean;
+  /** In-flight focus-crop uploads shown as rail placeholders (#1782). */
+  pendingFocus?: ReadonlyArray<{ id: string; name: string }>;
   /**
    * Execute: submit the task in overwrite mode (the panel closes on success).
    * The node does NOT enter handling here — the server publishes handling only
@@ -115,6 +121,9 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   styleImageUrl,
   onClearStyle,
   styleSupported,
+  onFocus,
+  focusPicking,
+  pendingFocus,
   onExecute,
 }: GeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
@@ -140,6 +149,10 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           styleThumbnail={styleImageUrl}
           onClearStyle={onClearStyle}
           styleDisabled={!styleSupported}
+          onFocus={onFocus}
+          focusActive={focusPicking}
+          // Focus crops feed the same i2i source pool as references (#1782).
+          focusDisabled={referencesOff}
         />
         <button
           type='button'
@@ -157,6 +170,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
         imageRefsDisabled={referencesOff}
+        pendingFocus={pendingFocus}
       />
 
       {promptSlot}
