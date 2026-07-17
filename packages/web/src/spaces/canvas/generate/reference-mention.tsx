@@ -16,6 +16,7 @@ import { Plugin } from '@tiptap/pm/state';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
+import { Crop } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
@@ -23,6 +24,7 @@ import {
   MENTION_SOURCE_ID_ATTR,
   REFERENCE_MENTION_NODE,
 } from '@web/spaces/canvas/generate/at-reference';
+import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { createReferenceMentionCaret } from '@web/spaces/canvas/generate/reference-mention-caret';
 import { createReferenceMentionRangeHighlight } from '@web/spaces/canvas/generate/reference-mention-range-decoration';
@@ -178,6 +180,10 @@ function ReferenceMentionChip({
   // default to image (the historical @-picker was image-centric).
   const FallbackIcon = getNodeIcon(kind ?? 'image');
   const sourceId = node.attrs[MENTION_SOURCE_ID_ATTR] as string | null;
+  // A focus crop's sourceNodeId lives in the `focus:` namespace — show the
+  // same crop glyph the rail / @-suggestion use so a standalone focus copy
+  // reads apart from a live node reference everywhere (user 2026-07-17).
+  const isFocus = sourceId != null && sourceId.startsWith(FOCUS_REF_PREFIX);
   const options = extension.options as ReferenceMentionOptions;
   const isVisual = kind === 'image' || kind === 'video';
   // A visual chip with no thumbnail shows a static "not yet filled" hint. It is
@@ -236,19 +242,28 @@ function ReferenceMentionChip({
         // align value: measured on the real machine to put the chip's
         // centerline exactly on the TEXT centerline (numeric vertical-align;
         // `align-middle` sat it ~1.2px low under Inter 13px metrics).
-        className='reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-full border border-border bg-muted pl-1 align-[-1.25px] text-xs text-muted-foreground'
+        className='reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-overlay border border-border bg-muted pl-1 align-[-1.25px] text-xs text-muted-foreground'
         contentEditable={false}
       >
         {typeof thumbnail === 'string' && thumbnail.length > 0 ? (
           <img
             src={thumbnail}
             alt={label}
-            className='h-3 w-3 shrink-0 rounded object-cover'
+            className='h-3 w-3 shrink-0 rounded-content-xs object-cover'
             draggable={false}
           />
         ) : (
           <FallbackIcon className='h-3 w-3 shrink-0' aria-hidden='true' />
         )}
+        {/* Crop glyph before the name marks a focus copy (user 2026-07-17,
+            consistent with the rail + @-suggestion). */}
+        {isFocus ? (
+          <Crop
+            data-testid='reference-mention-focus-badge'
+            className='h-2.5 w-2.5 shrink-0'
+            aria-hidden='true'
+          />
+        ) : null}
         <span className='truncate pr-1.5'>{label}</span>
       </NodeViewWrapper>
     </ThumbnailHoverPreview>

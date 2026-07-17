@@ -25,12 +25,12 @@ beforeEach(() => {
 /**
  * Renders the fake node DOM (what the overlay queries) + the overlay.
  * @param onConfirm - Confirm spy.
- * @param onExit - Exit spy.
+ * @param onBackToPick - Back-to-pick spy (the overlay's only way out).
  * @returns Testing-library render result.
  */
 function renderOverlay(
   onConfirm = vi.fn(() => true),
-  onExit = vi.fn(),
+  onBackToPick = vi.fn(),
 ): ReturnType<typeof render> {
   const result = render(
     <ReactFlowProvider>
@@ -41,7 +41,7 @@ function renderOverlay(
         nodeId='n1'
         nodePosition={{ x: 0, y: 0 }}
         onConfirm={onConfirm}
-        onExit={onExit}
+        onBackToPick={onBackToPick}
       />
     </ReactFlowProvider>,
   );
@@ -152,29 +152,34 @@ describe('FocusCropOverlay', () => {
     ).toBe(true);
   });
 
-  it('cancel clears the marquee and stays in the session', () => {
-    const onExit = vi.fn();
-    renderOverlay(vi.fn(), onExit);
+  it('cancel clears the marquee and returns to the PICK state — not out of the session (user 2026-07-17, decision A)', () => {
+    const onBackToPick = vi.fn();
+    renderOverlay(vi.fn(), onBackToPick);
     draw({ x: 150, y: 100 }, { x: 250, y: 180 });
     fireEvent.click(screen.getByTestId('focus-crop-cancel'));
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
-    expect(onExit).not.toHaveBeenCalled();
+    // Back to picking another image (the banner stays); the overlay has no
+    // session-exit path at all (prop removed by construction).
+    expect(onBackToPick).toHaveBeenCalledTimes(1);
   });
 
-  it('Esc clears the marquee first, then exits the session', () => {
-    const onExit = vi.fn();
-    renderOverlay(vi.fn(), onExit);
+  it('Esc peels: marquee first, then back to the pick state (aligned with Cancel — user 2026-07-17)', () => {
+    const onBackToPick = vi.fn();
+    renderOverlay(vi.fn(), onBackToPick);
     draw({ x: 150, y: 100 }, { x: 250, y: 180 });
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
-    expect(onExit).not.toHaveBeenCalled();
+    expect(onBackToPick).not.toHaveBeenCalled();
+    // Second Esc: no marquee left — back to the pick state, NOT a session
+    // exit (the third Esc, in the pick state, exits via the canvas-level
+    // handler once this overlay is unmounted).
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(onExit).toHaveBeenCalledTimes(1);
+    expect(onBackToPick).toHaveBeenCalledTimes(1);
   });
 
   it('Esc yields by OWNERSHIP: prevented events and overlay content — not a plain focused editor (round-6)', () => {
-    const onExit = vi.fn();
-    const { container } = renderOverlay(vi.fn(), onExit);
+    const onBackToPick = vi.fn();
+    const { container } = renderOverlay(vi.fn(), onBackToPick);
     // A handler that already consumed Esc (Radix / the @-suggestion) wins.
     const prevented = new KeyboardEvent('keydown', {
       key: 'Escape',
@@ -183,7 +188,7 @@ describe('FocusCropOverlay', () => {
     });
     prevented.preventDefault();
     window.dispatchEvent(prevented);
-    expect(onExit).not.toHaveBeenCalled();
+    expect(onBackToPick).not.toHaveBeenCalled();
     // Focus inside open overlay content (dialog/menu/listbox) yields.
     const menu = document.createElement('div');
     menu.setAttribute('role', 'menu');
@@ -192,17 +197,18 @@ describe('FocusCropOverlay', () => {
     container.appendChild(menu);
     item.focus();
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(onExit).not.toHaveBeenCalled();
+    expect(onBackToPick).not.toHaveBeenCalled();
     menu.remove();
     // A PLAIN focused editor consumes nothing — Esc must still work there
-    // (the old location-based yield left it silently dead, round-6).
+    // (the old location-based yield left it silently dead, round-6). With no
+    // marquee drawn this is stage two: back to the pick state.
     const editor = document.createElement('div');
     editor.className = 'ProseMirror';
     editor.tabIndex = 0;
     container.appendChild(editor);
     editor.focus();
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(onExit).toHaveBeenCalledTimes(1);
+    expect(onBackToPick).toHaveBeenCalledTimes(1);
   });
 
   it('rescales the marquee when the image box changes size (zoom mid-marquee, adversarial)', () => {
@@ -220,14 +226,14 @@ describe('FocusCropOverlay', () => {
   });
 
   it('Esc mid-drag cancels the gesture — the next pointermove does not resurrect the rect (adversarial R2)', () => {
-    const onExit = vi.fn();
-    renderOverlay(vi.fn(), onExit);
+    const onBackToPick = vi.fn();
+    renderOverlay(vi.fn(), onBackToPick);
     const layer = screen.getByTestId('focus-crop-layer');
     fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0, pointerId: 1 });
     fireEvent.pointerMove(layer, { clientX: 250, clientY: 180, pointerId: 1 });
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
-    expect(onExit).not.toHaveBeenCalled();
+    expect(onBackToPick).not.toHaveBeenCalled();
     // Button still held: further movement must NOT recreate the marquee.
     fireEvent.pointerMove(layer, { clientX: 300, clientY: 220, pointerId: 1 });
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
@@ -360,9 +366,9 @@ describe('FocusCropOverlay', () => {
     ).toBe(false);
   });
 
-  it('Esc while the target is culled exits the session instead of eating the kept marquee (round-9)', () => {
-    const onExit = vi.fn();
-    renderOverlay(vi.fn(() => true), onExit);
+  it('Esc while the target is culled returns to the pick state instead of eating the kept marquee (round-9)', () => {
+    const onBackToPick = vi.fn();
+    renderOverlay(vi.fn(() => true), onBackToPick);
     draw({ x: 150, y: 100 }, { x: 250, y: 180 });
     // Culling: the img unmounts, the marquee is KEPT (round-8) but no
     // longer visible — stage-one Esc would be a silent no-op.
@@ -370,7 +376,7 @@ describe('FocusCropOverlay', () => {
     fireEvent(window, new Event('resize'));
     expect(screen.queryByTestId('focus-crop-layer')).toBeNull();
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(onExit).toHaveBeenCalledTimes(1);
+    expect(onBackToPick).toHaveBeenCalledTimes(1);
   });
 
   it('a ratio preset keeps a zoom-out-shrunken but natural-valid marquee (round-10)', () => {
@@ -387,16 +393,16 @@ describe('FocusCropOverlay', () => {
   });
 
   it('a held (auto-repeat) Esc does not collapse both stages (round-10)', () => {
-    const onExit = vi.fn();
-    renderOverlay(vi.fn(() => true), onExit);
+    const onBackToPick = vi.fn();
+    renderOverlay(vi.fn(() => true), onBackToPick);
     draw({ x: 150, y: 100 }, { x: 250, y: 180 });
     fireEvent.keyDown(window, { key: 'Escape' });
     // The OS auto-repeat replays with repeat=true — must be ignored.
     fireEvent.keyDown(window, { key: 'Escape', repeat: true });
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
-    expect(onExit).not.toHaveBeenCalled();
+    expect(onBackToPick).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(onExit).toHaveBeenCalledTimes(1);
+    expect(onBackToPick).toHaveBeenCalledTimes(1);
   });
 
   it('Cancel aborts an in-flight second-pointer gesture — no resurrection (round-11)', () => {
@@ -419,8 +425,8 @@ describe('FocusCropOverlay', () => {
   });
 
   it('an IME composition-cancel Escape never clears the marquee (round-11)', () => {
-    const onExit = vi.fn();
-    renderOverlay(vi.fn(() => true), onExit);
+    const onBackToPick = vi.fn();
+    renderOverlay(vi.fn(() => true), onBackToPick);
     draw({ x: 150, y: 100 }, { x: 250, y: 180 });
     const composing = new KeyboardEvent('keydown', {
       key: 'Escape',
@@ -430,7 +436,7 @@ describe('FocusCropOverlay', () => {
     Object.defineProperty(composing, 'isComposing', { value: true });
     window.dispatchEvent(composing);
     expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
-    expect(onExit).not.toHaveBeenCalled();
+    expect(onBackToPick).not.toHaveBeenCalled();
   });
 
   it('a lazy-load remount measuring a zero-size box must not destroy the kept marquee (round-12)', () => {
@@ -470,6 +476,21 @@ describe('FocusCropOverlay', () => {
     expect(
       (screen.getByTestId('focus-crop-confirm') as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+
+  it('controls bar: 6px outer radius; every button no-wrap + no-shrink (user 2026-07-17 #1/#3)', () => {
+    renderOverlay();
+    const bar = screen.getByTestId('focus-crop-controls');
+    // rounded-overlay = 6px chrome radius; rounded-md was 12px.
+    expect(bar.className).toContain('rounded-overlay');
+    expect(bar.className).not.toContain('rounded-md');
+    // Edge-clamped abspos boxes shrink to available width — without
+    // nowrap the CJK 取消/确认 labels wrapped one char per line.
+    for (const id of ['focus-ratio-16:9', 'focus-crop-cancel', 'focus-crop-confirm']) {
+      const el = screen.getByTestId(id);
+      expect(el.className).toContain('whitespace-nowrap');
+      expect(el.className).toContain('shrink-0');
+    }
   });
 
   it('a second pointer cannot hijack or end the active interaction (adversarial)', () => {

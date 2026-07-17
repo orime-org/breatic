@@ -45,6 +45,50 @@ function highlighted(): string | null {
   );
 }
 
+describe('ReferenceMentionList — focus rows carry the crop badge (user 2026-07-17 #4)', () => {
+  it('renders thumbnail → crop badge → name for a focus row; no badge on node rows', () => {
+    render(
+      <ReferenceMentionList
+        items={[
+          row('a'),
+          {
+            refId: 'focus:f1',
+            sourceNodeId: 'focus:f1',
+            sourceNodeType: 'image',
+            sourceNodeName: 'Hero crop',
+            thumbnail: 'crop.png',
+            focus: true,
+          },
+        ]}
+        command={() => {}}
+        emptyLabel='empty'
+      />,
+    );
+    const badge = document.querySelector(
+      '[data-testid="reference-mention-option-focus-badge-focus:f1"]',
+    );
+    expect(badge).not.toBeNull();
+    // Order inside the row: img before badge before name.
+    const option = document.querySelector(
+      '[data-testid="reference-mention-option-focus:f1"]',
+    )!;
+    const img = option.querySelector('img')!;
+    const name = option.querySelector('span.truncate')!;
+    expect(
+      img.compareDocumentPosition(badge!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      badge!.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // A plain node row carries no crop badge.
+    expect(
+      document.querySelector(
+        '[data-testid="reference-mention-option-focus-badge-a"]',
+      ),
+    ).toBeNull();
+  });
+});
+
 // Adversarial (batch-2 round-1): @tiptap/suggestion re-runs items() — a FRESH
 // array every time — whenever the suggestion range MOVES, and a collaborator
 // typing anywhere before the @ in the shared prompt moves it. Resetting the

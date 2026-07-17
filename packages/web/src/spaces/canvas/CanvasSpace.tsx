@@ -520,6 +520,15 @@ function CanvasSpaceInner({
       .querySelector<HTMLElement>(`[data-testid="${triggerTestId}"]`)
       ?.focus();
   }, [endPick]);
+  /**
+   * Return the focus session to its PICK state (user 2026-07-17 A): drop
+   * the crop target so the overlay unmounts, but keep the session — the
+   * banner stays and another image can be picked. Cancel and the overlay's
+   * bare Esc land here; a further Esc then exits via the pick Esc handler.
+   */
+  const onFocusBackToPick = React.useCallback((): void => {
+    setFocusCropTargetId(null);
+  }, []);
   // The image node a focus crop marquee is open on (#1782), or null. Local
   // React state — it only exists while THIS user's focus pick runs; the
   // effect clears it whenever the session ends or changes purpose (Exit,
@@ -549,12 +558,20 @@ function CanvasSpaceInner({
   // is clicked, leaving Esc silently dead in the banner-only state. Same
   // yield rules as the overlay's handler (defaultPrevented + editor /
   // overlay-content focus win).
-  const focusSessionWithoutTarget =
-    pickSession?.purpose === 'focus' && focusCropTargetId === null;
+  // Unified pick-session Esc (user 2026-07-17 #8): EVERY pick purpose
+  // (reference / style / focus) exits on Escape — reference and style had
+  // no listener at all, so their banners showed Exit but Esc was dead.
+  // Active whenever a session runs WITHOUT the crop overlay mounted (the
+  // overlay owns its own two-stage Esc while it is up; its stage two
+  // peels back to this state, so the full chain is marquee → pick state →
+  // session exit).
+  const pickEscActive =
+    pickSession !== null &&
+    (pickSession.purpose !== 'focus' || focusCropTargetId === null);
   React.useEffect(() => {
-    if (!focusSessionWithoutTarget) return;
+    if (!pickEscActive) return;
     /**
-     * Keydown listener exiting the target-less focus session on Escape.
+     * Keydown listener exiting the overlay-less pick session on Escape.
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -582,7 +599,7 @@ function CanvasSpaceInner({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [focusSessionWithoutTarget, onExitPick]);
+  }, [pickEscActive, onExitPick]);
   // A confirmed focus marquee (#1782): gate the pool cap (counting the
   // in-flight placeholders so a burst of confirms cannot overshoot), park a
   // pending rail entry, then run crop-export → upload → focusImages append.
@@ -2999,7 +3016,7 @@ function CanvasSpaceInner({
             // fresh object identity per render is harmless.
             nodePosition={absoluteNodePosition(renderNodes, focusCropTargetId)}
             onConfirm={onFocusCropConfirm}
-            onExit={onExitPick}
+            onBackToPick={onFocusBackToPick}
           />
         ) : null}
         {flowNodes.length === 0 ? (

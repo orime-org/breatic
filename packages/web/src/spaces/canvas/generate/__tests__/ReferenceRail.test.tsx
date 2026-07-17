@@ -47,6 +47,26 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
     expect(screen.queryByTestId('generate-ref-focus-badge-a->me')).toBeNull();
   });
 
+  it('focus row order is thumbnail → crop badge → name (user 2026-07-17 #4)', () => {
+    render(
+      <ReferenceRail
+        references={[FOCUS_ROW]}
+        onRemove={() => {}}
+        onInsert={() => {}}
+      />,
+    );
+    const badge = screen.getByTestId('generate-ref-focus-badge-focus:f1');
+    const img = screen.getByAltText('Hero');
+    const name = screen.getByText('Hero');
+    // DOM order: img precedes badge precedes name.
+    expect(
+      img.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      badge.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('a focus row ✕ fires onRemove with the ROW (focus flag routes to the crop)', () => {
     const onRemove = vi.fn();
     render(

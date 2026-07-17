@@ -65,8 +65,15 @@ interface FocusCropOverlayProps {
    * selection survives a fixable rejection (round-3).
    */
   onConfirm: (result: FocusCropConfirm) => boolean;
-  /** Exit the whole focus session (Esc with no marquee). */
-  onExit: () => void;
+  /**
+   * Return to the PICK state (clear the crop target, keep the session —
+   * the banner stays and another image can be picked). Cancel and the
+   * no-marquee Esc both land here (user 2026-07-17, decision A: leaving
+   * one image's crop must not tear down the whole continuous session).
+   * The overlay can NEVER hard-exit the session — that lives with the
+   * banner Exit button and the canvas-level pick Esc handler.
+   */
+  onBackToPick: () => void;
 }
 
 /** An in-progress pointer interaction on the marquee layer. */
@@ -90,14 +97,14 @@ type Interaction = { pointerId: number } & (
  * @param root0.nodeId - The image node being cropped.
  * @param root0.nodePosition - The node's flow position (re-measure signal).
  * @param root0.onConfirm - Receives the confirmed natural-pixel crop.
- * @param root0.onExit - Exits the focus session (Esc with no marquee).
+ * @param root0.onBackToPick - Returns to the pick state (Cancel / bare Esc).
  * @returns The overlay, or null until the target img is measurable.
  */
 export function FocusCropOverlay({
   nodeId,
   nodePosition,
   onConfirm,
-  onExit,
+  onBackToPick,
 }: FocusCropOverlayProps): React.JSX.Element | null {
   const t = useTranslation();
   const rootRef = React.useRef<HTMLDivElement>(null);
@@ -400,16 +407,19 @@ export function FocusCropOverlay({
         // Esc mid-drag never stuck (adversarial round-2). Stage one only
         // applies while the marquee is VISIBLE (round-9): with the target
         // culled off-viewport, Esc would silently eat the kept selection
-        // and look dead — it exits the session instead.
+        // and look dead — it peels back to the pick state instead.
         interactionRef.current = null;
         setRect(null);
       } else {
-        onExit();
+        // Stage two = back to the pick state, aligned with Cancel (user
+        // 2026-07-17): the session survives; a further Esc in the pick
+        // state exits via the canvas-level handler.
+        onBackToPick();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onExit]);
+  }, [onBackToPick]);
 
   // The root ALWAYS renders (measure needs its rect — a null-return here
   // would never mount the ref and the overlay could never appear); the
@@ -742,7 +752,9 @@ export function FocusCropOverlay({
           <div
             ref={barRef}
             data-testid='focus-crop-controls'
-            className='pointer-events-auto absolute flex -translate-x-1/2 items-center gap-1 rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
+            // rounded-overlay = the 6px chrome radius (user 2026-07-17 #3;
+            // rounded-md is 12px in this theme).
+            className='pointer-events-auto absolute flex -translate-x-1/2 items-center gap-1 rounded-overlay border border-border bg-card px-2 py-1.5 text-xs text-foreground shadow-md'
             // Clamped into the canvas viewport with the bar's MEASURED size
             // (round-3): an image at the fold / the edge must never push the
             // Confirm end out of reach.
@@ -774,8 +786,12 @@ export function FocusCropOverlay({
                 data-testid={`focus-ratio-${key}`}
                 aria-pressed={ratio === value}
                 onClick={() => onRatioClick(value)}
+                // whitespace-nowrap + shrink-0 (user 2026-07-17 #1): the
+                // edge-clamped abspos bar shrinks to the space left of its
+                // `left` offset, and without these the CJK button labels
+                // wrapped one character per line.
                 className={
-                  'rounded-sm px-1.5 py-0.5 tabular-nums transition-colors ' +
+                  'shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 tabular-nums transition-colors ' +
               (ratio === value
                 ? 'bg-foreground text-background'
                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')
@@ -791,11 +807,14 @@ export function FocusCropOverlay({
               data-testid='focus-crop-cancel'
               onClick={() => {
                 // Cancel aborts the in-flight gesture too (round-11) — the
-                // captured pointer's next move resurrected the marquee.
+                // captured pointer's next move resurrected the marquee —
+                // then returns to the PICK state (user 2026-07-17 A): the
+                // banner stays and another image can be picked.
                 interactionRef.current = null;
                 setRect(null);
+                onBackToPick();
               }}
-              className='rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              className='shrink-0 whitespace-nowrap rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             >
               {t('canvas.generatePanel.focusCancel')}
             </button>
@@ -804,7 +823,7 @@ export function FocusCropOverlay({
               data-testid='focus-crop-confirm'
               onClick={onConfirmClick}
               disabled={confirmDisabled}
-              className='rounded-sm bg-foreground px-2 py-0.5 text-background disabled:cursor-not-allowed disabled:opacity-50'
+              className='shrink-0 whitespace-nowrap rounded-sm bg-foreground px-2 py-0.5 text-background disabled:cursor-not-allowed disabled:opacity-50'
             >
               {t('canvas.generatePanel.focusConfirm')}
             </button>

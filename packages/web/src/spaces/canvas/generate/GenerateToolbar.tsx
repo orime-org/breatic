@@ -1,15 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { Box, Focus, MapPin, Plus, X, type LucideIcon } from 'lucide-react';
+import { Box, Focus, Plus, X, type LucideIcon } from 'lucide-react';
 import * as React from 'react';
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
-
-/** The one not-yet-built tool button rendered as a disabled placeholder (Mark; Focus went live in #1782). */
-const PLACEHOLDER_TOOLS = [
-  { key: 'mark', testId: 'generate-tool-mark', Icon: MapPin },
-] as const;
 
 // Shared layout / focus / disabled classes; color + hover applied per-state.
 const TOOL_BASE =
@@ -26,6 +27,8 @@ const TOOL_ACTIVE = ' bg-foreground text-background';
 interface ToggleToolProps {
   testId: string;
   label: string;
+  /** Hover tooltip describing what the tool does. */
+  tip: string;
   Icon: LucideIcon;
   onClick: () => void;
   active: boolean;
@@ -38,6 +41,7 @@ interface ToggleToolProps {
  * @param root0 - Component props.
  * @param root0.testId - Stable test id.
  * @param root0.label - Visible + a11y label.
+ * @param root0.tip - Hover tooltip describing what the tool does.
  * @param root0.Icon - Lucide icon.
  * @param root0.onClick - Enter / exit the pick.
  * @param root0.active - Whether this tool's pick is running (highlighted).
@@ -47,23 +51,53 @@ interface ToggleToolProps {
 function ToggleTool({
   testId,
   label,
+  tip,
   Icon,
   onClick,
   active,
   disabled,
 }: ToggleToolProps): React.JSX.Element {
   return (
-    <button
-      type='button'
-      data-testid={testId}
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={active}
-      className={TOOL_BASE + (active ? TOOL_ACTIVE : TOOL_INACTIVE)}
-    >
-      <Icon className='h-4 w-4' aria-hidden='true' />
-      {label}
-    </button>
+    <ToolTip tip={tip}>
+      <button
+        type='button'
+        data-testid={testId}
+        onClick={onClick}
+        disabled={disabled}
+        aria-pressed={active}
+        className={TOOL_BASE + (active ? TOOL_ACTIVE : TOOL_INACTIVE)}
+      >
+        <Icon className='h-4 w-4' aria-hidden='true' />
+        {label}
+      </button>
+    </ToolTip>
+  );
+}
+
+/**
+ * Wraps a tool button in a hover tooltip carrying its one-line description
+ * (user 2026-07-17): the toolbar buttons are icon + short label, so the tip
+ * spells out what each pick does. Self-contained provider so it works inside
+ * the panel without a page-level TooltipProvider.
+ * @param root0 - Component props.
+ * @param root0.tip - The tooltip text.
+ * @param root0.children - The button the tooltip describes.
+ * @returns The tooltip-wrapped button.
+ */
+function ToolTip({
+  tip,
+  children,
+}: {
+  tip: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent side='top'>{tip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -82,6 +116,8 @@ interface StyleToolProps {
   clearLabel: string;
   /** Localized tool label ("Style"). */
   label: string;
+  /** Hover tooltip describing the Style tool. */
+  tip: string;
 }
 
 /**
@@ -106,6 +142,7 @@ interface StyleToolProps {
  * @param root0.disabled - Whether picking is unavailable for the active model.
  * @param root0.clearLabel - Localized ✕ aria-label.
  * @param root0.label - Localized tool label.
+ * @param root0.tip - Hover tooltip describing the Style tool.
  * @returns The style tool slot.
  */
 function StyleTool({
@@ -116,39 +153,42 @@ function StyleTool({
   disabled,
   clearLabel,
   label,
+  tip,
 }: StyleToolProps): React.JSX.Element {
   return (
     <div className='relative'>
-      <button
-        type='button'
-        data-testid='generate-tool-style'
-        aria-label={label}
-        onClick={onStyle}
-        disabled={disabled}
-        aria-pressed={active}
-        className={
-          'relative overflow-hidden ' +
-          TOOL_BASE +
-          (active ? TOOL_ACTIVE : TOOL_INACTIVE) +
-          (active && thumbnail ? ' ring-1 ring-foreground' : '')
-        }
-      >
-        {/* The icon + label always lay out (invisible when covered) so the
-            button's intrinsic size never changes between states. */}
-        <Box
-          className={'h-4 w-4' + (thumbnail ? ' invisible' : '')}
-          aria-hidden='true'
-        />
-        <span className={thumbnail ? 'invisible' : undefined}>{label}</span>
-        {thumbnail ? (
-          <img
-            src={thumbnail}
-            alt=''
-            data-testid='generate-style-thumbnail'
-            className='absolute inset-0 h-full w-full object-cover'
+      <ToolTip tip={tip}>
+        <button
+          type='button'
+          data-testid='generate-tool-style'
+          aria-label={label}
+          onClick={onStyle}
+          disabled={disabled}
+          aria-pressed={active}
+          className={
+            'relative overflow-hidden ' +
+            TOOL_BASE +
+            (active ? TOOL_ACTIVE : TOOL_INACTIVE) +
+            (active && thumbnail ? ' ring-1 ring-foreground' : '')
+          }
+        >
+          {/* The icon + label always lay out (invisible when covered) so the
+              button's intrinsic size never changes between states. */}
+          <Box
+            className={'h-4 w-4' + (thumbnail ? ' invisible' : '')}
+            aria-hidden='true'
           />
-        ) : null}
-      </button>
+          <span className={thumbnail ? 'invisible' : undefined}>{label}</span>
+          {thumbnail ? (
+            <img
+              src={thumbnail}
+              alt=''
+              data-testid='generate-style-thumbnail'
+              className='absolute inset-0 h-full w-full object-cover'
+            />
+          ) : null}
+        </button>
+      </ToolTip>
       {thumbnail ? (
         <button
           type='button'
@@ -199,12 +239,13 @@ interface GenerateToolbarProps {
 }
 
 /**
- * The Generate panel's top tool row: Style / Mark / Focus / Reference. Style
- * and Reference are live canvas picks; Mark / Focus render as disabled
- * placeholders until their slices ship (slice-1 decision B). Reference feeds
- * i2i source images (disabled in text-to-image); Style holds ONE picked style
- * image as a pick-time copy (#1664) — gated on the active MODEL's capability
- * (`style_images` on the wire), never on the mode.
+ * The Generate panel's top tool row: Style / Focus / Reference — all three are
+ * live canvas picks, each with a hover tooltip describing what it does (Mark
+ * was dropped 2026-07-17, user decision C: its intent is already covered by
+ * Focus). Reference feeds i2i source images (disabled in text-to-image); Style
+ * holds ONE picked style image as a pick-time copy (#1664) — gated on the
+ * active MODEL's capability (`style_images` on the wire), never on the mode;
+ * Focus crops a region into a standalone reference (#1782).
  * @param root0 - Component props.
  * @param root0.onReference - Enter the reference-pick mode.
  * @param root0.referenceActive - Whether the reference pick is running.
@@ -240,22 +281,12 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         disabled={styleDisabled}
         clearLabel={t('canvas.generatePanel.removeStyle')}
         label={t('canvas.generatePanel.style')}
+        tip={t('canvas.generatePanel.styleTip')}
       />
-      {PLACEHOLDER_TOOLS.map(({ key, testId, Icon }) => (
-        <button
-          key={key}
-          type='button'
-          data-testid={testId}
-          disabled
-          className={TOOL_BASE + TOOL_INACTIVE}
-        >
-          <Icon className='h-4 w-4' aria-hidden='true' />
-          {t(`canvas.generatePanel.${key}`)}
-        </button>
-      ))}
       <ToggleTool
         testId='generate-tool-focus'
         label={t('canvas.generatePanel.focus')}
+        tip={t('canvas.generatePanel.focusTip')}
         Icon={Focus}
         onClick={onFocus}
         active={focusActive}
@@ -264,6 +295,7 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
       <ToggleTool
         testId='generate-tool-reference'
         label={t('canvas.generatePanel.reference')}
+        tip={t('canvas.generatePanel.referenceTip')}
         Icon={Plus}
         onClick={onReference}
         active={referenceActive}

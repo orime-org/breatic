@@ -26,18 +26,17 @@ function setup(
 }
 
 describe('GenerateToolbar — Style / Focus / Reference are live; Mark is a disabled placeholder', () => {
-  it('renders all four tool buttons', () => {
+  it('renders exactly the three live tool buttons — Mark was cut (user 2026-07-17, decision C)', () => {
     setup();
     expect(screen.getByTestId('generate-tool-style')).toBeInTheDocument();
-    expect(screen.getByTestId('generate-tool-mark')).toBeInTheDocument();
     expect(screen.getByTestId('generate-tool-focus')).toBeInTheDocument();
     expect(screen.getByTestId('generate-tool-reference')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-tool-mark')).toBeNull();
   });
 
-  it('disables Mark (unbuilt slice) and enables Style + Focus + Reference', () => {
+  it('enables Style + Focus + Reference by default', () => {
     setup();
     expect(screen.getByTestId('generate-tool-style')).not.toBeDisabled();
-    expect(screen.getByTestId('generate-tool-mark')).toBeDisabled();
     expect(screen.getByTestId('generate-tool-focus')).not.toBeDisabled();
     expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
   });

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Mock the Yjs binding so the component test never opens a real WebSocket
@@ -337,6 +337,71 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-text')).toContain('canvas-pick-dimmed'); // not an image
     expect(cls('src-text')).not.toContain('canvas-pick-selectable');
     expect(cls('src-image')).toContain('canvas-pick-selectable'); // has an asset
+  });
+
+  // Unified pick-session Esc (user 2026-07-17 #8): EVERY pick purpose exits on
+  // Escape with the same guard set — reference and style had no listener at
+  // all (only focus did), so their banners showed Exit but Esc was dead.
+  it('Escape exits a REFERENCE pick session (was silently dead — #8)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+
+  it('Escape exits a STYLE pick session with the shared guards (#8)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startStylePick('target');
+    });
+    // Guard set (mirrors the focus handler): a consumed Esc never exits.
+    act(() => {
+      const prevented = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        cancelable: true,
+        bubbles: true,
+      });
+      prevented.preventDefault();
+      window.dispatchEvent(prevented);
+    });
+    expect(useCanvasStore.getState().pickSession).not.toBeNull();
+    // An auto-repeat Esc is ignored too.
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape', repeat: true });
+    });
+    expect(useCanvasStore.getState().pickSession).not.toBeNull();
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(useCanvasStore.getState().pickSession).toBeNull();
   });
 
   // Style pick completion (#1664): clicking a non-empty image COPIES its asset

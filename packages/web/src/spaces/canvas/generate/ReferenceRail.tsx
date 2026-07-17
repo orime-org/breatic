@@ -122,18 +122,21 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                     <NodeIcon className='h-3.5 w-3.5' aria-hidden='true' />
                   </span>
                 )}
-                <span className='max-w-[7rem] truncate text-xs text-foreground'>
-                  {ref.sourceNodeName}
-                </span>
                 {ref.focus ? (
                   // Focus badge (F, user 2026-07-16): a crop glyph tells a
                   // standalone focus copy apart from a live node reference.
+                  // Order: thumbnail → crop glyph → name (user 2026-07-17) so
+                  // the badge reads as a prefix marker, consistent across the
+                  // rail, the prompt chip, and the @-suggestion list.
                   <Crop
                     data-testid={`generate-ref-focus-badge-${ref.refId}`}
                     className='h-3 w-3 shrink-0 text-muted-foreground'
                     aria-hidden='true'
                   />
                 ) : null}
+                <span className='max-w-[7rem] truncate text-xs text-foreground'>
+                  {ref.sourceNodeName}
+                </span>
               </button>
             </ThumbnailHoverPreview>
             <button
@@ -159,13 +162,13 @@ export const ReferenceRail = React.memo(function ReferenceRail({
           <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground'>
             <Loader2 className='h-3.5 w-3.5 animate-spin' aria-hidden='true' />
           </span>
-          <span className='max-w-[7rem] truncate text-xs text-muted-foreground'>
-            {p.name}
-          </span>
           <Crop
             className='h-3 w-3 shrink-0 text-muted-foreground'
             aria-hidden='true'
           />
+          <span className='max-w-[7rem] truncate text-xs text-muted-foreground'>
+            {p.name}
+          </span>
         </div>
       ))}
     </div>
