@@ -558,7 +558,7 @@ function CanvasSpaceInner({
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (e.key !== 'Escape' || e.defaultPrevented || e.repeat) return;
       const active = document.activeElement;
       // Ownership-based yield (round-6, matching the overlay): the
       // defaultPrevented guard covers Esc consumers; a plain focused
@@ -2944,11 +2944,13 @@ function CanvasSpaceInner({
             // z-20: the session banner (Exit / Locate) must always win
             // hit-testing over the z-10 crop capture layer — a zoomed image
             // extending under the banner made Exit dead (adversarial round-4).
-            // z-20 + pointer-events-none container with pointer-events-auto
-            // BUTTONS (round-9): the banner must beat the z-10 crop capture
-            // layer (round-4) without its dead surface swallowing clicks
-            // meant for controls clamped underneath it at the viewport top.
-            className='pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
+            // z-20 and HIT-OPAQUE (round-10, reversing round-9's
+            // pointer-events-none): a visually solid card must never let a
+            // click mutate hidden content beneath it (reference/style picks
+            // silently wired edges through the banner body). The round-9
+            // controls-under-banner conflict is solved geometrically — the
+            // crop controls bar clamps BELOW the banner band instead.
+            className='absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
           >
             <span>
               {t(
@@ -2964,7 +2966,7 @@ function CanvasSpaceInner({
               data-testid='reference-pick-locate'
               aria-label={t('canvas.generatePanel.locateSource')}
               onClick={onLocateSource}
-              className='pointer-events-auto flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground'
+              className='flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground'
             >
               <LocateFixed className='h-4 w-4' aria-hidden='true' />
             </button>
@@ -2972,7 +2974,7 @@ function CanvasSpaceInner({
               type='button'
               data-testid='reference-pick-exit'
               onClick={onExitPick}
-              className='pointer-events-auto rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
+              className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
             >
               {t('canvas.generatePanel.exitSelect')}
             </button>

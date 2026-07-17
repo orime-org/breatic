@@ -150,7 +150,19 @@ export function FocusCropOverlay({
       // careful selection. Only the live gesture and the element-bound
       // observer die (their element did); the REMOUNT path below compares
       // the returning img's src against the kept baseline and discards
-      // the marquee only when the content actually changed (round-5).
+      // the marquee only when the content actually changed (round-5). A
+      // gesture killed MID-FLIGHT never ran the pointer-up gauge — apply
+      // it here so a sub-minimum sliver cannot survive into the return
+      // (round-10, the degenerate-rect invariant).
+      if (interactionRef.current && rectRef.current) {
+        const nat = naturalSizeRef.current;
+        const b = prevBoxRef.current;
+        const valid =
+          nat && b
+            ? isNaturalCropValid(rectRef.current, b, nat)
+            : isCropValid(rectRef.current);
+        if (!valid) setRect(null);
+      }
       interactionRef.current = null;
       lastImgElRef.current = null;
       resizeObsRef.current?.disconnect();
@@ -327,7 +339,7 @@ export function FocusCropOverlay({
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (e.key !== 'Escape' || e.defaultPrevented || e.repeat) return;
       const active = document.activeElement;
       // Yield by Esc OWNERSHIP, not focus location (round-6): consumers
       // (the @-suggestion, Radix overlays) preventDefault or hold focus in
@@ -538,7 +550,14 @@ export function FocusCropOverlay({
       setRect((prev) => {
         if (!prev) return prev;
         const shaped = applyRatioPreset(prev, next, bounds);
-        return isCropValid(shaped) ? shaped : null;
+        // The THIRD validity decision joins the unified gauge (round-10):
+        // display-px here was eating a zoom-out selection that pointer-up
+        // and Confirm deliberately accept.
+        const valid =
+          naturalSize && box
+            ? isNaturalCropValid(shaped, box, naturalSize)
+            : isCropValid(shaped);
+        return valid ? shaped : null;
       });
     }
   };
@@ -679,9 +698,12 @@ export function FocusCropOverlay({
                   rootSize.width - barSize.width / 2 - 8,
                 )
                 : box.x + box.width / 2,
+              // Top clamp starts BELOW the pick-banner band (round-10):
+              // the banner is hit-opaque again, so a bar parked under it
+              // would be unreachable — 64px clears top-4 + banner height.
               top: rootSize
                 ? Math.max(
-                  8,
+                  64,
                   Math.min(
                     box.y + box.height + 8,
                     rootSize.height - barSize.height - 8,

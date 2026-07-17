@@ -373,6 +373,32 @@ describe('FocusCropOverlay', () => {
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
+  it('a ratio preset keeps a zoom-out-shrunken but natural-valid marquee (round-10)', () => {
+    renderOverlay();
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 8000 });
+    Object.defineProperty(img, 'naturalHeight', { value: 6000 });
+    fireEvent(window, new Event('resize'));
+    draw({ x: 150, y: 100 }, { x: 156, y: 106 });
+    // 6×6 display (~120 natural px) reshaped to 16:9 → ~6×3.4 display,
+    // still hundreds of natural px — the preset must not discard it.
+    fireEvent.click(screen.getByTestId('focus-ratio-16:9'));
+    expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+  });
+
+  it('a held (auto-repeat) Esc does not collapse both stages (round-10)', () => {
+    const onExit = vi.fn();
+    renderOverlay(vi.fn(() => true), onExit);
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    // The OS auto-repeat replays with repeat=true — must be ignored.
+    fireEvent.keyDown(window, { key: 'Escape', repeat: true });
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+    expect(onExit).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
   it('a second pointer cannot hijack or end the active interaction (adversarial)', () => {
     renderOverlay();
     const layer = screen.getByTestId('focus-crop-layer');
