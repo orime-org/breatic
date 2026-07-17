@@ -12,7 +12,9 @@ import { describe, it, expect } from 'vitest';
 import {
   CROP_RATIOS,
   MIN_CROP_PX,
+  captureResize,
   isNaturalCropValid,
+  resizeFromCapture,
   drawRect,
   moveRect,
   resizeRect,
@@ -165,6 +167,40 @@ describe('resizeRect — 8-handle resize anchored at the opposite side', () => {
     expect(r.width).toBe(300);
     expect(r.height).toBe(150);
     expect(r.x).toBe(100);
+  });
+});
+
+describe('captureResize / resizeFromCapture — frozen anchor across a gesture (round-9)', () => {
+  it('a sequential se-drag crossing the anchor keeps the fixed corner at its original position', () => {
+    // Old per-move re-derivation collapsed this into a cursor-chasing
+    // sliver: moves 140→…→60 ended {x:80,w:20} instead of {x:60,w:40}.
+    const start = { x: 100, y: 100, width: 50, height: 50 };
+    const capture = captureResize(start, 'se');
+    let r = start;
+    for (const x of [140, 120, 101, 99, 95, 80, 60]) {
+      r = resizeFromCapture(capture, { x, y: 140 }, BOUNDS, null);
+    }
+    // Fixed nw corner stays at (100,100); crossing flipped to its left.
+    expect(r).toEqual({ x: 60, y: 100, width: 40, height: 40 });
+  });
+
+  it('a sequential e-edge drag crossing the anchor keeps the fixed left edge', () => {
+    const start = { x: 100, y: 100, width: 50, height: 50 };
+    const capture = captureResize(start, 'e');
+    let r = start;
+    for (const x of [120, 99, 90, 70]) {
+      r = resizeFromCapture(capture, { x, y: 0 }, BOUNDS, null);
+    }
+    expect(r).toEqual({ x: 70, y: 100, width: 30, height: 50 });
+  });
+
+  it('edge capture with a ratio keeps the frozen cross-axis centre', () => {
+    const start = { x: 100, y: 100, width: 50, height: 50 };
+    const capture = captureResize(start, 'e');
+    const r = resizeFromCapture(capture, { x: 300, y: 999 }, BOUNDS, 2);
+    expect(r.width).toBe(200);
+    expect(r.height).toBe(100);
+    expect(r.y + r.height / 2).toBe(125); // centre of the FROZEN extents
   });
 });
 

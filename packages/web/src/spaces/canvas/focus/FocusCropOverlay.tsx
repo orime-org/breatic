@@ -6,13 +6,15 @@ import { useStore } from '@xyflow/react';
 import { toast } from 'sonner';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import type { CapturedResize } from '@web/spaces/canvas/focus/crop-math';
 import {
   CROP_RATIOS,
+  captureResize,
   drawRect,
   isCropValid,
   isNaturalCropValid,
+  resizeFromCapture,
   moveRect,
-  resizeRect,
   applyRatioPreset,
   toNaturalCrop,
   type CropHandle,
@@ -69,7 +71,7 @@ interface FocusCropOverlayProps {
 type Interaction = { pointerId: number } & (
   | { type: 'draw'; anchor: { x: number; y: number } }
   | { type: 'move'; last: { x: number; y: number } }
-  | { type: 'resize'; handle: CropHandle }
+  | { type: 'resize'; capture: CapturedResize }
 );
 
 /**
@@ -113,6 +115,14 @@ export function FocusCropOverlay({
   // Mirror of `rect` for listeners that must read it without re-binding.
   const rectRef = React.useRef<CropRect | null>(null);
   rectRef.current = rect;
+  // Mirror of `box` STATE (null while the img is culled) for the Esc gate:
+  // stage-one must not silently eat an off-screen marquee (round-9).
+  const boxStateRef = React.useRef<CropRect | null>(null);
+  boxStateRef.current = box;
+  // Mirror of the natural size for the pointer-up gauge (round-9): the
+  // discard must use the SAME zoom-independent validity as Confirm.
+  const naturalSizeRef = React.useRef<{ width: number; height: number } | null>(null);
+  naturalSizeRef.current = naturalSize;
   // The img src the current marquee was drawn against — a content swap
   // (collaborator regenerate) invalidates the marquee entirely.
   const measuredSrcRef = React.useRef<string | null>(null);
@@ -218,6 +228,19 @@ export function FocusCropOverlay({
           ...active,
           last: { x: active.last.x * sx, y: active.last.y * sy },
         };
+      } else if (active?.type === 'resize') {
+        const c = active.capture;
+        const horizontal = c.handle === 'e' || c.handle === 'w';
+        interactionRef.current = {
+          ...active,
+          capture: {
+            ...c,
+            anchor: { x: c.anchor.x * sx, y: c.anchor.y * sy },
+            cross: horizontal
+              ? { start: c.cross.start * sy, size: c.cross.size * sy }
+              : { start: c.cross.start * sx, size: c.cross.size * sx },
+          },
+        };
       }
     }
     measuredSrcRef.current = src;
@@ -317,10 +340,16 @@ export function FocusCropOverlay({
       ) {
         return;
       }
-      if (rectRef.current || interactionRef.current) {
+      if (
+        boxStateRef.current !== null &&
+        (rectRef.current || interactionRef.current)
+      ) {
         // Stage one also aborts an in-progress gesture — without this the
         // captured pointer's next move instantly recreated the rect, so
-        // Esc mid-drag never stuck (adversarial round-2).
+        // Esc mid-drag never stuck (adversarial round-2). Stage one only
+        // applies while the marquee is VISIBLE (round-9): with the target
+        // culled off-viewport, Esc would silently eat the kept selection
+        // and look dead — it exits the session instead.
         interactionRef.current = null;
         setRect(null);
       } else {
@@ -388,10 +417,17 @@ export function FocusCropOverlay({
   const onHandlePointerDown =
     (handle: CropHandle) =>
       (e: React.PointerEvent): void => {
-        if (e.button !== 0 || interactionRef.current) return;
+        if (e.button !== 0 || interactionRef.current || !rectRef.current) return;
         e.stopPropagation();
         e.currentTarget.setPointerCapture?.(e.pointerId);
-        interactionRef.current = { type: 'resize', handle, pointerId: e.pointerId };
+        // Freeze the anchor NOW (round-9): re-deriving it from the mutated
+        // rect on every move lost its identity after an anchor crossing —
+        // the fixed edge chased the cursor into a sliver.
+        interactionRef.current = {
+          type: 'resize',
+          capture: captureResize(rectRef.current, handle),
+          pointerId: e.pointerId,
+        };
       };
 
   /**
@@ -411,9 +447,7 @@ export function FocusCropOverlay({
         prev ? moveRect(prev, p.x - last.x, p.y - last.y, bounds) : prev,
       );
     } else {
-      setRect((prev) =>
-        prev ? resizeRect(prev, interaction.handle, p, bounds, ratio) : prev,
-      );
+      setRect(resizeFromCapture(interaction.capture, p, bounds, ratio));
     }
   };
 
@@ -470,12 +504,21 @@ export function FocusCropOverlay({
     const interaction = interactionRef.current;
     if (interaction && e.pointerId !== interaction.pointerId) return;
     interactionRef.current = null;
-    // Invariant (round-2 HIGH + round-3): NO gesture may end with a
-    // non-null sub-minimum rect — a bare click's zero-size draw and a
-    // resize collapsed onto its anchor both leave an invisible marquee
-    // that dims the image, disables Confirm, and eats an Esc stage.
-    if (interaction && rectRef.current && !isCropValid(rectRef.current)) {
-      setRect(null);
+    // Invariant (round-2 HIGH + round-3): NO gesture may end with a rect
+    // Confirm cannot accept — a bare click's zero-size draw and a resize
+    // collapsed onto its anchor both leave an invisible marquee that dims
+    // the image, disables Confirm, and eats an Esc stage. Gauged with the
+    // SAME zoom-independent validity as Confirm (round-9): the display
+    // gauge was destroying a zoom-out-rescaled selection that Confirm
+    // deliberately still accepted (round-8).
+    if (interaction && rectRef.current) {
+      const nat = naturalSizeRef.current;
+      const b = prevBoxRef.current;
+      const valid =
+        nat && b
+          ? isNaturalCropValid(rectRef.current, b, nat)
+          : isCropValid(rectRef.current);
+      if (!valid) setRect(null);
     }
     setTick((n) => n + 1);
   };

@@ -339,6 +339,40 @@ describe('FocusCropOverlay', () => {
     expect(document.activeElement).toBe(screen.getByTestId('focus-crop-cancel'));
   });
 
+  it('a click on a zoom-out-shrunken but natural-valid marquee does not wipe it (round-9)', () => {
+    renderOverlay();
+    const img = screen.getByTestId('image-node-img');
+    // Huge natural image: a 6×6 display rect selects ~120 natural px.
+    Object.defineProperty(img, 'naturalWidth', { value: 8000 });
+    Object.defineProperty(img, 'naturalHeight', { value: 6000 });
+    fireEvent(window, new Event('resize')); // re-measure captures natural size
+    draw({ x: 150, y: 100 }, { x: 156, y: 106 });
+    const rect = screen.getByTestId('focus-crop-rect');
+    expect(rect).toBeInTheDocument();
+    // A zero-delta click on the marquee body (a move gesture) must not
+    // destroy a selection Confirm accepts — the pointer-up gauge is the
+    // same natural-pixel validity as Confirm now.
+    fireEvent.pointerDown(rect, { clientX: 153, clientY: 103, button: 0, pointerId: 1 });
+    fireEvent.pointerUp(screen.getByTestId('focus-crop-layer'), { pointerId: 1 });
+    expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+    expect(
+      (screen.getByTestId('focus-crop-confirm') as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it('Esc while the target is culled exits the session instead of eating the kept marquee (round-9)', () => {
+    const onExit = vi.fn();
+    renderOverlay(vi.fn(() => true), onExit);
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    // Culling: the img unmounts, the marquee is KEPT (round-8) but no
+    // longer visible — stage-one Esc would be a silent no-op.
+    screen.getByTestId('image-node-img').remove();
+    fireEvent(window, new Event('resize'));
+    expect(screen.queryByTestId('focus-crop-layer')).toBeNull();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
   it('a second pointer cannot hijack or end the active interaction (adversarial)', () => {
     renderOverlay();
     const layer = screen.getByTestId('focus-crop-layer');

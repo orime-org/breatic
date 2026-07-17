@@ -15,6 +15,7 @@
  */
 
 import { validFocusImages } from '@web/data/focus-images';
+import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
 
 /** The minimal edge shape the count reads (ReactFlow edge compatible). */
 interface PoolEdge {
@@ -48,7 +49,12 @@ export function referencePoolCount(
   // deriveReferences applies. A dangling edge (source deleted concurrently
   // with the connect) renders no row and has no ✕, so counting it would be
   // an invisible, UI-unremovable cap slot (adversarial round-2 2026-07-16).
-  const ids = new Set(nodes.map((n) => n.id));
+  // Excludes focus:-namespace squatter nodes exactly like the rail does
+  // (round-9) — anything the rail refuses to render must not occupy a cap
+  // slot (the round-2 invariant).
+  const ids = new Set(
+    nodes.filter((n) => !n.id.startsWith(FOCUS_REF_PREFIX)).map((n) => n.id),
+  );
   const edgeCount = edges.filter(
     (e) => e.target === targetId && ids.has(e.source),
   ).length;

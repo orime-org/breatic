@@ -43,3 +43,29 @@ describe('focus pool entries', () => {
     expect(focusIdOfRefId('edge-or-node-uuid')).toBeNull();
   });
 });
+
+describe('focus: namespace squatting (round-9)', () => {
+  it('deriveReferences skips a forged canvas node whose id squats in the focus: namespace', async () => {
+    const { deriveReferences } = await import(
+      '@web/spaces/canvas/generate/derive-references'
+    );
+    const nodes = [
+      {
+        id: 'focus:f1',
+        data: { kind: 'image', status: 'idle', content: 'https://evil/x.png' },
+      },
+    ] as never[];
+    const edges = [{ id: 'focus:f1->gen', source: 'focus:f1', target: 'gen' }];
+    expect(deriveReferences('gen', nodes, edges)).toEqual([]);
+  });
+
+  it('referencePoolCount does not let the squatter edge occupy a cap slot', async () => {
+    const { referencePoolCount } = await import(
+      '@web/spaces/canvas/generate/reference-pool-cap'
+    );
+    const nodes = [{ id: 'focus:f1' }, { id: 'gen' }];
+    const edges = [{ id: 'e', source: 'focus:f1', target: 'gen' }];
+    expect(referencePoolCount(edges, nodes, 'gen')).toBe(0);
+  });
+});
+

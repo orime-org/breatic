@@ -29,7 +29,11 @@ import { toast } from 'sonner';
 import { newId } from '@breatic/shared';
 
 import { assetsApi, canvasApi } from '@web/data/api';
-import { MAX_FOCUS_ENTRIES, MAX_FOCUS_NAME } from '@web/data/focus-images';
+import {
+  MAX_FOCUS_ENTRIES,
+  MAX_FOCUS_NAME,
+  validFocusImages,
+} from '@web/data/focus-images';
 import { getCachedReferencePoolCap } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
@@ -604,6 +608,23 @@ function CanvasSpaceInner({
       );
       const cap = getCachedReferencePoolCap();
       const store = useCanvasStore.getState();
+      // Crops-only hard ceiling BEFORE the upload (round-9): with the knob
+      // above 200 (or unloaded), the write-side MAX_FOCUS_ENTRIES refusal
+      // used to fire only AFTER a successful upload + ledger report.
+      const panelData = graph.flowNodes.find((n) => n.id === panelNodeId)
+        ?.data as { focusImages?: unknown } | undefined;
+      if (
+        validFocusImages(panelData?.focusImages).length +
+          pendingFocusCount(panelNodeId) >=
+        MAX_FOCUS_ENTRIES
+      ) {
+        toast.warning(
+          t('canvas.generatePanel.referencePoolFull', {
+            cap: MAX_FOCUS_ENTRIES,
+          }),
+        );
+        return false;
+      }
       if (
         cap !== null &&
         referencePoolCount(graph.flowEdges, graph.flowNodes, panelNodeId) +
@@ -2923,7 +2944,11 @@ function CanvasSpaceInner({
             // z-20: the session banner (Exit / Locate) must always win
             // hit-testing over the z-10 crop capture layer — a zoomed image
             // extending under the banner made Exit dead (adversarial round-4).
-            className='absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
+            // z-20 + pointer-events-none container with pointer-events-auto
+            // BUTTONS (round-9): the banner must beat the z-10 crop capture
+            // layer (round-4) without its dead surface swallowing clicks
+            // meant for controls clamped underneath it at the viewport top.
+            className='pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground shadow-md'
           >
             <span>
               {t(
@@ -2939,7 +2964,7 @@ function CanvasSpaceInner({
               data-testid='reference-pick-locate'
               aria-label={t('canvas.generatePanel.locateSource')}
               onClick={onLocateSource}
-              className='flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground'
+              className='pointer-events-auto flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground'
             >
               <LocateFixed className='h-4 w-4' aria-hidden='true' />
             </button>
@@ -2947,7 +2972,7 @@ function CanvasSpaceInner({
               type='button'
               data-testid='reference-pick-exit'
               onClick={onExitPick}
-              className='rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
+              className='pointer-events-auto rounded-sm px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground'
             >
               {t('canvas.generatePanel.exitSelect')}
             </button>

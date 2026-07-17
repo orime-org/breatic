@@ -180,6 +180,12 @@ export function deriveReferences(
   for (const edge of incoming) {
     const source = byId.get(edge.source);
     if (!source) continue;
+    // The focus: namespace belongs to crops exclusively (round-9): a
+    // forged canvas NODE whose id squats in it would collide with a crop's
+    // pool id — one @-mention would then pull BOTH the crop and the forged
+    // node's content into the payload. Legit node ids are UUIDs and never
+    // carry the prefix.
+    if (source.id.startsWith(FOCUS_REF_PREFIX)) continue;
     rail.push({
       refId: edge.id,
       sourceNodeId: source.id,

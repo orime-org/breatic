@@ -213,6 +213,114 @@ export function resizeRect(
 }
 
 /**
+ * A resize gesture's frozen geometry, captured ONCE at pointer-down
+ * (round-9): re-deriving the anchor from the mutated rect on every
+ * pointer-move lost the anchor's identity the moment the cursor crossed
+ * it — the "fixed" edge then chased the cursor by per-event deltas,
+ * collapsing the marquee into a sliver (the draw gesture always captured
+ * its anchor; resize now does too).
+ */
+export interface CapturedResize {
+  handle: CropHandle;
+  /** The fixed opposite corner (corners) / fixed edge coordinate (edges). */
+  anchor: { x: number; y: number };
+  /** Cross-axis extents frozen at capture (edge handles only). */
+  cross: { start: number; size: number };
+}
+
+/**
+ * Freeze a resize gesture's anchor geometry from the rect at pointer-down.
+ * @param rect - The marquee when the handle was grabbed.
+ * @param handle - The grabbed handle.
+ * @returns The captured geometry driving every subsequent move.
+ */
+export function captureResize(rect: CropRect, handle: CropHandle): CapturedResize {
+  const left = rect.x;
+  const right = rect.x + rect.width;
+  const top = rect.y;
+  const bottom = rect.y + rect.height;
+  if (handle.length === 2) {
+    return {
+      handle,
+      anchor: {
+        x: handle.includes('w') ? right : left,
+        y: handle.includes('n') ? bottom : top,
+      },
+      cross: { start: 0, size: 0 },
+    };
+  }
+  if (handle === 'e' || handle === 'w') {
+    return {
+      handle,
+      anchor: { x: handle === 'e' ? left : right, y: 0 },
+      cross: { start: top, size: rect.height },
+    };
+  }
+  return {
+    handle,
+    anchor: { x: 0, y: handle === 's' ? top : bottom },
+    cross: { start: left, size: rect.width },
+  };
+}
+
+/**
+ * Resize from the captured geometry — the anchor never drifts, so
+ * crossing it flips cleanly on every move of the same gesture.
+ * @param capture - The geometry frozen at pointer-down.
+ * @param cursor - The current pointer position (display px).
+ * @param cursor.x - Cursor x (display px).
+ * @param cursor.y - Cursor y (display px).
+ * @param bounds - The image's display size.
+ * @param ratio - Width/height constraint, or null for free-form.
+ * @returns The resized, normalized, clamped rect.
+ */
+export function resizeFromCapture(
+  capture: CapturedResize,
+  cursor: { x: number; y: number },
+  bounds: CropSize,
+  ratio: number | null,
+): CropRect {
+  const { handle, anchor, cross } = capture;
+  if (handle.length === 2) {
+    return drawRect(anchor, cursor, bounds, ratio);
+  }
+  const cx = clamp(cursor.x, 0, bounds.width);
+  const cy = clamp(cursor.y, 0, bounds.height);
+  if (handle === 'e' || handle === 'w') {
+    if (ratio === null) {
+      return {
+        x: Math.min(anchor.x, cx),
+        y: cross.start,
+        width: Math.abs(cx - anchor.x),
+        height: cross.size,
+      };
+    }
+    const sx = cx >= anchor.x ? 1 : -1;
+    const roomX = sx > 0 ? bounds.width - anchor.x : anchor.x;
+    const width = Math.min(Math.abs(cx - anchor.x), roomX, bounds.height * ratio);
+    const height = width / ratio;
+    const centerY = cross.start + cross.size / 2;
+    const y = clamp(centerY - height / 2, 0, bounds.height - height);
+    return { x: sx > 0 ? anchor.x : anchor.x - width, y, width, height };
+  }
+  if (ratio === null) {
+    return {
+      x: cross.start,
+      y: Math.min(anchor.y, cy),
+      width: cross.size,
+      height: Math.abs(cy - anchor.y),
+    };
+  }
+  const sy = cy >= anchor.y ? 1 : -1;
+  const roomY = sy > 0 ? bounds.height - anchor.y : anchor.y;
+  const height = Math.min(Math.abs(cy - anchor.y), roomY, bounds.width / ratio);
+  const width = height * ratio;
+  const centerX = cross.start + cross.size / 2;
+  const x = clamp(centerX - width / 2, 0, bounds.width - width);
+  return { x, y: sy > 0 ? anchor.y : anchor.y - height, width, height };
+}
+
+/**
  * Re-shape an existing rect to a ratio preset: keep the width and the
  * centre, derive the height; if the result overflows the bounds, shrink
  * proportionally (ratio kept exact) and clamp back inside.
