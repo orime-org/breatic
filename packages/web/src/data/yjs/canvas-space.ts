@@ -366,15 +366,47 @@ export function useCanvasSpace(
  * Each defined field becomes a Y.Map entry (plain values — strings,
  * numbers, booleans, plain arrays / objects — matching how the backend
  * reads `operationLocks` via `Array.isArray` and `handlingBy` as a plain
- * object). Undefined fields are omitted.
+ * object). Undefined fields are omitted. ONE exception to the plain-values
+ * convention lives downstream: `focusImages` is maintained as a `Y.Array`
+ * by its two writers (concurrent-add safe, see
+ * {@link addNodeFocusImage}) — node creation never carries crops, so this
+ * builder still writes only plain values; a plain `focusImages` value is
+ * converted on its first write (the backend never reads the field, and
+ * `toJSON()` serializes both encodings identically).
  * @param data - The plain wire data fields to write.
  * @returns A Y.Map populated with the defined data fields.
  */
 function buildDataMap(data: CanvasNodeFields['data']): Y.Map<unknown> {
   const map = new Y.Map<unknown>();
+  // Tracked with a local flag, NOT `map.has()` — reads on a not-yet
+  // integrated Y.Map do not see preliminary content, so `has` would
+  // always answer false here and the eager-seed below would overwrite a
+  // just-seeded array with an empty one.
+  let focusSeeded = false;
   for (const [key, value] of Object.entries(data)) {
-    if (value !== undefined) map.set(key, value);
+    if (value === undefined) continue;
+    if (key === 'focusImages' && Array.isArray(value)) {
+      // Seed the CRDT sequence from a provided wire value AS-IS (no
+      // sanitizing — readers sanitize; a fixture / forged value must be
+      // representable so the read-side defenses stay testable).
+      const arr = new Y.Array<unknown>();
+      arr.push([...value]);
+      map.set(key, arr);
+      focusSeeded = true;
+      continue;
+    }
+    map.set(key, value);
   }
+  // Eager-seed the crops container at node BIRTH (design adversary
+  // 2026-07-17): creating it lazily on the first append is itself a
+  // whole-container LWW race — two clients cropping a cropless node
+  // concurrently would each create their own Y.Array under the key and
+  // one container would vanish WITH its crop. Born-with-the-node, the
+  // container is a single replicated creation event and every append
+  // everywhere commutes. Readers see `focusImages: []` (inert). A
+  // non-array wire value under the key is overwritten by the empty
+  // container — shape sanitation at birth.
+  if (!focusSeeded) map.set('focusImages', new Y.Array<unknown>());
   return map;
 }
 
@@ -600,15 +632,70 @@ export function clearNodeStyleImage(
 }
 
 /**
- * Append a focus crop to a node's `focusImages` (#1782) — a plain array
- * value on the data Y.Map, rewritten whole (last-write-wins like `params`;
- * node data holds plain values only, see {@link buildDataMap}). Creates the
- * array on first add. CONTENT_WRITE origin, NOT undo-tracked (adversarial
- * round-3): the append lands asynchronously when the crop upload finishes —
- * the same rule as upload completion (#8), or a slow upload landing seconds
- * later would steal the undo top and wipe the redo stack mid-flow. Removal
- * (the ✕, a synchronous user action) stays undoable. No-op when the node or
- * its data map is missing.
+ * Read the focusImages value in either encoding — the CRDT `Y.Array`
+ * (what the writers below maintain) or a plain array (a first-write-era
+ * doc or forged wire data) — as a plain snapshot for the sanitizer.
+ * @param raw - The raw `focusImages` value off the data Y.Map.
+ * @returns A plain snapshot the shared sanitizer can consume.
+ */
+function focusImagesSnapshot(raw: unknown): unknown {
+  return raw instanceof Y.Array ? raw.toArray() : raw;
+}
+
+/**
+ * Pure core of {@link addNodeFocusImage} — call inside an open transaction.
+ *
+ * `focusImages` is a `Y.Array` of plain `FocusImage` objects (design
+ * adversary 2026-07-17): a CRDT SEQUENCE, not a whole-array LWW register —
+ * two clients cropping the same node concurrently must BOTH keep their
+ * crops (the ratified soft-cap model assumes concurrent adds survive as
+ * overshoot), and a whole-array `set` made the loser's crop vanish after
+ * sync with its asset already uploaded and its ledger row already reported.
+ * The wire/JSON shape is unchanged (`dataMap.toJSON()` serializes a
+ * `Y.Array` to the same plain array), so every reader stays as-is. A plain
+ * array value (first-write-era doc / forged wire) is converted — sanitized
+ * through {@link validFocusImages} — into a `Y.Array` on the first write.
+ *
+ * The appended entry rides the SAME sanitizer (round-5) AND the same COUNT
+ * ceiling (round-7): an entry the readers would reject must never be
+ * written. The ceiling check reads the local snapshot, so truly concurrent
+ * appends at the ceiling can overshoot it — the reader's `slice` hides the
+ * tail; accepted as the hard-ceiling analogue of the ratified pool-cap
+ * overshoot (reaching it needs the pool knob raised above 200 first).
+ * @param data - The node's data Y.Map.
+ * @param image - The focus crop to append.
+ * @returns 'added' on success; 'invalid-entry' / 'pool-full' refusals.
+ */
+function appendFocusImageCore(
+  data: Y.Map<unknown>,
+  image: FocusImage,
+): 'added' | 'invalid-entry' | 'pool-full' {
+  const raw = data.get('focusImages');
+  const list = validFocusImages(focusImagesSnapshot(raw));
+  const appended = validFocusImages([image]);
+  if (appended.length === 0) return 'invalid-entry';
+  if (list.length >= MAX_FOCUS_ENTRIES) return 'pool-full';
+  if (raw instanceof Y.Array) {
+    (raw as Y.Array<FocusImage>).push(appended);
+  } else {
+    // One-time conversion: seed from the sanitized snapshot (heals a
+    // malformed plain value in the same write).
+    const arr = new Y.Array<FocusImage>();
+    arr.push([...list, ...appended]);
+    data.set('focusImages', arr);
+  }
+  return 'added';
+}
+
+/**
+ * Append a focus crop to a node's `focusImages` (#1782) — a `Y.Array` on
+ * the data Y.Map (concurrent-add safe; see {@link appendFocusImageCore},
+ * the one exception to {@link buildDataMap}'s plain-values convention —
+ * the backend never reads this field). Creates the array on first add.
+ * CONTENT_WRITE origin, NOT undo-tracked (adversarial round-3): the append
+ * lands asynchronously when the crop upload finishes — the same rule as
+ * upload completion (#8), or a slow upload landing seconds later would
+ * steal the undo top and wipe the redo stack mid-flow.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the generative node the crop belongs to.
@@ -631,45 +718,79 @@ export function addNodeFocusImage(
   if (!node) return 'node-missing';
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return 'node-missing';
-  // Whole-array LWW means any client can write any shape (untrusted) —
-  // every rewrite HEALS the array through the shared sanitizer so
-  // malformed remote entries can never accumulate (adversarial 2026-07-16).
-  const list = validFocusImages(data.get('focusImages'));
-  // The appended entry rides the SAME sanitizer (round-5) AND the same
-  // COUNT ceiling (round-7): an entry the readers would reject or
-  // truncate away must never be written — it would be invisible
-  // everywhere (no ✕) and silently healed away on the next rewrite. The
-  // boolean lets the caller surface the refusal instead of silently
-  // losing an uploaded crop.
-  const appended = validFocusImages([image]);
-  if (appended.length === 0) return 'invalid-entry';
-  if (list.length >= MAX_FOCUS_ENTRIES) return 'pool-full';
-  doc.transact(
-    () => data.set('focusImages', [...list, ...appended]),
-    CONTENT_WRITE,
-  );
-  return 'added';
+  let result: 'added' | 'invalid-entry' | 'pool-full' = 'invalid-entry';
+  doc.transact(() => {
+    result = appendFocusImageCore(data, image);
+  }, CONTENT_WRITE);
+  return result;
+}
+
+/**
+ * Pure core of {@link removeNodeFocusImage} — call inside an open
+ * transaction. On the `Y.Array` encoding it deletes the target entries
+ * in place (commutes with a concurrent append / a concurrent removal of a
+ * DIFFERENT crop — both effects survive the merge); malformed remote
+ * entries stay in the CRDT and are the readers' problem (every reader
+ * sanitizes through {@link validFocusImages}). The array is kept when the
+ * last entry goes: deleting the KEY would be a map-level write racing a
+ * concurrent push — the pushed crop would land in a deleted subtree and
+ * vanish, the exact loss mode this encoding exists to remove. A plain
+ * array value (first-write-era doc / forged wire) is converted — sanitized
+ * — into a `Y.Array` on the way through.
+ * @param data - The node's data Y.Map.
+ * @param focusId - Id of the focus crop to remove.
+ * @returns True only when the TARGET crop was actually removed.
+ */
+function removeFocusImageCore(data: Y.Map<unknown>, focusId: string): boolean {
+  const raw = data.get('focusImages');
+  if (raw instanceof Y.Array) {
+    let removed = false;
+    for (let i = raw.length - 1; i >= 0; i--) {
+      const item: unknown = raw.get(i);
+      if (
+        item !== null &&
+        typeof item === 'object' &&
+        (item as { id?: unknown }).id === focusId
+      ) {
+        raw.delete(i, 1);
+        removed = true;
+      }
+    }
+    return removed;
+  }
+  if (!Array.isArray(raw)) return false;
+  // Sanitize BEFORE dereferencing — a null/primitive entry from a remote
+  // client used to throw on `f.id` here (adversarial 2026-07-16).
+  const list = validFocusImages(raw);
+  const next = list.filter((f) => f.id !== focusId);
+  const removed = next.length !== list.length;
+  if (!removed && list.length === raw.length) return false;
+  const arr = new Y.Array<FocusImage>();
+  arr.push(next);
+  data.set('focusImages', arr);
+  return removed;
 }
 
 /**
  * Remove a focus crop from a node's `focusImages` by id (#1782) — the ✕ on
- * a focus entry in the reference rail. Deletes the key when the last entry
- * goes (absent = the natural "none created" state, mirroring
- * {@link clearNodeStyleImage}). NOT undo-tracked (round-11): focus crops
- * live entirely outside canvas undo — see the origin note in the body.
+ * a focus entry in the reference rail. NOT undo-tracked (round-11): focus
+ * crops live entirely outside canvas undo — the append lands
+ * asynchronously (a slow upload would steal the undo top), and a removal
+ * that IS undoable next to an append that is not would leave undo
+ * half-covering the feature; the ✕ is the one explicit removal surface.
  * No-op (no write) when the node, the array, or the id is missing.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the generative node the crop belongs to.
  * @param focusId - Id of the focus crop to remove.
  * @returns True only when the TARGET crop was actually removed — a no-op
- *   (already gone) or a heal-only rewrite returns false, so the caller can
- *   gate the delete-side ledger report. Coverage is SEQUENTIAL races only
- *   (double-click; a ✕ after the remote removal synced in): the boolean is
- *   computed from the local snapshot, so two truly concurrent cross-client
- *   ✕ both return true and both report — an accepted residual (audit-feed
- *   duplicate row only; closing it needs a server-side idempotency key,
- *   round-5).
+ *   (already gone) returns false, so the caller can gate the delete-side
+ *   ledger report. Coverage is SEQUENTIAL races only (double-click; a ✕
+ *   after the remote removal synced in): the boolean is computed from the
+ *   local snapshot, so two truly concurrent cross-client ✕ of the SAME
+ *   crop both return true and both report — an accepted residual
+ *   (audit-feed duplicate row only; closing it needs a server-side
+ *   idempotency key, round-5).
  */
 export function removeNodeFocusImage(
   projectId: string,
@@ -683,26 +804,9 @@ export function removeNodeFocusImage(
   if (!node) return false;
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return false;
-  const prev = data.get('focusImages');
-  if (!Array.isArray(prev)) return false;
-  // Sanitize BEFORE dereferencing — a null/primitive entry from a remote
-  // client used to throw on `f.id` here (adversarial 2026-07-16). The
-  // rewrite drops the removed id AND heals malformed entries in one write;
-  // pure no-op only when nothing would change (no phantom undo entry).
-  const list = validFocusImages(prev);
-  const next = list.filter((f) => f.id !== focusId);
-  const removed = next.length !== list.length;
-  if (!removed && list.length === prev.length) return false;
-  // CONTENT_WRITE unconditionally (round-11, superseding round-4's
-  // removal-is-undoable): on a whole-array LWW key, Yjs undo of a removal
-  // is silently NEUTRALIZED by any later rewrite of the same key — and the
-  // async crop append IS such a rewrite, landing seconds later in normal
-  // use. An undo that sometimes silently no-ops is worse than no undo:
-  // focus crops live entirely outside canvas undo (both directions), and
-  // the ✕ is the one explicit removal surface.
+  let removed = false;
   doc.transact(() => {
-    if (next.length === 0) data.delete('focusImages');
-    else data.set('focusImages', next);
+    removed = removeFocusImageCore(data, focusId);
   }, CONTENT_WRITE);
   return removed;
 }
