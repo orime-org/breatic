@@ -384,13 +384,19 @@ export interface CanvasNodeFields {
      */
     styleImageUrl?: string;
     /**
-     * Focus crops created on this node's generate panel (#1782) — a plain
-     * array value on the data Y.Map (whole-array last-write-wins like
-     * `params` / `modelByMode`; node data holds plain values only, see the
-     * web `buildDataMap`). Concurrent adds from two collaborators can drop
-     * one entry — rare (a deliberate per-panel flow) and recreatable, the
-     * same trade the style slot made. See {@link FocusImage} for the copy
-     * semantics. Absent = none created.
+     * Focus crops created on this node's generate panel (#1782) — maintained
+     * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the
+     * plain-values convention of the web `buildDataMap`): concurrent appends
+     * from two collaborators BOTH survive the merge and the ✕ deletes its
+     * target in place, commuting with concurrent edits — a whole-array LWW
+     * value silently dropped the loser's crop with its asset already
+     * uploaded (design adversary 2026-07-17). The container is eager-seeded
+     * empty at node birth (lazy creation is itself a whole-container LWW
+     * race); a plain-array value (a pre-encoding doc / forged wire) is
+     * converted on its first write. This WIRE type is unchanged either way:
+     * `toJSON()` serializes both encodings to the same plain array, and the
+     * backend never reads or writes the field. See {@link FocusImage} for
+     * the copy semantics. Empty / absent = none created.
      */
     focusImages?: FocusImage[];
 

@@ -367,11 +367,10 @@ export function useCanvasSpace(
  * numbers, booleans, plain arrays / objects — matching how the backend
  * reads `operationLocks` via `Array.isArray` and `handlingBy` as a plain
  * object). Undefined fields are omitted. ONE exception to the plain-values
- * convention lives downstream: `focusImages` is maintained as a `Y.Array`
- * by its two writers (concurrent-add safe, see
- * {@link addNodeFocusImage}) — node creation never carries crops, so this
- * builder still writes only plain values; a plain `focusImages` value is
- * converted on its first write (the backend never reads the field, and
+ * convention: `focusImages` is a `Y.Array` CRDT sequence (concurrent-add
+ * safe, see {@link addNodeFocusImage}) — this builder seeds it (from a
+ * provided wire value, else empty — the eager seed below), and the two
+ * focus writers maintain it (the backend never reads the field, and
  * `toJSON()` serializes both encodings identically).
  * @param data - The plain wire data fields to write.
  * @returns A Y.Map populated with the defined data fields.
