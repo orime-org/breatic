@@ -25,7 +25,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 import { newId } from '@breatic/shared';
 
 import { assetsApi, canvasApi } from '@web/data/api';

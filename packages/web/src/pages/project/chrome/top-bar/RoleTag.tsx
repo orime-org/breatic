@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ArrowUp } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 import { cn } from '@web/lib/utils';
 import {

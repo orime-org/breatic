@@ -170,38 +170,6 @@ export default [
     },
   },
   {
-    // Toast type convention (packages/web/CLAUDE.md): every toast must declare a
-    // semantic type — toast.error / .warning / .success / .info (neutral
-    // notices use .info) — so the Toaster colors it by `data-type` (the index.css
-    // accent). A bare toast() or toast.message() is untyped and renders neutral,
-    // silently dropping an error / warning's severity signal. This is an AST
-    // selector (not a text grep), so a `toast(` inside a comment or a string is
-    // never falsely flagged. toast.loading / .promise / .dismiss / .custom are
-    // special-purpose and allowed. Tests are exempt (they mock toast).
-    files: ['src/**/*.{ts,tsx}'],
-    ignores: [
-      '**/*.test.{ts,tsx}',
-      '**/*.spec.{ts,tsx}',
-      '**/__tests__/**',
-    ],
-    rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "CallExpression[callee.type='Identifier'][callee.name='toast']",
-          message:
-            'Bare toast() is untyped and renders neutral. Use toast.error / .warning / .success / .info (neutral notices use .info). See packages/web/CLAUDE.md.',
-        },
-        {
-          selector:
-            "CallExpression[callee.type='MemberExpression'][callee.object.name='toast'][callee.property.name='message']",
-          message:
-            'toast.message() is untyped and renders neutral. Use toast.error / .warning / .success / .info (neutral notices use .info). See packages/web/CLAUDE.md.',
-        },
-      ],
-    },
-  },
-  {
     // Function-definition format spec (docs/ARCHITECTURE.md → Coding standards). Same rule
     // set as the root eslint.config.mjs jsdoc block: every named function unit
     // needs a TSDoc block + explicit return type; type info lives in the

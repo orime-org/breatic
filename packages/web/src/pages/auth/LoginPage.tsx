@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 import { authApi, deriveDisplayName } from '@web/data/api/auth';
 import { ApiException } from '@web/data/api/types';

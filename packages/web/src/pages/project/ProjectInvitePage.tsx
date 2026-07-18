@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 import type { ProjectInvitationLandingView } from '@breatic/shared';
 import { projectInvitationsApi } from '@web/data/api/project-invitations';

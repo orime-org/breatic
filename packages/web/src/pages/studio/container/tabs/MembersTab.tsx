@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 import {
   AlertDialog,

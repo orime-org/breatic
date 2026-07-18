@@ -3,7 +3,7 @@
 
 import { Copy, Send, UserPlus } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';

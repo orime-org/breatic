@@ -49,16 +49,21 @@ vi.mock('@web/data/api/role-upgrade-requests', () => ({
   },
 }));
 
-vi.mock('sonner', () => ({
-  toast: Object.assign(vi.fn(), {
-    success: vi.fn(),
+// Assert on the app's toast wrapper (the public API), not sonner directly:
+// the wrapper adds the de-dup id INSIDE, so its public methods still take just
+// the message (spying sonner would see the extra id arg).
+vi.mock('@web/lib/toast', () => ({
+  toast: {
     error: vi.fn(),
-  }),
+    warning: vi.fn(),
+    success: vi.fn(),
+    info: vi.fn(),
+  },
 }));
 
 import { notificationsApi } from '@web/data/api/notifications';
 import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 function setup() {
   const qc = new QueryClient({
