@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import type * as React from 'react';
 
 // Mock the Yjs binding so the component test never opens a real WebSocket
@@ -352,6 +353,50 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-image')).not.toContain('canvas-pick-selectable');
     // Text still feeds the prompt in t2i → selectable.
     expect(cls('src-text')).toContain('canvas-pick-selectable');
+  });
+
+  it('an insisting click on a t2i-dimmed image source warns + does NOT wire an edge (#1788 batch-3 #1)', () => {
+    // The dim is a visual cue, not a pointer-events block (index.css keeps
+    // dimmed nodes clickable so an insisting click can explain WHY). Clicking a
+    // t2i-dimmed image must warn (imageReferenceTextMode) and add no edge — the
+    // click-gate and the dim agree via the same referenceKindAllowedInMode
+    // predicate.
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    const addEdgeSpy = vi.spyOn(canvasSpace, 'addEdge');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', mode: 't2i' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 900, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.react-flow__node[data-id="src-image"]')!,
+      );
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    // No image reference edge is wired in t2i.
+    expect(addEdgeSpy).not.toHaveBeenCalled();
+    // The pick stays open (continuous select) so the user can pick a text node.
+    expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target');
+    warnSpy.mockRestore();
+    addEdgeSpy.mockRestore();
   });
 
   // Style pick (#1664): a style reference is a URL COPY of an image node's
