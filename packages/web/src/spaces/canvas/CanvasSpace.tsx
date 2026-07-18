@@ -108,6 +108,10 @@ import {
   resolveClickConnectRejection,
 } from '@web/spaces/canvas/lib/connection-rules';
 import {
+  referenceKindAllowedInMode,
+  resolveMode,
+} from '@web/spaces/canvas/generate/image-mode-selection';
+import {
   resolvePanelSelectionAction,
   type PanelSelectionSnapshot,
 } from '@web/spaces/canvas/lib/generate-panel-selection';
@@ -1469,10 +1473,10 @@ function CanvasSpaceInner({
         (e) => e.target === target && e.source === node.id,
       );
       if (alreadyReferenced) return;
-      const targetKind =
-        useCanvasGraphStore
-          .getState()
-          .flowNodes.find((n) => n.id === target)?.type ?? '';
+      const targetNode = useCanvasGraphStore
+        .getState()
+        .flowNodes.find((n) => n.id === target);
+      const targetKind = targetNode?.type ?? '';
       if (!canConnect(node.type ?? '', targetKind)) {
         // Dimmed by the overlay already; explain WHY on an insisting click
         // (same wording as the drag-connect rejection toast).
@@ -1482,6 +1486,17 @@ function CanvasSpaceInner({
             target: kindLabel(targetKind),
           }),
         );
+        return;
+      }
+      // Mode scoping (#1788 batch-3 #1): text-to-image ignores source images, so
+      // an image node is dimmed + non-pickable there — only text references feed
+      // the prompt. Layered on top of canConnect with the SAME predicate the
+      // overlay dims with, so the click gate and the dim never drift.
+      const targetMode = resolveMode(
+        (targetNode?.data as { mode?: string } | undefined)?.mode,
+      );
+      if (!referenceKindAllowedInMode(node.type ?? '', targetMode)) {
+        toast.warning(t('canvas.generatePanel.imageReferenceTextMode'));
         return;
       }
       // Pool cap (#1782): same guard as drag-connect — a full pool blocks
@@ -2762,12 +2777,20 @@ function CanvasSpaceInner({
     const alreadyReferenced = new Set(
       flowEdges.filter((e) => e.target === target).map((e) => e.source),
     );
-    const targetKind = renderNodes.find((n) => n.id === target)?.type ?? '';
+    const targetNode = renderNodes.find((n) => n.id === target);
+    const targetKind = targetNode?.type ?? '';
+    // Mode scoping (#1788 batch-3 #1): a t2i target dims IMAGE sources — the
+    // same predicate onPickNodeClick rejects with, so a dimmed node is never
+    // secretly clickable (and a selectable one never silently no-ops).
+    const targetMode = resolveMode(
+      (targetNode?.data as { mode?: string } | undefined)?.mode,
+    );
     return paint(
       (node) =>
         node.id === target ||
         alreadyReferenced.has(node.id) ||
-        !canConnect(node.type ?? '', targetKind),
+        !canConnect(node.type ?? '', targetKind) ||
+        !referenceKindAllowedInMode(node.type ?? '', targetMode),
     );
   }, [renderNodes, pickSession, flowEdges]);
 

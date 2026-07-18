@@ -32,7 +32,8 @@ interface ToggleToolProps {
   Icon: LucideIcon;
   onClick: () => void;
   active: boolean;
-  disabled: boolean;
+  /** Whether the tool is unavailable (Focus in t2i); omitted = always enabled. */
+  disabled?: boolean;
 }
 
 /**
@@ -55,7 +56,7 @@ function ToggleTool({
   Icon,
   onClick,
   active,
-  disabled,
+  disabled = false,
 }: ToggleToolProps): React.JSX.Element {
   return (
     <ToolTip tip={tip}>
@@ -214,11 +215,6 @@ interface GenerateToolbarProps {
    * (highlighted) state so it reads as a toggle (user 2026-07-12 G).
    */
   referenceActive?: boolean;
-  /**
-   * Disable the Reference button — set in text-to-image, which generates from
-   * scratch and ignores source images (mode toggle 2026-07-09 §2.5).
-   */
-  referenceDisabled?: boolean;
   /** Toggle the "select a style reference from the canvas" mode (#1664). */
   onStyle: () => void;
   /** Whether the style pick is running — highlights the Style button. */
@@ -244,14 +240,14 @@ interface GenerateToolbarProps {
  * The Generate panel's top tool row: Reference / Focus / Style — all three are
  * live canvas picks, each with a hover tooltip describing what it does (Mark
  * was dropped 2026-07-17, user decision C: its intent is already covered by
- * Focus). Reference feeds i2i source images (disabled in text-to-image); Style
- * holds ONE picked style image as a pick-time copy (#1664) — gated on the
- * active MODEL's capability (`style_images` on the wire), never on the mode;
- * Focus crops a region into a standalone reference (#1782).
+ * Focus). Reference is available in both modes — text-to-image scopes the pick
+ * to text sources (the canvas pick rejects image nodes), image-to-image uses
+ * the full pool; Style holds ONE picked style image as a pick-time copy (#1664)
+ * — gated on the active MODEL's capability (`style_images` on the wire), never
+ * on the mode; Focus crops a region into a standalone reference (#1782).
  * @param root0 - Component props.
  * @param root0.onReference - Enter the reference-pick mode.
  * @param root0.referenceActive - Whether the reference pick is running.
- * @param root0.referenceDisabled - Disable Reference (text-to-image).
  * @param root0.onStyle - Enter the style-pick mode.
  * @param root0.styleActive - Whether the style pick is running.
  * @param root0.styleThumbnail - The picked style image URL, if any.
@@ -262,7 +258,6 @@ interface GenerateToolbarProps {
 export const GenerateToolbar = React.memo(function GenerateToolbar({
   onReference,
   referenceActive = false,
-  referenceDisabled = false,
   onStyle,
   styleActive = false,
   styleThumbnail,
@@ -282,7 +277,6 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         Icon={Plus}
         onClick={onReference}
         active={referenceActive}
-        disabled={referenceDisabled}
       />
       <ToggleTool
         testId='generate-tool-focus'

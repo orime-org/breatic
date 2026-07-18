@@ -154,9 +154,9 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(onToggleMode).toHaveBeenCalledWith('i2i');
   });
 
-  it('disables the reference add-button in t2i (§2.5)', () => {
+  it('keeps the reference add-button ENABLED in t2i — the pick is scoped to text, not disabled (#1788 batch-3 #1)', () => {
     setup({ mode: 't2i' });
-    expect(screen.getByTestId('generate-tool-reference')).toBeDisabled();
+    expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
   });
 
   it('enables the reference add-button in i2i', () => {
@@ -164,7 +164,7 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
   });
 
-  it('gates Focus with the mode exactly like Reference (#1782 — same i2i pool)', () => {
+  it('disables Focus in t2i — a focus crop is an image source (#1782 / #1788 batch-3 #1)', () => {
     setup({ mode: 't2i' });
     expect(screen.getByTestId('generate-tool-focus')).toBeDisabled();
   });

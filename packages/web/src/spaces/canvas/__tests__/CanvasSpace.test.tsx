@@ -255,7 +255,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // references for an image node, an audio / video node must be dimmed +
   // non-pickable exactly like an already-wired node — not glowing as if it
   // were selectable and then dead-ending at execute time.
-  it('pick mode dims type-incompatible sources (audio/video) and keeps image/text selectable', () => {
+  it('pick mode on an i2i target dims type-incompatible sources (audio) and keeps image/text selectable', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -263,7 +263,9 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
+            // i2i uses the full source pool, so images stay selectable — this
+            // isolates the canConnect (type) dimming from the mode scoping.
+            data: { kind: 'image', status: 'idle', mode: 'i2i' },
           },
           {
             id: 'src-audio',
@@ -301,6 +303,55 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-audio')).not.toContain('canvas-pick-selectable');
     expect(cls('src-text')).toContain('canvas-pick-selectable');
     expect(cls('src-image')).toContain('canvas-pick-selectable');
+  });
+
+  it('pick mode on a t2i target ALSO dims IMAGE sources — only text stays selectable (#1788 batch-3 #1)', () => {
+    // Text-to-image ignores source images (§2.5): an image node is inert as a
+    // reference, so the pick overlay dims it alongside the type-incompatible
+    // audio — text alone remains selectable because its @-chip feeds the prompt.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', mode: 't2i' },
+          },
+          {
+            id: 'src-audio',
+            type: 'audio',
+            position: { x: 300, y: 0 },
+            data: { kind: 'audio', content: 'a.mp3', status: 'idle' },
+          },
+          {
+            id: 'src-text',
+            type: 'text',
+            position: { x: 600, y: 0 },
+            data: { kind: 'text', content: 'hello', status: 'idle' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 900, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    expect(cls('src-audio')).toContain('canvas-pick-dimmed');
+    // The new mode scoping: an image source is dimmed in t2i (unlike i2i above).
+    expect(cls('src-image')).toContain('canvas-pick-dimmed');
+    expect(cls('src-image')).not.toContain('canvas-pick-selectable');
+    // Text still feeds the prompt in t2i → selectable.
+    expect(cls('src-text')).toContain('canvas-pick-selectable');
   });
 
   // Style pick (#1664): a style reference is a URL COPY of an image node's

@@ -141,10 +141,13 @@ export const GeneratePanel = React.memo(function GeneratePanel({
 }: GeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
   const currentModel = models.find((m) => m.name === model);
-  // Text-to-image generates from scratch and ignores source images (§2.5): the
-  // reference add-button is disabled and the rail dims its IMAGE rows (text
-  // rows stay insertable — their @-chips still feed the prompt; R3-4 = A).
-  const referencesOff = mode === 't2i';
+  // Text-to-image generates from scratch and ignores SOURCE IMAGES (§2.5).
+  // References stay AVAILABLE — the reference button is enabled and text
+  // references still feed the prompt via their @-chips (R3-4 = A) — but every
+  // IMAGE source is scoped out: the rail dims its image rows, the canvas pick
+  // rejects image nodes, the @-picker hides them, and Focus (which crops an
+  // image) is disabled. i2i uses the full source pool.
+  const imageSourcesOff = mode === 't2i';
   // shrink-0 keeps the fixed-size footer icons from being squeezed when the
   // pickers' labels run long (the footer row has no flex-wrap by design).
   const placeholderClass =
@@ -156,7 +159,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         <GenerateToolbar
           onReference={onAddReference}
           referenceActive={referencePicking}
-          referenceDisabled={referencesOff}
           onStyle={onStyle}
           styleActive={stylePicking}
           styleThumbnail={styleImageUrl}
@@ -164,8 +166,9 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           styleDisabled={!styleSupported}
           onFocus={onFocus}
           focusActive={focusPicking}
-          // Focus crops feed the same i2i source pool as references (#1782).
-          focusDisabled={referencesOff}
+          // Focus crops an image, so it follows the image-source scoping: a
+          // t2i node cannot focus-crop (#1782).
+          focusDisabled={imageSourcesOff}
         />
         <div className='flex items-center gap-1.5'>
           {HEADER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
@@ -196,7 +199,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        imageRefsDisabled={referencesOff}
+        imageRefsDisabled={imageSourcesOff}
         pendingFocus={pendingFocus}
       />
 

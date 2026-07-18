@@ -23,6 +23,7 @@ import {
 import { validFocusImages } from '@web/data/focus-images';
 import {
   filterModelsByMode,
+  resolveMode,
   resolveModelForMode,
   type ImageGenMode,
 } from '@web/spaces/canvas/generate/image-mode-selection';
@@ -31,9 +32,6 @@ import type {
   ContentNodeView,
   NodeView,
 } from '@web/spaces/canvas/types/node-view';
-
-/** Default generation sub-mode for a node with none stored (design 2026-07-09 §2.3). */
-const DEFAULT_IMAGE_GEN_MODE: ImageGenMode = 't2i';
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
@@ -47,17 +45,6 @@ const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
  */
 function positiveCap(cap: number | undefined): number | undefined {
   return typeof cap === 'number' && Number.isFinite(cap) && cap >= 1 ? cap : undefined;
-}
-
-/**
- * Reads a node's stored generation sub-mode, defaulting + boundary-sanitizing:
- * anything that is not the literal `'i2i'` (undefined, `'t2i'`, or a malformed
- * value from untrusted Yjs) resolves to the default `'t2i'`.
- * @param stored - The node's stored `mode` (free string on the wire).
- * @returns The active {@link ImageGenMode}.
- */
-function resolveMode(stored: string | undefined): ImageGenMode {
-  return stored === 'i2i' ? 'i2i' : DEFAULT_IMAGE_GEN_MODE;
 }
 
 /** The render inputs the Generate panel needs, derived from live node data. */
