@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
 import { cn } from '@web/lib/utils';

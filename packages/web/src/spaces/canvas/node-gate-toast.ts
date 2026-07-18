@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 /**
  * Single stable id for every node-gate warning (locked / handling). sonner

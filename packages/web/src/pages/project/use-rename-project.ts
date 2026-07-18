@@ -6,7 +6,7 @@ import {
   useQueryClient,
   type UseMutationResult,
 } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 import { projectsApi } from '@web/data/api/projects';
 import type { ProjectDetail } from '@web/data/api/projects';

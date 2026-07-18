@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { Copy, Download } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 import { Button } from '@web/components/ui/button';
 import { Label } from '@web/components/ui/label';

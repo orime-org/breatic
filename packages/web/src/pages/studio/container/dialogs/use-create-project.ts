@@ -3,7 +3,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 import { projectsApi } from '@web/data/api/projects';
 import { useTranslation } from '@web/i18n/use-translation';

@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useStore } from '@xyflow/react';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CapturedResize } from '@web/spaces/canvas/focus/crop-math';

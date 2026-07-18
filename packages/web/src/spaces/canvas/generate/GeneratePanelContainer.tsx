@@ -4,7 +4,7 @@
 import { NodeToolbar, Position } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@web/lib/toast';
 import type * as Y from 'yjs';
 
 import { assetsApi } from '@web/data/api/assets';
