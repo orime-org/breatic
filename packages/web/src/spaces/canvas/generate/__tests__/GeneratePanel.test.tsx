@@ -67,6 +67,7 @@ function setup(
       stylePicking={false}
       onClearStyle={() => {}}
       styleSupported
+      cameraSupported={false}
       onFocus={() => {}}
       focusPicking={false}
       onExecute={() => {}}

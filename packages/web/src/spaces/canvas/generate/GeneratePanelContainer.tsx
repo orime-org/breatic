@@ -35,6 +35,7 @@ import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
 import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
+import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
@@ -77,6 +78,16 @@ interface GeneratePanelContainerProps {
  */
 function asStr(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Narrows an unknown param value to a number — focal_length is numeric, and a
+ * string would fail the worker's enum check and silently reset to the default.
+ * @param value - The raw param value.
+ * @returns The value when it is a number, else undefined.
+ */
+function asNum(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined;
 }
 
 /**
@@ -238,9 +249,25 @@ function GeneratePanelBody({
   // ReferenceRail / RatioResolutionPicker each frame of any node drag.
   const aspectRatio = asStr(vm.params.aspect_ratio);
   const resolution = asStr(vm.params.resolution);
+  // Camera cluster (#1788) rides the same stable-identity discipline: key the
+  // memo on the primitives so a canvas mutation doesn't rebuild the params
+  // object and defeat CameraPicker's React.memo each drag frame.
+  const camera = asStr(vm.params.camera);
+  const lens = asStr(vm.params.lens);
+  const focalLength = asNum(vm.params.focal_length);
+  const aperture = asStr(vm.params.aperture);
+  const enableCamera = vm.params.enable_camera === true;
   const stableParams = React.useMemo(
-    () => ({ aspect_ratio: aspectRatio, resolution }),
-    [aspectRatio, resolution],
+    () => ({
+      aspect_ratio: aspectRatio,
+      resolution,
+      camera,
+      lens,
+      focal_length: focalLength,
+      aperture,
+      enable_camera: enableCamera,
+    }),
+    [aspectRatio, resolution, camera, lens, focalLength, aperture, enableCamera],
   );
   // References change identity on every derive; key the memo on their CONTENT
   // (small array — a stringify key is cheap and exact). The pool the rail /
@@ -321,7 +348,7 @@ function GeneratePanelBody({
   );
 
   const onChangeParams = React.useCallback(
-    (partial: { aspect_ratio?: string; resolution?: string }) => {
+    (partial: { aspect_ratio?: string; resolution?: string } & CameraValue) => {
       setNodeParams(projectId, spaceId, nodeId, {
         ...freshVm().params,
         ...partial,
@@ -640,6 +667,7 @@ function GeneratePanelBody({
       styleImageUrl={vm.styleImageUrl}
       onClearStyle={onClearStyle}
       styleSupported={vm.styleSupported}
+      cameraSupported={vm.cameraSupported}
       onFocus={onFocus}
       focusPicking={focusPicking}
       pendingFocus={pendingFocus}

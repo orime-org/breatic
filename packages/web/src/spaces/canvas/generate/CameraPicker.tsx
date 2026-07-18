@@ -52,19 +52,19 @@ function paramValues(model: ModelEntry, key: string): ParamValue[] {
   return values.map((v) => (typeof v === 'number' ? v : String(v)));
 }
 
-/**
- * Renders the grayscale glyph for a column's current value.
- * @param glyph - The glyph kind (camera / lens / num / iris).
- * @param value - The current selection (used to size the aperture iris / show the focal number).
- * @returns The glyph element.
- */
-function Glyph({
-  glyph,
-  value,
-}: {
+interface GlyphProps {
   glyph: (typeof COLUMNS)[number]['glyph'];
   value: ParamValue;
-}): React.JSX.Element {
+}
+
+/**
+ * Renders the grayscale glyph for a column's current value.
+ * @param root0 - The glyph props.
+ * @param root0.glyph - The glyph kind (camera / lens / num / iris).
+ * @param root0.value - The current selection (sizes the iris / shows the focal number).
+ * @returns The glyph element.
+ */
+function Glyph({ glyph, value }: GlyphProps): React.JSX.Element {
   if (glyph === 'num') {
     return (
       <span className='text-[38px] font-semibold leading-none tracking-tight text-foreground'>
@@ -126,7 +126,15 @@ interface CameraWheelProps {
  * One carousel column: chevrons + wheel scroll move the selection through the
  * param's catalog values; the centered value renders large with faded
  * neighbours above/below. Clamped at the ends (no wrap).
- * @param root0 - Component props.
+ * @param root0 - The wheel props.
+ * @param root0.cap - The column caption (section header).
+ * @param root0.glyph - The glyph kind for the centered value.
+ * @param root0.values - The catalog values for this param.
+ * @param root0.value - The current selection.
+ * @param root0.unit - Optional unit suffix appended to labels (e.g. ` mm`).
+ * @param root0.onSelect - Called with the newly selected value.
+ * @param root0.prevLabel - The faded label above the centered value.
+ * @param root0.nextLabel - The faded label below the centered value.
  * @returns The wheel column.
  */
 function CameraWheel({
@@ -143,6 +151,10 @@ function CameraWheel({
     0,
     values.findIndex((v) => v === value),
   );
+  /**
+   * Shifts the selection by `delta` positions, clamped to the value range.
+   * @param delta - Positions to move (−1 up, +1 down).
+   */
   const move = (delta: number): void => {
     const next = Math.min(values.length - 1, Math.max(0, idx + delta));
     if (next !== idx) onSelect(values[next]!);
