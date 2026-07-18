@@ -400,6 +400,45 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     addEdgeSpy.mockRestore();
   });
 
+  it('a drag GESTURE on a LOCKED node warns; a click (no movement) stays silent (#1788 batch-5, user 2026-07-18)', () => {
+    // A locked node is draggable:false, so ReactFlow fires NO drag events — the
+    // canvas detects the drag GESTURE itself (pointerdown on a frozen node +
+    // movement past a threshold) and warns. A click (down/up, no movement) must
+    // NOT warn, so merely selecting a locked node doesn't toast.
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'locked',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', locked: true },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
+    // MouseEvent with the pointer type name: jsdom-safe, carries clientX/Y, and
+    // fires the handler (listeners key on the type string, not the class).
+    const ev = (type: string, x: number, y: number): MouseEvent =>
+      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+    // Click (no movement) → silent.
+    act(() => {
+      el.dispatchEvent(ev('pointerdown', 10, 10));
+      window.dispatchEvent(ev('pointerup', 10, 10));
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+    // Drag gesture (movement past the threshold) → warn once.
+    act(() => {
+      el.dispatchEvent(ev('pointerdown', 10, 10));
+      window.dispatchEvent(ev('pointermove', 40, 40));
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+
   // Style pick (#1664): a style reference is a URL COPY of an image node's
   // asset — so while style-picking only NON-EMPTY image nodes glow. Non-image
   // nodes, empty images (nothing to copy), and the target itself are dimmed.

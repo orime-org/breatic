@@ -1008,6 +1008,68 @@ function CanvasSpaceInner({
     [setFlowEdges],
   );
 
+  // Drag-attempt toast for locked nodes (A.1, user 2026-07-18): a locked node
+  // (or a locked Group's member) renders draggable:false, so ReactFlow fires NO
+  // drag events on it — detect the drag GESTURE ourselves. pointerdown on a
+  // frozen node arms a start point; movement past a small threshold (past a
+  // click's jitter) warns ONCE per gesture; pointerup disarms. A plain click
+  // (no movement) stays silent, so SELECTING a locked node doesn't toast. The
+  // frozen set is read FRESH from the graph store (not effect deps), so this
+  // wires once and never re-attaches as nodes change; warnNodeGate de-dups by a
+  // stable id, so even a long drag surfaces a single toast. A viewer (readOnly)
+  // is exempt — nothing is editable, so a lock warning would mislead.
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const DRAG_THRESHOLD = 4;
+    let start: { x: number; y: number } | null = null;
+    let warned = false;
+    /**
+     * Arms the detector when a press lands on a frozen (locked) node; a press
+     * on anything else (or in a read-only view) disarms it.
+     * @param e - The pointerdown event.
+     */
+    const onDown = (e: PointerEvent): void => {
+      if (readOnly) {
+        start = null;
+        return;
+      }
+      const id = (e.target as Element | null)
+        ?.closest('.react-flow__node[data-id]')
+        ?.getAttribute('data-id');
+      const frozen = id
+        ? lockedNodeIds(useCanvasGraphStore.getState().flowNodes)
+        : null;
+      start = id && frozen?.has(id) ? { x: e.clientX, y: e.clientY } : null;
+      warned = false;
+    };
+    /**
+     * Warns once as soon as the armed press moves past the drag threshold.
+     * @param e - The pointermove event.
+     */
+    const onMove = (e: PointerEvent): void => {
+      if (!start || warned) return;
+      if (
+        Math.hypot(e.clientX - start.x, e.clientY - start.y) > DRAG_THRESHOLD
+      ) {
+        warned = true;
+        warnNodeGate(t(NODE_GATE_TOAST_KEY.locked));
+      }
+    };
+    /** Disarms the detector when the press ends. */
+    const onUp = (): void => {
+      start = null;
+    };
+    container.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      container.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [t, readOnly]);
+
   // Group drag carries its members natively (ReactFlow `parentId` positions
   // children relative to their Group), so there is no manual member-carry ref or
   // drag-start snapshot — onNodeDragStop alone resolves the whole result
