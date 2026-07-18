@@ -341,7 +341,6 @@
       "errorTooManyReferences": "此模型最多接受 {limit} 張參考圖 —— 移除一些再生成。",
       "referenceAddFailed": "無法加入參考——該節點已不存在。",
       "referencePoolFull": "參考池已滿(上限 {cap})——請先移除一些參考或聚焦圖。",
-      "imageReferenceTextMode": "文生圖只使用文字參考——要參考圖片請切換到圖生圖。",
       "modelUnavailable": "該模型已無法使用——請另選一個。",
       "catalogUnavailable": "模型清單載入失敗,請稍後再試",
       "selectFocusFromCanvas": "請在圖片上框選聚焦區域",

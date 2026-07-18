@@ -1489,14 +1489,16 @@ function CanvasSpaceInner({
         return;
       }
       // Mode scoping (#1788 batch-3 #1): text-to-image ignores source images, so
-      // an image node is dimmed + non-pickable there — only text references feed
-      // the prompt. Layered on top of canConnect with the SAME predicate the
-      // overlay dims with, so the click gate and the dim never drift.
+      // an image node is non-pickable there — only text references feed the
+      // prompt. A SILENT no-op (user 2026-07-18): the overlay already dims the
+      // node + shows the not-allowed cursor, so an insisting click needs no
+      // toast on top (unlike the type-incompatible case, which is less obvious).
+      // Same predicate the dim memo uses, so the click gate and the dim never
+      // drift.
       const targetMode = resolveMode(
         (targetNode?.data as { mode?: string } | undefined)?.mode,
       );
       if (!referenceKindAllowedInMode(node.type ?? '', targetMode)) {
-        toast.warning(t('canvas.generatePanel.imageReferenceTextMode'));
         return;
       }
       // Pool cap (#1782): same guard as drag-connect — a full pool blocks

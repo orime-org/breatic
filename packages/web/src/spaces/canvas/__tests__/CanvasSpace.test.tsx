@@ -355,12 +355,12 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-text')).toContain('canvas-pick-selectable');
   });
 
-  it('an insisting click on a t2i-dimmed image source warns + does NOT wire an edge (#1788 batch-3 #1)', () => {
-    // The dim is a visual cue, not a pointer-events block (index.css keeps
-    // dimmed nodes clickable so an insisting click can explain WHY). Clicking a
-    // t2i-dimmed image must warn (imageReferenceTextMode) and add no edge — the
-    // click-gate and the dim agree via the same referenceKindAllowedInMode
-    // predicate.
+  it('an insisting click on a t2i-dimmed image source is a SILENT no-op — no toast, no edge (#1788 batch-3 #1)', () => {
+    // The dim + not-allowed cursor already signal "can't pick this", so an
+    // insisting click needs no toast on top (user 2026-07-18 dropped the earlier
+    // warn). It wires no image edge in t2i and keeps the pick open so the user
+    // can go on to pick a text node — the click-gate and the dim agree via the
+    // same referenceKindAllowedInMode predicate.
     const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
     const addEdgeSpy = vi.spyOn(canvasSpace, 'addEdge');
     mockUseCanvasSpace.mockReturnValue(
@@ -390,7 +390,8 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         document.querySelector('.react-flow__node[data-id="src-image"]')!,
       );
     });
-    expect(warnSpy).toHaveBeenCalledTimes(1);
+    // Silent: no toast (the dim already signals it).
+    expect(warnSpy).not.toHaveBeenCalled();
     // No image reference edge is wired in t2i.
     expect(addEdgeSpy).not.toHaveBeenCalled();
     // The pick stays open (continuous select) so the user can pick a text node.

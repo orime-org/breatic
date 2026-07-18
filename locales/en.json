@@ -348,7 +348,6 @@
       "errorTooManyReferences": "This model accepts at most {limit} reference images — remove some to generate.",
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
       "referencePoolFull": "Reference pool is full ({cap} max) — remove some references or focus crops first.",
-      "imageReferenceTextMode": "Text-to-image references text only — switch to image-to-image to reference an image.",
       "modelUnavailable": "That model is no longer available — pick another.",
       "catalogUnavailable": "Model list unavailable — please try again later",
       "selectFocusFromCanvas": "Drag a marquee on an image to crop a focus reference",

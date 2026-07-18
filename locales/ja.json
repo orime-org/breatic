@@ -341,7 +341,6 @@
       "errorTooManyReferences": "このモデルは参考画像を最大 {limit} 枚まで受け付けます —— いくつか削除してから生成してください。",
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
       "referencePoolFull": "参照プールが上限({cap})に達しました——先に参照またはフォーカス画像を削除してください。",
-      "imageReferenceTextMode": "テキストから画像は参照にテキストのみ使用します——画像を参照するには画像から画像に切り替えてください。",
       "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。",
       "catalogUnavailable": "モデル一覧を読み込めませんでした。後でもう一度お試しください",
       "selectFocusFromCanvas": "画像上をドラッグして範囲を選択してください",
