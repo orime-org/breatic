@@ -135,6 +135,7 @@ import {
   evaluateNodeGate,
   NODE_GATE_TOAST_KEY,
 } from '@web/spaces/canvas/node-gate';
+import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
@@ -1088,7 +1089,7 @@ function CanvasSpaceInner({
       // (keyboard Delete); the right-click menu Delete shares the same
       // `gateBlockedDeletion` guard via `commitGuardedDelete`, so the protection
       // + toast are one rule, not duplicated per entry point.
-      if (blocked && reason) toast.warning(t(NODE_GATE_TOAST_KEY[reason]));
+      if (blocked && reason) warnNodeGate(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) {
         return false;
       }
@@ -2210,7 +2211,7 @@ function CanvasSpaceInner({
         edgesToDelete,
         flowNodesRef.current,
       );
-      if (blocked && reason) toast.warning(t(NODE_GATE_TOAST_KEY[reason]));
+      if (blocked && reason) warnNodeGate(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
       removeElements(
         projectId,
@@ -2423,7 +2424,7 @@ function CanvasSpaceInner({
         'upload',
       );
       if (gateBlock) {
-        toast.warning(t(gateBlock.toastKey));
+        warnNodeGate(t(gateBlock.toastKey));
         return;
       }
       // A reference pick owns node interactions (batch-2 item 12): a
@@ -2479,7 +2480,7 @@ function CanvasSpaceInner({
         'upload',
       );
       if (gateBlock) {
-        toast.warning(t(gateBlock.toastKey));
+        warnNodeGate(t(gateBlock.toastKey));
         return;
       }
       // Register SYNCHRONOUSLY (before the config-fetch await) by making the
@@ -2512,7 +2513,7 @@ function CanvasSpaceInner({
           // Backstop for the fill path (retry + any direct fill); the picker
           // entry (activateNodeUpload) already gates handling before opening.
           isHandling: (id) => isNodeHandling(projectId, spaceId, id),
-          onBusy: () => toast.warning(t(NODE_GATE_TOAST_KEY.handling)),
+          onBusy: () => warnNodeGate(t(NODE_GATE_TOAST_KEY.handling)),
           setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
           setContent: (id, content, lease) => {
             clearRetryFile(projectId, spaceId, id);
@@ -2562,7 +2563,7 @@ function CanvasSpaceInner({
         'upload',
       );
       if (gateBlock) {
-        toast.warning(t(gateBlock.toastKey));
+        warnNodeGate(t(gateBlock.toastKey));
         return;
       }
       const file = getRetryFile(projectId, spaceId, nodeId);

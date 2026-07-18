@@ -39,6 +39,7 @@ import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
+import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import {
@@ -522,7 +523,7 @@ function GeneratePanelBody({
       'generate',
     );
     if (gateBlock) {
-      toast.warning(t(gateBlock.toastKey));
+      warnNodeGate(t(gateBlock.toastKey));
       return;
     }
     // Serialize the backend prompt AT CLICK TIME (spec §9.1): a text chip
