@@ -71,7 +71,7 @@ interface GeneratePanelProps {
   onClearStyle: () => void;
   /** Whether the active model takes a style reference (capability gate). */
   styleSupported: boolean;
-  /** Whether the active model declares the camera cluster (#1788) — gates the Camera control. */
+  /** Whether the active model declares the camera cluster (#1788) — the Camera control is hidden otherwise. */
   cameraSupported: boolean;
   /** Toggle the canvas focus-crop mode (#1782 — enter, or exit when already picking). */
   onFocus: () => void;
@@ -216,12 +216,11 @@ export const GeneratePanel = React.memo(function GeneratePanel({
             onChange={onChangeParams}
           />
         ) : null}
-        {currentModel ? (
+        {currentModel && cameraSupported ? (
           <CameraPicker
             model={currentModel}
             value={params}
             onChange={onChangeParams}
-            disabled={!cameraSupported}
           />
         ) : null}
 

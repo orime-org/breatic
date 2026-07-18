@@ -210,8 +210,6 @@ interface CameraPickerProps {
   value: CameraValue;
   /** Merge a changed camera param (or the enable gate) into `data.params`. */
   onChange: (partial: CameraValue) => void;
-  /** Grey-disable the trigger — the active model omits the camera cluster (#1788, B.1). */
-  disabled: boolean;
 }
 
 /**
@@ -219,22 +217,22 @@ interface CameraPickerProps {
  * a four-wheel popover (camera / lens / focal length / aperture) sourced from
  * the active model's catalog enums. A top-right switch is the master
  * `enable_camera` opt-in gate (replaces a close ×; the popover closes on
- * outside click / Escape like the ratio picker). The trigger greys out when the
- * model omits the cluster, and its tooltip reports the on/off state. Focal
- * length round-trips as a NUMBER (the catalog values are numeric — a string
- * would fail the worker's enum check and silently reset to the default).
+ * outside click / Escape like the ratio picker); the trigger's tooltip reports
+ * the on/off state. The control is only rendered when the active model declares
+ * the cluster — the panel hides it otherwise (unsupported models show nothing,
+ * not a greyed-out control). Focal length round-trips as a NUMBER (the catalog
+ * values are numeric — a string would fail the worker's enum check and silently
+ * reset to the default).
  * @param root0 - Component props.
  * @param root0.model - The current model.
  * @param root0.value - The current camera-cluster selection.
  * @param root0.onChange - Merge a changed param into `data.params`.
- * @param root0.disabled - Grey-disable when the model omits the cluster.
  * @returns The camera control.
  */
 export const CameraPicker = React.memo(function CameraPicker({
   model,
   value,
   onChange,
-  disabled,
 }: CameraPickerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -246,20 +244,6 @@ export const CameraPicker = React.memo(function CameraPicker({
     (enabled
       ? ' text-foreground hover:bg-accent'
       : ' text-muted-foreground hover:bg-accent hover:text-foreground');
-
-  if (disabled) {
-    return (
-      <button
-        type='button'
-        data-testid='generate-camera'
-        disabled
-        aria-label={t('canvas.generatePanel.camera')}
-        className='flex h-8 w-8 shrink-0 cursor-not-allowed items-center justify-center rounded-full border border-border text-muted-foreground opacity-50'
-      >
-        <Camera className='h-4 w-4' aria-hidden='true' />
-      </button>
-    );
-  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
