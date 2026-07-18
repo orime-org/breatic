@@ -241,7 +241,7 @@ interface GenerateToolbarProps {
 }
 
 /**
- * The Generate panel's top tool row: Style / Focus / Reference — all three are
+ * The Generate panel's top tool row: Reference / Focus / Style — all three are
  * live canvas picks, each with a hover tooltip describing what it does (Mark
  * was dropped 2026-07-17, user decision C: its intent is already covered by
  * Focus). Reference feeds i2i source images (disabled in text-to-image); Style
@@ -275,15 +275,14 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
   const t = useTranslation();
   return (
     <div className='flex items-center gap-1' role='group'>
-      <StyleTool
-        onStyle={onStyle}
-        active={styleActive}
-        thumbnail={styleThumbnail}
-        onClear={onClearStyle}
-        disabled={styleDisabled}
-        clearLabel={t('canvas.generatePanel.removeStyle')}
-        label={t('canvas.generatePanel.style')}
-        tip={t('canvas.generatePanel.styleTip')}
+      <ToggleTool
+        testId='generate-tool-reference'
+        label={t('canvas.generatePanel.reference')}
+        tip={t('canvas.generatePanel.referenceTip')}
+        Icon={Plus}
+        onClick={onReference}
+        active={referenceActive}
+        disabled={referenceDisabled}
       />
       <ToggleTool
         testId='generate-tool-focus'
@@ -294,14 +293,15 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         active={focusActive}
         disabled={focusDisabled}
       />
-      <ToggleTool
-        testId='generate-tool-reference'
-        label={t('canvas.generatePanel.reference')}
-        tip={t('canvas.generatePanel.referenceTip')}
-        Icon={Plus}
-        onClick={onReference}
-        active={referenceActive}
-        disabled={referenceDisabled}
+      <StyleTool
+        onStyle={onStyle}
+        active={styleActive}
+        thumbnail={styleThumbnail}
+        onClear={onClearStyle}
+        disabled={styleDisabled}
+        clearLabel={t('canvas.generatePanel.removeStyle')}
+        label={t('canvas.generatePanel.style')}
+        tip={t('canvas.generatePanel.styleTip')}
       />
     </div>
   );
