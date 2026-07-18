@@ -18,6 +18,7 @@ import {
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The camera-cluster params this control edits (all on `data.params`, #1788). */
 export interface CameraValue {
@@ -180,9 +181,14 @@ function CameraWheel({
       <span className='h-[18px] max-w-full truncate text-[11.5px] text-muted-foreground/70'>
         {prevLabel}
       </span>
-      <div className='my-0.5 flex min-h-[112px] w-full flex-col items-center justify-center gap-1.5 rounded-content border border-border bg-card px-2 py-3'>
+      <div className='my-0.5 flex min-h-[112px] w-full flex-col items-center justify-center gap-2 rounded-content-sm border border-border bg-card px-2 py-3'>
         <span className='text-xs text-muted-foreground'>{cap}</span>
-        <Glyph glyph={glyph} value={value ?? ''} />
+        {/* Fixed-height glyph box so every column's cap sits on the same
+            baseline: the focal column's big number is shorter than the SVG
+            glyphs, and a content-hugging box would drift its cap up. */}
+        <div className='flex h-14 items-center justify-center'>
+          <Glyph glyph={glyph} value={value ?? ''} />
+        </div>
       </div>
       <span className='h-[18px] max-w-full truncate text-[11.5px] text-muted-foreground/70'>
         {nextLabel}
@@ -237,12 +243,17 @@ export const CameraPicker = React.memo(function CameraPicker({
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
   const enabled = value.enable_camera === true;
+  // Keep the popover glued to its trigger while the canvas pans / zooms.
+  useFollowCanvasViewport(open);
 
+  // On → inverted fill (bg-foreground text-background), the same active-state
+  // language as the toolbar's Style/Reference toggles (GenerateToolbar
+  // TOOL_ACTIVE): the footer icon reads as "camera on" at a glance. Off → muted.
   const triggerClass =
     'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border transition-colors ' +
     'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
     (enabled
-      ? ' text-foreground hover:bg-accent'
+      ? ' bg-foreground text-background'
       : ' text-muted-foreground hover:bg-accent hover:text-foreground');
 
   return (
@@ -268,7 +279,7 @@ export const CameraPicker = React.memo(function CameraPicker({
       </Tooltip>
       <PopoverContent
         side='top'
-        align='start'
+        align='center'
         aria-label={t('canvas.generatePanel.camera')}
         className='w-[min(520px,88vw)] p-4'
       >
