@@ -6,17 +6,9 @@ import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@web/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { Switch } from '@web/components/ui/switch';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@web/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
@@ -70,47 +62,70 @@ function Glyph({ glyph, value }: GlyphProps): React.JSX.Element {
   if (glyph === 'num') {
     // Muted grey to match the SVG glyphs' line colour (user 2026-07-18) — the
     // big number was the only bright-white element, breaking the grayscale set.
-    return (
-      <span className='text-[38px] font-semibold leading-none tracking-tight text-muted-foreground'>
-        {value}
-      </span>
-    );
+    return <span className='text-4xl font-semibold leading-none tracking-tight text-muted-foreground'>{value}</span>;
   }
   if (glyph === 'iris') {
     // Iris opening shrinks as the f-number grows.
     const f = parseFloat(String(value).replace('f/', '')) || 2.8;
     const open = Math.max(3, 15 - f * 0.8);
     return (
-      <svg viewBox='0 0 80 64' className='h-14 w-[72px]' aria-hidden='true'>
-        <circle cx='40' cy='32' r='22' fill='#1c1c1c' stroke='#4a4a4a' strokeWidth='2' />
-        <polygon
-          points='40,18 53,27 48,45 32,45 27,27'
-          fill='#2a2a2a'
-          stroke='#8f8f8f'
+      <svg viewBox='0 0 80 64' className='h-14 w-[72px] text-muted-foreground' aria-hidden='true'>
+        {/* Monochrome glyph: `currentColor` (= muted-foreground) with opacity
+            layers for depth, so it renders correctly in both themes — a static
+            dark palette only read right on a dark surface (matches ModelIcon). */}
+        <circle
+          cx='40'
+          cy='32'
+          r='22'
+          fill='currentColor'
+          fillOpacity={0.1}
+          stroke='currentColor'
+          strokeOpacity={0.55}
           strokeWidth='2'
         />
-        <circle cx='40' cy='32' r={open} fill='#0e0e0e' />
+        <polygon
+          points='40,18 53,27 48,45 32,45 27,27'
+          fill='currentColor'
+          fillOpacity={0.18}
+          stroke='currentColor'
+          strokeWidth='2'
+        />
+        <circle cx='40' cy='32' r={open} fill='currentColor' fillOpacity={0.85} />
       </svg>
     );
   }
   if (glyph === 'lens') {
     return (
-      <svg viewBox='0 0 80 64' className='h-14 w-[72px]' fill='none' stroke='#9a9a9a' strokeWidth='2.4' aria-hidden='true'>
-        <rect x='18' y='18' width='44' height='28' rx='6' fill='#2c2c2c' />
-        <ellipse cx='40' cy='32' rx='12' ry='12' fill='#1a1a1a' />
-        <ellipse cx='40' cy='32' rx='6' ry='6' fill='#333' stroke='none' />
-        <line x1='24' y1='24' x2='56' y2='24' stroke='#444' />
-        <line x1='24' y1='40' x2='56' y2='40' stroke='#444' />
+      <svg
+        viewBox='0 0 80 64'
+        className='h-14 w-[72px] text-muted-foreground'
+        fill='none'
+        stroke='currentColor'
+        strokeWidth='2.4'
+        aria-hidden='true'
+      >
+        <rect x='18' y='18' width='44' height='28' rx='6' fill='currentColor' fillOpacity={0.1} />
+        <ellipse cx='40' cy='32' rx='12' ry='12' fill='currentColor' fillOpacity={0.16} />
+        <ellipse cx='40' cy='32' rx='6' ry='6' fill='currentColor' fillOpacity={0.3} stroke='none' />
+        <line x1='24' y1='24' x2='56' y2='24' strokeOpacity={0.45} />
+        <line x1='24' y1='40' x2='56' y2='40' strokeOpacity={0.45} />
       </svg>
     );
   }
   return (
-    <svg viewBox='0 0 80 64' className='h-14 w-[72px]' fill='none' stroke='#9a9a9a' strokeWidth='2.4' aria-hidden='true'>
-      <rect x='12' y='22' width='42' height='28' rx='4' fill='#2c2c2c' />
-      <circle cx='33' cy='36' r='9' fill='#1c1c1c' />
-      <circle cx='33' cy='36' r='4' fill='#3a3a3a' stroke='none' />
-      <rect x='54' y='28' width='16' height='16' rx='2' fill='#262626' />
-      <rect x='20' y='14' width='16' height='9' rx='2' fill='#242424' />
+    <svg
+      viewBox='0 0 80 64'
+      className='h-14 w-[72px] text-muted-foreground'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth='2.4'
+      aria-hidden='true'
+    >
+      <rect x='12' y='22' width='42' height='28' rx='4' fill='currentColor' fillOpacity={0.1} />
+      <circle cx='33' cy='36' r='9' fill='currentColor' fillOpacity={0.16} />
+      <circle cx='33' cy='36' r='4' fill='currentColor' fillOpacity={0.3} stroke='none' />
+      <rect x='54' y='28' width='16' height='16' rx='2' fill='currentColor' fillOpacity={0.12} />
+      <rect x='20' y='14' width='16' height='9' rx='2' fill='currentColor' fillOpacity={0.12} />
     </svg>
   );
 }
@@ -175,9 +190,7 @@ function CameraWheel({
       >
         <ChevronUp className='h-4 w-4' aria-hidden='true' />
       </button>
-      <span className='h-[18px] max-w-full truncate text-[11.5px] text-muted-foreground/70'>
-        {prevLabel}
-      </span>
+      <span className='h-[18px] max-w-full truncate text-2xs text-muted-foreground/70'>{prevLabel}</span>
       <div className='my-0.5 flex min-h-[112px] w-full flex-col items-center justify-center gap-2 rounded-content-sm border border-border bg-card px-2 py-3'>
         <span className='text-xs text-muted-foreground'>{cap}</span>
         {/* Fixed-height glyph box so every column's cap sits on the same
@@ -187,9 +200,7 @@ function CameraWheel({
           <Glyph glyph={glyph} value={value ?? ''} />
         </div>
       </div>
-      <span className='h-[18px] max-w-full truncate text-[11.5px] text-muted-foreground/70'>
-        {nextLabel}
-      </span>
+      <span className='h-[18px] max-w-full truncate text-2xs text-muted-foreground/70'>{nextLabel}</span>
       <button
         type='button'
         aria-label={`${cap} ▼`}
@@ -199,9 +210,7 @@ function CameraWheel({
       >
         <ChevronDown className='h-4 w-4' aria-hidden='true' />
       </button>
-      <span className='mt-1.5 min-h-[16px] max-w-full truncate text-center text-xs text-foreground'>
-        {nameLabel}
-      </span>
+      <span className='mt-1.5 min-h-[16px] max-w-full truncate text-center text-xs text-foreground'>{nameLabel}</span>
     </div>
   );
 }
@@ -247,9 +256,7 @@ export const CameraPicker = React.memo(function CameraPicker({
   const triggerClass =
     'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border transition-colors ' +
     'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
-    (enabled
-      ? ' text-foreground hover:bg-accent'
-      : ' text-muted-foreground hover:bg-accent hover:text-foreground');
+    (enabled ? ' text-foreground hover:bg-accent' : ' text-muted-foreground hover:bg-accent hover:text-foreground');
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -272,9 +279,7 @@ export const CameraPicker = React.memo(function CameraPicker({
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side='top'>
-          {enabled
-            ? t('canvas.generatePanel.cameraOn')
-            : t('canvas.generatePanel.cameraOff')}
+          {enabled ? t('canvas.generatePanel.cameraOn') : t('canvas.generatePanel.cameraOff')}
         </TooltipContent>
       </Tooltip>
       <PopoverContent
@@ -288,14 +293,10 @@ export const CameraPicker = React.memo(function CameraPicker({
         className='w-[min(520px,88vw)] p-4'
       >
         <div className='mb-2 flex items-center justify-between'>
-          <span className='text-xs text-muted-foreground'>
-            {t('canvas.generatePanel.camera')}
-          </span>
+          <span className='text-xs text-muted-foreground'>{t('canvas.generatePanel.camera')}</span>
           <label className='flex cursor-pointer items-center gap-2'>
             <span className='text-xs text-muted-foreground'>
-              {enabled
-                ? t('canvas.generatePanel.cameraOn')
-                : t('canvas.generatePanel.cameraOff')}
+              {enabled ? t('canvas.generatePanel.cameraOn') : t('canvas.generatePanel.cameraOff')}
             </span>
             <Switch
               data-testid='generate-camera-toggle'
@@ -322,9 +323,7 @@ export const CameraPicker = React.memo(function CameraPicker({
                 value={current}
                 unit={unit}
                 prevLabel={idx > 0 ? `${values[idx - 1]}${unit}` : ''}
-                nextLabel={
-                  idx < values.length - 1 ? `${values[idx + 1]}${unit}` : ''
-                }
+                nextLabel={idx < values.length - 1 ? `${values[idx + 1]}${unit}` : ''}
                 onSelect={(v) => onChange({ [col.key]: v })}
               />
             );
