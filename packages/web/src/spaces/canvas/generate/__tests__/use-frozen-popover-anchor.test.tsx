@@ -23,23 +23,23 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('useFrozenPopoverAnchor — snapshots the trigger rect on open, freezes the anchor', () => {
-  it('the anchor rect is the trigger rect captured at the open edge', () => {
+describe('useFrozenPopoverAnchor — snapshots the trigger rect on open', () => {
+  it('captures the trigger rect into frozenRect at the open edge', () => {
     const rect = { left: 12, top: 34, width: 40, height: 8 } as DOMRect;
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
       rect,
     );
     render(<Harness />);
     expect(captured?.open).toBe(false);
+    expect(captured?.frozenRect).toBeNull();
 
     act(() => captured?.onOpenChange(true));
     expect(captured?.open).toBe(true);
-    const anchored = captured?.anchorRef.current.getBoundingClientRect();
-    expect(anchored?.left).toBe(12);
-    expect(anchored?.top).toBe(34);
+    expect(captured?.frozenRect?.left).toBe(12);
+    expect(captured?.frozenRect?.top).toBe(34);
   });
 
-  it('keeps the frozen rect even after the trigger later moves (does not re-read)', () => {
+  it('keeps the frozen rect even after the trigger later moves (snapshot, not live)', () => {
     const first = { left: 100, top: 200, width: 40, height: 8 } as DOMRect;
     const spy = vi
       .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
@@ -47,18 +47,15 @@ describe('useFrozenPopoverAnchor — snapshots the trigger rect on open, freezes
     render(<Harness />);
     act(() => captured?.onOpenChange(true)); // snapshot at (100, 200)
 
-    // Trigger "moves" (canvas pan) — the live rect changes, but the frozen
-    // anchor must still report the open-time rect.
+    // The trigger "moves" (canvas pan): the frozen rect must not change.
     spy.mockReturnValue({ left: 999, top: 999, width: 40, height: 8 } as DOMRect);
-    const anchored = captured?.anchorRef.current.getBoundingClientRect();
-    expect(anchored?.left).toBe(100);
-    expect(anchored?.top).toBe(200);
+    expect(captured?.frozenRect?.left).toBe(100);
+    expect(captured?.frozenRect?.top).toBe(200);
   });
 
-  it('returns an empty rect before the first open (no snapshot yet)', () => {
+  it('is closed with no frozen rect before the first open', () => {
     render(<Harness />);
-    const anchored = captured?.anchorRef.current.getBoundingClientRect();
-    expect(anchored?.width).toBe(0);
-    expect(anchored?.height).toBe(0);
+    expect(captured?.open).toBe(false);
+    expect(captured?.frozenRect).toBeNull();
   });
 });

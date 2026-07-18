@@ -3,6 +3,7 @@
 
 import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 
 import type { ModelEntry } from '@breatic/shared';
 
@@ -62,7 +63,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
 }: RatioResolutionPickerProps): React.JSX.Element {
   const t = useTranslation();
   // Freeze the popover at its open-time position (does not follow canvas pan/zoom).
-  const { open, onOpenChange, anchorRef } = useFrozenPopoverAnchor(
+  const { open, onOpenChange, frozenRect } = useFrozenPopoverAnchor(
     'generate-ratio-trigger',
   );
   const ratios = paramValues(model, 'aspect_ratio');
@@ -77,9 +78,27 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
     'aria-[current=true]:border-active-border aria-[current=true]:bg-accent';
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      {/* Frozen anchor: positions relative to the trigger rect snapshotted at
-          open time, so the popover stays put as the canvas pans / zooms. */}
-      <PopoverAnchor virtualRef={anchorRef} />
+      {/* Frozen anchor at the trigger's open-time rect, PORTALED to document.body
+          so no transformed ancestor re-bases its `position: fixed` — freezes the
+          popover through canvas pan / zoom (createPortal preserves context). */}
+      {frozenRect
+        ? createPortal(
+          <PopoverAnchor asChild>
+            <div
+              aria-hidden='true'
+              style={{
+                position: 'fixed',
+                left: frozenRect.left,
+                top: frozenRect.top,
+                width: frozenRect.width,
+                height: frozenRect.height,
+                pointerEvents: 'none',
+              }}
+            />
+          </PopoverAnchor>,
+          document.body,
+        )
+        : null}
       <PopoverTrigger asChild>
         <button
           type='button'

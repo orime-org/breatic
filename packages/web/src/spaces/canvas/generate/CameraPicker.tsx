@@ -3,6 +3,7 @@
 
 import { Camera, ChevronUp, ChevronDown } from 'lucide-react';
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 
 import type { ModelEntry } from '@breatic/shared';
 
@@ -239,7 +240,7 @@ export const CameraPicker = React.memo(function CameraPicker({
 }: CameraPickerProps): React.JSX.Element {
   const t = useTranslation();
   // Freeze the popover at its open-time position (does not follow canvas pan/zoom).
-  const { open, onOpenChange, anchorRef } =
+  const { open, onOpenChange, frozenRect } =
     useFrozenPopoverAnchor('generate-camera');
   const enabled = value.enable_camera === true;
 
@@ -252,9 +253,29 @@ export const CameraPicker = React.memo(function CameraPicker({
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      {/* Frozen anchor: the popover positions relative to the trigger's rect
-          snapshotted at open time, so it stays put as the canvas pans / zooms. */}
-      <PopoverAnchor virtualRef={anchorRef} />
+      {/* Frozen anchor: a fixed-position element at the trigger's open-time rect,
+          PORTALED to document.body so no transformed ancestor (the ReactFlow
+          viewport / NodeToolbar) re-bases its `position: fixed` — the anchor
+          stays at real viewport coords, so the popover freezes there through
+          canvas pan / zoom. createPortal preserves the Popover React context. */}
+      {frozenRect
+        ? createPortal(
+          <PopoverAnchor asChild>
+            <div
+              aria-hidden='true'
+              style={{
+                position: 'fixed',
+                left: frozenRect.left,
+                top: frozenRect.top,
+                width: frozenRect.width,
+                height: frozenRect.height,
+                pointerEvents: 'none',
+              }}
+            />
+          </PopoverAnchor>,
+          document.body,
+        )
+        : null}
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
