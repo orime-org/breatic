@@ -253,7 +253,7 @@ function ReferenceMentionChip({
         // align value: measured on the real machine to put the chip's
         // centerline exactly on the TEXT centerline (numeric vertical-align;
         // `align-middle` sat it ~1.2px low under Inter 13px metrics).
-        className='reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-content-xs border border-border bg-muted pl-1 align-[-1.25px] text-xs text-muted-foreground'
+        className='reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-content-xs border border-border bg-muted pl-1 align-[-1.25px] text-xs text-foreground'
         contentEditable={false}
       >
         {typeof thumbnail === 'string' && thumbnail.length > 0 ? (

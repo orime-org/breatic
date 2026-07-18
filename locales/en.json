@@ -319,7 +319,7 @@
       "emptyImageReference": "Not generated or uploaded yet",
       "emptyTextReference": "No content yet",
       "exit": "Exit",
-      "promptPlaceholder": "Describe the image you want to generate, @ to reference assets",
+      "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",
       "mentionEmpty": "No connected references — draw an edge from an image first",
       "selectFromCanvas": "Select a reference from the canvas",
       "selectStyleFromCanvas": "Select a style reference from the canvas",

@@ -312,7 +312,7 @@
       "emptyImageReference": "まだ生成・アップロードされていません",
       "emptyTextReference": "内容がありません",
       "exit": "終了",
-      "promptPlaceholder": "生成したい画像を説明してください。@ で素材を参照",
+      "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",
       "mentionEmpty": "参照できる画像がありません — まず画像から線をつないでください",
       "selectFromCanvas": "キャンバスから参照を選択",
       "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
