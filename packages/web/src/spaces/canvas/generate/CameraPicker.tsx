@@ -270,7 +270,8 @@ export const CameraPicker = React.memo(function CameraPicker({
               // This button is BOTH a TooltipTrigger and a PopoverTrigger:
               // suppress the tooltip's focus-open so closing the popover (Escape
               // returns focus here) doesn't pop a stray tooltip (web-frontend
-              // traps: "Tooltip 包 overlay 触发器 → 关闭后 tooltip 乱弹").
+              // traps: a Tooltip wrapping an overlay trigger pops a stray tip
+              // when Escape returns focus after closing the overlay).
               onFocusCapture={suppressTooltipFocusOpen}
               className={triggerClass}
             >
