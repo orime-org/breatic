@@ -409,22 +409,22 @@ function GeneratePanelBody({
     }
   }, [startFocusPick, endPick, nodeId]);
 
-  // End a running REFERENCE pick the moment the mode becomes t2i (adversarial
-  // round-2): t2i ignores image references and DISABLES the reference button, so
-  // a reference pick left running after a t2i switch is a zombie session — its
-  // banner lingers and its Exit trigger is disabled (which is what left keyboard
-  // focus stranded). A STYLE pick is exempt: style images SURVIVE t2i (#1664),
-  // and the Style button stays enabled — ending it on t2i would be wrong. The
-  // mode can flip locally or via a collaborator writing setNodeMode, so react to
-  // vm.mode, not just the local toggle.
+  // End a running FOCUS pick the moment the mode becomes t2i (adversarial
+  // round-2, narrowed #1788 batch-3 #1): a focus crop IS an image source, so the
+  // Focus button stays DISABLED in t2i — a focus pick left running after a t2i
+  // switch is a zombie session whose banner lingers with a disabled trigger
+  // (which strands keyboard focus). A REFERENCE pick is NOT ended here anymore:
+  // t2i no longer disables references, it text-scopes them (image sources dim,
+  // text stays pickable), so a reference pick started in i2i stays valid after a
+  // t2i flip — killing it would strand the user mid-pick. A STYLE pick is exempt
+  // too (style images survive t2i, #1664). The mode can flip locally or via a
+  // collaborator writing setNodeMode, so react to vm.mode, not just the toggle.
   React.useEffect(() => {
     const session = useCanvasStore.getState().pickSession;
     if (
       vm.mode === 't2i' &&
       session?.nodeId === nodeId &&
-      // Focus (#1782) feeds the same i2i source pool as Reference, so the
-      // same t2i flip strands it identically — one guard covers both.
-      (session.purpose === 'reference' || session.purpose === 'focus')
+      session.purpose === 'focus'
     ) {
       endPick();
     }
