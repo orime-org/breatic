@@ -1054,11 +1054,20 @@ function CanvasSpaceInner({
       warned = false;
     };
     /**
-     * Warns once as soon as the armed press moves past the drag threshold.
+     * Warns once as soon as the armed press moves past the drag threshold. A
+     * move with no button held disarms instead: it cannot be part of a drag, so
+     * this is the root safeguard against a stale armed origin — pointerup /
+     * pointercancel are not guaranteed to arrive (a mouse released OUTSIDE the
+     * window delivers no pointerup to the page, since a non-draggable node takes
+     * no pointer capture), and this closes that whole class regardless.
      * @param e - The pointermove event.
      */
     const onMove = (e: PointerEvent): void => {
       if (!start || warned) return;
+      if (e.buttons === 0) {
+        start = null;
+        return;
+      }
       if (
         Math.hypot(e.clientX - start.x, e.clientY - start.y) > DRAG_THRESHOLD
       ) {

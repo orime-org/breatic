@@ -41,53 +41,80 @@ SRC="$ROOT/packages/web/src"
 WRAPPER="$SRC/lib/toast.ts"
 [ -d "$SRC" ] || { echo "single-toast-entry: $SRC not found" >&2; exit 2; }
 
-# The `from 'sonner'` clause is present on an import line whatever the shape.
+# `from 'sonner'` is present on any sonner import whatever the shape (single-line,
+# multi-line `} from 'sonner'`, aliased, or `import * as sonner`).
 FROM_SONNER="from 'sonner'"
-# A `path:line:content` row is a comment (not real code) when its content starts
-# with a `//`, `*` (JSDoc body), or `/*` marker — used to drop mentions of the
-# banned string in comments so only actual imports are flagged.
-COMMENT_ROW=':[0-9]+:[[:space:]]*(//|\*|/\*)'
+# Whole-file comment strip (block comments — multi-line, non-greedy — then line
+# comments), so we test the import against what SURVIVES. Deciding comment-vs-code
+# by a line's leading token is unsound: `/* c */ import { toast } from 'sonner'`
+# OPENS with a comment but CONTINUES with a real import, and a block-comment
+# INTERIOR line need not start with `*`. Stripping first flags the real import
+# while a whole-line `/* ...from 'sonner'... */`, a JSDoc body, or a block interior
+# all lose their match and are correctly ignored.
+STRIP='s{/\*.*?\*/}{}gs; s{//[^\n]*}{}g'
+caught() { printf '%s' "$1" | perl -0777 -pe "$STRIP" 2>/dev/null | grep -qF "$FROM_SONNER"; }
 
 # Self-test 1 (known positive): the wrapper always imports from 'sonner'. If the
 # matcher can't see its own known positive, grep is broken (bad path/flag/renamed
 # file) and a "clean" verdict would be a false negative that silently lets direct
 # sonner imports into main. Refuse to report clean when the matcher is blind.
-if ! grep -qF "$FROM_SONNER" "$WRAPPER" 2>/dev/null; then
+if ! caught "$(cat "$WRAPPER" 2>/dev/null)"; then
   echo "single-toast-entry: matcher self-test FAILED — the wrapper ($WRAPPER)" >&2
   echo "  should import from 'sonner' but the matcher found none (moved/renamed?)." >&2
   exit 2
 fi
 
-# Self-test 2 (shapes): the old matcher silently missed multi-line and namespace
-# imports — a real merged bypass. Prove the new matcher KEEPS those import rows
-# and still DROPS comment rows before trusting a clean verdict.
-kept() { printf '%s\n' "$1" | grep -qvE "$COMMENT_ROW"; } # 0 = real code, 1 = comment
-if ! kept "f.ts:3:} from 'sonner';" \
-  || ! kept "f.ts:1:import * as sonner from 'sonner';" \
-  || kept "f.ts:9: * see: import { toast } from 'sonner'"; then
-  echo "single-toast-entry: shape self-test FAILED — the matcher misclassifies a" >&2
-  echo "  multi-line / namespace import or a comment; it would let a bypass into main." >&2
+# Self-test 2 (shapes): prove the strip-then-match CATCHES every real import shape
+# — including a comment-prefixed and a multi-line import (the two the old
+# `^import .*\btoast\b.* from 'sonner'` matcher silently missed) — and still DROPS
+# pure comments (line, JSDoc body, and a block-comment interior line that does NOT
+# start with `*`). These are the exact shapes the guard's own matcher-self-test
+# discipline previously overlooked.
+real_multiline=$'import {\n  toast,\n} from \'sonner\';'
+comment_prefixed="/* eslint-disable */ import { toast } from 'sonner';"
+jsdoc_body=$'/**\n * Then import { toast } from \'sonner\'.\n */'
+block_interior=$'/*\n  Historically we import { toast } from \'sonner\' here.\n*/'
+if ! caught "import { toast } from 'sonner';" \
+  || ! caught "$real_multiline" \
+  || ! caught "import * as sonner from 'sonner';" \
+  || ! caught "$comment_prefixed" \
+  || caught "// old: import { toast } from 'sonner'" \
+  || caught "$jsdoc_body" \
+  || caught "$block_interior" \
+  || caught "/* we used to import from 'sonner' */"; then
+  echo "single-toast-entry: shape self-test FAILED — the strip-then-match matcher" >&2
+  echo "  misclassifies a real import or a comment; it would let a bypass into main." >&2
   exit 2
 fi
 
-# Every non-exempt, non-comment line importing from 'sonner' is a bypass. See the
-# allowlist comment above for why each exempt path is legitimate.
-hits="$(grep -rnF "$FROM_SONNER" "$SRC" \
+# Every non-exempt file whose code (comments stripped) still imports from 'sonner'
+# is a bypass. See the allowlist comment above for why each exempt path is legit.
+files="$(grep -rlF "$FROM_SONNER" "$SRC" \
   --include='*.ts' --include='*.tsx' \
-  | grep -v '/lib/toast\.ts:' \
-  | grep -v '/components/ui/sonner\.tsx:' \
+  | grep -v '/lib/toast\.ts$' \
+  | grep -v '/components/ui/sonner\.tsx$' \
   | grep -v '/pages/_dev/' \
   | grep -v '/__tests__/' \
   | grep -v '\.test\.' \
   | grep -v '\.spec\.' \
-  | grep -vE "$COMMENT_ROW" \
   || true)"
 
-if [ -n "$hits" ]; then
+violating=""
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  if perl -0777 -pe "$STRIP" "$f" 2>/dev/null | grep -qF "$FROM_SONNER"; then
+    violating="$violating$f"$'\n'
+  fi
+done <<< "$files"
+
+if [ -n "$violating" ]; then
   echo "❌ single-toast-entry: 'sonner' imported outside the wrapper —" >&2
   echo "   route toasts through the wrapper: import { toast } from '@web/lib/toast'" >&2
   echo "   (it adds the semantic type + content de-dup id). Offending line(s):" >&2
-  echo "$hits" >&2
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    grep -nF "$FROM_SONNER" "$f" | sed "s#^#$f:#" >&2
+  done <<< "$violating"
   exit 1
 fi
 
