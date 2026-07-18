@@ -439,6 +439,72 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     warnSpy.mockRestore();
   });
 
+  it('a locked drag interrupted by pointercancel does NOT leak a spurious warn on a later move (#1788 adversarial C3)', () => {
+    // The Pointer Events spec ends an interrupted pointer with pointercancel
+    // (touch pan / palm-rejection / a native drag off the node) — NOT pointerup.
+    // If the armed origin is not cleared on cancel, a later unrelated move that
+    // happens to cross the threshold from the stale origin fires a wrong toast.
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'locked',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', locked: true },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
+    const ev = (type: string, x: number, y: number): MouseEvent =>
+      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+    act(() => {
+      el.dispatchEvent(ev('pointerdown', 10, 10));
+      window.dispatchEvent(ev('pointercancel', 10, 10));
+    });
+    // A later, unrelated move far past the threshold must NOT re-fire the warn.
+    act(() => {
+      window.dispatchEvent(ev('pointermove', 200, 200));
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('a connect-drag from a LOCKED node handle does NOT warn — connecting FROM a locked node is allowed (#1788 adversarial U3)', () => {
+    // Locking freezes mutations OF the node; connecting FROM it mutates the
+    // TARGET's reference pool, which the lock does not gate (onConnect has no
+    // lock term). So a press that starts on the connection handle is a connect
+    // gesture, not a move gesture — it must not trip the lock-drag warning.
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'locked',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', locked: true },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
+    const handle = el.querySelector('.react-flow__handle');
+    expect(handle).not.toBeNull();
+    const ev = (type: string, x: number, y: number): MouseEvent =>
+      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+    act(() => {
+      handle!.dispatchEvent(ev('pointerdown', 10, 10));
+      window.dispatchEvent(ev('pointermove', 40, 40));
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   // Style pick (#1664): a style reference is a URL COPY of an image node's
   // asset — so while style-picking only NON-EMPTY image nodes glow. Non-image
   // nodes, empty images (nothing to copy), and the target itself are dimmed.
