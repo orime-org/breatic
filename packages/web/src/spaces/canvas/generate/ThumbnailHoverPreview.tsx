@@ -6,9 +6,16 @@
  * hovering a reference-rail chip or a prompt `@` chip pops a larger preview —
  * the source image for an image reference, the text CONTENT for a text
  * reference. Reuses the shared shadcn Tooltip (no bespoke overlay) with a
- * content-sized surface. Self-contained `TooltipProvider` so it works inside
- * the TipTap NodeView (the `@` chip), whose React subtree may not sit under
- * App.tsx's global provider.
+ * content-sized surface.
+ *
+ * NO local `TooltipProvider` — it inherits the ONE app-level provider
+ * (App.tsx). The prompt `@` chip is a TipTap NodeView, but `@tiptap/react`
+ * mounts NodeViews via `ReactDOM.createPortal` into the editor's contentComponent
+ * (which sits under App.tsx), and a portal inherits React context — so the
+ * NodeView subtree DOES see the app provider. A local provider here (verified
+ * 2026-07-17 both by `@tiptap/react` v3 source and a real-browser probe of an
+ * `@` chip) was a cargo-culted assumption that split skip-delay grouping and
+ * overrode the calibrated delay; `lint:single-tooltip-provider` now guards it.
  */
 
 import * as React from 'react';
@@ -16,7 +23,6 @@ import * as React from 'react';
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 
@@ -99,35 +105,33 @@ export function ThumbnailHoverPreview({
   // NO tooltip rather than an empty box (batch-5 adversarial finding 2).
   if (!src && !text && !emptyHint && !resolveOnOpen) return <>{children}</>;
   return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip
-        onOpenChange={(open) => {
-          if (open && resolveOnOpen) setResolved(resolveOnOpen());
-        }}
+    <Tooltip
+      onOpenChange={(open) => {
+        if (open && resolveOnOpen) setResolved(resolveOnOpen());
+      }}
+    >
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent
+        side='top'
+        className='overflow-hidden border border-border bg-popover p-1'
       >
-        <TooltipTrigger asChild>{children}</TooltipTrigger>
-        <TooltipContent
-          side='top'
-          className='overflow-hidden border border-border bg-popover p-1'
-        >
-          {src ? (
-            <img
-              src={src}
-              alt={alt}
-              className='max-h-[220px] max-w-[220px] rounded-sm object-contain'
-              draggable={false}
-            />
-          ) : previewText ? (
-            <div className='max-h-[220px] max-w-[220px] overflow-hidden whitespace-pre-wrap p-1 text-xs text-popover-foreground'>
-              {previewText}
-            </div>
-          ) : previewHint ? (
-            <div className='px-2 py-1 text-xs text-muted-foreground'>
-              {previewHint}
-            </div>
-          ) : null}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+        {src ? (
+          <img
+            src={src}
+            alt={alt}
+            className='max-h-[220px] max-w-[220px] rounded-sm object-contain'
+            draggable={false}
+          />
+        ) : previewText ? (
+          <div className='max-h-[220px] max-w-[220px] overflow-hidden whitespace-pre-wrap p-1 text-xs text-popover-foreground'>
+            {previewText}
+          </div>
+        ) : previewHint ? (
+          <div className='px-2 py-1 text-xs text-muted-foreground'>
+            {previewHint}
+          </div>
+        ) : null}
+      </TooltipContent>
+    </Tooltip>
   );
 }

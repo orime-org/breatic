@@ -2,10 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render as baseRender, screen, fireEvent } from '@testing-library/react';
 
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
+
+// The rail's chips inherit the ONE app-level TooltipProvider at runtime
+// (App.tsx); supply the real Radix provider here (the data-state assertions
+// need it — a passthrough mock wouldn't stamp it).
+const render = (
+  ...args: Parameters<typeof baseRender>
+): ReturnType<typeof baseRender> =>
+  // wrapper option (not a manual wrap) so a later rerender() keeps the provider.
+  baseRender(args[0], { ...args[1], wrapper: TooltipProvider });
 
 const REFS: ReferenceRailItem[] = [
   {

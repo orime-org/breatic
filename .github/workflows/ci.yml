@@ -165,6 +165,17 @@ jobs:
         # scripts/lint-no-inline-scrollbar.sh.
         run: pnpm lint:no-inline-scrollbar
 
+      - name: Lint single tooltip provider (one app-level provider)
+        # The app mounts exactly ONE <TooltipProvider> (App.tsx); its
+        # delayDuration is the calibrated timing every tooltip shares, and
+        # Radix skip-delay grouping works only within one provider. A
+        # component nesting its own provider overrides the timing and splits
+        # skip-delay — the bug that shipped twice (GenerateToolbar 300ms #337,
+        # ThumbnailHoverPreview 200ms). Tooltips inherit the app provider;
+        # TipTap NodeViews too (createPortal inherits context). See
+        # scripts/lint-single-tooltip-provider.sh.
+        run: pnpm lint:single-tooltip-provider
+
       - name: Lint overlay surface (popover panel unification)
         # Every popover/overlay panel surface uses bg-popover (tooltip inverse
         # is the only exception): bans bg-elevated / bg-card as a panel bg in

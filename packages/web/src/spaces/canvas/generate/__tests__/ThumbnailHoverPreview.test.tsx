@@ -2,9 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render as baseRender } from '@testing-library/react';
 
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
+
+// The component inherits the ONE app-level TooltipProvider at runtime (App.tsx)
+// and no longer nests its own (single-provider mandate). Supply that provider
+// here — the real Radix one, since these tests assert the Radix trigger stamps
+// `data-state` (a passthrough mock wouldn't).
+const render = (
+  ...args: Parameters<typeof baseRender>
+): ReturnType<typeof baseRender> =>
+  // wrapper option (not a manual <TooltipProvider> wrap) so a later rerender()
+  // keeps the provider too — testing-library re-applies the wrapper on rerender.
+  baseRender(args[0], { ...args[1], wrapper: TooltipProvider });
 
 // A Radix TooltipTrigger stamps `data-state` on its (asChild) trigger element;
 // a short-circuited preview renders the child untouched. So `data-state` present
