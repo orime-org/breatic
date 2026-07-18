@@ -8,6 +8,7 @@ import type { ModelEntry } from '@breatic/shared';
 
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
@@ -18,7 +19,7 @@ import {
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
-import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
+import { useFrozenPopoverAnchor } from '@web/spaces/canvas/generate/use-frozen-popover-anchor';
 
 /** The camera-cluster params this control edits (all on `data.params`, #1788). */
 export interface CameraValue {
@@ -67,8 +68,10 @@ interface GlyphProps {
  */
 function Glyph({ glyph, value }: GlyphProps): React.JSX.Element {
   if (glyph === 'num') {
+    // Muted grey to match the SVG glyphs' line colour (user 2026-07-18) — the
+    // big number was the only bright-white element, breaking the grayscale set.
     return (
-      <span className='text-[38px] font-semibold leading-none tracking-tight text-foreground'>
+      <span className='text-[38px] font-semibold leading-none tracking-tight text-muted-foreground'>
         {value}
       </span>
     );
@@ -162,13 +165,7 @@ function CameraWheel({
   };
   const nameLabel = value === undefined ? '' : `${value}${unit ?? ''}`;
   return (
-    <div
-      className='flex flex-col items-center'
-      onWheel={(e) => {
-        e.preventDefault();
-        move(e.deltaY > 0 ? 1 : -1);
-      }}
-    >
+    <div className='flex flex-col items-center'>
       <button
         type='button'
         aria-label={`${cap} ▲`}
@@ -241,23 +238,23 @@ export const CameraPicker = React.memo(function CameraPicker({
   onChange,
 }: CameraPickerProps): React.JSX.Element {
   const t = useTranslation();
-  const [open, setOpen] = React.useState(false);
+  // Freeze the popover at its open-time position (does not follow canvas pan/zoom).
+  const { open, onOpenChange, anchorRef } =
+    useFrozenPopoverAnchor('generate-camera');
   const enabled = value.enable_camera === true;
-  // Keep the popover glued to its trigger while the canvas pans / zooms.
-  useFollowCanvasViewport(open);
 
-  // On → inverted fill (bg-foreground text-background), the same active-state
-  // language as the toolbar's Style/Reference toggles (GenerateToolbar
-  // TOOL_ACTIVE): the footer icon reads as "camera on" at a glance. Off → muted.
   const triggerClass =
     'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border transition-colors ' +
     'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
     (enabled
-      ? ' bg-foreground text-background'
+      ? ' text-foreground hover:bg-accent'
       : ' text-muted-foreground hover:bg-accent hover:text-foreground');
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
+      {/* Frozen anchor: the popover positions relative to the trigger's rect
+          snapshotted at open time, so it stays put as the canvas pans / zooms. */}
+      <PopoverAnchor virtualRef={anchorRef} />
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -280,6 +277,10 @@ export const CameraPicker = React.memo(function CameraPicker({
       <PopoverContent
         side='top'
         align='center'
+        // Freeze on open (user 2026-07-18): no collision flip/shift — the popover
+        // stays put and clips at the screen edge like the generate panel, instead
+        // of jumping when it nears a viewport border.
+        avoidCollisions={false}
         aria-label={t('canvas.generatePanel.camera')}
         className='w-[min(520px,88vw)] p-4'
       >

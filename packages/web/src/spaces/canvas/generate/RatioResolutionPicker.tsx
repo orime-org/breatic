@@ -8,11 +8,12 @@ import type { ModelEntry } from '@breatic/shared';
 
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
-import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
+import { useFrozenPopoverAnchor } from '@web/spaces/canvas/generate/use-frozen-popover-anchor';
 
 /** The subset of generate params this picker edits. */
 interface RatioResolutionValue {
@@ -60,9 +61,10 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   onChange,
 }: RatioResolutionPickerProps): React.JSX.Element {
   const t = useTranslation();
-  const [open, setOpen] = React.useState(false);
-  // Keep the popover glued to its trigger while the canvas pans / zooms.
-  useFollowCanvasViewport(open);
+  // Freeze the popover at its open-time position (does not follow canvas pan/zoom).
+  const { open, onOpenChange, anchorRef } = useFrozenPopoverAnchor(
+    'generate-ratio-trigger',
+  );
   const ratios = paramValues(model, 'aspect_ratio');
   const resolutions = paramValues(model, 'resolution');
   const label = [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ');
@@ -74,7 +76,10 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
     'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
     'aria-[current=true]:border-active-border aria-[current=true]:bg-accent';
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
+      {/* Frozen anchor: positions relative to the trigger rect snapshotted at
+          open time, so the popover stays put as the canvas pans / zooms. */}
+      <PopoverAnchor virtualRef={anchorRef} />
       <PopoverTrigger asChild>
         <button
           type='button'
@@ -95,6 +100,9 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
       <PopoverContent
         side='top'
         align='center'
+        // Freeze on open (user 2026-07-18): no collision flip/shift — clips at
+        // the screen edge like the generate panel instead of jumping near a border.
+        avoidCollisions={false}
         aria-label={t('canvas.generatePanel.ratio')}
         className='w-64 p-3'
       >

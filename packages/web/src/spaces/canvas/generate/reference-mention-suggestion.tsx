@@ -32,11 +32,22 @@ import {
  * @param input.getPool - Reads the CURRENT reference pool (incoming edges); a
  *   getter so the editor need not rebuild when the pool changes.
  * @param input.emptyLabel - Localized empty-state text for the popup.
+ * @param input.imageRefsDisabled - Live getter; when it returns true (t2i),
+ *   image references are excluded from the picker. Optional (default: keep all).
  * @returns The suggestion options (without `editor`, supplied by the extension).
  */
 export function makeReferenceSuggestion(input: {
   getPool: () => ReferenceRailItem[];
   emptyLabel: string;
+  /**
+   * Whether source-image references are inert (text-to-image ignores source
+   * images). Read live so a mode toggle takes effect without rebuilding the
+   * editor. When it returns true, image rows are excluded from the `@` picker so
+   * t2i never offers an image reference (user 2026-07-18) — matching the rail,
+   * which dims the same rows. Text references stay (they feed the prompt in
+   * every mode). Optional; omitted (or false) keeps all connectable refs.
+   */
+  imageRefsDisabled?: () => boolean;
 }): Omit<SuggestionOptions<ReferenceRailItem>, 'editor'> {
   return {
     char: '@',
@@ -48,6 +59,7 @@ export function makeReferenceSuggestion(input: {
     allowedPrefixes: null,
     items: ({ query }): ReferenceRailItem[] => {
       const q = query.toLowerCase();
+      const hideImages = input.imageRefsDisabled?.() ?? false;
       return input
         .getPool()
         // Connection rules (spec §9.1): new incompatible wires are rejected at
@@ -57,6 +69,10 @@ export function makeReferenceSuggestion(input: {
         // execute ("no source image"). The rail still lists the legacy row so
         // the user can see and remove it.
         .filter((r) => canConnect(r.sourceNodeType, 'image'))
+        // Text-to-image ignores source images, so image references are invalid:
+        // exclude them from the `@` picker (user 2026-07-18) — with only images
+        // in the pool the picker never opens. Text refs still feed the prompt.
+        .filter((r) => !(hideImages && r.sourceNodeType === 'image'))
         .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
         .slice(0, 8);
     },

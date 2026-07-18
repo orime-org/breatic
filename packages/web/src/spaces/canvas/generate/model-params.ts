@@ -38,19 +38,27 @@ function resolveParamValue(
 /**
  * Reconciles the current Generate params against a (possibly newly selected)
  * model: for every param the model defines, keep the current value if valid
- * else use the model's default; params the model does not define are dropped.
+ * else use the model's default. Params the model does NOT define are PRESERVED
+ * as-is (user 2026-07-18): a param set lives in `node.data.params` independent
+ * of which model is active, so switching to a model that lacks it (e.g. camera
+ * knobs → Midjourney) and back does not lose the value — only models that
+ * declare a param read it, and the worker's `validateParams` drops any param
+ * the target model does not declare at generation time (no leak to the provider).
  * @param model - The model whose param set to reconcile against.
  * @param current - The current param selection (from `node.data.params`).
- * @returns A new params object valid for the given model.
+ * @returns A new params object: reconciled declared params + preserved others.
  */
 export function resolveParamsForModel(
   model: ModelEntry,
   current: Record<string, unknown>,
 ): Record<string, unknown> {
-  const next: Record<string, unknown> = {};
+  // Start from the full current set so params the new model does not declare
+  // survive the switch (they stay in Yjs, dormant until a model that reads them
+  // is selected again).
+  const next: Record<string, unknown> = { ...current };
   // model.params is trusted (the catalog is sanitized at the API boundary): it
   // is always a Record<string, ParamDescriptor>. A model with no param set
-  // simply yields no params.
+  // leaves the current params untouched.
   for (const [key, descriptor] of Object.entries(model.params)) {
     next[key] = resolveParamValue(descriptor, current[key]);
   }
