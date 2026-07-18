@@ -3,13 +3,11 @@
 
 import { Camera, ChevronUp, ChevronDown } from 'lucide-react';
 import * as React from 'react';
-import { createPortal } from 'react-dom';
 
 import type { ModelEntry } from '@breatic/shared';
 
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
@@ -19,8 +17,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
-import { useFrozenPopoverAnchor } from '@web/spaces/canvas/generate/use-frozen-popover-anchor';
+import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The camera-cluster params this control edits (all on `data.params`, #1788). */
 export interface CameraValue {
@@ -239,9 +238,10 @@ export const CameraPicker = React.memo(function CameraPicker({
   onChange,
 }: CameraPickerProps): React.JSX.Element {
   const t = useTranslation();
-  // Freeze the popover at its open-time position (does not follow canvas pan/zoom).
-  const { open, onOpenChange, frozenRect } =
-    useFrozenPopoverAnchor('generate-camera');
+  const [open, setOpen] = React.useState(false);
+  // Keep the popover glued to its trigger as the canvas pans / zooms, matching
+  // the generate panel (a ReactFlow NodeToolbar that tracks its node).
+  useFollowCanvasViewport(open);
   const enabled = value.enable_camera === true;
 
   const triggerClass =
@@ -252,30 +252,7 @@ export const CameraPicker = React.memo(function CameraPicker({
       : ' text-muted-foreground hover:bg-accent hover:text-foreground');
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      {/* Frozen anchor: a fixed-position element at the trigger's open-time rect,
-          PORTALED to document.body so no transformed ancestor (the ReactFlow
-          viewport / NodeToolbar) re-bases its `position: fixed` — the anchor
-          stays at real viewport coords, so the popover freezes there through
-          canvas pan / zoom. createPortal preserves the Popover React context. */}
-      {frozenRect
-        ? createPortal(
-          <PopoverAnchor asChild>
-            <div
-              aria-hidden='true'
-              style={{
-                position: 'fixed',
-                left: frozenRect.left,
-                top: frozenRect.top,
-                width: frozenRect.width,
-                height: frozenRect.height,
-                pointerEvents: 'none',
-              }}
-            />
-          </PopoverAnchor>,
-          document.body,
-        )
-        : null}
+    <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -283,6 +260,11 @@ export const CameraPicker = React.memo(function CameraPicker({
               type='button'
               data-testid='generate-camera'
               aria-label={t('canvas.generatePanel.camera')}
+              // This button is BOTH a TooltipTrigger and a PopoverTrigger:
+              // suppress the tooltip's focus-open so closing the popover (Escape
+              // returns focus here) doesn't pop a stray tooltip (web-frontend
+              // traps: "Tooltip 包 overlay 触发器 → 关闭后 tooltip 乱弹").
+              onFocusCapture={suppressTooltipFocusOpen}
               className={triggerClass}
             >
               <Camera className='h-4 w-4' aria-hidden='true' />

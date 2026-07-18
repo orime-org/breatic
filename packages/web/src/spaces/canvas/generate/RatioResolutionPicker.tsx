@@ -3,18 +3,16 @@
 
 import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
-import { createPortal } from 'react-dom';
 
 import type { ModelEntry } from '@breatic/shared';
 
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
-import { useFrozenPopoverAnchor } from '@web/spaces/canvas/generate/use-frozen-popover-anchor';
+import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
 interface RatioResolutionValue {
@@ -62,10 +60,10 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   onChange,
 }: RatioResolutionPickerProps): React.JSX.Element {
   const t = useTranslation();
-  // Freeze the popover at its open-time position (does not follow canvas pan/zoom).
-  const { open, onOpenChange, frozenRect } = useFrozenPopoverAnchor(
-    'generate-ratio-trigger',
-  );
+  const [open, setOpen] = React.useState(false);
+  // Keep the popover glued to its trigger as the canvas pans / zooms, matching
+  // the generate panel (a ReactFlow NodeToolbar that tracks its node).
+  useFollowCanvasViewport(open);
   const ratios = paramValues(model, 'aspect_ratio');
   const resolutions = paramValues(model, 'resolution');
   const label = [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ');
@@ -77,28 +75,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
     'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
     'aria-[current=true]:border-active-border aria-[current=true]:bg-accent';
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      {/* Frozen anchor at the trigger's open-time rect, PORTALED to document.body
-          so no transformed ancestor re-bases its `position: fixed` — freezes the
-          popover through canvas pan / zoom (createPortal preserves context). */}
-      {frozenRect
-        ? createPortal(
-          <PopoverAnchor asChild>
-            <div
-              aria-hidden='true'
-              style={{
-                position: 'fixed',
-                left: frozenRect.left,
-                top: frozenRect.top,
-                width: frozenRect.width,
-                height: frozenRect.height,
-                pointerEvents: 'none',
-              }}
-            />
-          </PopoverAnchor>,
-          document.body,
-        )
-        : null}
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type='button'

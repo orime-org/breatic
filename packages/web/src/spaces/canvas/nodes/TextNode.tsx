@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import { toast } from 'sonner';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
+import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
@@ -94,7 +94,7 @@ export const TextNode = React.memo(function TextNode({
       'editContent',
     );
     if (block) {
-      toast.warning(t(block.toastKey));
+      warnNodeGate(t(block.toastKey));
       return;
     }
     setEditing(true);
@@ -117,7 +117,7 @@ export const TextNode = React.memo(function TextNode({
       'editContent',
     );
     if (block) {
-      toast.warning(t(block.toastKey));
+      warnNodeGate(t(block.toastKey));
       setEditing(false);
       return;
     }

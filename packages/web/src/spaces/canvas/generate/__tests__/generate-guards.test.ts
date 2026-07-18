@@ -31,8 +31,11 @@ describe('canExecuteGenerate — every execute precondition must hold', () => {
     expect(canExecuteGenerate({ ...ok, model: '' })).toBe(false);
   });
 
-  it('is false while the node is already handling (busy)', () => {
-    expect(canExecuteGenerate({ ...ok, nodeStatus: 'handling' })).toBe(false);
+  it('stays executable while handling — the click surfaces the gate toast (user 2026-07-18)', () => {
+    // handling no longer greys the button; clicking it hits the node-state gate,
+    // which shows the handling warn-toast (same pattern as a locked node) rather
+    // than a silently-disabled button. The gate still blocks the actual submit.
+    expect(canExecuteGenerate({ ...ok, nodeStatus: 'handling' })).toBe(true);
   });
 
   it('is false when the node no longer exists (status undefined = deleted)', () => {
