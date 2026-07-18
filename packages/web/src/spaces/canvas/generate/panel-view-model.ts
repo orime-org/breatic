@@ -77,8 +77,9 @@ export interface GeneratePanelViewModel {
   styleSupported: boolean;
   /**
    * Whether the active model declares the `camera` param cluster on the wire
-   * (#1788) → the Camera control is usable. Gates the footer Camera button
-   * (greyed-disabled when false). False when no model resolved.
+   * (#1788) → the Camera control is usable. Gates whether the footer Camera
+   * button is RENDERED (hidden when false, not greyed — GeneratePanel renders
+   * it only when true). False when no model resolved.
    */
   cameraSupported: boolean;
   /**
@@ -306,7 +307,8 @@ export function buildGeneratePanelViewModel(input: {
     styleSupported: current ? current.params.style_images != null : false,
     // Capability gate (#1788): the model declares the `camera` cluster on the
     // wire → it can take camera/lens/focal/aperture simulation. Edit variants
-    // omit it, so `params.camera` is undefined and the Camera control greys out.
+    // omit it, so `params.camera` is undefined and the Camera control is hidden
+    // (rendered only when supported, unlike the greyed-disabled Style button).
     cameraSupported: current ? current.params.camera != null : false,
     // `?? 0` covers only the model-not-found case (empty catalog / stale model);
     // when current is found, cost_per_call is a trusted number (boundary).

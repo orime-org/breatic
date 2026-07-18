@@ -13,7 +13,9 @@ import { Toaster as Sonner, type ToasterProps } from 'sonner';
  *   <App>...</App>
  *   <Toaster richColors closeButton position="bottom-right" />
  *
- * Then `import { toast } from 'sonner'` and call `toast(...)` anywhere.
+ * Then fire toasts through the wrapper — `import { toast } from '@web/lib/toast'`
+ * (typed + content-deduped) — NEVER straight from 'sonner'; the
+ * `lint:single-toast-entry` guard forbids the direct import (see lib/toast.ts).
  */
 function useDataTheme(): 'light' | 'dark' {
   const [theme, setTheme] = React.useState<'light' | 'dark'>(() => {

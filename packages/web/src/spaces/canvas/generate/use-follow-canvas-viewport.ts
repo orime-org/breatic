@@ -18,9 +18,10 @@ import * as React from 'react';
  * It observes the viewport element's `style` mutations and, coalesced to one
  * per animation frame, dispatches a `resize` so Floating UI recomputes the
  * popover position from the trigger's live rect — the popover follows the node
- * at a fixed screen size. Inert while closed. The dispatch only nudges open
- * Radix floats to reposition (this mode has no heavy window-resize listeners),
- * and it no-ops outside a canvas (e.g. in unit tests the element is absent).
+ * at a fixed screen size. Inert while closed. The dispatch nudges open Radix
+ * floats to reposition; xyflow's own window-resize handler also fires but is
+ * idempotent when the container size is unchanged. It no-ops outside a canvas
+ * (e.g. in unit tests the element is absent).
  * @param open - Whether the popover is open (the follow is inert when closed).
  */
 export function useFollowCanvasViewport(open: boolean): void {
@@ -37,7 +38,10 @@ export function useFollowCanvasViewport(open: boolean): void {
     });
     observer.observe(viewport, {
       attributes: true,
-      attributeFilter: ['style', 'transform'],
+      // ReactFlow applies pan/zoom as an inline `transform` inside the `style`
+      // attribute, so watching `style` alone catches every viewport move (a div
+      // has no standalone `transform` attribute — that exists only on SVG).
+      attributeFilter: ['style'],
     });
     return () => {
       observer.disconnect();
