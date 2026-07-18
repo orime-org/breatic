@@ -89,6 +89,12 @@ export interface GeneratePanelViewModel {
    */
   styleSupported: boolean;
   /**
+   * Whether the active model declares the `camera` param cluster on the wire
+   * (#1788) → the Camera control is usable. Gates the footer Camera button
+   * (greyed-disabled when false). False when no model resolved.
+   */
+  cameraSupported: boolean;
+  /**
    * The node's focus crops (#1782) — standalone copies stored on the node
    * (`data.focusImages`, zero upstream relationship). Rendered as the rail's
    * focus entries and offered in the @ mention pool; a crop reaches the
@@ -311,6 +317,10 @@ export function buildGeneratePanelViewModel(input: {
     // it can take a style reference. Config decides which models (t2i and/or
     // edit) support style; the frontend only reads the capability.
     styleSupported: current ? current.params.style_images != null : false,
+    // Capability gate (#1788): the model declares the `camera` cluster on the
+    // wire → it can take camera/lens/focal/aperture simulation. Edit variants
+    // omit it, so `params.camera` is undefined and the Camera control greys out.
+    cameraSupported: current ? current.params.camera != null : false,
     // `?? 0` covers only the model-not-found case (empty catalog / stale model);
     // when current is found, cost_per_call is a trusted number (boundary).
     creditEstimate: current?.cost_per_call ?? 0,
