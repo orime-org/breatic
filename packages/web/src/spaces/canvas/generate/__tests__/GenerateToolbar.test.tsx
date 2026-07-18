@@ -78,9 +78,12 @@ describe('GenerateToolbar — Style / Focus / Reference are the three live tools
     expect(onStyle).toHaveBeenCalledTimes(1);
   });
 
-  it('disables Reference when referenceDisabled is set (text-to-image, §2.5)', () => {
-    setup({ referenceDisabled: true });
-    expect(screen.getByTestId('generate-tool-reference')).toBeDisabled();
+  it('Reference is available in both modes — the button never disables (#1788 batch-3 #1)', () => {
+    // Text-to-image scopes the reference PICK to text sources (the canvas pick
+    // rejects image nodes), but the button itself stays enabled so you can
+    // always enter the pick. (It was disabled in t2i before #1788 batch-3.)
+    setup();
+    expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
   });
 
   it('tooltips inherit the surrounding provider timing — no nested TooltipProvider (user 2026-07-17)', () => {
@@ -129,10 +132,11 @@ describe('GenerateToolbar — Style / Focus / Reference are the three live tools
   });
 
   it('Style is gated on the MODEL capability, not the mode (#1664)', () => {
-    // Reference is disabled in t2i, but style survives every mode — only a
-    // model without style_images disables the Style pick.
-    setup({ referenceDisabled: true, styleDisabled: true });
-    expect(screen.getByTestId('generate-tool-reference')).toBeDisabled();
+    // Style survives every mode — only a model without style_images disables the
+    // Style pick. Reference is available in both modes (#1788 batch-3 #1), so
+    // its button stays enabled regardless.
+    setup({ styleDisabled: true });
+    expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
     expect(screen.getByTestId('generate-tool-style')).toBeDisabled();
   });
 

@@ -135,6 +135,10 @@ export const PromptEditor = React.forwardRef<
   // the CURRENT pool without recreating the editor.
   const poolRef = React.useRef(references);
   poolRef.current = references;
+  // Live mode ref (same pattern as poolRef): the `@` suggestion reads it to
+  // exclude image references in t2i without rebuilding the editor on toggle.
+  const modeRef = React.useRef(mode);
+  modeRef.current = mode;
   const editor = useEditor(
     {
       extensions: [
@@ -175,10 +179,14 @@ export const PromptEditor = React.forwardRef<
           suggestion: makeReferenceSuggestion({
             getPool: () => poolRef.current,
             emptyLabel: mentionEmptyLabel,
+            // t2i ignores source images → exclude image refs from the `@` picker.
+            imageRefsDisabled: () => modeRef.current === 't2i',
           }),
           // The chip's text-reference hover resolves live content through the
           // same pool ref (spec §9.1).
           getPool: () => poolRef.current,
+          // t2i → an image chip's hover preview greys out (unavailable).
+          getImageRefsDisabled: () => modeRef.current === 't2i',
         }),
       ],
       immediatelyRender: false,

@@ -40,6 +40,13 @@ models:
         type: "list"
         max_items: 1
         default: null
+      # Master gate for the camera/lens/focal/aperture simulation. Opt-in
+      # (default false) so a generation only carries a `technical` block when
+      # the user explicitly turns the Camera control on.
+      enable_camera:
+        description: "Apply the camera/lens/focal/aperture simulation"
+        values: [true, false]
+        default: false
       camera:
         description: "Camera body style simulation"
         values: ["ARRI Alexa 35", "ARRI Alexa Mini", "Arricam LT", "RED V-Raptor", "Sony Venice", "Panavision DXL2", "Sony A7 IV", "Canon EOS R5", "Hasselblad X2D", "Leica M6", "Fujifilm X100V", "GoPro Hero", "iPhone"]
@@ -89,6 +96,11 @@ models:
       # style-reference category — only Gemini 3 Pro Image takes style images.
       enable_web_search:
         description: "Enable web search for better results"
+        values: [true, false]
+        default: false
+      # Master gate for the camera/lens/focal/aperture simulation (opt-in).
+      enable_camera:
+        description: "Apply the camera/lens/focal/aperture simulation"
         values: [true, false]
         default: false
       camera:

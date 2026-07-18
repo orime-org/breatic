@@ -147,14 +147,16 @@ describe('buildGeneratePanelViewModel', () => {
     expect(i2iVm.models.map((m) => m.name)).toEqual(['mj-i2i', 'nano-edit']);
   });
 
-  it('resolves params against the current model (keeps valid, fills defaults)', () => {
+  it('resolves params against the current model (keeps valid, fills defaults, preserves undeclared)', () => {
     const nodes = [
       node('n1', imageView({ model: 'flux', params: { aspect_ratio: '16:9', bogus: 'x' } })),
     ];
     const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.params.aspect_ratio).toBe('16:9'); // kept — valid
     expect(vm.params.resolution).toBe('1k'); // filled from model default
-    expect(vm.params.bogus).toBeUndefined(); // dropped — model has no such param
+    // Undeclared params persist (user 2026-07-18): they live in the node
+    // independent of model so a switch away and back does not lose them.
+    expect(vm.params.bogus).toBe('x');
   });
 
   it('i2i sends ONLY @-mentioned reference URLs (subset of the rail)', () => {
@@ -571,7 +573,7 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
     expect(r.model).toBe('nano-i2i'); // remembered i2i pick beats list order
   });
 
-  it('reconciles params against the resolved model (keeps valid, drops unknown)', () => {
+  it('reconciles params against the resolved model (keeps valid, preserves undeclared)', () => {
     const r = resolveModeSwitch(
       { modelByMode: {}, params: { aspect_ratio: '16:9', bogus: 'x' } },
       't2i',
@@ -579,7 +581,8 @@ describe('resolveModeSwitch — model + params to persist on a mode toggle', () 
     );
     expect(r.model).toBe('flux-t2i');
     expect(r.params.aspect_ratio).toBe('16:9'); // kept — valid for the model
-    expect(r.params.bogus).toBeUndefined(); // dropped — model has no such param
+    // Undeclared params persist across the mode/model switch (user 2026-07-18).
+    expect(r.params.bogus).toBe('x');
   });
 
   it('yields an empty model when the target mode offers nothing', () => {

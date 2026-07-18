@@ -67,6 +67,7 @@ function setup(
       stylePicking={false}
       onClearStyle={() => {}}
       styleSupported
+      cameraSupported={false}
       onFocus={() => {}}
       focusPicking={false}
       onExecute={() => {}}
@@ -104,9 +105,18 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
   it('renders the unbuilt footer controls as disabled placeholders (岔路二 B)', () => {
     setup();
     expect(screen.getByTestId('generate-presets')).toBeDisabled();
-    expect(screen.getByTestId('generate-camera')).toBeDisabled();
     expect(screen.getByTestId('generate-online')).toBeDisabled();
     expect(screen.getByTestId('generate-translate')).toBeDisabled();
+  });
+
+  it('hides the Camera control when the model omits the cluster (#1788 — unsupported → hidden, not greyed)', () => {
+    setup({ cameraSupported: false });
+    expect(screen.queryByTestId('generate-camera')).toBeNull();
+  });
+
+  it('renders the Camera control when the model declares the cluster (#1788)', () => {
+    setup({ cameraSupported: true });
+    expect(screen.getByTestId('generate-camera')).toBeInTheDocument();
   });
 
   it('fires onExit when the exit button is clicked', () => {
@@ -144,9 +154,9 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(onToggleMode).toHaveBeenCalledWith('i2i');
   });
 
-  it('disables the reference add-button in t2i (§2.5)', () => {
+  it('keeps the reference add-button ENABLED in t2i — the pick is scoped to text, not disabled (#1788 batch-3 #1)', () => {
     setup({ mode: 't2i' });
-    expect(screen.getByTestId('generate-tool-reference')).toBeDisabled();
+    expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
   });
 
   it('enables the reference add-button in i2i', () => {
@@ -154,7 +164,7 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
   });
 
-  it('gates Focus with the mode exactly like Reference (#1782 — same i2i pool)', () => {
+  it('disables Focus in t2i — a focus crop is an image source (#1782 / #1788 batch-3 #1)', () => {
     setup({ mode: 't2i' });
     expect(screen.getByTestId('generate-tool-focus')).toBeDisabled();
   });

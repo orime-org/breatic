@@ -144,47 +144,55 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     listSpy.mockRestore();
   });
 
-  // Pick ends on a t2i switch (adversarial round-2): t2i ignores references
-  // and disables the reference button, so a pick left running after the mode
-  // flips to t2i is a zombie session (its Exit trigger disabled = the stranded
-  // focus). vm.mode drives it, so a collaborator's setNodeMode ends it too.
-  it('ends a running reference pick when the node mode becomes t2i', async () => {
-    const emptyCatalog = {
-      image: [],
-      video: [],
-      audio: [],
-      tts: [],
-      three_d: [],
-      understand: [],
-      total: 0,
-    };
-    const listSpy = vi
-      .spyOn(modelsApi, 'list')
-      .mockResolvedValue(emptyCatalog);
+  /**
+   * Renders the container with the target node in the given mode (shared by the
+   * two zombie-guard cases below). An empty catalog keeps vm.mode resolving off
+   * the node's stored `mode` alone.
+   * @param client - The query client.
+   * @param mode - The node's generation sub-mode.
+   * @returns The render tree.
+   */
+  const modeTree = (
+    client: QueryClient,
+    mode: 'i2i' | 't2i',
+  ): React.JSX.Element => (
+    <QueryClientProvider client={client}>
+      <ReactFlow
+        nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
+        edges={[]}
+      >
+        <GeneratePanelContainer
+          projectId='p'
+          spaceId='s'
+          nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode } }]}
+          edges={[]}
+        />
+      </ReactFlow>
+    </QueryClientProvider>
+  );
+
+  const EMPTY_CATALOG = {
+    image: [],
+    video: [],
+    audio: [],
+    tts: [],
+    three_d: [],
+    understand: [],
+    total: 0,
+  };
+
+  // Reference pick SURVIVES a t2i switch (#1788 batch-3 #1): t2i no longer
+  // DISABLES the reference button — references are text-scoped there (image
+  // sources dim, text stays pickable), so a reference pick started in i2i stays
+  // valid after a flip to t2i. Ending it would strand the user mid-pick. The
+  // pre-#1788-batch-3 guard killed it here on the (now-false) premise that t2i
+  // disables references; Focus is the one that still ends (next test).
+  it('KEEPS a running reference pick when the node mode becomes t2i (references are text-scoped, #1788 batch-3 #1)', async () => {
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(EMPTY_CATALOG);
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    /**
-     * Renders the container with the target node in the given mode.
-     * @param mode - The node's generation sub-mode.
-     * @returns The render tree.
-     */
-    const tree = (mode: 'i2i' | 't2i'): React.JSX.Element => (
-      <QueryClientProvider client={client}>
-        <ReactFlow
-          nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
-          edges={[]}
-        >
-          <GeneratePanelContainer
-            projectId='p'
-            spaceId='s'
-            nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode } }]}
-            edges={[]}
-          />
-        </ReactFlow>
-      </QueryClientProvider>
-    );
-    const { rerender } = render(tree('i2i'));
+    const { rerender } = render(modeTree(client, 'i2i'));
     act(() => {
       useCanvasStore.getState().openGeneratePanel('target');
       useCanvasStore.getState().startReferencePick('target');
@@ -192,8 +200,35 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     await waitFor(() =>
       expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target'),
     );
-    // Mode flips to t2i (local toggle or a collaborator's setNodeMode).
-    rerender(tree('t2i'));
+    // Mode flips to t2i (local toggle or a collaborator's setNodeMode) — the
+    // reference pick must NOT be terminated.
+    rerender(modeTree(client, 't2i'));
+    // Give the mode effect a chance to (wrongly) fire, then assert it did not.
+    await waitFor(() =>
+      expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target'),
+    );
+    expect(useCanvasStore.getState().pickSession?.purpose).toBe('reference');
+    listSpy.mockRestore();
+  });
+
+  // Focus pick still ENDS on a t2i switch: a focus crop IS an image source, so
+  // the Focus button stays disabled in t2i — a focus pick left running would
+  // strand its banner + keyboard focus (the original zombie-guard case). Driven
+  // by vm.mode so a collaborator's setNodeMode ends it too.
+  it('ends a running FOCUS pick when the node mode becomes t2i (focus stays image-only)', async () => {
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(EMPTY_CATALOG);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { rerender } = render(modeTree(client, 'i2i'));
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target');
+      useCanvasStore.getState().startFocusPick('target');
+    });
+    await waitFor(() =>
+      expect(useCanvasStore.getState().pickSession?.purpose).toBe('focus'),
+    );
+    rerender(modeTree(client, 't2i'));
     await waitFor(() =>
       expect(useCanvasStore.getState().pickSession).toBeNull(),
     );

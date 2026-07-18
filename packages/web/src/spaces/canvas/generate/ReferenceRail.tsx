@@ -92,13 +92,20 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             key={ref.refId}
             role='listitem'
             data-testid={`generate-ref-${ref.refId}`}
-            className={`group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5 ${inert ? 'opacity-50' : ''}`}
+            // The dim (t2i inert image row) is applied EXPLICITLY on the visible
+            // elements — the insert button, the remove button, and the hover
+            // preview's `dimmed` — NOT as an ancestor `opacity` on this row.
+            // An ancestor opacity would also dim the (non-portaled, inline)
+            // ThumbnailHoverPreview tooltip via inheritance, which the chip
+            // cannot match; both now use the explicit `dimmed` mechanism.
+            className='group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5'
           >
             <ThumbnailHoverPreview
               src={ref.thumbnail}
               text={ref.textContent}
               alt={ref.sourceNodeName}
               emptyHint={emptyHint}
+              dimmed={inert}
             >
               <button
                 type='button'
@@ -125,7 +132,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onInsert(ref)}
                 disabled={inert || !insertable}
-                className='flex items-center gap-1.5 rounded-overlay disabled:cursor-not-allowed'
+                className={`flex items-center gap-1.5 rounded-overlay disabled:cursor-not-allowed ${inert ? 'opacity-50' : ''}`}
               >
                 {ref.thumbnail ? (
                   <img
@@ -175,7 +182,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
               )}
               onClick={() => onRemove(ref)}
               disabled={inert}
-              className='flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed'
+              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed ${inert ? 'opacity-50' : ''}`}
             >
               <X className='h-3 w-3' aria-hidden='true' />
             </button>

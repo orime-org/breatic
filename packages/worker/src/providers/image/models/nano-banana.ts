@@ -89,11 +89,21 @@ function prepareParams(
     delete cleaned.images;
   }
 
-  // Pop camera control params
-  const camera = cleaned.camera as string | undefined;
-  const lens = cleaned.lens as string | undefined;
-  const focalLength = cleaned.focal_length as number | undefined;
-  const aperture = cleaned.aperture as string | undefined;
+  // Pop camera control params. The whole cluster is opt-in behind
+  // `enable_camera` (default false): when off, the controls resolve to
+  // undefined so the `technical` block is omitted from the prompt — even
+  // though validateParams still fills the four descriptors' non-null defaults.
+  // `enable_camera` is a breatic-internal gate, never forwarded to the provider.
+  const enableCamera = cleaned.enable_camera === true;
+  delete cleaned.enable_camera;
+  const camera = enableCamera ? (cleaned.camera as string | undefined) : undefined;
+  const lens = enableCamera ? (cleaned.lens as string | undefined) : undefined;
+  const focalLength = enableCamera
+    ? (cleaned.focal_length as number | undefined)
+    : undefined;
+  const aperture = enableCamera
+    ? (cleaned.aperture as string | undefined)
+    : undefined;
   delete cleaned.camera;
   delete cleaned.lens;
   delete cleaned.focal_length;

@@ -1,12 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ArrowUp, Camera, Globe, Languages, Sparkles, Star, X } from 'lucide-react';
+import { ArrowUp, Globe, Languages, Sparkles, Star, X } from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import {
+  CameraPicker,
+  type CameraValue,
+} from '@web/spaces/canvas/generate/CameraPicker';
 import { GenerateToolbar } from '@web/spaces/canvas/generate/GenerateToolbar';
 import { ImageModeToggle } from '@web/spaces/canvas/generate/ImageModeToggle';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
@@ -30,7 +34,7 @@ interface GeneratePanelProps {
    */
   catalogEmpty: boolean;
   /** Current ratio + resolution selection. */
-  params: { aspect_ratio?: string; resolution?: string };
+  params: { aspect_ratio?: string; resolution?: string } & CameraValue;
   /** The node's derived reference rows. */
   references: ReferenceRailItem[];
   /** Estimated credit cost of one generation (current model's cost_per_call). */
@@ -46,7 +50,9 @@ interface GeneratePanelProps {
   /** Switch the generation sub-mode (t2i / i2i). */
   onToggleMode: (mode: ImageGenMode) => void;
   /** Change ratio / resolution. */
-  onChangeParams: (partial: { aspect_ratio?: string; resolution?: string }) => void;
+  onChangeParams: (
+    partial: { aspect_ratio?: string; resolution?: string } & CameraValue,
+  ) => void;
   /** Toggle the canvas reference-pick mode (enter, or exit when already picking). */
   onAddReference: () => void;
   /** Whether THIS node's reference pick is running — highlights the button. */
@@ -65,6 +71,8 @@ interface GeneratePanelProps {
   onClearStyle: () => void;
   /** Whether the active model takes a style reference (capability gate). */
   styleSupported: boolean;
+  /** Whether the active model declares the camera cluster (#1788) — the Camera control is hidden otherwise. */
+  cameraSupported: boolean;
   /** Toggle the canvas focus-crop mode (#1782 — enter, or exit when already picking). */
   onFocus: () => void;
   /** Whether THIS node's focus pick is running — highlights the Focus button. */
@@ -87,8 +95,8 @@ const HEADER_PLACEHOLDERS = [
   { key: 'presets', testId: 'generate-presets', Icon: Sparkles },
   { key: 'translate', testId: 'generate-translate', Icon: Languages },
 ] as const;
+// camera is now the functional CameraPicker (#1788); online stays a placeholder.
 const FOOTER_PLACEHOLDERS = [
-  { key: 'camera', testId: 'generate-camera', Icon: Camera },
   { key: 'online', testId: 'generate-online', Icon: Globe },
 ] as const;
 
@@ -116,6 +124,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   onSelectModel,
   onToggleMode,
   onChangeParams,
+  cameraSupported,
   onAddReference,
   referencePicking,
   onRemoveReference,
@@ -132,10 +141,13 @@ export const GeneratePanel = React.memo(function GeneratePanel({
 }: GeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
   const currentModel = models.find((m) => m.name === model);
-  // Text-to-image generates from scratch and ignores source images (§2.5): the
-  // reference add-button is disabled and the rail dims its IMAGE rows (text
-  // rows stay insertable — their @-chips still feed the prompt; R3-4 = A).
-  const referencesOff = mode === 't2i';
+  // Text-to-image generates from scratch and ignores SOURCE IMAGES (§2.5).
+  // References stay AVAILABLE — the reference button is enabled and text
+  // references still feed the prompt via their @-chips (R3-4 = A) — but every
+  // IMAGE source is scoped out: the rail dims its image rows, the canvas pick
+  // rejects image nodes, the @-picker hides them, and Focus (which crops an
+  // image) is disabled. i2i uses the full source pool.
+  const imageSourcesOff = mode === 't2i';
   // shrink-0 keeps the fixed-size footer icons from being squeezed when the
   // pickers' labels run long (the footer row has no flex-wrap by design).
   const placeholderClass =
@@ -147,7 +159,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         <GenerateToolbar
           onReference={onAddReference}
           referenceActive={referencePicking}
-          referenceDisabled={referencesOff}
           onStyle={onStyle}
           styleActive={stylePicking}
           styleThumbnail={styleImageUrl}
@@ -155,8 +166,9 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           styleDisabled={!styleSupported}
           onFocus={onFocus}
           focusActive={focusPicking}
-          // Focus crops feed the same i2i source pool as references (#1782).
-          focusDisabled={referencesOff}
+          // Focus crops an image, so it follows the image-source scoping: a
+          // t2i node cannot focus-crop (#1782).
+          focusDisabled={imageSourcesOff}
         />
         <div className='flex items-center gap-1.5'>
           {HEADER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
@@ -187,7 +199,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        imageRefsDisabled={referencesOff}
+        imageRefsDisabled={imageSourcesOff}
         pendingFocus={pendingFocus}
       />
 
@@ -207,21 +219,16 @@ export const GeneratePanel = React.memo(function GeneratePanel({
             onChange={onChangeParams}
           />
         ) : null}
-        {FOOTER_PLACEHOLDERS.slice(0, 1).map(({ key, testId, Icon }) => (
-          <button
-            key={key}
-            type='button'
-            data-testid={testId}
-            disabled
-            aria-label={t(`canvas.generatePanel.${key}`)}
-            className={placeholderClass}
-          >
-            <Icon className='h-4 w-4' aria-hidden='true' />
-          </button>
-        ))}
+        {currentModel && cameraSupported ? (
+          <CameraPicker
+            model={currentModel}
+            value={params}
+            onChange={onChangeParams}
+          />
+        ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {FOOTER_PLACEHOLDERS.slice(1).map(({ key, testId, Icon }) => (
+          {FOOTER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
             <button
               key={key}
               type='button'

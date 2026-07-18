@@ -39,7 +39,7 @@ const RESOLUTION: ParamDescriptor = {
   default: '1K',
 };
 
-describe('resolveParamsForModel — keep valid params, reset invalid to the model default on model switch', () => {
+describe('resolveParamsForModel — keep valid, reset invalid, PRESERVE undeclared params on model switch', () => {
   it('keeps a current value that is valid for the new model', () => {
     const out = resolveParamsForModel(model({ aspect_ratio: RATIO }), {
       aspect_ratio: '16:9',
@@ -63,12 +63,30 @@ describe('resolveParamsForModel — keep valid params, reset invalid to the mode
     expect(out).toEqual({ aspect_ratio: '1:1', resolution: '1K' });
   });
 
-  it('drops params the new model does not define (they belong to a different model)', () => {
+  it('preserves params the new model does not define (they live in Yjs independent of model)', () => {
+    // user 2026-07-18: a param set persists in node.data.params regardless of
+    // which model is active; only models that declare it read it. Switching to a
+    // model that lacks the param must NOT drop it (it survives the round-trip).
     const out = resolveParamsForModel(model({ aspect_ratio: RATIO }), {
       aspect_ratio: '1:1',
-      style_strength: 0.8, // not a param of this model
+      camera: 'Canon EOS R5', // not a param of this model — must survive
     });
-    expect(out).toEqual({ aspect_ratio: '1:1' });
+    expect(out).toEqual({ aspect_ratio: '1:1', camera: 'Canon EOS R5' });
+  });
+
+  it('round-trips camera params through a model that lacks them (banana → midjourney → banana)', () => {
+    const CAMERA: ParamDescriptor = {
+      description: 'Camera',
+      values: ['Canon EOS R5', 'Sony A7'],
+      default: 'Canon EOS R5',
+    };
+    const banana = model({ aspect_ratio: RATIO, camera: CAMERA });
+    const midjourney = model({ aspect_ratio: RATIO }); // declares no camera
+    const onBanana = { aspect_ratio: '1:1', camera: 'Sony A7' };
+    const onMidjourney = resolveParamsForModel(midjourney, onBanana);
+    expect(onMidjourney.camera).toBe('Sony A7'); // preserved, not dropped
+    const backToBanana = resolveParamsForModel(banana, onMidjourney);
+    expect(backToBanana.camera).toBe('Sony A7'); // still there → banana reads it
   });
 
   it('keeps a current value for a free (values-less) param, else uses its default', () => {
@@ -87,10 +105,10 @@ describe('resolveParamsForModel — keep valid params, reset invalid to the mode
     });
   });
 
-  it('returns an empty object for a model with no params', () => {
-    expect(resolveParamsForModel(model({}), { aspect_ratio: '16:9' })).toEqual(
-      {},
-    );
+  it('leaves current params untouched for a model with no params (does not wipe them)', () => {
+    expect(resolveParamsForModel(model({}), { aspect_ratio: '16:9' })).toEqual({
+      aspect_ratio: '16:9',
+    });
   });
 
   // Malformed-catalog robustness (null / non-object / array params, null

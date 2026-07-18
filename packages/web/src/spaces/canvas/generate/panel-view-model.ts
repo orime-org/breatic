@@ -23,6 +23,7 @@ import {
 import { validFocusImages } from '@web/data/focus-images';
 import {
   filterModelsByMode,
+  resolveMode,
   resolveModelForMode,
   type ImageGenMode,
 } from '@web/spaces/canvas/generate/image-mode-selection';
@@ -31,9 +32,6 @@ import type {
   ContentNodeView,
   NodeView,
 } from '@web/spaces/canvas/types/node-view';
-
-/** Default generation sub-mode for a node with none stored (design 2026-07-09 §2.3). */
-const DEFAULT_IMAGE_GEN_MODE: ImageGenMode = 't2i';
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
@@ -47,17 +45,6 @@ const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
  */
 function positiveCap(cap: number | undefined): number | undefined {
   return typeof cap === 'number' && Number.isFinite(cap) && cap >= 1 ? cap : undefined;
-}
-
-/**
- * Reads a node's stored generation sub-mode, defaulting + boundary-sanitizing:
- * anything that is not the literal `'i2i'` (undefined, `'t2i'`, or a malformed
- * value from untrusted Yjs) resolves to the default `'t2i'`.
- * @param stored - The node's stored `mode` (free string on the wire).
- * @returns The active {@link ImageGenMode}.
- */
-function resolveMode(stored: string | undefined): ImageGenMode {
-  return stored === 'i2i' ? 'i2i' : DEFAULT_IMAGE_GEN_MODE;
 }
 
 /** The render inputs the Generate panel needs, derived from live node data. */
@@ -88,6 +75,12 @@ export interface GeneratePanelViewModel {
    * resolved (empty catalog).
    */
   styleSupported: boolean;
+  /**
+   * Whether the active model declares the `camera` param cluster on the wire
+   * (#1788) → the Camera control is usable. Gates the footer Camera button
+   * (greyed-disabled when false). False when no model resolved.
+   */
+  cameraSupported: boolean;
   /**
    * The node's focus crops (#1782) — standalone copies stored on the node
    * (`data.focusImages`, zero upstream relationship). Rendered as the rail's
@@ -311,6 +304,10 @@ export function buildGeneratePanelViewModel(input: {
     // it can take a style reference. Config decides which models (t2i and/or
     // edit) support style; the frontend only reads the capability.
     styleSupported: current ? current.params.style_images != null : false,
+    // Capability gate (#1788): the model declares the `camera` cluster on the
+    // wire → it can take camera/lens/focal/aperture simulation. Edit variants
+    // omit it, so `params.camera` is undefined and the Camera control greys out.
+    cameraSupported: current ? current.params.camera != null : false,
     // `?? 0` covers only the model-not-found case (empty catalog / stale model);
     // when current is found, cost_per_call is a trusted number (boundary).
     creditEstimate: current?.cost_per_call ?? 0,

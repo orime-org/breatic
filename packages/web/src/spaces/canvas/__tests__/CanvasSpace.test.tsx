@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import type * as React from 'react';
 
 // Mock the Yjs binding so the component test never opens a real WebSocket
@@ -255,7 +256,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // references for an image node, an audio / video node must be dimmed +
   // non-pickable exactly like an already-wired node — not glowing as if it
   // were selectable and then dead-ending at execute time.
-  it('pick mode dims type-incompatible sources (audio/video) and keeps image/text selectable', () => {
+  it('pick mode on an i2i target dims type-incompatible sources (audio) and keeps image/text selectable', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -263,7 +264,9 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
+            // i2i uses the full source pool, so images stay selectable — this
+            // isolates the canConnect (type) dimming from the mode scoping.
+            data: { kind: 'image', status: 'idle', mode: 'i2i' },
           },
           {
             id: 'src-audio',
@@ -301,6 +304,100 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-audio')).not.toContain('canvas-pick-selectable');
     expect(cls('src-text')).toContain('canvas-pick-selectable');
     expect(cls('src-image')).toContain('canvas-pick-selectable');
+  });
+
+  it('pick mode on a t2i target ALSO dims IMAGE sources — only text stays selectable (#1788 batch-3 #1)', () => {
+    // Text-to-image ignores source images (§2.5): an image node is inert as a
+    // reference, so the pick overlay dims it alongside the type-incompatible
+    // audio — text alone remains selectable because its @-chip feeds the prompt.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', mode: 't2i' },
+          },
+          {
+            id: 'src-audio',
+            type: 'audio',
+            position: { x: 300, y: 0 },
+            data: { kind: 'audio', content: 'a.mp3', status: 'idle' },
+          },
+          {
+            id: 'src-text',
+            type: 'text',
+            position: { x: 600, y: 0 },
+            data: { kind: 'text', content: 'hello', status: 'idle' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 900, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
+      '';
+    expect(cls('src-audio')).toContain('canvas-pick-dimmed');
+    // The new mode scoping: an image source is dimmed in t2i (unlike i2i above).
+    expect(cls('src-image')).toContain('canvas-pick-dimmed');
+    expect(cls('src-image')).not.toContain('canvas-pick-selectable');
+    // Text still feeds the prompt in t2i → selectable.
+    expect(cls('src-text')).toContain('canvas-pick-selectable');
+  });
+
+  it('an insisting click on a t2i-dimmed image source is a SILENT no-op — no toast, no edge (#1788 batch-3 #1)', () => {
+    // The dim + not-allowed cursor already signal "can't pick this", so an
+    // insisting click needs no toast on top (user 2026-07-18 dropped the earlier
+    // warn). It wires no image edge in t2i and keeps the pick open so the user
+    // can go on to pick a text node — the click-gate and the dim agree via the
+    // same referenceKindAllowedInMode predicate.
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    const addEdgeSpy = vi.spyOn(canvasSpace, 'addEdge');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', mode: 't2i' },
+          },
+          {
+            id: 'src-image',
+            type: 'image',
+            position: { x: 900, y: 0 },
+            data: { kind: 'image', content: 'x.png', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.react-flow__node[data-id="src-image"]')!,
+      );
+    });
+    // Silent: no toast (the dim already signals it).
+    expect(warnSpy).not.toHaveBeenCalled();
+    // No image reference edge is wired in t2i.
+    expect(addEdgeSpy).not.toHaveBeenCalled();
+    // The pick stays open (continuous select) so the user can pick a text node.
+    expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target');
+    warnSpy.mockRestore();
+    addEdgeSpy.mockRestore();
   });
 
   // Style pick (#1664): a style reference is a URL COPY of an image node's

@@ -273,12 +273,17 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     expect(screen.getByTestId('generate-reference-rail')).not.toHaveClass(
       'opacity-50',
     );
-    // Image row: dimmed + non-interactive (switch to i2i to manage it).
-    expect(screen.getByTestId('generate-ref-a->me')).toHaveClass('opacity-50');
+    // Image row: dimmed + non-interactive. The dim is now EXPLICIT on the
+    // visible controls (insert + remove), not an ancestor opacity on the row —
+    // an ancestor opacity would also dim the inline hover-preview tooltip, which
+    // the prompt chip cannot match; both use the explicit `dimmed` mechanism.
+    expect(screen.getByTestId('generate-ref-insert-a->me')).toHaveClass(
+      'opacity-50',
+    );
     expect(screen.getByTestId('generate-ref-insert-a->me')).toBeDisabled();
     expect(screen.getByTestId('generate-ref-remove-a->me')).toBeDisabled();
     // Text row: fully interactive — insert lands the @-chip, remove works.
-    expect(screen.getByTestId('generate-ref-b->me')).not.toHaveClass(
+    expect(screen.getByTestId('generate-ref-insert-b->me')).not.toHaveClass(
       'opacity-50',
     );
     const textInsert = screen.getByTestId('generate-ref-insert-b->me');

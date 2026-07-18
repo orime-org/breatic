@@ -69,6 +69,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [],
       emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
     });
     expect(suggestion.allowedPrefixes).toBeNull();
   });
@@ -120,6 +121,30 @@ describe('ReferenceMention — @ suggestion wiring', () => {
     )({ query: '' });
     expect(items.map((i) => i.refId)).toEqual(['e1', 'e2']);
   });
+
+  // t2i ignores source images, so the `@` picker must not offer image refs
+  // (user 2026-07-18) — with only images in the pool the picker never opens.
+  // Text refs still feed the prompt in t2i, so they stay.
+  it('excludes image references from the @ picker when imageRefsDisabled (t2i), keeping text', () => {
+    const pool = [
+      { refId: 'e1', sourceNodeId: 'a', sourceNodeType: 'image', sourceNodeName: 'Pic' },
+      { refId: 'e2', sourceNodeId: 'b', sourceNodeType: 'text', sourceNodeName: 'Note' },
+    ];
+    const suggestion = makeReferenceSuggestion({
+      getPool: () =>
+        pool as unknown as ReturnType<
+          Parameters<typeof makeReferenceSuggestion>[0]['getPool']
+        >,
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => true,
+    });
+    const items = (
+      suggestion.items as unknown as (input: {
+        query: string;
+      }) => { refId: string }[]
+    )({ query: '' });
+    expect(items.map((i) => i.refId)).toEqual(['e2']);
+  });
 });
 
 // I3 (batch-5, user 2026-07-12): typing `@` as ordinary text (no matching
@@ -163,6 +188,7 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [row],
       emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -204,6 +230,7 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
     const suggestion = makeReferenceSuggestion({
       getPool: () => [],
       emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');

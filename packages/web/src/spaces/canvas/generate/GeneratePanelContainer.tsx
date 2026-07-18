@@ -35,9 +35,11 @@ import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
 import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
+import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
+import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import {
@@ -77,6 +79,16 @@ interface GeneratePanelContainerProps {
  */
 function asStr(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Narrows an unknown param value to a number — focal_length is numeric, and a
+ * string would fail the worker's enum check and silently reset to the default.
+ * @param value - The raw param value.
+ * @returns The value when it is a number, else undefined.
+ */
+function asNum(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined;
 }
 
 /**
@@ -238,9 +250,25 @@ function GeneratePanelBody({
   // ReferenceRail / RatioResolutionPicker each frame of any node drag.
   const aspectRatio = asStr(vm.params.aspect_ratio);
   const resolution = asStr(vm.params.resolution);
+  // Camera cluster (#1788) rides the same stable-identity discipline: key the
+  // memo on the primitives so a canvas mutation doesn't rebuild the params
+  // object and defeat CameraPicker's React.memo each drag frame.
+  const camera = asStr(vm.params.camera);
+  const lens = asStr(vm.params.lens);
+  const focalLength = asNum(vm.params.focal_length);
+  const aperture = asStr(vm.params.aperture);
+  const enableCamera = vm.params.enable_camera === true;
   const stableParams = React.useMemo(
-    () => ({ aspect_ratio: aspectRatio, resolution }),
-    [aspectRatio, resolution],
+    () => ({
+      aspect_ratio: aspectRatio,
+      resolution,
+      camera,
+      lens,
+      focal_length: focalLength,
+      aperture,
+      enable_camera: enableCamera,
+    }),
+    [aspectRatio, resolution, camera, lens, focalLength, aperture, enableCamera],
   );
   // References change identity on every derive; key the memo on their CONTENT
   // (small array — a stringify key is cheap and exact). The pool the rail /
@@ -321,7 +349,7 @@ function GeneratePanelBody({
   );
 
   const onChangeParams = React.useCallback(
-    (partial: { aspect_ratio?: string; resolution?: string }) => {
+    (partial: { aspect_ratio?: string; resolution?: string } & CameraValue) => {
       setNodeParams(projectId, spaceId, nodeId, {
         ...freshVm().params,
         ...partial,
@@ -381,22 +409,22 @@ function GeneratePanelBody({
     }
   }, [startFocusPick, endPick, nodeId]);
 
-  // End a running REFERENCE pick the moment the mode becomes t2i (adversarial
-  // round-2): t2i ignores image references and DISABLES the reference button, so
-  // a reference pick left running after a t2i switch is a zombie session — its
-  // banner lingers and its Exit trigger is disabled (which is what left keyboard
-  // focus stranded). A STYLE pick is exempt: style images SURVIVE t2i (#1664),
-  // and the Style button stays enabled — ending it on t2i would be wrong. The
-  // mode can flip locally or via a collaborator writing setNodeMode, so react to
-  // vm.mode, not just the local toggle.
+  // End a running FOCUS pick the moment the mode becomes t2i (adversarial
+  // round-2, narrowed #1788 batch-3 #1): a focus crop IS an image source, so the
+  // Focus button stays DISABLED in t2i — a focus pick left running after a t2i
+  // switch is a zombie session whose banner lingers with a disabled trigger
+  // (which strands keyboard focus). A REFERENCE pick is NOT ended here anymore:
+  // t2i no longer disables references, it text-scopes them (image sources dim,
+  // text stays pickable), so a reference pick started in i2i stays valid after a
+  // t2i flip — killing it would strand the user mid-pick. A STYLE pick is exempt
+  // too (style images survive t2i, #1664). The mode can flip locally or via a
+  // collaborator writing setNodeMode, so react to vm.mode, not just the toggle.
   React.useEffect(() => {
     const session = useCanvasStore.getState().pickSession;
     if (
       vm.mode === 't2i' &&
       session?.nodeId === nodeId &&
-      // Focus (#1782) feeds the same i2i source pool as Reference, so the
-      // same t2i flip strands it identically — one guard covers both.
-      (session.purpose === 'reference' || session.purpose === 'focus')
+      session.purpose === 'focus'
     ) {
       endPick();
     }
@@ -495,7 +523,7 @@ function GeneratePanelBody({
       'generate',
     );
     if (gateBlock) {
-      toast.warning(t(gateBlock.toastKey));
+      warnNodeGate(t(gateBlock.toastKey));
       return;
     }
     // Serialize the backend prompt AT CLICK TIME (spec §9.1): a text chip
@@ -640,6 +668,7 @@ function GeneratePanelBody({
       styleImageUrl={vm.styleImageUrl}
       onClearStyle={onClearStyle}
       styleSupported={vm.styleSupported}
+      cameraSupported={vm.cameraSupported}
       onFocus={onFocus}
       focusPicking={focusPicking}
       pendingFocus={pendingFocus}

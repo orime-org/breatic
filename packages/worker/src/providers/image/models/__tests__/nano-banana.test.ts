@@ -77,3 +77,54 @@ describe("nano-banana buildRequest — style merge (never clobber) + JSON style 
     expect("images" in p).toBe(false);
   });
 });
+
+describe("nano-banana buildRequest — camera controls gated by enable_camera (opt-in)", () => {
+  beforeEach(() => {
+    mockLlm.mockReset();
+    // LLM fallback path so buildJsonPrompt runs deterministically.
+    mockLlm.mockRejectedValue(new Error("llm down"));
+  });
+
+  it("enable_camera=true → technical block carries the 4 controls (focal as `${n}mm`)", async () => {
+    const [prompt, p] = await buildRequest("a cat", "nano-banana-pro", {
+      enable_camera: true,
+      camera: "ARRI Alexa 35",
+      lens: "Cooke S4/i",
+      focal_length: 85,
+      aperture: "f/4",
+    });
+    const json = JSON.parse(prompt) as Record<string, unknown>;
+    expect(json.technical).toEqual({
+      camera: "ARRI Alexa 35",
+      lens: "Cooke S4/i",
+      focal_length: "85mm",
+      aperture: "f/4",
+    });
+    // The gate is breatic-internal — it must never ride the provider params.
+    expect("enable_camera" in p).toBe(false);
+    expect("camera" in p).toBe(false);
+    expect("focal_length" in p).toBe(false);
+  });
+
+  it("enable_camera=false → NO technical block even though the 4 controls are present", async () => {
+    const [prompt, p] = await buildRequest("a cat", "nano-banana-pro", {
+      enable_camera: false,
+      camera: "Canon EOS R5",
+      lens: "Zeiss Master Prime",
+      focal_length: 50,
+      aperture: "f/2.8",
+    });
+    const json = JSON.parse(prompt) as Record<string, unknown>;
+    expect("technical" in json).toBe(false);
+    expect("enable_camera" in p).toBe(false);
+  });
+
+  it("enable_camera absent → treated as off (no technical block)", async () => {
+    const [prompt] = await buildRequest("a cat", "nano-banana-pro", {
+      camera: "Canon EOS R5",
+      focal_length: 50,
+    });
+    const json = JSON.parse(prompt) as Record<string, unknown>;
+    expect("technical" in json).toBe(false);
+  });
+});

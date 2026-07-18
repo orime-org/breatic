@@ -12,6 +12,7 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
 interface RatioResolutionValue {
@@ -60,6 +61,9 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
 }: RatioResolutionPickerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
+  // Keep the popover glued to its trigger as the canvas pans / zooms, matching
+  // the generate panel (a ReactFlow NodeToolbar that tracks its node).
+  useFollowCanvasViewport(open);
   const ratios = paramValues(model, 'aspect_ratio');
   const resolutions = paramValues(model, 'resolution');
   const label = [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ');
@@ -91,7 +95,10 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
       </PopoverTrigger>
       <PopoverContent
         side='top'
-        align='start'
+        align='center'
+        // Freeze on open (user 2026-07-18): no collision flip/shift — clips at
+        // the screen edge like the generate panel instead of jumping near a border.
+        avoidCollisions={false}
         aria-label={t('canvas.generatePanel.ratio')}
         className='w-64 p-3'
       >

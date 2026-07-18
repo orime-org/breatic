@@ -46,6 +46,14 @@ export interface ReferenceMentionOptions {
    * the content into an attr that would go stale on later edits.
    */
   getPool?: () => ReferenceRailItem[];
+  /**
+   * Whether source images are inert (text-to-image). An IMAGE chip's hover
+   * preview greys out when true, to signal it will not be used — the same
+   * explicit `dimmed` the rail passes (user 2026-07-18). A live getter: the
+   * NodeView does not re-render on a mode toggle, so it is read at each render
+   * (and the dim also updates via the editor's `data-kind` CSS on the chip body).
+   */
+  getImageRefsDisabled?: () => boolean;
 }
 
 /** Attr key on a reference-mention node carrying the snapshot thumbnail URL. */
@@ -220,6 +228,9 @@ function ReferenceMentionChip({
       alt={label}
       emptyHint={staticEmptyHint}
       resolveOnOpen={kind === 'text' ? resolveTextHover : undefined}
+      // Grey the preview for an image chip that t2i will ignore (explicit —
+      // same `dimmed` mechanism the rail uses; not opacity inheritance).
+      dimmed={options.getImageRefsDisabled?.() === true && kind === 'image'}
     >
       <NodeViewWrapper
         as='span'
@@ -242,7 +253,7 @@ function ReferenceMentionChip({
         // align value: measured on the real machine to put the chip's
         // centerline exactly on the TEXT centerline (numeric vertical-align;
         // `align-middle` sat it ~1.2px low under Inter 13px metrics).
-        className='reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-content-xs border border-border bg-muted pl-1 align-[-1.25px] text-xs text-muted-foreground'
+        className='reference-mention inline-flex h-[18px] max-w-[10rem] select-none items-center gap-1 overflow-hidden rounded-content-xs border border-border bg-muted pl-1 align-[-1.25px] text-xs text-foreground'
         contentEditable={false}
       >
         {typeof thumbnail === 'string' && thumbnail.length > 0 ? (

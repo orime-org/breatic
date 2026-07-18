@@ -108,6 +108,10 @@ import {
   resolveClickConnectRejection,
 } from '@web/spaces/canvas/lib/connection-rules';
 import {
+  referenceKindAllowedInMode,
+  resolveMode,
+} from '@web/spaces/canvas/generate/image-mode-selection';
+import {
   resolvePanelSelectionAction,
   type PanelSelectionSnapshot,
 } from '@web/spaces/canvas/lib/generate-panel-selection';
@@ -135,6 +139,7 @@ import {
   evaluateNodeGate,
   NODE_GATE_TOAST_KEY,
 } from '@web/spaces/canvas/node-gate';
+import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
@@ -1088,7 +1093,7 @@ function CanvasSpaceInner({
       // (keyboard Delete); the right-click menu Delete shares the same
       // `gateBlockedDeletion` guard via `commitGuardedDelete`, so the protection
       // + toast are one rule, not duplicated per entry point.
-      if (blocked && reason) toast.warning(t(NODE_GATE_TOAST_KEY[reason]));
+      if (blocked && reason) warnNodeGate(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) {
         return false;
       }
@@ -1468,10 +1473,10 @@ function CanvasSpaceInner({
         (e) => e.target === target && e.source === node.id,
       );
       if (alreadyReferenced) return;
-      const targetKind =
-        useCanvasGraphStore
-          .getState()
-          .flowNodes.find((n) => n.id === target)?.type ?? '';
+      const targetNode = useCanvasGraphStore
+        .getState()
+        .flowNodes.find((n) => n.id === target);
+      const targetKind = targetNode?.type ?? '';
       if (!canConnect(node.type ?? '', targetKind)) {
         // Dimmed by the overlay already; explain WHY on an insisting click
         // (same wording as the drag-connect rejection toast).
@@ -1481,6 +1486,19 @@ function CanvasSpaceInner({
             target: kindLabel(targetKind),
           }),
         );
+        return;
+      }
+      // Mode scoping (#1788 batch-3 #1): text-to-image ignores source images, so
+      // an image node is non-pickable there — only text references feed the
+      // prompt. A SILENT no-op (user 2026-07-18): the overlay already dims the
+      // node + shows the not-allowed cursor, so an insisting click needs no
+      // toast on top (unlike the type-incompatible case, which is less obvious).
+      // Same predicate the dim memo uses, so the click gate and the dim never
+      // drift.
+      const targetMode = resolveMode(
+        (targetNode?.data as { mode?: string } | undefined)?.mode,
+      );
+      if (!referenceKindAllowedInMode(node.type ?? '', targetMode)) {
         return;
       }
       // Pool cap (#1782): same guard as drag-connect — a full pool blocks
@@ -2210,7 +2228,7 @@ function CanvasSpaceInner({
         edgesToDelete,
         flowNodesRef.current,
       );
-      if (blocked && reason) toast.warning(t(NODE_GATE_TOAST_KEY[reason]));
+      if (blocked && reason) warnNodeGate(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
       removeElements(
         projectId,
@@ -2423,7 +2441,7 @@ function CanvasSpaceInner({
         'upload',
       );
       if (gateBlock) {
-        toast.warning(t(gateBlock.toastKey));
+        warnNodeGate(t(gateBlock.toastKey));
         return;
       }
       // A reference pick owns node interactions (batch-2 item 12): a
@@ -2479,7 +2497,7 @@ function CanvasSpaceInner({
         'upload',
       );
       if (gateBlock) {
-        toast.warning(t(gateBlock.toastKey));
+        warnNodeGate(t(gateBlock.toastKey));
         return;
       }
       // Register SYNCHRONOUSLY (before the config-fetch await) by making the
@@ -2512,7 +2530,7 @@ function CanvasSpaceInner({
           // Backstop for the fill path (retry + any direct fill); the picker
           // entry (activateNodeUpload) already gates handling before opening.
           isHandling: (id) => isNodeHandling(projectId, spaceId, id),
-          onBusy: () => toast.warning(t(NODE_GATE_TOAST_KEY.handling)),
+          onBusy: () => warnNodeGate(t(NODE_GATE_TOAST_KEY.handling)),
           setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
           setContent: (id, content, lease) => {
             clearRetryFile(projectId, spaceId, id);
@@ -2562,7 +2580,7 @@ function CanvasSpaceInner({
         'upload',
       );
       if (gateBlock) {
-        toast.warning(t(gateBlock.toastKey));
+        warnNodeGate(t(gateBlock.toastKey));
         return;
       }
       const file = getRetryFile(projectId, spaceId, nodeId);
@@ -2761,12 +2779,20 @@ function CanvasSpaceInner({
     const alreadyReferenced = new Set(
       flowEdges.filter((e) => e.target === target).map((e) => e.source),
     );
-    const targetKind = renderNodes.find((n) => n.id === target)?.type ?? '';
+    const targetNode = renderNodes.find((n) => n.id === target);
+    const targetKind = targetNode?.type ?? '';
+    // Mode scoping (#1788 batch-3 #1): a t2i target dims IMAGE sources — the
+    // same predicate onPickNodeClick rejects with, so a dimmed node is never
+    // secretly clickable (and a selectable one never silently no-ops).
+    const targetMode = resolveMode(
+      (targetNode?.data as { mode?: string } | undefined)?.mode,
+    );
     return paint(
       (node) =>
         node.id === target ||
         alreadyReferenced.has(node.id) ||
-        !canConnect(node.type ?? '', targetKind),
+        !canConnect(node.type ?? '', targetKind) ||
+        !referenceKindAllowedInMode(node.type ?? '', targetMode),
     );
   }, [renderNodes, pickSession, flowEdges]);
 
