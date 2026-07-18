@@ -6,12 +6,11 @@ import ReactDOM from 'react-dom/client';
 import * as Sentry from '@sentry/react';
 import App from '@web/App';
 // Self-host Inter (the --font-sans primary) so the UI no longer depends on the
-// viewer having Inter installed locally. Weights mirror tokens.css usage.
-import '@fontsource/inter/400.css';
-import '@fontsource/inter/500.css';
-import '@fontsource/inter/600.css';
-import '@fontsource/inter/700.css';
-import '@fontsource/inter/800.css';
+// viewer having Inter installed locally. This module mirrors the
+// `@fontsource/inter` per-subset @font-face declarations (weights 400–800,
+// lazy per unicode-range) but adds vertical-metrics overrides that re-center
+// glyphs in every line box (#1777) — see the module for the rationale.
+import '@web/theme/inter-adjusted';
 import '@web/index.css';
 import { bootstrapLocale } from '@web/i18n/locale-bootstrap';
 
