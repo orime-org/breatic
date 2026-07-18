@@ -185,6 +185,8 @@ export const PromptEditor = React.forwardRef<
           // The chip's text-reference hover resolves live content through the
           // same pool ref (spec §9.1).
           getPool: () => poolRef.current,
+          // t2i → an image chip's hover preview greys out (unavailable).
+          getImageRefsDisabled: () => modeRef.current === 't2i',
         }),
       ],
       immediatelyRender: false,

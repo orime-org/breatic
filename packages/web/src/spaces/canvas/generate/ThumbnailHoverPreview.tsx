@@ -60,6 +60,15 @@ export interface ThumbnailHoverPreviewProps {
    * image / video use the static (attr-backed) `src` / `emptyHint` instead.
    */
   resolveOnOpen?: () => { text?: string; emptyHint?: string };
+  /**
+   * Dim the preview (50% opacity) to signal the source is unavailable — a t2i
+   * image reference — matching the greyed chip / rail row (user 2026-07-18).
+   * EXPLICIT: both the rail and the chip pass this so the preview dim is one
+   * mechanism, not the fragile "an ancestor's opacity happens to wrap the inline
+   * (non-portaled) tooltip" inheritance the rail used to rely on. Text previews
+   * are never dimmed (text feeds every mode).
+   */
+  dimmed?: boolean;
   /** The trigger element (the chip). Must accept a ref + hover handlers. */
   children: React.ReactNode;
 }
@@ -77,6 +86,7 @@ export interface ThumbnailHoverPreviewProps {
  * @param root0.alt - Alt text for an image preview.
  * @param root0.emptyHint - Static hint shown when the source is empty (no src/text).
  * @param root0.resolveOnOpen - Live text/hint resolver read at hover-open (overrides text/emptyHint).
+ * @param root0.dimmed - Dim the preview (unavailable t2i image reference).
  * @param root0.children - The trigger element (the chip).
  * @returns The trigger with (when it has content) a hover preview.
  */
@@ -86,6 +96,7 @@ export function ThumbnailHoverPreview({
   alt,
   emptyHint,
   resolveOnOpen,
+  dimmed = false,
   children,
 }: ThumbnailHoverPreviewProps): React.JSX.Element {
   // Live-at-open (decision C), CACHED so it survives the close animation. The
@@ -119,7 +130,10 @@ export function ThumbnailHoverPreview({
           <img
             src={src}
             alt={alt}
-            className='max-h-[220px] max-w-[220px] rounded-sm object-contain'
+            className={
+              'max-h-[220px] max-w-[220px] rounded-sm object-contain' +
+              (dimmed ? ' opacity-50' : '')
+            }
             draggable={false}
           />
         ) : previewText ? (
