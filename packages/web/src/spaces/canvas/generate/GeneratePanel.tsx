@@ -80,11 +80,15 @@ interface GeneratePanelProps {
   onExecute: () => void;
 }
 
-/** Footer placeholder buttons not yet wired (slice-1 decision B — shown disabled). */
-const FOOTER_PLACEHOLDERS = [
+// Placeholder buttons not yet wired (slice-1 decision B — shown disabled).
+// presets + translate live in the header's top-right (user 2026-07-18); camera
+// + online stay in the footer (left / right clusters respectively).
+const HEADER_PLACEHOLDERS = [
   { key: 'presets', testId: 'generate-presets', Icon: Sparkles },
-  { key: 'camera', testId: 'generate-camera', Icon: Camera },
   { key: 'translate', testId: 'generate-translate', Icon: Languages },
+] as const;
+const FOOTER_PLACEHOLDERS = [
+  { key: 'camera', testId: 'generate-camera', Icon: Camera },
   { key: 'online', testId: 'generate-online', Icon: Globe },
 ] as const;
 
@@ -154,15 +158,29 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           // Focus crops feed the same i2i source pool as references (#1782).
           focusDisabled={referencesOff}
         />
-        <button
-          type='button'
-          data-testid='generate-exit'
-          aria-label={t('canvas.generatePanel.exit')}
-          onClick={onExit}
-          className='flex h-7 w-7 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-        >
-          <X className='h-4 w-4' aria-hidden='true' />
-        </button>
+        <div className='flex items-center gap-1.5'>
+          {HEADER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
+            <button
+              key={key}
+              type='button'
+              data-testid={testId}
+              disabled
+              aria-label={t(`canvas.generatePanel.${key}`)}
+              className={placeholderClass}
+            >
+              <Icon className='h-4 w-4' aria-hidden='true' />
+            </button>
+          ))}
+          <button
+            type='button'
+            data-testid='generate-exit'
+            aria-label={t('canvas.generatePanel.exit')}
+            onClick={onExit}
+            className='flex h-7 w-7 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          >
+            <X className='h-4 w-4' aria-hidden='true' />
+          </button>
+        </div>
       </div>
 
       <ReferenceRail
@@ -189,7 +207,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
             onChange={onChangeParams}
           />
         ) : null}
-        {FOOTER_PLACEHOLDERS.slice(0, 2).map(({ key, testId, Icon }) => (
+        {FOOTER_PLACEHOLDERS.slice(0, 1).map(({ key, testId, Icon }) => (
           <button
             key={key}
             type='button'
@@ -203,7 +221,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         ))}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {FOOTER_PLACEHOLDERS.slice(2).map(({ key, testId, Icon }) => (
+          {FOOTER_PLACEHOLDERS.slice(1).map(({ key, testId, Icon }) => (
             <button
               key={key}
               type='button'
