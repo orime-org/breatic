@@ -1153,16 +1153,6 @@
         "teamTag": "團隊",
         "memberCount": "{count} 位成員"
       },
-      "switcher": {
-        "recent": "最近",
-        "myStudios": "我的 Studio",
-        "collaboration": "協作",
-        "guestProjects": "{count} 個參與的 Projects",
-        "newStudio": "新增 Studio",
-        "guideRecent": "最近 = 跨 Studio 的近期 Project。",
-        "guideEnter": "點某個 Studio 進入它的容器。",
-        "guideTools": "工具在右上角。"
-      },
       "badge": {
         "visibilityStudio": "Studio 內可見",
         "visibilityPrivate": "私有",

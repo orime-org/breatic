@@ -1153,16 +1153,6 @@
         "teamTag": "Team",
         "memberCount": "{count} members"
       },
-      "switcher": {
-        "recent": "Recent",
-        "myStudios": "My Studios",
-        "collaboration": "Collaboration",
-        "guestProjects": "{count} shared projects",
-        "newStudio": "New Studio",
-        "guideRecent": "Recent spans your latest work across Studios.",
-        "guideEnter": "Pick a Studio to open its container.",
-        "guideTools": "Tools live in the top-right corner."
-      },
       "badge": {
         "visibilityStudio": "Studio-visible",
         "visibilityPrivate": "Private",

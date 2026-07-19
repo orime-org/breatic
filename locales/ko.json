@@ -1153,16 +1153,6 @@
         "teamTag": "팀",
         "memberCount": "멤버 {count}명"
       },
-      "switcher": {
-        "recent": "최근",
-        "myStudios": "내 Studio",
-        "collaboration": "협업",
-        "guestProjects": "참여 중인 Projects {count}개",
-        "newStudio": "새 Studio",
-        "guideRecent": "최근 = Studio 전체의 최근 Project.",
-        "guideEnter": "Studio를 선택해 컨테이너를 엽니다.",
-        "guideTools": "도구는 오른쪽 위에 있습니다."
-      },
       "badge": {
         "visibilityStudio": "Studio 내 공개",
         "visibilityPrivate": "비공개",

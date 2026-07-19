@@ -1153,16 +1153,6 @@
         "teamTag": "チーム",
         "memberCount": "メンバー {count} 人"
       },
-      "switcher": {
-        "recent": "最近",
-        "myStudios": "マイ Studio",
-        "collaboration": "コラボ",
-        "guestProjects": "参加中の Projects {count} 件",
-        "newStudio": "Studio を新規作成",
-        "guideRecent": "最近 = Studio をまたいだ直近の Project。",
-        "guideEnter": "Studio を選んでコンテナを開きます。",
-        "guideTools": "ツールは右上にあります。"
-      },
       "badge": {
         "visibilityStudio": "Studio 内に表示",
         "visibilityPrivate": "非公開",
