@@ -460,6 +460,39 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     }
   });
 
+  it('residual 1 (restart path): a REMOTE-triggered onStart does not pop a popup the user never opened', () => {
+    // @tiptap/suggestion re-fires start (not just update) when a peer edit both
+    // MOVES the `@` range and CHANGES the query (moved && changed). That restart
+    // must not resurrect / open the popup — only a LOCAL start shows.
+    let remote = false;
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      isRemoteChange: () => remote,
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      remote = true; // the start is driven by a remote peer's edit
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe('none'); // NOT shown — a peer didn't open it
+      // A subsequent LOCAL edit is the user re-engaging → shows.
+      remote = false;
+      handlers.onUpdate?.(props([textRow], editor));
+      expect(el.style.display).toBe('');
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
   it('residual 2: refreshRef recomputes a VISIBLE popup from the live pool, and no-ops while hidden', () => {
     let pool: ReferenceRailItem[] = [textRow];
     const refreshRef: { current: (() => void) | null } = { current: null };

@@ -49,8 +49,16 @@ import {
 export function wasLastChangeRemote(editor: Editor): boolean {
   const sync = editor.state.plugins
     .find((pl) => (pl as unknown as { key?: string }).key === 'y-sync$')
-    ?.getState(editor.state) as { isChangeOrigin?: boolean } | undefined;
-  return sync?.isChangeOrigin === true;
+    ?.getState(editor.state) as
+    | { isChangeOrigin?: boolean; isUndoRedoOperation?: boolean }
+    | undefined;
+  // A PEER change, not this user's own undo/redo: y-prosemirror sets
+  // isChangeOrigin=true for BOTH a remote peer edit AND the local Y.UndoManager
+  // applying an undo/redo, distinguishing them only by isUndoRedoOperation
+  // (`origin instanceof Y.UndoManager`, true only for THIS client's undo). Treat
+  // a local undo as a LOCAL re-engagement (so it can re-show a dismissed popup),
+  // reserving "remote" for a true peer change.
+  return sync?.isChangeOrigin === true && sync.isUndoRedoOperation !== true;
 }
 
 /** A React-ref-shaped holder the open popup writes its `refresh()` into. */
@@ -198,8 +206,10 @@ export function makeReferenceSuggestion(input: {
       /**
        * Toggles the popup's VISIBILITY only, based on whether anything matched
        * (I3: zero matches → hidden, so plain `@` typing is never interrupted by an
-       * empty box). Only the LOCAL user's intent drives this (fresh `@`, refocus,
-       * local edit) — never a remote transaction.
+       * empty box). WHETHER to call it is decided at each call site — a local start
+       * / refocus / edit always may, and a remote content change may too but only
+       * for a NON-dismissed popup (never resurrecting a dismissed one). The
+       * dismissed / remote gating lives at the call sites, not here.
        * @param items - The rows the popup would show.
        */
       const showFor = (items: ReferenceRailItem[]): void => {
@@ -249,7 +259,6 @@ export function makeReferenceSuggestion(input: {
       return {
         onStart: (props: SuggestionProps<ReferenceRailItem>): void => {
           latestProps = props;
-          dismissed = false; // a fresh `@` — not the previous session's dismissal
           component = new ReactRenderer(ReferenceMentionList, {
             props: {
               items: props.items,
@@ -276,7 +285,11 @@ export function makeReferenceSuggestion(input: {
           if (input.refreshRef) {
             input.refreshRef.current = (): void => {
               if (el && el.style.display !== 'none' && latestProps) {
-                updateContent(computeItems(latestProps.query));
+                const items = computeItems(latestProps.query);
+                updateContent(items);
+                // Re-apply I3: a remote change that empties the pool must hide the
+                // visible popup, not leave it showing an empty "no references" box.
+                showFor(items);
               }
             };
           }
@@ -313,7 +326,7 @@ export function makeReferenceSuggestion(input: {
           // query / range change, and a mode toggle (stored on the canvas node,
           // not the prompt doc) is neither — so re-showing the stale list kept
           // t2i's text-only rows after switching to i2i and never offered the
-          // focus crops i2i should (#1799 / #1800). pushItems also re-hides when
+          // focus crops i2i should (#1799 / #1800). showFor also re-hides when
           // nothing matches, matching a freshly-opened panel.
           onEditorFocus = (): void => {
             if (!latestProps) return;
@@ -323,11 +336,20 @@ export function makeReferenceSuggestion(input: {
             showFor(items);
           };
           props.editor.view.dom.addEventListener('focus', onEditorFocus);
-          // Show the popup ONLY when the pool has ≥1 matching row (I3, user
-          // 2026-07-12): typing `@` as ordinary text (nothing matches) must not
-          // pop an empty "no references" box. Zero matches → hidden, so plain
-          // `@` typing is uninterrupted; a match → shown.
-          showFor(props.items);
+          // Show the popup ONLY for a LOCAL start (the user typed `@`), and only
+          // when the pool has ≥1 matching row (I3: plain `@` typing must not pop an
+          // empty box). A REMOTE-triggered restart also reaches onStart —
+          // @tiptap/suggestion re-fires start when a peer's edit both MOVES the
+          // range and CHANGES the query (moved && changed → onExit → onStart) — and
+          // must NOT pop a picker this user never opened (residual 1: the onUpdate
+          // guard alone missed this restart path). A remote start begins dismissed
+          // (hidden); a subsequent LOCAL edit clears it and shows via onUpdate.
+          dismissed = isRemoteChange(props.editor);
+          if (dismissed) {
+            el.style.display = 'none';
+          } else {
+            showFor(props.items);
+          }
           place(props.clientRect);
         },
         onUpdate: (props: SuggestionProps<ReferenceRailItem>): void => {
