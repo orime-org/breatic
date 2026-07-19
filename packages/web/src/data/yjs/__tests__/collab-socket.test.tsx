@@ -38,6 +38,7 @@ import {
   releaseDocProvider,
   _resetCollabSocketForTests,
 } from '@web/data/yjs/collab-socket';
+import { getDoc, _resetForTests as _resetDocsForTests } from '@web/data/yjs/manager';
 
 const META = 'project-p1/meta';
 
@@ -45,6 +46,7 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
   beforeEach(() => {
     vi.useFakeTimers();
     _resetCollabSocketForTests();
+    _resetDocsForTests();
     wsInstances.length = 0;
     providerInstances.length = 0;
   });
@@ -112,5 +114,41 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
     releaseDocProvider('project-p1/canvas-b');
     vi.runAllTimers();
     expect(wsInstances[0]!.destroy).toHaveBeenCalledOnce(); // last doc → socket closed
+  });
+
+  // #1786: the Y.Doc lifecycle is co-located with the provider lifecycle — a
+  // final release evicts the doc from the manager cache so nothing lingers (the
+  // memory leak: destroyDoc had zero production callers).
+  it('final release destroys + evicts the cached Y.Doc (#1786)', () => {
+    const doc = getDoc(META);
+    acquireDocProvider(META, doc);
+    releaseDocProvider(META);
+    // Deferred — the doc is still cached until the tick.
+    expect(getDoc(META)).toBe(doc);
+    vi.runAllTimers();
+    // Evicted: a fresh getDoc returns a NEW instance (old doc destroyed + gone).
+    expect(getDoc(META)).not.toBe(doc);
+  });
+
+  it('StrictMode acquire→release→acquire does NOT evict the cached doc (#1786)', () => {
+    const doc = getDoc(META);
+    acquireDocProvider(META, doc); // setup
+    releaseDocProvider(META); // cleanup — schedules deferred evict
+    acquireDocProvider(META, doc); // re-setup — cancels it
+    vi.runAllTimers();
+    // The re-acquire cancelled the deferred teardown → doc never evicted.
+    expect(getDoc(META)).toBe(doc);
+  });
+
+  it('does not evict a still-referenced doc while another consumer holds it (refcount)', () => {
+    const doc = getDoc(META);
+    acquireDocProvider(META, doc); // consumer 1
+    acquireDocProvider(META, doc); // consumer 2
+    releaseDocProvider(META); // consumer 1 leaves — refcount 1, no teardown
+    vi.runAllTimers();
+    expect(getDoc(META)).toBe(doc); // still alive
+    releaseDocProvider(META); // consumer 2 leaves — refcount 0
+    vi.runAllTimers();
+    expect(getDoc(META)).not.toBe(doc); // now evicted
   });
 });

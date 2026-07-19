@@ -8,6 +8,8 @@ import {
 import * as React from 'react';
 import type * as Y from 'yjs';
 
+import { destroyDoc } from '@web/data/yjs/manager';
+
 /**
  * Placeholder token the Hocuspocus client must send purely to trip the
  * server's `onAuthenticate` hook — without ANY token the client-side library
@@ -145,6 +147,14 @@ export function releaseDocProvider(name: string): void {
     // does NOT close the shared socket (manageSocket is false).
     entry.provider.destroy();
     docEntries.delete(name);
+    // Co-locate the Y.Doc lifecycle with the provider's (#1786): the last
+    // consumer is gone, so evict + destroy the cached doc — otherwise the
+    // manager cache grows unbounded across a session (destroyDoc had zero
+    // production callers). Runs AFTER provider.destroy() so the doc has no
+    // attached provider when it is torn down. StrictMode-safe: a re-acquire
+    // cancels this deferred callback before it fires, so the doc is never
+    // evicted mid-oscillation.
+    destroyDoc(name);
     maybeDestroySharedSocket();
   }, 0);
 }
