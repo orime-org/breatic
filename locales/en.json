@@ -1315,9 +1315,11 @@
       "createStudio": "New Studio",
       "comingSoon": "Coming soon",
       "recent": "Recent",
-      "myStudios": "My Studios",
+      "personalStudio": "Personal Studio",
+      "personalStudioEmpty": "No personal Studio yet",
+      "myStudios": "My Team Studios",
       "joinedStudios": "Joined Studios",
-      "myStudiosEmpty": "No Studios yet",
+      "myStudiosEmpty": "No team Studios yet",
       "joinedEmpty": "You haven't joined any Studio yet",
       "openNav": "Open navigation"
     },

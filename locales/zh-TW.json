@@ -1315,9 +1315,11 @@
       "createStudio": "新增 Studio",
       "comingSoon": "即將推出",
       "recent": "最近",
-      "myStudios": "我的 Studio",
+      "personalStudio": "個人 Studio",
+      "personalStudioEmpty": "還沒有個人 Studio",
+      "myStudios": "我的團隊 Studio",
       "joinedStudios": "我加入的 Studio",
-      "myStudiosEmpty": "還沒有 Studio",
+      "myStudiosEmpty": "還沒有團隊 Studio",
       "joinedEmpty": "還沒加入任何 Studio",
       "openNav": "開啟導覽"
     },

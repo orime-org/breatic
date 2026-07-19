@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type * as React from 'react';
-import { Briefcase, Users } from 'lucide-react';
+import { Briefcase, User, Users } from 'lucide-react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
@@ -24,9 +24,9 @@ interface StudioRailContentProps {
 }
 
 /**
- * The studio rail's inner content — segments ①–⑤ (create actions, Recent, and
- * the viewer's studios split by current role into "My studios" / "Joined
- * studios" via `splitStudios`). Shared by the persistent desktop rail
+ * The studio rail's inner content — create actions, Recent, and the viewer's
+ * studios split into three groups (#1661) via `splitStudios`: Personal Studio,
+ * My Team Studios, and Joined Studios. Shared by the persistent desktop rail
  * (`StudioRail`) and the narrow-screen drawer (`StudioRailDrawer`) so the two
  * never drift. This is layout-only inner content; the outer container (width /
  * border / scroll) belongs to each host.
@@ -44,7 +44,7 @@ export function StudioRailContent({
   onCreateStudio,
 }: StudioRailContentProps): React.JSX.Element {
   const t = useTranslation();
-  const { owned, joined } = splitStudios(studios);
+  const { personal, myTeam, joined } = splitStudios(studios);
   return (
     <>
       <RailRecentLink
@@ -66,8 +66,19 @@ export function StudioRailContent({
       <hr className='mx-1.5 my-1.5 border-border' />
 
       <RailStudioGroup
+        title={t('studio.rail.personalStudio')}
+        studios={personal}
+        activeSlug={activeSlug}
+        emptyText={t('studio.rail.personalStudioEmpty')}
+        collapseKey={STORAGE_KEYS.railPersonalStudios}
+        Icon={User}
+      />
+
+      <hr className='mx-1.5 my-1.5 border-border' />
+
+      <RailStudioGroup
         title={t('studio.rail.myStudios')}
-        studios={owned}
+        studios={myTeam}
         activeSlug={activeSlug}
         emptyText={t('studio.rail.myStudiosEmpty')}
         collapseKey={STORAGE_KEYS.railMyStudios}

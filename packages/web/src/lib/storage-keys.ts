@@ -31,7 +31,9 @@ export const STORAGE_KEYS = {
   locale: 'breatic.locale',
   /** Zustand-persisted user preferences (theme). Mirrored in `src/index.html`. */
   preferences: 'breatic.preferences',
-  /** Rail "My studios" section collapsed flag (Discord-style expand / collapse). */
+  /** Rail "Personal Studio" section collapsed flag (Discord-style expand / collapse). */
+  railPersonalStudios: 'breatic.personalStudios',
+  /** Rail "My Team Studios" section collapsed flag (Discord-style expand / collapse). */
   railMyStudios: 'breatic.myStudios',
   /** Rail "Joined studios" section collapsed flag. */
   railJoinedStudios: 'breatic.joinedStudios',

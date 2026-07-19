@@ -1315,9 +1315,11 @@
       "createStudio": "Studio を新規作成",
       "comingSoon": "近日公開",
       "recent": "最近",
-      "myStudios": "マイ Studio",
+      "personalStudio": "個人 Studio",
+      "personalStudioEmpty": "個人 Studio がまだありません",
+      "myStudios": "自分のチーム Studio",
       "joinedStudios": "参加中の Studio",
-      "myStudiosEmpty": "Studio がまだありません",
+      "myStudiosEmpty": "チーム Studio がまだありません",
       "joinedEmpty": "まだ Studio に参加していません",
       "openNav": "ナビゲーションを開く"
     },

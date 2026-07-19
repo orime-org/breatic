@@ -1315,9 +1315,11 @@
       "createStudio": "새 Studio",
       "comingSoon": "곧 출시",
       "recent": "최근",
-      "myStudios": "내 Studio",
+      "personalStudio": "개인 Studio",
+      "personalStudioEmpty": "아직 개인 Studio가 없습니다",
+      "myStudios": "내 팀 Studio",
       "joinedStudios": "참여 중인 Studio",
-      "myStudiosEmpty": "아직 Studio가 없습니다",
+      "myStudiosEmpty": "아직 팀 Studio가 없습니다",
       "joinedEmpty": "아직 참여한 Studio가 없습니다",
       "openNav": "탐색 열기"
     },
