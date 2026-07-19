@@ -28,7 +28,8 @@
  */
 
 import type { Editor } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 
 /**
  * Meta key a MACHINE-DERIVED (non-user-typed) local editor transaction sets so
@@ -104,4 +105,25 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
  */
 export function wasLastChangeLocalUserInput(editor: Editor): boolean {
   return LOCAL_USER_INPUT_KEY.getState(editor.state) ?? false;
+}
+
+/**
+ * Dispatches a MACHINE-DERIVED (non-user-typed) edit on the prompt editor,
+ * applying BOTH machine-edit invariants in one place: keep it OUT of the
+ * collaborative undo stack (addToHistory:false, so Cmd+Z reverts the user's own
+ * edit rather than a machine cosmetic sync / edge-driven delete) AND tag it
+ * MACHINE_EDIT_META so {@link wasLastChangeLocalUserInput} never counts it as a
+ * keystroke (so it can never resurrect a dismissed `@` popup — #1802 round-4).
+ * Every machine effect on the prompt (the edge-driven cascade-clear, the chip
+ * display re-sync, and any future mini-tool write-back) must dispatch through
+ * this so both invariants hold by construction rather than being re-derived and
+ * drifting per call site.
+ * @param view - The prompt editor view.
+ * @param tr - The prepared transaction (its content already staged by the caller).
+ * @throws {never}
+ */
+export function dispatchMachineEdit(view: EditorView, tr: Transaction): void {
+  tr.setMeta('addToHistory', false);
+  tr.setMeta(MACHINE_EDIT_META, true);
+  view.dispatch(tr);
 }

@@ -20,6 +20,7 @@ import {
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import {
   MACHINE_EDIT_META,
+  dispatchMachineEdit,
   wasLastChangeLocalUserInput,
 } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
@@ -759,6 +760,94 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
     } finally {
       editorA.destroy();
+    }
+  });
+
+  it('end-to-end: a machine-derived transaction through the REAL tracker keeps a dismissed popup hidden, and a real keystroke re-shows it (round-6 test-gap)', () => {
+    // Drives the WHOLE chain with NO injected isLocalUserInput: a machine-tagged
+    // dispatch advances the real tracker plugin, and the suggestion's onUpdate
+    // reads it via the default wasLastChangeLocalUserInput. A wiring break (onUpdate
+    // reading the wrong predicate, or the tracker mis-judging the machine tr) fails
+    // HERE — where the split "gating given a signal" and "tracker return value"
+    // tests would each still pass.
+    const docA = new Y.Doc();
+    const editor = makeCollabEditor(docA);
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+    }); // no isLocalUserInput → the real tracker drives visibility
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      // A local keystroke advances the tracker to "local" → onStart shows.
+      editor.commands.insertContent('a');
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe('');
+      // User dismisses (clicks a panel control outside).
+      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      expect(el.style.display).toBe('none');
+      // The edge-driven cascade-clear: a machine-tagged local dispatch shifting
+      // the range → onUpdate. Through the REAL tracker it reads non-local, so the
+      // dismissed popup stays hidden (content still refreshes).
+      const machineTr = editor.state.tr.insertText('x', 1);
+      machineTr.setMeta(MACHINE_EDIT_META, true);
+      editor.view.dispatch(machineTr);
+      handlers.onUpdate?.(props([textRow], editor));
+      expect(el.style.display).toBe('none'); // still hidden — end-to-end
+      // A genuine local keystroke DOES re-show it (proves it is not latched hidden).
+      editor.commands.insertContent('b');
+      handlers.onUpdate?.(props([textRow], editor));
+      expect(el.style.display).toBe('');
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  it('a real caret appendTransaction after a remote chip insert stays non-local (round-6 test-gap: guard vs a genuine PM append)', () => {
+    // Round-4 finding 2 relied on a real appendTransaction, not a hand-set meta:
+    // a peer inserts a BARE chip; synced into A, the caret plugin's
+    // appendTransaction (appendWhitespace) fires on A to restore the invariant
+    // flanking spaces — a genuine PM-tagged appendedTransaction riding with the
+    // remote root. The guard must keep the judgment non-local; without it, the
+    // local space-insert would flip it to "user typed".
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    const editorB = makeCollabEditor(docB);
+    try {
+      editorB.commands.insertContent(referenceMentionContent(imageRow));
+      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
+      // The whitespace normalizer ran on A → the chip is now flanked by spaces,
+      // proving a real appended transaction was applied (not a no-op).
+      expect(editorA.getText()).toContain(' ');
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+    } finally {
+      editorA.destroy();
+      editorB.destroy();
+    }
+  });
+
+  it('dispatchMachineEdit tags a machine effect non-local through the real tracker (round-6 test-gap: asserts the tag at its PRODUCER)', () => {
+    // The machine-edit tag lives at ONE producer (dispatchMachineEdit); the
+    // cascade-clear and chip display sync both dispatch through it. Deleting the
+    // MACHINE_EDIT_META tag inside dispatchMachineEdit turns this red — the
+    // round-6 gap was that the tag was only ever exercised by the tracker
+    // consuming a hand-set meta, never asserted at the producer that emits it.
+    const editor = makeCollabEditor(new Y.Doc());
+    try {
+      editor.commands.insertContent('seed'); // local keystroke → tracker true
+      expect(wasLastChangeLocalUserInput(editor)).toBe(true);
+      const tr = editor.state.tr.insertText('!', 1);
+      dispatchMachineEdit(editor.view, tr);
+      expect(wasLastChangeLocalUserInput(editor)).toBe(false); // non-local via producer
+    } finally {
+      editor.destroy();
     }
   });
 });

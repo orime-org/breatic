@@ -37,7 +37,7 @@ import {
   referenceMentionContent,
   serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
-import { MACHINE_EDIT_META } from '@web/spaces/canvas/generate/reference-mention-local-input';
+import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { planCascadeDeletion } from '@web/spaces/canvas/generate/reference-mention-whitespace';
 
@@ -376,17 +376,13 @@ export const PromptEditor = React.forwardRef<
     const ranges = planCascadeDeletion(editor.state.doc, stalePositions);
     const tr = editor.state.tr;
     for (const { from, to } of ranges) tr.delete(from, to);
-    // Edge-driven chip removal (the edge left the pool) is a CONSEQUENCE of a
-    // canvas action, not a prompt edit — keep it out of the prompt's undo stack
-    // so Cmd+Z can't resurrect an orphan chip whose reference is gone (same
-    // machine-derived-edit invariant as the thumbnail sync; batch-4 adversarial).
-    tr.setMeta('addToHistory', false);
-    // Mark it machine-derived so the local-user-input tracker never counts this
-    // edge-driven delete as a keystroke — deleting a chip BEFORE an active `@`
-    // shifts its range and fires the suggestion's onUpdate, which must not
-    // resurrect a dismissed popup (collaboration residual 1, #1802 round-4).
-    tr.setMeta(MACHINE_EDIT_META, true);
-    editor.view.dispatch(tr);
+    // Edge-driven chip removal is a CONSEQUENCE of a canvas action, not a prompt
+    // edit: dispatchMachineEdit keeps it out of the undo stack (Cmd+Z can't
+    // resurrect an orphan chip whose reference is gone) AND tags it machine-
+    // derived so the local-input tracker never counts it as a keystroke —
+    // deleting a chip BEFORE an active `@` shifts its range and fires onUpdate,
+    // which must not resurrect a dismissed popup (#1802 round-4; batch-4).
+    dispatchMachineEdit(editor.view, tr);
   }, [editor, references]);
 
   // Keep every reference chip a LIVE PROJECTION of its source node's pool row —
@@ -426,15 +422,12 @@ export const PromptEditor = React.forwardRef<
         tr.setNodeAttribute(u.pos, MENTION_THUMBNAIL_ATTR, u.thumbnail ?? null);
       }
     }
-    // Machine-derived cosmetic sync — keep it OUT of the prompt's collaborative
-    // undo stack (batch-4 adversarial): otherwise Cmd+Z would revert a name /
-    // thumbnail refresh instead of the user's own edit, and (this effect is
-    // gated on `references`, not the doc) that revert would never self-heal.
-    tr.setMeta('addToHistory', false);
-    // Machine-derived (see the cascade-clear above): mark it so the
-    // local-user-input tracker never counts it as a keystroke (#1802 round-4).
-    tr.setMeta(MACHINE_EDIT_META, true);
-    editor.view.dispatch(tr);
+    // Machine-derived cosmetic sync: dispatchMachineEdit keeps it OUT of the
+    // collaborative undo stack (else Cmd+Z reverts a name / thumbnail refresh
+    // instead of the user's own edit, and — gated on `references`, not the doc —
+    // that revert never self-heals) AND tags it so the local-input tracker never
+    // counts it as a keystroke (#1802 round-4; batch-4).
+    dispatchMachineEdit(editor.view, tr);
   }, [editor, references]);
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
   // switch visually pre-announces they will not take effect (execute forces
