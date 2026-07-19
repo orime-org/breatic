@@ -399,10 +399,20 @@ export function makeReferenceSuggestion(input: {
         },
         onExit: (props: SuggestionProps<ReferenceRailItem>): void => {
           // Capture the pre-teardown open state so an IMMEDIATE remote restart
-          // (onExit → onStart) can restore an actively-open picker (residual —
-          // round-2 adversarial). Read before dismissed is reset below.
+          // (onExit → onStart, fired synchronously in the SAME view.update when a
+          // peer edit both moves the range and changes the query) can restore an
+          // actively-open picker (round-2 adversarial). Read before dismissed is
+          // reset below. Scope it to that SYNCHRONOUS restart only: clear it on
+          // the next microtask so a GENUINE terminal exit (space / delete / pick /
+          // cursor-leave) does not leave it armed for a LATER, unrelated remote
+          // `@` onStart — which would wrongly pop a picker the user never opened,
+          // re-introducing residual 1 (round-3 adversarial). The synchronous
+          // restart's onStart reads + consumes it before this microtask runs.
           wasOpenBeforeExit =
             !!el && el.style.display !== 'none' && !dismissed;
+          queueMicrotask(() => {
+            wasOpenBeforeExit = false;
+          });
           stopAutoUpdate?.();
           stopAutoUpdate = null;
           if (onOutsidePointerDown) {

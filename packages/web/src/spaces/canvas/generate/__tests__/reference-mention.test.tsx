@@ -609,6 +609,38 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     }
   });
 
+  it('a GENUINE exit does not arm a later remote onStart (wasOpenBeforeExit is microtask-scoped)', async () => {
+    let remote = false;
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      isRemoteChange: () => remote,
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    try {
+      handlers.onStart?.(props([textRow], editor)); // local open, visible
+      // A GENUINE terminal exit (space / delete / pick), NOT an immediate restart.
+      handlers.onExit?.(props([textRow], editor));
+      await Promise.resolve(); // flush the microtask that clears the open flag
+      // A LATER, unrelated remote `@` insertion must NOT restore/pop a picker the
+      // user never opened (the stale-flag hole round 3 found).
+      remote = true;
+      const before = new Set(Array.from(document.body.children));
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe('none'); // hidden — flag was not left armed
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
   it('wasLastChangeRemote flags a remote peer edit (y-sync isChangeOrigin), not a local one', () => {
     const docA = new Y.Doc();
     const docB = new Y.Doc();
