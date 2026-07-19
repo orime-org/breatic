@@ -629,6 +629,50 @@ function GeneratePanelBody({
     t,
   ]);
 
+  // Stabilize the prompt-editor element (#1783): `GeneratePanel` is `React.memo`,
+  // so an inline element here would be a fresh object on every container render
+  // and defeat the memo (the whole panel re-renders). Its inner props are all
+  // already stable (useCallback / useMemo), so memoizing the element on those
+  // deps lets the panel bail when nothing prompt-related changed.
+  //
+  // The two localized strings MUST be depended on by VALUE, not via `t`: `t`
+  // (useTranslation) is a stable module-level function whose identity never
+  // changes on an in-session locale switch (locale updates re-render via
+  // useSyncExternalStore), so depending on `t` alone would freeze the
+  // placeholder / mention-empty label in the old language until the panel is
+  // reopened. Compute them here (cheap) and depend on the strings, so a locale
+  // switch re-creates the element and PromptEditor rebuilds with the new copy.
+  const promptPlaceholder = t('canvas.generatePanel.promptPlaceholder');
+  const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
+  const promptSlot = React.useMemo(
+    () =>
+      fragment ? (
+        <PromptEditor
+          ref={promptEditorRef}
+          fragment={fragment}
+          placeholder={promptPlaceholder}
+          onTextChange={handlePromptChange}
+          onAtMentionsChange={handleAtMentionsChange}
+          references={stableReferences}
+          mode={vm.mode}
+          mentionEmptyLabel={mentionEmptyLabel}
+          caretProvider={caretProvider}
+          caretUser={caretUser}
+        />
+      ) : null,
+    [
+      fragment,
+      promptPlaceholder,
+      mentionEmptyLabel,
+      handlePromptChange,
+      handleAtMentionsChange,
+      stableReferences,
+      vm.mode,
+      caretProvider,
+      caretUser,
+    ],
+  );
+
   return (
     <GeneratePanel
       models={stableModels}
@@ -639,22 +683,7 @@ function GeneratePanelBody({
       references={stableReferences}
       creditEstimate={vm.creditEstimate}
       canExecute={canExecute}
-      promptSlot={
-        fragment ? (
-          <PromptEditor
-            ref={promptEditorRef}
-            fragment={fragment}
-            placeholder={t('canvas.generatePanel.promptPlaceholder')}
-            onTextChange={handlePromptChange}
-            onAtMentionsChange={handleAtMentionsChange}
-            references={stableReferences}
-            mode={vm.mode}
-            mentionEmptyLabel={t('canvas.generatePanel.mentionEmpty')}
-            caretProvider={caretProvider}
-            caretUser={caretUser}
-          />
-        ) : null
-      }
+      promptSlot={promptSlot}
       onExit={closeGeneratePanel}
       onSelectModel={onSelectModel}
       onToggleMode={onToggleMode}

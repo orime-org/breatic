@@ -152,6 +152,30 @@ export function reconcileSelection<T extends { id: string; selected?: boolean }>
 }
 
 /**
+ * Whether two ReactFlow edges have identical render inputs, so the previous
+ * object reference can be reused. Compares the structural fields `toFlowEdge`
+ * sets (source / target / type), the carried local `selected` flag, and `data`
+ * (shallow — the edge carries `{ readOnly }`, rebuilt fresh every Yjs change).
+ * Reusing the reference for unchanged edges is what lets `ScissorsEdge`'s
+ * `React.memo` bail — otherwise a change to ANY node/edge hands EVERY edge a
+ * fresh object and every scissors edge re-renders (edge counterpart of the node
+ * mirror's #1647 R1 fix).
+ * @param a - The previous render-buffer edge.
+ * @param b - The freshly merged edge.
+ * @returns True when nothing that affects rendering changed.
+ */
+function sameEdgeRenderInputs(a: Edge, b: Edge): boolean {
+  return (
+    a.source === b.source &&
+    a.target === b.target &&
+    a.type === b.type &&
+    a.selected === b.selected &&
+    a.hidden === b.hidden &&
+    sameData(a.data, b.data)
+  );
+}
+
+/**
  * Edge counterpart of {@link mergeMirroredSelection}: carry the per-user local
  * `selected` flag forward by id when rebuilding the edge array from the Yjs
  * mirror. Without this the freshly-mirrored edges (rebuilt on every Yjs change)
@@ -159,17 +183,143 @@ export function reconcileSelection<T extends { id: string; selected?: boolean }>
  * edge being selected — could never appear, and the delete key would have no
  * selected edge to remove. Edges have no drag state, so only `selected` is
  * carried.
+ *
+ * **Reference stability (#1783)**: for an edge whose render inputs are unchanged,
+ * the PREVIOUS object reference is reused (not a fresh `{...edge}`), so
+ * `ScissorsEdge`'s `React.memo` bails and only the edge that actually changed
+ * re-renders — the same reconciliation the node mirror already applies.
  * @param prev - The previous edge render buffer (holds local selection).
  * @param fresh - The edges freshly mapped from the Yjs mirror.
- * @returns The fresh edges with local `selected` flags preserved by id.
+ * @returns The fresh edges with local `selected` flags preserved and unchanged
+ *   edges' previous references reused.
  */
 export function mergeMirroredEdgeSelection(
   prev: ReadonlyArray<Edge>,
   fresh: ReadonlyArray<Edge>,
 ): Edge[] {
-  const local = new Map(prev.map((edge) => [edge.id, edge.selected]));
+  const prevById = new Map(prev.map((edge) => [edge.id, edge]));
   return fresh.map((edge) => {
-    const selected = local.get(edge.id);
-    return selected === undefined ? edge : { ...edge, selected };
+    const p = prevById.get(edge.id);
+    if (!p) return edge; // brand-new edge — no local selection to carry
+    const merged =
+      p.selected === undefined ? edge : { ...edge, selected: p.selected };
+    return sameEdgeRenderInputs(p, merged) ? p : merged;
+  });
+}
+
+/**
+ * Deep-equal two `groupResizeBounds` arrays (an array of flat number records —
+ * one min/max clamp per resize control). `renderNodes` recomputes this array
+ * with FRESH element objects on every pass, so element `Object.is` is always
+ * false; comparing the numbers lets an unchanged group reuse its previous render
+ * node so `GroupNode`'s `React.memo` bails (#1783).
+ * @param a - One bounds array (or any value).
+ * @param b - The other bounds array (or any value).
+ * @returns True when both are equal-length arrays of field-wise equal records.
+ */
+export function sameGroupResizeBounds(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+    return false;
+  }
+  return a.every((x, i) => {
+    const y = b[i];
+    if (
+      typeof x !== 'object' ||
+      x === null ||
+      typeof y !== 'object' ||
+      y === null
+    ) {
+      return Object.is(x, y);
+    }
+    const xk = Object.keys(x as Record<string, unknown>);
+    const yk = Object.keys(y as Record<string, unknown>);
+    return (
+      xk.length === yk.length &&
+      xk.every((k) =>
+        Object.is(
+          (x as Record<string, unknown>)[k],
+          (y as Record<string, unknown>)[k],
+        ),
+      )
+    );
+  });
+}
+
+/**
+ * `sameData` for a group render node: the derived `data` is `{...node.data,
+ * groupResizeBounds}`, so `groupResizeBounds` is compared with the bounds-aware
+ * {@link sameGroupResizeBounds} (fresh array each pass) and every other field
+ * with {@link sameValue}.
+ * @param a - One group node's data record.
+ * @param b - The other group node's data record.
+ * @returns True when the records are field-wise equal.
+ */
+function sameGroupData(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (
+    typeof a !== 'object' ||
+    a === null ||
+    typeof b !== 'object' ||
+    b === null
+  ) {
+    return false;
+  }
+  const ak = Object.keys(a as Record<string, unknown>);
+  const bk = Object.keys(b as Record<string, unknown>);
+  if (ak.length !== bk.length) return false;
+  return ak.every((k) => {
+    const av = (a as Record<string, unknown>)[k];
+    const bv = (b as Record<string, unknown>)[k];
+    return k === 'groupResizeBounds'
+      ? sameGroupResizeBounds(av, bv)
+      : sameValue(av, bv);
+  });
+}
+
+/**
+ * Whether two group render nodes have identical render inputs. Like
+ * {@link sameRenderInputs} but adds the derived `draggable` / `zIndex`
+ * `renderNodes` sets on a group and compares `data` with the bounds-aware
+ * {@link sameGroupData}.
+ * @param a - The previous group render node.
+ * @param b - The freshly built group render node.
+ * @returns True when nothing that affects rendering changed.
+ */
+function sameGroupRenderInputs(a: Node, b: Node): boolean {
+  return (
+    a.parentId === b.parentId &&
+    a.position.x === b.position.x &&
+    a.position.y === b.position.y &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.selected === b.selected &&
+    a.dragging === b.dragging &&
+    a.hidden === b.hidden &&
+    a.draggable === b.draggable &&
+    a.zIndex === b.zIndex &&
+    sameGroupData(a.data, b.data)
+  );
+}
+
+/**
+ * Reference-reconcile freshly-built group render nodes against the previous
+ * render pass. `renderNodes` rebuilds every group's `data` (with a fresh
+ * `groupResizeBounds` array) on every canvas mutation, so without this a change
+ * to ANY node hands EVERY group a fresh object and every `GroupNode` re-renders.
+ * Reuse the previous object reference for a group whose render inputs are
+ * unchanged — the group counterpart of {@link mergeMirroredSelection} (#1783).
+ * @param prev - The previous pass's group render nodes.
+ * @param fresh - The freshly built group render nodes.
+ * @returns The fresh groups with unchanged groups' previous references reused.
+ */
+export function reconcileGroupNodes(
+  prev: ReadonlyArray<Node>,
+  fresh: ReadonlyArray<Node>,
+): Node[] {
+  const prevById = new Map(prev.map((node) => [node.id, node]));
+  return fresh.map((node) => {
+    const p = prevById.get(node.id);
+    return p && sameGroupRenderInputs(p, node) ? p : node;
   });
 }

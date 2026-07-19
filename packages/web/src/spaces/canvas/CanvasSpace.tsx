@@ -162,6 +162,7 @@ import { SelectionContextMenu } from '@web/spaces/canvas/SelectionContextMenu';
 import {
   mergeMirroredEdgeSelection,
   mergeMirroredSelection,
+  reconcileGroupNodes,
   reconcileSelection,
 } from '@web/spaces/canvas/mirror-selection';
 import {
@@ -2757,6 +2758,7 @@ function CanvasSpaceInner({
   // toFlowNode), so the render path no longer derives geometry — it only
   // topo-sorts (parent before child) and applies the lock-freeze. Groups paint
   // at zIndex 0 so their members render above them.
+  const prevGroupsRef = React.useRef<Node[]>([]);
   const renderNodes = React.useMemo<Node[]>(() => {
     // ReactFlow requires a Group (parent) to precede its members in the array;
     // topo-sort enforces that. A Group carries its own authoritative width/height
@@ -2769,44 +2771,54 @@ function CanvasSpaceInner({
     // a whole) and the members of a locked Group render non-draggable. Groups
     // sit at zIndex 0 so members paint above them.
     const frozen = lockedNodeIds(ordered);
-    return [
-      ...groups.map((node) => {
-        // Per-control resize bounds: each of the 8 controls (4 edges + 4 corners)
-        // gets a member-derived min so ReactFlow's NATIVE clamp hard-stops it at
-        // "members + GROUP_PADDING" (see GroupResizer). Attached to data for the
-        // node wrapper to read.
-        const { box, allMeasured } = groupMembersLocalBox(node.id, ordered);
-        const width = node.width ?? node.measured?.width ?? GROUP_DRAG_FALLBACK_W;
-        const height =
+    const freshGroups = groups.map((node) => {
+      // Per-control resize bounds: each of the 8 controls (4 edges + 4 corners)
+      // gets a member-derived min so ReactFlow's NATIVE clamp hard-stops it at
+      // "members + GROUP_PADDING" (see GroupResizer). Attached to data for the
+      // node wrapper to read.
+      const { box, allMeasured } = groupMembersLocalBox(node.id, ordered);
+      const width = node.width ?? node.measured?.width ?? GROUP_DRAG_FALLBACK_W;
+      const height =
           node.height ?? node.measured?.height ?? GROUP_DRAG_FALLBACK_H;
-        let bounds = groupResizeBounds(
-          box,
-          width,
-          height,
-          GROUP_PADDING,
-          GROUP_MIN_SIZE,
-        );
+      let bounds = groupResizeBounds(
+        box,
+        width,
+        height,
+        GROUP_PADDING,
+        GROUP_MIN_SIZE,
+      );
         // R1 guard: an unmeasured member would shrink `box` and yield a bound up
         // to GROUP_DRAG_FALLBACK short — block shrinking that frame (min = the
         // current size; growth is still allowed) until the member measures.
-        if (!allMeasured) {
-          bounds = bounds.map((b) => ({ ...b, minWidth: width, minHeight: height }));
-        }
-        return {
-          ...node,
-          data: {
-            ...(node.data as Record<string, unknown>),
-            // A read-only viewer gets NO resize bounds, so GroupResizer renders
-            // no handles — ReactFlow's NodeResizeControl works independently of
-            // `nodesDraggable`, so without this a viewer could grab + drag-resize
-            // a group locally (the write is blocked, but the affordance must not
-            // show — same rule as nodesDraggable / nodesConnectable).
-            groupResizeBounds: readOnly ? [] : bounds,
-          },
-          draggable: !readOnly && !frozen.has(node.id),
-          zIndex: 0,
-        };
-      }),
+      if (!allMeasured) {
+        bounds = bounds.map((b) => ({ ...b, minWidth: width, minHeight: height }));
+      }
+      return {
+        ...node,
+        data: {
+          ...(node.data as Record<string, unknown>),
+          // A read-only viewer gets NO resize bounds, so GroupResizer renders
+          // no handles — ReactFlow's NodeResizeControl works independently of
+          // `nodesDraggable`, so without this a viewer could grab + drag-resize
+          // a group locally (the write is blocked, but the affordance must not
+          // show — same rule as nodesDraggable / nodesConnectable).
+          groupResizeBounds: readOnly ? [] : bounds,
+        },
+        draggable: !readOnly && !frozen.has(node.id),
+        zIndex: 0,
+      };
+    });
+    // #1783: reuse the previous pass's group object when its render inputs are
+    // unchanged so GroupNode's React.memo bails — renderNodes otherwise rebuilds
+    // every group's data + a fresh bounds array on every canvas mutation, and a
+    // change to ANY node would re-render every group.
+    const reconciledGroups = reconcileGroupNodes(
+      prevGroupsRef.current,
+      freshGroups,
+    );
+    prevGroupsRef.current = reconciledGroups;
+    return [
+      ...reconciledGroups,
       ...rest.map((node) =>
         frozen.has(node.id) ? { ...node, draggable: false } : node,
       ),
