@@ -45,6 +45,13 @@ vi.mock('@web/pages/project/use-record-project-open', () => ({
   useRecordProjectOpen: () => undefined,
 }));
 
+// The leave-guard uses `useBlocker`, which requires a data router; this suite
+// renders under a plain MemoryRouter and only exercises role gating, so stub the
+// guard out (it has its own dedicated test — LeaveProjectGuard.test.tsx).
+vi.mock('@web/pages/project/LeaveProjectGuard', () => ({
+  LeaveProjectGuard: () => null,
+}));
+
 const getMock = vi.fn();
 const membersListMock = vi.fn();
 vi.mock('@web/data/api', async () => {

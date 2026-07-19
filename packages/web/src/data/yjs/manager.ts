@@ -18,6 +18,26 @@ import { projectMetaDocName, canvasSpaceDocName } from '@breatic/shared';
 const docs = new Map<string, Y.Doc>();
 
 /**
+ * Listeners fired right after a doc is destroyed + evicted (#1786). Sibling
+ * caches keyed by the same doc name (e.g. the per-space undo managers in
+ * `canvas-space.ts`) subscribe so they can drop their own reference — otherwise
+ * they keep pinning the destroyed doc's content and the leak this cache eviction
+ * kills is merely relocated. Kept as an event so `manager.ts` stays the lowest
+ * layer (it must not import the caches that depend on it).
+ */
+const docDestroyListeners = new Set<(name: string) => void>();
+
+/**
+ * Subscribe to doc-destroyed events (fired by {@link destroyDoc}). The listener
+ * receives the destroyed doc's name so it can evict any sibling cache entry
+ * keyed by that name. Registered once at module load by the owning cache.
+ * @param listener - Called with the doc name after each destroy + eviction.
+ */
+export function onDocDestroyed(listener: (name: string) => void): void {
+  docDestroyListeners.add(listener);
+}
+
+/**
  * Get-or-create a `Y.Doc` for the given document name. Subsequent calls
  * with the same name return the same instance.
  * @param name - Canonical document name (e.g. `project-{id}/meta`).
@@ -44,6 +64,10 @@ export function destroyDoc(name: string): void {
   if (!doc) return;
   doc.destroy();
   docs.delete(name);
+  // Let sibling caches keyed by this name drop their reference too (#1786) —
+  // e.g. the per-space undo manager, which otherwise keeps the destroyed doc's
+  // content pinned in memory (relocating, not fixing, the leak).
+  docDestroyListeners.forEach((listener) => listener(name));
 }
 
 /**
@@ -58,7 +82,12 @@ export const docName = {
   canvasSpace: canvasSpaceDocName,
 };
 
-/** Reset the entire cache (test helper — not for production use). */
+/**
+ * Reset the doc cache (test helper — not for production use). Does NOT clear the
+ * destroy listeners: those are registered once at module load by sibling caches
+ * (e.g. canvas-space's undo evictor) and must survive a reset, or subsequent
+ * destroys would silently stop evicting them.
+ */
 export function _resetForTests(): void {
   docs.forEach((d) => d.destroy());
   docs.clear();

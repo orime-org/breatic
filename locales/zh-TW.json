@@ -550,6 +550,12 @@
     }
   },
   "project": {
+    "leaveGuard": {
+      "title": "有未完成的操作,確定離開?",
+      "description": "上傳或編輯還沒同步完,現在離開可能遺失。",
+      "stay": "留下",
+      "leave": "仍然離開"
+    },
     "toolbar": {
       "copy": "複製",
       "delete": "刪除",

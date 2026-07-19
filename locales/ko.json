@@ -550,6 +550,12 @@
     }
   },
   "project": {
+    "leaveGuard": {
+      "title": "작업 중인데 나가시겠어요?",
+      "description": "업로드 또는 편집이 아직 동기화되지 않았습니다. 지금 나가면 손실될 수 있습니다.",
+      "stay": "머무르기",
+      "leave": "나가기"
+    },
     "toolbar": {
       "copy": "복사",
       "delete": "삭제",

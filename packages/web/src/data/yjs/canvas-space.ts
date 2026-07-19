@@ -6,7 +6,7 @@ import * as Y from 'yjs';
 import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
 
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
-import { docName, getDoc } from '@web/data/yjs/manager';
+import { docName, getDoc, onDocDestroyed } from '@web/data/yjs/manager';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
 import { toNodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -198,6 +198,26 @@ export function evictCanvasUndoManager(name: string): void {
   manager.destroy();
   undoManagers.delete(name);
 }
+
+/**
+ * Test-only: whether an undo manager is currently cached for a name. Used to
+ * assert the #1786 co-eviction (the manager is dropped, not just destroyed while
+ * still pinning the doc).
+ * @param name - The canonical canvas-space document name.
+ * @returns True while a manager is cached for that name.
+ */
+export function _hasCanvasUndoManagerForTests(name: string): boolean {
+  return undoManagers.has(name);
+}
+
+// Evict a space's undo manager whenever its Y.Doc is destroyed (#1786). The doc
+// lives in `manager.ts`'s cache and is destroyed when its last provider releases
+// (space-tab close OR project exit); without this the undo manager would keep
+// pinning the destroyed doc's node/edge content, relocating the very leak the
+// doc eviction fixes. `evictCanvasUndoManager` is a no-op for non-canvas names
+// (e.g. the project meta doc), so subscribing to ALL destroys is safe. Idempotent
+// with the explicit tab-close / space-delete evictions (a second call no-ops).
+onDocDestroyed(evictCanvasUndoManager);
 
 /**
  * Evict undo managers for open tabs whose space no longer exists. A space

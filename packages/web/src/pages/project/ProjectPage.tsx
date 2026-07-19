@@ -29,6 +29,7 @@ import {
 import { resolveEffectiveActiveSpace } from '@web/pages/project/active-space';
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
+import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import type { SpaceType } from '@web/spaces';
 
@@ -593,6 +594,10 @@ function ProjectWorkspace({
 
   return (
     <div className='flex h-screen w-screen flex-col bg-background text-foreground'>
+      {/* Confirm before an in-app leave (back link / logo / browser back) while
+          a front-end operation is still syncing (#1787) — the in-app companion
+          to the beforeunload guard. Renders nothing while not blocked. */}
+      <LeaveProjectGuard />
       {/* Keep every OPEN Space tab's Yjs doc attached to the shared collab
           socket. Attach follows tab open / close — NOT the active tab — so
           background tabs stay live and re-activating one is instant (user
