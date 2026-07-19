@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render as baseRender } from '@testing-library/react';
+import {
+  render as baseRender,
+  screen,
+  fireEvent,
+} from '@testing-library/react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
@@ -70,5 +74,48 @@ describe('ThumbnailHoverPreview — mount gate', () => {
       </ThumbnailHoverPreview>,
     );
     expect(resolve).toHaveBeenCalled();
+  });
+});
+
+// #1798: an image chip's hover preview greys out when t2i will ignore it, but the
+// chip is a ProseMirror NodeView that does NOT re-render on a mode toggle — a
+// `dimmed` captured at NodeView render froze at insert time, so switching t2i→i2i
+// left the preview greyed. `resolveDimmed` is read live at hover-open instead.
+describe('ThumbnailHoverPreview — live-at-open dim (#1798)', () => {
+  it('seeds resolveDimmed at mount (reads the live getter, not a captured prop)', () => {
+    const resolveDimmed = vi.fn(() => true);
+    render(
+      <ThumbnailHoverPreview alt='pic' src='a.png' resolveDimmed={resolveDimmed}>
+        <span data-testid='chip'>chip</span>
+      </ThumbnailHoverPreview>,
+    );
+    expect(resolveDimmed).toHaveBeenCalled();
+  });
+
+  it('re-resolves the dim on each open so a t2i→i2i toggle clears the grey', async () => {
+    let hideImages = true; // t2i: the image reference is ignored → greyed.
+    render(
+      <ThumbnailHoverPreview
+        alt='pic'
+        src='a.png'
+        resolveDimmed={() => hideImages}
+      >
+        <span data-testid='chip'>chip</span>
+      </ThumbnailHoverPreview>,
+    );
+    const trigger = screen.getByTestId('chip');
+    // Radix opens a tooltip on trigger focus (no hover delay). It renders the
+    // preview twice (a visible copy + an a11y copy), both driven by the same
+    // component state, so assert on every match. In t2i → greyed.
+    fireEvent.focus(trigger);
+    const dimmed = await screen.findAllByAltText('pic');
+    expect(dimmed.length).toBeGreaterThan(0);
+    dimmed.forEach((img) => expect(img.className).toContain('opacity-50'));
+    // Close, switch to i2i, re-open → the dim is re-resolved live and gone.
+    fireEvent.blur(trigger);
+    hideImages = false;
+    fireEvent.focus(trigger);
+    const lit = await screen.findAllByAltText('pic');
+    lit.forEach((img) => expect(img.className).not.toContain('opacity-50'));
   });
 });

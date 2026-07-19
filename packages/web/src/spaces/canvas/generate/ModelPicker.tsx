@@ -15,6 +15,7 @@ import {
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { cn } from '@web/lib/utils';
 import { ModelIcon } from '@web/spaces/canvas/generate/ModelIcon';
+import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 interface ModelPickerProps {
   /** The available image models from the catalog. */
@@ -44,6 +45,11 @@ export const ModelPicker = React.memo(function ModelPicker({
   onChange,
 }: ModelPickerProps): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
+  // Follow the ReactFlow viewport while open (#1796): Radix's Floating-UI
+  // auto-update reacts to scroll / resize but not to the canvas's CSS-transform
+  // pan/zoom, so the popover would drift off its trigger — the same fix the
+  // ratio / camera pickers use. Inert while closed.
+  useFollowCanvasViewport(open);
   const current = models.find((m) => m.name === value);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -64,6 +70,11 @@ export const ModelPicker = React.memo(function ModelPicker({
       <PopoverContent
         side='top'
         align='start'
+        // Clip, don't flip/shift, at a screen edge (like the ratio / camera
+        // pickers): a following popover (useFollowCanvasViewport) that flipped
+        // would fight the follow and jump around as the canvas pans (user's
+        // clip-not-jump decision, #1788).
+        avoidCollisions={false}
         className='w-auto min-w-[13rem] max-w-[20rem] p-0'
       >
         {/* ScrollArea (#1773): overlay scrollbar (scroll-only, no layout

@@ -49,9 +49,13 @@ export interface ReferenceMentionOptions {
   /**
    * Whether source images are inert (text-to-image). An IMAGE chip's hover
    * preview greys out when true, to signal it will not be used — the same
-   * explicit `dimmed` the rail passes (user 2026-07-18). A live getter: the
-   * NodeView does not re-render on a mode toggle, so it is read at each render
-   * (and the dim also updates via the editor's `data-kind` CSS on the chip body).
+   * `dimmed` signal the rail passes (user 2026-07-18). A LIVE getter: the
+   * NodeView does not re-render on a mode toggle, so a render-time read would
+   * freeze the dim at insert time — it is instead read at hover-open through
+   * `resolveDimmed` (#1798). The chip BODY grey-out is separately live: the
+   * container (PromptEditor) appends a mode-conditional Tailwind class that
+   * greys `.reference-mention[data-kind=image]`, and it re-renders on the mode
+   * prop, so only this JS hover-preview path needed the hover-open read.
    */
   getImageRefsDisabled?: () => boolean;
 }
@@ -222,6 +226,18 @@ function ReferenceMentionChip({
       ? { text: content }
       : { emptyHint: t('canvas.generatePanel.emptyTextReference') };
   }, [options, sourceId, t]);
+  // Live-at-open dim (#1798): an image chip's hover preview greys out when t2i
+  // will ignore it. `getImageRefsDisabled` is a live getter, but this NodeView
+  // does NOT re-render on a mode toggle, so reading it at render froze the dim at
+  // insert time (t2i→i2i left the preview greyed). Passing the getter through as
+  // `resolveDimmed` lets ThumbnailHoverPreview read it when the tooltip opens.
+  // The chip BODY grey-out is separately live: PromptEditor greys
+  // `.reference-mention[data-kind=image]` via a mode-conditional class that
+  // re-renders on the mode prop; only this JS hover-preview path needed the fix.
+  const resolveDimmed = React.useCallback(
+    (): boolean => options.getImageRefsDisabled?.() === true,
+    [options],
+  );
   return (
     <ThumbnailHoverPreview
       src={thumbnail ?? undefined}
@@ -229,8 +245,9 @@ function ReferenceMentionChip({
       emptyHint={staticEmptyHint}
       resolveOnOpen={kind === 'text' ? resolveTextHover : undefined}
       // Grey the preview for an image chip that t2i will ignore (explicit —
-      // same `dimmed` mechanism the rail uses; not opacity inheritance).
-      dimmed={options.getImageRefsDisabled?.() === true && kind === 'image'}
+      // same mechanism the rail uses; not opacity inheritance). Live at open
+      // (resolveDimmed), because the NodeView does not re-render on a mode toggle.
+      resolveDimmed={kind === 'image' ? resolveDimmed : undefined}
     >
       <NodeViewWrapper
         as='span'
