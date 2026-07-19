@@ -28,6 +28,7 @@ import {
 } from '@web/data/yjs/project-meta';
 import { resolveEffectiveActiveSpace } from '@web/pages/project/active-space';
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
+import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import type { SpaceType } from '@web/spaces';
 
@@ -148,6 +149,17 @@ function ProjectWorkspace({
   // Record the open once the project has loaded — floats it to the top of the
   // cross-studio Recent landing. StrictMode-safe + best-effort (see the hook).
   useRecordProjectOpen(projectId, projectQuery.isSuccess);
+
+  // Reset the per-project UI stores when LEAVING or SWITCHING a project (#1771):
+  // the canvas / chrome UI stores are module singletons that survive React
+  // unmount, so a Studio round-trip — or an A→B project switch, where this route
+  // pattern is unchanged and the component is NOT remounted — would otherwise
+  // carry the open Generate panel, pick mode, selection, chat draft, etc. into
+  // the next entry. Keyed on projectId so the cleanup fires on BOTH a full
+  // unmount and a project-id change; runs on leave only (a fresh entry stays
+  // untouched). A `key={projectId}` remount would not help — module singletons
+  // don't reset with component-local state.
+  React.useEffect(() => () => resetProjectUiStores(), [projectId]);
 
   const projectName = projectQuery.data?.name ?? 'Untitled project';
   // Fail-safe default: if `myRole` is missing (glitch / pre-load race),

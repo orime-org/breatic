@@ -28,6 +28,8 @@ interface MiniToolState {
   startSession: (session: Omit<MiniToolSession, 'status' | 'progress'>) => void;
   updateSession: (sourceNodeId: string, patch: Partial<MiniToolSession>) => void;
   endSession: (sourceNodeId: string) => void;
+  /** Clear all mini-tool sessions on project change (#1771). */
+  reset: () => void;
 }
 
 export const useMiniToolStore = create<MiniToolState>()(
@@ -49,6 +51,10 @@ export const useMiniToolStore = create<MiniToolState>()(
     endSession: (sourceNodeId) =>
       set((s) => {
         delete s.sessions[sourceNodeId];
+      }),
+    reset: () =>
+      set((s) => {
+        s.sessions = {};
       }),
   })),
 );

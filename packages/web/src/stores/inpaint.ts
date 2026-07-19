@@ -44,6 +44,13 @@ interface InpaintState {
 
   setMaskDataUrl: (dataUrl: string | null) => void;
   resetMask: () => void;
+  /**
+   * Reset the per-project inpaint session (strokes + mask) on project change
+   * (#1771). Brush PREFERENCES (size / color / opacity / tool) are kept. The
+   * zundo undo history is separate — the `resetProjectUiStores` helper clears
+   * `temporal` alongside this so a fresh entry can't undo back into old strokes.
+   */
+  reset: () => void;
 }
 
 let strokeSeq = 0;
@@ -115,6 +122,12 @@ export const useInpaintStore = create<InpaintState>()(
         set((s) => {
           s.maskDataUrl = null;
           s.strokes = [];
+        }),
+      reset: () =>
+        set((s) => {
+          s.strokes = [];
+          s.maskDataUrl = null;
+          // Brush prefs (size / color / opacity / tool) are kept.
         }),
     })),
     {
