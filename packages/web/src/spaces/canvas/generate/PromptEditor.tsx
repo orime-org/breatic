@@ -139,6 +139,11 @@ export const PromptEditor = React.forwardRef<
   // exclude image references in t2i without rebuilding the editor on toggle.
   const modeRef = React.useRef(mode);
   modeRef.current = mode;
+  // The open `@` popup registers a refresh() here (collaboration residual 2): a
+  // REMOTE mode / pool change fires no editor transaction, so the visible popup's
+  // list would stay stale. The effect below calls it when `mode` / `references`
+  // change, refreshing a visible popup's content from the live pool + mode.
+  const suggestionRefreshRef = React.useRef<(() => void) | null>(null);
   const editor = useEditor(
     {
       extensions: [
@@ -181,6 +186,7 @@ export const PromptEditor = React.forwardRef<
             emptyLabel: mentionEmptyLabel,
             // t2i ignores source images → exclude image refs from the `@` picker.
             imageRefsDisabled: () => modeRef.current === 't2i',
+            refreshRef: suggestionRefreshRef,
           }),
           // The chip's text-reference hover resolves live content through the
           // same pool ref (spec §9.1).
@@ -328,6 +334,18 @@ export const PromptEditor = React.forwardRef<
     if (!editor) return;
     onTextChange(serializePromptText(editor, references));
   }, [editor, references, onTextChange]);
+
+  // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
+  // residual 2): a REMOTE peer toggling this node's mode or editing its
+  // references updates `mode` / `references` here but fires NO prompt-doc
+  // transaction, so @tiptap/suggestion never re-runs items() and a VISIBLE popup
+  // keeps its pre-change list. The popup registers a refresh() (a no-op while
+  // hidden) that recomputes its content from the live pool + mode. A LOCAL mode
+  // change hides the popup first (clicking the picker), so this only bites the
+  // remote case.
+  React.useEffect(() => {
+    suggestionRefreshRef.current?.();
+  }, [mode, references]);
 
   // Cascade-clear stale @-mention chips: when a reference edge is removed the
   // pool shrinks, so any @-mention pointing at a now-disconnected source must

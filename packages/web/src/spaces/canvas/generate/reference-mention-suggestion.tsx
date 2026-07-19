@@ -10,6 +10,7 @@
  * is positioned by floating-ui and rendered via TipTap's ReactRenderer.
  */
 
+import type { Editor } from '@tiptap/core';
 import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
 import { ReactRenderer } from '@tiptap/react';
 import type {
@@ -27,6 +28,35 @@ import {
 } from '@web/spaces/canvas/generate/reference-mention-list';
 
 /**
+ * Whether the LAST transaction applied to the editor came from a REMOTE
+ * collaborator (or a yUndo), rather than this user's own keystroke. The
+ * collaborative prompt binds y-prosemirror, whose y-sync plugin records
+ * `isChangeOrigin` on its plugin state for every applied transaction
+ * (sync-plugin sets it true when replaying a peer's update). Read by the
+ * y-sync key NAME (`y-sync$`) — not by importing `ySyncPluginKey`, which is a
+ * transitive dep whose key identity can drift to `y-sync$1` under a duplicate
+ * copy (same robustness as {@link collab-undo-selection}). Returns false with
+ * no collaboration (a bare / non-collaborative editor has no y-sync plugin).
+ *
+ * The `@` suggestion uses this to keep a user-DISMISSED popup dismissed and a
+ * visible popup's VISIBILITY unchanged when a peer edits the shared prompt: a
+ * remote edit that shifts the `@` range fires the plugin's onUpdate exactly
+ * like local typing, and without this discriminator it would resurrect a popup
+ * the user closed (the collaboration residual).
+ * @param editor - The prompt editor.
+ * @returns True when the last applied transaction was a remote peer change.
+ */
+export function wasLastChangeRemote(editor: Editor): boolean {
+  const sync = editor.state.plugins
+    .find((pl) => (pl as unknown as { key?: string }).key === 'y-sync$')
+    ?.getState(editor.state) as { isChangeOrigin?: boolean } | undefined;
+  return sync?.isChangeOrigin === true;
+}
+
+/** A React-ref-shaped holder the open popup writes its `refresh()` into. */
+type RefreshHandleRef = { current: (() => void) | null };
+
+/**
  * Builds the `@` suggestion options for the reference-mention node.
  * @param input - Wiring inputs.
  * @param input.getPool - Reads the CURRENT reference pool (incoming edges); a
@@ -34,6 +64,10 @@ import {
  * @param input.emptyLabel - Localized empty-state text for the popup.
  * @param input.imageRefsDisabled - Live getter; when it returns true (t2i),
  *   image references are excluded from the picker. Optional (default: keep all).
+ * @param input.refreshRef - Ref the open popup writes a `refresh()` into so the
+ *   React layer can refresh a visible popup on a remote mode/pool change (residual 2).
+ * @param input.isRemoteChange - Whether the last transaction was a remote peer
+ *   change; defaults to {@link wasLastChangeRemote}, injectable for tests (residual 1).
  * @returns The suggestion options (without `editor`, supplied by the extension).
  */
 export function makeReferenceSuggestion(input: {
@@ -48,7 +82,27 @@ export function makeReferenceSuggestion(input: {
    * every mode). Optional; omitted (or false) keeps all connectable refs.
    */
   imageRefsDisabled?: () => boolean;
+  /**
+   * A ref the popup writes a `refresh()` into while open, so the React layer can
+   * refresh the VISIBLE popup's list content when the mode / pool changes
+   * REMOTELY (a collaborator toggles the node's mode or edits references). Such
+   * a change fires NO ProseMirror transaction on this client — mode lives on the
+   * canvas node, not the prompt doc — so `@tiptap/suggestion` never re-runs
+   * items(); PromptEditor calls this on its `mode` / `references` props changing
+   * (collaboration residual 2). No-op while the popup is hidden. Optional.
+   */
+  refreshRef?: RefreshHandleRef;
+  /**
+   * Whether the last applied transaction was a REMOTE peer change. Defaults to
+   * {@link wasLastChangeRemote} (reads the live y-sync plugin state); injectable
+   * so the visibility-gating logic is unit-testable without a full collaboration
+   * setup. When true, onUpdate refreshes the list CONTENT but does not change the
+   * popup's VISIBILITY (a remote edit never resurrects a dismissed popup —
+   * collaboration residual 1).
+   */
+  isRemoteChange?: (editor: Editor) => boolean;
 }): Omit<SuggestionOptions<ReferenceRailItem>, 'editor'> {
+  const isRemoteChange = input.isRemoteChange ?? wasLastChangeRemote;
   /**
    * Filters the LIVE pool to the rows offerable for a query under the CURRENT
    * mode. Extracted so every popup show path computes from the same live inputs
@@ -116,21 +170,39 @@ export function makeReferenceSuggestion(input: {
        * list (#1799 / #1800).
        */
       let latestProps: SuggestionProps<ReferenceRailItem> | null = null;
+      /**
+       * Whether the user DISMISSED the popup (clicked a control outside it).
+       * Tracked SEPARATELY from `el.style.display` so a remote collaborator's
+       * edit — which fires onUpdate exactly like local typing (a peer inserting
+       * before the `@` shifts the range) — refreshes the list CONTENT without
+       * resurrecting a popup the user closed (collaboration residual 1). Set on
+       * outside-click; cleared when the user re-engages (refocus OR a local edit).
+       */
+      let dismissed = false;
 
       /**
-       * Pushes an item list into the popup and toggles its visibility on whether
-       * anything matched (I3: zero matches → hidden, so plain `@` typing is not
-       * interrupted by an empty box). Shared by onUpdate and the focus re-show so
-       * both paths render identically; the pick command is read live from
-       * {@link latestProps} (bound to the current `@` range).
+       * Updates the popup's list CONTENT only — never its visibility. The pick
+       * command is read live from {@link latestProps} (bound to the current `@`
+       * range). Split from visibility so a remote change can refresh content while
+       * leaving a dismissed / visible popup's shown-state untouched.
        * @param items - The rows to display.
        */
-      const pushItems = (items: ReferenceRailItem[]): void => {
+      const updateContent = (items: ReferenceRailItem[]): void => {
         component?.updateProps({
           items,
           command: (item: ReferenceRailItem) => latestProps?.command(item),
           emptyLabel: input.emptyLabel,
         });
+      };
+
+      /**
+       * Toggles the popup's VISIBILITY only, based on whether anything matched
+       * (I3: zero matches → hidden, so plain `@` typing is never interrupted by an
+       * empty box). Only the LOCAL user's intent drives this (fresh `@`, refocus,
+       * local edit) — never a remote transaction.
+       * @param items - The rows the popup would show.
+       */
+      const showFor = (items: ReferenceRailItem[]): void => {
         if (el) el.style.display = items.length > 0 ? '' : 'none';
       };
 
@@ -177,6 +249,7 @@ export function makeReferenceSuggestion(input: {
       return {
         onStart: (props: SuggestionProps<ReferenceRailItem>): void => {
           latestProps = props;
+          dismissed = false; // a fresh `@` — not the previous session's dismissal
           component = new ReactRenderer(ReferenceMentionList, {
             props: {
               items: props.items,
@@ -192,6 +265,21 @@ export function makeReferenceSuggestion(input: {
           el.style.zIndex = '50';
           el.appendChild(component.element);
           document.body.appendChild(el);
+          // Residual 2 (mode / pool changed REMOTELY): a collaborator toggling
+          // the node's mode or editing references fires NO transaction on this
+          // client (mode lives on the canvas node, not the prompt doc), so the
+          // plugin never re-runs items() and a VISIBLE popup keeps its stale list.
+          // Expose a refresh the React layer calls when the `mode` / `references`
+          // props change; it recomputes CONTENT from the live pool + mode, but
+          // only while the popup is actually visible (a hidden / dismissed popup
+          // needs no refresh).
+          if (input.refreshRef) {
+            input.refreshRef.current = (): void => {
+              if (el && el.style.display !== 'none' && latestProps) {
+                updateContent(computeItems(latestProps.query));
+              }
+            };
+          }
           // Clicking outside the popup AND the editor (a canvas node / panel
           // control) does NOT move the ProseMirror selection, so the suggestion
           // would otherwise stay open floating over the UI. Just HIDE the popup
@@ -211,6 +299,7 @@ export function makeReferenceSuggestion(input: {
               !el.contains(target) &&
               !props.editor.view.dom.contains(target)
             ) {
+              dismissed = true; // user closed it — a remote edit must not re-open
               el.style.display = 'none';
             }
           };
@@ -227,21 +316,41 @@ export function makeReferenceSuggestion(input: {
           // focus crops i2i should (#1799 / #1800). pushItems also re-hides when
           // nothing matches, matching a freshly-opened panel.
           onEditorFocus = (): void => {
-            if (latestProps) pushItems(computeItems(latestProps.query));
+            if (!latestProps) return;
+            dismissed = false; // re-focusing is the user re-engaging → allow show
+            const items = computeItems(latestProps.query);
+            updateContent(items);
+            showFor(items);
           };
           props.editor.view.dom.addEventListener('focus', onEditorFocus);
           // Show the popup ONLY when the pool has ≥1 matching row (I3, user
           // 2026-07-12): typing `@` as ordinary text (nothing matches) must not
           // pop an empty "no references" box. Zero matches → hidden, so plain
           // `@` typing is uninterrupted; a match → shown.
-          el.style.display = props.items.length > 0 ? '' : 'none';
+          showFor(props.items);
           place(props.clientRect);
         },
         onUpdate: (props: SuggestionProps<ReferenceRailItem>): void => {
           latestProps = props;
           // props.items is already computed by the plugin (items() → computeItems
-          // with the live mode), so push it as-is; the focus re-show recomputes.
-          pushItems(props.items);
+          // with the live mode). ALWAYS refresh the list content so a visible
+          // popup stays current. But change VISIBILITY only on a LOCAL edit: a
+          // remote collaborator's edit shifts the `@` range and fires onUpdate
+          // identically to local typing, and must NOT resurrect a dismissed popup
+          // or pop a hidden one (collaboration residual 1). A local edit is also
+          // the user re-engaging, so it clears any dismissal.
+          updateContent(props.items);
+          if (!isRemoteChange(props.editor)) {
+            // Local edit = the user re-engaging → clear any dismissal and apply
+            // the normal I3 visibility (empty → hidden, else shown).
+            dismissed = false;
+            showFor(props.items);
+          } else if (!dismissed) {
+            // Remote content change to a VISIBLE (non-dismissed) popup → keep I3
+            // (a peer emptying the pool still hides it) but NEVER re-open a popup
+            // the user dismissed (residual 1).
+            showFor(props.items);
+          }
           place(props.clientRect);
         },
         onKeyDown: (props: SuggestionKeyDownProps): boolean => {
@@ -263,6 +372,8 @@ export function makeReferenceSuggestion(input: {
             props.editor.view.dom.removeEventListener('focus', onEditorFocus);
             onEditorFocus = null;
           }
+          if (input.refreshRef) input.refreshRef.current = null;
+          dismissed = false;
           latestProps = null;
           el?.remove();
           el = null;

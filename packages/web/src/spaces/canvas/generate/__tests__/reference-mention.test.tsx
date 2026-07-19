@@ -3,11 +3,13 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
+import { Collaboration } from '@tiptap/extension-collaboration';
 import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Text } from '@tiptap/extension-text';
 import { ReactRenderer } from '@tiptap/react';
 import { SuggestionPluginKey } from '@tiptap/suggestion';
+import * as Y from 'yjs';
 
 import {
   ReferenceMention,
@@ -15,7 +17,10 @@ import {
   serializePromptText,
   stripForeignReferenceChips,
 } from '@web/spaces/canvas/generate/reference-mention';
-import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
+import {
+  makeReferenceSuggestion,
+  wasLastChangeRemote,
+} from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 
@@ -371,6 +376,163 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
       updateSpy.mockRestore();
       handlers.onExit?.(props([], editor));
       editor.destroy();
+    }
+  });
+});
+
+// Collaboration residuals (#1802): the `@` popup's VISIBILITY must be driven
+// only by the LOCAL user's intent — a remote collaborator editing the shared
+// prompt / node must refresh the list CONTENT but never resurrect a popup the
+// user dismissed nor leave a visible popup stale.
+describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
+  const textRow: ReferenceRailItem = {
+    refId: 't->me',
+    sourceNodeId: 't',
+    sourceNodeType: 'text',
+    sourceNodeName: 'Note',
+    textContent: 'hi',
+  };
+  const imageRow: ReferenceRailItem = {
+    refId: 'i->me',
+    sourceNodeId: 'i',
+    sourceNodeType: 'image',
+    sourceNodeName: 'Pic',
+    thumbnail: 'i.png',
+  };
+
+  type RenderHandlers = ReturnType<
+    NonNullable<ReturnType<typeof makeReferenceSuggestion>['render']>
+  >;
+  type StartProps = Parameters<NonNullable<RenderHandlers['onStart']>>[0];
+  function props(items: ReferenceRailItem[], editor: Editor): StartProps {
+    return {
+      editor,
+      items,
+      command: vi.fn(),
+      clientRect: () => new DOMRect(0, 0, 10, 10),
+      query: '',
+      text: '',
+      range: { from: 0, to: 0 },
+      decorationNode: null,
+    } as unknown as StartProps;
+  }
+
+  it('residual 1: a remote edit refreshes content but does NOT resurrect a dismissed popup; a local edit does', () => {
+    let remote = false;
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      isRemoteChange: () => remote,
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const before = new Set(Array.from(document.body.children));
+    const updateSpy = vi.spyOn(ReactRenderer.prototype, 'updateProps');
+    try {
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe(''); // shown on the fresh `@`
+      // User dismisses it (clicks a panel control outside the editor + popup).
+      document.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true }),
+      );
+      expect(el.style.display).toBe('none'); // hidden + dismissed
+      // A REMOTE collaborator inserts before the `@` → the range shifts → onUpdate
+      // fires. It must refresh CONTENT but leave the dismissed popup hidden.
+      remote = true;
+      updateSpy.mockClear();
+      handlers.onUpdate?.(props([textRow], editor));
+      expect(el.style.display).toBe('none'); // STILL hidden (residual 1 fixed)
+      expect(updateSpy).toHaveBeenCalled(); // but content WAS refreshed
+      // A LOCAL edit (the user re-engaging by typing) DOES re-show it.
+      remote = false;
+      handlers.onUpdate?.(props([textRow], editor));
+      expect(el.style.display).toBe(''); // shown again
+    } finally {
+      updateSpy.mockRestore();
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  it('residual 2: refreshRef recomputes a VISIBLE popup from the live pool, and no-ops while hidden', () => {
+    let pool: ReferenceRailItem[] = [textRow];
+    const refreshRef: { current: (() => void) | null } = { current: null };
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => pool,
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      refreshRef,
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const updateSpy = vi.spyOn(ReactRenderer.prototype, 'updateProps');
+    try {
+      handlers.onStart?.(props([textRow], editor));
+      expect(typeof refreshRef.current).toBe('function'); // registered while open
+      // A remote pool change lands (the pool getter now returns an image too).
+      // refresh() recomputes from the LIVE pool → pushes the image row too.
+      pool = [textRow, imageRow];
+      updateSpy.mockClear();
+      refreshRef.current?.();
+      const pushed = updateSpy.mock.calls.at(-1)?.[0]?.items as
+        | ReferenceRailItem[]
+        | undefined;
+      expect(pushed?.map((r) => r.sourceNodeId).sort()).toEqual(['i', 't']);
+      // Hidden popup → refresh no-ops (nothing to refresh).
+      document.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true }),
+      );
+      updateSpy.mockClear();
+      refreshRef.current?.();
+      expect(updateSpy).not.toHaveBeenCalled();
+      // onExit clears the handle so a later prop change never pokes a dead popup.
+      handlers.onExit?.(props([], editor));
+      expect(refreshRef.current).toBeNull();
+    } finally {
+      updateSpy.mockRestore();
+      editor.destroy();
+    }
+  });
+
+  it('wasLastChangeRemote flags a remote peer edit (y-sync isChangeOrigin), not a local one', () => {
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const editorA = new Editor({
+      extensions: [
+        Document,
+        Paragraph,
+        Text,
+        Collaboration.configure({ fragment: docA.getXmlFragment('prompt') }),
+      ],
+    });
+    const editorB = new Editor({
+      extensions: [
+        Document,
+        Paragraph,
+        Text,
+        Collaboration.configure({ fragment: docB.getXmlFragment('prompt') }),
+      ],
+    });
+    try {
+      // A local edit on A is NOT a remote change.
+      editorA.commands.insertContent('local');
+      expect(wasLastChangeRemote(editorA)).toBe(false);
+      // B types, then B's state is synced into A → y-prosemirror applies it as a
+      // remote change (isChangeOrigin=true on the y-sync plugin state).
+      editorB.commands.insertContent('peer');
+      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
+      expect(wasLastChangeRemote(editorA)).toBe(true);
+    } finally {
+      editorA.destroy();
+      editorB.destroy();
     }
   });
 });
