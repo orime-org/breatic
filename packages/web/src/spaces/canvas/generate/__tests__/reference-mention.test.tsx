@@ -6,6 +6,7 @@ import { Editor } from '@tiptap/core';
 import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Text } from '@tiptap/extension-text';
+import { ReactRenderer } from '@tiptap/react';
 import { SuggestionPluginKey } from '@tiptap/suggestion';
 
 import {
@@ -249,6 +250,125 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       handlers.onUpdate?.(props([], editor));
       expect(el.style.display).toBe('none'); // narrowed back to zero → hidden
     } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+});
+
+// #1799 / #1800: an ACTIVE `@` popup can be HIDDEN (clicking a panel control —
+// e.g. the mode toggle — hides it via the outside-click handler, B2) and then
+// RE-SHOWN on refocus. The re-show must recompute its list from the LIVE pool +
+// LIVE mode, because @tiptap/suggestion only re-runs items() on a query / range
+// change — and a mode toggle lives on the canvas node, not the prompt doc, so it
+// is neither. Without the recompute the re-shown popup kept the pre-toggle list:
+// t2i's text-only rows after switching to i2i (#1799), and never the focus crops
+// i2i should offer (#1800).
+describe('makeReferenceSuggestion — refocus re-show recomputes for the live mode (#1799/#1800)', () => {
+  const textRow: ReferenceRailItem = {
+    refId: 't->me',
+    sourceNodeId: 't',
+    sourceNodeType: 'text',
+    sourceNodeName: 'Note',
+    textContent: 'hi',
+  };
+  const imageRow: ReferenceRailItem = {
+    refId: 'i->me',
+    sourceNodeId: 'i',
+    sourceNodeType: 'image',
+    sourceNodeName: 'Pic',
+    thumbnail: 'i.png',
+  };
+  const focusRow: ReferenceRailItem = {
+    refId: 'focus:c1',
+    sourceNodeId: 'focus:c1',
+    sourceNodeType: 'image',
+    sourceNodeName: 'Crop',
+    thumbnail: 'c.png',
+    focus: true,
+  };
+
+  type RenderHandlers = ReturnType<
+    NonNullable<ReturnType<typeof makeReferenceSuggestion>['render']>
+  >;
+  type StartProps = Parameters<NonNullable<RenderHandlers['onStart']>>[0];
+
+  /**
+   * Builds a minimal SuggestionProps for driving the render() handlers.
+   * @param items - The current suggestion items.
+   * @param editor - The host editor.
+   * @returns A props object cast to the suggestion props shape.
+   */
+  function props(items: ReferenceRailItem[], editor: Editor): StartProps {
+    return {
+      editor,
+      items,
+      command: vi.fn(),
+      clientRect: () => new DOMRect(0, 0, 10, 10),
+      query: '',
+      text: '',
+      range: { from: 0, to: 0 },
+      decorationNode: null,
+    } as unknown as StartProps;
+  }
+
+  it('offers focus crops + image rows in i2i but only text in t2i (items filter)', () => {
+    const pool = [textRow, imageRow, focusRow];
+    const ids = (hideImages: boolean): string[] => {
+      const s = makeReferenceSuggestion({
+        getPool: () => pool,
+        emptyLabel: 'No references',
+        imageRefsDisabled: () => hideImages,
+      });
+      return (
+        (s.items?.({ query: '', editor: undefined as unknown as Editor }) ??
+          []) as ReferenceRailItem[]
+      )
+        .map((r) => r.sourceNodeId)
+        .sort();
+    };
+    // t2i drops every image (incl. focus crops, which are images); i2i offers all.
+    expect(ids(true)).toEqual(['t']);
+    expect(ids(false)).toEqual(['focus:c1', 'i', 't']);
+  });
+
+  it('recomputes the re-shown list for the live mode on refocus (image + focus appear after t2i→i2i)', () => {
+    let hideImages = true; // start in t2i
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow, imageRow, focusRow],
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => hideImages,
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    // Capture the items pushed into the popup list: ReactRenderer only mounts its
+    // React subtree through an EditorContent host (absent in this bare editor), so
+    // the rendered options never reach the DOM — assert on the props instead.
+    const updateSpy = vi.spyOn(ReactRenderer.prototype, 'updateProps');
+    try {
+      // t2i: the plugin computed items() → text row only (images excluded).
+      handlers.onStart?.(props([textRow], editor));
+      // Click the mode toggle (a control outside the editor) → hides the popup.
+      document.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true }),
+      );
+      // Switch to i2i, then click back after the `@` → editor refocuses, re-show.
+      hideImages = false;
+      updateSpy.mockClear();
+      editor.view.dom.dispatchEvent(new FocusEvent('focus'));
+      // The re-show pushed a FRESH list reflecting i2i: image + focus now offered.
+      const pushed = updateSpy.mock.calls.at(-1)?.[0]?.items as
+        | ReferenceRailItem[]
+        | undefined;
+      expect(pushed?.map((r) => r.sourceNodeId).sort()).toEqual([
+        'focus:c1',
+        'i',
+        't',
+      ]);
+    } finally {
+      updateSpy.mockRestore();
       handlers.onExit?.(props([], editor));
       editor.destroy();
     }

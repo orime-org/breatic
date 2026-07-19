@@ -49,6 +49,37 @@ export function makeReferenceSuggestion(input: {
    */
   imageRefsDisabled?: () => boolean;
 }): Omit<SuggestionOptions<ReferenceRailItem>, 'editor'> {
+  /**
+   * Filters the LIVE pool to the rows offerable for a query under the CURRENT
+   * mode. Extracted so every popup show path computes from the same live inputs
+   * (`getPool` + `imageRefsDisabled`): the plugin's `items()` on each keystroke,
+   * AND the focus re-show below. `@tiptap/suggestion` only re-runs `items()` on a
+   * query / range change (its `handleChange`), so a mode toggle — which lives on
+   * the canvas node, not the prompt doc — never triggered a recompute; a popup
+   * hidden (by clicking the mode picker) and re-shown on refocus then kept the
+   * pre-toggle list. Computing here on every show path fixes that (#1799/#1800).
+   * @param query - The text typed after `@`.
+   * @returns The matching pool rows (capped at 8).
+   */
+  const computeItems = (query: string): ReferenceRailItem[] => {
+    const q = query.toLowerCase();
+    const hideImages = input.imageRefsDisabled?.() ?? false;
+    return input
+      .getPool()
+      // Connection rules (spec §9.1): new incompatible wires are rejected at
+      // the wire level, but a LEGACY edge (audio/video → image, created
+      // before the rules) may survive in old documents. Never offer it in
+      // the picker — an @-pick that can't feed image generation dead-ends at
+      // execute ("no source image"). The rail still lists the legacy row so
+      // the user can see and remove it.
+      .filter((r) => canConnect(r.sourceNodeType, 'image'))
+      // Text-to-image ignores source images, so image references are invalid:
+      // exclude them from the `@` picker (user 2026-07-18) — with only images
+      // in the pool the picker never opens. Text refs still feed the prompt.
+      .filter((r) => !(hideImages && r.sourceNodeType === 'image'))
+      .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
+      .slice(0, 8);
+  };
   return {
     char: '@',
     // @tiptap/suggestion defaults allowedPrefixes to [" "], which only fires `@`
@@ -57,25 +88,7 @@ export function makeReferenceSuggestion(input: {
     // never opened the picker. null lets `@` trigger after any character
     // (Notion / Feishu behaviour).
     allowedPrefixes: null,
-    items: ({ query }): ReferenceRailItem[] => {
-      const q = query.toLowerCase();
-      const hideImages = input.imageRefsDisabled?.() ?? false;
-      return input
-        .getPool()
-        // Connection rules (spec §9.1): new incompatible wires are rejected at
-        // the wire level, but a LEGACY edge (audio/video → image, created
-        // before the rules) may survive in old documents. Never offer it in
-        // the picker — an @-pick that can't feed image generation dead-ends at
-        // execute ("no source image"). The rail still lists the legacy row so
-        // the user can see and remove it.
-        .filter((r) => canConnect(r.sourceNodeType, 'image'))
-        // Text-to-image ignores source images, so image references are invalid:
-        // exclude them from the `@` picker (user 2026-07-18) — with only images
-        // in the pool the picker never opens. Text refs still feed the prompt.
-        .filter((r) => !(hideImages && r.sourceNodeType === 'image'))
-        .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
-        .slice(0, 8);
-    },
+    items: ({ query }): ReferenceRailItem[] => computeItems(query),
     command: ({ editor, range, props }): void => {
       // No trailing space (user 2026-07-10): the gap between adjacent chips
       // stays clickable + visible via the chip-boundary caret plugin
@@ -95,8 +108,31 @@ export function makeReferenceSuggestion(input: {
       let onOutsidePointerDown: ((event: PointerEvent) => void) | null = null;
       /** Re-shows the popup when the editor regains focus (B2). */
       let onEditorFocus: (() => void) | null = null;
-      /** Whether the last render had ≥1 matching row (drives re-show on focus). */
-      let hasItems = false;
+      /**
+       * The latest suggestion props (from onStart / onUpdate): `command` is bound
+       * to the live `@` range and `query` is the current filter text. The focus
+       * re-show path reads these to recompute a FRESH list from the live pool +
+       * mode, so a popup hidden by a mode / model click never re-shows a stale
+       * list (#1799 / #1800).
+       */
+      let latestProps: SuggestionProps<ReferenceRailItem> | null = null;
+
+      /**
+       * Pushes an item list into the popup and toggles its visibility on whether
+       * anything matched (I3: zero matches → hidden, so plain `@` typing is not
+       * interrupted by an empty box). Shared by onUpdate and the focus re-show so
+       * both paths render identically; the pick command is read live from
+       * {@link latestProps} (bound to the current `@` range).
+       * @param items - The rows to display.
+       */
+      const pushItems = (items: ReferenceRailItem[]): void => {
+        component?.updateProps({
+          items,
+          command: (item: ReferenceRailItem) => latestProps?.command(item),
+          emptyLabel: input.emptyLabel,
+        });
+        if (el) el.style.display = items.length > 0 ? '' : 'none';
+      };
 
       /**
        * Anchors the popup to the caret and KEEPS it anchored via floating-ui
@@ -140,10 +176,11 @@ export function makeReferenceSuggestion(input: {
 
       return {
         onStart: (props: SuggestionProps<ReferenceRailItem>): void => {
+          latestProps = props;
           component = new ReactRenderer(ReferenceMentionList, {
             props: {
               items: props.items,
-              command: (item: ReferenceRailItem) => props.command(item),
+              command: (item: ReferenceRailItem) => latestProps?.command(item),
               emptyLabel: input.emptyLabel,
             },
             editor: props.editor,
@@ -182,29 +219,29 @@ export function makeReferenceSuggestion(input: {
           // handler HIDES the popup (display:none) without exiting the suggestion.
           // Re-focusing the editor (clicking back in) does not fire onUpdate — only
           // typing does — so the popup would stay hidden until a keystroke. On
-          // focus, if the suggestion is still active with matches, re-show it (the
-          // autoUpdate loop keeps it caret-positioned), matching a freshly-opened
-          // panel where clicking to activate immediately shows the picker.
+          // focus, RECOMPUTE the list from the live pool + mode rather than merely
+          // un-hiding the cached one: @tiptap/suggestion only re-runs items() on a
+          // query / range change, and a mode toggle (stored on the canvas node,
+          // not the prompt doc) is neither — so re-showing the stale list kept
+          // t2i's text-only rows after switching to i2i and never offered the
+          // focus crops i2i should (#1799 / #1800). pushItems also re-hides when
+          // nothing matches, matching a freshly-opened panel.
           onEditorFocus = (): void => {
-            if (el && hasItems) el.style.display = '';
+            if (latestProps) pushItems(computeItems(latestProps.query));
           };
           props.editor.view.dom.addEventListener('focus', onEditorFocus);
           // Show the popup ONLY when the pool has ≥1 matching row (I3, user
           // 2026-07-12): typing `@` as ordinary text (nothing matches) must not
           // pop an empty "no references" box. Zero matches → hidden, so plain
           // `@` typing is uninterrupted; a match → shown.
-          hasItems = props.items.length > 0;
-          el.style.display = hasItems ? '' : 'none';
+          el.style.display = props.items.length > 0 ? '' : 'none';
           place(props.clientRect);
         },
         onUpdate: (props: SuggestionProps<ReferenceRailItem>): void => {
-          component?.updateProps({
-            items: props.items,
-            command: (item: ReferenceRailItem) => props.command(item),
-            emptyLabel: input.emptyLabel,
-          });
-          hasItems = props.items.length > 0;
-          if (el) el.style.display = hasItems ? '' : 'none';
+          latestProps = props;
+          // props.items is already computed by the plugin (items() → computeItems
+          // with the live mode), so push it as-is; the focus re-show recomputes.
+          pushItems(props.items);
           place(props.clientRect);
         },
         onKeyDown: (props: SuggestionKeyDownProps): boolean => {
@@ -226,7 +263,7 @@ export function makeReferenceSuggestion(input: {
             props.editor.view.dom.removeEventListener('focus', onEditorFocus);
             onEditorFocus = null;
           }
-          hasItems = false;
+          latestProps = null;
           el?.remove();
           el = null;
           component?.destroy();
