@@ -108,10 +108,6 @@ import {
   resolveClickConnectRejection,
 } from '@web/spaces/canvas/lib/connection-rules';
 import {
-  referenceKindAllowedInMode,
-  resolveMode,
-} from '@web/spaces/canvas/generate/image-mode-selection';
-import {
   resolvePanelSelectionAction,
   type PanelSelectionSnapshot,
 } from '@web/spaces/canvas/lib/generate-panel-selection';
@@ -1572,19 +1568,11 @@ function CanvasSpaceInner({
         );
         return;
       }
-      // Mode scoping (#1788 batch-3 #1): text-to-image ignores source images, so
-      // an image node is non-pickable there — only text references feed the
-      // prompt. A SILENT no-op (user 2026-07-18): the overlay already dims the
-      // node + shows the not-allowed cursor, so an insisting click needs no
-      // toast on top (unlike the type-incompatible case, which is less obvious).
-      // Same predicate the dim memo uses, so the click gate and the dim never
-      // drift.
-      const targetMode = resolveMode(
-        (targetNode?.data as { mode?: string } | undefined)?.mode,
-      );
-      if (!referenceKindAllowedInMode(node.type ?? '', targetMode)) {
-        return;
-      }
+      // #1797: reference pick is ONE flow for both modes — t2i no longer blocks
+      // an image source. Connecting an image in t2i is allowed (drag-connect
+      // always was); the t2i inertness lives in the rail dim + @ exclusion +
+      // empty payload, not the pick gate. Type compatibility (canConnect above)
+      // still applies to both modes.
       // Pool cap (#1782): same guard as drag-connect — a full pool blocks
       // the pick with a toast; the session stays open so the user can
       // remove entries and continue. Null cap = knob not loaded, no gate.
@@ -2876,18 +2864,15 @@ function CanvasSpaceInner({
     );
     const targetNode = renderNodes.find((n) => n.id === target);
     const targetKind = targetNode?.type ?? '';
-    // Mode scoping (#1788 batch-3 #1): a t2i target dims IMAGE sources — the
-    // same predicate onPickNodeClick rejects with, so a dimmed node is never
-    // secretly clickable (and a selectable one never silently no-ops).
-    const targetMode = resolveMode(
-      (targetNode?.data as { mode?: string } | undefined)?.mode,
-    );
+    // #1797: pick no longer scopes by mode — a t2i target does NOT dim image
+    // sources (drag-connect always allowed them; the t2i inertness is the rail
+    // dim + @ exclusion + empty payload, not the pick overlay). Only the target
+    // itself, already-referenced rows, and type-incompatible sources are dimmed.
     return paint(
       (node) =>
         node.id === target ||
         alreadyReferenced.has(node.id) ||
-        !canConnect(node.type ?? '', targetKind) ||
-        !referenceKindAllowedInMode(node.type ?? '', targetMode),
+        !canConnect(node.type ?? '', targetKind),
     );
   }, [renderNodes, pickSession, flowEdges]);
 

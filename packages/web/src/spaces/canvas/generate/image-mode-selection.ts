@@ -25,27 +25,6 @@ export function resolveMode(stored: string | undefined): ImageGenMode {
 }
 
 /**
- * Whether a source node of `sourceKind` may be wired as a REFERENCE for a
- * generate node in `mode`. Text-to-image generates from scratch and ignores
- * source images (§2.5), so an image reference is inert in t2i — the
- * reference-pick flow must neither offer nor accept it. Every other kind's
- * eligibility is decided by the type-level `canConnect` (e.g. audio/video into
- * image is already type-incompatible there); this predicate ONLY layers the
- * mode scoping on top, matching the rail's image-row dim and the at-mention
- * picker's image exclusion — one rule, not a second copy of the connection
- * rules.
- * @param sourceKind - The clicked/dragged source node's kind.
- * @param mode - The target generate node's active mode.
- * @returns False only for an image source in t2i; true otherwise.
- */
-export function referenceKindAllowedInMode(
-  sourceKind: string,
-  mode: ImageGenMode,
-): boolean {
-  return !(mode === 't2i' && sourceKind === 'image');
-}
-
-/**
  * Keeps only the models offerable under a generation mode — those whose `mode`
  * includes it. Layered on top of the slice-1 "generatable models" filter so the
  * picker shows one clean list per mode instead of every t2i/i2i variant at once.

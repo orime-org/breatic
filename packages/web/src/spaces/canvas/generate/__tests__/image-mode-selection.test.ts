@@ -7,7 +7,6 @@ import type { ModelEntry } from '@breatic/shared';
 
 import {
   filterModelsByMode,
-  referenceKindAllowedInMode,
   resolveMode,
   resolveModelForMode,
   type ImageGenMode,
@@ -133,37 +132,5 @@ describe('resolveMode', () => {
     expect(resolveMode('t2i')).toBe('t2i');
     expect(resolveMode('')).toBe('t2i');
     expect(resolveMode('bogus')).toBe('t2i');
-  });
-});
-
-describe('referenceKindAllowedInMode', () => {
-  // Text-to-image generates from scratch and ignores SOURCE IMAGES (§2.5), so an
-  // image reference is inert in t2i — the reference-pick flow must not offer it.
-  // Layered ON TOP of the type-level canConnect check (which owns kind↔kind
-  // compatibility); this owns the mode scoping, matching the rail's image-row
-  // dim and the at-mention picker's image exclusion.
-  it('excludes an image source in t2i', () => {
-    expect(referenceKindAllowedInMode('image', 't2i')).toBe(false);
-  });
-
-  it('allows a text source in t2i — its @-chip still feeds the prompt', () => {
-    expect(referenceKindAllowedInMode('text', 't2i')).toBe(true);
-  });
-
-  it('allows an image source in i2i — the full pool feeds the model', () => {
-    expect(referenceKindAllowedInMode('image', 'i2i')).toBe(true);
-  });
-
-  it('allows a text source in i2i', () => {
-    expect(referenceKindAllowedInMode('text', 'i2i')).toBe(true);
-  });
-
-  it('only image is mode-scoped — audio/video are gated by canConnect, not mode', () => {
-    // The mode rule ONLY removes image sources in t2i; every other kind's
-    // eligibility is decided by canConnect (audio/video → image is already
-    // type-incompatible there). Keeping this predicate image-only avoids a
-    // second, drifting copy of the connection rules.
-    expect(referenceKindAllowedInMode('audio', 't2i')).toBe(true);
-    expect(referenceKindAllowedInMode('video', 't2i')).toBe(true);
   });
 });
