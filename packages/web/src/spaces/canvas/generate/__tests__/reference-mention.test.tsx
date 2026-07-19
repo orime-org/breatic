@@ -809,27 +809,27 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     }
   });
 
-  it('a real caret appendTransaction after a remote chip insert stays non-local (round-6 test-gap: guard vs a genuine PM append)', () => {
-    // Round-4 finding 2 relied on a real appendTransaction, not a hand-set meta:
-    // a peer inserts a BARE chip; synced into A, the caret plugin's
-    // appendTransaction (appendWhitespace) fires on A to restore the invariant
-    // flanking spaces — a genuine PM-tagged appendedTransaction riding with the
-    // remote root. The guard must keep the judgment non-local; without it, the
-    // local space-insert would flip it to "user typed".
-    const docA = new Y.Doc();
-    const docB = new Y.Doc();
-    const editorA = makeCollabEditor(docA);
-    const editorB = makeCollabEditor(docB);
+  it('a real caret appendWhitespace follow-up rides with (does not override) a non-local root (round-6 test-gap: guard vs a genuine PM append)', () => {
+    // Machine-INSERT a BARE chip (no flanking spaces) so the caret plugin's
+    // appendTransaction (appendWhitespace) FIRES on THIS editor to restore the
+    // invariant — a genuine PM-tagged appendedTransaction. The machine root is
+    // non-local; the guard must keep the appended local space-insert from flipping
+    // the judgment to "user typed". (The earlier version synced a chip that peer B
+    // had ALREADY spaced, so no append ran on A — a false guard that round 7
+    // caught: the space came from the CRDT, not an append.)
+    const editor = makeCollabEditor(new Y.Doc());
     try {
-      editorB.commands.insertContent(referenceMentionContent(imageRow));
-      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
-      // The whitespace normalizer ran on A → the chip is now flanked by spaces,
-      // proving a real appended transaction was applied (not a no-op).
-      expect(editorA.getText()).toContain(' ');
-      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+      const chip = editor.schema.nodeFromJSON(referenceMentionContent(imageRow));
+      const tr = editor.state.tr.insert(1, chip);
+      dispatchMachineEdit(editor.view, tr);
+      // The whitespace normalizer ran HERE (bare chip → flanking spaces added),
+      // proving a real appended transaction was applied — not a synced no-op.
+      expect(editor.getText()).toContain(' ');
+      // Machine root + real appended space-insert → still non-local: the guard
+      // held. Without it the local space-insert append would read as a keystroke.
+      expect(wasLastChangeLocalUserInput(editor)).toBe(false);
     } finally {
-      editorA.destroy();
-      editorB.destroy();
+      editor.destroy();
     }
   });
 
