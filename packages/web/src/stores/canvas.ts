@@ -171,6 +171,14 @@ interface CanvasState {
   removePendingFocusUpload: (id: string) => void;
   /** Exit the current pick session (after a node is picked, or on cancel). */
   endPick: () => void;
+  /**
+   * Reset the per-project canvas SESSION state to fresh (leaving a project must
+   * not carry its open panel / pick mode / selection into the next entry, #1771).
+   * Viewport PREFERENCES (`minimapVisible`, `snapToGrid`, `zoom`) are kept — they
+   * are "how I like my canvas", not "what I was doing in this project"; `zoom`
+   * re-syncs from the mounting canvas anyway.
+   */
+  reset: () => void;
 }
 
 export const useCanvasStore = create<CanvasState>()(
@@ -316,6 +324,24 @@ export const useCanvasStore = create<CanvasState>()(
     endPick: () =>
       set((s) => {
         s.pickSession = null;
+      }),
+    reset: () =>
+      set((s) => {
+        s.selectedNodeIds = [];
+        s.hoverNodeId = null;
+        s.showLockedOverlay = false;
+        s.pendingNodeCreate = null;
+        s.pendingUploadFiles = null;
+        s.pendingViewportCommand = null;
+        s.pendingHistoryCommand = null;
+        s.pendingRename = null;
+        s.canUndo = false;
+        s.canRedo = false;
+        s.generatePanelNodeId = null;
+        s.pickSession = null;
+        s.pendingFocusUploads = [];
+        // `minimapVisible` / `snapToGrid` / `zoom` are viewport preferences, not
+        // session state — deliberately NOT reset here (see the interface doc).
       }),
   })),
 );

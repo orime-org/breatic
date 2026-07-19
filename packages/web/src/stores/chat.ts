@@ -21,6 +21,8 @@ interface ChatState {
   clearComposerDraft: () => void;
   setActiveConversationId: (id: string | null) => void;
   setStreaming: (streaming: boolean) => void;
+  /** Reset per-project chat session state (draft / active conversation / streaming) on project change (#1771). */
+  reset: () => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -43,6 +45,12 @@ export const useChatStore = create<ChatState>()(
     setStreaming: (streaming) =>
       set((s) => {
         s.streaming = streaming;
+      }),
+    reset: () =>
+      set((s) => {
+        s.composerDraft = '';
+        s.activeConversationId = null;
+        s.streaming = false;
       }),
   })),
 );

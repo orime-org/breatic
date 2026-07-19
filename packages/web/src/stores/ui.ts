@@ -59,6 +59,8 @@ interface UIState {
   setSpaceOpInProgress: (op: UIState['spaceOpInProgress']) => void;
   setReadOnlyViewSpaceId: (id: string | null) => void;
   setActiveOverlayId: (id: string | null) => void;
+  /** Reset per-project chrome session state (overlays / modals / share / drawer); keeps layout prefs (#1771). */
+  reset: () => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -112,6 +114,17 @@ export const useUIStore = create<UIState>()(
     setActiveOverlayId: (id) =>
       set((s) => {
         s.activeOverlayId = id;
+      }),
+    reset: () =>
+      set((s) => {
+        s.drawerOpen = false;
+        s.modalStack = [];
+        s.shareOpen = false;
+        s.spaceOpInProgress = null;
+        s.readOnlyViewSpaceId = null;
+        s.activeOverlayId = null;
+        // `sidebarOpen` / `chatPanelCollapsed` are layout preferences, not
+        // per-project session state — deliberately kept across a project change.
       }),
   })),
 );
