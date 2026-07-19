@@ -48,7 +48,7 @@ vi.mock("@server/config/limits.js", () => ({
   getProjectCollaboratorCap: () => capRefs.project,
 }));
 
-import { eq, and, inArray, isNull } from "drizzle-orm";
+import { eq, and, inArray, isNull, sql } from "drizzle-orm";
 import { initCore, schema, createTestDb } from "@breatic/core";
 import { NotFoundError, ConflictError, ForbiddenError } from "@breatic/core";
 
@@ -179,6 +179,32 @@ describe("createInvite", () => {
     await expect(
       inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "maintainer"),
     ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("an EXPIRED pending must not block a re-invite (#1769)", async () => {
+    const { invitationId } = await inviteService.createInvite(
+      "svc-team",
+      INVITER,
+      INVITEE_EMAIL,
+      "guest",
+    );
+    // The invite times out unaccepted: expires_at moves to the past while status
+    // stays 'pending' (every read path treats it as void, but the one-pending
+    // partial index ignores expiry) → re-invite must still succeed.
+    await db
+      .update(schema.studioInvitations)
+      .set({ expiresAt: sql`now() - interval '1 hour'` })
+      .where(eq(schema.studioInvitations.id, invitationId));
+    expect(await invitesRepo.listPendingByStudio(TEAM)).toHaveLength(0);
+
+    const again = await inviteService.createInvite(
+      "svc-team",
+      INVITER,
+      INVITEE_EMAIL,
+      "maintainer",
+    );
+    expect(again.invitationId).toBeTruthy();
+    expect(await invitesRepo.listPendingByStudio(TEAM)).toHaveLength(1);
   });
 
   it("refuses to invite into a personal studio (Forbidden)", async () => {

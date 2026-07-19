@@ -78,9 +78,10 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
     expect(onCreateProject).toHaveBeenCalledTimes(1);
   });
 
-  it('shows a distinct empty text for ④ My studios vs ⑤ Joined studios (#1090)', () => {
-    // Both groups are empty here; each must show ITS OWN empty text. The bug
-    // was ④ "My studios" reusing the ⑤ "joined" empty copy.
+  it('shows a distinct empty text for each of the three groups (#1090 / #1661)', () => {
+    // All three groups are empty here; each must show ITS OWN empty text (the
+    // #1090 bug was groups reusing one copy; #1661 split personal off as a
+    // third group with its own empty state).
     render(
       <MemoryRouter>
         <StudioRail
@@ -91,10 +92,46 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
         />
       </MemoryRouter>,
     );
-    expect(screen.getByText('No Studios yet')).toBeInTheDocument();
+    expect(screen.getByText('No personal Studio yet')).toBeInTheDocument();
+    expect(screen.getByText('No team Studios yet')).toBeInTheDocument();
     expect(
       screen.getByText('You haven\'t joined any Studio yet'),
     ).toBeInTheDocument();
+  });
+
+  it('splits personal / my-team / joined into three groups (#1661)', () => {
+    const studios = [
+      { id: 'me', slug: 'me', name: 'My Personal', type: 'personal' as const, memberCount: 1, myStudioRole: 'admin' as const },
+      s('myteam', 'My Team', 'admin'),
+      s('join', 'Joined', 'guest'),
+    ];
+    render(
+      <MemoryRouter>
+        <StudioRail
+          studios={studios}
+          activeSlug={null}
+          onCreateProject={vi.fn()}
+          onCreateStudio={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    // Three group headers render, top-to-bottom: Personal / My Team / Joined.
+    const personal = screen.getByText('Personal Studio');
+    const myTeam = screen.getByText('My Team Studios');
+    const joined = screen.getByText('Joined Studios');
+    expect(
+      personal.compareDocumentPosition(myTeam) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      myTeam.compareDocumentPosition(joined) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // The personal studio links, and is NOT under the team group.
+    expect(screen.getByRole('link', { name: /My Personal/ })).toHaveAttribute(
+      'href',
+      '/studio/me',
+    );
   });
 
   it('renders Recent at the TOP, above the create actions (visual spec 2026-06-08)', () => {

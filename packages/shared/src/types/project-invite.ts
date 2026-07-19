@@ -21,6 +21,7 @@ export type ProjectInvitationStatus =
   | "pending"
   | "accepted"
   | "declined"
+  | "expired"
   | "revoked";
 
 /**

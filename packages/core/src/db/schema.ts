@@ -860,12 +860,15 @@ export const notifications = pgTable(
 // (not a `status` column on `studio_members`) means `studio_members` stays
 // "active members only" — studio auth / member-list / member-count queries
 // need zero status filter, and a pending invitee can never be mistaken for a
-// real member (the rejected rejected-by-design rationale, DD §2). `status`
-// flows pending → accepted | declined | expired | revoked (append-only
-// lifecycle; rows are soft-deleted only). All FKs are `onDelete: restrict`
-// except `notification_id` (`set null` — the bell row may be GC'd). One LIVE
-// pending invite per (studio, invitee) is enforced by a partial unique index
-// in the migration. See the studio invite-confirmation DD (2026-06-14).
+// real member (the rejected-by-design rationale, DD §2). `status` flows pending
+// → accepted | declined | expired | revoked (append-only lifecycle; rows are
+// soft-deleted only). A pending invite that times out keeps `status = 'pending'`
+// until it is reaped to `expired`: the `one_pending` partial index ignores
+// `expires_at`, so re-invite (`expireStalePending`) flips the stale row before
+// taking the slot (#1769). All FKs are `onDelete: restrict` except
+// `notification_id` (`set null` — the bell row may be GC'd). One LIVE pending
+// invite per (studio, invitee) is enforced by a partial unique index in the
+// migration. See the studio invite-confirmation DD (2026-06-14).
 
 export const studioInvitations = pgTable(
   "studio_invitations",
@@ -923,12 +926,15 @@ export const studioInvitations = pgTable(
 // "active members only" — project auth (`loadProjectRole`) / member-list /
 // member-count queries need zero status filter, and a pending invitee can never
 // be mistaken for a real member. `status` flows pending → accepted | declined |
-// revoked (append-only lifecycle; rows are soft-deleted only). All FKs are
-// `onDelete: restrict` except `notification_id` (`set null` — the bell row may
-// be GC'd). The granted `role` is `editor` | `viewer` only (never `owner` —
-// owner is granted at project creation / transfer, never invited). One LIVE
-// pending invite per (project, invitee) is enforced by a partial unique index
-// in the migration. See the project-invite parity spec (2026-06-18).
+// revoked | expired (append-only lifecycle; rows are soft-deleted only). A
+// pending invite that times out keeps `status = 'pending'` until it is reaped to
+// `expired`: the `one_pending` partial index ignores `expires_at`, so re-invite
+// (`expireStalePending`) flips the stale row before taking the slot (#1769). All
+// FKs are `onDelete: restrict` except `notification_id` (`set null` — the bell
+// row may be GC'd). The granted `role` is `editor` | `viewer` only (never
+// `owner` — owner is granted at project creation / transfer, never invited). One
+// LIVE pending invite per (project, invitee) is enforced by a partial unique
+// index in the migration. See the project-invite parity spec (2026-06-18).
 
 export const projectInvitations = pgTable(
   "project_invitations",
@@ -945,7 +951,7 @@ export const projectInvitations = pgTable(
     invitedBy: uuid("invited_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'revoked'. */
+    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'expired' | 'revoked'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
      * The bell notification that surfaces this invite, so confirm / decline /

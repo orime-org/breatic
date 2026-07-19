@@ -1153,16 +1153,6 @@
         "teamTag": "团队",
         "memberCount": "{count} 名成员"
       },
-      "switcher": {
-        "recent": "最近",
-        "myStudios": "我的 Studio",
-        "collaboration": "协作",
-        "guestProjects": "{count} 个参与的 Projects",
-        "newStudio": "新建 Studio",
-        "guideRecent": "最近 = 跨 Studio 的近期 Project。",
-        "guideEnter": "点某个 Studio 进入它的容器。",
-        "guideTools": "工具在右上角。"
-      },
       "badge": {
         "visibilityStudio": "Studio 内可见",
         "visibilityPrivate": "私有",
@@ -1315,9 +1305,11 @@
       "createStudio": "新建 Studio",
       "comingSoon": "即将推出",
       "recent": "最近",
-      "myStudios": "我的 Studio",
+      "personalStudio": "个人 Studio",
+      "personalStudioEmpty": "还没有个人 Studio",
+      "myStudios": "我的团队 Studio",
       "joinedStudios": "我加入的 Studio",
-      "myStudiosEmpty": "还没有 Studio",
+      "myStudiosEmpty": "还没有团队 Studio",
       "joinedEmpty": "还没加入任何 Studio",
       "openNav": "打开导航"
     },

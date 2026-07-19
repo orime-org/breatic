@@ -25,7 +25,7 @@
  * `@breatic/shared` entities.
  */
 
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, projectInvitations, projects, studios, users } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
@@ -93,6 +93,43 @@ export async function createPending(input: {
     );
   }
   return row.id;
+}
+
+/**
+ * Reap the caller's stale pending invite for a (project, invitee) pair — flip an
+ * EXPIRED, still-`pending` row to the terminal `expired` status so it stops
+ * occupying the `project_invitations_one_pending` partial unique index.
+ *
+ * The index keys on `status = 'pending' AND deleted_at IS NULL` and CANNOT
+ * include `expires_at` (a partial-index predicate must be immutable — `now()` is
+ * not). Every READ path already treats an expired pending as void (accept CAS,
+ * `listPendingByProject`, landing all gate `expires_at > now()`), so without this
+ * the row is invisible everywhere yet still trips the unique index on re-invite
+ * → a spurious "already invited" (#1769). Called inside `createInvite`'s
+ * transaction right before {@link createPending}, so freeing the slot and taking
+ * it are atomic. Only ever touches EXPIRED pendings — a LIVE pending is left to
+ * trip the index (a real duplicate invite must still be rejected).
+ * @param projectId - The project the invite is into
+ * @param invitedUserId - The invitee whose stale pending is being reaped
+ * @param tx - The enclosing transaction (shared with the fresh insert)
+ */
+export async function expireStalePending(
+  projectId: string,
+  invitedUserId: string,
+  tx: DbTx,
+): Promise<void> {
+  await tx
+    .update(projectInvitations)
+    .set({ status: "expired" })
+    .where(
+      and(
+        eq(projectInvitations.projectId, projectId),
+        eq(projectInvitations.invitedUserId, invitedUserId),
+        eq(projectInvitations.status, "pending"),
+        isNull(projectInvitations.deletedAt),
+        lte(projectInvitations.expiresAt, sql`now()`),
+      ),
+    );
 }
 
 /**

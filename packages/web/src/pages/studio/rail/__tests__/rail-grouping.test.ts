@@ -14,34 +14,44 @@ function studio(
   return { id, slug: id, name: id, type, memberCount: 1, myStudioRole: role };
 }
 
-describe('splitStudios (rail ④⑤ — spec §0.2 / §4.2, current-role split)', () => {
-  it('puts admin studios in owned (④我的), maintainer + guest in joined (⑤我加入的)', () => {
-    const { owned, joined } = splitStudios([
-      studio('personal', 'admin', 'personal'),
+describe('splitStudios (rail — personal / my-team / joined, three-way #1661)', () => {
+  it('splits into personal (type), my-team (team+admin), joined (team+maintainer/guest)', () => {
+    const { personal, myTeam, joined } = splitStudios([
+      studio('me', 'admin', 'personal'),
       studio('myteam', 'admin'),
       studio('granted', 'maintainer'),
       studio('joined', 'guest'),
     ]);
 
-    expect(owned.map((s) => s.id)).toEqual(['personal', 'myteam']);
+    expect(personal.map((s) => s.id)).toEqual(['me']);
+    expect(myTeam.map((s) => s.id)).toEqual(['myteam']);
     expect(joined.map((s) => s.id)).toEqual(['granted', 'joined']);
   });
 
+  it('keeps a personal studio OUT of my-team even though its role is admin', () => {
+    // A personal studio's creator is its admin; the split is by `type` first, so
+    // personal never leaks into the team group (the whole point of #1661).
+    const { personal, myTeam } = splitStudios([studio('me', 'admin', 'personal')]);
+    expect(personal.map((s) => s.id)).toEqual(['me']);
+    expect(myTeam).toEqual([]);
+  });
+
   it('preserves input order within each group (the list arrives personal-first)', () => {
-    const { owned, joined } = splitStudios([
+    const { myTeam, joined } = splitStudios([
       studio('a', 'guest'),
       studio('b', 'admin'),
       studio('c', 'maintainer'),
     ]);
 
-    expect(owned.map((s) => s.id)).toEqual(['b']);
+    expect(myTeam.map((s) => s.id)).toEqual(['b']);
     expect(joined.map((s) => s.id)).toEqual(['a', 'c']);
   });
 
-  it('treats a null role (a non-member — never present in the studios list) as neither group', () => {
-    const { owned, joined } = splitStudios([studio('x', null)]);
+  it('treats a null role (a non-member — never present in the studios list) as no group', () => {
+    const { personal, myTeam, joined } = splitStudios([studio('x', null)]);
 
-    expect(owned).toEqual([]);
+    expect(personal).toEqual([]);
+    expect(myTeam).toEqual([]);
     expect(joined).toEqual([]);
   });
 });
