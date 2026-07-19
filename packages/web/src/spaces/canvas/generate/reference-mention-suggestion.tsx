@@ -22,44 +22,11 @@ import type {
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
 import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
+import { wasLastChangeLocalUserInput } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import {
   ReferenceMentionList,
   type ReferenceMentionListRef,
 } from '@web/spaces/canvas/generate/reference-mention-list';
-
-/**
- * Whether the LAST transaction applied to the editor came from a REMOTE
- * collaborator (or a yUndo), rather than this user's own keystroke. The
- * collaborative prompt binds y-prosemirror, whose y-sync plugin records
- * `isChangeOrigin` on its plugin state for every applied transaction
- * (sync-plugin sets it true when replaying a peer's update). Read by the
- * y-sync key NAME (`y-sync$`) — not by importing `ySyncPluginKey`, which is a
- * transitive dep whose key identity can drift to `y-sync$1` under a duplicate
- * copy (same robustness as {@link collab-undo-selection}). Returns false with
- * no collaboration (a bare / non-collaborative editor has no y-sync plugin).
- *
- * The `@` suggestion uses this to keep a user-DISMISSED popup dismissed and a
- * visible popup's VISIBILITY unchanged when a peer edits the shared prompt: a
- * remote edit that shifts the `@` range fires the plugin's onUpdate exactly
- * like local typing, and without this discriminator it would resurrect a popup
- * the user closed (the collaboration residual).
- * @param editor - The prompt editor.
- * @returns True when the last applied transaction was a remote peer change.
- */
-export function wasLastChangeRemote(editor: Editor): boolean {
-  const sync = editor.state.plugins
-    .find((pl) => (pl as unknown as { key?: string }).key === 'y-sync$')
-    ?.getState(editor.state) as
-    | { isChangeOrigin?: boolean; isUndoRedoOperation?: boolean }
-    | undefined;
-  // A PEER change, not this user's own undo/redo: y-prosemirror sets
-  // isChangeOrigin=true for BOTH a remote peer edit AND the local Y.UndoManager
-  // applying an undo/redo, distinguishing them only by isUndoRedoOperation
-  // (`origin instanceof Y.UndoManager`, true only for THIS client's undo). Treat
-  // a local undo as a LOCAL re-engagement (so it can re-show a dismissed popup),
-  // reserving "remote" for a true peer change.
-  return sync?.isChangeOrigin === true && sync.isUndoRedoOperation !== true;
-}
 
 /** A React-ref-shaped holder the open popup writes its `refresh()` into. */
 type RefreshHandleRef = { current: (() => void) | null };
@@ -74,8 +41,8 @@ type RefreshHandleRef = { current: (() => void) | null };
  *   image references are excluded from the picker. Optional (default: keep all).
  * @param input.refreshRef - Ref the open popup writes a `refresh()` into so the
  *   React layer can refresh a visible popup on a remote mode/pool change (residual 2).
- * @param input.isRemoteChange - Whether the last transaction was a remote peer
- *   change; defaults to {@link wasLastChangeRemote}, injectable for tests (residual 1).
+ * @param input.isLocalUserInput - Whether the last transaction was a local user
+ *   keystroke; defaults to {@link wasLastChangeLocalUserInput}, injectable for tests (residual 1).
  * @returns The suggestion options (without `editor`, supplied by the extension).
  */
 export function makeReferenceSuggestion(input: {
@@ -101,16 +68,21 @@ export function makeReferenceSuggestion(input: {
    */
   refreshRef?: RefreshHandleRef;
   /**
-   * Whether the last applied transaction was a REMOTE peer change. Defaults to
-   * {@link wasLastChangeRemote} (reads the live y-sync plugin state); injectable
-   * so the visibility-gating logic is unit-testable without a full collaboration
-   * setup. When true, onUpdate refreshes the list CONTENT but does not change the
-   * popup's VISIBILITY (a remote edit never resurrects a dismissed popup —
-   * collaboration residual 1).
+   * Whether the last applied transaction was a genuine LOCAL USER keystroke
+   * (not a remote peer edit, a local yUndo, or a machine-derived dispatch).
+   * Defaults to {@link wasLastChangeLocalUserInput} (reads the per-transaction
+   * tracker plugin state); injectable so the visibility-gating logic is
+   * unit-testable without a full collaboration setup. Only a local keystroke
+   * opens / re-shows the popup; a remote or machine-derived edit refreshes the
+   * list CONTENT but never resurrects a dismissed popup (collaboration
+   * residual 1). Reading a POSITIVE "local user keystroke" per transaction —
+   * rather than reverse-inferring "not remote" from the settled y-sync state —
+   * is what keeps an edge-driven cascade-clear or a whitespace-normalizer
+   * follow-up from masquerading as user typing (round-4 adversarial).
    */
-  isRemoteChange?: (editor: Editor) => boolean;
+  isLocalUserInput?: (editor: Editor) => boolean;
 }): Omit<SuggestionOptions<ReferenceRailItem>, 'editor'> {
-  const isRemoteChange = input.isRemoteChange ?? wasLastChangeRemote;
+  const isLocalUserInput = input.isLocalUserInput ?? wasLastChangeLocalUserInput;
   /**
    * Filters the LIVE pool to the rows offerable for a query under the CURRENT
    * mode. Extracted so every popup show path computes from the same live inputs
@@ -351,16 +323,17 @@ export function makeReferenceSuggestion(input: {
           };
           props.editor.view.dom.addEventListener('focus', onEditorFocus);
           // Decide the initial visibility. A LOCAL start (the user typed `@`)
-          // shows (I3: hidden when nothing matches). A REMOTE-triggered restart
-          // also reaches onStart — @tiptap/suggestion re-fires start when a peer's
+          // shows (I3: hidden when nothing matches). A start driven by anything
+          // ELSE also reaches onStart — @tiptap/suggestion re-fires start when an
           // edit both MOVES the range and CHANGES the query (moved && changed →
-          // onExit → onStart). Such a restart must NOT pop a picker this user
-          // never opened (residual 1), but must ALSO NOT flicker away one the user
-          // was actively using (round-2 adversarial): restore it iff it was open
-          // right before the restart. Everything else (remote restart of a
-          // dismissed / never-open session) begins hidden until a local edit.
-          const remoteStart = isRemoteChange(props.editor);
-          const keepOpen = !remoteStart || wasOpenBeforeExit;
+          // onExit → onStart), and that edit can be a remote peer's OR a local
+          // machine-derived cascade. Such a non-keystroke start must NOT pop a
+          // picker this user never opened (residual 1), but must ALSO NOT flicker
+          // away one the user was actively using (round-2 adversarial): restore it
+          // iff it was open right before the restart. A genuine local keystroke
+          // (the user typing `@`) always shows.
+          const localStart = isLocalUserInput(props.editor);
+          const keepOpen = localStart || wasOpenBeforeExit;
           wasOpenBeforeExit = false; // consume the one-shot restart signal
           dismissed = !keepOpen;
           if (keepOpen) {
@@ -374,21 +347,24 @@ export function makeReferenceSuggestion(input: {
           latestProps = props;
           // props.items is already computed by the plugin (items() → computeItems
           // with the live mode). ALWAYS refresh the list content so a visible
-          // popup stays current. But change VISIBILITY only on a LOCAL edit: a
-          // remote collaborator's edit shifts the `@` range and fires onUpdate
-          // identically to local typing, and must NOT resurrect a dismissed popup
-          // or pop a hidden one (collaboration residual 1). A local edit is also
-          // the user re-engaging, so it clears any dismissal.
+          // popup stays current. But change VISIBILITY only on a genuine LOCAL
+          // KEYSTROKE: a remote peer's edit — OR a machine-derived local dispatch
+          // (the edge-driven cascade-clear deleting a chip before the `@`) —
+          // shifts the range and fires onUpdate identically to local typing, and
+          // must NOT resurrect a dismissed popup or pop a hidden one (residual 1;
+          // the round-4 hole was that the old "not remote" test let the local
+          // cascade through). A local keystroke is also the user re-engaging, so
+          // it clears any dismissal.
           updateContent(props.items);
-          if (!isRemoteChange(props.editor)) {
-            // Local edit = the user re-engaging → clear any dismissal and apply
-            // the normal I3 visibility (empty → hidden, else shown).
+          if (isLocalUserInput(props.editor)) {
+            // Local keystroke = the user re-engaging → clear any dismissal and
+            // apply the normal I3 visibility (empty → hidden, else shown).
             dismissed = false;
             showFor(props.items);
           } else if (!dismissed) {
-            // Remote content change to a VISIBLE (non-dismissed) popup → keep I3
-            // (a peer emptying the pool still hides it) but NEVER re-open a popup
-            // the user dismissed (residual 1).
+            // Non-keystroke content change to a VISIBLE (non-dismissed) popup →
+            // keep I3 (a peer emptying the pool still hides it) but NEVER re-open
+            // a popup the user dismissed (residual 1).
             showFor(props.items);
           }
           place(props.clientRect);

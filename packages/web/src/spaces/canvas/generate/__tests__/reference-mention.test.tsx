@@ -17,10 +17,11 @@ import {
   serializePromptText,
   stripForeignReferenceChips,
 } from '@web/spaces/canvas/generate/reference-mention';
+import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import {
-  makeReferenceSuggestion,
-  wasLastChangeRemote,
-} from '@web/spaces/canvas/generate/reference-mention-suggestion';
+  MACHINE_EDIT_META,
+  wasLastChangeLocalUserInput,
+} from '@web/spaces/canvas/generate/reference-mention-local-input';
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 
@@ -195,6 +196,10 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       getPool: () => [row],
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
+      // Driving onStart/onUpdate by hand has no real transaction to advance the
+      // tracker plugin, so inject the local-keystroke signal these tests model
+      // (the popup opens because the user typed `@`).
+      isLocalUserInput: () => true,
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -237,6 +242,7 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       getPool: () => [],
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
+      isLocalUserInput: () => true, // manual driving models a local `@` keystroke
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -423,7 +429,10 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       getPool: () => [textRow],
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
-      isRemoteChange: () => remote,
+      // `remote` models whether the edit was a remote peer's; the popup's
+      // visibility hook is now the POSITIVE "was it a local user keystroke",
+      // so inject its negation (a remote edit is not a local keystroke).
+      isLocalUserInput: () => !remote,
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -469,7 +478,10 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       getPool: () => [textRow],
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
-      isRemoteChange: () => remote,
+      // `remote` models whether the edit was a remote peer's; the popup's
+      // visibility hook is now the POSITIVE "was it a local user keystroke",
+      // so inject its negation (a remote edit is not a local keystroke).
+      isLocalUserInput: () => !remote,
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -501,6 +513,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
       refreshRef,
+      isLocalUserInput: () => true, // manual driving models a local `@` keystroke
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -543,6 +556,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
       refreshRef,
+      isLocalUserInput: () => true, // manual driving models a local `@` keystroke
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -576,7 +590,10 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       getPool: () => [textRow],
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
-      isRemoteChange: () => remote,
+      // `remote` models whether the edit was a remote peer's; the popup's
+      // visibility hook is now the POSITIVE "was it a local user keystroke",
+      // so inject its negation (a remote edit is not a local keystroke).
+      isLocalUserInput: () => !remote,
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -615,7 +632,10 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       getPool: () => [textRow],
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
-      isRemoteChange: () => remote,
+      // `remote` models whether the edit was a remote peer's; the popup's
+      // visibility hook is now the POSITIVE "was it a local user keystroke",
+      // so inject its negation (a remote edit is not a local keystroke).
+      isLocalUserInput: () => !remote,
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -641,37 +661,104 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     }
   });
 
-  it('wasLastChangeRemote flags a remote peer edit (y-sync isChangeOrigin), not a local one', () => {
+  // The visibility discriminator is now a POSITIVE per-transaction "was the last
+  // doc change a local user keystroke", not the old reverse-inference "not
+  // remote" — which the round-4 adversarial pass broke: a LOCAL machine-derived
+  // cascade-clear and a whitespace-normalizer follow-up both read as "not
+  // remote" and wrongly resurrected a dismissed popup. These exercise the real
+  // tracker plugin the ReferenceMention node installs.
+  /**
+   * Builds a collaborative editor carrying the ReferenceMention extension (which
+   * installs the local-user-input tracker plugin) bound to a Y.Doc fragment.
+   * @param doc - The backing Y.Doc.
+   * @returns The editor.
+   */
+  function makeCollabEditor(doc: Y.Doc): Editor {
+    return new Editor({
+      extensions: [
+        Document,
+        Paragraph,
+        Text,
+        Collaboration.configure({ fragment: doc.getXmlFragment('prompt') }),
+        ReferenceMention.configure({
+          suggestion: makeReferenceSuggestion({
+            getPool: () => [],
+            emptyLabel: 'No references',
+          }),
+        }),
+      ],
+    });
+  }
+
+  it('flags a local keystroke true and a remote peer apply false', () => {
     const docA = new Y.Doc();
     const docB = new Y.Doc();
-    const editorA = new Editor({
-      extensions: [
-        Document,
-        Paragraph,
-        Text,
-        Collaboration.configure({ fragment: docA.getXmlFragment('prompt') }),
-      ],
-    });
-    const editorB = new Editor({
-      extensions: [
-        Document,
-        Paragraph,
-        Text,
-        Collaboration.configure({ fragment: docB.getXmlFragment('prompt') }),
-      ],
-    });
+    const editorA = makeCollabEditor(docA);
+    const editorB = makeCollabEditor(docB);
     try {
-      // A local edit on A is NOT a remote change.
       editorA.commands.insertContent('local');
-      expect(wasLastChangeRemote(editorA)).toBe(false);
-      // B types, then B's state is synced into A → y-prosemirror applies it as a
-      // remote change (isChangeOrigin=true on the y-sync plugin state).
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(true);
+      // B types, then B's state syncs into A → y-prosemirror applies it as a
+      // remote change (tagged with the y-sync plugin key's meta).
       editorB.commands.insertContent('peer');
       Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
-      expect(wasLastChangeRemote(editorA)).toBe(true);
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
     } finally {
       editorA.destroy();
       editorB.destroy();
+    }
+  });
+
+  it('flags a MACHINE-derived local dispatch false (round-4: an edge-driven cascade-clear before an @ looked local)', () => {
+    const docA = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    try {
+      editorA.commands.insertContent('seed');
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(true);
+      // The edge-driven cascade-clear dispatches a LOCAL tr tagged
+      // MACHINE_EDIT_META — it changes the doc but is not a keystroke. The old
+      // "not remote" test wrongly counted it as local and resurrected the popup.
+      const tr = editorA.state.tr.insertText('!', 1);
+      tr.setMeta(MACHINE_EDIT_META, true);
+      editorA.view.dispatch(tr);
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+    } finally {
+      editorA.destroy();
+    }
+  });
+
+  it('a follow-up appendedTransaction does not override the root judgment (round-4: a whitespace-normalizer after a remote edit stayed non-local)', () => {
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    const editorB = makeCollabEditor(docB);
+    try {
+      editorB.commands.insertContent('peer');
+      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+      // A machine follow-up appended by another plugin's appendTransaction rides
+      // WITH that remote root (ProseMirror tags it `appendedTransaction`). It must
+      // not flip the judgment back to local — the settled-state hole round 4 found.
+      const followUp = editorA.state.tr.insertText('x', 1);
+      followUp.setMeta('appendedTransaction', editorA.state.tr);
+      editorA.view.dispatch(followUp);
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+    } finally {
+      editorA.destroy();
+      editorB.destroy();
+    }
+  });
+
+  it('a local yUndo is not a keystroke (undo does not re-show a dismissed popup)', () => {
+    const docA = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    try {
+      editorA.commands.insertContent('typed');
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(true);
+      editorA.commands.undo(); // yUndo — carries the y-sync key's meta, not a keystroke
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+    } finally {
+      editorA.destroy();
     }
   });
 });

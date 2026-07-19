@@ -27,6 +27,7 @@ import {
 import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { createReferenceMentionCaret } from '@web/spaces/canvas/generate/reference-mention-caret';
+import { createLocalUserInputTracker } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import { createReferenceMentionRangeHighlight } from '@web/spaces/canvas/generate/reference-mention-range-decoration';
 import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
@@ -403,6 +404,11 @@ export const ReferenceMention = Node.create<ReferenceMentionOptions>({
         ...this.options.suggestion,
       }),
       createReferenceMentionCaret(),
+      // Track whether the last doc change was a local user keystroke, so the `@`
+      // suggestion drives popup visibility by local intent only — a remote peer
+      // edit or a machine-derived local dispatch (cascade-clear) never
+      // resurrects a dismissed popup (collaboration residual 1, #1802).
+      createLocalUserInputTracker(),
       // Highlight chips caught inside a text range selection (I2, user
       // 2026-07-12): a select-none atom is skipped by the browser's native
       // selection paint, so without this a selected chip reads as un-selected.

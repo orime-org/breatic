@@ -37,6 +37,7 @@ import {
   referenceMentionContent,
   serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
+import { MACHINE_EDIT_META } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { planCascadeDeletion } from '@web/spaces/canvas/generate/reference-mention-whitespace';
 
@@ -380,6 +381,11 @@ export const PromptEditor = React.forwardRef<
     // so Cmd+Z can't resurrect an orphan chip whose reference is gone (same
     // machine-derived-edit invariant as the thumbnail sync; batch-4 adversarial).
     tr.setMeta('addToHistory', false);
+    // Mark it machine-derived so the local-user-input tracker never counts this
+    // edge-driven delete as a keystroke — deleting a chip BEFORE an active `@`
+    // shifts its range and fires the suggestion's onUpdate, which must not
+    // resurrect a dismissed popup (collaboration residual 1, #1802 round-4).
+    tr.setMeta(MACHINE_EDIT_META, true);
     editor.view.dispatch(tr);
   }, [editor, references]);
 
@@ -425,6 +431,9 @@ export const PromptEditor = React.forwardRef<
     // thumbnail refresh instead of the user's own edit, and (this effect is
     // gated on `references`, not the doc) that revert would never self-heal.
     tr.setMeta('addToHistory', false);
+    // Machine-derived (see the cascade-clear above): mark it so the
+    // local-user-input tracker never counts it as a keystroke (#1802 round-4).
+    tr.setMeta(MACHINE_EDIT_META, true);
     editor.view.dispatch(tr);
   }, [editor, references]);
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
