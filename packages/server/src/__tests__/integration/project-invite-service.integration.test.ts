@@ -69,6 +69,7 @@ initCore(process.env);
 
 import * as inviteService from "../../modules/project-invite/projectInvite.service.js";
 import * as invitesRepo from "../../modules/project-invite/projectInvitations.repo.js";
+import * as membersService from "../../modules/project/projectMembers.service.js";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -447,6 +448,61 @@ describe("declineInvite / revokeInvite", () => {
       ),
     ).rejects.toBeInstanceOf(NotFoundError);
     // The invite is still live.
+    expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(1);
+  });
+});
+
+describe("re-invite lifecycle (#1769)", () => {
+  it("accept → remove → re-invite SUCCEEDS (a removed member can be re-invited)", async () => {
+    const { invitationId } = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "editor",
+    );
+    await inviteService.confirmInvite(invitationId, INVITEE);
+    expect(await projectMembersRepo.getRole(PROJECT, INVITEE)).toBe("editor");
+
+    await membersService.remove(PROJECT, INVITEE, OWNER);
+    expect(await projectMembersRepo.getRole(PROJECT, INVITEE)).toBeNull();
+
+    // Re-inviting the removed user must be allowed — a fresh pending invite.
+    const again = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "viewer",
+    );
+    expect(again.invitationId).toBeTruthy();
+    expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(1);
+  });
+
+  it("EXPIRED pending must not block a re-invite (#1769 root cause)", async () => {
+    const { invitationId } = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "editor",
+    );
+    // The invite is never accepted and times out: expires_at moves to the past
+    // while status stays 'pending' (no sweep flips expired pendings). Every read
+    // path (listPending / accept CAS / landing) treats it as void…
+    await db
+      .update(schema.projectInvitations)
+      .set({ expiresAt: sql`now() - interval '1 hour'` })
+      .where(eq(schema.projectInvitations.id, invitationId));
+    expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(0);
+
+    // …so re-inviting must succeed. Today it throws ConflictError because the
+    // `project_invitations_one_pending` partial unique index keys on
+    // status='pending' only and ignores expires_at.
+    const again = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "editor",
+    );
+    expect(again.invitationId).toBeTruthy();
     expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(1);
   });
 });

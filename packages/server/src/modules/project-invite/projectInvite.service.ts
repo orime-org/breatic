@@ -130,6 +130,12 @@ export async function createInvite(
   let token = "";
   try {
     await db.transaction(async (tx) => {
+      // Reap any expired-but-still-'pending' invite for this (project, invitee)
+      // first: the one-pending partial unique index ignores expiry (a partial
+      // predicate can't reference now()), so a timed-out invite would otherwise
+      // trip it and reject the re-invite with a spurious "already invited"
+      // (#1769). Same transaction → freeing the slot and taking it are atomic.
+      await invitesRepo.expireStalePending(projectId, invitee.id, tx);
       invitationId = await invitesRepo.createPending({
         projectId,
         invitedUserId: invitee.id,
