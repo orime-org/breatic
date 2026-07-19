@@ -550,6 +550,12 @@
     }
   },
   "project": {
+    "leaveGuard": {
+      "title": "Leave with work in progress?",
+      "description": "An upload or edit hasn't finished syncing. Leaving now may lose it.",
+      "stay": "Stay",
+      "leave": "Leave anyway"
+    },
     "toolbar": {
       "copy": "Copy",
       "delete": "Delete",
