@@ -163,8 +163,21 @@ export function ThumbnailHoverPreview({
       }}
     >
       <TooltipTrigger asChild>{children}</TooltipTrigger>
+      {/* Portal the preview to the body (#1796 hover): shadcn's TooltipContent
+          renders INLINE by default (unlike PopoverContent), so inside the
+          ReactFlow CSS transform Floating-UI positioned it against a transformed
+          ancestor — a real-browser measurement showed the preview landing 207px
+          left of its chip. `portal` escapes the transform so it anchors to the
+          chip (viewport-relative), like the ratio/camera/model pickers. It is an
+          opt-in prop, so every OTHER app tooltip stays inline (untouched). Safe
+          now that #1798 made the dim an explicit prop — the old reason the
+          tooltip stayed inline (so the rail's ancestor opacity would tint it) is
+          gone. avoidCollisions={false}: a following preview that flipped would
+          fight the follow nudges and jump; same clip-not-jump as the pickers. */}
       <TooltipContent
         side='top'
+        portal
+        avoidCollisions={false}
         className='overflow-hidden border border-border bg-popover p-1'
       >
         {src ? (

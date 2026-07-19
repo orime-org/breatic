@@ -119,3 +119,29 @@ describe('ThumbnailHoverPreview — live-at-open dim (#1798)', () => {
     lit.forEach((img) => expect(img.className).not.toContain('opacity-50'));
   });
 });
+
+// #1796 (hover follow-up): the preview mis-positioned because the shadcn Tooltip
+// does NOT portal (unlike the Popover pickers), so it rendered INLINE inside the
+// ReactFlow CSS transform — a real-browser measurement showed the content landing
+// 207px left of its chip. Portaling it out of the transform (to body) anchors it
+// to the chip. avoidCollisions={false} keeps a following preview from flipping.
+describe('ThumbnailHoverPreview — portals out of the canvas transform (#1796 hover)', () => {
+  it('renders the open preview OUTSIDE the component container (portaled to body)', async () => {
+    const { container, getByTestId } = render(
+      <ThumbnailHoverPreview src='a.png' alt='pic'>
+        <span data-testid='chip'>chip</span>
+      </ThumbnailHoverPreview>,
+    );
+    fireEvent.focus(getByTestId('chip'));
+    await screen.findAllByAltText('pic'); // wait for the tooltip to open
+    // Portaled: the positioned Popper wrapper is under document.body, NOT inside
+    // the component's own container (which, in the app, sits inside the ReactFlow
+    // transform that displaced the inline tooltip). Same reason the pickers portal.
+    expect(
+      container.querySelector('[data-radix-popper-content-wrapper]'),
+    ).toBeNull();
+    expect(
+      document.body.querySelector('[data-radix-popper-content-wrapper]'),
+    ).not.toBeNull();
+  });
+});
