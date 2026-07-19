@@ -142,7 +142,11 @@ export const GroupNode = React.memo(function GroupNode({
             }}
             // `nodrag` lets a pointer press select text instead of dragging the
             // group; the input only renders while editing, so it's always safe.
-            className='nodrag block max-w-[180px] rounded-content-xs border-0 bg-muted px-1 text-xs text-foreground outline-none [field-sizing:content]'
+            // `-ml-1` cancels the `px-1` left padding so entering edit doesn't
+            // shift the name sideways — the fill still gets its breathing room
+            // from `px-1`. `min-w-[3rem]` keeps a usable edit target for a very
+            // short / empty name. Both match NodeHeader (the node-name rename).
+            className='nodrag -ml-1 block min-w-[3rem] max-w-[180px] rounded-content-xs border-0 bg-muted px-1 text-xs text-foreground outline-none [field-sizing:content]'
           />
         ) : (
           <div

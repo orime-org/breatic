@@ -116,6 +116,19 @@ describe('GroupNode', () => {
     expect(screen.getByTestId('group-name-input')).toBeInTheDocument();
   });
 
+  it('rename input aligns with the node-name box: -ml-1 pairs px-1 (no shift) + a min-width edit target (#1770)', () => {
+    // `px-1` (fill breathing room) without a compensating `-ml-1` jumps the name
+    // 4px right on entering edit; `min-w-[3rem]` keeps a usable edit target for a
+    // very short / empty name. NodeHeader (the node-name rename) has both — the
+    // group must match. Guards against dropping either alignment.
+    render(<GroupNode data={{ kind: 'group' }} onRename={vi.fn()} />);
+    fireEvent.doubleClick(screen.getByTestId('group-name'));
+    const input = screen.getByTestId('group-name-input');
+    expect(input.className).toContain('px-1');
+    expect(input.className).toContain('-ml-1');
+    expect(input.className).toContain('min-w-[3rem]');
+  });
+
   it('does NOT enter edit mode when a locked group name is double-clicked', () => {
     render(
       <GroupNode
