@@ -187,6 +187,15 @@ export function makeReferenceSuggestion(input: {
        * outside-click; cleared when the user re-engages (refocus OR a local edit).
        */
       let dismissed = false;
+      /**
+       * Whether the popup was OPEN (visible, not dismissed) at the instant onExit
+       * ran. `@tiptap/suggestion` re-fires start (onExit → onStart) when a peer edit
+       * both moves the `@` range and changes the query, so a REMOTE restart would
+       * otherwise flicker away a picker this user is actively using. onExit records
+       * this, and a remote-driven onStart restores an open picker instead of
+       * hiding it. Consumed (reset) on the next onStart.
+       */
+      let wasOpenBeforeExit = false;
 
       /**
        * Updates the popup's list CONTENT only — never its visibility. The pick
@@ -284,11 +293,16 @@ export function makeReferenceSuggestion(input: {
           // needs no refresh).
           if (input.refreshRef) {
             input.refreshRef.current = (): void => {
-              if (el && el.style.display !== 'none' && latestProps) {
+              // Refresh a NON-dismissed popup's content + visibility (I3) from the
+              // live pool. Guard on `dismissed`, NOT on current display: a prior
+              // refresh that HID it on an emptied pool must still be able to
+              // RE-SHOW it when the pool refills (a remote edge add/remove fires no
+              // prosemirror transaction, so onUpdate can't heal it) — guarding on
+              // display would latch it hidden forever. A user-dismissed popup
+              // stays hidden.
+              if (el && !dismissed && latestProps) {
                 const items = computeItems(latestProps.query);
                 updateContent(items);
-                // Re-apply I3: a remote change that empties the pool must hide the
-                // visible popup, not leave it showing an empty "no references" box.
                 showFor(items);
               }
             };
@@ -336,19 +350,23 @@ export function makeReferenceSuggestion(input: {
             showFor(items);
           };
           props.editor.view.dom.addEventListener('focus', onEditorFocus);
-          // Show the popup ONLY for a LOCAL start (the user typed `@`), and only
-          // when the pool has ≥1 matching row (I3: plain `@` typing must not pop an
-          // empty box). A REMOTE-triggered restart also reaches onStart —
-          // @tiptap/suggestion re-fires start when a peer's edit both MOVES the
-          // range and CHANGES the query (moved && changed → onExit → onStart) — and
-          // must NOT pop a picker this user never opened (residual 1: the onUpdate
-          // guard alone missed this restart path). A remote start begins dismissed
-          // (hidden); a subsequent LOCAL edit clears it and shows via onUpdate.
-          dismissed = isRemoteChange(props.editor);
-          if (dismissed) {
-            el.style.display = 'none';
-          } else {
+          // Decide the initial visibility. A LOCAL start (the user typed `@`)
+          // shows (I3: hidden when nothing matches). A REMOTE-triggered restart
+          // also reaches onStart — @tiptap/suggestion re-fires start when a peer's
+          // edit both MOVES the range and CHANGES the query (moved && changed →
+          // onExit → onStart). Such a restart must NOT pop a picker this user
+          // never opened (residual 1), but must ALSO NOT flicker away one the user
+          // was actively using (round-2 adversarial): restore it iff it was open
+          // right before the restart. Everything else (remote restart of a
+          // dismissed / never-open session) begins hidden until a local edit.
+          const remoteStart = isRemoteChange(props.editor);
+          const keepOpen = !remoteStart || wasOpenBeforeExit;
+          wasOpenBeforeExit = false; // consume the one-shot restart signal
+          dismissed = !keepOpen;
+          if (keepOpen) {
             showFor(props.items);
+          } else {
+            el.style.display = 'none';
           }
           place(props.clientRect);
         },
@@ -380,6 +398,11 @@ export function makeReferenceSuggestion(input: {
           return component?.ref?.onKeyDown(props.event) ?? false;
         },
         onExit: (props: SuggestionProps<ReferenceRailItem>): void => {
+          // Capture the pre-teardown open state so an IMMEDIATE remote restart
+          // (onExit → onStart) can restore an actively-open picker (residual —
+          // round-2 adversarial). Read before dismissed is reset below.
+          wasOpenBeforeExit =
+            !!el && el.style.display !== 'none' && !dismissed;
           stopAutoUpdate?.();
           stopAutoUpdate = null;
           if (onOutsidePointerDown) {

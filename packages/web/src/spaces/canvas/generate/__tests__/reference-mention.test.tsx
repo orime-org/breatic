@@ -535,6 +535,80 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     }
   });
 
+  it('residual 2 (refill): refresh RE-SHOWS a popup it hid on a remote empty when the pool refills — not a one-way latch', () => {
+    let pool: ReferenceRailItem[] = [textRow];
+    const refreshRef: { current: (() => void) | null } = { current: null };
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => pool,
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      refreshRef,
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe(''); // visible, not dismissed
+      // A remote edit empties the pool → refresh hides it (I3).
+      pool = [];
+      refreshRef.current?.();
+      expect(el.style.display).toBe('none');
+      // The remote edit is undone / the ref re-added → refresh must RE-SHOW it,
+      // not stay latched hidden (guarded on `dismissed`, not on display).
+      pool = [textRow];
+      refreshRef.current?.();
+      expect(el.style.display).toBe('');
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  it('a remote restart RESTORES an actively-open picker instead of flickering it away', () => {
+    let remote = false;
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      isRemoteChange: () => remote,
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      handlers.onStart?.(props([textRow], editor)); // local open → visible
+      expect(
+        (
+          Array.from(document.body.children).find(
+            (c) => !before.has(c),
+          ) as HTMLElement
+        ).style.display,
+      ).toBe('');
+      // A remote moved&&changed restart: onExit (captures the open state) → a
+      // remote-driven onStart. The picker the user was using must be RESTORED,
+      // not hidden.
+      remote = true;
+      handlers.onExit?.(props([textRow], editor));
+      const before2 = new Set(Array.from(document.body.children));
+      handlers.onStart?.(props([textRow], editor));
+      const el2 = Array.from(document.body.children).find(
+        (c) => !before2.has(c),
+      ) as HTMLElement;
+      expect(el2.style.display).toBe(''); // restored (not flickered away)
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
   it('wasLastChangeRemote flags a remote peer edit (y-sync isChangeOrigin), not a local one', () => {
     const docA = new Y.Doc();
     const docB = new Y.Doc();
