@@ -142,7 +142,7 @@ interface CameraWheelProps {
 }
 
 /**
- * One carousel column: chevrons + wheel scroll move the selection through the
+ * One carousel column: the up/down chevrons move the selection through the
  * param's catalog values; the centered value renders large with faded
  * neighbours above/below. Clamped at the ends (no wrap).
  * @param root0 - The wheel props.

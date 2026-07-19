@@ -1011,13 +1011,19 @@ function CanvasSpaceInner({
   // Drag-attempt toast for locked nodes (A.1, user 2026-07-18): a locked node
   // (or a locked Group's member) renders draggable:false, so ReactFlow fires NO
   // drag events on it — detect the drag GESTURE ourselves. pointerdown on a
-  // frozen node arms a start point; movement past a small threshold (past a
-  // click's jitter) warns ONCE per gesture; pointerup disarms. A plain click
-  // (no movement) stays silent, so SELECTING a locked node doesn't toast. The
-  // frozen set is read FRESH from the graph store (not effect deps), so this
-  // wires once and never re-attaches as nodes change; warnNodeGate de-dups by a
-  // stable id, so even a long drag surfaces a single toast. A viewer (readOnly)
-  // is exempt — nothing is editable, so a lock warning would mislead.
+  // frozen node's BODY arms a start point; movement past a small threshold (past
+  // a click's jitter) warns ONCE per gesture; pointerup OR pointercancel disarms
+  // (the spec ends an interrupted pointer — touch pan / native drag — with
+  // pointercancel, not pointerup, so both must clear the armed origin, else a
+  // later stray move from the stale origin would toast). A plain click (no
+  // movement) stays silent, so SELECTING a locked node doesn't toast; and a
+  // press that starts on a connection HANDLE is a connect gesture (connecting
+  // FROM a locked node is allowed — the lock gates the node's own content, not
+  // edges out of it), so it never arms. The frozen set is read FRESH from the
+  // graph store (not effect deps), so this wires once and never re-attaches as
+  // nodes change; warnNodeGate de-dups by a stable id, so even a long drag
+  // surfaces a single toast. A viewer (readOnly) is exempt — nothing is
+  // editable, so a lock warning would mislead.
   React.useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -1030,11 +1036,15 @@ function CanvasSpaceInner({
      * @param e - The pointerdown event.
      */
     const onDown = (e: PointerEvent): void => {
-      if (readOnly) {
+      const target = e.target as Element | null;
+      // A press on a connection handle is a connect gesture, not a move — and
+      // connecting FROM a locked node is allowed (onConnect has no lock gate),
+      // so it must not arm the lock-drag warning.
+      if (readOnly || target?.closest('.react-flow__handle')) {
         start = null;
         return;
       }
-      const id = (e.target as Element | null)
+      const id = target
         ?.closest('.react-flow__node[data-id]')
         ?.getAttribute('data-id');
       const frozen = id
@@ -1044,11 +1054,20 @@ function CanvasSpaceInner({
       warned = false;
     };
     /**
-     * Warns once as soon as the armed press moves past the drag threshold.
+     * Warns once as soon as the armed press moves past the drag threshold. A
+     * move with no button held disarms instead: it cannot be part of a drag, so
+     * this is the root safeguard against a stale armed origin — pointerup /
+     * pointercancel are not guaranteed to arrive (a mouse released OUTSIDE the
+     * window delivers no pointerup to the page, since a non-draggable node takes
+     * no pointer capture), and this closes that whole class regardless.
      * @param e - The pointermove event.
      */
     const onMove = (e: PointerEvent): void => {
       if (!start || warned) return;
+      if (e.buttons === 0) {
+        start = null;
+        return;
+      }
       if (
         Math.hypot(e.clientX - start.x, e.clientY - start.y) > DRAG_THRESHOLD
       ) {
@@ -1056,17 +1075,19 @@ function CanvasSpaceInner({
         warnNodeGate(t(NODE_GATE_TOAST_KEY.locked));
       }
     };
-    /** Disarms the detector when the press ends. */
+    /** Disarms the detector when the press ends or is interrupted. */
     const onUp = (): void => {
       start = null;
     };
     container.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     return () => {
       container.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
     };
   }, [t, readOnly]);
 

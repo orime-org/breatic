@@ -422,20 +422,122 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
     // MouseEvent with the pointer type name: jsdom-safe, carries clientX/Y, and
     // fires the handler (listeners key on the type string, not the class).
-    const ev = (type: string, x: number, y: number): MouseEvent =>
-      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+    const ev = (type: string, x: number, y: number, buttons = 0): MouseEvent =>
+      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, buttons });
     // Click (no movement) → silent.
     act(() => {
-      el.dispatchEvent(ev('pointerdown', 10, 10));
+      el.dispatchEvent(ev('pointerdown', 10, 10, 1));
       window.dispatchEvent(ev('pointerup', 10, 10));
     });
     expect(warnSpy).not.toHaveBeenCalled();
-    // Drag gesture (movement past the threshold) → warn once.
+    // Drag gesture (button held, movement past the threshold) → warn once.
     act(() => {
-      el.dispatchEvent(ev('pointerdown', 10, 10));
-      window.dispatchEvent(ev('pointermove', 40, 40));
+      el.dispatchEvent(ev('pointerdown', 10, 10, 1));
+      window.dispatchEvent(ev('pointermove', 40, 40, 1));
     });
     expect(warnSpy).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+
+  it('a buttonless move after a stale arm does NOT warn — a hover cannot be a drag (#1788 round-2 F2)', () => {
+    // If a press ends WITHOUT delivering pointerup/pointercancel to the page (a
+    // mouse released outside the window — a non-draggable node takes no pointer
+    // capture), the armed origin would linger. The root safeguard: a later move
+    // with no button held (a hover) disarms instead of firing a spurious toast.
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'locked',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', locked: true },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
+    const ev = (type: string, x: number, y: number, buttons = 0): MouseEvent =>
+      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, buttons });
+    // Arm (button held), then NO pointerup/pointercancel reaches the page.
+    act(() => {
+      el.dispatchEvent(ev('pointerdown', 10, 10, 1));
+    });
+    // A later hover (no button) far past the threshold must NOT warn.
+    act(() => {
+      window.dispatchEvent(ev('pointermove', 200, 200, 0));
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('a locked drag interrupted by pointercancel does NOT leak a spurious warn on a later move (#1788 adversarial C3)', () => {
+    // The Pointer Events spec ends an interrupted pointer with pointercancel
+    // (touch pan / palm-rejection / a native drag off the node) — NOT pointerup.
+    // If the armed origin is not cleared on cancel, a later unrelated move that
+    // happens to cross the threshold from the stale origin fires a wrong toast.
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'locked',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', locked: true },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
+    const ev = (type: string, x: number, y: number, buttons = 0): MouseEvent =>
+      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, buttons });
+    act(() => {
+      el.dispatchEvent(ev('pointerdown', 10, 10, 1));
+      window.dispatchEvent(ev('pointercancel', 10, 10));
+    });
+    // A later move far past the threshold, with a button still notionally held
+    // (buttons=1) to ISOLATE pointercancel from the no-button safeguard, must
+    // NOT re-fire the warn — pointercancel already disarmed the origin.
+    act(() => {
+      window.dispatchEvent(ev('pointermove', 200, 200, 1));
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('a connect-drag from a LOCKED node handle does NOT warn — connecting FROM a locked node is allowed (#1788 adversarial U3)', () => {
+    // Locking freezes mutations OF the node; connecting FROM it mutates the
+    // TARGET's reference pool, which the lock does not gate (onConnect has no
+    // lock term). So a press that starts on the connection handle is a connect
+    // gesture, not a move gesture — it must not trip the lock-drag warning.
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'locked',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', locked: true },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const el = document.querySelector('.react-flow__node[data-id="locked"]')!;
+    const handle = el.querySelector('.react-flow__handle');
+    expect(handle).not.toBeNull();
+    const ev = (type: string, x: number, y: number, buttons = 0): MouseEvent =>
+      new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, buttons });
+    act(() => {
+      handle!.dispatchEvent(ev('pointerdown', 10, 10, 1));
+      window.dispatchEvent(ev('pointermove', 40, 40, 1));
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
   });
 

@@ -22,7 +22,13 @@
  * web/CLAUDE.md.
  */
 
-/** A mutating operation a user can attempt on a canvas node. */
+/**
+ * A mutating operation a user can attempt on a canvas node. Connecting an edge
+ * FROM (or to) a node is deliberately NOT a member: the lock gates a node's own
+ * CONTENT, and an edge is an upstream/downstream RELATIONSHIP, not content — so
+ * connecting from a locked node stays allowed and ungated (user ruling
+ * 2026-07-18). Do not add a `connect` member or gate `onConnect`.
+ */
 export type NodeMutation =
   | 'move'
   | 'delete'
