@@ -63,3 +63,6 @@ api-reference/
 
 # watcher project-level config — private to each contributor, do not commit
 .watcher/
+
+# Local dev test-account credentials (throwaway localhost accounts for smoke/e2e; never commit)
+/test_account
