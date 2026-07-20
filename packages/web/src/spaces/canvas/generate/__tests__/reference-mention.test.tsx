@@ -223,14 +223,10 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       );
       expect(el.style.display).toBe('none'); // hidden
       expect(document.body.contains(el)).toBe(true); // NOT removed → still alive
-      // Re-focusing the editor (clicking back in) re-shows the popup WITHOUT any
-      // keystroke (B2 residual, user 2026-07-12): the fresh-panel behavior is that
-      // clicking to activate immediately shows the picker.
-      editor.view.dom.dispatchEvent(new FocusEvent('focus'));
-      expect(el.style.display).toBe('');
-      // And after another hide, continuing to type (onUpdate) also re-shows.
-      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-      expect(el.style.display).toBe('none');
+      // Continuing to type (onUpdate) re-shows it — the plugin stayed alive.
+      // (Re-showing on a caret placement BACK into the range, without a
+      // keystroke, is Change 2's Consumer A / B — covered by its own tests;
+      // the old bare-focus re-show was removed in v3, Gate-1 killed the timer.)
       handlers.onUpdate?.(props([row], editor));
       expect(el.style.display).toBe('');
     } finally {
@@ -345,17 +341,21 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
     expect(ids(false)).toEqual(['focus:c1', 'i', 't']);
   });
 
-  it('recomputes the re-shown list for the live mode on refocus (image + focus appear after t2i→i2i)', () => {
+  it('recomputes the re-shown list for the live mode when the caret is placed back (image + focus appear after t2i→i2i, #1799/#1800 via Change 2)', async () => {
     let hideImages = true; // start in t2i
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow, imageRow, focusRow],
       emptyLabel: 'No references',
       imageRefsDisabled: () => hideImages,
+      isLocalUserInput: () => true, // the manually-dispatched caret tr is local
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
     const handlers = render();
+    // The editor's OWN suggestion plugin activates on the `@` so Change 2's
+    // Consumer A can read st.active from the settled plugin state.
     const editor = makeEditor();
+    editor.commands.insertContent('@');
     // Capture the items pushed into the popup list: ReactRenderer only mounts its
     // React subtree through an EditorContent host (absent in this bare editor), so
     // the rendered options never reach the DOM — assert on the props instead.
@@ -367,19 +367,29 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
       document.dispatchEvent(
         new PointerEvent('pointerdown', { bubbles: true }),
       );
-      // Switch to i2i, then click back after the `@` → editor refocuses, re-show.
+      // Switch to i2i, then place the caret back into the `@` range: a LOCAL
+      // selection-only transaction drives Consumer A → re-show recomputes from
+      // the live pool + mode (the mechanism replacing the old bare-focus re-show).
       hideImages = false;
       updateSpy.mockClear();
-      editor.view.dom.dispatchEvent(new FocusEvent('focus'));
+      editor.view.dispatch(
+        editor.state.tr.setSelection(
+          TextSelection.create(editor.state.doc, editor.state.selection.from),
+        ),
+      );
       // The re-show pushed a FRESH list reflecting i2i: image + focus now offered.
-      const pushed = updateSpy.mock.calls.at(-1)?.[0]?.items as
-        | ReferenceRailItem[]
-        | undefined;
-      expect(pushed?.map((r) => r.sourceNodeId).sort()).toEqual([
-        'focus:c1',
-        'i',
-        't',
-      ]);
+      // Filter to the call carrying OUR injected pool (the editor's own empty-pool
+      // suggestion also updates — a different, empty push).
+      const pushedI2i = updateSpy.mock.calls
+        .map((c) => c[0]?.items as ReferenceRailItem[] | undefined)
+        .some(
+          (items) =>
+            items != null &&
+            [...items].map((r) => r.sourceNodeId).sort().join(',') ===
+              'focus:c1,i,t',
+        );
+      expect(pushedI2i).toBe(true);
+      await new Promise((r) => setTimeout(r, 10)); // let the editor's own session settle
     } finally {
       updateSpy.mockRestore();
       handlers.onExit?.(props([], editor));
@@ -926,6 +936,82 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       handlers.onExit?.(props([], editorA));
       editorA.destroy();
       editorB.destroy();
+    }
+  });
+
+  it('Consumer A (#1805 Change 2): a LOCAL caret-placement transaction re-shows a dismissed popup while the plugin is active in range', async () => {
+    // The pure caret-back case: the popup is hidden by an outside-click (plugin
+    // stays active), then a LOCAL selection-only transaction lands the caret
+    // back in the @ range. The editor.on('transaction') consumer reads the
+    // plugin's OWN settled st.active (the single range truth, read AFTER the tr
+    // applied — no timer / geometry / heuristic; the v1 focus+timer and v2
+    // posAtCoords/500ms designs raced the settle and were killed at Gate 1).
+    const editor = makeCollabEditor(new Y.Doc());
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      // An @ in the doc makes the editor's suggestion plugin ACTIVE with the
+      // caret in range → SuggestionPluginKey.getState(...).active is true.
+      editor.commands.insertContent('@');
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe('');
+      // User dismisses via an outside click → hidden, plugin still active.
+      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      expect(el.style.display).toBe('none');
+      // A LOCAL caret placement (selection-only tr) keeping the caret in range.
+      editor.view.dispatch(
+        editor.state.tr.setSelection(
+          TextSelection.create(editor.state.doc, editor.state.selection.from),
+        ),
+      );
+      expect(el.style.display).toBe(''); // Consumer A re-showed it
+      await new Promise((r) => setTimeout(r, 10)); // let the editor's own session settle
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  it('Consumer A (#1805 Change 2): a MACHINE-derived selection tr does NOT re-show a dismissed popup (residual 1 preserved)', async () => {
+    const editor = makeCollabEditor(new Y.Doc());
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      editor.commands.insertContent('@');
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      expect(el.style.display).toBe('none');
+      // A MACHINE-derived selection move (dispatchMachineEdit tags it) is NOT the
+      // local user re-engaging → the dismissed popup must stay hidden.
+      dispatchMachineEdit(
+        editor.view,
+        editor.state.tr.setSelection(
+          TextSelection.create(editor.state.doc, editor.state.selection.from),
+        ),
+      );
+      expect(el.style.display).toBe('none'); // still hidden — residual 1 held
+      await new Promise((r) => setTimeout(r, 10));
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
     }
   });
 

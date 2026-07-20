@@ -12,11 +12,13 @@
 
 import type { Editor } from '@tiptap/core';
 import { autoUpdate, computePosition, offset } from '@floating-ui/dom';
+import type { Transaction } from '@tiptap/pm/state';
 import { ReactRenderer } from '@tiptap/react';
-import type {
-  SuggestionKeyDownProps,
-  SuggestionOptions,
-  SuggestionProps,
+import {
+  SuggestionPluginKey,
+  type SuggestionKeyDownProps,
+  type SuggestionOptions,
+  type SuggestionProps,
 } from '@tiptap/suggestion';
 
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
@@ -140,8 +142,18 @@ export function makeReferenceSuggestion(input: {
       let stopAutoUpdate: (() => void) | null = null;
       /** Document-level outside-click dismisser. */
       let onOutsidePointerDown: ((event: PointerEvent) => void) | null = null;
-      /** Re-shows the popup when the editor regains focus (B2). */
-      let onEditorFocus: (() => void) | null = null;
+      /**
+       * Consumer A (#1805): re-shows a hidden popup on a LOCAL caret-placement
+       * transaction (selection-only). Held for teardown via editor.off.
+       */
+      let onEditorTransaction:
+        | ((payload: { transaction: Transaction }) => void)
+        | null = null;
+      /**
+       * Consumer B (#1805): re-shows a hidden popup on a SAME-POSITION click
+       * back into the active `@` range (the one case that fires no transaction).
+       */
+      let onEditorClick: ((event: MouseEvent) => void) | null = null;
       /**
        * The latest suggestion props (from onStart / onUpdate): `command` is bound
        * to the live `@` range and `query` is the current filter text. The focus
@@ -195,6 +207,33 @@ export function makeReferenceSuggestion(input: {
        */
       const showFor = (items: ReferenceRailItem[]): void => {
         if (el) el.style.display = items.length > 0 ? '' : 'none';
+      };
+
+      /**
+       * Re-shows a HIDDEN popup when the LOCAL user has placed the caret back
+       * inside the still-active `@` range (#1805). The suggestion plugin's OWN
+       * settled state is the single range truth: `st.active` is computed by the
+       * plugin from the settled selection with its strict bounds, so reading it
+       * at a point ORDERED AFTER the caret settles (a transaction, or a click —
+       * which fires after mouseup's selection dispatch) needs no timer, no
+       * geometry, no gesture heuristic (the v1 focus+timer and v2 posAtCoords /
+       * 500ms designs both raced the settle and were killed at Gate 1). Recomputes
+       * the list from the live pool so a mode / pool change since the popup was
+       * hidden is reflected. No-op unless the popup is hidden AND the plugin is
+       * active with an empty selection. Never resurrects a popup that is not
+       * plugin-active, so a genuine exit (space / delete / cursor-leave) stays gone.
+       * @param editor - The prompt editor (its settled state is read live).
+       */
+      const reshowIfActiveHidden = (editor: Editor): void => {
+        if (!el || el.style.display !== 'none') return;
+        const st = SuggestionPluginKey.getState(editor.state) as
+          | { active?: boolean; query?: string }
+          | undefined;
+        if (st?.active !== true || !editor.state.selection.empty) return;
+        dismissed = false;
+        const items = computeItems(st.query ?? '');
+        updateContent(items);
+        showFor(items);
       };
 
       /**
@@ -310,25 +349,47 @@ export function makeReferenceSuggestion(input: {
             }
           };
           document.addEventListener('pointerdown', onOutsidePointerDown, true);
-          // Re-show on re-focus (B2 residual, user 2026-07-12): the outside-click
-          // handler HIDES the popup (display:none) without exiting the suggestion.
-          // Re-focusing the editor (clicking back in) does not fire onUpdate — only
-          // typing does — so the popup would stay hidden until a keystroke. On
-          // focus, RECOMPUTE the list from the live pool + mode rather than merely
-          // un-hiding the cached one: @tiptap/suggestion only re-runs items() on a
-          // query / range change, and a mode toggle (stored on the canvas node,
-          // not the prompt doc) is neither — so re-showing the stale list kept
-          // t2i's text-only rows after switching to i2i and never offered the
-          // focus crops i2i should (#1799 / #1800). showFor also re-hides when
-          // nothing matches, matching a freshly-opened panel.
-          onEditorFocus = (): void => {
-            if (!latestProps) return;
-            dismissed = false; // re-focusing is the user re-engaging → allow show
-            const items = computeItems(latestProps.query);
-            updateContent(items);
-            showFor(items);
+          // Re-show a hidden popup when the LOCAL user clicks / arrows the caret
+          // back into the still-active `@` range (#1805): the outside-click
+          // handler HIDES the popup (display:none) without exiting the suggestion
+          // (B2), and @tiptap/suggestion only re-fires onUpdate on a query / range
+          // change — so a caret placement that neither moves the range nor changes
+          // the query left the popup stuck hidden until a keystroke. Two
+          // settle-driven consumers cover it (a focus+timer re-show raced the
+          // click's selection settle and was killed at Gate 1):
+          // Consumer A — a LOCAL caret-placement TRANSACTION (selection-only): the
+          // 'transaction' event fires AFTER the tr applied, so the plugin's
+          // st.active is the settled in-range verdict. Doc changes flow through
+          // the plugin's own onStart/onUpdate; remote / machine selection moves
+          // are excluded by isLocalUserInput (residual 1 preserved).
+          onEditorTransaction = ({
+            transaction,
+          }: {
+            transaction: Transaction;
+          }): void => {
+            if (!transaction.selectionSet || transaction.docChanged) return;
+            if (!isLocalUserInput(props.editor)) return;
+            reshowIfActiveHidden(props.editor);
           };
-          props.editor.view.dom.addEventListener('focus', onEditorFocus);
+          props.editor.on('transaction', onEditorTransaction);
+          // Consumer B — a SAME-POSITION click back (the one case with NO
+          // transaction: the caret never left the range). 'click' fires after
+          // mouseup's selection dispatch, so the state is settled. AGREEMENT gate:
+          // the click's geometry must match the current caret (posAtCoords ===
+          // selection.from) — a moved-caret click either already settled (Consumer
+          // A handled it) or will (defer to A). Showing only on agreement makes a
+          // flash structurally impossible (nothing shows unless the settled caret
+          // already validates the click's own coordinates).
+          onEditorClick = (event: MouseEvent): void => {
+            if (!el || el.style.display !== 'none') return;
+            const pos = props.editor.view.posAtCoords({
+              left: event.clientX,
+              top: event.clientY,
+            });
+            if (!pos || pos.pos !== props.editor.state.selection.from) return;
+            reshowIfActiveHidden(props.editor);
+          };
+          props.editor.view.dom.addEventListener('click', onEditorClick);
           // Decide the initial visibility. A LOCAL start (the user typed `@`)
           // shows (I3: hidden when nothing matches). A start driven by anything
           // ELSE also reaches onStart — @tiptap/suggestion re-fires start when an
@@ -406,9 +467,13 @@ export function makeReferenceSuggestion(input: {
             );
             onOutsidePointerDown = null;
           }
-          if (onEditorFocus) {
-            props.editor.view.dom.removeEventListener('focus', onEditorFocus);
-            onEditorFocus = null;
+          if (onEditorTransaction) {
+            props.editor.off('transaction', onEditorTransaction);
+            onEditorTransaction = null;
+          }
+          if (onEditorClick) {
+            props.editor.view.dom.removeEventListener('click', onEditorClick);
+            onEditorClick = null;
           }
           if (input.refreshRef) input.refreshRef.current = null;
           dismissed = false;
