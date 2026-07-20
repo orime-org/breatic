@@ -68,6 +68,8 @@ import {
   planWhitespaceInsertions,
   resolveDeletionUnit,
 } from '@web/spaces/canvas/generate/reference-mention-whitespace';
+import { Y_SYNC_PLUGIN_KEY_NAME } from '@web/spaces/canvas/generate/collab-plugin-keys';
+import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-mention-local-input';
 
 /**
  * A recorded selection range as Yjs RELATIVE positions. Absolute positions
@@ -97,15 +99,17 @@ interface YSyncState {
 }
 
 /**
- * The y-sync plugin state, located by KEY NAME (same duplicate-copy-safe
- * pattern as collab-undo-selection.ts — an imported ySyncPluginKey instance
- * would silently miss if the bundle ever carried a second y-tiptap copy).
+ * The y-sync plugin state, located by KEY NAME ({@link Y_SYNC_PLUGIN_KEY_NAME},
+ * same pattern as collab-undo-selection.ts) — robust against importing the wrong
+ * y-tiptap instance, but see that constant's caveat: a second bundled y-tiptap
+ * copy mints the key as `y-sync$1` and this returns null (a silent miss).
  * @param state - The editor state.
  * @returns The y-sync state, or null when Collaboration is absent.
  */
 function ySyncStateOf(state: EditorState): YSyncState | null {
   const plugin = state.plugins.find(
-    (pl) => (pl as unknown as { key?: string }).key === 'y-sync$',
+    (pl) =>
+      (pl as unknown as { key?: string }).key === Y_SYNC_PLUGIN_KEY_NAME,
   );
   return (plugin?.getState(state) as YSyncState | undefined) ?? null;
 }
@@ -496,11 +500,11 @@ function restoreChipSpanSelection(view: EditorView, event: Event): void {
   if (from >= to) return;
   const sel = view.state.selection;
   if (sel.from !== from || sel.to !== to) {
-    view.dispatch(
-      view.state.tr
-        .setSelection(TextSelection.create(doc, from, to))
-        .setMeta('addToHistory', false),
-    );
+    // Machine-derived selection restore, not a keystroke: route through
+    // dispatchMachineEdit so the local-user-input tracker tags it (addToHistory
+    // + MACHINE_EDIT_META) and never counts it as a caret placement that
+    // re-opens the `@` picker (the tracker's single-producer contract — #1802).
+    dispatchMachineEdit(view, view.state.tr.setSelection(TextSelection.create(doc, from, to)));
   }
   event.stopPropagation();
 }
@@ -651,11 +655,10 @@ export function createReferenceMentionCaret(): Plugin {
         if (from >= to) return false;
         const sel = view.state.selection;
         if (sel.from !== from || sel.to !== to) {
-          view.dispatch(
-            view.state.tr
-              .setSelection(TextSelection.create(doc, from, to))
-              .setMeta('addToHistory', false),
-          );
+          // Machine-derived drop-source selection restore — tag it via
+          // dispatchMachineEdit so the tracker never reads it as a local caret
+          // placement (#1802 single-producer contract).
+          dispatchMachineEdit(view, view.state.tr.setSelection(TextSelection.create(doc, from, to)));
         }
         return false;
       },

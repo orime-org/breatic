@@ -173,6 +173,25 @@ describe('FocusCropOverlay', () => {
     expect(onBackToPick).toHaveBeenCalledTimes(1);
   });
 
+  it('an accepted confirm hands DOM focus to the pick banner, not <body> (WCAG 2.4.3 — adversarial ②/③ #1807)', () => {
+    renderOverlay(vi.fn(() => true));
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 800 });
+    Object.defineProperty(img, 'naturalHeight', { value: 600 });
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    const confirmBtn = screen.getByTestId('focus-crop-confirm');
+    confirmBtn.focus(); // the user clicked it → it holds focus
+    expect(document.activeElement).toBe(confirmBtn);
+    fireEvent.click(confirmBtn);
+    // Confirm ends the crop state (overlay unmounts); the SHARED backToPick
+    // hands focus to the pick banner so it never drops to <body>. Confirm used
+    // to skip the hand-off that cancel + Esc both ran (the copy-paste drift the
+    // adversarial ②/③ pass caught).
+    expect(document.activeElement).toBe(
+      screen.getByTestId('reference-pick-banner'),
+    );
+  });
+
   it('a REJECTED confirm (gate refusal) keeps the marquee and STAYS in the crop state', () => {
     const onConfirm = vi.fn(() => false);
     const onBackToPick = vi.fn();
