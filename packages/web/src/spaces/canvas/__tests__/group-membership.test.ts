@@ -20,15 +20,42 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
     { id: 'x', type: 'text', data: {} },
   ];
 
-  it('keeps a locked group, its members, AND their edges out of the deletion', () => {
+  it('keeps a locked group + members (nodes); edges follow endpoint survival, not membership', () => {
+    // g + m are vetoed (a locked group + member); x is deleted. BOTH edges
+    // touch the removed x, so both go — a group lock freezes member geometry /
+    // existence, NOT the member's relations, and an edge to a REMOVED node must
+    // never survive dangling (user 2026-07-20 edge model).
     const reqNodes = [{ id: 'g' }, { id: 'm' }, { id: 'x' }];
     const reqEdges = [
-      { id: 'e1', source: 'm', target: 'x' }, // touches protected member m
-      { id: 'e2', source: 'x', target: 'y' }, // safe (no protected endpoint)
+      { id: 'e1', source: 'm', target: 'x' }, // m vetoed but x removed → e1 goes
+      { id: 'e2', source: 'x', target: 'y' }, // x removed → e2 goes
     ];
     const out = filterGatedDeletion(reqNodes, reqEdges, allNodes);
-    expect(out.nodes.map((n) => n.id)).toEqual(['x']); // g + m protected
-    expect(out.edges.map((e) => e.id)).toEqual(['e2']); // e1 (→ m) protected
+    expect(out.nodes.map((n) => n.id)).toEqual(['x']); // g + m vetoed
+    expect(out.edges.map((e) => e.id)).toEqual(['e1', 'e2']); // both touch removed x
+  });
+
+  it('a vetoed node keeps its edge to a SURVIVING node (cascade veto, no dangling)', () => {
+    // Deleting the locked group cascades m + m→x; g/m are vetoed and x survives
+    // (not requested), so the edge stays with the kept member.
+    const out = filterGatedDeletion(
+      [{ id: 'g' }, { id: 'm' }],
+      [{ id: 'e', source: 'm', target: 'x' }],
+      allNodes,
+    );
+    expect(out.nodes).toHaveLength(0); // g + m vetoed
+    expect(out.edges).toHaveLength(0); // e kept: m vetoed, x survives
+  });
+
+  it('deletes an explicit edge on a locked-group member (edges are relations, never lock-gated)', () => {
+    // No node requested — just the edge m→x. m is a locked-group member, but a
+    // group lock does not freeze relations, so the edge is freely deletable.
+    const out = filterGatedDeletion(
+      [],
+      [{ id: 'e', source: 'm', target: 'x' }],
+      allNodes,
+    );
+    expect(out.edges.map((e) => e.id)).toEqual(['e']); // deletable
   });
 
   it('deletes freely when no group is locked', () => {
@@ -45,7 +72,7 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
     expect(out.edges.map((e) => e.id)).toEqual(['e']);
   });
 
-  it('keeps a locked STANDALONE node (not a group) AND its edges out of the deletion', () => {
+  it('keeps a locked STANDALONE node (node veto); its edges to REMOVED nodes still go', () => {
     const nodes = [
       { id: 'a', type: 'text', data: { locked: true } },
       { id: 'b', type: 'text', data: {} },
@@ -53,16 +80,29 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
     const out = filterGatedDeletion(
       [{ id: 'a' }, { id: 'b' }],
       [
-        { id: 'e1', source: 'a', target: 'b' }, // touches locked a
-        { id: 'e2', source: 'b', target: 'c' }, // safe (no locked endpoint)
+        { id: 'e1', source: 'a', target: 'b' }, // a vetoed but b removed → e1 goes
+        { id: 'e2', source: 'b', target: 'c' }, // b removed → e2 goes
       ],
       nodes,
     );
-    expect(out.nodes.map((n) => n.id)).toEqual(['b']); // locked a protected
-    expect(out.edges.map((e) => e.id)).toEqual(['e2']); // e1 (→ a) protected
+    expect(out.nodes.map((n) => n.id)).toEqual(['b']); // locked a vetoed
+    expect(out.edges.map((e) => e.id)).toEqual(['e1', 'e2']); // both touch removed b
   });
 
-  it('keeps a HANDLING node AND its edges out of the deletion', () => {
+  it('deletes an explicit edge on an own-locked node (own lock does not gate relations)', () => {
+    const nodes = [
+      { id: 'a', type: 'text', data: { locked: true } },
+      { id: 'b', type: 'text', data: {} },
+    ];
+    const out = filterGatedDeletion(
+      [],
+      [{ id: 'e', source: 'a', target: 'b' }],
+      nodes,
+    );
+    expect(out.edges.map((e) => e.id)).toEqual(['e']); // deletable despite locked a
+  });
+
+  it('keeps a HANDLING node (node veto); its edges to REMOVED nodes still go', () => {
     const nodes = [
       { id: 'h', type: 'image', data: { status: 'handling' } },
       { id: 'b', type: 'text', data: {} },
@@ -70,13 +110,13 @@ describe('filterGatedDeletion — locked + handling structure survives delete', 
     const out = filterGatedDeletion(
       [{ id: 'h' }, { id: 'b' }],
       [
-        { id: 'e1', source: 'h', target: 'b' }, // touches handling h
-        { id: 'e2', source: 'b', target: 'c' }, // safe
+        { id: 'e1', source: 'h', target: 'b' }, // h vetoed but b removed → e1 goes
+        { id: 'e2', source: 'b', target: 'c' }, // b removed → e2 goes
       ],
       nodes,
     );
-    expect(out.nodes.map((n) => n.id)).toEqual(['b']); // handling h protected
-    expect(out.edges.map((e) => e.id)).toEqual(['e2']); // e1 (→ h) protected
+    expect(out.nodes.map((n) => n.id)).toEqual(['b']); // handling h vetoed
+    expect(out.edges.map((e) => e.id)).toEqual(['e1', 'e2']); // both touch removed b
   });
 
   it('an idle (state absent / not handling) node deletes freely', () => {
@@ -131,16 +171,28 @@ describe('gateBlockedDeletion — flags when a gate vetoed part of the deletion 
     expect(out.survivors.nodes.map((n) => n.id)).toEqual(['a']);
   });
 
-  it('blocked=true, reason=handling when a handling node protects an edge', () => {
+  it('does NOT block an explicit edge delete touching a handling node (edges are relations)', () => {
     const allNodes = [{ id: 'h', type: 'image', data: { status: 'handling' } }];
     const out = gateBlockedDeletion(
       [],
       [{ id: 'e1', source: 'h', target: 'b' }],
       allNodes,
     );
-    expect(out.blocked).toBe(true);
-    expect(out.reason).toBe('handling');
-    expect(out.survivors.edges).toHaveLength(0);
+    expect(out.blocked).toBe(false);
+    expect(out.reason).toBeNull();
+    expect(out.survivors.edges.map((e) => e.id)).toEqual(['e1']); // deletable
+  });
+
+  it('does NOT block an explicit edge delete touching a locked node (lock never gates edges)', () => {
+    const allNodes = [{ id: 'a', type: 'text', data: { locked: true } }];
+    const out = gateBlockedDeletion(
+      [],
+      [{ id: 'e', source: 'a', target: 'b' }],
+      allNodes,
+    );
+    expect(out.blocked).toBe(false);
+    expect(out.reason).toBeNull();
+    expect(out.survivors.edges.map((e) => e.id)).toEqual(['e']); // deletable
   });
 });
 

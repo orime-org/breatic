@@ -172,6 +172,21 @@ body {
   box-shadow: none;
 }
 
+/* The delete-scissors on a selected edge lives in the edge-label layer
+   (.react-flow__edgelabel-renderer), which @xyflow paints BELOW
+   .react-flow__nodes — the div is emitted before <NodeRenderer> in GraphView,
+   and neither layer sets a z-index, so later-in-DOM nodes win. An edge whose
+   midpoint falls over a node — e.g. a Group's background frame (rendered at
+   zIndex 0) for a member's edge — therefore had its scissors covered: both
+   unclickable AND un-hoverable, regardless of lock (#1787; the edge LINE stays
+   visible because it re-elevates, the overlay does not). Lift the whole
+   edge-label layer above the node layer. The layer is `pointer-events: none`
+   and only the scissors button itself captures pointer events, so nodes stay
+   fully interactive everywhere else. */
+.react-flow__edgelabel-renderer {
+  z-index: 10;
+}
+
 /* Group manual-resize controls (NodeResizer). The group's OWN dashed border
    already turns to the selected colour when selected, so the resize LINE is
    hidden (transparent) — a second solid outline on top of the dashed one is

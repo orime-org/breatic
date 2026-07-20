@@ -8,7 +8,11 @@
  * toast explains why.
  *
  * Two states gate mutations, with different scope:
- *   - `locked` (user-set, persistent "do not touch") freezes EVERY mutation;
+ *   - `locked` — the node's OWN lock (`data.locked`), freezes EVERY mutation of
+ *     THIS node. A GROUP lock does NOT flow in here: it freezes only member
+ *     geometry (move) + structure (delete) via the group-aware set in
+ *     group-membership.ts, and never a member's content / name — this function
+ *     is only ever fed a node's own lock flag, never a group-expanded one.
  *   - `handling` (system-set while a task writes the node) freezes only the
  *     CONTENT-affecting mutations (delete / edit / upload / generate), leaving
  *     position and name free — they don't race the in-flight content write.

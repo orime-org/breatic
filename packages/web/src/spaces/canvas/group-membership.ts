@@ -3,12 +3,17 @@
 
 /**
  * Pure node-state set logic for the canvas: which nodes a lock or an in-flight
- * task freezes. A LOCK freezes a locked node or a member of a locked Group
- * (membership via `parentId`, group redesign 2026-06-23) against every mutation;
- * HANDLING freezes a node with a running task against deletion (and the other
- * content-affecting ops) but not against move / rename. The per-op decision
- * lives in {@link ./node-gate}; these helpers materialize the frozen SETS the
- * canvas wires into `renderNodes` (draggable, lock-only) and the delete guards.
+ * task freezes. Two lock SCOPES (user 2026-07-20): a node's OWN lock
+ * (`data.locked`) freezes that node's everything (content / name / edit / move /
+ * delete); a GROUP lock freezes only its members' GEOMETRY (move) and STRUCTURE
+ * (delete / add) plus the group's own identity — it never freezes a member's
+ * content / name / relations. So the group-aware set below (`lockedNodeIds` =
+ * own-locked ∪ locked-group members) is wired ONLY into the move-freeze
+ * (`renderNodes` draggable) and the node side of the delete guard; content
+ * gates read each node's OWN `data.locked`, and EDGES (relations) are never
+ * lock-gated. HANDLING freezes a node with a running task against deletion (and
+ * the other content-affecting ops) but not against move / rename. The per-op
+ * decision lives in {@link ./node-gate}.
  */
 
 import type { NodeGateReason } from '@web/spaces/canvas/node-gate';
@@ -139,16 +144,23 @@ export function selectionDeletionIds(
 
 /**
  * Partition a requested deletion so gated structure survives: any locked node
- * (a locked group OR a locked standalone node), a locked group's members, any
- * node currently `handling` a task, AND every edge touching a protected node
- * are kept OUT of the deletion. Wire into ReactFlow's `onBeforeDelete` (the
- * pre-delete veto) — the post-hoc `onDelete` can't stop ReactFlow from removing
- * nodes/edges from the local buffer first, nor from cascading a protected node's
- * edges into the deletion (edges are part of the frozen structure too).
+ * (a locked group OR a locked standalone node), a locked group's members, and
+ * any node currently `handling` a task are kept OUT of the deletion. Wire into
+ * ReactFlow's `onBeforeDelete` (the pre-delete veto) — the post-hoc `onDelete`
+ * can't stop ReactFlow from removing nodes from the local buffer first, nor from
+ * cascading a vetoed node's edges into the deletion.
+ *
+ * EDGES are logical RELATIONS, never content or geometry, so a lock (own OR
+ * group) and `handling` NEVER gate them (user 2026-07-20 group-lock model; the
+ * mirror of `onConnect` staying ungated). An edge is dropped from the deletion
+ * (kept) only when it cascaded in alongside a VETOED (kept) node AND both its
+ * endpoints survive — that node must retain its live connections, but an edge to
+ * a REMOVED node still goes (no dangling), and an explicitly-requested edge is
+ * always deletable regardless of endpoint lock / handling.
  * @param nodes - The nodes ReactFlow is about to delete.
  * @param edges - The edges ReactFlow is about to delete (incl. cascaded ones).
  * @param allNodes - All canvas nodes, to resolve which nodes are locked / handling.
- * @returns The subset safe to delete (protected nodes + their edges removed).
+ * @returns The subset safe to delete (protected nodes + their still-connected edges removed).
  */
 export function filterGatedDeletion<
   N extends { id: string },
@@ -164,12 +176,29 @@ export function filterGatedDeletion<
     ...lockedNodeIds(allNodes),
     ...handlingNodeIds(allNodes),
   ]);
+  // Split the requested nodes into vetoed (protected → kept) vs actually removed.
+  const vetoedNodeIds = new Set<string>();
+  const removedNodeIds = new Set<string>();
+  for (const node of nodes) {
+    if (protectedIds.has(node.id)) vetoedNodeIds.add(node.id);
+    else removedNodeIds.add(node.id);
+  }
   return {
     nodes: nodes.filter((node) => !protectedIds.has(node.id)),
-    edges: edges.filter(
-      (edge) =>
-        !protectedIds.has(edge.source) && !protectedIds.has(edge.target),
-    ),
+    edges: edges.filter((edge) => {
+      // An endpoint is actually being removed → the edge must go with it (never
+      // a dangling edge to a deleted node).
+      if (removedNodeIds.has(edge.source) || removedNodeIds.has(edge.target)) {
+        return true;
+      }
+      // Both endpoints survive. Keep (veto) the edge ONLY when it cascaded in
+      // with a vetoed node — that kept node retains its live connections. An
+      // explicitly-requested edge (no vetoed endpoint) is a relation, never
+      // lock- / handling-gated, so it is freely deletable.
+      const touchesVetoed =
+        vetoedNodeIds.has(edge.source) || vetoedNodeIds.has(edge.target);
+      return !touchesVetoed;
+    }),
   };
 }
 
@@ -178,8 +207,10 @@ export function filterGatedDeletion<
  * of the requested deletion, and WHICH reason, so the caller can tell the user
  * (a toast) instead of silently dropping the items. `blocked` is true when
  * fewer nodes or edges survive than were requested; `reason` is `locked` when a
- * locked node/edge was vetoed (the harder freeze wins over `handling`),
- * `handling` when only handling nodes were, and null when nothing was blocked.
+ * locked NODE was vetoed (the harder freeze wins over `handling`), `handling`
+ * when only handling nodes were, and null when nothing was blocked. Edges are
+ * never gated on their own (they only drop out as a vetoed node's kept
+ * connections), so the reason is always a node's.
  * @param nodes - The nodes ReactFlow is about to delete.
  * @param edges - The edges ReactFlow is about to delete (incl. cascaded ones).
  * @param allNodes - All canvas nodes, to resolve which nodes are locked / handling.
@@ -204,14 +235,10 @@ export function gateBlockedDeletion<
   let reason: NodeGateReason | null = null;
   if (blocked) {
     // `locked` is the harder freeze, so it wins when the vetoed set mixes locked
-    // and handling nodes: a node/edge removed because a LOCKED node protects it
-    // reports `locked`; only handling nodes removed reports `handling`.
+    // and handling nodes. Keyed on the vetoed NODES only — edges are never
+    // lock-gated, so a kept edge is always the consequence of a vetoed node.
     const lockedIds = lockedNodeIds(allNodes);
-    const lockedRemoved =
-      nodes.some((node) => lockedIds.has(node.id)) ||
-      edges.some(
-        (edge) => lockedIds.has(edge.source) || lockedIds.has(edge.target),
-      );
+    const lockedRemoved = nodes.some((node) => lockedIds.has(node.id));
     reason = lockedRemoved ? 'locked' : 'handling';
   }
   return { survivors, blocked, reason };
