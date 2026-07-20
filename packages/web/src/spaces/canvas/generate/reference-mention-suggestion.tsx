@@ -11,7 +11,7 @@
  */
 
 import type { Editor } from '@tiptap/core';
-import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
+import { autoUpdate, computePosition, offset } from '@floating-ui/dom';
 import { ReactRenderer } from '@tiptap/react';
 import type {
   SuggestionKeyDownProps,
@@ -225,8 +225,15 @@ export function makeReferenceSuggestion(input: {
             // viewport corner). Restores the pre-autoUpdate `if (!rect) return`.
             if (!el || !clientRect()) return;
             void computePosition(reference, el, {
+              // NO flip / shift (user 2026-07-20): this popup is anchored INSIDE
+              // the ReactFlow canvas, and must track its caret and clip at the
+              // viewport edge — NOT slide/flip to stay on screen. Collision
+              // middleware kept the list pinned in the viewport while the caret
+              // panned off, detaching it from the `@` (the list floated far from
+              // its anchor). Same clip-not-jump contract the canvas Radix floats
+              // use via avoidCollisions={false} (ratio / camera / model pickers).
               placement: 'bottom-start',
-              middleware: [offset(6), flip(), shift({ padding: 8 })],
+              middleware: [offset(6)],
             }).then(({ x, y }) => {
               if (!el) return;
               el.style.left = `${x}px`;
