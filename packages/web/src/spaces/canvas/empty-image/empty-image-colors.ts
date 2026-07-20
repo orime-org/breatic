@@ -18,6 +18,15 @@ export interface EmptyImageColor {
 /** Default fill colour for a fresh panel — white (D2). */
 export const EMPTY_IMAGE_DEFAULT_COLOR = '#ffffff'; // design-value: allow — image content, not a theme token
 
+/**
+ * Swatch background for the custom-colour trigger — a rainbow conic gradient
+ * (named CSS colours, so no raw-hex) signalling "pick any colour". It is OUR
+ * `<div>`, not the native `<input type="color">` swatch (which each browser
+ * renders differently), so the control looks identical on every engine.
+ */
+export const EMPTY_IMAGE_CUSTOM_GRADIENT =
+  'conic-gradient(red, orange, yellow, lime, cyan, blue, magenta, red)';
+
 /** The fixed swatch row; white first (default), then neutrals and solids. */
 export const EMPTY_IMAGE_COLORS: ReadonlyArray<EmptyImageColor> = [
   { key: 'white', hex: '#ffffff' }, // design-value: allow — image content, not a theme token

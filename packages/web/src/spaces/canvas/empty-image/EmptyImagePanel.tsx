@@ -9,6 +9,7 @@ import { CROP_RATIOS } from '@web/spaces/canvas/focus/crop-math';
 
 import {
   EMPTY_IMAGE_COLORS,
+  EMPTY_IMAGE_CUSTOM_GRADIENT,
   EMPTY_IMAGE_DEFAULT_COLOR,
 } from '@web/spaces/canvas/empty-image/empty-image-colors';
 import {
@@ -155,20 +156,31 @@ export function EmptyImagePanel({
             }
           />
         ))}
-        <label className='flex h-5 w-5 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-border'>
-          {/* aria-label on the interactive <input>, matching the swatch buttons. */}
+      </div>
+
+      {/* Custom colour picker (left) + Execute (right). The native
+          <input type="color"> renders differently per browser, so it is fully
+          transparent and only serves as the OS colour-dialog trigger — our own
+          rainbow swatch underneath gives an identical look on every engine. */}
+      <div className='flex items-center justify-between'>
+        <label
+          className='relative h-8 w-8 cursor-pointer overflow-hidden rounded-full border border-border transition-transform hover:scale-110'
+          aria-label={t('canvas.emptyImage.color.custom')}
+        >
+          <span
+            aria-hidden='true'
+            className='absolute inset-0'
+            style={{ background: EMPTY_IMAGE_CUSTOM_GRADIENT }}
+          />
           <input
             type='color'
             data-testid='empty-image-color-custom'
             aria-label={t('canvas.emptyImage.color.custom')}
             value={color}
             onChange={(e) => setColor(e.target.value)}
-            className='h-8 w-8 cursor-pointer border-0 bg-transparent p-0'
+            className='absolute inset-0 h-full w-full cursor-pointer opacity-0'
           />
         </label>
-      </div>
-
-      <div className='flex justify-end'>
         <button
           type='button'
           data-testid='empty-image-execute'

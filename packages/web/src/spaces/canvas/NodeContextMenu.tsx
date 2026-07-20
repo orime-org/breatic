@@ -4,8 +4,8 @@
 import {
   Copy,
   CopyPlus,
+  ImagePlus,
   Lock,
-  PaintBucket,
   Pencil,
   Sparkles,
   Trash2,
@@ -169,7 +169,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                 data-testid='node-menu-reset-image'
                 onSelect={onResetImage}
               >
-                <PaintBucket className='mr-2 h-4 w-4' aria-hidden='true' />
+                <ImagePlus className='mr-2 h-4 w-4' aria-hidden='true' />
                 {t('canvas.nodeMenu.resetEmpty')}
               </DropdownMenuItem>
             ) : null}
