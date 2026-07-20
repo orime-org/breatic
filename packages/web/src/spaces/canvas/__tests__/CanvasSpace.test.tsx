@@ -33,6 +33,7 @@ vi.mock('@web/components/ui/tooltip', () => ({
 
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
+import * as blankPng from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { serializeNodes } from '@web/spaces/canvas/node-clipboard';
 import { useCanvasStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
@@ -146,7 +147,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       // Panel / pick state is global zustand — a test that leaves a panel
       // open would leak into the next one (the open-selects-host effect keys
       // on the id CHANGING, so a stale identical id suppresses it entirely).
-      generatePanelNodeId: null,
+      panelHostId: null, panelKind: null,
       pickSession: null,
     });
     useSpaceOperationsStore.setState({ operations: {} });
@@ -893,7 +894,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     act(() => {
       useCanvasStore.setState({
-        generatePanelNodeId: 'target',
+        panelHostId: 'target', panelKind: 'generate',
         pickSession: { nodeId: 'target', purpose: 'reference' },
       });
     });
@@ -902,7 +903,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // With selectionOnDrag (our Figma-like left-drag marquee) ReactFlow routes
     // pane clicks through pointerdown→pointerup, not the click event.
     clickPane(pane as Element);
-    expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
+    expect(useCanvasStore.getState().panelHostId).toBe('target');
     expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target');
     // The banner is neutral card chrome (user 2026-07-14, reversing the
     // batch-2 item-11 violet tint) — the violet pick glow on candidate nodes
@@ -940,14 +941,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     act(() => {
       useCanvasStore.setState({
-        generatePanelNodeId: 'target',
+        panelHostId: 'target', panelKind: 'generate',
         pickSession: null,
       });
     });
     const pane = document.querySelector('.react-flow__pane');
     expect(pane).not.toBeNull();
     clickPane(pane as Element);
-    expect(useCanvasStore.getState().generatePanelNodeId).toBeNull();
+    expect(useCanvasStore.getState().panelHostId).toBeNull();
   });
 
   // Selection-driven panel lifecycle (user bug report 2026-07-11): the panel
@@ -975,7 +976,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     act(() => {
       useCanvasStore.setState({
-        generatePanelNodeId: 'target',
+        panelHostId: 'target', panelKind: 'generate',
         pickSession: null,
       });
     });
@@ -1007,7 +1008,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       </QueryClientProvider>,
     );
     await waitFor(() =>
-      expect(useCanvasStore.getState().generatePanelNodeId).toBeNull(),
+      expect(useCanvasStore.getState().panelHostId).toBeNull(),
     );
     addNode.mockRestore();
   });
@@ -1033,7 +1034,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     act(() => {
       useCanvasStore.setState({
-        generatePanelNodeId: 'target',
+        panelHostId: 'target', panelKind: 'generate',
         pickSession: null,
       });
     });
@@ -1064,7 +1065,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       </QueryClientProvider>,
     );
     await waitFor(() =>
-      expect(useCanvasStore.getState().generatePanelNodeId).toBeNull(),
+      expect(useCanvasStore.getState().panelHostId).toBeNull(),
     );
     addNode.mockRestore();
   });
@@ -1098,14 +1099,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     act(() => {
       useCanvasStore.setState({
-        generatePanelNodeId: 'target',
+        panelHostId: 'target', panelKind: 'generate',
         pickSession: { nodeId: 'target', purpose: 'reference' },
       });
     });
     act(() => {
       screen.getByTestId('reference-pick-exit').click();
     });
-    expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
+    expect(useCanvasStore.getState().panelHostId).toBe('target');
     expect(useCanvasStore.getState().pickSession).toBeNull();
     await waitFor(() =>
       expect(
@@ -1139,7 +1140,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     act(() => {
       useCanvasStore.setState({
-        generatePanelNodeId: 'target',
+        panelHostId: 'target', panelKind: 'generate',
         pickSession: null,
       });
     });
@@ -1165,7 +1166,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     const pane = document.querySelector('.react-flow__pane');
     clickPane(pane as Element);
     await waitFor(() =>
-      expect(useCanvasStore.getState().generatePanelNodeId).toBeNull(),
+      expect(useCanvasStore.getState().panelHostId).toBeNull(),
     );
   });
 
@@ -1198,7 +1199,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     act(() => {
       useCanvasStore.setState({
-        generatePanelNodeId: 'target',
+        panelHostId: 'target', panelKind: 'generate',
         pickSession: null,
       });
     });
@@ -1229,7 +1230,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         document.querySelector('[data-id="target"]')?.className,
       ).toContain('selected'),
     );
-    expect(useCanvasStore.getState().generatePanelNodeId).toBe('target');
+    expect(useCanvasStore.getState().panelHostId).toBe('target');
   });
 
   // Round-2 adversarial: opening the panel on an ALREADY-selected host used
@@ -1279,7 +1280,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // Open Generate on node ONE (host already selected, node TWO co-selected).
     act(() => {
       useCanvasStore.setState({
-        generatePanelNodeId: one.id,
+        panelHostId: one.id, panelKind: 'generate',
         pickSession: null,
       });
     });
@@ -1291,7 +1292,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(
       document.querySelector(`[data-id="${one.id}"]`)?.className,
     ).toContain('selected');
-    expect(useCanvasStore.getState().generatePanelNodeId).toBe(one.id);
+    expect(useCanvasStore.getState().panelHostId).toBe(one.id);
     addNode.mockRestore();
   });
 
@@ -1937,6 +1938,139 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       lockedSpy.mockRestore();
     }
   });
+
+  // ---- #1623 reset gate 1: menu click on a LOCKED image node ----
+  // Unlike Generate (opens even when locked, as a prompt read surface), the
+  // reset panel is a pure blank-image action — a locked node refuses to OPEN
+  // it. Fresh Yjs read (own-flag; a group lock does not freeze content, #350).
+  it('reset-to-empty on a LOCKED image node toasts and does not open the panel (#1623 gate 1)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'img',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle', locked: true },
+          },
+        ],
+      }),
+    );
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    const lockedSpy = vi
+      .spyOn(canvasSpace, 'isNodeLocked')
+      .mockReturnValue(true);
+    try {
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+      render(<CanvasSpace projectId='p' spaceId='s' />);
+      const node = document.querySelector('.react-flow__node');
+      act(() => {
+        node?.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+        );
+      });
+      fireEvent.click(screen.getByTestId('node-menu-reset-image'));
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(useCanvasStore.getState().panelHostId).toBeNull();
+
+      // Control: unlocked, the same click opens the reset panel — proves the
+      // gate (not a broken wire) suppressed it above.
+      lockedSpy.mockReturnValue(false);
+      act(() => {
+        node?.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+        );
+      });
+      fireEvent.click(screen.getByTestId('node-menu-reset-image'));
+      expect(useCanvasStore.getState().panelKind).toBe('resetEmpty');
+      expect(useCanvasStore.getState().panelHostId).toBe('img');
+    } finally {
+      warnSpy.mockRestore();
+      lockedSpy.mockRestore();
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    }
+  });
+
+  // ---- #1623 reset gate 2: Execute after the node was locked ----
+  // The panel is open; a collaborator locks the node; Execute must NOT write —
+  // it toasts, closes the panel, and never even rasterises the blank PNG.
+  it('reset Execute on a since-locked node toasts, closes, and never rasterises (#1623 gate 2)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'img',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    const genSpy = vi
+      .spyOn(blankPng, 'generateBlankPng')
+      .mockResolvedValue(new File([], 'blank.png', { type: 'image/png' }));
+    const lockedSpy = vi
+      .spyOn(canvasSpace, 'isNodeLocked')
+      .mockReturnValue(false);
+    try {
+      render(<CanvasSpace projectId='p' spaceId='s' />);
+      act(() => {
+        useCanvasStore.getState().openEmptyImagePanel('img');
+      });
+      // The node gets locked while the panel is open.
+      lockedSpy.mockReturnValue(true);
+      fireEvent.click(screen.getByTestId('empty-image-execute'));
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(genSpy).not.toHaveBeenCalled();
+      expect(useCanvasStore.getState().panelHostId).toBeNull();
+    } finally {
+      warnSpy.mockRestore();
+      genSpy.mockRestore();
+      lockedSpy.mockRestore();
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    }
+  });
+
+  // ---- #1623 reset success path: Execute on an UNLOCKED node ----
+  // Complements gate 2: an unlocked node DOES rasterise (with the panel's
+  // default 1024² white spec) and closes the panel. Guards the wiring from
+  // Execute → generateBlankPng args (a regression to the dims / colour, or a
+  // gate that wrongly blocks the happy path, is caught here).
+  it('reset Execute on an unlocked node rasterises with the chosen spec and closes (#1623 success)', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'img',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    const genSpy = vi
+      .spyOn(blankPng, 'generateBlankPng')
+      .mockResolvedValue(new File([], 'blank.png', { type: 'image/png' }));
+    const lockedSpy = vi
+      .spyOn(canvasSpace, 'isNodeLocked')
+      .mockReturnValue(false);
+    try {
+      render(<CanvasSpace projectId='p' spaceId='s' />);
+      act(() => {
+        useCanvasStore.getState().openEmptyImagePanel('img');
+      });
+      fireEvent.click(screen.getByTestId('empty-image-execute'));
+      expect(genSpy).toHaveBeenCalledWith(1024, 1024, '#ffffff');
+      expect(useCanvasStore.getState().panelHostId).toBeNull();
+    } finally {
+      genSpy.mockRestore();
+      lockedSpy.mockRestore();
+      useCanvasStore.setState({ panelHostId: null, panelKind: null });
+    }
+  });
 });
 
 // Reference-pick mode cursor contract (canvas item 7, user 2026-07-10).
@@ -2047,7 +2181,7 @@ describe('reference-pick interaction contract', () => {
     );
     act(() => {
       useCanvasStore.setState({
-        generatePanelNodeId: 'target',
+        panelHostId: 'target', panelKind: 'generate',
         pickSession: { nodeId: 'target', purpose: 'reference' },
       });
     });
@@ -2059,7 +2193,7 @@ describe('reference-pick interaction contract', () => {
     // Store is module-global — clear so later suites start clean.
     act(() => {
       useCanvasStore.setState({
-        generatePanelNodeId: null,
+        panelHostId: null, panelKind: null,
         pickSession: null,
       });
     });

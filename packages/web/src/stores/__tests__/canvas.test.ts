@@ -19,7 +19,8 @@ describe('useCanvasStore', () => {
       pendingHistoryCommand: null,
       canUndo: false,
       canRedo: false,
-      generatePanelNodeId: null,
+      panelHostId: null,
+      panelKind: null,
       pickSession: null,
     });
   });
@@ -72,20 +73,22 @@ describe('useCanvasStore', () => {
   // collaborator opening a node's panel must NOT open it for everyone. Only
   // one panel is open at a time, keyed by node id.
   it('generate panel starts closed (no node)', () => {
-    expect(useCanvasStore.getInitialState().generatePanelNodeId).toBeNull();
+    expect(useCanvasStore.getInitialState().panelHostId).toBeNull();
   });
 
-  it('openGeneratePanel opens the panel for a node; closeGeneratePanel clears it', () => {
+  it('openGeneratePanel opens the panel for a node; closeActivePanel clears it', () => {
     useCanvasStore.getState().openGeneratePanel('n-9');
-    expect(useCanvasStore.getState().generatePanelNodeId).toBe('n-9');
-    useCanvasStore.getState().closeGeneratePanel();
-    expect(useCanvasStore.getState().generatePanelNodeId).toBeNull();
+    expect(useCanvasStore.getState().panelHostId).toBe('n-9');
+    expect(useCanvasStore.getState().panelKind).toBe('generate');
+    useCanvasStore.getState().closeActivePanel();
+    expect(useCanvasStore.getState().panelHostId).toBeNull();
+    expect(useCanvasStore.getState().panelKind).toBeNull();
   });
 
   it('opening a second node’s panel replaces the first (one panel open at a time)', () => {
     useCanvasStore.getState().openGeneratePanel('a');
     useCanvasStore.getState().openGeneratePanel('b');
-    expect(useCanvasStore.getState().generatePanelNodeId).toBe('b');
+    expect(useCanvasStore.getState().panelHostId).toBe('b');
   });
 
   // A canvas node-pick is a single session (only one active at a time) that
@@ -141,15 +144,42 @@ describe('useCanvasStore', () => {
     useCanvasStore.getState().startReferencePick('a');
     // Switch the panel to a different node — the stale pick must not survive.
     useCanvasStore.getState().openGeneratePanel('b');
-    expect(useCanvasStore.getState().generatePanelNodeId).toBe('b');
+    expect(useCanvasStore.getState().panelHostId).toBe('b');
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
 
-  it('closeGeneratePanel also exits any in-progress pick', () => {
+  it('closeActivePanel also exits any in-progress pick', () => {
     useCanvasStore.getState().openGeneratePanel('gen-1');
     useCanvasStore.getState().startStylePick('gen-1');
-    useCanvasStore.getState().closeGeneratePanel();
-    expect(useCanvasStore.getState().generatePanelNodeId).toBeNull();
+    useCanvasStore.getState().closeActivePanel();
+    expect(useCanvasStore.getState().panelHostId).toBeNull();
+    expect(useCanvasStore.getState().panelKind).toBeNull();
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+  });
+
+  // The Generate and reset-empty panels share one host + kind and are mutually
+  // exclusive (#1623): opening one always replaces the other, so two node
+  // panels can never be open at once.
+  it('openEmptyImagePanel opens the reset panel with kind=resetEmpty', () => {
+    useCanvasStore.getState().openEmptyImagePanel('img-1');
+    expect(useCanvasStore.getState().panelHostId).toBe('img-1');
+    expect(useCanvasStore.getState().panelKind).toBe('resetEmpty');
+  });
+
+  it('opening reset replaces an open Generate panel (mutually exclusive)', () => {
+    useCanvasStore.getState().openGeneratePanel('img-1');
+    useCanvasStore.getState().openEmptyImagePanel('img-1');
+    expect(useCanvasStore.getState().panelKind).toBe('resetEmpty');
+    // ...and opening Generate replaces the reset panel back.
+    useCanvasStore.getState().openGeneratePanel('img-1');
+    expect(useCanvasStore.getState().panelKind).toBe('generate');
+  });
+
+  it('openEmptyImagePanel exits any in-progress pick', () => {
+    useCanvasStore.getState().openGeneratePanel('img-1');
+    useCanvasStore.getState().startReferencePick('img-1');
+    useCanvasStore.getState().openEmptyImagePanel('img-2');
+    expect(useCanvasStore.getState().panelHostId).toBe('img-2');
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
 

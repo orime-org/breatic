@@ -361,7 +361,8 @@
       "upload": "上傳",
       "tools": "工具",
       "lock": "鎖定節點",
-      "unlock": "解鎖節點"
+      "unlock": "解鎖節點",
+      "resetEmpty": "重設為空白圖片"
     },
     "edge": {
       "delete": "刪除連線"
@@ -391,6 +392,27 @@
       "kindWeb": "網頁",
       "kindAnnotation": "註解",
       "kindGroup": "群組"
+    },
+    "emptyImage": {
+      "title": "空白圖片",
+      "width": "寬",
+      "height": "高",
+      "execute": "建立",
+      "exit": "結束",
+      "generateFailed": "無法建立圖片，請重試。",
+      "color": {
+        "white": "白色",
+        "lightGray": "淺灰",
+        "gray": "灰色",
+        "black": "黑色",
+        "red": "紅色",
+        "orange": "橙色",
+        "yellow": "黃色",
+        "green": "綠色",
+        "blue": "藍色",
+        "violet": "紫色",
+        "custom": "自訂顏色"
+      }
     }
   },
   "editor": {

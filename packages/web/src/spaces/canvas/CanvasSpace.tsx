@@ -151,6 +151,9 @@ import {
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
+import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
+import type { EmptyImageExecuteOpts } from '@web/spaces/canvas/empty-image/EmptyImagePanel';
+import { generateBlankPng } from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
 import { GroupSelectionToolbar } from '@web/spaces/canvas/GroupSelectionToolbar';
 import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
@@ -497,8 +500,9 @@ function CanvasSpaceInner({
   const minimapVisible = useCanvasStore((s) => s.minimapVisible);
   const snapToGrid = useCanvasStore((s) => s.snapToGrid);
   const openGeneratePanel = useCanvasStore((s) => s.openGeneratePanel);
-  const closeGeneratePanel = useCanvasStore((s) => s.closeGeneratePanel);
-  const generatePanelNodeId = useCanvasStore((s) => s.generatePanelNodeId);
+  const openEmptyImagePanel = useCanvasStore((s) => s.openEmptyImagePanel);
+  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+  const panelHostId = useCanvasStore((s) => s.panelHostId);
   const pickSession = useCanvasStore((s) => s.pickSession);
   // The node a pick (reference OR style) is running for, or null — stands in
   // for the mechanical "is a pick active / which node" checks that don't care
@@ -860,34 +864,37 @@ function CanvasSpaceInner({
     [setFlowNodes, setFlowEdges, rfStoreApi],
   );
   const hostSelected = React.useMemo((): boolean | null => {
-    if (generatePanelNodeId == null) return null;
-    const host = flowNodes.find((n) => n.id === generatePanelNodeId);
+    if (panelHostId == null) return null;
+    const host = flowNodes.find((n) => n.id === panelHostId);
     return host ? host.selected === true : null;
-  }, [flowNodes, generatePanelNodeId]);
+  }, [flowNodes, panelHostId]);
   const panelSelectionRef = React.useRef<PanelSelectionSnapshot>({
     panelNodeId: null,
     hostSelected: null,
     picking: false,
   });
   React.useEffect(() => {
+    // Kind-agnostic: the Generate and reset-empty panels share ONE host and one
+    // lifecycle, so this machine binds whichever panel is open to its host's
+    // selection (close on deselect, re-assert sole-select on rebind).
     const prev = panelSelectionRef.current;
     const next = {
-      panelNodeId: generatePanelNodeId,
+      panelNodeId: panelHostId,
       hostSelected,
       picking: pickForNodeId != null,
     };
     panelSelectionRef.current = next;
     const action = resolvePanelSelectionAction(prev, next);
     if (action === 'close') {
-      closeGeneratePanel();
-    } else if (action === 'select' && generatePanelNodeId != null) {
-      selectOnlyNode(generatePanelNodeId);
+      closeActivePanel();
+    } else if (action === 'select' && panelHostId != null) {
+      selectOnlyNode(panelHostId);
     }
   }, [
-    generatePanelNodeId,
+    panelHostId,
     hostSelected,
     pickForNodeId,
-    closeGeneratePanel,
+    closeActivePanel,
     selectOnlyNode,
   ]);
 
@@ -2627,6 +2634,66 @@ function CanvasSpaceInner({
     },
     [projectId, spaceId, userId, t, reportUploadedAsset, trackOperation],
   );
+  // Reset an image node to a fresh blank PNG (#1623): the panel's Execute. reset
+  // ≡ "upload a new image" (user 2026-07-20), so it rasterises the blank canvas
+  // then hands it to the SAME fillUpload pipeline (presign → handling → write
+  // back → node-history 'upload' row). No group-aware gating: a group lock does
+  // not freeze member content (#350) — only the node's OWN lock does.
+  const resetNodeToEmptyImage = React.useCallback(
+    (nodeId: string, opts: EmptyImageExecuteOpts): void => {
+      // Gate 2 (execute, D8-②): re-read fresh Yjs so a node a collaborator just
+      // locked (or a task just started on) blocks the write. Either verdict
+      // closes the panel.
+      const gateBlock = evaluateNodeGate(
+        {
+          locked: isNodeLocked(projectId, spaceId, nodeId),
+          handling: isNodeHandling(projectId, spaceId, nodeId),
+        },
+        'editContent',
+      );
+      closeActivePanel();
+      if (gateBlock) {
+        warnNodeGate(t(gateBlock.toastKey));
+        return;
+      }
+      // Rasterise (~1ms), then reuse the upload path — fillUpload re-gates fresh
+      // before setHandling (H1: a lock landing during the raster is caught),
+      // and reportUploaded records the history row so the old image stays
+      // recoverable (D4). An unconditional toast on raster failure (silent-fail
+      // mandate) — the node is untouched.
+      void generateBlankPng(opts.width, opts.height, opts.color)
+        .then((file) => fillUpload(nodeId, file, 'image'))
+        .catch(() => toast.error(t('canvas.emptyImage.generateFailed')));
+    },
+    [projectId, spaceId, t, closeActivePanel, fillUpload],
+  );
+  // Node menu "reset to empty image": gate 1 (menu click, D8-①). Unlike Generate
+  // (which opens even on a locked node as a read surface for the prompt), the
+  // reset panel is a pure blank-image ACTION with no recipe to view — so a
+  // locked / handling node refuses to OPEN it. Fresh Yjs read; own-flag only.
+  const resetImageFromMenu = React.useCallback((): void => {
+    const nodeId = nodeMenu.nodeId;
+    const gateBlock = evaluateNodeGate(
+      {
+        locked: isNodeLocked(projectId, spaceId, nodeId),
+        handling: isNodeHandling(projectId, spaceId, nodeId),
+      },
+      'editContent',
+    );
+    if (gateBlock) {
+      warnNodeGate(t(gateBlock.toastKey));
+      return;
+    }
+    openEmptyImagePanel(nodeId);
+    selectOnlyNode(nodeId);
+  }, [
+    nodeMenu.nodeId,
+    projectId,
+    spaceId,
+    t,
+    openEmptyImagePanel,
+    selectOnlyNode,
+  ]);
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
@@ -3091,6 +3158,13 @@ function CanvasSpaceInner({
             projectId={projectId}
             spaceId={spaceId}
           />
+          {/* Reset-empty-image panel: shares the host + lifecycle with Generate
+              (panelHostId + panelKind), mutually exclusive, floats below its
+              node via NodeToolbar. */}
+          <EmptyImagePanelContainer
+            nodes={nodes}
+            onReset={resetNodeToEmptyImage}
+          />
         </ReactFlow>
         {pickForNodeId ? (
           <div
@@ -3223,6 +3297,14 @@ function CanvasSpaceInner({
                 openGeneratePanel(nodeMenu.nodeId);
                 selectOnlyNode(nodeMenu.nodeId);
               }
+              : undefined;
+          })()}
+          // Reset-to-empty-image opens the blank-image panel for editable image
+          // nodes only (#1623); groups / non-image / read-only get no item.
+          onResetImage={(() => {
+            const imgNode = nodes.find((n) => n.id === nodeMenu.nodeId);
+            return !nodeMenu.isGroup && !readOnly && imgNode?.type === 'image'
+              ? resetImageFromMenu
               : undefined;
           })()}
           // Rename is frozen on a locked node / group (the name is on-canvas

@@ -361,7 +361,8 @@
       "upload": "上传",
       "tools": "工具",
       "lock": "锁定节点",
-      "unlock": "解锁节点"
+      "unlock": "解锁节点",
+      "resetEmpty": "重置为空图片"
     },
     "edge": {
       "delete": "删除连线"
@@ -391,6 +392,27 @@
       "kindWeb": "网页",
       "kindAnnotation": "批注",
       "kindGroup": "编组"
+    },
+    "emptyImage": {
+      "title": "空图片",
+      "width": "宽",
+      "height": "高",
+      "execute": "创建",
+      "exit": "退出",
+      "generateFailed": "无法创建图片，请重试。",
+      "color": {
+        "white": "白色",
+        "lightGray": "浅灰",
+        "gray": "灰色",
+        "black": "黑色",
+        "red": "红色",
+        "orange": "橙色",
+        "yellow": "黄色",
+        "green": "绿色",
+        "blue": "蓝色",
+        "violet": "紫色",
+        "custom": "自定义颜色"
+      }
     }
   },
   "editor": {
