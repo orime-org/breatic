@@ -688,14 +688,15 @@ export function FocusCropOverlay({
     // A gate rejection (pool full, source gone) keeps the marquee — the
     // user's careful selection must survive a fixable rejection (round-3).
     if (accepted) {
-      // Clearing the rect disables the focused Confirm button, which drops
-      // DOM focus to <body> (round-5) — hand it to Cancel synchronously
-      // (still enabled, same bar) so keyboard users stay in the session.
-      // A second pointer's in-flight gesture dies too (round-11), or its
-      // next move resurrects the cleared marquee.
+      // One focus = one complete flow (user 2026-07-20): confirm ENDS the
+      // crop state exactly like cancel — back to pick, unmounting the
+      // overlay and its control bar (confirm used to only clear the marquee,
+      // leaving the bar floating under the image). A second pointer's
+      // in-flight gesture dies first (round-11) and the marquee is cleared
+      // so a parent that keeps the overlay mounted never resurrects it.
       interactionRef.current = null;
-      cancelRef.current?.focus();
       setRect(null);
+      onBackToPick();
     }
   };
 
@@ -709,7 +710,6 @@ export function FocusCropOverlay({
       ? !isNaturalCropValid(rect, box, naturalSize)
       : !isCropValid(rect));
 
-  const cancelRef = React.useRef<HTMLButtonElement>(null);
 
   return (
     <div
@@ -791,7 +791,6 @@ export function FocusCropOverlay({
             ))}
             <span aria-hidden='true' className='mx-1 h-4 w-px bg-border' />
             <button
-              ref={cancelRef}
               type='button'
               data-testid='focus-crop-cancel'
               onClick={() => {

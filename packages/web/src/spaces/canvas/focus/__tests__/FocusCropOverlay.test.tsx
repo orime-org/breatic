@@ -157,6 +157,38 @@ describe('FocusCropOverlay', () => {
     ).toBe(true);
   });
 
+  it('an ACCEPTED confirm returns to the PICK state (hides the crop bar) exactly like cancel — the focus flow is complete (user 2026-07-20)', () => {
+    const onConfirm = vi.fn(() => true);
+    const onBackToPick = vi.fn();
+    renderOverlay(onConfirm, onBackToPick);
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 800 });
+    Object.defineProperty(img, 'naturalHeight', { value: 600 });
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    // One focus = one complete flow (pick → marquee → confirm/cancel): BOTH
+    // endings leave the crop state, unmounting the overlay + its control bar.
+    // Confirm used to only clear the marquee, leaving the bar floating.
+    expect(onBackToPick).toHaveBeenCalledTimes(1);
+  });
+
+  it('a REJECTED confirm (gate refusal) keeps the marquee and STAYS in the crop state', () => {
+    const onConfirm = vi.fn(() => false);
+    const onBackToPick = vi.fn();
+    renderOverlay(onConfirm, onBackToPick);
+    const img = screen.getByTestId('image-node-img');
+    Object.defineProperty(img, 'naturalWidth', { value: 800 });
+    Object.defineProperty(img, 'naturalHeight', { value: 600 });
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    // A fixable rejection (pool full) must not end the flow — the user's
+    // careful selection survives for a re-confirm (round-3 invariant).
+    expect(onBackToPick).not.toHaveBeenCalled();
+    expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+  });
+
   it('cancel clears the marquee and returns to the PICK state — not out of the session (user 2026-07-17, decision A)', () => {
     const onBackToPick = vi.fn();
     renderOverlay(vi.fn(), onBackToPick);
@@ -416,14 +448,31 @@ describe('FocusCropOverlay', () => {
     pane.remove();
   });
 
-  it('an accepted confirm hands focus to Cancel (Confirm disables, round-5)', () => {
-    renderOverlay(vi.fn(() => true));
+  it('an accepted confirm kills a second pointer’s in-flight gesture — its next move cannot resurrect the marquee (round-11)', () => {
+    // The round-5 focus-to-Cancel handoff is gone with the flow change
+    // (accepted confirm now leaves the crop state entirely, user 2026-07-20);
+    // what must survive is the round-11 invariant: a second pointer captured
+    // mid-gesture dies on confirm instead of re-drawing a cleared marquee.
+    const onBackToPick = vi.fn();
+    renderOverlay(vi.fn(() => true), onBackToPick);
     const img = screen.getByTestId('image-node-img');
     Object.defineProperty(img, 'naturalWidth', { value: 800 });
     Object.defineProperty(img, 'naturalHeight', { value: 600 });
     draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    // Second pointer grabs the RECT (a move gesture — keeps the marquee
+    // valid, unlike a layer press which would start a new draw)...
+    const layer = screen.getByTestId('focus-crop-layer');
+    fireEvent.pointerDown(screen.getByTestId('focus-crop-rect'), {
+      pointerId: 2,
+      clientX: 200,
+      clientY: 140,
+    });
+    // ...the user confirms with the first pointer.
     fireEvent.click(screen.getByTestId('focus-crop-confirm'));
-    expect(document.activeElement).toBe(screen.getByTestId('focus-crop-cancel'));
+    expect(onBackToPick).toHaveBeenCalledTimes(1);
+    // The second pointer's next move must not resurrect a marquee.
+    fireEvent.pointerMove(layer, { pointerId: 2, clientX: 260, clientY: 190 });
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
   });
 
   it('a click on a zoom-out-shrunken but natural-valid marquee does not wipe it (round-9)', () => {
