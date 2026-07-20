@@ -1148,11 +1148,13 @@ function CanvasSpaceInner({
   );
 
   // Veto deletions BEFORE ReactFlow touches the local buffer: a locked group's
-  // structure is frozen, so the group node, its members, AND every edge touching
-  // them are protected. onBeforeDelete is the only layer that can stop removal at
-  // the source — onDelete fires AFTER ReactFlow has already dropped nodes/edges
-  // locally and cascaded a protected node's edges into the deletion. Read-only
-  // viewers delete nothing.
+  // geometry / structure is frozen, so the group node and its members are
+  // protected. Edges are logical relations, NOT lock-gated (user 2026-07-20) —
+  // an edge only stays out of the deletion when it cascaded in with a vetoed
+  // node AND both endpoints survive; an edge to a removed node still goes, and
+  // an explicit edge delete is always allowed. onBeforeDelete is the only layer
+  // that can stop removal at the source — onDelete fires AFTER ReactFlow has
+  // already dropped nodes/edges locally. Read-only viewers delete nothing.
   const onBeforeDelete = React.useCallback(
     async ({
       nodes: toDelete,

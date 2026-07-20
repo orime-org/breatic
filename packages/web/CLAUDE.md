@@ -66,9 +66,18 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 ## 节点状态门控:locked / handling(MANDATORY,单一策略源)
 画布节点有两种「冻结变更」的状态,门控规则是**单一真相源** `spaces/canvas/node-gate.ts` 的纯函数 `evaluateNodeGate(state, op)`:**每个变更入口**(删除 / 上传 / 生成执行 / 内容编辑 / 移动 / 改名)都经它判定,**keyed on 状态 + 操作、绝不 keyed on 节点类型** —— 未来 text / 音频 / 视频节点天然复用同一门,新增可生成模态时把它的变更入口接进同一策略即可,**不逐模态补 `if (locked)`**。
 
-| 操作 | locked(用户冻结 = 冻一切) | handling(任务在写 = 冻内容相关) |
+| 操作 | locked(节点**自身** `data.locked` = 冻该节点一切) | handling(任务在写 = 冻内容相关) |
 |---|---|---|
 | 移动 / 改名 | 拦 | **放行**(位置 / 名字与 in-flight 内容写入正交) |
 | 删除 / 编辑内容 / 上传 / 生成执行 | 拦 | 拦 |
 
 **两条铁律**:① 被拦的**命令式**入口(键盘/菜单删除 · 上传 picker · 面板执行 · 双击进编辑)一律 `toast.warning`(走 `NODE_GATE_TOAST_KEY` → `canvas.gate.locked` / `canvas.gate.handling`),**禁静默 no-op**(用户点了没反应还不知道为啥);**拖动锁定节点/组**虽 `draggable:false`(ReactFlow 不发拖拽事件),也经画布层**拖动手势探测**(pointerdown 命中 frozen 节点 + 移动超阈值)弹 `canvas.gate.locked`(A.1,user 2026-07-18;单击无位移不弹、区分选中 vs 拖动);只有**纯被动、无手势可探**的 render 门(菜单项隐藏)才静默。② 生成面板对 locked / handling 节点**照常打开、prompt 照常可编辑**,只有**执行提交**被拦 —— 锁冻的是节点内容与结果,不是生成配方 prompt。判定题:**这是不是一个会改节点内容 / 位置 / 存在性的操作?是 → 经 `evaluateNodeGate` 判定,别自己手写状态检查**。策略函数 + 矩阵是本条的实现真相源(`node-gate.ts` 顶部 TSDoc)。
+
+**锁有两种作用域,别混为一谈(MANDATORY,user 2026-07-20)**:
+
+| 作用域 | 冻什么 | 不冻什么 |
+|---|---|---|
+| **① 节点自身锁**(`node.data.locked`)| 该节点**一切**(内容 / 名字 / 内联编辑 / 上传 / 生成执行 / 移动 / 删除)—— 上表「冻一切」指这个 | — |
+| **② 组锁**(`group.data.locked`)| 只冻**几何**(成员移动 / 拖动)+ **结构**(加/删成员:reparent-in、paste-into、ungroup、删成员;组自身移动 / 删除)+ **组自身身份**(组名 / 组位置 / 缩放)| **成员的内容 / 名字 / 内联编辑 / 生成 / 上传 / 连线** —— 这些一律跟随**各成员自己的** `data.locked` |
+
+**边是逻辑关系,永不受锁门控**(节点锁 + 组锁都不锁边;`onConnect` 已不 gate,删边同理对称)—— 删边只跟随「端点是否真被删」(防悬空),显式删边一律放行。判定题:**这个门控的是「几何 / 结构 / 组身份」还是「成员内容 / 名字 / 关系」?前者 → group-aware 冻结集(`group-membership.ts` 的 `lockedNodeIds`,只接进 move 的 draggable + delete 的节点侧);后者 → 节点自身 `data.locked`(fresh 读),别把内容门 group-aware 化**。实现真相源 = `group-membership.ts` 顶部 TSDoc。
