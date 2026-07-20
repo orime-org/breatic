@@ -65,7 +65,7 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
        * Recomputes the local-user-input judgment for one applied transaction.
        * @param tr - The applied transaction.
        * @param value - The previous judgment.
-       * @returns Whether the last doc change was a local user keystroke.
+       * @returns Whether the last intent-bearing change was local user input.
        */
       apply: (tr, value): boolean => {
         // A follow-up appended by another plugin's appendTransaction (e.g. the
@@ -75,8 +75,14 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
         // otherwise a machine append after a remote edit would mask the remote
         // origin (the settled-state hole round 4 found).
         if (tr.getMeta('appendedTransaction')) return value;
-        // Selection-only / no-op transactions carry no origin signal.
-        if (!tr.docChanged) return value;
+        // Intent-bearing = doc change OR selection change (#1805): a local
+        // CARET PLACEMENT — pointer click or arrow key — is user input too,
+        // even though it changes no content. The suggestion's onStart fires
+        // off exactly such a movement (clicking after an existing `@`), and a
+        // tracker that only judged doc changes read "non-local" there, hiding
+        // a picker the local user just asked for. Meta-only transactions
+        // (awareness updates, plugin bookkeeping) carry no intent signal.
+        if (!tr.docChanged && !tr.selectionSet) return value;
         // Remote peer edit OR local yUndo/redo: y-prosemirror tags the
         // transaction with the y-sync plugin key's meta, located by key NAME
         // 'y-sync$' — the duplicate-copy-safe lookup used across the collab
@@ -84,7 +90,11 @@ export function createLocalUserInputTracker(): Plugin<boolean> {
         // `.key`, so `getMeta('y-sync$')` reads it without importing the
         // transitive-dep instance. A yUndo is not a keystroke either — undo is
         // not an intent to open the picker — so, unlike the old discriminator,
-        // it does not re-show a dismissed popup.
+        // it does not re-show a dismissed popup. Selection-only transactions
+        // are produced by LOCAL input (prosemirror-view pointer/keyboard
+        // handling) — remote applies and machine dispatches are doc
+        // transactions or tagged — so the same test classifies them correctly;
+        // a machine-derived selection move must ride dispatchMachineEdit.
         const isRemoteOrUndo = tr.getMeta('y-sync$') !== undefined;
         // Machine-derived local dispatch (cascade-clear / chip display sync).
         const isMachine = tr.getMeta(MACHINE_EDIT_META) === true;

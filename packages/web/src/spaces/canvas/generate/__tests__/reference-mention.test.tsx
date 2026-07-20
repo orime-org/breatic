@@ -7,6 +7,7 @@ import { Collaboration } from '@tiptap/extension-collaboration';
 import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Text } from '@tiptap/extension-text';
+import { TextSelection } from '@tiptap/pm/state';
 import { ReactRenderer } from '@tiptap/react';
 import { SuggestionPluginKey } from '@tiptap/suggestion';
 import * as Y from 'yjs';
@@ -676,6 +677,11 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
    */
   function makeCollabEditor(doc: Y.Doc): Editor {
     return new Editor({
+      // Mounted view: tests that place a caret inside an @ match make the
+      // editor's OWN suggestion plugin fire its async onStart, which reads
+      // editor.view.dom — an element-less editor throws there as an unhandled
+      // rejection after the test ends.
+      element: document.createElement('div'),
       extensions: [
         Document,
         Paragraph,
@@ -830,6 +836,96 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       expect(wasLastChangeLocalUserInput(editor)).toBe(false);
     } finally {
       editor.destroy();
+    }
+  });
+
+  it('a local caret placement (selection-only tr) after a remote edit is LOCAL user input (#1805: clicking after an existing @ must show the picker)', () => {
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    const editorB = makeCollabEditor(docB);
+    try {
+      // A peer types (e.g. the `@`); synced into A → non-local.
+      editorB.commands.insertContent('peer');
+      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+      // The LOCAL user clicks the caret after the @ — a selection-only
+      // transaction (pointer/keyboard caret placement IS local input, even
+      // though it changes no document content). Real-browser confirmed: the
+      // suggestion's onStart fires off exactly such a movement (B clicking
+      // into A's @, or the same user after a panel reopen), and treating it
+      // as non-local kept the picker hidden.
+      const selTr = editorA.state.tr.setSelection(
+        TextSelection.create(editorA.state.doc, 1),
+      );
+      editorA.view.dispatch(selTr);
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(true);
+    } finally {
+      editorA.destroy();
+      editorB.destroy();
+    }
+  });
+
+  it('a machine-tagged selection-only tr is NOT local input (symmetry with machine doc edits)', () => {
+    const editor = makeCollabEditor(new Y.Doc());
+    try {
+      editor.commands.insertContent('peerless');
+      // Baseline non-local via a machine doc edit.
+      const machineTr = editor.state.tr.insertText('x', 1);
+      dispatchMachineEdit(editor.view, machineTr);
+      expect(wasLastChangeLocalUserInput(editor)).toBe(false);
+      // A machine-derived selection move keeps it non-local too.
+      const selTr = editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, 2),
+      );
+      dispatchMachineEdit(editor.view, selTr);
+      expect(wasLastChangeLocalUserInput(editor)).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('end-to-end: after a remote edit, a local caret click into the @ range makes onStart SHOW the picker (#1805 repro)', async () => {
+    // The real-browser repro: the prompt's @ arrived remotely (peer typed it,
+    // or the panel was reopened and the initial y-sync load is non-local).
+    // The local user then clicks after the @ → suggestion fires onStart. The
+    // caret placement must count as local intent — before the fix the tracker
+    // ignored selection-only trs, onStart read non-local, and the popup
+    // stayed display:none (options computed but never shown).
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    const editorB = makeCollabEditor(docB);
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+    }); // real tracker drives visibility
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      editorB.commands.insertContent('@');
+      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
+      // The local click that lands the caret right after the remote @.
+      editorA.view.dispatch(
+        editorA.state.tr.setSelection(
+          TextSelection.create(editorA.state.doc, 2),
+        ),
+      );
+      handlers.onStart?.(props([textRow], editorA));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe(''); // SHOWN — the user asked for it
+      // Let both editors' OWN async suggestion sessions (B typed an @ with the
+      // caret in it; A's caret sits in the synced @) finish their onStart
+      // before destroy, so teardown runs their onExit instead of racing it.
+      await new Promise((r) => setTimeout(r, 10));
+    } finally {
+      handlers.onExit?.(props([], editorA));
+      editorA.destroy();
+      editorB.destroy();
     }
   });
 
