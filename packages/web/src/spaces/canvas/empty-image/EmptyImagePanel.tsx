@@ -14,7 +14,6 @@ import {
 } from '@web/spaces/canvas/empty-image/empty-image-colors';
 import {
   EMPTY_IMAGE_DEFAULT,
-  clampDimension,
   normalizeDimensionInput,
   sizeForRatio,
 } from '@web/spaces/canvas/empty-image/empty-image-size';
@@ -169,8 +168,10 @@ export function EmptyImagePanel({
           aria-label={t('canvas.emptyImage.execute')}
           onClick={() =>
             onExecute({
-              width: clampDimension(Number(width)),
-              height: clampDimension(Number(height)),
+              // Same normalisation as the blur handler, so an empty field maps
+              // to the default (not 0 → min) regardless of blur timing.
+              width: Number(normalizeDimensionInput(width)),
+              height: Number(normalizeDimensionInput(height)),
               color,
             })
           }

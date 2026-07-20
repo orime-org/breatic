@@ -23,9 +23,11 @@ export interface EmptyImageSize {
 
 /**
  * Sanitise one user-entered dimension: round to an integer and clamp into
- * `[EMPTY_IMAGE_MIN, EMPTY_IMAGE_MAX]`. `NaN` (empty / garbage field) falls
- * back to the minimum so a blank field can never produce an invalid size;
- * `±Infinity` clamp naturally to the max / min bound.
+ * `[EMPTY_IMAGE_MIN, EMPTY_IMAGE_MAX]`. `NaN` (garbage such as `Number('abc')`)
+ * falls back to the minimum; `±Infinity` clamp naturally to the max / min. Note
+ * an EMPTY field is not NaN — `Number('') === 0` — so it clamps up to the
+ * minimum here; the panel maps empty → default via {@link normalizeDimensionInput}
+ * before this runs, so an empty field never reaches this as a bare `0`.
  * @param value - The raw dimension (may be fractional / out of range / NaN).
  * @returns An integer within `[EMPTY_IMAGE_MIN, EMPTY_IMAGE_MAX]`.
  */
