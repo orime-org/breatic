@@ -32,6 +32,11 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 
+import {
+  Y_SYNC_PLUGIN_KEY_NAME,
+  Y_UNDO_PLUGIN_KEY_NAME,
+} from '@web/spaces/canvas/generate/collab-plugin-keys';
+
 /** The sync binding's fields this fix touches (structural, library-internal shape). */
 interface SyncBinding {
   /** The relative selection consumed by the next Yjs→PM restore transaction. */
@@ -73,10 +78,10 @@ function collabInternals(
    */
   const byKey = (name: string): Plugin | undefined =>
     state.plugins.find((pl) => (pl as unknown as { key?: string }).key === name);
-  const sync = byKey('y-sync$')?.getState(state) as
+  const sync = byKey(Y_SYNC_PLUGIN_KEY_NAME)?.getState(state) as
     | { binding?: SyncBinding }
     | undefined;
-  const undo = byKey('y-undo$')?.getState(state) as
+  const undo = byKey(Y_UNDO_PLUGIN_KEY_NAME)?.getState(state) as
     | { undoManager?: UndoManagerLike }
     | undefined;
   return sync?.binding && undo?.undoManager
@@ -123,7 +128,11 @@ export const CollabUndoSelection = Extension.create({
               return val;
             }
             const undo = newState.plugins
-              .find((pl) => (pl as unknown as { key?: string }).key === 'y-undo$')
+              .find(
+                (pl) =>
+                  (pl as unknown as { key?: string }).key ===
+                  Y_UNDO_PLUGIN_KEY_NAME,
+              )
               ?.getState(newState) as { prevSel?: unknown } | undefined;
             return undo?.prevSel != null ? { preEditSel: undo.prevSel } : val;
           },

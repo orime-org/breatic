@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ModelEntry } from '@breatic/shared';
 
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
+import { panCanvasViewport } from '@web/spaces/canvas/generate/__tests__/canvas-viewport-test-utils';
 
 /**
  * Builds a minimal image model entry for the picker tests.
@@ -82,6 +83,46 @@ describe('ModelPicker — pick the generation model from the catalog', () => {
     expect(selected.className).toContain('py-1.5');
     expect(document.querySelector('[role="listbox"]')).toBeNull();
     expect(document.querySelector('[role="option"]')).toBeNull();
+  });
+
+  // #1796: the picker is a Radix Popover whose Floating-UI auto-update reacts to
+  // scroll / resize but NOT to the ReactFlow viewport's CSS-transform pan/zoom,
+  // so an open popover drifted off its trigger as the canvas moved. It now calls
+  // useFollowCanvasViewport(open) — nudging a resize each frame the viewport
+  // transforms — so it follows the node like the ratio / camera pickers.
+  describe('follows the canvas viewport while open (#1796)', () => {
+    afterEach(() => {
+      document
+        .querySelectorAll('.react-flow__viewport')
+        .forEach((n) => n.remove());
+    });
+
+    it('nudges a reposition on a viewport transform ONLY while open', async () => {
+      const viewport = document.createElement('div');
+      viewport.className = 'react-flow__viewport';
+      viewport.style.transform = 'translate(0px, 0px) scale(1)';
+      document.body.appendChild(viewport);
+      const onResize = vi.fn();
+      window.addEventListener('resize', onResize);
+      try {
+        render(
+          <ModelPicker
+            models={MODELS}
+            value='nano_banana_pro'
+            onChange={() => {}}
+          />,
+        );
+        // Closed → the follow is inert: a pan must not dispatch a reposition.
+        await panCanvasViewport(viewport, 'translate(-10px, 0px) scale(1)');
+        expect(onResize).not.toHaveBeenCalled();
+        // Open the picker, then pan → the hook nudges a resize.
+        fireEvent.click(screen.getByTestId('generate-model-trigger'));
+        await panCanvasViewport(viewport, 'translate(-40px, -20px) scale(1)');
+        expect(onResize).toHaveBeenCalled();
+      } finally {
+        window.removeEventListener('resize', onResize);
+      }
+    });
   });
 
   // Round-2 adversarial: the catalog boundary puts NO length cap on

@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { ImageModeToggle } from '@web/spaces/canvas/generate/ImageModeToggle';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import { panCanvasViewport } from '@web/spaces/canvas/generate/__tests__/canvas-viewport-test-utils';
 
 /**
  * Renders the mode picker with the given active mode.
@@ -91,5 +92,38 @@ describe('ImageModeToggle — the t2i / i2i mode popover', () => {
     fireEvent.click(trigger);
     expect(screen.queryByTestId('generate-mode-i2i')).not.toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  // #1796: the mode toggle is a Radix Popover whose Floating-UI auto-update does
+  // not react to the ReactFlow viewport's CSS-transform pan/zoom, so an open
+  // popover drifted off its trigger. It now calls useFollowCanvasViewport(open)
+  // to follow the node like the ratio / camera pickers.
+  describe('follows the canvas viewport while open (#1796)', () => {
+    afterEach(() => {
+      document
+        .querySelectorAll('.react-flow__viewport')
+        .forEach((n) => n.remove());
+    });
+
+    it('nudges a reposition on a viewport transform ONLY while open', async () => {
+      const viewport = document.createElement('div');
+      viewport.className = 'react-flow__viewport';
+      viewport.style.transform = 'translate(0px, 0px) scale(1)';
+      document.body.appendChild(viewport);
+      const onResize = vi.fn();
+      window.addEventListener('resize', onResize);
+      try {
+        setup('t2i');
+        // Closed → inert: a pan must not dispatch a reposition.
+        await panCanvasViewport(viewport, 'translate(-10px, 0px) scale(1)');
+        expect(onResize).not.toHaveBeenCalled();
+        // Open the popover, then pan → the hook nudges a resize.
+        fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+        await panCanvasViewport(viewport, 'translate(-40px, -20px) scale(1)');
+        expect(onResize).toHaveBeenCalled();
+      } finally {
+        window.removeEventListener('resize', onResize);
+      }
+    });
   });
 });

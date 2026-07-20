@@ -3,10 +3,14 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
+import { Collaboration } from '@tiptap/extension-collaboration';
 import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Text } from '@tiptap/extension-text';
+import { TextSelection } from '@tiptap/pm/state';
+import { ReactRenderer } from '@tiptap/react';
 import { SuggestionPluginKey } from '@tiptap/suggestion';
+import * as Y from 'yjs';
 
 import {
   ReferenceMention,
@@ -15,6 +19,11 @@ import {
   stripForeignReferenceChips,
 } from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
+import {
+  MACHINE_EDIT_META,
+  dispatchMachineEdit,
+  wasLastChangeLocalUserInput,
+} from '@web/spaces/canvas/generate/reference-mention-local-input';
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 
@@ -189,6 +198,10 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       getPool: () => [row],
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
+      // Driving onStart/onUpdate by hand has no real transaction to advance the
+      // tracker plugin, so inject the local-keystroke signal these tests model
+      // (the popup opens because the user typed `@`).
+      isLocalUserInput: () => true,
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -210,14 +223,10 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       );
       expect(el.style.display).toBe('none'); // hidden
       expect(document.body.contains(el)).toBe(true); // NOT removed → still alive
-      // Re-focusing the editor (clicking back in) re-shows the popup WITHOUT any
-      // keystroke (B2 residual, user 2026-07-12): the fresh-panel behavior is that
-      // clicking to activate immediately shows the picker.
-      editor.view.dom.dispatchEvent(new FocusEvent('focus'));
-      expect(el.style.display).toBe('');
-      // And after another hide, continuing to type (onUpdate) also re-shows.
-      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-      expect(el.style.display).toBe('none');
+      // Continuing to type (onUpdate) re-shows it — the plugin stayed alive.
+      // (Re-showing on a caret placement BACK into the range, without a
+      // keystroke, is Change 2's Consumer A / B — covered by its own tests;
+      // the old bare-focus re-show was removed in v3, Gate-1 killed the timer.)
       handlers.onUpdate?.(props([row], editor));
       expect(el.style.display).toBe('');
     } finally {
@@ -231,6 +240,7 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       getPool: () => [],
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
+      isLocalUserInput: () => true, // manual driving models a local `@` keystroke
     });
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
@@ -250,6 +260,775 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       expect(el.style.display).toBe('none'); // narrowed back to zero → hidden
     } finally {
       handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+});
+
+// #1799 / #1800: an ACTIVE `@` popup can be HIDDEN (clicking a panel control —
+// e.g. the mode toggle — hides it via the outside-click handler, B2) and then
+// RE-SHOWN on refocus. The re-show must recompute its list from the LIVE pool +
+// LIVE mode, because @tiptap/suggestion only re-runs items() on a query / range
+// change — and a mode toggle lives on the canvas node, not the prompt doc, so it
+// is neither. Without the recompute the re-shown popup kept the pre-toggle list:
+// t2i's text-only rows after switching to i2i (#1799), and never the focus crops
+// i2i should offer (#1800).
+describe('makeReferenceSuggestion — refocus re-show recomputes for the live mode (#1799/#1800)', () => {
+  const textRow: ReferenceRailItem = {
+    refId: 't->me',
+    sourceNodeId: 't',
+    sourceNodeType: 'text',
+    sourceNodeName: 'Note',
+    textContent: 'hi',
+  };
+  const imageRow: ReferenceRailItem = {
+    refId: 'i->me',
+    sourceNodeId: 'i',
+    sourceNodeType: 'image',
+    sourceNodeName: 'Pic',
+    thumbnail: 'i.png',
+  };
+  const focusRow: ReferenceRailItem = {
+    refId: 'focus:c1',
+    sourceNodeId: 'focus:c1',
+    sourceNodeType: 'image',
+    sourceNodeName: 'Crop',
+    thumbnail: 'c.png',
+    focus: true,
+  };
+
+  type RenderHandlers = ReturnType<
+    NonNullable<ReturnType<typeof makeReferenceSuggestion>['render']>
+  >;
+  type StartProps = Parameters<NonNullable<RenderHandlers['onStart']>>[0];
+
+  /**
+   * Builds a minimal SuggestionProps for driving the render() handlers.
+   * @param items - The current suggestion items.
+   * @param editor - The host editor.
+   * @returns A props object cast to the suggestion props shape.
+   */
+  function props(items: ReferenceRailItem[], editor: Editor): StartProps {
+    return {
+      editor,
+      items,
+      command: vi.fn(),
+      clientRect: () => new DOMRect(0, 0, 10, 10),
+      query: '',
+      text: '',
+      range: { from: 0, to: 0 },
+      decorationNode: null,
+    } as unknown as StartProps;
+  }
+
+  it('offers focus crops + image rows in i2i but only text in t2i (items filter)', () => {
+    const pool = [textRow, imageRow, focusRow];
+    const ids = (hideImages: boolean): string[] => {
+      const s = makeReferenceSuggestion({
+        getPool: () => pool,
+        emptyLabel: 'No references',
+        imageRefsDisabled: () => hideImages,
+      });
+      return (
+        (s.items?.({ query: '', editor: undefined as unknown as Editor }) ??
+          []) as ReferenceRailItem[]
+      )
+        .map((r) => r.sourceNodeId)
+        .sort();
+    };
+    // t2i drops every image (incl. focus crops, which are images); i2i offers all.
+    expect(ids(true)).toEqual(['t']);
+    expect(ids(false)).toEqual(['focus:c1', 'i', 't']);
+  });
+
+  it('recomputes the re-shown list for the live mode when the caret is placed back (image + focus appear after t2i→i2i, #1799/#1800 via Change 2)', async () => {
+    let hideImages = true; // start in t2i
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow, imageRow, focusRow],
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => hideImages,
+      isLocalUserInput: () => true, // the manually-dispatched caret tr is local
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    // The editor's OWN suggestion plugin activates on the `@` so Change 2's
+    // Consumer A can read st.active from the settled plugin state.
+    const editor = makeEditor();
+    editor.commands.insertContent('@');
+    // Capture the items pushed into the popup list: ReactRenderer only mounts its
+    // React subtree through an EditorContent host (absent in this bare editor), so
+    // the rendered options never reach the DOM — assert on the props instead.
+    const updateSpy = vi.spyOn(ReactRenderer.prototype, 'updateProps');
+    try {
+      // t2i: the plugin computed items() → text row only (images excluded).
+      handlers.onStart?.(props([textRow], editor));
+      // Click the mode toggle (a control outside the editor) → hides the popup.
+      document.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true }),
+      );
+      // Switch to i2i, then place the caret back into the `@` range: a LOCAL
+      // selection-only transaction drives Consumer A → re-show recomputes from
+      // the live pool + mode (the mechanism replacing the old bare-focus re-show).
+      hideImages = false;
+      updateSpy.mockClear();
+      editor.view.dispatch(
+        editor.state.tr.setSelection(
+          TextSelection.create(editor.state.doc, editor.state.selection.from),
+        ),
+      );
+      // The re-show pushed a FRESH list reflecting i2i: image + focus now offered.
+      // Filter to the call carrying OUR injected pool (the editor's own empty-pool
+      // suggestion also updates — a different, empty push).
+      const pushedI2i = updateSpy.mock.calls
+        .map((c) => c[0]?.items as ReferenceRailItem[] | undefined)
+        .some(
+          (items) =>
+            items != null &&
+            [...items].map((r) => r.sourceNodeId).sort().join(',') ===
+              'focus:c1,i,t',
+        );
+      expect(pushedI2i).toBe(true);
+      await new Promise((r) => setTimeout(r, 10)); // let the editor's own session settle
+    } finally {
+      updateSpy.mockRestore();
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+});
+
+// Collaboration residuals (#1802): the `@` popup's VISIBILITY must be driven
+// only by the LOCAL user's intent — a remote collaborator editing the shared
+// prompt / node must refresh the list CONTENT but never resurrect a popup the
+// user dismissed nor leave a visible popup stale.
+describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
+  const textRow: ReferenceRailItem = {
+    refId: 't->me',
+    sourceNodeId: 't',
+    sourceNodeType: 'text',
+    sourceNodeName: 'Note',
+    textContent: 'hi',
+  };
+  const imageRow: ReferenceRailItem = {
+    refId: 'i->me',
+    sourceNodeId: 'i',
+    sourceNodeType: 'image',
+    sourceNodeName: 'Pic',
+    thumbnail: 'i.png',
+  };
+
+  type RenderHandlers = ReturnType<
+    NonNullable<ReturnType<typeof makeReferenceSuggestion>['render']>
+  >;
+  type StartProps = Parameters<NonNullable<RenderHandlers['onStart']>>[0];
+  function props(items: ReferenceRailItem[], editor: Editor): StartProps {
+    return {
+      editor,
+      items,
+      command: vi.fn(),
+      clientRect: () => new DOMRect(0, 0, 10, 10),
+      query: '',
+      text: '',
+      range: { from: 0, to: 0 },
+      decorationNode: null,
+    } as unknown as StartProps;
+  }
+
+  it('residual 1: a remote edit refreshes content but does NOT resurrect a dismissed popup; a local edit does', () => {
+    let remote = false;
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      // `remote` models whether the edit was a remote peer's; the popup's
+      // visibility hook is now the POSITIVE "was it a local user keystroke",
+      // so inject its negation (a remote edit is not a local keystroke).
+      isLocalUserInput: () => !remote,
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const before = new Set(Array.from(document.body.children));
+    const updateSpy = vi.spyOn(ReactRenderer.prototype, 'updateProps');
+    try {
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe(''); // shown on the fresh `@`
+      // User dismisses it (clicks a panel control outside the editor + popup).
+      document.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true }),
+      );
+      expect(el.style.display).toBe('none'); // hidden + dismissed
+      // A REMOTE collaborator inserts before the `@` → the range shifts → onUpdate
+      // fires. It must refresh CONTENT but leave the dismissed popup hidden.
+      remote = true;
+      updateSpy.mockClear();
+      handlers.onUpdate?.(props([textRow], editor));
+      expect(el.style.display).toBe('none'); // STILL hidden (residual 1 fixed)
+      expect(updateSpy).toHaveBeenCalled(); // but content WAS refreshed
+      // A LOCAL edit (the user re-engaging by typing) DOES re-show it.
+      remote = false;
+      handlers.onUpdate?.(props([textRow], editor));
+      expect(el.style.display).toBe(''); // shown again
+    } finally {
+      updateSpy.mockRestore();
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  it('residual 1 (restart path): a REMOTE-triggered onStart does not pop a popup the user never opened', () => {
+    // @tiptap/suggestion re-fires start (not just update) when a peer edit both
+    // MOVES the `@` range and CHANGES the query (moved && changed). That restart
+    // must not resurrect / open the popup — only a LOCAL start shows.
+    let remote = false;
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      // `remote` models whether the edit was a remote peer's; the popup's
+      // visibility hook is now the POSITIVE "was it a local user keystroke",
+      // so inject its negation (a remote edit is not a local keystroke).
+      isLocalUserInput: () => !remote,
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      remote = true; // the start is driven by a remote peer's edit
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe('none'); // NOT shown — a peer didn't open it
+      // A subsequent LOCAL edit is the user re-engaging → shows.
+      remote = false;
+      handlers.onUpdate?.(props([textRow], editor));
+      expect(el.style.display).toBe('');
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  it('residual 2: refreshRef recomputes a VISIBLE popup from the live pool, and no-ops while hidden', () => {
+    let pool: ReferenceRailItem[] = [textRow];
+    const refreshRef: { current: (() => void) | null } = { current: null };
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => pool,
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      refreshRef,
+      isLocalUserInput: () => true, // manual driving models a local `@` keystroke
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const updateSpy = vi.spyOn(ReactRenderer.prototype, 'updateProps');
+    try {
+      handlers.onStart?.(props([textRow], editor));
+      expect(typeof refreshRef.current).toBe('function'); // registered while open
+      // A remote pool change lands (the pool getter now returns an image too).
+      // refresh() recomputes from the LIVE pool → pushes the image row too.
+      pool = [textRow, imageRow];
+      updateSpy.mockClear();
+      refreshRef.current?.();
+      const pushed = updateSpy.mock.calls.at(-1)?.[0]?.items as
+        | ReferenceRailItem[]
+        | undefined;
+      expect(pushed?.map((r) => r.sourceNodeId).sort()).toEqual(['i', 't']);
+      // Hidden popup → refresh no-ops (nothing to refresh).
+      document.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true }),
+      );
+      updateSpy.mockClear();
+      refreshRef.current?.();
+      expect(updateSpy).not.toHaveBeenCalled();
+      // onExit clears the handle so a later prop change never pokes a dead popup.
+      handlers.onExit?.(props([], editor));
+      expect(refreshRef.current).toBeNull();
+    } finally {
+      updateSpy.mockRestore();
+      editor.destroy();
+    }
+  });
+
+  it('residual 2 (refill): refresh RE-SHOWS a popup it hid on a remote empty when the pool refills — not a one-way latch', () => {
+    let pool: ReferenceRailItem[] = [textRow];
+    const refreshRef: { current: (() => void) | null } = { current: null };
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => pool,
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      refreshRef,
+      isLocalUserInput: () => true, // manual driving models a local `@` keystroke
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe(''); // visible, not dismissed
+      // A remote edit empties the pool → refresh hides it (I3).
+      pool = [];
+      refreshRef.current?.();
+      expect(el.style.display).toBe('none');
+      // The remote edit is undone / the ref re-added → refresh must RE-SHOW it,
+      // not stay latched hidden (guarded on `dismissed`, not on display).
+      pool = [textRow];
+      refreshRef.current?.();
+      expect(el.style.display).toBe('');
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  it('a remote restart RESTORES an actively-open picker instead of flickering it away', () => {
+    let remote = false;
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      // `remote` models whether the edit was a remote peer's; the popup's
+      // visibility hook is now the POSITIVE "was it a local user keystroke",
+      // so inject its negation (a remote edit is not a local keystroke).
+      isLocalUserInput: () => !remote,
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      handlers.onStart?.(props([textRow], editor)); // local open → visible
+      expect(
+        (
+          Array.from(document.body.children).find(
+            (c) => !before.has(c),
+          ) as HTMLElement
+        ).style.display,
+      ).toBe('');
+      // A remote moved&&changed restart: onExit (captures the open state) → a
+      // remote-driven onStart. The picker the user was using must be RESTORED,
+      // not hidden.
+      remote = true;
+      handlers.onExit?.(props([textRow], editor));
+      const before2 = new Set(Array.from(document.body.children));
+      handlers.onStart?.(props([textRow], editor));
+      const el2 = Array.from(document.body.children).find(
+        (c) => !before2.has(c),
+      ) as HTMLElement;
+      expect(el2.style.display).toBe(''); // restored (not flickered away)
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  it('a GENUINE exit does not arm a later remote onStart (wasOpenBeforeExit is microtask-scoped)', async () => {
+    let remote = false;
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+      imageRefsDisabled: () => false,
+      // `remote` models whether the edit was a remote peer's; the popup's
+      // visibility hook is now the POSITIVE "was it a local user keystroke",
+      // so inject its negation (a remote edit is not a local keystroke).
+      isLocalUserInput: () => !remote,
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const editor = makeEditor();
+    try {
+      handlers.onStart?.(props([textRow], editor)); // local open, visible
+      // A GENUINE terminal exit (space / delete / pick), NOT an immediate restart.
+      handlers.onExit?.(props([textRow], editor));
+      await Promise.resolve(); // flush the microtask that clears the open flag
+      // A LATER, unrelated remote `@` insertion must NOT restore/pop a picker the
+      // user never opened (the stale-flag hole round 3 found).
+      remote = true;
+      const before = new Set(Array.from(document.body.children));
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe('none'); // hidden — flag was not left armed
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  // The visibility discriminator is now a POSITIVE per-transaction "was the last
+  // doc change a local user keystroke", not the old reverse-inference "not
+  // remote" — which the round-4 adversarial pass broke: a LOCAL machine-derived
+  // cascade-clear and a whitespace-normalizer follow-up both read as "not
+  // remote" and wrongly resurrected a dismissed popup. These exercise the real
+  // tracker plugin the ReferenceMention node installs.
+  /**
+   * Builds a collaborative editor carrying the ReferenceMention extension (which
+   * installs the local-user-input tracker plugin) bound to a Y.Doc fragment.
+   * @param doc - The backing Y.Doc.
+   * @returns The editor.
+   */
+  function makeCollabEditor(doc: Y.Doc): Editor {
+    return new Editor({
+      // Mounted view: tests that place a caret inside an @ match make the
+      // editor's OWN suggestion plugin fire its async onStart, which reads
+      // editor.view.dom — an element-less editor throws there as an unhandled
+      // rejection after the test ends.
+      element: document.createElement('div'),
+      extensions: [
+        Document,
+        Paragraph,
+        Text,
+        Collaboration.configure({ fragment: doc.getXmlFragment('prompt') }),
+        ReferenceMention.configure({
+          suggestion: makeReferenceSuggestion({
+            getPool: () => [],
+            emptyLabel: 'No references',
+          }),
+        }),
+      ],
+    });
+  }
+
+  it('flags a local keystroke true and a remote peer apply false', () => {
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    const editorB = makeCollabEditor(docB);
+    try {
+      editorA.commands.insertContent('local');
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(true);
+      // B types, then B's state syncs into A → y-prosemirror applies it as a
+      // remote change (tagged with the y-sync plugin key's meta).
+      editorB.commands.insertContent('peer');
+      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+    } finally {
+      editorA.destroy();
+      editorB.destroy();
+    }
+  });
+
+  it('flags a MACHINE-derived local dispatch false (round-4: an edge-driven cascade-clear before an @ looked local)', () => {
+    const docA = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    try {
+      editorA.commands.insertContent('seed');
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(true);
+      // The edge-driven cascade-clear dispatches a LOCAL tr tagged
+      // MACHINE_EDIT_META — it changes the doc but is not a keystroke. The old
+      // "not remote" test wrongly counted it as local and resurrected the popup.
+      const tr = editorA.state.tr.insertText('!', 1);
+      tr.setMeta(MACHINE_EDIT_META, true);
+      editorA.view.dispatch(tr);
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+    } finally {
+      editorA.destroy();
+    }
+  });
+
+  it('a follow-up appendedTransaction does not override the root judgment (round-4: a whitespace-normalizer after a remote edit stayed non-local)', () => {
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    const editorB = makeCollabEditor(docB);
+    try {
+      editorB.commands.insertContent('peer');
+      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+      // A machine follow-up appended by another plugin's appendTransaction rides
+      // WITH that remote root (ProseMirror tags it `appendedTransaction`). It must
+      // not flip the judgment back to local — the settled-state hole round 4 found.
+      const followUp = editorA.state.tr.insertText('x', 1);
+      followUp.setMeta('appendedTransaction', editorA.state.tr);
+      editorA.view.dispatch(followUp);
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+    } finally {
+      editorA.destroy();
+      editorB.destroy();
+    }
+  });
+
+  it('a local yUndo is not a keystroke (undo does not re-show a dismissed popup)', () => {
+    const docA = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    try {
+      editorA.commands.insertContent('typed');
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(true);
+      editorA.commands.undo(); // yUndo — carries the y-sync key's meta, not a keystroke
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+    } finally {
+      editorA.destroy();
+    }
+  });
+
+  it('end-to-end: a machine-derived transaction through the REAL tracker keeps a dismissed popup hidden, and a real keystroke re-shows it (round-6 test-gap)', () => {
+    // Drives the WHOLE chain with NO injected isLocalUserInput: a machine-tagged
+    // dispatch advances the real tracker plugin, and the suggestion's onUpdate
+    // reads it via the default wasLastChangeLocalUserInput. A wiring break (onUpdate
+    // reading the wrong predicate, or the tracker mis-judging the machine tr) fails
+    // HERE — where the split "gating given a signal" and "tracker return value"
+    // tests would each still pass.
+    const docA = new Y.Doc();
+    const editor = makeCollabEditor(docA);
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+    }); // no isLocalUserInput → the real tracker drives visibility
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      // A local keystroke advances the tracker to "local" → onStart shows.
+      editor.commands.insertContent('a');
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe('');
+      // User dismisses (clicks a panel control outside).
+      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      expect(el.style.display).toBe('none');
+      // The edge-driven cascade-clear: a machine-tagged local dispatch shifting
+      // the range → onUpdate. Through the REAL tracker it reads non-local, so the
+      // dismissed popup stays hidden (content still refreshes).
+      const machineTr = editor.state.tr.insertText('x', 1);
+      machineTr.setMeta(MACHINE_EDIT_META, true);
+      editor.view.dispatch(machineTr);
+      handlers.onUpdate?.(props([textRow], editor));
+      expect(el.style.display).toBe('none'); // still hidden — end-to-end
+      // A genuine local keystroke DOES re-show it (proves it is not latched hidden).
+      editor.commands.insertContent('b');
+      handlers.onUpdate?.(props([textRow], editor));
+      expect(el.style.display).toBe('');
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  it('a real caret appendWhitespace follow-up rides with (does not override) a non-local root (round-6 test-gap: guard vs a genuine PM append)', () => {
+    // Machine-INSERT a BARE chip (no flanking spaces) so the caret plugin's
+    // appendTransaction (appendWhitespace) FIRES on THIS editor to restore the
+    // invariant — a genuine PM-tagged appendedTransaction. The machine root is
+    // non-local; the guard must keep the appended local space-insert from flipping
+    // the judgment to "user typed". (The earlier version synced a chip that peer B
+    // had ALREADY spaced, so no append ran on A — a false guard that round 7
+    // caught: the space came from the CRDT, not an append.)
+    const editor = makeCollabEditor(new Y.Doc());
+    try {
+      const chip = editor.schema.nodeFromJSON(referenceMentionContent(imageRow));
+      const tr = editor.state.tr.insert(1, chip);
+      dispatchMachineEdit(editor.view, tr);
+      // The whitespace normalizer ran HERE (bare chip → flanking spaces added),
+      // proving a real appended transaction was applied — not a synced no-op.
+      expect(editor.getText()).toContain(' ');
+      // Machine root + real appended space-insert → still non-local: the guard
+      // held. Without it the local space-insert append would read as a keystroke.
+      expect(wasLastChangeLocalUserInput(editor)).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('a local caret placement (selection-only tr) after a remote edit is LOCAL user input (#1805: clicking after an existing @ must show the picker)', () => {
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    const editorB = makeCollabEditor(docB);
+    try {
+      // A peer types (e.g. the `@`); synced into A → non-local.
+      editorB.commands.insertContent('peer');
+      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(false);
+      // The LOCAL user clicks the caret after the @ — a selection-only
+      // transaction (pointer/keyboard caret placement IS local input, even
+      // though it changes no document content). Real-browser confirmed: the
+      // suggestion's onStart fires off exactly such a movement (B clicking
+      // into A's @, or the same user after a panel reopen), and treating it
+      // as non-local kept the picker hidden.
+      const selTr = editorA.state.tr.setSelection(
+        TextSelection.create(editorA.state.doc, 1),
+      );
+      editorA.view.dispatch(selTr);
+      expect(wasLastChangeLocalUserInput(editorA)).toBe(true);
+    } finally {
+      editorA.destroy();
+      editorB.destroy();
+    }
+  });
+
+  it('a machine-tagged selection-only tr is NOT local input (symmetry with machine doc edits)', () => {
+    const editor = makeCollabEditor(new Y.Doc());
+    try {
+      editor.commands.insertContent('peerless');
+      // Baseline non-local via a machine doc edit.
+      const machineTr = editor.state.tr.insertText('x', 1);
+      dispatchMachineEdit(editor.view, machineTr);
+      expect(wasLastChangeLocalUserInput(editor)).toBe(false);
+      // A machine-derived selection move keeps it non-local too.
+      const selTr = editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, 2),
+      );
+      dispatchMachineEdit(editor.view, selTr);
+      expect(wasLastChangeLocalUserInput(editor)).toBe(false);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('end-to-end: after a remote edit, a local caret click into the @ range makes onStart SHOW the picker (#1805 repro)', async () => {
+    // The real-browser repro: the prompt's @ arrived remotely (peer typed it,
+    // or the panel was reopened and the initial y-sync load is non-local).
+    // The local user then clicks after the @ → suggestion fires onStart. The
+    // caret placement must count as local intent — before the fix the tracker
+    // ignored selection-only trs, onStart read non-local, and the popup
+    // stayed display:none (options computed but never shown).
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const editorA = makeCollabEditor(docA);
+    const editorB = makeCollabEditor(docB);
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+    }); // real tracker drives visibility
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      editorB.commands.insertContent('@');
+      Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
+      // The local click that lands the caret right after the remote @.
+      editorA.view.dispatch(
+        editorA.state.tr.setSelection(
+          TextSelection.create(editorA.state.doc, 2),
+        ),
+      );
+      handlers.onStart?.(props([textRow], editorA));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe(''); // SHOWN — the user asked for it
+      // Let both editors' OWN async suggestion sessions (B typed an @ with the
+      // caret in it; A's caret sits in the synced @) finish their onStart
+      // before destroy, so teardown runs their onExit instead of racing it.
+      await new Promise((r) => setTimeout(r, 10));
+    } finally {
+      handlers.onExit?.(props([], editorA));
+      editorA.destroy();
+      editorB.destroy();
+    }
+  });
+
+  it('Consumer A (#1805 Change 2): a LOCAL caret-placement transaction re-shows a dismissed popup while the plugin is active in range', async () => {
+    // The pure caret-back case: the popup is hidden by an outside-click (plugin
+    // stays active), then a LOCAL selection-only transaction lands the caret
+    // back in the @ range. The editor.on('transaction') consumer reads the
+    // plugin's OWN settled st.active (the single range truth, read AFTER the tr
+    // applied — no timer / geometry / heuristic; the v1 focus+timer and v2
+    // posAtCoords/500ms designs raced the settle and were killed at Gate 1).
+    const editor = makeCollabEditor(new Y.Doc());
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      // An @ in the doc makes the editor's suggestion plugin ACTIVE with the
+      // caret in range → SuggestionPluginKey.getState(...).active is true.
+      editor.commands.insertContent('@');
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      expect(el.style.display).toBe('');
+      // User dismisses via an outside click → hidden, plugin still active.
+      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      expect(el.style.display).toBe('none');
+      // A LOCAL caret placement (selection-only tr) keeping the caret in range.
+      editor.view.dispatch(
+        editor.state.tr.setSelection(
+          TextSelection.create(editor.state.doc, editor.state.selection.from),
+        ),
+      );
+      expect(el.style.display).toBe(''); // Consumer A re-showed it
+      await new Promise((r) => setTimeout(r, 10)); // let the editor's own session settle
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  it('Consumer A (#1805 Change 2): a MACHINE-derived selection tr does NOT re-show a dismissed popup (residual 1 preserved)', async () => {
+    const editor = makeCollabEditor(new Y.Doc());
+    const suggestion = makeReferenceSuggestion({
+      getPool: () => [textRow],
+      emptyLabel: 'No references',
+    });
+    const render = suggestion.render;
+    if (!render) throw new Error('render missing');
+    const handlers = render();
+    const before = new Set(Array.from(document.body.children));
+    try {
+      editor.commands.insertContent('@');
+      handlers.onStart?.(props([textRow], editor));
+      const el = Array.from(document.body.children).find(
+        (c) => !before.has(c),
+      ) as HTMLElement;
+      document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      expect(el.style.display).toBe('none');
+      // A MACHINE-derived selection move (dispatchMachineEdit tags it) is NOT the
+      // local user re-engaging → the dismissed popup must stay hidden.
+      dispatchMachineEdit(
+        editor.view,
+        editor.state.tr.setSelection(
+          TextSelection.create(editor.state.doc, editor.state.selection.from),
+        ),
+      );
+      expect(el.style.display).toBe('none'); // still hidden — residual 1 held
+      await new Promise((r) => setTimeout(r, 10));
+    } finally {
+      handlers.onExit?.(props([], editor));
+      editor.destroy();
+    }
+  });
+
+  it('dispatchMachineEdit tags a machine effect non-local through the real tracker (round-6 test-gap: asserts the tag at its PRODUCER)', () => {
+    // The machine-edit tag lives at ONE producer (dispatchMachineEdit); the
+    // cascade-clear and chip display sync both dispatch through it. Deleting the
+    // MACHINE_EDIT_META tag inside dispatchMachineEdit turns this red — the
+    // round-6 gap was that the tag was only ever exercised by the tracker
+    // consuming a hand-set meta, never asserted at the producer that emits it.
+    const editor = makeCollabEditor(new Y.Doc());
+    try {
+      editor.commands.insertContent('seed'); // local keystroke → tracker true
+      expect(wasLastChangeLocalUserInput(editor)).toBe(true);
+      const tr = editor.state.tr.insertText('!', 1);
+      dispatchMachineEdit(editor.view, tr);
+      expect(wasLastChangeLocalUserInput(editor)).toBe(false); // non-local via producer
+    } finally {
       editor.destroy();
     }
   });

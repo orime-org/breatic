@@ -306,10 +306,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-image')).toContain('canvas-pick-selectable');
   });
 
-  it('pick mode on a t2i target ALSO dims IMAGE sources — only text stays selectable (#1788 batch-3 #1)', () => {
-    // Text-to-image ignores source images (§2.5): an image node is inert as a
-    // reference, so the pick overlay dims it alongside the type-incompatible
-    // audio — text alone remains selectable because its @-chip feeds the prompt.
+  it('pick mode on a t2i target keeps IMAGE sources selectable — same as i2i (#1797)', () => {
+    // Reference pick is ONE flow for both modes (user 2026-07-19): t2i no longer
+    // dims / blocks image sources during pick — you can connect an image node in
+    // t2i exactly like i2i (drag-connect already allowed it). The image reference
+    // then shows GREYED in the rail + is inert (t2i ignores source images), but
+    // the PICK itself is unrestricted. Only the type-incompatible audio is dimmed
+    // here (canConnect), not the image.
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -348,19 +351,20 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
       '';
     expect(cls('src-audio')).toContain('canvas-pick-dimmed');
-    // The new mode scoping: an image source is dimmed in t2i (unlike i2i above).
-    expect(cls('src-image')).toContain('canvas-pick-dimmed');
-    expect(cls('src-image')).not.toContain('canvas-pick-selectable');
+    // #1797: an image source is now SELECTABLE in t2i (unified with i2i) — the
+    // pick no longer scopes by mode; the t2i inertness lives in the rail dim + @
+    // exclusion + payload, not the pick gate.
+    expect(cls('src-image')).toContain('canvas-pick-selectable');
+    expect(cls('src-image')).not.toContain('canvas-pick-dimmed');
     // Text still feeds the prompt in t2i → selectable.
     expect(cls('src-text')).toContain('canvas-pick-selectable');
   });
 
-  it('an insisting click on a t2i-dimmed image source is a SILENT no-op — no toast, no edge (#1788 batch-3 #1)', () => {
-    // The dim + not-allowed cursor already signal "can't pick this", so an
-    // insisting click needs no toast on top (user 2026-07-18 dropped the earlier
-    // warn). It wires no image edge in t2i and keeps the pick open so the user
-    // can go on to pick a text node — the click-gate and the dim agree via the
-    // same referenceKindAllowedInMode predicate.
+  it('clicking an image source in t2i WIRES the reference edge — same as i2i (#1797)', () => {
+    // #1797: t2i no longer blocks an image pick. Clicking an image source in t2i
+    // wires the reference edge just like i2i (the reference is then greyed +
+    // inert in the rail, but connecting it is unrestricted). The pick stays open
+    // (continuous select).
     const warnSpy = vi.spyOn(toast, 'warning').mockReturnValue('t');
     const addEdgeSpy = vi.spyOn(canvasSpace, 'addEdge');
     mockUseCanvasSpace.mockReturnValue(
@@ -390,11 +394,15 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         document.querySelector('.react-flow__node[data-id="src-image"]')!,
       );
     });
-    // Silent: no toast (the dim already signals it).
+    // No warning toast (a successful pick, not a blocked one).
     expect(warnSpy).not.toHaveBeenCalled();
-    // No image reference edge is wired in t2i.
-    expect(addEdgeSpy).not.toHaveBeenCalled();
-    // The pick stays open (continuous select) so the user can pick a text node.
+    // The image reference edge IS wired in t2i now (#1797).
+    expect(addEdgeSpy).toHaveBeenCalledWith(
+      'p',
+      's',
+      expect.objectContaining({ source: 'src-image', target: 'target' }),
+    );
+    // The pick stays open (continuous select).
     expect(useCanvasStore.getState().pickSession?.nodeId).toBe('target');
     warnSpy.mockRestore();
     addEdgeSpy.mockRestore();

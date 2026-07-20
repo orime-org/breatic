@@ -57,6 +57,25 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
     expect(screen.queryByTestId('generate-ref-focus-badge-a->me')).toBeNull();
   });
 
+  it('crop badge is the same colour as the name it prefixes, not muted grey (#1801)', () => {
+    render(
+      <ReferenceRail
+        references={[FOCUS_ROW]}
+        onRemove={() => {}}
+        onInsert={() => {}}
+      />,
+    );
+    const badge = screen.getByTestId('generate-ref-focus-badge-focus:f1');
+    const name = screen.getByText('Hero');
+    // The crop glyph reads at the name's full strength (text-foreground), not as
+    // a de-emphasised adornment — matching the name span it sits beside. The
+    // badge is an <svg> (className is an SVGAnimatedString) — read the attribute.
+    const badgeClass = badge.getAttribute('class') ?? '';
+    expect(badgeClass).toContain('text-foreground');
+    expect(badgeClass).not.toContain('text-muted-foreground');
+    expect(name.className).toContain('text-foreground');
+  });
+
   it('focus row order is thumbnail → crop badge → name (user 2026-07-17 #4)', () => {
     render(
       <ReferenceRail

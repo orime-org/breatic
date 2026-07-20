@@ -10,21 +10,28 @@
  * is positioned by floating-ui and rendered via TipTap's ReactRenderer.
  */
 
-import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
+import type { Editor } from '@tiptap/core';
+import { autoUpdate, computePosition, offset } from '@floating-ui/dom';
+import type { Transaction } from '@tiptap/pm/state';
 import { ReactRenderer } from '@tiptap/react';
-import type {
-  SuggestionKeyDownProps,
-  SuggestionOptions,
-  SuggestionProps,
+import {
+  SuggestionPluginKey,
+  type SuggestionKeyDownProps,
+  type SuggestionOptions,
+  type SuggestionProps,
 } from '@tiptap/suggestion';
 
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
 import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
+import { wasLastChangeLocalUserInput } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import {
   ReferenceMentionList,
   type ReferenceMentionListRef,
 } from '@web/spaces/canvas/generate/reference-mention-list';
+
+/** A React-ref-shaped holder the open popup writes its `refresh()` into. */
+type RefreshHandleRef = { current: (() => void) | null };
 
 /**
  * Builds the `@` suggestion options for the reference-mention node.
@@ -34,6 +41,10 @@ import {
  * @param input.emptyLabel - Localized empty-state text for the popup.
  * @param input.imageRefsDisabled - Live getter; when it returns true (t2i),
  *   image references are excluded from the picker. Optional (default: keep all).
+ * @param input.refreshRef - Ref the open popup writes a `refresh()` into so the
+ *   React layer can refresh a visible popup on a remote mode/pool change (residual 2).
+ * @param input.isLocalUserInput - Whether the last transaction was a local user
+ *   keystroke; defaults to {@link wasLastChangeLocalUserInput}, injectable for tests (residual 1).
  * @returns The suggestion options (without `editor`, supplied by the extension).
  */
 export function makeReferenceSuggestion(input: {
@@ -48,7 +59,63 @@ export function makeReferenceSuggestion(input: {
    * every mode). Optional; omitted (or false) keeps all connectable refs.
    */
   imageRefsDisabled?: () => boolean;
+  /**
+   * A ref the popup writes a `refresh()` into while open, so the React layer can
+   * refresh the VISIBLE popup's list content when the mode / pool changes
+   * REMOTELY (a collaborator toggles the node's mode or edits references). Such
+   * a change fires NO ProseMirror transaction on this client — mode lives on the
+   * canvas node, not the prompt doc — so `@tiptap/suggestion` never re-runs
+   * items(); PromptEditor calls this on its `mode` / `references` props changing
+   * (collaboration residual 2). No-op while the popup is hidden. Optional.
+   */
+  refreshRef?: RefreshHandleRef;
+  /**
+   * Whether the last applied transaction was a genuine LOCAL USER keystroke
+   * (not a remote peer edit, a local yUndo, or a machine-derived dispatch).
+   * Defaults to {@link wasLastChangeLocalUserInput} (reads the per-transaction
+   * tracker plugin state); injectable so the visibility-gating logic is
+   * unit-testable without a full collaboration setup. Only a local keystroke
+   * opens / re-shows the popup; a remote or machine-derived edit refreshes the
+   * list CONTENT but never resurrects a dismissed popup (collaboration
+   * residual 1). Reading a POSITIVE "local user keystroke" per transaction —
+   * rather than reverse-inferring "not remote" from the settled y-sync state —
+   * is what keeps an edge-driven cascade-clear or a whitespace-normalizer
+   * follow-up from masquerading as user typing (round-4 adversarial).
+   */
+  isLocalUserInput?: (editor: Editor) => boolean;
 }): Omit<SuggestionOptions<ReferenceRailItem>, 'editor'> {
+  const isLocalUserInput = input.isLocalUserInput ?? wasLastChangeLocalUserInput;
+  /**
+   * Filters the LIVE pool to the rows offerable for a query under the CURRENT
+   * mode. Extracted so every popup show path computes from the same live inputs
+   * (`getPool` + `imageRefsDisabled`): the plugin's `items()` on each keystroke,
+   * AND the focus re-show below. `@tiptap/suggestion` only re-runs `items()` on a
+   * query / range change (its `handleChange`), so a mode toggle — which lives on
+   * the canvas node, not the prompt doc — never triggered a recompute; a popup
+   * hidden (by clicking the mode picker) and re-shown on refocus then kept the
+   * pre-toggle list. Computing here on every show path fixes that (#1799/#1800).
+   * @param query - The text typed after `@`.
+   * @returns The matching pool rows (capped at 8).
+   */
+  const computeItems = (query: string): ReferenceRailItem[] => {
+    const q = query.toLowerCase();
+    const hideImages = input.imageRefsDisabled?.() ?? false;
+    return input
+      .getPool()
+      // Connection rules (spec §9.1): new incompatible wires are rejected at
+      // the wire level, but a LEGACY edge (audio/video → image, created
+      // before the rules) may survive in old documents. Never offer it in
+      // the picker — an @-pick that can't feed image generation dead-ends at
+      // execute ("no source image"). The rail still lists the legacy row so
+      // the user can see and remove it.
+      .filter((r) => canConnect(r.sourceNodeType, 'image'))
+      // Text-to-image ignores source images, so image references are invalid:
+      // exclude them from the `@` picker (user 2026-07-18) — with only images
+      // in the pool the picker never opens. Text refs still feed the prompt.
+      .filter((r) => !(hideImages && r.sourceNodeType === 'image'))
+      .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
+      .slice(0, 8);
+  };
   return {
     char: '@',
     // @tiptap/suggestion defaults allowedPrefixes to [" "], which only fires `@`
@@ -57,25 +124,7 @@ export function makeReferenceSuggestion(input: {
     // never opened the picker. null lets `@` trigger after any character
     // (Notion / Feishu behaviour).
     allowedPrefixes: null,
-    items: ({ query }): ReferenceRailItem[] => {
-      const q = query.toLowerCase();
-      const hideImages = input.imageRefsDisabled?.() ?? false;
-      return input
-        .getPool()
-        // Connection rules (spec §9.1): new incompatible wires are rejected at
-        // the wire level, but a LEGACY edge (audio/video → image, created
-        // before the rules) may survive in old documents. Never offer it in
-        // the picker — an @-pick that can't feed image generation dead-ends at
-        // execute ("no source image"). The rail still lists the legacy row so
-        // the user can see and remove it.
-        .filter((r) => canConnect(r.sourceNodeType, 'image'))
-        // Text-to-image ignores source images, so image references are invalid:
-        // exclude them from the `@` picker (user 2026-07-18) — with only images
-        // in the pool the picker never opens. Text refs still feed the prompt.
-        .filter((r) => !(hideImages && r.sourceNodeType === 'image'))
-        .filter((r) => (r.sourceNodeName || '').toLowerCase().includes(q))
-        .slice(0, 8);
-    },
+    items: ({ query }): ReferenceRailItem[] => computeItems(query),
     command: ({ editor, range, props }): void => {
       // No trailing space (user 2026-07-10): the gap between adjacent chips
       // stays clickable + visible via the chip-boundary caret plugin
@@ -93,10 +142,99 @@ export function makeReferenceSuggestion(input: {
       let stopAutoUpdate: (() => void) | null = null;
       /** Document-level outside-click dismisser. */
       let onOutsidePointerDown: ((event: PointerEvent) => void) | null = null;
-      /** Re-shows the popup when the editor regains focus (B2). */
-      let onEditorFocus: (() => void) | null = null;
-      /** Whether the last render had ≥1 matching row (drives re-show on focus). */
-      let hasItems = false;
+      /**
+       * Consumer A (#1805): re-shows a hidden popup on a LOCAL caret-placement
+       * transaction (selection-only). Held for teardown via editor.off.
+       */
+      let onEditorTransaction:
+        | ((payload: { transaction: Transaction }) => void)
+        | null = null;
+      /**
+       * Consumer B (#1805): re-shows a hidden popup on a SAME-POSITION click
+       * back into the active `@` range (the one case that fires no transaction).
+       */
+      let onEditorClick: ((event: MouseEvent) => void) | null = null;
+      /**
+       * The latest suggestion props (from onStart / onUpdate): `command` is bound
+       * to the live `@` range and `query` is the current filter text. The focus
+       * re-show path reads these to recompute a FRESH list from the live pool +
+       * mode, so a popup hidden by a mode / model click never re-shows a stale
+       * list (#1799 / #1800).
+       */
+      let latestProps: SuggestionProps<ReferenceRailItem> | null = null;
+      /**
+       * Whether the user DISMISSED the popup (clicked a control outside it).
+       * Tracked SEPARATELY from `el.style.display` so a remote collaborator's
+       * edit — which fires onUpdate exactly like local typing (a peer inserting
+       * before the `@` shifts the range) — refreshes the list CONTENT without
+       * resurrecting a popup the user closed (collaboration residual 1). Set on
+       * outside-click; cleared when the user re-engages (refocus OR a local edit).
+       */
+      let dismissed = false;
+      /**
+       * Whether the popup was OPEN (visible, not dismissed) at the instant onExit
+       * ran. `@tiptap/suggestion` re-fires start (onExit → onStart) when a peer edit
+       * both moves the `@` range and changes the query, so a REMOTE restart would
+       * otherwise flicker away a picker this user is actively using. onExit records
+       * this, and a remote-driven onStart restores an open picker instead of
+       * hiding it. Consumed (reset) on the next onStart.
+       */
+      let wasOpenBeforeExit = false;
+
+      /**
+       * Updates the popup's list CONTENT only — never its visibility. The pick
+       * command is read live from {@link latestProps} (bound to the current `@`
+       * range). Split from visibility so a remote change can refresh content while
+       * leaving a dismissed / visible popup's shown-state untouched.
+       * @param items - The rows to display.
+       */
+      const updateContent = (items: ReferenceRailItem[]): void => {
+        component?.updateProps({
+          items,
+          command: (item: ReferenceRailItem) => latestProps?.command(item),
+          emptyLabel: input.emptyLabel,
+        });
+      };
+
+      /**
+       * Toggles the popup's VISIBILITY only, based on whether anything matched
+       * (I3: zero matches → hidden, so plain `@` typing is never interrupted by an
+       * empty box). WHETHER to call it is decided at each call site — a local start
+       * / refocus / edit always may, and a remote content change may too but only
+       * for a NON-dismissed popup (never resurrecting a dismissed one). The
+       * dismissed / remote gating lives at the call sites, not here.
+       * @param items - The rows the popup would show.
+       */
+      const showFor = (items: ReferenceRailItem[]): void => {
+        if (el) el.style.display = items.length > 0 ? '' : 'none';
+      };
+
+      /**
+       * Re-shows a HIDDEN popup when the LOCAL user has placed the caret back
+       * inside the still-active `@` range (#1805). The suggestion plugin's OWN
+       * settled state is the single range truth: `st.active` is computed by the
+       * plugin from the settled selection with its strict bounds, so reading it
+       * at a point ORDERED AFTER the caret settles (a transaction, or a click —
+       * which fires after mouseup's selection dispatch) needs no timer, no
+       * geometry, no gesture heuristic (the v1 focus+timer and v2 posAtCoords /
+       * 500ms designs both raced the settle and were killed at Gate 1). Recomputes
+       * the list from the live pool so a mode / pool change since the popup was
+       * hidden is reflected. No-op unless the popup is hidden AND the plugin is
+       * active with an empty selection. Never resurrects a popup that is not
+       * plugin-active, so a genuine exit (space / delete / cursor-leave) stays gone.
+       * @param editor - The prompt editor (its settled state is read live).
+       */
+      const reshowIfActiveHidden = (editor: Editor): void => {
+        if (!el || el.style.display !== 'none') return;
+        const st = SuggestionPluginKey.getState(editor.state) as
+          | { active?: boolean; query?: string }
+          | undefined;
+        if (st?.active !== true || !editor.state.selection.empty) return;
+        dismissed = false;
+        const items = computeItems(st.query ?? '');
+        updateContent(items);
+        showFor(items);
+      };
 
       /**
        * Anchors the popup to the caret and KEEPS it anchored via floating-ui
@@ -126,8 +264,15 @@ export function makeReferenceSuggestion(input: {
             // viewport corner). Restores the pre-autoUpdate `if (!rect) return`.
             if (!el || !clientRect()) return;
             void computePosition(reference, el, {
+              // NO flip / shift (user 2026-07-20): this popup is anchored INSIDE
+              // the ReactFlow canvas, and must track its caret and clip at the
+              // viewport edge — NOT slide/flip to stay on screen. Collision
+              // middleware kept the list pinned in the viewport while the caret
+              // panned off, detaching it from the `@` (the list floated far from
+              // its anchor). Same clip-not-jump contract the canvas Radix floats
+              // use via avoidCollisions={false} (ratio / camera / model pickers).
               placement: 'bottom-start',
-              middleware: [offset(6), flip(), shift({ padding: 8 })],
+              middleware: [offset(6)],
             }).then(({ x, y }) => {
               if (!el) return;
               el.style.left = `${x}px`;
@@ -140,10 +285,11 @@ export function makeReferenceSuggestion(input: {
 
       return {
         onStart: (props: SuggestionProps<ReferenceRailItem>): void => {
+          latestProps = props;
           component = new ReactRenderer(ReferenceMentionList, {
             props: {
               items: props.items,
-              command: (item: ReferenceRailItem) => props.command(item),
+              command: (item: ReferenceRailItem) => latestProps?.command(item),
               emptyLabel: input.emptyLabel,
             },
             editor: props.editor,
@@ -155,6 +301,30 @@ export function makeReferenceSuggestion(input: {
           el.style.zIndex = '50';
           el.appendChild(component.element);
           document.body.appendChild(el);
+          // Residual 2 (mode / pool changed REMOTELY): a collaborator toggling
+          // the node's mode or editing references fires NO transaction on this
+          // client (mode lives on the canvas node, not the prompt doc), so the
+          // plugin never re-runs items() and a VISIBLE popup keeps its stale list.
+          // Expose a refresh the React layer calls when the `mode` / `references`
+          // props change; it recomputes CONTENT from the live pool + mode, but
+          // only while the popup is actually visible (a hidden / dismissed popup
+          // needs no refresh).
+          if (input.refreshRef) {
+            input.refreshRef.current = (): void => {
+              // Refresh a NON-dismissed popup's content + visibility (I3) from the
+              // live pool. Guard on `dismissed`, NOT on current display: a prior
+              // refresh that HID it on an emptied pool must still be able to
+              // RE-SHOW it when the pool refills (a remote edge add/remove fires no
+              // prosemirror transaction, so onUpdate can't heal it) — guarding on
+              // display would latch it hidden forever. A user-dismissed popup
+              // stays hidden.
+              if (el && !dismissed && latestProps) {
+                const items = computeItems(latestProps.query);
+                updateContent(items);
+                showFor(items);
+              }
+            };
+          }
           // Clicking outside the popup AND the editor (a canvas node / panel
           // control) does NOT move the ProseMirror selection, so the suggestion
           // would otherwise stay open floating over the UI. Just HIDE the popup
@@ -174,37 +344,97 @@ export function makeReferenceSuggestion(input: {
               !el.contains(target) &&
               !props.editor.view.dom.contains(target)
             ) {
+              dismissed = true; // user closed it — a remote edit must not re-open
               el.style.display = 'none';
             }
           };
           document.addEventListener('pointerdown', onOutsidePointerDown, true);
-          // Re-show on re-focus (B2 residual, user 2026-07-12): the outside-click
-          // handler HIDES the popup (display:none) without exiting the suggestion.
-          // Re-focusing the editor (clicking back in) does not fire onUpdate — only
-          // typing does — so the popup would stay hidden until a keystroke. On
-          // focus, if the suggestion is still active with matches, re-show it (the
-          // autoUpdate loop keeps it caret-positioned), matching a freshly-opened
-          // panel where clicking to activate immediately shows the picker.
-          onEditorFocus = (): void => {
-            if (el && hasItems) el.style.display = '';
+          // Re-show a hidden popup when the LOCAL user clicks / arrows the caret
+          // back into the still-active `@` range (#1805): the outside-click
+          // handler HIDES the popup (display:none) without exiting the suggestion
+          // (B2), and @tiptap/suggestion only re-fires onUpdate on a query / range
+          // change — so a caret placement that neither moves the range nor changes
+          // the query left the popup stuck hidden until a keystroke. Two
+          // settle-driven consumers cover it (a focus+timer re-show raced the
+          // click's selection settle and was killed at Gate 1):
+          // Consumer A — a LOCAL caret-placement TRANSACTION (selection-only): the
+          // 'transaction' event fires AFTER the tr applied, so the plugin's
+          // st.active is the settled in-range verdict. Doc changes flow through
+          // the plugin's own onStart/onUpdate; remote / machine selection moves
+          // are excluded by isLocalUserInput (residual 1 preserved).
+          onEditorTransaction = ({
+            transaction,
+          }: {
+            transaction: Transaction;
+          }): void => {
+            if (!transaction.selectionSet || transaction.docChanged) return;
+            if (!isLocalUserInput(props.editor)) return;
+            reshowIfActiveHidden(props.editor);
           };
-          props.editor.view.dom.addEventListener('focus', onEditorFocus);
-          // Show the popup ONLY when the pool has ≥1 matching row (I3, user
-          // 2026-07-12): typing `@` as ordinary text (nothing matches) must not
-          // pop an empty "no references" box. Zero matches → hidden, so plain
-          // `@` typing is uninterrupted; a match → shown.
-          hasItems = props.items.length > 0;
-          el.style.display = hasItems ? '' : 'none';
+          props.editor.on('transaction', onEditorTransaction);
+          // Consumer B — a SAME-POSITION click back (the one case with NO
+          // transaction: the caret never left the range). 'click' fires after
+          // mouseup's selection dispatch, so the state is settled. AGREEMENT gate:
+          // the click's geometry must match the current caret (posAtCoords ===
+          // selection.from) — a moved-caret click either already settled (Consumer
+          // A handled it) or will (defer to A). Showing only on agreement makes a
+          // flash structurally impossible (nothing shows unless the settled caret
+          // already validates the click's own coordinates).
+          onEditorClick = (event: MouseEvent): void => {
+            if (!el || el.style.display !== 'none') return;
+            const pos = props.editor.view.posAtCoords({
+              left: event.clientX,
+              top: event.clientY,
+            });
+            if (!pos || pos.pos !== props.editor.state.selection.from) return;
+            reshowIfActiveHidden(props.editor);
+          };
+          props.editor.view.dom.addEventListener('click', onEditorClick);
+          // Decide the initial visibility. A LOCAL start (the user typed `@`)
+          // shows (I3: hidden when nothing matches). A start driven by anything
+          // ELSE also reaches onStart — @tiptap/suggestion re-fires start when an
+          // edit both MOVES the range and CHANGES the query (moved && changed →
+          // onExit → onStart), and that edit can be a remote peer's OR a local
+          // machine-derived cascade. Such a non-keystroke start must NOT pop a
+          // picker this user never opened (residual 1), but must ALSO NOT flicker
+          // away one the user was actively using (round-2 adversarial): restore it
+          // iff it was open right before the restart. A genuine local keystroke
+          // (the user typing `@`) always shows.
+          const localStart = isLocalUserInput(props.editor);
+          const keepOpen = localStart || wasOpenBeforeExit;
+          wasOpenBeforeExit = false; // consume the one-shot restart signal
+          dismissed = !keepOpen;
+          if (keepOpen) {
+            showFor(props.items);
+          } else {
+            el.style.display = 'none';
+          }
           place(props.clientRect);
         },
         onUpdate: (props: SuggestionProps<ReferenceRailItem>): void => {
-          component?.updateProps({
-            items: props.items,
-            command: (item: ReferenceRailItem) => props.command(item),
-            emptyLabel: input.emptyLabel,
-          });
-          hasItems = props.items.length > 0;
-          if (el) el.style.display = hasItems ? '' : 'none';
+          latestProps = props;
+          // props.items is already computed by the plugin (items() → computeItems
+          // with the live mode). ALWAYS refresh the list content so a visible
+          // popup stays current. But change VISIBILITY only on a genuine LOCAL
+          // KEYSTROKE: a remote peer's edit — OR a machine-derived local dispatch
+          // (the edge-driven cascade-clear deleting a chip before the `@`) —
+          // shifts the range and fires onUpdate identically to local typing, and
+          // must NOT resurrect a dismissed popup or pop a hidden one (residual 1;
+          // the round-4 hole was that the old "not remote" test let the local
+          // cascade through). A local keystroke is also the user re-engaging, so
+          // it clears any dismissal.
+          updateContent(props.items);
+          if (isLocalUserInput(props.editor)) {
+            // Local keystroke = the user re-engaging → clear any dismissal and
+            // apply the normal I3 visibility (empty → hidden, else shown).
+            dismissed = false;
+            showFor(props.items);
+          } else if (!dismissed) {
+            // Non-keystroke content change to a VISIBLE (non-dismissed) popup →
+            // keep I3 (a peer emptying the pool still hides it) but NEVER re-open
+            // a popup the user dismissed (residual 1).
+            showFor(props.items);
+          }
           place(props.clientRect);
         },
         onKeyDown: (props: SuggestionKeyDownProps): boolean => {
@@ -212,6 +442,21 @@ export function makeReferenceSuggestion(input: {
           return component?.ref?.onKeyDown(props.event) ?? false;
         },
         onExit: (props: SuggestionProps<ReferenceRailItem>): void => {
+          // Capture the pre-teardown open state so an IMMEDIATE remote restart
+          // (onExit → onStart, fired synchronously in the SAME view.update when a
+          // peer edit both moves the range and changes the query) can restore an
+          // actively-open picker (round-2 adversarial). Read before dismissed is
+          // reset below. Scope it to that SYNCHRONOUS restart only: clear it on
+          // the next microtask so a GENUINE terminal exit (space / delete / pick /
+          // cursor-leave) does not leave it armed for a LATER, unrelated remote
+          // `@` onStart — which would wrongly pop a picker the user never opened,
+          // re-introducing residual 1 (round-3 adversarial). The synchronous
+          // restart's onStart reads + consumes it before this microtask runs.
+          wasOpenBeforeExit =
+            !!el && el.style.display !== 'none' && !dismissed;
+          queueMicrotask(() => {
+            wasOpenBeforeExit = false;
+          });
           stopAutoUpdate?.();
           stopAutoUpdate = null;
           if (onOutsidePointerDown) {
@@ -222,11 +467,17 @@ export function makeReferenceSuggestion(input: {
             );
             onOutsidePointerDown = null;
           }
-          if (onEditorFocus) {
-            props.editor.view.dom.removeEventListener('focus', onEditorFocus);
-            onEditorFocus = null;
+          if (onEditorTransaction) {
+            props.editor.off('transaction', onEditorTransaction);
+            onEditorTransaction = null;
           }
-          hasItems = false;
+          if (onEditorClick) {
+            props.editor.view.dom.removeEventListener('click', onEditorClick);
+            onEditorClick = null;
+          }
+          if (input.refreshRef) input.refreshRef.current = null;
+          dismissed = false;
+          latestProps = null;
           el?.remove();
           el = null;
           component?.destroy();

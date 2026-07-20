@@ -208,6 +208,9 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
     await waitFor(() => expect(onTextChange).toHaveBeenLastCalledWith('  '));
     // The edge leaves the pool → the cascade must remove the chip AND its spaces,
     // not just the chip node (adversarial finding). Serialized text back to ''.
+    // The cascade dispatches through dispatchMachineEdit (machine-tagged so it
+    // never resurrects a dismissed popup); that tagging is unit-tested against
+    // the real tracker in reference-mention.test.tsx.
     rerender(<PromptEditor {...props} ref={ref} references={[]} />);
     await waitFor(() => expect(onTextChange).toHaveBeenLastCalledWith(''));
   });

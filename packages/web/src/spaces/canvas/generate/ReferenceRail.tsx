@@ -156,7 +156,15 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                   // the accessible name (adversarial round-2).
                   <Crop
                     data-testid={`generate-ref-focus-badge-${ref.refId}`}
-                    className='h-3 w-3 shrink-0 text-muted-foreground'
+                    // Same colour as the name it prefixes (text-foreground, the
+                    // name span below), not the muted grey — the crop glyph is
+                    // part of the row's identity, so it reads at full strength
+                    // with the name rather than as a de-emphasised adornment
+                    // (user 2026-07-19). The pending row keeps both glyph + name
+                    // muted together (a placeholder), and the prompt chip already
+                    // inherits text-foreground for both — so all three stay
+                    // internally consistent (glyph matches its own name).
+                    className='h-3 w-3 shrink-0 text-foreground'
                     aria-hidden='true'
                   />
                 ) : null}

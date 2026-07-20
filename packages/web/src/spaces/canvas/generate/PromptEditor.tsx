@@ -37,6 +37,7 @@ import {
   referenceMentionContent,
   serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
+import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { planCascadeDeletion } from '@web/spaces/canvas/generate/reference-mention-whitespace';
 
@@ -139,6 +140,11 @@ export const PromptEditor = React.forwardRef<
   // exclude image references in t2i without rebuilding the editor on toggle.
   const modeRef = React.useRef(mode);
   modeRef.current = mode;
+  // The open `@` popup registers a refresh() here (collaboration residual 2): a
+  // REMOTE mode / pool change fires no editor transaction, so the visible popup's
+  // list would stay stale. The effect below calls it when `mode` / `references`
+  // change, refreshing a visible popup's content from the live pool + mode.
+  const suggestionRefreshRef = React.useRef<(() => void) | null>(null);
   const editor = useEditor(
     {
       extensions: [
@@ -181,6 +187,7 @@ export const PromptEditor = React.forwardRef<
             emptyLabel: mentionEmptyLabel,
             // t2i ignores source images → exclude image refs from the `@` picker.
             imageRefsDisabled: () => modeRef.current === 't2i',
+            refreshRef: suggestionRefreshRef,
           }),
           // The chip's text-reference hover resolves live content through the
           // same pool ref (spec §9.1).
@@ -329,6 +336,18 @@ export const PromptEditor = React.forwardRef<
     onTextChange(serializePromptText(editor, references));
   }, [editor, references, onTextChange]);
 
+  // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
+  // residual 2): a REMOTE peer toggling this node's mode or editing its
+  // references updates `mode` / `references` here but fires NO prompt-doc
+  // transaction, so @tiptap/suggestion never re-runs items() and a VISIBLE popup
+  // keeps its pre-change list. The popup registers a refresh() (a no-op while
+  // hidden) that recomputes its content from the live pool + mode. A LOCAL mode
+  // change hides the popup first (clicking the picker), so this only bites the
+  // remote case.
+  React.useEffect(() => {
+    suggestionRefreshRef.current?.();
+  }, [mode, references]);
+
   // Cascade-clear stale @-mention chips: when a reference edge is removed the
   // pool shrinks, so any @-mention pointing at a now-disconnected source must
   // disappear from the prompt (design §2.1 — a mention only picks from the
@@ -357,12 +376,13 @@ export const PromptEditor = React.forwardRef<
     const ranges = planCascadeDeletion(editor.state.doc, stalePositions);
     const tr = editor.state.tr;
     for (const { from, to } of ranges) tr.delete(from, to);
-    // Edge-driven chip removal (the edge left the pool) is a CONSEQUENCE of a
-    // canvas action, not a prompt edit — keep it out of the prompt's undo stack
-    // so Cmd+Z can't resurrect an orphan chip whose reference is gone (same
-    // machine-derived-edit invariant as the thumbnail sync; batch-4 adversarial).
-    tr.setMeta('addToHistory', false);
-    editor.view.dispatch(tr);
+    // Edge-driven chip removal is a CONSEQUENCE of a canvas action, not a prompt
+    // edit: dispatchMachineEdit keeps it out of the undo stack (Cmd+Z can't
+    // resurrect an orphan chip whose reference is gone) AND tags it machine-
+    // derived so the local-input tracker never counts it as a keystroke —
+    // deleting a chip BEFORE an active `@` shifts its range and fires onUpdate,
+    // which must not resurrect a dismissed popup (#1802 round-4; batch-4).
+    dispatchMachineEdit(editor.view, tr);
   }, [editor, references]);
 
   // Keep every reference chip a LIVE PROJECTION of its source node's pool row —
@@ -402,12 +422,12 @@ export const PromptEditor = React.forwardRef<
         tr.setNodeAttribute(u.pos, MENTION_THUMBNAIL_ATTR, u.thumbnail ?? null);
       }
     }
-    // Machine-derived cosmetic sync — keep it OUT of the prompt's collaborative
-    // undo stack (batch-4 adversarial): otherwise Cmd+Z would revert a name /
-    // thumbnail refresh instead of the user's own edit, and (this effect is
-    // gated on `references`, not the doc) that revert would never self-heal.
-    tr.setMeta('addToHistory', false);
-    editor.view.dispatch(tr);
+    // Machine-derived cosmetic sync: dispatchMachineEdit keeps it OUT of the
+    // collaborative undo stack (else Cmd+Z reverts a name / thumbnail refresh
+    // instead of the user's own edit, and — gated on `references`, not the doc —
+    // that revert never self-heals) AND tags it so the local-input tracker never
+    // counts it as a keystroke (#1802 round-4; batch-4).
+    dispatchMachineEdit(editor.view, tr);
   }, [editor, references]);
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
   // switch visually pre-announces they will not take effect (execute forces

@@ -12,6 +12,7 @@ import {
 } from '@web/components/ui/popover';
 import { cn } from '@web/lib/utils';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 interface ImageModeToggleProps {
   /** The active generation sub-mode. */
@@ -64,6 +65,11 @@ export const ImageModeToggle = React.memo(function ImageModeToggle({
   disabled = false,
 }: ImageModeToggleProps): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
+  // Follow the ReactFlow viewport while open (#1796): Radix's Floating-UI
+  // auto-update does not track the canvas's CSS-transform pan/zoom, so the
+  // popover would drift off its trigger — same fix as the ratio / camera / model
+  // pickers. Inert while closed.
+  useFollowCanvasViewport(open);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -80,7 +86,15 @@ export const ImageModeToggle = React.memo(function ImageModeToggle({
           />
         </button>
       </PopoverTrigger>
-      <PopoverContent side='top' align='start' className='w-auto min-w-[10rem] p-1'>
+      <PopoverContent
+        side='top'
+        align='start'
+        // Clip, don't flip/shift, at a screen edge (like the ratio / camera / model
+        // pickers): a following popover (useFollowCanvasViewport) that flipped would
+        // fight the follow and jump as the canvas pans (user's clip-not-jump, #1788).
+        avoidCollisions={false}
+        className='w-auto min-w-[10rem] p-1'
+      >
         {/* Same option pattern as LangSwitcher / ThemeToggle (spec §9.4): a
             gap-0.5 column of ghost menu-item Buttons — the gap keeps the hover
             and selected highlights visually separate. */}

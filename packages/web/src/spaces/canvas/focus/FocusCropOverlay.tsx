@@ -374,6 +374,26 @@ export function FocusCropOverlay({
     [],
   );
 
+  /**
+   * Ends the crop state and returns to the PICK state — the SINGLE exit that
+   * cancel, Esc stage-two, and an accepted confirm all share (user 2026-07-17 A
+   * + 2026-07-20). It (1) kills any in-flight second-pointer gesture so its next
+   * move cannot resurrect the cleared marquee (round-11), (2) clears the
+   * marquee, (3) hands DOM focus off to the pick banner so it never falls to
+   * `<body>` when the overlay unmounts with focus inside it (WCAG 2.4.3 —
+   * previously each call site inlined these steps and the confirm path had
+   * drifted, dropping the focus hand-off; adversarial ②/③), and (4) tells the
+   * parent to leave the crop state. Idempotent for the Esc-stage-two caller
+   * whose marquee is already cleared.
+   * @throws {never}
+   */
+  const backToPick = React.useCallback((): void => {
+    interactionRef.current = null;
+    setRect(null);
+    handOffFocusToPickBanner(rootRef.current);
+    onBackToPick();
+  }, [onBackToPick]);
+
   // Esc: clear the marquee first; with nothing drawn, exit the session.
   // Bubble phase, never capture (adversarial 2026-07-16: a window CAPTURE
   // listener with stopPropagation stole Esc from every popover / the @
@@ -434,13 +454,12 @@ export function FocusCropOverlay({
         // Stage two = back to the pick state, aligned with Cancel (user
         // 2026-07-17): the session survives; a further Esc in the pick
         // state exits via the canvas-level handler.
-        handOffFocusToPickBanner(rootRef.current);
-        onBackToPick();
+        backToPick();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onBackToPick]);
+  }, [backToPick]);
 
   // The root ALWAYS renders (measure needs its rect — a null-return here
   // would never mount the ref and the overlay could never appear); the
@@ -688,14 +707,11 @@ export function FocusCropOverlay({
     // A gate rejection (pool full, source gone) keeps the marquee — the
     // user's careful selection must survive a fixable rejection (round-3).
     if (accepted) {
-      // Clearing the rect disables the focused Confirm button, which drops
-      // DOM focus to <body> (round-5) — hand it to Cancel synchronously
-      // (still enabled, same bar) so keyboard users stay in the session.
-      // A second pointer's in-flight gesture dies too (round-11), or its
-      // next move resurrects the cleared marquee.
-      interactionRef.current = null;
-      cancelRef.current?.focus();
-      setRect(null);
+      // One focus = one complete flow (user 2026-07-20): confirm ENDS the crop
+      // state exactly like cancel — the SHARED backToPick clears the marquee,
+      // hands focus off, and leaves the crop state (confirm used to only clear
+      // the marquee, leaving the bar floating AND dropping the focus hand-off).
+      backToPick();
     }
   };
 
@@ -709,7 +725,6 @@ export function FocusCropOverlay({
       ? !isNaturalCropValid(rect, box, naturalSize)
       : !isCropValid(rect));
 
-  const cancelRef = React.useRef<HTMLButtonElement>(null);
 
   return (
     <div
@@ -791,19 +806,9 @@ export function FocusCropOverlay({
             ))}
             <span aria-hidden='true' className='mx-1 h-4 w-px bg-border' />
             <button
-              ref={cancelRef}
               type='button'
               data-testid='focus-crop-cancel'
-              onClick={() => {
-                // Cancel aborts the in-flight gesture too (round-11) — the
-                // captured pointer's next move resurrected the marquee —
-                // then returns to the PICK state (user 2026-07-17 A): the
-                // banner stays and another image can be picked.
-                interactionRef.current = null;
-                setRect(null);
-                handOffFocusToPickBanner(rootRef.current);
-                onBackToPick();
-              }}
+              onClick={backToPick}
               className='shrink-0 whitespace-nowrap rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             >
               {t('canvas.generatePanel.focusCancel')}

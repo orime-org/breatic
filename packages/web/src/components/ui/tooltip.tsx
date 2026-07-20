@@ -18,7 +18,12 @@ import { cn } from '@web/lib/utils';
  *     </Tooltip>
  *   </TooltipProvider>
  *
- * `TooltipContent` renders in a portal; default side offset is 4px.
+ * `TooltipContent` renders INLINE by default (Radix Tooltip does not portal on
+ * its own); default side offset is 4px. Pass `portal` to render it through
+ * `Tooltip.Portal` (to `document.body`) — needed only when the trigger sits
+ * inside a CSS-transformed ancestor (e.g. the ReactFlow canvas), where inline
+ * positioning is computed against the wrong offset parent. Left off elsewhere so
+ * ordinary tooltips are unaffected.
  */
 const TooltipProvider = TooltipPrimitive.Provider;
 
@@ -28,21 +33,31 @@ const TooltipTrigger = TooltipPrimitive.Trigger;
 
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
->(({ className, sideOffset = 4, ...props }, ref) => (
-  <TooltipPrimitive.Content
-    ref={ref}
-    sideOffset={sideOffset}
-    className={cn(
-      'z-50 overflow-hidden rounded-sm bg-primary px-3 py-1.5 text-xs text-primary-foreground',
-      'animate-in fade-in-0 zoom-in-95',
-      'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
-      'data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
-      className,
-    )}
-    {...props}
-  />
-));
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content> & {
+    /** Render through Tooltip.Portal (to body). Default false = inline. */
+    portal?: boolean;
+  }
+>(({ className, sideOffset = 4, portal = false, ...props }, ref) => {
+  const content = (
+    <TooltipPrimitive.Content
+      ref={ref}
+      sideOffset={sideOffset}
+      className={cn(
+        'z-50 overflow-hidden rounded-sm bg-primary px-3 py-1.5 text-xs text-primary-foreground',
+        'animate-in fade-in-0 zoom-in-95',
+        'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
+        'data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+        className,
+      )}
+      {...props}
+    />
+  );
+  return portal ? (
+    <TooltipPrimitive.Portal>{content}</TooltipPrimitive.Portal>
+  ) : (
+    content
+  );
+});
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
