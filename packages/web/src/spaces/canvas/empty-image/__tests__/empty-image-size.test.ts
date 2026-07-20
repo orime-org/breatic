@@ -8,6 +8,7 @@ import {
   EMPTY_IMAGE_MAX,
   EMPTY_IMAGE_MIN,
   clampDimension,
+  normalizeDimensionInput,
   sizeForRatio,
 } from '@web/spaces/canvas/empty-image/empty-image-size';
 
@@ -35,6 +36,25 @@ describe('clampDimension', () => {
   it('falls back to EMPTY_IMAGE_MIN for non-finite input', () => {
     expect(clampDimension(Number.NaN)).toBe(EMPTY_IMAGE_MIN);
     expect(clampDimension(Number.POSITIVE_INFINITY)).toBe(EMPTY_IMAGE_MAX);
+  });
+});
+
+describe('normalizeDimensionInput (blur validation)', () => {
+  it('empty / whitespace falls back to the default', () => {
+    expect(normalizeDimensionInput('')).toBe(String(EMPTY_IMAGE_DEFAULT));
+    expect(normalizeDimensionInput('   ')).toBe(String(EMPTY_IMAGE_DEFAULT));
+  });
+
+  it('clamps an over-range value down to the max', () => {
+    expect(normalizeDimensionInput('10000')).toBe(String(EMPTY_IMAGE_MAX));
+  });
+
+  it('clamps an under-range value up to the min', () => {
+    expect(normalizeDimensionInput('3')).toBe(String(EMPTY_IMAGE_MIN));
+  });
+
+  it('passes a valid value through', () => {
+    expect(normalizeDimensionInput('800')).toBe('800');
   });
 });
 

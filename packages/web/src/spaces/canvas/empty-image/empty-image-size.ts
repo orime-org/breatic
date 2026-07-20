@@ -35,6 +35,18 @@ export function clampDimension(value: number): number {
 }
 
 /**
+ * Normalise a raw W/H text field on blur so it can never rest empty or out of
+ * range (an empty field or `10000` is invalid): an empty field falls back to
+ * the default, otherwise the value is clamped into `[MIN, MAX]`.
+ * @param raw - The field's current raw string (may be empty / out of range).
+ * @returns The string to write back into the field (always a valid integer).
+ */
+export function normalizeDimensionInput(raw: string): string {
+  if (raw.trim() === '') return String(EMPTY_IMAGE_DEFAULT);
+  return String(clampDimension(Number(raw)));
+}
+
+/**
  * Resolve a ratio preset (`width / height`) to a concrete W×H anchored on
  * `EMPTY_IMAGE_DEFAULT` as the long edge, then shrink-to-fit into
  * `[EMPTY_IMAGE_MIN, EMPTY_IMAGE_MAX]` while preserving the ratio (M3). For the

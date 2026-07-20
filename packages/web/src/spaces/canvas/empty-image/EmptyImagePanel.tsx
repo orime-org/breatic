@@ -5,18 +5,17 @@ import { ArrowUp, X } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
+import { EmptyImageColorPicker } from '@web/spaces/canvas/empty-image/EmptyImageColorPicker';
 import { CROP_RATIOS } from '@web/spaces/canvas/focus/crop-math';
 
 import {
   EMPTY_IMAGE_COLORS,
-  EMPTY_IMAGE_CUSTOM_GRADIENT,
   EMPTY_IMAGE_DEFAULT_COLOR,
 } from '@web/spaces/canvas/empty-image/empty-image-colors';
 import {
   EMPTY_IMAGE_DEFAULT,
-  EMPTY_IMAGE_MAX,
-  EMPTY_IMAGE_MIN,
   clampDimension,
+  normalizeDimensionInput,
   sizeForRatio,
 } from '@web/spaces/canvas/empty-image/empty-image-size';
 
@@ -55,9 +54,11 @@ export function EmptyImagePanel({
   // Which ratio preset is active (highlighted); cleared once W/H is hand-edited.
   const [activeRatio, setActiveRatio] = React.useState<number | null>(1);
 
+  // Focus border matches the shadcn Input standard (`border-active-border`), so
+  // the W/H fields highlight the same as every other input in the app.
   const inputClass =
     'w-16 rounded-content-sm border border-border bg-transparent px-2 py-1 text-sm ' +
-    'tabular-nums text-popover-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+    'tabular-nums text-popover-foreground transition-colors focus-visible:border-active-border focus-visible:outline-none';
 
   return (
     <div className='flex w-[min(340px,92vw)] flex-col gap-3 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
@@ -105,16 +106,16 @@ export function EmptyImagePanel({
         <label className='flex items-center gap-1'>
           {t('canvas.emptyImage.width')}
           <input
-            type='number'
+            type='text'
             inputMode='numeric'
-            min={EMPTY_IMAGE_MIN}
-            max={EMPTY_IMAGE_MAX}
             data-testid='empty-image-width'
             value={width}
             onChange={(e) => {
-              setWidth(e.target.value);
+              // Plain field, digits only — no native spinner (type='number').
+              setWidth(e.target.value.replace(/[^0-9]/g, ''));
               setActiveRatio(null);
             }}
+            onBlur={() => setWidth(normalizeDimensionInput(width))}
             className={inputClass}
           />
         </label>
@@ -122,16 +123,16 @@ export function EmptyImagePanel({
         <label className='flex items-center gap-1'>
           {t('canvas.emptyImage.height')}
           <input
-            type='number'
+            type='text'
             inputMode='numeric'
-            min={EMPTY_IMAGE_MIN}
-            max={EMPTY_IMAGE_MAX}
             data-testid='empty-image-height'
             value={height}
             onChange={(e) => {
-              setHeight(e.target.value);
+              // Plain field, digits only — no native spinner (type='number').
+              setHeight(e.target.value.replace(/[^0-9]/g, ''));
               setActiveRatio(null);
             }}
+            onBlur={() => setHeight(normalizeDimensionInput(height))}
             className={inputClass}
           />
         </label>
@@ -158,29 +159,10 @@ export function EmptyImagePanel({
         ))}
       </div>
 
-      {/* Custom colour picker (left) + Execute (right). The native
-          <input type="color"> renders differently per browser, so it is fully
-          transparent and only serves as the OS colour-dialog trigger — our own
-          rainbow swatch underneath gives an identical look on every engine. */}
+      {/* Custom colour picker (left, shows the current colour + opens a
+          react-colorful popover that follows the canvas) + Execute (right). */}
       <div className='flex items-center justify-between'>
-        <label
-          className='relative h-8 w-8 cursor-pointer overflow-hidden rounded-full border border-border transition-transform hover:scale-110'
-          aria-label={t('canvas.emptyImage.color.custom')}
-        >
-          <span
-            aria-hidden='true'
-            className='absolute inset-0'
-            style={{ background: EMPTY_IMAGE_CUSTOM_GRADIENT }}
-          />
-          <input
-            type='color'
-            data-testid='empty-image-color-custom'
-            aria-label={t('canvas.emptyImage.color.custom')}
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className='absolute inset-0 h-full w-full cursor-pointer opacity-0'
-          />
-        </label>
+        <EmptyImageColorPicker value={color} onChange={setColor} />
         <button
           type='button'
           data-testid='empty-image-execute'
