@@ -91,6 +91,20 @@ describe('useCanvasStore', () => {
     expect(useCanvasStore.getState().panelHostId).toBe('b');
   });
 
+  it('openHistoryPanel opens the history panel (mutually exclusive) and clears any stale pick (#1619)', () => {
+    // A pick left over from a prior Generate session must not survive into
+    // history — mirrors openGeneratePanel / openEmptyImagePanel clearing it.
+    useCanvasStore.getState().startReferencePick('gen-1');
+    useCanvasStore.getState().openHistoryPanel('n-7');
+    expect(useCanvasStore.getState().panelHostId).toBe('n-7');
+    expect(useCanvasStore.getState().panelKind).toBe('history');
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+    // Opening history replaces an open Generate panel (single host + kind).
+    useCanvasStore.getState().openGeneratePanel('g-1');
+    useCanvasStore.getState().openHistoryPanel('n-7');
+    expect(useCanvasStore.getState().panelKind).toBe('history');
+  });
+
   // A canvas node-pick is a single session (only one active at a time) that
   // carries a PURPOSE: a reference pick wires an i2i-source edge; a style pick
   // (#1664) copies the clicked image's URL into the node's styleImageUrl slot

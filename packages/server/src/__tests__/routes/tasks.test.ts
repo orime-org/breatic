@@ -330,9 +330,13 @@ describe("Tasks routes", () => {
   });
 
   describe("GET /canvas/nodes/:nodeId/history", () => {
-    it("returns node history", async () => {
+    it("returns node history as { data: { entries, total } } (#1619 envelope)", async () => {
+      const entry = { id: "h-1", entryType: "generation", status: "success" };
+      // Mock the SERVICE's real shape ({ entries, total }); the route reads
+      // result.entries, so a stale { data, total } mock would silently make
+      // entries undefined and still pass a status-only assertion.
       mocks.nodeHistoryService.listByNode.mockResolvedValue({
-        data: [{ id: "h-1", type: "generation", status: "success" }],
+        entries: [entry],
         total: 1,
       });
 
@@ -343,6 +347,8 @@ describe("Tasks routes", () => {
       );
 
       expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toEqual({ data: { entries: [entry], total: 1 } });
     });
 
     it("400 for a non-uuid nodeId (canvas node ids are uuids)", async () => {

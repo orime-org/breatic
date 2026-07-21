@@ -310,7 +310,11 @@ export interface CanvasNodeFields {
     // ─── Data node fields ───────────────────────────────────
     /** Primary result: URL (image/video/audio/3D) or text body (text/web). */
     content?: string;
-    /** Video first-group thumbnail; equals `content` for image. */
+    /**
+     * Video poster (first-frame thumbnail). Video-only: image renders
+     * `content` directly and audio has no cover, so neither ever carries this
+     * field — writing it onto them creates a phantom asset-GC reference (#1619).
+     */
     coverUrl?: string;
     /**
      * For image/video: intrinsic media pixel width. For a `group` (Group):

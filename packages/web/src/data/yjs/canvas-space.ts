@@ -1036,6 +1036,58 @@ export function setNodeContent(
 }
 
 /**
+ * Restore a past node result — the history-recovery write-back (#1619).
+ * Re-points the node's content (and, for video, its cover poster) at an
+ * already-existing history result, WITHOUT touching the lease machinery.
+ *
+ * Deliberately different from {@link setNodeContent} / {@link completeNodeHandling}:
+ * - Writes `content`; for a video (which carries a separate cover poster)
+ *   writes `coverUrl` (`null` clears it so no stale poster survives). Pass
+ *   `undefined` to leave `coverUrl` untouched — image / audio never carry a
+ *   cover (image renders `content` directly, audio has none), and writing one
+ *   would create a phantom asset reference the asset-GC treats as live,
+ *   leaking the URL (Gate-1 R4 HIGH).
+ * - Clears `errorMessage` (restoring a good result over a prior error state).
+ * - Does NOT write `state` / `handlingBy` / `leaseGen`: restore is an instant
+ *   re-point, not an async handling pass, so it never acquires a lease. Leaving
+ *   `state` untouched means that if a concurrent generation's lease landed
+ *   inside the caller's fresh-read gate window, restore does not flip `state`
+ *   to 'idle' and so cannot defeat the busy gate or orphan the in-flight
+ *   (billed) result — it only respects the lease, never competes with it.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to restore onto.
+ * @param media - The content to restore, plus the cover to write for video.
+ * @param media.content - The history row's asset URL.
+ * @param media.coverUrl - Video: the row's cover (`null` clears a stale poster).
+ *   image / audio: `undefined` — leave the field untouched.
+ */
+export function restoreNodeMedia(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  media: { content: string; coverUrl: string | null | undefined },
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => {
+    data.set('content', media.content);
+    if (media.coverUrl !== undefined) {
+      if (media.coverUrl === null) data.delete('coverUrl');
+      else data.set('coverUrl', media.coverUrl);
+    }
+    data.delete('errorMessage');
+    // Deliberately NOT writing `state` / `handlingBy` — see the doc comment:
+    // leaving the lease machinery alone keeps a concurrent generation's busy
+    // gate intact so restore can never orphan a billed in-flight result.
+  }, CONTENT_WRITE);
+}
+
+/**
  * The owner triple a frontend handling opener holds (#1580 #7 unified gen).
  * `setNodeHandling` returns it; the leased write-backs
  * ({@link completeNodeHandling} / {@link failNodeHandling}) verify the live
@@ -1217,6 +1269,33 @@ export function isNodeHandling(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return false;
   return data.get('state') === 'handling';
+}
+
+/**
+ * Whether a node currently holds a live handling lease — reads `handlingBy`,
+ * not just `state`. The restore gate (#1619) needs this: a just-started remote
+ * generation writes `handlingBy` + `state='handling'` in one transaction, but a
+ * concurrent write can converge `state` back to 'idle' while `handlingBy`
+ * survives; {@link isNodeHandling} (state-only) would then miss the live lease,
+ * so restore also refuses when `handlingBy` is set. Missing nodes read as no
+ * lease.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to check.
+ * @returns True when the node has a live `handlingBy` lease.
+ */
+export function nodeHasLiveLease(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): boolean {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const node = nodesMap.get(nodeId);
+  if (!node) return false;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return false;
+  return data.get('handlingBy') != null;
 }
 
 /**

@@ -23,6 +23,12 @@ project_collaborator_cap: 100
 #   `images.max_items` payload cap enforced at execute time (#1735).
 canvas_reference_pool_cap: 50
 
+# ── Node history paging ────────────────────────────────
+# node_history_page_size: page size the frontend requests per infinite-
+#   scroll page of GET /canvas/nodes/:id/history (#1619). Served to the
+#   frontend via GET /canvas/limits alongside canvas_reference_pool_cap.
+node_history_page_size: 20
+
 # ── Activity feed paging ───────────────────────────────
 # Keyset page size for GET /projects/:id/activities.
 #   activity_feed_page_default: page size when the client omits ?limit

@@ -362,7 +362,8 @@
       "tools": "ツール",
       "lock": "ノードをロック",
       "unlock": "ノードのロック解除",
-      "resetEmpty": "空の画像にリセット"
+      "resetEmpty": "空の画像にリセット",
+      "history": "履歴"
     },
     "edge": {
       "delete": "接続を削除"
@@ -417,6 +418,23 @@
         "ratio": "比率",
         "resolution": "解像度",
         "color": "色"
+      }
+    },
+    "history": {
+      "title": "履歴",
+      "count": "全 {count} 件",
+      "restore": "復元",
+      "current": "現在",
+      "failed": "復元不可",
+      "typeGeneration": "生成",
+      "typeUpload": "アップロード",
+      "end": "これ以上はありません",
+      "close": "閉じる",
+      "retry": "再試行",
+      "loadError": "履歴を読み込めませんでした",
+      "empty": {
+        "title": "履歴はまだありません",
+        "hint": "このノードの生成やアップロードはすべてここに記録されます。課金されたのに結果がノードに表示されなかった場合は、ここから復元できます。"
       }
     }
   },

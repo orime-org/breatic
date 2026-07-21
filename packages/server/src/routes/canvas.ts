@@ -20,7 +20,10 @@ import {
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { getCanvasReferencePoolCap } from "@server/config/limits.js";
+import {
+  getCanvasReferencePoolCap,
+  getNodeHistoryPageSize,
+} from "@server/config/limits.js";
 import {
   taskService,
   estimateTaskCredits,
@@ -56,12 +59,18 @@ const tasksQueue = createQueue("tasks");
  * add time (the pool lives in Yjs; the server never gates collaborative
  * writes). Distinct from the per-model `images.max_items` payload cap
  * enforced at execute time (#1735).
+ *
+ * `nodeHistoryPageSize`: page size the frontend requests per infinite-scroll
+ * page of a node's history (#1619).
  * @param c - Hono context (auth required, no params)
- * @returns `200` with `{ data: { referencePoolCap } }`
+ * @returns `200` with `{ data: { referencePoolCap, nodeHistoryPageSize } }`
  */
 canvas.get("/limits", (c) => {
   return c.json({
-    data: { referencePoolCap: getCanvasReferencePoolCap() },
+    data: {
+      referencePoolCap: getCanvasReferencePoolCap(),
+      nodeHistoryPageSize: getNodeHistoryPageSize(),
+    },
   });
 });
 
@@ -393,7 +402,7 @@ canvas.get("/tasks", zValidator("query", paginationSchema), async (c) => {
  * for the given canvas node, ordered by most recent first. Used by the
  * frontend to show version history and support restore.
  * @param c - Hono context, requires `project_id` query param
- * @returns `{ data: NodeHistoryEntity[], total: number }`
+ * @returns `{ data: { entries: NodeHistoryEntity[], total: number } }`
  */
 const nodeHistoryQuerySchema = z.object({
   project_id: z.string().uuid(),
@@ -426,7 +435,10 @@ canvas.get(
       status,
     });
 
-    return c.json({ data: result.entries, total: result.total });
+    // Envelope: entries + total nested under `data` so the frontend reads it
+    // with the single `apiGet` `{ data: T }` unwrap (#1619) — the endpoint is
+    // greenfield, so this aligns it with the rest of the list endpoints.
+    return c.json({ data: { entries: result.entries, total: result.total } });
   },
 );
 

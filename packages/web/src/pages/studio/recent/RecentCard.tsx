@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 
 import { Badge } from '@web/components/ui/badge';
 import { useTranslation } from '@web/i18n/use-translation';
-import { formatRelativeTime } from '@web/pages/studio/shared/format-relative-time';
+import { formatRelativeTime } from '@web/lib/format-relative-time';
 import type {
   RecentItem,
   RecentItemRole,

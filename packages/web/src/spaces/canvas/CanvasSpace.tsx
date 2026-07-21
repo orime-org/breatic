@@ -34,7 +34,10 @@ import {
   MAX_FOCUS_NAME,
   validFocusImages,
 } from '@web/data/focus-images';
-import { getCachedReferencePoolCap } from '@web/data/api/canvas';
+import {
+  getCachedReferencePoolCap,
+  type NodeHistoryEntry,
+} from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import {
   FocusCropOverlay,
@@ -62,6 +65,8 @@ import {
   failNodeHandling,
   isNodeHandling,
   isNodeLocked,
+  nodeHasLiveLease,
+  restoreNodeMedia,
   setNodeLocked,
   setNodeName,
   setNodeParent,
@@ -152,6 +157,9 @@ import {
 } from '@web/spaces/canvas/lib/connect-create';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
+import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
+import type { HistoryModality } from '@web/spaces/canvas/history/NodeHistoryRow';
+import { resolveRestore } from '@web/spaces/canvas/history/restore-node-content';
 import type { EmptyImageExecuteOpts } from '@web/spaces/canvas/empty-image/EmptyImagePanel';
 import { generateBlankPng } from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
@@ -501,6 +509,7 @@ function CanvasSpaceInner({
   const snapToGrid = useCanvasStore((s) => s.snapToGrid);
   const openGeneratePanel = useCanvasStore((s) => s.openGeneratePanel);
   const openEmptyImagePanel = useCanvasStore((s) => s.openEmptyImagePanel);
+  const openHistoryPanel = useCanvasStore((s) => s.openHistoryPanel);
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const panelHostId = useCanvasStore((s) => s.panelHostId);
   const pickSession = useCanvasStore((s) => s.pickSession);
@@ -2694,6 +2703,54 @@ function CanvasSpaceInner({
     openEmptyImagePanel,
     selectOnlyNode,
   ]);
+  // Restore a past result onto the node (#1619): gate 2 (execute, fresh Yjs) +
+  // a media-aware, lease-safe write-back that records NO new history row
+  // (restore re-points to an existing result). The panel stays open on success
+  // or block — browsing is exploratory (3.2 / 3.6).
+  const restoreNodeContent = React.useCallback(
+    (
+      nodeId: string,
+      entry: NodeHistoryEntry,
+      modality: HistoryModality,
+    ): void => {
+      // Decision is a pure, unit-tested function (INV-1/2/4/8/9); this callback
+      // only reads the FRESH gate state + performs the effects. `handlingBy !=
+      // null` (nodeHasLiveLease) catches a live lease whose 'handling' state a
+      // concurrent write reverted — restore must never race an in-flight,
+      // billed generation. `isNodeLocked` reads the node's OWN lock (INV-6, not
+      // group-aware), matching resetNodeToEmptyImage.
+      const decision = resolveRestore({
+        readOnly,
+        entry,
+        modality,
+        gateState: {
+          locked: isNodeLocked(projectId, spaceId, nodeId),
+          handling:
+            isNodeHandling(projectId, spaceId, nodeId) ||
+            nodeHasLiveLease(projectId, spaceId, nodeId),
+        },
+      });
+      if (decision.kind === 'blocked') {
+        warnNodeGate(t(decision.toastKey));
+        return; // panel stays open — browsing is exploratory (3.2 / 3.6)
+      }
+      if (decision.kind === 'write') {
+        restoreNodeMedia(projectId, spaceId, nodeId, {
+          content: decision.content,
+          coverUrl: decision.coverUrl,
+        });
+      }
+    },
+    [readOnly, projectId, spaceId, t],
+  );
+  // Node menu "history": open the browse panel. Unlike reset, browsing is a
+  // read — it opens even on a locked / handling node; only the restore ACTION
+  // is gated (in restoreNodeContent), so there is no gate here.
+  const openHistoryFromMenu = React.useCallback((): void => {
+    const nodeId = nodeMenu.nodeId;
+    openHistoryPanel(nodeId);
+    selectOnlyNode(nodeId);
+  }, [nodeMenu.nodeId, openHistoryPanel, selectOnlyNode]);
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
@@ -3165,6 +3222,14 @@ function CanvasSpaceInner({
             nodes={nodes}
             onReset={resetNodeToEmptyImage}
           />
+          {/* Node-history panel: shares the host + lifecycle with Generate /
+              reset (panelHostId + panelKind), mutually exclusive, floats below
+              its node via NodeToolbar. */}
+          <NodeHistoryPanelContainer
+            nodes={nodes}
+            projectId={projectId}
+            onRestore={restoreNodeContent}
+          />
         </ReactFlow>
         {pickForNodeId ? (
           <div
@@ -3305,6 +3370,19 @@ function CanvasSpaceInner({
             const imgNode = nodes.find((n) => n.id === nodeMenu.nodeId);
             return !nodeMenu.isGroup && !readOnly && imgNode?.type === 'image'
               ? resetImageFromMenu
+              : undefined;
+          })()}
+          // History opens the browse + restore panel for editable content nodes
+          // (image / video / audio, #1619); groups / text / read-only get no
+          // item. Browsing itself is gate-free (only restore is gated).
+          onOpenHistory={(() => {
+            const contentNode = nodes.find((n) => n.id === nodeMenu.nodeId);
+            return !nodeMenu.isGroup &&
+              !readOnly &&
+              (contentNode?.type === 'image' ||
+                contentNode?.type === 'video' ||
+                contentNode?.type === 'audio')
+              ? openHistoryFromMenu
               : undefined;
           })()}
           // Rename is frozen on a locked node / group (the name is on-canvas

@@ -103,13 +103,13 @@ interface CanvasState {
   /** Canvas → chrome mirror: whether a redo is currently available. */
   canRedo: boolean;
   /**
-   * Per-user node panel host: the node id whose bottom-anchored panel (Generate
-   * or reset-empty-image) is open for THIS user, or null. Local UI only (never
-   * Yjs) — one collaborator opening a panel must not open it for others. The
-   * two panels share one host + one lifecycle and are mutually exclusive (only
-   * one is ever open); `panelKind` picks which body renders. The panel's
-   * collaborative content (Generate's prompt / model / params / references)
-   * lives on the node itself.
+   * Per-user node panel host: the node id whose bottom-anchored panel (Generate,
+   * reset-empty-image, or node-history) is open for THIS user, or null. Local UI
+   * only (never Yjs) — one collaborator opening a panel must not open it for
+   * others. These panels share one host + one lifecycle and are mutually
+   * exclusive (only one is ever open); `panelKind` picks which body renders. The
+   * panel's collaborative content (Generate's prompt / model / params /
+   * references) lives on the node itself.
    */
   panelHostId: string | null;
   /**
@@ -117,7 +117,7 @@ interface CanvasState {
    * host + kind is the correct abstraction for N mutually-exclusive node-
    * anchored panels — cheaper and inherently exclusive versus parallel states.
    */
-  panelKind: 'generate' | 'resetEmpty' | null;
+  panelKind: 'generate' | 'resetEmpty' | 'history' | null;
   /**
    * The in-progress canvas node-pick session (reference or style), or null.
    * When set, the canvas is in pick mode for `pickSession.nodeId`: clicking
@@ -167,6 +167,8 @@ interface CanvasState {
   openGeneratePanel: (nodeId: string) => void;
   /** Open the reset-empty-image panel for a node (replaces any open panel). */
   openEmptyImagePanel: (nodeId: string) => void;
+  /** Open the node-history panel for a node (#1619, replaces any open panel). */
+  openHistoryPanel: (nodeId: string) => void;
   /** Close whichever bottom panel is open (exit button, or execute hands off). */
   closeActivePanel: () => void;
   /** Enter a REFERENCE pick (wires i2i source edges) for a generative node. */
@@ -312,6 +314,15 @@ export const useCanvasStore = create<CanvasState>()(
         // host + kind makes the two mutually exclusive with no manual bookkeeping.
         s.panelHostId = nodeId;
         s.panelKind = 'resetEmpty';
+        s.pickSession = null;
+      }),
+    openHistoryPanel: (nodeId) =>
+      set((s) => {
+        // History browse is another node-anchored panel in the same mutually-
+        // exclusive slot; clearing pickSession matches the other two openers so
+        // a stale Generate pick can't wire the next click to a previous node.
+        s.panelHostId = nodeId;
+        s.panelKind = 'history';
         s.pickSession = null;
       }),
     closeActivePanel: () =>
