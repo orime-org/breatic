@@ -24,6 +24,7 @@
     "lint:1px-border": "bash scripts/lint-1px-border.sh",
     "lint:active-border": "bash scripts/lint-active-border.sh",
     "lint:no-inline-scrollbar": "bash scripts/lint-no-inline-scrollbar.sh",
+    "lint:no-native-rendered-ui": "bash scripts/lint-no-native-rendered-ui.sh && bash scripts/lint-no-native-rendered-ui.sh --self-test",
     "lint:single-tooltip-provider": "bash scripts/lint-single-tooltip-provider.sh",
     "lint:single-toast-entry": "bash scripts/lint-single-toast-entry.sh",
     "lint:overlay-surface": "bash scripts/lint-overlay-surface.sh",

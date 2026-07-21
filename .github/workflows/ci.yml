@@ -165,6 +165,18 @@ jobs:
         # scripts/lint-no-inline-scrollbar.sh.
         run: pnpm lint:no-inline-scrollbar
 
+      - name: Lint no-native-rendered-ui (self-drawn controls only)
+        # For a creative product, any interactive control whose visual skin is
+        # drawn by the browser/OS renders differently per engine (Chrome vs
+        # Safari) — fatal inconsistency. Bans native <input type=color/date/
+        # time/range>, <select>, and <audio|video controls> in web/src; use the
+        # self-drawn primitive (Slider / Select / react-colorful picker /
+        # MediaPlayer). Generalises the scrollbar guard's lesson to the whole
+        # class so each new native primitive is caught mechanically, not in
+        # review. title-tooltip / native-validation are mandate-only (too noisy
+        # to grep). See packages/web/CLAUDE.md + scripts/lint-no-native-rendered-ui.sh.
+        run: pnpm lint:no-native-rendered-ui
+
       - name: Lint single tooltip provider (one app-level provider)
         # The app mounts exactly ONE <TooltipProvider> (App.tsx); its
         # delayDuration is the calibrated timing every tooltip shares, and

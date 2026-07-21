@@ -27,6 +27,24 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 ## 组件复用:先查 `components/ui/` 再造(MANDATORY)
 写任何**浮层 / 表单 / 交互控件**(popover · dropdown · dialog · tooltip · select · menu · command · sheet 等)前,**必须先 grep `components/ui/` 看有没有现成 shadcn primitive,有就复用**。**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。判定题:**这 UI 是浮层 / 表单 / 交互控件吗?是 → 先 grep `components/ui/`,别手写**。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
 
+## 禁止浏览器 / OS 原生渲染的交互控件(MANDATORY,CI 强制)
+**凡「视觉皮肤由浏览器 / 操作系统绘制」的交互控件,一律禁用,必须自绘(Radix primitive 或自绘组件)。** 根因:各引擎(Chrome / Safari / Firefox)画同一个原生控件长得不一样,**对创作类产品这种跨引擎不一致是致命的**;「跨引擎像素一致」是硬功能需求,不是锦上添花。这是滚动条 / toast / tooltip 那些单点守卫背后的**总原则** —— 它们都是本条的实例,本条把教训泛化,让每个新原生控件(color → range → 未来 date)被**机械挡住**,而不是每次靠真机 review 一个个逮。
+
+**判定题:这个 UI 的样子是浏览器 / OS 画的吗?是 → 自绘,没有第二个选项。**
+
+**禁用清单 + 自绘替代(primitive 登记表)**:
+
+| 原生(禁) | 引擎不一致点 | 自绘替代(用这个) |
+|---|---|---|
+| `<input type=color>` | 色块 + OS 取色弹窗 | react-colorful 进 Radix Popover(见 `EmptyImageColorPicker`) |
+| `<input type=range>` | thumb / track 形状(Safari 胶囊 vs Chrome 圆) | `<Slider>`(`components/ui/slider`,Radix) |
+| `<input type=date/time/…>` | 日历 / spinner 弹层每浏览器天差地别 | 自绘 date picker(需要时先在 `components/ui/` 建一个) |
+| `<select>` 原生下拉 | OS 画的 option 列表 | `<Select>`(`components/ui/select`,Radix) |
+| `<audio>/<video controls>` | OS 原生播放条 | 自绘 `MediaPlayer`(不挂 `controls`) |
+| 原生滚动条 | thumb 宽度 / hover / 色 UA 私有 | `<ScrollArea>`(见下条) |
+
+**CI 强制**:`lint:no-native-rendered-ui`(`scripts/lint-no-native-rendered-ui.sh`,带 matcher 自检)机械挡上表**可精确 grep 的子集**(color / date / time / range / 裸 `<select>` / 同行 media `controls`);注释行(文档合法提及被禁形)自动跳过。**逃生舱**:极少数正当例外在同一行加 `native-ui:allow` + 理由注释。**mandate-only(grep 太吵、不上 CI,靠本条人守)**:`title=` 当 tooltip 用(vs iframe/svg 的合法 a11y label)· 原生表单校验气泡 —— 这两类也禁,只是机械守卫覆盖不到,别以为不在 CI 里就能用。**元教训**:「简单优先」在这类问题上权重会错 —— 原生控件是「最少代码 + 功能能跑」,但「功能能跑」≠「可接受」,视觉确定性对创作类产品是硬需求(2026-07-21 user 拍板,承 color/scrollbar 反复踩坑)。
+
 ## 滚动条唯一入口:Scroller 组件(MANDATORY,CI 强制)
 全站**每个可见滚动容器(纵向 + 横向)一律用 `components/ui/scroll-area.tsx` 的 `ScrollArea`**(`scrollbars` 属性选轴),**严禁**裸 `overflow-auto`/`overflow-y-auto`/`overflow-x-auto`/`overflow-scroll` 滚动容器和任何组件级滚动条样式重声明(user 2026-07-15 拍板)。判定题:**这个元素会出现滚动条吗?会 → 包 `<ScrollArea>`,没有第二个选项**(故意隐藏滚动条的滚动容器如 SpaceTabBar 用 `[scrollbar-width:none]` 豁免)。行为契约(滚动/悬停出现 · overlay 零占位 · hover/拖拽只变色 · 不扰动输入态 · 缩放安全拖拽)全部内建在组件里,细节见 [docs/ARCHITECTURE.md#key-conventions](../../docs/ARCHITECTURE.md#frontend)。`lint:no-inline-scrollbar` CI 强制。**布局陷阱**:Radix viewport 内层是自动高度 `display:table` 包裹层,`h-full` 垂直居中在里面会塌陷 —— 居中空态/加载态放 ScrollArea **外面**(StudioRecentPage 模式);内容 padding / 高度上限放 `viewportClassName`(真正滚动的元素)。
 
