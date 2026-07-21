@@ -49,10 +49,10 @@ export function EmptyImageColorPicker({
           data-testid='empty-image-color-custom'
           aria-label={t('canvas.emptyImage.color.custom')}
           style={{ backgroundColor: value }}
-          // Hover changes only the BORDER COLOUR, never the layout rect — a
-          // scale here would move the trigger's bounding box and floating-ui
-          // would jump the popover when the mouse leaves (user-reported).
-          className='h-8 w-8 rounded-full border border-border transition-colors hover:border-active-border focus-visible:border-active-border focus-visible:outline-none'
+          // Hover fades to semi-transparent (opacity only) — a clear affordance
+          // that, unlike a scale, never changes the layout rect, so it can't
+          // jump the popover the trigger is anchored to (user-reported bug).
+          className='h-8 w-8 rounded-full border border-border transition-opacity hover:opacity-70 focus-visible:border-active-border focus-visible:outline-none'
         />
       </PopoverTrigger>
       <PopoverContent
