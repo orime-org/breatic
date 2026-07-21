@@ -179,7 +179,7 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
                   entry={entry}
                   modality={modality}
                   isCurrent={entry.id === currentEntryId}
-                  onRestore={() => onRestore(entry)}
+                  onRestore={onRestore}
                 />
               ))}
             </div>

@@ -33,8 +33,12 @@ export interface NodeHistoryRowProps {
   modality: HistoryModality;
   /** Whether this row is the node's current content (tagged, not restorable). */
   isCurrent: boolean;
-  /** Restore this entry onto the node. */
-  onRestore: () => void;
+  /**
+   * Restore an entry onto the node. Takes the entry so the panel can pass ONE
+   * stable handler to every row (an inline `() => onRestore(entry)` per row
+   * would give each memo'd row a fresh prop identity and defeat the memo).
+   */
+  onRestore: (entry: NodeHistoryEntry) => void;
 }
 
 /**
@@ -187,7 +191,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
           <button
             type='button'
             data-testid='node-history-restore'
-            onClick={onRestore}
+            onClick={() => onRestore(entry)}
             className='rounded-content-sm bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
           >
             {t('canvas.history.restore')}
