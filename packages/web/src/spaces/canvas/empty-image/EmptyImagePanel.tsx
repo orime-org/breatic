@@ -75,87 +75,102 @@ export function EmptyImagePanel({
       </div>
 
       {/* Ratio presets — clicking one derives a concrete W/H (D3). */}
-      <div className='flex flex-wrap gap-1'>
-        {CROP_RATIOS.map((r) => (
-          <button
-            key={r.key}
-            type='button'
-            data-testid={`empty-image-ratio-${r.key}`}
-            aria-pressed={activeRatio === r.value}
-            onClick={() => {
-              const size = sizeForRatio(r.value);
-              setWidth(String(size.width));
-              setHeight(String(size.height));
-              setActiveRatio(r.value);
-            }}
-            className={
-              'rounded-content-sm border px-2 py-1 text-xs tabular-nums transition-colors ' +
+      <div className='flex flex-col gap-1.5'>
+        <span className='text-xs font-medium text-muted-foreground'>
+          {t('canvas.emptyImage.sections.ratio')}
+        </span>
+        <div className='flex flex-wrap gap-1'>
+          {CROP_RATIOS.map((r) => (
+            <button
+              key={r.key}
+              type='button'
+              data-testid={`empty-image-ratio-${r.key}`}
+              aria-pressed={activeRatio === r.value}
+              onClick={() => {
+                const size = sizeForRatio(r.value);
+                setWidth(String(size.width));
+                setHeight(String(size.height));
+                setActiveRatio(r.value);
+              }}
+              className={
+                'rounded-content-sm border px-2 py-1 text-xs tabular-nums transition-colors ' +
               (activeRatio === r.value
                 ? 'border-border bg-accent text-accent-foreground'
                 : 'border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground')
-            }
-          >
-            {r.key}
-          </button>
-        ))}
+              }
+            >
+              {r.key}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Manual W/H — editing either clears the active ratio (D3). */}
-      <div className='flex items-center gap-2 text-xs text-muted-foreground'>
-        <label className='flex items-center gap-1'>
-          {t('canvas.emptyImage.width')}
-          <input
-            type='text'
-            inputMode='numeric'
-            data-testid='empty-image-width'
-            value={width}
-            onChange={(e) => {
+      <div className='flex flex-col gap-1.5'>
+        <span className='text-xs font-medium text-muted-foreground'>
+          {t('canvas.emptyImage.sections.resolution')}
+        </span>
+        <div className='flex items-center gap-2 text-xs text-muted-foreground'>
+          <label className='flex items-center gap-1'>
+            {t('canvas.emptyImage.width')}
+            <input
+              type='text'
+              inputMode='numeric'
+              data-testid='empty-image-width'
+              value={width}
+              onChange={(e) => {
               // Plain field, digits only — no native spinner (type='number').
-              setWidth(e.target.value.replace(/[^0-9]/g, ''));
-              setActiveRatio(null);
-            }}
-            onBlur={() => setWidth(normalizeDimensionInput(width))}
-            className={inputClass}
-          />
-        </label>
-        <span aria-hidden='true'>×</span>
-        <label className='flex items-center gap-1'>
-          {t('canvas.emptyImage.height')}
-          <input
-            type='text'
-            inputMode='numeric'
-            data-testid='empty-image-height'
-            value={height}
-            onChange={(e) => {
+                setWidth(e.target.value.replace(/[^0-9]/g, ''));
+                setActiveRatio(null);
+              }}
+              onBlur={() => setWidth(normalizeDimensionInput(width))}
+              className={inputClass}
+            />
+          </label>
+          <span aria-hidden='true'>×</span>
+          <label className='flex items-center gap-1'>
+            {t('canvas.emptyImage.height')}
+            <input
+              type='text'
+              inputMode='numeric'
+              data-testid='empty-image-height'
+              value={height}
+              onChange={(e) => {
               // Plain field, digits only — no native spinner (type='number').
-              setHeight(e.target.value.replace(/[^0-9]/g, ''));
-              setActiveRatio(null);
-            }}
-            onBlur={() => setHeight(normalizeDimensionInput(height))}
-            className={inputClass}
-          />
-        </label>
+                setHeight(e.target.value.replace(/[^0-9]/g, ''));
+                setActiveRatio(null);
+              }}
+              onBlur={() => setHeight(normalizeDimensionInput(height))}
+              className={inputClass}
+            />
+          </label>
+        </div>
       </div>
 
       {/* Fill colour: fixed swatches + a custom picker (D2). */}
-      <div className='flex flex-wrap items-center gap-1.5'>
-        {EMPTY_IMAGE_COLORS.map((c) => (
-          <button
-            key={c.key}
-            type='button'
-            data-testid={`empty-image-color-${c.key}`}
-            aria-label={t(`canvas.emptyImage.color.${c.key}`)}
-            aria-pressed={color.toLowerCase() === c.hex.toLowerCase()}
-            onClick={() => setColor(c.hex)}
-            style={{ backgroundColor: c.hex }}
-            className={
-              'h-5 w-5 rounded-full border transition-transform ' +
+      <div className='flex flex-col gap-1.5'>
+        <span className='text-xs font-medium text-muted-foreground'>
+          {t('canvas.emptyImage.sections.color')}
+        </span>
+        <div className='flex flex-wrap items-center gap-1.5'>
+          {EMPTY_IMAGE_COLORS.map((c) => (
+            <button
+              key={c.key}
+              type='button'
+              data-testid={`empty-image-color-${c.key}`}
+              aria-label={t(`canvas.emptyImage.color.${c.key}`)}
+              aria-pressed={color.toLowerCase() === c.hex.toLowerCase()}
+              onClick={() => setColor(c.hex)}
+              style={{ backgroundColor: c.hex }}
+              className={
+                'h-5 w-5 rounded-full border transition-transform ' +
               (color.toLowerCase() === c.hex.toLowerCase()
                 ? 'border-ring ring-1 ring-ring'
                 : 'border-border hover:scale-110')
-            }
-          />
-        ))}
+              }
+            />
+          ))}
+        </div>
       </div>
 
       {/* Custom colour picker (left, shows the current colour + opens a

@@ -412,6 +412,11 @@
         "blue": "藍色",
         "violet": "紫色",
         "custom": "自訂顏色"
+      },
+      "sections": {
+        "ratio": "比率",
+        "resolution": "解析度",
+        "color": "顏色"
       }
     }
   },

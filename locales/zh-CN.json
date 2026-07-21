@@ -412,6 +412,11 @@
         "blue": "蓝色",
         "violet": "紫色",
         "custom": "自定义颜色"
+      },
+      "sections": {
+        "ratio": "比率",
+        "resolution": "分辨率",
+        "color": "颜色"
       }
     }
   },

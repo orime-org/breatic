@@ -412,6 +412,11 @@
         "blue": "Blue",
         "violet": "Violet",
         "custom": "Custom color"
+      },
+      "sections": {
+        "ratio": "Ratio",
+        "resolution": "Resolution",
+        "color": "Color"
       }
     }
   },

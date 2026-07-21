@@ -412,6 +412,11 @@
         "blue": "青",
         "violet": "紫",
         "custom": "カスタムカラー"
+      },
+      "sections": {
+        "ratio": "比率",
+        "resolution": "解像度",
+        "color": "色"
       }
     }
   },
