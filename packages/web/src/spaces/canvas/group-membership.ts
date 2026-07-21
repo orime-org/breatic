@@ -53,7 +53,7 @@ export function lockedGroupMemberIds(
 /**
  * Ids of every node frozen by a lock — any node with `data.locked`, OR a member
  * of a locked group. A frozen node can be neither moved (rendered
- * `draggable=false`) nor deleted ({@link filterLockedDeletion}); both reuse this
+ * `draggable=false`) nor deleted ({@link filterGatedDeletion}); both reuse this
  * one set so they stay in lockstep. A locked group's OWN id is included, so the
  * whole group is frozen in place — it cannot be dragged as a unit (reverses
  * group-lock-C's whole-group drag, decision 2026-06-20).
