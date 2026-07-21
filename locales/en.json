@@ -307,7 +307,8 @@
       "upload": "Upload",
       "tools": "Tools",
       "lock": "Lock node",
-      "unlock": "Unlock node"
+      "unlock": "Unlock node",
+      "resetEmpty": "Reset to empty image"
     },
     "generatePanel": {
       "style": "Style",
@@ -391,6 +392,32 @@
       "kindWeb": "Web",
       "kindAnnotation": "Annotation",
       "kindGroup": "Group"
+    },
+    "emptyImage": {
+      "title": "Empty image",
+      "width": "W",
+      "height": "H",
+      "execute": "Create",
+      "exit": "Exit",
+      "generateFailed": "Couldn't create the image. Please try again.",
+      "color": {
+        "white": "White",
+        "lightGray": "Light gray",
+        "gray": "Gray",
+        "black": "Black",
+        "red": "Red",
+        "orange": "Orange",
+        "yellow": "Yellow",
+        "green": "Green",
+        "blue": "Blue",
+        "violet": "Violet",
+        "custom": "Custom color"
+      },
+      "sections": {
+        "ratio": "Ratio",
+        "resolution": "Resolution",
+        "color": "Color"
+      }
     }
   },
   "editor": {

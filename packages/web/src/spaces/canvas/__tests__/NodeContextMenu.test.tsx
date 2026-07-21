@@ -154,6 +154,21 @@ describe('NodeContextMenu', () => {
     expect(onUpload).toHaveBeenCalledTimes(1);
   });
 
+  // #1623: reset-to-empty-image is image-only. The parent passes onResetImage
+  // only for image nodes, so its presence is what shows the item — a text /
+  // audio / video node (no handler) never gets it.
+  it('shows the reset-empty item only when onResetImage is supplied', () => {
+    setup({ target: 'node', onUpload: () => {} });
+    expect(screen.queryByTestId('node-menu-reset-image')).toBeNull();
+  });
+
+  it('fires onResetImage when the reset-empty item is chosen', () => {
+    const onResetImage = vi.fn();
+    setup({ target: 'node', onUpload: () => {}, onResetImage });
+    fireEvent.click(screen.getByTestId('node-menu-reset-image'));
+    expect(onResetImage).toHaveBeenCalledTimes(1);
+  });
+
   it('group target: never shows generate / upload / tools', () => {
     setup({ target: 'group', onUpload: () => {}, onUngroup: () => {} });
     expect(screen.queryByTestId('node-menu-generate')).toBeNull();

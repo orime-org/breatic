@@ -4,6 +4,7 @@
 import {
   Copy,
   CopyPlus,
+  ImagePlus,
   Lock,
   Pencil,
   Sparkles,
@@ -57,6 +58,12 @@ interface NodeContextMenuProps {
    * placeholder (non-image content nodes, until their slice ships).
    */
   onGenerate?: () => void;
+  /**
+   * Reset this image node to a fresh blank image (image nodes only, #1623).
+   * Passed only for `type === 'image'` non-viewer nodes; when absent the item
+   * does not render, so it never appears on text / audio / video nodes.
+   */
+  onResetImage?: () => void;
   /** Copy the node / group (with its members) to the clipboard. */
   onCopy?: () => void;
   /** Duplicate the node / group (with its members) in place. */
@@ -106,6 +113,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onDelete,
   onUpload,
   onGenerate,
+  onResetImage,
   onCopy,
   onDuplicate,
   onUngroup,
@@ -156,6 +164,15 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
               <Upload className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.nodeMenu.upload')}
             </DropdownMenuItem>
+            {onResetImage ? (
+              <DropdownMenuItem
+                data-testid='node-menu-reset-image'
+                onSelect={onResetImage}
+              >
+                <ImagePlus className='mr-2 h-4 w-4' aria-hidden='true' />
+                {t('canvas.nodeMenu.resetEmpty')}
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem disabled data-testid='node-menu-tools'>
               <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />
               {t('canvas.nodeMenu.tools')}

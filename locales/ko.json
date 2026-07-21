@@ -361,7 +361,8 @@
       "upload": "업로드",
       "tools": "도구",
       "lock": "노드 잠금",
-      "unlock": "노드 잠금 해제"
+      "unlock": "노드 잠금 해제",
+      "resetEmpty": "빈 이미지로 초기화"
     },
     "edge": {
       "delete": "연결 삭제"
@@ -391,6 +392,32 @@
       "kindWeb": "웹",
       "kindAnnotation": "주석",
       "kindGroup": "그룹"
+    },
+    "emptyImage": {
+      "title": "빈 이미지",
+      "width": "너비",
+      "height": "높이",
+      "execute": "만들기",
+      "exit": "종료",
+      "generateFailed": "이미지를 만들 수 없습니다. 다시 시도해 주세요.",
+      "color": {
+        "white": "흰색",
+        "lightGray": "밝은 회색",
+        "gray": "회색",
+        "black": "검정",
+        "red": "빨강",
+        "orange": "주황",
+        "yellow": "노랑",
+        "green": "초록",
+        "blue": "파랑",
+        "violet": "보라",
+        "custom": "사용자 지정 색상"
+      },
+      "sections": {
+        "ratio": "비율",
+        "resolution": "해상도",
+        "color": "색상"
+      }
     }
   },
   "editor": {

@@ -95,7 +95,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
   beforeEach(() => {
     vi.mocked(toast.error).mockClear();
     useCanvasStore.setState({
-      generatePanelNodeId: null,
+      panelHostId: null, panelKind: null,
       pickSession: null,
     });
   });
@@ -111,7 +111,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledTimes(1);
     });
-    expect(useCanvasStore.getState().generatePanelNodeId).toBeNull();
+    expect(useCanvasStore.getState().panelHostId).toBeNull();
     expect(
       screen.queryByTestId('generate-prompt-editor'),
     ).not.toBeInTheDocument();

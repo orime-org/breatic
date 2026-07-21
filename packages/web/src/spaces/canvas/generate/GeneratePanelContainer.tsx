@@ -135,7 +135,7 @@ function GeneratePanelBody({
   spaceId,
 }: GeneratePanelContainerProps & { nodeId: string }): React.JSX.Element {
   const t = useTranslation();
-  const closeGeneratePanel = useCanvasStore((s) => s.closeGeneratePanel);
+  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const startReferencePick = useCanvasStore((s) => s.startReferencePick);
   const startStylePick = useCanvasStore((s) => s.startStylePick);
 
@@ -600,9 +600,10 @@ function GeneratePanelBody({
       // the same node) must not close the freshly-reopened panel.
       if (
         isMountedRef.current &&
-        useCanvasStore.getState().generatePanelNodeId === nodeId
+        useCanvasStore.getState().panelHostId === nodeId &&
+        useCanvasStore.getState().panelKind === 'generate'
       ) {
-        closeGeneratePanel();
+        closeActivePanel();
       }
     } catch (err) {
       // The failure toast is UNCONDITIONAL (silent-fail mandate): sonner is a
@@ -625,7 +626,7 @@ function GeneratePanelBody({
     projectId,
     spaceId,
     freshVm,
-    closeGeneratePanel,
+    closeActivePanel,
     t,
   ]);
 
@@ -684,7 +685,7 @@ function GeneratePanelBody({
       creditEstimate={vm.creditEstimate}
       canExecute={canExecute}
       promptSlot={promptSlot}
-      onExit={closeGeneratePanel}
+      onExit={closeActivePanel}
       onSelectModel={onSelectModel}
       onToggleMode={onToggleMode}
       onChangeParams={onChangeParams}
@@ -708,25 +709,29 @@ function GeneratePanelBody({
 
 /**
  * The Generate panel's canvas integration point. Rendered once inside the
- * ReactFlow subtree; shows nothing until a node's panel is opened (store
- * `generatePanelNodeId`), then floats {@link GeneratePanel} below that node via
- * ReactFlow's `NodeToolbar` (which tracks the node without changing the
- * viewport — panel open never zooms or re-centers).
+ * ReactFlow subtree; shows nothing until a node's Generate panel is opened
+ * (store `panelHostId` with `panelKind === 'generate'` — the reset-empty panel
+ * shares the host but renders its own container), then floats
+ * {@link GeneratePanel} below that node via ReactFlow's `NodeToolbar` (which
+ * tracks the node without changing the viewport — panel open never zooms).
  * @param props - Live nodes / edges and the project / space ids.
  * @returns The floating Generate panel, or null when none is open.
  */
 export function GeneratePanelContainer(
   props: GeneratePanelContainerProps,
 ): React.JSX.Element | null {
-  const nodeId = useCanvasStore((s) => s.generatePanelNodeId);
-  const closeGeneratePanel = useCanvasStore((s) => s.closeGeneratePanel);
+  const host = useCanvasStore((s) => s.panelHostId);
+  const kind = useCanvasStore((s) => s.panelKind);
+  // Only this container's kind; the reset-empty panel shares `panelHostId`.
+  const nodeId = kind === 'generate' ? host : null;
+  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   // Close the panel + end any reference pick when the target node disappears
   // (e.g. a collaborator deletes it) so we never render a stale panel or leave
   // pick mode pointing at a node that no longer exists.
   const nodeGone = nodeId != null && !props.nodes.some((n) => n.id === nodeId);
   React.useEffect(() => {
-    if (nodeGone) closeGeneratePanel();
-  }, [nodeGone, closeGeneratePanel]);
+    if (nodeGone) closeActivePanel();
+  }, [nodeGone, closeActivePanel]);
   if (nodeId == null || nodeGone) return null;
   return <CatalogGatedPanel {...props} nodeId={nodeId} />;
 }
@@ -748,7 +753,7 @@ function CatalogGatedPanel(
   props: GeneratePanelContainerProps & { nodeId: string },
 ): React.JSX.Element | null {
   const t = useTranslation();
-  const closeGeneratePanel = useCanvasStore((s) => s.closeGeneratePanel);
+  const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const { isError, data } = useQuery({
     queryKey: ['models'],
     queryFn: () => modelsApi.list(),
@@ -765,9 +770,9 @@ function CatalogGatedPanel(
       toast.error(t('canvas.generatePanel.catalogUnavailable'), {
         id: 'generate-catalog-unavailable',
       });
-      closeGeneratePanel();
+      closeActivePanel();
     }
-  }, [catalogError, closeGeneratePanel, t]);
+  }, [catalogError, closeActivePanel, t]);
   if (catalogError) return null;
   return (
     <NodeToolbar nodeId={props.nodeId} isVisible position={Position.Bottom}>

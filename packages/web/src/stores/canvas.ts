@@ -103,13 +103,21 @@ interface CanvasState {
   /** Canvas → chrome mirror: whether a redo is currently available. */
   canRedo: boolean;
   /**
-   * Per-user Generate panel: the node id whose Generate panel is open for THIS
-   * user, or null. Local UI only (never Yjs) — one collaborator opening a
-   * panel must not open it for others. Only one panel is open at a time; the
-   * panel's collaborative content (prompt / model / params / references) lives
-   * on the node itself.
+   * Per-user node panel host: the node id whose bottom-anchored panel (Generate
+   * or reset-empty-image) is open for THIS user, or null. Local UI only (never
+   * Yjs) — one collaborator opening a panel must not open it for others. The
+   * two panels share one host + one lifecycle and are mutually exclusive (only
+   * one is ever open); `panelKind` picks which body renders. The panel's
+   * collaborative content (Generate's prompt / model / params / references)
+   * lives on the node itself.
    */
-  generatePanelNodeId: string | null;
+  panelHostId: string | null;
+  /**
+   * Which panel is open on `panelHostId` (null when no panel is open). A single
+   * host + kind is the correct abstraction for N mutually-exclusive node-
+   * anchored panels — cheaper and inherently exclusive versus parallel states.
+   */
+  panelKind: 'generate' | 'resetEmpty' | null;
   /**
    * The in-progress canvas node-pick session (reference or style), or null.
    * When set, the canvas is in pick mode for `pickSession.nodeId`: clicking
@@ -157,8 +165,10 @@ interface CanvasState {
   setHistoryAvailability: (canUndo: boolean, canRedo: boolean) => void;
   /** Open the Generate panel for a node (replaces any currently open panel). */
   openGeneratePanel: (nodeId: string) => void;
-  /** Close the Generate panel (exit button, or execute hands off to handling). */
-  closeGeneratePanel: () => void;
+  /** Open the reset-empty-image panel for a node (replaces any open panel). */
+  openEmptyImagePanel: (nodeId: string) => void;
+  /** Close whichever bottom panel is open (exit button, or execute hands off). */
+  closeActivePanel: () => void;
   /** Enter a REFERENCE pick (wires i2i source edges) for a generative node. */
   startReferencePick: (nodeId: string) => void;
   /** Enter a STYLE pick (#1664, copies one image URL into the slot) for a generative node. */
@@ -198,7 +208,8 @@ export const useCanvasStore = create<CanvasState>()(
     pendingRename: null,
     canUndo: false,
     canRedo: false,
-    generatePanelNodeId: null,
+    panelHostId: null,
+    panelKind: null,
     pickSession: null,
     pendingFocusUploads: [],
     setSelectedNodeIds: (ids) =>
@@ -288,15 +299,25 @@ export const useCanvasStore = create<CanvasState>()(
       }),
     openGeneratePanel: (nodeId) =>
       set((s) => {
-        s.generatePanelNodeId = nodeId;
-        // Switching the panel to another node must exit any in-progress pick —
-        // otherwise a stale pick would wire the next click to the PREVIOUS node
-        // (closeGeneratePanel clears it too).
+        s.panelHostId = nodeId;
+        s.panelKind = 'generate';
+        // Switching the panel to another node (or from the reset panel) must
+        // exit any in-progress pick — otherwise a stale pick would wire the
+        // next click to the PREVIOUS node (closeActivePanel clears it too).
         s.pickSession = null;
       }),
-    closeGeneratePanel: () =>
+    openEmptyImagePanel: (nodeId) =>
       set((s) => {
-        s.generatePanelNodeId = null;
+        // Opening reset replaces any open panel (Generate included) — single
+        // host + kind makes the two mutually exclusive with no manual bookkeeping.
+        s.panelHostId = nodeId;
+        s.panelKind = 'resetEmpty';
+        s.pickSession = null;
+      }),
+    closeActivePanel: () =>
+      set((s) => {
+        s.panelHostId = null;
+        s.panelKind = null;
         s.pickSession = null;
       }),
     startReferencePick: (nodeId) =>
@@ -337,7 +358,8 @@ export const useCanvasStore = create<CanvasState>()(
         s.pendingRename = null;
         s.canUndo = false;
         s.canRedo = false;
-        s.generatePanelNodeId = null;
+        s.panelHostId = null;
+        s.panelKind = null;
         s.pickSession = null;
         s.pendingFocusUploads = [];
         // `minimapVisible` / `snapToGrid` / `zoom` are viewport preferences, not

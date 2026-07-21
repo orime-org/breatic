@@ -43,9 +43,9 @@ describe('resetProjectUiStores (#1771)', () => {
   });
 
   it('clears the open Generate panel and pick session (the reported symptom)', () => {
-    expect(useCanvasStore.getState().generatePanelNodeId).toBe('node-1');
+    expect(useCanvasStore.getState().panelHostId).toBe('node-1');
     resetProjectUiStores();
-    expect(useCanvasStore.getState().generatePanelNodeId).toBeNull();
+    expect(useCanvasStore.getState().panelHostId).toBeNull();
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
 
@@ -53,7 +53,8 @@ describe('resetProjectUiStores (#1771)', () => {
     resetProjectUiStores();
     const canvas = useCanvasStore.getState();
     expect(canvas.selectedNodeIds).toEqual([]);
-    expect(canvas.generatePanelNodeId).toBeNull();
+    expect(canvas.panelHostId).toBeNull();
+    expect(canvas.panelKind).toBeNull();
     expect(canvas.pickSession).toBeNull();
 
     const ui = useUIStore.getState();

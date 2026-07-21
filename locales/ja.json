@@ -361,7 +361,8 @@
       "upload": "アップロード",
       "tools": "ツール",
       "lock": "ノードをロック",
-      "unlock": "ノードのロック解除"
+      "unlock": "ノードのロック解除",
+      "resetEmpty": "空の画像にリセット"
     },
     "edge": {
       "delete": "接続を削除"
@@ -391,6 +392,32 @@
       "kindWeb": "ウェブ",
       "kindAnnotation": "注釈",
       "kindGroup": "グループ"
+    },
+    "emptyImage": {
+      "title": "空の画像",
+      "width": "幅",
+      "height": "高さ",
+      "execute": "作成",
+      "exit": "終了",
+      "generateFailed": "画像を作成できませんでした。もう一度お試しください。",
+      "color": {
+        "white": "白",
+        "lightGray": "ライトグレー",
+        "gray": "グレー",
+        "black": "黒",
+        "red": "赤",
+        "orange": "オレンジ",
+        "yellow": "黄",
+        "green": "緑",
+        "blue": "青",
+        "violet": "紫",
+        "custom": "カスタムカラー"
+      },
+      "sections": {
+        "ratio": "比率",
+        "resolution": "解像度",
+        "color": "色"
+      }
     }
   },
   "editor": {
