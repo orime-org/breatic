@@ -6,6 +6,7 @@ import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { Label } from '@web/components/ui/label';
+import { Slider } from '@web/components/ui/slider';
 
 export type InpaintTool = 'brush' | 'erase';
 
@@ -24,8 +25,10 @@ interface BrushControlsProps {
  * Inpaint mask controls — brush vs erase mode, size slider, opacity
  * slider, and undo. Lives as a floating bar above the inpaint canvas.
  *
- * Native range inputs are used instead of shadcn Slider to keep the test
- * surface trivial and let users drag without pointer-events polyfills.
+ * Sliders are the div-based {@link Slider} primitive (Radix), never a native
+ * `<input type=range>` whose thumb shape differs per browser — cross-engine
+ * visual consistency is mandatory for a creative product (see the "no
+ * browser/OS-native-rendered UI" mandate in web/CLAUDE.md).
  * @param root0 - Brush control props.
  * @param root0.tool - Currently active paint mode (brush adds mask, erase removes it).
  * @param root0.brushSize - Brush diameter in image pixels, bound to the size slider.
@@ -74,33 +77,29 @@ export function BrushControls({
           <Eraser className='h-4 w-4' />
         </Button>
       </div>
-      <div className='flex items-center gap-1'>
-        <Label htmlFor='brush-size' className='text-xs'>
-          Size
-        </Label>
-        <input
-          id='brush-size'
-          type='range'
+      <div className='flex items-center gap-2'>
+        <Label className='text-xs'>Size</Label>
+        <Slider
+          className='w-24'
+          aria-label='Brush size'
           min={1}
           max={120}
-          value={brushSize}
-          onChange={(e) => onBrushSizeChange(Number(e.target.value))}
+          step={1}
+          value={[brushSize]}
+          onValueChange={([v]) => onBrushSizeChange(v)}
           data-testid='brush-size'
         />
       </div>
-      <div className='flex items-center gap-1'>
-        <Label htmlFor='brush-opacity' className='text-xs'>
-          Opacity
-        </Label>
-        <input
-          id='brush-opacity'
-          type='range'
+      <div className='flex items-center gap-2'>
+        <Label className='text-xs'>Opacity</Label>
+        <Slider
+          className='w-24'
+          aria-label='Opacity'
           min={0}
           max={100}
-          value={Math.round(opacity * 100)}
-          onChange={(e) =>
-            onOpacityChange(Number(e.target.value) / 100)
-          }
+          step={1}
+          value={[Math.round(opacity * 100)]}
+          onValueChange={([v]) => onOpacityChange(v / 100)}
           data-testid='brush-opacity'
         />
       </div>
