@@ -51,6 +51,16 @@ describe('EmptyImageColorPicker', () => {
     expect(swatch.style.backgroundColor).toBe('rgb(255, 255, 255)');
   });
 
+  // The popover anchors to the trigger's bounding rect; a hover SCALE on the
+  // trigger changes that rect, so moving the mouse off it (toward the popover)
+  // shrinks the trigger and floating-ui jumps the popover. The trigger must use
+  // a hover affordance that does NOT change its layout rect.
+  it('the trigger has no layout-changing hover scale (would jump the popover)', () => {
+    render(<EmptyImageColorPicker value='#ffffff' onChange={() => {}} />);
+    const swatch = screen.getByTestId('empty-image-color-custom');
+    expect(swatch.className).not.toContain('scale');
+  });
+
   it('stays closed until the swatch is clicked', () => {
     render(<EmptyImageColorPicker value='#ffffff' onChange={() => {}} />);
     expect(screen.queryByTestId('mock-hex-picker')).not.toBeInTheDocument();
