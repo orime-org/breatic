@@ -49,10 +49,11 @@ export function EmptyImageColorPicker({
           data-testid='empty-image-color-custom'
           aria-label={t('canvas.emptyImage.color.custom')}
           style={{ backgroundColor: value }}
-          // Hover fades to semi-transparent (opacity only) — a clear affordance
-          // that, unlike a scale, never changes the layout rect, so it can't
-          // jump the popover the trigger is anchored to (user-reported bug).
-          className='h-8 w-8 rounded-full border border-border transition-opacity hover:opacity-70 focus-visible:border-active-border focus-visible:outline-none'
+          // Hover = active-border colour + semi-transparent (opacity), stacked
+          // for a clear affordance. Both are paint-only and never change the
+          // layout rect, so the popover the trigger is anchored to can't jump
+          // (a hover SCALE did change the rect — the earlier user-reported bug).
+          className='h-8 w-8 rounded-full border border-border transition hover:border-active-border hover:opacity-70 focus-visible:border-active-border focus-visible:outline-none'
         />
       </PopoverTrigger>
       <PopoverContent
