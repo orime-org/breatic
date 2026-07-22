@@ -12,7 +12,7 @@ import {
 } from '@web/pages/studio/container/access';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import { RoleBadge, VisibilityBadge } from '@web/pages/studio/shared/badges';
-import { formatRelativeTime } from '@web/pages/studio/shared/format-relative-time';
+import { formatRelativeTime } from '@web/lib/format-relative-time';
 import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
 interface ProjectCardProps {

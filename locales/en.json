@@ -308,7 +308,8 @@
       "tools": "Tools",
       "lock": "Lock node",
       "unlock": "Unlock node",
-      "resetEmpty": "Reset to empty image"
+      "resetEmpty": "Reset to empty image",
+      "history": "History"
     },
     "generatePanel": {
       "style": "Style",
@@ -417,6 +418,22 @@
         "ratio": "Ratio",
         "resolution": "Resolution",
         "color": "Color"
+      }
+    },
+    "history": {
+      "title": "History",
+      "count": "{count, plural, one {# entry} other {# entries}}",
+      "restore": "Restore",
+      "current": "Current",
+      "failed": "Can’t restore",
+      "typeGeneration": "Generated",
+      "typeUpload": "Upload",
+      "end": "No more",
+      "close": "Close",
+      "loadError": "Couldn’t load history",
+      "empty": {
+        "title": "No history yet",
+        "hint": "Every generation or upload on this node is recorded here. If you were charged but the result never appeared on the node, you can restore it from here."
       }
     }
   },

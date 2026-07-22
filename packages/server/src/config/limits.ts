@@ -29,6 +29,7 @@ export const limitsConfigSchema = z.object({
   activity_feed_page_default: z.number().int().positive().default(50),
   activity_feed_page_max: z.number().int().positive().default(100),
   canvas_reference_pool_cap: z.number().int().positive().default(50),
+  node_history_page_size: z.number().int().positive().default(20),
 });
 
 let _cached: z.infer<typeof limitsConfigSchema> | null = null;
@@ -82,4 +83,13 @@ export function getActivityFeedPageLimits(): { default: number; max: number } {
  */
 export function getCanvasReferencePoolCap(): number {
   return loadConfig().canvas_reference_pool_cap;
+}
+
+/**
+ * Page size the frontend requests per infinite-scroll page of a node's
+ * history (#1619). Served to the frontend via `GET /canvas/limits`.
+ * @returns The node-history page size.
+ */
+export function getNodeHistoryPageSize(): number {
+  return loadConfig().node_history_page_size;
 }

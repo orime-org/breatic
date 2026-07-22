@@ -362,7 +362,8 @@
       "tools": "도구",
       "lock": "노드 잠금",
       "unlock": "노드 잠금 해제",
-      "resetEmpty": "빈 이미지로 초기화"
+      "resetEmpty": "빈 이미지로 초기화",
+      "history": "기록"
     },
     "edge": {
       "delete": "연결 삭제"
@@ -417,6 +418,22 @@
         "ratio": "비율",
         "resolution": "해상도",
         "color": "색상"
+      }
+    },
+    "history": {
+      "title": "기록",
+      "count": "총 {count}개",
+      "restore": "복원",
+      "current": "현재",
+      "failed": "복원 불가",
+      "typeGeneration": "생성",
+      "typeUpload": "업로드",
+      "end": "더 이상 없음",
+      "close": "닫기",
+      "loadError": "기록을 불러오지 못했습니다",
+      "empty": {
+        "title": "아직 기록이 없습니다",
+        "hint": "이 노드의 모든 생성과 업로드가 여기에 기록됩니다. 크레딧이 차감됐는데 결과가 노드에 나타나지 않았다면 여기서 복원할 수 있습니다."
       }
     }
   },

@@ -362,7 +362,8 @@
       "tools": "工具",
       "lock": "鎖定節點",
       "unlock": "解鎖節點",
-      "resetEmpty": "重設為空白圖片"
+      "resetEmpty": "重設為空白圖片",
+      "history": "歷史記錄"
     },
     "edge": {
       "delete": "刪除連線"
@@ -417,6 +418,22 @@
         "ratio": "比率",
         "resolution": "解析度",
         "color": "顏色"
+      }
+    },
+    "history": {
+      "title": "歷史記錄",
+      "count": "共 {count} 條",
+      "restore": "恢復",
+      "current": "當前",
+      "failed": "不可恢復",
+      "typeGeneration": "生成",
+      "typeUpload": "上傳",
+      "end": "沒有更多了",
+      "close": "關閉",
+      "loadError": "歷史記錄載入失敗",
+      "empty": {
+        "title": "還沒有歷史記錄",
+        "hint": "這個節點每次生成或上傳後，結果都會記在這裡。萬一扣了費、結果卻沒出現在節點上，可以從這裡把它找回。"
       }
     }
   },

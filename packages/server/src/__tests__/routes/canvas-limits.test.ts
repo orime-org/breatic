@@ -33,6 +33,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 // MONOREPO_ROOT at /tmp, so the real loader cannot run in this harness).
 vi.mock("../../config/limits.js", () => ({
   getCanvasReferencePoolCap: vi.fn(() => 42),
+  getNodeHistoryPageSize: vi.fn(() => 15),
 }));
 
 import { createApp } from "../../app.js";
@@ -55,8 +56,9 @@ describe("GET /canvas/limits", () => {
     const res = await app.request("/api/v1/canvas/limits", { headers: AUTH });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      data: { referencePoolCap: number };
+      data: { referencePoolCap: number; nodeHistoryPageSize: number };
     };
     expect(body.data.referencePoolCap).toBe(42);
+    expect(body.data.nodeHistoryPageSize).toBe(15);
   });
 });

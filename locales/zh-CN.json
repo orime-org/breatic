@@ -362,7 +362,8 @@
       "tools": "工具",
       "lock": "锁定节点",
       "unlock": "解锁节点",
-      "resetEmpty": "重置为空图片"
+      "resetEmpty": "重置为空图片",
+      "history": "历史记录"
     },
     "edge": {
       "delete": "删除连线"
@@ -417,6 +418,22 @@
         "ratio": "比率",
         "resolution": "分辨率",
         "color": "颜色"
+      }
+    },
+    "history": {
+      "title": "历史记录",
+      "count": "共 {count} 条",
+      "restore": "恢复",
+      "current": "当前",
+      "failed": "不可恢复",
+      "typeGeneration": "生成",
+      "typeUpload": "上传",
+      "end": "没有更多了",
+      "close": "关闭",
+      "loadError": "历史记录加载失败",
+      "empty": {
+        "title": "还没有历史记录",
+        "hint": "这个节点每次生成或上传后，结果都会记在这里。万一扣了费、结果却没出现在节点上，可以从这里把它找回。"
       }
     }
   },

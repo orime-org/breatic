@@ -1939,11 +1939,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     }
   });
 
-  // ---- #1623 reset gate 1: menu click on a LOCKED image node ----
-  // Unlike Generate (opens even when locked, as a prompt read surface), the
-  // reset panel is a pure blank-image action — a locked node refuses to OPEN
-  // it. Fresh Yjs read (own-flag; a group lock does not freeze content, #350).
-  it('reset-to-empty on a LOCKED image node toasts and does not open the panel (#1623 gate 1)', () => {
+  // ---- reset menu click is GATE-FREE (user 2026-07-22, unify with History) ----
+  // Right-click opens the reset panel regardless of node state — configuring a
+  // reset is not a mutation. The gate lives at EXECUTE (gate 2 test below), so a
+  // LOCKED node still opens the panel here and never toasts at menu-click.
+  it('reset-to-empty on a LOCKED image node OPENS the panel gate-free — menu never gates (user 2026-07-22)', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -1970,18 +1970,9 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         );
       });
       fireEvent.click(screen.getByTestId('node-menu-reset-image'));
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      expect(useCanvasStore.getState().panelHostId).toBeNull();
-
-      // Control: unlocked, the same click opens the reset panel — proves the
-      // gate (not a broken wire) suppressed it above.
-      lockedSpy.mockReturnValue(false);
-      act(() => {
-        node?.dispatchEvent(
-          new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
-        );
-      });
-      fireEvent.click(screen.getByTestId('node-menu-reset-image'));
+      // Panel opens even though the node is locked; NO menu-click toast — the
+      // gate fires only at Execute (the gate-2 test proves the write is blocked).
+      expect(warnSpy).not.toHaveBeenCalled();
       expect(useCanvasStore.getState().panelKind).toBe('resetEmpty');
       expect(useCanvasStore.getState().panelHostId).toBe('img');
     } finally {

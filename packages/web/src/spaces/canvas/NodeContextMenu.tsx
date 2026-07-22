@@ -4,6 +4,7 @@
 import {
   Copy,
   CopyPlus,
+  History,
   ImagePlus,
   Lock,
   Pencil,
@@ -64,6 +65,13 @@ interface NodeContextMenuProps {
    * does not render, so it never appears on text / audio / video nodes.
    */
   onResetImage?: () => void;
+  /**
+   * Open the node-history panel for this node (#1619, browse + restore past
+   * results). Passed for editable content nodes (image / video / audio); when
+   * absent the item does not render, so it never appears on text / group /
+   * read-only nodes.
+   */
+  onOpenHistory?: () => void;
   /** Copy the node / group (with its members) to the clipboard. */
   onCopy?: () => void;
   /** Duplicate the node / group (with its members) in place. */
@@ -96,6 +104,8 @@ interface NodeContextMenuProps {
  * @param root0.onDelete - Delete the node / group.
  * @param root0.onUpload - Fill / replace the node's content via the file picker (node target only).
  * @param root0.onGenerate - Open the Generate panel (content nodes that support it, e.g. image).
+ * @param root0.onResetImage - Reset an image node to a fresh blank image (image nodes only).
+ * @param root0.onOpenHistory - Open the node-history panel (content nodes only).
  * @param root0.onCopy - Copy the node / group (with its members).
  * @param root0.onDuplicate - Duplicate the node / group (with its members).
  * @param root0.onUngroup - Ungroup the group (group target only).
@@ -114,6 +124,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onUpload,
   onGenerate,
   onResetImage,
+  onOpenHistory,
   onCopy,
   onDuplicate,
   onUngroup,
@@ -171,6 +182,15 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
               >
                 <ImagePlus className='mr-2 h-4 w-4' aria-hidden='true' />
                 {t('canvas.nodeMenu.resetEmpty')}
+              </DropdownMenuItem>
+            ) : null}
+            {onOpenHistory ? (
+              <DropdownMenuItem
+                data-testid='node-menu-history'
+                onSelect={onOpenHistory}
+              >
+                <History className='mr-2 h-4 w-4' aria-hidden='true' />
+                {t('canvas.nodeMenu.history')}
               </DropdownMenuItem>
             ) : null}
             <DropdownMenuItem disabled data-testid='node-menu-tools'>

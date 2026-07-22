@@ -24,6 +24,41 @@ export interface CanvasLimits {
    * focus crops combined. Enforced by the frontend at add time (soft cap).
    */
   referencePoolCap: number;
+  /**
+   * Page size the frontend requests per infinite-scroll page of a node's
+   * history (#1619). A soft UI knob — the server default (20) applies before
+   * this loads.
+   */
+  nodeHistoryPageSize: number;
+}
+
+/**
+ * One node-history row (#1619) — a past generation (success or failed) or a
+ * user upload. `createdAt` is an ISO-8601 string over the wire (JSON has no
+ * Date). `metadata` is the free-form jsonb the backend recorded: a generation
+ * carries `model` / `cost`, an upload carries `filename`.
+ */
+export interface NodeHistoryEntry {
+  id: string;
+  /**
+   * Display name of the operator, joined server-side from their personal
+   * studio (pointer model — renames propagate). `null` when unresolved
+   * (studio deleted); the row then shows the time alone (#1619).
+   */
+  operatorName: string | null;
+  entryType: 'generation' | 'upload';
+  status: 'success' | 'failed';
+  /** The result asset URL; `null` for a failed generation. */
+  content: string | null;
+  thumbnailUrl: string | null;
+  errorMessage: string | null;
+  metadata: {
+    model?: string;
+    cost?: number;
+    filename?: string;
+    [k: string]: unknown;
+  };
+  createdAt: string;
 }
 
 let limitsCache: CanvasLimits | null = null;
@@ -86,5 +121,34 @@ export const canvasApi = {
     return apiGet<{ tasks: CanvasTask[] }>('/canvas/tasks', {
       params: { projectId, ...params },
     });
+  },
+
+  /**
+   * List a node's content history (generations + uploads), newest first,
+   * paginated (#1619). The endpoint nests `{ entries, total }` under `data`,
+   * so `apiGet` unwraps it in one hop (no bespoke raw read).
+   * @param nodeId - Canvas node id (uuid).
+   * @param projectId - Project the node belongs to (tenancy check, viewer+).
+   * @param opts - Pagination window.
+   * @param opts.limit - Page size (from {@link CanvasLimits.nodeHistoryPageSize}).
+   * @param opts.offset - Rows to skip.
+   * @returns The page of entries plus the total count matching the node.
+   * @throws {import('@web/data/api/types').ApiException} On a failed request.
+   */
+  listNodeHistory(
+    nodeId: string,
+    projectId: string,
+    opts: { limit: number; offset: number },
+  ): Promise<{ entries: NodeHistoryEntry[]; total: number }> {
+    return apiGet<{ entries: NodeHistoryEntry[]; total: number }>(
+      `/canvas/nodes/${nodeId}/history`,
+      {
+        params: {
+          project_id: projectId,
+          limit: opts.limit,
+          offset: opts.offset,
+        },
+      },
+    );
   },
 };
