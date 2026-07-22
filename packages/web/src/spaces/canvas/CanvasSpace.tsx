@@ -2676,33 +2676,17 @@ function CanvasSpaceInner({
     },
     [projectId, spaceId, t, closeActivePanel, fillUpload],
   );
-  // Node menu "reset to empty image": gate 1 (menu click, D8-①). Unlike Generate
-  // (which opens even on a locked node as a read surface for the prompt), the
-  // reset panel is a pure blank-image ACTION with no recipe to view — so a
-  // locked / handling node refuses to OPEN it. Fresh Yjs read; own-flag only.
+  // Node menu "reset to empty image": opens the blank-image panel GATE-FREE,
+  // like Generate + History — configuring a reset is not a mutation. The gate
+  // lives at EXECUTE (resetNodeToEmptyImage re-reads fresh Yjs, and fillUpload
+  // re-gates before setHandling), so a node a collaborator locked / a task
+  // started on refuses the WRITE, never the panel (user 2026-07-22: unify with
+  // History — right-click never gates on node state, only execution does).
   const resetImageFromMenu = React.useCallback((): void => {
     const nodeId = nodeMenu.nodeId;
-    const gateBlock = evaluateNodeGate(
-      {
-        locked: isNodeLocked(projectId, spaceId, nodeId),
-        handling: isNodeHandling(projectId, spaceId, nodeId),
-      },
-      'editContent',
-    );
-    if (gateBlock) {
-      warnNodeGate(t(gateBlock.toastKey));
-      return;
-    }
     openEmptyImagePanel(nodeId);
     selectOnlyNode(nodeId);
-  }, [
-    nodeMenu.nodeId,
-    projectId,
-    spaceId,
-    t,
-    openEmptyImagePanel,
-    selectOnlyNode,
-  ]);
+  }, [nodeMenu.nodeId, openEmptyImagePanel, selectOnlyNode]);
   // Restore a past result onto the node (#1619): gate 2 (execute, fresh Yjs) +
   // a media-aware, lease-safe write-back that records NO new history row
   // (restore re-points to an existing result). A successful restore CLOSES the
