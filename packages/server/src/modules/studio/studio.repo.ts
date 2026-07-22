@@ -152,21 +152,27 @@ export async function countTeamStudiosAdministeredBy(
 }
 
 /**
- * Batch-resolve each user's active personal studio `name`.
+ * Batch-resolve each user's active personal studio identity (`name` +
+ * `avatarUrl`).
  *
- * Backs display-name lookup for `/users` batch + invite `inviterName`
- * (the name moved off `users` to the personal studio). Users with no
- * active personal studio are absent from the map; callers fall back to
- * the email local-part.
+ * Backs the `/users` batch display-info endpoint — the display name and
+ * avatar both live on the personal studio (pointer model; avatar moved off
+ * `users` 2026-07-22, #1808). Users with no active personal studio are
+ * absent from the map; callers fall back to the email local-part (and a
+ * null avatar).
  * @param createdByUserIds - User UUIDs to resolve (empty input → empty map)
- * @returns Map of `userId → personal studio name`
+ * @returns Map of `userId → { name, avatarUrl }`
  */
-export async function getPersonalNamesByCreators(
+export async function getPersonalIdentitiesByCreators(
   createdByUserIds: string[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, { name: string; avatarUrl: string | null }>> {
   if (createdByUserIds.length === 0) return new Map();
   const rows = await db
-    .select({ createdByUserId: studios.createdByUserId, name: studios.name })
+    .select({
+      createdByUserId: studios.createdByUserId,
+      name: studios.name,
+      avatarUrl: studios.avatarUrl,
+    })
     .from(studios)
     .where(
       and(
@@ -175,7 +181,9 @@ export async function getPersonalNamesByCreators(
         isNull(studios.deletedAt),
       ),
     );
-  return new Map(rows.map((r) => [r.createdByUserId, r.name]));
+  return new Map(
+    rows.map((r) => [r.createdByUserId, { name: r.name, avatarUrl: r.avatarUrl }]),
+  );
 }
 
 /**

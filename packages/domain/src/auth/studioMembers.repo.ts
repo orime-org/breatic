@@ -85,11 +85,12 @@ export async function insertAdmin(
 /**
  * List a studio's active members with display fields, for the Members tab.
  *
- * Backs `GET /studio/:slug/members`. Joins each member to `users` (email,
- * avatar) and to that user's personal studio for the display `name` — the
- * user's display name lives on their personal studio (there is no
- * `users.username`). Soft-deleted members are excluded; ordered oldest-first
- * (`addedAt`) so the admin/creator appears at the top.
+ * Backs `GET /studio/:slug/members`. Joins each member to `users` for `email`
+ * and to that user's personal studio for the display `name` + `avatar` — a
+ * user's display name and avatar both live on their personal studio (there is
+ * no `users.username`, and `users.avatar_url` moved to the studio in #1808).
+ * Soft-deleted members are excluded; ordered oldest-first (`addedAt`) so the
+ * admin/creator appears at the top.
  * @param studioId - Studio UUID
  * @returns Active members: userId, email, display name, avatar, role, joinedAt
  */
@@ -110,7 +111,7 @@ export async function listByStudio(
       userId: studioMembers.userId,
       email: users.email,
       name: studios.name,
-      avatarUrl: users.avatarUrl,
+      avatarUrl: studios.avatarUrl,
       role: studioMembers.role,
       addedAt: studioMembers.addedAt,
     })

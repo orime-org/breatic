@@ -108,7 +108,7 @@ const mockCreatePersonalStudio = vi.fn();
 vi.mock("@server/modules/studio/studio.service.js", () => ({
   createPersonalStudio: mockCreatePersonalStudio,
   getPersonalStudio: vi.fn(),
-  getPersonalStudioNamesByUserIds: vi.fn(),
+  getPersonalStudioIdentitiesByUserIds: vi.fn(),
 }));
 
 vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, unknown>>) => ({
@@ -126,7 +126,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     let capturedHash: string | undefined;
     mockCreateUser.mockImplementation(async (data: { hashedPassword?: string; email: string }) => {
       capturedHash = data.hashedPassword;
-      return { id: "u-new", email: data.email, avatarUrl: null };
+      return { id: "u-new", email: data.email };
     });
 
     const { register } = await import("../auth.service.js");
@@ -146,7 +146,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     let captured: Record<string, unknown> | undefined;
     mockCreateUser.mockImplementation(async (data: Record<string, unknown>) => {
       captured = data;
-      return { id: "u-new", email: data.email, avatarUrl: null };
+      return { id: "u-new", email: data.email };
     });
 
     const { register } = await import("../auth.service.js");
@@ -166,7 +166,6 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     mockCreateUser.mockResolvedValue({
       id: "u-new",
       email: "new@example.com",
-      avatarUrl: null,
     });
 
     const { register } = await import("../auth.service.js");
@@ -180,7 +179,6 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     mockCreateUser.mockResolvedValue({
       id: "u-new",
       email: "new@example.com",
-      avatarUrl: null,
     });
 
     const { register } = await import("../auth.service.js");
@@ -203,7 +201,6 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     mockCreateUser.mockResolvedValue({
       id: "u-new",
       email: "new@example.com",
-      avatarUrl: null,
     });
 
     const { register } = await import("../auth.service.js");
@@ -252,7 +249,6 @@ describe("auth.service invariant — forgotPassword anti-enumeration (锁现状�
     mockGetUserByEmail.mockResolvedValue({
       id: "u-1",
       email: "real@example.com",
-      avatarUrl: null,
     });
 
     const { forgotPassword } = await import("../auth.service.js");
@@ -297,5 +293,44 @@ describe("auth.service invariant — resetPassword token contract (锁现状回�
     const delKey = mockRedis.del.mock.calls[0]?.[0] as string;
     expect(delKey).toMatch(/^test:password-reset:valid-token$/);
     expect(mockDeleteAllSessions).toHaveBeenCalledOnce();
+  });
+});
+
+describe("auth.service invariant — Google OAuth is pure auth (#1808, INV-4)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("loginOrCreateGoogle takes ONLY (googleId, email) — never imports Google name/avatar, only syncs email_verified", async () => {
+    // #1808: Google is pure authentication. Identity is user-owned (the slug
+    // picked at slug-setup + a UI avatar upload, #1809), so Google's display
+    // name / picture are never accepted here. A regression that re-adds a
+    // name/avatar param or writes an avatar (`users.avatar_url` is gone) trips
+    // this: updateUser must be called with { emailVerified: true } ONLY.
+    const existing = {
+      id: "u-g",
+      email: "g@x.com",
+      emailVerified: true,
+      googleId: "g-1",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    };
+    const userRepo = await import("@server/modules/auth/user.repo.js");
+    vi.mocked(userRepo.getUserByGoogleId).mockResolvedValue(existing);
+    let capturedUpdate: Record<string, unknown> | undefined;
+    vi.mocked(userRepo.updateUser).mockImplementation(async (_id, data) => {
+      capturedUpdate = data as Record<string, unknown>;
+      return existing;
+    });
+
+    const { loginOrCreateGoogle } = await import("../auth.service.js");
+    // The signature is (googleId, email) — TS would reject a 3rd/4th arg.
+    await loginOrCreateGoogle("g-1", "g@x.com");
+
+    expect(capturedUpdate).toEqual({ emailVerified: true });
+    expect(Object.keys(capturedUpdate!)).toEqual(["emailVerified"]);
+    // No personal studio is created in the OAuth path (slug-setup handles it).
+    expect(mockCreatePersonalStudio).not.toHaveBeenCalled();
   });
 });

@@ -241,6 +241,11 @@ describe("Auth routes", () => {
       expect(body.data.id).toBe("user-1");
       // The onboarding-gate data: a completed account exposes its studio.
       expect(body.data.personalStudio).toEqual({ name: "Alice", slug: "alice" });
+      // INV-3 (#1808): avatar is removed from the auth hot path — /auth/me no
+      // longer carries an `avatarUrl` (it was a dead field on the frontend;
+      // own-avatar display is future #1809). A regression that re-adds it to
+      // the auth context / this response trips here.
+      expect(body.data).not.toHaveProperty("avatarUrl");
     });
 
     it("returns personalStudio: null for a user who has not finished onboarding (gate signal)", async () => {

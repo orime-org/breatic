@@ -281,6 +281,13 @@
       "when": 1780900500000,
       "tag": "0039_notifications_project_transfer_types",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1780900600000,
+      "tag": "0040_avatar_to_personal_studio",
+      "breakpoints": true
     }
   ]
 }

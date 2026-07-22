@@ -25,7 +25,6 @@ export interface AuthVariables {
   user: {
     id: string;
     email: string;
-    avatarUrl: string | null;
     credits: number;
   };
 }
@@ -33,7 +32,7 @@ export interface AuthVariables {
 /**
  * Require authentication — returns 401 if the session cookie is
  * missing or invalid.
- * @param c - The Hono request context; the resolved user (id, email, avatarUrl, credits) is set on it.
+ * @param c - The Hono request context; the resolved user (id, email, credits) is set on it.
  * @param next - The downstream handler, invoked only when authentication succeeds.
  * @returns A 401 JSON response when the session cookie is missing or expired; otherwise nothing (control passes to `next`).
  */
@@ -56,7 +55,6 @@ export const requireAuth: MiddlewareHandler<{
   c.set("user", {
     id: user.id,
     email: user.email,
-    avatarUrl: user.avatarUrl,
     credits,
   });
   await next();

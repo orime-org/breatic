@@ -270,10 +270,10 @@ export async function revokeIfPending(
  * List a project's LIVE pending invitations with display fields, for the
  * owner's "invited (pending)" section.
  *
- * Joins the invitee to `users` (email, avatar) and to their personal studio for
- * the display `name`, plus the inviter's personal studio for `invitedByName`
- * (two `studios` aliases). Only `status = 'pending'` and non-expired,
- * non-deleted rows; newest first.
+ * Joins the invitee to `users` for `email` and to their personal studio for the
+ * display `name` + `avatar`, plus the inviter's personal studio for
+ * `invitedByName` (two `studios` aliases). Only `status = 'pending'` and
+ * non-expired, non-deleted rows; newest first.
  * @param projectId - Project UUID
  * @returns Pending invitations with display fields (empty when none)
  */
@@ -288,7 +288,7 @@ export async function listPendingByProject(
       invitedUserId: projectInvitations.invitedUserId,
       name: inviteeStudio.name,
       email: users.email,
-      avatarUrl: users.avatarUrl,
+      avatarUrl: inviteeStudio.avatarUrl,
       role: projectInvitations.role,
       invitedByName: inviterStudio.name,
       expiresAt: projectInvitations.expiresAt,

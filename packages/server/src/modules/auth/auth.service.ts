@@ -125,23 +125,22 @@ export async function loginEmail(
  * links to an existing email account or creates a new account (no
  * personal studio — like email step 1). When OAuth gets a real UI, the
  * new user will hit the same "no personal studio → pick a slug" gate as
- * email sign-ups (email-registration rewrite, 2026-06-06). Today the
- * Google button is a coming-soon placeholder; this path only stays
- * compile-clean + consistent.
+ * email sign-ups (email-registration rewrite, 2026-06-06).
+ *
+ * Google is pure authentication: we never import its display name or
+ * avatar. Identity is user-owned — the display name is the slug chosen at
+ * slug-setup, the avatar is a UI upload (#1809) — so Google's `name` /
+ * `picture` are intentionally not accepted here. The frontend GIS button is
+ * not wired up yet; on a real sign-in this path runs create/link + session +
+ * email_verified only.
  * @param googleId - The Google account identifier
  * @param email - The email address from Google
- * @param name - Display name from Google (currently unused — display name
- *   lives on the personal studio, created in the slug-setup step)
- * @param avatar - Avatar URL from Google (optional)
  * @returns The user and a session token
  */
 export async function loginOrCreateGoogle(
   googleId: string,
   email: string,
-  name?: string,
-  avatar?: string,
 ): Promise<{ user: UserEntity; token: string }> {
-  void name; // reserved for the future OAuth onboarding UI (slug-setup step)
   let user = await userRepo.getUserByGoogleId(googleId);
 
   if (!user) {
@@ -156,11 +155,10 @@ export async function loginOrCreateGoogle(
     }
   }
 
-  // Sync the latest avatar + verified flag on every Google sign-in. No
-  // personal studio is created here — the slug-setup gate handles that.
-  const updates: Parameters<typeof userRepo.updateUser>[1] = { emailVerified: true };
-  if (avatar) updates.avatarUrl = avatar;
-  user = (await userRepo.updateUser(user.id, updates)) ?? user;
+  // Mark the email verified on every Google sign-in (Google asserts it). No
+  // personal studio is created here — the slug-setup gate handles that; name
+  // + avatar are user-owned (slug / UI upload), never imported from Google.
+  user = (await userRepo.updateUser(user.id, { emailVerified: true })) ?? user;
 
   const token = crypto.randomUUID();
   const redis = getRedis();

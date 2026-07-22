@@ -17,7 +17,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../studio.repo.js", () => ({
   createPersonalStudio: vi.fn(),
   getPersonalByCreator: vi.fn(),
-  getPersonalNamesByCreators: vi.fn(),
+  getPersonalIdentitiesByCreators: vi.fn(),
   getPersonalProfilesByCreators: vi.fn(),
   getBySlug: vi.fn(),
   listByUser: vi.fn(),
@@ -58,7 +58,7 @@ import * as studioRepo from "../studio.repo.js";
 import {
   createPersonalStudio,
   getPersonalStudio,
-  getPersonalStudioNamesByUserIds,
+  getPersonalStudioIdentitiesByUserIds,
   getPersonalStudioProfilesByUserIds,
   getStudioDetail,
   listUserStudios,
@@ -139,15 +139,22 @@ describe("getPersonalStudio", () => {
   });
 });
 
-describe("getPersonalStudioNamesByUserIds", () => {
-  it("delegates to the repo's batch name lookup", async () => {
-    const names = new Map([["user-1", "alice-handle"]]);
-    vi.mocked(studioRepo.getPersonalNamesByCreators).mockResolvedValueOnce(names);
+describe("getPersonalStudioIdentitiesByUserIds", () => {
+  it("delegates to the repo's batch identity lookup (name + avatar)", async () => {
+    const identities = new Map([
+      ["user-1", { name: "alice-handle", avatarUrl: "https://cdn/a.png" }],
+    ]);
+    vi.mocked(studioRepo.getPersonalIdentitiesByCreators).mockResolvedValueOnce(
+      identities,
+    );
 
-    const result = await getPersonalStudioNamesByUserIds(["user-1", "user-2"]);
+    const result = await getPersonalStudioIdentitiesByUserIds([
+      "user-1",
+      "user-2",
+    ]);
 
-    expect(result).toBe(names);
-    expect(studioRepo.getPersonalNamesByCreators).toHaveBeenCalledWith([
+    expect(result).toBe(identities);
+    expect(studioRepo.getPersonalIdentitiesByCreators).toHaveBeenCalledWith([
       "user-1",
       "user-2",
     ]);
