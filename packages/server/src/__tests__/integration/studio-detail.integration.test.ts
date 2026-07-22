@@ -230,6 +230,11 @@ describe("getStudioMembers — member roster (display name from personal studio)
     await insertMemberRaw(ownerPersonal.id, owner, "admin");
     const memberPersonal = await insertStudio(member, "personal");
     await insertMemberRaw(memberPersonal.id, member, "admin");
+    // INV-2 (#1808): the member's avatar lives on their personal studio now.
+    // Set one on the guest's personal studio; the owner's stays null.
+    await sql`
+      UPDATE studios SET avatar_url = ${"https://cdn/m.png"} WHERE id = ${memberPersonal.id}
+    `;
     const team = await insertStudio(owner, "team");
     await insertMemberRaw(team.id, owner, "admin");
     await insertMemberRaw(team.id, member, "guest");
@@ -243,6 +248,10 @@ describe("getStudioMembers — member roster (display name from personal studio)
     // Display name comes from each member's personal studio name.
     expect(byRole.get("admin")!.name).toBe(`Studio ${ownerPersonal.slug}`);
     expect(byRole.get("guest")!.name).toBe(`Studio ${memberPersonal.slug}`);
+    // INV-2: avatar comes from each member's personal studio, not `users`
+    // (which no longer has the column). Guest has one set; owner has none.
+    expect(byRole.get("guest")!.avatarUrl).toBe("https://cdn/m.png");
+    expect(byRole.get("admin")!.avatarUrl).toBeNull();
     // joinedAt is serialized to an ISO-8601 string.
     expect(byRole.get("admin")!.addedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });

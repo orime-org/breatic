@@ -9,10 +9,11 @@
  * returns the role relation. Capped at 100 ids per call to keep the
  * endpoint cheap.
  *
- * The display name comes from each user's personal studio `name` (the
- * name moved off `users` to the personal studio — email-registration
- * rewrite, 2026-06-06). Users mid-onboarding (no studio yet) fall back to
- * the email local-part.
+ * The display name AND avatar both come from each user's personal studio
+ * (`studios.name` / `studios.avatar_url`) — they moved off `users`, which is
+ * now the pure auth table (name: email-registration rewrite 2026-06-06;
+ * avatar: #1808, 2026-07-22). Users mid-onboarding (no studio yet) fall back
+ * to the email local-part and a null avatar.
  */
 
 import { Hono } from "hono";
@@ -56,16 +57,19 @@ users.get("/", zValidator("query", querySchema), async (c) => {
     .slice(0, 100);
 
   const rows = await authService.getUsersByIds(idList);
-  const names = await studioService.getPersonalStudioNamesByUserIds(
+  const identities = await studioService.getPersonalStudioIdentitiesByUserIds(
     rows.map((u) => u.id),
   );
   return c.json({
-    data: rows.map((u) => ({
-      id: u.id,
-      email: u.email,
-      username: names.get(u.id) ?? null,
-      avatar_url: u.avatarUrl,
-    })),
+    data: rows.map((u) => {
+      const identity = identities.get(u.id);
+      return {
+        id: u.id,
+        email: u.email,
+        username: identity?.name ?? null,
+        avatar_url: identity?.avatarUrl ?? null,
+      };
+    }),
   });
 });
 

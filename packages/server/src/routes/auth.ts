@@ -199,8 +199,6 @@ auth.post("/google", rateLimitFor("google"), zValidator("json", googleAuthSchema
   const { user, token } = await authService.loginOrCreateGoogle(
     payload.sub,
     payload.email,
-    payload.name,
-    payload.picture,
   );
 
   setSessionCookie(c, token);

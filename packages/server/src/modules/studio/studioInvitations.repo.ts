@@ -266,10 +266,10 @@ export async function revokeIfPending(
  * List a studio's LIVE pending invitations with display fields, for the
  * Members tab's "invited (pending)" section.
  *
- * Mirrors `studioMembers.listByStudio`: joins the invitee to `users` (email,
- * avatar) and to their personal studio for the display `name`, plus the
- * inviter's personal studio for `invitedByName` (two `studios` aliases). Only
- * `status = 'pending'` and non-expired, non-deleted rows; newest first.
+ * Mirrors `studioMembers.listByStudio`: joins the invitee to `users` for
+ * `email` and to their personal studio for the display `name` + `avatar`, plus
+ * the inviter's personal studio for `invitedByName` (two `studios` aliases).
+ * Only `status = 'pending'` and non-expired, non-deleted rows; newest first.
  * @param studioId - Studio UUID
  * @returns Pending invitations with display fields (empty when none)
  */
@@ -284,7 +284,7 @@ export async function listPendingByStudio(
       invitedUserId: studioInvitations.invitedUserId,
       name: inviteeStudio.name,
       email: users.email,
-      avatarUrl: users.avatarUrl,
+      avatarUrl: inviteeStudio.avatarUrl,
       role: studioInvitations.role,
       invitedByName: inviterStudio.name,
       expiresAt: studioInvitations.expiresAt,

@@ -4,12 +4,11 @@
 /**
  * Yjs initial-state encoders for project bootstrap.
  *
- * `core/project.service.create` calls {@link encodeInitialMetaState}
- * inside the project-creation transaction to seed
- * `yjs_documents` with a single Space already present in the meta
- * doc. This makes "project exists ⇔ at least one Space exists" an
- * invariant established at creation time, eliminating the pre-v10
- * frontend bootstrap effect that POSTed `/spaces` after the fact.
+ * `collab/lazy-seed` calls {@link encodeInitialMetaState} the first time a
+ * project's meta doc is opened (lazy seed) to write `yjs_documents` with a
+ * single Space already present in the meta doc, so a first-time visitor sees
+ * one Space without the pre-v10 frontend bootstrap effect that POSTed
+ * `/spaces` after the fact.
  *
  * Why a separate module:
  *   - Keeps the Yjs binary format out of `project.repo.ts` and

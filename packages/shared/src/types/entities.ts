@@ -15,7 +15,6 @@ import type { ProjectRole } from "@shared/types/role.js";
 export interface UserEntity {
   id: string;
   email: string;
-  avatarUrl: string | null;
   emailVerified: boolean;
   googleId: string | null;
   createdAt: Date;

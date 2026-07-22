@@ -44,14 +44,14 @@ beforeEach(() => {
 describe("GET /api/v1/users", () => {
   it("returns batched display fields — name resolved from the personal studio, sensitive fields stripped", async () => {
     mocks.userRepo.getUsersByIds.mockResolvedValue([
-      { id: "u1", email: "a@x.com", avatarUrl: "https://cdn/a.png", emailVerified: true, googleId: "g-1" },
-      { id: "u2", email: "b@x.com", avatarUrl: null, emailVerified: false, googleId: null },
+      { id: "u1", email: "a@x.com", emailVerified: true, googleId: "g-1" },
+      { id: "u2", email: "b@x.com", emailVerified: false, googleId: null },
     ]);
-    // The display name now comes from each user's personal studio `name`,
-    // batch-resolved by the studio service. u2 is mid-onboarding (no studio)
-    // → name is null.
-    mocks.studioService.getPersonalStudioNamesByUserIds.mockResolvedValue(
-      new Map([["u1", "alice"]]),
+    // The display name AND avatar both come from each user's personal studio,
+    // batch-resolved by the studio service (pointer model — #1808). u2 is
+    // mid-onboarding (no studio) → absent from the map → name + avatar null.
+    mocks.studioService.getPersonalStudioIdentitiesByUserIds.mockResolvedValue(
+      new Map([["u1", { name: "alice", avatarUrl: "https://cdn/a.png" }]]),
     );
 
     const app = createApp();

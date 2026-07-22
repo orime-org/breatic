@@ -45,11 +45,11 @@ export const users = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     email: varchar("email", { length: 255 }).notNull(),
-    // No business-identity columns here — a user's display name + URL
-    // handle both live on their personal studio (studios.name /
-    // studios.slug). `users` is the pure auth/account table (email
-    // registration rewrite, 2026-06-06).
-    avatarUrl: text("avatar_url"),
+    // No business-identity columns here — a user's display name, URL handle,
+    // and avatar all live on their personal studio (studios.name /
+    // studios.slug / studios.avatar_url). `users` is the pure auth/account
+    // table (email registration rewrite 2026-06-06; avatar moved 2026-07-22,
+    // #1808).
     hashedPassword: varchar("hashed_password", { length: 255 }),
     emailVerified: boolean("email_verified").default(false).notNull(),
     googleId: varchar("google_id", { length: 255 }),
@@ -98,6 +98,11 @@ export const studios = pgTable(
     // Display name (editable). Initially equals the slug; for a personal
     // studio this is the user's display name (edited via studio settings).
     name: varchar("name", { length: 255 }).notNull(),
+    // Avatar URL (nullable). For a personal studio this is the user's avatar;
+    // for a team studio, the team logo. Moved off `users` 2026-07-22 (#1808),
+    // same pointer model as `name`. Set via UI upload (#1809); Google OAuth
+    // never imports it.
+    avatarUrl: text("avatar_url"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

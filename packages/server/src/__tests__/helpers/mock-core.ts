@@ -284,7 +284,7 @@ export const mocks = {
       type: "personal",
       name: "Personal Studio",
     }),
-    getPersonalStudioNamesByUserIds: vi.fn().mockResolvedValue(new Map()),
+    getPersonalStudioIdentitiesByUserIds: vi.fn().mockResolvedValue(new Map()),
   },
 };
 

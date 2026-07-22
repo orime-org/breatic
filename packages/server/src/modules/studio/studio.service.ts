@@ -154,19 +154,21 @@ export async function getPersonalStudio(userId: string): Promise<Studio | null> 
 }
 
 /**
- * Resolve the display `name` of each user's personal studio in one query.
+ * Resolve the display `name` + `avatarUrl` of each user's personal studio in
+ * one query.
  *
- * Backs the display-name source for `/users` batch lookup and invite
- * `inviterName` now that the name no longer lives on `users`. Users
- * without a personal studio (mid-onboarding) are simply absent from the
- * returned map; callers fall back to the email local-part.
+ * Backs the `/users` batch display-info endpoint — name and avatar both live
+ * on the personal studio now (pointer model; avatar moved off `users`
+ * 2026-07-22, #1808). Users without a personal studio (mid-onboarding) are
+ * simply absent from the returned map; callers fall back to the email
+ * local-part (and a null avatar).
  * @param userIds - User UUIDs to resolve (deduped + capped by the caller)
- * @returns Map of `userId → personal studio name` (missing for users with no studio)
+ * @returns Map of `userId → { name, avatarUrl }` (missing for users with no studio)
  */
-export async function getPersonalStudioNamesByUserIds(
+export async function getPersonalStudioIdentitiesByUserIds(
   userIds: string[],
-): Promise<Map<string, string>> {
-  return studioRepo.getPersonalNamesByCreators(userIds);
+): Promise<Map<string, { name: string; avatarUrl: string | null }>> {
+  return studioRepo.getPersonalIdentitiesByCreators(userIds);
 }
 
 /**
