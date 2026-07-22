@@ -430,7 +430,6 @@
       "typeUpload": "上传",
       "end": "没有更多了",
       "close": "关闭",
-      "retry": "重试",
       "loadError": "历史记录加载失败",
       "empty": {
         "title": "还没有历史记录",

@@ -430,7 +430,6 @@
       "typeUpload": "업로드",
       "end": "더 이상 없음",
       "close": "닫기",
-      "retry": "다시 시도",
       "loadError": "기록을 불러오지 못했습니다",
       "empty": {
         "title": "아직 기록이 없습니다",

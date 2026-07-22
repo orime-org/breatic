@@ -32,18 +32,27 @@ export interface UseNodeHistory {
   entries: NodeHistoryEntry[];
   /** Total rows matching the node (from the first page). */
   total: number;
-  /** First page still loading. */
-  isLoading: boolean;
-  /** The query errored (first page or a page fetch). */
-  isError: boolean;
+  /**
+   * No result yet — the first page is loading OR paused (offline). The panel is
+   * hidden in this state (defer-until-data). `isLoading` alone misses the paused
+   * case (`isLoading = isPending && isFetching`, and an offline pause has
+   * `isFetching` false), so this is `isPending` (`status === 'pending'` = no
+   * data), which covers both loading and paused — Gate-2 caught the paused gap.
+   */
+  isPending: boolean;
+  /**
+   * The FIRST page load errored (errored with no data). The panel is not shown
+   * at all in this state — the caller toasts + closes (user 2026-07-22: never
+   * flash a skeleton; show the panel only once there is a result). A LATER
+   * refetch error keeps the already-loaded data instead (not this flag).
+   */
+  isLoadingError: boolean;
   /** Another (older) page is available. */
   hasNextPage: boolean;
   /** A next-page fetch is in flight. */
   isFetchingNextPage: boolean;
   /** Load the next (older) page — the infinite-scroll sentinel calls this. */
   fetchNextPage: () => void;
-  /** Retry after an error. */
-  retry: () => void;
 }
 
 /**
@@ -123,26 +132,22 @@ export function useNodeHistory(
     }
   }, [currentContent, nodeId, projectId, queryClient]);
 
-  // Stable callbacks so the panel's React.memo bails and its IntersectionObserver
-  // effect doesn't re-subscribe every render. React Query's fetchNextPage /
-  // refetch are stable refs — destructure them so exhaustive-deps tracks the
-  // method identity (not the whole `query` object, which changes each update).
-  const { fetchNextPage: queryFetchNextPage, refetch: queryRefetch } = query;
+  // Stable callback so the panel's React.memo bails and its IntersectionObserver
+  // effect doesn't re-subscribe every render. React Query's fetchNextPage is a
+  // stable ref — destructure it so exhaustive-deps tracks the method identity
+  // (not the whole `query` object, which changes each update).
+  const { fetchNextPage: queryFetchNextPage } = query;
   const fetchNextPage = React.useCallback((): void => {
     void queryFetchNextPage();
   }, [queryFetchNextPage]);
-  const retry = React.useCallback((): void => {
-    void queryRefetch();
-  }, [queryRefetch]);
 
   return {
     entries,
     total,
-    isLoading: query.isLoading,
-    isError: query.isError,
+    isPending: query.isPending,
+    isLoadingError: query.isLoadingError,
     hasNextPage: query.hasNextPage,
     isFetchingNextPage: query.isFetchingNextPage,
     fetchNextPage,
-    retry,
   };
 }

@@ -430,7 +430,6 @@
       "typeUpload": "Upload",
       "end": "No more",
       "close": "Close",
-      "retry": "Retry",
       "loadError": "Couldn’t load history",
       "empty": {
         "title": "No history yet",

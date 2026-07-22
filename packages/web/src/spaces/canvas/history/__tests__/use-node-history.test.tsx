@@ -132,7 +132,7 @@ describe('useNodeHistory (#1619 paginated + deduped + loop-proof refetch)', () =
     await waitFor(() => expect(invalidateSpy).toHaveBeenCalled());
     // Let the invalidation's refetch settle — a data-in-deps loop would keep
     // re-invalidating as new data arrives.
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await waitFor(() => expect(result.current.isPending).toBe(false));
     const afterSettle = invalidateSpy.mock.calls.length;
 
     // Re-render with the SAME currentContent → the effect must NOT fire again

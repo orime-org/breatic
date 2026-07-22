@@ -6,6 +6,8 @@ import * as React from 'react';
 
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { useTranslation } from '@web/i18n/use-translation';
+import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores/canvas';
 
 import { NodeHistoryPanel } from '@web/spaces/canvas/history/NodeHistoryPanel';
@@ -101,6 +103,7 @@ function OpenNodeHistoryPanel({
   projectId,
   onRestore,
 }: OpenNodeHistoryPanelProps): React.JSX.Element | null {
+  const t = useTranslation();
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const hostNode = nodes.find((n) => n.id === nodeId);
   // Close when the host disappears (a collaborator deletes it) — mirrors the
@@ -133,7 +136,25 @@ function OpenNodeHistoryPanel({
     [nodeId, modality, onRestore],
   );
 
+  // First-page load error → toast + close. The panel is NEVER shown in a
+  // loading / error state (user 2026-07-22: no skeleton flash — render it only
+  // once a result exists, 0 rows included → the empty state). A LATER refetch
+  // error keeps the already-loaded rows (isLoadingError is false once data is).
+  const { isPending, isLoadingError } = history;
+  React.useEffect(() => {
+    if (isLoadingError) {
+      toast.error(t('canvas.history.loadError'));
+      closeActivePanel();
+    }
+  }, [isLoadingError, t, closeActivePanel]);
+
   if (hostNode === undefined || modality === null) return null;
+  // Render nothing while there is NO result yet — loading OR paused (offline);
+  // the error path above toasts + closes. Only a real result (list or empty)
+  // renders the panel. `isPending` (status==='pending' = no data) covers the
+  // offline pause that `isLoading` misses (Gate-2: a paused query would else
+  // fall through to a false "No history yet" empty state).
+  if (isPending || isLoadingError) return null;
 
   return (
     <NodeToolbar nodeId={nodeId} isVisible position={Position.Bottom}>
@@ -145,12 +166,9 @@ function OpenNodeHistoryPanel({
         total={history.total}
         modality={modality}
         currentEntryId={currentId}
-        isLoading={history.isLoading}
-        isError={history.isError}
         hasNextPage={history.hasNextPage}
         isFetchingNextPage={history.isFetchingNextPage}
         onLoadMore={history.fetchNextPage}
-        onRetry={history.retry}
         onRestore={handleRestore}
         onClose={closeActivePanel}
       />

@@ -430,7 +430,6 @@
       "typeUpload": "上傳",
       "end": "沒有更多了",
       "close": "關閉",
-      "retry": "重試",
       "loadError": "歷史記錄載入失敗",
       "empty": {
         "title": "還沒有歷史記錄",
