@@ -20,6 +20,7 @@ import {
 function entry(over: Partial<NodeHistoryEntry> = {}): NodeHistoryEntry {
   return {
     id: 'h-1',
+    operatorName: null,
     entryType: 'generation',
     status: 'success',
     content: 'a.png',

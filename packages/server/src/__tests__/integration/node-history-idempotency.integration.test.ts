@@ -205,4 +205,28 @@ describe("node_history generation idempotency (#1618 Y)", () => {
     expect(page.entries[0]!.content).toBe("https://cdn.example.com/found.png");
     expect(page.entries[0]!.taskId).toBe(taskId);
   });
+
+  it("listByNode joins the operator's personal-studio display name (#1619)", async () => {
+    // insertUser names the personal studio after the arg; the display name the
+    // browse UI shows comes from that studio (pointer model), NOT the users
+    // table — the same join the activity feed uses.
+    const userId = await insertUser("Justin");
+    const projectId = await insertProject(userId);
+    const taskId = await createTask(userId, projectId);
+    const nodeId = crypto.randomUUID();
+
+    await nodeHistoryService.recordGenerationSuccess({
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/j.png",
+      taskId,
+      metadata: { model: "test-model", params: {} },
+    });
+
+    const page = await nodeHistoryService.listByNode(projectId, nodeId);
+    expect(page.entries).toHaveLength(1);
+    expect(page.entries[0]!.operatorName).toBe("Justin");
+    expect(page.entries[0]!.userId).toBe(userId);
+  });
 });

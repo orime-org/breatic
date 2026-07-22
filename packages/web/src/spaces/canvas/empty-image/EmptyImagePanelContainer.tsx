@@ -44,6 +44,15 @@ export function EmptyImagePanelContainer({
   React.useEffect(() => {
     if (nodeGone) closeActivePanel();
   }, [nodeGone, closeActivePanel]);
+  // Stable per host so the memoized EmptyImagePanel bails when this container
+  // re-renders for unrelated store changes (the panel is remounted per host by
+  // `key={nodeId}`, so binding `nodeId` here is safe).
+  const handleExecute = React.useCallback(
+    (opts: EmptyImageExecuteOpts): void => {
+      if (nodeId != null) onReset(nodeId, opts);
+    },
+    [nodeId, onReset],
+  );
   if (nodeId == null || nodeGone) return null;
   return (
     <NodeToolbar nodeId={nodeId} isVisible position={Position.Bottom}>
@@ -51,7 +60,7 @@ export function EmptyImagePanelContainer({
           switches hosts, so one node's picks can never execute against another. */}
       <EmptyImagePanel
         key={nodeId}
-        onExecute={(opts) => onReset(nodeId, opts)}
+        onExecute={handleExecute}
         onExit={closeActivePanel}
       />
     </NodeToolbar>

@@ -42,7 +42,7 @@ interface EmptyImagePanelProps {
  * @param root0.onExit - Close the panel without changing the node.
  * @returns The panel body (rendered inside the container's `NodeToolbar`).
  */
-export function EmptyImagePanel({
+export const EmptyImagePanel = React.memo(function EmptyImagePanel({
   onExecute,
   onExit,
 }: EmptyImagePanelProps): React.JSX.Element {
@@ -197,4 +197,4 @@ export function EmptyImagePanel({
       </div>
     </div>
   );
-}
+});

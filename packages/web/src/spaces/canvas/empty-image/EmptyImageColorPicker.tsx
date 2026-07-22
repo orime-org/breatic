@@ -32,7 +32,7 @@ interface EmptyImageColorPickerProps {
  * @param root0.onChange - Called with the new hex on pick / type.
  * @returns The swatch trigger + colour-picker popover.
  */
-export function EmptyImageColorPicker({
+export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
   value,
   onChange,
 }: EmptyImageColorPickerProps): React.JSX.Element {
@@ -75,4 +75,4 @@ export function EmptyImageColorPicker({
       </PopoverContent>
     </Popover>
   );
-}
+});

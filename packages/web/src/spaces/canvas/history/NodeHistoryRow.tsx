@@ -132,25 +132,20 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
 
       <div className='flex min-w-0 flex-col gap-0.5'>
         <div className='flex min-w-0 items-center gap-1.5'>
-          <span
-            className={
-              'inline-flex shrink-0 items-center gap-1 rounded-content-sm border px-1.5 py-px text-2xs font-semibold leading-tight ' +
-              (failed
-                ? 'border-transparent bg-status-error-bg text-status-error'
-                : 'border-border text-muted-foreground')
-            }
-          >
-            {failed ? null : entry.entryType === 'generation' ? (
+          {/* The type chip states ONLY what the entry IS (Generated / Upload),
+              never its success/failure — that is carried by the other fields
+              (the red error message beside it, the "Can't restore" action
+              slot). Type is type, independent of outcome (user 2026-07-22). */}
+          <span className='inline-flex shrink-0 items-center gap-1 rounded-content-sm border border-border px-1.5 py-px text-2xs font-semibold leading-tight text-muted-foreground'>
+            {entry.entryType === 'generation' ? (
               <Sparkles className='h-2.5 w-2.5' aria-hidden='true' />
             ) : (
               <ArrowUp className='h-2.5 w-2.5' aria-hidden='true' />
             )}
             {t(
-              failed
-                ? 'canvas.history.failed'
-                : entry.entryType === 'generation'
-                  ? 'canvas.history.typeGeneration'
-                  : 'canvas.history.typeUpload',
+              entry.entryType === 'generation'
+                ? 'canvas.history.typeGeneration'
+                : 'canvas.history.typeUpload',
             )}
           </span>
           <span
@@ -177,9 +172,20 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
               </span>
             ) : null}
         </div>
-        <span className='text-2xs tabular-nums text-muted-foreground'>
-          {formatRelativeTime(entry.createdAt, t)}
-        </span>
+        {/* Time, then who did it (#1619): the operator's personal-studio
+            display name, joined server-side. Shown only when resolved — a
+            deleted studio yields null, so the row falls back to time alone. */}
+        <div className='flex min-w-0 items-center gap-1 text-2xs text-muted-foreground'>
+          <span className='shrink-0 tabular-nums'>
+            {formatRelativeTime(entry.createdAt, t)}
+          </span>
+          {entry.operatorName ? (
+            <>
+              <span aria-hidden='true'>·</span>
+              <span className='truncate'>{entry.operatorName}</span>
+            </>
+          ) : null}
+        </div>
       </div>
 
       <div className='shrink-0'>

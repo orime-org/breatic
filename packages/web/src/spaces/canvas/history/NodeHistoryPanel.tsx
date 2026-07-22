@@ -101,7 +101,12 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
   }, [hasNextPage, isFetchingNextPage, onLoadMore]);
 
   return (
-    <div className='flex w-[min(344px,92vw)] flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md'>
+    // `nowheel` + `nodrag`: the panel floats over the ReactFlow canvas, which
+    // otherwise captures the wheel to zoom — so the list would never scroll on
+    // wheel (only the scrollbar drag worked). ReactFlow checks ancestors, so
+    // putting them on the panel root frees the whole panel: the inner
+    // ScrollArea scrolls on wheel, and dragging the panel never moves the node.
+    <div className='nowheel nodrag flex w-[min(344px,92vw)] flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md'>
       <div className='flex items-center justify-between px-3 py-2.5'>
         <div className='flex items-baseline gap-2'>
           <span className='text-sm font-semibold'>

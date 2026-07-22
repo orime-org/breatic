@@ -52,6 +52,7 @@ function makeClient(): QueryClient {
 function e(id: string, content: string | null = `${id}.png`): NodeHistoryEntry {
   return {
     id,
+    operatorName: null,
     entryType: 'generation',
     status: 'success',
     content,

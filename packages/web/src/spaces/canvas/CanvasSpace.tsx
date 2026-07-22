@@ -2705,8 +2705,10 @@ function CanvasSpaceInner({
   ]);
   // Restore a past result onto the node (#1619): gate 2 (execute, fresh Yjs) +
   // a media-aware, lease-safe write-back that records NO new history row
-  // (restore re-points to an existing result). The panel stays open on success
-  // or block — browsing is exploratory (3.2 / 3.6).
+  // (restore re-points to an existing result). A successful restore CLOSES the
+  // panel (the pick is committed — user 2026-07-22, replacing the earlier
+  // "stay open to keep picking"); a blocked restore keeps it open so the user
+  // can retry or pick another entry.
   const restoreNodeContent = React.useCallback(
     (
       nodeId: string,
@@ -2732,16 +2734,17 @@ function CanvasSpaceInner({
       });
       if (decision.kind === 'blocked') {
         warnNodeGate(t(decision.toastKey));
-        return; // panel stays open — browsing is exploratory (3.2 / 3.6)
+        return; // keep the panel open so the user can retry / pick another
       }
       if (decision.kind === 'write') {
         restoreNodeMedia(projectId, spaceId, nodeId, {
           content: decision.content,
           coverUrl: decision.coverUrl,
         });
+        closeActivePanel(); // the pick is committed — close the panel
       }
     },
-    [readOnly, projectId, spaceId, t],
+    [readOnly, projectId, spaceId, t, closeActivePanel],
   );
   // Node menu "history": open the browse panel. Unlike reset, browsing is a
   // read — it opens even on a locked / handling node; only the restore ACTION

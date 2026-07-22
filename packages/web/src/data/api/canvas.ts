@@ -40,6 +40,12 @@ export interface CanvasLimits {
  */
 export interface NodeHistoryEntry {
   id: string;
+  /**
+   * Display name of the operator, joined server-side from their personal
+   * studio (pointer model — renames propagate). `null` when unresolved
+   * (studio deleted); the row then shows the time alone (#1619).
+   */
+  operatorName: string | null;
   entryType: 'generation' | 'upload';
   status: 'success' | 'failed';
   /** The result asset URL; `null` for a failed generation. */

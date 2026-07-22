@@ -133,6 +133,14 @@ export interface NodeHistoryEntity {
   projectId: string;
   nodeId: string;
   userId: string;
+  /**
+   * Display name of the operator (`userId`), joined server-side from their
+   * personal studio — the app-wide display-name source (pointer model, so
+   * renames propagate; mirrors `ProjectActivityEntry.actorName`). `null` when
+   * unresolved (studio deleted) and on the write paths, which do not join —
+   * only `listByNode` populates it for the browse UI (#1619).
+   */
+  operatorName: string | null;
   entryType: "generation" | "upload";
   status: "success" | "failed";
   content: string | null;
