@@ -33,6 +33,28 @@ describe('MediaPlayer', () => {
     expect(screen.queryByTestId('waveform')).not.toBeInTheDocument();
   });
 
+  // #1622: the preview variant (hover preview) drops volume + fullscreen so
+  // it can live inside an auto-close HoverCard. INV-7.
+  it('audio variant="preview": waveform + play + seek, NO volume, NO fullscreen', () => {
+    render(<MediaPlayer modality='audio' src='/a.mp3' variant='preview' />);
+    expect(screen.getByTestId('waveform')).toBeInTheDocument();
+    expect(screen.getByTestId('play-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('seek')).toBeInTheDocument();
+    expect(screen.queryByTestId('volume-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
+  });
+
+  it('video variant="preview": play + seek, NO volume, NO fullscreen', () => {
+    render(
+      <MediaPlayer modality='video' src='/v.mp4' poster='/p.jpg' variant='preview' />,
+    );
+    expect(screen.getByTestId('media-element').tagName).toBe('VIDEO');
+    expect(screen.getByTestId('play-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('seek')).toBeInTheDocument();
+    expect(screen.queryByTestId('volume-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('fullscreen')).not.toBeInTheDocument();
+  });
+
   // #1772: pin the metadata-only preload as a contract. The HTML spec leaves
   // the missing-value default to the UA; explicit `metadata` guarantees the
   // duration display + video dimension badge work without downloading the

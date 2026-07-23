@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { AlertTriangle, History, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Film, History, Music, RotateCcw, Star } from 'lucide-react';
 import { useEffect, useRef, useState, type JSX } from 'react';
 import {
   useInfiniteQuery,
@@ -31,8 +31,10 @@ import {
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
+import { formatCredits } from '@web/lib/format-credits';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
+import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /**
@@ -175,17 +177,42 @@ function entryMessage(entry: ProjectActivityEntry): {
             typeof p['oldSpaceName'] === 'string' ? p['oldSpaceName'] : '',
         },
       };
-    case 'asset:uploaded':
-      return { key: 'activity.type.assetUploaded', params: { actor } };
+    case 'asset:uploaded': {
+      // Specific copy per media kind (image / video / audio); a `file` kind or
+      // an absent kind falls back to the generic upload message (#1622).
+      const k = p['kind'];
+      const key =
+        k === 'image'
+          ? 'activity.type.assetUploadedImage'
+          : k === 'video'
+            ? 'activity.type.assetUploadedVideo'
+            : k === 'audio'
+              ? 'activity.type.assetUploadedAudio'
+              : 'activity.type.assetUploaded';
+      return { key, params: { actor } };
+    }
     case 'asset:deleted':
       return { key: 'activity.type.assetDeleted', params: { actor } };
-    case 'generation:succeeded':
-      return typeof p['toolName'] === 'string'
-        ? {
+    case 'generation:succeeded': {
+      // A mini-tool names the tool it ran (more specific than the modality).
+      if (typeof p['toolName'] === 'string')
+        return {
           key: 'activity.type.generationSucceededTool',
           params: { actor, toolName: p['toolName'] },
-        }
-        : { key: 'activity.type.generationSucceeded', params: { actor } };
+        };
+      // A canvas task generation says what modality it produced; a non-media
+      // generation (understand) falls back to the generic message (#1622).
+      const k = p['kind'];
+      const key =
+        k === 'image'
+          ? 'activity.type.generationSucceededImage'
+          : k === 'video'
+            ? 'activity.type.generationSucceededVideo'
+            : k === 'audio'
+              ? 'activity.type.generationSucceededAudio'
+              : 'activity.type.generationSucceeded';
+      return { key, params: { actor } };
+    }
     case 'generation:failed':
       return { key: 'activity.type.generationFailed', params: { actor } };
     case 'member:joined':
@@ -200,6 +227,53 @@ function entryMessage(entry: ProjectActivityEntry): {
     case 'member:ownership-transferred':
       return { key: 'activity.type.ownershipTransferred', params: { actor } };
   }
+}
+
+/** A feed entry's renderable media preview (thumbnail + hover). */
+export interface ActivityMedia {
+  kind: 'image' | 'video' | 'audio';
+  /** Primary media / image URL (the preview src). */
+  src: string;
+  /** Video cover (video only). */
+  poster?: string;
+}
+
+/**
+ * Derive the preview media for a feed entry, or null when the row has none.
+ * Only an upload or a successful generation of one of the three renderable
+ * modalities (image / video / audio) with a usable URL gets a thumbnail +
+ * hover preview — a `file` upload, a non-media generation, a failure, or a
+ * space / member event is a plain message row (spec §6.3).
+ * @param entry - The feed entry.
+ * @returns The preview media, or null.
+ */
+export function entryMedia(entry: ProjectActivityEntry): ActivityMedia | null {
+  if (entry.type !== 'asset:uploaded' && entry.type !== 'generation:succeeded')
+    return null;
+  const p = entry.payload;
+  const kind = p['kind'];
+  if (kind !== 'image' && kind !== 'video' && kind !== 'audio') return null;
+  const src = typeof p['fileUrl'] === 'string' ? p['fileUrl'] : undefined;
+  if (!src) return null;
+  const cover =
+    kind === 'video' && typeof p['thumbnailUrl'] === 'string'
+      ? p['thumbnailUrl']
+      : undefined;
+  return cover ? { kind, src, poster: cover } : { kind, src };
+}
+
+/**
+ * The credit cost to show on a feed entry, or undefined to hide it. Only a
+ * successful generation records an ACTUAL deducted cost (`payload.credits` —
+ * the billed value, not the run-time estimate); uploads, failures, space /
+ * member events and frontend mini-tools carry none. Gates through the shared
+ * {@link formatCredits} so it matches the node-history row (spec §6.4 / INV-8).
+ * @param entry - The feed entry.
+ * @returns The credit cost, or undefined.
+ */
+function entryActivityCredits(entry: ProjectActivityEntry): number | undefined {
+  if (entry.type !== 'generation:succeeded') return undefined;
+  return formatCredits(entry.payload['credits']);
 }
 
 /**
@@ -380,6 +454,33 @@ export function ProjectMessagesButton({
                 const showRestoredBadge =
                   isOwner && m.type === 'space:deleted' && alreadyRestored;
                 const msg = entryMessage(m);
+                const media = entryMedia(m);
+                const credits = entryActivityCredits(m);
+                // 46px thumbnail: the image / video cover itself, or a modality
+                // icon when there is no still (audio, or a cover-less video —
+                // #1816). Mirrors NodeHistoryRow's fallback.
+                const thumb = media ? (
+                  <div
+                    data-testid={`project-messages-thumb-${m.id}`}
+                    className='flex h-[46px] w-[46px] shrink-0 items-center justify-center overflow-hidden rounded-content-sm border border-border bg-muted text-muted-foreground'
+                  >
+                    {media.kind === 'image' ||
+                    (media.kind === 'video' && media.poster) ? (
+                        <img
+                          src={media.kind === 'image' ? media.src : media.poster}
+                          alt=''
+                          className='h-full w-full object-cover'
+                          loading='lazy'
+                          decoding='async'
+                          draggable={false}
+                        />
+                      ) : media.kind === 'video' ? (
+                        <Film className='h-4 w-4' aria-hidden='true' />
+                      ) : (
+                        <Music className='h-4 w-4' aria-hidden='true' />
+                      )}
+                  </div>
+                ) : null;
                 return (
                   <li
                     key={m.id}
@@ -401,13 +502,41 @@ export function ProjectMessagesButton({
                         aria-hidden
                       />
                     ) : null}
+                    {/* Media rows get a thumbnail whose hover pops a large,
+                        playable preview (image = still, audio / video =
+                        MediaPlayer). Non-media rows render no thumbnail. */}
+                    {media && thumb ? (
+                      <HoverPreview
+                        kind={media.kind}
+                        src={media.src}
+                        poster={media.poster}
+                      >
+                        {thumb}
+                      </HoverPreview>
+                    ) : null}
                     <div className='flex min-w-0 flex-1 flex-col gap-1'>
                       <p className='text-sm leading-relaxed text-foreground'>
                         {t(msg.key, msg.params)}
                       </p>
-                      <p className='text-2xs tabular-nums text-muted-foreground'>
-                        {t(rel.key, rel.params)}
-                      </p>
+                      <div className='flex items-center justify-between gap-2'>
+                        <span className='text-2xs tabular-nums text-muted-foreground'>
+                          {t(rel.key, rel.params)}
+                        </span>
+                        {/* Actual credits deducted (spec §6.4 / INV-8): raw
+                            value, 0 shown, hidden when there is no cost. */}
+                        {credits != null ? (
+                          <span
+                            data-testid={`project-messages-credits-${m.id}`}
+                            className='inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-foreground'
+                          >
+                            <Star
+                              className='h-3 w-3 text-muted-foreground'
+                              aria-hidden='true'
+                            />
+                            {credits}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                     {canRestore ? (
                       <button
@@ -455,4 +584,4 @@ export function ProjectMessagesButton({
   );
 }
 
-export { relativeTime };
+export { relativeTime, entryMessage };

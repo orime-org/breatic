@@ -17,10 +17,20 @@ import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
 interface MediaPlayerProps {
   /** Which media kind to render. */
   modality: 'audio' | 'video';
-  /** Media source URL (presigned). */
+  /** Media source URL (the permanent public `adapter.publicUrl` value). */
   src: string;
   /** Poster image (video only). */
   poster?: string;
+  /**
+   * `'full'` (default) — the node player with volume + fullscreen.
+   * `'preview'` (#1622) — the hover-preview player: play + seek only, NO
+   * volume popover and NO fullscreen. Both are dropped because a hover
+   * preview is a quick "sense what it is" surface, and both would fight a
+   * HoverCard: the volume is a portaled Popover (a DOM sibling of the
+   * card, so moving to it leaves the card) and fullscreen takes over the
+   * screen (exiting it leaves the card). See the hover-preview spec.
+   */
+  variant?: 'full' | 'preview';
   /**
    * Reports the video's intrinsic pixel size once metadata loads (video only —
    * audio has no pixel dimensions and never fires this). Lets the node render a
@@ -54,6 +64,7 @@ function formatTime(seconds: number): string {
  * @param root0.modality - `'audio'` or `'video'`.
  * @param root0.src - Media source URL.
  * @param root0.poster - Poster image (video only).
+ * @param root0.variant - `'full'` (node player, default) or `'preview'` (hover preview: no volume / fullscreen).
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
  * @returns The media player element.
  */
@@ -62,10 +73,15 @@ export function MediaPlayer({
   src,
   poster,
   onDimensions,
+  variant = 'full',
 }: MediaPlayerProps): React.JSX.Element {
   const ref = React.useRef<HTMLMediaElement>(null);
   const p = useMediaPlayer(ref);
   const isVideo = modality === 'video';
+  // #1622: the hover-preview variant drops volume (a portaled Popover) and
+  // fullscreen so it can live inside an auto-close HoverCard.
+  const showVolume = variant !== 'preview';
+  const showFullscreen = variant !== 'preview';
 
   // Video controls sit on a dark scrim (light-on-video); audio controls sit on
   // the themed node surface.
@@ -176,16 +192,18 @@ export function MediaPlayer({
           >
             {formatTime(p.duration)}
           </span>
-          {volumeControl}
-          <button
-            type='button'
-            onClick={p.requestFullscreen}
-            aria-label='Fullscreen'
-            data-testid='fullscreen'
-            className={btnCls}
-          >
-            <Maximize className='h-4 w-4' />
-          </button>
+          {showVolume ? volumeControl : null}
+          {showFullscreen ? (
+            <button
+              type='button'
+              onClick={p.requestFullscreen}
+              aria-label='Fullscreen'
+              data-testid='fullscreen'
+              className={btnCls}
+            >
+              <Maximize className='h-4 w-4' />
+            </button>
+          ) : null}
         </div>
       </div>
     );
@@ -230,7 +248,7 @@ export function MediaPlayer({
         >
           {formatTime(p.duration)}
         </span>
-        {volumeControl}
+        {showVolume ? volumeControl : null}
       </div>
     </div>
   );

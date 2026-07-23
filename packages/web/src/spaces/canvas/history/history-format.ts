@@ -8,6 +8,7 @@
  * NOT here — it reuses the shared `@web/lib/format-relative-time`.
  */
 
+import { formatCredits } from '@web/lib/format-credits';
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 
 /**
@@ -59,12 +60,14 @@ export function entryModel(entry: NodeHistoryEntry): string | undefined {
  * The credit cost to render, or undefined to hide the credits chip. Guards
  * against an absent or non-finite value (an upload has no cost; a failed
  * generation records none) so the chip never shows `undefined` / `NaN`.
+ * Delegates to the shared {@link formatCredits} gate so this row and the
+ * activity-feed row can never diverge (spec §6.4). NOTE: `metadata.cost` is the
+ * ESTIMATE shown at run time; #1817 will switch this to the actual billed value.
  * @param entry - The history row.
  * @returns The credit cost, or undefined.
  */
 export function entryCredits(entry: NodeHistoryEntry): number | undefined {
-  const c = entry.metadata.cost;
-  return typeof c === 'number' && Number.isFinite(c) ? c : undefined;
+  return formatCredits(entry.metadata.cost);
 }
 
 /**

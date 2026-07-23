@@ -90,6 +90,7 @@ import {
 } from "@worker/handlers/failed-job-cleanup.js";
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
 import { taskService, nodeHistoryService } from "@breatic/domain";
+import { projectActivitiesRepo } from "@breatic/core";
 
 const streamRedis = {} as never;
 
@@ -125,6 +126,7 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
     mockPublishNodeEvent.mockReset();
     vi.mocked(taskService.getByIdInternal).mockReset();
     vi.mocked(nodeHistoryService.recordGenerationSuccess).mockReset();
+    vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded).mockReset();
   });
 
   it("stamps each node's lease gen from job nodeGens onto the reclaim event (#1580 #7)", async () => {
@@ -269,6 +271,49 @@ describe("cleanupFailedJobNodes (#1569 worker silent-death safety net)", () => {
       { update: Record<string, unknown> },
     ];
     expect(event.update.content).toBe("https://x/done.png");
+  });
+
+  it("#1622: threads the media preview + ACTUAL billed credits into the recovered success activity row (parity with the dispatch redelivery path)", async () => {
+    // Gate-2 finding: the crash-net recovery writer is the SECOND billed-then-
+    // crashed recovery path (the first being dispatch.ts redelivery, which was
+    // updated). It must thread the same preview fields so a recovered success
+    // row is not preview-less / credit-less / modality-generic. Data source:
+    // outputs + billedCredits from the persisted task, kind from the taskType.
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({
+      id: "t1",
+      userId: "u1",
+      taskType: "image",
+      billedAt: new Date(),
+      billedCredits: 1.5,
+      durationMs: 1000,
+      params: {},
+      result: {
+        model: "m",
+        cost: 0.04,
+        outputs: [{ url: "https://x/done.png", cover_url: "https://x/cover.png" }],
+      },
+    } as never);
+    const job = jobWith({
+      projectId: "p1",
+      spaceId: "s1",
+      taskType: "image",
+      targetNodeIds: ["n1"],
+      nodeGens: { n1: 3 },
+    });
+
+    await cleanupFailedJobNodes(streamRedis, job, "job stalled more than allowable limit");
+
+    expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded)).toHaveBeenCalledTimes(1);
+    const arg = vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded).mock.calls[0]![0];
+    expect(arg.payload).toMatchObject({
+      source: "task",
+      executedOn: "backend",
+      kind: "image",
+      fileUrl: "https://x/done.png",
+      thumbnailUrl: "https://x/cover.png",
+      credits: 1.5,
+      outputCount: 1,
+    });
   });
 });
 
