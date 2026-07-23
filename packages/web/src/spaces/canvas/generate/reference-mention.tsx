@@ -29,8 +29,8 @@ import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-refer
 import { createReferenceMentionCaret } from '@web/spaces/canvas/generate/reference-mention-caret';
 import { createLocalUserInputTracker } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import { createReferenceMentionRangeHighlight } from '@web/spaces/canvas/generate/reference-mention-range-decoration';
-import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
+import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { NodeKind } from '@web/spaces/canvas/types/node-view';
 
 /** Options for the {@link ReferenceMention} node. */
@@ -231,8 +231,8 @@ function ReferenceMentionChip({
   // will ignore it. `getImageRefsDisabled` is a live getter, but this NodeView
   // does NOT re-render on a mode toggle, so reading it at render froze the dim at
   // insert time (t2i→i2i left the preview greyed). Passing the getter through as
-  // `resolveDimmed` lets ThumbnailHoverPreview read it when the tooltip opens.
-  // The chip BODY grey-out is separately live: PromptEditor greys
+  // `resolveDimmed` lets HoverPreview read it when the card opens. The chip BODY
+  // grey-out is separately live: PromptEditor greys
   // `.reference-mention[data-kind=image]` via a mode-conditional class that
   // re-renders on the mode prop; only this JS hover-preview path needed the fix.
   const resolveDimmed = React.useCallback(
@@ -240,7 +240,13 @@ function ReferenceMentionChip({
     [options],
   );
   return (
-    <ThumbnailHoverPreview
+    <HoverPreview
+      // A text chip previews its source text live; every other chip (image /
+      // video, whose only display payload is the snapshot thumbnail) previews
+      // that thumbnail as a static image. The chip carries no raw media URL, so
+      // video / audio chips are NOT playable here — a faithful migration of the
+      // old preview onto the unified component (spec §2), not a feature add.
+      kind={kind === 'text' ? 'text' : 'image'}
       src={thumbnail ?? undefined}
       alt={label}
       emptyHint={staticEmptyHint}
@@ -249,6 +255,9 @@ function ReferenceMentionChip({
       // same mechanism the rail uses; not opacity inheritance). Live at open
       // (resolveDimmed), because the NodeView does not re-render on a mode toggle.
       resolveDimmed={kind === 'image' ? resolveDimmed : undefined}
+      // The chip lives inside the generate panel's NodeToolbar (canvas space),
+      // so the open card must follow the viewport as the canvas pans / zooms.
+      followCanvas
     >
       <NodeViewWrapper
         as='span'
@@ -302,7 +311,7 @@ function ReferenceMentionChip({
         ) : null}
         <span className='truncate pr-1.5'>{label}</span>
       </NodeViewWrapper>
-    </ThumbnailHoverPreview>
+    </HoverPreview>
   );
 }
 

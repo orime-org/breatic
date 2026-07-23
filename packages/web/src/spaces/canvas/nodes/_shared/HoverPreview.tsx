@@ -104,10 +104,10 @@ export function HoverPreview({
   followCanvas = false,
   children,
 }: HoverPreviewProps): React.JSX.Element {
-  // Live-at-open cache (decision C from ThumbnailHoverPreview): seed at mount,
-  // refresh on every open, NEVER clear on close — Radix keeps the content
-  // mounted through the close animation, so an open-gated resolve would blank
-  // the box mid-fade. Static props are the fallback (no resolver).
+  // Live-at-open cache (decision C, the prompt `@` chip's live projection):
+  // seed at mount, refresh on every open, NEVER clear on close — Radix keeps
+  // the content mounted through the close animation, so an open-gated resolve
+  // would blank the box mid-fade. Static props are the fallback (no resolver).
   const [resolved, setResolved] = React.useState<
     { text?: string; emptyHint?: string } | undefined
   >(() => resolveOnOpen?.());

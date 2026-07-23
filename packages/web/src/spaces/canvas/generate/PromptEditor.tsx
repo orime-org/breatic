@@ -395,8 +395,8 @@ export const PromptEditor = React.forwardRef<
   // ReactNodeView. Chips whose source left the pool are removed by the
   // cascade-clear effect above (the planner skips them). The text chip's hover
   // CONTENT is not synced here — it is read live at hover-open (see
-  // ThumbnailHoverPreview), keeping the source node the single truth (freezing
-  // the body into an attr would duplicate it into the Yjs prompt doc).
+  // HoverPreview's resolveOnOpen), keeping the source node the single truth
+  // (freezing the body into an attr would duplicate it into the Yjs prompt doc).
   React.useEffect(() => {
     if (!editor) return;
     const chips: ChipDisplaySnapshot[] = [];

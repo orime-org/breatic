@@ -186,4 +186,36 @@ describe('HoverPreview', () => {
     // The body is resolved at hover-open, so it reflects the value at open time.
     expect(screen.getByText('updated')).toBeInTheDocument();
   });
+
+  it('static dimmed prop → the image preview is greyed (opacity-50) (#1815 t2i reference)', () => {
+    vi.useFakeTimers();
+    render(
+      <HoverPreview kind='image' src='/pic.png' alt='ref' dimmed>
+        <span data-testid='trigger'>chip</span>
+      </HoverPreview>,
+    );
+    openCard(screen.getByTestId('trigger'));
+    const img = screen.getByAltText('ref') as HTMLImageElement;
+    expect(img.className).toContain('opacity-50');
+  });
+
+  it('resolveDimmed overrides static dimmed and is read live at open (#1798 chip mode toggle)', () => {
+    // The `@` image chip does not re-render on a t2i→i2i mode toggle, so the dim
+    // must be read when the card OPENS, not captured at render — otherwise a
+    // reference greyed at insert time stays greyed after switching to i2i (which
+    // does use the image). Mirrors the resolveOnOpen live-at-open contract.
+    vi.useFakeTimers();
+    let dim = true; // start in t2i (image ignored → greyed)
+    render(
+      <HoverPreview kind='image' src='/pic.png' alt='ref' resolveDimmed={() => dim}>
+        <span data-testid='trigger'>chip</span>
+      </HoverPreview>,
+    );
+    dim = false; // switch to i2i BEFORE opening — the chip itself never re-rendered
+    openCard(screen.getByTestId('trigger'));
+    const img = screen.getByAltText('ref') as HTMLImageElement;
+    // Read live at open → reflects i2i (not dimmed), proving it is not the
+    // stale mount-time value.
+    expect(img.className).not.toContain('opacity-50');
+  });
 });
