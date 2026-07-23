@@ -919,40 +919,6 @@
       "timeline": "Timeline",
       "timelineSub": "Video / audio editing"
     },
-    "history": {
-      "label": "Project messages",
-      "title": "Project messages — missing nodes + Space lifecycle",
-      "header": "Project messages",
-      "description": "{count, plural, one {# message} other {# messages}}",
-      "empty": "No messages yet. Missing-node banners and Space create / delete / lock events will appear here.",
-      "markRead": "Read",
-      "markUnread": "Mark as read",
-      "kind": {
-        "missingNode": "A referenced node went missing",
-        "spaceCreated": "{actor} created space {spaceName}",
-        "spaceDeleted": "{actor} deleted space {spaceName}",
-        "spaceLocked": "{actor} locked space {spaceName}",
-        "spaceUnlocked": "{actor} unlocked space {spaceName}",
-        "spaceRestored": "{actor} restored space {spaceName}",
-        "spaceRenamed": "{actor} renamed space {oldSpaceName} to {spaceName}"
-      },
-      "action": {
-        "restore": "Restore",
-        "restored": "Restored",
-        "clearAll": "Clear all",
-        "clearAllConfirmTitle": "Clear all messages?",
-        "clearAllConfirmDescription": "This action cannot be undone. All entries in the project message channel will be permanently removed."
-      },
-      "relative": {
-        "justNow": "just now",
-        "minutesAgo": "{count, plural, one {# minute ago} other {# minutes ago}}",
-        "hoursAgo": "{count, plural, one {# hour ago} other {# hours ago}}",
-        "yesterday": "yesterday",
-        "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
-        "weeksAgo": "{count, plural, one {# week ago} other {# weeks ago}}",
-        "monthsAgo": "{count, plural, one {# month ago} other {# months ago}}"
-      }
-    },
     "create": {
       "title": "New space",
       "description": "Pick a space type and name it",
@@ -1411,11 +1377,11 @@
       "notifications": "Notifications",
       "newSpace": "New space",
       "allSpaces": "All spaces",
-      "projectMessages": "Project messages",
       "agentHide": "Hide agent panel",
       "agentShow": "Show agent panel",
       "openHistory": "Conversation history",
-      "newConversation": "New conversation"
+      "newConversation": "New conversation",
+      "projectActivity": "Project activity"
     },
     "aria": {
       "backToStudio": "Back to Studio",
@@ -1437,7 +1403,7 @@
     "backToStudio": "Back to Studio"
   },
   "activity": {
-    "description": "Project activity",
+    "description": "Uploads, generations, and Space / member changes",
     "loading": "Loading…",
     "type": {
       "assetUploaded": "{actor} uploaded an asset",
@@ -1454,7 +1420,30 @@
       "memberJoined": "{actor} joined the project",
       "memberRemoved": "{actor} removed a member",
       "memberRoleChanged": "{actor} changed a member's role to {role}",
-      "ownershipTransferred": "{actor} transferred project ownership"
+      "ownershipTransferred": "{actor} transferred project ownership",
+      "spaceCreated": "{actor} created space {spaceName}",
+      "spaceDeleted": "{actor} deleted space {spaceName}",
+      "spaceLocked": "{actor} locked space {spaceName}",
+      "spaceUnlocked": "{actor} unlocked space {spaceName}",
+      "spaceRestored": "{actor} restored space {spaceName}",
+      "spaceRenamed": "{actor} renamed space {oldSpaceName} to {spaceName}"
+    },
+    "header": "Project activity",
+    "label": "Project activity",
+    "empty": "No activity yet. Uploads, generations, and Space / member changes will appear here.",
+    "action": {
+      "restore": "Restore",
+      "restored": "Restored"
+    },
+    "relative": {
+      "justNow": "just now",
+      "minutesAgo": "{count, plural, one {# minute ago} other {# minutes ago}}",
+      "hoursAgo": "{count, plural, one {# hour ago} other {# hours ago}}",
+      "yesterday": "yesterday",
+      "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
+      "weeksAgo": "{count, plural, one {# week ago} other {# weeks ago}}",
+      "monthsAgo": "{count, plural, one {# month ago} other {# months ago}}",
+      "isoDate": "{date}"
     }
   }
 }

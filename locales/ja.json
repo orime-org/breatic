@@ -919,40 +919,6 @@
       "timeline": "Timeline",
       "timelineSub": "ビデオ / オーディオ編集"
     },
-    "history": {
-      "label": "Project メッセージ",
-      "title": "Project メッセージ — 欠落ノード + Space ライフサイクル",
-      "header": "Project メッセージ",
-      "description": "{count, plural, other {# 件のメッセージ}}",
-      "empty": "メッセージはまだありません。欠落ノードの通知や Space 作成 / 削除 / ロックイベントがここに表示されます。",
-      "markRead": "既読",
-      "markUnread": "既読にする",
-      "kind": {
-        "missingNode": "参照されているノードが見つかりません",
-        "spaceCreated": "{actor} が Space {spaceName} を作成しました",
-        "spaceDeleted": "{actor} が Space {spaceName} を削除しました",
-        "spaceLocked": "{actor} が Space {spaceName} をロックしました",
-        "spaceUnlocked": "{actor} が Space {spaceName} のロックを解除しました",
-        "spaceRestored": "{actor} が Space {spaceName} を復元しました",
-        "spaceRenamed": "{actor} が Space {oldSpaceName} の名前を {spaceName} に変更しました"
-      },
-      "action": {
-        "restore": "復元",
-        "restored": "復元済み",
-        "clearAll": "すべて削除",
-        "clearAllConfirmTitle": "すべてのメッセージを削除しますか？",
-        "clearAllConfirmDescription": "この操作は取り消せません。Project メッセージチャンネル内のすべての項目が完全に削除されます。"
-      },
-      "relative": {
-        "justNow": "たった今",
-        "minutesAgo": "{count, plural, other {# 分前}}",
-        "hoursAgo": "{count, plural, other {# 時間前}}",
-        "yesterday": "昨日",
-        "daysAgo": "{count, plural, other {# 日前}}",
-        "weeksAgo": "{count, plural, other {# 週間前}}",
-        "monthsAgo": "{count, plural, other {# ヶ月前}}"
-      }
-    },
     "create": {
       "title": "新規 Space",
       "description": "Space タイプを選んで名前を付ける",
@@ -1411,11 +1377,11 @@
       "notifications": "通知",
       "newSpace": "新規 Space",
       "allSpaces": "全 Spaces",
-      "projectMessages": "Project 通知",
       "agentHide": "エージェントパネルを隠す",
       "agentShow": "エージェントパネルを表示",
       "openHistory": "会話履歴",
-      "newConversation": "新規会話"
+      "newConversation": "新規会話",
+      "projectActivity": "Project アクティビティ"
     },
     "aria": {
       "backToStudio": "Studio に戻る",
@@ -1437,7 +1403,7 @@
     "backToStudio": "Studio に戻る"
   },
   "activity": {
-    "description": "Project アクティビティ",
+    "description": "アップロード、生成、Space とメンバーの変更",
     "loading": "読み込み中…",
     "type": {
       "assetUploaded": "{actor} が素材をアップロードしました",
@@ -1454,7 +1420,30 @@
       "memberJoined": "{actor} が Project に参加しました",
       "memberRemoved": "{actor} がメンバーを削除しました",
       "memberRoleChanged": "{actor} がメンバーのロールを {role} に変更しました",
-      "ownershipTransferred": "{actor} が Project の所有権を移譲しました"
+      "ownershipTransferred": "{actor} が Project の所有権を移譲しました",
+      "spaceCreated": "{actor} が Space {spaceName} を作成しました",
+      "spaceDeleted": "{actor} が Space {spaceName} を削除しました",
+      "spaceLocked": "{actor} が Space {spaceName} をロックしました",
+      "spaceUnlocked": "{actor} が Space {spaceName} のロックを解除しました",
+      "spaceRestored": "{actor} が Space {spaceName} を復元しました",
+      "spaceRenamed": "{actor} が Space {oldSpaceName} の名前を {spaceName} に変更しました"
+    },
+    "header": "Project アクティビティ",
+    "label": "Project アクティビティ",
+    "empty": "アクティビティはまだありません。アップロード、生成、Space とメンバーの変更がここに表示されます。",
+    "action": {
+      "restore": "復元",
+      "restored": "復元済み"
+    },
+    "relative": {
+      "justNow": "たった今",
+      "minutesAgo": "{count, plural, other {# 分前}}",
+      "hoursAgo": "{count, plural, other {# 時間前}}",
+      "yesterday": "昨日",
+      "daysAgo": "{count, plural, other {# 日前}}",
+      "weeksAgo": "{count, plural, other {# 週間前}}",
+      "monthsAgo": "{count, plural, other {# ヶ月前}}",
+      "isoDate": "{date}"
     }
   }
 }

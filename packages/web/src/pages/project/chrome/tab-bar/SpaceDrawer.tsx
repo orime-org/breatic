@@ -161,7 +161,7 @@ export function SpaceDrawer({
         ref={sheetContentRef}
         side='right-floating'
         withOverlay
-        // Width matches ProjectMessagesButton sheet (315px) for a
+        // Width matches ProjectActivityButton sheet (315px) for a
         // consistent right-floating sheet footprint across the chrome
         // (PR #138 user-driven alignment).
         className='flex w-[315px] flex-col p-0'

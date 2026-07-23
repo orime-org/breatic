@@ -919,40 +919,6 @@
       "timeline": "Timeline",
       "timelineSub": "视频 / 音频剪辑"
     },
-    "history": {
-      "label": "Project 消息",
-      "title": "Project 消息 — 节点缺失 + Space 生命周期",
-      "header": "Project 消息",
-      "description": "{count, plural, other {# 条消息}}",
-      "empty": "暂无消息。节点缺失提示和 Space 创建 / 删除 / 锁定事件会显示在这里。",
-      "markRead": "已读",
-      "markUnread": "标为已读",
-      "kind": {
-        "missingNode": "引用的节点已不存在",
-        "spaceCreated": "{actor} 创建了 Space {spaceName}",
-        "spaceDeleted": "{actor} 删除了 Space {spaceName}",
-        "spaceLocked": "{actor} 锁定了 Space {spaceName}",
-        "spaceUnlocked": "{actor} 解锁了 Space {spaceName}",
-        "spaceRestored": "{actor} 恢复了 Space {spaceName}",
-        "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名为 {spaceName}"
-      },
-      "action": {
-        "restore": "恢复",
-        "restored": "已恢复",
-        "clearAll": "清空",
-        "clearAllConfirmTitle": "确认清空所有消息？",
-        "clearAllConfirmDescription": "此操作无法撤销。Project 消息频道中的所有条目都将被永久删除。"
-      },
-      "relative": {
-        "justNow": "刚刚",
-        "minutesAgo": "{count, plural, other {# 分钟前}}",
-        "hoursAgo": "{count, plural, other {# 小时前}}",
-        "yesterday": "昨天",
-        "daysAgo": "{count, plural, other {# 天前}}",
-        "weeksAgo": "{count, plural, other {# 周前}}",
-        "monthsAgo": "{count, plural, other {# 月前}}"
-      }
-    },
     "create": {
       "title": "新建 Space",
       "description": "选 Space 类型 + 命名",
@@ -1411,11 +1377,11 @@
       "notifications": "通知",
       "newSpace": "新建 Space",
       "allSpaces": "所有 Spaces",
-      "projectMessages": "Project 消息",
       "agentHide": "收起 Agent 面板",
       "agentShow": "展开 Agent 面板",
       "openHistory": "对话历史",
-      "newConversation": "新建对话"
+      "newConversation": "新建对话",
+      "projectActivity": "Project 活动"
     },
     "aria": {
       "backToStudio": "返回 Studio",
@@ -1437,7 +1403,7 @@
     "backToStudio": "返回 Studio"
   },
   "activity": {
-    "description": "Project 活动",
+    "description": "上传、生成、Space 与成员变更",
     "loading": "加载中…",
     "type": {
       "assetUploaded": "{actor} 上传了素材",
@@ -1454,7 +1420,30 @@
       "memberJoined": "{actor} 加入了 Project",
       "memberRemoved": "{actor} 移除了一名成员",
       "memberRoleChanged": "{actor} 将一名成员的角色改为 {role}",
-      "ownershipTransferred": "{actor} 转移了 Project 所有权"
+      "ownershipTransferred": "{actor} 转移了 Project 所有权",
+      "spaceCreated": "{actor} 创建了 Space {spaceName}",
+      "spaceDeleted": "{actor} 删除了 Space {spaceName}",
+      "spaceLocked": "{actor} 锁定了 Space {spaceName}",
+      "spaceUnlocked": "{actor} 解锁了 Space {spaceName}",
+      "spaceRestored": "{actor} 恢复了 Space {spaceName}",
+      "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名为 {spaceName}"
+    },
+    "header": "Project 活动",
+    "label": "Project 活动",
+    "empty": "暂无活动。上传、生成、Space 与成员变更会显示在这里。",
+    "action": {
+      "restore": "恢复",
+      "restored": "已恢复"
+    },
+    "relative": {
+      "justNow": "刚刚",
+      "minutesAgo": "{count, plural, other {# 分钟前}}",
+      "hoursAgo": "{count, plural, other {# 小时前}}",
+      "yesterday": "昨天",
+      "daysAgo": "{count, plural, other {# 天前}}",
+      "weeksAgo": "{count, plural, other {# 周前}}",
+      "monthsAgo": "{count, plural, other {# 月前}}",
+      "isoDate": "{date}"
     }
   }
 }

@@ -156,7 +156,7 @@ export function encodeInitialMetaState(
   // reach the business DB at the right transactional moment.
 
   // 2026-05-27 awareness rewrite — seed `meta.users[creator]` so
-  // ProjectMessagesButton's actor lookup hits on the
+  // ProjectActivityButton's actor lookup hits on the
   // `space-created` entry above even when a remote peer opens
   // the project before the creator first connects (their awareness
   // hasn't fired yet, so the runtime onAwarenessUpdate path
