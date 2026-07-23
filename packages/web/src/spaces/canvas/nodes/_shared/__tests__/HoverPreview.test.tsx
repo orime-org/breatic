@@ -67,6 +67,26 @@ describe('HoverPreview', () => {
     expect(screen.queryByTestId('media-element')).not.toBeInTheDocument();
   });
 
+  it('image is sharp (no rounding) and width-locked to 220 like video (#1622 visual)', () => {
+    // User decision 2026-07-23: all-sharp corners (A) + width-lock 220 sizing
+    // (B), so image renders on the SAME model as video — a 220px-wide wrapper
+    // filled by the media (height follows aspect), never rounded.
+    vi.useFakeTimers();
+    render(
+      <HoverPreview kind='image' src='/pic.png' alt='a picture'>
+        <span data-testid='trigger'>chip</span>
+      </HoverPreview>,
+    );
+    openCard(screen.getByTestId('trigger'));
+    const img = screen.getByAltText('a picture') as HTMLImageElement;
+    // A: no rounding on the image (matches video/audio, which are already sharp).
+    expect(img.className).not.toContain('rounded');
+    // B: width-lock model, not the old 220×220 object-contain bounding box.
+    expect(img.className).not.toContain('object-contain');
+    expect(img.className).toContain('w-full');
+    expect(img.parentElement?.className).toContain('w-[220px]');
+  });
+
   it('INV-2: kind=audio → card renders the MediaPlayer <audio>', () => {
     vi.useFakeTimers();
     render(

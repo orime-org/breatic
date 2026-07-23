@@ -141,16 +141,19 @@ export function HoverPreview({
       </div>
     );
   } else if (kind === 'image' && src) {
+    // Same sizing model as the media wrapper below (user 2026-07-23, decision
+    // B): a 220px-wide box filled by the image, height following its aspect —
+    // and sharp corners (decision A), matching video / audio which are already
+    // square. Not the old 220×220 object-contain bounding box.
     content = (
-      <img
-        src={src}
-        alt={alt}
-        draggable={false}
-        className={
-          'max-h-[220px] max-w-[220px] rounded-content-sm object-contain' +
-          (previewDimmed ? ' opacity-50' : '')
-        }
-      />
+      <div className='w-[220px] max-w-[220px]'>
+        <img
+          src={src}
+          alt={alt}
+          draggable={false}
+          className={'block w-full' + (previewDimmed ? ' opacity-50' : '')}
+        />
+      </div>
     );
   } else if (previewText) {
     content = (
