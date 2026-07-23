@@ -36,6 +36,7 @@ import { taskService } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import {
   emitNodeStateFailed,
+  mediaKindForActivity,
   recordGenerationForNodes,
   type TaskJobData,
 } from "@worker/handlers/dispatch.js";
@@ -119,6 +120,12 @@ export async function cleanupFailedJobNodes(
   ) {
     const outputs = billedResult.outputs;
     const docName = canvasSpaceDocName(projectId, spaceId);
+    // #1622: this is the SECOND billed-then-crashed recovery path (the first is
+    // the dispatch.ts redelivery). Thread the same preview + ACTUAL billed
+    // credits so a crash-net recovered success row is not preview-less /
+    // credit-less / modality-generic. Sources: the persisted outputs + billed
+    // credits, kind derived from the job's taskType.
+    const previewKind = mediaKindForActivity(job.data.taskType);
     try {
       await projectActivitiesRepo.upsertGenerationSucceeded({
         projectId,
@@ -127,7 +134,17 @@ export async function cleanupFailedJobNodes(
         spaceId: spaceId ?? null,
         nodeId: targetNodeIds.length === 1 ? targetNodeIds[0] : null,
         taskId: job.data.taskId,
-        payload: { source: job.data.source ?? "task", executedOn: "backend" },
+        payload: {
+          source: job.data.source ?? "task",
+          executedOn: "backend",
+          outputCount: outputs.length,
+          ...(previewKind !== undefined && { kind: previewKind }),
+          ...(outputs[0]?.url !== undefined && { fileUrl: outputs[0].url }),
+          ...(outputs[0]?.cover_url !== undefined && {
+            thumbnailUrl: outputs[0].cover_url,
+          }),
+          ...(task.billedCredits != null && { credits: task.billedCredits }),
+        },
       });
       await publishActivityNew(projectId);
     } catch {

@@ -805,6 +805,10 @@ async function runTaskBody(
  * @param args.model - Provider model used.
  * @param args.outputCount - Number of persisted outputs (success only).
  * @param args.errorMessage - Terminal failure reason (failure only).
+ * @param args.kind - Renderable media modality of the primary output (#1622; omitted for non-media).
+ * @param args.fileUrl - Primary output URL, the hover-preview src (#1622; success + media only).
+ * @param args.thumbnailUrl - Video cover URL (#1622; video only).
+ * @param args.credits - Actual credits deducted for the run (#1622; success only).
  * @returns Nothing.
  */
 async function recordGenerationActivity(args: {
@@ -1183,7 +1187,7 @@ function taskTypeToAssetKind(
  * @param taskType - The generation task type.
  * @returns `image` / `video` / `audio`, or `undefined` for non-media.
  */
-function mediaKindForActivity(
+export function mediaKindForActivity(
   taskType: string,
 ): "image" | "video" | "audio" | undefined {
   const kind = taskTypeToAssetKind(taskType);
