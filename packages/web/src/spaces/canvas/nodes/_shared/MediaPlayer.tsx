@@ -64,6 +64,7 @@ function formatTime(seconds: number): string {
  * @param root0.modality - `'audio'` or `'video'`.
  * @param root0.src - Media source URL.
  * @param root0.poster - Poster image (video only).
+ * @param root0.variant - `'full'` (node player, default) or `'preview'` (hover preview: no volume / fullscreen).
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
  * @returns The media player element.
  */

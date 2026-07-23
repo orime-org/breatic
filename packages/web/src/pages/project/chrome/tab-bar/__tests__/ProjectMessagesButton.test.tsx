@@ -19,7 +19,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
 import type { ProjectActivityEntry } from '@breatic/shared';
-import { ProjectMessagesButton, relativeTime } from '@web/pages/project/chrome/tab-bar/ProjectMessagesButton';
+import {
+  ProjectMessagesButton,
+  relativeTime,
+  entryMessage,
+  entryMedia,
+} from '@web/pages/project/chrome/tab-bar/ProjectMessagesButton';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores/ui';
 
@@ -203,6 +208,138 @@ describe('ProjectMessagesButton (activity feed)', () => {
     });
     await new Promise((r) => setTimeout(r, 50));
     expect(listMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('entryMessage specificity (#1622)', () => {
+  it('asset:uploaded → kind-specific key, generic fallback for file / none', () => {
+    const key = (kind: string): string =>
+      entryMessage(entry({ type: 'asset:uploaded', payload: { fileUrl: 'x', kind } })).key;
+    expect(key('image')).toBe('activity.type.assetUploadedImage');
+    expect(key('video')).toBe('activity.type.assetUploadedVideo');
+    expect(key('audio')).toBe('activity.type.assetUploadedAudio');
+    expect(key('file')).toBe('activity.type.assetUploaded');
+  });
+
+  it('generation:succeeded → kind-specific key; toolName still wins; generic fallback', () => {
+    expect(
+      entryMessage(entry({ type: 'generation:succeeded', payload: { source: 'task', kind: 'image' } })).key,
+    ).toBe('activity.type.generationSucceededImage');
+    expect(
+      entryMessage(entry({ type: 'generation:succeeded', payload: { source: 'task', kind: 'audio' } })).key,
+    ).toBe('activity.type.generationSucceededAudio');
+    // A mini-tool with a tool name keeps its tool message (kind is secondary).
+    expect(
+      entryMessage(
+        entry({ type: 'generation:succeeded', payload: { source: 'mini_tool', toolName: 'crop', kind: 'image' } }),
+      ).key,
+    ).toBe('activity.type.generationSucceededTool');
+    // Non-media generation (understand) → generic.
+    expect(
+      entryMessage(entry({ type: 'generation:succeeded', payload: { source: 'understand' } })).key,
+    ).toBe('activity.type.generationSucceeded');
+  });
+
+  it('specific keys keep the {actor} param', () => {
+    expect(
+      entryMessage(
+        entry({ actorName: 'Ada', type: 'asset:uploaded', payload: { kind: 'video', fileUrl: 'x' } }),
+      ).params.actor,
+    ).toBe('Ada');
+  });
+});
+
+describe('entryMedia (#1622)', () => {
+  it('returns preview media for uploaded / generated image·video·audio', () => {
+    expect(
+      entryMedia(entry({ type: 'asset:uploaded', payload: { fileUrl: 'https://x/a.png', kind: 'image' } })),
+    ).toEqual({ kind: 'image', src: 'https://x/a.png' });
+    expect(
+      entryMedia(
+        entry({
+          type: 'generation:succeeded',
+          payload: { source: 'task', kind: 'video', fileUrl: 'https://x/v.mp4', thumbnailUrl: 'https://x/c.jpg' },
+        }),
+      ),
+    ).toEqual({ kind: 'video', src: 'https://x/v.mp4', poster: 'https://x/c.jpg' });
+    expect(
+      entryMedia(
+        entry({ type: 'generation:succeeded', payload: { source: 'task', kind: 'audio', fileUrl: 'https://x/s.mp3' } }),
+      ),
+    ).toEqual({ kind: 'audio', src: 'https://x/s.mp3' });
+  });
+
+  it('returns null for non-media rows (file kind, missing url, space / failed)', () => {
+    expect(entryMedia(entry({ type: 'asset:uploaded', payload: { fileUrl: 'x', kind: 'file' } }))).toBeNull();
+    // No fileUrl → no preview src.
+    expect(entryMedia(entry({ type: 'generation:succeeded', payload: { source: 'task', kind: 'image' } }))).toBeNull();
+    expect(entryMedia(entry({ type: 'space:created', payload: { spaceName: 'M' } }))).toBeNull();
+    expect(entryMedia(entry({ type: 'generation:failed', payload: { source: 'task' } }))).toBeNull();
+  });
+
+  it('poster only for video (audio / image ignore thumbnailUrl)', () => {
+    expect(
+      entryMedia(
+        entry({ type: 'generation:succeeded', payload: { source: 'task', kind: 'audio', fileUrl: 'x', thumbnailUrl: 'y' } }),
+      ),
+    ).toEqual({ kind: 'audio', src: 'x' });
+  });
+});
+
+describe('activity feed row: thumbnail + credits (#1622)', () => {
+  it('a media generation row shows a thumbnail and the credits it cost (raw value)', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'g-1',
+          type: 'generation:succeeded',
+          payload: { source: 'task', kind: 'image', fileUrl: 'https://x/i.png', credits: 1.5 },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(<ProjectMessagesButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-messages-trigger'));
+    await screen.findByTestId('project-messages-entry-g-1');
+    expect(screen.getByTestId('project-messages-thumb-g-1')).toBeInTheDocument();
+    expect(screen.getByTestId('project-messages-credits-g-1')).toHaveTextContent('1.5');
+  });
+
+  it('plain rows (space / member) have no thumbnail and no credits', async () => {
+    listMock.mockResolvedValue({
+      items: [entry({ id: 's-1', type: 'space:created', payload: { spaceName: 'Main' } })],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(<ProjectMessagesButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-messages-trigger'));
+    await screen.findByTestId('project-messages-entry-s-1');
+    expect(screen.queryByTestId('project-messages-thumb-s-1')).toBeNull();
+    expect(screen.queryByTestId('project-messages-credits-s-1')).toBeNull();
+  });
+
+  it('credits shows 0 for a free generation but stays hidden for uploads (INV-8)', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'z-1',
+          type: 'generation:succeeded',
+          payload: { source: 'task', kind: 'image', fileUrl: 'https://x/i.png', credits: 0 },
+        }),
+        entry({ id: 'u-1', type: 'asset:uploaded', payload: { fileUrl: 'https://x/u.png', kind: 'image' } }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(<ProjectMessagesButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-messages-trigger'));
+    await screen.findByTestId('project-messages-entry-z-1');
+    expect(screen.getByTestId('project-messages-credits-z-1')).toHaveTextContent('0');
+    // An upload records no cost → no credits chip.
+    expect(screen.queryByTestId('project-messages-credits-u-1')).toBeNull();
+    // But an upload IS a media row → it still gets a thumbnail.
+    expect(screen.getByTestId('project-messages-thumb-u-1')).toBeInTheDocument();
   });
 });
 
