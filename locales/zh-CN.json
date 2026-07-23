@@ -375,7 +375,8 @@
       "ownershipLost": "上传结果未写入 — 节点已被移除或被他人接管。",
       "typeMismatch": "文件类型与节点不符。",
       "retry": "重新上传",
-      "tooLarge": "{filename} 超过上传大小限制。"
+      "tooLarge": "{filename} 超过上传大小限制。",
+      "videoCodecUnsupported": "这个视频的格式浏览器无法读取。请转换成 H.264 / MP4 后再上传。"
     },
     "minimap": {
       "label": "画布缩略图"

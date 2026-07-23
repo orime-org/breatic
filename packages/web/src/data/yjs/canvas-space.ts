@@ -1187,6 +1187,12 @@ export function setNodeHandling(
  * @param content - The node's content (an asset URL, or extracted text).
  * @param lease - The owner triple returned by {@link setNodeHandling} (or
  *   derived from a factory-created handling node).
+ * @param coverUrl - Video only (#1816): the atomically-uploaded cover URL,
+ *   written in the SAME transaction as `content` so the poster is never a
+ *   frame behind. Omit for image / audio / text — `coverUrl` is left untouched
+ *   (writing one on a non-video would pin a phantom asset the GC treats as
+ *   live). The atomic video path always passes a string; there is no clear
+ *   case (a fresh upload always carries a cover).
  * @returns True when the write landed; false when the lease was superseded.
  */
 export function completeNodeHandling(
@@ -1195,6 +1201,7 @@ export function completeNodeHandling(
   nodeId: string,
   content: string,
   lease: LeaseToken,
+  coverUrl?: string,
 ): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -1205,6 +1212,7 @@ export function completeNodeHandling(
   if (!ownsLease(data, lease)) return false;
   doc.transact(() => {
     data.set('content', content);
+    if (coverUrl !== undefined) data.set('coverUrl', coverUrl);
     data.set('state', 'idle');
     data.delete('handlingBy');
     data.delete('errorMessage');

@@ -375,7 +375,8 @@
       "ownershipLost": "업로드 결과가 기록되지 않았습니다 — 노드가 삭제되었거나 다른 사용자가 이어받았습니다.",
       "typeMismatch": "파일 형식이 노드와 일치하지 않습니다.",
       "retry": "다시 업로드",
-      "tooLarge": "{filename}은(는) 업로드 크기 제한을 초과했습니다."
+      "tooLarge": "{filename}은(는) 업로드 크기 제한을 초과했습니다.",
+      "videoCodecUnsupported": "이 동영상 형식은 브라우저에서 읽을 수 없습니다. H.264 / MP4로 변환한 후 다시 시도하세요."
     },
     "minimap": {
       "label": "캔버스 미니맵"

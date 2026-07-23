@@ -65,6 +65,47 @@ describe('node-clipboard', () => {
     ]);
   });
 
+  it('captureClipboard: a video node carries its coverUrl poster (#1816)', () => {
+    // The cover is intrinsic to the video content (like `content` itself), so a
+    // copy must carry it — else the duplicate loses its instant poster.
+    const out = captureClipboard(
+      ['v'],
+      [
+        {
+          id: 'v',
+          type: 'video',
+          position: { x: 5, y: 6 },
+          data: { name: 'Clip', content: 'clip.mp4', coverUrl: 'clip-cover.jpg' },
+        },
+      ],
+    );
+    expect(out).toEqual([
+      {
+        type: 'video',
+        position: { x: 5, y: 6 },
+        name: 'Clip',
+        content: 'clip.mp4',
+        coverUrl: 'clip-cover.jpg',
+        id: 'v',
+      },
+    ]);
+  });
+
+  it('cloneForPaste: a video clipboard node keeps coverUrl so the duplicate has an instant poster (#1816)', () => {
+    const src: ClipboardNode[] = [
+      {
+        type: 'video',
+        position: { x: 10, y: 20 },
+        name: 'Clip',
+        content: 'clip.mp4',
+        coverUrl: 'clip-cover.jpg',
+      },
+    ];
+    const cloned = cloneForPaste(src, 'u-7', { dx: 24, dy: 24 });
+    expect(cloned[0].data.content).toBe('clip.mp4');
+    expect(cloned[0].data.coverUrl).toBe('clip-cover.jpg');
+  });
+
   it('captureClipboard: records a content node size from its measured size (for paste centering)', () => {
     const out = captureClipboard(
       ['n'],

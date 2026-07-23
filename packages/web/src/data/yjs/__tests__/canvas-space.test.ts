@@ -1088,6 +1088,38 @@ describe('unified gen lease (#1580 #7)', () => {
     expect(data.get('leaseGen')).toBe(1);
   });
 
+  it('completeNodeHandling writes coverUrl alongside content in one transaction (video atomic, #1816)', () => {
+    addNode(PID, SID, sampleFields('video'));
+    const lease = setNodeHandling(PID, SID, 'n1', 'user-x');
+    const landed = completeNodeHandling(
+      PID,
+      SID,
+      'n1',
+      'https://cdn/clip.mp4',
+      lease!,
+      'https://cdn/clip-cover.jpg',
+    );
+    expect(landed).toBe(true);
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('content')).toBe('https://cdn/clip.mp4');
+    expect(data.get('coverUrl')).toBe('https://cdn/clip-cover.jpg');
+    expect(data.get('state')).toBe('idle');
+    expect(data.has('handlingBy')).toBe(false);
+  });
+
+  it('completeNodeHandling without coverUrl leaves coverUrl untouched (image / audio / text)', () => {
+    addNode(PID, SID, sampleFields('image'));
+    const lease = setNodeHandling(PID, SID, 'n1', 'user-x');
+    completeNodeHandling(PID, SID, 'n1', 'https://cdn/photo.png', lease!);
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('content')).toBe('https://cdn/photo.png');
+    expect(data.has('coverUrl')).toBe(false);
+  });
+
   it('completeNodeHandling with a superseded token is a no-op returning false (owner CAS)', () => {
     addNode(PID, SID, sampleFields('image'));
     const stale = setNodeHandling(PID, SID, 'n1', 'user-a');

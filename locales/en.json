@@ -375,7 +375,8 @@
       "ownershipLost": "Upload result was not written — the node was removed or taken over.",
       "typeMismatch": "File type doesn’t match this node.",
       "retry": "Retry upload",
-      "tooLarge": "{filename} exceeds the upload size limit."
+      "tooLarge": "{filename} exceeds the upload size limit.",
+      "videoCodecUnsupported": "This video's format can't be read in the browser. Convert it to H.264 / MP4 and try again."
     },
     "minimap": {
       "label": "Canvas minimap"

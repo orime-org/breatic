@@ -124,18 +124,20 @@ function nameOf(view: NodeView): string {
 
 /**
  * Picks the live thumbnail URL for a source node view: the image asset for an
- * image, the cover frame (falling back to the raw asset) for a video, and
+ * image, the cover frame for a video (undefined when the video carries no
+ * cover — NEVER the raw video URL, which fed to an `<img>` is a broken image
+ * (#1821); a coverless video degrades to a modality icon downstream), and
  * nothing for modalities without a visual payload (text / audio / 3d / web /
  * annotation / group).
  * @param view - The source node's view.
- * @returns The thumbnail URL, or undefined when there is no visual payload.
+ * @returns The thumbnail URL, or undefined when there is no usable cover.
  */
 function thumbnailOf(view: NodeView): string | undefined {
   switch (view.kind) {
     case 'image':
       return view.content;
     case 'video':
-      return view.coverUrl ?? view.content;
+      return view.coverUrl;
     default:
       return undefined;
   }

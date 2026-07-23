@@ -8,6 +8,7 @@ import {
   fileToNodeSpec,
   fillNodeFromFile,
   runMediaUpload,
+  runVideoUploadWithCover,
   computeDeletedAssetEntries,
   assetUrlSurvives,
 } from '@web/spaces/canvas/canvas-upload';
@@ -213,6 +214,105 @@ describe('runMediaUpload — config → hash → presign(dedup) → PUT → call
   });
 });
 
+const VIDEO_FILE = new File(['v'], 'clip.mp4', { type: 'video/mp4' });
+const COVER_FILE = new File(['c'], 'clip-cover.jpg', { type: 'image/jpeg' });
+
+/**
+ * Deps for {@link runVideoUploadWithCover}: config + hash shared, presign +
+ * PUT keyed on the file so the video and cover get distinct URLs / can fail
+ * independently.
+ * @param over - Per-test overrides.
+ * @returns The atomic video-with-cover orchestration deps.
+ */
+function makeVideoCoverDeps(
+  over: Partial<Parameters<typeof runVideoUploadWithCover>[3]> = {},
+): Parameters<typeof runVideoUploadWithCover>[3] {
+  return {
+    getUploadConfig: vi.fn().mockResolvedValue(CFG),
+    hashFile: vi.fn().mockResolvedValue(HASH),
+    presign: vi.fn().mockImplementation((params: { contentType: string }) =>
+      Promise.resolve(
+        params.contentType.startsWith('video/')
+          ? {
+            uploadUrl: 'https://put/v',
+            fileUrl: 'https://cdn/clip.mp4',
+            key: 'kv',
+            kind: 'video',
+          }
+          : {
+            uploadUrl: 'https://put/c',
+            fileUrl: 'https://cdn/clip-cover.jpg',
+            key: 'kc',
+            kind: 'image',
+          },
+      ),
+    ),
+    putFile: vi.fn().mockResolvedValue(undefined),
+    onSuccess: vi.fn(),
+    onFailure: vi.fn(),
+    onVideoUploaded: vi.fn(),
+    onCoverUploaded: vi.fn(),
+    sleep: () => Promise.resolve(),
+    ...over,
+  };
+}
+
+describe('runVideoUploadWithCover — atomic video + cover (#1816)', () => {
+  it('writes content + cover ONCE when both uploads succeed, and reports both assets', async () => {
+    const deps = makeVideoCoverDeps();
+
+    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
+
+    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
+      'https://cdn/clip.mp4',
+      'https://cdn/clip-cover.jpg',
+    );
+    expect(deps.onFailure).not.toHaveBeenCalled();
+    // Both ledger reports fire (video WITH nodeId at the caller; cover WITHOUT).
+    expect(deps.onVideoUploaded).toHaveBeenCalledOnce();
+    expect(deps.onCoverUploaded).toHaveBeenCalledOnce();
+  });
+
+  it('fails atomically when the VIDEO PUT fails — no write, no reports', async () => {
+    const deps = makeVideoCoverDeps({
+      putFile: vi
+        .fn()
+        .mockImplementation((url: string) =>
+          url === 'https://put/v'
+            ? Promise.reject(new Error('net'))
+            : Promise.resolve(),
+        ),
+    });
+
+    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
+
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledOnce();
+    // No phantom node-history row / attribution for an aborted atomic upload.
+    expect(deps.onVideoUploaded).not.toHaveBeenCalled();
+    expect(deps.onCoverUploaded).not.toHaveBeenCalled();
+  });
+
+  it('fails atomically when the COVER PUT fails — never writes video-only', async () => {
+    const deps = makeVideoCoverDeps({
+      putFile: vi
+        .fn()
+        .mockImplementation((url: string) =>
+          url === 'https://put/c'
+            ? Promise.reject(new Error('net'))
+            : Promise.resolve(),
+        ),
+    });
+
+    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
+
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledOnce();
+    expect(deps.onVideoUploaded).not.toHaveBeenCalled();
+    expect(deps.onCoverUploaded).not.toHaveBeenCalled();
+  });
+});
+
 describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-click / Upload menu)', () => {
   /** The owner triple the stubbed setHandling hands back (#1580 #7). */
   const LEASE = { gen: 1, clientId: 7, userId: 'u1' };
@@ -254,6 +354,92 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'https://cdn/p.png', LEASE);
     expect(deps.setError).not.toHaveBeenCalled();
     expect(deps.extractText).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A presign keyed on content type so the video and cover get distinct URLs
+   * (the atomic video-with-cover fill path uploads both).
+   * @param params - The presign params (only `contentType` is read).
+   * @returns The presign response for a video or a cover.
+   */
+  const videoCoverPresign = (params: {
+    contentType: string;
+  }): Promise<unknown> =>
+    Promise.resolve(
+      params.contentType.startsWith('video/')
+        ? {
+          uploadUrl: 'https://put/v',
+          fileUrl: 'https://cdn/clip.mp4',
+          key: 'kv',
+          kind: 'video',
+        }
+        : {
+          uploadUrl: 'https://put/c',
+          fileUrl: 'https://cdn/clip-cover.jpg',
+          key: 'kc',
+          kind: 'image',
+        },
+    );
+
+  it('video pre-flight reject (#1816): extraction null → NO setHandling, empty node untouched, onExtractRejected fires', async () => {
+    const deps = makeDeps({
+      extractVideoCover: vi.fn().mockResolvedValue(null),
+      onExtractRejected: vi.fn(),
+    });
+    await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
+    expect(deps.extractVideoCover).toHaveBeenCalledOnce();
+    expect(deps.onExtractRejected).toHaveBeenCalledExactlyOnceWith('n1');
+    // The empty node is never touched: no lease, no upload, no write.
+    expect(deps.setHandling).not.toHaveBeenCalled();
+    expect(deps.presign).not.toHaveBeenCalled();
+    expect(deps.setContent).not.toHaveBeenCalled();
+    expect(deps.setError).not.toHaveBeenCalled();
+  });
+
+  it('video with cover (#1816): extraction ok → atomic upload → setContent gets content + coverUrl; both assets reported', async () => {
+    const deps = makeDeps({
+      presign: vi.fn().mockImplementation(videoCoverPresign),
+      extractVideoCover: vi
+        .fn()
+        .mockResolvedValue(new Blob(['c'], { type: 'image/jpeg' })),
+      onUploaded: vi.fn(),
+      onCoverUploaded: vi.fn(),
+    });
+    await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
+    expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
+    expect(deps.setContent).toHaveBeenCalledExactlyOnceWith(
+      'n1',
+      'https://cdn/clip.mp4',
+      LEASE,
+      'https://cdn/clip-cover.jpg',
+    );
+    // Video ledger report carries the nodeId; cover report has none (F3).
+    expect(deps.onUploaded).toHaveBeenCalledOnce();
+    expect(deps.onCoverUploaded).toHaveBeenCalledOnce();
+    expect(deps.setError).not.toHaveBeenCalled();
+  });
+
+  it('video atomic failure (#1816): cover PUT fails → setError, never writes video-only', async () => {
+    const deps = makeDeps({
+      presign: vi.fn().mockImplementation(videoCoverPresign),
+      putFile: vi
+        .fn()
+        .mockImplementation((url: string) =>
+          url === 'https://put/c'
+            ? Promise.reject(new Error('net'))
+            : Promise.resolve(),
+        ),
+      extractVideoCover: vi
+        .fn()
+        .mockResolvedValue(new Blob(['c'], { type: 'image/jpeg' })),
+    });
+    await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
+    expect(deps.setContent).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledExactlyOnceWith(
+      'n1',
+      'Upload failed: clip.mp4',
+      LEASE,
+    );
   });
 
   it('media upload failure: writes a fixed-English error onto the node (not a toast)', async () => {

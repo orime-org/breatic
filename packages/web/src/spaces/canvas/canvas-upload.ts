@@ -7,6 +7,7 @@ import {
   retryTransient,
   type UploadClientConfig,
 } from '@web/data/upload/upload-retry';
+import { videoCoverFileName } from '@web/spaces/canvas/video-cover-extract';
 
 /**
  * Pure canvas-upload classification + the media upload orchestrator. Classify
@@ -149,6 +150,124 @@ export async function runMediaUpload(
   }
 }
 
+/** The network + result sinks for {@link runVideoUploadWithCover} (#1816). */
+export interface VideoWithCoverDeps {
+  /** Fetch the session-cached upload knobs (shared by both uploads). */
+  getUploadConfig: MediaUploadDeps['getUploadConfig'];
+  /** Hash a file for dedup (shared). */
+  hashFile: MediaUploadDeps['hashFile'];
+  /** Request a presigned URL / dedup hit (shared). */
+  presign: MediaUploadDeps['presign'];
+  /** PUT a file with retries (shared). */
+  putFile: MediaUploadDeps['putFile'];
+  /** Backoff sleep override (tests only). */
+  sleep?: MediaUploadDeps['sleep'];
+  /**
+   * BOTH uploads succeeded → write `content` + `coverUrl` onto the node in one
+   * atomic write (`completeNodeHandling`). The only success path.
+   */
+  onSuccess: (videoUrl: string, coverUrl: string) => void;
+  /**
+   * EITHER upload failed → the node stays unwritten (`failNodeHandling`, retry
+   * both). A successfully-uploaded half becomes an accepted orphan asset
+   * (design C2/C5); it is deliberately NOT reported (no phantom node-history
+   * row / attribution for an aborted atomic upload).
+   */
+  onFailure: () => void;
+  /**
+   * Video asset ledger report — fired ONLY on full success. The caller adds
+   * the nodeId (it becomes the node-history 'upload' row's source).
+   */
+  onVideoUploaded?: (info: UploadedInfo) => void;
+  /**
+   * Cover asset ledger report — fired ONLY on full success. Carries the cover
+   * File so the caller can build the report metadata (filename / size). The
+   * caller omits the nodeId (F3): a cover is a derived asset, not node content,
+   * so a node_id would write a bogus node-history row (mirrors `runFocusCrop`).
+   */
+  onCoverUploaded?: (info: UploadedInfo, coverFile: File) => void;
+}
+
+/**
+ * Upload one file through {@link runMediaUpload}, resolving its public URL +
+ * storage identity or rejecting on failure — the Promise adapter that lets
+ * {@link runVideoUploadWithCover} join the video and cover with `Promise.all`.
+ * @param file - The file to upload.
+ * @param projectId - Owning project (authorizes the presign).
+ * @param shared - The shared upload network deps.
+ * @returns The uploaded URL + storage identity.
+ * @throws {Error} When config / presign / PUT finally fails.
+ */
+function uploadOneMedia(
+  file: File,
+  projectId: string,
+  shared: Pick<
+    VideoWithCoverDeps,
+    'getUploadConfig' | 'hashFile' | 'presign' | 'putFile' | 'sleep'
+  >,
+): Promise<{ url: string; info: UploadedInfo }> {
+  return new Promise((resolve, reject) => {
+    let url = '';
+    void runMediaUpload(file, projectId, {
+      getUploadConfig: shared.getUploadConfig,
+      hashFile: shared.hashFile,
+      presign: shared.presign,
+      putFile: shared.putFile,
+      onSuccess: (fileUrl) => {
+        url = fileUrl;
+      },
+      onFailure: () => reject(new Error('media upload failed')),
+      onUploaded: (info) => resolve({ url, info }),
+      ...(shared.sleep !== undefined && { sleep: shared.sleep }),
+    });
+  });
+}
+
+/**
+ * Upload a video and its extracted cover ATOMICALLY (#1816): the two run
+ * concurrently, EACH with its own transient retry ({@link runMediaUpload} →
+ * presign + PUT, 3 attempts apiece). The node is written only when BOTH
+ * FINALLY succeed. If either FINALLY fails (after its own retries are
+ * exhausted), the whole thing aborts with no write — a video never lands
+ * without its cover and a cover never lands without its video; the failed node
+ * then offers a manual Retry that re-runs the whole upload from scratch. A
+ * single transient hiccup does NOT re-upload the other half — each half only
+ * retries itself. Never throws — both outcomes route through `onSuccess` /
+ * `onFailure`, and the ledger reports fire only on full success (an aborted
+ * half is an accepted orphan, not a phantom node-history row). Mirrors
+ * {@link runFocusCrop}'s injected pipeline.
+ * @param videoFile - The video File to upload.
+ * @param coverFile - The pre-flight-extracted cover File (JPEG).
+ * @param projectId - Owning project (authorizes the presigns).
+ * @param deps - Injected shared upload network + atomic result sinks.
+ */
+export async function runVideoUploadWithCover(
+  videoFile: File,
+  coverFile: File,
+  projectId: string,
+  deps: VideoWithCoverDeps,
+): Promise<void> {
+  const shared = {
+    getUploadConfig: deps.getUploadConfig,
+    hashFile: deps.hashFile,
+    presign: deps.presign,
+    putFile: deps.putFile,
+    ...(deps.sleep !== undefined && { sleep: deps.sleep }),
+  };
+  try {
+    const [video, cover] = await Promise.all([
+      uploadOneMedia(videoFile, projectId, shared),
+      uploadOneMedia(coverFile, projectId, shared),
+    ]);
+    // Both landed — report the assets, then write content + cover in one go.
+    deps.onVideoUploaded?.(video.info);
+    deps.onCoverUploaded?.(cover.info, coverFile);
+    deps.onSuccess(video.url, cover.url);
+  } catch {
+    deps.onFailure();
+  }
+}
+
 /**
  * The owner triple a handling opener holds (#1580 #7). Mirrors the data
  * layer's `LeaseToken` — declared structurally here so this pure module
@@ -178,6 +297,15 @@ export interface FillNodeDeps {
   /** Read / extract a non-media file's text locally (the text path). */
   extractText: (file: File) => Promise<string>;
   /**
+   * Extract a video's first frame as a cover blob (#1816), or `null` when the
+   * browser cannot decode it. Present only for the video path (production binds
+   * `extractVideoFirstFrame`). When a video file arrives WITH this dep, the fill
+   * runs the PRE-FLIGHT gate below (extract before opening the lease) + the
+   * atomic video-with-cover upload; absent, a video falls back to a plain
+   * cover-less upload (legacy).
+   */
+  extractVideoCover?: (file: File) => Promise<Blob | null>;
+  /**
    * Busy gate (#1580 #7, user decision 2026-07-03): true when the node is
    * already handling — a second fill is refused up front instead of
    * silently racing the live lease holder.
@@ -191,15 +319,28 @@ export interface FillNodeDeps {
   /** Called (instead of any work) when the busy gate refuses the fill. */
   onBusy: (nodeId: string) => void;
   /**
+   * Called (instead of any work) when the video pre-flight can't extract a
+   * cover (#1816) — the empty node is left untouched (no lease, no upload). The
+   * caller turns this into a friendly "unsupported codec" toast.
+   */
+  onExtractRejected?: (nodeId: string) => void;
+  /**
    * Open the lease (`handling` + owner triple); `undefined` = node gone.
    * The returned token threads through to the write-backs below.
    */
   setHandling: (nodeId: string) => UploadLease | undefined;
   /**
    * Leased content write-back; returns false when the lease was superseded
-   * (the node's final content belongs to the final lease owner).
+   * (the node's final content belongs to the final lease owner). `coverUrl`
+   * (#1816) is passed on the atomic video path so `content` + cover land in one
+   * transaction; omitted for image / audio / text.
    */
-  setContent: (nodeId: string, content: string, lease: UploadLease) => boolean;
+  setContent: (
+    nodeId: string,
+    content: string,
+    lease: UploadLease,
+    coverUrl?: string,
+  ) => boolean;
   /** Leased error write-back (fixed-English wire string — never a toast). */
   setError: (nodeId: string, message: string, lease: UploadLease) => boolean;
   /**
@@ -208,6 +349,13 @@ export interface FillNodeDeps {
    * landed on. Fire-and-forget at the caller.
    */
   onUploaded?: (nodeId: string, info: UploadedInfo) => void;
+  /**
+   * Cover asset ledger reporter (#1816 atomic video path) — called after a
+   * successful atomic upload with the COVER's storage identity + File. The
+   * caller reports it WITHOUT a nodeId (F3): a cover is a derived asset, not
+   * node content, so a node_id would write a bogus node-history row.
+   */
+  onCoverUploaded?: (info: UploadedInfo, coverFile: File) => void;
 }
 
 /**
@@ -241,7 +389,8 @@ export async function fillNodeFromFile(
   projectId: string,
   deps: FillNodeDeps,
 ): Promise<void> {
-  if (fileToNodeSpec(file).nodeType !== targetModality) {
+  const spec = fileToNodeSpec(file);
+  if (spec.nodeType !== targetModality) {
     deps.onTypeMismatch(nodeId);
     return;
   }
@@ -249,9 +398,43 @@ export async function fillNodeFromFile(
     deps.onBusy(nodeId);
     return;
   }
+  // Video pre-flight (#1816): extract the cover BEFORE opening the lease, so a
+  // codec the browser can't decode leaves the empty node untouched (no
+  // handling state) instead of failing mid-upload. Only when the extractor is
+  // wired (production always wires it) — a video without it falls back to a
+  // plain cover-less upload below.
+  let coverFile: File | undefined;
+  if (spec.nodeType === 'video' && deps.extractVideoCover) {
+    const coverBlob = await deps.extractVideoCover(file);
+    if (!coverBlob) {
+      deps.onExtractRejected?.(nodeId);
+      return;
+    }
+    coverFile = new File([coverBlob], videoCoverFileName(file.name), {
+      type: 'image/jpeg',
+    });
+  }
   const lease = deps.setHandling(nodeId);
   if (!lease) return;
-  if (fileToNodeSpec(file).needsUpload) {
+  if (spec.needsUpload) {
+    if (coverFile) {
+      // Atomic video + cover: the node gets content + coverUrl only when BOTH
+      // uploads succeed; either failure retries both (never video-only).
+      await runVideoUploadWithCover(file, coverFile, projectId, {
+        getUploadConfig: deps.getUploadConfig,
+        hashFile: deps.hashFile,
+        presign: deps.presign,
+        putFile: deps.putFile,
+        onSuccess: (videoUrl, coverUrl) =>
+          deps.setContent(nodeId, videoUrl, lease, coverUrl),
+        onFailure: () =>
+          deps.setError(nodeId, `Upload failed: ${file.name}`, lease),
+        onVideoUploaded: (info) => deps.onUploaded?.(nodeId, info),
+        onCoverUploaded: (info, cf) => deps.onCoverUploaded?.(info, cf),
+        ...(deps.sleep !== undefined && { sleep: deps.sleep }),
+      });
+      return;
+    }
     await runMediaUpload(file, projectId, {
       getUploadConfig: deps.getUploadConfig,
       hashFile: deps.hashFile,

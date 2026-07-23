@@ -93,12 +93,17 @@ import {
   fileToNodeSpec,
   fillNodeFromFile,
   runMediaUpload,
+  runVideoUploadWithCover,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
   type UploadedInfo,
   assetUrlSurvives,
   isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
+import {
+  extractVideoFirstFrame,
+  videoCoverFileName,
+} from '@web/spaces/canvas/video-cover-extract';
 import { hashFile } from '@web/data/upload/hash';
 import { putFileWithRetry } from '@web/data/upload/upload-retry';
 import {
@@ -205,7 +210,12 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
   text: '.txt,.md,.pdf,.doc,.docx,.xls,.xlsx,text/*',
   image: 'image/*',
-  video: 'video/*',
+  // Coarse container allow-list (#1816 double-insurance): the picker filters
+  // obvious non-videos, but a container's MIME can't reveal its codec, so an
+  // HEVC-in-mp4 still passes here — the pre-flight first-frame extraction is
+  // the real codec gate (a video whose first frame won't decode is rejected
+  // at file-pick before any node is created).
+  video: 'video/mp4,video/webm,video/quicktime,video/ogg',
   audio: 'audio/*',
 };
 
@@ -1230,6 +1240,30 @@ function CanvasSpaceInner({
     },
     [projectId, spaceId, t],
   );
+  // Cover ledger report for the atomic video upload (#1816): reports the
+  // COVER asset for #1606 attribution / dedup, WITHOUT a nodeId (F3) — a cover
+  // is a derived asset, not node content, so a node_id would write a bogus
+  // node-history 'upload' row (mirrors runFocusCrop's crop report :723-728).
+  const reportUploadedCover = React.useCallback(
+    (info: UploadedInfo, coverFile: File): void => {
+      void assetsApi
+        .reportUploaded({
+          projectId,
+          kind: info.kind,
+          spaceId,
+          ...(info.hash !== null && { hash: info.hash }),
+          ...(info.dedup === true ? { dedup: true as const } : {}),
+          ...(info.key !== undefined && { key: info.key }),
+          metadata: {
+            filename: coverFile.name,
+            size: coverFile.size,
+            mimeType: coverFile.type,
+          },
+        })
+        .catch(() => toast.error(t('canvas.activity.reportFailed')));
+    },
+    [projectId, spaceId, t],
+  );
   const reportDeletedAssets = React.useCallback(
     (deletedNodes: Node[]): void => {
       // flowNodesRef still holds the deleted nodes here (Yjs removal
@@ -1822,6 +1856,62 @@ function CanvasSpaceInner({
             x: origin.x + i * STAGGER_STEP_PX,
             y: origin.y + i * STAGGER_STEP_PX,
           };
+          // Video pre-flight (#1816): extract the first-frame cover BEFORE
+          // creating the node, so an undecodable codec (HEVC etc.) creates NO
+          // node — not a half-uploaded error node. The atomic upload then lands
+          // content + cover together, or fails as a unit (retry both).
+          if (spec.nodeType === 'video') {
+            const coverBlob = await extractVideoFirstFrame(file);
+            if (!coverBlob) {
+              toast.warning(t('canvas.upload.videoCodecUnsupported'));
+              continue; // no node created
+            }
+            const coverFile = new File(
+              [coverBlob],
+              videoCoverFileName(file.name),
+              { type: 'image/jpeg' },
+            );
+            const { nodeId, lease } = createUploadNodeAt('video', position);
+            created.push(nodeId);
+            trackOperation(
+              nodeId,
+              runVideoUploadWithCover(file, coverFile, projectId, {
+                getUploadConfig: assetsApi.fetchUploadConfig,
+                hashFile,
+                presign: assetsApi.presign,
+                putFile: putFileWithRetry,
+                onSuccess: (videoUrl, coverUrl) => {
+                  clearRetryFile(projectId, spaceId, nodeId);
+                  if (
+                    !completeNodeHandling(
+                      projectId,
+                      spaceId,
+                      nodeId,
+                      videoUrl,
+                      lease,
+                      coverUrl,
+                    )
+                  ) {
+                    toast.warning(t('canvas.upload.ownershipLost'));
+                  }
+                },
+                onFailure: () => {
+                  stashRetryFile(projectId, spaceId, nodeId, file);
+                  failNodeHandling(
+                    projectId,
+                    spaceId,
+                    nodeId,
+                    `Upload failed: ${file.name}`,
+                    lease,
+                  );
+                },
+                onVideoUploaded: (info) =>
+                  reportUploadedAsset(nodeId, info, file),
+                onCoverUploaded: (info, cf) => reportUploadedCover(info, cf),
+              }),
+            );
+            continue;
+          }
           // #1580 #7: the created-handling node carries its first lease; the
           // write-backs verify it, so a superseded upload (someone re-opened
           // the node after a sweeper reclaim) cannot clobber the new owner.
@@ -1895,6 +1985,7 @@ function CanvasSpaceInner({
       createUploadNodeAt,
       t,
       reportUploadedAsset,
+      reportUploadedCover,
       trackOperation,
     ],
   );
@@ -2621,10 +2712,22 @@ function CanvasSpaceInner({
           // entry (activateNodeUpload) already gates handling before opening.
           isHandling: (id) => isNodeHandling(projectId, spaceId, id),
           onBusy: () => warnNodeGate(t(NODE_GATE_TOAST_KEY.handling)),
+          // Video pre-flight (#1816): extract the first-frame cover before the
+          // lease opens; an undecodable codec leaves the empty node untouched.
+          extractVideoCover: extractVideoFirstFrame,
+          onExtractRejected: () =>
+            toast.warning(t('canvas.upload.videoCodecUnsupported')),
           setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
-          setContent: (id, content, lease) => {
+          setContent: (id, content, lease, coverUrl) => {
             clearRetryFile(projectId, spaceId, id);
-            const landed = completeNodeHandling(projectId, spaceId, id, content, lease);
+            const landed = completeNodeHandling(
+              projectId,
+              spaceId,
+              id,
+              content,
+              lease,
+              coverUrl,
+            );
             if (!landed) toast.warning(t('canvas.upload.ownershipLost'));
             return landed;
           },
@@ -2637,11 +2740,21 @@ function CanvasSpaceInner({
             return failNodeHandling(projectId, spaceId, id, message, lease);
           },
           onUploaded: (id, info) => reportUploadedAsset(id, info, file),
+          onCoverUploaded: (info, coverFile) =>
+            reportUploadedCover(info, coverFile),
         });
       })();
       trackOperation(nodeId, work);
     },
-    [projectId, spaceId, userId, t, reportUploadedAsset, trackOperation],
+    [
+      projectId,
+      spaceId,
+      userId,
+      t,
+      reportUploadedAsset,
+      reportUploadedCover,
+      trackOperation,
+    ],
   );
   // Reset an image node to a fresh blank PNG (#1623): the panel's Execute. reset
   // ≡ "upload a new image" (user 2026-07-20), so it rasterises the blank canvas

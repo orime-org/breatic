@@ -76,7 +76,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
 
     const refs = deriveReferences('me', nodes, edges);
     expect(refs.map((r) => r.sourceNodeId)).toEqual(['a', 'b']);
-    // Video thumbnail prefers the cover frame over the raw asset URL.
+    // Video thumbnail is the cover frame (never the raw asset URL — #1821).
     expect(refs[1]).toEqual({
       refId: 'b->me',
       sourceNodeId: 'b',
@@ -84,6 +84,22 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
       sourceNodeName: 'B',
       thumbnail: 'b-cover.png',
     });
+  });
+
+  it('leaves a coverless video thumbnail undefined — never the raw video URL (#1821)', () => {
+    // A video with no cover (uploaded before #1816, or a generation whose
+    // ffmpeg cover step failed) must NOT surface its video URL as a thumbnail:
+    // a video URL fed to an <img> is a broken image. It degrades to undefined
+    // so the rail / chip fall back to a modality icon.
+    const nodes: CanvasNodeView[] = [
+      node('v', { kind: 'video', name: 'Clip', status: 'idle', content: 'clip.mp4' }),
+      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+    ];
+    const edges: CanvasEdge[] = [edge('v->me', 'v', 'me')];
+
+    const refs = deriveReferences('me', nodes, edges);
+    expect(refs[0].sourceNodeType).toBe('video');
+    expect(refs[0].thumbnail).toBeUndefined();
   });
 
   it('skips a dangling incoming edge whose source node no longer exists', () => {
