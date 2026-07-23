@@ -1430,7 +1430,7 @@
     },
     "header": "Project 活动",
     "label": "Project 活动",
-    "empty": "暂无消息。节点缺失提示和 Space 创建 / 删除 / 锁定事件会显示在这里。",
+    "empty": "暂无活动。上传、生成、Space 与成员变更会显示在这里。",
     "action": {
       "restore": "恢复",
       "restored": "已恢复"

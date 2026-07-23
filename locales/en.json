@@ -1430,7 +1430,7 @@
     },
     "header": "Project activity",
     "label": "Project activity",
-    "empty": "No messages yet. Missing-node banners and Space create / delete / lock events will appear here.",
+    "empty": "No activity yet. Uploads, generations, and Space / member changes will appear here.",
     "action": {
       "restore": "Restore",
       "restored": "Restored"

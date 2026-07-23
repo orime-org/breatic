@@ -115,7 +115,7 @@ describe('SpaceTabBar', () => {
     expect(screen.getByTestId('space-tab-close-s3')).toBeInTheDocument();
   });
 
-  it('+ button, drawer trigger, project-messages trigger all present (right group)', () => {
+  it('+ button, drawer trigger, project-activity trigger all present (right group)', () => {
     setup();
     expect(screen.getByTestId('new-space-button')).toBeInTheDocument();
     expect(screen.getByTestId('space-drawer-trigger')).toBeInTheDocument();
@@ -138,7 +138,7 @@ describe('SpaceTabBar', () => {
       expect(screen.queryByTestId('new-space-button')).toBeNull();
     });
 
-    it('viewer still sees the all-spaces drawer + project-messages buttons', () => {
+    it('viewer still sees the all-spaces drawer + project-activity buttons', () => {
       setup({ currentUserRole: 'viewer' });
       expect(screen.getByTestId('space-drawer-trigger')).toBeInTheDocument();
       expect(screen.getByTestId('project-activity-trigger')).toBeInTheDocument();

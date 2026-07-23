@@ -294,7 +294,7 @@ export function ProjectActivityButton({
   onRestore,
 }: ProjectActivityButtonProps): JSX.Element {
   const t = useTranslation();
-  const [open, setOpen] = useExclusiveOverlay('project-messages');
+  const [open, setOpen] = useExclusiveOverlay('project-activity');
   const isOwner = currentUserRole === 'owner';
   const [busyId, setBusyId] = useState<string | null>(null);
   const queryClient = useQueryClient();

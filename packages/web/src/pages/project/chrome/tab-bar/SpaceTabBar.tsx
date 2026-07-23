@@ -74,7 +74,7 @@ interface SpaceTabBarProps {
  *
  * Layout (mock § space-header):
  *   [agent-toggle | divider] [scroll-left] [.space-tabs] [scroll-right]
- *   [divider | new-space + drawer + project-messages]
+ *   [divider | new-space + drawer + project-activity]
  *
  * Scroll arrows hide when content doesn't overflow + show disabled
  * state at boundaries (industry standard pattern per mock v4.27/v4.29).
@@ -83,7 +83,7 @@ interface SpaceTabBarProps {
 /**
  * The 40px space tab bar: agent-column toggle, scrollable open-tab strip
  * with smart scroll arrows, and the new-space / all-spaces drawer /
- * project-messages chrome controls.
+ * project-activity chrome controls.
  * @param root0 - Component props.
  * @param root0.spaces - Tabs currently open in the bar (resolved from per-user open tab ids).
  * @param root0.allSpaces - All spaces in the project, used by the drawer to list everything.
@@ -297,7 +297,7 @@ export function SpaceTabBar({
   return (
     // ARIA structure: outer container is a `toolbar` because it mixes
     // tabs (the space list) with chrome controls (agent toggle, new,
-    // drawer, project-messages, scroll arrows). The actual `role='tablist'` is
+    // drawer, project-activity, scroll arrows). The actual `role='tablist'` is
     // nested around just the SpaceTab list below, satisfying
     // axe-core's `aria-required-children` rule (a tablist may only
     // contain `role='tab'` children).
@@ -401,7 +401,7 @@ export function SpaceTabBar({
       >
         {/* New-space create is hidden for viewers (B model — hidden, not
             disabled). Editors + owners can create spaces; the all-spaces
-            drawer + project-messages buttons stay visible for everyone.
+            drawer + project-activity buttons stay visible for everyone.
             Backend `requireRole` on `space:create` is the real boundary. */}
         {currentUserRole === 'viewer' ? null : (
           <NewSpaceDialog

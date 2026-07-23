@@ -1430,7 +1430,7 @@
     },
     "header": "Project 활동",
     "label": "Project 활동",
-    "empty": "아직 메시지가 없습니다. 누락된 노드 배너와 Space 생성 / 삭제 / 잠금 이벤트가 여기에 표시됩니다.",
+    "empty": "아직 활동이 없습니다. 업로드, 생성, Space 및 멤버 변경이 여기에 표시됩니다.",
     "action": {
       "restore": "복원",
       "restored": "복원됨"
