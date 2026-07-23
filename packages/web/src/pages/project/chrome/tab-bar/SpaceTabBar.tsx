@@ -26,7 +26,7 @@ import { useUIStore } from '@web/stores';
 import { NewSpaceDialog } from '@web/pages/project/chrome/tab-bar/NewSpaceDialog';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
-import { ProjectMessagesButton } from '@web/pages/project/chrome/tab-bar/ProjectMessagesButton';
+import { ProjectActivityButton } from '@web/pages/project/chrome/tab-bar/ProjectActivityButton';
 import { SpaceTab } from '@web/pages/project/chrome/tab-bar/SpaceTab';
 
 interface SpaceTabBarProps {
@@ -47,7 +47,7 @@ interface SpaceTabBarProps {
   /** Open the read-only preview sheet for a Space (drawer "view" action). */
   onViewSpace: (id: string) => void;
   /**
-   * Live meta-doc provider — ProjectMessagesButton listens for the
+   * Live meta-doc provider — ProjectActivityButton listens for the
    * `activity:new` stateless signal on it (ADR 2026-07-04
    * project-activity-feed; feed data itself arrives via REST).
    */
@@ -434,7 +434,7 @@ export function SpaceTabBar({
           onDeleteSpace={onDeleteSpace}
           onSetSpaceLocked={onSetSpaceLocked}
         />
-        <ProjectMessagesButton
+        <ProjectActivityButton
           projectId={projectId}
           provider={metaProvider}
           currentUserRole={currentUserRole}

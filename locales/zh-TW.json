@@ -919,40 +919,6 @@
       "timeline": "Timeline",
       "timelineSub": "影片 / 音訊剪輯"
     },
-    "history": {
-      "label": "Project 訊息",
-      "title": "Project 訊息 — 節點遺失 + Space 生命週期",
-      "header": "Project 訊息",
-      "description": "{count, plural, other {# 則訊息}}",
-      "empty": "尚無訊息。節點遺失提示和 Space 建立 / 刪除 / 鎖定事件會顯示在這裡。",
-      "markRead": "已讀",
-      "markUnread": "標記為已讀",
-      "kind": {
-        "missingNode": "引用的節點已不存在",
-        "spaceCreated": "{actor} 建立了 Space {spaceName}",
-        "spaceDeleted": "{actor} 刪除了 Space {spaceName}",
-        "spaceLocked": "{actor} 鎖定了 Space {spaceName}",
-        "spaceUnlocked": "{actor} 解鎖了 Space {spaceName}",
-        "spaceRestored": "{actor} 還原了 Space {spaceName}",
-        "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名為 {spaceName}"
-      },
-      "action": {
-        "restore": "還原",
-        "restored": "已還原",
-        "clearAll": "清空",
-        "clearAllConfirmTitle": "確認清空所有訊息？",
-        "clearAllConfirmDescription": "此操作無法復原。Project 訊息頻道中的所有項目都將被永久刪除。"
-      },
-      "relative": {
-        "justNow": "剛剛",
-        "minutesAgo": "{count, plural, other {# 分鐘前}}",
-        "hoursAgo": "{count, plural, other {# 小時前}}",
-        "yesterday": "昨天",
-        "daysAgo": "{count, plural, other {# 天前}}",
-        "weeksAgo": "{count, plural, other {# 週前}}",
-        "monthsAgo": "{count, plural, other {# 月前}}"
-      }
-    },
     "create": {
       "title": "新增 Space",
       "description": "選 Space 類型 + 命名",
@@ -1411,11 +1377,11 @@
       "notifications": "通知",
       "newSpace": "新增 Space",
       "allSpaces": "所有 Spaces",
-      "projectMessages": "Project 訊息",
       "agentHide": "收合 Agent 面板",
       "agentShow": "展開 Agent 面板",
       "openHistory": "對話歷史",
-      "newConversation": "新增對話"
+      "newConversation": "新增對話",
+      "projectActivity": "Project 活動"
     },
     "aria": {
       "backToStudio": "返回 Studio",
@@ -1437,7 +1403,7 @@
     "backToStudio": "返回 Studio"
   },
   "activity": {
-    "description": "Project 活動",
+    "description": "上傳、生成、Space 與成員變更",
     "loading": "載入中…",
     "type": {
       "assetUploaded": "{actor} 上傳了素材",
@@ -1454,7 +1420,30 @@
       "memberJoined": "{actor} 加入了 Project",
       "memberRemoved": "{actor} 移除了一名成員",
       "memberRoleChanged": "{actor} 將一名成員的角色改為 {role}",
-      "ownershipTransferred": "{actor} 轉移了 Project 擁有權"
+      "ownershipTransferred": "{actor} 轉移了 Project 擁有權",
+      "spaceCreated": "{actor} 建立了 Space {spaceName}",
+      "spaceDeleted": "{actor} 刪除了 Space {spaceName}",
+      "spaceLocked": "{actor} 鎖定了 Space {spaceName}",
+      "spaceUnlocked": "{actor} 解鎖了 Space {spaceName}",
+      "spaceRestored": "{actor} 還原了 Space {spaceName}",
+      "spaceRenamed": "{actor} 把 Space {oldSpaceName} 改名為 {spaceName}"
+    },
+    "header": "Project 活動",
+    "label": "Project 活動",
+    "empty": "尚無訊息。節點遺失提示和 Space 建立 / 刪除 / 鎖定事件會顯示在這裡。",
+    "action": {
+      "restore": "還原",
+      "restored": "已還原"
+    },
+    "relative": {
+      "justNow": "剛剛",
+      "minutesAgo": "{count, plural, other {# 分鐘前}}",
+      "hoursAgo": "{count, plural, other {# 小時前}}",
+      "yesterday": "昨天",
+      "daysAgo": "{count, plural, other {# 天前}}",
+      "weeksAgo": "{count, plural, other {# 週前}}",
+      "monthsAgo": "{count, plural, other {# 月前}}",
+      "isoDate": "{date}"
     }
   }
 }

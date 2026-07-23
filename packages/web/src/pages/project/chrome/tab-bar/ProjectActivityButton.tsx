@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { AlertTriangle, Film, History, Music, RotateCcw, Star } from 'lucide-react';
+import { Activity, AlertCircle, Film, Music, RotateCcw, Star } from 'lucide-react';
 import { useEffect, useRef, useState, type JSX } from 'react';
 import {
   useInfiniteQuery,
@@ -38,7 +38,7 @@ import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /**
- * Project activity feed surfaced by the History clock icon on the
+ * Project activity feed surfaced by the Activity icon on the
  * right of the tab bar (ADR 2026-07-04 project-activity-feed).
  *
  * Backed by the PG `project_activities` table via
@@ -48,7 +48,7 @@ import { useTranslation } from '@web/i18n/use-translation';
  * signal on the project meta doc socket; the panel reacts by
  * invalidating the query (Figma-style signal + refetch).
  */
-export interface ProjectMessagesButtonProps {
+export interface ProjectActivityButtonProps {
   projectId: string;
   /**
    * Live meta-doc provider carrying the `activity:new` stateless
@@ -68,14 +68,14 @@ export interface ProjectMessagesButtonProps {
  */
 export interface RelativeTime {
   key:
-    | 'spaces.history.relative.justNow'
-    | 'spaces.history.relative.minutesAgo'
-    | 'spaces.history.relative.hoursAgo'
-    | 'spaces.history.relative.yesterday'
-    | 'spaces.history.relative.daysAgo'
-    | 'spaces.history.relative.weeksAgo'
-    | 'spaces.history.relative.monthsAgo'
-    | 'spaces.history.relative.isoDate';
+    | 'activity.relative.justNow'
+    | 'activity.relative.minutesAgo'
+    | 'activity.relative.hoursAgo'
+    | 'activity.relative.yesterday'
+    | 'activity.relative.daysAgo'
+    | 'activity.relative.weeksAgo'
+    | 'activity.relative.monthsAgo'
+    | 'activity.relative.isoDate';
   params?: Record<string, string | number>;
 }
 
@@ -89,33 +89,33 @@ export interface RelativeTime {
 function relativeTime(epochMs: number, now = Date.now()): RelativeTime {
   if (!Number.isFinite(epochMs))
     return {
-      key: 'spaces.history.relative.isoDate',
+      key: 'activity.relative.isoDate',
       params: { date: String(epochMs) },
     };
   const diffMs = now - epochMs;
   const min = Math.floor(diffMs / 60_000);
-  if (min < 1) return { key: 'spaces.history.relative.justNow' };
+  if (min < 1) return { key: 'activity.relative.justNow' };
   if (min < 60)
-    return { key: 'spaces.history.relative.minutesAgo', params: { count: min } };
+    return { key: 'activity.relative.minutesAgo', params: { count: min } };
   const hr = Math.floor(min / 60);
   if (hr < 24)
-    return { key: 'spaces.history.relative.hoursAgo', params: { count: hr } };
-  if (hr < 48) return { key: 'spaces.history.relative.yesterday' };
+    return { key: 'activity.relative.hoursAgo', params: { count: hr } };
+  if (hr < 48) return { key: 'activity.relative.yesterday' };
   const day = Math.floor(hr / 24);
   if (day < 7)
-    return { key: 'spaces.history.relative.daysAgo', params: { count: day } };
+    return { key: 'activity.relative.daysAgo', params: { count: day } };
   if (day < 30)
     return {
-      key: 'spaces.history.relative.weeksAgo',
+      key: 'activity.relative.weeksAgo',
       params: { count: Math.floor(day / 7) },
     };
   if (day < 365)
     return {
-      key: 'spaces.history.relative.monthsAgo',
+      key: 'activity.relative.monthsAgo',
       params: { count: Math.floor(day / 30) },
     };
   return {
-    key: 'spaces.history.relative.isoDate',
+    key: 'activity.relative.isoDate',
     params: { date: new Date(epochMs).toISOString().slice(0, 10) },
   };
 }
@@ -142,10 +142,9 @@ const TYPE_DOT_CLASS: Record<ProjectActivityType, string> = {
 };
 
 /**
- * Resolve the ICU message key + params for one feed entry. The space
- * family reuses the existing `spaces.history.kind.*` copy (same
- * wording, snapshot names travel in the payload now); asset /
- * generation / member events use the `activity.type.*` keys.
+ * Resolve the ICU message key + params for one feed entry. Every family
+ * (space / asset / generation / member) uses the unified `activity.type.*`
+ * keys (snapshot names travel in the payload now).
  * @param entry - The feed entry to render.
  * @returns The ICU key and its params.
  */
@@ -158,18 +157,18 @@ function entryMessage(entry: ProjectActivityEntry): {
   const spaceName = typeof p['spaceName'] === 'string' ? p['spaceName'] : '—';
   switch (entry.type) {
     case 'space:created':
-      return { key: 'spaces.history.kind.spaceCreated', params: { actor, spaceName } };
+      return { key: 'activity.type.spaceCreated', params: { actor, spaceName } };
     case 'space:deleted':
-      return { key: 'spaces.history.kind.spaceDeleted', params: { actor, spaceName } };
+      return { key: 'activity.type.spaceDeleted', params: { actor, spaceName } };
     case 'space:locked':
-      return { key: 'spaces.history.kind.spaceLocked', params: { actor, spaceName } };
+      return { key: 'activity.type.spaceLocked', params: { actor, spaceName } };
     case 'space:unlocked':
-      return { key: 'spaces.history.kind.spaceUnlocked', params: { actor, spaceName } };
+      return { key: 'activity.type.spaceUnlocked', params: { actor, spaceName } };
     case 'space:restored':
-      return { key: 'spaces.history.kind.spaceRestored', params: { actor, spaceName } };
+      return { key: 'activity.type.spaceRestored', params: { actor, spaceName } };
     case 'space:renamed':
       return {
-        key: 'spaces.history.kind.spaceRenamed',
+        key: 'activity.type.spaceRenamed',
         params: {
           actor,
           spaceName,
@@ -277,7 +276,7 @@ function entryActivityCredits(entry: ProjectActivityEntry): number | undefined {
 }
 
 /**
- * History clock icon on the right of the tab bar that opens the
+ * Activity icon on the right of the tab bar that opens the
  * project activity feed sheet (uploads, deletions, generations, space
  * lifecycle, member changes) with keyset paging, live signal-driven
  * refresh, and the owner-only restore affordance on space deletions.
@@ -288,12 +287,12 @@ function entryActivityCredits(entry: ProjectActivityEntry): number | undefined {
  * @param root0.onRestore - Owner restore handler invoked with the deleted space's id.
  * @returns The history trigger button and its activity feed sheet.
  */
-export function ProjectMessagesButton({
+export function ProjectActivityButton({
   projectId,
   provider,
   currentUserRole,
   onRestore,
-}: ProjectMessagesButtonProps): JSX.Element {
+}: ProjectActivityButtonProps): JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('project-messages');
   const isOwner = currentUserRole === 'owner';
@@ -394,17 +393,17 @@ export function ProjectMessagesButton({
             <Button
               variant='chrome-ghost'
               size='chrome'
-              aria-label={t('spaces.history.label')}
-              data-testid='project-messages-trigger'
+              aria-label={t('activity.label')}
+              data-testid='project-activity-trigger'
               onFocusCapture={suppressTooltipFocusOpen}
               style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
             >
-              <History className='h-[18px] w-[18px]' />
+              <Activity className='h-[18px] w-[18px]' />
             </Button>
           </SheetTrigger>
         </TooltipTrigger>
         <TooltipContent side='bottom'>
-          {t('chrome.tooltip.projectMessages')}
+          {t('chrome.tooltip.projectActivity')}
         </TooltipContent>
       </Tooltip>
       {/*
@@ -417,11 +416,11 @@ export function ProjectMessagesButton({
         side='right-floating'
         withOverlay
         className='flex w-[315px] flex-col p-0'
-        data-testid='project-messages-sheet'
+        data-testid='project-activity-sheet'
       >
         <header className='flex flex-col gap-2 border-b border-border px-4 py-3'>
           <SheetTitle className='pr-10 text-base font-semibold text-foreground'>
-            {t('spaces.history.header')}
+            {t('activity.header')}
           </SheetTitle>
           <SheetDescription className='text-xs text-muted-foreground'>
             {t('activity.description')}
@@ -433,13 +432,13 @@ export function ProjectMessagesButton({
           <ul
             className='flex flex-col'
             role='list'
-            data-testid='project-messages-list'
+            data-testid='project-activity-list'
           >
             {entries.length === 0 ? (
               <li className='px-4 py-3 text-sm text-muted-foreground'>
                 {feed.isLoading
                   ? t('activity.loading')
-                  : t('spaces.history.empty')}
+                  : t('activity.empty')}
               </li>
             ) : (
               entries.map((m) => {
@@ -461,7 +460,7 @@ export function ProjectMessagesButton({
                 // #1816). Mirrors NodeHistoryRow's fallback.
                 const thumb = media ? (
                   <div
-                    data-testid={`project-messages-thumb-${m.id}`}
+                    data-testid={`project-activity-thumb-${m.id}`}
                     className='flex h-[46px] w-[46px] shrink-0 items-center justify-center overflow-hidden rounded-content-sm border border-border bg-muted text-muted-foreground'
                   >
                     {media.kind === 'image' ||
@@ -485,7 +484,7 @@ export function ProjectMessagesButton({
                   <li
                     key={m.id}
                     role='listitem'
-                    data-testid={`project-messages-entry-${m.id}`}
+                    data-testid={`project-activity-entry-${m.id}`}
                     className='flex items-start gap-3 border-b border-border px-4 py-3 last:border-b-0'
                   >
                     <span
@@ -494,13 +493,16 @@ export function ProjectMessagesButton({
                         TYPE_DOT_CLASS[m.type],
                       )}
                       aria-hidden
-                      data-testid={`project-messages-dot-${m.id}`}
+                      data-testid={`project-activity-dot-${m.id}`}
                     />
                     {m.type === 'generation:failed' ? (
-                      <AlertTriangle
-                        className='mt-0.5 h-4 w-4 shrink-0 text-status-warning-foreground'
+                      <div
+                        data-testid={`project-activity-failed-icon-${m.id}`}
+                        className='flex h-[46px] w-[46px] shrink-0 items-center justify-center overflow-hidden rounded-content-sm border border-border bg-muted text-status-error'
                         aria-hidden
-                      />
+                      >
+                        <AlertCircle className='h-4 w-4' />
+                      </div>
                     ) : null}
                     {/* Media rows get a thumbnail whose hover pops a large,
                         playable preview (image = still, audio / video =
@@ -526,7 +528,7 @@ export function ProjectMessagesButton({
                             value, 0 shown, hidden when there is no cost. */}
                         {credits != null ? (
                           <span
-                            data-testid={`project-messages-credits-${m.id}`}
+                            data-testid={`project-activity-credits-${m.id}`}
                             className='inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-foreground'
                           >
                             <Star
@@ -543,22 +545,22 @@ export function ProjectMessagesButton({
                         type='button'
                         onClick={() => m.spaceId && onClickRestore(m.spaceId)}
                         disabled={busyId === m.spaceId}
-                        data-testid={`project-messages-restore-${m.id}`}
+                        data-testid={`project-activity-restore-${m.id}`}
                         className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover:bg-accent disabled:opacity-50'
                       >
                         <RotateCcw className='h-3 w-3' aria-hidden />
-                        {t('spaces.history.action.restore')}
+                        {t('activity.action.restore')}
                       </button>
                     ) : showRestoredBadge ? (
                       <button
                         type='button'
                         disabled
                         aria-disabled
-                        data-testid={`project-messages-restored-badge-${m.id}`}
+                        data-testid={`project-activity-restored-badge-${m.id}`}
                         className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-muted-foreground opacity-60 cursor-not-allowed'
                       >
                         <RotateCcw className='h-3 w-3' aria-hidden />
-                        {t('spaces.history.action.restored')}
+                        {t('activity.action.restored')}
                       </button>
                     ) : null}
                   </li>
@@ -571,7 +573,7 @@ export function ProjectMessagesButton({
                 ref={sentinelRef}
                 role='listitem'
                 aria-hidden
-                data-testid='project-messages-load-more'
+                data-testid='project-activity-load-more'
                 className='px-4 py-2 text-center text-2xs text-muted-foreground'
               >
                 {feed.isFetchingNextPage ? t('activity.loading') : ''}

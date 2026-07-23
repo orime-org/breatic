@@ -58,7 +58,7 @@ const OPEN_TAB_IDS_KEY = 'openTabIds';
  * Y.Map<userId, { name, avatarUrl }> seeded at project creation by the
  * meta bootstrap and kept live by collab's awareness projection
  * (`hooks/awareness-meta-users.ts`, which replaced the earlier
- * handshake-time upsert - PR #153). Consumers (ProjectMessagesButton
+ * handshake-time upsert - PR #153). Consumers (ProjectActivityButton
  * activity panel, MembersStack, canvas handlingBy rendering, future
  * presence overlays) look up display names via this map so a username
  * rename propagates live. See Q11 v2 design (2026-05-26).
@@ -94,7 +94,7 @@ export interface ProjectMetaState {
   /**
    * Live map of `userId → { name, avatarUrl, lastSeenAt }` for
    * everyone who has connected to this project's meta doc.
-   * ProjectMessagesButton looks up `users[m.actor]?.name` to render
+   * ProjectActivityButton looks up `users[m.actor]?.name` to render
    * display names so rename propagates retroactively. Map shape,
    * not array, because callsites lookup by id far more often than
    * iterate.

@@ -919,40 +919,6 @@
       "timeline": "Timeline",
       "timelineSub": "비디오 / 오디오 편집"
     },
-    "history": {
-      "label": "Project 메시지",
-      "title": "Project 메시지 — 누락된 노드 + Space 수명 주기",
-      "header": "Project 메시지",
-      "description": "{count, plural, one {메시지 #개} other {메시지 #개}}",
-      "empty": "아직 메시지가 없습니다. 누락된 노드 배너와 Space 생성 / 삭제 / 잠금 이벤트가 여기에 표시됩니다.",
-      "markRead": "읽음",
-      "markUnread": "읽지 않음으로 표시",
-      "kind": {
-        "missingNode": "참조된 노드가 누락되었습니다",
-        "spaceCreated": "{actor}님이 Space {spaceName}을(를) 만들었습니다",
-        "spaceDeleted": "{actor}님이 Space {spaceName}을(를) 삭제했습니다",
-        "spaceLocked": "{actor}님이 Space {spaceName}을(를) 잠갔습니다",
-        "spaceUnlocked": "{actor}님이 Space {spaceName}의 잠금을 해제했습니다",
-        "spaceRestored": "{actor}님이 Space {spaceName}을(를) 복원했습니다",
-        "spaceRenamed": "{actor}님이 Space {oldSpaceName}의 이름을 {spaceName}(으)로 변경했습니다"
-      },
-      "action": {
-        "restore": "복원",
-        "restored": "복원됨",
-        "clearAll": "모두 지우기",
-        "clearAllConfirmTitle": "모든 메시지를 지우시겠습니까?",
-        "clearAllConfirmDescription": "이 작업은 되돌릴 수 없습니다. Project 메시지 채널의 모든 항목이 영구적으로 삭제됩니다."
-      },
-      "relative": {
-        "justNow": "방금 전",
-        "minutesAgo": "{count, plural, one {#분 전} other {#분 전}}",
-        "hoursAgo": "{count, plural, one {#시간 전} other {#시간 전}}",
-        "yesterday": "어제",
-        "daysAgo": "{count, plural, one {#일 전} other {#일 전}}",
-        "weeksAgo": "{count, plural, one {#주 전} other {#주 전}}",
-        "monthsAgo": "{count, plural, one {#개월 전} other {#개월 전}}"
-      }
-    },
     "create": {
       "title": "새 Space",
       "description": "Space 유형을 선택하고 이름을 입력하세요",
@@ -1411,11 +1377,11 @@
       "notifications": "알림",
       "newSpace": "새 Space",
       "allSpaces": "모든 Spaces",
-      "projectMessages": "Project 메시지",
       "agentHide": "에이전트 패널 숨기기",
       "agentShow": "에이전트 패널 표시",
       "openHistory": "대화 기록",
-      "newConversation": "새 대화"
+      "newConversation": "새 대화",
+      "projectActivity": "Project 활동"
     },
     "aria": {
       "backToStudio": "Studio로 돌아가기",
@@ -1437,7 +1403,7 @@
     "backToStudio": "Studio로 돌아가기"
   },
   "activity": {
-    "description": "Project 활동",
+    "description": "업로드, 생성, Space 및 멤버 변경",
     "loading": "불러오는 중…",
     "type": {
       "assetUploaded": "{actor} 님이 소재를 업로드했습니다",
@@ -1454,7 +1420,30 @@
       "memberJoined": "{actor} 님이 Project에 참여했습니다",
       "memberRemoved": "{actor} 님이 멤버를 제거했습니다",
       "memberRoleChanged": "{actor} 님이 멤버 역할을 {role}(으)로 변경했습니다",
-      "ownershipTransferred": "{actor} 님이 Project 소유권을 이전했습니다"
+      "ownershipTransferred": "{actor} 님이 Project 소유권을 이전했습니다",
+      "spaceCreated": "{actor}님이 Space {spaceName}을(를) 만들었습니다",
+      "spaceDeleted": "{actor}님이 Space {spaceName}을(를) 삭제했습니다",
+      "spaceLocked": "{actor}님이 Space {spaceName}을(를) 잠갔습니다",
+      "spaceUnlocked": "{actor}님이 Space {spaceName}의 잠금을 해제했습니다",
+      "spaceRestored": "{actor}님이 Space {spaceName}을(를) 복원했습니다",
+      "spaceRenamed": "{actor}님이 Space {oldSpaceName}의 이름을 {spaceName}(으)로 변경했습니다"
+    },
+    "header": "Project 활동",
+    "label": "Project 활동",
+    "empty": "아직 메시지가 없습니다. 누락된 노드 배너와 Space 생성 / 삭제 / 잠금 이벤트가 여기에 표시됩니다.",
+    "action": {
+      "restore": "복원",
+      "restored": "복원됨"
+    },
+    "relative": {
+      "justNow": "방금 전",
+      "minutesAgo": "{count, plural, one {#분 전} other {#분 전}}",
+      "hoursAgo": "{count, plural, one {#시간 전} other {#시간 전}}",
+      "yesterday": "어제",
+      "daysAgo": "{count, plural, one {#일 전} other {#일 전}}",
+      "weeksAgo": "{count, plural, one {#주 전} other {#주 전}}",
+      "monthsAgo": "{count, plural, one {#개월 전} other {#개월 전}}",
+      "isoDate": "{date}"
     }
   }
 }

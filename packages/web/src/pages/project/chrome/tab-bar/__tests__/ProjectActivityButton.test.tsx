@@ -20,11 +20,11 @@ import type * as React from 'react';
 
 import type { ProjectActivityEntry } from '@breatic/shared';
 import {
-  ProjectMessagesButton,
+  ProjectActivityButton,
   relativeTime,
   entryMessage,
   entryMedia,
-} from '@web/pages/project/chrome/tab-bar/ProjectMessagesButton';
+} from '@web/pages/project/chrome/tab-bar/ProjectActivityButton';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores/ui';
 
@@ -82,17 +82,17 @@ function entry(over: Partial<ProjectActivityEntry>): ProjectActivityEntry {
   };
 }
 
-describe('ProjectMessagesButton (activity feed)', () => {
+describe('ProjectActivityButton (activity feed)', () => {
   it('renders the trigger without any unread indicator', () => {
-    render(<ProjectMessagesButton projectId={PID} />);
-    expect(screen.getByTestId('project-messages-trigger')).toBeInTheDocument();
-    expect(screen.queryByTestId('project-messages-dot')).toBeNull();
+    render(<ProjectActivityButton projectId={PID} />);
+    expect(screen.getByTestId('project-activity-trigger')).toBeInTheDocument();
+    expect(screen.queryByTestId('project-activity-dot')).toBeNull();
   });
 
   it('opens as a modal sheet with a backdrop overlay, like dialogs', async () => {
     const user = userEvent.setup();
-    render(<ProjectMessagesButton projectId={PID} />);
-    await user.click(screen.getByTestId('project-messages-trigger'));
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
     expect(screen.getByTestId('sheet-overlay')).toBeInTheDocument();
   });
 
@@ -110,11 +110,11 @@ describe('ProjectMessagesButton (activity feed)', () => {
       nextCursor: null,
     });
     const user = userEvent.setup();
-    render(<ProjectMessagesButton projectId={PID} />);
-    await user.click(screen.getByTestId('project-messages-trigger'));
-    expect(await screen.findByTestId('project-messages-entry-a-1')).toBeInTheDocument();
-    expect(screen.getByTestId('project-messages-entry-a-2')).toBeInTheDocument();
-    expect(screen.getByTestId('project-messages-entry-a-3')).toBeInTheDocument();
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    expect(await screen.findByTestId('project-activity-entry-a-1')).toBeInTheDocument();
+    expect(screen.getByTestId('project-activity-entry-a-2')).toBeInTheDocument();
+    expect(screen.getByTestId('project-activity-entry-a-3')).toBeInTheDocument();
     expect(listMock).toHaveBeenCalledWith(PID, undefined);
   });
 
@@ -133,10 +133,10 @@ describe('ProjectMessagesButton (activity feed)', () => {
     });
     const user = userEvent.setup();
     render(
-      <ProjectMessagesButton projectId={PID} currentUserRole='owner' onRestore={onRestore} />,
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={onRestore} />,
     );
-    await user.click(screen.getByTestId('project-messages-trigger'));
-    const btn = await screen.findByTestId('project-messages-restore-del-1');
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const btn = await screen.findByTestId('project-activity-restore-del-1');
     await user.click(btn);
     expect(onRestore).toHaveBeenCalledWith('sp-9');
   });
@@ -155,12 +155,12 @@ describe('ProjectMessagesButton (activity feed)', () => {
       nextCursor: null,
     });
     const user = userEvent.setup();
-    render(<ProjectMessagesButton projectId={PID} currentUserRole='owner' />);
-    await user.click(screen.getByTestId('project-messages-trigger'));
+    render(<ProjectActivityButton projectId={PID} currentUserRole='owner' />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
     expect(
-      await screen.findByTestId('project-messages-restored-badge-del-2'),
+      await screen.findByTestId('project-activity-restored-badge-del-2'),
     ).toBeInTheDocument();
-    expect(screen.queryByTestId('project-messages-restore-del-2')).toBeNull();
+    expect(screen.queryByTestId('project-activity-restore-del-2')).toBeNull();
   });
 
   it('hides Restore for non-owner viewers', async () => {
@@ -176,10 +176,10 @@ describe('ProjectMessagesButton (activity feed)', () => {
       nextCursor: null,
     });
     const user = userEvent.setup();
-    render(<ProjectMessagesButton projectId={PID} currentUserRole='viewer' />);
-    await user.click(screen.getByTestId('project-messages-trigger'));
-    await screen.findByTestId('project-messages-entry-del-3');
-    expect(screen.queryByTestId('project-messages-restore-del-3')).toBeNull();
+    render(<ProjectActivityButton projectId={PID} currentUserRole='viewer' />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    await screen.findByTestId('project-activity-entry-del-3');
+    expect(screen.queryByTestId('project-activity-restore-del-3')).toBeNull();
   });
 
   it('the activity:new stateless signal invalidates the feed (refetch)', async () => {
@@ -192,8 +192,8 @@ describe('ProjectMessagesButton (activity feed)', () => {
       off: vi.fn(),
     } as unknown as import('@hocuspocus/provider').HocuspocusProvider;
     const user = userEvent.setup();
-    render(<ProjectMessagesButton projectId={PID} provider={provider} />);
-    await user.click(screen.getByTestId('project-messages-trigger'));
+    render(<ProjectActivityButton projectId={PID} provider={provider} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
 
     listeners.get('stateless')?.({
@@ -299,11 +299,11 @@ describe('activity feed row: thumbnail + credits (#1622)', () => {
       nextCursor: null,
     });
     const user = userEvent.setup();
-    render(<ProjectMessagesButton projectId={PID} />);
-    await user.click(screen.getByTestId('project-messages-trigger'));
-    await screen.findByTestId('project-messages-entry-g-1');
-    expect(screen.getByTestId('project-messages-thumb-g-1')).toBeInTheDocument();
-    expect(screen.getByTestId('project-messages-credits-g-1')).toHaveTextContent('1.5');
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    await screen.findByTestId('project-activity-entry-g-1');
+    expect(screen.getByTestId('project-activity-thumb-g-1')).toBeInTheDocument();
+    expect(screen.getByTestId('project-activity-credits-g-1')).toHaveTextContent('1.5');
   });
 
   it('plain rows (space / member) have no thumbnail and no credits', async () => {
@@ -312,11 +312,11 @@ describe('activity feed row: thumbnail + credits (#1622)', () => {
       nextCursor: null,
     });
     const user = userEvent.setup();
-    render(<ProjectMessagesButton projectId={PID} />);
-    await user.click(screen.getByTestId('project-messages-trigger'));
-    await screen.findByTestId('project-messages-entry-s-1');
-    expect(screen.queryByTestId('project-messages-thumb-s-1')).toBeNull();
-    expect(screen.queryByTestId('project-messages-credits-s-1')).toBeNull();
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    await screen.findByTestId('project-activity-entry-s-1');
+    expect(screen.queryByTestId('project-activity-thumb-s-1')).toBeNull();
+    expect(screen.queryByTestId('project-activity-credits-s-1')).toBeNull();
   });
 
   it('credits shows 0 for a free generation but stays hidden for uploads (INV-8)', async () => {
@@ -332,26 +332,52 @@ describe('activity feed row: thumbnail + credits (#1622)', () => {
       nextCursor: null,
     });
     const user = userEvent.setup();
-    render(<ProjectMessagesButton projectId={PID} />);
-    await user.click(screen.getByTestId('project-messages-trigger'));
-    await screen.findByTestId('project-messages-entry-z-1');
-    expect(screen.getByTestId('project-messages-credits-z-1')).toHaveTextContent('0');
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    await screen.findByTestId('project-activity-entry-z-1');
+    expect(screen.getByTestId('project-activity-credits-z-1')).toHaveTextContent('0');
     // An upload records no cost → no credits chip.
-    expect(screen.queryByTestId('project-messages-credits-u-1')).toBeNull();
+    expect(screen.queryByTestId('project-activity-credits-u-1')).toBeNull();
     // But an upload IS a media row → it still gets a thumbnail.
-    expect(screen.getByTestId('project-messages-thumb-u-1')).toBeInTheDocument();
+    expect(screen.getByTestId('project-activity-thumb-u-1')).toBeInTheDocument();
+  });
+});
+
+describe('activity feed: failure icon + trigger icon (#1820 polish)', () => {
+  it('generation:failed row shows a 46px red AlertCircle box (matching node history), not an inline warning', async () => {
+    listMock.mockResolvedValue({
+      items: [entry({ id: 'x-1', type: 'generation:failed', payload: { source: 'task' } })],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    await screen.findByTestId('project-activity-entry-x-1');
+    const box = screen.getByTestId('project-activity-failed-icon-x-1');
+    // node-history parity: a 46px box, red (error), with an icon inside
+    expect(box.className).toContain('h-[46px]');
+    expect(box.className).toContain('text-status-error');
+    expect(box.querySelector('svg')).not.toBeNull();
+    // no leftover orange inline warning
+    expect(box.className).not.toContain('text-status-warning-foreground');
+  });
+
+  it('the trigger uses the Activity icon, not the old History clock', () => {
+    render(<ProjectActivityButton projectId={PID} />);
+    const svg = screen.getByTestId('project-activity-trigger').querySelector('svg');
+    expect(svg?.getAttribute('class') || '').toMatch(/activity/i);
   });
 });
 
 describe('relativeTime', () => {
   it('buckets minutes / hours / days', () => {
     const now = 1_780_900_000_000;
-    expect(relativeTime(now - 30_000, now).key).toBe('spaces.history.relative.justNow');
+    expect(relativeTime(now - 30_000, now).key).toBe('activity.relative.justNow');
     expect(relativeTime(now - 5 * 60_000, now)).toEqual({
-      key: 'spaces.history.relative.minutesAgo',
+      key: 'activity.relative.minutesAgo',
       params: { count: 5 },
     });
-    expect(relativeTime(now - 3 * 3_600_000, now).key).toBe('spaces.history.relative.hoursAgo');
-    expect(relativeTime(now - 3 * 86_400_000, now).key).toBe('spaces.history.relative.daysAgo');
+    expect(relativeTime(now - 3 * 3_600_000, now).key).toBe('activity.relative.hoursAgo');
+    expect(relativeTime(now - 3 * 86_400_000, now).key).toBe('activity.relative.daysAgo');
   });
 });

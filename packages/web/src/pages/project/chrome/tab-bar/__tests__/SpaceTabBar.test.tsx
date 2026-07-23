@@ -21,7 +21,7 @@ import { expectNoA11yViolations } from '@web/test-utils/a11y';
 // Agent-toggle / NewSpace / Drawer / ProjectMessages buttons in the
 // tab bar now use shadcn `Tooltip` for hover tooltips. App.tsx
 // supplies `TooltipProvider` at runtime; tests have to add it. The
-// embedded ProjectMessagesButton also needs a QueryClient (activity
+// embedded ProjectActivityButton also needs a QueryClient (activity
 // feed via React Query since ADR 2026-07-04).
 const render = (ui: React.ReactElement, options?: RenderOptions) => {
   const client = new QueryClient({
@@ -119,7 +119,7 @@ describe('SpaceTabBar', () => {
     setup();
     expect(screen.getByTestId('new-space-button')).toBeInTheDocument();
     expect(screen.getByTestId('space-drawer-trigger')).toBeInTheDocument();
-    expect(screen.getByTestId('project-messages-trigger')).toBeInTheDocument();
+    expect(screen.getByTestId('project-activity-trigger')).toBeInTheDocument();
   });
 
   describe('role-based affordance gating (B model — hide)', () => {
@@ -141,7 +141,7 @@ describe('SpaceTabBar', () => {
     it('viewer still sees the all-spaces drawer + project-messages buttons', () => {
       setup({ currentUserRole: 'viewer' });
       expect(screen.getByTestId('space-drawer-trigger')).toBeInTheDocument();
-      expect(screen.getByTestId('project-messages-trigger')).toBeInTheDocument();
+      expect(screen.getByTestId('project-activity-trigger')).toBeInTheDocument();
     });
   });
 
