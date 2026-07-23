@@ -57,6 +57,19 @@ export const GenerationActivityPayloadSchema = z.object({
   outputCount: z.number().int().positive().optional(),
   executedOn: z.enum(["backend", "frontend"]).optional(),
   errorMessage: z.string().optional(),
+  // #1622 activity-feed playable preview + credits display. All optional:
+  // a non-media generation (understand) and every legacy row omit them.
+  /** Media modality of the primary output — drives the row thumbnail +
+   * playable hover preview. Only the three renderable modalities; a
+   * non-media taskType (understand / 3d) omits this. */
+  kind: z.enum(["image", "video", "audio"]).optional(),
+  /** Primary output URL (permanent public URL) — the preview src. */
+  fileUrl: z.string().min(1).optional(),
+  /** Video cover (image/audio omit it). */
+  thumbnailUrl: z.string().min(1).optional(),
+  /** Credits consumed — a FLOAT (video models bill fractional credits),
+   * mirroring the doublePrecision billing columns. Never `.int()`. */
+  credits: z.number().nonnegative().optional(),
 });
 
 /**

@@ -404,6 +404,15 @@ async function runTaskBody(
         source,
         toolName,
         model,
+        // #1622 crash-redelivery: thread the same preview + ACTUAL billed
+        // credits so a recovered success row is not preview-less. Sources
+        // differ from Stage-4 (no markCompletedAndBill here): outputs from
+        // the stored result, credits from the persisted billedCredits.
+        outputCount: storedOutputs?.length,
+        kind: mediaKindForActivity(taskType),
+        fileUrl: storedOutputs?.[0]?.url,
+        thumbnailUrl: storedOutputs?.[0]?.cover_url,
+        credits: existing.billedCredits ?? undefined,
       });
     }
     return (existing.result ?? { alreadyCompleted: true });
@@ -752,6 +761,13 @@ async function runTaskBody(
       toolName,
       model: (unified.extras.model as string | undefined) ?? model,
       outputCount: persistedOutputs.length,
+      // #1622 preview + ACTUAL billed credits (not the metadata cost
+      // estimate). kind omitted for non-media (understand / 3d) so the
+      // payload stays valid; thumbnailUrl only present for video covers.
+      kind: mediaKindForActivity(taskType),
+      fileUrl: persistedOutputs[0]?.url,
+      thumbnailUrl: persistedOutputs[0]?.cover_url,
+      credits: creditsUsed,
     });
   }
 
@@ -803,6 +819,11 @@ async function recordGenerationActivity(args: {
   model?: string;
   outputCount?: number;
   errorMessage?: string;
+  // #1622: media preview + credits for the activity feed (success rows).
+  kind?: "image" | "video" | "audio";
+  fileUrl?: string;
+  thumbnailUrl?: string;
+  credits?: number;
 }): Promise<void> {
   const payload = {
     source: args.source ?? "task",
@@ -811,6 +832,11 @@ async function recordGenerationActivity(args: {
     ...(args.outputCount !== undefined && { outputCount: args.outputCount }),
     executedOn: "backend" as const,
     ...(args.errorMessage !== undefined && { errorMessage: args.errorMessage }),
+    // #1622 preview fields — only present on success + media outputs.
+    ...(args.kind !== undefined && { kind: args.kind }),
+    ...(args.fileUrl !== undefined && { fileUrl: args.fileUrl }),
+    ...(args.thumbnailUrl !== undefined && { thumbnailUrl: args.thumbnailUrl }),
+    ...(args.credits !== undefined && { credits: args.credits }),
   };
   const common = {
     projectId: args.projectId,
@@ -1146,6 +1172,24 @@ function taskTypeToAssetKind(
   if (taskType === "audio" || taskType === "tts") return "audio";
   if (taskType === "understand") return "document";
   return "file";
+}
+
+/**
+ * The renderable media modality for the activity-feed preview (#1622), or
+ * `undefined` when the task produces no previewable media. Normalizes
+ * through {@link taskTypeToAssetKind} (tts→audio) and keeps only the three
+ * modalities the HoverPreview can render — document / file (understand /
+ * 3d) drop to `undefined` so the payload omits `kind` and stays valid.
+ * @param taskType - The generation task type.
+ * @returns `image` / `video` / `audio`, or `undefined` for non-media.
+ */
+function mediaKindForActivity(
+  taskType: string,
+): "image" | "video" | "audio" | undefined {
+  const kind = taskTypeToAssetKind(taskType);
+  return kind === "image" || kind === "video" || kind === "audio"
+    ? kind
+    : undefined;
 }
 
 /**
