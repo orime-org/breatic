@@ -5,7 +5,10 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
 
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
-import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
+import {
+  HOVER_OPEN_DELAY_MS,
+  HOVER_CLOSE_DELAY_MS,
+} from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 
 // MediaPlayer renders a real <audio>/<video>; jsdom lacks play/pause. Same
 // polyfill the MediaPlayer suite uses so the audio/video preview kinds mount.
@@ -31,6 +34,20 @@ function openCard(trigger: HTMLElement): void {
   fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
   act(() => {
     vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS + 10);
+  });
+}
+
+/**
+ * Closes the HoverCard by leaving its trigger and advancing past the close
+ * delay, so a follow-up openCard exercises a genuine RE-open (the live-at-open
+ * resolvers must fire again).
+ * @param trigger - The trigger element to leave.
+ * @returns Nothing.
+ */
+function closeCard(trigger: HTMLElement): void {
+  fireEvent.pointerLeave(trigger, { pointerType: 'mouse' });
+  act(() => {
+    vi.advanceTimersByTime(HOVER_CLOSE_DELAY_MS + 10);
   });
 }
 
@@ -217,5 +234,54 @@ describe('HoverPreview', () => {
     // Read live at open → reflects i2i (not dimmed), proving it is not the
     // stale mount-time value.
     expect(img.className).not.toContain('opacity-50');
+  });
+
+  it('seeds the live resolvers at MOUNT (invoked before any open, for a non-blank first paint)', () => {
+    // The resolvers are read in the useState initializer so the box is never
+    // blank on the very first open / close fade. A regression that only reads
+    // them in onOpenChange would leave the seed unset (this catches it).
+    vi.useFakeTimers();
+    const resolveOnOpen = vi.fn(() => ({ text: 'seeded' }));
+    const resolveDimmed = vi.fn(() => true);
+    render(
+      <HoverPreview
+        kind='image'
+        src='/pic.png'
+        alt='ref'
+        resolveOnOpen={resolveOnOpen}
+        resolveDimmed={resolveDimmed}
+      >
+        <span data-testid='trigger'>chip</span>
+      </HoverPreview>,
+    );
+    // Both fired at mount — before any hover.
+    expect(resolveOnOpen).toHaveBeenCalled();
+    expect(resolveDimmed).toHaveBeenCalled();
+  });
+
+  it('re-resolves the dim on EVERY open so a t2i→i2i toggle between opens clears the grey (#1798)', () => {
+    // The core #1798 contract: the dim is read at each open, not once. Open in
+    // t2i (greyed), CLOSE, flip to i2i, RE-open → the grey must clear. A
+    // regression gating the refresh to only-once would keep it greyed and fail
+    // here (the single-open test above cannot catch that).
+    vi.useFakeTimers();
+    let dim = true; // t2i
+    render(
+      <HoverPreview kind='image' src='/pic.png' alt='ref' resolveDimmed={() => dim}>
+        <span data-testid='trigger'>chip</span>
+      </HoverPreview>,
+    );
+    const trigger = screen.getByTestId('trigger');
+    openCard(trigger);
+    expect((screen.getByAltText('ref') as HTMLImageElement).className).toContain(
+      'opacity-50',
+    );
+    closeCard(trigger);
+    dim = false; // switch to i2i while closed
+    openCard(trigger);
+    // Re-resolved on the second open → grey cleared.
+    expect(
+      (screen.getByAltText('ref') as HTMLImageElement).className,
+    ).not.toContain('opacity-50');
   });
 });
