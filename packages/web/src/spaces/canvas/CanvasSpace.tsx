@@ -2725,10 +2725,12 @@ function CanvasSpaceInner({
           content: decision.content,
           coverUrl: decision.coverUrl,
         });
-        closeActivePanel(); // the pick is committed — close the panel
+        // Keep the panel open after a restore (user 2026-07-23, reversing the
+        // 2026-07-22 close-on-restore): users often restore / compare several
+        // entries in a row, so closing after each pick is disruptive.
       }
     },
-    [readOnly, projectId, spaceId, t, closeActivePanel],
+    [readOnly, projectId, spaceId, t],
   );
   // Node menu "history": open the browse panel. Unlike reset, browsing is a
   // read — it opens even on a locked / handling node; only the restore ACTION

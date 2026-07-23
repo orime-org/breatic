@@ -431,6 +431,7 @@
       "end": "No more",
       "close": "Close",
       "loadError": "Couldn’t load history",
+      "retry": "Retry",
       "empty": {
         "title": "No history yet",
         "hint": "Every generation or upload on this node is recorded here. If you were charged but the result never appeared on the node, you can restore it from here."

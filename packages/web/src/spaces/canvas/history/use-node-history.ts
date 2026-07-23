@@ -34,17 +34,17 @@ export interface UseNodeHistory {
   total: number;
   /**
    * No result yet — the first page is loading OR paused (offline). The panel is
-   * hidden in this state (defer-until-data). `isLoading` alone misses the paused
-   * case (`isLoading = isPending && isFetching`, and an offline pause has
-   * `isFetching` false), so this is `isPending` (`status === 'pending'` = no
-   * data), which covers both loading and paused — Gate-2 caught the paused gap.
+   * hidden during a short grace window, then shows a skeleton (#1812
+   * defer-then-skeleton). `isLoading` alone misses the paused case
+   * (`isLoading = isPending && isFetching`, and an offline pause has `isFetching`
+   * false), so this is `isPending` (`status === 'pending'` = no data), which
+   * covers both loading and paused — Gate-2 caught the paused gap.
    */
   isPending: boolean;
   /**
-   * The FIRST page load errored (errored with no data). The panel is not shown
-   * at all in this state — the caller toasts + closes (user 2026-07-22: never
-   * flash a skeleton; show the panel only once there is a result). A LATER
-   * refetch error keeps the already-loaded data instead (not this flag).
+   * The FIRST page load errored (errored with no data). The caller shows an
+   * in-panel error + retry in this state (#1812, C hybrid — no toast, no close).
+   * A LATER refetch error keeps the already-loaded data instead (not this flag).
    */
   isLoadingError: boolean;
   /** Another (older) page is available. */
@@ -53,6 +53,8 @@ export interface UseNodeHistory {
   isFetchingNextPage: boolean;
   /** Load the next (older) page — the infinite-scroll sentinel calls this. */
   fetchNextPage: () => void;
+  /** Re-run the query — the in-panel error's retry button calls this (#1812). */
+  retry: () => void;
 }
 
 /**
@@ -136,10 +138,15 @@ export function useNodeHistory(
   // effect doesn't re-subscribe every render. React Query's fetchNextPage is a
   // stable ref — destructure it so exhaustive-deps tracks the method identity
   // (not the whole `query` object, which changes each update).
-  const { fetchNextPage: queryFetchNextPage } = query;
+  const { fetchNextPage: queryFetchNextPage, refetch: queryRefetch } = query;
   const fetchNextPage = React.useCallback((): void => {
     void queryFetchNextPage();
   }, [queryFetchNextPage]);
+  // Stable retry for the in-panel error button (#1812). React Query's refetch
+  // is a stable ref — destructure it so the callback identity stays put.
+  const retry = React.useCallback((): void => {
+    void queryRefetch();
+  }, [queryRefetch]);
 
   return {
     entries,
@@ -149,5 +156,6 @@ export function useNodeHistory(
     hasNextPage: query.hasNextPage,
     isFetchingNextPage: query.isFetchingNextPage,
     fetchNextPage,
+    retry,
   };
 }

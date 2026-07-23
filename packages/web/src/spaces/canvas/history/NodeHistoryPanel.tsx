@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { History, Loader2, X } from 'lucide-react';
+import { History, Loader2, RotateCw, X } from 'lucide-react';
 import * as React from 'react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Skeleton } from '@web/components/ui/skeleton';
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
@@ -22,6 +23,12 @@ export interface NodeHistoryPanelProps {
   modality: HistoryModality;
   /** Id of the row to tag "current" (the node's live content), or null. */
   currentEntryId: string | null;
+  /** The first page is still loading (past the grace delay) → skeleton (#1812). */
+  isLoading: boolean;
+  /** The first page load errored (no data) → in-panel error + retry (#1812). */
+  isError: boolean;
+  /** Retry the first-page load — the in-panel error button calls this (#1812). */
+  onRetry: () => void;
   /** An older page is available. */
   hasNextPage: boolean;
   /** A next-page fetch is in flight. */
@@ -36,16 +43,20 @@ export interface NodeHistoryPanelProps {
 
 /**
  * The node-history browse + restore panel body (#1619) — presentational. Shows
- * a header with the total, then the empty hint or the scrollable row list with
- * an infinite-scroll sentinel. The container renders this ONLY once the first
- * page has loaded (user 2026-07-22: no skeleton flash; a load error toasts +
- * closes upstream), so the panel itself has no loading / error state. Restore
- * and paging are handled by the caller (the container owns the query + gate).
+ * a header with the total, then one of: a loading skeleton, an in-panel error +
+ * retry, the empty hint, or the scrollable row list with an infinite-scroll
+ * sentinel. The container defers mounting past a short grace delay so a fast
+ * load never flashes the skeleton (#1812, C hybrid); once shown, the panel owns
+ * its loading + error presentation. Restore and paging are handled by the
+ * caller (the container owns the query + gate).
  * @param root0 - Component props.
  * @param root0.entries - Loaded rows.
  * @param root0.total - Total rows for the header count.
  * @param root0.modality - Host node modality.
  * @param root0.currentEntryId - Row id to tag "current", or null.
+ * @param root0.isLoading - First page still loading → skeleton.
+ * @param root0.isError - First page load errored → in-panel error + retry.
+ * @param root0.onRetry - Retry the first-page load.
  * @param root0.hasNextPage - An older page is available.
  * @param root0.isFetchingNextPage - A page fetch is in flight.
  * @param root0.onLoadMore - Load the next page.
@@ -58,6 +69,9 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
   total,
   modality,
   currentEntryId,
+  isLoading,
+  isError,
+  onRetry,
   hasNextPage,
   isFetchingNextPage,
   onLoadMore,
@@ -119,7 +133,50 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
         </button>
       </div>
 
-      {entries.length === 0 ? (
+      {isLoading ? (
+        <div
+          className='flex flex-col gap-1 px-1.5 pb-2'
+          data-testid='node-history-loading'
+          role='status'
+          aria-busy='true'
+          aria-label={t('canvas.history.title')}
+        >
+          {[0, 1, 2].map((i) => (
+            // Mirrors NodeHistoryRow's first two columns (46px thumb + text,
+            // same gap / padding) so data replacing the skeleton doesn't jump;
+            // the row's trailing `auto` action column is omitted while loading.
+            <div
+              key={i}
+              className='grid grid-cols-[46px_1fr] items-center gap-2.5 px-1.5 py-1.5'
+            >
+              <Skeleton className='h-[46px] w-[46px] shrink-0 rounded-content-sm' />
+              <div className='flex min-w-0 flex-col gap-0.5'>
+                <Skeleton className='h-3 w-2/3 rounded-content-sm' />
+                <Skeleton className='h-2.5 w-1/3 rounded-content-sm' />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : isError ? (
+        <div
+          className='flex flex-col items-center gap-2 px-6 py-7 text-center'
+          data-testid='node-history-error'
+          role='alert'
+        >
+          <span className='text-xs text-status-error'>
+            {t('canvas.history.loadError')}
+          </span>
+          <button
+            type='button'
+            data-testid='node-history-retry'
+            onClick={onRetry}
+            className='inline-flex items-center gap-1 rounded-content-sm border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          >
+            <RotateCw className='h-3 w-3' aria-hidden='true' />
+            {t('canvas.history.retry')}
+          </button>
+        </div>
+      ) : entries.length === 0 ? (
         <div
           className='flex flex-col items-center gap-2.5 px-6 py-7 text-center'
           data-testid='node-history-empty'
