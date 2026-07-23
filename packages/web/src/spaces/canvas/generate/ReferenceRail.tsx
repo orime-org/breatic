@@ -6,9 +6,9 @@ import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
 import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
+import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 
 interface ReferenceRailProps {
   /** The node's derived reference rows (from {@link deriveReferences}). */
@@ -95,17 +95,24 @@ export const ReferenceRail = React.memo(function ReferenceRail({
             // The dim (t2i inert image row) is applied EXPLICITLY on the visible
             // elements — the insert button, the remove button, and the hover
             // preview's `dimmed` — NOT as an ancestor `opacity` on this row.
-            // An ancestor opacity would also dim the (non-portaled, inline)
-            // ThumbnailHoverPreview tooltip via inheritance, which the chip
-            // cannot match; both now use the explicit `dimmed` mechanism.
+            // The preview's dim is its own `dimmed` prop (HoverPreview portals
+            // its card, so an ancestor opacity would not reach it anyway); the
+            // explicit prop keeps the chip and rail on one mechanism.
             className='group relative flex items-center gap-1.5 rounded-overlay border border-border bg-background/60 py-1 pl-1 pr-1.5'
           >
-            <ThumbnailHoverPreview
+            <HoverPreview
+              // A text reference previews its content; everything else (image /
+              // video with a cover thumbnail) previews that thumbnail as a
+              // static image. The rail only ever carries a thumbnail image, not
+              // a raw media URL, so video / audio references are NOT playable
+              // here (spec §2 — a faithful migration, unlike node history).
+              kind={ref.sourceNodeType === 'text' ? 'text' : 'image'}
               src={ref.thumbnail}
               text={ref.textContent}
               alt={ref.sourceNodeName}
               emptyHint={emptyHint}
               dimmed={inert}
+              followCanvas
             >
               <button
                 type='button'
@@ -172,7 +179,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                   {ref.sourceNodeName}
                 </span>
               </button>
-            </ThumbnailHoverPreview>
+            </HoverPreview>
             <button
               type='button'
               data-testid={`generate-ref-remove-${ref.refId}`}

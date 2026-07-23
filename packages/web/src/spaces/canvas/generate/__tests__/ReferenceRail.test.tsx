@@ -2,20 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render as baseRender, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
-import { TooltipProvider } from '@web/components/ui/tooltip';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 
-// The rail's chips inherit the ONE app-level TooltipProvider at runtime
-// (App.tsx); supply the real Radix provider here (the data-state assertions
-// need it — a passthrough mock wouldn't stamp it).
-const render = (
-  ...args: Parameters<typeof baseRender>
-): ReturnType<typeof baseRender> =>
-  // wrapper option (not a manual wrap) so a later rerender() keeps the provider.
-  baseRender(args[0], { ...args[1], wrapper: TooltipProvider });
+// The rail's chips now use the unified HoverPreview (a Radix HoverCard) — no
+// TooltipProvider needed (HoverCard has no shared provider; open/close timing is
+// per-instance). The `data-state` assertions read the stamp Radix's
+// HoverCardTrigger puts on the wrapped chip button.
 
 const REFS: ReferenceRailItem[] = [
   {
@@ -206,11 +201,11 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
   });
 
   // Text-reference hover (spec §9.1): hovering a text reference previews its
-  // CONTENT (not an image). Being wrapped by the Tooltip trigger stamps Radix's
-  // data-state on the chip button. A text ref WITH content carries it; a text
-  // ref WITHOUT content now also carries it — it shows the empty-state hint
+  // CONTENT (not an image). Being wrapped by the HoverCard trigger stamps
+  // Radix's data-state on the chip button. A text ref WITH content carries it; a
+  // text ref WITHOUT content now also carries it — it shows the empty-state hint
   // instead of nothing (H, user 2026-07-12).
-  it('wraps a text reference (with content OR empty) in a hover preview (Tooltip trigger)', () => {
+  it('wraps a text reference (with content OR empty) in a hover preview (HoverCard trigger)', () => {
     const refs: ReferenceRailItem[] = [
       {
         refId: 'txt->me',
@@ -292,10 +287,11 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
     expect(screen.getByTestId('generate-reference-rail')).not.toHaveClass(
       'opacity-50',
     );
-    // Image row: dimmed + non-interactive. The dim is now EXPLICIT on the
-    // visible controls (insert + remove), not an ancestor opacity on the row —
-    // an ancestor opacity would also dim the inline hover-preview tooltip, which
-    // the prompt chip cannot match; both use the explicit `dimmed` mechanism.
+    // Image row: dimmed + non-interactive. The dim is EXPLICIT on the visible
+    // controls (insert + remove) and on the hover preview's own `dimmed` prop,
+    // never an ancestor opacity on the row — the preview card is portaled, so an
+    // ancestor opacity would not reach it, and the prompt chip could not match
+    // that anyway; both stay on the one explicit `dimmed` mechanism.
     expect(screen.getByTestId('generate-ref-insert-a->me')).toHaveClass(
       'opacity-50',
     );

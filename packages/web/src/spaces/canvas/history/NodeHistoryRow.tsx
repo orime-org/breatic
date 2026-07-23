@@ -14,7 +14,10 @@ import * as React from 'react';
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
-import { ThumbnailHoverPreview } from '@web/spaces/canvas/generate/ThumbnailHoverPreview';
+import {
+  HoverPreview,
+  type HoverPreviewKind,
+} from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import {
   entryCredits,
   entryFilename,
@@ -59,6 +62,46 @@ function thumbSrc(
   return null; // audio
 }
 
+/** A row's hover preview: a static image, or a PLAYABLE audio / video (#1814). */
+interface RowPreview {
+  kind: HoverPreviewKind;
+  src: string;
+  /** Video cover (video only); ignored for image / audio. */
+  poster?: string;
+}
+
+/**
+ * The row's hover preview (#1814): a static big image for an image row, and a
+ * PLAYABLE {@link HoverPreview} sourced from the result asset for video / audio
+ * — so a video row plays its clip (cover as poster) and an audio row plays its
+ * track (previously audio rows had no preview at all). Returns null when there
+ * is nothing to preview: a failed row, or a success whose content URL is null.
+ * @param entry - The history row.
+ * @param modality - The host node's modality.
+ * @returns The preview descriptor, or null.
+ */
+function previewFor(
+  entry: NodeHistoryEntry,
+  modality: HistoryModality,
+): RowPreview | null {
+  if (entry.status === 'failed' || entry.content == null) return null;
+  if (modality === 'image') {
+    // The big image reuses the thumbnail treatment (thumbnailUrl ?? content),
+    // unchanged from the pre-migration static preview.
+    return { kind: 'image', src: entry.thumbnailUrl ?? entry.content };
+  }
+  if (modality === 'video') {
+    // The playable element takes the video URL (`content`), not the cover — the
+    // cover becomes its poster.
+    return {
+      kind: 'video',
+      src: entry.content,
+      poster: entry.thumbnailUrl ?? undefined,
+    };
+  }
+  return { kind: 'audio', src: entry.content }; // audio
+}
+
 /**
  * One node-history row (#1619): a thumbnail (image / video cover, or a modality
  * icon), the type chip + model + credits (generation) or filename (upload) on
@@ -80,6 +123,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
   const t = useTranslation();
   const failed = entry.status === 'failed';
   const src = thumbSrc(entry, modality);
+  const preview = previewFor(entry, modality);
   const model = entryModel(entry);
   const credits = entryCredits(entry);
   const filename = entryFilename(entry);
@@ -120,12 +164,22 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
         (failed ? ' opacity-60' : '')
       }
     >
-      {/* Only image / video-with-cover get a hover preview; audio + failed
-          rows have no usable image, so no preview (batch-5 empty-box guard). */}
-      {src ? (
-        <ThumbnailHoverPreview src={src} alt=''>
+      {/* Unified hover preview (#1814): image → static big image, video / audio
+          → PLAYABLE MediaPlayer. `followCanvas` keeps the card glued to the row
+          while the ReactFlow viewport pans / zooms (the panel rides a
+          NodeToolbar). Failed rows + successes with no content URL preview
+          nothing (previewFor → null), so their thumbnail passes through
+          unwrapped (batch-5 empty-box guard). */}
+      {preview ? (
+        <HoverPreview
+          kind={preview.kind}
+          src={preview.src}
+          poster={preview.poster}
+          alt=''
+          followCanvas
+        >
           {thumb}
-        </ThumbnailHoverPreview>
+        </HoverPreview>
       ) : (
         thumb
       )}
