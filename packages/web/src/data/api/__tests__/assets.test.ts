@@ -183,6 +183,78 @@ describe('assetsApi.putFile — direct PUT to the presigned URL', () => {
   });
 });
 
+describe('assetsApi.reportUploaded — cover reference + derived flag (#1824)', () => {
+  it('maps coverKey to the snake_case cover_key wire field (regular video path)', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ ok: true });
+
+    await assetsApi.reportUploaded({
+      projectId: 'p1',
+      kind: 'video',
+      key: 'u1/p1/video/clip.mp4',
+      hash: 'a'.repeat(64),
+      nodeId: 'n1',
+      spaceId: 's1',
+      coverKey: 'u1/p1/image/clip-cover.jpg',
+      metadata: { filename: 'clip.mp4', size: 10, mimeType: 'video/mp4' },
+    });
+
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith(
+      '/assets/uploaded',
+      expect.objectContaining({ cover_key: 'u1/p1/image/clip-cover.jpg' }),
+    );
+  });
+
+  it('maps coverHash to the snake_case cover_hash wire field (dedup video path)', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ ok: true });
+
+    await assetsApi.reportUploaded({
+      projectId: 'p1',
+      kind: 'video',
+      dedup: true,
+      hash: 'b'.repeat(64),
+      coverHash: 'c'.repeat(64),
+    });
+
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith(
+      '/assets/uploaded',
+      expect.objectContaining({ cover_hash: 'c'.repeat(64) }),
+    );
+  });
+
+  it('sends derived:true for a byproduct report (cover / crop), and omits it otherwise', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ ok: true });
+
+    // A derived byproduct (a cover / crop) carries the flag so the server
+    // registers it in the ledger but does NOT announce a feed row (model A).
+    await assetsApi.reportUploaded({
+      projectId: 'p1',
+      kind: 'image',
+      key: 'u1/p1/image/clip-cover.jpg',
+      derived: true,
+    });
+    const derivedBody = vi.mocked(apiPost).mock.calls[0]![1] as Record<
+      string,
+      unknown
+    >;
+    expect(derivedBody.derived).toBe(true);
+
+    // A real upload never sends the flag → the server emits its feed row.
+    vi.mocked(apiPost).mockClear();
+    await assetsApi.reportUploaded({
+      projectId: 'p1',
+      kind: 'video',
+      key: 'u1/p1/video/clip.mp4',
+    });
+    const plainBody = vi.mocked(apiPost).mock.calls[0]![1] as Record<
+      string,
+      unknown
+    >;
+    expect('derived' in plainBody).toBe(false);
+    expect('cover_key' in plainBody).toBe(false);
+    expect('cover_hash' in plainBody).toBe(false);
+  });
+});
+
 describe('assetsApi.reportDeleted — batch chunking (adversarial round-4)', () => {
   it('splits entries into <=100-entry batches (server .max(100))', async () => {
     vi.mocked(apiPost).mockResolvedValue({ ok: true });

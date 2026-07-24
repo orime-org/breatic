@@ -244,3 +244,52 @@ describe('ReferenceMentionList — no-thumbnail modality icon', () => {
     expect(container.querySelector('.lucide-music')).not.toBeNull();
   });
 });
+
+// #1824 consumer ⑥: the `@` picker dropdown must show a video reference's COVER
+// frame as its thumbnail (the pool derives `thumbnail = coverUrl` for a video —
+// derive-references.thumbnailOf), and a coverless video must degrade to the
+// video MODALITY icon, never a broken <img> fed the raw video URL (#1821).
+describe('ReferenceMentionList — video reference thumbnail (#1824 consumer ⑥)', () => {
+  it('renders the cover frame as the <img> for a video source with a cover', () => {
+    const { container } = render(
+      <ReferenceMentionList
+        items={[
+          {
+            refId: 'v->me',
+            sourceNodeId: 'v',
+            sourceNodeType: 'video',
+            sourceNodeName: 'Clip',
+            thumbnail: 'https://cdn/clip-cover.jpg',
+          },
+        ]}
+        command={vi.fn()}
+        emptyLabel='none'
+      />,
+    );
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img!.getAttribute('src')).toBe('https://cdn/clip-cover.jpg');
+  });
+
+  it('shows the video modality icon (not a broken image) for a coverless video', () => {
+    const { container } = render(
+      <ReferenceMentionList
+        items={[
+          {
+            refId: 'v->me',
+            sourceNodeId: 'v',
+            sourceNodeType: 'video',
+            sourceNodeName: 'Clip',
+            // No thumbnail: an uploaded video whose cover step failed, or a
+            // pre-#1816 upload. Must NOT surface the raw video URL as an <img>.
+          },
+        ]}
+        command={vi.fn()}
+        emptyLabel='none'
+      />,
+    );
+    expect(container.querySelector('.lucide-video')).not.toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('.lucide-image-off')).toBeNull();
+  });
+});

@@ -131,6 +131,14 @@ export const assetsApi = {
    * @param params.spaceId - Space the node lives in.
    * @param params.source - `mini_tool` for frontend-executed mini-tool products.
    * @param params.toolName - Mini-tool name when `source` is set.
+   * @param params.coverKey - Cover's stored key (regular video path, #1824) —
+   *   the server re-derives the cover thumbnail URL from it (client URL never
+   *   trusted). Rides on the VIDEO report so the node-history + activity rows
+   *   carry the cover.
+   * @param params.coverHash - Cover's content hash (dedup video path, #1824) —
+   *   the server re-derives the cover thumbnail URL by looking the row up.
+   * @param params.derived - True for a DERIVED byproduct (cover / crop, model
+   *   A) — registered in the ledger but NOT announced as its own feed row.
    * @param params.metadata - Original-file facts for the node-history record.
    * @param params.metadata.filename - Original file name.
    * @param params.metadata.size - Original byte size (client-declared).
@@ -150,6 +158,12 @@ export const assetsApi = {
     spaceId?: string;
     source?: 'mini_tool';
     toolName?: string;
+    /** Cover's stored key (regular video path) — server re-derives the URL. */
+    coverKey?: string;
+    /** Cover's content hash (dedup video path) — server re-derives the URL. */
+    coverHash?: string;
+    /** True for a derived byproduct (cover / crop): ledger yes, feed row no. */
+    derived?: true;
     /** Original-file facts for the node-history record. */
     metadata?: { filename: string; size: number; mimeType: string };
   }): Promise<void> {
@@ -163,6 +177,9 @@ export const assetsApi = {
       ...(params.spaceId !== undefined && { space_id: params.spaceId }),
       ...(params.source !== undefined && { source: params.source }),
       ...(params.toolName !== undefined && { tool_name: params.toolName }),
+      ...(params.coverKey !== undefined && { cover_key: params.coverKey }),
+      ...(params.coverHash !== undefined && { cover_hash: params.coverHash }),
+      ...(params.derived !== undefined && { derived: params.derived }),
       ...(params.metadata !== undefined && { metadata: params.metadata }),
     });
   },

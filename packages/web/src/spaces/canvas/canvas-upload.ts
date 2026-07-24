@@ -175,10 +175,13 @@ export interface VideoWithCoverDeps {
    */
   onFailure: () => void;
   /**
-   * Video asset ledger report — fired ONLY on full success. The caller adds
-   * the nodeId (it becomes the node-history 'upload' row's source).
+   * Video asset ledger report — fired ONLY on full success. Carries BOTH the
+   * video info AND the cover info (#1824): the caller adds the nodeId (the
+   * node-history 'upload' row's source) and rides the cover's verifiable ref
+   * (`cover_key` / `cover_hash`) on the video report, so the server re-derives
+   * the cover URL for the node-history + activity-feed thumbnails.
    */
-  onVideoUploaded?: (info: UploadedInfo) => void;
+  onVideoUploaded?: (videoInfo: UploadedInfo, coverInfo: UploadedInfo) => void;
   /**
    * Cover asset ledger report — fired ONLY on full success. Carries the cover
    * File so the caller can build the report metadata (filename / size). The
@@ -260,7 +263,9 @@ export async function runVideoUploadWithCover(
       uploadOneMedia(coverFile, projectId, shared),
     ]);
     // Both landed — report the assets, then write content + cover in one go.
-    deps.onVideoUploaded?.(video.info);
+    // The video report carries the cover ref too (#1824) so the server can
+    // re-derive the cover thumbnail for the node-history + activity sinks.
+    deps.onVideoUploaded?.(video.info, cover.info);
     deps.onCoverUploaded?.(cover.info, coverFile);
     deps.onSuccess(video.url, cover.url);
   } catch {
@@ -346,9 +351,15 @@ export interface FillNodeDeps {
   /**
    * Optional activity-feed handshake reporter (media path only) — called
    * after a successful upload with the storage identity + the node it
-   * landed on. Fire-and-forget at the caller.
+   * landed on. `coverInfo` is present ONLY on the atomic video path (#1824):
+   * the caller rides the cover's verifiable ref on the video report so the
+   * server re-derives the cover thumbnail. Fire-and-forget at the caller.
    */
-  onUploaded?: (nodeId: string, info: UploadedInfo) => void;
+  onUploaded?: (
+    nodeId: string,
+    info: UploadedInfo,
+    coverInfo?: UploadedInfo,
+  ) => void;
   /**
    * Cover asset ledger reporter (#1816 atomic video path) — called after a
    * successful atomic upload with the COVER's storage identity + File. The
@@ -429,7 +440,8 @@ export async function fillNodeFromFile(
           deps.setContent(nodeId, videoUrl, lease, coverUrl),
         onFailure: () =>
           deps.setError(nodeId, `Upload failed: ${file.name}`, lease),
-        onVideoUploaded: (info) => deps.onUploaded?.(nodeId, info),
+        onVideoUploaded: (info, coverInfo) =>
+          deps.onUploaded?.(nodeId, info, coverInfo),
         onCoverUploaded: (info, cf) => deps.onCoverUploaded?.(info, cf),
         ...(deps.sleep !== undefined && { sleep: deps.sleep }),
       });

@@ -195,6 +195,10 @@ export const mocks = {
   // publish failures (#1580 adversarial: the handling-OPEN is a hard
   // prerequisite of the gen echo chain, not best-effort).
   publishNodeEvent: vi.fn().mockResolvedValue(undefined),
+  // Storage adapter (local / S3 / OSS). Exposed on `mocks` so route tests can
+  // configure head() / publicUrl() per-test (e.g. the #1824 cover wire); default
+  // unconfigured (resolves undefined) — only happy-path upload tests set it.
+  getStorageAdapter: vi.fn(),
   // Canvas node lock (moved to @breatic/domain in PR4). Defaults: lock
   // acquires cleanly + no prior holder so happy-path routes succeed.
   canvasLock: {
@@ -319,7 +323,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     defaultJobOpts: () => ({}),
     checkRateLimit: vi.fn().mockResolvedValue(true),
     publishNodeEvent: mocks.publishNodeEvent,
-    getStorageAdapter: vi.fn(),
+    getStorageAdapter: mocks.getStorageAdapter,
     setSession: vi.fn(),
     getSession: vi.fn(),
     // Config

@@ -269,7 +269,13 @@ describe('runVideoUploadWithCover — atomic video + cover (#1816)', () => {
     );
     expect(deps.onFailure).not.toHaveBeenCalled();
     // Both ledger reports fire (video WITH nodeId at the caller; cover WITHOUT).
-    expect(deps.onVideoUploaded).toHaveBeenCalledOnce();
+    // The video report carries BOTH infos (#1824): the caller rides the cover's
+    // verifiable ref on the VIDEO report so the server can re-derive the cover
+    // URL for the node-history row (①) + activity row (②).
+    expect(deps.onVideoUploaded).toHaveBeenCalledExactlyOnceWith(
+      { key: 'kv', kind: 'video', fileUrl: 'https://cdn/clip.mp4', hash: HASH },
+      { key: 'kc', kind: 'image', fileUrl: 'https://cdn/clip-cover.jpg', hash: HASH },
+    );
     expect(deps.onCoverUploaded).toHaveBeenCalledOnce();
   });
 
@@ -413,8 +419,14 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       LEASE,
       'https://cdn/clip-cover.jpg',
     );
-    // Video ledger report carries the nodeId; cover report has none (F3).
-    expect(deps.onUploaded).toHaveBeenCalledOnce();
+    // Video ledger report carries the nodeId AND the cover info (#1824) so the
+    // caller can ride the cover ref on the video report; cover report has no
+    // nodeId (F3).
+    expect(deps.onUploaded).toHaveBeenCalledExactlyOnceWith(
+      'n1',
+      expect.objectContaining({ key: 'kv', kind: 'video' }),
+      expect.objectContaining({ key: 'kc', kind: 'image' }),
+    );
     expect(deps.onCoverUploaded).toHaveBeenCalledOnce();
     expect(deps.setError).not.toHaveBeenCalled();
   });
