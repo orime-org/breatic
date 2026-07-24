@@ -375,7 +375,8 @@
       "ownershipLost": "上傳結果未寫入 — 節點已被移除或被他人接管。",
       "typeMismatch": "檔案類型與節點不符。",
       "retry": "重新上傳",
-      "tooLarge": "{filename} 超過上傳大小限制。"
+      "tooLarge": "{filename} 超過上傳大小限制。",
+      "videoCodecUnsupported": "這個影片的格式瀏覽器無法讀取。請轉換成 H.264 / MP4 後再上傳。"
     },
     "minimap": {
       "label": "畫布縮略圖"

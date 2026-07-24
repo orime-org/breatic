@@ -62,6 +62,12 @@ export interface ClipboardNode {
   name?: string;
   /** Content payload (text body / asset url), when present. */
   content?: string;
+  /**
+   * Video cover poster URL (#1816) — carried so a copy / duplicate keeps its
+   * instant poster. Intrinsic to the video content (like `content`), unlike
+   * generation config (params / model / prompt) which a fresh clone drops.
+   */
+  coverUrl?: string;
   /** Group authoritative width (Group entries only). */
   width?: number;
   /** Group authoritative height (Group entries only). */
@@ -85,6 +91,7 @@ export interface CaptureNode {
   data?: {
     name?: unknown;
     content?: unknown;
+    coverUrl?: unknown;
     width?: unknown;
     height?: unknown;
     backgroundColor?: unknown;
@@ -137,6 +144,9 @@ export function captureClipboard(
       position: absPos(node),
       ...(typeof data.name === 'string' ? { name: data.name } : {}),
       ...(typeof data.content === 'string' ? { content: data.content } : {}),
+      // The video cover travels with the content (#1816); only video carries
+      // one, so this is naturally absent for image / audio / text.
+      ...(typeof data.coverUrl === 'string' ? { coverUrl: data.coverUrl } : {}),
       // Record the rendered size so a viewport-center paste can centre the
       // payload's bounding box (R2-H); absent until ReactFlow measures the node.
       ...(typeof node.measured?.width === 'number' ? { width: node.measured.width } : {}),
@@ -338,6 +348,9 @@ export function cloneForPaste(
         ...fresh.data,
         name: isFollowingMember ? baseName : COPY_PREFIX + baseName,
         ...(node.content !== undefined ? { content: node.content } : {}),
+        // Keep the video cover on the duplicate (#1816) — a posterless clone
+        // would lose its instant poster (asset-GC keeps the shared URL alive).
+        ...(node.coverUrl !== undefined ? { coverUrl: node.coverUrl } : {}),
       },
     };
   });
