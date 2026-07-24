@@ -339,6 +339,20 @@ const uploadedSchema = z
         path: ["key"],
       });
     }
+    // A cover is a VIDEO concept (#1824, Gate-2): only a video upload carries
+    // one. Tying the ref to kind='video' stops a crafted non-video report from
+    // planting an arbitrary same-owner image as another node's history
+    // thumbnail (recordUpload writes the thumbnail regardless of kind).
+    if (
+      (val.cover_key !== undefined || val.cover_hash !== undefined) &&
+      val.kind !== "video"
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "a cover reference is only valid for a video upload",
+        path: ["cover_key"],
+      });
+    }
   });
 
 assets.post(
@@ -447,25 +461,33 @@ assets.post(
 
     // Cover thumbnail (#1824): best-effort, server-derived from a verifiable
     // client reference (cover_key / cover_hash); ANY failure → undefined (the
-    // sinks degrade to a Film icon) and never fails the video upload — the
-    // resolver has its own try/catch, scoped to the cover only.
+    // sinks degrade to a Film icon) and never fails the video upload.
+    // resolveCoverUrl has its own try/catch, but ACQUIRING the adapter must be
+    // inside the best-effort scope too: on the dedup path fileUrl is resolved
+    // from the DB WITHOUT building an adapter, so this can be the FIRST
+    // getStorageAdapter() call — a construction throw here would otherwise fail
+    // the whole /uploaded request and lose both audit sinks (Gate-2, #1824).
     let coverUrl: string | undefined;
     if (body.cover_key !== undefined || body.cover_hash !== undefined) {
-      const coverAdapter = await getStorageAdapter();
-      coverUrl = await resolveCoverUrl(
-        {
-          coverKey: body.cover_key,
-          coverHash: body.cover_hash,
-          projectId: body.project_id,
-          actingUserId: user.id,
-        },
-        {
-          isOwnedKey: (k) => isOwnedKey(k, user.id, body.project_id),
-          head: (k) => coverAdapter.head(k),
-          publicUrl: (k) => coverAdapter.publicUrl(k),
-          verifyDedupUpload: (p) => assetUploadService.verifyDedupUpload(p),
-        },
-      );
+      try {
+        const coverAdapter = await getStorageAdapter();
+        coverUrl = await resolveCoverUrl(
+          {
+            coverKey: body.cover_key,
+            coverHash: body.cover_hash,
+            projectId: body.project_id,
+            actingUserId: user.id,
+          },
+          {
+            isOwnedKey: (k) => isOwnedKey(k, user.id, body.project_id),
+            head: (k) => coverAdapter.head(k),
+            publicUrl: (k) => coverAdapter.publicUrl(k),
+            verifyDedupUpload: (p) => assetUploadService.verifyDedupUpload(p),
+          },
+        );
+      } catch {
+        coverUrl = undefined;
+      }
     }
 
     // Node history record (version timeline), when node-bound. Carries the

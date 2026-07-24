@@ -5,7 +5,7 @@
  * Assets route tests — presign + local upload + history.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(), generateText: vi.fn(), stepCountIs: vi.fn(),
@@ -230,6 +230,14 @@ describe("Assets routes", () => {
       });
     });
 
+    afterEach(() => {
+      // getStorageAdapter is a SHARED mock (mocks.getStorageAdapter); reset its
+      // implementation so this block's cover-adapter stub never leaks into a
+      // sibling describe — vi.clearAllMocks (outer beforeEach) clears call
+      // history but NOT implementations (Gate-2 test-isolation, #1824).
+      mocks.getStorageAdapter.mockReset();
+    });
+
     it("derives the cover URL from cover_key → recordUpload thumbnail (①) + activity payload thumbnail (②)", async () => {
       const app = createApp();
       // hash omitted → the ledger-register path is skipped, isolating the cover
@@ -316,6 +324,55 @@ describe("Assets routes", () => {
 
       expect(res.status).toBe(200);
       expect(vi.mocked(recordProjectActivity)).toHaveBeenCalledOnce();
+    });
+
+    it("a storage-adapter failure while resolving the cover degrades to no thumbnail — never fails the video's records (best-effort, decision #4)", async () => {
+      // 1st getStorageAdapter (video head) succeeds; the 2nd (cover) throws.
+      // The cover must degrade to undefined, and recordUpload + the feed row
+      // must STILL fire — a cover problem never fails the video's audit sinks.
+      mocks.getStorageAdapter
+        .mockResolvedValueOnce({
+          head: vi.fn().mockResolvedValue({ exists: true, contentType: "", size: 100 }),
+          publicUrl: (k: string) => `https://cdn/${k}`,
+        })
+        .mockRejectedValueOnce(new Error("adapter construction failed"));
+      const app = createApp();
+      const res = await app.request("/api/v1/assets/uploaded", {
+        method: "POST",
+        headers: { ...AUTH, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: PROJ,
+          key: VIDEO_KEY,
+          kind: "video",
+          node_id: "node-1",
+          cover_key: COVER_KEY,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mocks.nodeHistoryService.recordUpload).toHaveBeenCalledWith(
+        expect.objectContaining({ thumbnailUrl: undefined }),
+      );
+      expect(vi.mocked(recordProjectActivity)).toHaveBeenCalledOnce();
+    });
+
+    it("rejects a cover reference on a NON-video upload (400) — a cover is a video concept", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/assets/uploaded", {
+        method: "POST",
+        headers: { ...AUTH, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: PROJ,
+          key: COVER_KEY,
+          kind: "image",
+          node_id: "n",
+          // A crafted report trying to plant another owned image as this
+          // image node's history thumbnail — the schema must refuse it.
+          cover_key: `user-1/${PROJ}/image/other.jpg`,
+        }),
+      });
+
+      expect(res.status).toBe(400);
     });
   });
 

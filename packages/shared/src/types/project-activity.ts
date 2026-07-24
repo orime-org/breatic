@@ -42,6 +42,12 @@ export const AssetActivityPayloadSchema = z.object({
   fileUrl: z.string().min(1),
   /** Storage kind bucket (image / video / audio / file). */
   kind: z.string().min(1),
+  /**
+   * Server-derived cover thumbnail of an uploaded VIDEO (#1824) — the feed
+   * renders it as the video-upload row's thumbnail. image / audio / file
+   * uploads omit it (mirrors the generation payload's `thumbnailUrl`).
+   */
+  thumbnailUrl: z.string().min(1).optional(),
 });
 
 /**
