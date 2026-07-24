@@ -231,11 +231,12 @@ describe("Assets routes", () => {
     });
 
     afterEach(() => {
-      // getStorageAdapter is a SHARED mock (mocks.getStorageAdapter); reset its
-      // implementation so this block's cover-adapter stub never leaks into a
-      // sibling describe — vi.clearAllMocks (outer beforeEach) clears call
-      // history but NOT implementations (Gate-2 test-isolation, #1824).
+      // getStorageAdapter + verifyDedupUpload are SHARED mocks; reset their
+      // implementations so this block's stubs never leak into a sibling describe
+      // — vi.clearAllMocks (outer beforeEach) clears call history but NOT
+      // implementations (Gate-2 test-isolation, #1824).
       mocks.getStorageAdapter.mockReset();
+      mocks.assetUploadService.verifyDedupUpload.mockReset();
     });
 
     it("derives the cover URL from cover_key → recordUpload thumbnail (①) + activity payload thumbnail (②)", async () => {
@@ -379,6 +380,54 @@ describe("Assets routes", () => {
       expect(mocks.nodeHistoryService.recordUpload).toHaveBeenCalledWith(
         expect.objectContaining({ thumbnailUrl: `https://cdn/${COVER_KEY}` }),
       );
+    });
+
+    it("a dedup cover (cover_hash) resolves from the DB even when the storage adapter is unhealthy — the DB-only path is not coupled to adapter health (Gate-2 R3)", async () => {
+      // A fully-deduped video + cover: NEITHER needs the storage adapter (both
+      // resolve from verifyDedupUpload). Make the adapter throw to prove the
+      // cover is not coupled to adapter health — and assert it is never built.
+      mocks.getStorageAdapter.mockReset();
+      mocks.getStorageAdapter.mockRejectedValue(new Error("adapter down"));
+      const VIDEO_HASH = "a".repeat(64);
+      const COVER_HASH = "b".repeat(64);
+      mocks.assetUploadService.verifyDedupUpload.mockImplementation(
+        async ({ contentHash }: { contentHash: string }) => {
+          if (contentHash === VIDEO_HASH)
+            return {
+              fileUrl: "https://cdn/v.mp4",
+              storageKey: `user-1/${PROJ}/video/v.mp4`,
+              kind: "video",
+            };
+          if (contentHash === COVER_HASH)
+            return {
+              fileUrl: "https://cdn/c.jpg",
+              storageKey: `user-1/${PROJ}/image/c.jpg`,
+              kind: "file", // ledger kind is unreliable — the key segment wins
+            };
+          return null;
+        },
+      );
+      const app = createApp();
+      const res = await app.request("/api/v1/assets/uploaded", {
+        method: "POST",
+        headers: { ...AUTH, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: PROJ,
+          dedup: true,
+          hash: VIDEO_HASH,
+          kind: "video",
+          node_id: "node-1",
+          cover_hash: COVER_HASH,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      // The cover resolved from the DB despite the dead adapter.
+      expect(mocks.nodeHistoryService.recordUpload).toHaveBeenCalledWith(
+        expect.objectContaining({ thumbnailUrl: "https://cdn/c.jpg" }),
+      );
+      // The adapter was never even built (dedup video + dedup cover need no storage).
+      expect(mocks.getStorageAdapter).not.toHaveBeenCalled();
     });
   });
 

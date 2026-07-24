@@ -199,6 +199,13 @@ export const mocks = {
   // configure head() / publicUrl() per-test (e.g. the #1824 cover wire); default
   // unconfigured (resolves undefined) — only happy-path upload tests set it.
   getStorageAdapter: vi.fn(),
+  // Upload dedup service (#1609). The real one hits assetService.resolveOwnerStudioId
+  // + DB, so override it — route tests that exercise the dedup /uploaded path
+  // (incl. the #1824 dedup-cover decoupling) configure verifyDedupUpload per-test.
+  assetUploadService: {
+    checkUploadDedup: vi.fn(),
+    verifyDedupUpload: vi.fn(),
+  },
   // Canvas node lock (moved to @breatic/domain in PR4). Defaults: lock
   // acquires cleanly + no prior holder so happy-path routes succeed.
   canvasLock: {
@@ -433,6 +440,7 @@ export const serverModulesMock = async (importOriginal: () => Promise<Record<str
   return {
     ...actual,
     authService: mocks.authService,
+    assetUploadService: mocks.assetUploadService,
     projectService: mocks.projectService,
     conversationService: mocks.conversationService,
     conversationRepo: mocks.conversationRepo,

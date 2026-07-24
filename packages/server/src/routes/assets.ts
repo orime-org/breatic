@@ -459,15 +459,17 @@ assets.post(
     // Cover thumbnail (#1824): best-effort, server-derived from a verifiable
     // client reference (cover_key / cover_hash); ANY failure → undefined (the
     // sinks degrade to a Film icon) and never fails the video upload.
-    // resolveCoverUrl has its own try/catch, but ACQUIRING the adapter must be
-    // inside the best-effort scope too: on the dedup path fileUrl is resolved
-    // from the DB WITHOUT building an adapter, so this can be the FIRST
-    // getStorageAdapter() call — a construction throw here would otherwise fail
-    // the whole /uploaded request and lose both audit sinks (Gate-2, #1824).
+    // Only the REGULAR (cover_key) path needs storage head()/publicUrl(); the
+    // DEDUP (cover_hash) path resolves purely from the DB (verifyDedupUpload),
+    // so acquire the adapter ONLY for a cover_key — a hash-only cover stays
+    // resolvable even when the storage adapter is unhealthy (Gate-2 R3). The
+    // whole block is best-effort: an adapter-construction throw degrades to Film
+    // (logged), never failing the video's audit records (Gate-2 R1).
     let coverUrl: string | undefined;
     if (body.cover_key !== undefined || body.cover_hash !== undefined) {
       try {
-        const coverAdapter = await getStorageAdapter();
+        const coverAdapter =
+          body.cover_key !== undefined ? await getStorageAdapter() : undefined;
         coverUrl = await resolveCoverUrl(
           {
             coverKey: body.cover_key,
@@ -477,16 +479,20 @@ assets.post(
           },
           {
             isOwnedKey: (k) => isOwnedKey(k, user.id, body.project_id),
-            head: (k) => coverAdapter.head(k),
-            publicUrl: (k) => coverAdapter.publicUrl(k),
+            // head/publicUrl are called ONLY on the cover_key branch, where
+            // coverAdapter is set; the fallbacks keep the deps total without a
+            // non-null assertion (dead on the cover_hash branch).
+            head: (k) =>
+              coverAdapter?.head(k) ?? Promise.resolve({ exists: false }),
+            publicUrl: (k) => coverAdapter?.publicUrl(k) ?? "",
             verifyDedupUpload: (p) => assetUploadService.verifyDedupUpload(p),
           },
         );
       } catch (err) {
-        // Only an adapter-construction throw reaches here (resolveCoverUrl is
-        // total). Degrade the cover to undefined, but LOG it — this is a real
-        // infra fault (storage misconfig), unlike the expected best-effort
-        // misses resolveCoverUrl swallows silently (Gate-2 observability).
+        // A cover_key-path adapter-construction throw reaches here (resolveCoverUrl
+        // is total). Degrade to undefined, but LOG it — a real infra fault
+        // (storage misconfig), unlike the best-effort misses resolveCoverUrl
+        // swallows silently (Gate-2 observability).
         coverUrl = undefined;
         logger.warn(
           { err, projectId: body.project_id, userId: user.id },
