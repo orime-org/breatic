@@ -339,20 +339,17 @@ const uploadedSchema = z
         path: ["key"],
       });
     }
-    // A cover is a VIDEO concept (#1824, Gate-2): only a video upload carries
-    // one. Tying the ref to kind='video' stops a crafted non-video report from
-    // planting an arbitrary same-owner image as another node's history
-    // thumbnail (recordUpload writes the thumbnail regardless of kind).
-    if (
-      (val.cover_key !== undefined || val.cover_hash !== undefined) &&
-      val.kind !== "video"
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "a cover reference is only valid for a video upload",
-        path: ["cover_key"],
-      });
-    }
+    // Deliberately NOT tying cover_key/cover_hash to kind==='video' (Gate-2
+    // re-attack, #1824): the reported `kind` is detectKind(content_type),
+    // whose VIDEO_TYPES is a NARROW whitelist — a browser-decodable video
+    // outside it (e.g. Firefox + .ogv → video/ogg) reports kind='file' yet
+    // legitimately carries a cover, so gating on kind would 400 the whole
+    // report and lose both audit sinks. A cover's integrity is instead bounded
+    // by resolveCoverUrl (isOwnedKey + storageKey segment must be 'image').
+    // The residual — an editor crafting a report to show one of their OWN
+    // same-project images as a node's history thumbnail — is ACCEPTED as LOW
+    // (same-studio, self-inflicted, cosmetic; node content is unaffected),
+    // matching the accepted `derived` forgery residual.
   });
 
 assets.post(
@@ -485,8 +482,16 @@ assets.post(
             verifyDedupUpload: (p) => assetUploadService.verifyDedupUpload(p),
           },
         );
-      } catch {
+      } catch (err) {
+        // Only an adapter-construction throw reaches here (resolveCoverUrl is
+        // total). Degrade the cover to undefined, but LOG it — this is a real
+        // infra fault (storage misconfig), unlike the expected best-effort
+        // misses resolveCoverUrl swallows silently (Gate-2 observability).
         coverUrl = undefined;
+        logger.warn(
+          { err, projectId: body.project_id, userId: user.id },
+          "cover_resolve_adapter_failed",
+        );
       }
     }
 

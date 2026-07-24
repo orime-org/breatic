@@ -356,23 +356,29 @@ describe("Assets routes", () => {
       expect(vi.mocked(recordProjectActivity)).toHaveBeenCalledOnce();
     });
 
-    it("rejects a cover reference on a NON-video upload (400) — a cover is a video concept", async () => {
+    it("resolves the cover even when kind='file' — a browser-decodable video outside detectKind's narrow VIDEO_TYPES (Firefox .ogv) must not lose its cover (Gate-2 re-attack)", async () => {
+      // The frontend extracts a cover for ANY video/* (broad), but the reported
+      // kind is detectKind(content_type), whose VIDEO_TYPES whitelist is narrow
+      // — a video/ogg upload reports kind='file'. Gating the cover on
+      // kind==='video' would 400 the whole report and lose both sinks; the
+      // cover must still resolve (its own key segment is the authority).
       const app = createApp();
       const res = await app.request("/api/v1/assets/uploaded", {
         method: "POST",
         headers: { ...AUTH, "Content-Type": "application/json" },
         body: JSON.stringify({
           project_id: PROJ,
-          key: COVER_KEY,
-          kind: "image",
-          node_id: "n",
-          // A crafted report trying to plant another owned image as this
-          // image node's history thumbnail — the schema must refuse it.
-          cover_key: `user-1/${PROJ}/image/other.jpg`,
+          key: `user-1/${PROJ}/file/clip.ogv`,
+          kind: "file",
+          node_id: "node-1",
+          cover_key: COVER_KEY,
         }),
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
+      expect(mocks.nodeHistoryService.recordUpload).toHaveBeenCalledWith(
+        expect.objectContaining({ thumbnailUrl: `https://cdn/${COVER_KEY}` }),
+      );
     });
   });
 
