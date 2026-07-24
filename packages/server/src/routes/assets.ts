@@ -34,6 +34,7 @@ import {
 } from "@breatic/core";
 import { assetService, nodeHistoryService } from "@breatic/domain";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
+import { resolveCoverUrl } from "@server/modules/asset/cover-resolve.js";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
 
@@ -298,6 +299,23 @@ const uploadedSchema = z
      */
     source: z.literal("mini_tool").optional(),
     tool_name: z.string().max(64).optional(),
+    /**
+     * #1824: the uploaded video's cover reference. The server RE-DERIVES the
+     * cover URL from these (client URLs are never trusted): `cover_key`
+     * (regular upload) or `cover_hash` (dedup hit). Absent for non-video /
+     * cover-extraction-failed uploads → the sinks degrade to a Film icon.
+     */
+    cover_key: z.string().min(1).max(512).optional(),
+    cover_hash: z.string().regex(SHA256_HEX).optional(),
+    /**
+     * #1824: marks a DERIVED byproduct (auto-extracted cover / focus crop) —
+     * registered in the ledger but NOT announced as its own activity-feed row
+     * (product model A: the feed carries user events, not byproducts). A real
+     * user upload omits it. First-class semantic, NOT inferred from node_id
+     * absence (a future document-space upload has no node_id yet IS a feed
+     * event).
+     */
+    derived: z.literal(true).optional(),
     metadata: z
       .object({
         filename: z.string().max(255),
@@ -321,6 +339,17 @@ const uploadedSchema = z
         path: ["key"],
       });
     }
+    // Deliberately NOT tying cover_key/cover_hash to kind==='video' (Gate-2
+    // re-attack, #1824): the reported `kind` is detectKind(content_type),
+    // whose VIDEO_TYPES is a NARROW whitelist — a browser-decodable video
+    // outside it (e.g. Firefox + .ogv → video/ogg) reports kind='file' yet
+    // legitimately carries a cover, so gating on kind would 400 the whole
+    // report and lose both audit sinks. A cover's integrity is instead bounded
+    // by resolveCoverUrl (isOwnedKey + storageKey segment must be 'image').
+    // The residual — an editor crafting a report to show one of their OWN
+    // same-project images as a node's history thumbnail — is ACCEPTED as LOW
+    // (same-studio, self-inflicted, cosmetic; node content is unaffected),
+    // matching the accepted `derived` forgery residual.
   });
 
 assets.post(
@@ -427,7 +456,53 @@ assets.post(
       return c.json({ error: { message: t("server.error.validation") } }, 422);
     }
 
-    // Node history record (version timeline), when node-bound.
+    // Cover thumbnail (#1824): best-effort, server-derived from a verifiable
+    // client reference (cover_key / cover_hash); ANY failure → undefined (the
+    // sinks degrade to a Film icon) and never fails the video upload.
+    // Only the REGULAR (cover_key) path needs storage head()/publicUrl(); the
+    // DEDUP (cover_hash) path resolves purely from the DB (verifyDedupUpload),
+    // so acquire the adapter ONLY for a cover_key — a hash-only cover stays
+    // resolvable even when the storage adapter is unhealthy (Gate-2 R3). The
+    // whole block is best-effort: an adapter-construction throw degrades to Film
+    // (logged), never failing the video's audit records (Gate-2 R1).
+    let coverUrl: string | undefined;
+    if (body.cover_key !== undefined || body.cover_hash !== undefined) {
+      try {
+        const coverAdapter =
+          body.cover_key !== undefined ? await getStorageAdapter() : undefined;
+        coverUrl = await resolveCoverUrl(
+          {
+            coverKey: body.cover_key,
+            coverHash: body.cover_hash,
+            projectId: body.project_id,
+            actingUserId: user.id,
+          },
+          {
+            isOwnedKey: (k) => isOwnedKey(k, user.id, body.project_id),
+            // head/publicUrl are called ONLY on the cover_key branch, where
+            // coverAdapter is set; the fallbacks keep the deps total without a
+            // non-null assertion (dead on the cover_hash branch).
+            head: (k) =>
+              coverAdapter?.head(k) ?? Promise.resolve({ exists: false }),
+            publicUrl: (k) => coverAdapter?.publicUrl(k) ?? "",
+            verifyDedupUpload: (p) => assetUploadService.verifyDedupUpload(p),
+          },
+        );
+      } catch (err) {
+        // A cover_key-path adapter-construction throw reaches here (resolveCoverUrl
+        // is total). Degrade to undefined, but LOG it — a real infra fault
+        // (storage misconfig), unlike the best-effort misses resolveCoverUrl
+        // swallows silently (Gate-2 observability).
+        coverUrl = undefined;
+        logger.warn(
+          { err, projectId: body.project_id, userId: user.id },
+          "cover_resolve_adapter_failed",
+        );
+      }
+    }
+
+    // Node history record (version timeline), when node-bound. Carries the
+    // cover as the row's thumbnail (#1824, consumer ①).
     if (body.node_id) {
       try {
         await nodeHistoryService.recordUpload({
@@ -435,6 +510,7 @@ assets.post(
           nodeId: body.node_id,
           userId: user.id,
           content: fileUrl,
+          thumbnailUrl: coverUrl,
           metadata: body.metadata,
         });
       } catch (err) {
@@ -445,23 +521,34 @@ assets.post(
       }
     }
 
-    await recordProjectActivity({
-      projectId: body.project_id,
-      actorUserId: user.id,
-      type: body.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded",
-      spaceId: body.space_id ?? null,
-      nodeId: body.node_id ?? null,
-      payload:
-        body.source === "mini_tool"
-          ? {
-              source: "mini_tool",
-              ...(body.tool_name !== undefined && { toolName: body.tool_name }),
-              executedOn: "frontend",
-              fileUrl,
-              kind: body.kind,
-            }
-          : { fileUrl, kind: body.kind },
-    });
+    // Activity feed (#1824, product model A): a DERIVED byproduct (cover /
+    // crop, `derived: true`) is registered in the ledger above but NOT
+    // announced as its own feed row. A real upload emits its row, carrying the
+    // cover as the row's thumbnail (consumer ②).
+    if (body.derived !== true) {
+      await recordProjectActivity({
+        projectId: body.project_id,
+        actorUserId: user.id,
+        type:
+          body.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded",
+        spaceId: body.space_id ?? null,
+        nodeId: body.node_id ?? null,
+        payload:
+          body.source === "mini_tool"
+            ? {
+                source: "mini_tool",
+                ...(body.tool_name !== undefined && { toolName: body.tool_name }),
+                executedOn: "frontend",
+                fileUrl,
+                kind: body.kind,
+              }
+            : {
+                fileUrl,
+                kind: body.kind,
+                ...(coverUrl !== undefined && { thumbnailUrl: coverUrl }),
+              },
+      });
+    }
 
     return c.json({ data: { ok: true, fileUrl } });
   },

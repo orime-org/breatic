@@ -13,6 +13,8 @@ import { SuggestionPluginKey } from '@tiptap/suggestion';
 import * as Y from 'yjs';
 
 import {
+  MENTION_KIND_ATTR,
+  MENTION_THUMBNAIL_ATTR,
   ReferenceMention,
   referenceMentionContent,
   serializePromptText,
@@ -153,6 +155,37 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       }) => { refId: string }[]
     )({ query: '' });
     expect(items.map((i) => i.refId)).toEqual(['e2']);
+  });
+});
+
+// #1824 consumer ④: the inserted `@` chip carries a video reference's COVER
+// frame as its thumbnail attr (the pool derives thumbnail = coverUrl for a
+// video — derive-references.thumbnailOf), so the chip renders the cover as its
+// <img> (same attr → img path the dropdown ⑥ render-tests). A coverless video
+// carries a null thumbnail → the chip shows its modality icon, never a broken
+// <img> fed the raw video URL (#1821).
+describe('referenceMentionContent — video chip thumbnail attr (#1824 consumer ④)', () => {
+  it('copies a video source cover into the chip thumbnail attr', () => {
+    const attrs = referenceMentionContent({
+      refId: 'v->me',
+      sourceNodeId: 'v',
+      sourceNodeType: 'video',
+      sourceNodeName: 'Clip',
+      thumbnail: 'https://cdn/clip-cover.jpg',
+    }).attrs;
+    expect(attrs[MENTION_THUMBNAIL_ATTR]).toBe('https://cdn/clip-cover.jpg');
+    expect(attrs[MENTION_KIND_ATTR]).toBe('video');
+  });
+
+  it('leaves the thumbnail attr null for a coverless video (chip shows the modality icon)', () => {
+    const attrs = referenceMentionContent({
+      refId: 'v->me',
+      sourceNodeId: 'v',
+      sourceNodeType: 'video',
+      sourceNodeName: 'Clip',
+    }).attrs;
+    expect(attrs[MENTION_THUMBNAIL_ATTR]).toBeNull();
+    expect(attrs[MENTION_KIND_ATTR]).toBe('video');
   });
 });
 

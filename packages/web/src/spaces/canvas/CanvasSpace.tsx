@@ -741,6 +741,10 @@ function CanvasSpaceInner({
                       projectId: pid,
                       kind: info.kind,
                       spaceId,
+                      // A crop is a DERIVED byproduct (product model A, #1824):
+                      // registered in the ledger for attribution / dedup but NOT
+                      // announced as its own activity-feed row.
+                      derived: true,
                       ...(info.hash !== null && { hash: info.hash }),
                       ...(info.dedup === true ? { dedup: true as const } : {}),
                       ...(info.key !== undefined && { key: info.key }),
@@ -1216,7 +1220,12 @@ function CanvasSpaceInner({
   // the deletion itself already succeeded and re-prompting the user would
   // read as a failed delete.
   const reportUploadedAsset = React.useCallback(
-    (nodeId: string, info: UploadedInfo, file: File): void => {
+    (
+      nodeId: string,
+      info: UploadedInfo,
+      file: File,
+      coverInfo?: UploadedInfo,
+    ): void => {
       void assetsApi
         .reportUploaded({
           projectId,
@@ -1230,6 +1239,18 @@ function CanvasSpaceInner({
           ...(info.hash !== null && { hash: info.hash }),
           ...(info.dedup === true ? { dedup: true as const } : {}),
           ...(info.key !== undefined && { key: info.key }),
+          // Cover reference (#1824, atomic video path): the server re-derives
+          // the cover thumbnail URL from a verifiable ref — the cover's stored
+          // key (regular) or its content hash (dedup hit) — riding on the VIDEO
+          // report so the node-history row (①) + activity row (②) carry it.
+          // Client URLs are never trusted, so only the key / hash is sent.
+          ...(coverInfo?.dedup === true
+            ? coverInfo.hash !== null
+              ? { coverHash: coverInfo.hash }
+              : {}
+            : coverInfo?.key !== undefined
+              ? { coverKey: coverInfo.key }
+              : {}),
           metadata: {
             filename: file.name,
             size: file.size,
@@ -1240,10 +1261,13 @@ function CanvasSpaceInner({
     },
     [projectId, spaceId, t],
   );
-  // Cover ledger report for the atomic video upload (#1816): reports the
-  // COVER asset for #1606 attribution / dedup, WITHOUT a nodeId (F3) — a cover
-  // is a derived asset, not node content, so a node_id would write a bogus
-  // node-history 'upload' row (mirrors runFocusCrop's crop report :723-728).
+  // Cover ledger report for the atomic video upload (#1816 / #1824): registers
+  // the COVER asset for #1606 attribution / dedup, WITHOUT a nodeId (F3) — a
+  // cover is a derived asset, not node content, so a node_id would write a
+  // bogus node-history 'upload' row (mirrors runFocusCrop's crop report). It
+  // carries `derived: true` (product model A): registered in the ledger but NOT
+  // announced as its own activity-feed row — the cover surfaces only as the
+  // video-upload row's thumbnail (via the video report's cover ref).
   const reportUploadedCover = React.useCallback(
     (info: UploadedInfo, coverFile: File): void => {
       void assetsApi
@@ -1251,6 +1275,7 @@ function CanvasSpaceInner({
           projectId,
           kind: info.kind,
           spaceId,
+          derived: true,
           ...(info.hash !== null && { hash: info.hash }),
           ...(info.dedup === true ? { dedup: true as const } : {}),
           ...(info.key !== undefined && { key: info.key }),
@@ -1905,8 +1930,8 @@ function CanvasSpaceInner({
                     lease,
                   );
                 },
-                onVideoUploaded: (info) =>
-                  reportUploadedAsset(nodeId, info, file),
+                onVideoUploaded: (videoInfo, coverInfo) =>
+                  reportUploadedAsset(nodeId, videoInfo, file, coverInfo),
                 onCoverUploaded: (info, cf) => reportUploadedCover(info, cf),
               }),
             );
@@ -2739,7 +2764,8 @@ function CanvasSpaceInner({
             }
             return failNodeHandling(projectId, spaceId, id, message, lease);
           },
-          onUploaded: (id, info) => reportUploadedAsset(id, info, file),
+          onUploaded: (id, info, coverInfo) =>
+            reportUploadedAsset(id, info, file, coverInfo),
           onCoverUploaded: (info, coverFile) =>
             reportUploadedCover(info, coverFile),
         });

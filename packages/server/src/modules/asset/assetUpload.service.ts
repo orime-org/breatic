@@ -25,6 +25,12 @@ export interface DedupHit {
   fileUrl: string;
   /** The existing asset's kind (image / video / audio / document / file). */
   kind: string;
+  /**
+   * The existing asset's storage key (#1824). The cover path derives kind
+   * from this key's taskType segment rather than the stored `kind` (which is
+   * `'file'` for everything on local storage) — see {@link kindFromStorageKey}.
+   */
+  storageKey: string;
 }
 
 /**
@@ -57,7 +63,7 @@ export async function checkUploadDedup(params: {
   );
   if (!existing) return null;
   if (existing.sizeBytes !== params.sizeBytes) return null;
-  return { fileUrl: existing.fileUrl, kind: existing.kind };
+  return { fileUrl: existing.fileUrl, kind: existing.kind, storageKey: existing.storageKey };
 }
 
 /**
@@ -85,5 +91,7 @@ export async function verifyDedupUpload(params: {
     studioId,
     params.contentHash,
   );
-  return existing ? { fileUrl: existing.fileUrl, kind: existing.kind } : null;
+  return existing
+    ? { fileUrl: existing.fileUrl, kind: existing.kind, storageKey: existing.storageKey }
+    : null;
 }

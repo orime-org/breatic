@@ -16,7 +16,8 @@
 - [x] WaveSpeed 参数修复：null 值过滤 + MiniMax lyrics fallback
 - [x] Image + Audio 模态验证：nano-banana-pro (54s) + minimax-music-2.5 (119s) 全链路通过
 - [x] 全模态 AIGC 验证：Video/TTS/3D 全部通过，含 OSS 存储 + durationMs
-- [x] 视频封面提取：ffmpeg 抽首帧上传为 cover_url
+- [x] 视频封面提取：生成视频用 worker ffmpeg 抽首帧、上传视频用前端 canvas 抽首帧（#1816，视频+封面原子一体上传），统一存节点 `coverUrl`
+- [x] 视频封面消费点统一显示（#1824，吸收 #1822）：上传视频封面在全部消费点显示——node-history 行 / 活动流行（server 从 `cover_key`/`cover_hash` 派生 URL 存进记录，客户端 URL 不可信）/ 生成面板参考列表 / @ chip / @ 下拉候选 / 视频节点自身；封面 + 裁剪图带 `derived` flag 归 ledger、不占独立活动流行（产品模型 A）
 - [x] Drizzle migration：last_consolidated_turn、tokens_used、model、provider 已就位
 - [ ] 集成测试：testcontainers 真实 PG + Redis，覆盖核心链路
 
