@@ -34,6 +34,7 @@ import {
 } from "@breatic/core";
 import { assetService, nodeHistoryService } from "@breatic/domain";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
+import { resolveCoverUrl } from "@server/modules/asset/cover-resolve.js";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
 
@@ -298,6 +299,23 @@ const uploadedSchema = z
      */
     source: z.literal("mini_tool").optional(),
     tool_name: z.string().max(64).optional(),
+    /**
+     * #1824: the uploaded video's cover reference. The server RE-DERIVES the
+     * cover URL from these (client URLs are never trusted): `cover_key`
+     * (regular upload) or `cover_hash` (dedup hit). Absent for non-video /
+     * cover-extraction-failed uploads → the sinks degrade to a Film icon.
+     */
+    cover_key: z.string().min(1).max(512).optional(),
+    cover_hash: z.string().regex(SHA256_HEX).optional(),
+    /**
+     * #1824: marks a DERIVED byproduct (auto-extracted cover / focus crop) —
+     * registered in the ledger but NOT announced as its own activity-feed row
+     * (product model A: the feed carries user events, not byproducts). A real
+     * user upload omits it. First-class semantic, NOT inferred from node_id
+     * absence (a future document-space upload has no node_id yet IS a feed
+     * event).
+     */
+    derived: z.literal(true).optional(),
     metadata: z
       .object({
         filename: z.string().max(255),
@@ -427,7 +445,31 @@ assets.post(
       return c.json({ error: { message: t("server.error.validation") } }, 422);
     }
 
-    // Node history record (version timeline), when node-bound.
+    // Cover thumbnail (#1824): best-effort, server-derived from a verifiable
+    // client reference (cover_key / cover_hash); ANY failure → undefined (the
+    // sinks degrade to a Film icon) and never fails the video upload — the
+    // resolver has its own try/catch, scoped to the cover only.
+    let coverUrl: string | undefined;
+    if (body.cover_key !== undefined || body.cover_hash !== undefined) {
+      const coverAdapter = await getStorageAdapter();
+      coverUrl = await resolveCoverUrl(
+        {
+          coverKey: body.cover_key,
+          coverHash: body.cover_hash,
+          projectId: body.project_id,
+          actingUserId: user.id,
+        },
+        {
+          isOwnedKey: (k) => isOwnedKey(k, user.id, body.project_id),
+          head: (k) => coverAdapter.head(k),
+          publicUrl: (k) => coverAdapter.publicUrl(k),
+          verifyDedupUpload: (p) => assetUploadService.verifyDedupUpload(p),
+        },
+      );
+    }
+
+    // Node history record (version timeline), when node-bound. Carries the
+    // cover as the row's thumbnail (#1824, consumer ①).
     if (body.node_id) {
       try {
         await nodeHistoryService.recordUpload({
@@ -435,6 +477,7 @@ assets.post(
           nodeId: body.node_id,
           userId: user.id,
           content: fileUrl,
+          thumbnailUrl: coverUrl,
           metadata: body.metadata,
         });
       } catch (err) {
@@ -445,23 +488,34 @@ assets.post(
       }
     }
 
-    await recordProjectActivity({
-      projectId: body.project_id,
-      actorUserId: user.id,
-      type: body.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded",
-      spaceId: body.space_id ?? null,
-      nodeId: body.node_id ?? null,
-      payload:
-        body.source === "mini_tool"
-          ? {
-              source: "mini_tool",
-              ...(body.tool_name !== undefined && { toolName: body.tool_name }),
-              executedOn: "frontend",
-              fileUrl,
-              kind: body.kind,
-            }
-          : { fileUrl, kind: body.kind },
-    });
+    // Activity feed (#1824, product model A): a DERIVED byproduct (cover /
+    // crop, `derived: true`) is registered in the ledger above but NOT
+    // announced as its own feed row. A real upload emits its row, carrying the
+    // cover as the row's thumbnail (consumer ②).
+    if (body.derived !== true) {
+      await recordProjectActivity({
+        projectId: body.project_id,
+        actorUserId: user.id,
+        type:
+          body.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded",
+        spaceId: body.space_id ?? null,
+        nodeId: body.node_id ?? null,
+        payload:
+          body.source === "mini_tool"
+            ? {
+                source: "mini_tool",
+                ...(body.tool_name !== undefined && { toolName: body.tool_name }),
+                executedOn: "frontend",
+                fileUrl,
+                kind: body.kind,
+              }
+            : {
+                fileUrl,
+                kind: body.kind,
+                ...(coverUrl !== undefined && { thumbnailUrl: coverUrl }),
+              },
+      });
+    }
 
     return c.json({ data: { ok: true, fileUrl } });
   },
