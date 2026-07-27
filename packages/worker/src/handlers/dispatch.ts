@@ -295,6 +295,104 @@ export async function runTask(
 }
 
 /**
+ * Resolve + register first-frame covers for a task's VIDEO outputs (#1824 /
+ * #1826 §4.5). For each video output that lacks a cover, extract the first
+ * frame, upload it, and register it as a first-class `studio_assets` row
+ * (`source='cover'`, counts toward storage). Mutates `outputs` in place, setting
+ * `cover_url`.
+ *
+ * BEST-EFFORT (#1824 invariant): a cover failure NEVER fails the video. The
+ * whole body is wrapped so even a broken Sharp native binary (statically
+ * imported by video-cover.js, so it fails at import time) degrades to a
+ * cover-less video rather than throwing.
+ *
+ * `cover_url` is pinned ONLY from the REGISTERED canonical
+ * (`adapter.publicUrl(asset.storageKey)`) — NEVER the just-uploaded `cover.key`
+ * (§0 rule 2). A dedup hit returns a DIFFERENT existing row's key, and a
+ * register failure commits no row at all; pinning `cover.key` in either case
+ * leaves an orphan the offline GC (§7) reclaims → 404. When the cover cannot
+ * become a live `studio_assets` row (register failed, or the task has no
+ * project), `cover_url` stays unset → the node shows Film (§4.5).
+ * @param outputs - The task's persisted outputs, mutated in place (`cover_url`).
+ * @param ctx - Task identity for cover registration + structured logging.
+ * @param ctx.taskId - The task whose covers are being resolved (for logging).
+ * @param ctx.userId - Acting user, credited as the cover asset's registrant.
+ * @param ctx.projectId - Owning project; `undefined` degrades every cover to Film.
+ */
+export async function resolveVideoCovers(
+  outputs: Array<{ url?: string; cover_url?: string }>,
+  ctx: { taskId: string; userId: string; projectId: string | undefined },
+): Promise<void> {
+  // The ENTIRE body sits inside this try: BOTH setup steps can throw outside
+  // any per-output handler — the dynamic import (video-cover.js statically
+  // imports Sharp, so a broken native binary fails at import time) and the
+  // adapter lookup (storage misconfig / init failure). Either escaping would
+  // fail the whole video task, which #1824 forbids. Do NOT narrow this to the
+  // import alone (Gate-2 R4 H4: an earlier refactor did exactly that and let
+  // getStorageAdapter's rejection through).
+  try {
+    const { extractVideoCover } = await import("@worker/providers/video-cover.js");
+    const adapter = await getStorageAdapter();
+    for (const out of outputs) {
+      if (typeof out.url !== "string" || out.cover_url) continue;
+      try {
+        const cover = await extractVideoCover(out.url);
+        if (!cover) {
+          logger.warn(
+            { taskId: ctx.taskId, videoUrl: out.url },
+            "video_cover_extraction_returned_empty_non_fatal",
+          );
+          continue;
+        }
+        if (!ctx.projectId) {
+          // No project → the cover can't be registered / counted → degrade to
+          // Film (leave cover_url unset), never pin an untracked orphan key.
+          logger.warn({ taskId: ctx.taskId }, "video_cover_no_project_degraded_to_film_non_fatal");
+          continue;
+        }
+        try {
+          // The mime comes FROM the cover itself (it owns its format, §8 webp)
+          // so it can't drift. Pin the REGISTERED canonical, never cover.key
+          // (§0 rule 2): a dedup hit resolves to an existing row and a register
+          // failure commits nothing — cover.key would orphan in both.
+          const { asset, reclaimQueueFailed } = await assetService.register({
+            projectId: ctx.projectId,
+            actingUserId: ctx.userId,
+            contentHash: cover.sha256,
+            storageKey: cover.key,
+            fileUrl: cover.url,
+            sizeBytes: cover.sizeBytes,
+            mimeType: cover.mimeType,
+            kind: "image",
+            source: "cover",
+            generationTaskId: ctx.taskId,
+          });
+          if (reclaimQueueFailed === true) {
+            // Registration SUCCEEDED (this cover deduped against an existing
+            // row); only the bookkeeping insert handing the now-redundant
+            // object to the offline reclaim job failed. The library layer may
+            // not log, so it returns a sentinel — swallowing it would leave the
+            // object silently absent from the offline work list.
+            logger.warn(
+              { taskId: ctx.taskId, key: cover.key, hash: cover.sha256 },
+              "asset_reclaim_queue_failed",
+            );
+          }
+          out.cover_url = adapter.publicUrl(asset.storageKey);
+        } catch (err) {
+          // Register failed → no live row → degrade to Film (cover_url unset).
+          logger.warn({ taskId: ctx.taskId, err }, "video_cover_register_failed_non_fatal");
+        }
+      } catch (err) {
+        logger.warn({ taskId: ctx.taskId, err }, "video_cover_extraction_failed_non_fatal");
+      }
+    }
+  } catch (err) {
+    logger.warn({ taskId: ctx.taskId, err }, "video_cover_setup_failed_non_fatal");
+  }
+}
+
+/**
  * Internal task execution body. Same logic as the original `runTask`, but
  * extracted so the public {@link runTask} wrapper can manage the canvas-node
  * lock lifecycle without indenting this body inside a `try`.
@@ -606,7 +704,16 @@ async function runTaskBody(
   // Any error here marks the task failed with NO CHARGE and NO RETRY.
   let persistedOutputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>;
   try {
-    persistedOutputs = await persistOutputs(unified.outputs, unified.extras, { taskType, userId, projectId, taskId });
+    persistedOutputs = await persistOutputs(unified.outputs, unified.extras, {
+      taskType,
+      userId,
+      projectId,
+      taskId,
+      // Node-bound (#1826 §0 rule 3): when the task targets canvas nodes, a
+      // PRIMARY output's register failure is fail-closed (→ Stage 2 markFailed),
+      // so a node is never pinned to an unregistered key.
+      nodeBound: nodeIds.length > 0,
+    });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
@@ -633,29 +740,13 @@ async function runTaskBody(
     return { failed: true, reason: "persist_failed" };
   }
 
-  // Extract video cover per output (best-effort, failure is non-fatal).
-  // `extractVideoCover` is worker-private (it shells out to ffmpeg, a
-  // worker-only concern) and returns `undefined` on failure; this
-  // handler — the single call site — decides whether to warn.
+  // Extract + register first-frame covers for VIDEO outputs (best-effort; a
+  // cover failure never fails the video, #1824). `resolveVideoCovers` pins each
+  // output's `cover_url` from the REGISTERED canonical (dedup-safe) and degrades
+  // to Film when the cover can't become a live studio_assets row (§0 rule 2 /
+  // §4.5).
   if (taskType === "video") {
-    const { extractVideoCover } = await import("@worker/providers/video-cover.js");
-    for (const out of persistedOutputs) {
-      if (typeof out.url === "string" && !out.cover_url) {
-        try {
-          const coverUrl = await extractVideoCover(out.url, { userId, projectId });
-          if (coverUrl) {
-            out.cover_url = coverUrl;
-          } else {
-            logger.warn(
-              { taskId, videoUrl: out.url },
-              "video_cover_extraction_returned_empty_non_fatal",
-            );
-          }
-        } catch (err) {
-          logger.warn({ taskId, err }, "video_cover_extraction_failed_non_fatal");
-        }
-      }
-    }
+    await resolveVideoCovers(persistedOutputs, { taskId, userId, projectId });
   }
 
   // Canonical result dict stored on the task row — mirrors the unified
@@ -1198,35 +1289,41 @@ export function mediaKindForActivity(
 
 /**
  * Register a just-persisted AI-generated asset into studio_assets
- * (within-studio dedup + cost link). Best-effort by design — the bytes
- * are already stored + the task will bill regardless; a failed registry
- * write logs instead of failing the job (mirrors the activity-feed
- * best-effort contract). No-op without a project (e.g. agent
- * attachments have no project scope).
+ * (within-studio dedup + cost link). Failure handling depends on
+ * `opts.nodeBound` (#1826 §0 rule 3): a NODE-BOUND primary output re-throws
+ * so the caller can fail the task (never pin a node to an unregistered key →
+ * offline GC → 404); a non-node-bound / auxiliary register stays best-effort
+ * (logs instead of failing, mirroring the activity-feed contract). No-op
+ * without a project (e.g. agent attachments have no project scope).
  * @param opts - Persistence context.
  * @param opts.taskType - Generation task type (mapped to the asset kind).
  * @param opts.userId - Acting user (attribution resolution input).
  * @param opts.projectId - Project scope; the call is a no-op when absent.
  * @param opts.taskId - Producing task id (asset cost link).
+ * @param opts.nodeBound - Whether this output is pinned to a canvas node; when
+ *   true a register failure re-throws (fail-closed), else it is swallowed.
  * @param key - Storage key of the stored object.
  * @param url - Public URL of the stored object.
  * @param contentHash - sha256 of the content (dedup key).
  * @param sizeBytes - Byte size (from the transfer / buffer).
  * @param mimeType - Content type.
- * @returns Nothing. (Node-URL reconciliation on a within-studio dedup hit
- *   is deferred to the upload slice #1609 — see the Case 2 comment.)
+ * @returns The REGISTERED row's canonical URL (`publicUrl(asset.storageKey)`)
+ *   for the caller to pin, or `undefined` when nothing was registered (no
+ *   project, or a swallowed non-node-bound failure) — in which case no node
+ *   is pinned to it either.
+ * @throws {Error} when `opts.nodeBound` is true and the registry write fails.
  */
 async function registerGeneratedAsset(
-  opts: { taskType: string; userId: string; projectId?: string; taskId: string },
+  opts: { taskType: string; userId: string; projectId?: string; taskId: string; nodeBound: boolean },
   key: string,
   url: string,
   contentHash: string,
   sizeBytes: number,
   mimeType: string,
-): Promise<void> {
-  if (!opts.projectId) return;
+): Promise<string | undefined> {
+  if (!opts.projectId) return undefined;
   try {
-    await assetService.register({
+    const { asset, reclaimQueueFailed } = await assetService.register({
       projectId: opts.projectId,
       actingUserId: opts.userId,
       contentHash,
@@ -1238,7 +1335,31 @@ async function registerGeneratedAsset(
       source: "ai",
       generationTaskId: opts.taskId,
     });
+    if (reclaimQueueFailed === true) {
+      // Registration SUCCEEDED (this output deduped against an existing row);
+      // only the bookkeeping insert handing the now-redundant object to the
+      // offline reclaim job failed. The library layer may not log, so it
+      // returns a sentinel — swallowing it would leave the object silently
+      // absent from the offline work list.
+      logger.warn(
+        { taskId: opts.taskId, key, hash: contentHash },
+        "asset_reclaim_queue_failed",
+      );
+    }
+    // §0 rule 2 / §4.4: return the REGISTERED row's canonical. A within-studio
+    // dedup hit resolves to the WINNER's row, whose storage key differs from
+    // the one we just uploaded — that one then has no live row and no grant,
+    // i.e. an orphan the offline GC (§7) reclaims. Pinning it would 404.
+    const adapter = await getStorageAdapter();
+    return adapter.publicUrl(asset.storageKey);
   } catch (err) {
+    // Node-bound fail-closed (#1826 §0 rule 3): a node's PRIMARY output must
+    // never be pinned to an UNREGISTERED key — re-throw so Stage 2 marks the
+    // task failed (NO charge, NO node emit), the same terminal path as a
+    // persist failure. Non-node-bound registers (auxiliary extras / no target
+    // node) stay best-effort — a warn keeps a billed-yet-untracked asset
+    // observable without failing the job.
+    if (opts.nodeBound) throw err;
     if (err instanceof NotFoundError) {
       // #2/#6 (adversarial): the owner studio could not be resolved — a
       // missing project (possibly a legitimate soft-delete race) or an
@@ -1259,6 +1380,9 @@ async function registerGeneratedAsset(
         "asset_register_failed (generation)",
       );
     }
+    // Swallowed (non-node-bound only): nothing registered → no canonical to
+    // pin. The caller keeps the upload URL; no node references it either.
+    return undefined;
   }
 }
 
@@ -1274,12 +1398,15 @@ async function registerGeneratedAsset(
  * @param opts.userId - User who owns / triggered the persisted assets
  * @param opts.projectId - Project the assets belong to, if any
  * @param opts.taskId - Producing task id (asset cost link)
+ * @param opts.nodeBound - Whether the primary output is pinned to a canvas node;
+ *   when true its register failure re-throws (fail-closed, #1826 §0 rule 3)
  * @returns The outputs with temp URLs / buffers replaced by permanent storage URLs
+ * @throws {Error} when `opts.nodeBound` is true and a primary output fails to register
  */
-async function persistOutputs(
+export async function persistOutputs(
   outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>,
   extras: Record<string, unknown>,
-  opts: { taskType: string; userId: string; projectId?: string; taskId: string },
+  opts: { taskType: string; userId: string; projectId?: string; taskId: string; nodeBound: boolean },
 ): Promise<Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>> {
   const extMap: Record<string, string> = {
     image: ".png",
@@ -1292,11 +1419,9 @@ async function persistOutputs(
   const ext = extMap[opts.taskType] ?? ".bin";
   /**
    * Build a fresh storage key for one persisted asset.
-   * @returns A unique storage key scoped to the user / project / task type
+   * @returns A unique tenant-neutral storage key (#1826, no user/project prefix)
    */
   const makeKey = (): string => storageKey({
-    userId: opts.userId,
-    projectId: opts.projectId,
     taskType: opts.taskType,
     ext,
   });
@@ -1319,7 +1444,19 @@ async function persistOutputs(
         const url = await adapter.upload(key, buf, contentType);
         next.url = url;
         logger.info({ key, size: buf.length }, "Persisted sync transport result");
-        await registerGeneratedAsset(opts, key, url, sha256Hex(buf), buf.length, contentType);
+        // Reconcile to the REGISTERED canonical (§0 rule 2 / §4.4): on a
+        // within-studio dedup hit the registry keeps an EXISTING row whose key
+        // differs, leaving the key we just uploaded an orphan for the offline
+        // GC — pinning it would 404 once reclaimed.
+        const canonical = await registerGeneratedAsset(
+          opts,
+          key,
+          url,
+          sha256Hex(buf),
+          buf.length,
+          contentType,
+        );
+        if (canonical !== undefined) next.url = canonical;
       } catch (err) {
         // #1580 adversarial fix: swallowing this left `next.url` undefined —
         // Stage 3 then BILLED the task while Stage 4 silently skipped the
@@ -1357,18 +1494,30 @@ async function persistOutputs(
       // task (Stage 2 markFailed + NO charge), never swallow-and-keep the
       // expiring provider URL while still billing. downloadAndStore
       // throwing propagates to runTask's Stage-2 persist-failure path.
-      // (registerGeneratedAsset is internally best-effort and never throws.)
+      // registerGeneratedAsset itself re-throws for a NODE-BOUND output
+      // (#1826 §0 rule 3 fail-closed) and stays best-effort otherwise.
       const key = makeKey();
       const { url: permanentUrl, sha256, sizeBytes, contentType } =
         await downloadAndStore(next.url, key);
       if (!next.extra) next.extra = {};
       (next.extra).url_original = next.url;
       next.url = permanentUrl;
-      // #1 node-URL reconcile on a dedup hit is DEFERRED to the upload slice
-      // (#1609): AI outputs dedup near-zero, and reconciling a node to a
-      // sibling asset's fileUrl can leak cross-project identifiers + create
-      // a cross-project storage dependency (adversarial #5).
-      await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
+      // Reconcile to the REGISTERED canonical (§0 rule 2 / §4.4). This used to
+      // be deferred, justified by "reconciling to a sibling asset's fileUrl
+      // leaks cross-project identifiers" — that rationale died with the
+      // TENANT-NEUTRAL key ({taskType}/{date}/{ts}_{uuid}{ext} carries no user
+      // or project id, §2), and dedup is within-studio, i.e. inside the single
+      // ownership boundary. Not reconciling leaves the node pinned to an
+      // orphan the offline GC reclaims → 404.
+      const canonical = await registerGeneratedAsset(
+        opts,
+        key,
+        permanentUrl,
+        sha256,
+        sizeBytes,
+        contentType,
+      );
+      if (canonical !== undefined) next.url = canonical;
     }
 
     persisted.push(next);
@@ -1389,7 +1538,9 @@ async function persistOutputs(
         await downloadAndStore(value, key);
       extras[field] = permanentUrl;
       extras[`${field}_original`] = value;
-      await registerGeneratedAsset(opts, key, permanentUrl, sha256, sizeBytes, contentType);
+      // Auxiliary extras stay best-effort (never node-bound) — a register error
+      // here warns, it does NOT fail the task (#1826 §0 rule 3).
+      await registerGeneratedAsset({ ...opts, nodeBound: false }, key, permanentUrl, sha256, sizeBytes, contentType);
     } catch (err) {
       // Extras are auxiliary (not the billed deliverable) — keep best-effort:
       // a failed re-host of a secondary field falls back to the original URL

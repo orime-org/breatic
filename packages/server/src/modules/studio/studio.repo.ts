@@ -115,28 +115,30 @@ export async function createTeamStudio(
 }
 
 /**
- * Count the team studios a user **currently administers** (for the per-user
- * creation limit).
+ * List the ids of the team studios a user **currently administers**.
  *
  * Scoped to `type='team'` + a current `admin` `studio_members` row — NOT the
  * immutable `created_by_user_id`. A studio's ownership is its current admin
- * (admin can be transferred), so the quota must follow the current role: a
- * creator who transfers all their studios away frees the quota, and a recipient's
- * quota fills up. This honours the project rule that mutable ownership is decided
+ * (admin can be transferred), so the set must follow the current role: a
+ * creator who transfers all their studios away drops out, and a recipient's
+ * set fills up. This honours the project rule that mutable ownership is decided
  * by `studio_members.role`, never by the immutable audit field. Personal studios
- * and soft-deleted rows (studio or membership) are excluded. Accepts an optional
- * transaction so the count can run inside the create transaction.
- * @param userId - The user UUID whose administered team studios to count
+ * and soft-deleted rows (studio or membership) are excluded. This is the single
+ * source of truth for "administered team studios" — {@link countTeamStudiosAdministeredBy}
+ * (the per-user creation quota) and the account storage roll-up (#1826 §5.3)
+ * both derive from it, so their predicates can never drift apart. Accepts an
+ * optional transaction so it can run inside a create transaction.
+ * @param userId - The user UUID whose administered team studios to enumerate
  * @param tx - Optional transaction handle
- * @returns The number of active team studios the user currently administers
+ * @returns The ids of the active team studios the user currently administers
  */
-export async function countTeamStudiosAdministeredBy(
+export async function listTeamStudioIdsAdministeredBy(
   userId: string,
   tx?: DbTx,
-): Promise<number> {
+): Promise<string[]> {
   const runner = tx ?? db;
   const rows = await runner
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ id: studios.id })
     .from(studios)
     .innerJoin(studioMembers, eq(studioMembers.studioId, studios.id))
     .where(
@@ -148,7 +150,24 @@ export async function countTeamStudiosAdministeredBy(
         isNull(studios.deletedAt),
       ),
     );
-  return rows[0]?.count ?? 0;
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Count the team studios a user **currently administers** (for the per-user
+ * creation limit). Delegates to {@link listTeamStudioIdsAdministeredBy} so the
+ * quota and the account roll-up share one ownership predicate (the count can
+ * never diverge from the enumeration). The administered set is bounded by the
+ * per-user cap, so materialising the ids to count them is negligible.
+ * @param userId - The user UUID whose administered team studios to count
+ * @param tx - Optional transaction handle
+ * @returns The number of active team studios the user currently administers
+ */
+export async function countTeamStudiosAdministeredBy(
+  userId: string,
+  tx?: DbTx,
+): Promise<number> {
+  return (await listTeamStudioIdsAdministeredBy(userId, tx)).length;
 }
 
 /**

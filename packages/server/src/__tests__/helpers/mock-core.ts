@@ -205,6 +205,38 @@ export const mocks = {
   assetUploadService: {
     checkUploadDedup: vi.fn(),
     verifyDedupUpload: vi.fn(),
+    // #1826 upload-grant anti-spoof: presign issues a grant, the upload
+    // endpoints authorise (write-time) + consume (registration terminal).
+    issueUploadGrant: vi.fn(),
+    authorizeUploadWrite: vi.fn(),
+    consumeUploadGrant: vi.fn(),
+    // Reads the AUTHORITATIVE owner studio off the grant (#1826 §2.2 v15) —
+    // /uploaded attributes the asset to it instead of re-deriving one from the
+    // client-supplied project_id.
+    resolveGrantForReport: vi.fn(),
+  },
+  // Domain asset registry (@breatic/domain). The /uploaded regular path calls
+  // register() to write the studio_assets row; route tests that exercise
+  // node-bound fail-closed / canonical-pin (#1826 §0 rule 3 / 铁律 2) set its
+  // resolve / reject per-test.
+  assetService: {
+    register: vi.fn(),
+    // The DEDUP path has no grant to read the owner studio off (nothing was
+    // uploaded), so /uploaded derives it from the project — the one place that
+    // is still correct, since register is never reached there.
+    resolveOwnerStudioId: vi
+      .fn()
+      .mockResolvedValue("s0000000-0000-4000-8000-000000000001"),
+  },
+  // Application-layer logger. Exposed on `mocks` (rather than inlined in the
+  // core mock) so route tests can assert that a best-effort failure the library
+  // layer reported as a SENTINEL — it may not log itself (@domain/CLAUDE.md) —
+  // actually gets logged here. A swallowed sentinel is a silent failure.
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
   // Canvas node lock (moved to @breatic/domain in PR4). Defaults: lock
   // acquires cleanly + no prior holder so happy-path routes succeed.
@@ -344,7 +376,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
       upload: { max_upload_bytes: 1024, client_max_attempts: 2, client_retry_base_delay_ms: 250, client_request_timeout_ms: 5000, client_put_min_bytes_per_sec: 1024 },
     }),
     // Logger
-    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
+    logger: { ...mocks.logger, child: () => mocks.logger },
     // Infra-adjacent services that STAY in @breatic/core.
     uploadService: mocks.uploadService,
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),
@@ -380,6 +412,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  * shared `mocks` refs (creditService / taskService / canvasLock / ...).
  */
 export const domainMock = () => ({
+  assetService: mocks.assetService,
   taskService: mocks.taskService,
   taskRepo: mocks.taskRepo,
   creditService: mocks.creditService,

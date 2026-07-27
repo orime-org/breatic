@@ -27,55 +27,37 @@ import { assetUploadService, projectService } from "@server/modules";
 import {
   getStorageAdapter,
   getStorageConfig,
-  storageKey,
   env,
   logger,
   ValidationError,
 } from "@breatic/core";
 import { assetService, nodeHistoryService } from "@breatic/domain";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
-import { resolveCoverUrl } from "@server/modules/asset/cover-resolve.js";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
 
 // ── File kind detection ─────────────────────────────────────────────
 
-const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif", "image/svg+xml"]);
-const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-matroska"]);
-const AUDIO_TYPES = new Set(["audio/mpeg", "audio/wav", "audio/ogg", "audio/flac", "audio/aac", "audio/mp3"]);
-
 /**
  * Classify an upload into a coarse asset kind from its MIME type.
+ *
+ * Matches on the MIME **top-level type** rather than an allow-list of
+ * subtypes. The type is authoritative — sniffed from the bytes (#1826 §4.2,
+ * `sniffMimeType` via file-type), and `image/*` / `video/*` / `audio/*` is
+ * exactly what the media-type registry means by those families. A narrow
+ * subtype allow-list silently mis-files every format not enumerated: it dropped
+ * sniffed avif / heic / bmp / tiff back to 'file' (the very #1825 symptom this
+ * slice fixes), and the same trap bit us in #1824 when Firefox's .ogv fell
+ * outside a video allow-list. New codecs must not require a code change.
  * @param contentType - The MIME content type of the uploaded file.
  * @returns The detected asset kind: `image`, `video`, `audio`, `document` (text/PDF), or `file` for anything else.
  */
 function detectKind(contentType: string): "image" | "video" | "audio" | "document" | "file" {
-  if (IMAGE_TYPES.has(contentType)) return "image";
-  if (VIDEO_TYPES.has(contentType)) return "video";
-  if (AUDIO_TYPES.has(contentType)) return "audio";
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType.startsWith("video/")) return "video";
+  if (contentType.startsWith("audio/")) return "audio";
   if (contentType.startsWith("text/") || contentType === "application/pdf") return "document";
   return "file";
-}
-
-// ── Per-user key-ownership guard ────────────────────────────────────
-
-/**
- * Reject a client-supplied storage key that is not bound to this
- * caller + project, or that attempts path traversal. A legitimate key
- * from `/presign` always starts with `{userId}/{projectId}/`
- * (`storageKey()` format), so this makes `head()` a genuine
- * authenticity boundary instead of a bare existence check — without it
- * an editor could report a foreign project's asset URL into this
- * project's node history + feed, or (local storage) traverse out of
- * the upload dir. Mirrors the `/local-upload` guard.
- * @param key - The client-supplied storage key.
- * @param userId - Authenticated caller id.
- * @param projectId - Target project id.
- * @returns True when the key is safe to trust for this caller + project.
- */
-function isOwnedKey(key: string, userId: string, projectId: string): boolean {
-  if (key.includes("..") || key.includes("//")) return false;
-  return key.startsWith(`${userId}/${projectId}/`);
 }
 
 // ── Upload config (#1609 slice 2) ───────────────────────────────────
@@ -122,8 +104,17 @@ const presignSchema = z.object({
   project_id: z.string().uuid(),
   /** Declared byte size — the authoritative upload-cap gate input. */
   size: z.coerce.number().int().positive(),
-  /** Client-computed content hash; present → dedup lookup (#1609). */
-  hash: z.string().regex(SHA256_HEX).optional(),
+  /**
+   * Client-computed content hash — REQUIRED (user decision 2026-07-26, "no
+   * hash, no upload"). It is the ticket for the whole storage design: the
+   * instant-dedup lookup below, within-studio dedup, and the ledger row
+   * (`studio_assets.content_hash` is NOT NULL) all key on it. Refusing here
+   * rather than at `/uploaded` means a hashless client never receives an
+   * upload grant, so it cannot burn bandwidth storing bytes that could never
+   * be registered — and whose key a node would then pin as an offline-GC
+   * orphan → 404.
+   */
+  hash: z.string().regex(SHA256_HEX),
 });
 
 /**
@@ -170,45 +161,53 @@ assets.get(
     // content (with a matching size) skips the upload — the node reuses
     // the existing asset's URL. A size mismatch falls through to a
     // normal presign (content claim not trusted, spec §8).
-    if (hash !== undefined) {
-      const dedupHit = await assetUploadService.checkUploadDedup({
-        projectId: project_id,
-        actingUserId: user.id,
-        contentHash: hash,
-        sizeBytes: size,
+    const dedupHit = await assetUploadService.checkUploadDedup({
+      projectId: project_id,
+      actingUserId: user.id,
+      contentHash: hash,
+      sizeBytes: size,
+    });
+    if (dedupHit) {
+      logger.info(
+        { hash, userId: user.id, projectId: project_id },
+        "presign_dedup_hit",
+      );
+      return c.json({
+        data: {
+          alreadyExists: true,
+          fileUrl: dedupHit.fileUrl,
+          kind: dedupHit.kind,
+        },
       });
-      if (dedupHit) {
-        logger.info(
-          { hash, userId: user.id, projectId: project_id },
-          "presign_dedup_hit",
-        );
-        return c.json({
-          data: {
-            alreadyExists: true,
-            fileUrl: dedupHit.fileUrl,
-            kind: dedupHit.kind,
-          },
-        });
-      }
     }
 
     const kind = detectKind(content_type);
-    const key = storageKey({
-      userId: user.id,
+    // storageKey's ext contract is dotted (#1630): the upload filename yields a
+    // BARE extension ("png"), so dot it — the caller owns the format.
+    const ext = `.${filename.split(".").pop() ?? "bin"}`;
+    // Missed dedup → mint a tenant-neutral key + record the upload grant that
+    // the upload endpoints later re-check for authenticity (#1826, design §2.2).
+    // The dedup-hit path above already returned (no key, no grant).
+    const { key } = await assetUploadService.issueUploadGrant({
       projectId: project_id,
-      // storageKey's ext contract is dotted (#1630): the upload filename
-      // yields a BARE extension ("png"), so dot it here — the caller owns
-      // the format, storageKey fails fast on a dot-less ext.
+      actingUserId: user.id,
+      contentHash: hash,
+      declaredSize: size,
       taskType: kind,
-      ext: `.${filename.split(".").pop() ?? "bin"}`,
+      ext,
     });
 
     const adapter = await getStorageAdapter();
     let uploadUrl: string;
 
     if (adapter.getUploadUrl) {
-      // S3 / OSS — presigned PUT directly to cloud (5 min expiry)
-      uploadUrl = await adapter.getUploadUrl(key, content_type, 300);
+      // S3 / OSS — presigned PUT directly to cloud. The PUT window is the
+      // provider's own (config, not the grant ledger — design §3.2).
+      uploadUrl = await adapter.getUploadUrl(
+        key,
+        content_type,
+        upload.presign_expires_seconds,
+      );
     } else {
       // Local storage — PUT to this server
       const url = new URL(c.req.url);
@@ -231,8 +230,11 @@ assets.get(
 /**
  * `PUT /assets/local-upload/:key` — local storage upload target.
  *
- * Only available when STORAGE_PROVIDER=local. The key is validated
- * to ensure it starts with the authenticated user's ID prefix.
+ * Only available when STORAGE_PROVIDER=local. Write authorisation is checked
+ * against the upload-grant ledger (`authorizeUploadWrite`, #1826 §3.2): the key
+ * must be one issued to this user and not yet consumed. This replaced the
+ * retired prefix-based `isOwnedKey` / `startsWith(user.id)` guard — the
+ * tenant-neutral key carries no user prefix.
  */
 assets.put("/local-upload/*", requireAuth, async (c) => {
   const user = c.get("user");
@@ -244,22 +246,47 @@ assets.put("/local-upload/*", requireAuth, async (c) => {
   }
 
   // Extract the key from the URL path (everything after /local-upload/)
-  const key = decodeURIComponent(c.req.path.replace(/^\/api\/v1\/assets\/local-upload\//, ""));
+  const key = decodeURIComponent(
+    c.req.path.replace(/^\/api\/v1\/assets\/local-upload\//, ""),
+  );
 
-  // Security: validate key format and ownership
-  if (key.includes("..") || key.includes("//") || !key.startsWith(user.id)) {
-    throw new ValidationError("Invalid or unauthorized upload key");
+  // Anti-spoof (#1826, design §3.2): the upload-grant ledger authorises this
+  // write — the key must be one issued to THIS user and not yet consumed. This
+  // is the write-time gate; it does NOT consume (/uploaded consumes once). It
+  // replaces the old `startsWith(user.id)` + `..`/`//` guard: the minted key is
+  // tenant-neutral (no prefix to check) and a forged key isn't in the ledger,
+  // so a `..`/`//` traversal attempt is rejected here before touching disk.
+  const authorized = await assetUploadService.authorizeUploadWrite({
+    storageKey: key,
+    actingUserId: user.id,
+  });
+  if (!authorized) {
+    return c.json({ error: { message: t("server.error.validation") } }, 422);
   }
 
-  const arrayBuf = await c.req.arrayBuffer();
-  const buffer = Buffer.from(arrayBuf);
-  const contentType = c.req.header("Content-Type") ?? "application/octet-stream";
-
+  // Stream to disk WITHOUT buffering the whole body in memory (#1826, design
+  // §4.2 — the old arrayBuffer() OOM'd on a big file). Over the authoritative
+  // cap → 413 with the partial file removed.
   const adapter = await getStorageAdapter();
-  await adapter.upload(key, buffer, contentType);
+  const body = c.req.raw.body;
+  if (adapter.uploadStream === undefined || body === null) {
+    // Local always provides uploadStream; a null body is a malformed PUT.
+    return c.json({ error: { message: t("server.error.validation") } }, 422);
+  }
+  const { upload } = getStorageConfig();
+  const result = await adapter.uploadStream(key, body, upload.max_upload_bytes);
+  if (!result.ok) {
+    return c.json(
+      { error: { message: t("server.error.upload_too_large") } },
+      413,
+    );
+  }
 
-  logger.info({ key, size: buffer.length, userId: user.id }, "local_upload_received");
-  return c.json({ data: { key, size: buffer.length } });
+  logger.info(
+    { key, size: result.size, userId: user.id },
+    "local_upload_received",
+  );
+  return c.json({ data: { key, size: result.size } });
 });
 
 // ── Upload handshake + delete report (activity feed) ────────────────
@@ -286,26 +313,36 @@ const uploadedSchema = z
      * row instead of key ownership + head().
      */
     dedup: z.literal(true).optional(),
-    /** Content sha256; regular path → ledger registration, dedup path → the lookup key. */
-    hash: z.string().regex(SHA256_HEX).optional(),
+    /**
+     * Content sha256 — REQUIRED (user decision 2026-07-26, "no hash, no
+     * upload"): regular path → ledger registration, dedup path → the lookup
+     * key. The client refuses to upload without one; this enforces the same
+     * rule independently, because a client can always be bypassed and a
+     * hashless report could only ever pin an unregisterable (orphan) key.
+     */
+    hash: z.string().regex(SHA256_HEX),
     node_id: z.string().min(1).max(128).optional(),
     space_id: z.string().uuid().optional(),
     kind: z.string().min(1).max(32),
     /**
-     * `mini_tool` marks a FRONTEND-executed mini-tool product (capability
-     * rule: pure media transforms run in the browser and never pass
-     * through worker Stage 4) - the row lands as generation:succeeded
-     * instead of asset:uploaded. Plain uploads omit it.
+     * Upload sub-type. `mini_tool` marks a FRONTEND-executed mini-tool product
+     * (pure media transform in the browser, never through worker Stage 4) - the
+     * feed row lands as generation:succeeded. `cover` marks a video's cover
+     * (#1826 §4.5) - registered as a first-class source='cover' studio_assets
+     * row (paired with derived:true so it does not announce its own feed row).
+     * Plain uploads omit it.
      */
-    source: z.literal("mini_tool").optional(),
+    source: z.enum(["mini_tool", "cover"]).optional(),
     tool_name: z.string().max(64).optional(),
     /**
-     * #1824: the uploaded video's cover reference. The server RE-DERIVES the
-     * cover URL from these (client URLs are never trusted): `cover_key`
-     * (regular upload) or `cover_hash` (dedup hit). Absent for non-video /
-     * cover-extraction-failed uploads → the sinks degrade to a Film icon.
+     * #1824 / #1826 §4.5: the uploaded video's cover reference. The cover is a
+     * first-class studio_assets row (registered by its own derived report); the
+     * video report rides only the cover's content HASH, and the server reads
+     * that row's canonical URL by it (client URLs never trusted). Absent for a
+     * non-video upload, which simply has no thumbnail. PRESENT means the caller
+     * claims a cover, and a claim the server cannot resolve fails the report
+     * (422) rather than degrading — see the resolution block in the handler.
      */
-    cover_key: z.string().min(1).max(512).optional(),
     cover_hash: z.string().regex(SHA256_HEX).optional(),
     /**
      * #1824: marks a DERIVED byproduct (auto-extracted cover / focus crop) —
@@ -325,13 +362,8 @@ const uploadedSchema = z
       .optional(),
   })
   .superRefine((val, ctx) => {
-    if (val.dedup === true && val.hash === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "hash is required for a dedup report",
-        path: ["hash"],
-      });
-    }
+    // (`hash` is unconditionally required by the field schema now — "no hash,
+    // no upload" — so the old dedup→hash refinement is redundant.)
     if (val.dedup !== true && val.key === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -339,17 +371,19 @@ const uploadedSchema = z
         path: ["key"],
       });
     }
-    // Deliberately NOT tying cover_key/cover_hash to kind==='video' (Gate-2
-    // re-attack, #1824): the reported `kind` is detectKind(content_type),
-    // whose VIDEO_TYPES is a NARROW whitelist — a browser-decodable video
-    // outside it (e.g. Firefox + .ogv → video/ogg) reports kind='file' yet
-    // legitimately carries a cover, so gating on kind would 400 the whole
-    // report and lose both audit sinks. A cover's integrity is instead bounded
-    // by resolveCoverUrl (isOwnedKey + storageKey segment must be 'image').
-    // The residual — an editor crafting a report to show one of their OWN
-    // same-project images as a node's history thumbnail — is ACCEPTED as LOW
-    // (same-studio, self-inflicted, cosmetic; node content is unaffected),
-    // matching the accepted `derived` forgery residual.
+    // Deliberately NOT tying cover_hash to kind==='video': the reported `kind`
+    // is CLIENT input (`kind: z.string()`, never recomputed here — the
+    // authoritative kind comes from detectKind(head().contentType) at
+    // registration), so gating on it would be security theatre: a caller who
+    // wanted to attach a cover to a non-video would simply report
+    // kind='video'. It would also 400 legitimate reports whose bytes sniff to
+    // something other than video/* — the failure mode #1824 actually hit.
+    // A cover's integrity is bounded instead by verifyDedupUpload (#1826 §4.5:
+    // cover_hash must resolve to a studio_assets row in the caller's OWN owner
+    // studio). The residual — an editor showing one of their OWN same-studio
+    // images as a node's history thumbnail — is ACCEPTED as LOW (same-studio,
+    // self-inflicted, cosmetic; node content is unaffected), matching the
+    // accepted `derived` forgery residual.
   });
 
 assets.post(
@@ -363,15 +397,109 @@ assets.post(
 
     await projectService.assertAccess(body.project_id, user.id, "editor");
 
-    let fileUrl: string;
-    if (body.dedup === true && body.hash !== undefined) {
-      // Dedup path (#1609, B.2): nothing was uploaded — verify the
-      // claimed (studio, hash) row server-side (stronger than the
-      // key-prefix anti-spoof below: the URL is re-derived, never
-      // trusted from the client).
-      const verified = await assetUploadService.verifyDedupUpload({
-        projectId: body.project_id,
+    // ONE authoritative owner studio for the WHOLE report (Gate-2 R9), resolved
+    // before anything is read or written. Both halves of a video report (the
+    // video and its cover) and the ledger row itself must agree on it:
+    //
+    //   - regular path: the GRANT's studio. It was resolved server-side at
+    //     presign, so it cannot be steered by the report's `project_id` — the
+    //     H7 hole. The same lookup authorises the report and binds it to the
+    //     content the grant was issued for (R7).
+    //   - dedup path: derived from the project, because an instant-dedup report
+    //     uploads nothing and therefore has no grant to read (design §4.1
+    //     step 0). `assertAccess` above already proved the caller may write
+    //     here, and register is never reached on this path — nothing new is
+    //     attributed, an existing row is merely re-served.
+    let ownerStudioId: string;
+    if (body.dedup === true) {
+      ownerStudioId = await assetService.resolveOwnerStudioId(
+        body.project_id,
+        user.id,
+      );
+    } else if (body.key !== undefined) {
+      const granted = await assetUploadService.resolveGrantForReport({
+        storageKey: body.key,
         actingUserId: user.id,
+        contentHash: body.hash,
+      });
+      if (granted === null) {
+        return c.json(
+          { error: { message: t("server.error.validation") } },
+          422,
+        );
+      }
+      ownerStudioId = granted;
+    } else {
+      // Unreachable: the schema superRefine guarantees dedup→hash and
+      // regular→key. Kept for TS narrowing + defence in depth.
+      return c.json({ error: { message: t("server.error.validation") } }, 422);
+    }
+
+    // Cover thumbnail (#1824 / #1826 §4.5): the cover is a FIRST-CLASS
+    // studio_assets row, registered by its OWN (derived, source='cover')
+    // /uploaded report. Here the video report just reads that row's canonical
+    // URL by the cover's content hash — no key-derivation, no isOwnedKey, no
+    // kindFromStorageKey (all retired with the tenant-neutral key).
+    //
+    // FAIL-CLOSED, like everything else on this endpoint (zero exceptions, user
+    // 2026-07-26). A report that CLAIMS a cover is one atomic half of a video
+    // upload (#1816: "a video never lands without its cover"); the client
+    // registers the cover FIRST and awaits it, so the row exists by now.
+    // Failing to read it back is data trouble, not "no cover" — degrading would
+    // land precisely the state #1816 forbids. The #1824 "a cover failure never
+    // fails the video" invariant governs the WORKER path (an already-billed AI
+    // video whose cover is genuinely auxiliary), which calls
+    // assetService.register directly and never reaches this endpoint.
+    //
+    // Resolved BEFORE any write: this is a pure read, so failing here costs the
+    // caller nothing — no ledger row, no consumed grant, no audit rows.
+    let coverUrl: string | undefined;
+    if (body.cover_hash !== undefined) {
+      try {
+        const coverAsset = await assetUploadService.verifyDedupUpload({
+          studioId: ownerStudioId,
+          contentHash: body.cover_hash,
+        });
+        if (!coverAsset) {
+          return c.json(
+            { error: { message: t("server.error.validation") } },
+            422,
+          );
+        }
+        coverUrl = coverAsset.fileUrl;
+      } catch (err) {
+        logger.error(
+          {
+            err,
+            projectId: body.project_id,
+            coverHash: body.cover_hash,
+            userId: user.id,
+          },
+          "cover_resolve_failed",
+        );
+        return c.json(
+          { error: { message: t("server.error.validation") } },
+          422,
+        );
+      }
+    }
+
+    let fileUrl: string;
+    // The AUTHORITATIVE kind, for every sink (Gate-2 R9). §4.2's rule — type
+    // comes from what was STORED, never from the client — cannot hold for the
+    // ledger row and not for the audit rows a human actually reads. `body.kind`
+    // is unverified client input; on the regular path the truth is
+    // detectKind(sniffed mime), on the dedup path it is the existing row's own
+    // kind (itself sniffed when that row was registered).
+    let authoritativeKind: string;
+    if (body.dedup === true) {
+      // Dedup path (#1609, B.2): nothing was uploaded — verify the claimed
+      // (studio, hash) row server-side. The URL is re-derived from the ledger,
+      // never trusted from the client. Resolved DB-only, with no storage
+      // adapter: a fully-deduped report needs no storage at all, so an
+      // unhealthy adapter must not drop it (fix 7beaf292, Gate-2 R3).
+      const verified = await assetUploadService.verifyDedupUpload({
+        studioId: ownerStudioId,
         contentHash: body.hash,
       });
       if (!verified) {
@@ -381,21 +509,17 @@ assets.post(
         );
       }
       fileUrl = verified.fileUrl;
+      authoritativeKind = verified.kind;
     } else if (body.key !== undefined) {
-      // Regular path: the key MUST be one this caller presigned for THIS
-      // project, and must not traverse. head() only proves existence —
-      // without this binding an editor could report a foreign /
-      // off-project asset URL into this project's history + feed (or, on
-      // local storage, traverse out of the upload dir).
-      if (!isOwnedKey(body.key, user.id, body.project_id)) {
-        return c.json(
-          { error: { message: t("server.error.validation") } },
-          422,
-        );
-      }
+      // The grant already authorised this report and yielded `ownerStudioId`
+      // above (anti-spoof, design §3.2 — it replaces the prefix-based
+      // isOwnedKey, since a tenant-neutral key has no prefix to check). It is
+      // CONSUMED below, AFTER registration (§4.1 step 6): until then the
+      // physical object still has an unconsumed grant as an in-flight signal
+      // for the offline reclaim job.
 
-      // Verify the object really landed in storage before trusting the
-      // claim (first real caller of StorageAdapter.head).
+      // Verify the object landed + read its AUTHORITATIVE size/type from
+      // storage, never the client (#1825 / design §4.2).
       const adapter = await getStorageAdapter();
       const head = await adapter.head(body.key);
       if (!head.exists) {
@@ -404,50 +528,110 @@ assets.post(
           422,
         );
       }
+      // Re-check the AUTHORITATIVE size against the cap (design §4.2, round-2):
+      // presign's declared-size gate is UX only; a client that declared 1 KB
+      // then PUT 50 GB is caught HERE → 413.
+      if (head.size > getStorageConfig().upload.max_upload_bytes) {
+        return c.json(
+          { error: { message: t("server.error.upload_too_large") } },
+          413,
+        );
+      }
+      // Pre-register fallback only: every accepted upload carries a hash and
+      // therefore registers ("no hash, no upload", §0 rule 4), so this is
+      // ALWAYS overridden below by the registered row's canonical (§0 rule 2).
       fileUrl = adapter.publicUrl(body.key);
 
-      // Ledger registration (#1609): size + content type come from what
-      // STORAGE reports (head()), never the client. The dedup KEY
-      // (content_hash) IS the client-asserted hash, though — the browser
-      // upload path trusts it (unlike the worker path, which hashes the
-      // transfer stream server-side). Dedup is studio-scoped, so this
-      // trust is bounded to team-studio insiders, not the world; the
-      // residual poison surface (an insider padding bytes to a target
-      // file's size to plant a hash they don't own) is accepted here and
-      // covered by an OFFLINE integrity sweep (#1631) that re-hashes
-      // stored objects and quarantines mismatches — trust-but-verify,
-      // async (user decision 2026-07-07; Dropbox dropped cross-user dedup
-      // over this exact hash-as-proof attack, but that was GLOBAL dedup;
-      // studio-scoped keeps instant dedup without world-facing exposure).
-      // A missing hash can only be the hashing-worker degrade — the
-      // upload stays available but untracked (monitored signal, plan §6).
-      if (body.hash !== undefined) {
-        const mimeType =
-          head.contentType !== ""
-            ? head.contentType
-            : (body.metadata?.mimeType ?? "application/octet-stream");
-        try {
-          await assetService.register({
-            projectId: body.project_id,
-            actingUserId: user.id,
-            contentHash: body.hash,
-            storageKey: body.key,
-            fileUrl,
-            sizeBytes: head.size,
-            mimeType,
-            kind: detectKind(mimeType),
-            source: "upload",
-          });
-        } catch (err) {
-          logger.error(
-            { err, projectId: body.project_id, key: body.key, userId: user.id },
-            "asset_ledger_register_failed",
+      // Ledger registration (#1609): size + content type come from what STORAGE
+      // reports (head()), never the client. The dedup KEY (content_hash) IS the
+      // client-asserted hash — the browser path trusts it (bounded to
+      // studio-scoped insiders; the OFFLINE #1631 sweep re-hashes + quarantines
+      // mismatches). The hash is always present (the schema requires it — "no
+      // hash, no upload"), so EVERY accepted upload registers; there is no
+      // "stored but untracked" state any more. A cover report (source='cover',
+      // #1826 §4.5) registers as a first-class row that counts toward storage.
+      const mimeType =
+        head.contentType !== ""
+          ? head.contentType
+          : (body.metadata?.mimeType ?? "application/octet-stream");
+      try {
+        const { asset, reclaimQueueFailed } = await assetService.register({
+          projectId: body.project_id,
+          actingUserId: user.id,
+          ownerStudioId,
+          contentHash: body.hash,
+          storageKey: body.key,
+          fileUrl,
+          sizeBytes: head.size,
+          mimeType,
+          kind: detectKind(mimeType),
+          source: body.source === "cover" ? "cover" : "upload",
+        });
+        authoritativeKind = detectKind(mimeType);
+        if (reclaimQueueFailed === true) {
+          // The registration SUCCEEDED — this upload deduped against an
+          // existing row, and only the bookkeeping insert that hands the
+          // now-redundant object to the offline reclaim job failed. The library
+          // layer may not log (@domain/CLAUDE.md), so it reports the failure as
+          // a sentinel and THIS is where it becomes traceable: dropping it
+          // would leave an object silently absent from the offline work list.
+          logger.warn(
+            {
+              key: body.key,
+              hash: body.hash,
+              studioId: ownerStudioId,
+              userId: user.id,
+            },
+            "asset_reclaim_queue_failed",
           );
         }
-      } else {
-        logger.info(
-          { projectId: body.project_id, key: body.key, userId: user.id },
-          "asset_upload_untracked_no_hash",
+        // §0 rule 2 / §4.1 step 6: pin the REGISTERED row's canonical, never
+        // body.key. On a concurrent same-content hit register() returns the
+        // WINNER's row (its storage_key); body.key is then a loser orphan
+        // (no live row) → offline GC reclaims it → 404. Pinning the row's
+        // key is correct for both the single-writer and the dedup case.
+        fileUrl = adapter.publicUrl(asset.storageKey);
+      } catch (err) {
+        logger.error(
+          { err, projectId: body.project_id, key: body.key, userId: user.id },
+          "asset_ledger_register_failed",
+        );
+        // §0 rule 3 (register fail-closed): an upload whose URL gets persisted
+        // must never be pinned to an unregistered key (offline reclaim → 404).
+        // Fail the report with 422 WITHOUT consuming the grant, so the client
+        // retries (the physical object stays an in-flight orphan for the
+        // offline job).
+        //
+        // NO EXCEPTIONS on this endpoint (user 2026-07-26). Earlier revisions
+        // gated on node_id, then on "everything except the cover"; both were
+        // wrong the same way — they tried to guess which uploads "have
+        // something pinned to them". Every upload arriving here is a user's
+        // upload: node content, the panel's focusImages (the CROP path, which
+        // carries no node_id — and document / timeline spaces have no nodes at
+        // all), a mini-tool output, and the COVER, which #1816 made one atomic
+        // half of a video upload ("a video never lands without its cover and a
+        // cover never lands without its video"). A cover that cannot be
+        // REGISTERED therefore fails the upload exactly like a cover that could
+        // not be PUT. The #1824 "a cover failure never fails the video"
+        // invariant belongs to the WORKER path — an AI-generated video, already
+        // billed, whose cover is genuinely auxiliary — and that path calls
+        // assetService.register directly, never reaching this endpoint.
+        return c.json(
+          { error: { message: t("server.error.validation") } },
+          422,
+        );
+      }
+
+      // Consume the grant exactly once, AFTER registration (anti-replay; design
+      // §4.1 step 6). A replay / concurrent second caller on this key → 422.
+      const consumed = await assetUploadService.consumeUploadGrant({
+        storageKey: body.key,
+        actingUserId: user.id,
+      });
+      if (!consumed) {
+        return c.json(
+          { error: { message: t("server.error.validation") } },
+          422,
         );
       }
     } else {
@@ -456,50 +640,6 @@ assets.post(
       return c.json({ error: { message: t("server.error.validation") } }, 422);
     }
 
-    // Cover thumbnail (#1824): best-effort, server-derived from a verifiable
-    // client reference (cover_key / cover_hash); ANY failure → undefined (the
-    // sinks degrade to a Film icon) and never fails the video upload.
-    // Only the REGULAR (cover_key) path needs storage head()/publicUrl(); the
-    // DEDUP (cover_hash) path resolves purely from the DB (verifyDedupUpload),
-    // so acquire the adapter ONLY for a cover_key — a hash-only cover stays
-    // resolvable even when the storage adapter is unhealthy (Gate-2 R3). The
-    // whole block is best-effort: an adapter-construction throw degrades to Film
-    // (logged), never failing the video's audit records (Gate-2 R1).
-    let coverUrl: string | undefined;
-    if (body.cover_key !== undefined || body.cover_hash !== undefined) {
-      try {
-        const coverAdapter =
-          body.cover_key !== undefined ? await getStorageAdapter() : undefined;
-        coverUrl = await resolveCoverUrl(
-          {
-            coverKey: body.cover_key,
-            coverHash: body.cover_hash,
-            projectId: body.project_id,
-            actingUserId: user.id,
-          },
-          {
-            isOwnedKey: (k) => isOwnedKey(k, user.id, body.project_id),
-            // head/publicUrl are called ONLY on the cover_key branch, where
-            // coverAdapter is set; the fallbacks keep the deps total without a
-            // non-null assertion (dead on the cover_hash branch).
-            head: (k) =>
-              coverAdapter?.head(k) ?? Promise.resolve({ exists: false }),
-            publicUrl: (k) => coverAdapter?.publicUrl(k) ?? "",
-            verifyDedupUpload: (p) => assetUploadService.verifyDedupUpload(p),
-          },
-        );
-      } catch (err) {
-        // A cover_key-path adapter-construction throw reaches here (resolveCoverUrl
-        // is total). Degrade to undefined, but LOG it — a real infra fault
-        // (storage misconfig), unlike the best-effort misses resolveCoverUrl
-        // swallows silently (Gate-2 observability).
-        coverUrl = undefined;
-        logger.warn(
-          { err, projectId: body.project_id, userId: user.id },
-          "cover_resolve_adapter_failed",
-        );
-      }
-    }
 
     // Node history record (version timeline), when node-bound. Carries the
     // cover as the row's thumbnail (#1824, consumer ①).
@@ -526,31 +666,52 @@ assets.post(
     // announced as its own feed row. A real upload emits its row, carrying the
     // cover as the row's thumbnail (consumer ②).
     if (body.derived !== true) {
-      await recordProjectActivity({
-        projectId: body.project_id,
-        actorUserId: user.id,
-        type:
-          body.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded",
-        spaceId: body.space_id ?? null,
-        nodeId: body.node_id ?? null,
-        payload:
-          body.source === "mini_tool"
-            ? {
-                source: "mini_tool",
-                ...(body.tool_name !== undefined && { toolName: body.tool_name }),
-                executedOn: "frontend",
-                fileUrl,
-                kind: body.kind,
-              }
-            : {
-                fileUrl,
-                kind: body.kind,
-                ...(coverUrl !== undefined && { thumbnailUrl: coverUrl }),
-              },
-      });
+      // BEST-EFFORT, like the node-history sink above: by this point the upload
+      // has FULLY succeeded (bytes stored, ledger row written, grant consumed).
+      // This endpoint now GATES the client's node pin (§4.1 step 7), so letting
+      // an audit-sink blip escape would report a completed upload as failed and
+      // make the user re-upload the whole file — for a feed that is a flat
+      // ledger by design (v14: duplicates are acceptable, no idempotency).
+      try {
+        await recordProjectActivity({
+          projectId: body.project_id,
+          actorUserId: user.id,
+          type:
+            body.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded",
+          spaceId: body.space_id ?? null,
+          nodeId: body.node_id ?? null,
+          payload:
+            body.source === "mini_tool"
+              ? {
+                  source: "mini_tool",
+                  ...(body.tool_name !== undefined && { toolName: body.tool_name }),
+                  executedOn: "frontend",
+                  fileUrl,
+                  kind: authoritativeKind,
+                }
+              : {
+                  fileUrl,
+                  kind: authoritativeKind,
+                  ...(coverUrl !== undefined && { thumbnailUrl: coverUrl }),
+                },
+        });
+      } catch (err) {
+        logger.warn(
+          { err, projectId: body.project_id, key: body.key, userId: user.id },
+          "upload_activity_record_failed",
+        );
+      }
     }
 
-    return c.json({ data: { ok: true, fileUrl } });
+    // Return the REGISTERED canonical(s) so the client pins them, never the
+    // presign temp key (#1826 §0 rule 2 / §4.1 step 7). `coverUrl` is the
+    // server-resolved cover canonical; it is absent only when the report
+    // carried no cover_hash at all (anything that is not a video). A cover
+    // that WAS claimed but could not be resolved already 422'd above — this
+    // response never carries a silently degraded cover.
+    return c.json({
+      data: { ok: true, fileUrl, ...(coverUrl !== undefined && { coverUrl }) },
+    });
   },
 );
 

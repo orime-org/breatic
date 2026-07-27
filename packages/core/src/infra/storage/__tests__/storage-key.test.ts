@@ -15,7 +15,7 @@ import { storageKey } from "@core/infra/storage/index.js";
  * startsWith), so compound suffixes like "_cover.jpg" satisfy the contract.
  */
 describe("storageKey — dotted-ext contract (#1630)", () => {
-  const base = { userId: "u", projectId: "p", taskType: "image" as const };
+  const base = { taskType: "image" as const };
 
   it("appends a dotted extension verbatim (AIGC '.png', local '.mp4')", () => {
     expect(storageKey({ ...base, ext: ".png" })).toMatch(/[0-9a-f]\.png$/);
@@ -40,9 +40,9 @@ describe("storageKey — dotted-ext contract (#1630)", () => {
     expect(() => storageKey({ ...base, ext: "bin" })).toThrow(/dotted/);
   });
 
-  it("keeps the userId/projectId/taskType/date prefix intact", () => {
+  it("is tenant-neutral: taskType/date prefix only, NO user/project (#1826 §3.1)", () => {
     expect(storageKey({ ...base, ext: ".png" })).toMatch(
-      /^u\/p\/image\/\d{4}-\d{2}-\d{2}\/\d+_[0-9a-f-]+\.png$/,
+      /^image\/\d{4}-\d{2}-\d{2}\/\d+_[0-9a-f-]+\.png$/,
     );
   });
 });

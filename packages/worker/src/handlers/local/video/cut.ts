@@ -123,8 +123,6 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
     await extractSegment(inputPath, segPath, segments[i]!);
     const url = await uploadTempFileToStorage({
       path: segPath,
-      userId: ctx.userId,
-      projectId: ctx.projectId,
       taskType: ctx.taskType,
       ext: ".mp4",
       contentType: "video/mp4",

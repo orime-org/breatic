@@ -15,8 +15,11 @@
  *   - D9 attribution on the upload path: a personal-project collaborator
  *     dedups against THEIR OWN personal studio, not the owner's;
  *   - the authoritative upload cap (413) with the boundary allowed;
- *   - the hash-degrade path: an unhashed upload stays available but
- *     lands NO ledger row (untracked signal, plan §6);
+ *   - "no hash, no upload" (#1826 §0 rule 4): an unhashed report is REFUSED
+ *     (400) and lands no ledger row — replacing the retired availability-first
+ *     degrade that let it through as "stored but untracked";
+ *   - attribution comes from the GRANT, not the report's project_id (§2.2 v15):
+ *     reporting with another studio's project cannot shift the storage cost;
  *   - a dedup report for content the studio never stored → 422.
  */
 
@@ -42,6 +45,8 @@ import {
   loadLocales,
   getStorageAdapter,
 } from "@breatic/core";
+import { assetService } from "@breatic/domain";
+import { issueGrant } from "@server/modules/asset/upload-grant.repo.js";
 import type { Hono } from "hono";
 
 try {
@@ -121,19 +126,24 @@ async function loginCookie(userId: string): Promise<string> {
   return `breatic_session=${token}`;
 }
 
-/** GET /assets/presign for `user` with declared size (+ optional hash). */
+/**
+ * GET /assets/presign for `user` with declared size. The hash is MANDATORY on
+ * the wire now ("no hash, no upload"), so it defaults to a well-formed filler
+ * here: a caller that only cares about the size gate still gets past schema
+ * validation, and nothing silently 400s for the wrong reason.
+ */
 async function presign(
   cookie: string,
   projectId: string,
   size: number,
-  hash?: string,
+  hash: string = "a".repeat(64),
 ): Promise<Response> {
   const params = new URLSearchParams({
     filename: "photo.png",
     content_type: "image/png",
     project_id: projectId,
     size: String(size),
-    ...(hash !== undefined && { hash }),
+    hash,
   });
   return app.request(`/api/v1/assets/presign?${params.toString()}`, {
     headers: { Cookie: cookie },
@@ -147,10 +157,22 @@ async function storeObject(
 ): Promise<{ key: string; hash: string; size: number }> {
   const content = Buffer.from(`png-bytes-${crypto.randomUUID()}`);
   const hash = crypto.createHash("sha256").update(content).digest("hex");
-  const key = `${userId}/${projectId}/image/2026-07-07/${Date.now()}_${crypto.randomUUID()}.png`;
+  const size = content.length;
+  // Mirror what /presign does (#1826): a tenant-neutral key + an upload grant
+  // (the anti-spoof ledger row the /uploaded endpoint re-checks). Without the
+  // grant, the regular-path report is rejected 422.
+  const key = `image/2026-07-25/${Date.now()}_${crypto.randomUUID()}.png`;
+  const studioId = await assetService.resolveOwnerStudioId(projectId, userId);
+  await issueGrant({
+    userId,
+    studioId,
+    contentHash: hash,
+    storageKey: key,
+    declaredSize: size,
+  });
   const adapter = await getStorageAdapter();
   await adapter.upload(key, content, "image/png");
-  return { key, hash, size: content.length };
+  return { key, hash, size };
 }
 
 /** POST /assets/uploaded (regular path). */
@@ -316,7 +338,13 @@ describe("upload cap (authoritative) + hash degrade", () => {
     expect(at.status).toBe(200);
   });
 
-  it("an unhashed upload (worker degrade) stays available but lands NO ledger row", async () => {
+  it("an unhashed report is REFUSED (no hash, no upload) and lands NO ledger row", async () => {
+    // User decision 2026-07-26, replacing the old availability-first rule that
+    // let a hashless upload through as "stored but untracked". Untracked is not
+    // a usable state: the object counts against nothing, dedups with nothing,
+    // and — the reason it had to go — whatever pinned its URL would 404 once
+    // the offline GC reclaimed the row-less object. The client refuses to
+    // upload without a hash; the server enforces it independently.
     const { userId, personalStudioId } = await insertUserWithPersonalStudio();
     const projectId = await insertProject(personalStudioId, userId);
     const cookie = await loginCookie(userId);
@@ -328,7 +356,99 @@ describe("upload cap (authoritative) + hash degrade", () => {
       kind: "image",
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     expect(await ledgerCount(personalStudioId, hash)).toBe(0);
+  });
+});
+
+describe("anti-spoof: upload-grant ledger (#1826) — critical path #2/#3", () => {
+  it("a forged key never issued by presign → /uploaded 422 (no ledger row)", async () => {
+    const { userId, personalStudioId } = await insertUserWithPersonalStudio();
+    const projectId = await insertProject(personalStudioId, userId);
+    const cookie = await loginCookie(userId);
+    // A key with NO grant row (never minted by presign).
+    const res = await reportUploaded(cookie, {
+      project_id: projectId,
+      key: "image/2026-07-25/forged.png",
+      hash: "a".repeat(64),
+      kind: "image",
+    });
+    expect(res.status).toBe(422);
+    expect(await ledgerCount(personalStudioId, "a".repeat(64))).toBe(0);
+  });
+
+  it("a consumed key replayed → 422 (single-shot anti-replay), never double-registers", async () => {
+    const { userId, personalStudioId } = await insertUserWithPersonalStudio();
+    const projectId = await insertProject(personalStudioId, userId);
+    const cookie = await loginCookie(userId);
+    const { key, hash } = await storeObject(userId, projectId);
+
+    const first = await reportUploaded(cookie, { project_id: projectId, key, hash, kind: "image" });
+    expect(first.status).toBe(200);
+    // Replaying the SAME key (the grant is already consumed) is refused.
+    const replay = await reportUploaded(cookie, { project_id: projectId, key, hash, kind: "image" });
+    expect(replay.status).toBe(422);
+    // Exactly one ledger row — the replay never double-registered.
+    expect(await ledgerCount(personalStudioId, hash)).toBe(1);
+  });
+
+  it("another user reporting my key → 422 (ownership is user-only, not studio)", async () => {
+    const { userId, personalStudioId } = await insertUserWithPersonalStudio();
+    const projectId = await insertProject(personalStudioId, userId);
+    const { key, hash } = await storeObject(userId, projectId);
+
+    // A different editor of the SAME project reports the key issued to userId —
+    // the grant is bound to userId, so the foreign report is rejected.
+    const { userId: otherUserId } = await insertUserWithPersonalStudio();
+    await addEditor(projectId, otherUserId);
+    const otherCookie = await loginCookie(otherUserId);
+    const res = await reportUploaded(otherCookie, {
+      project_id: projectId,
+      key,
+      hash,
+      kind: "image",
+    });
+    expect(res.status).toBe(422);
+  });
+});
+
+describe("attribution is taken from the GRANT, not the report's project (#1826 §2.2 v15 / H7)", () => {
+  it("reporting with a DIFFERENT studio's project still charges the studio the key was issued to", async () => {
+    // A member of two studios: their own personal studio (where the key gets
+    // issued) and a team studio they also belong to. Presign inside the
+    // personal project, then report completion pointing at the TEAM project.
+    // The asset must land on the PERSONAL studio — otherwise anyone in two
+    // studios could shift their storage cost onto the team.
+    const { userId, personalStudioId } = await insertUserWithPersonalStudio();
+    const personalProject = await insertProject(personalStudioId, userId);
+    const cookie = await loginCookie(userId);
+
+    const teamStudios = await sql<{ id: string }[]>`
+      INSERT INTO studios (created_by_user_id, slug, type, name)
+      VALUES (${userId}, ${`ud-team-${seq++}`}, 'team', 'Team') RETURNING id
+    `;
+    const teamStudioId = teamStudios[0]!.id;
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${teamStudioId}, ${userId}, 'admin')
+    `;
+    const teamProject = await insertProject(teamStudioId, userId);
+
+    // Key issued against the PERSONAL project.
+    const { key, hash, size } = await storeObject(userId, personalProject);
+
+    // Report it against the TEAM project.
+    const res = await reportUploaded(cookie, {
+      project_id: teamProject,
+      key,
+      hash,
+      kind: "image",
+      metadata: { filename: "x.png", size, mimeType: "image/png" },
+    });
+    expect(res.status).toBe(200);
+
+    // Attribution followed the grant, not the report.
+    expect(await ledgerCount(personalStudioId, hash)).toBe(1);
+    expect(await ledgerCount(teamStudioId, hash)).toBe(0);
   });
 });

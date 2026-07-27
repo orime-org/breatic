@@ -57,7 +57,7 @@ pnpm test / typecheck / lint
 - **XSS / Prompt**:HTML 渲染走 DOMPurify `sanitizeRichText()`;AIGC prompt 先经 `extractPromptText()` 去 HTML/注释/不可见字符
 - **异常**:`AppError(status, msg)` 在 Service 层抛,路由层 handler 处理(NotFound / Conflict / Validation / Forbidden / Unauthorized)
 - **SSE**:仅 Agent 聊天 + Text mini-tool,**per-request 私有流**(前端 `fetchEventSource` POST,每次请求各开各的流、靠回调对账)。**事件 `data` 不携带归属 ID** —— 对话归属由 `conversations` 表的 `user_id` / `project_id` 列兜底(SSE 片段不落库、前端不读、每 chunk 重复 = 冗余无消费方);要审计单次操作走 application 层 `logger`,不塞进 wire
-- **存储**:Local / S3 / Aliyun OSS。前端走 presigned URL(`GET /assets/presign`,5min 过期,30/分限速)直传
+- **存储(MANDATORY)**:Local / S3 / Aliyun OSS。前端走 presigned URL(`GET /assets/presign`,过期时长走 `config/storage.yaml`,30/分限速)直传。四条铁律:**① runtime 只插不删** —— 上传 / 生成路径对物理对象零删除,去重多出来的那份只**登记**进待回收表交离线处理;**② 消费方 URL 一律取自登记记录**(节点 / 历史 / 活动流都钉 `publicUrl(记录.storage_key)`),绝不钉刚上传、可能成孤儿的 key;**③ 登记失败即上传失败** —— `/uploaded` 零例外(封面是视频上传的一半,同样算失败);**④ 没 hash 不许传** —— 前端算不出就不发起,后端 presign + `/uploaded` 都必填。判定题:**这条 URL 会被谁钉住吗?会 → 它必须来自登记记录**。key 租户中立(不含 user/project 前缀),类型 / 大小 / 上限一律后端从"存下来的东西"读、不信前端
 - **支付(积分制非订阅)**:Stripe Checkout 一次性买积分包(5 档),**无会员 tier**。全用户同套功能,只按用量扣积分,积分永不过期。Webhook 幂等(CAS),`deductOnce(refKey)` 保证扣费幂等。**只按积分余额判断,不做 tier feature gate**
 - **服务器端工业级标准(MANDATORY)**:所有 server / collab / worker / core 逻辑按生产级标准实现,**禁止** "dev 阶段先这样后续再补"。**必须有**:
 

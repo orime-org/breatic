@@ -28,8 +28,12 @@ export interface FocusCropDeps {
   uploadFile: (file: File, projectId: string) => Promise<string>;
   /** Append the finished copy to the panel node's focusImages (Yjs). */
   addFocusImage: (image: FocusImage) => void;
-  /** Failure sink, discriminated by stage (for the toast wording). */
-  onFailure: (stage: 'export' | 'upload') => void;
+  /**
+   * Failure sink, discriminated by stage (for the toast wording). `hash` means
+   * the browser could not fingerprint the crop, which no retry of this page can
+   * fix — the remedy is a reload, so it must not share the retryable wording.
+   */
+  onFailure: (stage: 'export' | 'upload' | 'hash') => void;
   /** Id factory (uuid v4 in production; fixed in tests). */
   makeId: () => string;
 }
@@ -89,7 +93,11 @@ export async function runFocusCrop(
       width: params.crop.width,
       height: params.crop.height,
     });
-  } catch {
-    deps.onFailure('upload');
+  } catch (err) {
+    // The upload pipeline tags a hashing refusal so the caller can offer the
+    // right remedy (reload, not retry).
+    deps.onFailure(
+      err instanceof Error && err.message === 'hash' ? 'hash' : 'upload',
+    );
   }
 }

@@ -6,12 +6,57 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   isReportableAssetUrl,
   fileToNodeSpec,
+  checkFileAdmission,
   fillNodeFromFile,
   runMediaUpload,
   runVideoUploadWithCover,
   computeDeletedAssetEntries,
   assetUrlSurvives,
 } from '@web/spaces/canvas/canvas-upload';
+
+describe('checkFileAdmission — which files the canvas refuses on selection', () => {
+  const CAP = 1024;
+
+  it('admits an ordinary file', () => {
+    expect(checkFileAdmission({ type: 'image/png', size: 500 }, CAP)).toBeNull();
+  });
+
+  it('refuses a 0-byte file, whatever its type (user decision 2026-07-26)', () => {
+    // An empty file makes an empty node — there is nothing to show, nothing to
+    // dedup against, and nothing worth a storage row. Refused on SELECTION so
+    // no node is created and no byte is sent.
+    expect(checkFileAdmission({ type: 'image/png', size: 0 }, CAP)).toBe('empty');
+    expect(checkFileAdmission({ type: 'video/mp4', size: 0 }, CAP)).toBe('empty');
+    // Text files never upload, but an empty one is just as pointless.
+    expect(checkFileAdmission({ type: 'text/plain', size: 0 }, CAP)).toBe('empty');
+  });
+
+  it('refuses an over-cap file that would be uploaded', () => {
+    expect(checkFileAdmission({ type: 'image/png', size: CAP + 1 }, CAP)).toBe(
+      'tooLarge',
+    );
+  });
+
+  it('admits a file exactly at the cap (boundary)', () => {
+    expect(checkFileAdmission({ type: 'image/png', size: CAP }, CAP)).toBeNull();
+  });
+
+  it('does NOT apply the cap to a file that is never uploaded (text is read locally)', () => {
+    expect(
+      checkFileAdmission({ type: 'text/plain', size: CAP + 1 }, CAP),
+    ).toBeNull();
+  });
+
+  it('admits any size when the cap is unknown (config fetch failed → server 413 stays authoritative)', () => {
+    expect(
+      checkFileAdmission({ type: 'image/png', size: 9e9 }, Infinity),
+    ).toBeNull();
+    // …but an empty file is still refused: that check needs no config at all.
+    expect(checkFileAdmission({ type: 'image/png', size: 0 }, Infinity)).toBe(
+      'empty',
+    );
+  });
+});
 
 describe('fileToNodeSpec — MIME → which node + whether to upload', () => {
   it('routes images to an image node that needs uploading', () => {
@@ -142,22 +187,26 @@ describe('runMediaUpload — config → hash → presign(dedup) → PUT → call
     });
   });
 
-  it('hash degrade: hashing failed (null) → the upload still runs, hash omitted', async () => {
+  it('hashing failed (null) → the upload is REFUSED before any network call (user decision 2026-07-26)', async () => {
+    // The content hash is the whole storage design's ticket: instant-dedup,
+    // within-studio dedup and the ledger row all key on it. An upload without
+    // one can never be registered (`studio_assets.content_hash` is NOT NULL),
+    // so it would pin the node to an object with no live row — an offline-GC
+    // orphan → 404. Refusing UP FRONT also wastes no bandwidth: nothing is
+    // presigned and nothing is PUT. (This replaces the old availability-first
+    // rule that let a hashless upload through as "stored but untracked".)
     const deps = makeUploadDeps({ hashFile: vi.fn().mockResolvedValue(null) });
     const onUploaded = vi.fn();
 
     await runMediaUpload(file, 'p1', { ...deps, onUploaded });
 
-    expect(deps.presign).toHaveBeenCalledWith(
-      expect.objectContaining({ hash: null }),
-    );
-    expect(deps.onSuccess).toHaveBeenCalledOnce();
-    expect(onUploaded).toHaveBeenCalledExactlyOnceWith({
-      key: 'k',
-      kind: 'image',
-      fileUrl: 'https://cdn/p.png',
-      hash: null,
-    });
+    expect(deps.presign).not.toHaveBeenCalled();
+    expect(deps.putFile).not.toHaveBeenCalled();
+    expect(onUploaded).not.toHaveBeenCalled();
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    // The caller needs to tell "we could not fingerprint the file" apart from a
+    // network failure — the remedy differs (reload the page vs retry).
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('hash');
   });
 
   it('retries a transient presign failure (5xx) before succeeding', async () => {
@@ -212,10 +261,62 @@ describe('runMediaUpload — config → hash → presign(dedup) → PUT → call
     expect(deps.presign).not.toHaveBeenCalled();
     expect(deps.onFailure).toHaveBeenCalledOnce();
   });
+
+  it('pins the REPORT canonical, never the presign temp key (§0 rule 2 / §4.1 step 7)', async () => {
+    // The presign URL is a temp minted key; onSuccess must fire with the
+    // registered CANONICAL the report returns, not that temp key.
+    const deps = makeUploadDeps({
+      presign: vi.fn().mockResolvedValue({
+        uploadUrl: 'https://put',
+        fileUrl: 'https://cdn/TEMP.png',
+        key: 'k',
+        kind: 'image',
+      }),
+    });
+    const onUploaded = vi.fn().mockResolvedValue({ fileUrl: 'https://cdn/CANON.png' });
+
+    await runMediaUpload(file, 'p1', { ...deps, onUploaded });
+
+    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith('https://cdn/CANON.png');
+    expect(deps.onSuccess).not.toHaveBeenCalledWith('https://cdn/TEMP.png');
+  });
+
+  it('keeps the node handling until the report returns: report resolves BEFORE onSuccess pins', async () => {
+    const order: string[] = [];
+    let resolveReport: (v: { fileUrl: string }) => void = () => {};
+    const onUploaded = vi.fn(() => {
+      order.push('report');
+      return new Promise<{ fileUrl: string }>((r) => {
+        resolveReport = r;
+      });
+    });
+    const deps = makeUploadDeps({ onSuccess: vi.fn(() => order.push('pin')) });
+
+    const done = runMediaUpload(file, 'p1', { ...deps, onUploaded });
+    await new Promise((r) => setTimeout(r, 0));
+    // Report fired; the node is NOT pinned yet (still handling).
+    expect(order).toEqual(['report']);
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+
+    resolveReport({ fileUrl: 'https://cdn/c.png' });
+    await done;
+    // Pinned only AFTER the report resolved with the canonical.
+    expect(order).toEqual(['report', 'pin']);
+  });
+
+  it('a report failure (node-bound register 422) → onFailure, node NOT pinned (Retry)', async () => {
+    const onUploaded = vi.fn().mockRejectedValue(new Error('422'));
+    const deps = makeUploadDeps();
+
+    await runMediaUpload(file, 'p1', { ...deps, onUploaded });
+
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledOnce();
+  });
 });
 
 const VIDEO_FILE = new File(['v'], 'clip.mp4', { type: 'video/mp4' });
-const COVER_FILE = new File(['c'], 'clip-cover.jpg', { type: 'image/jpeg' });
+const COVER_FILE = new File(['c'], 'clip-cover.webp', { type: 'image/webp' });
 
 /**
  * Deps for {@link runVideoUploadWithCover}: config + hash shared, presign +
@@ -241,7 +342,7 @@ function makeVideoCoverDeps(
           }
           : {
             uploadUrl: 'https://put/c',
-            fileUrl: 'https://cdn/clip-cover.jpg',
+            fileUrl: 'https://cdn/clip-cover.webp',
             key: 'kc',
             kind: 'image',
           },
@@ -250,7 +351,12 @@ function makeVideoCoverDeps(
     putFile: vi.fn().mockResolvedValue(undefined),
     onSuccess: vi.fn(),
     onFailure: vi.fn(),
-    onVideoUploaded: vi.fn(),
+    // The video report returns the REGISTERED canonical(s) the node pins; the
+    // default matches the presign URLs so the happy-path assertions hold.
+    onVideoUploaded: vi.fn().mockResolvedValue({
+      fileUrl: 'https://cdn/clip.mp4',
+      coverUrl: 'https://cdn/clip-cover.webp',
+    }),
     onCoverUploaded: vi.fn(),
     sleep: () => Promise.resolve(),
     ...over,
@@ -265,7 +371,7 @@ describe('runVideoUploadWithCover — atomic video + cover (#1816)', () => {
 
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
       'https://cdn/clip.mp4',
-      'https://cdn/clip-cover.jpg',
+      'https://cdn/clip-cover.webp',
     );
     expect(deps.onFailure).not.toHaveBeenCalled();
     // Both ledger reports fire (video WITH nodeId at the caller; cover WITHOUT).
@@ -274,9 +380,41 @@ describe('runVideoUploadWithCover — atomic video + cover (#1816)', () => {
     // URL for the node-history row (①) + activity row (②).
     expect(deps.onVideoUploaded).toHaveBeenCalledExactlyOnceWith(
       { key: 'kv', kind: 'video', fileUrl: 'https://cdn/clip.mp4', hash: HASH },
-      { key: 'kc', kind: 'image', fileUrl: 'https://cdn/clip-cover.jpg', hash: HASH },
+      { key: 'kc', kind: 'image', fileUrl: 'https://cdn/clip-cover.webp', hash: HASH },
     );
     expect(deps.onCoverUploaded).toHaveBeenCalledOnce();
+  });
+
+  it('awaits the cover report BEFORE firing the video report (read-after-write, #1826 §4.5)', async () => {
+    // The video report rides only the cover's HASH; the server reads the cover's
+    // studio_assets row by that hash. So the cover MUST register first — else the
+    // node-history + activity thumbnails race to a null row → Film.
+    const order: string[] = [];
+    let resolveCover: () => void = () => {};
+    const deps = makeVideoCoverDeps({
+      onCoverUploaded: vi.fn(() => {
+        order.push('cover');
+        return new Promise<void>((r) => {
+          resolveCover = r;
+        });
+      }),
+      onVideoUploaded: vi.fn(() => {
+        order.push('video');
+        return Promise.resolve({ fileUrl: 'https://cdn/clip.mp4' });
+      }),
+    });
+
+    const done = runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
+    // Flush the uploads + reach the `await onCoverUploaded` suspend point.
+    await new Promise((r) => setTimeout(r, 0));
+    // The cover report fired; the video report MUST wait for it to resolve.
+    expect(order).toEqual(['cover']);
+    expect(deps.onVideoUploaded).not.toHaveBeenCalled();
+
+    resolveCover();
+    await done;
+    // Video report fires only AFTER the cover row is committed.
+    expect(order).toEqual(['cover', 'video']);
   });
 
   it('fails atomically when the VIDEO PUT fails — no write, no reports', async () => {
@@ -316,6 +454,83 @@ describe('runVideoUploadWithCover — atomic video + cover (#1816)', () => {
     expect(deps.onFailure).toHaveBeenCalledOnce();
     expect(deps.onVideoUploaded).not.toHaveBeenCalled();
     expect(deps.onCoverUploaded).not.toHaveBeenCalled();
+  });
+
+  it('pins the VIDEO REPORT canonical (content + coverUrl), not the presign temp keys (§0 rule 2)', async () => {
+    const deps = makeVideoCoverDeps({
+      onVideoUploaded: vi.fn().mockResolvedValue({
+        fileUrl: 'https://cdn/CANON.mp4',
+        coverUrl: 'https://cdn/CANON-cover.webp',
+      }),
+    });
+
+    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
+
+    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
+      'https://cdn/CANON.mp4',
+      'https://cdn/CANON-cover.webp',
+    );
+    expect(deps.onSuccess).not.toHaveBeenCalledWith(
+      'https://cdn/clip.mp4',
+      'https://cdn/clip-cover.webp',
+    );
+  });
+
+  it('cover degrade: report.coverUrl undefined → pins undefined (Film), NEVER the presign temp cover key (§0 rule 2 / §4.5 / #1824)', async () => {
+    // The server degrades the cover to `undefined` when it cannot resolve a live
+    // studio_assets row (the cover register failed, or its hash degraded so no
+    // row was written). The node MUST then show Film — never the cover's presign
+    // TEMP key, which has no live row and becomes an offline-GC orphan → 404. The
+    // `?? cover.url` fallback that re-pinned that temp key was the G8 regression on
+    // the cover half (Gate-2 R3). `completeNodeHandling` skips `coverUrl` when it
+    // is undefined, so passing undefined through is exactly "degrade to Film".
+    const deps = makeVideoCoverDeps({
+      onVideoUploaded: vi.fn().mockResolvedValue({
+        fileUrl: 'https://cdn/CANON.mp4',
+        // coverUrl omitted → the server degraded the cover to Film.
+      }),
+    });
+
+    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
+
+    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
+      'https://cdn/CANON.mp4',
+      undefined,
+    );
+    // The cover's presign temp key (from the sub-upload) must NEVER be pinned.
+    expect(deps.onSuccess).not.toHaveBeenCalledWith(
+      'https://cdn/CANON.mp4',
+      'https://cdn/clip-cover.webp',
+    );
+  });
+
+  it('a COVER report failure fails the whole upload — the two halves are atomic (#1816, user 2026-07-26)', async () => {
+    // #1816's contract is "a video never lands without its cover and a cover
+    // never lands without its video". That has always held for a failed PUT;
+    // it must hold for a failed REGISTER too, otherwise the video lands while
+    // its cover silently isn't in the ledger. So onCoverUploaded rejecting
+    // aborts the whole thing: no node write, no video report, Retry offered.
+    const deps = makeVideoCoverDeps({
+      onCoverUploaded: vi.fn().mockRejectedValue(new Error('cover register 422')),
+    });
+
+    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
+
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
+    // The video report never fires — no half-written ledger state.
+    expect(deps.onVideoUploaded).not.toHaveBeenCalled();
+  });
+
+  it('a video report failure (e.g. register 422) → onFailure, node NOT written (retry both)', async () => {
+    const deps = makeVideoCoverDeps({
+      onVideoUploaded: vi.fn().mockRejectedValue(new Error('422')),
+    });
+
+    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
+
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledOnce();
   });
 });
 
@@ -381,7 +596,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
         }
         : {
           uploadUrl: 'https://put/c',
-          fileUrl: 'https://cdn/clip-cover.jpg',
+          fileUrl: 'https://cdn/clip-cover.webp',
           key: 'kc',
           kind: 'image',
         },
@@ -407,17 +622,31 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       presign: vi.fn().mockImplementation(videoCoverPresign),
       extractVideoCover: vi
         .fn()
-        .mockResolvedValue(new Blob(['c'], { type: 'image/jpeg' })),
-      onUploaded: vi.fn(),
+        .mockResolvedValue(new Blob(['c'], { type: 'image/webp' })),
+      // The reporter returns the REGISTERED canonical(s) — the node pins those,
+      // never the presign temp keys (report-then-pin, §0 rule 2). Canonical URLs
+      // are deliberately DISTINCT from the presign temp keys so the assertion
+      // actually guards the pin source.
+      onUploaded: vi.fn().mockResolvedValue({
+        fileUrl: 'https://cdn/CANON.mp4',
+        coverUrl: 'https://cdn/CANON-cover.webp',
+      }),
       onCoverUploaded: vi.fn(),
     });
     await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
     expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
     expect(deps.setContent).toHaveBeenCalledExactlyOnceWith(
       'n1',
+      'https://cdn/CANON.mp4',
+      LEASE,
+      'https://cdn/CANON-cover.webp',
+    );
+    // NEVER the presign temp keys.
+    expect(deps.setContent).not.toHaveBeenCalledWith(
+      'n1',
       'https://cdn/clip.mp4',
       LEASE,
-      'https://cdn/clip-cover.jpg',
+      'https://cdn/clip-cover.webp',
     );
     // Video ledger report carries the nodeId AND the cover info (#1824) so the
     // caller can ride the cover ref on the video report; cover report has no
@@ -443,7 +672,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
         ),
       extractVideoCover: vi
         .fn()
-        .mockResolvedValue(new Blob(['c'], { type: 'image/jpeg' })),
+        .mockResolvedValue(new Blob(['c'], { type: 'image/webp' })),
     });
     await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
     expect(deps.setContent).not.toHaveBeenCalled();

@@ -295,6 +295,7 @@ describe("POST /assets/uploaded — handshake verification", () => {
       body: JSON.stringify({
         project_id: projectId,
         key: "nonexistent/never-uploaded.png",
+        hash: "a".repeat(64),
         kind: "image",
       }),
     });
@@ -324,7 +325,7 @@ describe("POST /assets/uploaded — handshake verification", () => {
     const cross = await app.request("/api/v1/assets/uploaded", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookie },
-      body: JSON.stringify({ project_id: projectId, key: foreignKey, kind: "image" }),
+      body: JSON.stringify({ project_id: projectId, key: foreignKey, hash: "a".repeat(64), kind: "image" }),
     });
     expect(cross.status).toBe(422);
 
@@ -335,6 +336,7 @@ describe("POST /assets/uploaded — handshake verification", () => {
       body: JSON.stringify({
         project_id: projectId,
         key: `${attacker.userId}/${projectId}/../../../../etc/hostname`,
+        hash: "a".repeat(64),
         kind: "image",
       }),
     });
@@ -352,9 +354,17 @@ describe("POST /assets/uploaded — handshake verification", () => {
     const projectId = await insertProject(userId);
     const cookie = await loginCookie(userId);
 
-    // Presign against local storage, PUT the bytes, then handshake.
+    // Presign against local storage, PUT the bytes, then handshake. The hash is
+    // the REAL digest of the bytes we PUT, so this exercises the whole
+    // "no hash, no upload" chain end to end (presign → grant → PUT → report →
+    // ledger) rather than smuggling a filler past the schema.
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const contentHash = crypto
+      .createHash("sha256")
+      .update(Buffer.from(bytes))
+      .digest("hex");
     const presign = await app.request(
-      `/api/v1/assets/presign?filename=a.png&content_type=image/png&project_id=${projectId}&size=4`,
+      `/api/v1/assets/presign?filename=a.png&content_type=image/png&project_id=${projectId}&size=4&hash=${contentHash}`,
       { headers: { Cookie: cookie } },
     );
     expect(presign.status).toBe(200);
@@ -365,14 +375,19 @@ describe("POST /assets/uploaded — handshake verification", () => {
     const put = await app.request(putPath, {
       method: "PUT",
       headers: { "Content-Type": "image/png", Cookie: cookie },
-      body: new Uint8Array([137, 80, 78, 71]),
+      body: bytes,
     });
     expect(put.status).toBe(200);
 
     const handshake = await app.request("/api/v1/assets/uploaded", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookie },
-      body: JSON.stringify({ project_id: projectId, key, kind: "image" }),
+      body: JSON.stringify({
+        project_id: projectId,
+        key,
+        hash: contentHash,
+        kind: "image",
+      }),
     });
     expect(handshake.status).toBe(200);
 

@@ -288,6 +288,27 @@
       "when": 1780900600000,
       "tag": "0040_avatar_to_personal_studio",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1780900700000,
+      "tag": "0041_upload_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1780900800000,
+      "tag": "0042_storage_reclaim_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1780987200000,
+      "tag": "0043_studio_assets_storage_key_idx",
+      "breakpoints": true
     }
   ]
 }
