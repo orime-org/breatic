@@ -33,7 +33,13 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { initCore, getRedis, setSession, loadLocales } from "@breatic/core";
+import {
+  initCore,
+  getRedis,
+  setSession,
+  sessionCookieName,
+  loadLocales,
+} from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import type { Hono } from "hono";
 
@@ -81,7 +87,7 @@ function uniqueSlug(): string {
 async function loginCookie(userId: string): Promise<string> {
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  return `breatic_session=${token}`;
+  return `${sessionCookieName()}=${token}`;
 }
 
 const JSON_HEADERS = { "Content-Type": "application/json" } as const;

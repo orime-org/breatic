@@ -19,4 +19,3 @@
  */
 
 process.env.DATABASE_URL ??= "postgres://localhost:5432/breatic_test";
-process.env.SESSION_SECRET_KEY ??= "test-session-secret-key";

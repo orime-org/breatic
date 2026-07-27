@@ -63,7 +63,7 @@ function getGoogleClient(): OAuth2Client {
  * (self-host default). The code is rotated on every successful
  * recovery-based reset; only the bcrypt hash is stored server-side.
  *
- * Session is delivered as an httpOnly `breatic_session` cookie (the
+ * Session is delivered as an httpOnly session cookie (the
  * frontend never sees the raw token - XSS cannot exfiltrate it).
  * Response body returns the user plus the one-time `recoveryCode`.
  * @param c - Hono context with validated `registerSchema` body

@@ -15,7 +15,7 @@
  * §4, acceptance C2 + C3 (HTTP contract test + real-PG integration).
  *
  * Auth is real: each caller gets a Redis session token (the same store
- * `requireAuth` reads), passed as the `breatic_session` cookie. Seeding uses a
+ * `requireAuth` reads), passed under the real `sessionCookieName()`. Seeding uses a
  * narrow raw `postgres` client; assertions go through the real `createApp()`.
  */
 
@@ -37,7 +37,13 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { initCore, getRedis, setSession, loadLocales } from "@breatic/core";
+import {
+  initCore,
+  getRedis,
+  setSession,
+  sessionCookieName,
+  loadLocales,
+} from "@breatic/core";
 import type { Hono } from "hono";
 
 try {
@@ -136,7 +142,7 @@ async function openRowCount(userId: string, projectId: string): Promise<number> 
 async function loginCookie(userId: string): Promise<string> {
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  return `breatic_session=${token}`;
+  return `${sessionCookieName()}=${token}`;
 }
 
 describe("POST /api/v1/projects/:id/opened — record open (real PG + Redis)", () => {

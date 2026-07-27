@@ -68,9 +68,8 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   process.env.REDIS_STREAM_URL = urls.REDIS_STREAM_URL;
   // ENV must be "dev" | "staging" | "prod" (see core/config/env.ts)
   process.env.ENV = "dev";
-  process.env.SESSION_SECRET_KEY = "test-secret-key-for-integration-tests";
   process.env.STORAGE_PROVIDER = "local";
-  process.env.ALLOWED_ORIGINS = "http://localhost:3001";
+  process.env.ALLOWED_ORIGINS = "http://localhost:8000";
 
   // Run migrations against the fresh PG container before any test runs.
   // Imported dynamically AFTER the env vars above are set: @breatic/core's

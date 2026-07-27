@@ -62,7 +62,7 @@ export default [
       'react/no-string-refs': 'off',
       'react/jsx-no-comment-textnodes': 'off',
       'react/no-unescaped-entities': 'off',
-      'react/react-in-jsx-scope': 'off', // React 17+ 不再需要导入 React
+      'react/react-in-jsx-scope': 'off', // React 17+ JSX transform — no import needed
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
 
@@ -89,7 +89,7 @@ export default [
       // Variables — error level, matching the backend (root CLAUDE.md
       // frontend industrial-grade standard "TS strict, zero any"; rules
       // are binary 0/1, not split per package).
-      'no-unused-vars': 'off', // 使用 TypeScript ESLint 的规则代替
+      'no-unused-vars': 'off', // superseded by the TypeScript ESLint rule below
       '@typescript-eslint/no-unused-vars': [
         'error',
         {

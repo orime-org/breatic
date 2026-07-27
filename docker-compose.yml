@@ -78,9 +78,12 @@ services:
   # worker 9101 — so docker's healthcheck can probe an isolated
   # endpoint that fails its own port independent of main traffic.
   # After `retries` consecutive failures docker marks the container
-  # `unhealthy`; combined with `restart: unless-stopped` the
-  # container is killed and respawned automatically — closing the
-  # self-heal loop the 2026-05-27 collab long-running drift exposed
+  # `unhealthy`. Note that this does NOT restart it: `restart:` reacts to
+  # the process EXITING, and health status is purely informational to plain
+  # docker/compose (Swarm and k8s act on it; an autoheal sidecar can too).
+  # So the probe is a signal to read — `docker compose ps` and alerting —
+  # not a self-heal loop. The 2026-05-27 collab long-running drift is caught
+  # here in the sense that it becomes VISIBLE, not that it is auto-repaired
   # (see CLAUDE.md "server-side industrial-grade standards" mandate).
   server:
     image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}

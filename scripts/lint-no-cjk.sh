@@ -23,8 +23,8 @@
 #
 # Three categories are LEGITIMATELY non-English and are exempt:
 #   1. i18n locale catalogs (`locales/*.json`) — product translations.
-#      Not scanned (this guard looks at .ts / .tsx / .css / .yaml / .yml
-#      and scripts/*.sh).
+#      Not scanned (this guard looks at .ts / .mts / .cts / .tsx / .css /
+#      .yaml / .yml and scripts/*.sh).
 #   2. Test fixtures (`*.test.*`, `*.spec.*`, `__tests__/`) — Unicode /
 #      locale-switching test logic legitimately uses CJK. Excluded below.
 #   3. Deliberate product-data strings — e.g. the language switcher shows
@@ -77,7 +77,8 @@ ALLOWLIST_REGEX='packages/web/src/features/preferences/supported-langs\.ts'
 # grep --include/--exclude ordering trap). Production TS / TSX / CSS only,
 # minus vendored / generated / test paths.
 FILES=$(find packages \
-  -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.css' \) \
+  -type f \( -name '*.ts' -o -name '*.mts' -o -name '*.cts' \
+             -o -name '*.tsx' -o -name '*.css' \) \
   -not -path '*/node_modules/*' \
   -not -path '*/dist/*' \
   -not -path '*/.next/*' \

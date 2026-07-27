@@ -78,7 +78,7 @@ pnpm db:migrate
 pnpm dev
 ```
 
-This starts API (:3000), Collab (:1234), Worker, and frontend (:8000) via turbo. Or start individually:
+This starts API, Collab, Worker and frontend via turbo. Ports come from `.env` (`PORT` 3000 / `COLLAB_PORT` 1234 / `VITE_DEV_PORT` 8000; the first two default from `@breatic/shared`, which the core env schema and the vite dev proxy both read); shift them per worktree to run several at once — see the header of `.env.dev`. Or start individually:
 
 ```bash
 pnpm dev:server       # API server (port 3000)
@@ -108,7 +108,7 @@ Default values in `.env.dev` work out of the box:
 | `REDIS_COLLAB_URL` | `redis://localhost:6379/3` | Collab cross-instance coordination (Hocuspocus pub/sub + space-delete lock) |
 | `ALLOWED_ORIGINS` | `http://localhost:8000` | Vite dev server (CORS, only needed if you bypass the dev proxy) |
 
-Frontend API/WebSocket URLs are **not** in `.env` — they resolve automatically from `window.location` at runtime. Vite's dev proxy (configured in `packages/web/vite.config.ts`) forwards `/api/*` to `localhost:3000`, `/ws` to `localhost:1234`, and `/uploads/*` to `localhost:3000`, so the browser sees a single origin (`localhost:8000`) just like it would see a single origin in production (`your-domain.com` via nginx).
+Frontend API/WebSocket URLs are **not** in `.env` — they resolve automatically from `window.location` at runtime. Vite's dev proxy (`packages/web/vite.config.mts`; dev-server port from `dev-ports.mts`, backend targets from `proxy-targets.mts`) forwards `/api/*` and `/uploads/*` to `PORT` and `/ws` to `COLLAB_PORT`, deriving both from the same `.env` the backend reads so the two cannot drift. The browser therefore sees a single origin (`VITE_DEV_PORT`, default `localhost:8000`) just like it sees a single origin in production (`your-domain.com` via nginx).
 
 ### Key Differences from Docker Deployment
 
@@ -140,7 +140,6 @@ cd breatic
 # 2. Configure environment
 cp .env.docker .env
 # Edit .env — change these at minimum:
-#   SESSION_SECRET_KEY=<random-string-min-16-chars>
 #   DATABASE_URL / REDIS_URL / REDIS_QUEUE_URL / REDIS_STREAM_URL — real infra
 #   Stripe / OAuth / AIGC API keys as applicable
 # The frontend's API/WebSocket host is NOT configured in .env — it auto-detects
@@ -242,7 +241,7 @@ docker compose restart web
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `SESSION_SECRET_KEY` | Session signing key (random string, min 16 chars) | `my-super-secret-key-2026` |
+| `DATABASE_URL` | PostgreSQL connection string. The only variable in the whole schema with no default — every service exits at `initCore` without it. | `postgres://breatic:pass@postgres:5432/breatic` |
 
 > The frontend has no `VITE_API_URL` / `VITE_WS_URL` / `VITE_BASE_URL` — API and WebSocket URLs resolve from `window.location` at runtime, so one bundle works on any host behind a single reverse proxy. See the [Canonical domain](#canonical-domain) section for why same-origin matters.
 
@@ -478,7 +477,9 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on push/PR to main:
 
 ### Health check design
 
-Per CLAUDE.md "服务器端工业级标准" mandate, each long-lived application service exposes a dedicated `GET /healthz` endpoint on a `主+1` style port. Docker compose declares `healthcheck:` for each container that probes its own `/healthz` and marks the container `unhealthy` on N consecutive failures; combined with `restart: unless-stopped` this closes the self-heal loop (a drifted container is killed and respawned automatically).
+Per CLAUDE.md "服务器端工业级标准" mandate, each long-lived application service exposes a dedicated `GET /healthz` endpoint on a `主+1` style port. Docker compose declares `healthcheck:` for each container that probes its own `/healthz` and marks the container `unhealthy` on N consecutive failures.
+
+**`unhealthy` does not restart anything by itself.** A compose `restart:` policy reacts to the process *exiting*; health status is informational to plain Docker. So on a single-host compose deployment the probe makes a drifted container **visible** (`docker compose ps`, and whatever scrapes it) — closing the loop is your monitoring's job, or an autoheal sidecar's. Behind a load balancer, or under Swarm / k8s, the orchestrator *does* act on the health signal and pulls or replaces the instance; that is where the self-heal actually happens.
 
 | service | main port | health port | check returns |
 |---|---|---|---|
@@ -498,6 +499,72 @@ Why a dedicated port instead of reusing the main service port:
 - aligns with how docker / k8s liveness probes are conventionally wired (separate port → separate readiness signal)
 
 Beyond binary health, the **server** health port (3001) also serves `GET /metrics` — a minimal Prometheus surface: `http_requests_total` (by method + status), `db_up` (a SELECT-1 gauge; postgres.js exposes no live pool stats), and prom-client default process metrics. It is wired via the health server's optional `onMetrics` hook, so it stays container-internal exactly like `/healthz` (scrape via `docker exec breatic-server-1 wget -q -O - http://localhost:3001/metrics`). Worker / collab `/metrics` + Grafana dashboards remain tracked in `docs/ROADMAP.md`.
+
+---
+
+## Upgrading
+
+### Sessions are invalidated once when you deploy #1831
+
+The session cookie used to be a fixed `breatic_session`. It is now
+`breatic_session_{REDIS_KEY_PREFIX}` (and `REDIS_KEY_PREFIX` defaults to `ENV`),
+so a production deployment starts writing and reading `breatic_session_prod`.
+
+**Effect: every signed-in user is signed out once, at the moment the new build
+starts serving.** Their browser still holds the old `breatic_session` cookie;
+the server no longer looks at that name, so the request reads as anonymous and
+the frontend bounces to `/login`. Signing in again works normally.
+
+Nothing is lost. The old Redis session rows are untouched and simply expire on
+their normal 30-day TTL; no user, project or canvas data is involved.
+
+There is no way to avoid the logout while still fixing the underlying problem —
+the whole point is that a cookie name shared across deployments lets them evict
+each other's logins, because cookies are not scoped by port (RFC 6265 §8.5).
+Renaming it *is* the fix.
+
+Practical notes:
+
+- Deploy it when a forced re-login is least disruptive, and tell users if you
+  have an announcement channel.
+- Nothing to run: no migration, no cache flush, no config change. Leaving
+  `REDIS_KEY_PREFIX` unset is correct for a single deployment.
+- Rolling deploys briefly serve both builds. A user hitting the old instance
+  stays signed in and hits the new one signed out, flapping until the rollout
+  finishes. That part is cosmetic and self-resolves — but see the next section,
+  which is not.
+
+### Membership revocations lag during a MULTI-REPLICA rollout of #1831
+
+Only relevant if you run more than one `server` or `collab` instance (see
+[SaaS Production](#saas-production)). A single-container deployment —
+`docker compose up -d` — stops the old container before starting the new one,
+so nothing below applies to it.
+
+The control-plane pub/sub channels gain a prefix they never had:
+
+| | Before | After |
+|---|---|---|
+| Channel | `project:{id}:members:changed` | `{ENV}:project:{id}:members:changed` |
+| Subscribe pattern | `project:*` | `{ENV}:project:*` |
+
+(The Hocuspocus document-sync channels are *not* affected — they already
+carried `{ENV}:`, so their names are identical before and after.)
+
+During a rolling update both builds are live, and an old-build server
+publishing `project:…` does not reach a new-build collab subscribed to
+`{ENV}:project:*`. Redis pub/sub drops a publish nobody matches and reports no
+error, so this is silent in both directions.
+
+**Effect while the rollout is in flight: removing a member or downgrading them
+to viewer does not evict their open collab session.** The database write lands
+correctly and the change is enforced on every new connection; what is delayed
+is kicking the already-connected socket. Once every instance runs the new
+build, the publisher and subscriber agree again and revocation is immediate.
+
+Keep the window short, and avoid processing membership removals during it. If
+you need a hard guarantee, deploy this release with a brief full stop instead
+of a rolling update — that removes the mixed-version window entirely.
 
 ---
 

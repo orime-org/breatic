@@ -26,6 +26,10 @@ import {
   type MembersChangedEvent,
 } from "@breatic/shared";
 
+// The deployment prefix under test. `vi.hoisted` because the `vi.mock` factory
+// below is hoisted above these lines and would otherwise capture it undefined.
+const { TEST_PREFIX } = vi.hoisted(() => ({ TEST_PREFIX: "test-deploy" }));
+
 // `createLogger` now comes from `@breatic/core` (the unified logger), which
 // reads the injected config at call time. Spread the real core barrel and
 // override only `createLogger` with a no-op stub so the module-level
@@ -34,6 +38,10 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
   return {
     ...orig,
+    // members-sync now takes its PSUBSCRIBE pattern from core (the single
+    // place the deployment prefix is injected), so the stub must agree with
+    // the prefix the emitted channels below are built with.
+    projectControlChannelPattern: () => `${TEST_PREFIX}:project:*`,
     createLogger: () => ({
       info: vi.fn(),
       warn: vi.fn(),
@@ -131,8 +139,8 @@ describe("startMembersSync — members:changed", () => {
     };
     subscriber.emit(
       "pmessage",
-      "project:*",
-      membersChangedChannel(PID),
+      `${TEST_PREFIX}:project:*`,
+      membersChangedChannel(TEST_PREFIX, PID),
       JSON.stringify(event),
     );
     await Promise.resolve();
@@ -173,8 +181,8 @@ describe("startMembersSync — members:changed", () => {
     };
     subscriber.emit(
       "pmessage",
-      "project:*",
-      membersChangedChannel(PID),
+      `${TEST_PREFIX}:project:*`,
+      membersChangedChannel(TEST_PREFIX, PID),
       JSON.stringify(event),
     );
     await Promise.resolve();

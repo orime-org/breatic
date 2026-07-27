@@ -19,7 +19,7 @@ import { resolve } from "node:path";
 import { initCore, MONOREPO_ROOT } from "@core/config/runtime.js";
 
 // Load the developer's root .env best-effort. Absent in CI (the
-// workflow sets DATABASE_URL / SESSION_SECRET_KEY directly), where
+// workflow sets DATABASE_URL directly), where
 // dotenv silently no-ops. Mirrors what config/env.ts did at import
 // time before the env-injection refactor.
 config({ path: resolve(MONOREPO_ROOT, ".env") });
@@ -29,6 +29,5 @@ config({ path: resolve(MONOREPO_ROOT, ".env") });
 // CI-provided values. Pure unit tests never open these connections;
 // the values only need to satisfy the schema (URL shape + non-empty).
 process.env.DATABASE_URL ??= "postgres://localhost:5432/breatic_test";
-process.env.SESSION_SECRET_KEY ??= "test-session-secret-key";
 
 initCore(process.env);

@@ -1,7 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalPassThroughEnv": [
-    "SESSION_SECRET_KEY",
     "DATABASE_URL",
     "YJS_DATABASE_URL",
     "REDIS_URL",
@@ -15,7 +14,16 @@
     "SMTP_USER",
     "SMTP_PASSWORD",
     "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET"
+    "GOOGLE_CLIENT_SECRET",
+    "REDIS_COLLAB_URL",
+    "REDIS_KEY_PREFIX",
+    "PORT",
+    "COLLAB_PORT",
+    "SERVER_HEALTH_PORT",
+    "WORKER_HEALTH_PORT",
+    "COLLAB_HEALTH_PORT",
+    "VITE_DEV_PORT",
+    "ALLOWED_ORIGINS"
   ],
   "tasks": {
     "build": {

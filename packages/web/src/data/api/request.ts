@@ -13,7 +13,7 @@ import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/typ
  * Singleton axios instance configured for the breatic API.
  *
  * Auth: `withCredentials: true` makes the browser attach the
- * httpOnly `breatic_session` cookie on every cross-origin XHR. The
+ * httpOnly session cookie on every cross-origin XHR. The
  * cookie is the single authentication channel since 2026-05-26 — no
  * Bearer token is read from JS, no Authorization header is set.
  * That removes the XSS exfiltration surface entirely (a JS payload

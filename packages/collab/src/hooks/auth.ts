@@ -43,7 +43,7 @@ import {
   createLogger,
   getSession,
   projectAuthService,
-  SESSION_COOKIE_NAME,
+  sessionCookieName,
 } from "@breatic/core";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import * as Y from "yjs";
@@ -221,15 +221,15 @@ export function createAuthHook({
     // (Redis/Postgres connection-level failures) with the same
     // `auth_unexpected_error` tag so a single grep finds them.
     try {
-      // Session token travels exclusively as the httpOnly
-      // `breatic_session` cookie sent on the WebSocket upgrade
+      // Session token travels exclusively as the httpOnly session
+      // cookie (`sessionCookieName()`) sent on the WebSocket upgrade
       // request (2026-05-26 cookie migration). Hocuspocus's own
       // `token` field - sent by the client in the application-level
       // auth frame - is treated as opaque and ignored; the client
       // sends a placeholder like `"__cookie_auth__"` purely to trip
       // Hocuspocus into invoking this hook (an empty token short-
       // circuits `onAuthenticate` in v3, see ueberdosis/hocuspocus#596).
-      const token = readCookie(requestHeaders.cookie, SESSION_COOKIE_NAME);
+      const token = readCookie(requestHeaders.cookie, sessionCookieName());
       if (!token) {
         logger.warn(
           { documentName, reason: "missing_cookie" },

@@ -23,12 +23,73 @@
  */
 
 import { z } from "zod";
+import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT } from "@breatic/shared";
+
+/**
+ * Normalise a blank env value to undefined so `.default()` / `.optional()` fire.
+ *
+ * `.env` files spell an unset var as `VAR=`, and zod keeps that as `""` rather
+ * than undefined — so a default never applies and any field-level validation
+ * (a numeric coercion, a regex) runs against the empty string and throws. The
+ * result is the booby trap where deleting a line works and blanking it crashes.
+ *
+ * Must be applied as a PREPROCESS, not fixed up afterwards: object-level
+ * `.transform()` runs after every field has already been validated, so a field
+ * that rejects `""` never reaches it.
+ * Also trims: an operator who typed `VAR= dev-agent ` meant `dev-agent`, and
+ * the surrounding spaces would otherwise fail the field's own validation.
+ * @param v - The raw value from the env map.
+ * @returns undefined when blank / whitespace-only, otherwise the trimmed value.
+ */
+function blankToUndefined(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  const trimmed = v.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+/**
+ * Wrap a numeric env var so a blank value means "not set".
+ *
+ * `.env` files spell an unset var as `VAR=`. Zod keeps that as `""` rather than
+ * undefined, which means `.default()` never fires and `z.coerce.number()`
+ * silently turns `""` into 0 — failing `.positive()` and refusing to boot with
+ * "Too small: expected number to be >0", an error that points nowhere near the
+ * blank line that caused it. Deleting the line worked, blanking it crashed.
+ *
+ * Only blank (or whitespace) is forgiven. A garbage value like `abc` still
+ * throws: that is a genuine misconfiguration, and quietly booting on the
+ * default while the operator believes they set something is worse than a loud
+ * failure at startup.
+ * @param schema - The underlying numeric schema (with its own default / bounds).
+ * @returns A schema that maps blank input to undefined before parsing.
+ */
+function numeric<T extends z.ZodTypeAny>(schema: T): z.ZodPipe<z.ZodTransform<unknown, unknown>, T> {
+  return z.preprocess(blankToUndefined, schema);
+}
 
 /**
  * The core configuration schema. Plain Zod - `.parse()` coerces /
- * applies defaults / strips unknown keys. Blank-string vars keep
- * their `""` value (Zod does not treat `""` as undefined), matching
- * the previous `emptyStringAsUndefined: false` behaviour.
+ * applies defaults / strips unknown keys.
+ *
+ * Zod does not treat `""` as undefined, so a blank `VAR=` line reaches
+ * the field as an empty string rather than firing its `.default()`.
+ * Every numeric field is therefore wrapped in {@link numeric} (and
+ * `REDIS_KEY_PREFIX` in the same `blankToUndefined` preprocess), which
+ * maps blank / whitespace-only to undefined so the default applies.
+ * ADD A NEW NUMERIC FIELD → WRAP IT IN `numeric()`, or `VAR=` will
+ * coerce to 0, fail `.positive()`, and refuse to boot with an error
+ * that points nowhere near the cause.
+ *
+ * The other field kinds behave differently, and only the last one is
+ * actually forgiving:
+ *   - `z.enum(...)` (ENV, STORAGE_PROVIDER, EMAIL_BACKEND) — a blank
+ *     value fails the enum and refuses to boot, `.default()` and all.
+ *   - `.url()` (REDIS_URL &c.) — same: blank fails URL validation.
+ *   - plain `z.string()` (SMTP_HOST, SMTP_USER &c.) — blank is kept as
+ *     a deliberate empty string, which is what those fields want.
+ * So the "delete the line = fine, blank the line = crash" trap is only
+ * closed for numerics; enum and URL fields still carry it. That is a
+ * pre-existing gap, not something #1831 introduced — tracked as #1834.
  */
 export const coreConfigSchema = z.object({
   // ── App ───────────────────────────────────────────
@@ -37,23 +98,36 @@ export const coreConfigSchema = z.object({
     .string()
     .default("false")
     .transform((v) => v === "true"),
-  PORT: z.coerce.number().int().positive().default(3000),
+  PORT: numeric(z.coerce.number().int().positive().default(DEFAULT_API_PORT)),
 
   // ── Health probe ports (primary+1 scheme; one per long-lived service) ──
   // Each long-lived service exposes `GET /healthz` on a dedicated
   // port so probe traffic doesn't touch the main WS / API port.
   // Centralized here (previously each entry read these directly
   // from process.env, bypassing validation).
-  SERVER_HEALTH_PORT: z.coerce.number().int().positive().default(3001),
-  WORKER_HEALTH_PORT: z.coerce.number().int().positive().default(9101),
-  COLLAB_HEALTH_PORT: z.coerce.number().int().positive().default(1235),
+  SERVER_HEALTH_PORT: numeric(z.coerce.number().int().positive().default(3001)),
+  WORKER_HEALTH_PORT: numeric(z.coerce.number().int().positive().default(9101)),
+  COLLAB_HEALTH_PORT: numeric(z.coerce.number().int().positive().default(1235)),
+  // Collab's MAIN WebSocket port. Lives here with the other two service ports,
+  // NOT in `config/collab.yaml` where it used to sit as a plain key with a
+  // schema default. One kind of setting belongs in one place: the other three
+  // service ports were already here, and collab's being elsewhere made it the
+  // one port unsettable from `.env` — which is what a second worktree needs
+  // most (#1831). `collab.yaml` keeps only behaviour knobs (debounce,
+  // connection caps, lease budgets).
+  COLLAB_PORT: numeric(z.coerce.number().int().positive().default(DEFAULT_COLLAB_PORT)),
 
   // ── Auth ──────────────────────────────────────────
-  SESSION_SECRET_KEY: z.string().min(1),
+  // `SESSION_SECRET_KEY` used to be declared (and required) here. Removed
+  // 2026-07-27 (#1831): session tokens are opaque `crypto.randomUUID()` values
+  // looked up in Redis — nothing ever signed anything, so no code read this
+  // variable. A required setting with zero consumers is worse than none: every
+  // deployment had to invent a value, and `.env.docker` told operators to
+  // change it as if it carried security weight.
 
   // ── Database ──────────────────────────────────────
   DATABASE_URL: z.string().url(),
-  DB_POOL_SIZE: z.coerce.number().int().positive().default(10),
+  DB_POOL_SIZE: numeric(z.coerce.number().int().positive().default(10)),
 
   // ── yjs Database (separate Postgres DB for the Yjs binary store) ──
   // The Yjs document store lives in its OWN database, a separate
@@ -66,7 +140,7 @@ export const coreConfigSchema = z.object({
     .string()
     .url()
     .default("postgres://breatic:breatic@localhost:5432/breatic_yjs"),
-  YJS_DB_POOL_SIZE: z.coerce.number().int().positive().default(10),
+  YJS_DB_POOL_SIZE: numeric(z.coerce.number().int().positive().default(10)),
 
   // ── Redis ─────────────────────────────────────────
   REDIS_URL: z.string().url().default("redis://localhost:6379/0"),
@@ -78,8 +152,71 @@ export const coreConfigSchema = z.object({
   // can later move to its own Redis instance by changing only this URL.
   REDIS_COLLAB_URL: z.string().url().default("redis://localhost:6379/3"),
 
+  // Namespace for the two things neither the Redis DB number nor the port
+  // split can separate:
+  //   1. Redis PUB/SUB CHANNELS — the Hocuspocus document-sync family and the
+  //      `project:*` control family (membership changes + Space CRUD).
+  //   2. The SESSION COOKIE NAME (`sessionCookieName()`), because cookies are
+  //      not scoped by port (RFC 6265 §8.5).
+  // Nothing else. Resolved by the transform below: unset or blank means `ENV`.
+  //
+  // ⚠️ TWO THINGS CHANGE NAME WHEN THIS SHIPS. Both are one-off; see
+  // docs/DEPLOY.md "Upgrading" for the operator-facing version.
+  //   - The session cookie was a fixed `breatic_session` and becomes
+  //     `breatic_session_{ENV}`, so every live session stops resolving and
+  //     each user signs in once more. No data is touched — the old Redis rows
+  //     just age out on their 30-day TTL.
+  //   - The CONTROL channels gain a prefix they never had: `project:{id}:…`
+  //     becomes `{ENV}:project:{id}:…`. (The Hocuspocus family is unaffected —
+  //     it was already `{ENV}:hocuspocus:…`, so its names are unchanged.)
+  //     A single-container deploy stops the old build before starting the new
+  //     one, so nothing overlaps. But when server or collab runs MULTIPLE
+  //     replicas (see docs/DEPLOY.md, SaaS Production), a rolling update has
+  //     old and new instances live at once, and an old publisher's
+  //     `project:…` never reaches a new subscriber's `{ENV}:project:*` — pub/sub
+  //     drops unmatched publishes with no error. For that window, membership
+  //     revocations do not reach collab: a removed member keeps their open
+  //     session until the rollout finishes.
+  //
+  // It exists because pub/sub is the one thing the `REDIS_*_URL` DB split cannot
+  // isolate: SUBSCRIBE is instance-wide and ignores the selected DB. Ordinary
+  // keys (sessions, locks, BullMQ, streams) are already separated by DB number;
+  // channels are not. Two deployments sharing a Redis instance therefore need
+  // distinct prefixes here, or each hears the other's document updates and
+  // membership writes whenever both hold the same UUID (#1831).
+  //
+  // Deliberately NOT used for anything Redis keys the DB number already covers:
+  //   - cross-service STREAM keys (`taskEventsStreamKey()` etc.) — server,
+  //     worker and collab must agree byte-for-byte, so they derive from ENV
+  //   - collab's stream CURSOR keys — a cursor must share the namespace of the
+  //     stream it points into, and renaming one out from under a running
+  //     deployment makes it read as missing, which replays the whole stream
+  // Character set is enforced, not cosmetic. The subscriber interpolates this
+  // into a PSUBSCRIBE glob while publishers use it literally, so a `*` or `?`
+  // in here makes the two sides silently stop agreeing — the pattern matches
+  // channels nobody writes and misses the ones they do, with no error. It also
+  // becomes part of the session cookie name, where a space / `;` / `,` is
+  // illegal. Letters, digits, `-` and `_` only.
+  REDIS_KEY_PREFIX: z.preprocess(
+    blankToUndefined,
+    z
+      .string()
+      .regex(
+      /^[A-Za-z0-9_-]+$/,
+      "REDIS_KEY_PREFIX may contain only letters, digits, '-' and '_' " +
+          "(it goes into a Redis PSUBSCRIBE pattern and the session cookie name)",
+      )
+      .optional(),
+  ),
+
   // ── CORS ──────────────────────────────────────────
-  ALLOWED_ORIGINS: z.string().default("http://localhost:3001"),
+  // The browser origin is the VITE DEV SERVER (8000 by default), not a service
+  // port. The old default said 3001 — the API's /healthz port, which no browser
+  // ever calls from. It sat wrong unnoticed because `.env.dev` sets this
+  // explicitly to :8000, and the Docker deployment serves the frontend from the
+  // same origin as the API, so neither path ever fell back to the default.
+  // Aligned with `.env.dev` (2026-07-27).
+  ALLOWED_ORIGINS: z.string().default("http://localhost:8000"),
 
   // ── Cookie ────────────────────────────────────────
   // Empty string = let the browser scope to the request host
@@ -130,7 +267,7 @@ export const coreConfigSchema = z.object({
     .transform((v) => v === "true"),
   STRIPE_SECRET_KEY: z.string().default(""),
   STRIPE_WEBHOOK_SECRET: z.string().default(""),
-  CREDIT_MULTIPLIER: z.coerce.number().positive().default(1.0),
+  CREDIT_MULTIPLIER: numeric(z.coerce.number().positive().default(1.0)),
 
   // ── Storage ──────────────────────────────────────
   STORAGE_PROVIDER: z.enum(["local", "s3", "aliyun_oss"]).default("local"),
@@ -146,11 +283,11 @@ export const coreConfigSchema = z.object({
   OSS_SECRET_KEY: z.string().default(""),
 
   // ── Upload Size Limits (MB, per asset kind) ─────
-  UPLOAD_MAX_IMAGE_MB: z.coerce.number().positive().default(50),
-  UPLOAD_MAX_VIDEO_MB: z.coerce.number().positive().default(1024),
-  UPLOAD_MAX_AUDIO_MB: z.coerce.number().positive().default(100),
-  UPLOAD_MAX_3D_MB: z.coerce.number().positive().default(200),
-  UPLOAD_MAX_DOCUMENT_MB: z.coerce.number().positive().default(20),
+  UPLOAD_MAX_IMAGE_MB: numeric(z.coerce.number().positive().default(50)),
+  UPLOAD_MAX_VIDEO_MB: numeric(z.coerce.number().positive().default(1024)),
+  UPLOAD_MAX_AUDIO_MB: numeric(z.coerce.number().positive().default(100)),
+  UPLOAD_MAX_3D_MB: numeric(z.coerce.number().positive().default(200)),
+  UPLOAD_MAX_DOCUMENT_MB: numeric(z.coerce.number().positive().default(20)),
 
   // ── Email ────────────────────────────────────────
   // Mailer backend dispatch - self-host friendly default. See
@@ -164,10 +301,25 @@ export const coreConfigSchema = z.object({
   //              AWS SES - all expose RFC 5321 SMTP).
   EMAIL_BACKEND: z.enum(["disabled", "console", "smtp"]).default("disabled"),
   SMTP_HOST: z.string().default(""),
-  SMTP_PORT: z.coerce.number().default(587),
+  SMTP_PORT: numeric(z.coerce.number().default(587)),
   SMTP_USER: z.string().default(""),
   SMTP_PASSWORD: z.string().default(""),
-});
+})
+  // Resolve `REDIS_KEY_PREFIX` here rather than at each call site: a
+  // fallback repeated at every consumer is a fallback that eventually
+  // disagrees with itself. Downstream code reads a plain `string`.
+  //
+  // `??` is safe here ONLY because the field itself already ran through
+  // `blankToUndefined` (see the `REDIS_KEY_PREFIX` declaration above), so a
+  // blank `VAR=` arrives as undefined rather than `""`. Without that
+  // preprocess this would need `||`: `.env` templates spell an unset
+  // optional var as `VAR=`, zod keeps `""`, and `?? ` would let it through
+  // — silently building channels named `:hocuspocus:…`, isolated from
+  // nothing. Blank means unset, and the preprocess is what makes it so.
+  .transform((c) => ({
+    ...c,
+    REDIS_KEY_PREFIX: c.REDIS_KEY_PREFIX ?? c.ENV,
+  }));
 
 /** Validated, typed core configuration. */
 export type CoreConfig = z.infer<typeof coreConfigSchema>;

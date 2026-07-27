@@ -37,12 +37,30 @@
  */
 
 import { getStreamRedis } from "@core/infra/redis.js";
+import { env } from "@core/config/runtime.js";
 import {
   membersChangedChannel,
   activityNewChannel,
+  allProjectChannelsPattern,
   type ActivityNewControlEvent,
   type MembersChangedEvent,
 } from "@breatic/shared";
+
+/**
+ * The subscribe pattern collab must use to receive everything published below.
+ *
+ * Exists so the deployment namespace is injected in exactly ONE module: the
+ * `@breatic/shared` builders take `prefix` as a parameter (that package must
+ * stay browser-safe and cannot read env), and this file is the only place that
+ * supplies it. A subscriber reaching for the shared builder directly would have
+ * to re-derive the prefix and could silently disagree with the publishers —
+ * which reads as "collab stopped reacting to membership changes", with no error
+ * anywhere.
+ * @returns The `PSUBSCRIBE` pattern for this deployment's control channels.
+ */
+export function projectControlChannelPattern(): string {
+  return allProjectChannelsPattern(env.REDIS_KEY_PREFIX);
+}
 
 /**
  * Publish a `members:changed` event for a project.
@@ -64,7 +82,7 @@ export async function publishMembersChanged(
     ...detail,
   };
   const redis = getStreamRedis();
-  await redis.publish(membersChangedChannel(projectId), JSON.stringify(event));
+  await redis.publish(membersChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
 
 /**
@@ -83,5 +101,5 @@ export async function publishActivityNew(projectId: string): Promise<void> {
     ts: Date.now(),
   };
   const redis = getStreamRedis();
-  await redis.publish(activityNewChannel(projectId), JSON.stringify(event));
+  await redis.publish(activityNewChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }

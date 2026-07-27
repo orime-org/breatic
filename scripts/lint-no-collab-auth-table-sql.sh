@@ -41,7 +41,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 # The two drift signatures: the role table name, or the raw session-key
-# literal. `getSession` / `SESSION_COOKIE_NAME` (the core helpers collab
+# literal. `getSession` / `sessionCookieName()` (the core helpers collab
 # is SUPPOSED to use) do not contain the `:session:` colon-delimited
 # form, so they never false-positive.
 AUTH_DRIFT_REGEX='project_members|:session:'

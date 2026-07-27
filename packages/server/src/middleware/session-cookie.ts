@@ -28,13 +28,13 @@
 
 import type { Context } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
-import { env, SESSION_COOKIE_NAME } from "@breatic/core";
+import { env, sessionCookieName } from "@breatic/core";
 
-// `SESSION_COOKIE_NAME` is the single source of truth in
+// `sessionCookieName()` is the single source of truth in
 // `@breatic/core` (session-store), shared with collab's onAuthenticate
 // so the cookie name can never drift between the two services. Re-export
 // it so existing `@server/middleware` importers keep their import path.
-export { SESSION_COOKIE_NAME };
+export { sessionCookieName };
 
 const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
 
@@ -71,7 +71,7 @@ function baseOptions(): {
  * @param token - The opaque session token to store in the cookie.
  */
 export function setSessionCookie(c: Context, token: string): void {
-  setCookie(c, SESSION_COOKIE_NAME, token, baseOptions());
+  setCookie(c, sessionCookieName(), token, baseOptions());
 }
 
 /**
@@ -80,7 +80,7 @@ export function setSessionCookie(c: Context, token: string): void {
  * @returns The session token from the cookie, or `undefined` when the cookie is absent.
  */
 export function readSessionCookie(c: Context): string | undefined {
-  return getCookie(c, SESSION_COOKIE_NAME);
+  return getCookie(c, sessionCookieName());
 }
 
 /**
@@ -91,7 +91,7 @@ export function readSessionCookie(c: Context): string | undefined {
  */
 export function clearSessionCookie(c: Context): void {
   const domain = env.COOKIE_DOMAIN.trim();
-  deleteCookie(c, SESSION_COOKIE_NAME, {
+  deleteCookie(c, sessionCookieName(), {
     path: "/",
     ...(domain ? { domain } : {}),
   });

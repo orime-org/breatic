@@ -53,11 +53,13 @@ config/ agents/ skills/ locales/ (git-tracked); uploads/ + sandbox/ (git-ignored
 
 ### 3 services
 
-| Service | Port | Responsibility |
-|---|---|---|
-| API | 3000 | HTTP 请求 + Agent 聊天 SSE + Text mini-tool SSE |
-| Collab | 1234 | Yjs 文档同步 + PG 持久化 + Redis 跨实例 + 消费 Redis Streams 写 canvas 节点 |
-| Worker | — | BullMQ 任务执行 → 存 DB → Redis Streams publish NodeEvent → Collab 写 Yjs |
+| Service | Port | 端口来源 | Responsibility |
+|---|---|---|---|
+| API | 3000 | `PORT` | HTTP 请求 + Agent 聊天 SSE + Text mini-tool SSE |
+| Collab | 1234 | `COLLAB_PORT`(跟另两个服务端口一样在 core env schema;`collab.yaml` 只剩行为参数)| Yjs 文档同步 + PG 持久化 + Redis 跨实例 + 消费 Redis Streams 写 canvas 节点 |
+| Worker | — | — | BullMQ 任务执行 → 存 DB → Redis Streams publish NodeEvent → Collab 写 Yjs |
+
+三个 healthz 端口(3001 / 1235 / 9101)同样从 env 读(`SERVER_HEALTH_PORT` / `COLLAB_HEALTH_PORT` / `WORKER_HEALTH_PORT`)。**同一台机器上跑多个 worktree 时这些默认值会互撞**,尤其 BullMQ 队列共享会让一个 worktree 的任务被另一个的 worker 执行 —— 整套偏移方式见 `.env.dev` 顶部的 "Running several worktrees at once"。
 
 ### Canvas collaboration
 
@@ -69,6 +71,7 @@ config/ agents/ skills/ locales/ (git-tracked); uploads/ + sandbox/ (git-ignored
 - **handling 租约善后(#1569 + #1580 加固,2026-07-03)**:`handling` 是写进共享文档的易碎状态,驱动者(浏览器上传 / worker AIGC)可能悄无声息死掉。**善后 = 租约超时是唯一正确性保证,事件只是加速器**(业界收敛:Yjs awareness / BullMQ stalled / SQS visibility timeout);**断线不回收 handling**(#1580 片 4 Option A:presigned 直传对象存储对 collab 不可见且比 WS 活得久,任何连接活性信号都只是上传活性的替身 → 断线只清 operationLocks,handling 靠主人自清 + 清扫器保底)。`HandlingActor` 带必填 `startedAt`(epoch ms,frontend 时钟由清扫器首次观察盖服务器戳 `serverStamped`)+ **必填 `gen`**;统一预算 `HANDLING_TIMEOUT_MS`=1h(shared 单一来源),排队/执行两阶段各自预算窗(`phase` + `renewLease` 续期)。**统一 gen fencing(#1580 #7)**:节点带永久只增计数器 `data.leaseGen`,每次开 handling(上传 / AIGC)领 `gen = leaseGen + 1` 写进 `handlingBy`(前端另带主人三件套 `gen+userId+clientId`,写回验主人 = 节点最终内容属于最终租约主人);AIGC 的 gen 由前端经 `POST /canvas/tasks` 的 `node_gens`(int32 上界)进 job,worker 每次写回(done / failed / renew / 崩溃网)回传,collab 单写者 CAS(开事件 `gen >= leaseGen` 才应用并推进计数器;关/续事件 `gen === 在飞 handlingBy.gen` 才应用,陈旧写回永久丢弃留日志)。**worker 重试协议**:失败 CLOSE 只在**终态** attempt 发(`isTerminalAttempt`,非终态发 CLOSE 会自围栏重试的同 gen 写回 = 扣钱不到货);overwrite 锁跨 attempt 用 `reacquireCanvasNodeLock` 续持;计费后崩溃的重投递补发 done(幂等 + gen 兜);**计费临界区前有僵尸围栏**(`verifyJobLockOwnership`:复活的 stalled 执行用 `job.extendLock(token)` 原子验活,0 = 已被判死,静默退出不碰钱不写任何状态)。**collab 清扫器**(`services/handling-sweeper.ts`)在 `afterLoadDocument`(jitter 500ms~3s 错峰防重启惊群)+ 5min 周期扫(直接 doc 引用、**不走 openDirectConnection**)把超预算 / 无 `handlingBy` 的 handling 节点打回 `idle + errorMessage:'Operation timed out'`,顺带自愈 idle 节点上的 CRDT 残留 handlingBy;origin `handling-lease-sweep` 不进撤销栈。**worker 静默死兜底**:core `createQueueEvents` 的跨进程 `QueueEvents.on('failed')` 对**终态**失败(`job.finishedOn`)发失败事件(带 gen,双发由 CAS 天然去重)。**积分预检**:所有入队路由(`/canvas/tasks` / `/canvas/understand` / `/mini-tools/*`)共用 `precheckCredits`(余额 ≥ `estimateTaskCredits` 的 `cost_per_call` 估价,**不锁积分**软预检),worker 完成时按真实用量原子扣;overwrite 的开-handling 事件发布是**硬前提**(失败即 markFailed + 放锁 + 503,不 best-effort)。**成功写回清 errorMessage**(`errorMessage:null`)。**前后端分界**:租约解耦「可靠性」与「执行位置」→ 碰钱/密钥/重算力归后端,浏览器干得动的纯媒体变换可前端,两边 handling 同走租约善后;UI 有 busy 闸(handling 中拒绝二次上传/发起)
 - **存储层:studio 内去重 + 下发记录防伪 + 只插不删(#1826,2026-07-26)** —— 四条铁律见 [CLAUDE.md](../CLAUDE.md#关键规范) 的「存储」条,这里是机制。**三张表**:`studio_assets`(资产账本,`(studio_id, content_hash)` 部分唯一 = 去重键 + 幂等锚,另有 `storage_key` 部分索引供反查)· `upload_grants`(**下发记录**,presign 每铸一个 key 写一行:user + 服务端解析的 owner studio + 声明的 hash + key)· `storage_reclaim_queue`(**待回收清单**,去重命中时把多出来的那份登记进来交离线处理)。**key 租户中立**(`{taskType}/{date}/{时间戳}_{uuid}{ext}`,不含 user/project 前缀,hash 不进 URL),归属判定因此从「看 key 前缀」改成「查下发记录这一行是不是你的」——顺带堵死路径穿越(key 是我们铸的,伪造的不在表里)。**下发记录的三个角色**:① 授权(谓词 = `storage_key + user_id + 未消费`,**不含 studio** —— local 上传是裸字节 PUT,请求里根本没有 project/studio)· ② 提供**权威 owner studio**(从行里读,绝不拿客户端这次报的 project_id 重推,否则跨 studio 成员可把存储成本转嫁给团队)· ③ 把报告**绑定到当初申请的那份内容**(报告的 hash 必须等于下发时声明的,否则并发两个报告能在一个 key 上登记两个不同 hash → 一个还活着的对象被当成重复份送去回收 → 404)。消费一次性(CAS 防重放),且在登记**之后**(消费前该物理对象有「未消费下发记录」这条 in-flight 线索,消费后由账本行认领,中间无空窗)。**类型 / 大小 / 上限一律后端从存下来的东西读**:cloud 走 `head()`,local 读文件头嗅探(magic bytes + SVG/文本内容感知回落)——这是 local 上传 kind 全成 `'file'` 那个老 bug 的真修;权威 size 拿到后**回头跟上限复核**(presign 时客户端声明的 size 只做 UX 预检,不当权威门)
 - Yjs 持久化走 PG `yjs_documents` 表(Hocuspocus Database extension);跨实例同步走 Redis pub/sub(Hocuspocus Redis extension),连接在 `REDIS_COLLAB_URL`(DB3 collab 实例间协调库,与跨服务 Streams DB2 分开,以后可整体拆到独立 Redis 实例)
+- **频道命名空间是 `REDIS_KEY_PREFIX`(默认 = `ENV`),不是 DB 号** —— Redis 的 `SUBSCRIBE` 是实例级的、不认 `SELECT`,所以 DB3 这层隔离对普通 key 有效、对 pub/sub 频道**无效**。两套部署共用一个 Redis 实例(典型:同机多 worktree 并行开发)必须给不同前缀,否则双方持有同 UUID 文档时会互相收到对方的更新、写进对方的库。跨服务 stream key(`taskEventsStreamKey()` 等)不走这个前缀、仍从 `ENV` 派生,因为那是三服务必须一致的契约
 - Space 删除是跨实例 read-modify-write(「项目至少留一个 space」守卫):走 `REDIS_COLLAB_URL` 分布式锁(fencing 唯一 token + Lua check-and-del,TTL 30s 兜底)串行化 + 锁内读 PG 权威 space 数(数 `project-{id}/` 内容文档行、排 meta),防多实例并发删除把项目 space 删到 0(DD 2026-07-01,单靠最终一致的 CRDT 内存判断会被击穿)
 - 单文档连接数上限(`max_connections_per_document`,默认 100,满了**降级只读**非拒绝)是**跨实例**计数(#1421,2026-07-01):每连接在 `REDIS_COLLAB_URL`(DB3)一个 sorted set(key `{env}:collab:conncount:{docName}`,member `{instanceId}:{socketId}`,score = 心跳时间戳)登记,`onAuthenticate` 读 cluster-wide `ZCARD`(剪枝过期后)判 `>= cap` → 降级 + 永久日志 `connection_cap_degraded`;本地 `getConnectionsCount()` 只数本实例、多实例部署会到 N×cap 才触发,故不用。心跳每 10s 续期、TTL 30s 崩溃自愈;Redis 抖动 fail-open(计数返回 0 不误锁);**meta 文档豁免**(项目基础设施人人必连)。**登记绑 `connected` 生命周期钩子**(非 `onAuthenticate`)——`connected` 只在 Hocuspocus 建好 Connection 对象(已挂 `onClose → onDisconnect`)后触发,与 `onDisconnect` 注销对称,避免 auth 通过但文档加载失败的连接漏注销、被心跳永久续期成幽灵计数(DD 2026-07-01 对抗验证发现并修)
 - 节点结构 + 字段归属 + 状态机详细规范跟 `@breatic/shared/types/canvas-node.ts` 类型定义保持一致
@@ -200,7 +203,7 @@ v14 全新重写已于 2026-05-19 合入 `main`(PR #103)。对齐 design-baselin
 
 ### Run (web only)
 
-全量起服务(api / worker / collab / web,web 跑在 :8000)见 [Backend 的 Run](#run);只跑 web 用:
+全量起服务(api / worker / collab / web,web 跑在 `VITE_DEV_PORT`,默认 :8000)见 [Backend 的 Run](#run);dev server 的 `/api` `/ws` 代理目标由 `PORT` / `COLLAB_PORT` 推导,前后端端口永远同源。只跑 web 用:
 
 ```bash
 pnpm -F @breatic/web dev          # 只起 web
@@ -289,7 +292,7 @@ packages/web/
 │   ├── App.tsx · index.tsx · index.css · index.html
 ├── tests/                   # Playwright 端到端
 ├── components.json          # shadcn 配置
-├── tailwind.config.ts · vite.config.ts · tsconfig.json · postcss.config.js
+├── vite.config.mts · dev-ports.mts · proxy-targets.mts · tsconfig.json
 └── package.json
 ```
 
@@ -303,7 +306,7 @@ packages/web/
 | `GOOGLE_CLIENT_ID` | Google OAuth(可选;注入为 `__GOOGLE_CLIENT_ID__`) |
 | `VITE_SENTRY_DSN` | Sentry DSN(可选) |
 
-鉴权基于 cookie — 后端在登录 / 注册 / OAuth 时种一个 httpOnly 的 `breatic_session` cookie;前端不在 JS 里读或存任何 token。服务端环境变量 `COOKIE_DOMAIN` + `EMAIL_BACKEND` 见 [Configuration files](#configuration-files) 段(后端)。
+鉴权基于 cookie — 后端在登录 / 注册 / OAuth 时种一个 httpOnly 的 session cookie;前端不在 JS 里读或存任何 token。**cookie 名是部署级的**(`breatic_session_{REDIS_KEY_PREFIX}`,构造在 core 的 `sessionCookieName()`,是唯一一处),因为 **cookie 不按端口隔离**(RFC 6265 §8.5)—— 同机跑两套部署时端口分得开服务、分不开 cookie jar,同名就会互相顶掉登录态。服务端环境变量 `COOKIE_DOMAIN` + `EMAIL_BACKEND` 见 [Configuration files](#configuration-files) 段(后端)。
 
 ## Coding standards (function definition format)
 

@@ -101,8 +101,12 @@ export {
   taskEventsStreamKey,
   lifecycleStreamKey,
 } from "@core/infra/event-stream.js";
-export { publishMembersChanged, publishActivityNew } from "@core/infra/control-events.js";
-export { setSession, getSession, deleteSession, deleteAllSessions, SESSION_COOKIE_NAME } from "@core/infra/session-store.js";
+export {
+  publishMembersChanged,
+  publishActivityNew,
+  projectControlChannelPattern,
+} from "@core/infra/control-events.js";
+export { setSession, getSession, deleteSession, deleteAllSessions, sessionCookieName } from "@core/infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 
 // ── Shared auth kernel (collab + server share these) ──────────────

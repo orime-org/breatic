@@ -12,15 +12,29 @@ import type Redis from "ioredis";
 import { env } from "@core/config/env.js";
 
 /**
- * Name of the httpOnly session cookie.
+ * Name of the httpOnly session cookie, namespaced per deployment.
  *
- * Single source of truth shared by every backend service: the server
- * writes / reads / clears it through `setSessionCookie` &c., and collab
- * parses it off the WebSocket upgrade request in `onAuthenticate`.
- * Defined here (next to the session token store) so the two services
- * can never drift on the cookie name.
+ * Single source of truth shared by every backend service: the server writes /
+ * reads / clears it through `setSessionCookie` &c., and collab parses it off
+ * the WebSocket upgrade request in `onAuthenticate`. Defined here (next to the
+ * session token store) so the two can never drift.
+ *
+ * The `REDIS_KEY_PREFIX` suffix is what keeps concurrent deployments from
+ * evicting each other's logins (#1831). Cookies are NOT scoped by port
+ * (RFC 6265 §8.5): every service on `localhost` shares one cookie jar, so two
+ * worktrees using the same cookie name overwrite each other's token on every
+ * login — and since each looks its token up in its own Redis DB, the other
+ * side reads as logged out. Ports isolate the servers; only the name isolates
+ * the cookie.
+ *
+ * A function rather than a constant because the value is env-derived: the
+ * first call must happen after the entry's `initCore()`, which holds for every
+ * caller (they all run inside a request / upgrade handler).
+ * @returns The cookie name for this deployment, e.g. `breatic_session_dev`.
  */
-export const SESSION_COOKIE_NAME = "breatic_session";
+export function sessionCookieName(): string {
+  return `breatic_session_${env.REDIS_KEY_PREFIX}`;
+}
 
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 

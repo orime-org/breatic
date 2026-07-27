@@ -468,7 +468,8 @@ beforeAll(async () => {
   });
 
   // 4. Start Collab task-listener on the dev Redis stream.
-  //    envPrefix = "dev" → stream key: dev:stream:task-events
+  //    redisKeyPrefix = "dev" -> cursor key: dev:collab:task-events:last-id.
+  //    The STREAM key is separate and does NOT come from that argument:
   //    This must match taskEventsStreamKey() in @breatic/core/infra/event-stream.ts,
   //    which uses `${env.ENV}:stream:task-events` — and ENV="dev" in integration-setup.ts.
   stopTaskListener = startTaskListener(

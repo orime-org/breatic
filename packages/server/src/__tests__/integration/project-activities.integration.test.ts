@@ -36,6 +36,7 @@ import {
   initCore,
   getRedis,
   setSession,
+  sessionCookieName,
   loadLocales,
   projectActivitiesRepo,
 } from "@breatic/core";
@@ -110,7 +111,7 @@ async function insertProject(ownerUserId: string): Promise<string> {
 async function loginCookie(userId: string): Promise<string> {
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  return `breatic_session=${token}`;
+  return `${sessionCookieName()}=${token}`;
 }
 
 describe("generation idempotency (billed-redelivery guard)", () => {
