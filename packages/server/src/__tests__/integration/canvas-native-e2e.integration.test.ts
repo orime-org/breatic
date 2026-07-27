@@ -1172,11 +1172,23 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       { attempts: 1 },
     );
 
+    // Wait on the NODE, not just the task row. The task row flips to
+    // `completed` in the worker; the node only settles once the done event has
+    // travelled Redis stream → Collab → Yjs. Asserting on the node right after
+    // the task row races that hop — the exact CI flake recorded on 2026-07-16
+    // for the sibling test, which was fixed the same way. (It surfaced here on
+    // a slower CI runner: `expected 'handling' to be 'idle'`.)
     await waitForCondition(
-      async () => (await taskService.getByIdInternal(taskId))?.status === "completed",
+      async () => {
+        const d = await readNodeData(hocuspocus, docName, nodeId);
+        return d?.["state"] === "idle" && typeof d?.["content"] === "string";
+      },
       30_000,
-      `task ${taskId} (buffer output) completed despite Case-2 failDownload`,
+      `node ${nodeId} settled idle (buffer output) despite Case-2 failDownload`,
     );
+    // The task itself must have COMPLETED — the point of the test is that a
+    // Case-2 blip does not fail a Case-1 buffer output.
+    expect((await taskService.getByIdInternal(taskId))?.status).toBe("completed");
     const data = await readNodeData(hocuspocus, docName, nodeId);
     expect(data!["state"]).toBe("idle");
     // Node points at the Case-1 permanent URL (our own upload, keyed), never
