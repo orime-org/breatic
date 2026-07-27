@@ -29,6 +29,16 @@
 #                           sent_at, and they're retained as an audit
 #                           trail — never user-facing, never deleted.
 #                           Same append-only carve-out.
+#   - storage_reclaim_queue internal WORK QUEUE for the offline reclaim job
+#                           (#1826), not a business entity: runtime appends a
+#                           row when a dedup hit makes a stored object
+#                           redundant, the offline job marks reclaimed_at, and
+#                           the row is retained as an audit trail — never
+#                           user-facing, never deleted. Deliberately NOT
+#                           project-scoped: the physical object still needs
+#                           reclaiming after its project is gone, so it must
+#                           NOT cascade with a project delete. Same
+#                           append-only carve-out as project_lifecycle_outbox.
 #   - project_last_opened   per-user "last opened this project" UPSERT
 #                           tracker backing the Recent feed. No soft-delete
 #                           semantics: a row for a deleted / now-inaccessible
@@ -65,6 +75,7 @@ VIOLATIONS=$(
         allow["creditTransactions"] = 1
         allow["creditBalances"] = 1
         allow["projectLifecycleOutbox"] = 1
+        allow["storageReclaimQueue"] = 1
         allow["projectLastOpened"] = 1
       }
       function evaluate() {
