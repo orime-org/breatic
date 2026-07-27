@@ -19,13 +19,9 @@ import { readFile } from "node:fs/promises";
 import { getStorageAdapter, storageKey } from "@breatic/core";
 
 interface UploadCommonOptions {
-  /** Storage key owner — permanent URL is scoped to this user. */
-  userId: string;
-  /** Project ID for key prefix (defaults to "default" inside `storageKey`). */
-  projectId?: string;
   /**
-   * Task type for key prefix ("image", "video", "audio", …). Matches
-   * the Worker job's `taskType`.
+   * Task type segment of the (tenant-neutral) storage key ("image",
+   * "video", "audio", …). Matches the Worker job's `taskType`.
    */
   taskType: string;
   /** File extension with leading dot (e.g. `".mp4"`, `".png"`). */
@@ -45,14 +41,12 @@ export type UploadBufferOptions = UploadCommonOptions & {
 };
 
 /**
- * Build the storage key shared by both upload forms.
- * @param opts - Common upload options (user / project / task type / extension)
- * @returns A storage key scoped to the user, project and task type
+ * Build the (tenant-neutral) storage key shared by both upload forms.
+ * @param opts - Common upload options (task type / extension)
+ * @returns A tenant-neutral storage key for the task type (#1826, no user/project prefix)
  */
 function buildKey(opts: UploadCommonOptions): string {
   return storageKey({
-    userId: opts.userId,
-    projectId: opts.projectId,
     taskType: opts.taskType,
     ext: opts.ext,
   });

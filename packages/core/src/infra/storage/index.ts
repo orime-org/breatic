@@ -65,6 +65,22 @@ export interface StorageAdapter {
   ): Promise<string>;
 
   /**
+   * Stream-write a request body to disk, aborting past `maxBytes` WITHOUT
+   * buffering it all in memory (#1826, design §4.2). LOCAL ONLY — cloud
+   * providers receive direct presigned PUTs (getUploadUrl), never a body
+   * through our server. Returns the written size, or an over-limit sentinel
+   * the caller maps to 413.
+   * @param key - Storage key to write
+   * @param body - Request body as a web ReadableStream
+   * @param maxBytes - Hard byte cap (from storage config)
+   */
+  uploadStream?(
+    key: string,
+    body: ReadableStream<Uint8Array>,
+    maxBytes: number,
+  ): Promise<{ ok: true; size: number } | { ok: false; overLimit: true }>;
+
+  /**
    * Inspect an object by key — used to verify an upload completed.
    * @returns `{ size, contentType, exists }`. If the object does not
    *          exist, `exists` is `false` and other fields are zero/empty.
@@ -125,31 +141,26 @@ export async function getStorageAdapter(): Promise<StorageAdapter> {
 /**
  * Generate a unique storage key.
  *
- * Format (with user): {userId}/{projectId}/{taskType}/{date}/{unixtime}_{uuid}{ext}
- * Format (without user): {taskType}/{date}/{unixtime}_{uuid}{ext}
- * @param opts - the key components (user / project / task type / extension)
- * @param opts.userId - User ID (optional — omit for transport-level uploads)
- * @param opts.projectId - Project ID (defaults to "default")
+ * TENANT-NEUTRAL (#1826, design §3.1): the key carries NO `{userId}/{projectId}/`
+ * prefix — a single format `{taskType}/{date}/{ts}_{uuid}{ext}`. Ownership is no
+ * longer welded into the physical key (it leaked account topology + broke on
+ * transfer); the upload-grant ledger is the authenticity authority instead.
+ * @param opts - the key components (task type / extension)
  * @param opts.taskType - Task type (image, video, audio, tts, etc.)
  * @param opts.ext - File extension the CALLER must dot (".png", or a
- *   compound suffix like "_cover.jpg"), or "" for none — appended verbatim.
+ *   compound suffix like "_cover.webp"), or "" for none — appended verbatim.
  *   A bare "png" throws: the caller owns the format (#1630).
  * @returns the unique storage key path for the object
  * @throws {Error} If `ext` is non-empty and contains no dot (bare extension).
  */
-export function storageKey(opts: {
-  userId?: string;
-  projectId?: string;
-  taskType: string;
-  ext: string;
-}): string {
+export function storageKey(opts: { taskType: string; ext: string }): string {
   // Extension contract (#1630): the caller passes a dotted extension
-  // (".png"), a compound dotted suffix ("_cover.jpg"), or "" for none — it
+  // (".png"), a compound dotted suffix ("_cover.webp"), or "" for none — it
   // is appended verbatim below. A bare "png" is a caller bug; fail fast
   // here (the single choke point every key flows through — upload / AIGC /
   // cover / local) instead of silently producing a dot-less
   // "..._<uuid>png". `includes('.')` (not startsWith) so compound suffixes
-  // like "_cover.jpg" satisfy the contract.
+  // like "_cover.webp" satisfy the contract.
   if (opts.ext !== "" && !opts.ext.includes(".")) {
     throw new Error(
       `storageKey: ext must be a dotted extension (e.g. ".png") or "", got "${opts.ext}"`,
@@ -157,10 +168,6 @@ export function storageKey(opts: {
   }
   const date = new Date().toISOString().slice(0, 10);
   const filename = `${Date.now()}_${newId()}${opts.ext}`;
-  if (opts.userId) {
-    const project = opts.projectId || "default";
-    return `${opts.userId}/${project}/${opts.taskType}/${date}/${filename}`;
-  }
   return `${opts.taskType}/${date}/${filename}`;
 }
 

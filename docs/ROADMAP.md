@@ -106,6 +106,7 @@
 
 - [ ] Skill 安全分级：内置 Skill 可用 run_script，第三方禁止；未来按需开放 isolated-vm / Docker 沙箱 / Webhook
 - [x] 上传改为 presigned URL：`GET /assets/presign` → 直传 S3/OSS/本地，前端不持有 credentials
+- [x] **存储层重构（#1826）**：承接上一条把归属从 key 里拆出来。**key 租户中立**（`{taskType}/{date}/{时间戳}_{uuid}{ext}`，不再把 `{userId}/{projectId}/` 焊进每个公开 URL、泄漏账号拓扑）；**新增 `upload_grants` 下发记录表**接管"这 key 是不是你的"（presign 每铸一个 key 写一行：user + 服务端解析的 owner studio + 声明 hash），取代靠前缀判定的 `isOwnedKey`——它同时提供**权威 owner studio**（不信客户端报的 project_id，否则跨 studio 成员能把个人存储成本转嫁给团队）并把报告**绑定到当初申请的那份内容**（否则并发两个报告能在一个 key 上登记两个 hash，把一个还活着的对象送进回收队列 → 404）。**新增 `storage_reclaim_queue`** 待回收清单：去重命中时多出来的物理份只**登记**、不删，交离线回收（runtime 零删除攻击面 + 离线有明确工单）。**四条铁律**：runtime 只插不删 · 消费方 URL 一律取自登记记录（绝不钉刚上传、可能成孤儿的 key）· 登记失败即上传失败**零例外**（封面是视频上传的一半，#1816 原子契约）· **没 hash 不许传**（前端算不出就不发起，后端 presign + `/uploaded` 都必填）。**类型 / 大小 / 上限全部后端从"存下来的东西"读**（cloud `head()`、local magic-bytes 嗅探 + SVG/文本内容感知回落）——这是 local 上传 kind 全成 `'file'` 那个老 bug 的真修；权威 size 拿到后回头复核上限，"声明 1KB 传 50GB"绕不过去。另含：账号存储用量 = 该账号管理的每个 studio 相加、视频封面登记为一等资产行、local 流式写入走临时文件 + 原子改名（半成品不会被当成已完成对象注册）、画布拒收 0 字节文件
 
 ---
 

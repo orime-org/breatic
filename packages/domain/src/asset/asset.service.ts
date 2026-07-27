@@ -20,6 +20,7 @@ import {
   type RegisterAssetInput,
 } from "@domain/asset/asset.repo.js";
 import type { StudioAssetEntity } from "@breatic/shared";
+import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
 
 /**
  * Resolve which studio owns an asset produced by `actingUserId` in
@@ -88,10 +89,24 @@ export async function resolveOwnerStudioId(
  * @param input.sizeBytes - Byte size (from storage head()).
  * @param input.mimeType - MIME type.
  * @param input.kind - image | video | audio | document | file.
- * @param input.source - 'ai' | 'upload'.
+ * @param input.source - 'ai' | 'upload' | 'cover' (a first-class video cover
+ *   row, #1826 §4.5 — counts toward storage like any other asset).
  * @param input.generationTaskId - Producing task (AI only), for cost link.
- * @returns The asset entity plus whether it was a dedup hit.
+ * @param input.ownerStudioId - Authoritative owner studio when the caller
+ *   already knows it (the upload grant's studio, #1826 §2.2 v15). Omit to
+ *   resolve it from the project + acting user.
+ * @returns The asset entity, whether it was a dedup hit, and — only when the
+ *   reclaim-queue insert failed — a `reclaimQueueFailed` flag (the
+ *   registration itself still succeeded).
  * @throws {NotFoundError} If the project / personal studio is missing.
+ *
+ * On a DEDUP HIT the ledger keeps the existing row, which makes the object the
+ * caller just stored redundant. Runtime never deletes it (#1826 §0 rule 1 —
+ * zero delete attack surface); instead the redundant key is queued for the
+ * OFFLINE reclaim job (§2.3). Doing it HERE rather than at each call site is
+ * deliberate: `register` is the single place that knows a dedup happened, so
+ * the browser-upload and worker-generation paths get it without either one
+ * re-implementing the rule.
  */
 export async function register(input: {
   projectId: string;
@@ -104,11 +119,28 @@ export async function register(input: {
   kind: StudioAssetEntity["kind"];
   source: StudioAssetEntity["source"];
   generationTaskId?: string;
-}): Promise<{ asset: StudioAssetEntity; deduped: boolean }> {
-  const studioId = await resolveOwnerStudioId(
-    input.projectId,
-    input.actingUserId,
-  );
+  ownerStudioId?: string;
+}): Promise<{
+  asset: StudioAssetEntity;
+  deduped: boolean;
+  /**
+   * True when the dedup loser could NOT be queued for offline reclaim. The
+   * registration still SUCCEEDED — this only tells the application layer it may
+   * want to warn (the library layer cannot log). The object simply waits for
+   * the offline sweep instead of arriving on its work list.
+   */
+  reclaimQueueFailed?: true;
+}> {
+  // `ownerStudioId` overrides attribution when the caller already holds the
+  // AUTHORITATIVE studio — the browser-upload path reads it off the upload
+  // grant (#1826 §2.2 v15), because the grant recorded where the key was
+  // actually issued, whereas the report's `project_id` is client input and a
+  // member of two studios could point it at the other one to shift storage
+  // cost. Paths with no grant (worker generation) omit it and resolve from the
+  // project as before.
+  const studioId =
+    input.ownerStudioId ??
+    (await resolveOwnerStudioId(input.projectId, input.actingUserId));
   const repoInput: RegisterAssetInput = {
     studioId,
     contentHash: input.contentHash,
@@ -122,5 +154,35 @@ export async function register(input: {
       generationTaskId: input.generationTaskId,
     }),
   };
-  return registerWithDedup(repoInput);
+  const result = await registerWithDedup(repoInput);
+  if (!result.deduped) return result;
+  // The stored object lost dedup → hand it to the offline reclaim job. Only
+  // INSERTs; the physical object is untouched. Idempotent on storage_key, so a
+  // retried report never queues it twice.
+  //
+  // NEVER fails the registration (Gate-2 R5 H10). This queue is bookkeeping for
+  // an OFFLINE job; the ledger row — the thing callers actually depend on — is
+  // already committed by the time we get here. Letting an insert failure throw
+  // would make callers treat a fully successful upload / generation as failed
+  // (422 to the browser, markFailed + no charge in the worker) over a row no
+  // user ever sees. This library layer must not log (that is the application's
+  // job, @domain/CLAUDE.md), so the failure surfaces as a flag the caller can
+  // warn on; worst case the redundant object waits for the offline sweep that
+  // already has to handle orphans from crashes.
+  try {
+    await queueForReclaim({
+      storageKey: input.storageKey,
+      contentHash: input.contentHash,
+      studioId,
+      keptStorageKey: result.asset.storageKey,
+      // The asset's own source — 'ai' | 'upload' | 'cover' — so the offline
+      // job can tell a worker-produced duplicate from a browser-uploaded one
+      // (R5: mapping everything non-'ai' to 'upload' mislabelled worker
+      // covers, which are 'cover').
+      source: input.source,
+    });
+    return result;
+  } catch {
+    return { ...result, reclaimQueueFailed: true };
+  }
 }

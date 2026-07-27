@@ -132,12 +132,22 @@ const storageCtrl: { failDownload: boolean; contentKey: string | null } = {
   contentKey: null,
 };
 
-// Storage: passthrough — URLs look like permanent storage already
+// Storage: passthrough — URLs look like permanent storage already.
+// Keys are UNIQUE per mint (like the real `storageKey`) and the stub keeps a
+// key→url map so `publicUrl(key)` answers with the object actually stored under
+// that key. That makes the canonical-pin reconcile (§0 rule 2 / §4.4) observable
+// end-to-end: on a dedup hit the registry returns the WINNER's key, so
+// publicUrl resolves to the FIRST generation's object — the second upload's own
+// key is an orphan and must never reach the node.
+const keyToUrl = new Map<string, string>();
+let keySeq = 0;
+
 vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
   const { createHash } = await import("node:crypto");
   const persist = async (
     sourceUrl: string,
+    key?: string,
   ): Promise<{
     url: string;
     sha256: string;
@@ -149,6 +159,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
         "Synthetic re-host failure (test): download/persist failed",
       );
     }
+    if (key !== undefined) keyToUrl.set(key, sourceUrl);
     const hashInput = storageCtrl.contentKey ?? sourceUrl;
     return {
       url: sourceUrl,
@@ -159,16 +170,20 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
   return {
     ...orig,
-    downloadAndStore: async (url: string) => persist(url),
+    downloadAndStore: async (url: string, key: string) => persist(url, key),
     getStorageAdapter: async () => ({
-      upload: async (_key: string, _data: Buffer, _contentType: string) =>
-        "https://oss/uploaded",
+      upload: async (key: string, _data: Buffer, _contentType: string) => {
+        const url = `https://oss/uploaded/${key}`;
+        keyToUrl.set(key, url);
+        return url;
+      },
       persistFromUrl: async (url: string) => persist(url),
       // Our-own URLs = whatever upload() produced. Provider temp URLs
       // ("https://oss/result-*.png" etc.) are external → re-hosted by Case 2.
       isOwnUrl: (url: string) => url.startsWith("https://oss/uploaded"),
+      publicUrl: (key: string) => keyToUrl.get(key) ?? `https://oss/${key}`,
     }),
-    storageKey: () => "test/key.png",
+    storageKey: () => `test/key-${++keySeq}.png`,
   };
 });
 
@@ -237,10 +252,14 @@ const FIXTURE_STUDIO_ID = "00000000-0000-0000-0000-000000000003";
 // this is just a stable UUID we reuse across tasks in the test.
 const FIXTURE_SPACE_ID = "00000000-0000-0000-0000-000000000004";
 // A registered user with NO personal studio (mid-onboarding: registration
-// creates the user + credit balance but not the studio). Used to exercise
-// asset hole #2 — a generation acting as this user cannot resolve an owner
-// studio, so registration is best-effort skipped (billed but untracked)
-// and must NOT fail the job.
+// creates the user + credit balance but not the studio). Used to exercise the
+// node-bound register fail-closed rule (#1826 design §0 rule 3): a generation
+// acting as this user cannot resolve an owner studio, so its PRIMARY node
+// output cannot register. Per the fail-closed rule the task FAILS with no
+// charge rather than pinning the node to an unregistered key (which the offline
+// GC would later reclaim → 404). (Pre-#1826 this was "best-effort skipped:
+// billed but untracked" — that left exactly the orphan-node-key hole §0 rule 3
+// closes.)
 const FIXTURE_USER_NO_STUDIO_ID = "00000000-0000-0000-0000-000000000005";
 
 // ── Polling helpers ──────────────────────────────────────────────────────────
@@ -1042,7 +1061,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     expect(data["content"]).not.toBe(tempUrl);
   });
 
-  it("Test 5 (asset #1): a within-studio dedup hit collapses to one registry row; node keeps its own URL (reconcile deferred to #1609)", async () => {
+  it("Test 5 (asset #1): a within-studio dedup hit collapses to one registry row AND reconciles the node to that row's canonical (§0 rule 2)", async () => {
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
     // Force both generations to hash to the same content (a genuine dedup).
     storageCtrl.contentKey = "asset-1-dedup-content";
@@ -1066,11 +1085,14 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     );
     expect(first["content"]).toBe(urlA);
 
-    // Second gen: same content hash, DIFFERENT provider URL → registry
-    // dedups to the first row (usage counted once). The node keeps its OWN
-    // url — the node-URL reconcile is deferred to the upload slice (#1609)
-    // because reconciling could leak cross-project identifiers (adversarial
-    // #5). This test locks the dedup-collapse + the "no reconcile" contract.
+    // Second gen: same content hash, DIFFERENT provider URL → the registry
+    // dedups to the FIRST row (usage counted once) and the second upload's own
+    // key becomes an orphan with no live row. The node must therefore be
+    // RECONCILED to the winning row's canonical (§0 rule 2 / §4.4) — pinning
+    // its own key would 404 once the offline GC (§7) reclaims it. (This used to
+    // assert the opposite, justified by "reconciling leaks cross-project
+    // identifiers"; that rationale died with the tenant-neutral key, which
+    // carries no user/project id, and dedup is within a single studio anyway.)
     const urlB = "https://oss/dedup-second-t5.png";
     const taskB = await runGeneration({ nodeId: nodeB, url: urlB });
     await waitForCondition(
@@ -1088,7 +1110,9 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     );
 
     const second = await readNodeData(hocuspocus, docName, nodeB);
-    expect(second!["content"]).toBe(urlB); // keeps its own URL (no reconcile)
+    // RECONCILED to the surviving row's object — NOT its own orphaned upload.
+    expect(second!["content"]).toBe(urlA);
+    expect(second!["content"]).not.toBe(urlB);
     // Registry collapsed to exactly one row for the shared content hash.
     const rows = await db
       .select()
@@ -1148,25 +1172,39 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       { attempts: 1 },
     );
 
+    // Wait on the NODE, not just the task row. The task row flips to
+    // `completed` in the worker; the node only settles once the done event has
+    // travelled Redis stream → Collab → Yjs. Asserting on the node right after
+    // the task row races that hop — the exact CI flake recorded on 2026-07-16
+    // for the sibling test, which was fixed the same way. (It surfaced here on
+    // a slower CI runner: `expected 'handling' to be 'idle'`.)
     await waitForCondition(
-      async () => (await taskService.getByIdInternal(taskId))?.status === "completed",
+      async () => {
+        const d = await readNodeData(hocuspocus, docName, nodeId);
+        return d?.["state"] === "idle" && typeof d?.["content"] === "string";
+      },
       30_000,
-      `task ${taskId} (buffer output) completed despite Case-2 failDownload`,
+      `node ${nodeId} settled idle (buffer output) despite Case-2 failDownload`,
     );
+    // The task itself must have COMPLETED — the point of the test is that a
+    // Case-2 blip does not fail a Case-1 buffer output.
+    expect((await taskService.getByIdInternal(taskId))?.status).toBe("completed");
     const data = await readNodeData(hocuspocus, docName, nodeId);
     expect(data!["state"]).toBe("idle");
-    // Node points at the Case-1 permanent URL, never re-hosted by Case 2.
-    expect(data!["content"]).toBe("https://oss/uploaded");
+    // Node points at the Case-1 permanent URL (our own upload, keyed), never
+    // re-hosted by Case 2 — which would have thrown under failDownload.
+    expect(data!["content"]).toMatch(/^https:\/\/oss\/uploaded\/test\/key-\d+\.png$/);
   });
 
-  it("Test 6 (asset #2): a generation by a user with no personal studio completes best-effort but registers no asset", async () => {
+  it("Test 6 (asset #2): a node-bound generation by a user with no personal studio FAILS fail-closed (no charge, no orphan node key)", async () => {
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
     const nodeId = crypto.randomUUID();
     const url = "https://oss/nostudio-t6.png";
 
-    // Acting user has NO personal studio → resolveOwnerStudioId throws →
-    // registration is best-effort skipped. The job MUST still complete
-    // (bytes stored + node updated) — best-effort must not fail the job.
+    // Acting user has NO personal studio → resolveOwnerStudioId throws inside
+    // register → the PRIMARY node output cannot register. Per #1826 §0 rule 3
+    // (node-bound register fail-closed) the task FAILS with NO charge, rather
+    // than pinning the node to an unregistered key (offline GC → 404).
     const taskId = await runGeneration({
       nodeId,
       url,
@@ -1174,23 +1212,34 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     });
 
     await waitForCondition(
-      async () => (await taskService.getByIdInternal(taskId))?.status === "completed",
+      async () => (await taskService.getByIdInternal(taskId))?.status === "failed",
       30_000,
-      `task ${taskId} (no-studio user) completed best-effort`,
+      `task ${taskId} (no-studio user) failed fail-closed`,
     );
-    // Wait on the NODE, not just the task row (CI flake 2026-07-16: task
-    // completed but the done event's Yjs application had not landed yet).
+
+    // CRITICAL: a fail-closed register failure must NOT bill (§0 rule 3 reuses
+    // the persist-failure terminal path — no charge, mirrors Test 4).
+    const [t] = await db
+      .select()
+      .from(schema.tasks)
+      .where(eq(schema.tasks.id, taskId));
+    expect(t!.status).toBe("failed");
+    expect(t!.billedAt).toBeNull();
+
+    // The node ends idle with an error and is NOT pinned to the unregistered
+    // key — never a live studio_assets row would back it.
     const data = await waitForNodeData(
       hocuspocus,
       docName,
       nodeId,
       (d) => d["state"] === "idle",
       10_000,
-      `node ${nodeId} idle (no-studio best-effort)`,
+      `node ${nodeId} idle (no-studio fail-closed)`,
     );
-    expect(data["content"]).toBe(url); // node still got its content
+    expect(typeof data["errorMessage"]).toBe("string");
+    expect(data["content"]).not.toBe(url);
 
-    // But the asset is UNTRACKED — no studio_assets row links to this task.
+    // No studio_assets row links to this task (nothing was ever registered).
     const rows = await db
       .select()
       .from(schema.studioAssets)

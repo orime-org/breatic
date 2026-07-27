@@ -2,16 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Extract the first frame of a video as a JPEG cover image.
+ * Extract the first frame of a video as a WebP cover image.
  *
- * Uses ffmpeg to read the video URL directly (only downloads the
- * first few MB for the initial frame) and outputs a JPEG buffer.
- * The cover is then uploaded to the same storage as the video.
+ * Uses ffmpeg to read the video URL directly (only downloads the first few MB
+ * for the initial frame), then encodes the frame to WebP with Sharp. Per the
+ * format convention (#1826 §8: our-own-produced outputs use web-friendly
+ * formats, images → webp) the cover is a WebP. Sharp ships its own WebP codec,
+ * so this never depends on the ffmpeg binary being built with libwebp. The
+ * cover is then uploaded to the same storage as the video.
  */
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { getStorageAdapter, storageKey } from "@breatic/core";
+import sharp from "sharp";
+import { getStorageAdapter, storageKey, sha256Hex } from "@breatic/core";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,18 +28,19 @@ const execFileAsync = promisify(execFile);
  * video job handler) owns the warn/audit decision on `undefined`,
  * keeping the logging in one application-boundary place.
  * @param videoUrl - Permanent video URL (OSS/S3/local)
- * @param opts - userId/projectId for storage key generation
- * @param opts.userId - User the cover is stored under
- * @param opts.projectId - Project the cover belongs to, if any
- * @returns Cover image URL, or `undefined` if extraction fails
- *   (caller logs the decision)
+ * @returns The cover's URL + storage identity (key / sha256 / byte size / mime,
+ *   over the WebP bytes) so the caller can register it as a first-class
+ *   studio_assets row (#1826 §4.5) WITHOUT re-declaring the format (the cover
+ *   owns its own mime, so the register can't drift). `undefined` if extraction
+ *   / encoding fails (caller logs the decision).
  */
 export async function extractVideoCover(
   videoUrl: string,
-  opts: { userId: string; projectId?: string },
-): Promise<string | undefined> {
+): Promise<
+  { url: string; key: string; sha256: string; sizeBytes: number; mimeType: string } | undefined
+> {
   try {
-    // ffmpeg reads the remote URL directly, outputs JPEG to stdout
+    // ffmpeg reads the remote URL directly, outputs a single frame to stdout
     const { stdout } = await execFileAsync(
       "ffmpeg",
       [
@@ -53,18 +58,29 @@ export async function extractVideoCover(
       return undefined;
     }
 
+    // Re-encode the frame to WebP (§8 format convention). Sharp bundles its own
+    // codec — no dependency on ffmpeg's libwebp — so the identity below is over
+    // the WebP bytes that actually get stored.
+    const webp = await sharp(stdout).webp().toBuffer();
+
     const key = storageKey({
-      userId: opts.userId,
-      projectId: opts.projectId,
       taskType: "video",
-      ext: "_cover.jpg",
+      ext: "_cover.webp",
     });
 
     const adapter = await getStorageAdapter();
-    return adapter.upload(key, stdout, "image/jpeg");
+    const url = await adapter.upload(key, webp, "image/webp");
+    return {
+      url,
+      key,
+      sha256: sha256Hex(webp),
+      sizeBytes: webp.length,
+      mimeType: "image/webp",
+    };
   } catch {
-    // ffmpeg not installed or extraction failed — non-fatal,
-    // returns undefined so worker handler can decide to log.
+    // ffmpeg missing, extraction failed, or WebP encoding failed — all
+    // non-fatal; returns undefined so the worker handler can decide to log
+    // (cover stays best-effort → Film icon, #1824 invariant preserved).
     return undefined;
   }
 }

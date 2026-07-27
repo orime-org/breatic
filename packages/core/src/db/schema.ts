@@ -1106,7 +1106,11 @@ export const studioAssets = pgTable(
     mimeType: varchar("mime_type", { length: 100 }).notNull(),
     /** image | video | audio | document | file (detectKind). */
     kind: varchar("kind", { length: 20 }).notNull(),
-    /** 'ai' (worker-generated) | 'upload' (user upload). */
+    /**
+     * 'ai' (worker-generated) | 'upload' (user upload) | 'cover' (#1826 §4.5:
+     * a video's first-class cover asset — a normal row that counts toward
+     * storage, kind judged from the cover itself). varchar, no schema change.
+     */
     source: varchar("source", { length: 20 }).notNull(),
     /**
      * The generation task that produced an AI asset - links to cost via
@@ -1130,9 +1134,147 @@ export const studioAssets = pgTable(
     index("studio_assets_studio_idx")
       .on(table.studioId)
       .where(sql`${table.deletedAt} IS NULL`),
+    // Reverse lookup by key (#1826, Gate-2 R9). `queueForReclaim` refuses to
+    // enqueue a key that still has a live row, checking it inside the INSERT
+    // (atomically); without this index that guard was a sequential scan on
+    // every dedup-hit registration. NOT unique — dedup is keyed on content,
+    // not on key, and one key may appear on a soft-deleted row plus its
+    // replacement. Partial to match the guard's predicate exactly.
+    index("studio_assets_storage_key_idx")
+      .on(table.storageKey)
+      .where(sql`${table.deletedAt} IS NULL`),
     // The (studio_id, content_hash) partial UNIQUE (within-studio dedup
     // key, WHERE deleted_at IS NULL) lives in the migration - Drizzle's
     // builder does not emit partial unique indexes (same note as
     // project_activities / project_invitations).
+  ],
+);
+
+// The anti-spoof authority (#1826, design §2.2 / §3.2) that REPLACES the
+// prefix-based isOwnedKey once storage keys drop their {userId}/{projectId}/
+// prefix. /presign writes one grant row per issued storage key K (user +
+// owner studio + declared content_hash + K); the upload endpoints re-check
+// it — /local-upload finds a LIVE (not-consumed) grant to gate the disk
+// write WITHOUT consuming (a local upload is a two-hop PUT-then-report on
+// ONE grant), /uploaded finds + INSERTs studio_assets + marks consumed
+// exactly once (anti-replay).
+//
+// No expires_at (design v11): the check is ownership + not-consumed only, no
+// upload time limit (local uploads take as long as they take; cloud presigned
+// PUT-URL expiry is the provider's own PUT window, unrelated to this table).
+// No deleted_at: a short-lived anti-spoof credential, not a project-scoped
+// audit row — bound to (user, studio), never to a project, physically
+// reclaimed by an OFFLINE GC sweep (design §7), like an outbox. No
+// updated_at: append-only; consumed_at is a single-shot business marker.
+export const uploadGrants = pgTable(
+  "upload_grants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** The user who requested the presign. */
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** The owner studio resolved server-side at presign (resolveOwnerStudioId). */
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    /**
+     * Client-declared sha256 hex — the dedup lookup value at presign. NOT NULL:
+     * an upload without a hash is refused outright (#1826 §0 rule 4, "no hash,
+     * no upload"), because it could never be registered
+     * (`studio_assets.content_hash` is NOT NULL) and whatever pinned its URL
+     * would 404 once the object was reclaimed. The anti-spoof check itself is
+     * (storage_key, user_id) only and never reads this column.
+     */
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    /** The tenant-neutral storage key K the server minted (issued at most once). */
+    storageKey: text("storage_key").notNull(),
+    /**
+     * Client-declared byte size — a presign-time UX pre-check + downstream
+     * quota-reservation hint ONLY; the authoritative upload-cap gate reads the
+     * stored object's real size at /uploaded (design §4.2), never this.
+     */
+    declaredSize: bigint("declared_size", { mode: "number" }).notNull(),
+    /**
+     * Anti-replay marker — set exactly once by /uploaded AFTER its
+     * studio_assets INSERT. Null while unconsumed. /local-upload never sets it
+     * (write-time gate only). A consumed grant no longer resolves as live.
+     */
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // A storage key is issued at most once; this plain UNIQUE both enforces
+    // that and serves the ownership lookup (storage_key alone locates the row,
+    // then user_id + consumed_at IS NULL are checked). The studio is READ from
+    // the row, NEVER a query condition — that is the anti-spoof invariant, and
+    // what lets /local-upload (which holds no studio) authorize. Not partial,
+    // so Drizzle emits it fine — but the migration is still hand-written.
+    uniqueIndex("upload_grants_storage_key_unique").on(table.storageKey),
+  ],
+);
+
+// ── Storage reclaim queue (#1826 §2.3, v15 2026-07-26) ───────────────
+//
+// The list the OFFLINE reclaim job works from. When an upload or a generated
+// output turns out to be a within-studio duplicate, the copy we just stored is
+// redundant — but runtime NEVER deletes physical objects (§0 rule 1, which
+// keeps the delete attack surface at zero). So runtime does the only thing it
+// is allowed to do: it INSERTs one more row, here, saying "this object is a
+// known duplicate and is safe to reclaim". The offline job then works from an
+// explicit list instead of scanning the whole bucket guessing what is an
+// orphan.
+//
+// Nothing live ever references these keys: every consumer URL comes from the
+// surviving row's canonical (§0 rule 2), so reclaiming them cannot affect
+// production. No deleted_at — this is an internal work queue (like the
+// lifecycle outbox), not a project-scoped audit row: the physical object still
+// needs reclaiming even after its project is gone.
+export const storageReclaimQueue = pgTable(
+  "storage_reclaim_queue",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** The redundant object to reclaim (the copy this request just stored). */
+    storageKey: text("storage_key").notNull(),
+    /** Its content fingerprint — identical to the surviving row's. */
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    /** Owning studio (quota / reconciliation audits). */
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    /**
+     * The key that WON dedup and stays live. A safety rail: the offline job can
+     * confirm the winner still exists before deleting this one, so it can never
+     * reclaim the last copy of a content.
+     */
+    keptStorageKey: text("kept_storage_key").notNull(),
+    /**
+     * Mirrors `studio_assets.source` exactly: 'upload' (browser) | 'ai'
+     * (worker) | 'cover' (a video's cover, from EITHER path). No other value
+     * is possible — the column is written straight from the registered
+     * asset's own source.
+     */
+    source: varchar("source", { length: 16 }).notNull(),
+    /**
+     * Null while pending; set once the offline job has reclaimed the object.
+     * The row is MARKED, never deleted (same shape as upload_grants.consumed_at
+     * — the project never destroys records).
+     */
+    reclaimedAt: timestamp("reclaimed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // One row per redundant object — a retry of the same report must not queue
+    // it twice (the INSERT is ON CONFLICT DO NOTHING against this).
+    uniqueIndex("storage_reclaim_queue_storage_key_unique").on(table.storageKey),
+    // The offline job's driving query: the pending backlog, oldest first.
+    index("storage_reclaim_queue_pending_idx").on(
+      table.reclaimedAt,
+      table.createdAt,
+    ),
   ],
 );

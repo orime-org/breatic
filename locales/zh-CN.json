@@ -376,7 +376,9 @@
       "typeMismatch": "文件类型与节点不符。",
       "retry": "重新上传",
       "tooLarge": "{filename} 超过上传大小限制。",
-      "videoCodecUnsupported": "这个视频的格式浏览器无法读取。请转换成 H.264 / MP4 后再上传。"
+      "empty": "{filename} 是空文件,没有内容可以添加。",
+      "videoCodecUnsupported": "这个视频的格式浏览器无法读取。请转换成 H.264 / MP4 后再上传。",
+      "hashUnavailable": "无法校验此文件,请刷新页面后重试。"
     },
     "minimap": {
       "label": "画布缩略图"

@@ -85,8 +85,6 @@ const handler: LocalHandlerFn = async (rawParams, ctx): Promise<LocalHandlerResu
 
   const url = await uploadTempFileToStorage({
     path: outputPath,
-    userId: ctx.userId,
-    projectId: ctx.projectId,
     taskType: ctx.taskType,
     ext: ".mp4",
     contentType: "video/mp4",

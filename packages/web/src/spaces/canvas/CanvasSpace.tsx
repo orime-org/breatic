@@ -91,12 +91,15 @@ import {
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
 import {
   fileToNodeSpec,
+  checkFileAdmission,
   fillNodeFromFile,
   runMediaUpload,
   runVideoUploadWithCover,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
   type UploadedInfo,
+  type UploadFailureReason,
+  type UploadLease,
   assetUrlSurvives,
   isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
@@ -728,36 +731,35 @@ function CanvasSpaceInner({
                 hashFile,
                 presign: assetsApi.presign,
                 putFile: putFileWithRetry,
+                // §4.1 step 7 (SAME report-then-pin rule as a file upload — no
+                // crop special case): onSuccess resolves with the REGISTERED
+                // canonical the report returns, never the presign temp key. A
+                // report failure propagates → onFailure → reject (the crop
+                // upload fails). No nodeId — a crop is a pool entry; the report
+                // stays derived (registered but no activity-feed row of its own).
                 onSuccess: resolve,
-                onFailure: () => reject(new Error('focus upload failed')),
-                // Ledger handshake (adversarial 2026-07-16): every upload
-                // path must report the asset (#1606 attribution / dedup
-                // re-verify). Deliberately NO nodeId — a crop is a pool
-                // entry, not node content; node_id would write a bogus
-                // node-history record.
-                onUploaded: (info) => {
-                  void assetsApi
-                    .reportUploaded({
-                      projectId: pid,
-                      kind: info.kind,
-                      spaceId,
-                      // A crop is a DERIVED byproduct (product model A, #1824):
-                      // registered in the ledger for attribution / dedup but NOT
-                      // announced as its own activity-feed row.
-                      derived: true,
-                      ...(info.hash !== null && { hash: info.hash }),
-                      ...(info.dedup === true ? { dedup: true as const } : {}),
-                      ...(info.key !== undefined && { key: info.key }),
-                      metadata: {
-                        filename: file.name,
-                        size: file.size,
-                        mimeType: file.type,
-                      },
-                    })
-                    .catch(() =>
-                      toast.error(t('canvas.activity.reportFailed')),
-                    );
-                },
+                // Carry the REASON (Gate-2 R5): a hashing failure cannot be
+                // fixed by retrying on this page, so the crop pipeline must be
+                // able to say "reload" rather than the generic "try again".
+                onFailure: (reason) => reject(new Error(reason)),
+                onUploaded: (info) =>
+                  assetsApi.reportUploaded({
+                    projectId: pid,
+                    kind: info.kind,
+                    spaceId,
+                    // A crop is a DERIVED byproduct (product model A, #1824):
+                    // registered in the ledger for attribution / dedup but NOT
+                    // announced as its own activity-feed row.
+                    derived: true,
+                    hash: info.hash,
+                    ...(info.dedup === true ? { dedup: true as const } : {}),
+                    ...(info.key !== undefined && { key: info.key }),
+                    metadata: {
+                      filename: file.name,
+                      size: file.size,
+                      mimeType: file.type,
+                    },
+                  }),
               });
             }),
           addFocusImage: (image) => {
@@ -812,6 +814,12 @@ function CanvasSpaceInner({
           },
           onFailure: (stage) => {
             useCanvasStore.getState().removePendingFocusUpload(pendingId);
+            // A hashing refusal needs the RELOAD wording — retrying the crop on
+            // this page hits the same broken worker (Gate-2 R5).
+            if (stage === 'hash') {
+              toast.error(t('canvas.upload.hashUnavailable'));
+              return;
+            }
             toast.error(
               t(
                 stage === 'export'
@@ -1214,52 +1222,55 @@ function CanvasSpaceInner({
     [readOnly, flowNodes, t],
   );
 
-  // Activity-feed reporters (ADR 2026-07-04): fire-and-forget behind the
-  // canvas write-backs. The upload handshake failure surfaces a toast (the
-  // audit trail lost a verified event); the delete report stays silent —
-  // the deletion itself already succeeded and re-prompting the user would
-  // read as a failed delete.
+  // Activity-feed reporters (ADR 2026-07-04) behind the canvas write-backs.
+  // Their failure handling differs by reporter (detailed at each below):
+  // the upload report and the cover report are both AWAITED and both GATE the
+  // node pin — a rejection from either fails the whole upload → node error +
+  // Retry, NO toast (the node state is the failure UX). The cover is not the
+  // lesser half: #1816 makes video+cover atomic, so a cover that cannot be
+  // REGISTERED fails the upload exactly like one that could not be PUT.
+  // The delete report is fire-and-forget + silent (the deletion already
+  // succeeded — a toast would read as a failed delete).
+  // Reports the upload + RETURNS the registered canonical(s) — the node pins
+  // those, never the presign temp key (#1826 §0 rule 2 / §4.1 step 7). The
+  // upload orchestrator AWAITS this before writing the node content; a rejection
+  // (e.g. a node-bound register 422) propagates → the upload fails → the node
+  // shows an error + Retry (no toast — the node state is the failure UX now).
   const reportUploadedAsset = React.useCallback(
     (
       nodeId: string,
       info: UploadedInfo,
       file: File,
       coverInfo?: UploadedInfo,
-    ): void => {
-      void assetsApi
-        .reportUploaded({
-          projectId,
-          kind: info.kind,
-          nodeId,
-          spaceId,
-          // Regular path carries the stored key; a dedup hit reports the
-          // hash instead (nothing was uploaded — the server re-verifies
-          // the ledger row, #1609 B.2). hash is null only on the hashing
-          // worker degrade, where the upload stays untracked (plan §6).
-          ...(info.hash !== null && { hash: info.hash }),
-          ...(info.dedup === true ? { dedup: true as const } : {}),
-          ...(info.key !== undefined && { key: info.key }),
-          // Cover reference (#1824, atomic video path): the server re-derives
-          // the cover thumbnail URL from a verifiable ref — the cover's stored
-          // key (regular) or its content hash (dedup hit) — riding on the VIDEO
-          // report so the node-history row (①) + activity row (②) carry it.
-          // Client URLs are never trusted, so only the key / hash is sent.
-          ...(coverInfo?.dedup === true
-            ? coverInfo.hash !== null
-              ? { coverHash: coverInfo.hash }
-              : {}
-            : coverInfo?.key !== undefined
-              ? { coverKey: coverInfo.key }
-              : {}),
-          metadata: {
-            filename: file.name,
-            size: file.size,
-            mimeType: file.type,
-          },
-        })
-        .catch(() => toast.error(t('canvas.activity.reportFailed')));
-    },
-    [projectId, spaceId, t],
+    ): Promise<{ fileUrl: string; coverUrl?: string }> =>
+      assetsApi.reportUploaded({
+        projectId,
+        kind: info.kind,
+        nodeId,
+        spaceId,
+        // Regular path carries the stored key; a dedup hit reports the
+        // hash instead (nothing was uploaded — the server re-verifies the
+        // ledger row, #1609 B.2). The hash is ALWAYS sent: an upload that
+        // could not be hashed never got this far (#1826 §0 rule 4).
+        hash: info.hash,
+        ...(info.dedup === true ? { dedup: true as const } : {}),
+        ...(info.key !== undefined && { key: info.key }),
+        // Cover reference (#1824 / #1826 §4.5): the cover is a first-class
+        // studio_assets row registered by its OWN derived report; the video
+        // report rides only the cover's content HASH so the server reads that
+        // row's canonical URL for the node content coverUrl + node-history (①)
+        // + activity (②) thumbnails. Hash-only — no key, no client URL.
+        // Absent only when this upload HAS no cover (anything that is not a
+        // video); a cover that exists always has a hash (§0 rule 4), and one
+        // the server cannot resolve is a 422, never a silent Film degrade.
+        ...(coverInfo !== undefined && { coverHash: coverInfo.hash }),
+        metadata: {
+          filename: file.name,
+          size: file.size,
+          mimeType: file.type,
+        },
+      }),
+    [projectId, spaceId],
   );
   // Cover ledger report for the atomic video upload (#1816 / #1824): registers
   // the COVER asset for #1606 attribution / dedup, WITHOUT a nodeId (F3) — a
@@ -1269,14 +1280,31 @@ function CanvasSpaceInner({
   // announced as its own activity-feed row — the cover surfaces only as the
   // video-upload row's thumbnail (via the video report's cover ref).
   const reportUploadedCover = React.useCallback(
-    (info: UploadedInfo, coverFile: File): void => {
-      void assetsApi
+    // Returns the report Promise (not fire-and-forget): the atomic video upload
+    // AWAITS it so the cover's studio_assets row is committed before the video
+    // report reads it by hash (#1826 §4.5).
+    //
+    // A REJECTION PROPAGATES (user 2026-07-26). It used to be swallowed here,
+    // letting the video land while its cover never reached the ledger. But
+    // #1816 made the two halves atomic — "a video never lands without its cover
+    // and a cover never lands without its video" — and a cover that cannot be
+    // REGISTERED is no different from a cover that could not be PUT. So the
+    // rejection travels up to runVideoUploadWithCover's catch: no node write,
+    // no video report, Retry offered. (The "a cover failure never fails the
+    // video" invariant of #1824 governs the WORKER path — an AI-generated,
+    // already-billed video whose cover is genuinely auxiliary — not this one.)
+    (info: UploadedInfo, coverFile: File): Promise<void> => {
+      return assetsApi
         .reportUploaded({
           projectId,
           kind: info.kind,
           spaceId,
           derived: true,
-          ...(info.hash !== null && { hash: info.hash }),
+          // First-class cover asset (#1826 §4.5): registered as source='cover'
+          // (counts toward storage), paired with derived:true so it does NOT
+          // announce its own activity-feed row.
+          source: 'cover',
+          hash: info.hash,
           ...(info.dedup === true ? { dedup: true as const } : {}),
           ...(info.key !== undefined && { key: info.key }),
           metadata: {
@@ -1285,9 +1313,9 @@ function CanvasSpaceInner({
             mimeType: coverFile.type,
           },
         })
-        .catch(() => toast.error(t('canvas.activity.reportFailed')));
+        .then(() => undefined);
     },
-    [projectId, spaceId, t],
+    [projectId, spaceId],
   );
   const reportDeletedAssets = React.useCallback(
     (deletedNodes: Node[]): void => {
@@ -1845,6 +1873,53 @@ function CanvasSpaceInner({
     [spaceId],
   );
 
+  // Shared failure write-back for the drop path's uploads. Fixed-English wire
+  // string — like AIGC failure messages and the group default name:
+  // errorMessage goes into Yjs and renders raw to every collaborator, so it
+  // must not freeze the uploader's locale into the shared doc; the filename is
+  // the locale-free part telling the user WHICH file failed. The File is
+  // stashed BEFORE the error lands so the error re-render already sees the
+  // Retry stash (#1609 P4).
+  //
+  // A `hash` failure is different in kind: the browser could not fingerprint
+  // the file, so no retry of THIS page can succeed (the hashing worker's code
+  // is what broke) and there is nothing to stash — the remedy is a reload,
+  // which only a localized toast can say.
+  const failUploadNode = React.useCallback(
+    (
+      reason: UploadFailureReason,
+      nodeId: string,
+      file: File,
+      lease: UploadLease,
+    ): void => {
+      if (reason === 'hash') {
+        // CLEAR any stash from an earlier attempt (Gate-2 R5): leaving one
+        // behind keeps the Retry button alive on a node whose error says the
+        // file could not be read — and Retry would re-upload that STALE file,
+        // not the one the user just picked.
+        clearRetryFile(projectId, spaceId, nodeId);
+        failNodeHandling(
+          projectId,
+          spaceId,
+          nodeId,
+          `Could not read file: ${file.name}`,
+          lease,
+        );
+        toast.error(t('canvas.upload.hashUnavailable'));
+        return;
+      }
+      stashRetryFile(projectId, spaceId, nodeId, file);
+      failNodeHandling(
+        projectId,
+        spaceId,
+        nodeId,
+        `Upload failed: ${file.name}`,
+        lease,
+      );
+    },
+    [projectId, spaceId, t],
+  );
+
   const processFiles = React.useCallback(
     (files: File[], origin: { x: number; y: number }): void => {
       if (readOnly || files.length === 0) return;
@@ -1867,8 +1942,11 @@ function CanvasSpaceInner({
         }
         const admitted: File[] = [];
         for (const file of files) {
-          if (fileToNodeSpec(file).needsUpload && file.size > maxBytes) {
-            toast.warning(t('canvas.upload.tooLarge', { filename: file.name }));
+          const rejection = checkFileAdmission(file, maxBytes);
+          if (rejection !== null) {
+            toast.warning(
+              t(`canvas.upload.${rejection}`, { filename: file.name }),
+            );
           } else {
             admitted.push(file);
           }
@@ -1894,7 +1972,7 @@ function CanvasSpaceInner({
             const coverFile = new File(
               [coverBlob],
               videoCoverFileName(file.name),
-              { type: 'image/jpeg' },
+              { type: 'image/webp' },
             );
             const { nodeId, lease } = createUploadNodeAt('video', position);
             created.push(nodeId);
@@ -1920,16 +1998,8 @@ function CanvasSpaceInner({
                     toast.warning(t('canvas.upload.ownershipLost'));
                   }
                 },
-                onFailure: () => {
-                  stashRetryFile(projectId, spaceId, nodeId, file);
-                  failNodeHandling(
-                    projectId,
-                    spaceId,
-                    nodeId,
-                    `Upload failed: ${file.name}`,
-                    lease,
-                  );
-                },
+                onFailure: (reason) =>
+                  failUploadNode(reason, nodeId, file, lease),
                 onVideoUploaded: (videoInfo, coverInfo) =>
                   reportUploadedAsset(nodeId, videoInfo, file, coverInfo),
                 onCoverUploaded: (info, cf) => reportUploadedCover(info, cf),
@@ -1963,16 +2033,8 @@ function CanvasSpaceInner({
                 // telling the user which file failed. The File is stashed BEFORE
                 // the error lands so the error re-render already sees the Retry
                 // stash (#1609 P4).
-                onFailure: () => {
-                  stashRetryFile(projectId, spaceId, nodeId, file);
-                  failNodeHandling(
-                    projectId,
-                    spaceId,
-                    nodeId,
-                  `Upload failed: ${file.name}`,
-                  lease,
-                  );
-                },
+                onFailure: (reason) =>
+                  failUploadNode(reason, nodeId, file, lease),
                 onUploaded: (info) => reportUploadedAsset(nodeId, info, file),
               }),
             );
@@ -2007,6 +2069,7 @@ function CanvasSpaceInner({
       readOnly,
       projectId,
       spaceId,
+      failUploadNode,
       createUploadNodeAt,
       t,
       reportUploadedAsset,
@@ -2718,8 +2781,11 @@ function CanvasSpaceInner({
         } catch {
           // Server-side 413 remains the authoritative gate.
         }
-        if (fileToNodeSpec(file).needsUpload && file.size > maxBytes) {
-          toast.warning(t('canvas.upload.tooLarge', { filename: file.name }));
+        const rejection = checkFileAdmission(file, maxBytes);
+        if (rejection !== null) {
+          toast.warning(
+            t(`canvas.upload.${rejection}`, { filename: file.name }),
+          );
           return;
         }
         await fillNodeFromFile(nodeId, file, modality, projectId, {
@@ -2764,6 +2830,10 @@ function CanvasSpaceInner({
             }
             return failNodeHandling(projectId, spaceId, id, message, lease);
           },
+          // Same outcome as the drop path: inline error + reload toast, and
+          // NO Retry stash (retrying here would hit the same broken worker).
+          onHashUnavailable: (id, f, lease) =>
+            failUploadNode('hash', id, f, lease),
           onUploaded: (id, info, coverInfo) =>
             reportUploadedAsset(id, info, file, coverInfo),
           onCoverUploaded: (info, coverFile) =>
@@ -2777,6 +2847,7 @@ function CanvasSpaceInner({
       spaceId,
       userId,
       t,
+      failUploadNode,
       reportUploadedAsset,
       reportUploadedCover,
       trackOperation,

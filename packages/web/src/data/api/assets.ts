@@ -52,7 +52,9 @@ export const assetsApi = {
    * @param params.contentType - MIME type; the backend derives the asset `kind` from it.
    * @param params.projectId - Owning project (presign is gated on project edit access).
    * @param params.size - Declared byte size (authoritative cap gate + dedup size distrust).
-   * @param params.hash - Content sha256, or null when hashing degraded (omitted from the wire).
+   * @param params.hash - Content sha256. Mandatory (#1826 §0 rule 4): the
+   *   caller refuses the upload outright when it cannot hash, and the server
+   *   rejects a hashless presign with 400.
    * @returns A normal presign (uploadUrl/fileUrl/key/kind) or a dedup hit (alreadyExists/fileUrl/kind).
    */
   presign(params: {
@@ -61,8 +63,8 @@ export const assetsApi = {
     projectId: string;
     /** Declared byte size (authoritative cap gate + dedup size distrust). */
     size: number;
-    /** Content sha256, or null when hashing degraded (worker failure). */
-    hash?: string | null;
+    /** Content sha256 — mandatory ("no hash, no upload", #1826 §0 rule 4). */
+    hash: string;
   }): Promise<PresignResponse> {
     return apiGet<PresignResponse>('/assets/presign', {
       params: {
@@ -129,21 +131,22 @@ export const assetsApi = {
    * @param params.dedup - True for a dedup report (presign said `alreadyExists`).
    * @param params.nodeId - Canvas node the asset landed on, when node-bound.
    * @param params.spaceId - Space the node lives in.
-   * @param params.source - `mini_tool` for frontend-executed mini-tool products.
+   * @param params.source - `mini_tool` for a frontend mini-tool product;
+   *   `cover` for a video's first-class cover asset (#1826 §4.5).
    * @param params.toolName - Mini-tool name when `source` is set.
-   * @param params.coverKey - Cover's stored key (regular video path, #1824) —
-   *   the server re-derives the cover thumbnail URL from it (client URL never
-   *   trusted). Rides on the VIDEO report so the node-history + activity rows
-   *   carry the cover.
-   * @param params.coverHash - Cover's content hash (dedup video path, #1824) —
-   *   the server re-derives the cover thumbnail URL by looking the row up.
+   * @param params.coverHash - Cover's content hash — the server reads the
+   *   cover's studio_assets row by it and carries the cover on the video's
+   *   node-history + activity thumbnails (#1824 / #1826 §4.5).
    * @param params.derived - True for a DERIVED byproduct (cover / crop, model
    *   A) — registered in the ledger but NOT announced as its own feed row.
    * @param params.metadata - Original-file facts for the node-history record.
    * @param params.metadata.filename - Original file name.
    * @param params.metadata.size - Original byte size (client-declared).
    * @param params.metadata.mimeType - Original MIME type.
-   * @returns Nothing (the activity row is server-side).
+   * @returns The REGISTERED row's canonical URL (+ resolved `coverUrl` for a
+   *   video) — the node pins this, never the presign temp key (#1826 §0 rule 2
+   *   / §4.1 step 7). Rejects (throws) on a report failure (e.g. a node-bound
+   *   register 422) so the caller fails the upload → Retry.
    */
   async reportUploaded(params: {
     projectId: string;
@@ -156,32 +159,40 @@ export const assetsApi = {
     dedup?: true;
     nodeId?: string;
     spaceId?: string;
-    source?: 'mini_tool';
+    source?: 'mini_tool' | 'cover';
     toolName?: string;
-    /** Cover's stored key (regular video path) — server re-derives the URL. */
-    coverKey?: string;
-    /** Cover's content hash (dedup video path) — server re-derives the URL. */
+    /**
+     * Cover's content hash — the server reads the cover's studio_assets row by
+     * it (#1826 §4.5) to carry the cover on the video's node-history + activity
+     * thumbnails.
+     */
     coverHash?: string;
     /** True for a derived byproduct (cover / crop): ledger yes, feed row no. */
     derived?: true;
     /** Original-file facts for the node-history record. */
     metadata?: { filename: string; size: number; mimeType: string };
-  }): Promise<void> {
-    await apiPost<{ ok: boolean }>('/assets/uploaded', {
-      project_id: params.projectId,
-      kind: params.kind,
-      ...(params.key !== undefined && { key: params.key }),
-      ...(params.hash !== undefined && { hash: params.hash }),
-      ...(params.dedup !== undefined && { dedup: params.dedup }),
-      ...(params.nodeId !== undefined && { node_id: params.nodeId }),
-      ...(params.spaceId !== undefined && { space_id: params.spaceId }),
-      ...(params.source !== undefined && { source: params.source }),
-      ...(params.toolName !== undefined && { tool_name: params.toolName }),
-      ...(params.coverKey !== undefined && { cover_key: params.coverKey }),
-      ...(params.coverHash !== undefined && { cover_hash: params.coverHash }),
-      ...(params.derived !== undefined && { derived: params.derived }),
-      ...(params.metadata !== undefined && { metadata: params.metadata }),
-    });
+  }): Promise<{ fileUrl: string; coverUrl?: string }> {
+    const res = await apiPost<{ ok: boolean; fileUrl: string; coverUrl?: string }>(
+      '/assets/uploaded',
+      {
+        project_id: params.projectId,
+        kind: params.kind,
+        ...(params.key !== undefined && { key: params.key }),
+        ...(params.hash !== undefined && { hash: params.hash }),
+        ...(params.dedup !== undefined && { dedup: params.dedup }),
+        ...(params.nodeId !== undefined && { node_id: params.nodeId }),
+        ...(params.spaceId !== undefined && { space_id: params.spaceId }),
+        ...(params.source !== undefined && { source: params.source }),
+        ...(params.toolName !== undefined && { tool_name: params.toolName }),
+        ...(params.coverHash !== undefined && { cover_hash: params.coverHash }),
+        ...(params.derived !== undefined && { derived: params.derived }),
+        ...(params.metadata !== undefined && { metadata: params.metadata }),
+      },
+    );
+    return {
+      fileUrl: res.fileUrl,
+      ...(res.coverUrl !== undefined && { coverUrl: res.coverUrl }),
+    };
   },
 
   /**

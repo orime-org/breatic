@@ -166,7 +166,12 @@ export interface StudioAssetEntity {
   sizeBytes: number;
   mimeType: string;
   kind: "image" | "video" | "audio" | "document" | "file";
-  source: "ai" | "upload";
+  /**
+   * 'ai' (worker-generated) | 'upload' (user upload) | 'cover' (a video's
+   * first-class cover asset — #1826 §4.5: the cover is a normal studio_assets
+   * row that counts toward storage, kind judged from the cover itself = image).
+   */
+  source: "ai" | "upload" | "cover";
   generationTaskId: string | null;
   createdAt: Date;
   deletedAt: Date | null;

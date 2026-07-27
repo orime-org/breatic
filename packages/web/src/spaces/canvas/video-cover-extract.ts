@@ -7,8 +7,11 @@
  * A video the user uploads carries no cover, so the VideoNode poster + the
  * reference rail / @ chip have nothing to show and generated-vs-uploaded video
  * diverge on the same `coverUrl` field. This grabs the first frame off a local
- * `<video>` (objectURL → seek to frame 0 → `<canvas>` → JPEG blob), mirroring
- * the worker's ffmpeg cover so both paths feed one `coverUrl`.
+ * `<video>` (objectURL → seek to frame 0 → `<canvas>` → WebP blob), mirroring
+ * the worker's Sharp cover so both paths feed one `coverUrl`. WebP is the
+ * format convention for our-own-produced images (#1826 §8); a browser without
+ * canvas WebP export (pre-Safari 17) falls back to PNG per the `toBlob` spec —
+ * never JPEG — and the backend authoritatively re-sniffs the bytes regardless.
  *
  * Best-effort by contract: a codec the browser cannot decode (HEVC etc.), a
  * zero-sized frame, or a timeout resolves to `null` — NEVER throws. The caller
@@ -29,10 +32,10 @@ export interface ExtractVideoFirstFrameOptions {
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
- * JPEG quality for the cover (0..1) — matches the worker's ffmpeg `_cover.jpg`
+ * WebP quality for the cover (0..1) — matches the worker's Sharp `_cover.webp`
  * intent: a small, lossy still is fine for a poster / thumbnail.
  */
-const COVER_JPEG_QUALITY = 0.85;
+const COVER_WEBP_QUALITY = 0.85;
 
 /**
  * A hair past 0, still inside frame 0 for any real frame rate (< any frame's
@@ -43,7 +46,7 @@ const COVER_JPEG_QUALITY = 0.85;
 const FIRST_FRAME_SEEK_S = 0.0001;
 
 /**
- * Extract the first frame of a local video File as a JPEG cover blob, or
+ * Extract the first frame of a local video File as a WebP cover blob, or
  * `null` when the browser cannot decode it (unsupported codec), the frame is
  * empty, or the decode times out. Never throws.
  *
@@ -53,7 +56,7 @@ const FIRST_FRAME_SEEK_S = 0.0001;
  * revoked (success or failure).
  * @param file - The video File to grab the first frame from.
  * @param opts - Optional decode-timeout override.
- * @returns The first-frame JPEG blob, or `null` on any failure / timeout.
+ * @returns The first-frame WebP blob, or `null` on any failure / timeout.
  */
 export async function extractVideoFirstFrame(
   file: File,
@@ -106,8 +109,8 @@ export async function extractVideoFirstFrame(
           ctx.drawImage(video, 0, 0);
           canvas.toBlob(
             (blob) => finish(blob),
-            'image/jpeg',
-            COVER_JPEG_QUALITY,
+            'image/webp',
+            COVER_WEBP_QUALITY,
           );
         } catch {
           finish(null);
@@ -123,14 +126,14 @@ export async function extractVideoFirstFrame(
 }
 
 /**
- * Derive the cover File name from a video File name: `<base>-cover.jpg`. Keeps
+ * Derive the cover File name from a video File name: `<base>-cover.webp`. Keeps
  * the cover recognisable next to its video in storage / dedup and gives the
  * `<canvas>` blob a real filename for the presign contract.
  * @param videoFileName - The source video's File name.
- * @returns The cover's `.jpg` filename.
+ * @returns The cover's `.webp` filename.
  */
 export function videoCoverFileName(videoFileName: string): string {
   const dot = videoFileName.lastIndexOf('.');
   const base = dot > 0 ? videoFileName.slice(0, dot) : videoFileName;
-  return `${base}-cover.jpg`;
+  return `${base}-cover.webp`;
 }

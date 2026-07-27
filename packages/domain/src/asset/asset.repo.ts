@@ -12,7 +12,7 @@
  * (asset.service.resolveOwnerStudioId); this repo is attribution-agnostic.
  */
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, inArray, sql } from "drizzle-orm";
 import { db, studioAssets } from "@breatic/core";
 import type { StudioAssetEntity } from "@breatic/shared";
 
@@ -132,6 +132,29 @@ export async function usageByStudio(studioId: string): Promise<number> {
     .from(studioAssets)
     .where(
       and(eq(studioAssets.studioId, studioId), isNull(studioAssets.deletedAt)),
+    );
+  return Number(rows[0]?.total ?? 0);
+}
+
+/**
+ * Total live storage a SET of studios uses, in bytes (raw SUM, no
+ * cross-studio dedup). Backs the account-level roll-up (#1826 §5.3):
+ * an account's usage is the sum over its personal ∪ administered team
+ * studios. Since dedup is per-studio, identical content in two of the
+ * given studios is two physical rows and is counted twice — this is the
+ * intended raw-sum semantics.
+ * @param studioIds - Studios to sum (empty → 0, no query issued).
+ * @returns The byte total across all given studios' live assets.
+ */
+export async function usageByStudios(studioIds: string[]): Promise<number> {
+  if (studioIds.length === 0) return 0;
+  const rows = await db
+    .select({
+      total: sql<string>`COALESCE(SUM(${studioAssets.sizeBytes}), 0)`,
+    })
+    .from(studioAssets)
+    .where(
+      and(inArray(studioAssets.studioId, studioIds), isNull(studioAssets.deletedAt)),
     );
   return Number(rows[0]?.total ?? 0);
 }

@@ -34,6 +34,8 @@ const storageConfigSchema = z.object({
       client_request_timeout_ms: z.number().int().positive().default(30000),
       /** PUT stall guard rate: per-attempt timeout = max(floor, size/rate). */
       client_put_min_bytes_per_sec: z.number().int().positive().default(65536),
+      /** Presigned PUT URL expiry (s); the cloud PUT window (#1826, §3.2). */
+      presign_expires_seconds: z.number().int().positive().default(300),
     })
     .default({
       max_upload_bytes: 2147483648,
@@ -41,6 +43,7 @@ const storageConfigSchema = z.object({
       client_retry_base_delay_ms: 1000,
       client_request_timeout_ms: 30000,
       client_put_min_bytes_per_sec: 65536,
+      presign_expires_seconds: 300,
     }),
 });
 

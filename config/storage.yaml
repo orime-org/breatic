@@ -29,3 +29,7 @@ upload:
   # size / this rate). A dead connection aborts + retries instead of
   # hanging forever, while a legitimately slow big upload never trips it.
   client_put_min_bytes_per_sec: 65536
+  # Presigned PUT URL expiry (seconds) for cloud storage (S3/OSS). This is the
+  # provider's own PUT window — unrelated to the upload-grant ledger, which has
+  # no time limit (#1826, design §3.2). Local storage has no presigned URL.
+  presign_expires_seconds: 300

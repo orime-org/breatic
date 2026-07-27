@@ -49,7 +49,7 @@ describe('assetsApi.presign — aligned to the backend presign contract', () => 
     });
   });
 
-  it('omits the hash param when hashing degraded to null', async () => {
+  it('ALWAYS sends the hash — there is no hashless presign any more (#1826 §0 rule 4)', async () => {
     vi.mocked(apiGet).mockResolvedValue({
       uploadUrl: 'https://put',
       fileUrl: 'https://public',
@@ -62,13 +62,17 @@ describe('assetsApi.presign — aligned to the backend presign contract', () => 
       contentType: 'image/png',
       projectId: 'p1',
       size: 10,
-      hash: null,
+      hash: 'a'.repeat(64),
     });
 
     const params = vi.mocked(apiGet).mock.calls[0]![1] as {
       params: Record<string, unknown>;
     };
-    expect('hash' in params.params).toBe(false);
+    // The old contract omitted `hash` when hashing degraded, letting the upload
+    // proceed untracked. That degrade is retired: the caller refuses to upload
+    // without a hash and the server 400s a hashless presign, so the parameter
+    // is always on the wire.
+    expect(params.params['hash']).toBe('a'.repeat(64));
   });
 
   it('returns the normal shape { uploadUrl, fileUrl, key, kind }', async () => {
@@ -84,6 +88,7 @@ describe('assetsApi.presign — aligned to the backend presign contract', () => 
       contentType: 'image/png',
       projectId: 'p1',
       size: 10,
+      hash: 'a'.repeat(64),
     });
 
     expect(result).toEqual({
@@ -184,23 +189,40 @@ describe('assetsApi.putFile — direct PUT to the presigned URL', () => {
 });
 
 describe('assetsApi.reportUploaded — cover reference + derived flag (#1824)', () => {
-  it('maps coverKey to the snake_case cover_key wire field (regular video path)', async () => {
+  it('rides the cover HASH on a regular video report — cover_key is retired (#1826 §4.5)', async () => {
     vi.mocked(apiPost).mockResolvedValue({ ok: true });
 
     await assetsApi.reportUploaded({
       projectId: 'p1',
       kind: 'video',
-      key: 'u1/p1/video/clip.mp4',
+      key: 'video/2026-07-25/clip.mp4',
       hash: 'a'.repeat(64),
       nodeId: 'n1',
       spaceId: 's1',
-      coverKey: 'u1/p1/image/clip-cover.jpg',
+      coverHash: 'd'.repeat(64),
       metadata: { filename: 'clip.mp4', size: 10, mimeType: 'video/mp4' },
+    });
+
+    const body = vi.mocked(apiPost).mock.calls[0]![1] as Record<string, unknown>;
+    expect(body.cover_hash).toBe('d'.repeat(64));
+    // cover_key no longer exists on the wire (retired with the tenant-neutral key).
+    expect('cover_key' in body).toBe(false);
+  });
+
+  it('maps a cover source to the wire — a first-class cover asset (#1826 §4.5)', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ ok: true });
+
+    await assetsApi.reportUploaded({
+      projectId: 'p1',
+      kind: 'image',
+      key: 'image/2026-07-25/cover.jpg',
+      source: 'cover',
+      derived: true,
     });
 
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith(
       '/assets/uploaded',
-      expect.objectContaining({ cover_key: 'u1/p1/image/clip-cover.jpg' }),
+      expect.objectContaining({ source: 'cover', derived: true }),
     );
   });
 
