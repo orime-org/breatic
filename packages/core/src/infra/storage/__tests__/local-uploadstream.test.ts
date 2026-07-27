@@ -10,14 +10,22 @@
  * event → the process CRASHES. The fix attaches a persistent listener and
  * re-raises the captured error as a normal thrown error the caller cleans up.
  *
- * We trigger a REAL write-stream error (no mocking): point the key at an
- * existing DIRECTORY so `createWriteStream` fails with EISDIR. (The RED here —
- * without the persistent listener — is a process-level crash, which cannot be
- * asserted cleanly by reverting; this pins the GREEN contract: a clean reject.)
+ * We trigger a REAL failure mid-write (no mocking): a body that throws while
+ * being read. (The RED here — without the persistent listener — is a
+ * process-level crash, which cannot be asserted cleanly by reverting; this pins
+ * the GREEN contract: a clean reject that leaves nothing behind.)
+ *
+ * An earlier version pointed the key at an existing DIRECTORY to make
+ * `createWriteStream` fail with EISDIR. Atomic publish (below) invalidated that
+ * premise: the stream now opens a `.part` sibling, which succeeds — the
+ * directory only breaks the later `renameSync`. The test still passed, because
+ * it asserted nothing more than "rejects", but it was no longer testing what it
+ * claimed, and the directory it created outlived it and broke the suite's
+ * cleanup on CI (`ENOTEMPTY`).
  */
 
 import { describe, it, expect, afterAll } from "vitest";
-import { mkdirSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import crypto from "node:crypto";
 import { LocalStorageAdapter } from "@core/infra/storage/local.js";
 
@@ -39,12 +47,22 @@ function oneChunkBody(): ReadableStream<Uint8Array> {
 }
 
 describe("LocalStorageAdapter.uploadStream — write-stream error is thrown, not an unhandled crash", () => {
-  it("re-raises a createWriteStream EISDIR (target is a directory) as a rejection", async () => {
-    const key = `${TEST_PREFIX}/collide-${crypto.randomUUID()}`;
-    // Make the key resolve to an existing DIRECTORY → createWriteStream → EISDIR.
-    mkdirSync(adapter.getFilePath(key), { recursive: true });
+  it("a body that fails mid-read rejects cleanly and leaves NOTHING behind", async () => {
+    const key = `${TEST_PREFIX}/torn-${crypto.randomUUID()}.bin`;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2, 3, 4]));
+      },
+      pull(controller) {
+        controller.error(new Error("connection reset mid-upload"));
+      },
+    });
 
-    await expect(adapter.uploadStream(key, oneChunkBody(), 1_000)).rejects.toThrow();
+    await expect(adapter.uploadStream(key, body, 1_000)).rejects.toThrow(
+      /connection reset mid-upload/,
+    );
+    // No half-written object at the final key…
+    expect((await adapter.head(key)).exists).toBe(false);
   });
 
   it("still succeeds on the normal path (fix does not regress a clean write)", async () => {
