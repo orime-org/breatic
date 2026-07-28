@@ -105,7 +105,7 @@ function getPgClient(): Sql {
   return _pgClient;
 }
 
-/** Lazily-built Drizzle instance over {@link getPgClient}. */
+/** Lazily-built Drizzle instance over `getPgClient`. */
 let _db: PostgresJsDatabase<Record<string, never>> | null = null;
 
 /**
@@ -122,7 +122,7 @@ function getDb(): PostgresJsDatabase<Record<string, never>> {
 /**
  * Drizzle ORM instance connected to PostgreSQL.
  *
- * A Proxy over the lazily-built {@link getDb} instance: property
+ * A Proxy over the lazily-built `getDb` instance: property
  * access resolves against the real Drizzle object at call time
  * (built on first use, after `initCore`). Methods are bound to the
  * real instance so Drizzle's internal `this` is preserved.
@@ -141,7 +141,7 @@ export const db: PostgresJsDatabase<Record<string, never>> = new Proxy(
 );
 
 /**
- * Transaction handle type, inferred from {@link db.transaction}'s
+ * Transaction handle type, inferred from `db.transaction`'s
  * callback parameter.
  *
  * Lives in core (the db layer's home) so any repo - in core or in a
@@ -168,7 +168,7 @@ export async function closeDb(): Promise<void> {
 /**
  * Raw postgres.js client for direct queries (e.g. health checks).
  *
- * A Proxy over the lazily-built {@link getPgClient} pool. postgres.js
+ * A Proxy over the lazily-built `getPgClient` pool. postgres.js
  * clients are callable (tagged-template) AND have methods, so the
  * Proxy forwards both `apply` (the tagged-template call) and `get`
  * (`.end()`, etc.) to the real pool.
@@ -248,7 +248,7 @@ function getYjsPgClient(): Sql {
   return _yjsPgClient;
 }
 
-/** Lazily-built Drizzle instance over {@link getYjsPgClient}. */
+/** Lazily-built Drizzle instance over `getYjsPgClient`. */
 let _yjsDb: PostgresJsDatabase<Record<string, never>> | null = null;
 
 /**
@@ -265,7 +265,7 @@ function getYjsDb(): PostgresJsDatabase<Record<string, never>> {
 /**
  * Drizzle ORM instance connected to the yjs PostgreSQL database.
  *
- * A Proxy over the lazily-built {@link getYjsDb} instance, identical in
+ * A Proxy over the lazily-built `getYjsDb` instance, identical in
  * mechanics to {@link db} but resolving against the yjs pool. The yjs
  * document repo (in `@collab`) queries through this so its SQL runs
  * against the yjs DB, not the business DB.
@@ -285,7 +285,7 @@ export const yjsDb: PostgresJsDatabase<Record<string, never>> = new Proxy(
 
 /**
  * Transaction handle type for the yjs DB, inferred from
- * {@link yjsDb.transaction}'s callback parameter. The yjs-DB repo uses
+ * `yjsDb.transaction`'s callback parameter. The yjs-DB repo uses
  * this for yjs-DB-local transactions; it is a DISTINCT type from
  * {@link DbTx} (a business-DB tx) — the two DBs cannot share a tx.
  */
@@ -304,7 +304,7 @@ export async function closeYjsDb(): Promise<void> {
 
 /**
  * Raw postgres.js client for the yjs DB (e.g. health checks). A Proxy
- * over the lazily-built {@link getYjsPgClient} pool, mirroring
+ * over the lazily-built `getYjsPgClient` pool, mirroring
  * {@link rawPg}. Pass to {@link pingDb} for the yjs-DB liveness probe.
  */
 export const yjsRawPg: Sql = new Proxy(

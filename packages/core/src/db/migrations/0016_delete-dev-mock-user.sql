@@ -3,7 +3,7 @@
 -- PR-b (#150); this migration cleans up the residual seed row.
 --
 -- Exception to the soft-delete mandate in CLAUDE.md: dev-mode mock data is
--- exempt per spec § 4.4 (engineering/specs/2026-05-26-deprecate-noaccount-email-auth-spec.md).
+-- exempt per spec § 4.4 (private engineering record).
 --
 -- Audit (pre-migration, 2026-05-28):
 --   users   (id='00000000-...')             = 1 row (dev@localhost / "Dev User")

@@ -113,8 +113,9 @@ export function writeSpaceEntry(
  * produce different binary outputs by default. We pin clientID to a
  * fixed sentinel (0x100000000n masked into the legal 32-bit range) so
  * inserts are reproducible — important for migration replay and for
- * the single-row UPSERT semantics in
- * {@link insertInitialState}.
+ * the name-keyed single-row UPSERT that persists a seeded doc (collab's
+ * `yjs-documents.repo.ts` does `onConflictDoUpdate` on the document
+ * name, so re-seeding the same doc must produce the same bytes).
  * @param args - the single Space entry plus actor / creator / timestamp fields to seed the meta doc
  * @returns the encoded Yjs update bytes, ready to persist as the doc's initial state
  */

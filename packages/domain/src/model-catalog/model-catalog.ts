@@ -373,7 +373,7 @@ export function estimateTaskCredits(model?: string): number {
  * panel's frontend gate.
  *
  * The rule is the SAME `sourcesByMode` the frontend reads off the wire — this
- * looks the model up and applies {@link violatesSourceRequirement} to the
+ * looks the model up and applies `violatesSourceRequirement` to the
  * submitted params. A model that can run source-less (any t2i-like mode / a
  * hybrid), an unknown model, or an absent model all pass.
  * @param model - The task's model name from the request body, if any.
@@ -400,7 +400,7 @@ export function violatesSourceRequirementForModel(
  * rejected (with a message naming the limit) rather than silently truncated by
  * the worker (providers/shared.ts). Sits at the same gate as
  * {@link violatesSourceRequirementForModel}, reading the model's per-param
- * `max_items` off the wire {@link ParamDescriptor}. An unknown / absent model
+ * `max_items` off the wire `ParamDescriptor`. An unknown / absent model
  * passes (existence is not this gate's job).
  * @param model - The task's model name from the request body, if any.
  * @param params - The task params (`params.images` etc. carry the capped lists).

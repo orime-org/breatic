@@ -8,8 +8,7 @@
 # studio-visual-direction-neutral ADR reversed it — the studio is now neutral
 # (semantic neutral tokens), with only its logo (--brand-logo-primary) keeping
 # brand identity.
-# Authorizing ADR (breatic-inner-design):
-#   design/decisions/2026-06-06-studio-visual-direction-neutral.md
+# Authorizing ADR (internal design record): #   (internal design record)
 #   (supersedes 2026-06-05-studio-brand-exemption.md)
 #
 # Banned (outside whitelist): bg/text/border/ring-brand-<N>, --color-brand-<a>,
@@ -66,6 +65,6 @@ echo "$MATCHES" >&2
 echo "" >&2
 echo "Rule: chrome-baseline §F10 Monochrome Chrome Rule — chrome / canvas / studio stay neutral." >&2
 echo "Only the logo (--brand-logo-primary) + status colors keep brand identity." >&2
-echo "ADR (breatic-inner-design): design/decisions/2026-06-06-studio-visual-direction-neutral.md" >&2
+echo "ADR: internal design record (studio visual direction, neutral)" >&2
 echo "Escape one line intentionally: append a 'brand-guard: allow' comment." >&2
 exit 1

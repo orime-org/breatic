@@ -101,7 +101,7 @@ jobs:
         # packages/web/src outside the whitelist (theme/tokens.css,
         # --brand-logo-primary, pages/studio/**). Studio is the sole exemption
         # via --brand-accent / --brand-fg / --brand-tint. Authorizing ADR:
-        # breatic-inner-design design/decisions/2026-06-05-studio-brand-exemption.md
+        # Authorized by an internal design ADR (studio brand exemption)
         run: pnpm lint:no-brand-usage
 
       - name: Lint no raw design values (anti-drift token guard)
@@ -366,6 +366,40 @@ jobs:
         # guard is the enforcement half. Runs --self-test too, so a broken
         # checker fails CI. See scripts/lint-test-file-location.sh.
         run: pnpm lint:test-file-location
+
+      - name: Lint doc-links (TSDoc {@link} targets must resolve)
+        # A comment pointing at a deleted symbol is a lie that no other check
+        # catches: tsc, tests and runtime all ignore prose. #1840 found a
+        # comment referencing `insertInitialState`, moved out of the repo
+        # months earlier. This asks a question with a definite answer — does
+        # the symbol resolve — rather than judging whether a sentence is true.
+        # Also runs --self-test, so a checker that can no longer fail fails CI.
+        # See scripts/lint-doc-links.sh for scope and known gaps.
+        run: pnpm lint:doc-links
+
+      - name: Lint eof-newline (every text file ends with a newline)
+        # A file without a trailing newline makes the NEXT edit show the last
+        # existing line as modified, so reviewers read a change nobody made.
+        # #1839 hit this on _journal.json. One byte, one definite answer, zero
+        # possible false positives. See scripts/lint-eof-newline.sh.
+        run: pnpm lint:eof-newline
+
+      - name: Lint migration-style (statement separators + named FKs)
+        # Every migration since 0018 is hand-written, so the two conventions
+        # drizzle-kit used to emit are now the author's job — and #1839 shipped
+        # one missing both. Counts statements on non-comment lines only: prose
+        # headers in this repo contain semicolons, and counting those reported
+        # three untouchable historical migrations as violations.
+        # See scripts/lint-migration-style.sh.
+        run: pnpm lint:migration-style
+
+      - name: Lint no-private-repo-path (public repo must not cite private paths)
+        # This repo is public. A comment citing an internal spec path leaks the
+        # private repo's existence, layout and document names, and is a dead
+        # reference for anyone outside the team. PR #364 removed such citations;
+        # they returned within days because a rule without a guard is a
+        # suggestion. See scripts/lint-no-private-repo-path.sh.
+        run: pnpm lint:no-private-repo-path
 
       - name: Lint no-cors-wildcard-credentials (security)
         # Enforce CLAUDE.md prohibition list #5 (CI maximal-strictness

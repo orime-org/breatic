@@ -19,7 +19,7 @@ import type { NodeHistoryEntity } from "@breatic/shared";
  * @param row - The raw Drizzle row selected from the `node_history` table.
  * @param operatorName - Operator display name from the studios join, if any.
  *   Defaults to `null` — the write paths do not join, only `listByNode` does.
- * @returns The mapped {@link NodeHistoryEntity}.
+ * @returns The mapped `NodeHistoryEntity`.
  */
 function toEntity(
   row: typeof nodeHistory.$inferSelect,
@@ -221,7 +221,7 @@ export async function listByNode(
 /**
  * Get a single history entry by ID (excludes soft-deleted).
  * @param id - UUID of the history entry to fetch.
- * @returns The {@link NodeHistoryEntity}, or null if not found or soft-deleted.
+ * @returns The `NodeHistoryEntity`, or null if not found or soft-deleted.
  */
 export async function getById(id: string): Promise<NodeHistoryEntity | null> {
   const rows = await db

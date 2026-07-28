@@ -2,7 +2,7 @@
 # Hover pattern lint — fail CI / pre-commit if any Tailwind alpha-modifier
 # `hover:bg-<token>/<2-digit>` appears in `packages/web/src/`.
 #
-# Why: see inner ADR `design/decisions/2026-05-21-hover-pattern-standard.md`.
+# Why: see inner ADR the internal design ADR.
 # Mock chrome-baseline uses solid token swaps + opacity-90 for hover;
 # alpha-modifier covers (the shadcn vendor default) blend with the
 # underlying surface and give weak / surface-dependent contrast.
@@ -44,6 +44,6 @@ echo "lint-hover-pattern: ❌ FAIL — banned hover:bg-<token>/<2-digit> pattern
 echo "" >&2
 echo "$MATCHES" >&2
 echo "" >&2
-echo "See: design/decisions/2026-05-21-hover-pattern-standard.md (in breatic-inner-design)" >&2
+echo "See: the internal design ADR" >&2
 echo "Fix: use solid token swap (hover:bg-accent) or transition-opacity hover:opacity-90." >&2
 exit 1

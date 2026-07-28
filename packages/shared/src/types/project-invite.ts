@@ -28,7 +28,7 @@ export type ProjectInvitationStatus =
  * Pending project-invitation summary — one in-flight invite as returned by the
  * project's pending-invitations list for the Members / Share surface. Surfaced
  * to the owner so they can see who is "invited (pending)" and revoke it. Mirrors
- * {@link import("./studio.js").PendingInvitationSummary}; `expiresAt` drives the
+ * {@link PendingInvitationSummary}; `expiresAt` drives the
  * countdown.
  */
 export interface PendingProjectInvitationSummary {

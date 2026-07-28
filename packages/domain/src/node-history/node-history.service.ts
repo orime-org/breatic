@@ -29,7 +29,7 @@ import type { NodeHistoryEntity } from "@breatic/shared";
  * @param opts.metadata.cost - Credits/cost attributed to the generation.
  * @param opts.metadata.durationMs - Provider call duration in milliseconds.
  * @param opts.metadata.params - Provider/tool parameters used for the generation.
- * @returns The created {@link NodeHistoryEntity}.
+ * @returns The created `NodeHistoryEntity`.
  */
 export async function recordGenerationSuccess(opts: {
   projectId: string;
@@ -70,7 +70,7 @@ export async function recordGenerationSuccess(opts: {
  * @param opts.metadata - Optional generation metadata.
  * @param opts.metadata.model - Model identifier that was attempted.
  * @param opts.metadata.params - Provider/tool parameters used for the attempt.
- * @returns The created {@link NodeHistoryEntity}.
+ * @returns The created `NodeHistoryEntity`.
  */
 export async function recordGenerationFailure(opts: {
   projectId: string;
@@ -109,7 +109,7 @@ export async function recordGenerationFailure(opts: {
  * @param opts.metadata.filename - Original filename of the upload.
  * @param opts.metadata.size - Size of the uploaded file in bytes.
  * @param opts.metadata.mimeType - MIME type of the uploaded file.
- * @returns The created {@link NodeHistoryEntity}.
+ * @returns The created `NodeHistoryEntity`.
  */
 export async function recordUpload(opts: {
   projectId: string;
@@ -156,7 +156,7 @@ export async function listByNode(
 /**
  * Get a single history entry by ID.
  * @param id - UUID of the history entry to fetch.
- * @returns The {@link NodeHistoryEntity}.
+ * @returns The `NodeHistoryEntity`.
  * @throws {NotFoundError} if the entry does not exist.
  */
 export async function getById(id: string): Promise<NodeHistoryEntity> {
