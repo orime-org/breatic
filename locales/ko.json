@@ -936,10 +936,7 @@
         "redo": "다시 실행",
         "bold": "굵게",
         "italic": "기울임꼴",
-        "strike": "취소선",
-        "bulletList": "글머리 기호 목록",
-        "orderedList": "번호 매기기 목록",
-        "quote": "인용"
+        "strike": "취소선"
       }
     }
   },

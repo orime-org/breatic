@@ -30,16 +30,7 @@ describe('DocumentSpace', () => {
   it('exposes history and formatting controls in the toolbar', async () => {
     render(<DocumentSpace projectId='p' spaceId='s' />);
     await screen.findByTestId('document-toolbar');
-    for (const id of [
-      'undo',
-      'redo',
-      'bold',
-      'italic',
-      'strike',
-      'bullet-list',
-      'ordered-list',
-      'quote',
-    ]) {
+    for (const id of ['undo', 'redo', 'bold', 'italic', 'strike']) {
       expect(screen.getByTestId(`doc-tool-${id}`)).toBeInTheDocument();
     }
   });

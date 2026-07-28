@@ -3,16 +3,7 @@
 
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
-import {
-  Bold,
-  Italic,
-  List,
-  ListOrdered,
-  Quote,
-  Redo2,
-  Strikethrough,
-  Undo2,
-} from 'lucide-react';
+import { Bold, Italic, Redo2, Strikethrough, Undo2 } from 'lucide-react';
 import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -111,37 +102,22 @@ const MARK_TOOLS: ToolDef[] = [
   },
 ];
 
-const BLOCK_TOOLS: ToolDef[] = [
-  {
-    id: 'bullet-list',
-    labelKey: 'spaces.document.toolbar.bulletList',
-    Icon: List,
-    isActive: (e) => e.isActive('bulletList'),
-    run: (e) => e.chain().focus().toggleBulletList().run(),
-  },
-  {
-    id: 'ordered-list',
-    labelKey: 'spaces.document.toolbar.orderedList',
-    Icon: ListOrdered,
-    isActive: (e) => e.isActive('orderedList'),
-    run: (e) => e.chain().focus().toggleOrderedList().run(),
-  },
-  {
-    id: 'quote',
-    labelKey: 'spaces.document.toolbar.quote',
-    Icon: Quote,
-    isActive: (e) => e.isActive('blockquote'),
-    run: (e) => e.chain().focus().toggleBlockquote().run(),
-  },
-];
-
 /**
- * Document toolbar — history, then mark and block toggles.
+ * Document toolbar — history, then the mark toggles.
  *
  * Toggles subscribe to the editor for their own slice of state, so each tracks
  * the live selection instead of freezing at mount. History comes in as a prop
  * because it is read from the undo manager, not the editor — see
  * {@link DocumentHistoryState}.
+ *
+ * Only marks are here, and that is a hard boundary rather than a starting
+ * point: Tailwind's preflight resets `h1`–`h6` to inherited size and weight and
+ * strips `list-style` from `ol`/`ul`, so a heading, list or quote button would
+ * change the document without changing the screen. Marks are exempt because
+ * preflight leaves `strong`, `em` and `s` alone. Block controls therefore ship
+ * with the body stylesheet that makes them visible, not before it — the
+ * stylesheet is still an open decision in the design (hand-written vs
+ * `@tailwindcss/typography`).
  * @param root0 - Document toolbar props.
  * @param root0.editor - The editor whose state drives the toggles and which the tools act on.
  * @param root0.history - Undo / redo availability.
@@ -168,10 +144,6 @@ export function DocumentToolbar({
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {MARK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} editor={editor} disabled={readOnly} />
-      ))}
-      <Separator orientation='vertical' className='mx-1 h-6' />
-      {BLOCK_TOOLS.map((t) => (
         <ToolButton key={t.id} tool={t} editor={editor} disabled={readOnly} />
       ))}
     </div>

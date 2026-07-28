@@ -442,10 +442,14 @@ body {
    overlays the first line's start instead of adding a line; its label stays
    positioned relative to it (an absolutely-positioned box is still a containing
    block for its absolute children). In-paragraph carets (not a direct child) keep
-   position:relative and are unaffected. */
-[data-testid='generate-prompt-editor']
-  .ProseMirror
-  > .collaboration-carets__caret {
+   position:relative and are unaffected.
+
+   Not scoped to one editor: the cause is the extension's widget placement, so
+   the bug belongs to every editor that renders remote carets, and the selector
+   already only matches where such a caret exists. It was written against the
+   prompt editor because that was the only one at the time; the document body
+   inherited the bug verbatim the moment it gained carets. */
+.ProseMirror > .collaboration-carets__caret {
   position: absolute;
 }
 .collaboration-carets__label {

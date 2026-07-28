@@ -81,31 +81,28 @@ describe('DocumentEditor', () => {
 
   it('keeps the formatting toggles', () => {
     render(<DocumentEditor editor={editor} history={history} />);
-    for (const id of [
-      'bold',
-      'italic',
-      'strike',
-      'bullet-list',
-      'ordered-list',
-      'quote',
-    ]) {
+    for (const id of ['bold', 'italic', 'strike']) {
       expect(screen.getByTestId(`doc-tool-${id}`)).toBeInTheDocument();
+    }
+  });
+
+  it('offers no control the stylesheet cannot render yet', () => {
+    // Tailwind's preflight flattens `h1`–`h6` to inherited size and weight and
+    // strips `list-style` from `ol`/`ul`, so these buttons would alter the
+    // document while the screen stayed identical — a control that lies about
+    // having done something. They belong with the body stylesheet that makes
+    // them visible. Marks are unaffected: preflight leaves `strong`, `em` and
+    // `s` alone, which is why the toggles above ship now.
+    render(<DocumentEditor editor={editor} history={history} />);
+    for (const id of ['bullet-list', 'ordered-list', 'quote', 'heading']) {
+      expect(screen.queryByTestId(`doc-tool-${id}`)).toBeNull();
     }
   });
 
   describe('read-only (viewer)', () => {
     it('disables every control rather than hiding the toolbar', () => {
       render(<DocumentEditor editor={editor} history={history} readOnly />);
-      for (const id of [
-        'undo',
-        'redo',
-        'bold',
-        'italic',
-        'strike',
-        'bullet-list',
-        'ordered-list',
-        'quote',
-      ]) {
+      for (const id of ['undo', 'redo', 'bold', 'italic', 'strike']) {
         expect(screen.getByTestId(`doc-tool-${id}`)).toBeDisabled();
       }
     });
