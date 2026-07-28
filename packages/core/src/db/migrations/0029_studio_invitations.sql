@@ -5,7 +5,7 @@
 -- 0028: .sql + _journal entry, no snapshot) — drizzle's table builder does not
 -- emit the partial unique index, and the notifications CHECK is manual.
 --
--- spec: breatic-inner DD + spec 2026-06-14-studio-invite-confirmation
+-- spec: studio invite confirmation DD + spec (2026-06-14)
 
 CREATE TABLE "studio_invitations" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

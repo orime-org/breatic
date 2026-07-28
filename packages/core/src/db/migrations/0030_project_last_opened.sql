@@ -16,7 +16,7 @@
 -- Hand-written (drizzle-kit generate needs a TTY here; same pattern as
 -- 0018/0025/0026: .sql + _journal entry, no snapshot).
 --
--- spec: breatic-inner/engineering/specs/2026-06-16-studio-recent-landing-design.md §3
+-- spec: studio recent landing design (2026-06-16) §3
 
 CREATE TABLE IF NOT EXISTS "project_last_opened" (
 	"user_id" uuid NOT NULL,

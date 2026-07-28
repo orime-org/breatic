@@ -3,7 +3,7 @@
 -- types. Hand-written (drizzle-kit generate needs a TTY here; same pattern as
 -- 0025/0026/0027: .sql + _journal entry, no snapshot).
 --
--- spec: breatic-inner/engineering/specs/2026-06-08-studio-slice3-members-design.md § 2.5
+-- spec: studio slice3 members design (2026-06-08) § 2.5
 
 ALTER TABLE "notifications" ADD COLUMN IF NOT EXISTS "expires_at" timestamp with time zone;--> statement-breakpoint
 

@@ -7,7 +7,7 @@
 -- _journal entry, no snapshot) — drizzle's table builder does not emit the
 -- partial unique index, and the notifications CHECK is manual.
 --
--- spec: breatic-inner project-invite parity spec (2026-06-18)
+-- spec: project-invite studio parity spec (2026-06-18)
 
 CREATE TABLE "project_invitations" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
