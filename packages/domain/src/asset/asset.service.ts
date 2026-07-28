@@ -5,16 +5,41 @@
  * Asset service — attribution + registration orchestration for the
  * asset layer (spec 2026-07-04-asset-layer-v1).
  *
- * Attribution rule (user 2026-07-04, final): an asset produced in a
- * project belongs to a studio decided by the PROJECT's owning studio
- * type — a PERSONAL-studio project attributes to the ACTING USER's own
- * personal studio (each collaborator keeps their own), while a TEAM
- * (public) studio project attributes to that team studio regardless of
- * who acted. Dedup then happens within that owner studio.
+ * ATTRIBUTION (user 2026-07-28, #1839 — supersedes the 2026-07-04 rule):
+ * an asset belongs to the studio that owns the PROJECT it was produced in,
+ * personal and team studios alike. Who acted does not enter into it. Dedup
+ * then happens within that owner studio.
+ *
+ * The superseded rule sent a PERSONAL-studio project's asset to the ACTING
+ * user's own personal studio ("each collaborator keeps their own"). That
+ * split one concept into two models: a project owner could not see a
+ * collaborator's output inside their own project, and dedup was effectively
+ * off in personal projects — one domain per collaborator meant the same
+ * bytes were stored once per person.
+ *
+ * PRODUCER is now its own column (`produced_by_user_id`) instead of being
+ * implied by attribution. On a dedup hit the existing row keeps its original
+ * producer: the question that column answers is "who FIRST brought this
+ * content into the studio".
+ *
+ * TRUST MODEL (user 2026-07-28 — DECIDED, NOT TECHNICALLY CLOSED): one dedup
+ * domain per studio means every editor of any project in that studio shares
+ * the studio's hash namespace. Inviting someone into a studio or project is
+ * an act of trust. The residual risks — content-existence probing via a hash
+ * the caller already holds, cross-user dedup poisoning (`/local-upload` does
+ * not verify the hash and `/uploaded` trusts the client's), quota consumption,
+ * and using any of another member's assets as the cover of one's own video
+ * node (the cover_hash residual in routes/assets.ts) — are borne by the user
+ * who issued the invitation. NOTE: the product intends to spell these out in a
+ * user manual and terms of service, but NEITHER EXISTS YET — there is no
+ * route, no locale copy, no document. Treat the disclosure as OUTSTANDING, not
+ * done. These are ACCEPTED risks, not fixed ones — do not read "decided" as
+ * "closed". The decision and its rationale live in the private engineering
+ * record.
  */
 
 import { and, eq, isNull } from "drizzle-orm";
-import { db, projects, studios, NotFoundError } from "@breatic/core";
+import { db, projects, NotFoundError } from "@breatic/core";
 import {
   registerWithDedup,
   type RegisterAssetInput,
@@ -23,66 +48,37 @@ import type { StudioAssetEntity } from "@breatic/shared";
 import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
 
 /**
- * Resolve which studio owns an asset produced by `actingUserId` in
- * `projectId`. Personal-studio project → the acting user's own personal
- * studio; team-studio project → the project's (team) studio.
+ * Resolve which studio owns an asset produced in `projectId` — always the
+ * project's own studio, personal and team alike (#1839).
+ *
+ * This stayed a service function rather than collapsing into its callers
+ * because it is the single place that states the attribution POLICY. The
+ * body is one query today; the rule it encodes is what other code depends
+ * on, and dedup scope + future billing both derive from this one answer.
  * @param projectId - Project the asset was produced in.
- * @param actingUserId - User who uploaded / triggered the generation.
  * @returns The owner studio id.
- * @throws {NotFoundError} If the project (or the acting user's personal
- *   studio) does not exist.
+ * @throws {NotFoundError} If the project does not exist or is soft-deleted.
  */
-export async function resolveOwnerStudioId(
-  projectId: string,
-  actingUserId: string,
-): Promise<string> {
+export async function resolveOwnerStudioId(projectId: string): Promise<string> {
   const proj = await db
     .select({ studioId: projects.studioId })
     .from(projects)
     .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
     .limit(1);
   if (!proj[0]) throw new NotFoundError(`Project ${projectId} not found`);
-  const projectStudioId = proj[0].studioId;
-
-  const st = await db
-    .select({ type: studios.type })
-    .from(studios)
-    .where(eq(studios.id, projectStudioId))
-    .limit(1);
-  if (st[0]?.type !== "personal") {
-    // Team (public) studio project: the studio owns the asset.
-    return projectStudioId;
-  }
-
-  // Personal-studio project: the acting user's OWN personal studio owns
-  // the asset (a collaborator keeps their own output).
-  const own = await db
-    .select({ id: studios.id })
-    .from(studios)
-    .where(
-      and(
-        eq(studios.createdByUserId, actingUserId),
-        eq(studios.type, "personal"),
-        isNull(studios.deletedAt),
-      ),
-    )
-    .limit(1);
-  if (!own[0]) {
-    throw new NotFoundError(
-      `Acting user ${actingUserId} has no personal studio`,
-    );
-  }
-  return own[0].id;
+  return proj[0].studioId;
 }
 
 /**
- * Register an asset against its resolved owner studio, with
- * within-studio dedup. Callers (server upload handshake, worker
- * generation Stage 4) pass the project + acting user; attribution is
- * resolved here.
+ * Register an asset against its owner studio, with within-studio dedup.
+ * Callers (server upload handshake, worker generation Stage 4) pass the
+ * project + acting user: the project decides the OWNER studio, the acting
+ * user is recorded as the PRODUCER (#1839).
  * @param input - Project + acting user + physical asset fields.
  * @param input.projectId - Project the asset was produced in.
  * @param input.actingUserId - User who uploaded / triggered generation.
+ *   Stored as `produced_by_user_id`; does NOT affect which studio owns the
+ *   asset. On a dedup hit the existing row's producer is kept.
  * @param input.contentHash - sha256 hex (dedup key, never in the URL).
  * @param input.storageKey - Random storage key.
  * @param input.fileUrl - Public URL embedded in Yjs.
@@ -94,11 +90,11 @@ export async function resolveOwnerStudioId(
  * @param input.generationTaskId - Producing task (AI only), for cost link.
  * @param input.ownerStudioId - Authoritative owner studio when the caller
  *   already knows it (the upload grant's studio, #1826 §2.2 v15). Omit to
- *   resolve it from the project + acting user.
+ *   resolve it from the project.
  * @returns The asset entity, whether it was a dedup hit, and — only when the
  *   reclaim-queue insert failed — a `reclaimQueueFailed` flag (the
  *   registration itself still succeeded).
- * @throws {NotFoundError} If the project / personal studio is missing.
+ * @throws {NotFoundError} If the project does not exist or is soft-deleted.
  *
  * On a DEDUP HIT the ledger keeps the existing row, which makes the object the
  * caller just stored redundant. Runtime never deletes it (#1826 §0 rule 1 —
@@ -139,10 +135,10 @@ export async function register(input: {
   // cost. Paths with no grant (worker generation) omit it and resolve from the
   // project as before.
   const studioId =
-    input.ownerStudioId ??
-    (await resolveOwnerStudioId(input.projectId, input.actingUserId));
+    input.ownerStudioId ?? (await resolveOwnerStudioId(input.projectId));
   const repoInput: RegisterAssetInput = {
     studioId,
+    producedByUserId: input.actingUserId,
     contentHash: input.contentHash,
     storageKey: input.storageKey,
     fileUrl: input.fileUrl,

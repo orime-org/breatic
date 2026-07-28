@@ -251,17 +251,6 @@ const FIXTURE_STUDIO_ID = "00000000-0000-0000-0000-000000000003";
 // to `project-{pid}/canvas-{spaceId}`. Spaces have no PG table, so
 // this is just a stable UUID we reuse across tasks in the test.
 const FIXTURE_SPACE_ID = "00000000-0000-0000-0000-000000000004";
-// A registered user with NO personal studio (mid-onboarding: registration
-// creates the user + credit balance but not the studio). Used to exercise the
-// node-bound register fail-closed rule (#1826 design §0 rule 3): a generation
-// acting as this user cannot resolve an owner studio, so its PRIMARY node
-// output cannot register. Per the fail-closed rule the task FAILS with no
-// charge rather than pinning the node to an unregistered key (which the offline
-// GC would later reclaim → 404). (Pre-#1826 this was "best-effort skipped:
-// billed but untracked" — that left exactly the orphan-node-key hole §0 rule 3
-// closes.)
-const FIXTURE_USER_NO_STUDIO_ID = "00000000-0000-0000-0000-000000000005";
-
 // ── Polling helpers ──────────────────────────────────────────────────────────
 
 /**
@@ -414,13 +403,6 @@ beforeAll(async () => {
   await db.insert(schema.users).values({
     id: FIXTURE_USER_ID,
     email: "integration-test@breatic.example",
-    emailVerified: true,
-  }).onConflictDoNothing();
-
-  // Registered but no personal studio (asset hole #2 fixture).
-  await db.insert(schema.users).values({
-    id: FIXTURE_USER_NO_STUDIO_ID,
-    email: "integration-test-nostudio@breatic.example",
     emailVerified: true,
   }).onConflictDoNothing();
 
@@ -1197,55 +1179,69 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     expect(data!["content"]).toMatch(/^https:\/\/oss\/uploaded\/test\/key-\d+\.png$/);
   });
 
-  it("Test 6 (asset #2): a node-bound generation by a user with no personal studio FAILS fail-closed (no charge, no orphan node key)", async () => {
+  it("Test 6 (asset #2): a node-bound generation whose registration FAILS is fail-closed (no charge, no orphan node key)", async () => {
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
     const nodeId = crypto.randomUUID();
-    const url = "https://oss/nostudio-t6.png";
+    const url = "https://oss/register-fail-t6.png";
 
-    // Acting user has NO personal studio → resolveOwnerStudioId throws inside
-    // register → the PRIMARY node output cannot register. Per #1826 §0 rule 3
-    // (node-bound register fail-closed) the task FAILS with NO charge, rather
-    // than pinning the node to an unregistered key (offline GC → 404).
-    const taskId = await runGeneration({
-      nodeId,
-      url,
-      userId: FIXTURE_USER_NO_STUDIO_ID,
-    });
+    // TRIGGER (changed by #1839, assertions unchanged): make the PRIMARY node
+    // output's registration throw. Attribution now resolves from the project
+    // alone, so a SOFT-DELETED project is what makes resolveOwnerStudioId
+    // throw NotFoundError. The previous trigger — "acting user has no personal
+    // studio" — became unreachable when that branch was removed, but the
+    // invariant it guarded is unchanged and still needs a real-PG e2e:
+    // per #1826 §0 rule 3 (node-bound register fail-closed) the task FAILS
+    // with NO charge rather than pinning the node to an unregistered key
+    // (which the offline GC would later delete → 404).
+    await db
+      .update(schema.projects)
+      .set({ deletedAt: new Date() })
+      .where(eq(schema.projects.id, FIXTURE_PROJECT_ID));
+    try {
+      const taskId = await runGeneration({ nodeId, url });
 
-    await waitForCondition(
-      async () => (await taskService.getByIdInternal(taskId))?.status === "failed",
-      30_000,
-      `task ${taskId} (no-studio user) failed fail-closed`,
-    );
+      await waitForCondition(
+        async () =>
+          (await taskService.getByIdInternal(taskId))?.status === "failed",
+        30_000,
+        `task ${taskId} (register-failure) failed fail-closed`,
+      );
 
-    // CRITICAL: a fail-closed register failure must NOT bill (§0 rule 3 reuses
-    // the persist-failure terminal path — no charge, mirrors Test 4).
-    const [t] = await db
-      .select()
-      .from(schema.tasks)
-      .where(eq(schema.tasks.id, taskId));
-    expect(t!.status).toBe("failed");
-    expect(t!.billedAt).toBeNull();
+      // CRITICAL: a fail-closed register failure must NOT bill (§0 rule 3
+      // reuses the persist-failure terminal path — no charge, mirrors Test 4).
+      const [t] = await db
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.id, taskId));
+      expect(t!.status).toBe("failed");
+      expect(t!.billedAt).toBeNull();
 
-    // The node ends idle with an error and is NOT pinned to the unregistered
-    // key — never a live studio_assets row would back it.
-    const data = await waitForNodeData(
-      hocuspocus,
-      docName,
-      nodeId,
-      (d) => d["state"] === "idle",
-      10_000,
-      `node ${nodeId} idle (no-studio fail-closed)`,
-    );
-    expect(typeof data["errorMessage"]).toBe("string");
-    expect(data["content"]).not.toBe(url);
+      // The node ends idle with an error and is NOT pinned to the unregistered
+      // key — no live studio_assets row would ever back it.
+      const data = await waitForNodeData(
+        hocuspocus,
+        docName,
+        nodeId,
+        (d) => d["state"] === "idle",
+        10_000,
+        `node ${nodeId} idle (register-failure fail-closed)`,
+      );
+      expect(typeof data["errorMessage"]).toBe("string");
+      expect(data["content"]).not.toBe(url);
 
-    // No studio_assets row links to this task (nothing was ever registered).
-    const rows = await db
-      .select()
-      .from(schema.studioAssets)
-      .where(eq(schema.studioAssets.generationTaskId, taskId));
-    expect(rows.length).toBe(0);
+      // No studio_assets row links to this task (nothing was ever registered).
+      const rows = await db
+        .select()
+        .from(schema.studioAssets)
+        .where(eq(schema.studioAssets.generationTaskId, taskId));
+      expect(rows.length).toBe(0);
+    } finally {
+      // Restore even on failure — later tests in this file share the fixture.
+      await db
+        .update(schema.projects)
+        .set({ deletedAt: null })
+        .where(eq(schema.projects.id, FIXTURE_PROJECT_ID));
+    }
   });
 
   it("Test 8 (asset #A round-3): a local-handler output that is already OUR OWN URL is not re-hosted by Case 2", async () => {

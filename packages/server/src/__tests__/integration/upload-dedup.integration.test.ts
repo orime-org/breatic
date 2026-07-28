@@ -12,8 +12,9 @@
  *     report lands the activity row without a new ledger row;
  *   - size distrust: a hash claim with a mismatched size is refused
  *     dedup and falls through to a normal presign (spec §8);
- *   - D9 attribution on the upload path: a personal-project collaborator
- *     dedups against THEIR OWN personal studio, not the owner's;
+ *   - attribution on the upload path (#1839): a personal-project
+ *     collaborator dedups against the PROJECT's studio, so one project is
+ *     one dedup domain no matter who uploads;
  *   - the authoritative upload cap (413) with the boundary allowed;
  *   - "no hash, no upload" (#1826 §0 rule 4): an unhashed report is REFUSED
  *     (400) and lands no ledger row — replacing the retired availability-first
@@ -76,7 +77,7 @@ afterAll(async () => {
 
 let seq = 0;
 
-/** A fresh user + their personal studio (D9 needs it); returns both ids. */
+/** A fresh user + their personal studio; returns both ids. */
 async function insertUserWithPersonalStudio(): Promise<{
   userId: string;
   personalStudioId: string;
@@ -163,7 +164,7 @@ async function storeObject(
   // (the anti-spoof ledger row the /uploaded endpoint re-checks). Without the
   // grant, the regular-path report is rejected 422.
   const key = `image/2026-07-25/${Date.now()}_${crypto.randomUUID()}.png`;
-  const studioId = await assetService.resolveOwnerStudioId(projectId, userId);
+  const studioId = await assetService.resolveOwnerStudioId(projectId);
   await issueGrant({
     userId,
     studioId,
@@ -296,8 +297,8 @@ describe("B.2 round trip — upload once, instant-dedup forever after", () => {
   });
 });
 
-describe("D9 attribution on the upload path", () => {
-  it("a personal-project collaborator dedups against THEIR OWN studio, not the owner's", async () => {
+describe("attribution on the upload path (#1839)", () => {
+  it("a personal-project collaborator dedups against the PROJECT's studio", async () => {
     const owner = await insertUserWithPersonalStudio();
     const collab = await insertUserWithPersonalStudio();
     const projectId = await insertProject(owner.personalStudioId, owner.userId);
@@ -315,14 +316,24 @@ describe("D9 attribution on the upload path", () => {
     });
     expect(await ledgerCount(owner.personalStudioId, hash)).toBe(1);
 
-    // The collaborator presigning the same bytes gets NO dedup (their own
-    // personal studio holds nothing) → normal presign.
+    // The collaborator presigning the same bytes NOW HITS dedup: the dedup
+    // domain is the PROJECT's studio, and the owner already registered this
+    // content there. Under the superseded rule this was a miss — each
+    // collaborator had a private dedup domain, so one project stored the
+    // same bytes once per person. Removing that duplication is the point
+    // of #1839.
     const pre = await presign(collabCookie, projectId, size, hash);
     const body = (await pre.json()) as {
       data: { alreadyExists?: boolean; uploadUrl?: string };
     };
-    expect(body.data.alreadyExists).toBeUndefined();
-    expect(typeof body.data.uploadUrl).toBe("string");
+    expect(body.data.alreadyExists).toBe(true);
+    // A hit means no upload URL is issued — the client reuses the canonical
+    // asset instead of storing a second copy.
+    expect(body.data.uploadUrl).toBeUndefined();
+    // And still exactly ONE ledger row for that content in the project's
+    // studio (not a second one under the collaborator's).
+    expect(await ledgerCount(owner.personalStudioId, hash)).toBe(1);
+    expect(await ledgerCount(collab.personalStudioId, hash)).toBe(0);
   });
 });
 

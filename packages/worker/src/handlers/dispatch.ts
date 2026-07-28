@@ -315,7 +315,9 @@ export async function runTask(
  * project), `cover_url` stays unset → the node shows Film (§4.5).
  * @param outputs - The task's persisted outputs, mutated in place (`cover_url`).
  * @param ctx - Task identity for cover registration + structured logging.
- * @param ctx.taskId - The task whose covers are being resolved (for logging).
+ * @param ctx.taskId - The task whose covers are being resolved. Not just log
+ *   context: it is written as each cover asset's `generation_task_id`, the
+ *   cost link that makes a worker-extracted cover traceable to its task.
  * @param ctx.userId - Acting user, credited as the cover asset's registrant.
  * @param ctx.projectId - Owning project; `undefined` degrades every cover to Film.
  */
@@ -1297,7 +1299,9 @@ export function mediaKindForActivity(
  * without a project (e.g. agent attachments have no project scope).
  * @param opts - Persistence context.
  * @param opts.taskType - Generation task type (mapped to the asset kind).
- * @param opts.userId - Acting user (attribution resolution input).
+ * @param opts.userId - Acting user, recorded as the asset's
+ *   `produced_by_user_id`. Since #1839 it is NOT an attribution input — the
+ *   owner studio is resolved from the project alone.
  * @param opts.projectId - Project scope; the call is a no-op when absent.
  * @param opts.taskId - Producing task id (asset cost link).
  * @param opts.nodeBound - Whether this output is pinned to a canvas node; when
@@ -1361,15 +1365,15 @@ async function registerGeneratedAsset(
     // observable without failing the job.
     if (opts.nodeBound) throw err;
     if (err instanceof NotFoundError) {
-      // #2/#6 (adversarial): the owner studio could not be resolved — a
-      // missing project (possibly a legitimate soft-delete race) or an
-      // acting user without a personal studio (mid-onboarding). Bytes are
-      // already stored + the task bills regardless (best-effort), so this
-      // must NOT fail the job. Emit a distinct, greppable event so a
-      // billed-yet-untracked asset stays observable — at WARN, not ERROR:
-      // the soft-delete race + onboarding gap are expected, not crashes,
-      // so error level would only add alert noise. projectId is in the
-      // context to tell the cases apart during reconciliation.
+      // #2/#6 (adversarial): the owner studio could not be resolved. Since
+      // #1839 attribution reads the project alone, this has exactly one cause:
+      // the project is gone or soft-deleted (a legitimate race).
+      // Bytes are already stored + the task bills regardless (best-effort),
+      // so this must NOT fail the job. Emit a distinct, greppable event so a
+      // billed-yet-untracked asset stays observable — at WARN, not ERROR: a
+      // soft-delete race is expected, not a crash, so error level would only
+      // add alert noise. projectId rides in the context so reconciliation can
+      // find which project it was.
       logger.warn(
         { err, key, taskId: opts.taskId, userId: opts.userId, projectId: opts.projectId },
         "asset_register_untracked (billed but not registered — no owner studio)",

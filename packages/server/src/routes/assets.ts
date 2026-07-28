@@ -163,7 +163,6 @@ assets.get(
     // normal presign (content claim not trusted, spec §8).
     const dedupHit = await assetUploadService.checkUploadDedup({
       projectId: project_id,
-      actingUserId: user.id,
       contentHash: hash,
       sizeBytes: size,
     });
@@ -379,11 +378,21 @@ const uploadedSchema = z
     // kind='video'. It would also 400 legitimate reports whose bytes sniff to
     // something other than video/* — the failure mode #1824 actually hit.
     // A cover's integrity is bounded instead by verifyDedupUpload (#1826 §4.5:
-    // cover_hash must resolve to a studio_assets row in the caller's OWN owner
-    // studio). The residual — an editor showing one of their OWN same-studio
-    // images as a node's history thumbnail — is ACCEPTED as LOW (same-studio,
-    // self-inflicted, cosmetic; node content is unaffected), matching the
-    // accepted `derived` forgery residual.
+    // cover_hash must resolve to a studio_assets row in this report's owner
+    // studio — the GRANT's studio on the regular path, resolveOwnerStudioId's on
+    // the dedup path. Since #1839 both are decided by a project, never by who
+    // is calling).
+    // The residual — an editor showing ANY asset from that studio, including
+    // one another member put there. The lookup is kind-agnostic: it matches on
+    // (studio_id, content_hash) with no kind predicate, so a pdf or mp3 in the
+    // same studio resolves too and simply renders broken. The resolved cover
+    // reaches three sinks: the node_history row's thumbnail, the project
+    // activity row's thumbnail, and the response body — from which the client
+    // writes it onto the node as `data.coverUrl`, the video poster in the
+    // shared Yjs doc that every collaborator sees. ACCEPTED as LOW: it is
+    // cosmetic, and the video's own bytes (`data.content`) are untouched. It
+    // belongs to the same accepted class as the other within-studio residuals:
+    // inviting someone into a studio is an act of trust, see asset.service.ts.
   });
 
 assets.post(
@@ -412,10 +421,7 @@ assets.post(
     //     attributed, an existing row is merely re-served.
     let ownerStudioId: string;
     if (body.dedup === true) {
-      ownerStudioId = await assetService.resolveOwnerStudioId(
-        body.project_id,
-        user.id,
-      );
+      ownerStudioId = await assetService.resolveOwnerStudioId(body.project_id);
     } else if (body.key !== undefined) {
       const granted = await assetUploadService.resolveGrantForReport({
         storageKey: body.key,
