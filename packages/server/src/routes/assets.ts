@@ -378,10 +378,14 @@ const uploadedSchema = z
     // kind='video'. It would also 400 legitimate reports whose bytes sniff to
     // something other than video/* — the failure mode #1824 actually hit.
     // A cover's integrity is bounded instead by verifyDedupUpload (#1826 §4.5:
-    // cover_hash must resolve to a studio_assets row in the PROJECT's owner
-    // studio — since #1839 that is the project's studio, not the caller's own).
-    // The residual — an editor showing ANY image from that studio, including
-    // one another member put there, as a node's history thumbnail — is
+    // cover_hash must resolve to a studio_assets row in this report's owner
+    // studio — the GRANT's studio on the regular path, resolveOwnerStudioId's on
+    // the dedup path. Since #1839 both are decided by a project, never by who
+    // is calling).
+    // The residual — an editor showing ANY asset from that studio (there is no
+    // kind filter: findByStudioAndHash matches on hash alone, so a pdf or mp3
+    // resolves too and simply renders broken), including one another member put
+    // there, as a node's history thumbnail — is
     // ACCEPTED as LOW (cosmetic; node content is unaffected). It belongs to
     // the same accepted class as the other within-studio residuals: inviting
     // someone into a studio is an act of trust, see asset.service.ts.

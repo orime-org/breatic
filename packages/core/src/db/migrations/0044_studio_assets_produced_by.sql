@@ -5,8 +5,10 @@
 -- project attributed to the acting user's own studio, which meant the
 -- producer was recoverable by reading studios.created_by_user_id off the
 -- owner studio. Removing that branch would have dropped the producer for
--- every upload-type asset (AI assets can still reach it via
--- generation_task_id -> tasks.user_id; uploads and covers have no task).
+-- every upload-type asset. AI assets can still reach it via
+-- generation_task_id -> tasks.user_id, and so can worker-extracted video
+-- covers (they carry the task id too); what has no task is anything the
+-- browser reports to /uploaded — plain uploads and browser-side covers.
 --
 -- So the two facts get two columns. On a dedup HIT the existing row wins
 -- and keeps its original producer — this records who FIRST brought the

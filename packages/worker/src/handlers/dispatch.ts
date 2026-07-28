@@ -1362,8 +1362,8 @@ async function registerGeneratedAsset(
     if (opts.nodeBound) throw err;
     if (err instanceof NotFoundError) {
       // #2/#6 (adversarial): the owner studio could not be resolved. Since
-      // #1839 attribution reads the project alone, so this has exactly one
-      // cause — the project is gone or soft-deleted (a legitimate race).
+      // #1839 attribution reads the project alone, this has exactly one cause:
+      // the project is gone or soft-deleted (a legitimate race).
       // Bytes are already stored + the task bills regardless (best-effort),
       // so this must NOT fail the job. Emit a distinct, greppable event so a
       // billed-yet-untracked asset stays observable — at WARN, not ERROR: a
