@@ -1113,6 +1113,21 @@ export const studioAssets = pgTable(
      */
     source: varchar("source", { length: 20 }).notNull(),
     /**
+     * Who FIRST brought this content into the studio (#1839). Distinct from
+     * `studioId`, which says who OWNS it: attribution follows the project's
+     * studio for personal and team studios alike, so the producer is no
+     * longer recoverable from the owner studio the way it was while a
+     * personal-studio project attributed to the acting user's own studio.
+     *
+     * On a dedup HIT the existing row wins and keeps its original producer —
+     * "who first brought it in" is the meaningful answer for storage
+     * accounting, abuse triage and GDPR erasure. A later uploader of the same
+     * bytes is not recorded here (their upload deduped away).
+     */
+    producedByUserId: uuid("produced_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /**
      * The generation task that produced an AI asset - links to cost via
      * tasks.billed_credits + credit_transactions.reference_id. Null for
      * uploads (user-supplied, no generation cost).

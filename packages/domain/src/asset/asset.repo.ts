@@ -32,6 +32,7 @@ function toEntity(row: typeof studioAssets.$inferSelect): StudioAssetEntity {
     mimeType: row.mimeType,
     kind: row.kind as StudioAssetEntity["kind"],
     source: row.source as StudioAssetEntity["source"],
+    producedByUserId: row.producedByUserId,
     generationTaskId: row.generationTaskId,
     createdAt: row.createdAt,
     deletedAt: row.deletedAt,
@@ -41,6 +42,8 @@ function toEntity(row: typeof studioAssets.$inferSelect): StudioAssetEntity {
 /** Fields required to register a physical asset row. */
 export interface RegisterAssetInput {
   studioId: string;
+  /** Who first brought this content in — see StudioAssetEntity. */
+  producedByUserId: string;
   contentHash: string;
   storageKey: string;
   fileUrl: string;
@@ -95,6 +98,10 @@ export async function registerWithDedup(
     .insert(studioAssets)
     .values({
       studioId: input.studioId,
+      // Only lands on an INSERT. A dedup hit takes the onConflictDoNothing
+      // path and returns the EXISTING row, so the first producer is kept —
+      // see StudioAssetEntity.producedByUserId.
+      producedByUserId: input.producedByUserId,
       contentHash: input.contentHash,
       storageKey: input.storageKey,
       fileUrl: input.fileUrl,

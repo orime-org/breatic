@@ -11,9 +11,10 @@
  *   - cross-studio: the same content in two studios stays two rows;
  *   - concurrent register of one (studio, hash) converges on one row;
  *   - usageByStudio sums a studio's live asset sizes;
- *   - resolveOwnerStudioId (D9) two-case attribution: personal-studio
- *     project → the ACTING user's own personal studio; team-studio
- *     project → the team studio regardless of who acted.
+ *   - resolveOwnerStudioId (#1839): attribution is the PROJECT's studio,
+ *     personal and team alike — who acted never enters into it;
+ *   - produced_by_user_id records who FIRST brought the content in, and a
+ *     dedup hit keeps that original producer.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -73,6 +74,7 @@ async function insertUserWithPersonalStudio(): Promise<{
   personalStudioId: string;
 }> {
   const userId = await insertUser();
+  lastFixtureUserId = userId;
   const rows = await sql<{ id: string }[]>`
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${userId}, ${`asset-p-${seq++}`}, 'personal', 'Personal') RETURNING id
@@ -108,8 +110,23 @@ function fakeHash(): string {
   return crypto.randomBytes(32).toString("hex");
 }
 
-const baseAsset = (studioId: string, contentHash: string, sizeBytes: number) => ({
+/**
+ * The producer used by fixtures whose subject is studio-level dedup rather
+ * than who uploaded. Set by `insertUserWithPersonalStudio`, so every fixture
+ * asset points at a real user row (the FK requires one) without each call
+ * site having to thread an id it does not care about. Tests that DO care
+ * pass `producedBy` explicitly.
+ */
+let lastFixtureUserId = "";
+
+const baseAsset = (
+  studioId: string,
+  contentHash: string,
+  sizeBytes: number,
+  producedBy?: string,
+) => ({
   studioId,
+  producedByUserId: producedBy ?? lastFixtureUserId,
   contentHash,
   storageKey: `u/p/image/2026-07-04/${crypto.randomUUID()}.png`,
   fileUrl: `https://cdn/${crypto.randomUUID()}.png`,
@@ -249,39 +266,31 @@ describe("asset repo — usageByStudios (batch SUM, account roll-up #1826 §5.3)
   });
 });
 
-describe("asset service — resolveOwnerStudioId (D9 two-case)", () => {
-  it("personal-studio project → the ACTING user's own personal studio", async () => {
+describe("asset service — resolveOwnerStudioId (#1839: the project's studio, always)", () => {
+  it("personal-studio project → the PROJECT's studio, whoever acted", async () => {
     const owner = await insertUserWithPersonalStudio();
     const collaborator = await insertUserWithPersonalStudio();
     // Project belongs to the OWNER's personal studio.
     const projectId = await insertProjectInStudio(owner.personalStudioId, owner.userId);
 
-    // The owner acting → owner's personal studio (= project studio here).
-    expect(
-      await assetService.resolveOwnerStudioId(projectId, owner.userId),
-    ).toBe(owner.personalStudioId);
-    // A collaborator acting → THEIR OWN personal studio, not the owner's.
-    expect(
-      await assetService.resolveOwnerStudioId(projectId, collaborator.userId),
-    ).toBe(collaborator.personalStudioId);
+    expect(await assetService.resolveOwnerStudioId(projectId)).toBe(
+      owner.personalStudioId,
+    );
+    // Attribution no longer depends on the acting user at all — the
+    // collaborator's output belongs to the project's studio, same as the
+    // owner's. This is what makes dedup a single domain per studio.
+    void collaborator;
   });
 
-  it("team-studio project → the team studio regardless of who acted", async () => {
+  it("team-studio project → the team studio, whoever acted", async () => {
     const owner = await insertUserWithPersonalStudio();
-    const outsider = await insertUserWithPersonalStudio();
     const teamStudioId = await insertTeamStudio(owner.userId);
     const projectId = await insertProjectInStudio(teamStudioId, owner.userId);
 
-    expect(await assetService.resolveOwnerStudioId(projectId, owner.userId)).toBe(
-      teamStudioId,
-    );
-    // A non-member outsider acting → still the team studio.
-    expect(
-      await assetService.resolveOwnerStudioId(projectId, outsider.userId),
-    ).toBe(teamStudioId);
+    expect(await assetService.resolveOwnerStudioId(projectId)).toBe(teamStudioId);
   });
 
-  it("register() attributes a personal-project collaborator's asset to their own studio", async () => {
+  it("register() attributes a personal-project collaborator's asset to the PROJECT's studio", async () => {
     const owner = await insertUserWithPersonalStudio();
     const collaborator = await insertUserWithPersonalStudio();
     const projectId = await insertProjectInStudio(owner.personalStudioId, owner.userId);
@@ -297,7 +306,47 @@ describe("asset service — resolveOwnerStudioId (D9 two-case)", () => {
       kind: "image",
       source: "upload",
     });
-    expect(asset.studioId).toBe(collaborator.personalStudioId);
+    // Owned by the project's studio ...
+    expect(asset.studioId).toBe(owner.personalStudioId);
+    // ... while the producer is still recorded, on its own column.
+    expect(asset.producedByUserId).toBe(collaborator.userId);
+  });
+
+  it("a dedup hit keeps the FIRST producer, not the later uploader", async () => {
+    const owner = await insertUserWithPersonalStudio();
+    const collaborator = await insertUserWithPersonalStudio();
+    const projectId = await insertProjectInStudio(owner.personalStudioId, owner.userId);
+    const hash = fakeHash();
+
+    const first = await assetService.register({
+      projectId,
+      actingUserId: collaborator.userId,
+      contentHash: hash,
+      storageKey: "k1",
+      fileUrl: "https://cdn/1.png",
+      sizeBytes: 100,
+      mimeType: "image/png",
+      kind: "image",
+      source: "upload",
+    });
+    expect(first.deduped).toBe(false);
+
+    // Same bytes, same studio (because same project), different actor.
+    const second = await assetService.register({
+      projectId,
+      actingUserId: owner.userId,
+      contentHash: hash,
+      storageKey: "k2",
+      fileUrl: "https://cdn/2.png",
+      sizeBytes: 100,
+      mimeType: "image/png",
+      kind: "image",
+      source: "upload",
+    });
+    expect(second.deduped).toBe(true);
+    // The winning row is the first one — producer unchanged.
+    expect(second.asset.producedByUserId).toBe(collaborator.userId);
+    expect(second.asset.storageKey).toBe("k1");
   });
 });
 

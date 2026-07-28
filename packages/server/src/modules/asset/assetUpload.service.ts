@@ -53,10 +53,7 @@ export async function checkUploadDedup(params: {
   contentHash: string;
   sizeBytes: number;
 }): Promise<DedupHit | null> {
-  const studioId = await assetService.resolveOwnerStudioId(
-    params.projectId,
-    params.actingUserId,
-  );
+  const studioId = await assetService.resolveOwnerStudioId(params.projectId);
   const existing = await assetRepo.findByStudioAndHash(
     studioId,
     params.contentHash,
@@ -125,10 +122,7 @@ export async function issueUploadGrant(params: {
   taskType: string;
   ext: string;
 }): Promise<{ key: string }> {
-  const studioId = await assetService.resolveOwnerStudioId(
-    params.projectId,
-    params.actingUserId,
-  );
+  const studioId = await assetService.resolveOwnerStudioId(params.projectId);
   const key = storageKey({ taskType: params.taskType, ext: params.ext });
   await issueGrant({
     userId: params.actingUserId,

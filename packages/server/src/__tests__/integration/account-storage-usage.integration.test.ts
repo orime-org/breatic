@@ -102,10 +102,25 @@ function fakeHash(): string {
   return crypto.randomBytes(32).toString("hex");
 }
 
+/**
+ * The studio's creator — used as the fixture asset's producer so the FK has
+ * a real user without these tests (whose subject is storage roll-up, not
+ * attribution-of-action) having to thread one through.
+ * @param studioId - Studio whose creator to look up.
+ * @returns The creator's user id.
+ */
+async function ownerOf(studioId: string): Promise<string> {
+  const rows = await sql<{ id: string }[]>`
+    SELECT created_by_user_id AS id FROM studios WHERE id = ${studioId}
+  `;
+  return rows[0]!.id;
+}
+
 /** Register one asset of `sizeBytes` into `studioId`. */
 async function seedAsset(studioId: string, sizeBytes: number): Promise<void> {
   await assetRepo.registerWithDedup({
     studioId,
+    producedByUserId: await ownerOf(studioId),
     contentHash: fakeHash(),
     storageKey: `image/2026-07-25/${crypto.randomUUID()}.png`,
     fileUrl: `https://cdn/${crypto.randomUUID()}.png`,
@@ -196,9 +211,10 @@ describe("accountStorageUsage (#1826 §5.3 raw account roll-up)", () => {
     const { userId, personalStudioId } = await insertUserWithPersonalStudio();
     const teamStudioId = await insertTeamStudioAdministeredBy(userId);
     const sharedHash = fakeHash();
-    const dup = (studioId: string) =>
+    const dup = async (studioId: string) =>
       assetRepo.registerWithDedup({
         studioId,
+        producedByUserId: await ownerOf(studioId),
         contentHash: sharedHash,
         storageKey: `image/2026-07-25/${crypto.randomUUID()}.png`,
         fileUrl: `https://cdn/${crypto.randomUUID()}.png`,

@@ -172,6 +172,15 @@ export interface StudioAssetEntity {
    * row that counts toward storage, kind judged from the cover itself = image).
    */
   source: "ai" | "upload" | "cover";
+  /**
+   * Who FIRST brought this content into the studio (#1839). Distinct from
+   * `studioId` (who OWNS it): attribution follows the project's studio for
+   * personal and team studios alike, so the producer can no longer be
+   * recovered from the owner studio. On a dedup hit the existing row keeps
+   * its original producer — a later uploader of the same bytes is not
+   * recorded (their upload deduped away).
+   */
+  producedByUserId: string;
   generationTaskId: string | null;
   createdAt: Date;
   deletedAt: Date | null;

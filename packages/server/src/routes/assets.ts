@@ -412,10 +412,7 @@ assets.post(
     //     attributed, an existing row is merely re-served.
     let ownerStudioId: string;
     if (body.dedup === true) {
-      ownerStudioId = await assetService.resolveOwnerStudioId(
-        body.project_id,
-        user.id,
-      );
+      ownerStudioId = await assetService.resolveOwnerStudioId(body.project_id);
     } else if (body.key !== undefined) {
       const granted = await assetUploadService.resolveGrantForReport({
         storageKey: body.key,
