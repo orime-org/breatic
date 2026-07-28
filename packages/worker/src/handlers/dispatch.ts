@@ -315,7 +315,9 @@ export async function runTask(
  * project), `cover_url` stays unset → the node shows Film (§4.5).
  * @param outputs - The task's persisted outputs, mutated in place (`cover_url`).
  * @param ctx - Task identity for cover registration + structured logging.
- * @param ctx.taskId - The task whose covers are being resolved (for logging).
+ * @param ctx.taskId - The task whose covers are being resolved. Not just log
+ *   context: it is written as each cover asset's `generation_task_id`, the
+ *   cost link that makes a worker-extracted cover traceable to its task.
  * @param ctx.userId - Acting user, credited as the cover asset's registrant.
  * @param ctx.projectId - Owning project; `undefined` degrades every cover to Film.
  */
@@ -1297,7 +1299,9 @@ export function mediaKindForActivity(
  * without a project (e.g. agent attachments have no project scope).
  * @param opts - Persistence context.
  * @param opts.taskType - Generation task type (mapped to the asset kind).
- * @param opts.userId - Acting user (attribution resolution input).
+ * @param opts.userId - Acting user, recorded as the asset's
+ *   `produced_by_user_id`. Since #1839 it is NOT an attribution input — the
+ *   owner studio is resolved from the project alone.
  * @param opts.projectId - Project scope; the call is a no-op when absent.
  * @param opts.taskId - Producing task id (asset cost link).
  * @param opts.nodeBound - Whether this output is pinned to a canvas node; when

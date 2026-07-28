@@ -382,13 +382,17 @@ const uploadedSchema = z
     // studio — the GRANT's studio on the regular path, resolveOwnerStudioId's on
     // the dedup path. Since #1839 both are decided by a project, never by who
     // is calling).
-    // The residual — an editor showing ANY asset from that studio (there is no
-    // kind filter: findByStudioAndHash matches on hash alone, so a pdf or mp3
-    // resolves too and simply renders broken), including one another member put
-    // there, as a node's history thumbnail — is
-    // ACCEPTED as LOW (cosmetic; node content is unaffected). It belongs to
-    // the same accepted class as the other within-studio residuals: inviting
-    // someone into a studio is an act of trust, see asset.service.ts.
+    // The residual — an editor showing ANY asset from that studio, including
+    // one another member put there. The lookup is kind-agnostic: it matches on
+    // (studio_id, content_hash) with no kind predicate, so a pdf or mp3 in the
+    // same studio resolves too and simply renders broken. The resolved cover
+    // reaches three sinks: the node_history row's thumbnail, the project
+    // activity row's thumbnail, and the response body — from which the client
+    // writes it onto the node as `data.coverUrl`, the video poster in the
+    // shared Yjs doc that every collaborator sees. ACCEPTED as LOW: it is
+    // cosmetic, and the video's own bytes (`data.content`) are untouched. It
+    // belongs to the same accepted class as the other within-studio residuals:
+    // inviting someone into a studio is an act of trust, see asset.service.ts.
   });
 
 assets.post(
