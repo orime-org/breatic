@@ -31,7 +31,7 @@ export interface Rect {
  * Minimum breathing room (px) the Group keeps between its border and every
  * member, on every side, at all times — applied at creation
  * ({@link groupRectForMembers}), on auto-expand ({@link expandGroupToWrap}), and
- * as the manual-resize hard-stop ({@link containsWithPadding}).
+ * as the manual-resize hard-stop (`containsWithPadding`).
  */
 export const GROUP_PADDING = 24;
 

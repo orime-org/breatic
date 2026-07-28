@@ -22,7 +22,7 @@ const SID = 's1';
  * @param type - Node modality.
  * @param data - Data overrides merged onto the required-field defaults.
  * @param id - Node id (defaults to `n1`).
- * @returns A complete {@link CanvasNodeFields}.
+ * @returns A complete `CanvasNodeFields`.
  */
 function fields(
   type: NodeType,

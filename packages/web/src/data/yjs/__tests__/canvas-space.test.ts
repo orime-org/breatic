@@ -44,7 +44,7 @@ import {
 } from '@web/data/yjs/canvas-space';
 
 /**
- * Builds a complete wire {@link CanvasNodeFields} fixture.
+ * Builds a complete wire `CanvasNodeFields` fixture.
  * @param type - The node modality (wire `type`).
  * @param data - Partial data overrides merged onto the required-field defaults.
  * @param opts - Optional id / position overrides.

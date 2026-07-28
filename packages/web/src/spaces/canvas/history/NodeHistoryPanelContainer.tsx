@@ -76,7 +76,7 @@ interface NodeHistoryPanelContainerProps {
  * opened (store `panelHostId` with `panelKind === 'history'` — it shares the
  * host + lifecycle with the Generate / reset panels, mutually exclusive).
  *
- * The React Query hook lives in {@link OpenNodeHistoryPanel}, which mounts ONLY
+ * The React Query hook lives in `OpenNodeHistoryPanel`, which mounts ONLY
  * when a history panel is open — so the default canvas mount never runs
  * `useInfiniteQuery` and needs no `QueryClientProvider`.
  * @param root0 - Component props.

@@ -72,7 +72,7 @@ export function referencePoolCount(
  * @param edges - The canvas edges (only `target` is read).
  * @param nodes - The canvas nodes (only the target's `data.focusImages` is read).
  * @param targetId - The node whose pool to check.
- * @param cap - The pool cap (from {@link getCachedReferencePoolCap}).
+ * @param cap - The pool cap (from `getCachedReferencePoolCap`).
  * @returns True when the pool already holds `cap` or more entries.
  */
 export function isReferencePoolFull(

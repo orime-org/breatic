@@ -28,8 +28,7 @@ interface EdgeContextMenuProps {
 }
 
 /**
- * The right-click menu for a single canvas edge (connection). Mirrors {@link
- * NodeContextMenu}: a controlled `DropdownMenu` anchored to a zero-size element
+ * The right-click menu for a single canvas edge (connection). Mirrors `NodeContextMenu`: a controlled `DropdownMenu` anchored to a zero-size element
  * pinned at the cursor (ReactFlow's `onEdgeContextMenu` gives a point, not an
  * element Radix can anchor to). Offers only Delete, with the platform-aware
  * delete shortcut hint.

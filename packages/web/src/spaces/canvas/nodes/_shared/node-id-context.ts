@@ -11,7 +11,7 @@ import * as React from 'react';
  * to the canvas store's `pendingRename` mailbox, and the matching node picks it
  * up. `null` outside the canvas (isolated component tests render the frame with
  * no provider), where the rename watch simply no-ops — same defaulting pattern
- * as {@link NodeScaleContext}.
+ * as `NodeScaleContext`.
  */
 export const NodeIdContext: React.Context<string | null> =
   React.createContext<string | null>(null);

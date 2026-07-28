@@ -17,7 +17,7 @@ import type { FocusImage } from '@breatic/shared';
 
 import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
 
-/** Everything {@link runFocusCrop} needs injected (all unit-mockable). */
+/** Everything `runFocusCrop` needs injected (all unit-mockable). */
 export interface FocusCropDeps {
   /** Export the natural-pixel crop of the source image as a PNG blob. */
   exportCrop: (sourceUrl: string, crop: CropRect) => Promise<Blob>;

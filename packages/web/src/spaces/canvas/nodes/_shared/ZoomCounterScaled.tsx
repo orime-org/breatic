@@ -20,7 +20,7 @@ interface ZoomCounterScaledProps {
  * they shrink with the canvas. Used for the node name header, the resolution
  * badge, and the group name label.
  *
- * It is a LEAF consumer of {@link NodeScaleContext} (the counter-scale factor,
+ * It is a LEAF consumer of `NodeScaleContext` (the counter-scale factor,
  * provided by the ReactFlow node wrapper). Isolating the zoom read to this small
  * leaf is the perf fix (#1647 R2): on zoom only these overlays re-render — the
  * node body + shell (which no longer read the scale) are left untouched. Outside

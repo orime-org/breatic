@@ -98,7 +98,7 @@ export const canvasApi = {
 
   /**
    * Enqueue a canvas generation task. The body is the shared
-   * {@link TaskCreateInput} wire contract (snake_case); build it with
+   * `TaskCreateInput` wire contract (snake_case); build it with
    * `buildGenerateTaskPayload` for image-node Generate.
    * @param body - The `POST /canvas/tasks` request body.
    * @returns The created task (unwrapped from the `{ data }` envelope).

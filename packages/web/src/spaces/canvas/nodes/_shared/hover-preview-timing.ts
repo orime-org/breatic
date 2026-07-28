@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Timing constants for the unified {@link HoverPreview} (#1622). Kept in one
+ * Timing constants for the unified `HoverPreview` (#1622). Kept in one
  * module so every hover surface (activity feed, node history #1814, generate
  * chip #1815) shares the same calibrated feel and it can never drift.
  *

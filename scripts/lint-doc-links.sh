@@ -24,10 +24,21 @@
 #   gaps, not false statements, and enabling them produced 174 findings that
 #   were all configuration noise.
 #
+# TWO SCAN MODES, AND WHY
+#   The six library packages are scanned from their `src/index.ts` and followed
+#   inward (`resolve`), so a reference from one file to another inside the same
+#   package resolves fine.
+#
+#   `packages/web` cannot be scanned that way. It is an application: its entry
+#   point renders a React tree and exports nothing, so following exports inward
+#   reaches almost no files — verified by planting a dangling link deep in
+#   CanvasSpace.tsx and watching the entry-point scan miss it entirely. web is
+#   therefore scanned file-by-file (`expand`), which reaches every file but
+#   treats each one as its own root, so a reference to a symbol in a SIBLING
+#   file cannot resolve either. Those were rewritten as backticks, and the rule
+#   for web is: `{@link}` for same-file symbols, backticks for everything else.
+#
 # WHAT IT DOES NOT CHECK
-#   - `packages/web` is excluded. It is an application, not a library: it has no
-#     `src/index.ts` and no public export surface, so TypeDoc's entry-point model
-#     does not apply. Its comments are unguarded by this check.
 #   - CROSS-PACKAGE references. Each package is resolved against its own
 #     tsconfig, so `{@link TaskEntity}` written in @domain about a type owned by
 #     @shared cannot resolve and must be written as `TaskEntity` in backticks
@@ -45,23 +56,31 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Library packages only — see "WHAT IT DOES NOT CHECK" above for why web is out.
-PACKAGES=(shared core domain server worker collab)
+# Every package. web is scanned differently — see "TWO SCAN MODES" above.
+PACKAGES=(shared core domain server worker collab web)
+
+# Shared TypeDoc settings live here so no package can drift on validation flags.
+OPTIONS_FILE="typedoc.doclinks.json"
 
 # Check one package. Prints TypeDoc's warnings on failure.
 # $1 = package directory name under packages/
 check_package() {
   local pkg="$1"
-  local out
+  local entry strategy out
+
+  if [[ "$pkg" == "web" ]]; then
+    entry="packages/web/src"        # application: every file is its own root
+    strategy="expand"
+  else
+    entry="packages/${pkg}/src/index.ts"   # library: follow the export surface
+    strategy="resolve"
+  fi
+
   out=$(npx typedoc --emit none \
-    --entryPoints "packages/${pkg}/src/index.ts" \
-    --entryPointStrategy resolve \
+    --options "$OPTIONS_FILE" \
+    --entryPoints "$entry" \
+    --entryPointStrategy "$strategy" \
     --tsconfig "packages/${pkg}/tsconfig.json" \
-    --exclude "**/__tests__/**" \
-    --excludeExternals true \
-    --validation.invalidLink true \
-    --validation.notExported false \
-    --validation.notDocumented false \
     2>&1 | sed 's/\x1b\[[0-9;]*m//g')
 
   if printf '%s' "$out" | grep -qE '^\[(warning|error)\]'; then
@@ -122,7 +141,7 @@ PROBE
   exit 0
 fi
 
-echo "Checking TSDoc {@link} targets resolve (${#PACKAGES[@]} library packages)..."
+echo "Checking TSDoc {@link} targets resolve (${#PACKAGES[@]} packages)..."
 if run_all; then
   echo "OK: every {@link} resolves."
   exit 0

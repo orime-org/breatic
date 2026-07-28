@@ -80,7 +80,7 @@ export function isCreatableNodeType(type: string): type is CreatableNodeType {
  * @param clientId - Yjs clientID of the creating connection (caller injects
  *   via `getCanvasClientId`); required when `initialState` is `handling` —
  *   it is the third field of the owner triple (#1580 #7).
- * @returns A complete {@link CanvasNodeFields} for an empty content node.
+ * @returns A complete `CanvasNodeFields` for an empty content node.
  */
 export function createEmptyNode(
   type: CreatableNodeType,
@@ -141,7 +141,7 @@ const GROUP_DEFAULT_NAME = 'Group';
  * @param width - The Group's authoritative width.
  * @param height - The Group's authoritative height.
  * @param createdBy - User id of the creator (caller injects from the store).
- * @returns A complete {@link CanvasNodeFields} for a Group node.
+ * @returns A complete `CanvasNodeFields` for a Group node.
  */
 export function createGroupNode(
   id: string,
