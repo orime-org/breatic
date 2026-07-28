@@ -251,17 +251,6 @@ const FIXTURE_STUDIO_ID = "00000000-0000-0000-0000-000000000003";
 // to `project-{pid}/canvas-{spaceId}`. Spaces have no PG table, so
 // this is just a stable UUID we reuse across tasks in the test.
 const FIXTURE_SPACE_ID = "00000000-0000-0000-0000-000000000004";
-// A registered user with NO personal studio (mid-onboarding: registration
-// creates the user + credit balance but not the studio). Used to exercise the
-// node-bound register fail-closed rule (#1826 design §0 rule 3): a generation
-// acting as this user cannot resolve an owner studio, so its PRIMARY node
-// output cannot register. Per the fail-closed rule the task FAILS with no
-// charge rather than pinning the node to an unregistered key (which the offline
-// GC would later reclaim → 404). (Pre-#1826 this was "best-effort skipped:
-// billed but untracked" — that left exactly the orphan-node-key hole §0 rule 3
-// closes.)
-const FIXTURE_USER_NO_STUDIO_ID = "00000000-0000-0000-0000-000000000005";
-
 // ── Polling helpers ──────────────────────────────────────────────────────────
 
 /**
@@ -414,13 +403,6 @@ beforeAll(async () => {
   await db.insert(schema.users).values({
     id: FIXTURE_USER_ID,
     email: "integration-test@breatic.example",
-    emailVerified: true,
-  }).onConflictDoNothing();
-
-  // Registered but no personal studio (asset hole #2 fixture).
-  await db.insert(schema.users).values({
-    id: FIXTURE_USER_NO_STUDIO_ID,
-    email: "integration-test-nostudio@breatic.example",
     emailVerified: true,
   }).onConflictDoNothing();
 
@@ -1200,7 +1182,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
   it("Test 6 (asset #2): a node-bound generation whose registration FAILS is fail-closed (no charge, no orphan node key)", async () => {
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
     const nodeId = crypto.randomUUID();
-    const url = "https://oss/nostudio-t6.png";
+    const url = "https://oss/register-fail-t6.png";
 
     // TRIGGER (changed by #1839, assertions unchanged): make the PRIMARY node
     // output's registration throw. Attribution now resolves from the project

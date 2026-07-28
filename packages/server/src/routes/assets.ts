@@ -163,7 +163,6 @@ assets.get(
     // normal presign (content claim not trusted, spec §8).
     const dedupHit = await assetUploadService.checkUploadDedup({
       projectId: project_id,
-      actingUserId: user.id,
       contentHash: hash,
       sizeBytes: size,
     });

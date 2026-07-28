@@ -12,8 +12,9 @@
  *     report lands the activity row without a new ledger row;
  *   - size distrust: a hash claim with a mismatched size is refused
  *     dedup and falls through to a normal presign (spec §8);
- *   - D9 attribution on the upload path: a personal-project collaborator
- *     dedups against THEIR OWN personal studio, not the owner's;
+ *   - attribution on the upload path (#1839): a personal-project
+ *     collaborator dedups against the PROJECT's studio, so one project is
+ *     one dedup domain no matter who uploads;
  *   - the authoritative upload cap (413) with the boundary allowed;
  *   - "no hash, no upload" (#1826 §0 rule 4): an unhashed report is REFUSED
  *     (400) and lands no ledger row — replacing the retired availability-first
@@ -76,7 +77,7 @@ afterAll(async () => {
 
 let seq = 0;
 
-/** A fresh user + their personal studio (D9 needs it); returns both ids. */
+/** A fresh user + their personal studio; returns both ids. */
 async function insertUserWithPersonalStudio(): Promise<{
   userId: string;
   personalStudioId: string;

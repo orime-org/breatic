@@ -7,7 +7,8 @@
  * + B.2 decision 2026-07-07: same studio + same content = the SAME URL).
  *
  * Two rules live here (routes stay translation-only):
- *   - presign dedup check: studio-scoped hash lookup (D9 attribution)
+ *   - presign dedup check: hash lookup scoped to the PROJECT's studio
+ *     (attribution #1839 — never the acting user's own)
  *     with SIZE DISTRUST — a hash claim whose declared size differs from
  *     the ledger row is refused dedup and falls through to a normal
  *     upload (spec §8: never trust the client's content claim alone);
@@ -34,22 +35,21 @@ export interface DedupHit {
 }
 
 /**
- * Presign-time dedup check: does the acting user's owner studio (D9)
- * already hold this content? A hit with a MATCHING declared size skips
- * the upload entirely; a size mismatch refuses dedup (content claim not
- * trusted) so the caller falls through to a normal presign.
+ * Presign-time dedup check: does the PROJECT's owner studio already hold
+ * this content (#1839 — never the acting user's own studio)? A hit with a
+ * MATCHING declared size skips the upload entirely; a size mismatch refuses
+ * dedup (content claim not trusted) so the caller falls through to a normal
+ * presign.
  * @param params - The dedup claim.
- * @param params.projectId - Project the upload targets.
- * @param params.actingUserId - Authenticated uploader.
+ * @param params.projectId - Project the upload targets; it alone decides the
+ *   studio whose content is searched.
  * @param params.contentHash - Client-computed sha256 hex.
  * @param params.sizeBytes - Client-declared file size.
  * @returns The hit to reuse, or null (no row / size mismatch).
- * @throws {NotFoundError} When the project (or the acting user's
- *   personal studio) does not exist.
+ * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  */
 export async function checkUploadDedup(params: {
   projectId: string;
-  actingUserId: string;
   contentHash: string;
   sizeBytes: number;
 }): Promise<DedupHit | null> {
@@ -97,7 +97,8 @@ export async function verifyDedupUpload(params: {
 /**
  * Mint a tenant-neutral storage key for an upload that missed dedup and record
  * its upload grant (#1826, design §2.2). Called by /presign AFTER the dedup
- * check misses: resolves the owner studio (D9), mints K, and writes the grant
+ * check misses: resolves the owner studio (#1839 — the PROJECT's), mints K,
+ * and writes the grant
  * row (user + studio + declared hash + K) that the upload endpoints later
  * re-check for authenticity. The dedup-hit path never calls this (no key, no
  * grant).
@@ -112,7 +113,7 @@ export async function verifyDedupUpload(params: {
  * @param params.taskType - The detected kind, used as the key's task segment.
  * @param params.ext - The dotted file extension for the key.
  * @returns The minted storage key K.
- * @throws {NotFoundError} When the project / acting user's personal studio is missing.
+ * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  */
 export async function issueUploadGrant(params: {
   projectId: string;

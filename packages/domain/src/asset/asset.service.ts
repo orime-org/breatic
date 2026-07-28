@@ -29,9 +29,9 @@
  * the caller already holds, cross-user dedup poisoning (`/local-upload` does
  * not verify the hash and `/uploaded` trusts the client's), and quota
  * consumption — are disclosed to users in the manual and terms, and are
- * borne by the user who issued the invitation. See inner ADR
- * 2026-07-28-asset-attribution-studio-level §5, especially §5.3: these are
- * ACCEPTED risks, not fixed ones. Do not read "decided" as "closed".
+ * borne by the user who issued the invitation. These are ACCEPTED risks,
+ * not fixed ones — do not read "decided" as "closed". The decision and its
+ * rationale live in the private engineering record.
  */
 
 import { and, eq, isNull } from "drizzle-orm";
