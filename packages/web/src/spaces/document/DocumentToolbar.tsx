@@ -23,7 +23,7 @@ import type { DocumentHistoryState } from '@web/spaces/document/use-document-his
 
 interface DocumentToolbarProps {
   editor: Editor;
-  /** Undo / redo availability, plus the re-read to run after either fires. */
+  /** Undo / redo availability. */
   history: DocumentHistoryState;
   /**
    * True for a viewer. Every control is disabled — read-only has to be enforced
@@ -49,6 +49,13 @@ interface ActionDef {
   id: string;
   labelKey: string;
   Icon: typeof Bold;
+  /**
+   * Reads its own availability off the history state. Kept on the definition
+   * rather than looked up by id: a lookup that misses just yields `false`, so
+   * a renamed id would disable the button permanently with every test still
+   * green.
+   */
+  isEnabled: (history: DocumentHistoryState) => boolean;
   run: (e: Editor) => void;
 }
 
@@ -68,12 +75,14 @@ const HISTORY_TOOLS: ActionDef[] = [
     id: 'undo',
     labelKey: 'spaces.document.toolbar.undo',
     Icon: Undo2,
+    isEnabled: (history) => history.canUndo,
     run: (e) => e.chain().focus().undo().run(),
   },
   {
     id: 'redo',
     labelKey: 'spaces.document.toolbar.redo',
     Icon: Redo2,
+    isEnabled: (history) => history.canRedo,
     run: (e) => e.chain().focus().redo().run(),
   },
 ];
@@ -135,7 +144,7 @@ const BLOCK_TOOLS: ToolDef[] = [
  * {@link DocumentHistoryState}.
  * @param root0 - Document toolbar props.
  * @param root0.editor - The editor whose state drives the toggles and which the tools act on.
- * @param root0.history - Undo / redo availability and its re-read.
+ * @param root0.history - Undo / redo availability.
  * @param root0.readOnly - True for a viewer; every control is disabled.
  * @returns The document toolbar element.
  */
@@ -144,10 +153,6 @@ export function DocumentToolbar({
   history,
   readOnly = false,
 }: DocumentToolbarProps): React.JSX.Element {
-  const historyEnabled: Record<string, boolean> = {
-    undo: history.canUndo,
-    redo: history.canRedo,
-  };
   return (
     <div
       data-testid='document-toolbar'
@@ -158,8 +163,7 @@ export function DocumentToolbar({
           key={t.id}
           action={t}
           editor={editor}
-          enabled={!readOnly && (historyEnabled[t.id] ?? false)}
-          onRan={history.sync}
+          enabled={!readOnly && t.isEnabled(history)}
         />
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
@@ -221,19 +225,16 @@ function ToolButton({
  * @param root0.action - The action definition (label, icon, run command).
  * @param root0.editor - The editor the action acts on.
  * @param root0.enabled - Whether the action is currently available.
- * @param root0.onRan - Called right after the action runs, so availability is re-read.
  * @returns The action button element.
  */
 function ActionButton({
   action,
   editor,
   enabled,
-  onRan,
 }: {
   action: ActionDef;
   editor: Editor;
   enabled: boolean;
-  onRan: () => void;
 }): React.JSX.Element {
   const t = useTranslation();
   const Icon = action.Icon;
@@ -243,12 +244,7 @@ function ActionButton({
       size='icon'
       aria-label={t(action.labelKey)}
       disabled={!enabled}
-      onClick={() => {
-        action.run(editor);
-        // Re-read the stacks: yjs can discard a dead entry without announcing
-        // it, which would leave this button lit but inert.
-        onRan();
-      }}
+      onClick={() => action.run(editor)}
       data-testid={`doc-tool-${action.id}`}
       className={cn('h-7 w-7')}
     >

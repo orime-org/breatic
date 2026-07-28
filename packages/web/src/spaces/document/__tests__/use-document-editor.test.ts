@@ -14,6 +14,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import * as Y from 'yjs';
 
+import {
+  getDocumentUndoManager,
+  _resetDocumentUndoCacheForTests,
+} from '@web/spaces/document/document-undo';
+import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 /** Reads a fragment's plain text, paragraphs joined by a newline. */
@@ -114,6 +119,43 @@ describe('useDocumentEditor — undo is per-client', () => {
     });
 
     expect(textOf(fragment)).not.toContain('mine');
+  });
+
+  it('does not take a peer’s words out of the paragraph it shares with mine', async () => {
+    // The case the "peer adds their own paragraph" test below cannot see:
+    // when two people write into the SAME paragraph, undoing my insert takes
+    // the whole paragraph unless the delete filter stops it. Measured before
+    // the filter was in place: the paragraph came back empty, the peer's text
+    // gone, the deletion synced to everyone and absent from their undo stack.
+    const fragment = documentBodyFragment(doc);
+    const undoManager = getDocumentUndoManager(doc, 'project-p/document-shared');
+    const { result } = renderHook(() =>
+      useDocumentEditor({ fragment, undoManager }),
+    );
+    await waitFor(() => expect(result.current).not.toBeNull());
+
+    act(() => {
+      result.current?.commands.setContent('<p>mine</p>');
+    });
+    await waitFor(() => expect(textOf(fragment)).toContain('mine'));
+
+    // The peer appends to the very same paragraph.
+    const peer = new Y.Doc();
+    syncAsRemote(peer, doc);
+    peer.transact(() => {
+      const paragraph = peer.getXmlFragment('content').get(0) as Y.XmlElement;
+      (paragraph.get(0) as Y.XmlText).insert(4, ' and theirs');
+    }, 'peer-origin');
+    act(() => syncAsRemote(doc, peer));
+    await waitFor(() => expect(textOf(fragment)).toContain('and theirs'));
+
+    act(() => {
+      result.current?.commands.undo();
+    });
+
+    expect(textOf(fragment)).toContain('and theirs');
+    _resetDocumentUndoCacheForTests();
+    peer.destroy();
   });
 
   it('does NOT roll back a peer’s edit — that is the whole point', async () => {

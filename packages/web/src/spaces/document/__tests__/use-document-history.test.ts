@@ -91,7 +91,6 @@ describe('useDocumentHistory', () => {
 
     act(() => {
       result.current.editor?.commands.undo();
-      result.current.history.sync();
     });
 
     await waitFor(() => expect(result.current.history.canRedo).toBe(true));
@@ -105,13 +104,11 @@ describe('useDocumentHistory', () => {
     await waitFor(() => expect(result.current.history.canUndo).toBe(true));
     act(() => {
       result.current.editor?.commands.undo();
-      result.current.history.sync();
     });
     await waitFor(() => expect(result.current.history.canRedo).toBe(true));
 
     act(() => {
       result.current.editor?.commands.redo();
-      result.current.history.sync();
     });
 
     await waitFor(() => expect(result.current.history.canRedo).toBe(false));
@@ -143,7 +140,6 @@ describe('useDocumentHistory', () => {
 
     act(() => {
       result.current.editor?.commands.undo();
-      result.current.history.sync();
     });
 
     // yjs discards the dead entry silently — without the re-read after undo,
@@ -198,5 +194,53 @@ describe('document undo manager — outlives the editor', () => {
     expect(
       documentBodyFragment(doc).toArray().map(String).join(''),
     ).not.toContain('written before the switch');
+  });
+
+  it('still records edits made AFTER coming back', async () => {
+    // Keeping the old history is only half of it — the manager also has to keep
+    // capturing. A manager that survived the switch but stopped listening would
+    // look fine (old stack intact, undo still "available") while quietly
+    // dropping everything typed from then on.
+    const fragment = documentBodyFragment(doc);
+    const undoManager = getDocumentUndoManager(doc, NAME);
+
+    const first = renderHook(() =>
+      useDocumentEditor({ fragment, undoManager }),
+    );
+    await waitFor(() => expect(first.result.current).not.toBeNull());
+    act(() => {
+      first.result.current!.commands.setContent('<p>before switch</p>');
+    });
+    await waitFor(() => expect(undoManager.undoStack.length).toBe(1));
+    first.unmount();
+
+    // Close the capture window, the way a pause in typing does. Without this
+    // the two edits merge into one entry — yjs coalesces anything inside its
+    // capture timeout — and the assertion below would be measuring the merge
+    // rather than whether the manager is still listening.
+    undoManager.stopCapturing();
+
+    const second = renderHook(() =>
+      useDocumentEditor({
+        fragment,
+        undoManager: getDocumentUndoManager(doc, NAME),
+      }),
+    );
+    await waitFor(() => expect(second.result.current).not.toBeNull());
+    act(() => {
+      second.result.current!.commands.setContent('<p>after switch</p>');
+    });
+
+    // The post-switch edit has to land on the stack as its own entry.
+    await waitFor(() =>
+      expect(getDocumentUndoManager(doc, NAME).undoStack.length).toBe(2),
+    );
+
+    act(() => {
+      second.result.current!.commands.undo();
+    });
+    const text = documentBodyFragment(doc).toArray().map(String).join('');
+    expect(text).not.toContain('after switch');
+    expect(text).toContain('before switch');
   });
 });

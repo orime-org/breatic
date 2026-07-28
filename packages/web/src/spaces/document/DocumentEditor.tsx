@@ -25,7 +25,7 @@ interface DocumentEditorProps {
  * collaborative wiring and this stays a presentation component.
  * @param root0 - Editor chrome props.
  * @param root0.editor - The editor to render and to drive the toolbar from.
- * @param root0.history - Undo / redo availability and its re-read.
+ * @param root0.history - Undo / redo availability.
  * @param root0.readOnly - True for a viewer; disables the toolbar.
  * @returns The toolbar and editor body.
  */

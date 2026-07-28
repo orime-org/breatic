@@ -21,13 +21,13 @@ import type * as Y from 'yjs';
 import { onDocDestroyed } from '@web/data/yjs/manager';
 
 /** A per-document undo-manager cache. */
-export interface UndoManagerCache {
+export interface UndoManagerCache<TManager extends Y.UndoManager = Y.UndoManager> {
   /**
    * Get-or-create the manager for a document. The first call creates one bound
    * to that doc; later calls return the same instance, so its stack survives a
    * tab switch. Pass the SAME doc `getDoc(name)` returns.
    */
-  get: (doc: Y.Doc, name: string) => Y.UndoManager;
+  get: (doc: Y.Doc, name: string) => TManager;
   /**
    * Destroy and drop the manager for a document, clearing its history. Called
    * when a tab closes, so reopening the Space starts clean. No-op for an
@@ -48,12 +48,15 @@ export interface UndoManagerCache {
  * a manager left behind would keep that dead doc's content pinned — relocating
  * the leak the doc eviction exists to fix, rather than fixing it.
  * @param create - Builds a manager for a document; called on a cache miss.
+ * @param dispose - Ends a manager on eviction. Defaults to `destroy()`; a
+ *   manager whose `destroy` is deliberately inert supplies its own way out.
  * @returns The cache.
  */
-export function createUndoManagerCache(
-  create: (doc: Y.Doc) => Y.UndoManager,
-): UndoManagerCache {
-  const managers = new Map<string, Y.UndoManager>();
+export function createUndoManagerCache<TManager extends Y.UndoManager>(
+  create: (doc: Y.Doc) => TManager,
+  dispose: (manager: TManager) => void = (manager) => manager.destroy(),
+): UndoManagerCache<TManager> {
+  const managers = new Map<string, TManager>();
 
   /**
    * Destroy and drop the manager cached for a name.
@@ -62,7 +65,7 @@ export function createUndoManagerCache(
   const evict = (name: string): void => {
     const manager = managers.get(name);
     if (!manager) return;
-    manager.destroy();
+    dispose(manager);
     managers.delete(name);
   };
 
@@ -71,13 +74,13 @@ export function createUndoManagerCache(
   onDocDestroyed(evict);
 
   return {
-    get(doc: Y.Doc, name: string): Y.UndoManager {
+    get(doc: Y.Doc, name: string): TManager {
       let manager = managers.get(name);
       // Heal a stale binding: a manager created for a since-recreated doc is
       // observing a dead one. Guards against a caller that destroys a doc
       // without evicting.
       if (manager && manager.doc !== doc) {
-        manager.destroy();
+        dispose(manager);
         manager = undefined;
       }
       if (!manager) {
@@ -91,7 +94,7 @@ export function createUndoManagerCache(
       return managers.has(name);
     },
     reset(): void {
-      managers.forEach((manager) => manager.destroy());
+      managers.forEach((manager) => dispose(manager));
       managers.clear();
     },
   };
