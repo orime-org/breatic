@@ -46,6 +46,7 @@ import {
   renderCollabSelection,
 } from '@web/spaces/canvas/generate/caret-render';
 import { CollabUndoSelection } from '@web/spaces/canvas/generate/collab-undo-selection';
+import { scopeUndoManagerToEditor } from '@web/spaces/document/document-undo';
 import { Audio, Video } from '@web/spaces/document/document-media-nodes';
 
 /** A collaborator's caret identity, as published through awareness. */
@@ -123,7 +124,16 @@ export function buildDocumentExtensions(
     // same mechanism that drops an unknown node. Ship it now, with the toolbar
     // control following later, or the release that adds alignment would have
     // older clients erasing it from every paragraph they touch.
-    TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    //
+    // The media nodes are on the list because the media slice specifies an
+    // alignment control for images, and because all three are block-level: the
+    // capability is the same shape for each, so declaring it once here costs a
+    // single array entry, while omitting it costs a migration. Which of them
+    // gets a toolbar button is a separate, reversible decision — an attribute
+    // nothing writes is inert, an attribute nothing declared is a data loss.
+    TextAlign.configure({
+      types: ['heading', 'paragraph', 'image', 'video', 'audio'],
+    }),
   ];
 
   if (fragment) {
@@ -132,8 +142,13 @@ export function buildDocumentExtensions(
         fragment,
         // Handing over our own manager keeps the undo stack alive across an
         // editor rebuild; without it the extension builds a fresh one and a
-        // tab switch silently empties the history.
-        ...(undoManager ? { yUndoOptions: { undoManager } } : {}),
+        // tab switch silently empties the history. It goes in wrapped, because
+        // the binding releases its subscriptions by destroying the manager
+        // outright — see {@link scopeUndoManagerToEditor} for why that has to
+        // be narrowed to this editor's own.
+        ...(undoManager
+          ? { yUndoOptions: { undoManager: scopeUndoManagerToEditor(undoManager) } }
+          : {}),
       }),
       // Undo must restore the selection the edit started from. Upstream emits
       // its stack-item-popped hand-off AFTER the restore transaction has run,

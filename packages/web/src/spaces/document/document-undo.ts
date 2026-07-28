@@ -51,12 +51,88 @@ export interface DocumentUndoManager extends Y.UndoManager {
    * @returns Unsubscribe.
    */
   onAfterHistoryAction: (listener: () => void) => () => void;
-  /**
-   * Really shut the manager down. `destroy()` is inert on this object so an
-   * unmounting editor cannot end a manager meant to outlive it; only the cache
-   * calls this.
-   */
-  shutDown: () => void;
+}
+
+/** A subscription this editor made, kept so it can be taken back. */
+interface OwnedListener {
+  event: string;
+  listener: (...args: never[]) => void;
+}
+
+/**
+ * Give one editor its own listener scope on a manager shared across editors.
+ *
+ * The binding subscribes to the manager when its editor mounts and gives those
+ * subscriptions back by calling `destroy()` when it unmounts. `destroy()` is a
+ * WHOLE-manager operation — it drops every listener, detaches the document and
+ * clears the tracked origin — which is right when the manager belongs to that
+ * one editor, and wrong here.
+ *
+ * It is wrong twice over. The document attachment must survive, or nothing
+ * typed after the next mount is recorded. And the teardown lands too late to
+ * be safe: `@tiptap/react` schedules it on a `setTimeout(…, 1)` so a StrictMode
+ * remount can cancel it, which puts the outgoing editor's cleanup AFTER the
+ * incoming editor's setup — measured across four rebuilds, an unscoped
+ * `destroy()` left 0 listeners where 1 was live, because it reached past its
+ * own subscriptions into the ones the new editor had just made. Suppressing
+ * the teardown instead leaks: the same four rebuilds accumulated 2, 3, 4, 5
+ * listeners, each pinning a dead editor view and its ProseMirror state.
+ *
+ * This proxy narrows the blast radius to the caller. It remembers what this
+ * editor subscribed to and, on teardown, unsubscribes exactly that — whenever
+ * that teardown happens to run. The stacks and the document attachment are
+ * never touched.
+ *
+ * `restore` is refused for the same reason it always was: upstream's rebuild
+ * path reinstates a listener SNAPSHOT and re-attaches the document a second
+ * time, both of which this scoping makes unnecessary and harmful.
+ * @param manager - The shared, document-lifetime manager.
+ * @returns A stand-in safe to hand to one editor.
+ */
+export function scopeUndoManagerToEditor(manager: Y.UndoManager): Y.UndoManager {
+  const owned = new Set<OwnedListener>();
+  type Subscribe = (event: string, listener: (...args: never[]) => void) => void;
+
+  /** Takes back every subscription this editor made, and only those. */
+  const release = (): void => {
+    owned.forEach(({ event, listener }) => {
+      (manager.off as Subscribe)(event, listener);
+    });
+    owned.clear();
+  };
+
+  return new Proxy(manager, {
+    get(target, prop): unknown {
+      if (prop === 'on') {
+        return (event: string, listener: (...args: never[]) => void): void => {
+          owned.add({ event, listener });
+          (target.on as Subscribe)(event, listener);
+        };
+      }
+      if (prop === 'off') {
+        return (event: string, listener: (...args: never[]) => void): void => {
+          owned.forEach((entry) => {
+            if (entry.event === event && entry.listener === listener) {
+              owned.delete(entry);
+            }
+          });
+          (target.off as Subscribe)(event, listener);
+        };
+      }
+      if (prop === 'destroy') return release;
+      if (prop === 'restore') return undefined;
+      // Bind to the real manager: methods reached through the proxy must still
+      // see the real instance as `this`, or they read an empty listener table.
+      const value = Reflect.get(target, prop, target);
+      return typeof value === 'function'
+        ? (value as (...args: never[]) => unknown).bind(target)
+        : value;
+    },
+    set(target, prop, value): boolean {
+      if (prop === 'restore') return true;
+      return Reflect.set(target, prop, value, target);
+    },
+  });
 }
 
 /**
@@ -86,26 +162,6 @@ function createDocumentUndoManager(doc: Y.Doc): DocumentUndoManager {
     captureTransaction: (tr) => tr.meta.get('addToHistory') !== false,
   }) as DocumentUndoManager;
 
-  // The binding tears the manager down when its editor unmounts, handing back a
-  // `restore` for the next editor to call. That dance assumes ONE editor being
-  // remounted; ours is a different editor each time, and React does not promise
-  // the outgoing cleanup runs before the incoming setup. Measured: the incoming
-  // editor looks for `restore` (not set yet), the outgoing one then detaches the
-  // manager from the document and sets it — so the listener is gone with nobody
-  // left to put it back, and every edit from then on goes unrecorded.
-  //
-  // This manager is meant to outlive editors, so it opts out of that protocol:
-  // teardown is inert, `restore` is swallowed, and only the cache — which knows
-  // when the document itself is gone — really ends it.
-  const shutDown = manager.destroy.bind(manager);
-  manager.destroy = (): void => {};
-  Object.defineProperty(manager, 'restore', {
-    get: () => undefined,
-    set: () => {},
-    configurable: true,
-  });
-  manager.shutDown = shutDown;
-
   const listeners = new Set<() => void>();
   const undo = manager.undo.bind(manager);
   const redo = manager.redo.bind(manager);
@@ -133,9 +189,10 @@ function createDocumentUndoManager(doc: Y.Doc): DocumentUndoManager {
   return manager;
 }
 
-const documentUndoCache = createUndoManagerCache(createDocumentUndoManager, (manager) =>
-  manager.shutDown(),
-);
+// The default disposer is right again now that teardown is scoped per editor:
+// nothing but this cache ever calls `destroy()` on the real manager, and this
+// cache only calls it when the document itself is gone.
+const documentUndoCache = createUndoManagerCache(createDocumentUndoManager);
 
 /**
  * Get-or-create the cached undo manager for a document.

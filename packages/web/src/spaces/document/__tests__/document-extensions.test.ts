@@ -77,9 +77,13 @@ const REQUIRED_MARKS: ReadonlyArray<string> = [
 const REQUIRED_NODE_ATTRS: Readonly<Record<string, ReadonlyArray<string>>> = {
   paragraph: ['textAlign'],
   heading: ['textAlign', 'level'],
-  image: ['src', 'alt', 'title'],
-  video: ['src', 'poster', 'title'],
-  audio: ['src', 'title'],
+  // `width` and `height` back the drag-to-resize the media slice specifies;
+  // `textAlign` backs its alignment control. Both are attributes on a node
+  // that already exists, which is the failure mode this file exists to catch —
+  // the node survives an older client, the attribute does not.
+  image: ['src', 'alt', 'title', 'width', 'height', 'textAlign'],
+  video: ['src', 'poster', 'title', 'textAlign'],
+  audio: ['src', 'title', 'textAlign'],
   tableCell: ['colspan', 'rowspan', 'colwidth'],
   tableHeader: ['colspan', 'rowspan', 'colwidth'],
   taskItem: ['checked'],

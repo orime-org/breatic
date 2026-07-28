@@ -196,6 +196,58 @@ describe('document undo manager — outlives the editor', () => {
     ).not.toContain('written before the switch');
   });
 
+  it('gives every listener back when its editor goes away', async () => {
+    // The binding subscribes to the manager on mount and hands those
+    // subscriptions back by calling `destroy()` — which drops EVERY listener,
+    // not just its own. That is right for an editor-owned manager and wrong
+    // for one that outlives editors, in both directions: suppress the teardown
+    // and subscriptions pile up, one set per rebuild, each pinning a dead
+    // editor view and its ProseMirror state (measured: 2, 3, 4, 5 across four
+    // rebuilds); let it run unscoped and it reaches past its own into the
+    // incoming editor's, because upstream defers teardown past the next mount
+    // (measured: 0 live listeners where 1 was needed).
+    const fragment = documentBodyFragment(doc);
+    const manager = getDocumentUndoManager(doc, NAME);
+    const listenerCount = (): number =>
+      (manager as unknown as { _observers: Map<string, Set<unknown>> })._observers.get(
+        'stack-item-added',
+      )?.size ?? 0;
+
+    /** Lets the deferred teardown (`setTimeout(…, 1)` upstream) actually run. */
+    const settle = async (): Promise<void> => {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+    };
+
+    const whileLive: number[] = [];
+    const afterTeardown: number[] = [];
+    for (let round = 0; round < 4; round += 1) {
+      const mounted = renderHook(() =>
+        useDocumentEditor({ fragment, undoManager: manager }),
+      );
+      await waitFor(() => expect(mounted.result.current).not.toBeNull());
+      act(() => {
+        mounted.result.current!.commands.insertContent(`round ${round} `);
+      });
+      await settle();
+      whileLive.push(listenerCount());
+      mounted.unmount();
+      await settle();
+      afterTeardown.push(listenerCount());
+    }
+
+    // The invariant: an editor that is gone holds nothing.
+    expect(afterTeardown).toEqual([0, 0, 0, 0]);
+    // And the live cost is flat, not cumulative. Two rather than one because
+    // `useEditor` builds a second instance per mount — upstream's own
+    // behaviour, not something this module asks for; what matters here is that
+    // the number is the same on the fourth rebuild as on the first. If a
+    // release changes it, this line should fail and be re-measured, not
+    // loosened.
+    expect(whileLive).toEqual([2, 2, 2, 2]);
+  });
+
   it('still records edits made AFTER coming back', async () => {
     // Keeping the old history is only half of it — the manager also has to keep
     // capturing. A manager that survived the switch but stopped listening would
