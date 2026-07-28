@@ -86,7 +86,7 @@ export function restampLease(
 /**
  * Build the Redis key where this consumer persists its last-handled
  * stream id for durable resume.
- * @param envPrefix - Environment prefix (e.g. `dev`) that namespaces the key.
+ * @param envPrefix - Namespace for this consumer's cursor key (`ENV`).
  * @returns The `{envPrefix}:collab:task-events:last-id` resume-cursor key.
  */
 function taskEventsLastIdKey(envPrefix: string): string {
@@ -385,7 +385,10 @@ async function handleNodeEvent(
  * Start listening for task lifecycle events on the Redis stream.
  * @param hocuspocus - Running Hocuspocus server instance
  * @param streamRedisUrl - Redis URL for Streams (DB 2)
- * @param envPrefix - Environment prefix for stream + last-id keys
+ * @param envPrefix - `ENV`, the namespace the last-id cursor key lives in.
+ *   It MUST match the namespace of the stream key (which core derives from
+ *   `ENV` too) — a cursor renamed out from under a running deployment reads
+ *   as "missing", and a missing cursor replays the stream from `0-0`.
  * @returns Cleanup function to stop listening
  */
 export function startTaskListener(

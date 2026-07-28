@@ -42,6 +42,7 @@ import {
   initCore,
   getRedis,
   setSession,
+  sessionCookieName,
   loadLocales,
   getStorageAdapter,
 } from "@breatic/core";
@@ -123,7 +124,7 @@ async function addEditor(projectId: string, userId: string): Promise<void> {
 async function loginCookie(userId: string): Promise<string> {
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  return `breatic_session=${token}`;
+  return `${sessionCookieName()}=${token}`;
 }
 
 /**

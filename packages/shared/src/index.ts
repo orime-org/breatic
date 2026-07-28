@@ -5,6 +5,8 @@ export {
   Environment,
   TaskStatus,
   StorageProvider,
+  DEFAULT_API_PORT,
+  DEFAULT_COLLAB_PORT,
 } from "@shared/constants/index.js";
 
 export type {
@@ -82,7 +84,7 @@ export {
   HANDLING_TIMEOUT_MS,
   membersChangedChannel,
   activityNewChannel,
-  ALL_PROJECT_CHANNELS_PATTERN,
+  allProjectChannelsPattern,
   SpaceTypeSchema,
   SPACE_NAME_MAX_LEN,
   SpaceRpcRequestSchema,

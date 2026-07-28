@@ -20,7 +20,6 @@ import { resolveModel, validateParams } from "@worker/providers/shared.js";
 beforeAll(() => {
   initCore({
     DATABASE_URL: "postgres://localhost:5432/breatic_test",
-    SESSION_SECRET_KEY: "test-session-secret-key",
     WAVESPEED_API_KEY: "test-wavespeed-key",
     TOPAZ_API_KEY: "test-topaz-key",
   });

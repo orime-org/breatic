@@ -63,7 +63,7 @@ export function deriveDisplayName(u: {
 
 /**
  * Register / login responses no longer return a `token` field —
- * the server sets an httpOnly `breatic_session` cookie on the
+ * the server sets an httpOnly session cookie on the
  * response instead (2026-05-26 cookie migration). The frontend
  * never holds the token; subsequent calls authenticate via the
  * cookie automatically (axios `withCredentials: true`).

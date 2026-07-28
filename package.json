@@ -28,6 +28,7 @@
     "lint:single-tooltip-provider": "bash scripts/lint-single-tooltip-provider.sh",
     "lint:single-toast-entry": "bash scripts/lint-single-toast-entry.sh",
     "lint:overlay-surface": "bash scripts/lint-overlay-surface.sh",
+    "lint:dev-proxy-target": "bash scripts/lint-dev-proxy-target.sh && bash scripts/lint-dev-proxy-target.sh --self-test",
     "lint:no-cjk": "bash scripts/lint-no-cjk.sh",
     "lint:no-collab-auth-table-sql": "bash scripts/lint-no-collab-auth-table-sql.sh",
     "lint:no-core-process-env": "bash scripts/lint-no-core-process-env.sh",

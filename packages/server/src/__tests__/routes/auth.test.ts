@@ -4,11 +4,17 @@
 /**
  * Auth route tests — register, login, logout, getMe.
  *
- * Session is delivered as an httpOnly `breatic_session` cookie
- * (2026-05-26 cookie migration). Response bodies no longer carry
- * the raw token; protected routes read the cookie via Hono's cookie
- * helper, which means `getCookie` returns `valid-token` when the
- * `Cookie: breatic_session=valid-token` header is on the request.
+ * Session is delivered as an httpOnly session cookie (2026-05-26
+ * cookie migration). Response bodies no longer carry the raw token;
+ * protected routes read the cookie via Hono's cookie helper.
+ *
+ * The real name is deployment-scoped (`sessionCookieName()` →
+ * `breatic_session_{REDIS_KEY_PREFIX}`, #1831), but the core mock here
+ * pins it to the bare `breatic_session` so these fixtures assert route
+ * behaviour rather than tracking an env-derived value. The name itself
+ * is covered by `core/infra/__tests__/session-cookie-name.test.ts`, and
+ * the wiring end to end by the integration suites (which call the real
+ * `sessionCookieName()`).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

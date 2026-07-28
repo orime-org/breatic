@@ -365,8 +365,11 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     getStorageAdapter: mocks.getStorageAdapter,
     setSession: vi.fn(),
     getSession: vi.fn(),
+    // Fixtures across this suite build cookie headers with the bare name;
+    // the per-deployment suffix is covered by session-store's own test.
+    sessionCookieName: () => "breatic_session",
     // Config
-    env: { ENV: "dev", PORT: 3000, ALLOWED_ORIGINS: "http://localhost:3001", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled" },
+    env: { ENV: "dev", PORT: 3000, ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled" },
     MONOREPO_ROOT: "/tmp",
     getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, full_detail_turns: 3, memory_user_max_size: 1000, memory_project_max_size: 1000 }),
     // Values intentionally differ from config/storage.yaml so route tests

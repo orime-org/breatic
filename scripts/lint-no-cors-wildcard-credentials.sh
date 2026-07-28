@@ -30,7 +30,7 @@ CREDENTIALS_REGEX="credentials:[[:space:]]*true"
 
 CANDIDATES=$(find packages \
   -type f \
-  \( -name '*.ts' -o -name '*.tsx' \) \
+  \( -name '*.ts' -o -name '*.mts' -o -name '*.cts' -o -name '*.tsx' \) \
   -not -path '*/__tests__/*' \
   -not -path '*/node_modules/*' \
   -not -path '*/dist/*' \

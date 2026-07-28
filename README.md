@@ -49,7 +49,7 @@ breatic/                           # Turborepo monorepo
 │   │   │   ├── infra/             #   Redis, queues, session store, request context (AsyncLocalStorage)
 │   │   │   └── config/            #   Environment + YAML config loaders
 │   │   └── vitest.config.ts
-│   ├── collab/                    # Hocuspocus service (port 1234)
+│   ├── collab/                    # Hocuspocus service (COLLAB_PORT, default 1234)
 │   │   └── src/                   #   Yjs sync, auth, persistence, task result listener
 │   └── web/                       # Frontend (placeholder)
 ├── config/                        # YAML configs (agent, collab, worker, pricing, text-tools, models/)
@@ -115,7 +115,7 @@ Pulls pre-built images from GHCR. You don't need Node, pnpm, or any source code 
 git clone https://github.com/orime-org/breatic.git
 cd breatic
 cp .env.docker .env
-# Edit .env: SESSION_SECRET_KEY, DATABASE_URL, Redis URLs, API keys
+# Edit .env: DATABASE_URL, Redis URLs, API keys
 docker compose up -d
 ```
 
@@ -145,7 +145,7 @@ pnpm db:migrate                        # once, or after pulling new migrations
 pnpm dev                               # turbo starts API + Worker + Collab + Vite
 ```
 
-Vite dev server listens on `http://localhost:8000` and proxies `/api/*` / `/ws` / `/uploads/*` to the backend, mirroring what nginx does in production. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution flow.
+Vite dev server listens on `VITE_DEV_PORT` (default `http://localhost:8000`) and proxies `/api/*` / `/ws` / `/uploads/*` to the backend, mirroring what nginx does in production. Proxy targets are derived from the backend's own `PORT` / `COLLAB_PORT`, so several worktrees can run `pnpm dev` side by side — see the header of `.env.dev`. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution flow.
 
 Useful commands:
 
@@ -163,7 +163,6 @@ All settings validated at startup via Zod. See `.env.dev` or `.env.docker` for t
 
 | Variable | Description |
 |----------|-------------|
-| `SESSION_SECRET_KEY` | Session signing key |
 | `DATABASE_URL` | PostgreSQL connection string |
 
 ### AI Providers (optional)

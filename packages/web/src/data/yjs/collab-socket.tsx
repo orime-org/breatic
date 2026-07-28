@@ -15,7 +15,7 @@ import { destroyDoc } from '@web/data/yjs/manager';
  * server's `onAuthenticate` hook — without ANY token the client-side library
  * short-circuits and the hook is never invoked (ueberdosis/hocuspocus#596). The
  * server ignores it and reads the real session token from the httpOnly
- * `breatic_session` cookie on the same-origin `/ws` upgrade request.
+ * session cookie on the same-origin `/ws` upgrade request.
  */
 const COOKIE_AUTH_PLACEHOLDER = '__cookie_auth__';
 

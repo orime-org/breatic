@@ -24,9 +24,11 @@
  *
  * Auth is cookie-based since 2026-05-26: the Hocuspocus client sends
  * a placeholder `token` solely to trip the hook, and the real session
- * token travels in the `breatic_session` cookie on the WebSocket
+ * token travels in the httpOnly session cookie on the WebSocket
  * upgrade request (Hocuspocus exposes the upgrade-request headers via
- * `requestHeaders`).
+ * `requestHeaders`). The name is deployment-scoped in production
+ * (`sessionCookieName()`, #1831); the core mock below pins it to the
+ * bare `breatic_session` so these fixtures stay independent of env.
  *
  * Session + role resolution AND the Yjs space-existence read are all
  * delegated to `@breatic/core` (`getSession` +
@@ -66,11 +68,11 @@ const {
 //     the warn/error spies the log-trail assertions below check
 //   - yjsDocumentsRepo.fetchDocData: the single home for `yjs_documents`
 //     SQL (the space-existence read), mocked to return a meta blob
-//   - SESSION_COOKIE_NAME: the cookie name constant
+//   - sessionCookieName(): the per-deployment cookie name
 vi.mock("@breatic/core", () => ({
   getSession: getSessionMock,
   projectAuthService: { loadProjectRole: loadProjectRoleMock },
-  SESSION_COOKIE_NAME: "breatic_session",
+  sessionCookieName: () => "breatic_session",
   createLogger: () => ({
     warn: loggerWarn,
     error: loggerError,

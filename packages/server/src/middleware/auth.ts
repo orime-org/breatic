@@ -4,7 +4,8 @@
 /**
  * Authentication middleware.
  *
- * Reads the session token from the httpOnly `breatic_session` cookie,
+ * Reads the session token from the httpOnly session cookie
+ * (`sessionCookieName()` — deployment-scoped, see `@core/infra/session-store`),
  * resolves it via the session store, and sets the user entity on the
  * Hono context.
  *

@@ -33,7 +33,7 @@ LEAK_REGEX='\$infer(Select|Insert)\b'
 # row type is mapped to a hand-written entity) and tests.
 CANDIDATES=$(find packages \
   -type f \
-  \( -name '*.ts' -o -name '*.tsx' \) \
+  \( -name '*.ts' -o -name '*.mts' -o -name '*.cts' -o -name '*.tsx' \) \
   -not -name '*.repo.ts' \
   -not -path '*/__tests__/*' \
   -not -path '*/node_modules/*' \

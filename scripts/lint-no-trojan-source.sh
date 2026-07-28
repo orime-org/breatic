@@ -35,7 +35,7 @@ cd "$REPO_ROOT"
 # any .env* template. Simple `grep -E` anchors are BSD/GNU portable (no
 # char-class ranges / -P — those are the cross-platform traps).
 FILES=$(git ls-files \
-  | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|json|ya?ml|md|css|scss|html|sh|sql)$' \
+  | grep -E '\.(ts|mts|cts|tsx|js|jsx|mjs|cjs|json|ya?ml|md|css|scss|html|sh|sql)$' \
   | grep -vE '(^|/)pnpm-lock\.yaml$' \
   | grep -vE '(^|/)\.env' \
   || true)

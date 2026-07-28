@@ -31,7 +31,7 @@
  *   5. admin             PATCH {role:"maintainer"} → 200, role flipped
  *
  * Auth is real: each caller gets a Redis session token (the same store
- * `requireAuth` reads), passed as the `breatic_session` cookie. Seeding uses a
+ * `requireAuth` reads), passed under the real `sessionCookieName()`. Seeding uses a
  * narrow raw `postgres` client; the assertions go through the real Hono app
  * (`createApp`) and verify the studio side-effects via the real repo.
  */
@@ -56,7 +56,13 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { initCore, getRedis, setSession, loadLocales } from "@breatic/core";
+import {
+  initCore,
+  getRedis,
+  setSession,
+  sessionCookieName,
+  loadLocales,
+} from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import type { Hono } from "hono";
 
@@ -148,7 +154,7 @@ async function insertMemberRaw(
 async function loginCookie(userId: string): Promise<string> {
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  return `breatic_session=${token}`;
+  return `${sessionCookieName()}=${token}`;
 }
 
 const JSON_HEADERS = { "Content-Type": "application/json" } as const;

@@ -12,9 +12,10 @@ import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 
+// NOTE: no `port` here. The WebSocket port moved to the core env schema
+// (`COLLAB_PORT`) alongside the other service ports — this file is behaviour
+// knobs only. See config/collab.yaml's header (#1831).
 const collabConfigSchema = z.object({
-  port: z.number().int().positive().default(1234),
-
   // Document lifecycle
   unload_immediately: z.boolean().default(true),
   debounce: z.number().int().positive().default(2000),
@@ -55,8 +56,15 @@ export type CollabConfig = z.infer<typeof collabConfigSchema>;
 let _cached: Readonly<CollabConfig> | null = null;
 
 /**
- * Load collab configuration from YAML.
+ * Load collab's behaviour configuration from YAML.
+ *
+ * Pure YAML — no env involved. The WebSocket port used to be declared here as
+ * a plain YAML key with a schema default, which put one service port in a
+ * different place from the other three (they were already in the core env
+ * schema) and left it unsettable from `.env`. It moved to the core env schema
+ * in #1831, so this loader is back to one job: behaviour knobs.
  * @returns Frozen, validated config object
+ * @throws {Error} When the YAML is missing / unreadable or fails validation.
  */
 export function getCollabConfig(): Readonly<CollabConfig> {
   if (_cached) return _cached;
@@ -64,8 +72,7 @@ export function getCollabConfig(): Readonly<CollabConfig> {
   const configPath = resolve(import.meta.dirname, "../../../config/collab.yaml");
   const raw = readFileSync(configPath, "utf-8");
   const parsed = parse(raw) as unknown;
-  const config = collabConfigSchema.parse(parsed);
 
-  _cached = Object.freeze(config);
+  _cached = Object.freeze(collabConfigSchema.parse(parsed));
   return _cached;
 }

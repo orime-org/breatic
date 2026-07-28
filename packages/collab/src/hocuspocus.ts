@@ -57,7 +57,19 @@ const logger = createLogger("hocuspocus");
 export interface CollabServerInfra {
   /** Collab Redis (DB 3) — Hocuspocus cross-instance pub/sub + space-delete lock. */
   collabRedisUrl: string;
-  envPrefix: string;
+  /**
+   * WebSocket listen port (`COLLAB_PORT`). Passed in rather than read here so
+   * `index.ts` stays the only module that touches env — same path as
+   * `redisKeyPrefix` below.
+   */
+  port: number;
+  /**
+   * Namespace for the Hocuspocus pub/sub channels (`REDIS_KEY_PREFIX`,
+   * which resolves to `ENV` when unset). Two deployments sharing a Redis
+   * instance MUST differ here: pub/sub ignores the DB number, so the
+   * `REDIS_*_URL` split isolates every ordinary key but not channels.
+   */
+  redisKeyPrefix: string;
 }
 
 /**
@@ -118,7 +130,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         createRedisClient(infra.collabRedisUrl, {
           name: "collab-hocuspocus-pubsub",
         }),
-      prefix: `${infra.envPrefix}:hocuspocus`,
+      prefix: `${infra.redisKeyPrefix}:hocuspocus`,
     }),
   ];
 
@@ -136,7 +148,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   }
 
   const wsServer = new Server({
-    port: cfg.port,
+    port: infra.port,
     quiet: cfg.quiet,
 
     // Document lifecycle
@@ -377,7 +389,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   });
 
   logger.info({
-    port: cfg.port,
+    port: infra.port,
     unloadImmediately: cfg.unload_immediately,
     debounce: cfg.debounce,
     throttle: cfg.throttle_enabled,

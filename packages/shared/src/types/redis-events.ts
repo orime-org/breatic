@@ -83,12 +83,19 @@ export type ProjectLifecycleEvent =
 // ── Channel names (single source of truth) ──────────────────────────
 
 /**
- * Channel pattern for `members:changed`.
+ * Channel for `members:changed`.
+ *
+ * The `prefix` is a parameter rather than something this module reads, because
+ * `@breatic/shared` must stay browser-safe and therefore cannot touch env. Its
+ * value is decided in exactly one place — `@core/infra/control-events` — so no
+ * caller has to remember to namespace anything. See {@link allProjectChannelsPattern}
+ * for why the namespace exists at all.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
  * @param projectId - the project whose membership-change channel is built
- * @returns the pub/sub channel name `project:{projectId}:members:changed`
+ * @returns the channel name `{prefix}:project:{projectId}:members:changed`
  */
-export function membersChangedChannel(projectId: string): string {
-  return `project:${projectId}:members:changed`;
+export function membersChangedChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:members:changed`;
 }
 
 /**
@@ -112,13 +119,39 @@ export interface ActivityNewControlEvent {
 
 /**
  * Pub/sub channel for {@link ActivityNewControlEvent}. Matched by
- * {@link ALL_PROJECT_CHANNELS_PATTERN}, so the collab control-plane
+ * {@link allProjectChannelsPattern}, so the collab control-plane
  * subscriber receives it without a second subscription.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
  * @param projectId - Project scope of the channel.
- * @returns The channel name.
+ * @returns The channel name `{prefix}:project:{projectId}:activity:new`.
  */
-export function activityNewChannel(projectId: string): string {
-  return `project:${projectId}:activity:new`;
+export function activityNewChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:activity:new`;
 }
 
-export const ALL_PROJECT_CHANNELS_PATTERN = "project:*";
+/**
+ * Glob pattern matching every project-scoped control channel the collab process
+ * subscribes to. One `psubscribe` instead of one subscription per channel keeps
+ * the connection count down.
+ *
+ * The `prefix` is what keeps two deployments sharing a Redis instance from
+ * hearing each other: pub/sub ignores the DB number (`SUBSCRIBE` is
+ * instance-wide), so the `REDIS_*_URL` split isolates every ordinary key but
+ * NOT these channels — and what travels on them is membership changes and Space
+ * CRUD, i.e. writes (#1831).
+ *
+ * What actually keeps `dev` from hearing `dev-agent` is that a LITERAL `:`
+ * follows the prefix, not the fact that the prefix comes first. Verified
+ * against a real Redis: `PSUBSCRIBE dev:*` does NOT receive a publish to
+ * `dev-agent:project:x:members:changed`, while `PSUBSCRIBE dev*` DOES — the
+ * separator is the whole defence. So the rule for any future channel family is:
+ * never let a wildcard sit directly against the prefix. (Leading vs trailing is
+ * a separate, weaker question — `project:*:dev` is also safe. The prefix leads
+ * here for consistency with the Hocuspocus channels, whose `prefix` option
+ * always emits `{prefix}:hocuspocus:{doc}`.)
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @returns The pattern `{prefix}:project:*`.
+ */
+export function allProjectChannelsPattern(prefix: string): string {
+  return `${prefix}:project:*`;
+}

@@ -6,7 +6,7 @@
  *
  * The API server publishes pub/sub events on Redis DB2:
  *
- *   - `project:{pid}:members:changed` — kick the affected user's
+ *   - `{prefix}:project:{pid}:members:changed` — kick the affected user's
  *     ws connections to this project's docs (close 4403 forces an
  *     onAuthenticate re-check), then broadcastStateless an
  *     invalidate signal to the project's `meta` doc so other
@@ -19,20 +19,25 @@
  *   - No replay / consumer-group semantics needed.
  *
  * Space lifecycle (create / delete / lock / restore) used to flow
- * through this same subscriber via `project:{pid}:space:*` channels —
+ * through this same subscriber via `{prefix}:project:{pid}:space:*` channels —
  * removed 2026-05-23 (ADR yjs-collab-only-write-authz). Space writes
  * now happen inside `space-rpc.ts` as collab stateless RPC, so no
  * Redis round-trip is needed.
  *
- * One `psubscribe('project:*')` covers the remaining channel — kept
+ * One `psubscribe` on `{prefix}:project:*` covers the remaining channel — kept
  * as a pattern subscription in case future control-plane events join.
+ *
+ * `{prefix}` is `REDIS_KEY_PREFIX` (defaults to `ENV`), injected in exactly one
+ * place — core's `projectControlChannelPattern()`. It is what keeps two
+ * deployments on one Redis instance from hearing each other: pub/sub ignores
+ * the DB number, so the `REDIS_*_URL` split isolates every ordinary key but not
+ * these channels — and what travels here is membership writes (#1831).
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import type { Redis } from "@breatic/core";
-import { createLogger } from "@breatic/core";
+import { createLogger, projectControlChannelPattern } from "@breatic/core";
 import {
-  ALL_PROJECT_CHANNELS_PATTERN,
   parseDocName,
   projectMetaDocName,
   type MembersChangedEvent,
@@ -192,15 +197,19 @@ export function startMembersSync(
 ): () => Promise<void> {
   const subscriber = redis.duplicate();
   let started = false;
+  // Resolved once: subscribe, log and unsubscribe must all name the SAME
+  // pattern. Re-deriving it per call site is how a subscriber ends up deaf to
+  // its own publishers without any error surfacing.
+  const pattern = projectControlChannelPattern();
 
-  subscriber.psubscribe(ALL_PROJECT_CHANNELS_PATTERN, (err) => {
+  subscriber.psubscribe(pattern, (err) => {
     if (err) {
       logger.error({ err }, "members_sync_subscribe_failed");
       return;
     }
     started = true;
     logger.info(
-      { pattern: ALL_PROJECT_CHANNELS_PATTERN },
+      { pattern },
       "members_sync_started",
     );
   });
@@ -211,7 +220,7 @@ export function startMembersSync(
 
   return async () => {
     if (started) {
-      await subscriber.punsubscribe(ALL_PROJECT_CHANNELS_PATTERN);
+      await subscriber.punsubscribe(pattern);
     }
     await subscriber.quit();
     logger.info("members_sync_stopped");

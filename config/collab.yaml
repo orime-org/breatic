@@ -1,10 +1,14 @@
 # Hocuspocus collaboration server configuration.
 #
-# These values can be tuned without code changes.
+# These values are BEHAVIOUR knobs and can be tuned without code changes.
 # Restart the collab service after editing.
-
-# ── Server ────────────────────────────────────────
-port: 1234
+#
+# The WebSocket port is deliberately NOT here — it lives with the other two
+# service ports in the core env schema (`COLLAB_PORT`, default 1234). Keeping
+# one kind of setting in one place. It used to be a plain key here with a
+# schema default, which made it the one service port that could not be set
+# from `.env` and left a duplicate copy of 1234 hard-coded in the vite dev
+# proxy (#1831).
 
 # ── Document Lifecycle ────────────────────────────
 # Unload documents from memory when all clients disconnect.

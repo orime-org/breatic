@@ -50,11 +50,10 @@ loader:`packages/server/src/config/limits.ts`。
 
 ## 4. `config/collab.yaml` — Hocuspocus 协作服务
 
-loader:`packages/collab/src/config.ts`。
+loader:`packages/collab/src/config.ts`。**只有行为参数,没有端口** —— WebSocket 端口跟另外两个服务的端口一起放在 core env schema 的 `COLLAB_PORT`(默认 1234)。同一类设置放同一处。当初端口作为普通 key 待在这份 yaml 里、只有一个 schema 默认值,**没有任何 env 能设它** —— 于是它成了四个服务端口里唯一改不了的那个,vite dev 代理只能把 1234 硬编码抄一份(#1831)。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `port` | 1234 | 协作 WebSocket 端口 |
 | `debounce` / `max_debounce` | 2000 / 10000 ms | 文档持久化防抖 |
 | `max_document_bytes` | 10485760(10 MB) | 单 Yjs 文档字节上限(0 = 不限) |
 | `max_connections_per_document` | 100 | 单文档跨实例连接数上限(0 = 不限) |
@@ -126,4 +125,31 @@ loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 
 
 ## 10. 环境变量(部署级,非 yaml)
 
-在 `@breatic/core` 的 env schema(`packages/core/src/config/schema.ts`)里,zod 校验 + 默认值。典型:`PORT`(3001)/ 三个 healthz 端口 / `DATABASE_URL` / `YJS_DATABASE_URL` / 四个 `REDIS_*_URL`(DB0-3)/ `DB_POOL_SIZE`(10)/ `ALLOWED_ORIGINS` / `COOKIE_DOMAIN` 等。`PATH` / `HOME` 不入 schema(继承宿主)。
+在 `@breatic/core` 的 env schema(`packages/core/src/config/schema.ts`)里,zod 校验 + 默认值。典型:`PORT`(3000)/ 三个 healthz 端口(3001 / 1235 / 9101)/ `COLLAB_PORT`(1234)/ `DATABASE_URL` / `YJS_DATABASE_URL` / 四个 `REDIS_*_URL`(DB0-3)/ `DB_POOL_SIZE`(10)/ `ALLOWED_ORIGINS`(默认 `http://localhost:8000` = vite dev server 的 origin)/ `COOKIE_DOMAIN` 等。`PATH` / `HOME` 不入 schema(继承宿主)。
+
+**所有数字型变量都把空值当"没设"**:`.env` 里写 `VAR=` 留空是常见写法,但 zod 会把它当成 `""` 而不是 undefined,`z.coerce.number()` 再把 `""` 变成 0,`.positive()` 就炸 —— 于是"删掉整行没事、留空就起不来",报错还是一句指不到原因的 "Too small"。schema 里统一用 `numeric()` helper 兜住(空白 → 走默认值);写错成 `abc` 仍然抛错,那是真配错、静默用默认更糟。
+
+**`VITE_DEV_PORT` 不在这个 schema 里**(默认 8000)——它只被 `packages/web/vite.config.mts` 和 `playwright.config.ts` 经 vite 的 `loadEnv` 读,后端进程碰不到它,进 core schema 就成了后端为前端保管配置。改它必须同步改 `ALLOWED_ORIGINS`,否则浏览器 origin 对不上、所有 API 调用挂在 CORS 预检。
+
+**`REDIS_KEY_PREFIX`(默认 = `ENV`)**:一套部署的命名空间,管的是 **DB 号和端口都隔离不了的那两样东西** —— Redis **pub/sub 频道**和 **session cookie 名**。别的一概不管。
+
+| 管什么 | 为什么 DB 号 / 端口救不了 | 值 |
+|---|---|---|
+| Redis pub/sub 频道 | `SUBSCRIBE` 是实例级的、不认 `SELECT` —— 四个 `REDIS_*_URL` 的 DB 号把 session / 锁 / BullMQ / Streams 这些普通 key 全隔离了,唯独隔离不了频道 | `{prefix}:…`(见下表两族)|
+| session cookie 名 | **cookie 不按端口隔离**(RFC 6265 §8.5):`localhost:3000` 和 `localhost:3010` 共用一个 cookie jar,同名 cookie 后登录的覆盖先登录的;而各自的 token 只存在自己那个 Redis DB 里,于是被覆盖的那边读到的是"查无此 session" = 静默登出 | `breatic_session_{prefix}`(`sessionCookieName()`)|
+
+两套部署共用一台机器 / 一个 Redis 实例就必须给不同值。
+
+**频道有两族,漏掉任何一族隔离就是半吊子**:
+
+| 频道族 | 谁发谁收 | 传什么 | 频道名 |
+|---|---|---|---|
+| Hocuspocus 文档同步 | collab 实例之间 | Yjs 文档更新 | `{prefix}:hocuspocus:{docName}` |
+| 控制平面 | server / worker 发,collab 收 | 成员变更、Space CRUD(**写操作**)| `{prefix}:project:{id}:*` |
+
+**真正防串台的是「前缀后面紧跟一个字面 `:`」,不是「前缀放在最前面」**(真 Redis 实测,2026-07-27):`PSUBSCRIBE dev:*` 收不到发往 `dev-agent:project:x:...` 的消息,但 `PSUBSCRIBE dev*` **收得到** —— 分隔符才是那道墙。所以定新频道族只有一条硬规则:**通配符绝不能直接贴着前缀**。至于前缀放头还是放尾是另一个更弱的问题(`project:*:dev` 同样安全);这里放头是为了跟 Hocuspocus 频道一致 —— 它的 `prefix` 选项只会产出 `{prefix}:hocuspocus:{doc}`,没得选。「一个前缀是另一个的字符串前缀」(`dev` / `dev-agent`)这种命名确实最自然,专门的测试钉着它们互相听不见。
+
+- 不设 / 留空 / 纯空格 → 回落 `ENV`,单 worktree 与生产**行为完全不变**(空值回落是刻意的,理由同上面的数字变量)
+- **两样东西刻意不受它影响**:① 跨服务 stream key(`taskEventsStreamKey()` 等)—— server / worker / collab 三方必须字节一致,跟着 per-deployment 值走就是自找断链;② collab 的 stream **cursor key** —— cursor 必须跟它所指的 stream 同命名空间,给一个正在跑的部署改前缀会让 cursor 变成"不存在",而 `startStreamConsumer` 把找不到 cursor 当作从 `0-0` 读,等于把整条 stream 的历史事件重放一遍
+
+**同一台机器跑多个 worktree**:上面这些默认值会全线互撞(最隐蔽的是共享 BullMQ 队列 → 一个 worktree 的任务被另一个的 worker 执行,跑在另一个的库上)。偏移方式 + 建库命令 + Google OAuth origin 的 caveat 见 `.env.dev` 顶部的 "Running several worktrees at once"。

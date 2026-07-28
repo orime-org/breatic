@@ -28,7 +28,7 @@ interface SseOptions<TEvent> {
  *   - `POST /api/mini-tools/text` — text mini-tool token stream
  *
  * Auth: `credentials: 'include'` makes the browser attach the
- * httpOnly `breatic_session` cookie on the request (2026-05-26
+ * httpOnly session cookie on the request (2026-05-26
  * cookie migration). No Bearer token is read from JS.
  *
  * Throws an immediate error if 4xx auth fails; otherwise retries on

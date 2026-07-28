@@ -12,7 +12,7 @@ interface AuthBootstrapProps {
 
 /**
  * AuthBootstrap — on mount, pings `/auth/me` to check whether the
- * httpOnly `breatic_session` cookie corresponds to a valid session
+ * httpOnly session cookie corresponds to a valid session
  * and, if so, populates `useCurrentUserStore`. Either way, flips
  * `bootstrapped=true` so ProtectedRoute knows the boot ping has
  * completed and can decide between rendering the protected page

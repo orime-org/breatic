@@ -34,7 +34,6 @@ import { createCollabServer } from "@collab/hocuspocus.js";
 import { startTaskListener } from "@collab/services/task-listener.js";
 import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
 import { startMembersSync } from "@collab/services/members-sync.js";
-import { getCollabConfig } from "@collab/config.js";
 
 // Initialize the root logger with the collab service name before any child
 // (`createLogger("main")` below) is created — otherwise children would bind
@@ -108,7 +107,20 @@ process.on("unhandledRejection", (reason) => {
 // the core Redis singletons directly, so it needs no URL args.)
 const REDIS_STREAM_URL = env.REDIS_STREAM_URL;
 const REDIS_COLLAB_URL = env.REDIS_COLLAB_URL;
-const ENV_PREFIX = env.ENV;
+// Namespace for collab's Redis PUB/SUB CHANNELS only. Resolved by the core
+// schema (unset => ENV), so this is `dev` unless a deployment sharing a Redis
+// instance with another one sets it (#1831).
+const REDIS_KEY_PREFIX = env.REDIS_KEY_PREFIX;
+
+// Namespace for the Redis STREAM cursor keys. Deliberately `ENV` and NOT
+// `REDIS_KEY_PREFIX`: a cursor must live in the same namespace as the stream
+// it points into, and the stream keys come from core's `taskEventsStreamKey()`
+// / `lifecycleStreamKey()` (also ENV-derived) because server, worker and collab
+// must agree on them. Deriving the cursor from a per-deployment prefix would
+// rename it out from under an existing deployment — `startStreamConsumer`
+// treats a missing cursor as `0-0` and would replay the WHOLE stream, applying
+// every historical task event to the Yjs documents again.
+const STREAM_CURSOR_PREFIX = env.ENV;
 const HEALTH_PORT = env.COLLAB_HEALTH_PORT;
 
 /**
@@ -141,12 +153,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const cfg = getCollabConfig();
-
   // Create and start Hocuspocus server
   const { server, hocuspocus, connectionRegistry, handlingSweeper } = await createCollabServer({
     collabRedisUrl: REDIS_COLLAB_URL,
-    envPrefix: ENV_PREFIX,
+    port: env.COLLAB_PORT,
+    redisKeyPrefix: REDIS_KEY_PREFIX,
   });
 
   /**
@@ -191,16 +202,20 @@ async function main(): Promise<void> {
   // letting Node crash on the unhandled `'error'` event; the app entry logs
   // + exits (the library layer never logs / exits itself).
   server.httpServer.on("error", (err) => {
-    logger.fatal({ err, port: cfg.port }, "ws_listen_error");
+    logger.fatal({ err, port: env.COLLAB_PORT }, "ws_listen_error");
     void flushLogger().then(() => process.exit(1));
   });
 
   await server.listen();
-  logger.info({ port: cfg.port }, "Hocuspocus collaboration server started");
+  logger.info({ port: env.COLLAB_PORT }, "Hocuspocus collaboration server started");
 
   // Start task result listener (Worker → Yjs)
   // streamRedisUrl: consume Redis Streams (DB 2)
-  const stopListener = startTaskListener(hocuspocus, REDIS_STREAM_URL, ENV_PREFIX);
+  const stopListener = startTaskListener(
+    hocuspocus,
+    REDIS_STREAM_URL,
+    STREAM_CURSOR_PREFIX,
+  );
 
   // Start project-lifecycle listener (API outbox relay → yjs-DB cascade).
   // Same Streams Redis (DB 2) as the task stream; consumes delete /
@@ -208,7 +223,7 @@ async function main(): Promise<void> {
   const stopLifecycle = startLifecycleListener(
     hocuspocus,
     REDIS_STREAM_URL,
-    ENV_PREFIX,
+    STREAM_CURSOR_PREFIX,
   );
 
   // Start members-sync subscriber (API → kick + broadcastStateless +
