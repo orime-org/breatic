@@ -927,7 +927,21 @@
         "description": "Timeline viewer は timeline-space 実装時に接続。ここではトラックのスナップショットを表示します(クリップコピー可)。"
       }
     },
-    "lockedAria": "ロック中"
+    "lockedAria": "ロック中",
+    "document": {
+      "loading": "エディターを読み込み中…",
+      "placeholder": "書き始めましょう…",
+      "toolbar": {
+        "undo": "元に戻す",
+        "redo": "やり直す",
+        "bold": "太字",
+        "italic": "斜体",
+        "strike": "取り消し線",
+        "bulletList": "箇条書き",
+        "orderedList": "番号付きリスト",
+        "quote": "引用"
+      }
+    }
   },
   "image": {
     "flipVertical": "上下反転",

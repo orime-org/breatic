@@ -156,7 +156,14 @@ export function shouldFlipLabelLeft(
 function scheduleLabelFlip(caret: HTMLElement, label: HTMLElement): void {
   if (typeof requestAnimationFrame !== 'function') return;
   requestAnimationFrame(() => {
-    const container = caret.closest('[data-testid="generate-prompt-editor"]');
+    // The nearest scroll viewport — the element that actually clips, and the
+    // one whose edges the label must stay inside. Found by Radix's viewport
+    // attribute rather than by any one editor's test id, so every editor that
+    // scrolls inside a `ScrollArea` gets the flip: the canvas prompt and the
+    // document body alike. Keying it to a single editor's test id silently
+    // disabled the flip everywhere else — the lookup missed and the function
+    // returned early, leaving first-line labels clipped.
+    const container = caret.closest('[data-radix-scroll-area-viewport]');
     if (!container) return;
     const caretRect = caret.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();

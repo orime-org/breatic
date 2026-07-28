@@ -1,46 +1,58 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { EditorContent, useEditor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
 import * as React from 'react';
 
-import { ScrollArea } from '@web/components/ui/scroll-area';
+import { docName, getDoc } from '@web/data/yjs/manager';
+import { useCaretUser } from '@web/data/yjs/use-caret-user';
+import { useSocket } from '@web/data/yjs/use-socket';
+import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
-import { DocumentToolbar } from '@web/spaces/document/DocumentToolbar';
+import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
+import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 /**
- * Document space body — minimal TipTap editor (StarterKit) wired to a
- * `DocumentToolbar`. PR 12 ships the structural editor + toolbar; richer
- * extensions (collaboration cursor / mention / highlight / table /
- * image embed) layer in during M2 polish.
+ * Document space body — a collaborative rich-text document.
  *
- * Content is local state for now; Yjs collaboration arrives when the
- * Document Yjs binding ships (M2 milestone).
+ * This is the container: it resolves the Space's Yjs document, joins the shared
+ * collab socket for collaborator carets, and hands the resulting editor to
+ * {@link DocumentEditor} for presentation.
+ *
+ * The socket acquire here is a cheap share, not a second connection —
+ * `SpaceDocSync` already holds a reference to the same document for as long as
+ * the tab is open, and the provider registry is reference-counted.
  * @param root0 - Space body props supplied by the project space outlet.
- * @param root0.spaceId - ID of the document space, stamped on the root element for selectors.
- * @param root0.projectId - ID of the owning project, stamped on the root element for selectors.
- * @returns The document editor element, or a loading placeholder while TipTap initializes.
+ * @param root0.spaceId - ID of the document space.
+ * @param root0.projectId - ID of the owning project.
+ * @param root0.readOnly - True for a viewer; the body becomes read-only.
+ * @returns The document editor, or a loading placeholder while it mounts.
  */
 export function DocumentSpace({
   spaceId,
   projectId,
+  readOnly = false,
 }: SpaceBodyProps): React.JSX.Element {
-  const editor = useEditor({
-    extensions: [StarterKit],
-    content: '<p></p>',
-  });
+  const t = useTranslation();
+  const name = docName.documentSpace(projectId, spaceId);
+  const doc = React.useMemo(() => getDoc(name), [name]);
+  const fragment = React.useMemo(() => documentBodyFragment(doc), [doc]);
+  const { provider } = useSocket({ name, doc });
+  const caretUser = useCaretUser();
 
-  if (!editor) {
-    return (
-      <div
-        data-testid='document-space-loading'
-        className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
-      >
-        Loading editor…
-      </div>
-    );
-  }
+  // Captured into the extension list at creation time, so it has to be a value
+  // the editor rebuilds on — the translator's own identity never changes, and
+  // depending on that would leave the placeholder in the previous language after
+  // a locale switch.
+  const placeholder = t('spaces.document.placeholder');
+
+  const editor = useDocumentEditor({
+    fragment,
+    caretProvider: provider,
+    caretUser,
+    placeholder,
+    editable: !readOnly,
+  });
 
   return (
     <div
@@ -49,16 +61,16 @@ export function DocumentSpace({
       data-space-id={spaceId}
       className='flex h-full w-full flex-col bg-background'
     >
-      <DocumentToolbar editor={editor} />
-      {/* ScrollArea (#1773): overlay scrollbar — appears only while
-          scrolling, no layout space, hover changes color only. */}
-      <ScrollArea className='flex-1'>
-        <EditorContent
-          editor={editor}
-          data-testid='document-editor-content'
-          className='prose prose-sm mx-auto max-w-3xl px-6 py-4 focus:outline-none'
-        />
-      </ScrollArea>
+      {editor ? (
+        <DocumentEditor editor={editor} />
+      ) : (
+        <div
+          data-testid='document-space-loading'
+          className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
+        >
+          {t('spaces.document.loading')}
+        </div>
+      )}
     </div>
   );
 }

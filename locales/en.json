@@ -927,7 +927,21 @@
         "description": "Timeline viewer plugs in when timeline-space ships; here we show a track snapshot, with clip copy."
       }
     },
-    "lockedAria": "Locked"
+    "lockedAria": "Locked",
+    "document": {
+      "loading": "Loading editor…",
+      "placeholder": "Start writing…",
+      "toolbar": {
+        "undo": "Undo",
+        "redo": "Redo",
+        "bold": "Bold",
+        "italic": "Italic",
+        "strike": "Strikethrough",
+        "bulletList": "Bullet list",
+        "orderedList": "Ordered list",
+        "quote": "Quote"
+      }
+    }
   },
   "image": {
     "flipVertical": "Flip vertical",

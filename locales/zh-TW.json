@@ -927,7 +927,21 @@
         "description": "Timeline viewer 在 timeline-space 實作時接入;此處展示軌道快照,支援複製片段。"
       }
     },
-    "lockedAria": "已鎖定"
+    "lockedAria": "已鎖定",
+    "document": {
+      "loading": "正在載入編輯器…",
+      "placeholder": "開始寫作…",
+      "toolbar": {
+        "undo": "復原",
+        "redo": "重做",
+        "bold": "粗體",
+        "italic": "斜體",
+        "strike": "刪除線",
+        "bulletList": "項目符號清單",
+        "orderedList": "編號清單",
+        "quote": "引用"
+      }
+    }
   },
   "image": {
     "flipVertical": "垂直翻轉",

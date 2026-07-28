@@ -927,7 +927,21 @@
         "description": "Timeline 뷰어는 timeline-space 출시 시 연결됩니다. 여기서는 트랙 스냅샷을 클립 복사와 함께 표시합니다."
       }
     },
-    "lockedAria": "잠김"
+    "lockedAria": "잠김",
+    "document": {
+      "loading": "편집기를 불러오는 중…",
+      "placeholder": "작성을 시작하세요…",
+      "toolbar": {
+        "undo": "실행 취소",
+        "redo": "다시 실행",
+        "bold": "굵게",
+        "italic": "기울임꼴",
+        "strike": "취소선",
+        "bulletList": "글머리 기호 목록",
+        "orderedList": "번호 매기기 목록",
+        "quote": "인용"
+      }
+    }
   },
   "image": {
     "flipVertical": "상하 반전",
