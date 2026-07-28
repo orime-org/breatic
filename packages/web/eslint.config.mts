@@ -162,9 +162,12 @@ export default [
       // imports (no `../` and no `./`). Plugin auto-fixes most violations.
       // tsconfig.json maps `@web/* → src/*`. allowSameFolder=false means
       // even sibling `./Foo` imports rewrite to an alias path.
+      // `prefix` is joined as the FIRST PATH SEGMENT, not a bare sigil, so it
+      // must be the full alias (`@web`) — `@` alone would emit `@/pages/Foo`,
+      // which no tsconfig paths entry maps. Pinned by import-alias-contract.test.
       'no-relative-import-paths/no-relative-import-paths': [
         'error',
-        { allowSameFolder: false, rootDir: 'src', prefix: '@' },
+        { allowSameFolder: false, rootDir: 'src', prefix: '@web' },
       ],
     },
   },
