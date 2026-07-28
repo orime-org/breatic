@@ -18,7 +18,7 @@
 --      / approvals / member-joined events. PG truth + Yjs invalidate
 --      signal (sticks to the existing § 7.2.5 pattern in permissions spec).
 --
--- spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md
+-- spec: access-permission design (2026-05-28)
 
 -- ── share_links: drop is_permanent + add bound_email + add kind ─────
 

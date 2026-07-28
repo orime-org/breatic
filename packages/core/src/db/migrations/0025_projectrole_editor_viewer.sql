@@ -15,7 +15,7 @@
 -- Backfill existing rows (covers dev DBs; no prod data pre-launch), then
 -- move the share_links default to the renamed value.
 --
--- spec: breatic-inner/engineering/specs/2026-06-06-studio-slice2-projects-design.md
+-- spec: studio slice2 projects design (2026-06-06)
 
 UPDATE "project_members" SET "role" = 'editor' WHERE "role" = 'edit';--> statement-breakpoint
 UPDATE "project_members" SET "role" = 'viewer' WHERE "role" = 'view';--> statement-breakpoint

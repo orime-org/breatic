@@ -14,7 +14,7 @@
 -- takes the column default; slug is derived from the id so it satisfies
 -- the format ^[a-z][a-z0-9]*(-[a-z0-9]+)*$ and NOT NULL.
 --
--- spec: breatic-inner/engineering/specs/2026-06-06-studio-slice2-projects-design.md
+-- spec: studio slice2 projects design (2026-06-06)
 
 ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "visibility" varchar(16) NOT NULL DEFAULT 'studio';--> statement-breakpoint
 

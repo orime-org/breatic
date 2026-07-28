@@ -158,14 +158,16 @@ export default [
         { ul: ['list'], li: ['listitem'] },
       ],
 
-      // Import path style — full migration to @/ alias for ALL imports
-      // (no `../` and no `./`). Plugin auto-fixes most violations.
-      // tsconfig.json `paths.@/* → src/*`. Choice B per DD
-      // orime-org/breatic-inner-design#152: allowSameFolder=false means
-      // even sibling `./Foo` imports rewrite to `@/path/Foo`.
+      // Import path style — full migration to the `@web/` alias for ALL
+      // imports (no `../` and no `./`). Plugin auto-fixes most violations.
+      // tsconfig.json maps `@web/* → src/*`. allowSameFolder=false means
+      // even sibling `./Foo` imports rewrite to an alias path.
+      // `prefix` is joined as the FIRST PATH SEGMENT, not a bare sigil, so it
+      // must be the full alias (`@web`) — `@` alone would emit `@/pages/Foo`,
+      // which no tsconfig paths entry maps. Pinned by import-alias-contract.test.
       'no-relative-import-paths/no-relative-import-paths': [
         'error',
-        { allowSameFolder: false, rootDir: 'src', prefix: '@' },
+        { allowSameFolder: false, rootDir: 'src', prefix: '@web' },
       ],
     },
   },
