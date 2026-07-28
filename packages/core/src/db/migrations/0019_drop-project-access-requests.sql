@@ -14,6 +14,6 @@
 -- table (it is a leaf — it references projects/users, not vice versa),
 -- so the CASCADE only cleans up its own dependent objects.
 --
--- spec: breatic-inner/engineering/specs/2026-05-28-access-permission-design.md § 2.2
+-- spec: access-permission design (2026-05-28) § 2.2
 
 DROP TABLE IF EXISTS "project_access_requests" CASCADE;
