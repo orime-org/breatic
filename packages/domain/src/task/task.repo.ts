@@ -15,7 +15,7 @@ import type { TaskEntity } from "@breatic/shared";
 /**
  * Convert a Drizzle row to a TaskEntity.
  * @param row - The raw Drizzle row selected from the `tasks` table.
- * @returns The mapped {@link TaskEntity}.
+ * @returns The mapped `TaskEntity`.
  */
 function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
   return {
@@ -51,7 +51,7 @@ function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
 /**
  * Get a task by ID (excludes soft-deleted).
  * @param id - UUID of the task to fetch.
- * @returns The {@link TaskEntity}, or null if not found or soft-deleted.
+ * @returns The `TaskEntity`, or null if not found or soft-deleted.
  */
 export async function getTaskById(id: string): Promise<TaskEntity | null> {
   const rows = await db
@@ -67,7 +67,7 @@ export async function getTaskById(id: string): Promise<TaskEntity | null> {
  * @param userId - ID of the user whose tasks to list.
  * @param limit - Maximum rows to return; capped at 100. Defaults to 20.
  * @param offset - Number of rows to skip for pagination. Defaults to 0.
- * @returns The matching {@link TaskEntity} records.
+ * @returns The matching `TaskEntity` records.
  */
 export async function listTasksByUser(
   userId: string,
@@ -101,31 +101,24 @@ export async function softDeleteTask(id: string): Promise<void> {
  * @param data - The task fields to insert.
  * @param data.userId - ID of the user who owns the task.
  * @param data.projectId - ID of the project the task targets, if any.
- * @param data.spaceId - ID of the space within the project the task writes results to.
+ * @param data.spaceId - Space within the project the task writes results to. Required: the
+ *   Worker writes to `project-{projectId}/canvas-{spaceId}` (v10 multi-doc layout). Plain
+ *   UUID, no FK in PG — Spaces live in the Yjs `meta` doc.
  * @param data.taskType - Task type discriminator (e.g. AIGC mini-tool / generation kind).
- * @param data.mode - `"append"` for new-sibling flows or `"overwrite"` for in-place replacement.
+ * @param data.mode - Required (spec §10.13 + §10.15). `"append"` for new-sibling flows,
+ *   `"overwrite"` for in-place replacement (caller must hold the canvas-node Redis lock
+ *   before reaching here).
  * @param data.params - Provider/tool parameters for the task.
  * @param data.model - Model identifier to run the task with, if applicable.
  * @param data.skillName - Skill name driving the task, if applicable.
  * @param data.source - Origin of the task; defaults to `"canvas"`.
- * @returns The created {@link TaskEntity}.
+ * @returns The created `TaskEntity`.
  */
 export async function createTask(data: {
   userId: string;
   projectId?: string;
-  /**
-   * Space within the project the task targets. Required because the
-   * Worker writes results to `project-{projectId}/canvas-{spaceId}`
-   * (v10 multi-doc layout). Plain UUID — no FK in PG (Spaces live
-   * in Yjs `meta` doc).
-   */
   spaceId: string;
   taskType: string;
-  /**
-   * Required (spec §10.13 + §10.15). `'append'` for new-sibling flows,
-   * `'overwrite'` for in-place replacement (caller must hold the
-   * canvas-node Redis lock before reaching here).
-   */
   mode: "append" | "overwrite";
   params: Record<string, unknown>;
   model?: string;

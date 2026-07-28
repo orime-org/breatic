@@ -6,7 +6,7 @@
  * "which source inputs does a generation mode require". Lives in domain
  * (backend-only); the frontend never runs this — the catalog projection
  * ships the computed {@link ModelEntry.sourcesByMode} on the wire and the
- * Generate panel reads that. The server calls {@link violatesSourceRequirement}
+ * Generate panel reads that. The server calls `violatesSourceRequirement`
  * directly (it can import domain), applying the SAME rule to the submitted
  * params. One rule, two consumers (frontend via wire, server via call),
  * differing only in the runtime data each checks (references vs params).

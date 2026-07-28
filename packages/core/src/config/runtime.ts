@@ -66,7 +66,7 @@ let _rawEnv: Record<string, string | undefined> | null = null;
  *
  * Call this **once**, as the first statement of each service entry's
  * startup, before any other `@breatic/core` code runs. The raw map
- * is validated via {@link parseConfig}; on failure this throws (the
+ * is validated via `parseConfig`; on failure this throws (the
  * entry's top-level catch logs + exits).
  * @param rawEnv - The application's `process.env` (the entry owns the
  *   read; core only processes the map it is handed).

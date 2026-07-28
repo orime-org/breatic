@@ -18,7 +18,7 @@ import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-
 /** Which content form the large preview renders. */
 export type HoverPreviewKind = 'image' | 'text' | 'audio' | 'video';
 
-/** Props for {@link HoverPreview}. */
+/** Props for `HoverPreview`. */
 export interface HoverPreviewProps {
   /** Content form — decides how the large preview renders. */
   kind: HoverPreviewKind;

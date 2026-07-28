@@ -3,7 +3,7 @@
 
 /**
  * Canvas node **view** layer — the component-facing projection of the
- * shared wire contract {@link CanvasNodeFields}.
+ * shared wire contract `CanvasNodeFields`.
  *
  * Two layers, one source of truth:
  *   - **wire** = `@breatic/shared`'s `CanvasNodeFields` (the Yjs Y.Map
@@ -224,7 +224,7 @@ export function deriveStatus(
 }
 
 /**
- * Projects a wire {@link CanvasNodeFields} into the narrowed view its
+ * Projects a wire `CanvasNodeFields` into the narrowed view its
  * component renders. Every known `type` maps to a view; returns `null`
  * only for a dirty / unknown `type` — the caller treats `null` as "skip
  * this node" rather than crashing.

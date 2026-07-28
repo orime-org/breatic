@@ -35,7 +35,7 @@ export interface UploadNodeSpec {
  * Classify a file by MIME type into the canvas node it becomes. Image / video
  * / audio become their media node (uploaded to storage). EVERYTHING else —
  * text, pdf, docx, xlsx, arbitrary binary — becomes a text node whose content
- * is read or extracted locally (see {@link extractText}); a file with no
+ * is read or extracted locally (see `extractText`); a file with no
  * extractor simply lands as a text node showing an extraction error, so this
  * never rejects a file.
  * @param file - The file (only its `type` MIME string is read).
@@ -390,7 +390,7 @@ function uploadOneMedia(
  * retries itself. Never throws — both outcomes route through `onSuccess` /
  * `onFailure`, and the ledger reports fire only on full success (an aborted
  * half is an accepted orphan, not a phantom node-history row). Mirrors
- * {@link runFocusCrop}'s injected pipeline.
+ * `runFocusCrop`'s injected pipeline.
  * @param videoFile - The video File to upload.
  * @param coverFile - The pre-flight-extracted cover File (WebP).
  * @param projectId - Owning project (authorizes the presigns).

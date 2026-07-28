@@ -10,7 +10,7 @@
  * or loads a `.env` file - that is configuration ACQUISITION, which
  * belongs to the application layer (server / worker / collab
  * entries = the composition root). The entry reads `process.env`
- * once and hands the raw map to {@link parseConfig}; library code
+ * once and hands the raw map to `parseConfig`; library code
  * reads the validated result through the accessors in
  * `@core/config/runtime` (the `env` Proxy / `getConfig()`).
  *

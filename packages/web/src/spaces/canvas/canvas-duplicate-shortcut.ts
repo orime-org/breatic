@@ -4,7 +4,7 @@
 /**
  * Match the duplicate keyboard shortcut: Cmd+D on macOS, Ctrl+D on Windows /
  * Linux. Accepts either modifier via `metaKey || ctrlKey` (mirroring
- * {@link matchGroupShortcut}), and rejects the Shift variant so it doesn't
+ * `matchGroupShortcut`), and rejects the Shift variant so it doesn't
  * collide with other chords. Drives both the keydown handler and the menu's
  * shortcut hint, so the hint matches the key that actually works.
  * @param event - The keydown event.

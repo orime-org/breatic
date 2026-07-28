@@ -30,7 +30,7 @@ type Phase =
 /**
  * Project invitation landing page — `/project-invite?token=xxx`.
  *
- * The direct mirror of {@link import('@web/pages/studio/StudioInvitePage')}.
+ * The direct mirror of `StudioInvitePage`.
  * Entry point for the OPTIONAL email-link path of the invite-confirm
  * handshake (the always-delivered path is the bell notification, since an
  * invitee may not have a working inbox). The invitee lands here from the

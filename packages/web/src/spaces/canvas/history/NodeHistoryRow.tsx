@@ -72,7 +72,7 @@ interface RowPreview {
 
 /**
  * The row's hover preview (#1814): a static big image for an image row, and a
- * PLAYABLE {@link HoverPreview} sourced from the result asset for video / audio
+ * PLAYABLE `HoverPreview` sourced from the result asset for video / audio
  * — so a video row plays its clip (cover as poster) and an audio row plays its
  * track (previously audio rows had no preview at all). Returns null when there
  * is nothing to preview: a failed row, or a success whose content URL is null.

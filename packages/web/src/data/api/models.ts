@@ -12,7 +12,7 @@ export const modelsApi = {
    * reads it to render the Generate panel's model picker + param form.
    *
    * Trust boundary: the catalog is untrusted external input, so the whole
-   * response is run through {@link sanitizeModelCatalog} once here — a
+   * response is run through `sanitizeModelCatalog` once here — a
    * malformed field / entry / bucket is coerced or dropped rather than allowed
    * to poison the panel. Downstream code consumes the sanitized value and can
    * trust the types instead of re-guarding every field.

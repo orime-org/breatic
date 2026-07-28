@@ -208,7 +208,7 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
  * Upload-menu fill. Media modalities pick by MIME; a text node uploads a
  * document (txt / md / pdf / doc / xlsx) whose content is extracted locally
  * (`fillNodeFromFile` → `extractText`). Modalities absent here (3d / web) have
- * no picker, so {@link CanvasSpaceInner}'s activate handler no-ops for them.
+ * no picker, so `CanvasSpaceInner`'s activate handler no-ops for them.
  */
 const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
   text: '.txt,.md,.pdf,.doc,.docx,.xls,.xlsx,text/*',
@@ -3666,7 +3666,7 @@ function absoluteNodePosition(
 }
 
 /**
- * Canvas space body. Wraps {@link CanvasSpaceInner} in a
+ * Canvas space body. Wraps `CanvasSpaceInner` in a
  * `ReactFlowProvider` so the canvas and any future chrome (viewport
  * toolbar zoom controls) share one ReactFlow store.
  * @param props - Space body props supplied by the project space outlet.

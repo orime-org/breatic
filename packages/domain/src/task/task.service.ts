@@ -152,7 +152,7 @@ export async function setResolvedSkills(taskId: string, skills: string[]): Promi
  * Load a task by ID without ownership checks. Used by the Worker to
  * check re-entry state (provider_result_url) before executing.
  * @param taskId - UUID of the task to load.
- * @returns The {@link TaskEntity}, or null if not found or soft-deleted.
+ * @returns The `TaskEntity`, or null if not found or soft-deleted.
  */
 export async function getByIdInternal(taskId: string): Promise<TaskEntity | null> {
   return taskRepo.getTaskById(taskId);

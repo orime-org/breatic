@@ -10,7 +10,6 @@ export interface PresignResult {
   uploadUrl: string;
   /** The permanent public URL the asset is served from after upload. */
   fileUrl: string;
-  /** Storage object key. */
   key: string;
   /** Detected asset kind: `image` / `video` / `audio` / `document` / `file`. */
   kind: string;
@@ -61,9 +60,7 @@ export const assetsApi = {
     filename: string;
     contentType: string;
     projectId: string;
-    /** Declared byte size (authoritative cap gate + dedup size distrust). */
     size: number;
-    /** Content sha256 — mandatory ("no hash, no upload", #1826 §0 rule 4). */
     hash: string;
   }): Promise<PresignResponse> {
     return apiGet<PresignResponse>('/assets/presign', {
@@ -150,26 +147,16 @@ export const assetsApi = {
    */
   async reportUploaded(params: {
     projectId: string;
-    /** Storage key (regular path); absent on a dedup report. */
     key?: string;
     kind: string;
-    /** Content sha256 → ledger registration (regular) / lookup (dedup). */
     hash?: string;
-    /** True when the presign answered `alreadyExists` (nothing uploaded). */
     dedup?: true;
     nodeId?: string;
     spaceId?: string;
     source?: 'mini_tool' | 'cover';
     toolName?: string;
-    /**
-     * Cover's content hash — the server reads the cover's studio_assets row by
-     * it (#1826 §4.5) to carry the cover on the video's node-history + activity
-     * thumbnails.
-     */
     coverHash?: string;
-    /** True for a derived byproduct (cover / crop): ledger yes, feed row no. */
     derived?: true;
-    /** Original-file facts for the node-history record. */
     metadata?: { filename: string; size: number; mimeType: string };
   }): Promise<{ fileUrl: string; coverUrl?: string }> {
     const res = await apiPost<{ ok: boolean; fileUrl: string; coverUrl?: string }>(

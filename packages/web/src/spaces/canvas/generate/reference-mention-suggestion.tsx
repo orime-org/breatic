@@ -50,38 +50,8 @@ type RefreshHandleRef = { current: (() => void) | null };
 export function makeReferenceSuggestion(input: {
   getPool: () => ReferenceRailItem[];
   emptyLabel: string;
-  /**
-   * Whether source-image references are inert (text-to-image ignores source
-   * images). Read live so a mode toggle takes effect without rebuilding the
-   * editor. When it returns true, image rows are excluded from the `@` picker so
-   * t2i never offers an image reference (user 2026-07-18) — matching the rail,
-   * which dims the same rows. Text references stay (they feed the prompt in
-   * every mode). Optional; omitted (or false) keeps all connectable refs.
-   */
   imageRefsDisabled?: () => boolean;
-  /**
-   * A ref the popup writes a `refresh()` into while open, so the React layer can
-   * refresh the VISIBLE popup's list content when the mode / pool changes
-   * REMOTELY (a collaborator toggles the node's mode or edits references). Such
-   * a change fires NO ProseMirror transaction on this client — mode lives on the
-   * canvas node, not the prompt doc — so `@tiptap/suggestion` never re-runs
-   * items(); PromptEditor calls this on its `mode` / `references` props changing
-   * (collaboration residual 2). No-op while the popup is hidden. Optional.
-   */
   refreshRef?: RefreshHandleRef;
-  /**
-   * Whether the last applied transaction was a genuine LOCAL USER keystroke
-   * (not a remote peer edit, a local yUndo, or a machine-derived dispatch).
-   * Defaults to {@link wasLastChangeLocalUserInput} (reads the per-transaction
-   * tracker plugin state); injectable so the visibility-gating logic is
-   * unit-testable without a full collaboration setup. Only a local keystroke
-   * opens / re-shows the popup; a remote or machine-derived edit refreshes the
-   * list CONTENT but never resurrects a dismissed popup (collaboration
-   * residual 1). Reading a POSITIVE "local user keystroke" per transaction —
-   * rather than reverse-inferring "not remote" from the settled y-sync state —
-   * is what keeps an edge-driven cascade-clear or a whitespace-normalizer
-   * follow-up from masquerading as user typing (round-4 adversarial).
-   */
   isLocalUserInput?: (editor: Editor) => boolean;
 }): Omit<SuggestionOptions<ReferenceRailItem>, 'editor'> {
   const isLocalUserInput = input.isLocalUserInput ?? wasLastChangeLocalUserInput;

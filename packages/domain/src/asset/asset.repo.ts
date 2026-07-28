@@ -19,7 +19,7 @@ import type { StudioAssetEntity } from "@breatic/shared";
 /**
  * Map a Drizzle row to a StudioAssetEntity.
  * @param row - Raw row selected from `studio_assets`.
- * @returns The mapped {@link StudioAssetEntity}.
+ * @returns The mapped `StudioAssetEntity`.
  */
 function toEntity(row: typeof studioAssets.$inferSelect): StudioAssetEntity {
   return {
@@ -58,7 +58,7 @@ export interface RegisterAssetInput {
  * The live asset owned by a studio with a given content hash, or null.
  * @param studioId - Owner studio.
  * @param contentHash - sha256 hex of the content.
- * @returns The {@link StudioAssetEntity}, or null when none exists.
+ * @returns The `StudioAssetEntity`, or null when none exists.
  */
 export async function findByStudioAndHash(
   studioId: string,

@@ -35,7 +35,7 @@ interface NodeResolutionBadgeProps {
 
 /**
  * The pixel-resolution badge floated above a media node's top-right corner,
- * mirroring the {@link NodeHeader} name (top-left): same `text-xs` size and the
+ * mirroring the `NodeHeader` name (top-left): same `text-xs` size and the
  * same selected/muted foreground tokens, so both read as one label pair. Pure
  * presentational — the anchoring + zoom counter-scale live in the parent frame
  * (mirroring how the name header's anchor lives in `ContentNodeFrame`).

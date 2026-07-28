@@ -9,7 +9,7 @@ import {
 } from '@breatic/shared';
 
 /**
- * Minimal slice of {@link HocuspocusProvider} the RPC client depends on.
+ * Minimal slice of `HocuspocusProvider` the RPC client depends on.
  *
  * Declared explicitly so tests can pass a stub without spinning up a
  * real WebSocket (the real provider would attempt a y-protocols sync

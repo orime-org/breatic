@@ -31,14 +31,18 @@
 -- Hand-written (same pattern as 0034/0040/0041/0042/0043: .sql +
 -- _journal entry, no snapshot).
 ALTER TABLE "studio_assets"
-  ADD COLUMN "produced_by_user_id" uuid
-  REFERENCES "users"("id") ON DELETE restrict;
+  ADD COLUMN "produced_by_user_id" uuid;--> statement-breakpoint
+
+ALTER TABLE "studio_assets"
+  ADD CONSTRAINT "studio_assets_produced_by_user_id_users_id_fk"
+  FOREIGN KEY ("produced_by_user_id") REFERENCES "public"."users"("id")
+  ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 
 UPDATE "studio_assets" AS sa
   SET "produced_by_user_id" = s."created_by_user_id"
   FROM "studios" AS s
   WHERE sa."studio_id" = s."id"
-    AND sa."produced_by_user_id" IS NULL;
+    AND sa."produced_by_user_id" IS NULL;--> statement-breakpoint
 
 ALTER TABLE "studio_assets"
   ALTER COLUMN "produced_by_user_id" SET NOT NULL;

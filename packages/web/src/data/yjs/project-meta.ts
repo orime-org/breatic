@@ -300,7 +300,7 @@ export function openSpaceTab(
  * longer in `liveSpaceIds`) and, when the active space is among the vanished,
  * which still-live open tab to activate instead: the first remaining open tab,
  * or null for the empty state. Pure — the caller applies the result via
- * {@link closeSpaceTab} / {@link setActiveSpace}. `reactivateTo === undefined`
+ * {@link closeSpaceTab} / `setActiveSpace`. `reactivateTo === undefined`
  * means the active space is still live, so leave it alone (no-op).
  * @param openTabIds - This user's open-tab space ids.
  * @param liveSpaceIds - The set of space ids that still exist in the project.

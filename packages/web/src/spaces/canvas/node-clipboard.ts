@@ -270,7 +270,7 @@ export function parseClipboardNodes(text: string): ClipboardNode[] | null {
  * @param offset.dx - X shift.
  * @param offset.dy - Y shift.
  * @param externalParentAbs - Absolute positions of existing Groups (outside the payload) a lone member may rejoin.
- * @returns Fresh {@link CanvasNodeFields} ready to hand to `addNode` (Groups precede their members).
+ * @returns Fresh `CanvasNodeFields` ready to hand to `addNode` (Groups precede their members).
  */
 export function cloneForPaste(
   nodes: ReadonlyArray<ClipboardNode>,
@@ -445,7 +445,7 @@ export function pasteAnchorOffset(
  * @param position.x - X coordinate.
  * @param position.y - Y coordinate.
  * @param createdBy - User id of the creator (caller injects from store).
- * @returns A complete {@link CanvasNodeFields} text node.
+ * @returns A complete `CanvasNodeFields` text node.
  */
 export function textToNode(
   text: string,

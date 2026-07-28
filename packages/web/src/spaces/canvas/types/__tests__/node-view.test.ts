@@ -11,7 +11,7 @@ import {
 } from '@web/spaces/canvas/types/node-view';
 
 /**
- * Builds a minimal valid wire {@link CanvasNodeFields} fixture so each test
+ * Builds a minimal valid wire `CanvasNodeFields` fixture so each test
  * only spells out the fields it cares about.
  * @param type - The node modality (wire `type`).
  * @param data - Partial data overrides merged onto the required-field defaults.

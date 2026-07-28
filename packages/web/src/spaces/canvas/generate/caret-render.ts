@@ -101,7 +101,7 @@ const LABEL_FLIP_THRESHOLD_PX = 20;
  * above-label would clip (D, user 2026-07-12). Pure — the caller measures.
  * @param caretTop - The caret's top in viewport px.
  * @param containerTop - The scroll viewport's top in viewport px.
- * @param threshold - Clip margin (defaults to {@link LABEL_FLIP_THRESHOLD_PX}).
+ * @param threshold - Clip margin (defaults to `LABEL_FLIP_THRESHOLD_PX`).
  * @returns True when the label should flip below.
  */
 export function shouldRenderLabelBelow(
@@ -131,7 +131,7 @@ const LABEL_EDGE_THRESHOLD_PX = 8;
  * @param labelWidth - The label's rendered width in px.
  * @param containerRight - The scroll viewport's visible-content right edge in
  * viewport px (excludes the scrollbar gutter).
- * @param threshold - Clip margin (defaults to {@link LABEL_EDGE_THRESHOLD_PX}).
+ * @param threshold - Clip margin (defaults to `LABEL_EDGE_THRESHOLD_PX`).
  * @returns True when the label should flip left.
  */
 export function shouldFlipLabelLeft(

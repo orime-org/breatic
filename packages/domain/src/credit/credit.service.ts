@@ -35,7 +35,7 @@ const UNLIMITED_BALANCE = 999_999;
 /**
  * Get user's current credit balance. Returns unlimited when payments disabled.
  * @param userId - ID of the user whose balance to read.
- * @returns The current balance, or {@link UNLIMITED_BALANCE} when payments are disabled.
+ * @returns The current balance, or `UNLIMITED_BALANCE` when payments are disabled.
  */
 export async function getBalance(userId: string): Promise<number> {
   if (!env.PAYMENT_ENABLED) return UNLIMITED_BALANCE;

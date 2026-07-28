@@ -14,7 +14,7 @@ import type { CreditTransactionEntity } from "@breatic/shared";
 /**
  * Map a raw `credit_transactions` row to the shared domain entity.
  * @param row - The raw Drizzle row selected from `credit_transactions`.
- * @returns The mapped {@link CreditTransactionEntity}.
+ * @returns The mapped `CreditTransactionEntity`.
  */
 function toEntity(row: typeof creditTransactions.$inferSelect): CreditTransactionEntity {
   return {
@@ -45,7 +45,7 @@ function toEntity(row: typeof creditTransactions.$inferSelect): CreditTransactio
  * @param data.description - Human-readable reason; defaults to an empty string.
  * @param data.referenceId - External reference such as a conversation, task, or payment ID.
  * @param tx - Optional transaction connection so this insert can join the caller's atomic deduct/add.
- * @returns The persisted {@link CreditTransactionEntity}.
+ * @returns The persisted `CreditTransactionEntity`.
  */
 export async function recordTransaction(
   data: {
@@ -84,7 +84,7 @@ export async function recordTransaction(
  * @param userId - ID of the user whose transactions to list.
  * @param limit - Maximum rows to return; capped at 100. Defaults to 20.
  * @param offset - Number of rows to skip for pagination. Defaults to 0.
- * @returns The matching {@link CreditTransactionEntity} records.
+ * @returns The matching `CreditTransactionEntity` records.
  */
 export async function listTransactionsByUser(
   userId: string,

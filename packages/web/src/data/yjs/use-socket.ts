@@ -20,7 +20,7 @@ interface UseSocketOptions {
 
 /**
  * High-level connection lifecycle state derived from raw Hocuspocus
- * provider events. Surfaced via {@link SocketState.status} so UI can
+ * provider events. Surfaced via `SocketState.status` so UI can
  * render a `ConnectionBanner` without each consumer re-deriving the
  * state machine from `synced` + ws events.
  *

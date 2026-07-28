@@ -23,7 +23,7 @@ import type {
 
 /**
  * One row of the `GET /api/v1/studios/recent` feed, as it arrives over the
- * wire: the shared {@link RecentItem} with `lastOpenedAt` as the JSON ISO
+ * wire: the shared `RecentItem` with `lastOpenedAt` as the JSON ISO
  * string (the shared type carries a `Date` for the server's in-memory entity;
  * JSON serializes it to a string). Derived from the shared contract so a field
  * change there flows here automatically — only the date representation differs.

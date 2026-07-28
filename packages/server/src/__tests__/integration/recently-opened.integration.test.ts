@@ -16,7 +16,7 @@
  * Seeding uses a narrow raw `postgres` client; the assertions call the real
  * service (core's env-bound `db`, pointed at the testcontainer via the injected
  * config) and the real `assertAccess` (project auth). Design doc
- * `engineering/specs/2026-06-16-studio-recent-landing-design.md` §3-4, C2-C3.
+ * the private engineering record §3-4, C2-C3.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
