@@ -7,10 +7,15 @@ import type * as React from 'react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { DocumentToolbar } from '@web/spaces/document/DocumentToolbar';
+import type { DocumentHistoryState } from '@web/spaces/document/use-document-history';
 
 interface DocumentEditorProps {
   /** The live editor, created and owned by the container. */
   editor: Editor;
+  /** Undo / redo availability, read from the undo manager by the container. */
+  history: DocumentHistoryState;
+  /** True for a viewer; the toolbar renders inert. */
+  readOnly?: boolean;
 }
 
 /**
@@ -20,14 +25,22 @@ interface DocumentEditorProps {
  * collaborative wiring and this stays a presentation component.
  * @param root0 - Editor chrome props.
  * @param root0.editor - The editor to render and to drive the toolbar from.
+ * @param root0.history - Undo / redo availability and its re-read.
+ * @param root0.readOnly - True for a viewer; disables the toolbar.
  * @returns The toolbar and editor body.
  */
 export function DocumentEditor({
   editor,
+  history,
+  readOnly = false,
 }: DocumentEditorProps): React.JSX.Element {
   return (
     <>
-      <DocumentToolbar editor={editor} />
+      <DocumentToolbar
+        editor={editor}
+        history={history}
+        readOnly={readOnly}
+      />
       {/* Overlay scrollbar (#1773): appears only while scrolling, takes no
           layout space. The viewport is the real scroller, so the body's
           padding lives on it — padding has to scroll with the content. */}

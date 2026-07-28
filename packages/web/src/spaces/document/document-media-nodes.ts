@@ -12,8 +12,10 @@
  * would silently destroy media another client had inserted. Registering the
  * whole schema up front removes that failure mode entirely.
  *
- * These definitions carry no node view: they render as plain `<video>` /
- * `<audio>` elements until the media slice attaches the shared `MediaPlayer`.
+ * These definitions carry no node view yet — the media slice attaches the
+ * shared `MediaPlayer`. Neither renders `controls`: a browser-drawn transport
+ * bar looks different in every engine, which the project forbids outright, and
+ * the player that replaces it is self-drawn.
  */
 
 import { Node, mergeAttributes } from '@tiptap/core';
@@ -54,7 +56,7 @@ export const Video = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['video', mergeAttributes(HTMLAttributes, { controls: 'true' })];
+    return ['video', mergeAttributes(HTMLAttributes)];
   },
 });
 
@@ -78,6 +80,6 @@ export const Audio = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['audio', mergeAttributes(HTMLAttributes, { controls: 'true' })];
+    return ['audio', mergeAttributes(HTMLAttributes)];
   },
 });

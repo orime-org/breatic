@@ -64,6 +64,34 @@ const REQUIRED_MARKS: ReadonlyArray<string> = [
   'textStyle',
 ];
 
+/**
+ * Attributes matter as much as names.
+ *
+ * An extension can contribute no node at all and still change the schema —
+ * TextAlign only hangs a `textAlign` field on nodes that already exist. And an
+ * undeclared attribute is dropped by exactly the mechanism that drops an
+ * undeclared node: y-tiptap compares attribute sets, finds one it cannot
+ * account for, and strips it in a local transaction that then syncs and
+ * persists. Checking node names alone let TextAlign slip through once already.
+ */
+const REQUIRED_NODE_ATTRS: Readonly<Record<string, ReadonlyArray<string>>> = {
+  paragraph: ['textAlign'],
+  heading: ['textAlign', 'level'],
+  image: ['src', 'alt', 'title'],
+  video: ['src', 'poster', 'title'],
+  audio: ['src', 'title'],
+  tableCell: ['colspan', 'rowspan', 'colwidth'],
+  tableHeader: ['colspan', 'rowspan', 'colwidth'],
+  taskItem: ['checked'],
+  codeBlock: ['language'],
+};
+
+/** Mark attributes, same reasoning as {@link REQUIRED_NODE_ATTRS}. */
+const REQUIRED_MARK_ATTRS: Readonly<Record<string, ReadonlyArray<string>>> = {
+  link: ['href', 'target', 'rel'],
+  highlight: ['color'],
+};
+
 describe('document schema — complete from slice 1 (guards against silent prose destruction)', () => {
   it('registers every node type the document will ever hold', () => {
     const schema = getSchema(buildDocumentExtensions());
@@ -90,6 +118,24 @@ describe('document schema — complete from slice 1 (guards against silent prose
     expect(
       (starterKit?.options as { undoRedo?: unknown } | undefined)?.undoRedo,
     ).toBe(false);
+  });
+
+  it('registers every attribute the document will ever carry', () => {
+    const schema = getSchema(buildDocumentExtensions());
+    const missing: string[] = [];
+    for (const [nodeName, attrs] of Object.entries(REQUIRED_NODE_ATTRS)) {
+      const declared = Object.keys(schema.nodes[nodeName]?.spec.attrs ?? {});
+      for (const attr of attrs) {
+        if (!declared.includes(attr)) missing.push(`${nodeName}.${attr}`);
+      }
+    }
+    for (const [markName, attrs] of Object.entries(REQUIRED_MARK_ATTRS)) {
+      const declared = Object.keys(schema.marks[markName]?.spec.attrs ?? {});
+      for (const attr of attrs) {
+        if (!declared.includes(attr)) missing.push(`${markName}.${attr}`);
+      }
+    }
+    expect(missing).toEqual([]);
   });
 
   it('keeps the media nodes as block-level atoms so a slice-1 client can hold them intact', () => {

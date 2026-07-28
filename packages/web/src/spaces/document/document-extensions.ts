@@ -4,19 +4,24 @@
 /**
  * The document editor's extension list — and with it, its ProseMirror schema.
  *
- * **The schema is complete from the first release.** Every node and mark the
- * document will ever hold is registered here, even where the UI that creates
- * it arrives in a later slice. This is not tidiness, it is a data-safety
- * requirement: y-tiptap deletes any node or mark its schema does not
- * recognise and commits that deletion as an ordinary local change, which then
- * syncs to every peer and persists. A client running an older bundle would
- * therefore erase content newer clients had written — silently, permanently,
- * and with no entry in anyone's undo stack. Registering everything up front
- * removes the failure mode rather than mitigating it.
+ * **The schema ships whole, ahead of the UI that fills it.** Everything the
+ * planned slices will put in a document is registered here even where nothing
+ * can yet create it. This is not tidiness, it is a data-safety requirement:
+ * y-tiptap deletes any node, mark, or ATTRIBUTE its schema does not recognise,
+ * and commits that deletion as an ordinary local change — so it syncs to every
+ * peer and persists. A client on an older bundle would therefore erase content
+ * newer clients had written, silently and with no entry in anyone's undo stack.
  *
- * Consequence for later slices: **adding UI is fine, adding schema is not.**
- * A new node or mark type must be introduced here and shipped before any UI
- * can produce it.
+ * Consequence for later slices: **adding UI is fine, adding schema is not.** A
+ * new node, mark, or attribute has to be introduced here and released before
+ * anything can produce it. Attributes are the easy one to miss — extensions
+ * like TextAlign contribute no node at all, only a field on existing ones, and
+ * an undeclared field is dropped exactly like an undeclared node.
+ *
+ * Where this is NOT yet complete: the comment slice's anchoring primitive is
+ * still open in the design (a mark was the original plan and was sent back for
+ * a decision), so whatever it settles on has to be registered here and released
+ * before comments ship.
  */
 
 import type { Extensions } from '@tiptap/core';
@@ -31,6 +36,7 @@ import { TableHeader } from '@tiptap/extension-table-header';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TaskItem } from '@tiptap/extension-task-item';
 import { TaskList } from '@tiptap/extension-task-list';
+import { TextAlign } from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
 import StarterKit from '@tiptap/starter-kit';
 import type * as Y from 'yjs';
@@ -39,6 +45,7 @@ import {
   renderCollabCaret,
   renderCollabSelection,
 } from '@web/spaces/canvas/generate/caret-render';
+import { CollabUndoSelection } from '@web/spaces/canvas/generate/collab-undo-selection';
 import { Audio, Video } from '@web/spaces/document/document-media-nodes';
 
 /** A collaborator's caret identity, as published through awareness. */
@@ -64,6 +71,12 @@ export interface DocumentExtensionOptions {
   caretUser?: DocumentCaretUser | null;
   /** Empty-state text. */
   placeholder?: string;
+  /**
+   * The undo manager to use. Supplying one keeps the history alive across an
+   * editor rebuild — a Space tab switch remounts the body, and the extension's
+   * own manager would die with it. See `getDocumentUndoManager` in `document-undo.ts`.
+   */
+  undoManager?: Y.UndoManager;
 }
 
 /**
@@ -79,7 +92,8 @@ export interface DocumentExtensionOptions {
 export function buildDocumentExtensions(
   options: DocumentExtensionOptions = {},
 ): Extensions {
-  const { fragment, caretProvider, caretUser, placeholder } = options;
+  const { fragment, caretProvider, caretUser, placeholder, undoManager } =
+    options;
 
   const extensions: Extensions = [
     StarterKit.configure({
@@ -103,10 +117,32 @@ export function buildDocumentExtensions(
     Audio,
     Highlight.configure({ multicolor: true }),
     TextStyle,
+    // Attributes count too, not just node and mark names. TextAlign adds no
+    // node of its own — it hangs a `textAlign` attribute on existing ones — and
+    // y-tiptap strips any attribute the local schema does not declare, by the
+    // same mechanism that drops an unknown node. Ship it now, with the toolbar
+    // control following later, or the release that adds alignment would have
+    // older clients erasing it from every paragraph they touch.
+    TextAlign.configure({ types: ['heading', 'paragraph'] }),
   ];
 
   if (fragment) {
-    extensions.push(Collaboration.configure({ fragment }));
+    extensions.push(
+      Collaboration.configure({
+        fragment,
+        // Handing over our own manager keeps the undo stack alive across an
+        // editor rebuild; without it the extension builds a fresh one and a
+        // tab switch silently empties the history.
+        ...(undoManager ? { yUndoOptions: { undoManager } } : {}),
+      }),
+      // Undo must restore the selection the edit started from. Upstream emits
+      // its stack-item-popped hand-off AFTER the restore transaction has run,
+      // so the editor keeps the caret where it was at undo time and the late
+      // write lingers — the next remote change then applies that stale
+      // selection and yanks the local caret. This extension hands the stored
+      // selection over in time. Same fix the canvas prompt editor carries.
+      CollabUndoSelection,
+    );
   }
 
   // Carets need both an awareness-bearing provider and an identity to publish;

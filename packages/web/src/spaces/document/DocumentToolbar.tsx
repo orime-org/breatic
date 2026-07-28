@@ -19,10 +19,20 @@ import { Button } from '@web/components/ui/button';
 import { Separator } from '@web/components/ui/separator';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
-import { useDocumentHistory } from '@web/spaces/document/use-document-history';
+import type { DocumentHistoryState } from '@web/spaces/document/use-document-history';
 
 interface DocumentToolbarProps {
   editor: Editor;
+  /** Undo / redo availability, plus the re-read to run after either fires. */
+  history: DocumentHistoryState;
+  /**
+   * True for a viewer. Every control is disabled — read-only has to be enforced
+   * here as well as on the editor body: `setEditable(false)` stops typing, but
+   * a toolbar command is a programmatic dispatch and goes straight through it.
+   * The server then drops the write, leaving that viewer looking at a private
+   * fork of the document that no one else will ever see.
+   */
+  readOnly?: boolean;
 }
 
 /** A toggle whose pressed state mirrors what is under the cursor. */
@@ -45,12 +55,12 @@ interface ActionDef {
 /**
  * Undo / redo.
  *
- * History lives in the Collaboration extension's Yjs undo manager, which tracks
- * only THIS client's transactions — so undo rolls back your own edits and never
- * reaches into a co-editor's work.
+ * History lives in a Yjs undo manager that tracks only THIS client's
+ * transactions — so undo rolls back your own edits and never reaches into a
+ * co-editor's work.
  *
- * Keyboard shortcuts come from that same extension and already cover both
- * platforms: `Mod-z` (undo), `Mod-y` and `Shift-Mod-z` (redo), where `Mod`
+ * Keyboard shortcuts come from the Collaboration extension and already cover
+ * both platforms: `Mod-z` (undo), `Mod-y` and `Shift-Mod-z` (redo), where `Mod`
  * resolves to Cmd on macOS and Ctrl on Windows.
  */
 const HISTORY_TOOLS: ActionDef[] = [
@@ -120,20 +130,23 @@ const BLOCK_TOOLS: ToolDef[] = [
  * Document toolbar — history, then mark and block toggles.
  *
  * Toggles subscribe to the editor for their own slice of state, so each tracks
- * the live selection instead of freezing at mount. History is read from the undo
- * manager instead (see {@link useDocumentHistory}) — its stacks are not part of
- * the editor state and settle after the transaction that changes them.
+ * the live selection instead of freezing at mount. History comes in as a prop
+ * because it is read from the undo manager, not the editor — see
+ * {@link DocumentHistoryState}.
  * @param root0 - Document toolbar props.
- * @param root0.editor - The editor whose state drives the buttons and which the tools act on.
+ * @param root0.editor - The editor whose state drives the toggles and which the tools act on.
+ * @param root0.history - Undo / redo availability and its re-read.
+ * @param root0.readOnly - True for a viewer; every control is disabled.
  * @returns The document toolbar element.
  */
 export function DocumentToolbar({
   editor,
+  history,
+  readOnly = false,
 }: DocumentToolbarProps): React.JSX.Element {
-  const { canUndo, canRedo } = useDocumentHistory(editor);
   const historyEnabled: Record<string, boolean> = {
-    undo: canUndo,
-    redo: canRedo,
+    undo: history.canUndo,
+    redo: history.canRedo,
   };
   return (
     <div
@@ -145,16 +158,17 @@ export function DocumentToolbar({
           key={t.id}
           action={t}
           editor={editor}
-          enabled={historyEnabled[t.id] ?? false}
+          enabled={!readOnly && (historyEnabled[t.id] ?? false)}
+          onRan={history.sync}
         />
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {MARK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} editor={editor} />
+        <ToolButton key={t.id} tool={t} editor={editor} disabled={readOnly} />
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {BLOCK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} editor={editor} />
+        <ToolButton key={t.id} tool={t} editor={editor} disabled={readOnly} />
       ))}
     </div>
   );
@@ -167,14 +181,17 @@ export function DocumentToolbar({
  * @param root0 - Tool button props.
  * @param root0.tool - The tool definition (label, icon, active predicate, run command).
  * @param root0.editor - The editor the tool reads from and acts on.
+ * @param root0.disabled - True to render the toggle inert (viewer).
  * @returns The toggle button element for one document tool.
  */
 function ToolButton({
   tool,
   editor,
+  disabled = false,
 }: {
   tool: ToolDef;
   editor: Editor;
+  disabled?: boolean;
 }): React.JSX.Element {
   const t = useTranslation();
   const active = useEditorState({
@@ -188,6 +205,7 @@ function ToolButton({
       size='icon'
       aria-label={t(tool.labelKey)}
       aria-pressed={active}
+      disabled={disabled}
       onClick={() => tool.run(editor)}
       data-testid={`doc-tool-${tool.id}`}
       className={cn('h-7 w-7')}
@@ -203,16 +221,19 @@ function ToolButton({
  * @param root0.action - The action definition (label, icon, run command).
  * @param root0.editor - The editor the action acts on.
  * @param root0.enabled - Whether the action is currently available.
+ * @param root0.onRan - Called right after the action runs, so availability is re-read.
  * @returns The action button element.
  */
 function ActionButton({
   action,
   editor,
   enabled,
+  onRan,
 }: {
   action: ActionDef;
   editor: Editor;
   enabled: boolean;
+  onRan: () => void;
 }): React.JSX.Element {
   const t = useTranslation();
   const Icon = action.Icon;
@@ -222,7 +243,12 @@ function ActionButton({
       size='icon'
       aria-label={t(action.labelKey)}
       disabled={!enabled}
-      onClick={() => action.run(editor)}
+      onClick={() => {
+        action.run(editor);
+        // Re-read the stacks: yjs can discard a dead entry without announcing
+        // it, which would leave this button lit but inert.
+        onRan();
+      }}
       data-testid={`doc-tool-${action.id}`}
       className={cn('h-7 w-7')}
     >

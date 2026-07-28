@@ -9,15 +9,17 @@ import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
+import { getDocumentUndoManager } from '@web/spaces/document/document-undo';
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
+import { useDocumentHistory } from '@web/spaces/document/use-document-history';
 
 /**
  * Document space body — a collaborative rich-text document.
  *
- * This is the container: it resolves the Space's Yjs document, joins the shared
- * collab socket for collaborator carets, and hands the resulting editor to
- * {@link DocumentEditor} for presentation.
+ * This is the container: it resolves the Space's Yjs document and its undo
+ * manager, joins the shared collab socket for collaborator carets, and hands
+ * the resulting editor to {@link DocumentEditor} for presentation.
  *
  * The socket acquire here is a cheap share, not a second connection —
  * `SpaceDocSync` already holds a reference to the same document for as long as
@@ -25,7 +27,7 @@ import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
  * @param root0 - Space body props supplied by the project space outlet.
  * @param root0.spaceId - ID of the document space.
  * @param root0.projectId - ID of the owning project.
- * @param root0.readOnly - True for a viewer; the body becomes read-only.
+ * @param root0.readOnly - True for a viewer; the body and toolbar go read-only.
  * @returns The document editor, or a loading placeholder while it mounts.
  */
 export function DocumentSpace({
@@ -37,6 +39,12 @@ export function DocumentSpace({
   const name = docName.documentSpace(projectId, spaceId);
   const doc = React.useMemo(() => getDoc(name), [name]);
   const fragment = React.useMemo(() => documentBodyFragment(doc), [doc]);
+  // Cached per document, so switching Space tabs — which remounts this body —
+  // leaves the undo history intact.
+  const undoManager = React.useMemo(
+    () => getDocumentUndoManager(doc, name),
+    [doc, name],
+  );
   const { provider } = useSocket({ name, doc });
   const caretUser = useCaretUser();
 
@@ -52,7 +60,9 @@ export function DocumentSpace({
     caretUser,
     placeholder,
     editable: !readOnly,
+    undoManager,
   });
+  const history = useDocumentHistory(undoManager);
 
   return (
     <div
@@ -62,7 +72,11 @@ export function DocumentSpace({
       className='flex h-full w-full flex-col bg-background'
     >
       {editor ? (
-        <DocumentEditor editor={editor} />
+        <DocumentEditor
+          editor={editor}
+          history={history}
+          readOnly={readOnly}
+        />
       ) : (
         <div
           data-testid='document-space-loading'

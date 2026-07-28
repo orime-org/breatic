@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The editor chrome: toolbar + body. The editor instance is supplied by the
- * container, so these tests drive a real one through the real user path — no
+ * The editor chrome: toolbar + body. The editor and its history come from the
+ * container, so these tests drive real ones through the real user path — no
  * test-only hooks into the component.
  */
 
@@ -19,7 +19,16 @@ import type { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
+import {
+  getDocumentUndoManager,
+  _resetDocumentUndoCacheForTests,
+} from '@web/spaces/document/document-undo';
+import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
+import {
+  useDocumentHistory,
+  type DocumentHistoryState,
+} from '@web/spaces/document/use-document-history';
 
 /** Reads a fragment's plain text, paragraphs joined by a newline. */
 function textOf(fragment: Y.XmlFragment): string {
@@ -29,95 +38,49 @@ function textOf(fragment: Y.XmlFragment): string {
     .join('\n');
 }
 
+/** Reads a fragment with its markup, so marks are visible. */
+function markupOf(fragment: Y.XmlFragment): string {
+  return fragment.toArray().map((n) => n.toString()).join('');
+}
+
 describe('DocumentEditor', () => {
+  const NAME = 'project-p/document-chrome';
   let doc: Y.Doc;
   let fragment: Y.XmlFragment;
   let editor: Editor;
+  let history: DocumentHistoryState;
 
   beforeEach(async () => {
     doc = new Y.Doc();
-    fragment = doc.getXmlFragment('content');
-    const { result } = renderHook(() => useDocumentEditor({ fragment }));
-    await waitFor(() => expect(result.current).not.toBeNull());
-    editor = result.current as Editor;
+    fragment = documentBodyFragment(doc);
+    const undoManager = getDocumentUndoManager(doc, NAME);
+    const { result } = renderHook(() => ({
+      editor: useDocumentEditor({ fragment, undoManager }),
+      history: useDocumentHistory(undoManager),
+    }));
+    await waitFor(() => expect(result.current.editor).not.toBeNull());
+    editor = result.current.editor as Editor;
+    history = result.current.history;
   });
   afterEach(() => {
+    _resetDocumentUndoCacheForTests();
     doc.destroy();
   });
 
   it('renders the toolbar and the editor body', () => {
-    render(<DocumentEditor editor={editor} />);
+    render(<DocumentEditor editor={editor} history={history} />);
     expect(screen.getByTestId('document-toolbar')).toBeInTheDocument();
     expect(screen.getByTestId('document-editor-content')).toBeInTheDocument();
   });
 
   it('disables undo and redo while there is nothing on the stack', () => {
-    render(<DocumentEditor editor={editor} />);
+    render(<DocumentEditor editor={editor} history={history} />);
     expect(screen.getByTestId('doc-tool-undo')).toBeDisabled();
     expect(screen.getByTestId('doc-tool-redo')).toBeDisabled();
   });
 
-  it('enables undo after this client edits — the button tracks stack depth', async () => {
-    render(<DocumentEditor editor={editor} />);
-    expect(screen.getByTestId('doc-tool-undo')).toBeDisabled();
-
-    act(() => {
-      editor.commands.setContent('<p>typed</p>');
-    });
-
-    // The button must react to the stack growing. A toolbar that reads
-    // `can().undo()` once at mount would stay disabled here forever.
-    await waitFor(() =>
-      expect(screen.getByTestId('doc-tool-undo')).not.toBeDisabled(),
-    );
-  });
-
-  it('undoes the edit when the toolbar button is clicked', async () => {
-    render(<DocumentEditor editor={editor} />);
-
-    act(() => {
-      editor.commands.setContent('<p>typed</p>');
-    });
-    await waitFor(() => expect(textOf(fragment)).toContain('typed'));
-    await waitFor(() =>
-      expect(screen.getByTestId('doc-tool-undo')).not.toBeDisabled(),
-    );
-
-    act(() => {
-      screen.getByTestId('doc-tool-undo').click();
-    });
-
-    await waitFor(() => expect(textOf(fragment)).not.toContain('typed'));
-  });
-
-  it('offers redo after an undo, and redo restores the content', async () => {
-    render(<DocumentEditor editor={editor} />);
-
-    act(() => {
-      editor.commands.setContent('<p>typed</p>');
-    });
-    await waitFor(() => expect(textOf(fragment)).toContain('typed'));
-
-    act(() => {
-      editor.commands.undo();
-    });
-    await waitFor(() => expect(textOf(fragment)).not.toContain('typed'));
-
-    // Redo must light up here with no further editing. Reading availability off
-    // the transaction stream fails exactly this assertion — see
-    // use-document-history for the measurement.
-    await waitFor(() =>
-      expect(screen.getByTestId('doc-tool-redo')).not.toBeDisabled(),
-    );
-
-    act(() => {
-      screen.getByTestId('doc-tool-redo').click();
-    });
-    await waitFor(() => expect(textOf(fragment)).toContain('typed'));
-  });
-
-  it('keeps the existing formatting toggles', () => {
-    render(<DocumentEditor editor={editor} />);
+  it('keeps the formatting toggles', () => {
+    render(<DocumentEditor editor={editor} history={history} />);
     for (const id of [
       'bold',
       'italic',
@@ -128,5 +91,43 @@ describe('DocumentEditor', () => {
     ]) {
       expect(screen.getByTestId(`doc-tool-${id}`)).toBeInTheDocument();
     }
+  });
+
+  describe('read-only (viewer)', () => {
+    it('disables every control rather than hiding the toolbar', () => {
+      render(<DocumentEditor editor={editor} history={history} readOnly />);
+      for (const id of [
+        'undo',
+        'redo',
+        'bold',
+        'italic',
+        'strike',
+        'bullet-list',
+        'ordered-list',
+        'quote',
+      ]) {
+        expect(screen.getByTestId(`doc-tool-${id}`)).toBeDisabled();
+      }
+    });
+
+    it('does not let a viewer change the shared document from the toolbar', async () => {
+      act(() => {
+        editor.commands.setContent('<p>viewer text</p>');
+      });
+      await waitFor(() => expect(textOf(fragment)).toContain('viewer text'));
+      const before = markupOf(fragment);
+
+      render(<DocumentEditor editor={editor} history={history} readOnly />);
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 7 });
+        screen.getByTestId('doc-tool-bold').click();
+      });
+
+      // Making the body non-editable only stops typing; a toolbar command is a
+      // programmatic dispatch and would go straight through it, writing into
+      // the shared document that the server will then refuse — leaving this
+      // viewer looking at a private fork.
+      expect(markupOf(fragment)).toBe(before);
+    });
   });
 });

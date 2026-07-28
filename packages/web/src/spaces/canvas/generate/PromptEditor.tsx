@@ -13,6 +13,7 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { useCollabCaretFocus } from '@web/data/yjs/use-collab-caret-focus';
 
 import {
   extractAtMentionedSourceIds,
@@ -225,92 +226,11 @@ export const PromptEditor = React.forwardRef<
     // memoized by the container so it never churns per render.
     [fragment, placeholder, mentionEmptyLabel, caretProvider, caretUser],
   );
-  // Publish window focus into the awareness `user` payload so collaborators see
-  // this user dim when they switch tabs/apps (user 2026-07-14 item 4). Receivers
-  // dim on the literal `false` only (caret-render.ts), so old clients that never
-  // publish the field render normally.
-  React.useEffect(() => {
-    if (!editor || !caretProvider || !caretUser) return undefined;
-    /**
-     * Publishes the current focus state into the awareness user field.
-     * @param focused - Whether this window has focus.
-     */
-    const publish = (focused: boolean): void => {
-      if (editor.isDestroyed) return;
-      editor.commands.updateUser({ ...caretUser, focused });
-    };
-    /**
-     * Publishes focused=true on window focus.
-     * @returns Nothing.
-     */
-    const onFocus = (): void => publish(true);
-    /**
-     * Publishes focused=false on window blur.
-     * @returns Nothing.
-     */
-    const onBlur = (): void => publish(false);
-    window.addEventListener('focus', onFocus);
-    window.addEventListener('blur', onBlur);
-    // Seed the real state on mount (the panel can open in a background window).
-    publish(document.hasFocus());
-    return (): void => {
-      window.removeEventListener('focus', onFocus);
-      window.removeEventListener('blur', onBlur);
-    };
-  }, [editor, caretProvider, caretUser]);
-  // Receiver side of the focus dim: a PARKED remote caret's widget is keyed by
-  // clientId and prosemirror-view reuses its DOM on key equality WITHOUT
-  // re-invoking the builder, so a collaborator's focused flip never re-renders
-  // it (adversarial round — both directions were dead). Toggle the class on
-  // the EXISTING caret DOM from the awareness change pipeline instead; newly
-  // built widgets get the class from the builder itself (caret-render.ts).
-  React.useEffect(() => {
-    const awareness = caretProvider?.awareness as
-      | {
-          getStates: () => Map<number, { user?: { focused?: boolean } }>;
-          on: (ev: string, fn: () => void) => void;
-          off: (ev: string, fn: () => void) => void;
-        }
-      | null
-      | undefined;
-    if (!editor || !awareness) return undefined;
-    /** Syncs every rendered remote caret's dim class to its client's focus state. */
-    const applyDim = (): void => {
-      if (editor.isDestroyed) return;
-      const states = awareness.getStates();
-      editor.view.dom
-        .querySelectorAll<HTMLElement>('.collaboration-carets__caret[data-client-id]')
-        .forEach((el) => {
-          const state = states.get(Number(el.dataset.clientId));
-          el.classList.toggle(
-            'collaboration-carets__caret--blurred',
-            state?.user?.focused === false,
-          );
-        });
-    };
-    awareness.on('change', applyDim);
-    // This listener is the ONLY one needed. Earlier there was a second
-    // subscription on `editor.on('transaction')`, guarding the window where the
-    // yCursorPlugin's batched refresh (a setTimeout(0)) had not run yet and the
-    // decorations still carried thunks capturing the pre-flip user. Under
-    // @tiptap/y-tiptap 3.0.8 no transaction can reach that window any more —
-    // its yCursorPlugin.apply has exactly four outcomes, and none of them lets
-    // a widget rebuild from a stale thunk:
-    //   local structural edit   → DecorationSet.empty, so there is no caret
-    //   remote / awareness bump → decorations rebuilt, builder reads the
-    //                             CURRENT awareness, so the class is right
-    //   local non-structural    → prevState.map() keeps them, and the widget is
-    //                             keyed by clientId so prosemirror-view reuses
-    //                             the same DOM node without re-invoking the
-    //                             builder (measured: insert before / after / at
-    //                             the caret and delete around it all keep both
-    //                             the node identity and the class)
-    //   anything else           → prevState untouched
-    applyDim();
-    return (): void => {
-      awareness.off('change', applyDim);
-    };
-  }, [editor, caretProvider]);
+  // Publish this window's focus and dim collaborators who have left theirs.
+  // Shared with the document editor — both halves have to travel together,
+  // or one side publishes into a void and the other renders a flag nobody
+  // sets.
+  useCollabCaretFocus(editor, caretProvider, caretUser);
   // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
   // narrow imperative handle rather than the raw editor, keeping TipTap
   // encapsulated (same boundary as the onTextChange / onAtMentionsChange
@@ -455,8 +375,10 @@ export const PromptEditor = React.forwardRef<
     // VIEWPORT is the actual scroller, so the line caps (min 4 lines /
     // max-h-40) and the content padding live on it (padding must scroll with
     // the content); the chrome (border, bg, focus ring) stays on the root.
-    // The testid stays on the root — its box equals the viewport's clip box,
-    // which is what the caret label flip measurement needs (caret-render.ts).
+    // The testid stays on the root because that is where tests reach for the
+    // whole control. The caret label flip no longer measures against it — it
+    // finds the Radix viewport itself (caret-render.ts), which is the element
+    // that actually clips and works for every editor, not just this one.
     <ScrollArea
       data-testid='generate-prompt-editor'
       className='nowheel rounded-overlay border border-border bg-background text-sm text-foreground transition-colors focus-within:border-active-border'

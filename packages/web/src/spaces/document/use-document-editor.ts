@@ -15,6 +15,7 @@ import { useEditor } from '@tiptap/react';
 import * as React from 'react';
 import type * as Y from 'yjs';
 
+import { useCollabCaretFocus } from '@web/data/yjs/use-collab-caret-focus';
 import {
   buildDocumentExtensions,
   type DocumentCaretUser,
@@ -35,6 +36,11 @@ export interface UseDocumentEditorOptions {
   placeholder?: string;
   /** False puts the editor in read-only mode (viewer role, history preview). */
   editable?: boolean;
+  /**
+   * The undo manager to use. Supplying one keeps the history alive when the
+   * editor is rebuilt — which a Space tab switch always causes.
+   */
+  undoManager?: Y.UndoManager;
 }
 
 /**
@@ -49,6 +55,7 @@ export interface UseDocumentEditorOptions {
  * @param options.caretUser - This user's caret identity, published to other clients.
  * @param options.placeholder - Empty-state text.
  * @param options.editable - False puts the editor in read-only mode.
+ * @param options.undoManager - Undo manager that outlives the editor rebuild.
  * @returns The editor, or null until it has mounted.
  */
 export function useDocumentEditor({
@@ -57,6 +64,7 @@ export function useDocumentEditor({
   caretUser = null,
   placeholder,
   editable = true,
+  undoManager,
 }: UseDocumentEditorOptions): Editor | null {
   const editor = useEditor(
     {
@@ -65,6 +73,7 @@ export function useDocumentEditor({
         caretProvider,
         caretUser,
         placeholder,
+        undoManager,
       }),
       // The editor mounts asynchronously; rendering it synchronously breaks
       // hydration and is what upstream recommends against.
@@ -75,7 +84,7 @@ export function useDocumentEditor({
     // `placeholder` is a STRING, not the translator function: the translator's
     // identity is stable across a locale switch, so depending on it would leave
     // the placeholder stuck in the previous language.
-    [fragment, caretProvider, caretUser, placeholder],
+    [fragment, caretProvider, caretUser, placeholder, undoManager],
   );
 
   // Editability flips without a rebuild — a role change or entering a history
@@ -84,6 +93,9 @@ export function useDocumentEditor({
     if (!editor || editor.isDestroyed) return;
     if (editor.isEditable !== editable) editor.setEditable(editable);
   }, [editor, editable]);
+
+  // Dim collaborators who have switched away, and tell them when we do.
+  useCollabCaretFocus(editor, caretProvider, caretUser);
 
   return editor;
 }
