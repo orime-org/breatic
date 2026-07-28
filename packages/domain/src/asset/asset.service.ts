@@ -27,8 +27,9 @@
  * the studio's hash namespace. Inviting someone into a studio or project is
  * an act of trust. The residual risks — content-existence probing via a hash
  * the caller already holds, cross-user dedup poisoning (`/local-upload` does
- * not verify the hash and `/uploaded` trusts the client's), and quota
- * consumption — are disclosed to users in the manual and terms, and are
+ * not verify the hash and `/uploaded` trusts the client's), quota consumption,
+ * and referencing another member's asset as one's own node thumbnail (the
+ * cover_hash residual in routes/assets.ts) — are disclosed to users and are
  * borne by the user who issued the invitation. These are ACCEPTED risks,
  * not fixed ones — do not read "decided" as "closed". The decision and its
  * rationale live in the private engineering record.

@@ -1361,15 +1361,15 @@ async function registerGeneratedAsset(
     // observable without failing the job.
     if (opts.nodeBound) throw err;
     if (err instanceof NotFoundError) {
-      // #2/#6 (adversarial): the owner studio could not be resolved — a
-      // missing project (possibly a legitimate soft-delete race) or an
-      // acting user without a personal studio (mid-onboarding). Bytes are
-      // already stored + the task bills regardless (best-effort), so this
-      // must NOT fail the job. Emit a distinct, greppable event so a
-      // billed-yet-untracked asset stays observable — at WARN, not ERROR:
-      // the soft-delete race + onboarding gap are expected, not crashes,
-      // so error level would only add alert noise. projectId is in the
-      // context to tell the cases apart during reconciliation.
+      // #2/#6 (adversarial): the owner studio could not be resolved. Since
+      // #1839 attribution reads the project alone, so this has exactly one
+      // cause — the project is gone or soft-deleted (a legitimate race).
+      // Bytes are already stored + the task bills regardless (best-effort),
+      // so this must NOT fail the job. Emit a distinct, greppable event so a
+      // billed-yet-untracked asset stays observable — at WARN, not ERROR: a
+      // soft-delete race is expected, not a crash, so error level would only
+      // add alert noise. projectId rides in the context so reconciliation can
+      // find which project it was.
       logger.warn(
         { err, key, taskId: opts.taskId, userId: opts.userId, projectId: opts.projectId },
         "asset_register_untracked (billed but not registered — no owner studio)",
