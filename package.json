@@ -36,7 +36,6 @@
     "lint:no-cjk": "bash scripts/lint-no-cjk.sh",
     "lint:no-collab-auth-table-sql": "bash scripts/lint-no-collab-auth-table-sql.sh",
     "lint:no-cors-wildcard-credentials": "bash scripts/lint-no-cors-wildcard-credentials.sh",
-    "lint:no-drizzle-type-leak": "bash scripts/lint-no-drizzle-type-leak.sh",
     "lint:no-hardcoded-secrets": "bash scripts/lint-no-hardcoded-secrets.sh",
     "lint:service-logging": "bash scripts/lint-service-logging.sh",
     "lint:no-missing-license-header": "bash scripts/lint-no-missing-license-header.sh",

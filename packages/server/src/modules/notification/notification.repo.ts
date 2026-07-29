@@ -59,7 +59,7 @@ export interface NewNotificationInput {
 /**
  * Map a Drizzle `notifications` row to the domain {@link NotificationEntity}.
  * Keeps the Drizzle `$inferSelect` type contained inside the repo
- * (prohibition #3 / lint:no-drizzle-type-leak) — callers see the
+ * (prohibition #3 / breatic/no-drizzle-type-leak) — callers see the
  * hand-written entity only.
  * @param row - Raw `notifications` table row from a Drizzle select
  * @returns The mapped domain entity (keeps `$inferSelect` out of callers)

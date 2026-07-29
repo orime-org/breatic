@@ -269,6 +269,20 @@ export default tseslint.config(
     },
   },
   {
+    // Every package, because a leaked row type is a problem wherever it
+    // surfaces. Repos are exempt: mapping the row is their job.
+    files: ["packages/*/src/**/*.{ts,tsx}"],
+    ignores: [
+      "**/*.repo.ts",
+      "**/__tests__/**",
+      "**/*.test.{ts,tsx}",
+      "**/*.spec.{ts,tsx}",
+    ],
+    rules: {
+      "breatic/no-drizzle-type-leak": "error",
+    },
+  },
+  {
     ignores: ["**/dist/**", "**/node_modules/**", "**/*.js", "**/*.mjs"],
   },
 );
