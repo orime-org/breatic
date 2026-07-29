@@ -242,6 +242,7 @@ export default [
       'breatic/no-ioredis-outside-core': 'error',
       'breatic/no-drizzle-type-leak': 'error',
       'breatic/no-param-as-string': 'error',
+      'breatic/no-cors-wildcard-credentials': 'error',
     },
   },
 ];

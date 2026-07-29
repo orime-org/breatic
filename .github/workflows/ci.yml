@@ -370,15 +370,6 @@ jobs:
         # suggestion. See scripts/lint-no-private-repo-path.sh.
         run: pnpm lint:no-private-repo-path
 
-      - name: Lint no-cors-wildcard-credentials (security)
-        # Enforce CLAUDE.md prohibition list #5 (CI maximal-strictness
-        # guard suite, inner ADR 2026-06-01): a CORS config must NOT pair
-        # a wildcard origin ("*" / ["*"]) with credentials: true — that
-        # would accept credentialed cross-origin requests from any origin.
-        # Origins must be a specific whitelist (env ALLOWED_ORIGINS).
-        # See scripts/lint-no-cors-wildcard-credentials.sh.
-        run: pnpm lint:no-cors-wildcard-credentials
-
       - name: Lint no-hardcoded-secrets (security)
         # Enforce CLAUDE.md prohibition list #4 (CI maximal-strictness
         # guard suite, inner ADR 2026-06-01): API keys, tokens, passwords

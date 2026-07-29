@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
+import { noCorsWildcardCredentials } from "#rules/rules/no-cors-wildcard-credentials";
 import { noDrizzleTypeLeak } from "#rules/rules/no-drizzle-type-leak";
 import { noIoredisOutsideCore } from "#rules/rules/no-ioredis-outside-core";
 import { noLibraryEnvAccess } from "#rules/rules/no-library-env-access";
@@ -20,6 +21,7 @@ import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
 export const breaticPlugin = {
   meta: { name: "@breatic/eslint-rules", version: "0.1.0" },
   rules: {
+    "no-cors-wildcard-credentials": noCorsWildcardCredentials,
     "no-drizzle-type-leak": noDrizzleTypeLeak,
     "no-ioredis-outside-core": noIoredisOutsideCore,
     "no-library-env-access": noLibraryEnvAccess,

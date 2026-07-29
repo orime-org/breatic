@@ -281,6 +281,7 @@ export default tseslint.config(
     rules: {
       "breatic/no-drizzle-type-leak": "error",
       "breatic/no-param-as-string": "error",
+      "breatic/no-cors-wildcard-credentials": "error",
     },
   },
   {
