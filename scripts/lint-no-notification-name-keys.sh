@@ -44,10 +44,13 @@ scan() {
     local target="$root/$rel"
     [ -e "$target" ] || continue
     local found
+    # Recursive grep emits `<path>:<lineno>:<content>`, so a comment filter has
+    # to skip past both fields — anchoring on the line number alone matches
+    # nothing, and a comment merely NAMING a banned key would fail the build.
     found="$(grep -rnE "$BANNED" "$target" \
       --include='*.ts' --include='*.tsx' 2>/dev/null \
-      | grep -vE '^\s*[0-9]+:\s*(//|\*|/\*)' \
-      | grep -vE ':\s*[0-9]+:.*(not\.toHaveProperty|// allow-notification-name-key)' || true)"
+      | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*)' \
+      | grep -vE ':[0-9]+:.*(not\.toHaveProperty|// allow-notification-name-key)' || true)"
     [ -n "$found" ] && hits+="$found"$'\n'
   done
   printf '%s' "$hits"

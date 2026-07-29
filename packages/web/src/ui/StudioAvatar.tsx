@@ -95,7 +95,7 @@ interface StudioAvatarProps {
  * hardcodes `rounded-full` on that child, so a squared avatar whose fallback
  * kept its own radius shows a circular edge poking out from under the corner.
  * @param props - The studio identity, shape input and size.
- * @param props.name - Display name; the initials are its first two characters.
+ * @param props.name - Display name; the initials derive from it (see `initialsOf`).
  * @param props.type - `personal` (round) or `team` (squared).
  * @param props.avatarUrl - The uploaded image, or `null` for initials.
  * @param props.size - Which step of the `--avatar-*` scale to draw at.

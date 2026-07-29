@@ -16,6 +16,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { BasicInfoSection } from '@web/pages/studio/container/tabs/settings/BasicInfoSection';
+import { studiosApi } from '@web/data/api/studios';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
 
 vi.mock('@web/i18n/use-translation', () => ({
@@ -65,7 +66,14 @@ function renderSection(props: {
   );
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // `clearAllMocks` wipes recorded calls but leaves implementations in place,
+  // so a test that overrides this one would otherwise poison its neighbours.
+  vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValue({
+    available: true,
+  });
+});
 
 describe('BasicInfoSection — the submit gate', () => {
   it('stays disabled while nothing has changed', () => {
@@ -103,11 +111,37 @@ describe('BasicInfoSection — the submit gate', () => {
     );
   });
 
-  it('does not ask the server whether the studio may keep its own Slug', () => {
-    // The form starts out holding it; asking gets the truthful answer "taken",
-    // by the very studio doing the asking.
+  it('does not ask the server whether the studio may keep its own Slug', async () => {
+    // The form starts out holding it, and asking gets the truthful answer
+    // "taken" — by the very studio doing the asking. Assert the request never
+    // goes out, and that editing away and back does not produce a taken error:
+    // checking the save button instead would pass no matter what, since the
+    // button is disabled while nothing has changed either way.
+    vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValue({
+      available: false,
+      reason: 'taken',
+    });
     renderSection({});
-    expect(screen.getByTestId('settings-save')).toBeDisabled();
+    const slug = screen.getByLabelText('studio.container.settings.slug');
+
+    fireEvent.change(slug, { target: { value: 'something-else' } });
+    await waitFor(() =>
+      expect(studiosApi.checkSlugAvailable).toHaveBeenCalledWith(
+        'something-else',
+        expect.anything(),
+      ),
+    );
+    fireEvent.change(slug, { target: { value: STUDIO.slug } });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('studio.container.dialog.slugTaken'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalledWith(
+      STUDIO.slug,
+      expect.anything(),
+    );
   });
 });
 

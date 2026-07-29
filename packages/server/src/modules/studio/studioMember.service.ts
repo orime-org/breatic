@@ -172,11 +172,25 @@ export async function updateMemberRole(
   if (studio.type === "personal") {
     throw new ForbiddenError(t("server.studio.cannot_modify_personal"));
   }
-  const current = await studioMembersRepo.getRole(studio.id, targetUserId);
-  if (!current) throw new NotFoundError(t("server.error.not_found"));
-  if (current === "admin") {
-    throw new ConflictError(t("server.studio.cannot_change_admin_role"));
-  }
-  const ok = await studioMembersRepo.updateRole(studio.id, targetUserId, role);
-  if (!ok) throw new NotFoundError(t("server.error.not_found"));
+  // Same shape as the detach paths: the "is this the admin" check and the
+  // write it guards must be one transaction holding a row lock. An unlocked
+  // read runs on its own connection and answers from outside the transaction,
+  // so a transfer committing in the gap makes the answer stale — this role
+  // change would then demote the member who had just become admin, and the
+  // studio would be left with none.
+  await db.transaction(async (tx) => {
+    const members = await studioMembersRepo.lockMembership(studio.id, tx);
+    const current = members.find((m) => m.userId === targetUserId)?.role;
+    if (!current) throw new NotFoundError(t("server.error.not_found"));
+    if (current === "admin") {
+      throw new ConflictError(t("server.studio.cannot_change_admin_role"));
+    }
+    const ok = await studioMembersRepo.updateRole(
+      studio.id,
+      targetUserId,
+      role,
+      tx,
+    );
+    if (!ok) throw new NotFoundError(t("server.error.not_found"));
+  });
 }
