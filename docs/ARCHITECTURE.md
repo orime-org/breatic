@@ -432,7 +432,7 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 
 | 配置文件 | 覆盖包 | ESLint 版本 |
 |---|---|---|
-| 根 `eslint.config.mjs` | `core` / `server` / `worker` / `collab` / `shared` | 根 ESLint |
+| 根 `eslint.config.ts` | `core` / `server` / `worker` / `collab` / `shared` | 根 ESLint |
 | `packages/web/eslint.config.mts` | `web` | web 自带 ESLint 9 |
 
 两套配置启用**同一组规则**:

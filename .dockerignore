@@ -42,6 +42,6 @@ docs/
 packages/*/src/__tests__
 
 # Dev config
-eslint.config.mjs
+eslint.config.ts
 packages/*/vitest.config.ts
 packages/*/typedoc.json

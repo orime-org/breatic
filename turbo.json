@@ -58,7 +58,7 @@
   "globalDependencies": [
     ".env",
     "tsconfig.base.json",
-    "eslint.config.mjs",
+    "eslint.config.ts",
     "eslint-rules/**"
   ]
 }

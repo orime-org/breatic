@@ -17,7 +17,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Function-definition format spec (docs/ARCHITECTURE.md → Coding standards). web has its own
 // ESLint 9 config, so the same jsdoc rule set declared in the root
-// eslint.config.mjs is repeated here. recommended-typescript-error: param/
+// eslint.config.ts is repeated here. recommended-typescript-error: param/
 // return types come from the TS signature (no-types on), not the comment.
 const jsdocTs = jsdoc.configs['flat/recommended-typescript-error'];
 
@@ -173,7 +173,7 @@ export default [
   },
   {
     // Function-definition format spec (docs/ARCHITECTURE.md → Coding standards). Same rule
-    // set as the root eslint.config.mjs jsdoc block: every named function unit
+    // set as the root eslint.config.ts jsdoc block: every named function unit
     // needs a TSDoc block + explicit return type; type info lives in the
     // signature; only the exception type goes in `@throws {ErrorType}`.
     // shadcn vendor primitives (components/ui) and tests are exempt.
