@@ -126,4 +126,57 @@ describe('useSlugAvailability', () => {
     });
     expect(result.current.status).toBe('checking');
   });
+
+  // The rename form starts out holding the studio's CURRENT slug. Asking the
+  // server about it gets the truthful answer "taken" — by the very studio
+  // doing the asking — which would block the form on its own initial state,
+  // and would keep blocking it if the user edits and changes their mind.
+  describe('own slug', () => {
+    it('reports the caller\'s own slug as available without asking the server', () => {
+      const { result } = renderHook(
+        () => useSlugAvailability('my-studio', { ownSlug: 'my-studio' }),
+        { wrapper },
+      );
+      expect(result.current.status).toBe('available');
+      expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalled();
+    });
+
+    it('still asks about any OTHER slug', async () => {
+      vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValue({
+        available: false,
+        reason: 'taken',
+      });
+      const { result } = renderHook(
+        () => useSlugAvailability('someone-else', { ownSlug: 'my-studio' }),
+        { wrapper },
+      );
+      await waitFor(() => expect(result.current.status).toBe('taken'));
+      expect(studiosApi.checkSlugAvailable).toHaveBeenCalledWith(
+        'someone-else',
+        expect.anything(),
+      );
+    });
+
+    it('does not exempt an own slug that is reserved or malformed', () => {
+      // The exemption says "this one is yours", not "skip validation" — a
+      // studio holding a now-reserved slug still cannot re-submit it.
+      const { result } = renderHook(
+        () => useSlugAvailability('admin', { ownSlug: 'admin' }),
+        { wrapper },
+      );
+      expect(result.current.status).toBe('invalid');
+      expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalled();
+    });
+
+    it('is unaffected when no own slug is given (the create dialogs)', async () => {
+      vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValue({
+        available: false,
+        reason: 'taken',
+      });
+      const { result } = renderHook(() => useSlugAvailability('my-studio'), {
+        wrapper,
+      });
+      await waitFor(() => expect(result.current.status).toBe('taken'));
+    });
+  });
 });

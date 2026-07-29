@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import type { ReactElement } from 'react';
 
 import { SettingsTab } from '@web/pages/studio/container/tabs/SettingsTab';
@@ -67,8 +68,9 @@ const MAINTAINER = member('u-maint', 'Max Maintainer', 'maintainer');
 const GUEST = member('u-guest', 'Gil Guest', 'guest');
 
 /**
- * Renders the given UI inside a fresh React Query client (SettingsTab's transfer
- * mutation needs a provider).
+ * Renders the given UI inside a fresh React Query client and a router — the
+ * transfer mutation needs the provider, and the settings hook navigates after
+ * a slug change, so it needs a router context even when nothing navigates.
  * @param ui - The element to render.
  * @returns the render result.
  */
@@ -79,7 +81,11 @@ function renderTab(ui: ReactElement): ReturnType<typeof render> {
       mutations: { retry: false },
     },
   });
-  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 describe('SettingsTab — transfer studio (single entry, 2026-07-08)', () => {
