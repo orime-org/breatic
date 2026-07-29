@@ -198,15 +198,18 @@ studio.post("/:slug/members", requireStudioRole("admin"), async (c) => {
 /**
  * `DELETE /api/v1/studio/:slug/members/:userId` — remove (kick) a member.
  * Admin-only; clears the member's access across all the studio's projects and
- * transfers their owned projects to the acting admin, in one transaction.
+ * transfers their owned projects to **the studio's admin**, in one
+ * transaction. The service resolves the admin itself rather than taking the
+ * caller's id — the two coincide here because of the gate above, but the
+ * self-service leave route has no such actor, and one definition of "who
+ * inherits" beats two.
  * @returns `200` with `{ data: { ok: true } }`; `403` personal / not admin,
  *   `404` not a member, `409` the sole admin (transfer first)
  */
 studio.delete("/:slug/members/:userId", requireStudioRole("admin"), async (c) => {
-  const user = c.get("user");
   const slug = c.req.param("slug");
   const targetUserId = c.req.param("userId");
-  await studioMemberService.removeMember(slug, targetUserId, user.id);
+  await studioMemberService.removeMember(slug, targetUserId);
   return c.json({ data: { ok: true } });
 });
 

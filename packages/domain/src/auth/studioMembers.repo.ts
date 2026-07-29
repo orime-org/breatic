@@ -189,6 +189,92 @@ export async function upsertMember(
  * @param tx - Optional drizzle transaction handle
  * @returns true if an active row was soft-deleted; false otherwise
  */
+/**
+ * Read a member's role **inside a transaction, holding a row lock** on that
+ * member row.
+ *
+ * Distinct from `getRole`, which is the unlocked read used by route-level
+ * role resolution. A membership mutation that decides based on `getRole`
+ * acts on a snapshot from outside its own transaction: a concurrent admin
+ * transfer can commit in between, and the mutation then soft-deletes the row
+ * that just became admin — leaving the studio with zero admins and no way
+ * back. Locking the row makes the concurrent writer queue instead of
+ * interleaving.
+ *
+ * `FOR UPDATE OF studio_members` locks only this table; the `studios` join
+ * is a liveness guard, and locking studio rows would serialise unrelated
+ * membership work across the whole studio.
+ *
+ * **Lock ordering (invariant, shared with `lockAdminUserId` and
+ * `studioTransfer.confirmTransfer`): always take the admin row first, then
+ * the target member row.** The transfer path demotes the outgoing admin
+ * before promoting the incoming one; a membership mutation that grabbed the
+ * target row first would deadlock against it whenever the leaver happens to
+ * be the transfer's recipient.
+ * @param studioId - Studio UUID
+ * @param userId - User UUID
+ * @param tx - The enclosing transaction; the lock is meaningless without one
+ * @returns Role, or null if the studio is missing/deleted or the user has no
+ *   active membership
+ */
+export async function lockMemberRole(
+  studioId: string,
+  userId: string,
+  tx: DbTx,
+): Promise<StudioRole | null> {
+  const rows = await tx
+    .select({ role: studioMembers.role })
+    .from(studioMembers)
+    .innerJoin(studios, eq(studios.id, studioMembers.studioId))
+    .where(
+      and(
+        eq(studioMembers.studioId, studioId),
+        eq(studioMembers.userId, userId),
+        isNull(studioMembers.deletedAt),
+        isNull(studios.deletedAt),
+      ),
+    )
+    .for("update", { of: studioMembers })
+    .limit(1);
+  return rows[0] ? (rows[0].role as StudioRole) : null;
+}
+
+/**
+ * Find the studio's single admin **inside a transaction, holding a row lock**
+ * on that admin row.
+ *
+ * The one-admin-per-studio partial unique index guarantees at most one match.
+ * Zero matches means the studio is already corrupt (or was soft-deleted); the
+ * caller decides how to react — callers that are about to hand something over
+ * to the admin must abort rather than proceed, since continuing would create
+ * a project with no owner.
+ *
+ * Take this lock BEFORE the target member row — see `lockMemberRole` for why.
+ * @param studioId - Studio UUID
+ * @param tx - The enclosing transaction; the lock is meaningless without one
+ * @returns The admin's user id, or null when the studio has no active admin
+ */
+export async function lockAdminUserId(
+  studioId: string,
+  tx: DbTx,
+): Promise<string | null> {
+  const rows = await tx
+    .select({ userId: studioMembers.userId })
+    .from(studioMembers)
+    .innerJoin(studios, eq(studios.id, studioMembers.studioId))
+    .where(
+      and(
+        eq(studioMembers.studioId, studioId),
+        eq(studioMembers.role, "admin"),
+        isNull(studioMembers.deletedAt),
+        isNull(studios.deletedAt),
+      ),
+    )
+    .for("update", { of: studioMembers })
+    .limit(1);
+  return rows[0]?.userId ?? null;
+}
+
 export async function softDelete(
   studioId: string,
   userId: string,

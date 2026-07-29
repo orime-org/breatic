@@ -45,20 +45,94 @@ type GrantableRole = "maintainer" | "guest";
 export async function removeMember(
   slug: string,
   targetUserId: string,
-  actorUserId: string,
+): Promise<void> {
+  await detachMember(slug, targetUserId, "kick");
+}
+
+/**
+ * Leave a studio of one's own accord — one atomic transaction that revokes the
+ * departing member's access across ALL the studio's projects AND hands every
+ * project they own to the studio's admin.
+ *
+ * Not the mirror image of {@link removeMember}: the actor IS the departing
+ * member, so there is no third party to inherit their projects. The inheritor
+ * is resolved from the studio's admin instead — see {@link detachMember}.
+ *
+ * Refuses personal studios (you cannot leave yourself) and the sole admin
+ * (they must transfer the studio first).
+ * @param slug - The studio's URL handle
+ * @param userId - The member choosing to leave
+ * @throws {NotFoundError} studio not found, or the user is not a member
+ * @throws {ForbiddenError} the studio is personal
+ * @throws {ConflictError} the user is the sole admin (transfer first)
+ * @throws {AppError} the studio has no active admin (corrupt data)
+ */
+export async function leaveStudio(slug: string, userId: string): Promise<void> {
+  await detachMember(slug, userId, "leave");
+}
+
+/**
+ * The shared body of {@link removeMember} and {@link leaveStudio}.
+ *
+ * Both detach one member and hand their owned projects to the studio's admin;
+ * they differ only in which error a same-admin target produces. Keeping one
+ * implementation means "who inherits" is defined in exactly one place — the
+ * kick path used to pass the acting admin, which happened to be equivalent
+ * only because the route gate guaranteed the actor was the admin, and which
+ * had no answer at all once members could leave on their own.
+ *
+ * Ordering inside the transaction is load-bearing:
+ *   1. lock the ADMIN row first, then the target's — the transfer path takes
+ *      them in that order (demote outgoing, promote incoming), so grabbing
+ *      them the other way round deadlocks whenever the target happens to be
+ *      a transfer's recipient
+ *   2. read the owned-project list BEFORE the soft delete, or the rows are
+ *      already gone
+ *   3. soft-delete the target's project rows BEFORE handing them over —
+ *      `materializeOwner` upserts and clears `deleted_at`, so the one-owner
+ *      partial unique index rejects the handover while the leaver still holds
+ *      an owner row
+ * @param slug - The studio's URL handle
+ * @param targetUserId - The member being detached
+ * @param mode - `kick` (an admin removes someone) or `leave` (self-service)
+ * @throws {NotFoundError} studio not found, or the target is not a member
+ * @throws {ForbiddenError} the studio is personal
+ * @throws {ConflictError} the target is the sole admin
+ * @throws {AppError} the studio has no active admin (corrupt data)
+ */
+async function detachMember(
+  slug: string,
+  targetUserId: string,
+  mode: "kick" | "leave",
 ): Promise<void> {
   const studio = await studioRepo.getBySlug(slug);
   if (!studio) throw new NotFoundError(t("server.error.not_found"));
   if (studio.type === "personal") {
     throw new ForbiddenError(t("server.studio.cannot_modify_personal"));
   }
-  const role = await studioMembersRepo.getRole(studio.id, targetUserId);
-  if (!role) throw new NotFoundError(t("server.error.not_found"));
-  if (role === "admin") {
-    throw new ConflictError(t("server.studio.remove_last_admin"));
-  }
 
   await db.transaction(async (tx) => {
+    // Locks first, in the order documented above. Both reads are inside the
+    // transaction so a concurrent transfer cannot commit between the check
+    // and the write — the interleaving that would otherwise soft-delete a
+    // freshly promoted admin and leave the studio with none.
+    const adminUserId = await studioMembersRepo.lockAdminUserId(studio.id, tx);
+    const role = await studioMembersRepo.lockMemberRole(studio.id, targetUserId, tx);
+
+    if (!role) throw new NotFoundError(t("server.error.not_found"));
+    if (role === "admin") {
+      throw new ConflictError(
+        mode === "leave"
+          ? t("server.studio.leave_last_admin")
+          : t("server.studio.remove_last_admin"),
+      );
+    }
+    if (adminUserId === null) {
+      // No admin to inherit. Aborting keeps the damage where it is; carrying
+      // on would add ownerless projects to an already-broken studio.
+      throw new ConflictError(t("server.error.conflict"));
+    }
+
     const owned = await projectMembersRepo.listOwnedProjectsInStudio(
       studio.id,
       targetUserId,
@@ -66,7 +140,7 @@ export async function removeMember(
     );
     await projectMembersRepo.softDeleteAllInStudioForUser(studio.id, targetUserId, tx);
     for (const projectId of owned) {
-      await projectMembersRepo.materializeOwner(projectId, actorUserId, tx);
+      await projectMembersRepo.materializeOwner(projectId, adminUserId, tx);
     }
     await studioMembersRepo.softDelete(studio.id, targetUserId, tx);
   });

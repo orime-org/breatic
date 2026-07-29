@@ -40,7 +40,8 @@
       "cannot_modify_personal": "個人 Studio はメンバーを管理できません。",
       "remove_last_admin": "削除する前に Admin 権限を譲渡してください。",
       "cannot_change_admin_role": "Admin ロールは譲渡によってのみ変更できます。",
-      "member_limit_reached": "この Studio はメンバー数の上限に達しています。"
+      "member_limit_reached": "この Studio はメンバー数の上限に達しています。",
+      "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。"
     },
     "project": {
       "email_not_registered": "そのメールアドレスは登録されていません。",

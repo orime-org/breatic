@@ -43,7 +43,8 @@
       "cannot_modify_personal": "个人 Studio 不能管理成员。",
       "remove_last_admin": "移除前请先转让 Admin。",
       "cannot_change_admin_role": "Admin 角色只能通过转让变更。",
-      "member_limit_reached": "该 Studio 已达到成员数上限。"
+      "member_limit_reached": "该 Studio 已达到成员数上限。",
+      "leave_last_admin": "离开这个 Studio 前请先转让 Admin。"
     },
     "project": {
       "email_not_registered": "该邮箱未注册。",
