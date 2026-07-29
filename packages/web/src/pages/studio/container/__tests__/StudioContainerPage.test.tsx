@@ -203,7 +203,7 @@ describe('StudioContainerPage', () => {
     await screen.findByText('Real Studio Project');
     await user.click(screen.getByRole('button', { name: 'New project' }));
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    await user.type(screen.getByLabelText('Handle'), 'fresh-proj');
+    await user.type(screen.getByLabelText('Slug'), 'fresh-proj');
     await user.click(screen.getByLabelText(/invite only/));
     await user.click(screen.getByRole('button', { name: 'Create' }));
     // studioId is the current studio (s-acme), and the first space defaults to
