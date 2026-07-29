@@ -193,12 +193,16 @@ export async function upsertMember(
  * is a liveness guard, and locking studio rows would serialise unrelated
  * membership work across the whole studio.
  *
- * **Lock ordering (invariant, shared with `lockAdminUserId` and
- * `studioTransfer.confirmTransfer`): always take the admin row first, then
- * the target member row.** The transfer path demotes the outgoing admin
- * before promoting the incoming one; a membership mutation that grabbed the
- * target row first would deadlock against it whenever the leaver happens to
- * be the transfer's recipient.
+ * For one member's row this narrow lock is sound, because the condition names
+ * no column a concurrent writer rewrites: a role change leaves
+ * `user_id`/`deleted_at` alone, so the re-check after waiting still matches
+ * and the caller sees the NEW role. Anything that has to reason about the
+ * studio's admin must use {@link lockMembership} instead — see there for why
+ * filtering on `role` breaks under concurrency.
+ *
+ * **Ordering across tables: `studio_members` before `project_members`.**
+ * Leaving locks membership first and then writes project rows; a caller that
+ * took a project row first would deadlock against it.
  * @param studioId - Studio UUID
  * @param userId - User UUID
  * @param tx - The enclosing transaction; the lock is meaningless without one
@@ -228,39 +232,56 @@ export async function lockMemberRole(
 }
 
 /**
- * Find the studio's single admin **inside a transaction, holding a row lock**
- * on that admin row.
+ * Lock and return every active member of a studio — the serialisation point
+ * for any change that has to keep "exactly one admin" true.
  *
- * The one-admin-per-studio partial unique index guarantees at most one match.
- * Zero matches means the studio is already corrupt (or was soft-deleted); the
- * caller decides how to react — callers that are about to hand something over
- * to the admin must abort rather than proceed, since continuing would create
- * a project with no owner.
+ * Takes the whole membership rather than the two rows a caller happens to
+ * care about, and that is the point: **the search condition must not mention
+ * a column the concurrent writer changes.** Under READ COMMITTED, a
+ * `SELECT ... FOR UPDATE` that blocks re-checks its condition against the
+ * UPDATED row once the lock frees, and skips the row if it no longer matches
+ * — without restarting the scan to find whoever matches now. So a query
+ * filtered on `role = 'admin'` returns EMPTY exactly when it matters most:
+ * while the admin role is mid-handover, having waited for that handover and
+ * then decided the studio has no admin at all. Filtering only on `studio_id`
+ * and `deleted_at` leaves nothing for a role change to invalidate; the caller
+ * finds the admin in the returned rows, which are the post-wait truth.
  *
- * Take this lock BEFORE the target member row — see `lockMemberRole` for why.
+ * A member row can still vanish from the result — soft delete makes
+ * `deleted_at IS NULL` fail on re-check — and that is correct: a member
+ * removed while we waited really is gone.
+ *
+ * Locking every row also removes the ordering question inside this table.
+ * Two callers issuing the same query acquire the same rows in the same
+ * order, so they queue instead of deadlocking, and no caller has to reason
+ * about which of the admin row and the target row to take first.
+ *
+ * **Ordering across tables still holds: `studio_members` before
+ * `project_members`.** Leaving locks the membership here and then writes
+ * project rows; a path that took a project row first would deadlock against
+ * it.
  * @param studioId - Studio UUID
  * @param tx - The enclosing transaction; the lock is meaningless without one
- * @returns The admin's user id, or null when the studio has no active admin
+ * @returns Every active member of an active studio; empty when the studio is
+ *   missing or soft-deleted
  */
-export async function lockAdminUserId(
+export async function lockMembership(
   studioId: string,
   tx: DbTx,
-): Promise<string | null> {
+): Promise<ReadonlyArray<{ userId: string; role: StudioRole }>> {
   const rows = await tx
-    .select({ userId: studioMembers.userId })
+    .select({ userId: studioMembers.userId, role: studioMembers.role })
     .from(studioMembers)
     .innerJoin(studios, eq(studios.id, studioMembers.studioId))
     .where(
       and(
         eq(studioMembers.studioId, studioId),
-        eq(studioMembers.role, "admin"),
         isNull(studioMembers.deletedAt),
         isNull(studios.deletedAt),
       ),
     )
-    .for("update", { of: studioMembers })
-    .limit(1);
-  return rows[0]?.userId ?? null;
+    .for("update", { of: studioMembers });
+  return rows.map((r) => ({ userId: r.userId, role: r.role as StudioRole }));
 }
 
 /**

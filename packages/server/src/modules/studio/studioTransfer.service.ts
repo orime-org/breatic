@@ -192,16 +192,20 @@ export async function confirmTransfer(
     // swap; otherwise updateRole would flip a guest's still-active row straight
     // to admin.
     //
-    // Both re-reads take a ROW LOCK, admin row FIRST — the same order the
-    // writes below use, and the same order the leave / kick path uses. Locking
-    // only the recipient would deadlock outright: this transaction would hold
-    // the recipient's row and then need the admin's (to demote), while a
-    // concurrent leave holds the admin's row and needs the recipient's.
-    //
-    // Locking the admin row also settles which admin this transfer is actually
-    // moving. The request names its initiator in a payload written up to seven
-    // days ago; if the studio has changed hands since, that request is stale.
-    // Confirming one anyway fails in two distinct ways, both observed:
+    // One locked read of the whole membership — the same call the leave / kick
+    // path makes, so the two queue on identical rows in identical order rather
+    // than deadlocking. See `lockMembership` for why this cannot be narrowed
+    // to the two rows we care about.
+    const members = await studioMembersRepo.lockMembership(studioId, tx);
+    const currentAdminUserId =
+      members.find((m) => m.role === "admin")?.userId ?? null;
+    const recipientRole =
+      members.find((m) => m.userId === receiverUserId)?.role ?? null;
+
+    // Which admin is this transfer actually moving? The request names its
+    // initiator in a payload written up to seven days ago; if the studio has
+    // changed hands since, that request is stale. Confirming one anyway fails
+    // in two distinct ways, both observed:
     //   - the studio went to a THIRD party — the promote collides with
     //     studio_members_one_admin_per_studio, surfacing as an unclassified
     //     500 rather than a conflict;
@@ -209,18 +213,9 @@ export async function confirmTransfer(
     //     nothing collides, but the demote still runs and pushes the stale
     //     initiator to maintainer. If they had been demoted to guest, that is
     //     a silent privilege GRANT off a week-old notification.
-    const currentAdminUserId = await studioMembersRepo.lockAdminUserId(
-      studioId,
-      tx,
-    );
     if (currentAdminUserId === null || currentAdminUserId !== fromUserId) {
       throw new ConflictError(t("server.error.conflict"));
     }
-    const recipientRole = await studioMembersRepo.lockMemberRole(
-      studioId,
-      receiverUserId,
-      tx,
-    );
     if (!recipientRole || recipientRole === "guest") {
       throw new ConflictError(t("server.error.conflict"));
     }

@@ -283,6 +283,59 @@ describe("leaveStudio — concurrency invariants", () => {
     expect(await countAdmins(studio.id)).toBe(1);
   });
 
+  it("an unrelated member can still leave while the admin role is mid-handover", async () => {
+    // The failure mode this pins is NOT corruption, it is a false refusal.
+    // Under READ COMMITTED, a `SELECT ... WHERE role = 'admin' FOR UPDATE`
+    // that blocks on a concurrent update re-checks its condition against the
+    // UPDATED row once the lock frees. The row it was waiting for has just
+    // been demoted, so it no longer matches — and Postgres does not restart
+    // the scan to notice that somebody else became admin. The read can
+    // therefore come back EMPTY while the studio demonstrably has an admin,
+    // and `detachMember` reads "no admin" as "this studio is already corrupt"
+    // and aborts.
+    //
+    // This does not corrupt anything, but a member who happened to hit Leave
+    // during a handover would be told the operation conflicted, with nothing
+    // in the UI explaining why.
+    const admin = await insertUser();
+    const successor = await insertUser();
+    const leaver = await insertUser();
+    const studio = await insertStudioWithAdmin(admin.id);
+    await insertMember(studio.id, successor.id, "maintainer");
+    await insertMember(studio.id, leaver.id, "maintainer");
+    const owned = await insertProject(studio.id, leaver.id);
+
+    // Hand the admin role over in a transaction that stays open, so the leave
+    // below blocks on exactly the row the handover is rewriting.
+    let openGate!: () => void;
+    const gateHeld = new Promise<void>((r) => {
+      openGate = r;
+    });
+    const handover = sql.begin(async (t) => {
+      await t`UPDATE studio_members SET role = 'maintainer'
+              WHERE studio_id = ${studio.id} AND user_id = ${admin.id}`;
+      await t`UPDATE studio_members SET role = 'admin'
+              WHERE studio_id = ${studio.id} AND user_id = ${successor.id}`;
+      await gateHeld;
+    });
+    // Let both UPDATEs land before the leave starts, so the leave is
+    // guaranteed to meet the half-applied state rather than racing it.
+    await new Promise((r) => setTimeout(r, 150));
+
+    const leave = studioMemberService.leaveStudio(studio.slug, leaver.id);
+    await waitUntilBlockedOn(sql, "studio_members");
+
+    openGate();
+    await handover;
+    await leave;
+
+    // The leave went through, and the project it owned landed on whoever holds
+    // the admin role now — not on the one who was admin when it started.
+    expect(await studioMembersRepo.getRole(studio.id, leaver.id)).toBeNull();
+    expect(await countAdmins(studio.id)).toBe(1);
+    expect(await projectMembersRepo.getRole(owned, successor.id)).toBe("owner");
+  });
+
   it("nobody owns a project in a studio they have left, even when a project transfer confirms across the leave", async () => {
     // The cross-module window (design section 5.4.1): confirming a project
     // transfer checks the recipient's eligibility and THEN hands the project

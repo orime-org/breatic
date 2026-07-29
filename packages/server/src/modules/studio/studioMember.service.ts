@@ -81,10 +81,10 @@ export async function leaveStudio(slug: string, userId: string): Promise<void> {
  * had no answer at all once members could leave on their own.
  *
  * Ordering inside the transaction is load-bearing:
- *   1. lock the ADMIN row first, then the target's, and only then anything in
- *      `project_members` — both transfer paths take them in that order, so
- *      grabbing them the other way round deadlocks whenever the target happens
- *      to be a transfer's recipient
+ *   1. lock the studio's membership before touching anything in
+ *      `project_members` — every path takes the two tables in that order, so
+ *      reversing it deadlocks whenever the target happens to be a concurrent
+ *      transfer's recipient
  *   2. read the owned-project list BEFORE the soft delete, or the rows are
  *      already gone — and read it UNDER A LOCK, or a project transfer
  *      committing in the gap moves one of them to somebody else and the
@@ -113,12 +113,14 @@ async function detachMember(
   }
 
   await db.transaction(async (tx) => {
-    // Locks first, in the order documented above. Both reads are inside the
-    // transaction so a concurrent admin transfer cannot commit between the
-    // check and the write — the interleaving that would otherwise soft-delete
-    // a freshly promoted admin and leave the studio with none.
-    const adminUserId = await studioMembersRepo.lockAdminUserId(studio.id, tx);
-    const role = await studioMembersRepo.lockMemberRole(studio.id, targetUserId, tx);
+    // One locked read of the whole membership, inside the transaction, so a
+    // concurrent admin transfer can neither commit between the check and the
+    // write (which would soft-delete a freshly promoted admin and leave the
+    // studio with none) nor make the admin momentarily unfindable.
+    const members = await studioMembersRepo.lockMembership(studio.id, tx);
+    const role = members.find((m) => m.userId === targetUserId)?.role ?? null;
+    const adminUserId =
+      members.find((m) => m.role === "admin")?.userId ?? null;
 
     if (!role) throw new NotFoundError(t("server.error.not_found"));
     if (role === "admin") {
