@@ -63,6 +63,7 @@
     "prepare": "git config core.hooksPath .husky || true"
   },
   "devDependencies": {
+    "@breatic/eslint-rules": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@secretlint/secretlint-rule-preset-recommend": "^13.0.2",
     "anti-trojan-source": "^1.11.3",

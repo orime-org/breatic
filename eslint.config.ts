@@ -3,6 +3,7 @@ import tseslint from "typescript-eslint";
 import jsdoc from "eslint-plugin-jsdoc";
 import importPlugin from "eslint-plugin-import";
 import drizzle from "eslint-plugin-drizzle";
+import { breaticPlugin } from "@breatic/eslint-rules";
 
 // eslint-plugin-jsdoc TypeScript preset (error level): enforces TSDoc-style
 // doc comments. no-types stays on (TS already provides param/return/yield
@@ -98,7 +99,9 @@ export default tseslint.config(
     // exception type via `@throws {ErrorType}` (require-throws-type: error),
     // because a TS signature cannot carry it. yields/next-type stay off — the
     // Generator<Y,R,N> signature carries them like a return type does.
-    files: ["packages/*/src/**/*.{ts,tsx}"],
+    // eslint-rules/ is first-party source like any package: the guard rules
+    // themselves are held to the same documentation standard they enforce.
+    files: ["packages/*/src/**/*.{ts,tsx}", "eslint-rules/src/**/*.ts"],
     ignores: ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}", "**/__tests__/**"],
     plugins: jsdocTs.plugins,
     rules: {
@@ -210,6 +213,21 @@ export default tseslint.config(
           format: ["camelCase", "snake_case"],
         },
       ],
+    },
+  },
+  {
+    // Repository invariants, one rule id per guard (eslint-rules/). These
+    // replace the bash scripts under scripts/: an AST match cannot be fooled
+    // by the same text appearing inside a string or a comment, and it reports
+    // the line the violation is actually on.
+    //
+    // Library packages own no process-lifecycle decision — see the rule's own
+    // docs for why. Tests are exempt under the standing test carve-out.
+    files: ["packages/{core,shared,domain}/src/**/*.ts"],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      "breatic/no-library-process-exit": "error",
     },
   },
   {
