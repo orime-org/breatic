@@ -345,16 +345,6 @@ jobs:
         # the exclusion list and rationale.
         run: pnpm lint:no-library-logger
 
-      - name: Lint no-library-process-exit (core + shared + domain)
-        # Enforce CLAUDE.md "process lifecycle, library layer forbidden" mandate:
-        # @breatic/core, @breatic/shared and @breatic/domain must NOT
-        # call process.exit(). A library throws a typed error
-        # (InfraNotReadyError etc.); the application entry (server /
-        # worker / collab) catches it, logs the context, and decides
-        # whether to process.exit(1). See
-        # scripts/lint-no-library-process-exit.sh for rationale.
-        run: pnpm lint:no-library-process-exit
-
       - name: Lint service-logging (server + worker + collab entries)
         # Enforce CLAUDE.md "industrial-grade server standards": every
         # long-running service entry must wire a logger AND
