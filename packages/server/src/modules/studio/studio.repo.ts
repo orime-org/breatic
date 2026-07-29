@@ -219,24 +219,27 @@ export async function getPersonalIdentitiesByCreators(
  */
 export async function getPersonalProfilesByCreators(
   createdByUserIds: string[],
-): Promise<Map<string, { name: string; slug: string }>> {
+): Promise<Map<string, { name: string; slug: string; deleted: boolean }>> {
   if (createdByUserIds.length === 0) return new Map();
   const rows = await db
     .select({
       createdByUserId: studios.createdByUserId,
       name: studios.name,
       slug: studios.slug,
+      deletedAt: studios.deletedAt,
     })
     .from(studios)
     .where(
       and(
         inArray(studios.createdByUserId, createdByUserIds),
         eq(studios.type, "personal"),
-        isNull(studios.deletedAt),
       ),
     );
   return new Map(
-    rows.map((r) => [r.createdByUserId, { name: r.name, slug: r.slug }]),
+    rows.map((r) => [
+      r.createdByUserId,
+      { name: r.name, slug: r.slug, deleted: r.deletedAt !== null },
+    ]),
   );
 }
 
@@ -248,21 +251,33 @@ export async function getPersonalProfilesByCreators(
  * renamed — or whose slug has been released and re-claimed by somebody else —
  * still resolves to the right place.
  *
- * Soft-deleted studios are simply absent from the map rather than yielding a
- * placeholder, so a caller can tell "gone" from "not looked up" and render
- * plain text instead of a dead link.
+ * Soft-deleted studios ARE returned, flagged `deleted`. Soft delete is
+ * deactivation, not erasure — the caller keeps naming the target while
+ * dropping its link. Erasure is a separate path that anonymises the row
+ * itself, at which point this returns the anonymised value with no special
+ * case here. Only a studio that never existed is absent.
  * @param studioIds - Studio UUIDs (deduped by the caller)
- * @returns Map of `studioId → { name, slug }`, missing for deleted studios
+ * @returns Map of `studioId → { name, slug, deleted }`
  */
 export async function getIdentitiesByStudioIds(
   studioIds: string[],
-): Promise<Map<string, { name: string; slug: string }>> {
+): Promise<Map<string, { name: string; slug: string; deleted: boolean }>> {
   if (studioIds.length === 0) return new Map();
   const rows = await db
-    .select({ id: studios.id, name: studios.name, slug: studios.slug })
+    .select({
+      id: studios.id,
+      name: studios.name,
+      slug: studios.slug,
+      deletedAt: studios.deletedAt,
+    })
     .from(studios)
-    .where(and(inArray(studios.id, studioIds), isNull(studios.deletedAt)));
-  return new Map(rows.map((r) => [r.id, { name: r.name, slug: r.slug }]));
+    .where(inArray(studios.id, studioIds));
+  return new Map(
+    rows.map((r) => [
+      r.id,
+      { name: r.name, slug: r.slug, deleted: r.deletedAt !== null },
+    ]),
+  );
 }
 
 /**

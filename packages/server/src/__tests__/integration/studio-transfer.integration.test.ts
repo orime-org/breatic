@@ -261,7 +261,7 @@ describe("requestTransfer", () => {
 
 describe("confirmTransfer", () => {
   it("demotes the old admin, promotes the recipient, notifies the old admin (accepter identity) — exactly one active admin", async () => {
-    const { studioId, slug, adminId, memberId, memberName, memberSlug } =
+    const { studioId, slug, adminId, memberId, memberName } =
       await seedStudio();
     await studioTransferService.requestTransfer(slug, adminId, memberId);
     const [req] = await transferRequestsFor(memberId);

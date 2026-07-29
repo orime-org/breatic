@@ -79,9 +79,9 @@ describe('notificationHeadline', () => {
     // Names and links come from the resolved map, so a later rename changes
     // what this row shows without touching the stored notification.
     const resolved = {
-      users: { 'u-alex': { slug: 'alex-h', name: 'Alex' } },
+      users: { 'u-alex': { slug: 'alex-h', name: 'Alex', deleted: false } },
       studios: {},
-      projects: { 'proj-9': { slug: 'my-proj', name: 'My Project' } },
+      projects: { 'proj-9': { slug: 'my-proj', name: 'My Project', deleted: false } },
     };
     render(<MemoryRouter>{notificationHeadline(n, resolved, t)}</MemoryRouter>);
 
@@ -107,8 +107,8 @@ describe('notificationHeadline', () => {
       payload: { inviterUserId: 'u-bo', studioId: 's-design' },
     });
     const resolved = {
-      users: { 'u-bo': { slug: 'bo-h', name: 'Bo' } },
-      studios: { 's-design': { slug: 'design-team', name: 'Design Team' } },
+      users: { 'u-bo': { slug: 'bo-h', name: 'Bo', deleted: false } },
+      studios: { 's-design': { slug: 'design-team', name: 'Design Team', deleted: false } },
       projects: {},
     };
     render(<MemoryRouter>{notificationHeadline(n, resolved, t)}</MemoryRouter>);
@@ -135,7 +135,7 @@ describe('notificationHeadline', () => {
     const resolved = {
       users: {},
       studios: {},
-      projects: { 'proj-9': { slug: 'my-proj', name: 'My Project' } },
+      projects: { 'proj-9': { slug: 'my-proj', name: 'My Project', deleted: false } },
     };
     render(<MemoryRouter>{notificationHeadline(n, resolved, t)}</MemoryRouter>);
 
@@ -143,6 +143,30 @@ describe('notificationHeadline', () => {
     expect(screen.queryByRole('link', { name: /Alex/ })).toBeNull();
     expect(screen.getAllByRole('link')).toHaveLength(1);
     expect(screen.getByText(/Alex/)).toBeInTheDocument();
+  });
+
+  it('names a soft-deleted target but does not link to it', () => {
+    // Deactivation is not erasure: the row still has to read as a record of
+    // what happened, so the name stays and only the link goes.
+    const n = makeNotification({
+      type: 'studio.invite_request',
+      payload: { inviterUserId: 'u-bo', studioId: 's-gone' },
+    });
+    const resolved = {
+      users: { 'u-bo': { slug: 'bo-h', name: 'Bo', deleted: false } },
+      studios: { 's-gone': { slug: 'design-team', name: 'Design Team', deleted: true } },
+      projects: {},
+    };
+    const { container } = render(
+      <MemoryRouter>{notificationHeadline(n, resolved, t)}</MemoryRouter>,
+    );
+
+    // Named, but not a link. (Checked on the rendered text rather than by
+    // element, since the headline interpolates the label into a sentence.)
+    expect(container.textContent).toContain('Design Team');
+    expect(screen.queryByRole('link', { name: 'Design Team' })).toBeNull();
+    // The still-live actor keeps its link.
+    expect(screen.getByRole('link', { name: /Bo/ })).toBeInTheDocument();
   });
 
   it('falls back to the raw type for an unhandled type', () => {

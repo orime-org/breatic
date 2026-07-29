@@ -243,7 +243,7 @@ export interface NotificationEntity {
  * Resolved server-side at read time from an immutable id, never stored in the
  * notification itself. That is the whole point: a stored slug is a snapshot of
  * a name that can change hands, and for a personal studio the slug IS the
- * user's @handle — once someone else claims a released handle, a stored copy
+ * user's `@handle` — once someone else claims a released handle, a stored copy
  * silently points at a stranger.
  */
 export interface NotificationRef {
@@ -251,6 +251,18 @@ export interface NotificationRef {
   slug: string;
   /** Current display name, for the link text. */
   name: string;
+  /**
+   * The target has been soft-deleted: name it, but do not link to it.
+   *
+   * Soft delete is deactivation, not erasure — the same split GitHub draws
+   * with its ghost user and Slack draws between deactivating an account and
+   * deleting its profile. At this level the name stays visible, because a
+   * notification is a record of something that happened and "someone invited
+   * you to something" is not a usable record. Actual erasure (the GDPR path)
+   * anonymises the ROW; resolution then returns the anonymised value and this
+   * layer needs no special case.
+   */
+  deleted: boolean;
 }
 
 /**
@@ -268,7 +280,7 @@ export interface NotificationRef {
 export interface NotificationListView {
   items: NotificationEntity[];
   resolved: {
-    /** Keyed by user id → that user's personal studio (their @handle). */
+    /** Keyed by user id → that user's personal studio (their `@handle`). */
     users: Record<string, NotificationRef>;
     /** Keyed by studio id. */
     studios: Record<string, NotificationRef>;

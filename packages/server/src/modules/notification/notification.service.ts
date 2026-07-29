@@ -53,7 +53,7 @@ export interface RoleUpgradeRequestPayload {
 export interface RoleUpgradeDecisionPayload {
   /** Deciding owner's personal-studio display name — shown actor-first in the bell. */
   deciderName: string;
-  /** Deciding owner — resolved to their current @handle at read time. */
+  /** Deciding owner — resolved to their current `@handle` at read time. */
   deciderUserId: string;
   /** The project the decision is about. */
   projectId: string;
@@ -155,7 +155,7 @@ export async function createRoleUpgradeRejected(input: {
  */
 export interface StudioTransferRequestPayload {
   fromUserId: string;
-  /** Initiating admin's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  /** Initiating admin's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   fromName: string;
   studioId: string;
   studioName: string;
@@ -169,9 +169,9 @@ export interface StudioTransferApprovedPayload {
   studioName: string;
   /** The studio that changed hands. */
   studioId: string;
-  /** The accepting recipient — resolved to their current @handle at read time. */
+  /** The accepting recipient — resolved to their current `@handle` at read time. */
   accepterUserId: string;
-  /** Accepting recipient's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  /** Accepting recipient's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   accepterName: string;
 }
 
@@ -183,7 +183,7 @@ export interface StudioTransferApprovedPayload {
  */
 export interface ProjectTransferRequestPayload {
   fromUserId: string;
-  /** Initiating owner's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  /** Initiating owner's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   fromName: string;
   projectId: string;
   projectName: string;
@@ -197,9 +197,9 @@ export interface ProjectTransferApprovedPayload {
   projectName: string;
   /** The project that changed hands. */
   projectId: string;
-  /** The accepting recipient — resolved to their current @handle at read time. */
+  /** The accepting recipient — resolved to their current `@handle` at read time. */
   accepterUserId: string;
-  /** Accepting recipient's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  /** Accepting recipient's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   accepterName: string;
 }
 
@@ -213,7 +213,7 @@ export interface ProjectTransferApprovedPayload {
 export interface StudioInviteRequestPayload {
   invitationId: string;
   studioId: string;
-  /** The inviting admin — resolved to their current @handle at read time. */
+  /** The inviting admin — resolved to their current `@handle` at read time. */
   inviterUserId: string;
   studioName: string;
   /** Inviting admin's personal-studio slug = `@handle` shown + `/studio/{slug}` link. */
@@ -229,9 +229,9 @@ export interface StudioInviteAcceptedPayload {
   studioName: string;
   /** The studio joined. */
   studioId: string;
-  /** The invitee — resolved to their current @handle at read time. */
+  /** The invitee — resolved to their current `@handle` at read time. */
   inviteeUserId: string;
-  /** Invitee's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  /** Invitee's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   inviteeName: string;
 }
 
@@ -404,10 +404,10 @@ export async function createStudioInviteAccepted(input: {
 export interface ProjectInviteRequestPayload {
   invitationId: string;
   projectId: string;
-  /** The inviting owner — resolved to their current @handle at read time. */
+  /** The inviting owner — resolved to their current `@handle` at read time. */
   inviterUserId: string;
   projectName: string;
-  /** Inviting owner's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  /** Inviting owner's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   inviterName: string;
   role: "editor" | "viewer";
   /** One-time email-link token; the bell row navigates to `?token=` with it. */
@@ -422,9 +422,9 @@ export interface ProjectInviteAcceptedPayload {
   projectName: string;
   /** The project joined. */
   projectId: string;
-  /** The invitee — resolved to their current @handle at read time. */
+  /** The invitee — resolved to their current `@handle` at read time. */
   inviteeUserId: string;
-  /** Invitee's personal-studio name + slug (@handle) — shown actor-first + linked. */
+  /** Invitee's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   inviteeName: string;
 }
 

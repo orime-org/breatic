@@ -50,12 +50,20 @@ export interface Notification {
  *
  * Resolved by the server at read time, never stored in the notification. A
  * stored slug is a snapshot of a name that can change hands — and for a
- * personal studio the slug IS the user's @handle, so a released one can end up
+ * personal studio the slug IS the user's `@handle`, so a released one can end up
  * naming a completely different person.
  */
 export interface NotificationRef {
   slug: string;
   name: string;
+  /**
+   * The target is soft-deleted: name it, but do not link to it.
+   *
+   * Soft delete is deactivation, not erasure — a notification is a record of
+   * something that happened, and "someone invited you to something" is not a
+   * usable record. Erasure is a separate path that anonymises the data itself.
+   */
+  deleted: boolean;
 }
 
 /**

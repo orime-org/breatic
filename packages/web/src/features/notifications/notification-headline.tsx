@@ -175,6 +175,7 @@ const STUDIO_ROWS: Partial<
  * Map a notification to its headline actor + entity. Returns null for an unknown
  * / dead type (the caller falls back to the raw type string).
  * @param n - The notification to describe.
+ * @param resolved - Current identities for the ids it carries.
  * @returns The resolved headline parts, or null when the type isn't handled.
  */
 function headlinePartsFor(
@@ -191,11 +192,15 @@ function headlinePartsFor(
   // name as a label so the sentence still reads.
   const projectId = str(p, 'projectId') || n.projectId || '';
   const projectRef = projectId ? resolved.projects[projectId] : undefined;
-  const projectHref = projectRef ? projectPath(projectRef.slug, projectId) : null;
+  const projectHref =
+    projectRef && !projectRef.deleted
+      ? projectPath(projectRef.slug, projectId)
+      : null;
 
   const studioId = str(p, 'studioId');
   const studioRef = studioId ? resolved.studios[studioId] : undefined;
-  const studioHref = studioRef ? studioPath(studioRef.slug) : null;
+  const studioHref =
+    studioRef && !studioRef.deleted ? studioPath(studioRef.slug) : null;
 
   const projectRow = PROJECT_ROWS[n.type];
   if (projectRow) {
@@ -204,7 +209,7 @@ function headlinePartsFor(
       key: projectRow.key,
       entityParam: 'project',
       actorName: actor?.name ?? str(p, projectRow.nameField),
-      actorHandle: actor?.slug ?? '',
+      actorHandle: actor && !actor.deleted ? actor.slug : '',
       entityLabel: projectRef?.name ?? str(p, 'projectName'),
       entityHref: projectHref,
     };
@@ -216,7 +221,7 @@ function headlinePartsFor(
       key: studioRow.key,
       entityParam: 'studio',
       actorName: actor?.name ?? str(p, studioRow.nameField),
-      actorHandle: actor?.slug ?? '',
+      actorHandle: actor && !actor.deleted ? actor.slug : '',
       entityLabel: studioRef?.name ?? str(p, 'studioName'),
       entityHref: studioHref,
     };
@@ -261,6 +266,7 @@ function actorNode(
  * page) are clickable links dropped into the translated sentence frame. Both links
  * open in a NEW tab so the reader keeps their place in the bell.
  * @param n - The notification to render a headline for.
+ * @param resolved - Current identities for the ids the notification carries.
  * @param t - The translation function.
  * @returns The headline as a React node, or the raw type for an unknown notification.
  */

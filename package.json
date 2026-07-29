@@ -42,6 +42,7 @@
     "lint:no-library-logger": "bash scripts/lint-no-library-logger.sh",
     "lint:no-library-process-exit": "bash scripts/lint-no-library-process-exit.sh",
     "lint:service-logging": "bash scripts/lint-service-logging.sh",
+    "lint:no-notification-name-keys": "bash scripts/lint-no-notification-name-keys.sh && bash scripts/lint-no-notification-name-keys.sh --self-test",
     "lint:no-missing-license-header": "bash scripts/lint-no-missing-license-header.sh",
     "lint:no-raw-sql-outside-repo": "bash scripts/lint-no-raw-sql-outside-repo.sh",
     "lint:no-yjs-documents-sql-outside-repo": "bash scripts/lint-no-yjs-documents-sql-outside-repo.sh",

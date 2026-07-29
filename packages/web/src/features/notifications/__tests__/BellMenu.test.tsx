@@ -197,10 +197,10 @@ describe('BellMenu — 4 notification types render', () => {
     const user = userEvent.setup();
     vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N1, 'access.role_upgrade_rejected', {
+        deciderUserId: 'u-decider',
         deciderName: 'bangbang',
-        deciderHandle: 'bangbang',
+        projectId: 'p-canvas',
         projectName: 'canvas',
-        projectSlug: 'canvas',
       }),
     ], resolved: EMPTY_RESOLVED });
     setup();
@@ -311,7 +311,6 @@ describe('BellMenu — studio notification types (slice 3)', () => {
           studioName: 'Acme',
           fromUserId: 'u-admin',
           fromName: 'Alex',
-          fromHandle: 'alex-h',
           studioId: 's1',
         },
         { expiresAt },
@@ -397,9 +396,10 @@ describe('BellMenu — studio notification types (slice 3)', () => {
     const user = userEvent.setup();
     vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N2, 'studio.transfer_approved', {
+        studioId: 's1',
         studioName: 'Acme',
+        accepterUserId: 'u-dee',
         accepterName: 'Dee',
-        accepterHandle: 'dee-h',
       }),
     ], resolved: EMPTY_RESOLVED });
     setup();

@@ -245,7 +245,7 @@ async function seedProjectTransfer(opts?: {
 
 describe("requestProjectTransfer", () => {
   it("lands an actionable transfer-request notification with the actor identity + a future expiry", async () => {
-    const { projectId, projectSlug, ownerId, recipientId, ownerName, ownerSlug } =
+    const { projectId, ownerId, recipientId, ownerName } =
       await seedProjectTransfer();
 
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
@@ -328,14 +328,8 @@ describe("requestProjectTransfer", () => {
 
 describe("confirmProjectTransfer", () => {
   it("demotes the old owner to editor, promotes the recipient to owner (from editor), notifies the old owner, emits the activity — exactly one owner", async () => {
-    const {
-      projectId,
-      ownerId,
-      recipientId,
-      recipientName,
-      recipientSlug,
-      projectSlug,
-    } = await seedProjectTransfer();
+    const { projectId, ownerId, recipientId, recipientName } =
+      await seedProjectTransfer();
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
     const [req] = await transferRequestsFor(recipientId);
 

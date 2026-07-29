@@ -69,23 +69,38 @@ function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
  * Resolve project ids to their CURRENT name + slug, in one query.
  *
  * The read half of storing ids instead of names in notifications: the id is
- * immutable, so a renamed project still resolves to the right link. Deleted
- * projects are absent from the map rather than yielding a placeholder, letting
- * the caller render plain text instead of a dead link.
+ * immutable, so a renamed project still resolves to the right link. Soft-
+ * deleted projects ARE returned, flagged `deleted`, so the caller can name the
+ * target while dropping its link.
  * @param projectIds - Project UUIDs (deduped by the caller)
- * @returns Map of `projectId → { name, slug }`, missing for deleted projects
+ * @returns Map of `projectId → { name, slug, deleted }`
  */
 export async function getIdentitiesByProjectIds(
   projectIds: string[],
-): Promise<Map<string, { name: string; slug: string }>> {
+): Promise<Map<string, { name: string; slug: string; deleted: boolean }>> {
   if (projectIds.length === 0) return new Map();
   const rows = await db
-    .select({ id: projects.id, name: projects.name, slug: projects.slug })
+    .select({
+      id: projects.id,
+      name: projects.name,
+      slug: projects.slug,
+      deletedAt: projects.deletedAt,
+    })
     .from(projects)
-    .where(and(inArray(projects.id, projectIds), isNull(projects.deletedAt)));
-  return new Map(rows.map((r) => [r.id, { name: r.name, slug: r.slug }]));
+    .where(inArray(projects.id, projectIds));
+  return new Map(
+    rows.map((r) => [
+      r.id,
+      { name: r.name, slug: r.slug, deleted: r.deletedAt !== null },
+    ]),
+  );
 }
 
+/**
+ * Load one active project by id.
+ * @param id - Project UUID
+ * @returns The project, or `null` when missing / soft-deleted
+ */
 export async function getProjectById(id: string): Promise<ProjectEntity | null> {
   const rows = await db
     .select()

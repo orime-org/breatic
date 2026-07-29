@@ -270,14 +270,18 @@ describe("getPersonalStudioProfilesByUserIds — bell actor identity (name + slu
       userNoStudio,
     ]);
     // A: display name diverged from slug — both resolved correctly.
-    expect(profiles.get(userA)).toEqual({ name: "Alice Display", slug: slugA });
+    expect(profiles.get(userA)).toEqual({
+      name: "Alice Display",
+      slug: slugA,
+      deleted: false,
+    });
     // B: never renamed, so name still equals the slug.
-    expect(profiles.get(userB)).toEqual({ name: slugB, slug: slugB });
+    expect(profiles.get(userB)).toEqual({ name: slugB, slug: slugB, deleted: false });
     // A user mid-onboarding (no personal studio) is absent — callers fall back.
     expect(profiles.has(userNoStudio)).toBe(false);
   });
 
-  it("excludes a soft-deleted personal studio", async () => {
+  it("still resolves a soft-deleted personal studio, flagged deleted", async () => {
     const user = await insertUser();
     const slug = freshSlug();
     await studioService.createPersonalStudio(user, slug);
@@ -289,6 +293,10 @@ describe("getPersonalStudioProfilesByUserIds — bell actor identity (name + slu
     const profiles = await studioService.getPersonalStudioProfilesByUserIds([
       user,
     ]);
-    expect(profiles.has(user)).toBe(false);
+    // Soft delete is deactivation, not erasure: the name stays resolvable so a
+    // record that mentions this user still reads, and `deleted` tells the
+    // caller to drop the link. Erasure is a separate path that anonymises the
+    // row itself.
+    expect(profiles.get(user)).toMatchObject({ slug, deleted: true });
   });
 });

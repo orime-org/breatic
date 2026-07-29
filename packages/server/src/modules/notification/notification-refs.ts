@@ -6,20 +6,29 @@
  *
  * Notifications store ids, never names. A name is a snapshot of something that
  * changes: renaming a studio releases its old slug immediately, and for a
- * personal studio the slug IS the user's @handle — so a stored copy can end up
+ * personal studio the slug IS the user's `@handle` — so a stored copy can end up
  * naming whoever claimed the handle next, with nothing about the stored string
  * to reveal that it went stale.
  *
  * Resolution happens here, at read time, and is batched by kind: one page costs
- * three queries regardless of how many notifications it holds. An id whose
- * target is gone is left OUT of the result rather than mapped to a placeholder,
- * so the frontend can tell "deleted" from "not loaded" and render plain text
- * instead of a link that goes nowhere.
+ * three queries regardless of how many notifications it holds.
+ *
+ * A soft-deleted target still resolves, flagged `deleted`. Soft delete is
+ * deactivation, not erasure — the same distinction GitHub draws with its ghost
+ * user and Slack draws between deactivating an account and deleting its
+ * profile. A notification is a record of something that happened, and "someone
+ * invited you to something" is not a usable record, so the name stays and only
+ * the link is dropped. Real erasure anonymises the ROW; this layer then
+ * returns the anonymised value with no special case of its own.
  */
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import type { NotificationEntity, NotificationListView } from "@breatic/shared";
+import type {
+  NotificationEntity,
+  NotificationListView,
+  NotificationRef,
+} from "@breatic/shared";
 
 /**
  * Payload keys that hold a user id, a studio id, and a project id.
@@ -70,8 +79,8 @@ function collectIds(
  * @returns The same data as a plain record
  */
 function toRecord(
-  map: Map<string, { name: string; slug: string }>,
-): Record<string, { name: string; slug: string }> {
+  map: Map<string, NotificationRef>,
+): Record<string, NotificationRef> {
   return Object.fromEntries(map);
 }
 

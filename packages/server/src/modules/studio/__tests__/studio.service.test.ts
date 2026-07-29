@@ -168,7 +168,7 @@ describe("getPersonalStudioIdentitiesByUserIds", () => {
 describe("getPersonalStudioProfilesByUserIds", () => {
   it("delegates to the repo's batch profile lookup (name + slug)", async () => {
     const profiles = new Map([
-      ["user-1", { name: "Alice", slug: "alice-handle" }],
+      ["user-1", { name: "Alice", slug: "alice-handle", deleted: false }],
     ]);
     vi.mocked(studioRepo.getPersonalProfilesByCreators).mockResolvedValueOnce(
       profiles,

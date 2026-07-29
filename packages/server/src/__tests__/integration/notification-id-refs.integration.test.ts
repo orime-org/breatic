@@ -174,6 +174,7 @@ describe("the list endpoint resolves ids to current identities", () => {
     expect(view.resolved.studios[studio.id]).toEqual({
       slug: studio.slug,
       name: "Acme Team",
+      deleted: false,
     });
     // The initiating admin resolves through their personal studio — that is
     // where a user's display identity lives.
@@ -202,10 +203,11 @@ describe("the list endpoint resolves ids to current identities", () => {
     expect(view.resolved.studios[studio.id]).toEqual({
       slug: renamedSlug,
       name: "New Name",
+      deleted: false,
     });
   });
 
-  it("omits an id whose target no longer exists, rather than inventing one", async () => {
+  it("keeps the name of a soft-deleted target, but marks it unlinkable", async () => {
     const admin = await insertUserWithHandle(`nid-a4-${seq}`);
     const recipient = await insertUserWithHandle(`nid-r4-${seq}`);
     const studio = await insertStudio(admin);
@@ -217,10 +219,29 @@ describe("the list endpoint resolves ids to current identities", () => {
 
     const view = await listNotifications(cookie);
 
-    // Absent, not a placeholder: the frontend renders plain text, and nobody
-    // has to guess whether an empty slug means "gone" or "not loaded yet".
-    expect(view.resolved.studios[studio.id]).toBeUndefined();
+    // Soft delete is deactivation, not erasure — the industry split (GitHub's
+    // ghost user, Slack's deactivate-vs-delete-profile) keeps the NAME visible
+    // at this level and only anonymises on an explicit erasure step. So the
+    // entry stays resolvable, carrying `deleted` so the frontend drops the
+    // link while still naming what the notification is about.
+    const ref = view.resolved.studios[studio.id];
+    expect(ref).toBeDefined();
+    expect(ref?.name).toBe("Before Rename");
+    expect(ref?.deleted).toBe(true);
     expect(view.items.length).toBeGreaterThan(0);
+  });
+
+  it("marks a live target as not deleted", async () => {
+    const admin = await insertUserWithHandle(`nid-a6-${seq}`);
+    const recipient = await insertUserWithHandle(`nid-r6-${seq}`);
+    const studio = await insertStudio(admin);
+    await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio.id}, ${recipient}, 'maintainer')`;
+    await studioTransferService.requestTransfer(studio.slug, admin, recipient);
+    const cookie = await loginCookie(recipient);
+
+    const view = await listNotifications(cookie);
+
+    expect(view.resolved.studios[studio.id]?.deleted).toBe(false);
   });
 
   it("resolves a page of many notifications without a query per item", async () => {

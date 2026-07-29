@@ -24,6 +24,18 @@ vi.mock("@breatic/domain", async () => {
   return domainMock();
 });
 
+// The route resolves ids to current identities before responding; that hits
+// the studio / project repos, which this suite deliberately does not stand up.
+// Stub the resolver so these tests stay about the ROUTE (auth, status codes,
+// envelope) — resolution itself is proven against a real database in
+// notification-id-refs.integration.test.ts.
+vi.mock("@server/modules/notification/notification-refs.js", () => ({
+  withResolvedRefs: vi.fn(async (items: unknown[]) => ({
+    items,
+    resolved: { users: {}, studios: {}, projects: {} },
+  })),
+}));
+
 vi.mock("@server/modules", async (importOriginal) => {
   const { serverModulesMock } = await import("../helpers/mock-core.js");
   return serverModulesMock(importOriginal);
@@ -62,8 +74,12 @@ describe("GET /users/me/notifications", () => {
       headers: AUTH,
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { data: unknown[] };
-    expect(body.data).toHaveLength(1);
+    const body = (await res.json()) as {
+      data: { items: unknown[]; resolved: unknown };
+    };
+    // The envelope now carries the page plus the identities its ids resolve to.
+    expect(body.data.items).toHaveLength(1);
+    expect(body.data.resolved).toBeDefined();
     expect(mocks.notificationService.listUnread).toHaveBeenCalled();
     expect(mocks.notificationService.listAll).not.toHaveBeenCalled();
   });
