@@ -33,19 +33,19 @@ export default tseslint.config(
     plugins: { import: importPlugin },
     rules: {
       "@typescript-eslint/no-explicit-any": "error",
-      // Enforce CLAUDE.md 禁止清单 #12: no `var`. Block-scoped `let` /
+      // Enforce CLAUDE.md Prohibition #12: no `var`. Block-scoped `let` /
       // `const` only — `var` hoists function-wide and leaks past the block
       // it reads as scoped to, a classic source of subtle bugs. eslint:
       // recommended does NOT enable this (it's a suggestion-category rule),
       // so it must be opt-in here. Pairs with the existing
-      // @typescript-eslint/no-require-imports (禁#12 require) from the
+      // @typescript-eslint/no-require-imports (Prohibition #12, require half) from the
       // tseslint recommended preset.
       "no-var": "error",
       // Ban redundant type assertions — `x as T` where TS already knows
       // x is T. A cast that does nothing is noise and can mask a real
       // type problem if the underlying type later changes.
       "@typescript-eslint/no-unnecessary-type-assertion": "error",
-      // Enforce CLAUDE.md 禁止清单 #8 "裸 catch" (machine-checkable half;
+      // Enforce CLAUDE.md Prohibition #8 "bare catch" (machine-checkable half;
       // CI maximal-strictness guard suite, inner ADR 2026-06-01). An empty
       // catch body silently swallows the error — at 3am the on-call cannot
       // trace the root cause. eslint:recommended already enables no-empty,
@@ -56,7 +56,7 @@ export default tseslint.config(
       // stays a human-review concern — see the inner ADR.
       "no-empty": ["error", { allowEmptyCatch: false }],
       // argsIgnorePattern / varsIgnorePattern: `_`-prefixed = intentionally
-      // unused. caughtErrors:"all" is the other half of 禁#8: a catch that
+      // unused. caughtErrors:"all" is the other half of Prohibition #8: a catch that
       // BINDS the error (`catch (err)`) but never uses it has captured the
       // failure only to drop it — the closest machine signal for a real
       // swallow. Prefix the binding `_` (or omit it: `catch {`) when the
@@ -82,12 +82,15 @@ export default tseslint.config(
     },
   },
   {
-    // Function-definition format spec (docs/ARCHITECTURE.md → Coding standards; CLAUDE.md
-    // 禁#11 + 代码风格). Every named function unit — function declaration,
+    // Function-definition format spec (docs/ARCHITECTURE.md → Coding standards;
+    // CLAUDE.md Prohibition #11 + its Coding-style section). Every named
+    // function unit — function declaration,
     // class method, class, variable-assigned arrow / function expression —
     // must carry a TSDoc block AND an explicit return type. No public-only
     // exemption: a private helper needs docs as much as an exported one
-    // (规则只有 0/1, 不按可见性切同类). Inline anonymous callbacks are
+    // (a rule is either 0 or 1 — never split one kind of thing by an
+    // attribute unrelated to the rule's intent, such as visibility).
+    // Inline anonymous callbacks are
     // excluded (their parent is a CallExpression, not a VariableDeclarator;
     // explicit-function-return-type uses allowExpressions for the same carve-
     // out) — they are not a named function unit. Tests are exempt per the
@@ -122,8 +125,8 @@ export default tseslint.config(
         },
       ],
       // Every doc block must carry a one-line summary description, not just
-      // tags — a bare @param/@returns block is incomplete (规则只有 0/1, the
-      // summary is not an optional carve-out). The #850 cleanup already added
+      // tags — a bare @param/@returns block is incomplete (a rule is either
+      // 0 or 1; the summary is not an optional carve-out). The #850 cleanup added
       // summaries everywhere, so this holds at zero violations.
       "jsdoc/require-description": "error",
       // Exception type → comment (signature can't carry it). The braces in
