@@ -43,10 +43,14 @@ export function useCollabCaretFocus(
   // effects below re-run for a genuine change of awareness, and neither should
   // re-run because a caller happened to rebuild its provider wrapper — the
   // publish effect writes to the document, so a spurious re-run costs a real
-  // Yjs transaction. Measured: with an unstable wrapper, that transaction
-  // lands right after an undo, is captured as a fresh edit because `undoing`
-  // has already been cleared, and wipes the redo stack — undo appears to work
-  // while redo silently stops existing.
+  // Yjs transaction for no reason.
+  //
+  // This is about not doing useless work, and nothing more. It is NOT what
+  // makes undo safe: an editor writes to its document on every focus, every
+  // blur and every mount by design, and those writes are supposed to happen.
+  // The reason a write can no longer destroy a redo stack lives in the undo
+  // manager's delete filter (`keepBodyRepresentable`), which stops undo from
+  // leaving the document in a state the editor has to reconcile.
   const awareness = caretProvider?.awareness ?? null;
 
   // Publish. Receivers dim on a literal `false` only, so a client that never

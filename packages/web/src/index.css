@@ -410,6 +410,20 @@ body {
   padding-top: 0.096em;
   padding-bottom: 0.096em;
 }
+/* Empty-editor placeholder. The Placeholder extension only marks the empty
+   paragraph — `data-placeholder` plus the `is-editor-empty` class — and
+   something else has to draw it. That renderer used to be a chain of arbitrary
+   variants on one editor's container, which meant a second editor could
+   configure a placeholder, pass every test, and show nothing at all. It is a
+   property of the extension, not of any one editor, so it lives here and every
+   editor that installs Placeholder gets it. */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--color-muted-foreground);
+}
 /* Remote collaborator carets in the generate prompt (batch-2 item 14,
    @tiptap/extension-collaboration-caret): the extension's default render
    emits these classes and inlines each user's identity color (border-color

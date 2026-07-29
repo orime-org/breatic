@@ -78,7 +78,17 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
   const [authFailedReason, setAuthFailedReason] = React.useState<
     string | null
   >(null);
-  const providerRef = React.useRef<HocuspocusProvider | null>(null);
+  // State, not a ref: this is a value the caller RENDERS from — the caret layer
+  // an editor mounts, for one — so its arrival has to re-render subscribers. As
+  // a ref it did not, and nothing else in the cold-acquire path did either: all
+  // three setState calls below write the value they already hold, so React
+  // bails out and the provider lands invisibly. Consumers then saw it only when
+  // some unrelated render happened to read the ref — the first `synced` event a
+  // network round-trip later, or a keystroke — which reads as "the editor takes
+  // a moment to appear" online and never appears at all offline.
+  const [provider, setProvider] = React.useState<HocuspocusProvider | null>(
+    null,
+  );
 
   React.useEffect(() => {
     // Gated: the shared socket may not be dialed until userId resolves. Acquire
@@ -88,12 +98,12 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       setStatus('connecting');
       setSynced(false);
       setAuthFailedReason(null);
-      providerRef.current = null;
+      setProvider(null);
       return;
     }
 
     const provider = acquireDocProvider(name, doc, url);
-    providerRef.current = provider;
+    setProvider(provider);
 
     // Initialise from the provider's CURRENT state — acquiring an already-synced
     // shared provider won't re-emit `synced`.
@@ -153,7 +163,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       provider.off('synced', onSynced);
       provider.off('authenticationFailed', onAuthFailed);
       provider.off('close', onClose);
-      providerRef.current = null;
+      setProvider(null);
       releaseDocProvider(name);
       setSynced(false);
       setStatus('connecting');
@@ -162,7 +172,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
   }, [ready, name, doc, url]);
 
   return {
-    provider: providerRef.current,
+    provider,
     synced,
     status,
     authFailedReason,

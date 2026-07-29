@@ -214,6 +214,66 @@ describe('useDocumentEditor', () => {
       peer.destroy();
     });
 
+    it('can redo after undoing away the last of the document', async () => {
+      // Undoing the only paragraph used to empty the Y fragment outright.
+      // ProseMirror's schema requires at least one block, so its document kept
+      // an empty paragraph the fragment no longer had — and the next dispatch
+      // of any kind (a click, a window focus, a remount) synced that paragraph
+      // back as a fresh local edit on a tracked origin. yjs clears the redo
+      // stack for any tracked non-undoing transaction, so the undone text
+      // became unrecoverable and the redo button went dead. Measured before
+      // the fix: undo 0 / redo 1 became undo 1 / redo 0 with nothing to redo.
+      const { editor } = await mountEditor();
+
+      act(() => {
+        editor.commands.setContent('<p>the only sentence</p>');
+      });
+      await waitFor(() =>
+        expect(textOf(documentBodyFragment(doc))).toContain('the only sentence'),
+      );
+
+      act(() => {
+        editor.commands.undo();
+      });
+      expect(editor.getText()).toBe('');
+
+      // Anything at all happening in the editor, before the user hits redo.
+      act(() => {
+        editor.view.dispatch(editor.view.state.tr);
+      });
+
+      act(() => {
+        editor.commands.redo();
+      });
+      expect(editor.getText()).toBe('the only sentence');
+    });
+
+    it('leaves a single empty block behind rather than nothing', async () => {
+      // The other half of the fix: what undo leaves in Yjs has to be something
+      // ProseMirror can represent, or the two disagree and the next dispatch
+      // reconciles them as a user edit. One empty paragraph is exactly what an
+      // empty ProseMirror document is, so the two now agree and no write-back
+      // happens. Undoing several paragraphs still collapses to one.
+      const { editor } = await mountEditor();
+      act(() => {
+        editor.commands.setContent('<p>first</p><p>second</p><p>third</p>');
+      });
+      await waitFor(() =>
+        expect(textOf(documentBodyFragment(doc))).toContain('third'),
+      );
+
+      act(() => {
+        editor.commands.undo();
+      });
+
+      const fragment = documentBodyFragment(doc);
+      expect(fragment.length).toBe(1);
+      expect(fragment.toArray().map(String).join('')).toBe(
+        '<paragraph></paragraph>',
+      );
+      expect(editor.getText()).toBe('');
+    });
+
     it('puts the selection back where the undone edit started', async () => {
       // Undo has to restore the selection, not just the text. Upstream hands
       // the stored selection over too late — after the restore transaction has
