@@ -25,6 +25,9 @@ studio-create:  { max: 10,  window_seconds: 3600 }
 # the old slug for anyone to claim, so a loop that cycles handles to squat on
 # them is worth capping.
 studio-update:  { max: 30,  window_seconds: 3600 }
+# Avatar upload. Every call permanently adds a storage object that runtime
+# never deletes, so this caps how much an admin can write to storage.
+avatar-upload:  { max: 20,  window_seconds: 3600 }
 
 # Assets (post-auth, user-keyed)
 presign:        { max: 30,  window_seconds: 60 }

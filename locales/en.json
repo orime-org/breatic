@@ -41,7 +41,8 @@
       "remove_last_admin": "Transfer the admin role before removing this member.",
       "cannot_change_admin_role": "The admin role can only be changed by transferring it.",
       "member_limit_reached": "This studio has reached its member limit.",
-      "leave_last_admin": "Transfer the admin role before leaving this Studio."
+      "leave_last_admin": "Transfer the admin role before leaving this Studio.",
+      "avatar_unsupported_type": "That file is not a supported image. Use PNG, JPEG or WebP."
     },
     "project": {
       "email_not_registered": "No account is registered with that email.",

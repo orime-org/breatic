@@ -29,7 +29,10 @@ import { requireStudioRole } from "@server/middleware/studio-role.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { studioService, projectService, recentService } from "@server/modules";
+import { getStorageConfig } from "@breatic/core";
+import { readBoundedBody } from "@server/utils/read-bounded-body.js";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
+import * as studioAvatarService from "@server/modules/studio/studioAvatar.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
 
@@ -171,6 +174,52 @@ studio.patch(
     return c.json({ data });
   },
 );
+
+/**
+ * `POST /api/v1/studio/:slug/avatar` — upload the studio's avatar. Admin-only.
+ *
+ * The body is the image bytes themselves, not a multipart envelope. Multipart
+ * would be a wrapper around a single file with no other fields, and its
+ * envelope bytes (`--boundary…`) are what the sniffer would see — every valid
+ * upload would be refused as "not an image" unless we first parsed the whole
+ * body in memory or took on a streaming parser dependency the repo does not
+ * have. One file, no envelope.
+ *
+ * The `Content-Type` header is ignored: the type is sniffed from the bytes,
+ * because the header is the client's claim about content the client chose.
+ *
+ * Rate limited — every call permanently adds a storage object that runtime
+ * never deletes, so an unthrottled admin could write to storage without bound.
+ * @returns `200` with `{ data: Studio }`; `403` not the admin, `404` no such
+ *   studio, `413` over the byte cap, `415` not an accepted image,
+ *   `422` empty body, `429` rate limited
+ */
+studio.post(
+  "/:slug/avatar",
+  requireStudioRole("admin"),
+  rateLimitFor("avatar-upload", "user"),
+  async (c) => {
+    const slug = c.req.param("slug");
+    const { avatar } = getStorageConfig();
+    const bytes = await readBoundedBody(c, avatar.max_bytes);
+    const data = await studioAvatarService.setAvatar(slug, bytes);
+    return c.json({ data });
+  },
+);
+
+/**
+ * `DELETE /api/v1/studio/:slug/avatar` — drop the studio's avatar, falling
+ * the UI back to initials. Admin-only.
+ *
+ * Clears the column only; the stored object is left in place, since runtime
+ * never deletes from storage.
+ * @returns `200` with `{ data: Studio }`; `403` not the admin, `404` no such studio
+ */
+studio.delete("/:slug/avatar", requireStudioRole("admin"), async (c) => {
+  const slug = c.req.param("slug");
+  const data = await studioAvatarService.clearAvatar(slug);
+  return c.json({ data });
+});
 
 /**
  * `GET /api/v1/studio/:slug/projects` — the studio's projects visible to the

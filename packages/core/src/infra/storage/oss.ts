@@ -45,13 +45,22 @@ export class AliyunOSSStorageAdapter implements StorageAdapter {
 
   /**
    * Upload binary data to OSS under `key` and return its public URL.
+   *
+   * The content type is sent as an explicit header. OSS does NOT look at the
+   * bytes — without this it falls back to guessing from the key's extension,
+   * or to `application/octet-stream`, and a browser handed that downloads the
+   * file instead of rendering it. (The parameter used to be ignored here,
+   * with a comment claiming OSS infers the type; it does not. S3 has always
+   * sent it.)
    * @param key - the OSS object key
    * @param data - the file bytes to upload
-   * @param _contentType - MIME type (unused; OSS infers it)
+   * @param contentType - MIME type, stored as the object's Content-Type
    * @returns the public (CDN or OSS-direct) URL of the object
    */
-  async upload(key: string, data: Buffer, _contentType: string): Promise<string> {
-    await this.client.put(key, data);
+  async upload(key: string, data: Buffer, contentType: string): Promise<string> {
+    await this.client.put(key, data, {
+      headers: { "Content-Type": contentType },
+    });
     // Use CDN base URL if configured, otherwise OSS direct URL
     const baseUrl = env.UPLOAD_BASE_URL || `${env.OSS_ENDPOINT}/${this.bucket}`;
     const url = `${baseUrl}/${key}`;

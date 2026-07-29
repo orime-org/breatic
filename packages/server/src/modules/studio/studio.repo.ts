@@ -292,11 +292,12 @@ export async function isSlugTaken(
 }
 
 /**
- * Apply a settings patch to a studio — display name, slug, and/or bio.
+ * Apply a settings patch to a studio — display name, slug, bio, and/or avatar.
  *
  * Only the keys present in `patch` are written, so an absent field keeps its
- * current value. A `bio` of `null` clears it; the service maps the empty
- * string to `null` so the column has one representation of "no bio".
+ * current value. A `bio` or `avatarUrl` of `null` clears it; the service maps
+ * an empty-string bio to `null` so the column has one representation of "no
+ * bio".
  *
  * A slug collision surfaces as the unique-index violation rather than being
  * pre-checked here — the pre-check is advisory and racy, the index is not.
@@ -305,11 +306,17 @@ export async function isSlugTaken(
  * @param patch.name - New display name
  * @param patch.slug - New URL handle
  * @param patch.bio - New bio, or `null` to clear it
+ * @param patch.avatarUrl - New avatar URL, or `null` to fall back to initials
  * @returns The updated studio, or `null` if it is missing / soft-deleted
  */
 export async function updateStudio(
   id: string,
-  patch: { name?: string; slug?: string; bio?: string | null },
+  patch: {
+    name?: string;
+    slug?: string;
+    bio?: string | null;
+    avatarUrl?: string | null;
+  },
 ): Promise<Studio | null> {
   const rows = await db
     .update(studios)

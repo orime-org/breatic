@@ -41,7 +41,8 @@
       "remove_last_admin": "移除前請先轉讓 Admin。",
       "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。",
       "member_limit_reached": "該 Studio 已達到成員數上限。",
-      "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。"
+      "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
+      "avatar_unsupported_type": "該檔案不是支援的圖片格式。請使用 PNG、JPEG 或 WebP。"
     },
     "project": {
       "email_not_registered": "該信箱尚未註冊。",
