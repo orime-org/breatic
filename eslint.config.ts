@@ -216,6 +216,14 @@ export default tseslint.config(
     },
   },
   {
+    // Register the guard plugin once, unscoped. In flat config `plugins`
+    // resolves per file through the blocks that match it, not globally — a
+    // rules-only block whose scope reaches a file no plugin block covers
+    // fails with "could not find plugin". Declaring it here keeps every
+    // guard block below to rules alone.
+    plugins: { breatic: breaticPlugin },
+  },
+  {
     // Repository invariants, one rule id per guard (eslint-rules/). These
     // replace the bash scripts under scripts/: an AST match cannot be fooled
     // by the same text appearing inside a string or a comment, and it reports
@@ -225,7 +233,6 @@ export default tseslint.config(
     // docs for why. Tests are exempt under the standing test carve-out.
     files: ["packages/{core,shared,domain}/src/**/*.ts"],
     ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
-    plugins: { breatic: breaticPlugin },
     rules: {
       "breatic/no-library-process-exit": "error",
       "breatic/no-library-env-access": "error",
@@ -245,6 +252,20 @@ export default tseslint.config(
     ],
     rules: {
       "breatic/no-library-logger": "error",
+    },
+  },
+  {
+    // Infrastructure clients are core's to construct — it is the one place
+    // that sets pool lifetime, idle timeout, keepalive and reconnect
+    // behaviour. core itself is absent from this scope for that reason.
+    // web is covered by its own config, which imports the same plugin.
+    files: [
+      "packages/{shared,server,worker,collab,domain}/src/**/*.{ts,tsx}",
+    ],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
+    rules: {
+      "breatic/no-postgres-outside-core": "error",
+      "breatic/no-ioredis-outside-core": "error",
     },
   },
   {

@@ -292,30 +292,6 @@ jobs:
         # scripts/lint-no-yjs-documents-sql-outside-repo.sh.
         run: pnpm lint:no-yjs-documents-sql-outside-repo
 
-      - name: Lint no-postgres-outside-core (one DB driver home)
-        # Enforce 2026-06-02 ADR "DB adapter unification": the postgres.js
-        # driver may be imported only in @breatic/core (the pool factory +
-        # db/rawPg singletons + pingDb/checkPgReachable). Every other
-        # package reaches Postgres through those core exports + the repos,
-        # so the driver / its pool lifecycle / its `Sql` type never leak
-        # across the package boundary (collab used to hand-roll its own
-        # postgres.js pools). drizzle-orm/postgres-js (the Drizzle adapter)
-        # is a different specifier and is allowed. See
-        # scripts/lint-no-postgres-outside-core.sh.
-        run: pnpm lint:no-postgres-outside-core
-
-      - name: Lint no-ioredis-outside-core (one Redis driver home)
-        # Enforce the 2026-06-02 Redis adapter unification plan: the ioredis driver may
-        # be imported only in @breatic/core (the client factory +
-        # get{Redis,QueueRedis,StreamRedis} singletons + pingRedis + the
-        # re-exported Redis type). Every other package reaches Redis
-        # through those core exports, so the driver / its Redis type never
-        # leak across the package boundary (collab + domain used to import
-        # ioredis directly). Redis is multi-connection by protocol so the
-        # *connections* aren't collapsed — only the *driver package* is
-        # locked to core. See scripts/lint-no-ioredis-outside-core.sh.
-        run: pnpm lint:no-ioredis-outside-core
-
       - name: Lint no-missing-license-header (every src ts/tsx carries the SPDX header)
         # Enforce the file-header mandate (CLAUDE.md code style + ARCHITECTURE.md):
         # every first-party packages/*/src .ts/.tsx file must start with the

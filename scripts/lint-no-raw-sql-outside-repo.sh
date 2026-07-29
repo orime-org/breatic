@@ -43,7 +43,7 @@
 # route their access through that local repo, and the repo binds core's
 # `yjsDb` (not the bare driver). The companion guard
 # lint-no-yjs-documents-sql-outside-repo locks that table to its one
-# repo; lint-no-postgres-outside-core keeps the driver out of collab.
+# repo; the no-postgres-outside-core rule keeps the driver out of collab.
 #
 # Runs in CI and as `pnpm lint:no-raw-sql-outside-repo`. Non-zero exit
 # blocks the PR.

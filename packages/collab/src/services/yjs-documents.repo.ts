@@ -13,7 +13,7 @@
  * the transactional outbox + lifecycle stream consumer below), so the
  * repo lives here in `@breatic/collab`, not in core. The driver, pool,
  * table schema, and migrations stay in core (`yjsDb`, `yjsDocuments`);
- * collab only owns the queries. `lint:no-postgres-outside-core` stays
+ * collab only owns the queries. `breatic/no-postgres-outside-core` stays
  * satisfied — this module imports core's Drizzle connection, never the
  * bare `postgres` driver.
  *

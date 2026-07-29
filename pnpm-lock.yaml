@@ -782,6 +782,9 @@ importers:
       '@babel/eslint-parser':
         specifier: ^7.28.5
         version: 7.28.6(@babel/core@7.29.0)(eslint@9.39.4(jiti@2.6.1))
+      '@breatic/eslint-rules':
+        specifier: workspace:*
+        version: link:../../eslint-rules
       '@commitlint/cli':
         specifier: ^20.2.0
         version: 20.5.0(@types/node@25.5.2)(conventional-commits-parser@6.4.0)(typescript@5.8.2)

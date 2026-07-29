@@ -12,6 +12,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
 import jsdoc from 'eslint-plugin-jsdoc';
+import { breaticPlugin } from '@breatic/eslint-rules';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -227,6 +228,18 @@ export default [
         ecmaVersion: 'latest',
         sourceType: 'script',
       },
+    },
+  },
+  {
+    // Repository invariants, from the same plugin the root config uses — the
+    // rules are defined once and imported twice, never restated by hand.
+    // web has no business constructing an infrastructure client at all.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/__tests__/**', '**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-postgres-outside-core': 'error',
+      'breatic/no-ioredis-outside-core': 'error',
     },
   },
 ];
