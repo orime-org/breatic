@@ -297,6 +297,31 @@ studio.delete("/:slug/members/:userId", requireStudioRole("admin"), async (c) =>
 });
 
 /**
+ * `DELETE /api/v1/studio/:slug/membership` — leave a studio of one's own
+ * accord. Any active member of the studio; the sole admin has to transfer
+ * first.
+ *
+ * The path is `/membership`, not `/members/me`, because the sibling kick route
+ * above claims `/members/:userId` — `me` would match that wildcard and be
+ * refused by its admin gate, so the only people entitled to leave would be
+ * exactly the people turned away. Reordering the two registrations does make
+ * `me` win, but only as long as nobody reorders them again; a path that cannot
+ * collide needs no such discipline.
+ *
+ * Gated on membership rather than admin for the same reason: the callers are
+ * precisely the non-admins. A non-member is refused with 403, like every other
+ * studio route, which also keeps the studio's existence hidden.
+ * @returns `200` with `{ data: { ok: true } }`; `403` not a member or the
+ *   studio is personal, `404` no such studio, `409` the sole admin
+ */
+studio.delete("/:slug/membership", requireStudioRole("guest"), async (c) => {
+  const user = c.get("user");
+  const slug = c.req.param("slug");
+  await studioMemberService.leaveStudio(slug, user.id);
+  return c.json({ data: { ok: true } });
+});
+
+/**
  * `PATCH /api/v1/studio/:slug/members/:userId` — change a member's role
  * (maintainer ↔ guest). Admin-only; admin grant/demote goes through
  * transfer-admin, not here.
