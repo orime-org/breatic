@@ -152,6 +152,62 @@ describe('useDocumentEditor', () => {
       peer.destroy();
     });
 
+    it('seeds when the content arrives, not only when it was already there', async () => {
+      // THE production path, and the only one: `DocumentSpace` mounts with
+      // `hasSynced` false every time — it is React state on a component the
+      // Space-tab switch remounts — so seeding never happens on mount in the
+      // real app. It happens because the flag turns true underneath a mounted
+      // hook. Every other seeding case here starts at `hasSynced: true`, which
+      // means dropping the flag from the effect's dependencies leaves them all
+      // green while new documents silently stop being seeded — and an unseeded
+      // document is the redo-stack-destroying data loss this whole mechanism
+      // exists to prevent.
+      const rendered = renderHook(
+        ({ hasSynced }: { hasSynced: boolean }) =>
+          useDocumentEditor({
+            doc,
+            name: NAME,
+            caretProvider: { awareness },
+            caretUser: CARET_USER,
+            hasSynced,
+          }),
+        { initialProps: { hasSynced: false } },
+      );
+      await waitFor(() => expect(rendered.result.current).not.toBeNull());
+      expect(documentBodyFragment(doc).length).toBe(0);
+
+      // The socket syncs and reports an empty document — it really is new.
+      act(() => rendered.rerender({ hasSynced: true }));
+
+      const fragment = documentBodyFragment(doc);
+      expect(fragment.length).toBe(1);
+      expect(textOf(fragment)).toBe('');
+    });
+
+    it('seeds when a viewer is promoted, not only when they arrived writable', async () => {
+      // The same trap on the other gate: every other read-only case starts at
+      // `editable: true`, so dropping `editable` from the dependencies would
+      // leave a promoted viewer on an unseeded document for the rest of the
+      // session.
+      const rendered = renderHook(
+        ({ editable }: { editable: boolean }) =>
+          useDocumentEditor({
+            doc,
+            name: NAME,
+            caretProvider: { awareness },
+            caretUser: CARET_USER,
+            editable,
+          }),
+        { initialProps: { editable: false } },
+      );
+      await waitFor(() => expect(rendered.result.current).not.toBeNull());
+      expect(documentBodyFragment(doc).length).toBe(0);
+
+      act(() => rendered.rerender({ editable: true }));
+
+      expect(documentBodyFragment(doc).length).toBe(1);
+    });
+
     it('does not seed from a read-only client', async () => {
       // A viewer has no business writing to the shared document, and the
       // server agrees: hocuspocus drops updates from a read-only connection.
