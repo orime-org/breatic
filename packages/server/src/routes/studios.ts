@@ -23,7 +23,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { createTeamStudioSchema } from "@breatic/shared";
+import { createTeamStudioSchema, updateStudioSchema } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -95,7 +95,11 @@ studios.get(
   rateLimitFor("slug-check", "user"),
   async (c) => {
     const slug = c.req.query("slug") ?? "";
-    const data = await studioService.checkStudioSlug(slug);
+    // `excludeStudioId` is sent by the rename form so a studio's own slug does
+    // not come back as taken by itself. Passing an id here leaks nothing — the
+    // answer is about the slug, not about that studio.
+    const excludeStudioId = c.req.query("excludeStudioId");
+    const data = await studioService.checkStudioSlug(slug, excludeStudioId);
     return c.json({ data });
   },
 );
@@ -137,6 +141,36 @@ studio.get("/:slug", async (c) => {
   const data = await studioService.getStudioDetail(slug, user.id);
   return c.json({ data });
 });
+
+/**
+ * `PATCH /api/v1/studio/:slug` — edit the studio's display name, URL slug,
+ * and/or bio. Admin-only; every field is optional so the settings form sends
+ * only what changed, and an entirely empty patch is a `400` rather than a
+ * successful no-op.
+ *
+ * Changing the slug frees the old one immediately — no redirect, no alias
+ * (rule 7) — so every existing link to the old address breaks. The frontend
+ * puts this behind a confirmation in the danger zone; the API simply applies
+ * it. Personal studios are editable: their name, handle and bio are the
+ * owner's own profile.
+ *
+ * Rate limited per user: a rename churns every link to the studio, and the
+ * slug-availability probe next to it is already limited.
+ * @returns `200` with `{ data: Studio }`; `400` invalid or empty patch,
+ *   `403` not the admin, `404` no such studio, `409` slug taken,
+ *   `429` rate limited
+ */
+studio.patch(
+  "/:slug",
+  requireStudioRole("admin"),
+  rateLimitFor("studio-update", "user"),
+  zValidator("json", updateStudioSchema),
+  async (c) => {
+    const slug = c.req.param("slug");
+    const data = await studioService.updateStudio(slug, c.req.valid("json"));
+    return c.json({ data });
+  },
+);
 
 /**
  * `GET /api/v1/studio/:slug/projects` — the studio's projects visible to the

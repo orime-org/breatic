@@ -25,7 +25,12 @@ import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { db } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo, studioAuthService } from "@breatic/domain";
-import { t, SLUG_REGEX } from "@breatic/shared";
+import {
+  t,
+  SLUG_REGEX,
+  RESERVED_STUDIO_SLUGS,
+  STUDIO_SLUG_BOUNDS,
+} from "@breatic/shared";
 import type {
   Studio,
   StudioDetail,
@@ -113,30 +118,100 @@ export async function createTeamStudio(
 }
 
 /**
- * Check whether a studio slug is available, for the create dialog's live
- * (debounced) availability indicator.
+ * Check whether a studio slug is available, for the live (debounced)
+ * availability indicator in the create and rename forms.
  *
- * A UX helper only — the authoritative uniqueness guard is the
- * `studios_slug_idx` unique index enforced at insert time (so a slug reported
- * available here can still lose a concurrent race and surface as `409` on
- * submit). Format + length are validated first so the caller gets a precise
- * reason; reserved-word hardening is deferred to slice 7 (the frontend stub
- * list blocks the obvious ones meanwhile).
+ * A UX helper only — it tells the user early what the write would say. The
+ * authoritative guards are the schema (shape, length, reserved words) and the
+ * `studios_slug_idx` unique index, so a slug reported available here can still
+ * lose a concurrent race and surface as `409` on submit. Checks run in the
+ * order the user would hit them, so the reason names the first real problem.
+ *
+ * `excludeStudioId` is what makes this usable while renaming: a studio's
+ * current slug is held by itself, and without the exclusion the form would
+ * report the admin's own handle as taken the moment they focus the field.
  * @param slug - The candidate slug to check
+ * @param excludeStudioId - The studio being renamed, whose own claim on the
+ *   slug does not count as taken; omit when creating
  * @returns `{ available: true }`, or `{ available: false, reason }` with the
- *   first failure (`format` / `length` / `taken`)
+ *   first failure (`format` / `length` / `reserved` / `taken`)
  */
 export async function checkStudioSlug(
   slug: string,
-): Promise<{ available: boolean; reason?: "format" | "length" | "taken" }> {
+  excludeStudioId?: string,
+): Promise<{
+  available: boolean;
+  reason?: "format" | "length" | "reserved" | "taken";
+}> {
   if (!SLUG_REGEX.test(slug)) {
     return { available: false, reason: "format" };
   }
-  if (slug.length < 6 || slug.length > 39) {
+  if (
+    slug.length < STUDIO_SLUG_BOUNDS.min ||
+    slug.length > STUDIO_SLUG_BOUNDS.max
+  ) {
     return { available: false, reason: "length" };
   }
-  const existing = await studioRepo.getBySlug(slug);
-  return existing ? { available: false, reason: "taken" } : { available: true };
+  if (RESERVED_STUDIO_SLUGS.has(slug)) {
+    return { available: false, reason: "reserved" };
+  }
+  const taken = await studioRepo.isSlugTaken(slug, excludeStudioId);
+  return taken ? { available: false, reason: "taken" } : { available: true };
+}
+
+/**
+ * Apply a settings patch to a studio — display name, slug, and/or bio.
+ *
+ * The route gates the caller as the studio's admin; this enforces what the
+ * gate cannot. Absent fields are left untouched, so the form can send only
+ * what changed. An empty-string bio clears it and is stored as `null`, so
+ * "no bio" has exactly one representation in the column.
+ *
+ * Personal studios are editable here, unlike the membership operations that
+ * refuse them: a personal studio's name, handle and bio ARE its owner's
+ * profile. What a personal studio has no meaningful version of is being
+ * transferred, left, or having members — not being renamed.
+ *
+ * Slug uniqueness is left to the `studios_slug_idx` unique index rather than a
+ * pre-check: a pre-check races, the index does not. The violation is mapped to
+ * a conflict so a lost race reads the same as a slug that was already taken.
+ *
+ * Changing the slug frees the old one immediately — no alias, no redirect
+ * (rule 7). Every existing link to the old address stops working, which is why
+ * the frontend puts this behind a confirmation in the danger zone.
+ * @param slug - The studio's CURRENT slug (from the URL)
+ * @param patch - The fields to change; at least one must be present
+ * @param patch.name - New display name
+ * @param patch.slug - New URL handle
+ * @param patch.bio - New bio; the empty string clears it
+ * @returns The updated studio
+ * @throws {NotFoundError} no active studio has that slug
+ * @throws {ConflictError} the requested slug is already taken
+ */
+export async function updateStudio(
+  slug: string,
+  patch: { name?: string; slug?: string; bio?: string },
+): Promise<Studio> {
+  const studio = await studioRepo.getBySlug(slug);
+  if (!studio) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  try {
+    const updated = await studioRepo.updateStudio(studio.id, {
+      ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.slug !== undefined ? { slug: patch.slug } : {}),
+      ...(patch.bio !== undefined ? { bio: patch.bio === "" ? null : patch.bio } : {}),
+    });
+    if (!updated) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    return updated;
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ConflictError(t("server.studio.slug_taken"));
+    }
+    throw err;
+  }
 }
 
 /**

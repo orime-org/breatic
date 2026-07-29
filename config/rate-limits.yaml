@@ -21,6 +21,10 @@ resend-verify:  { max: 1,   window_seconds: 60 }
 # Studio (post-auth, user-keyed)
 slug-check:     { max: 60,  window_seconds: 60 }
 studio-create:  { max: 10,  window_seconds: 3600 }
+# Settings edits. Generous enough for normal typo-fixing, but a rename frees
+# the old slug for anyone to claim, so a loop that cycles handles to squat on
+# them is worth capping.
+studio-update:  { max: 30,  window_seconds: 3600 }
 
 # Assets (post-auth, user-keyed)
 presign:        { max: 30,  window_seconds: 60 }

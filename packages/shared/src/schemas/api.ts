@@ -40,8 +40,9 @@ export const SLUG_REGEX = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
  * A studio slug is a namespace claim — it becomes `/studio/{slug}`, and for a
  * personal studio it doubles as the user's `@handle` — so this cannot be a
  * frontend courtesy: a request sent straight to the API has to be refused too.
- * It is enforced on {@link studioSlug}, which every write path validates
- * against, rather than in each service where a new path could forget it.
+ * It is enforced on the internal `studioSlug` fragment that every write path
+ * validates against, rather than in each service where a new path could
+ * forget it.
  *
  * Contents are a product/legal matter and belong to whoever owns naming
  * policy; this is the mechanism plus the list as it stood. Note that entries
