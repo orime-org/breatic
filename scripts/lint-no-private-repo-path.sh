@@ -48,10 +48,18 @@ find_offenders() {
 if [[ "${1:-}" == "--self-test" ]]; then
   probe="scripts/__private_path_probe__.sh"
 
+  # Refuse to run if that path is occupied: the probe is written with `>` and
+  # deleted afterwards, which would destroy a real file of the same name.
+  if [ -e "$probe" ]; then
+    echo "SELF-TEST ABORTED: $probe already exists; refusing to overwrite it." >&2
+    exit 2
+  fi
+
   # The probe must enter the index to be visible to git grep, so its removal
   # cannot depend on reaching the end of the function: an interrupted run
   # would leave a file that the next scan reports as a real violation.
   cleanup_probe() {
+    trap - EXIT INT TERM
     git rm -q --cached "$probe" >/dev/null 2>&1 || true
     rm -f "$probe"
   }

@@ -105,7 +105,13 @@ run_all() {
 if [[ "${1:-}" == "--self-test" ]]; then
   probe="packages/shared/src/__doc_link_probe__.ts"
   barrel="packages/shared/src/index.ts"
-  backup="$(mktemp)"
+
+  # Refuse to run if the probe path is occupied: the test writes it with `>`
+  # and deletes it afterwards, which would destroy a real file of that name.
+  if [ -e "$probe" ]; then
+    echo "SELF-TEST ABORTED: $probe already exists; refusing to overwrite it." >&2
+    exit 2
+  fi
 
   # The probe is only visible to TypeDoc if the barrel re-exports it, so this
   # test has to edit a real source file and put it back afterwards.
@@ -113,11 +119,32 @@ if [[ "${1:-}" == "--self-test" ]]; then
   # It must NOT put it back with `git checkout --`: that restores the HEAD
   # version and silently discards whatever uncommitted work the developer had
   # in the barrel, which git cannot recover. Keep a byte-exact copy instead,
-  # and restore on every exit path including Ctrl-C — otherwise an interrupted
-  # run leaves both a stray probe file and a modified barrel behind.
-  cp "$barrel" "$backup"
+  # and restore on every exit path including Ctrl-C.
+  #
+  # This script runs without `set -e`, so the backup MUST be checked by hand.
+  # An unchecked `mktemp`/`cp` failure would let the run continue, append the
+  # probe export to the barrel, and then fail to restore it — leaving a barrel
+  # that exports a deleted module while the script still printed "passed".
+  backup="$(mktemp)" || {
+    echo "SELF-TEST ABORTED: could not create a temp file for the barrel backup." >&2
+    exit 2
+  }
+  cp "$barrel" "$backup" || {
+    echo "SELF-TEST ABORTED: could not back up $barrel; refusing to modify it." >&2
+    rm -f "$backup"
+    exit 2
+  }
+
+  # Only restore what was actually modified. Without this flag the early exit
+  # below rewrites an untouched tracked file on every failed run, and a second
+  # signal (INT then EXIT) fires the restore twice from an already-deleted
+  # backup, printing a spurious cp error over the real failure message.
+  barrel_modified=0
   cleanup_probe() {
-    cp "$backup" "$barrel"
+    trap - EXIT INT TERM
+    if [ "$barrel_modified" -eq 1 ]; then
+      cp "$backup" "$barrel"
+    fi
     rm -f "$backup" "$probe"
   }
   trap cleanup_probe EXIT INT TERM
@@ -143,6 +170,9 @@ if [[ "${1:-}" == "--self-test" ]]; then
 export function docLinkProbe(): void {}
 PROBE
   # The probe only participates if it is reachable from the entry point.
+  # Mark the barrel dirty BEFORE writing, so an interrupt landing between the
+  # two still restores it.
+  barrel_modified=1
   printf '\nexport { docLinkProbe } from "./__doc_link_probe__.js";\n' >> "$barrel"
 
   if check_package shared >/dev/null 2>&1; then

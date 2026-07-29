@@ -33,30 +33,32 @@ jobs:
       - name: Check vite dev-proxy targets
         run: bash scripts/lint-dev-proxy-target.sh
 
-  no-noaccount-residue:
-    name: No NoAccount Mode Residue
+  auth-bypass-residue:
+    name: Auth Bypass Residue
     runs-on: ubuntu-latest
 
-    # Defense against re-introduction of the NoAccount dev-bypass auth mode
-    # (deleted in #147). Every environment requires a real login; there is no
-    # mode switch left, so any file naming one is residue.
+    # Defense against re-introduction of the dev-bypass auth mode deleted in
+    # #147. Every environment requires a real login; no mode switch is left,
+    # so any file naming one is residue.
     #
-    # The script reads every tracked file and excludes the few places that
-    # describe the ban. It used to scan a path whitelist, which missed README,
-    # Dockerfile.web, both .env templates and packages/web/scripts — all four
-    # were still holding residue on 2026-07-29 with CI green throughout.
+    # This file is itself in the guard's scan range — a workflow `env:` block
+    # injects real environment variables, so it is a place the mode could be
+    # re-introduced for real rather than merely described. That is why the
+    # forbidden tokens are NOT spelled out here; they live in the script,
+    # which is the one file that must contain them. See
+    # scripts/lint-no-noaccount.sh for the token list, the exclusions, and
+    # why the end-to-end self-test is a separate step rather than inline.
     #
-    # Same no-Node arrangement as the job above: the script is called twice by
-    # hand, once to scan and once to prove the matcher can still fail.
-    # See scripts/check-no-noaccount.sh for the token list and exclusions.
+    # Same no-Node arrangement as the job above: no pnpm alias available, so
+    # the script is invoked twice by hand.
     steps:
       - uses: actions/checkout@v6
 
-      - name: Run check-no-noaccount.sh
-        run: ./scripts/check-no-noaccount.sh
+      - name: Scan for auth-bypass residue
+        run: bash scripts/lint-no-noaccount.sh
 
-      - name: Verify the no-noaccount matcher still works
-        run: ./scripts/check-no-noaccount.sh --self-test
+      - name: Verify the residue scanner still detects a plant
+        run: bash scripts/lint-no-noaccount.sh --self-test
 
   lint-typecheck-test:
     name: Lint + Typecheck + Test
