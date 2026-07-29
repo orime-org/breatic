@@ -35,18 +35,20 @@
 #   tracked file cannot plausibly hit an innocent line, so the guard scans
 #   everything and names the exceptions instead.
 #
-# EXCLUSIONS — each is a place that DESCRIBES the ban rather than uses it
+# EXCLUSIONS — there are exactly two, both unavoidable
 #   this script                   it must hold the tokens to search for them
-#   CLAUDE.md                     records that the mode was removed in #147
 #   0016_delete-dev-mock-user.sql the migration that deleted this mode's mock
 #                                 user; migrations are immutable history
 #
 #   Excluded by FILE, never by directory: excluding all of migrations/ would
-#   also blind the guard to every migration written from now on. Note what is
-#   NOT excluded — .github/workflows/ci.yml is scanned, because a workflow
-#   `env:` block injects real environment variables and is therefore a place
-#   the mode could genuinely be re-introduced, not merely described. The CI
-#   job is worded to avoid the literal tokens for that reason.
+#   also blind the guard to every migration written from now on.
+#
+#   Everywhere else that needs to DISCUSS the ban is reworded instead of
+#   exempted, because an exemption is permanent and unconditional. CLAUDE.md
+#   and the CI job both describe this rule without naming the tokens, so both
+#   stay in scope — which matters most for ci.yml, where a workflow `env:`
+#   block injects real environment variables and could re-introduce the mode
+#   for real rather than merely mention it.
 #
 #   Adding a file here means "this file talks ABOUT the ban". If you are
 #   tempted to add one because it USES the tokens, that is the residue this
@@ -75,40 +77,71 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-TOKENS='LOGIN_MODE|NoAccount|WithAccount|dev-fixed-token|DEV_USER_ID|VITE_LOGIN_MODE|inject-dev-user|injectDevUser'
-EXPECTED_TOKEN_COUNT=8
+# The forbidden tokens have exactly one definition; the regex is derived from
+# it. Keeping a hand-written pattern alongside a list would let the two drift,
+# and a drifted pattern is invisible: a guard whose alternative reads NoAcount
+# still has the right number of branches and still matches its own sample.
+FORBIDDEN_TOKENS=(
+  LOGIN_MODE
+  VITE_LOGIN_MODE
+  NoAccount
+  WithAccount
+  DEV_USER_ID
+  dev-fixed-token
+  inject-dev-user
+  injectDevUser
+)
+TOKENS="$(IFS='|'; printf '%s' "${FORBIDDEN_TOKENS[*]}")"
 
-# Refuse to report clean from a pattern that has stopped matching. A guard
-# that silently stops matching reports success forever — that is how CJK
-# reached main through lint:no-cjk on 2026-07-14.
+# Check that the pattern derived from FORBIDDEN_TOKENS behaves the way the
+# list says it should. A guard that has silently stopped matching reports
+# success forever — that is how CJK reached main through lint:no-cjk on
+# 2026-07-14.
 #
-# Firing on one sample only proves SOME branch survived, which is too weak:
-# drop six of the seven alternatives and a `LOGIN_MODE=NoAccount` sample still
-# matches. Nor can that be fixed by testing one sample per token, because
-# VITE_LOGIN_MODE contains LOGIN_MODE as a substring — a sample for the
-# deleted branch gets matched by the surviving one. So check the pattern's
-# shape (branch count, none empty) as well as that it fires.
+# WHAT THIS CANNOT DO, so nobody trusts it further than it goes: it cannot
+# tell whether the LIST ITSELF is right. Edit an entry to NoAcount and the
+# pattern, the samples here and the self-test probe all shift together — every
+# check stays self-consistent while the guard has gone blind to NoAccount.
+# There is no second source of truth to compare against, and inventing one
+# (a hardcoded copy, a checksum) just moves the same question one file over.
+# Changing this list is a code review's job; these assertions cover the
+# mechanical failures instead — an empty list, an empty entry, a token whose
+# derived branch does not match it, a pattern that matches everything.
 assert_matcher_alive() {
-  local count branch
-  count=$(printf '%s' "$TOKENS" | awk -F'|' '{ print NF }')
-  if [ "$count" -ne "$EXPECTED_TOKEN_COUNT" ]; then
-    echo "❌ lint-no-noaccount: expected $EXPECTED_TOKEN_COUNT forbidden tokens, the pattern has $count." >&2
-    echo "   Adding or removing one is fine — update EXPECTED_TOKEN_COUNT to match." >&2
+  local token
+
+  if [ "${#FORBIDDEN_TOKENS[@]}" -eq 0 ]; then
+    echo "❌ lint-no-noaccount: the token list is empty; the guard would match nothing." >&2
     exit 2
   fi
 
-  local IFS='|'
-  for branch in $TOKENS; do
-    if [ -z "$branch" ]; then
-      echo "❌ lint-no-noaccount: the pattern contains an empty alternative, which matches everything." >&2
+  # Each token must be matched BY ITS OWN branch, which `grep -q` cannot tell
+  # you: VITE_LOGIN_MODE contains LOGIN_MODE, so a broken VITE_LOGIN_MODE
+  # branch still yields a match from the surviving one and the check passes
+  # while the guard is half blind. `grep -o` reports what actually matched —
+  # scanning left to right, an intact branch matches at offset 0 and returns
+  # the whole token, a broken one returns the shorter substring.
+  local matched
+  for token in "${FORBIDDEN_TOKENS[@]}"; do
+    if [ -z "$token" ]; then
+      echo "❌ lint-no-noaccount: the token list contains an empty entry, which would match everything." >&2
+      exit 2
+    fi
+    matched="$(printf '%s\n' "$token" | grep -oE "$TOKENS" | head -1 || true)"
+    if [ "$matched" != "$token" ]; then
+      echo "❌ lint-no-noaccount: the pattern does not match '$token' as a whole." >&2
+      if [ -n "$matched" ]; then
+        echo "   It matched '$matched' instead, so that token's own branch is broken." >&2
+      else
+        echo "   It did not match at all, so that token's branch is missing." >&2
+      fi
       exit 2
     fi
   done
-  unset IFS
 
-  if ! printf '%s\n' 'LOGIN_MODE=NoAccount' | grep -qE "$TOKENS"; then
-    echo "❌ lint-no-noaccount: the matcher no longer fires on a known violation." >&2
-    echo "   Refusing to report clean from a dead pattern." >&2
+  if printf '%s\n' 'a line naming none of the tokens' | grep -qE "$TOKENS"; then
+    echo "❌ lint-no-noaccount: the pattern matches a line containing no token at all." >&2
+    echo "   Every result it produces would be noise." >&2
     exit 2
   fi
 }
@@ -127,16 +160,35 @@ assert_matcher_alive() {
 # `|| true` is the failure this guard was rewritten to eliminate, so the two
 # cases are separated: 0 and 1 are answers, anything else is a broken guard.
 find_offenders() {
-  local out status
+  local out err status errfile
+  errfile="$(mktemp)" || { echo "lint-no-noaccount: mktemp failed." >&2; exit 2; }
+
+  # stderr goes to its own file, never merged into the results. Merging them
+  # printed git's diagnostics as if they were offending source lines, telling
+  # the reader to "delete" a line that exists in no file.
   out=$(git grep -nIE "$TOKENS" -- \
     ':!scripts/lint-no-noaccount.sh' \
     ':!packages/core/src/db/migrations/0016_delete-dev-mock-user.sql' \
-    2>&1) && status=0 || status=$?
+    2>"$errfile") && status=0 || status=$?
+  err="$(cat "$errfile")"
+  rm -f "$errfile"
 
   if [ "$status" -gt 1 ]; then
     echo "❌ lint-no-noaccount: the scan could not run (git grep exit $status)." >&2
-    printf '%s\n' "$out" | sed 's/^/   /' >&2
+    printf '%s\n' "$err" | sed 's/^/   /' >&2
     echo "   Refusing to report clean from a scan that never happened." >&2
+    exit 2
+  fi
+
+  # git grep exits 1 for "no match" even when it SKIPPED files it could not
+  # read — an unreadable tracked file, or a malformed .gitattributes, makes it
+  # write to stderr and still exit 1. Residue in a skipped file would then be
+  # reported as a clean tree, so any diagnostic at all is treated as a broken
+  # scan rather than a quiet success.
+  if [ -n "$err" ]; then
+    echo "❌ lint-no-noaccount: the scan reported problems while reading the tree." >&2
+    printf '%s\n' "$err" | sed 's/^/   /' >&2
+    echo "   Files it could not read may hold residue, so this is not a clean result." >&2
     exit 2
   fi
 
@@ -167,9 +219,12 @@ if [[ "${1:-}" == "--self-test" ]]; then
   # cannot be left to the happy path — an interrupted run would strand a file
   # holding a forbidden token, and the next scan would report it as residue.
   cleanup_probe() {
-    trap - EXIT INT TERM
+    # Clear the traps AFTER the work, not before: a signal arriving inside
+    # this window would otherwise kill a half-done cleanup. Both actions are
+    # idempotent, so a second firing is harmless.
     git rm -q --cached "$probe" >/dev/null 2>&1 || true
     rm -f "$probe"
+    trap - EXIT INT TERM
   }
 
   # A signal handler is just a function: it returns, and the script carries on.
@@ -198,10 +253,13 @@ if [[ "${1:-}" == "--self-test" ]]; then
   echo "  ok"
 
   echo "self-test 3/3: planted residue must FAIL"
+  # One planted line per token, so the end-to-end path is exercised for every
+  # one of them rather than for whichever happens to appear in a single sample.
   {
     echo '#!/bin/sh'
-    # Written in halves so the probe's own token needs no exclusion of its own.
-    echo "# LOGIN""_MODE=NoAcc""ount"
+    for token in "${FORBIDDEN_TOKENS[@]}"; do
+      printf '# %s\n' "$token"
+    done
   } > "$probe"
   # Report a failure to stage as a broken guard (2), not as git's raw exit
   # code. An index.lock left by another process makes this fail, and without
