@@ -39,18 +39,18 @@ export function useCollabCaretFocus(
   caretProvider: { awareness: unknown } | null | undefined,
   caretUser: CaretUserIdentity | null | undefined,
 ): void {
-  // Depend on the awareness instance, not on the object wrapping it. Both
-  // effects below re-run for a genuine change of awareness, and neither should
-  // re-run because a caller happened to rebuild its provider wrapper — the
-  // publish effect writes to the document, so a spurious re-run costs a real
-  // Yjs transaction for no reason.
+  // Depend on the awareness instance, not on the object wrapping it, so that
+  // neither effect below re-runs merely because a caller rebuilt its provider
+  // wrapper. This buys tidiness, not safety: publishing presence never touches
+  // the document at all — five `updateUser` calls produce zero Y.Doc
+  // transactions and zero update bytes against five awareness updates, where a
+  // single `insertContent` produces one transaction of 28 bytes.
   //
-  // This is about not doing useless work, and nothing more. It is NOT what
-  // makes undo safe: an editor writes to its document on every focus, every
-  // blur and every mount by design, and those writes are supposed to happen.
-  // The reason a write can no longer destroy a redo stack lives in the undo
-  // manager's delete filter (`keepBodyRepresentable`), which stops undo from
-  // leaving the document in a state the editor has to reconcile.
+  // Focus does reach the document, by an unrelated route: any dispatch has
+  // ProseMirror reconcile its view of the body against the fragment, and a
+  // focus is a dispatch. What stops that write from destroying a redo stack is
+  // `seedEmptyBody` in `document-yjs`, which removes the disagreement the write
+  // would otherwise be reconciling.
   const awareness = caretProvider?.awareness ?? null;
 
   // Publish. Receivers dim on a literal `false` only, so a client that never

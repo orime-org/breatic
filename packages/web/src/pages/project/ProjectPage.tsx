@@ -402,9 +402,10 @@ function ProjectWorkspace({
     closeSpaceTab(projectId, userId, id);
     // Closing a tab discards the in-memory state that tab accumulated, so
     // reopening the space starts clean: the canvas drops its undo manager, and
-    // the document drops its whole editor (which owns its undo stack, its
-    // selection and its scroll position — all kept across tab SWITCHES, none
-    // meant to survive a close). Each Space type keeps its own cache and
+    // the document drops its whole editor (which owns its undo stack and its
+    // selection — kept across tab SWITCHES, neither meant to survive a close;
+    // the scroll position is not among them, see `document-editor-cache`).
+    // Each Space type keeps its own cache and
     // evicting an unknown name is a no-op, so both are called without checking
     // which type this tab was. The space's Y.Doc stays cached for an instant
     // reopen — only the memory-only state is discarded.

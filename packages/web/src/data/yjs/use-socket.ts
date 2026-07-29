@@ -38,7 +38,11 @@ export type ConnectionStatus =
 interface SocketState {
   /** The active provider (null until first connect). */
   provider: HocuspocusProvider | null;
-  /** True once the provider has synced with the server at least once. */
+  /**
+   * Whether the provider is in sync RIGHT NOW — not a latch. Cleared on every
+   * close (a wifi switch, a laptop waking, a collab redeploy) and set again
+   * once the reconnect re-syncs.
+   */
   synced: boolean;
   /** High-level connection lifecycle for banner UI. */
   status: ConnectionStatus;

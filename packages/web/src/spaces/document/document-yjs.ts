@@ -44,9 +44,9 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
  * requires at least one block, so its empty document is a single empty
  * paragraph; a Yjs fragment's is nothing at all. Left alone, that disagreement
  * surfaces the moment an undo removes the last of the content: the editor still
- * holds a paragraph the fragment no longer has, and the next dispatch of any
- * kind — a click, a window regaining focus, the remount a tab switch causes —
- * reconciles them by writing that paragraph back. The write carries the
+ * holds a paragraph the fragment no longer has, and the next dispatch — a
+ * click or a window regaining focus is enough, both measured — reconciles them
+ * by writing that paragraph back. The write carries the
  * dispatch's own `addToHistory` marker, which an ordinary click never sets, so
  * yjs reads it as a fresh local edit and clears the redo stack. The undone text
  * becomes unrecoverable, and the deletion syncs to every collaborator.
