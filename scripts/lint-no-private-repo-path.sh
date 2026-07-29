@@ -63,7 +63,17 @@ if [[ "${1:-}" == "--self-test" ]]; then
     git rm -q --cached "$probe" >/dev/null 2>&1 || true
     rm -f "$probe"
   }
-  trap cleanup_probe EXIT INT TERM
+
+  # A signal handler returns and the script carries on, so clearing the traps
+  # inside cleanup must be paired with terminating — otherwise an interrupt
+  # early in the run disarms everything and the probe planted afterwards is
+  # left behind while the script still exits 0.
+  on_signal() {
+    cleanup_probe
+    exit 130
+  }
+  trap cleanup_probe EXIT
+  trap on_signal INT TERM
 
   echo "self-test 1/2: clean tree must PASS"
   if [ -n "$(find_offenders)" ]; then

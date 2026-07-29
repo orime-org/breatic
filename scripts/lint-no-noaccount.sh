@@ -8,7 +8,12 @@
 #
 # FORBIDDEN TOKENS (case-sensitive)
 #   LOGIN_MODE · VITE_LOGIN_MODE   the mode switch, backend and frontend
-#   NoAccount                      the mode's name
+#   NoAccount · WithAccount        BOTH of the switch's values. Naming the one
+#                                  we kept still tells the reader a choice
+#                                  exists — .env.docker described "prod forces
+#                                  WithAccount login" for two months after the
+#                                  switch was deleted, and a guard watching
+#                                  only NoAccount could not see it.
 #   DEV_USER_ID · dev-fixed-token  the fixed identity it handed out
 #   inject-dev-user                the frontend bypass module path
 #   injectDevUser                  the frontend bypass symbol
@@ -70,12 +75,37 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-TOKENS='LOGIN_MODE|NoAccount|dev-fixed-token|DEV_USER_ID|VITE_LOGIN_MODE|inject-dev-user|injectDevUser'
+TOKENS='LOGIN_MODE|NoAccount|WithAccount|dev-fixed-token|DEV_USER_ID|VITE_LOGIN_MODE|inject-dev-user|injectDevUser'
+EXPECTED_TOKEN_COUNT=8
 
 # Refuse to report clean from a pattern that has stopped matching. A guard
 # that silently stops matching reports success forever — that is how CJK
 # reached main through lint:no-cjk on 2026-07-14.
+#
+# Firing on one sample only proves SOME branch survived, which is too weak:
+# drop six of the seven alternatives and a `LOGIN_MODE=NoAccount` sample still
+# matches. Nor can that be fixed by testing one sample per token, because
+# VITE_LOGIN_MODE contains LOGIN_MODE as a substring — a sample for the
+# deleted branch gets matched by the surviving one. So check the pattern's
+# shape (branch count, none empty) as well as that it fires.
 assert_matcher_alive() {
+  local count branch
+  count=$(printf '%s' "$TOKENS" | awk -F'|' '{ print NF }')
+  if [ "$count" -ne "$EXPECTED_TOKEN_COUNT" ]; then
+    echo "❌ lint-no-noaccount: expected $EXPECTED_TOKEN_COUNT forbidden tokens, the pattern has $count." >&2
+    echo "   Adding or removing one is fine — update EXPECTED_TOKEN_COUNT to match." >&2
+    exit 2
+  fi
+
+  local IFS='|'
+  for branch in $TOKENS; do
+    if [ -z "$branch" ]; then
+      echo "❌ lint-no-noaccount: the pattern contains an empty alternative, which matches everything." >&2
+      exit 2
+    fi
+  done
+  unset IFS
+
   if ! printf '%s\n' 'LOGIN_MODE=NoAccount' | grep -qE "$TOKENS"; then
     echo "❌ lint-no-noaccount: the matcher no longer fires on a known violation." >&2
     echo "   Refusing to report clean from a dead pattern." >&2
@@ -90,13 +120,38 @@ assert_matcher_alive() {
 # The flip side: a brand-new file is invisible until it is `git add`ed. That
 # is exactly right for CI, where everything under review is committed, but it
 # means a local run cannot vouch for a file you have not staged yet.
+#
+# `git grep` exits 1 for "no match" and >1 for "I could not run" — a malformed
+# pathspec in the exclusion list below is 128, and so is running outside a git
+# repository (an extracted source tarball). Collapsing those into "clean" with
+# `|| true` is the failure this guard was rewritten to eliminate, so the two
+# cases are separated: 0 and 1 are answers, anything else is a broken guard.
 find_offenders() {
-  git grep -nIE "$TOKENS" -- \
+  local out status
+  out=$(git grep -nIE "$TOKENS" -- \
     ':!scripts/lint-no-noaccount.sh' \
-    ':!CLAUDE.md' \
     ':!packages/core/src/db/migrations/0016_delete-dev-mock-user.sql' \
-    2>/dev/null || true
+    2>&1) && status=0 || status=$?
+
+  if [ "$status" -gt 1 ]; then
+    echo "❌ lint-no-noaccount: the scan could not run (git grep exit $status)." >&2
+    printf '%s\n' "$out" | sed 's/^/   /' >&2
+    echo "   Refusing to report clean from a scan that never happened." >&2
+    exit 2
+  fi
+
+  [ "$status" -eq 0 ] && printf '%s\n' "$out"
+  return 0
 }
+
+# Reject anything that is not a recognised argument. Falling through on a
+# typo would run a plain scan while the caller believes the self-test ran —
+# a CI step spelled `--selftest` would look green with the end-to-end half
+# never executed.
+if [ "$#" -gt 0 ] && [ "${1:-}" != "--self-test" ]; then
+  echo "lint-no-noaccount: unknown argument '$1' (expected --self-test or none)." >&2
+  exit 2
+fi
 
 if [[ "${1:-}" == "--self-test" ]]; then
   probe="scripts/__noaccount_probe__.sh"
@@ -116,7 +171,19 @@ if [[ "${1:-}" == "--self-test" ]]; then
     git rm -q --cached "$probe" >/dev/null 2>&1 || true
     rm -f "$probe"
   }
-  trap cleanup_probe EXIT INT TERM
+
+  # A signal handler is just a function: it returns, and the script carries on.
+  # Clearing the traps inside cleanup (to stop INT and EXIT firing it twice)
+  # therefore has to be paired with actually terminating, or the run continues
+  # with no handler left — planting the probe afterwards with nothing to
+  # remove it, then exiting 0 and printing "passed". Signals get their own
+  # handler that exits; EXIT keeps the plain one.
+  on_signal() {
+    cleanup_probe
+    exit 130
+  }
+  trap cleanup_probe EXIT
+  trap on_signal INT TERM
 
   echo "self-test 1/3: the matcher must fire on a known violation"
   assert_matcher_alive
@@ -136,7 +203,14 @@ if [[ "${1:-}" == "--self-test" ]]; then
     # Written in halves so the probe's own token needs no exclusion of its own.
     echo "# LOGIN""_MODE=NoAcc""ount"
   } > "$probe"
-  git add -N "$probe" >/dev/null 2>&1
+  # Report a failure to stage as a broken guard (2), not as git's raw exit
+  # code. An index.lock left by another process makes this fail, and without
+  # the check `set -e` kills the run with an undiagnosable 128.
+  if ! git add -N "$probe" >/dev/null 2>&1; then
+    echo "SELF-TEST ABORTED: could not stage the probe, so the scan cannot see it." >&2
+    echo "   Another git process may hold .git/index.lock." >&2
+    exit 2
+  fi
   if [ -z "$(find_offenders)" ]; then
     echo "SELF-TEST FAILED: planted residue did not trip the checker."
     exit 1

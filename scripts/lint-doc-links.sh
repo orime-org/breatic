@@ -147,7 +147,18 @@ if [[ "${1:-}" == "--self-test" ]]; then
     fi
     rm -f "$backup" "$probe"
   }
-  trap cleanup_probe EXIT INT TERM
+
+  # A signal handler returns and the script carries on, so clearing the traps
+  # inside cleanup must be paired with terminating. Without this an interrupt
+  # during step 1 disarms every handler, the barrel is then modified with
+  # nothing left to restore it, and the run still prints "passed" and exits 0
+  # — the exact corruption the backup exists to prevent, only silent.
+  on_signal() {
+    cleanup_probe
+    exit 130
+  }
+  trap cleanup_probe EXIT
+  trap on_signal INT TERM
 
   echo "self-test 1/2: clean tree must PASS"
   if ! run_all >/dev/null 2>&1; then
