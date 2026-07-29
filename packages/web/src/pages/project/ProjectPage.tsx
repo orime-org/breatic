@@ -583,10 +583,25 @@ function ProjectWorkspace({
     return <LoadingScreen />;
   }
 
-  // When the WS auth has failed, the workspace below the banner is
-  // unusable - any mutation (create space, send chat, edit node) will
-  // silently fail because the same expired token is sent to the API +
-  // collab. Cover it with a full-area `bg-black/80` overlay that
+  // Whenever the banner is up, the workspace below it is unusable, and it is
+  // covered for the same reason in both cases: what the user does there cannot
+  // reach the server.
+  //
+  //   authFailed   - every mutation silently fails; the same expired token
+  //                  goes to the API and to collab.
+  //   disconnected - the product supports no offline editing at all (user,
+  //                  2026-07-29), so keystrokes would land in a local Y.Doc
+  //                  with nowhere to go. Measured before this branch existed:
+  //                  with collab killed, the document editor stayed
+  //                  `contenteditable` and `elementFromPoint` over it returned
+  //                  the editor's own paragraph — nothing above it.
+  //
+  // Keeping the two conditions identical to the banner's is the point:
+  // `ConnectionBanner` states they are a pair that must appear and disappear
+  // on the same frame. They were not, and only the banner half showed on a
+  // dropped connection.
+  //
+  // Cover it with a full-area `bg-black/80` overlay that
   // (a) matches the LoadingOverlay / Dialog backdrop dim pattern used
   //     elsewhere in the app (single visual vocabulary for "blocked"),
   // (b) intercepts clicks via `onClick` + `preventDefault` so users
@@ -597,7 +612,8 @@ function ProjectWorkspace({
   //     is intentionally inert.
   // Banner itself sits OUTSIDE the wrapper so its "re-login" / "refresh"
   // actions stay clickable.
-  const workspaceDisabled = connectionStatus === 'authFailed';
+  const workspaceDisabled =
+    connectionStatus === 'authFailed' || connectionStatus === 'disconnected';
 
   return (
     <div className='flex h-screen w-screen flex-col bg-background text-foreground'>
