@@ -52,54 +52,25 @@ export interface DocumentUndoManager extends Y.UndoManager {
 }
 
 /**
- * Decide whether undo may delete one item, keeping the body in a state
- * ProseMirror can represent.
- *
- * Two rules, and the second is the reason this function exists rather than
- * `defaultDeleteFilter` alone.
- *
- * **A peer's words are not ours to take.** When two people write into the same
- * paragraph, undoing our own insert would take the whole paragraph and their
- * text with it. Upstream's filter is what prevents that, and it has to be
- * carried over: supplying our own manager means the binding never builds one,
- * so its defaults never apply. Measured, with this as the only difference:
- * Alice writes "hi", Bob appends "there" to the same paragraph, Alice presses
- * undo. Without the filter the paragraph ends up empty — Bob's text gone, the
- * deletion synced to everyone and absent from his undo stack.
- *
- * **The body may not be emptied outright.** ProseMirror's schema requires at
- * least one block, so an empty Y fragment is a state the editor cannot mirror:
- * its document still holds an empty paragraph the fragment no longer has. The
- * next dispatch of any kind — a click, a window focus, the remount a tab switch
- * causes — syncs that paragraph back, and because the sync plugin's origin is
- * tracked and nothing is being undone at that moment, yjs reads it as a fresh
- * local edit and clears the redo stack. The text the user just undid becomes
- * unrecoverable and the redo button goes dead. Upstream's filter does protect
- * paragraphs, but exempts ones of length zero, and yjs deletes children before
- * parents — so the paragraph is already empty by the time it is offered for
- * filtering, and the exemption lets it through every time.
- *
- * Refusing that last deletion leaves exactly what an empty ProseMirror document
- * is: one empty paragraph. The two agree, nothing is written back, and redo
- * survives. Measured: undo → any dispatch → redo restores the text, where
- * before the redo stack was already gone. Undoing several paragraphs still
- * collapses to one — only the final block is refused.
- * @param item - The item yjs is considering deleting.
- * @param body - The document body fragment this manager owns.
- * @returns True if the deletion may proceed.
- */
-function keepBodyRepresentable(item: Y.Item, body: Y.XmlFragment): boolean {
-  if (!defaultDeleteFilter(item, defaultProtectedNodes)) return false;
-  const isDirectChild = (item as unknown as { parent?: unknown }).parent === body;
-  return !(isDirectChild && body.length <= 1);
-}
-
-/**
  * Build an undo manager for a document's body.
  *
  * Tracking only the sync plugin's origin is what keeps a peer's edits off our
- * stack; {@link keepBodyRepresentable} is what keeps undo from damaging the
- * document, and carries the reasoning for both of its rules.
+ * stack. But that alone would not stop undo from destroying their work: when
+ * two people write into the SAME paragraph, undoing our own insert takes the
+ * whole paragraph — their text with it. The binding guards against exactly this
+ * with a delete filter, which has to be carried over here because supplying our
+ * own manager means the binding never builds one and its defaults never apply.
+ * Measured, with the filter as the only difference: Alice writes "hi", Bob
+ * appends "there" to the same paragraph, Alice presses undo. Without it the
+ * paragraph ends up empty — Bob's text gone, the deletion synced to everyone
+ * and absent from his undo stack.
+ *
+ * The filter is upstream's, unmodified. An earlier version of this file added a
+ * rule refusing to delete the body's last child, to stop undo emptying the
+ * fragment; `seedEmptyBody` in `document-yjs` removes the need by keeping a
+ * paragraph there from the start, which also covers the block types the extra
+ * rule could not
+ * (an empty list or blockquote violates the schema and gets deleted anyway).
  *
  * `captureTransaction` honours the `addToHistory: false` marker, so
  * machine-driven edits stay off the stack.
@@ -110,7 +81,7 @@ export function createDocumentUndoManager(doc: Y.Doc): DocumentUndoManager {
   const body = documentBodyFragment(doc);
   const manager = new Y.UndoManager(body, {
     trackedOrigins: new Set([ySyncPluginKey]),
-    deleteFilter: (item) => keepBodyRepresentable(item, body),
+    deleteFilter: (item) => defaultDeleteFilter(item, defaultProtectedNodes),
     captureTransaction: (tr) => tr.meta.get('addToHistory') !== false,
   }) as DocumentUndoManager;
 

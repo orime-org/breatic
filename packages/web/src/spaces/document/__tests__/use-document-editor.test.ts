@@ -25,7 +25,10 @@ import {
   _resetDocumentEditorCacheForTests,
   evictDocumentEditor,
 } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import {
+  documentBodyFragment,
+  seedEmptyBody,
+} from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 /** Reads a fragment's plain text, paragraphs joined by a newline. */
@@ -115,6 +118,65 @@ describe('useDocumentEditor', () => {
         expect(editor.getText()).toContain('from the other side'),
       );
       peer.destroy();
+    });
+
+    it('waits for sync before seeding the body', async () => {
+      // A body can be empty for two very different reasons: the document is
+      // genuinely new, or it simply has not loaded yet. Seeding the second one
+      // adds a paragraph the server's real content then merges in behind,
+      // leaving a stray blank line at the top of everyone's document. Measured,
+      // not theorised — which is why the seed is gated rather than run on mount.
+      const rendered = renderHook(() =>
+        useDocumentEditor({
+          doc,
+          name: NAME,
+          caretProvider: { awareness },
+          caretUser: CARET_USER,
+          synced: false,
+        }),
+      );
+      await waitFor(() => expect(rendered.result.current).not.toBeNull());
+      expect(documentBodyFragment(doc).length).toBe(0);
+
+      // The server's content lands, and only then does the gate open.
+      const peer = new Y.Doc();
+      const para = new Y.XmlElement('paragraph');
+      para.insert(0, [new Y.XmlText('content that already existed')]);
+      peer.getXmlFragment('content').push([para]);
+      act(() => syncAsRemote(doc, peer));
+
+      rendered.rerender();
+      const fragment = documentBodyFragment(doc);
+      expect(fragment.length).toBe(1);
+      expect(textOf(fragment)).toBe('content that already existed');
+      peer.destroy();
+    });
+
+    it('seeds once and leaves an existing body alone', async () => {
+      const { editor } = await mountEditor();
+      const fragment = documentBodyFragment(doc);
+      expect(fragment.length).toBe(1);
+
+      act(() => {
+        editor.commands.setContent('<p>first</p><p>second</p>');
+      });
+      const before = fragment.length;
+      // Re-running the seed must not append to a body that already has content.
+      seedEmptyBody(doc);
+      expect(fragment.length).toBe(before);
+    });
+
+    it('does not put the seeded paragraph on the undo stack', async () => {
+      // The seed is not something the user did, so undo must never take it
+      // back — doing so would empty the body and reopen the very hole seeding
+      // exists to close.
+      const { rendered, editor } = await mountEditor();
+      const handle = rendered.result.current as NonNullable<
+        ReturnType<typeof useDocumentEditor>
+      >;
+      expect(handle.undoManager.undoStack.length).toBe(0);
+      expect(editor.can().undo()).toBe(false);
+      expect(documentBodyFragment(doc).length).toBe(1);
     });
 
     it('stays absent until the caret wiring exists', () => {
@@ -246,6 +308,52 @@ describe('useDocumentEditor', () => {
         editor.commands.undo();
       });
       expect(editor.getText()).not.toContain('what the user wrote');
+    });
+
+    it.each([
+      ['a paragraph', '<p>the only sentence</p>'],
+      ['a bullet list', '<ul><li><p>bread</p></li><li><p>eggs</p></li></ul>'],
+      ['a blockquote', '<blockquote><p>quoted</p></blockquote>'],
+      ['a heading', '<h1>Title</h1>'],
+      ['a code block', '<pre><code>const a = 1</code></pre>'],
+    ])('can redo after undoing away %s — the whole document', async (_what, html) => {
+      // ProseMirror's schema requires the document to hold at least one block,
+      // so its idea of "empty" is one empty paragraph. Yjs's is nothing at all.
+      // Undoing the last of a document used to leave those two disagreeing, and
+      // the next dispatch of any kind — a click, a window focus, the remount a
+      // tab switch causes — reconciled them by writing a paragraph back. That
+      // write carries the dispatch's own `addToHistory` marker, which an
+      // ordinary click does not set, so yjs read it as a fresh local edit and
+      // cleared the redo stack: the text was unrecoverable and Redo went dead.
+      //
+      // Seeding the body makes the two agree from the start, so there is
+      // nothing to reconcile. Every block type is covered because an earlier
+      // attempt — refusing to delete the body's last child — only held when
+      // that child was a paragraph: an empty blockquote or list violates the
+      // schema and the binding deletes it anyway, and an empty heading is
+      // legal but still leaves ProseMirror a paragraph to write back.
+      const { editor } = await mountEditor();
+
+      act(() => {
+        editor.commands.setContent(html);
+      });
+      const written = editor.getText();
+      expect(written.length).toBeGreaterThan(0);
+
+      act(() => {
+        editor.commands.undo();
+      });
+      expect(editor.getText().trim()).toBe('');
+
+      // Anything at all happening in the editor, before the user hits redo.
+      act(() => {
+        editor.view.dispatch(editor.view.state.tr);
+      });
+
+      act(() => {
+        editor.commands.redo();
+      });
+      expect(editor.getText()).toBe(written);
     });
 
     it('can redo after undoing away the last of the document', async () => {

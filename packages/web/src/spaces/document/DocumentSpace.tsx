@@ -36,7 +36,7 @@ export function DocumentSpace({
   const t = useTranslation();
   const name = docName.documentSpace(projectId, spaceId);
   const doc = React.useMemo(() => getDoc(name), [name]);
-  const { provider } = useSocket({ name, doc });
+  const { provider, synced } = useSocket({ name, doc });
   const caretUser = useCaretUser();
 
   // The editor belongs to the document, not to this component: switching Space
@@ -48,6 +48,7 @@ export function DocumentSpace({
     caretProvider: provider,
     caretUser,
     editable: !readOnly,
+    synced,
   });
   const editor = handle?.editor ?? null;
   const history = useDocumentHistory(handle?.undoManager ?? null);

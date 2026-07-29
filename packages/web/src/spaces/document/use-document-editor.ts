@@ -23,6 +23,7 @@ import {
   getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
+import { seedEmptyBody } from '@web/spaces/document/document-yjs';
 
 /** Inputs for {@link useDocumentEditor}. */
 export interface UseDocumentEditorOptions {
@@ -40,6 +41,14 @@ export interface UseDocumentEditorOptions {
   caretUser: CaretUserIdentity | null;
   /** False puts the editor in read-only mode (viewer role, history preview). */
   editable?: boolean;
+  /**
+   * Whether this document has synced at least once.
+   *
+   * Gates the seeding in {@link seedEmptyBody}: a body that is empty because
+   * it has not loaded yet must not be seeded, or the server's real content
+   * merges in behind the seeded paragraph and leaves a stray blank line.
+   */
+  synced?: boolean;
 }
 
 /**
@@ -56,6 +65,7 @@ export interface UseDocumentEditorOptions {
  * @param options.caretProvider - Provider whose awareness carries carets.
  * @param options.caretUser - This user's caret identity.
  * @param options.editable - False for read-only.
+ * @param options.synced - Whether the document has synced; gates body seeding.
  * @returns The editor and its undo manager, or null while the wiring is absent.
  */
 export function useDocumentEditor({
@@ -64,7 +74,14 @@ export function useDocumentEditor({
   caretProvider,
   caretUser,
   editable = true,
+  synced = true,
 }: UseDocumentEditorOptions): DocumentEditorHandle | null {
+  // Once, as soon as the real content is known to be in. Seeding is idempotent
+  // — a body with anything in it is left alone — so a re-run is free.
+  React.useEffect(() => {
+    if (synced) seedEmptyBody(doc);
+  }, [doc, synced]);
+
   // Get-or-create, so the repeat calls a re-render causes are free and a
   // StrictMode double-invoke cannot produce a second editor.
   const handle = React.useMemo(
