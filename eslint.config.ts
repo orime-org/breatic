@@ -228,6 +228,23 @@ export default tseslint.config(
     plugins: { breatic: breaticPlugin },
     rules: {
       "breatic/no-library-process-exit": "error",
+      "breatic/no-library-env-access": "error",
+    },
+  },
+  {
+    // Same library scope, one extra exemption: the logger module defines the
+    // primitives the rule keeps out of everything else. A separate block is
+    // the only way to vary `ignores` per rule — within one block, ignores
+    // applies to every rule the block declares.
+    files: ["packages/{core,shared,domain}/src/**/*.ts"],
+    ignores: [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.spec.ts",
+      "**/logger.ts",
+    ],
+    rules: {
+      "breatic/no-library-logger": "error",
     },
   },
   {

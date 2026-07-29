@@ -8,9 +8,10 @@
  * are migrated here — dependency-cruiser sees only real imports (not
  * comments), so it can't false-positive on a doc-comment naming a banned
  * alias the way the grep guards had to defend against. Guards whose mandate
- * is NOT a pure import edge stay as their own scripts: no-relative-import
- * (import SYNTAX, which the resolver erases), no-library-logger (a logger.*
- * CALL), no-raw-sql-outside-repo (a usage), no-core-process-env, etc.
+ * is NOT a pure import edge live elsewhere: no-relative-import (import
+ * SYNTAX, which the resolver erases), no-library-logger (a logger.* CALL),
+ * no-raw-sql-outside-repo (a usage), no-library-env-access, etc. Those are
+ * migrating from scripts/ to AST rules in eslint-rules/.
  * No circular-dep / orphan rules are enabled (separate opt-in).
  *
  * @type {import('dependency-cruiser').IConfiguration}

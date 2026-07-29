@@ -20,4 +20,4 @@ web **用得到**吗?用得到 → `shared`;用不到 → `core`。
 不拿。shared 是纯数据/类型层,不读配置、不读 `process.env`、不写日志。
 
 ## 守卫
-`lint:no-relative-import`(走别名)· `lint:no-unresolved-alias-in-dist`(dist 不漏别名)· `lint:no-core-process-env`(零 `process.env`)· `lint:no-library-logger`(零 logger)。
+`lint:no-relative-import`(走别名)· `lint:no-unresolved-alias-in-dist`(dist 不漏别名)· `breatic/no-library-env-access`(零 `process.env`)· `breatic/no-library-logger`(零 logger)。

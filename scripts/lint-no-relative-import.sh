@@ -31,7 +31,7 @@
 #   - `__tests__/` directories + `*.test.ts(x)` / `*.spec.ts(x)` —
 #     test files are exempt (they're not shipped, so the runtime
 #     alias-resolution concern doesn't apply; consistent with
-#     lint:no-cjk / lint:no-library-logger test exclusions).
+#     lint:no-cjk / breatic/no-library-logger test exclusions).
 #   - Line / block comments — stripped before grepping so prose
 #     references like "import { x } from './y'" in doc-comments don't
 #     false-positive.
@@ -78,7 +78,7 @@ MATCHES=""
 for file in $CANDIDATES; do
   # Strip // line comments + /* ... */ block comments (incl.
   # multi-line) before grepping, so doc-comment prose doesn't
-  # false-positive. Same stripper as lint-no-library-logger.sh.
+  # false-positive. Same stripper the other scanning guards use.
   cleaned=$(sed -e 's@//.*$@@' -e 's@/\*[^*]*\*/@@g' "$file" \
     | awk '
         BEGIN { in_block = 0 }

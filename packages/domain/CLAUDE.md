@@ -21,7 +21,7 @@
 - ❌ `@collab` —— collab 是 server+worker 之外的进程,绝不碰 AIGC 业务(`lint:dependency-cruiser` 的 `collab-no-domain-import` 规则强制)
 
 ## 怎么拿配置
-经 core 的 `env` Proxy / `getConfig()` / `getRawEnvVar()` 读**注入**的配置;**禁读 `process.env` / 禁 load `.env`**(同 core 纪律,`lint:no-core-process-env` 把 domain 一并扫描强制)。
+经 core 的 `env` Proxy / `getConfig()` / `getRawEnvVar()` 读**注入**的配置;**禁读 `process.env` / 禁 load `.env`**(同 core 纪律,`breatic/no-library-env-access` 把 domain 一并扫描强制)。
 
 ## 出错怎么办
-**只 throw**(原 error 或 typed `AppError` / `InfraNotReadyError`),或返回 sentinel;**禁调 `logger.*` / `console.*`、禁 `process.exit()`**(同 core 纪律,抛给应用层;`lint:no-library-logger`(含 `console.*`)+ ESLint 规则 `breatic/no-library-process-exit` 把 domain 一并扫描强制)。
+**只 throw**(原 error 或 typed `AppError` / `InfraNotReadyError`),或返回 sentinel;**禁调 `logger.*` / `console.*`、禁 `process.exit()`**(同 core 纪律,抛给应用层;`breatic/no-library-logger`(含 `console.*`)+ ESLint 规则 `breatic/no-library-process-exit` 把 domain 一并扫描强制)。

@@ -178,7 +178,7 @@
 
 ### Observability —— Prometheus `/metrics` + Grafana dashboard 待办
 
-**Why 现在不做**：CLAUDE.md "服务器端工业级标准" 7 件套中的「安全监控（生产 metrics 看 trend 提前预警）」当前只落地了结构化 log，没有 metrics 时序数值。endpoint 在 (`/healthz` 200/503 + `lint:no-library-logger` clean) 后已经是工业级最小集，但 metrics 上报 + dashboard 需要 backend monitoring sprint 单独规划（Prometheus 自托管 vs Grafana Cloud / managed Mimir 选型 + docker-compose 加 prometheus + grafana service + 各 service 加 `prom-client` 暴露 `/metrics`）。
+**Why 现在不做**：CLAUDE.md "服务器端工业级标准" 7 件套中的「安全监控（生产 metrics 看 trend 提前预警）」当前只落地了结构化 log，没有 metrics 时序数值。endpoint 在 (`/healthz` 200/503 + `breatic/no-library-logger` clean) 后已经是工业级最小集，但 metrics 上报 + dashboard 需要 backend monitoring sprint 单独规划（Prometheus 自托管 vs Grafana Cloud / managed Mimir 选型 + docker-compose 加 prometheus + grafana service + 各 service 加 `prom-client` 暴露 `/metrics`）。
 
 **真治根工作（独立 PR / sprint）**：
 

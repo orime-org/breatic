@@ -19,7 +19,7 @@
 - 本包内部用 `@core/*` 前缀
 
 ## 怎么拿配置
-经 `env` Proxy / `getConfig()` / `getRawEnvVar()` 读**注入**的配置;**禁读 `process.env` / 禁 load `.env`**(配置 ACQUISITION 是 application 决策,见根 CLAUDE.md 环境变量注入)。`lint:no-core-process-env` 强制。
+经 `env` Proxy / `getConfig()` / `getRawEnvVar()` 读**注入**的配置;**禁读 `process.env` / 禁 load `.env`**(配置 ACQUISITION 是 application 决策,见根 CLAUDE.md 环境变量注入)。`breatic/no-library-env-access` 强制。
 
 ## 出错怎么办
-**只 throw**(原 error 或 typed `AppError` / `InfraNotReadyError`),或返回 sentinel(`{ exists:false }` 等);**禁调 logger.\*、禁 `process.exit()`**(库不决定记日志 / 退进程,抛给应用层)。`lint:no-library-logger` 强制。
+**只 throw**(原 error 或 typed `AppError` / `InfraNotReadyError`),或返回 sentinel(`{ exists:false }` 等);**禁调 logger.\*、禁 `process.exit()`**(库不决定记日志 / 退进程,抛给应用层)。`breatic/no-library-logger` 强制。
