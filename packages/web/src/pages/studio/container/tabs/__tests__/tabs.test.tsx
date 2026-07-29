@@ -213,6 +213,8 @@ const TEAM: StudioDetail = {
   name: 'Acme',
   type: 'team',
   memberCount: 3,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'admin',
 };
 const PERSONAL: StudioDetail = {
@@ -221,6 +223,8 @@ const PERSONAL: StudioDetail = {
   name: 'Alex',
   type: 'personal',
   memberCount: 1,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'admin',
 };
 

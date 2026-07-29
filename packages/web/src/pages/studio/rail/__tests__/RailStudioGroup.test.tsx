@@ -10,7 +10,16 @@ import { RailStudioGroup } from '@web/pages/studio/rail/RailStudioGroup';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 
 function studio(id: string, name: string): StudioSummary {
-  return { id, slug: id, name, type: 'team', memberCount: 1, myStudioRole: 'admin' };
+  return {
+    id,
+    slug: id,
+    name,
+    type: 'team',
+    avatarUrl: null,
+    bio: null,
+    memberCount: 1,
+    myStudioRole: 'admin',
+  };
 }
 
 const STUDIOS = [studio('acme', 'Acme'), studio('nova', 'Nova Lab')];

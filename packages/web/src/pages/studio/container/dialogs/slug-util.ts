@@ -6,29 +6,25 @@
  * Studio slugs are globally unique (length 6–39) and checked against reserved
  * words; project / collection slugs are NOT unique (uuid disambiguates) and
  * only need to be well-formed (length 6–50).
+ *
+ * The studio rule itself — character shape, bounds, reserved words — is NOT
+ * defined here. It lives on the shared schema the server validates every write
+ * against, and is re-exported below so this module stays the frontend's single
+ * import site. A second copy here would be a rule that silently drifts: the
+ * form would accept what the API then refuses, or worse, promise a slug is
+ * free when the server has reserved it.
  */
 
-/** The shared slug character rule: lowercase start, letters / digits / single hyphens. */
-const SLUG_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+import {
+  SLUG_REGEX,
+  RESERVED_STUDIO_SLUGS,
+  STUDIO_SLUG_BOUNDS,
+} from '@breatic/shared';
 
-/** Slug length bounds (URL design §5.7). */
-export const STUDIO_SLUG_BOUNDS = { min: 6, max: 39 } as const;
+export { RESERVED_STUDIO_SLUGS, STUDIO_SLUG_BOUNDS };
+
+/** Item slugs are frontend-only (not unique, no reserved list) — bounds live here. */
 export const ITEM_SLUG_BOUNDS = { min: 6, max: 50 } as const;
-
-/** A small stub reserved-slug set (the real list is marketing's RESERVED-SLUGS v2). */
-export const RESERVED_STUDIO_SLUGS: ReadonlySet<string> = new Set([
-  'admin',
-  'api',
-  'app',
-  'www',
-  'studio',
-  'project',
-  'collection',
-  'breatic',
-  'orime',
-  'login',
-  'settings',
-]);
 
 /** A slug validation failure reason, or `null` when the slug is acceptable. */
 export type SlugError = 'format' | 'length' | 'reserved' | 'taken' | null;
@@ -50,7 +46,7 @@ export function validateSlugShape(
   value: string,
   bounds: SlugBounds,
 ): 'format' | 'length' | null {
-  if (!SLUG_RE.test(value)) {
+  if (!SLUG_REGEX.test(value)) {
     return 'format';
   }
   if (value.length < bounds.min || value.length > bounds.max) {

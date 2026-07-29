@@ -230,6 +230,8 @@ export async function getStudioDetail(
     slug: studio.slug,
     name: studio.name,
     type: studio.type,
+    avatarUrl: studio.avatarUrl,
+    bio: studio.bio,
     memberCount: counts.get(studio.id) ?? 0,
     myStudioRole,
   };
@@ -258,6 +260,8 @@ export async function listUserStudios(
     slug: s.slug,
     name: s.name,
     type: s.type,
+    avatarUrl: s.avatarUrl,
+    bio: s.bio,
     memberCount: counts.get(s.id) ?? 0,
     myStudioRole: s.myStudioRole,
   }));

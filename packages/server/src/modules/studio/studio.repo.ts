@@ -29,6 +29,8 @@ function toEntity(row: typeof studios.$inferSelect): Studio {
     slug: row.slug,
     type: row.type as StudioType,
     name: row.name,
+    avatarUrl: row.avatarUrl,
+    bio: row.bio,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,

@@ -31,6 +31,8 @@ const TEAM: StudioDetail = {
   name: 'Acme Studio',
   type: 'team',
   memberCount: 4,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'admin',
 };
 const PERSONAL: StudioDetail = {
@@ -39,6 +41,8 @@ const PERSONAL: StudioDetail = {
   name: 'Alex',
   type: 'personal',
   memberCount: 1,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'admin',
 };
 // A studio the viewer is NOT a member of (decision A: 200 + null role). The
@@ -49,6 +53,8 @@ const STRANGER: StudioDetail = {
   name: 'Stranger Studio',
   type: 'team',
   memberCount: 9,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: null,
 };
 const STUDIOS: readonly StudioSummary[] = [
@@ -58,6 +64,8 @@ const STUDIOS: readonly StudioSummary[] = [
     name: 'Alex',
     type: 'personal',
     memberCount: 1,
+    avatarUrl: null,
+    bio: null,
     myStudioRole: 'admin',
   },
   {
@@ -68,6 +76,8 @@ const STUDIOS: readonly StudioSummary[] = [
     memberCount: 4,
     // Admin of acme (consistent with the studio detail above) so the create
     // selector defaults to the current studio (spec §7.1) → studioId = s-acme.
+    avatarUrl: null,
+    bio: null,
     myStudioRole: 'admin',
   },
 ];

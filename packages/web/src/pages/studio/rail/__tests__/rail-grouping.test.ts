@@ -11,7 +11,16 @@ function studio(
   role: StudioSummary['myStudioRole'],
   type: StudioSummary['type'] = 'team',
 ): StudioSummary {
-  return { id, slug: id, name: id, type, memberCount: 1, myStudioRole: role };
+  return {
+    id,
+    slug: id,
+    name: id,
+    type,
+    avatarUrl: null,
+    bio: null,
+    memberCount: 1,
+    myStudioRole: role,
+  };
 }
 
 describe('splitStudios (rail — personal / my-team / joined, three-way #1661)', () => {
