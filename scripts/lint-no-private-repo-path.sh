@@ -46,6 +46,17 @@ find_offenders() {
 }
 
 if [[ "${1:-}" == "--self-test" ]]; then
+  probe="scripts/__private_path_probe__.sh"
+
+  # The probe must enter the index to be visible to git grep, so its removal
+  # cannot depend on reaching the end of the function: an interrupted run
+  # would leave a file that the next scan reports as a real violation.
+  cleanup_probe() {
+    git rm -q --cached "$probe" >/dev/null 2>&1 || true
+    rm -f "$probe"
+  }
+  trap cleanup_probe EXIT INT TERM
+
   echo "self-test 1/2: clean tree must PASS"
   if [ -n "$(find_offenders)" ]; then
     echo "SELF-TEST FAILED: the tree already has offenders:"
@@ -55,7 +66,6 @@ if [[ "${1:-}" == "--self-test" ]]; then
   echo "  ok"
 
   echo "self-test 2/2: an injected private path must FAIL"
-  probe="scripts/__private_path_probe__.sh"
   {
     printf '#!/usr/bin/env bash\n'
     printf '# see %s/2026-01-01-something.md\n' "engineering/specs"
@@ -63,11 +73,10 @@ if [[ "${1:-}" == "--self-test" ]]; then
   git add -N "$probe" >/dev/null 2>&1
   if [ -z "$(find_offenders)" ]; then
     echo "SELF-TEST FAILED: an injected private path did not trip the checker."
-    git rm -q --cached "$probe" >/dev/null 2>&1; rm -f "$probe"
     exit 1
   fi
   echo "  ok"
-  git rm -q --cached "$probe" >/dev/null 2>&1; rm -f "$probe"
+
   echo "self-test passed"
   exit 0
 fi

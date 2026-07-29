@@ -178,7 +178,6 @@ All settings validated at startup via Zod. See `.env.dev` or `.env.docker` for t
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOGIN_MODE` | `WithAccount` | `WithAccount` or `NoAccount` |
 | `PAYMENT_ENABLED` | `false` | Enable Stripe billing |
 | `STORAGE_PROVIDER` | `local` | `local`, `s3`, or `aliyun_oss` |
 | `UPLOAD_BASE_URL` | — | CDN prefix for stored files (e.g. `https://resource.example.com`) |

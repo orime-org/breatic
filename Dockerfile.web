@@ -22,14 +22,12 @@ COPY locales/ locales/
 # Build shared (dependency) then web
 RUN pnpm turbo build --filter=@breatic/shared
 
-# Only non-URL build-time vars remain. API/WebSocket URLs are resolved
-# at runtime from window.location, so a single bundle works on any host
-# behind the same reverse proxy.
-ARG VITE_LOGIN_MODE=WithAccount
+# The version string is the only build-time var left. API/WebSocket URLs
+# are resolved at runtime from window.location, so a single bundle works on
+# any host behind the same reverse proxy.
 ARG VITE_APP_VERSION=0.1.0
 
-ENV VITE_LOGIN_MODE=${VITE_LOGIN_MODE} \
-    VITE_APP_VERSION=${VITE_APP_VERSION}
+ENV VITE_APP_VERSION=${VITE_APP_VERSION}
 
 # Vite config hardcodes base='/' — no CLI override needed
 RUN cd packages/web && pnpm build

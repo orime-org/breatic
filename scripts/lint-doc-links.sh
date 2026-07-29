@@ -103,6 +103,25 @@ run_all() {
 # --self-test: prove the checker can both pass and fail. A checker that only
 # ever passes is indistinguishable from one that is broken.
 if [[ "${1:-}" == "--self-test" ]]; then
+  probe="packages/shared/src/__doc_link_probe__.ts"
+  barrel="packages/shared/src/index.ts"
+  backup="$(mktemp)"
+
+  # The probe is only visible to TypeDoc if the barrel re-exports it, so this
+  # test has to edit a real source file and put it back afterwards.
+  #
+  # It must NOT put it back with `git checkout --`: that restores the HEAD
+  # version and silently discards whatever uncommitted work the developer had
+  # in the barrel, which git cannot recover. Keep a byte-exact copy instead,
+  # and restore on every exit path including Ctrl-C — otherwise an interrupted
+  # run leaves both a stray probe file and a modified barrel behind.
+  cp "$barrel" "$backup"
+  cleanup_probe() {
+    cp "$backup" "$barrel"
+    rm -f "$backup" "$probe"
+  }
+  trap cleanup_probe EXIT INT TERM
+
   echo "self-test 1/2: clean tree must PASS"
   if ! run_all >/dev/null 2>&1; then
     echo "SELF-TEST FAILED: the clean tree does not pass. Fix the real findings first."
@@ -112,7 +131,6 @@ if [[ "${1:-}" == "--self-test" ]]; then
   echo "  ok"
 
   echo "self-test 2/2: an injected dangling link must FAIL"
-  probe="packages/shared/src/__doc_link_probe__.ts"
   cat > "$probe" <<'PROBE'
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
@@ -125,18 +143,14 @@ if [[ "${1:-}" == "--self-test" ]]; then
 export function docLinkProbe(): void {}
 PROBE
   # The probe only participates if it is reachable from the entry point.
-  printf '\nexport { docLinkProbe } from "./__doc_link_probe__.js";\n' >> packages/shared/src/index.ts
+  printf '\nexport { docLinkProbe } from "./__doc_link_probe__.js";\n' >> "$barrel"
 
   if check_package shared >/dev/null 2>&1; then
     echo "SELF-TEST FAILED: a dangling {@link} did not trip the checker."
-    rm -f "$probe"
-    git checkout -- packages/shared/src/index.ts
     exit 1
   fi
   echo "  ok"
 
-  rm -f "$probe"
-  git checkout -- packages/shared/src/index.ts
   echo "self-test passed"
   exit 0
 fi

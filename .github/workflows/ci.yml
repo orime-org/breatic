@@ -22,6 +22,11 @@ jobs:
     # the pair cannot drift. They were separate implementations once and both
     # silently died: each filtered on `vite.config.ts` after the file became
     # `.mts`, so neither ever ran (#1831).
+    #
+    # This job installs no Node, so it calls the script directly rather than
+    # through `pnpm lint:dev-proxy-target`. That costs nothing here: the
+    # script runs its own matcher self-test inline on every invocation, so a
+    # matcher that has gone blind fails the scan regardless of entry point.
     steps:
       - uses: actions/checkout@v6
 
@@ -32,18 +37,26 @@ jobs:
     name: No NoAccount Mode Residue
     runs-on: ubuntu-latest
 
-    # Defense against re-introduction of the deprecated NoAccount dev-bypass
-    # auth mode (deleted in PR-a 2026-05-26). Scans backend code + scripts
-    # + turbo.json for forbidden tokens (LOGIN_MODE / NoAccount /
-    # dev-fixed-token / DEV_USER_ID). PR-b will extend the script's scan
-    # range to packages/web/ + docs/ + .env.* templates once the frontend
-    # bypass code is cleaned. See spec amend 2026-05-26 § 8.1 for the
-    # invariant + scripts/check-no-noaccount.sh for scan logic.
+    # Defense against re-introduction of the NoAccount dev-bypass auth mode
+    # (deleted in #147). Every environment requires a real login; there is no
+    # mode switch left, so any file naming one is residue.
+    #
+    # The script reads every tracked file and excludes the few places that
+    # describe the ban. It used to scan a path whitelist, which missed README,
+    # Dockerfile.web, both .env templates and packages/web/scripts — all four
+    # were still holding residue on 2026-07-29 with CI green throughout.
+    #
+    # Same no-Node arrangement as the job above: the script is called twice by
+    # hand, once to scan and once to prove the matcher can still fail.
+    # See scripts/check-no-noaccount.sh for the token list and exclusions.
     steps:
       - uses: actions/checkout@v6
 
       - name: Run check-no-noaccount.sh
         run: ./scripts/check-no-noaccount.sh
+
+      - name: Verify the no-noaccount matcher still works
+        run: ./scripts/check-no-noaccount.sh --self-test
 
   lint-typecheck-test:
     name: Lint + Typecheck + Test
