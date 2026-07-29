@@ -281,17 +281,6 @@ jobs:
         # services again. See scripts/lint-no-raw-sql-outside-repo.sh.
         run: pnpm lint:no-raw-sql-outside-repo
 
-      - name: Lint no-yjs-documents-sql-outside-repo (one shared table, one repo)
-        # Enforce 2026-06-02 ADR "DB adapter unification": yjs_documents is
-        # shared infra (collab persistence/auth/space-rpc + server project
-        # create/delete/duplicate). no-raw-sql-outside-repo only proves SQL
-        # sits in SOME *.repo.ts; it does NOT prove a SHARED table has a
-        # SINGLE repo. This guard locks the table — by raw name or Drizzle
-        # symbol — to its one home (core/db/yjs-documents.repo.ts) so it can
-        # never scatter across services again. See
-        # scripts/lint-no-yjs-documents-sql-outside-repo.sh.
-        run: pnpm lint:no-yjs-documents-sql-outside-repo
-
       - name: Lint no-missing-license-header (every src ts/tsx carries the SPDX header)
         # Enforce the file-header mandate (CLAUDE.md code style + ARCHITECTURE.md):
         # every first-party packages/*/src .ts/.tsx file must start with the
@@ -299,15 +288,6 @@ jobs:
         # shadcn vendor (components/ui) is exempt - third-party IP.
         # See scripts/lint-no-missing-license-header.sh.
         run: pnpm lint:no-missing-license-header
-
-      - name: Lint no-collab-auth-table-sql (collab routes auth through core)
-        # Enforce ADR 2026-05-31 "second-pass adjustment" auth unification: collab must NOT
-        # hand-roll the session / role lookups (raw project_members SQL
-        # or a raw :session: redis key). Both moved to @breatic/core
-        # (getSession + loadProjectRole) so auth is identical across
-        # services; this guard locks collab out of re-introducing the
-        # drift. See scripts/lint-no-collab-auth-table-sql.sh.
-        run: pnpm lint:no-collab-auth-table-sql
 
       - name: Lint service-logging (server + worker + collab entries)
         # Enforce CLAUDE.md "industrial-grade server standards": every

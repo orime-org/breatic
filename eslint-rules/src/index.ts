@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
+import { noCollabAuthPrimitives } from "#rules/rules/no-collab-auth-primitives";
 import { noCorsWildcardCredentials } from "#rules/rules/no-cors-wildcard-credentials";
 import { noDrizzleTypeLeak } from "#rules/rules/no-drizzle-type-leak";
 import { noIoredisOutsideCore } from "#rules/rules/no-ioredis-outside-core";
@@ -9,6 +10,7 @@ import { noLibraryProcessExit } from "#rules/rules/no-library-process-exit";
 import { noParamAsString } from "#rules/rules/no-param-as-string";
 import { noPostgresOutsideCore } from "#rules/rules/no-postgres-outside-core";
 import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
+import { noYjsDocumentsOutsideRepo } from "#rules/rules/no-yjs-documents-outside-repo";
 
 /**
  * The repository's own ESLint plugin.
@@ -21,6 +23,7 @@ import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
 export const breaticPlugin = {
   meta: { name: "@breatic/eslint-rules", version: "0.1.0" },
   rules: {
+    "no-collab-auth-primitives": noCollabAuthPrimitives,
     "no-cors-wildcard-credentials": noCorsWildcardCredentials,
     "no-drizzle-type-leak": noDrizzleTypeLeak,
     "no-ioredis-outside-core": noIoredisOutsideCore,
@@ -30,5 +33,6 @@ export const breaticPlugin = {
     "no-param-as-string": noParamAsString,
     "no-postgres-outside-core": noPostgresOutsideCore,
     "no-sync-in-request-path": noSyncInRequestPath,
+    "no-yjs-documents-outside-repo": noYjsDocumentsOutsideRepo,
   },
 } as const;

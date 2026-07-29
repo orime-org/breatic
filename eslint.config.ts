@@ -309,6 +309,31 @@ export default tseslint.config(
     },
   },
   {
+    // yjs_documents is written by collab and by the server, so it gets one
+    // repo and everyone else calls it. The repo itself and the schema that
+    // defines the table are the two places the name legitimately appears.
+    files: ["packages/*/src/**/*.{ts,tsx}"],
+    ignores: [
+      "packages/collab/src/services/yjs-documents.repo.ts",
+      "packages/core/src/db/yjs-schema.ts",
+      "**/__tests__/**",
+      "**/*.test.{ts,tsx}",
+      "**/*.spec.{ts,tsx}",
+    ],
+    rules: {
+      "breatic/no-yjs-documents-outside-repo": "error",
+    },
+  },
+  {
+    // collab authenticates through core. Reaching the session key or the
+    // members table from here is the drift this prevents.
+    files: ["packages/collab/src/**/*.ts"],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
+    rules: {
+      "breatic/no-collab-auth-primitives": "error",
+    },
+  },
+  {
     ignores: ["**/dist/**", "**/node_modules/**", "**/*.js", "**/*.mjs"],
   },
 );
