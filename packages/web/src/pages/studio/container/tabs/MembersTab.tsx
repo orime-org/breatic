@@ -31,6 +31,7 @@ import type {
   StudioRole,
   StudioType,
 } from '@web/pages/studio/shared/studio-types';
+import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 interface MembersTabProps {
   /** The studio's URL handle — the path param for every member mutation. */
@@ -208,12 +209,14 @@ export function MembersTab({
                 {/* Member: avatar + name over email (locked mock .mrow .who). */}
                 <td className='py-2.5'>
                   <span className='flex items-center gap-3'>
-                    <span
-                      aria-hidden='true'
-                      className='flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground'
-                    >
-                      {member.name.slice(0, 1).toUpperCase()}
-                    </span>
+                    {/* A member is shown through their personal studio, so
+                        the type is always `personal` (round). */}
+                    <StudioAvatar
+                      name={member.name}
+                      type='personal'
+                      avatarUrl={member.avatarUrl}
+                      size='md'
+                    />
                     <span className='flex min-w-0 flex-col'>
                       <span className='truncate font-semibold text-foreground'>
                         {member.name}

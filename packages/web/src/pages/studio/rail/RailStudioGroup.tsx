@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 
 import { useRailCollapse } from '@web/pages/studio/rail/use-rail-collapse';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
+import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 interface RailStudioGroupProps {
   /** Section label (resolved i18n) — e.g. "My studios" / "Joined studios". */
@@ -81,9 +82,12 @@ export function RailStudioGroup({
                     : 'text-foreground hover:bg-accent'
                 }`}
               >
-                <span className='flex h-5 w-5 items-center justify-center rounded-chrome bg-muted text-2xs font-bold text-muted-foreground'>
-                  {studio.name.slice(0, 1).toUpperCase()}
-                </span>
+                <StudioAvatar
+                  name={studio.name}
+                  type={studio.type}
+                  avatarUrl={studio.avatarUrl}
+                  size='xs'
+                />
                 <span className='flex-1 truncate'>{studio.name}</span>
               </Link>
             </li>
