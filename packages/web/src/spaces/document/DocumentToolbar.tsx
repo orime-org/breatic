@@ -4,7 +4,7 @@
 import type { Editor } from '@tiptap/react';
 import { useEditorState } from '@tiptap/react';
 import { Bold, Italic, Redo2, Strikethrough, Undo2 } from 'lucide-react';
-import type * as React from 'react';
+import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { Separator } from '@web/components/ui/separator';
@@ -124,7 +124,7 @@ const MARK_TOOLS: ToolDef[] = [
  * @param root0.readOnly - True for a viewer; every control is disabled.
  * @returns The document toolbar element.
  */
-export function DocumentToolbar({
+export const DocumentToolbar = React.memo(function DocumentToolbar({
   editor,
   history,
   readOnly = false,
@@ -148,7 +148,7 @@ export function DocumentToolbar({
       ))}
     </div>
   );
-}
+});
 
 /**
  * A single toolbar toggle. Subscribes to just its own active flag, so it
@@ -160,7 +160,7 @@ export function DocumentToolbar({
  * @param root0.disabled - True to render the toggle inert (viewer).
  * @returns The toggle button element for one document tool.
  */
-function ToolButton({
+const ToolButton = React.memo(function ToolButton({
   tool,
   editor,
   disabled = false,
@@ -189,7 +189,7 @@ function ToolButton({
       <Icon className='h-4 w-4' />
     </Button>
   );
-}
+});
 
 /**
  * A single toolbar action, enabled or disabled by the caller.
@@ -199,7 +199,7 @@ function ToolButton({
  * @param root0.enabled - Whether the action is currently available.
  * @returns The action button element.
  */
-function ActionButton({
+const ActionButton = React.memo(function ActionButton({
   action,
   editor,
   enabled,
@@ -223,4 +223,4 @@ function ActionButton({
       <Icon className='h-4 w-4' />
     </Button>
   );
-}
+});

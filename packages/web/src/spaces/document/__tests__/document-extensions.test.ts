@@ -143,9 +143,19 @@ describe('document schema — complete from slice 1 (guards against silent prose
   });
 
   it('keeps the media nodes as block-level atoms so a slice-1 client can hold them intact', () => {
+    // Both properties are load-bearing and neither is the default. A media node
+    // that is not an ATOM has editable innards, so a caret can land inside it
+    // and a keystroke can produce a shape the schema does not describe. One
+    // that is not BLOCK is an inline node, which changes where it may appear
+    // and how a client that cannot render it treats the surrounding text.
+    // Asserting the names alone would let either flip silently.
     const schema = getSchema(buildDocumentExtensions());
     for (const kind of ['image', 'video', 'audio']) {
-      expect(schema.nodes[kind]).toBeDefined();
+      const node = schema.nodes[kind];
+      expect(node).toBeDefined();
+      expect(node.isAtom).toBe(true);
+      expect(node.isBlock).toBe(true);
+      expect(node.isInline).toBe(false);
     }
     // Video and audio carry a poster/cover URL alongside their source, so the
     // attributes must exist in slice 1 even though no UI writes them yet —

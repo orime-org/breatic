@@ -6,11 +6,10 @@
  * component's, keyed by document name.
  *
  * Two kinds of state live only in memory and are never written to the Y.Doc: an
- * undo stack, and an editor instance with its selection, scroll position and
- * input-method state. Both are lost if a React component owns them, because
- * switching Space tabs remounts the body — `SpaceOutlet` is keyed on the Space
- * id. The text survives, since that IS in the Y.Doc; everything around it
- * silently does not.
+ * undo stack, and an editor instance with its selection and input-method state.
+ * Both are lost if a React component owns them, because switching Space tabs
+ * remounts the body — `SpaceOutlet` is keyed on the Space id. The text
+ * survives, since that IS in the Y.Doc; everything around it silently does not.
  *
  * Binding such state to the DOCUMENT instead — the same lifetime as the cached
  * `Y.Doc` — is what makes a tab switch harmless. Callers differ only in how

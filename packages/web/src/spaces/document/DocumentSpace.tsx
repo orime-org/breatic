@@ -40,8 +40,8 @@ export function DocumentSpace({
   const caretUser = useCaretUser();
 
   // The editor belongs to the document, not to this component: switching Space
-  // tabs remounts this body, and everything the Y.Doc does not hold — undo
-  // stack, selection, scroll position — would go with it.
+  // tabs remounts this body, and what the Y.Doc does not hold — undo stack,
+  // selection, composition state — would go with it.
   const handle = useDocumentEditor({
     doc,
     name,

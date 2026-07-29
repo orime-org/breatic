@@ -10,9 +10,9 @@
  * a paragraph someone else is still writing.
  *
  * The lifetime tests exist because the editor deliberately outlives the
- * component that renders it. A Space tab switch remounts the body, and
- * everything the Y.Doc does not hold — undo stack, selection, scroll position,
- * in-flight IME composition — would be lost with a component-owned editor.
+ * component that renders it. A Space tab switch remounts the body, and what the
+ * Y.Doc does not hold — undo stack, selection, in-flight IME composition —
+ * would be lost with a component-owned editor.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -214,6 +214,40 @@ describe('useDocumentEditor', () => {
       peer.destroy();
     });
 
+    it('keeps machine-driven edits off the stack', async () => {
+      // Not everything that writes to the document is the user typing. A
+      // migration, a cascade after a node disappears, a normalisation pass —
+      // these mark themselves `addToHistory: false`, and honouring that marker
+      // is the whole job of the manager's `captureTransaction`. Without it the
+      // user's next undo takes back something they never did.
+      const { rendered, editor } = await mountEditor();
+      const handle = rendered.result.current as NonNullable<
+        ReturnType<typeof useDocumentEditor>
+      >;
+
+      act(() => {
+        editor.commands.setContent('<p>what the user wrote</p>');
+      });
+      await waitFor(() => expect(handle.undoManager.undoStack.length).toBe(1));
+      handle.undoManager.stopCapturing();
+
+      act(() => {
+        editor.view.dispatch(
+          editor.view.state.tr
+            .insertText(' and what a machine appended', editor.state.doc.content.size - 1)
+            .setMeta('addToHistory', false),
+        );
+      });
+      expect(editor.getText()).toContain('what a machine appended');
+
+      // The machine's write is in the document but not on the stack.
+      expect(handle.undoManager.undoStack.length).toBe(1);
+      act(() => {
+        editor.commands.undo();
+      });
+      expect(editor.getText()).not.toContain('what the user wrote');
+    });
+
     it('can redo after undoing away the last of the document', async () => {
       // Undoing the only paragraph used to empty the Y fragment outright.
       // ProseMirror's schema requires at least one block, so its document kept
@@ -330,7 +364,7 @@ describe('useDocumentEditor', () => {
       const { editor: second } = await mountEditor();
 
       // Not merely equivalent — the SAME instance, which is what carries the
-      // selection, scroll position and undo stack across.
+      // selection and undo stack across.
       expect(second).toBe(editor);
       expect(second.isDestroyed).toBe(false);
       expect(second.can().undo()).toBe(true);

@@ -3,7 +3,7 @@
 
 import { EditorContent } from '@tiptap/react';
 import type { Editor } from '@tiptap/react';
-import type * as React from 'react';
+import * as React from 'react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { DocumentToolbar } from '@web/spaces/document/DocumentToolbar';
@@ -29,7 +29,7 @@ interface DocumentEditorProps {
  * @param root0.readOnly - True for a viewer; disables the toolbar.
  * @returns The toolbar and editor body.
  */
-export function DocumentEditor({
+export const DocumentEditor = React.memo(function DocumentEditor({
   editor,
   history,
   readOnly = false,
@@ -53,4 +53,4 @@ export function DocumentEditor({
       </ScrollArea>
     </>
   );
-}
+});

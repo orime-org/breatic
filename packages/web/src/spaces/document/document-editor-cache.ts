@@ -7,8 +7,10 @@
  * **Why the editor and not just its history.** Switching Space tabs remounts
  * the body — `SpaceOutlet` is keyed on the Space id — and an editor owned by
  * that component dies with it. The text survives, because it is in the Y.Doc;
- * the undo stack, the selection, the scroll position and any in-flight
- * input-method composition do not.
+ * the undo stack, the selection and any in-flight input-method composition do
+ * not. (The scroll position is NOT among them: the scroller is the `ScrollArea`
+ * around the editor, which belongs to the component and is rebuilt with it.
+ * Carrying that across would be a separate change.)
  *
  * The narrower response is to rescue the undo stack alone, by handing the
  * Collaboration extension a manager built to outlive the editor. That was tried
