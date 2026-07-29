@@ -259,11 +259,15 @@ describe("requestProjectTransfer", () => {
     const [reqPayload] = await sql<{ payload: Record<string, unknown> }[]>`
       SELECT payload FROM notifications WHERE id = ${reqs[0]!.id}
     `;
+    // Ids, not names: the handle and slug are resolved at read time so a
+    // rename cannot leave this notification pointing at the wrong place.
     expect(reqPayload!.payload).toMatchObject({
       fromName: ownerName,
-      fromHandle: ownerSlug,
-      projectSlug,
+      fromUserId: ownerId,
+      projectId,
     });
+    expect(reqPayload!.payload).not.toHaveProperty("fromHandle");
+    expect(reqPayload!.payload).not.toHaveProperty("projectSlug");
   });
 
   it("rejects a non-owner initiator with Forbidden", async () => {
@@ -353,9 +357,10 @@ describe("confirmProjectTransfer", () => {
     expect(approved).toHaveLength(1);
     expect(approved[0]!.payload).toMatchObject({
       accepterName: recipientName,
-      accepterHandle: recipientSlug,
-      projectSlug,
+      accepterUserId: recipientId,
+      projectId,
     });
+    expect(approved[0]!.payload).not.toHaveProperty("accepterHandle");
   });
 
   it("promotes a recipient who was a project viewer to owner (viewer can receive)", async () => {

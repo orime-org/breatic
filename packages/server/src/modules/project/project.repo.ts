@@ -16,7 +16,7 @@
  * the `yjs_documents` table.
  */
 
-import { eq, and, isNull, isNotNull, or, desc } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, or, desc, inArray } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectActivitiesRepo } from "@breatic/core";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
@@ -65,6 +65,27 @@ function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
  * @param id - Project UUID
  * @returns The project entity, or null if not found or soft-deleted
  */
+/**
+ * Resolve project ids to their CURRENT name + slug, in one query.
+ *
+ * The read half of storing ids instead of names in notifications: the id is
+ * immutable, so a renamed project still resolves to the right link. Deleted
+ * projects are absent from the map rather than yielding a placeholder, letting
+ * the caller render plain text instead of a dead link.
+ * @param projectIds - Project UUIDs (deduped by the caller)
+ * @returns Map of `projectId → { name, slug }`, missing for deleted projects
+ */
+export async function getIdentitiesByProjectIds(
+  projectIds: string[],
+): Promise<Map<string, { name: string; slug: string }>> {
+  if (projectIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: projects.id, name: projects.name, slug: projects.slug })
+    .from(projects)
+    .where(and(inArray(projects.id, projectIds), isNull(projects.deletedAt)));
+  return new Map(rows.map((r) => [r.id, { name: r.name, slug: r.slug }]));
+}
+
 export async function getProjectById(id: string): Promise<ProjectEntity | null> {
   const rows = await db
     .select()

@@ -135,10 +135,8 @@ export async function requestProjectTransfer(
     payload: {
       fromUserId,
       fromName: from?.name ?? "",
-      fromHandle: from?.slug ?? "",
       projectId,
       projectName: project.name,
-      projectSlug: project.slug,
     },
     expiresAt,
   });
@@ -203,7 +201,6 @@ export async function confirmProjectTransfer(
       fromUserId?: unknown;
       projectId?: unknown;
       projectName?: unknown;
-      projectSlug?: unknown;
     };
     if (
       typeof payload.fromUserId !== "string" ||
@@ -214,8 +211,6 @@ export async function confirmProjectTransfer(
     const { fromUserId, projectId } = payload;
     const projectName =
       typeof payload.projectName === "string" ? payload.projectName : "";
-    const projectSlug =
-      typeof payload.projectSlug === "string" ? payload.projectSlug : "";
 
     // TOCTOU guard (adversarial review): the request-time two-layer eligibility
     // (ADR D3) can go stale within the 7-day TTL — the recipient may have been
@@ -281,10 +276,10 @@ export async function confirmProjectTransfer(
     await notificationService.createProjectTransferApproved({
       userId: fromUserId,
       payload: {
+        projectId,
         projectName,
-        projectSlug,
+        accepterUserId: receiverUserId,
         accepterName: accepter?.name ?? "",
-        accepterHandle: accepter?.slug ?? "",
       },
       tx,
     });

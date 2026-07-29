@@ -102,10 +102,8 @@ export async function requestTransfer(
     payload: {
       fromUserId: fromAdminUserId,
       fromName: from?.name ?? "",
-      fromHandle: from?.slug ?? "",
       studioId: studio.id,
       studioName: studio.name,
-      studioSlug: studio.slug,
     },
     expiresAt,
   });
@@ -172,7 +170,6 @@ export async function confirmTransfer(
       fromUserId?: unknown;
       studioId?: unknown;
       studioName?: unknown;
-      studioSlug?: unknown;
     };
     if (
       typeof payload.fromUserId !== "string" ||
@@ -183,8 +180,6 @@ export async function confirmTransfer(
     const { fromUserId, studioId } = payload;
     const studioName =
       typeof payload.studioName === "string" ? payload.studioName : "";
-    const studioSlug =
-      typeof payload.studioSlug === "string" ? payload.studioSlug : "";
 
     // TOCTOU guard (adversarial review): the request-time non-guest check
     // (#1612 / D3) can go stale within the 7-day TTL — the recipient may have
@@ -247,9 +242,9 @@ export async function confirmTransfer(
       userId: fromUserId,
       payload: {
         studioName,
-        studioSlug,
+        studioId,
         accepterName: accepter?.name ?? "",
-        accepterHandle: accepter?.slug ?? "",
+        accepterUserId: receiverUserId,
       },
       tx,
     });

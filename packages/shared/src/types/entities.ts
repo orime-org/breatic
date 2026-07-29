@@ -238,6 +238,46 @@ export interface NotificationEntity {
 }
 
 /**
+ * The current display identity of something a notification points at.
+ *
+ * Resolved server-side at read time from an immutable id, never stored in the
+ * notification itself. That is the whole point: a stored slug is a snapshot of
+ * a name that can change hands, and for a personal studio the slug IS the
+ * user's @handle — once someone else claims a released handle, a stored copy
+ * silently points at a stranger.
+ */
+export interface NotificationRef {
+  /** Current URL slug, for building the link. */
+  slug: string;
+  /** Current display name, for the link text. */
+  name: string;
+}
+
+/**
+ * A page of notifications plus the identities its ids resolve to right now.
+ *
+ * `resolved` lives INSIDE `data` rather than beside it because the frontend's
+ * request helper unwraps the envelope and discards everything else — a sibling
+ * field would arrive as `undefined` with no type error to warn anyone.
+ *
+ * An id missing from its map means the target is gone (deleted, or never
+ * resolvable); the frontend renders that reference as plain text instead of a
+ * dead link. Lookups are batched per kind, so one page costs a constant number
+ * of queries no matter how many notifications it holds.
+ */
+export interface NotificationListView {
+  items: NotificationEntity[];
+  resolved: {
+    /** Keyed by user id → that user's personal studio (their @handle). */
+    users: Record<string, NotificationRef>;
+    /** Keyed by studio id. */
+    studios: Record<string, NotificationRef>;
+    /** Keyed by project id. */
+    projects: Record<string, NotificationRef>;
+  };
+}
+
+/**
  * Project visibility (slice 2). 'studio' = open baseline, visible to every
  * studio member; 'private' = only users with an explicit project_members row.
  */

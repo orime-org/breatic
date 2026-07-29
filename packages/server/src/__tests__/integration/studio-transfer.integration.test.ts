@@ -195,7 +195,7 @@ async function seedStudio(): Promise<Seeded> {
 
 describe("requestTransfer", () => {
   it("lands an actionable transfer-request notification with the actor identity + a future expiry", async () => {
-    const { slug, adminId, memberId, adminName, adminSlug } = await seedStudio();
+    const { studioId, slug, adminId, memberId, adminName } = await seedStudio();
 
     await studioTransferService.requestTransfer(slug, adminId, memberId);
 
@@ -205,17 +205,22 @@ describe("requestTransfer", () => {
     expect(reqs[0]!.expires_at).not.toBeNull();
     expect(reqs[0]!.expires_at!.getTime()).toBeGreaterThan(Date.now());
 
-    // The bell payload carries the initiating admin's identity (name + @handle)
-    // + the studio slug, so the row renders "[Admin] asked you to take over
-    // [studio]" with both clickable.
+    // The bell payload carries the initiating admin's id + the studio id, so
+    // the row renders "[Admin] asked you to take over [studio]" with both
+    // clickable — the names and links come from resolving those ids at read
+    // time, not from a copy frozen when the request was sent.
     const [reqPayload] = await sql<{ payload: Record<string, unknown> }[]>`
       SELECT payload FROM notifications WHERE id = ${reqs[0]!.id}
     `;
+    // Ids, not names: the handle and slug are resolved at read time so a
+    // rename cannot leave this notification pointing at the wrong place.
     expect(reqPayload!.payload).toMatchObject({
       fromName: adminName,
-      fromHandle: adminSlug,
-      studioSlug: slug,
+      fromUserId: adminId,
+      studioId,
     });
+    expect(reqPayload!.payload).not.toHaveProperty("fromHandle");
+    expect(reqPayload!.payload).not.toHaveProperty("studioSlug");
   });
 
   it("rejects transferring to a non-member with NotFound", async () => {
@@ -277,9 +282,10 @@ describe("confirmTransfer", () => {
     expect(approved).toHaveLength(1);
     expect(approved[0]!.payload).toMatchObject({
       accepterName: memberName,
-      accepterHandle: memberSlug,
-      studioSlug: slug,
+      accepterUserId: memberId,
+      studioId,
     });
+    expect(approved[0]!.payload).not.toHaveProperty("accepterHandle");
   });
 
   it("refuses to confirm an expired request with Conflict (roles unchanged)", async () => {

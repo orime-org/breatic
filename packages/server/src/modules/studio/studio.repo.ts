@@ -241,6 +241,31 @@ export async function getPersonalProfilesByCreators(
 }
 
 /**
+ * Resolve studio ids to their CURRENT name + slug, in one query.
+ *
+ * The read half of storing ids instead of names. Notifications keep the id
+ * and look the display identity up at render time, so a studio that has been
+ * renamed — or whose slug has been released and re-claimed by somebody else —
+ * still resolves to the right place.
+ *
+ * Soft-deleted studios are simply absent from the map rather than yielding a
+ * placeholder, so a caller can tell "gone" from "not looked up" and render
+ * plain text instead of a dead link.
+ * @param studioIds - Studio UUIDs (deduped by the caller)
+ * @returns Map of `studioId → { name, slug }`, missing for deleted studios
+ */
+export async function getIdentitiesByStudioIds(
+  studioIds: string[],
+): Promise<Map<string, { name: string; slug: string }>> {
+  if (studioIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: studios.id, name: studios.name, slug: studios.slug })
+    .from(studios)
+    .where(and(inArray(studios.id, studioIds), isNull(studios.deletedAt)));
+  return new Map(rows.map((r) => [r.id, { name: r.name, slug: r.slug }]));
+}
+
+/**
  * Look up an active studio (personal or team) by its URL handle.
  *
  * Backs the container shell (`GET /studio/:slug`). The slug is globally
