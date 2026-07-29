@@ -42,13 +42,16 @@ export interface UseDocumentEditorOptions {
   /** False puts the editor in read-only mode (viewer role, history preview). */
   editable?: boolean;
   /**
-   * Whether this document has synced at least once.
+   * Whether this document's real content has arrived at least once.
    *
    * Gates the seeding in {@link seedEmptyBody}: a body that is empty because
    * it has not loaded yet must not be seeded, or the server's real content
    * merges in behind the seeded paragraph and leaves a stray blank line.
+   *
+   * EVER, not currently. A live "is the socket in sync" flag drops to false on
+   * every routine reconnect, and by then the content is already here.
    */
-  synced?: boolean;
+  hasSynced?: boolean;
 }
 
 /**
@@ -65,7 +68,7 @@ export interface UseDocumentEditorOptions {
  * @param options.caretProvider - Provider whose awareness carries carets.
  * @param options.caretUser - This user's caret identity.
  * @param options.editable - False for read-only.
- * @param options.synced - Whether the document has synced; gates body seeding.
+ * @param options.hasSynced - Whether content has ever arrived; gates seeding.
  * @returns The editor and its undo manager, or null while the wiring is absent.
  */
 export function useDocumentEditor({
@@ -74,13 +77,21 @@ export function useDocumentEditor({
   caretProvider,
   caretUser,
   editable = true,
-  synced = true,
+  hasSynced = true,
 }: UseDocumentEditorOptions): DocumentEditorHandle | null {
-  // Once, as soon as the real content is known to be in. Seeding is idempotent
-  // — a body with anything in it is left alone — so a re-run is free.
+  // Once the real content is known to be in, and only from a client allowed to
+  // write. A read-only client's seed is refused by the server, which would
+  // leave it a paragraph ahead of everyone else — the stray blank line this
+  // exists to prevent, arriving from the other side. Seeding is idempotent, so
+  // a re-run is free.
+  //
+  // `editable` is the role, which is the only signal the client has; a
+  // connection downgraded to read-only for other reasons (a per-document
+  // connection cap) still reads as editable here. Everything such a client
+  // types is refused too, so that is a wider gap than seeding.
   React.useEffect(() => {
-    if (synced) seedEmptyBody(doc);
-  }, [doc, synced]);
+    if (hasSynced && editable) seedEmptyBody(doc);
+  }, [doc, hasSynced, editable]);
 
   // Get-or-create, so the repeat calls a re-render causes are free and a
   // StrictMode double-invoke cannot produce a second editor.

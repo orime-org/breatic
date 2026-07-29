@@ -39,6 +39,18 @@ export function DocumentSpace({
   const { provider, synced } = useSocket({ name, doc });
   const caretUser = useCaretUser();
 
+  // `synced` answers "is the socket in sync right now" and drops to false on
+  // every routine close — a wifi switch, a laptop waking, a collab redeploy.
+  // What matters here is whether the content has EVER arrived: once it has,
+  // the local document holds it and edits made offline merge cleanly on
+  // reconnect. Latching the flag is what keeps a blip from tearing the editor
+  // out of the DOM along with the caret, the in-flight IME composition and the
+  // reader's place on the page.
+  const [hasSynced, setHasSynced] = React.useState(false);
+  React.useEffect(() => {
+    if (synced) setHasSynced(true);
+  }, [synced]);
+
   // The editor belongs to the document, not to this component: switching Space
   // tabs remounts this body, and what the Y.Doc does not hold — undo stack,
   // selection, composition state — would go with it.
@@ -48,7 +60,7 @@ export function DocumentSpace({
     caretProvider: provider,
     caretUser,
     editable: !readOnly,
-    synced,
+    hasSynced,
   });
   // Nothing is offered until the document's real content is in. Editing before
   // that is not a lesser version of editing this document — it is editing a
@@ -62,7 +74,7 @@ export function DocumentSpace({
   // honest reading of the situation — nothing typed then would have been
   // saved — and `ConnectionBanner` at the project level says why (user
   // 2026-07-29 weighed this against the alternative and chose it).
-  const editor = synced ? (handle?.editor ?? null) : null;
+  const editor = hasSynced ? (handle?.editor ?? null) : null;
   const history = useDocumentHistory(handle?.undoManager ?? null);
 
   return (

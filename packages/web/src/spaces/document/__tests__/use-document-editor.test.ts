@@ -120,7 +120,7 @@ describe('useDocumentEditor', () => {
       peer.destroy();
     });
 
-    it('waits for sync before seeding the body', async () => {
+    it('waits for the content to arrive before seeding the body', async () => {
       // A body can be empty for two very different reasons: the document is
       // genuinely new, or it simply has not loaded yet. Seeding the second one
       // adds a paragraph the server's real content then merges in behind,
@@ -132,7 +132,7 @@ describe('useDocumentEditor', () => {
           name: NAME,
           caretProvider: { awareness },
           caretUser: CARET_USER,
-          synced: false,
+          hasSynced: false,
         }),
       );
       await waitFor(() => expect(rendered.result.current).not.toBeNull());
@@ -150,6 +150,26 @@ describe('useDocumentEditor', () => {
       expect(fragment.length).toBe(1);
       expect(textOf(fragment)).toBe('content that already existed');
       peer.destroy();
+    });
+
+    it('does not seed from a read-only client', async () => {
+      // A viewer has no business writing to the shared document, and the
+      // server agrees: hocuspocus drops updates from a read-only connection.
+      // The write is therefore not merely impolite, it is one-sided — this
+      // client ends up a paragraph ahead of everyone else for the rest of the
+      // session, which is the stray-blank-line symptom the seed exists to
+      // prevent, arriving through the door the sync gate does not watch.
+      const rendered = renderHook(() =>
+        useDocumentEditor({
+          doc,
+          name: NAME,
+          caretProvider: { awareness },
+          caretUser: CARET_USER,
+          editable: false,
+        }),
+      );
+      await waitFor(() => expect(rendered.result.current).not.toBeNull());
+      expect(documentBodyFragment(doc).length).toBe(0);
     });
 
     it('seeds once and leaves an existing body alone', async () => {

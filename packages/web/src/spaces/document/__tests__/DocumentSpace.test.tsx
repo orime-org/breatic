@@ -49,6 +49,26 @@ describe('DocumentSpace', () => {
     socketState.synced = true;
   });
 
+  it('keeps the editor through a reconnect once the content has arrived', async () => {
+    // `synced` reports whether the socket is in sync RIGHT NOW — it goes false
+    // on any routine close (wifi switch, laptop wake, a collab redeploy). What
+    // the gate below actually needs to know is whether the real content has
+    // EVER arrived, because once it has, the local document holds it and
+    // offline edits merge cleanly on reconnect. Confusing the two tears the
+    // mounted editor out of the DOM on every blip, taking the caret, the
+    // in-flight IME composition and the scroll position with it.
+    const { rerender } = render(
+      <DocumentSpace projectId='p1' spaceId='doc-reconnect' />,
+    );
+    expect(await screen.findByTestId('document-toolbar')).toBeInTheDocument();
+
+    socketState.synced = false;
+    rerender(<DocumentSpace projectId='p1' spaceId='doc-reconnect' />);
+
+    expect(screen.getByTestId('document-toolbar')).toBeInTheDocument();
+    expect(screen.queryByTestId('document-space-loading')).toBeNull();
+  });
+
   it('does not offer the editor until the document has synced', async () => {
     // Editing a document whose real content has not arrived is not a smaller
     // version of editing it — it is editing a different document. Anything
