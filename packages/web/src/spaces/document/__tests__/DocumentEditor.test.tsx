@@ -18,11 +18,11 @@ import {
 import type { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 
+import { Awareness } from 'y-protocols/awareness';
+
+import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
-import {
-  getDocumentUndoManager,
-  _resetDocumentUndoCacheForTests,
-} from '@web/spaces/document/document-undo';
+import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import {
@@ -43,27 +43,38 @@ function markupOf(fragment: Y.XmlFragment): string {
   return fragment.toArray().map((n) => n.toString()).join('');
 }
 
+const HUE = userPaletteHue('test-user');
+const CARET_USER = { name: 'Tester', color: resolvePaletteHex(HUE), hue: HUE };
+
 describe('DocumentEditor', () => {
   const NAME = 'project-p/document-chrome';
   let doc: Y.Doc;
+  let awareness: Awareness;
   let fragment: Y.XmlFragment;
   let editor: Editor;
   let history: DocumentHistoryState;
 
   beforeEach(async () => {
     doc = new Y.Doc();
+    awareness = new Awareness(doc);
     fragment = documentBodyFragment(doc);
-    const undoManager = getDocumentUndoManager(doc, NAME);
-    const { result } = renderHook(() => ({
-      editor: useDocumentEditor({ fragment, undoManager }),
-      history: useDocumentHistory(undoManager),
-    }));
-    await waitFor(() => expect(result.current.editor).not.toBeNull());
-    editor = result.current.editor as Editor;
+    const caretProvider = { awareness };
+    const { result } = renderHook(() => {
+      const handle = useDocumentEditor({
+        doc,
+        name: NAME,
+        caretProvider,
+        caretUser: CARET_USER,
+      });
+      return { handle, history: useDocumentHistory(handle?.undoManager ?? null) };
+    });
+    await waitFor(() => expect(result.current.handle).not.toBeNull());
+    editor = result.current.handle!.editor;
     history = result.current.history;
   });
   afterEach(() => {
-    _resetDocumentUndoCacheForTests();
+    _resetDocumentEditorCacheForTests();
+    awareness.destroy();
     doc.destroy();
   });
 

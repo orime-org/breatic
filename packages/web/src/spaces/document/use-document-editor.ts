@@ -2,100 +2,89 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Creates the document editor and keeps it bound to the Space's Yjs document.
+ * Resolves the document editor for a Space and keeps it in step with props.
  *
- * Split out from the component so the binding and its undo semantics can be
- * exercised directly — collaborative undo is per-client and getting it wrong
- * silently destroys a co-editor's work, which is not something to verify only
- * through the UI.
+ * The editor itself is not created here — it belongs to the document, not to
+ * this component, and is built once and kept in {@link getDocumentEditor}. See
+ * that module for why the editor rather than just its history is what survives
+ * a Space tab switch.
+ *
+ * What is left for the hook is the part that genuinely changes while an editor
+ * lives: whether it is editable, and whether this client's caret should read as
+ * present or away.
  */
 
-import type { Editor } from '@tiptap/react';
-import { useEditor } from '@tiptap/react';
 import * as React from 'react';
 import type * as Y from 'yjs';
 
+import type { CaretUserIdentity } from '@web/data/yjs/use-caret-user';
 import { useCollabCaretFocus } from '@web/data/yjs/use-collab-caret-focus';
 import {
-  buildDocumentExtensions,
-  type DocumentCaretUser,
-} from '@web/spaces/document/document-extensions';
+  getDocumentEditor,
+  type DocumentEditorHandle,
+} from '@web/spaces/document/document-editor-cache';
 
 /** Inputs for {@link useDocumentEditor}. */
 export interface UseDocumentEditorOptions {
-  /** The document body fragment — the collaborative binding target. */
-  fragment: Y.XmlFragment;
+  /** The Space's Y.Doc; pass the one `getDoc(name)` returns. */
+  doc: Y.Doc;
+  /** The canonical document name, which is also the editor's cache key. */
+  name: string;
   /**
    * Provider whose awareness carries collaborator carets. Null until the
-   * socket connects; the caret layer mounts once it arrives.
+   * session resolves; the editor waits for it rather than being built without
+   * carets and rebuilt later.
    */
-  caretProvider?: { awareness: unknown } | null;
+  caretProvider: { awareness: unknown } | null;
   /** This user's caret identity, published to other clients. */
-  caretUser?: DocumentCaretUser | null;
-  /** Empty-state text. */
-  placeholder?: string;
+  caretUser: CaretUserIdentity | null;
   /** False puts the editor in read-only mode (viewer role, history preview). */
   editable?: boolean;
-  /**
-   * The undo manager to use. Supplying one keeps the history alive when the
-   * editor is rebuilt — which a Space tab switch always causes.
-   */
-  undoManager?: Y.UndoManager;
 }
 
 /**
- * Build the document editor bound to `fragment`.
+ * Resolve the document's editor.
  *
- * History comes from the Collaboration extension's shared undo manager, which
- * tracks only this client's own transactions — a peer's edits are never on our
- * stack, so undo can't reach across and delete their work.
- * @param options - Binding target plus the optional collaborative layers.
- * @param options.fragment - The document body fragment to bind to.
- * @param options.caretProvider - Provider whose awareness carries collaborator carets.
- * @param options.caretUser - This user's caret identity, published to other clients.
- * @param options.placeholder - Empty-state text.
- * @param options.editable - False puts the editor in read-only mode.
- * @param options.undoManager - Undo manager that outlives the editor rebuild.
- * @returns The editor, or null until it has mounted.
+ * Returns null until the caret wiring is available, because both pieces are
+ * baked into the editor at construction and it is only constructed once. In
+ * practice that is a single extra render: the provider comes from a
+ * reference-counted registry that already holds this document open, so its
+ * arrival waits on the session resolving, not on the network.
+ * @param options - Which document, plus the collaborative wiring.
+ * @param options.doc - The Space's Y.Doc.
+ * @param options.name - The canonical document name (cache key).
+ * @param options.caretProvider - Provider whose awareness carries carets.
+ * @param options.caretUser - This user's caret identity.
+ * @param options.editable - False for read-only.
+ * @returns The editor and its undo manager, or null while the wiring is absent.
  */
 export function useDocumentEditor({
-  fragment,
-  caretProvider = null,
-  caretUser = null,
-  placeholder,
+  doc,
+  name,
+  caretProvider,
+  caretUser,
   editable = true,
-  undoManager,
-}: UseDocumentEditorOptions): Editor | null {
-  const editor = useEditor(
-    {
-      extensions: buildDocumentExtensions({
-        fragment,
-        caretProvider,
-        caretUser,
-        placeholder,
-        undoManager,
-      }),
-      // The editor mounts asynchronously; rendering it synchronously breaks
-      // hydration and is what upstream recommends against.
-      immediatelyRender: false,
-      editable,
-    },
-    // Rebuild only on inputs baked into the extension list at creation time.
-    // `placeholder` is a STRING, not the translator function: the translator's
-    // identity is stable across a locale switch, so depending on it would leave
-    // the placeholder stuck in the previous language.
-    [fragment, caretProvider, caretUser, placeholder, undoManager],
+}: UseDocumentEditorOptions): DocumentEditorHandle | null {
+  // Get-or-create, so the repeat calls a re-render causes are free and a
+  // StrictMode double-invoke cannot produce a second editor.
+  const handle = React.useMemo(
+    () =>
+      caretProvider && caretUser
+        ? getDocumentEditor(doc, name, { caretProvider, caretUser })
+        : null,
+    [doc, name, caretProvider, caretUser],
   );
 
   // Editability flips without a rebuild — a role change or entering a history
-  // preview must not discard the editor and its undo stack.
+  // preview must not discard the editor, its undo stack or its selection.
   React.useEffect(() => {
+    const editor = handle?.editor;
     if (!editor || editor.isDestroyed) return;
     if (editor.isEditable !== editable) editor.setEditable(editable);
-  }, [editor, editable]);
+  }, [handle, editable]);
 
   // Dim collaborators who have switched away, and tell them when we do.
-  useCollabCaretFocus(editor, caretProvider, caretUser);
+  useCollabCaretFocus(handle?.editor ?? null, caretProvider, caretUser);
 
-  return editor;
+  return handle;
 }

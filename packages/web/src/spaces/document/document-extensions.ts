@@ -41,20 +41,15 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import StarterKit from '@tiptap/starter-kit';
 import type * as Y from 'yjs';
 
+import { t } from '@breatic/shared';
+
+import type { CaretUserIdentity } from '@web/data/yjs/use-caret-user';
 import {
   renderCollabCaret,
   renderCollabSelection,
 } from '@web/spaces/canvas/generate/caret-render';
 import { CollabUndoSelection } from '@web/spaces/canvas/generate/collab-undo-selection';
-import { scopeUndoManagerToEditor } from '@web/spaces/document/document-undo';
 import { Audio, Video } from '@web/spaces/document/document-media-nodes';
-
-/** A collaborator's caret identity, as published through awareness. */
-export interface DocumentCaretUser {
-  name: string;
-  color: string;
-  hue: string;
-}
 
 /** Inputs that switch on the collaborative layers; all optional. */
 export interface DocumentExtensionOptions {
@@ -69,13 +64,11 @@ export interface DocumentExtensionOptions {
    */
   caretProvider?: { awareness: unknown } | null;
   /** This user's caret identity, published to other clients. */
-  caretUser?: DocumentCaretUser | null;
-  /** Empty-state text. */
-  placeholder?: string;
+  caretUser?: CaretUserIdentity | null;
   /**
-   * The undo manager to use. Supplying one keeps the history alive across an
-   * editor rebuild — a Space tab switch remounts the body, and the extension's
-   * own manager would die with it. See `getDocumentUndoManager` in `document-undo.ts`.
+   * The editor's undo manager. Held by the caller rather than left to the
+   * binding so it can be read without a plugin-key lookup; its lifetime is the
+   * editor's, which is what the binding assumes.
    */
   undoManager?: Y.UndoManager;
 }
@@ -93,8 +86,7 @@ export interface DocumentExtensionOptions {
 export function buildDocumentExtensions(
   options: DocumentExtensionOptions = {},
 ): Extensions {
-  const { fragment, caretProvider, caretUser, placeholder, undoManager } =
-    options;
+  const { fragment, caretProvider, caretUser, undoManager } = options;
 
   const extensions: Extensions = [
     StarterKit.configure({
@@ -140,15 +132,12 @@ export function buildDocumentExtensions(
     extensions.push(
       Collaboration.configure({
         fragment,
-        // Handing over our own manager keeps the undo stack alive across an
-        // editor rebuild; without it the extension builds a fresh one and a
-        // tab switch silently empties the history. It goes in wrapped, because
-        // the binding releases its subscriptions by destroying the manager
-        // outright — see {@link scopeUndoManagerToEditor} for why that has to
-        // be narrowed to this editor's own.
-        ...(undoManager
-          ? { yUndoOptions: { undoManager: scopeUndoManagerToEditor(undoManager) } }
-          : {}),
+        // Supplying the manager is about being able to READ it — a plugin-key
+        // lookup misses silently against a duplicated binding. It is not about
+        // outliving anything: the manager and the editor share a lifetime,
+        // exactly as the binding assumes, because the EDITOR is what survives a
+        // tab switch (see `document-editor-cache`).
+        ...(undoManager ? { yUndoOptions: { undoManager } } : {}),
       }),
       // Undo must restore the selection the edit started from. Upstream emits
       // its stack-item-popped hand-off AFTER the restore transaction has run,
@@ -177,9 +166,16 @@ export function buildDocumentExtensions(
     );
   }
 
-  if (placeholder !== undefined) {
-    extensions.push(Placeholder.configure({ placeholder }));
-  }
+  // Resolved per render of the placeholder decoration rather than captured as
+  // a string, because the editor is built once per document and would
+  // otherwise keep whichever language was active at that moment. `t` is the
+  // shared engine — `useTranslation` returns this same function and exists
+  // only to re-render subscribers — so calling it here reads the live locale.
+  extensions.push(
+    Placeholder.configure({
+      placeholder: () => t('spaces.document.placeholder'),
+    }),
+  );
 
   return extensions;
 }

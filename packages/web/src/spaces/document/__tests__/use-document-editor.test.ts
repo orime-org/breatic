@@ -2,22 +2,29 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The document editor's Yjs binding and its undo semantics.
+ * The document editor's Yjs binding, its undo semantics, and its lifetime.
  *
  * Undo in a collaborative document is per-client: it must roll back what THIS
  * user did and leave everyone else's edits alone. Getting that wrong is worse
  * than having no undo at all — one person pressing Cmd+Z would silently delete
  * a paragraph someone else is still writing.
+ *
+ * The lifetime tests exist because the editor deliberately outlives the
+ * component that renders it. A Space tab switch remounts the body, and
+ * everything the Y.Doc does not hold — undo stack, selection, scroll position,
+ * in-flight IME composition — would be lost with a component-owned editor.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
+import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
+import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import {
-  getDocumentUndoManager,
-  _resetDocumentUndoCacheForTests,
-} from '@web/spaces/document/document-undo';
+  _resetDocumentEditorCacheForTests,
+  evictDocumentEditor,
+} from '@web/spaces/document/document-editor-cache';
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
@@ -42,151 +49,299 @@ function syncAsRemote(target: Y.Doc, source: Y.Doc): void {
   );
 }
 
-describe('useDocumentEditor — Yjs binding', () => {
+const HUE = userPaletteHue('test-user');
+const CARET_USER = { name: 'Tester', color: resolvePaletteHex(HUE), hue: HUE };
+
+describe('useDocumentEditor', () => {
   let doc: Y.Doc;
+  let awareness: Awareness;
+  const NAME = 'project-p/document-s';
 
   beforeEach(() => {
     doc = new Y.Doc();
+    awareness = new Awareness(doc);
   });
   afterEach(() => {
-    doc.destroy();
-    vi.restoreAllMocks();
-  });
-
-  it('binds the editor to the document body fragment', async () => {
-    const fragment = doc.getXmlFragment('content');
-    const { result } = renderHook(() => useDocumentEditor({ fragment }));
-
-    await waitFor(() => expect(result.current).not.toBeNull());
-
-    act(() => {
-      result.current?.commands.setContent('<p>hello</p>');
-    });
-
-    expect(textOf(fragment)).toContain('hello');
-  });
-
-  it('reflects a remote peer edit in the local editor', async () => {
-    const fragment = doc.getXmlFragment('content');
-    const { result } = renderHook(() => useDocumentEditor({ fragment }));
-    await waitFor(() => expect(result.current).not.toBeNull());
-
-    const peer = new Y.Doc();
-    const peerFragment = peer.getXmlFragment('content');
-    const para = new Y.XmlElement('paragraph');
-    para.insert(0, [new Y.XmlText('from the other side')]);
-    peerFragment.push([para]);
-
-    act(() => syncAsRemote(doc, peer));
-
-    await waitFor(() =>
-      expect(result.current?.getText()).toContain('from the other side'),
-    );
-    peer.destroy();
-  });
-});
-
-describe('useDocumentEditor — undo is per-client', () => {
-  let doc: Y.Doc;
-
-  beforeEach(() => {
-    doc = new Y.Doc();
-  });
-  afterEach(() => {
+    _resetDocumentEditorCacheForTests();
+    awareness.destroy();
     doc.destroy();
   });
 
-  it('starts with nothing to undo', async () => {
-    const fragment = doc.getXmlFragment('content');
-    const { result } = renderHook(() => useDocumentEditor({ fragment }));
-    await waitFor(() => expect(result.current).not.toBeNull());
-
-    expect(result.current?.can().undo()).toBe(false);
-  });
-
-  it('rolls back this client’s own edit', async () => {
-    const fragment = doc.getXmlFragment('content');
-    const { result } = renderHook(() => useDocumentEditor({ fragment }));
-    await waitFor(() => expect(result.current).not.toBeNull());
-
-    act(() => {
-      result.current?.commands.setContent('<p>mine</p>');
-    });
-    await waitFor(() => expect(textOf(fragment)).toContain('mine'));
-
-    act(() => {
-      result.current?.commands.undo();
-    });
-
-    expect(textOf(fragment)).not.toContain('mine');
-  });
-
-  it('does not take a peer’s words out of the paragraph it shares with mine', async () => {
-    // The case the "peer adds their own paragraph" test below cannot see:
-    // when two people write into the SAME paragraph, undoing my insert takes
-    // the whole paragraph unless the delete filter stops it. Measured before
-    // the filter was in place: the paragraph came back empty, the peer's text
-    // gone, the deletion synced to everyone and absent from their undo stack.
-    const fragment = documentBodyFragment(doc);
-    const undoManager = getDocumentUndoManager(doc, 'project-p/document-shared');
-    const { result } = renderHook(() =>
-      useDocumentEditor({ fragment, undoManager }),
+  /** Mounts the hook with the caret wiring the editor needs to be built. */
+  function mount(name = NAME): ReturnType<typeof renderHook> {
+    return renderHook(() =>
+      useDocumentEditor({
+        doc,
+        name,
+        caretProvider: { awareness },
+        caretUser: CARET_USER,
+      }),
     );
-    await waitFor(() => expect(result.current).not.toBeNull());
+  }
 
-    act(() => {
-      result.current?.commands.setContent('<p>mine</p>');
+  /** Mounts and waits for the editor to exist, returning it. */
+  async function mountEditor(name = NAME): Promise<{
+    rendered: ReturnType<typeof renderHook>;
+    editor: NonNullable<ReturnType<typeof useDocumentEditor>>['editor'];
+  }> {
+    const rendered = mount(name);
+    await waitFor(() => expect(rendered.result.current).not.toBeNull());
+    const handle = rendered.result.current as NonNullable<
+      ReturnType<typeof useDocumentEditor>
+    >;
+    return { rendered, editor: handle.editor };
+  }
+
+  describe('Yjs binding', () => {
+    it('binds the editor to the document body fragment', async () => {
+      const { editor } = await mountEditor();
+      act(() => {
+        editor.commands.setContent('<p>hello</p>');
+      });
+      expect(textOf(documentBodyFragment(doc))).toContain('hello');
     });
-    await waitFor(() => expect(textOf(fragment)).toContain('mine'));
 
-    // The peer appends to the very same paragraph.
-    const peer = new Y.Doc();
-    syncAsRemote(peer, doc);
-    peer.transact(() => {
-      const paragraph = peer.getXmlFragment('content').get(0) as Y.XmlElement;
-      (paragraph.get(0) as Y.XmlText).insert(4, ' and theirs');
-    }, 'peer-origin');
-    act(() => syncAsRemote(doc, peer));
-    await waitFor(() => expect(textOf(fragment)).toContain('and theirs'));
+    it('reflects a remote peer edit in the local editor', async () => {
+      const { editor } = await mountEditor();
 
-    act(() => {
-      result.current?.commands.undo();
+      const peer = new Y.Doc();
+      const para = new Y.XmlElement('paragraph');
+      para.insert(0, [new Y.XmlText('from the other side')]);
+      peer.getXmlFragment('content').push([para]);
+
+      act(() => syncAsRemote(doc, peer));
+
+      await waitFor(() =>
+        expect(editor.getText()).toContain('from the other side'),
+      );
+      peer.destroy();
     });
 
-    expect(textOf(fragment)).toContain('and theirs');
-    _resetDocumentUndoCacheForTests();
-    peer.destroy();
+    it('stays absent until the caret wiring exists', () => {
+      // Both the provider and the identity are baked in at construction, and
+      // construction happens once — so an editor built without them would have
+      // no carets for the rest of its life.
+      const { result } = renderHook(() =>
+        useDocumentEditor({
+          doc,
+          name: NAME,
+          caretProvider: null,
+          caretUser: CARET_USER,
+        }),
+      );
+      expect(result.current).toBeNull();
+    });
   });
 
-  it('does NOT roll back a peer’s edit — that is the whole point', async () => {
-    const fragment = doc.getXmlFragment('content');
-    const { result } = renderHook(() => useDocumentEditor({ fragment }));
-    await waitFor(() => expect(result.current).not.toBeNull());
-
-    // This client writes something of its own first, so there IS a local entry
-    // on the stack — otherwise undo would be a no-op and the test would pass
-    // for the wrong reason.
-    act(() => {
-      result.current?.commands.setContent('<p>mine</p>');
-    });
-    await waitFor(() => expect(textOf(fragment)).toContain('mine'));
-
-    // A peer appends their own paragraph and it syncs in.
-    const peer = new Y.Doc();
-    syncAsRemote(peer, doc);
-    const peerFragment = peer.getXmlFragment('content');
-    const para = new Y.XmlElement('paragraph');
-    para.insert(0, [new Y.XmlText('theirs')]);
-    peerFragment.push([para]);
-    act(() => syncAsRemote(doc, peer));
-    await waitFor(() => expect(textOf(fragment)).toContain('theirs'));
-
-    act(() => {
-      result.current?.commands.undo();
+  describe('undo is per-client', () => {
+    it('starts with nothing to undo', async () => {
+      const { editor } = await mountEditor();
+      expect(editor.can().undo()).toBe(false);
     });
 
-    expect(textOf(fragment)).not.toContain('mine');
-    expect(textOf(fragment)).toContain('theirs');
-    peer.destroy();
+    it('rolls back this client’s own edit', async () => {
+      const { editor } = await mountEditor();
+      act(() => {
+        editor.commands.setContent('<p>mine</p>');
+      });
+      await waitFor(() =>
+        expect(textOf(documentBodyFragment(doc))).toContain('mine'),
+      );
+
+      act(() => {
+        editor.commands.undo();
+      });
+
+      expect(textOf(documentBodyFragment(doc))).not.toContain('mine');
+    });
+
+    it('does not take a peer’s words out of the paragraph it shares with mine', async () => {
+      // The case the "peer adds their own paragraph" test below cannot see:
+      // when two people write into the SAME paragraph, undoing my insert takes
+      // the whole paragraph unless the delete filter stops it. Measured before
+      // the filter was in place: the paragraph came back empty, the peer's text
+      // gone, the deletion synced to everyone and absent from their undo stack.
+      const fragment = documentBodyFragment(doc);
+      const { editor } = await mountEditor();
+
+      act(() => {
+        editor.commands.setContent('<p>mine</p>');
+      });
+      await waitFor(() => expect(textOf(fragment)).toContain('mine'));
+
+      const peer = new Y.Doc();
+      syncAsRemote(peer, doc);
+      peer.transact(() => {
+        const paragraph = peer.getXmlFragment('content').get(0) as Y.XmlElement;
+        (paragraph.get(0) as Y.XmlText).insert(4, ' and theirs');
+      }, 'peer-origin');
+      act(() => syncAsRemote(doc, peer));
+      await waitFor(() => expect(textOf(fragment)).toContain('and theirs'));
+
+      act(() => {
+        editor.commands.undo();
+      });
+
+      expect(textOf(fragment)).toContain('and theirs');
+      peer.destroy();
+    });
+
+    it('does NOT roll back a peer’s edit — that is the whole point', async () => {
+      const fragment = documentBodyFragment(doc);
+      const { editor } = await mountEditor();
+
+      // Write something local first, so there IS an entry on the stack —
+      // otherwise undo is a no-op and the test passes for the wrong reason.
+      act(() => {
+        editor.commands.setContent('<p>mine</p>');
+      });
+      await waitFor(() => expect(textOf(fragment)).toContain('mine'));
+
+      const peer = new Y.Doc();
+      syncAsRemote(peer, doc);
+      const para = new Y.XmlElement('paragraph');
+      para.insert(0, [new Y.XmlText('theirs')]);
+      peer.getXmlFragment('content').push([para]);
+      act(() => syncAsRemote(doc, peer));
+      await waitFor(() => expect(textOf(fragment)).toContain('theirs'));
+
+      act(() => {
+        editor.commands.undo();
+      });
+
+      expect(textOf(fragment)).not.toContain('mine');
+      expect(textOf(fragment)).toContain('theirs');
+      peer.destroy();
+    });
+
+    it('puts the selection back where the undone edit started', async () => {
+      // Undo has to restore the selection, not just the text. Upstream hands
+      // the stored selection over too late — after the restore transaction has
+      // already run — so `CollabUndoSelection` steps in ahead of it. That
+      // extension recognises an undo by comparing the transaction's origin
+      // against the manager it reads out of the y-undo plugin's state, which
+      // makes the two having the SAME IDENTITY a requirement of the wiring.
+      // Anything that hands the plugin a stand-in switches the fix off
+      // silently: text still comes back, selections quietly stop doing so.
+      const { rendered, editor } = await mountEditor();
+      const handle = rendered.result.current as NonNullable<
+        ReturnType<typeof useDocumentEditor>
+      >;
+
+      act(() => {
+        editor.commands.setContent('<p>alpha beta gamma</p>');
+      });
+      // Close the capture window so the deletion is its own stack entry.
+      handle.undoManager.stopCapturing();
+
+      act(() => {
+        editor.commands.setTextSelection({ from: 7, to: 11 });
+        editor.commands.deleteSelection();
+      });
+      handle.undoManager.stopCapturing();
+      expect(editor.getText()).toBe('alpha  gamma');
+
+      // Click elsewhere first — otherwise the caret is already where it would
+      // end up and the assertion proves nothing.
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 1 });
+      });
+
+      act(() => {
+        editor.commands.undo();
+      });
+
+      expect(editor.getText()).toBe('alpha beta gamma');
+      const { from, to } = editor.view.state.selection;
+      expect({ from, to }).toEqual({ from: 7, to: 11 });
+    });
+  });
+
+  describe('lifetime — the editor outlives the component', () => {
+    it('hands back the same editor after a Space tab switch', async () => {
+      const { rendered, editor } = await mountEditor();
+      act(() => {
+        editor.commands.setContent('<p>written before the switch</p>');
+      });
+      await waitFor(() => expect(editor.can().undo()).toBe(true));
+
+      // Switching Space tabs remounts the body — SpaceOutlet is keyed on the id.
+      rendered.unmount();
+      const { editor: second } = await mountEditor();
+
+      // Not merely equivalent — the SAME instance, which is what carries the
+      // selection, scroll position and undo stack across.
+      expect(second).toBe(editor);
+      expect(second.isDestroyed).toBe(false);
+      expect(second.can().undo()).toBe(true);
+
+      act(() => {
+        second.commands.undo();
+      });
+      expect(textOf(documentBodyFragment(doc))).not.toContain(
+        'written before the switch',
+      );
+    });
+
+    it('still records edits made after coming back', async () => {
+      // A surviving editor that stopped capturing would look fine — old stack
+      // intact, undo still "available" — while quietly dropping everything
+      // typed from then on.
+      const { rendered, editor } = await mountEditor();
+      const handle = rendered.result.current as NonNullable<
+        ReturnType<typeof useDocumentEditor>
+      >;
+      act(() => {
+        editor.commands.setContent('<p>before switch</p>');
+      });
+      await waitFor(() => expect(handle.undoManager.undoStack.length).toBe(1));
+      rendered.unmount();
+
+      // Close the capture window, the way a pause in typing does; otherwise
+      // yjs coalesces the two edits into one entry and the assertion below
+      // would be measuring the merge rather than whether capture still works.
+      handle.undoManager.stopCapturing();
+
+      const { editor: second } = await mountEditor();
+      act(() => {
+        second.commands.setContent('<p>after switch</p>');
+      });
+
+      await waitFor(() =>
+        expect(handle.undoManager.undoStack.length).toBe(2),
+      );
+      act(() => {
+        second.commands.undo();
+      });
+      const text = textOf(documentBodyFragment(doc));
+      expect(text).not.toContain('after switch');
+      expect(text).toContain('before switch');
+    });
+
+    it('starts over once the tab is closed', async () => {
+      // Closing a tab is the one action that DOES discard this state — the
+      // Space reopens clean rather than resuming a session the user ended.
+      const { rendered, editor } = await mountEditor();
+      act(() => {
+        editor.commands.setContent('<p>typed before closing</p>');
+      });
+      await waitFor(() => expect(editor.can().undo()).toBe(true));
+      rendered.unmount();
+
+      evictDocumentEditor(NAME);
+
+      const { editor: reopened } = await mountEditor();
+      expect(reopened).not.toBe(editor);
+      expect(editor.isDestroyed).toBe(true);
+      expect(reopened.can().undo()).toBe(false);
+      // The text is in the Y.Doc, so it comes back; only the history went.
+      expect(reopened.getText()).toContain('typed before closing');
+    });
+
+    it('keeps documents apart', async () => {
+      const { editor: first } = await mountEditor('project-p/document-one');
+      const { editor: second } = await mountEditor('project-p/document-two');
+      expect(second).not.toBe(first);
+    });
   });
 });

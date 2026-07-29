@@ -1,17 +1,49 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
+import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
+import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+import { useCurrentUserStore } from '@web/stores/current-user';
+
+// The editor is only built once its caret wiring exists — both the provider and
+// the identity are baked in at construction. A container test therefore has to
+// supply a provider; without one the body correctly renders its loading state.
+const socketAwareness = new Awareness(new Y.Doc());
+vi.mock('@web/data/yjs/use-socket', () => ({
+  useSocket: (): {
+    provider: { awareness: unknown };
+    synced: boolean;
+    status: 'connected';
+    authFailedReason: null;
+  } => ({
+    provider: { awareness: socketAwareness },
+    synced: true,
+    status: 'connected',
+    authFailedReason: null,
+  }),
+}));
 
 describe('DocumentSpace', () => {
+  beforeEach(() => {
+    useCurrentUserStore.setState({
+      user: {
+        id: 'user-1',
+        name: 'Tester',
+        email: 'tester@example.com',
+      } as ReturnType<typeof useCurrentUserStore.getState>['user'],
+    });
+  });
   afterEach(() => {
+    _resetDocumentEditorCacheForTests();
     _resetForTests();
+    useCurrentUserStore.setState({ user: null });
   });
 
   it('renders the editor mount and the toolbar', async () => {

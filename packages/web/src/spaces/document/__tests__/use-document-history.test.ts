@@ -17,21 +17,14 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import type { Editor } from '@tiptap/react';
+import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
+import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
+import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
+import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { useDocumentHistory } from '@web/spaces/document/use-document-history';
-import {
-  getDocumentUndoManager,
-  _resetDocumentUndoCacheForTests,
-} from '@web/spaces/document/document-undo';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
-
-interface Harness {
-  editor: Editor | null;
-  history: ReturnType<typeof useDocumentHistory>;
-}
 
 /** Applies one doc's state to another tagged as a remote peer's change. */
 function syncAsRemote(target: Y.Doc, source: Y.Doc): void {
@@ -42,28 +35,45 @@ function syncAsRemote(target: Y.Doc, source: Y.Doc): void {
   );
 }
 
+const HUE = userPaletteHue('test-user');
+const CARET_USER = { name: 'Tester', color: resolvePaletteHex(HUE), hue: HUE };
+
+interface Harness {
+  handle: ReturnType<typeof useDocumentEditor>;
+  history: ReturnType<typeof useDocumentHistory>;
+}
+
 describe('useDocumentHistory', () => {
   let doc: Y.Doc;
+  let awareness: Awareness;
   const NAME = 'project-p/document-s';
 
   beforeEach(() => {
     doc = new Y.Doc();
+    awareness = new Awareness(doc);
   });
   afterEach(() => {
-    _resetDocumentUndoCacheForTests();
+    _resetDocumentEditorCacheForTests();
+    awareness.destroy();
     doc.destroy();
   });
 
-  /** Mounts an editor sharing the document's cached undo manager. */
-  async function mount(): Promise<{ result: { current: Harness } }> {
-    const fragment = documentBodyFragment(doc);
-    const undoManager = getDocumentUndoManager(doc, NAME);
+  /** Mounts the editor together with the history mirror that reads from it. */
+  async function mount(): Promise<{
+    result: { current: Harness };
+    unmount: () => void;
+  }> {
     const rendered = renderHook<Harness, void>(() => {
-      const editor = useDocumentEditor({ fragment, undoManager });
-      const history = useDocumentHistory(undoManager);
-      return { editor, history };
+      const handle = useDocumentEditor({
+        doc,
+        name: NAME,
+        caretProvider: { awareness },
+        caretUser: CARET_USER,
+      });
+      const history = useDocumentHistory(handle?.undoManager ?? null);
+      return { handle, history };
     });
-    await waitFor(() => expect(rendered.result.current.editor).not.toBeNull());
+    await waitFor(() => expect(rendered.result.current.handle).not.toBeNull());
     return rendered;
   }
 
@@ -76,7 +86,7 @@ describe('useDocumentHistory', () => {
   it('reports undo available once this client edits', async () => {
     const { result } = await mount();
     act(() => {
-      result.current.editor?.commands.setContent('<p>typed</p>');
+      result.current.handle?.editor.commands.setContent('<p>typed</p>');
     });
     await waitFor(() => expect(result.current.history.canUndo).toBe(true));
     expect(result.current.history.canRedo).toBe(false);
@@ -85,12 +95,12 @@ describe('useDocumentHistory', () => {
   it('reports redo available right after an undo', async () => {
     const { result } = await mount();
     act(() => {
-      result.current.editor?.commands.setContent('<p>typed</p>');
+      result.current.handle?.editor.commands.setContent('<p>typed</p>');
     });
     await waitFor(() => expect(result.current.history.canUndo).toBe(true));
 
     act(() => {
-      result.current.editor?.commands.undo();
+      result.current.handle?.editor.commands.undo();
     });
 
     await waitFor(() => expect(result.current.history.canRedo).toBe(true));
@@ -99,16 +109,16 @@ describe('useDocumentHistory', () => {
   it('drops redo again once the redone edit is back', async () => {
     const { result } = await mount();
     act(() => {
-      result.current.editor?.commands.setContent('<p>typed</p>');
+      result.current.handle?.editor.commands.setContent('<p>typed</p>');
     });
     await waitFor(() => expect(result.current.history.canUndo).toBe(true));
     act(() => {
-      result.current.editor?.commands.undo();
+      result.current.handle?.editor.commands.undo();
     });
     await waitFor(() => expect(result.current.history.canRedo).toBe(true));
 
     act(() => {
-      result.current.editor?.commands.redo();
+      result.current.handle?.editor.commands.redo();
     });
 
     await waitFor(() => expect(result.current.history.canRedo).toBe(false));
@@ -126,7 +136,7 @@ describe('useDocumentHistory', () => {
     const fragment = documentBodyFragment(doc);
 
     act(() => {
-      result.current.editor?.commands.setContent('<p>mine</p>');
+      result.current.handle?.editor.commands.setContent('<p>mine</p>');
     });
     await waitFor(() => expect(result.current.history.canUndo).toBe(true));
 
@@ -139,7 +149,7 @@ describe('useDocumentHistory', () => {
     await waitFor(() => expect(fragment.length).toBe(0));
 
     act(() => {
-      result.current.editor?.commands.undo();
+      result.current.handle?.editor.commands.undo();
     });
 
     // yjs discards the dead entry silently — without the re-read after undo,
@@ -147,152 +157,38 @@ describe('useDocumentHistory', () => {
     await waitFor(() => expect(result.current.history.canUndo).toBe(false));
     peer.destroy();
   });
-});
 
-describe('document undo manager — outlives the editor', () => {
-  const NAME = 'project-p/document-survives';
-  let doc: Y.Doc;
-
-  beforeEach(() => {
-    doc = new Y.Doc();
-  });
-  afterEach(() => {
-    _resetDocumentUndoCacheForTests();
-    doc.destroy();
-  });
-
-  it('keeps the undo history across a Space tab switch', async () => {
-    const fragment = documentBodyFragment(doc);
-    const undoManager = getDocumentUndoManager(doc, NAME);
-
-    const first = renderHook(() =>
-      useDocumentEditor({ fragment, undoManager }),
-    );
-    await waitFor(() => expect(first.result.current).not.toBeNull());
-    act(() => {
-      first.result.current!.commands.setContent('<p>written before the switch</p>');
-    });
-    await waitFor(() => expect(undoManager.canUndo()).toBe(true));
-
-    // Switching Space tabs remounts the body — SpaceOutlet is keyed on the id.
-    first.unmount();
-
-    const second = renderHook(() =>
-      useDocumentEditor({
-        fragment,
-        undoManager: getDocumentUndoManager(doc, NAME),
-      }),
-    );
-    await waitFor(() => expect(second.result.current).not.toBeNull());
-
-    // The history has to still be there. A manager owned by the editor would
-    // have died with it, leaving the text but no way to take it back.
-    expect(getDocumentUndoManager(doc, NAME).canUndo()).toBe(true);
-    act(() => {
-      second.result.current!.commands.undo();
-    });
-    expect(
-      documentBodyFragment(doc).toArray().map(String).join(''),
-    ).not.toContain('written before the switch');
-  });
-
-  it('gives every listener back when its editor goes away', async () => {
-    // The binding subscribes to the manager on mount and hands those
-    // subscriptions back by calling `destroy()` — which drops EVERY listener,
-    // not just its own. That is right for an editor-owned manager and wrong
-    // for one that outlives editors, in both directions: suppress the teardown
-    // and subscriptions pile up, one set per rebuild, each pinning a dead
-    // editor view and its ProseMirror state (measured: 2, 3, 4, 5 across four
-    // rebuilds); let it run unscoped and it reaches past its own into the
-    // incoming editor's, because upstream defers teardown past the next mount
-    // (measured: 0 live listeners where 1 was needed).
-    const fragment = documentBodyFragment(doc);
-    const manager = getDocumentUndoManager(doc, NAME);
-    const listenerCount = (): number =>
-      (manager as unknown as { _observers: Map<string, Set<unknown>> })._observers.get(
-        'stack-item-added',
-      )?.size ?? 0;
-
-    /** Lets the deferred teardown (`setTimeout(…, 1)` upstream) actually run. */
-    const settle = async (): Promise<void> => {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
-    };
-
-    const whileLive: number[] = [];
-    const afterTeardown: number[] = [];
+  it('does not accumulate subscriptions as tabs are switched', async () => {
+    // The binding subscribes to the manager whenever an editor is built, and
+    // releases those subscriptions by destroying it. Both halves are correct
+    // only while the two share a lifetime. An earlier design gave the manager a
+    // longer life than its editor and had to fight that teardown, which cost a
+    // listener pair per rebuild — each pinning a dead editor view and its
+    // ProseMirror state (measured: 2, 3, 4, 5 across four rebuilds). Keeping
+    // the EDITOR instead means there is nothing to rebuild; this asserts that
+    // property directly rather than trusting the reasoning.
+    const counts: number[] = [];
     for (let round = 0; round < 4; round += 1) {
-      const mounted = renderHook(() =>
-        useDocumentEditor({ fragment, undoManager: manager }),
-      );
-      await waitFor(() => expect(mounted.result.current).not.toBeNull());
+      const rendered = await mount();
+      const manager = rendered.result.current.handle!.undoManager;
       act(() => {
-        mounted.result.current!.commands.insertContent(`round ${round} `);
+        rendered.result.current.handle?.editor.commands.insertContent(
+          `round ${round} `,
+        );
       });
-      await settle();
-      whileLive.push(listenerCount());
-      mounted.unmount();
-      await settle();
-      afterTeardown.push(listenerCount());
+      counts.push(
+        (manager as unknown as { _observers: Map<string, Set<unknown>> })
+          ._observers.get('stack-item-added')?.size ?? 0,
+      );
+      // Unmounting is the tab switch; the editor deliberately stays alive.
+      rendered.unmount();
     }
-
-    // The invariant: an editor that is gone holds nothing.
-    expect(afterTeardown).toEqual([0, 0, 0, 0]);
-    // And the live cost is flat, not cumulative. Two rather than one because
-    // `useEditor` builds a second instance per mount — upstream's own
-    // behaviour, not something this module asks for; what matters here is that
-    // the number is the same on the fourth rebuild as on the first. If a
-    // release changes it, this line should fail and be re-measured, not
-    // loosened.
-    expect(whileLive).toEqual([2, 2, 2, 2]);
-  });
-
-  it('still records edits made AFTER coming back', async () => {
-    // Keeping the old history is only half of it — the manager also has to keep
-    // capturing. A manager that survived the switch but stopped listening would
-    // look fine (old stack intact, undo still "available") while quietly
-    // dropping everything typed from then on.
-    const fragment = documentBodyFragment(doc);
-    const undoManager = getDocumentUndoManager(doc, NAME);
-
-    const first = renderHook(() =>
-      useDocumentEditor({ fragment, undoManager }),
-    );
-    await waitFor(() => expect(first.result.current).not.toBeNull());
-    act(() => {
-      first.result.current!.commands.setContent('<p>before switch</p>');
-    });
-    await waitFor(() => expect(undoManager.undoStack.length).toBe(1));
-    first.unmount();
-
-    // Close the capture window, the way a pause in typing does. Without this
-    // the two edits merge into one entry — yjs coalesces anything inside its
-    // capture timeout — and the assertion below would be measuring the merge
-    // rather than whether the manager is still listening.
-    undoManager.stopCapturing();
-
-    const second = renderHook(() =>
-      useDocumentEditor({
-        fragment,
-        undoManager: getDocumentUndoManager(doc, NAME),
-      }),
-    );
-    await waitFor(() => expect(second.result.current).not.toBeNull());
-    act(() => {
-      second.result.current!.commands.setContent('<p>after switch</p>');
-    });
-
-    // The post-switch edit has to land on the stack as its own entry.
-    await waitFor(() =>
-      expect(getDocumentUndoManager(doc, NAME).undoStack.length).toBe(2),
-    );
-
-    act(() => {
-      second.result.current!.commands.undo();
-    });
-    const text = documentBodyFragment(doc).toArray().map(String).join('');
-    expect(text).not.toContain('after switch');
-    expect(text).toContain('before switch');
+    // Measured: two subscriptions come with the editor itself (an editor built
+    // without the history mirror below shows exactly these two) and one is the
+    // mirror's. Why the binding's half is two rather than one is not something
+    // this test claims to know; what it pins down is that the fourth tab switch
+    // costs the same as the first. If a release changes the constant, re-measure
+    // it here rather than loosening the assertion.
+    expect(counts).toEqual([3, 3, 3, 3]);
   });
 });

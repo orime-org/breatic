@@ -9,17 +9,15 @@ import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
-import { getDocumentUndoManager } from '@web/spaces/document/document-undo';
-import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { useDocumentHistory } from '@web/spaces/document/use-document-history';
 
 /**
  * Document space body — a collaborative rich-text document.
  *
- * This is the container: it resolves the Space's Yjs document and its undo
- * manager, joins the shared collab socket for collaborator carets, and hands
- * the resulting editor to {@link DocumentEditor} for presentation.
+ * This is the container: it resolves the Space's Yjs document, joins the shared
+ * collab socket for collaborator carets, and hands the resulting editor to
+ * {@link DocumentEditor} for presentation.
  *
  * The socket acquire here is a cheap share, not a second connection —
  * `SpaceDocSync` already holds a reference to the same document for as long as
@@ -38,31 +36,21 @@ export function DocumentSpace({
   const t = useTranslation();
   const name = docName.documentSpace(projectId, spaceId);
   const doc = React.useMemo(() => getDoc(name), [name]);
-  const fragment = React.useMemo(() => documentBodyFragment(doc), [doc]);
-  // Cached per document, so switching Space tabs — which remounts this body —
-  // leaves the undo history intact.
-  const undoManager = React.useMemo(
-    () => getDocumentUndoManager(doc, name),
-    [doc, name],
-  );
   const { provider } = useSocket({ name, doc });
   const caretUser = useCaretUser();
 
-  // Captured into the extension list at creation time, so it has to be a value
-  // the editor rebuilds on — the translator's own identity never changes, and
-  // depending on that would leave the placeholder in the previous language after
-  // a locale switch.
-  const placeholder = t('spaces.document.placeholder');
-
-  const editor = useDocumentEditor({
-    fragment,
+  // The editor belongs to the document, not to this component: switching Space
+  // tabs remounts this body, and everything the Y.Doc does not hold — undo
+  // stack, selection, scroll position — would go with it.
+  const handle = useDocumentEditor({
+    doc,
+    name,
     caretProvider: provider,
     caretUser,
-    placeholder,
     editable: !readOnly,
-    undoManager,
   });
-  const history = useDocumentHistory(undoManager);
+  const editor = handle?.editor ?? null;
+  const history = useDocumentHistory(handle?.undoManager ?? null);
 
   return (
     <div

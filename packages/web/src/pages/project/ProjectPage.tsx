@@ -19,7 +19,7 @@ import {
   evictUndoForVanishedSpaces,
 } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
-import { evictDocumentUndoManager } from '@web/spaces/document/document-undo';
+import { evictDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import {
   closeSpaceTab,
   openSpaceTab,
@@ -400,13 +400,16 @@ function ProjectWorkspace({
       return;
     }
     closeSpaceTab(projectId, userId, id);
-    // Closing a tab clears that space's undo / redo history: evict its cached
-    // undo manager so reopening the space starts empty. Each Space type keeps
-    // its own cache and evicting an unknown name is a no-op, so both are called
-    // without checking which type this tab was. The space's Y.Doc stays cached
-    // for an instant reopen — only the undo stack is discarded.
+    // Closing a tab discards the in-memory state that tab accumulated, so
+    // reopening the space starts clean: the canvas drops its undo manager, and
+    // the document drops its whole editor (which owns its undo stack, its
+    // selection and its scroll position — all kept across tab SWITCHES, none
+    // meant to survive a close). Each Space type keeps its own cache and
+    // evicting an unknown name is a no-op, so both are called without checking
+    // which type this tab was. The space's Y.Doc stays cached for an instant
+    // reopen — only the memory-only state is discarded.
     evictCanvasUndoManager(docName.canvasSpace(projectId, id));
-    evictDocumentUndoManager(docName.documentSpace(projectId, id));
+    evictDocumentEditor(docName.documentSpace(projectId, id));
     if (id === activeSpace?.id) {
       const next = openTabs.find((s) => s.id !== id);
       setActiveSpaceId(next?.id ?? null);

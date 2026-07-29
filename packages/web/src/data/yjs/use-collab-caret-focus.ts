@@ -39,10 +39,20 @@ export function useCollabCaretFocus(
   caretProvider: { awareness: unknown } | null | undefined,
   caretUser: CaretUserIdentity | null | undefined,
 ): void {
+  // Depend on the awareness instance, not on the object wrapping it. Both
+  // effects below re-run for a genuine change of awareness, and neither should
+  // re-run because a caller happened to rebuild its provider wrapper — the
+  // publish effect writes to the document, so a spurious re-run costs a real
+  // Yjs transaction. Measured: with an unstable wrapper, that transaction
+  // lands right after an undo, is captured as a fresh edit because `undoing`
+  // has already been cleared, and wipes the redo stack — undo appears to work
+  // while redo silently stops existing.
+  const awareness = caretProvider?.awareness ?? null;
+
   // Publish. Receivers dim on a literal `false` only, so a client that never
   // publishes the field simply renders normally.
   React.useEffect(() => {
-    if (!editor || !caretProvider || !caretUser) return undefined;
+    if (!editor || !awareness || !caretUser) return undefined;
     /**
      * Publishes the current focus state into the awareness user field.
      * @param focused - Whether this window has focus.
@@ -69,22 +79,19 @@ export function useCollabCaretFocus(
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('blur', onBlur);
     };
-  }, [editor, caretProvider, caretUser]);
+  }, [editor, awareness, caretUser]);
 
   // Receive. A parked caret's widget is keyed by client id and prosemirror-view
   // reuses its DOM on key equality WITHOUT re-invoking the builder, so a
   // collaborator's focus flip never re-renders it. Toggle the class on the
   // existing DOM instead; freshly built widgets get it from the builder.
   React.useEffect(() => {
-    const awareness = caretProvider?.awareness as
-      | FocusAwareness
-      | null
-      | undefined;
-    if (!editor || !awareness) return undefined;
+    const focusAwareness = awareness as FocusAwareness | null;
+    if (!editor || !focusAwareness) return undefined;
     /** Syncs every rendered remote caret's dim class to its client's focus. */
     const applyDim = (): void => {
       if (editor.isDestroyed) return;
-      const states = awareness.getStates();
+      const states = focusAwareness.getStates();
       editor.view.dom
         .querySelectorAll<HTMLElement>(
           '.collaboration-carets__caret[data-client-id]',
@@ -94,7 +101,7 @@ export function useCollabCaretFocus(
           el.classList.toggle(BLURRED_CLASS, state?.user?.focused === false);
         });
     };
-    awareness.on('change', applyDim);
+    focusAwareness.on('change', applyDim);
     // This listener is the ONLY one needed. There used to be a second
     // subscription on `editor.on('transaction')`, guarding the window where the
     // cursor plugin's batched refresh had not run yet and the decorations still
@@ -113,7 +120,7 @@ export function useCollabCaretFocus(
     //   anything else           → prevState untouched
     applyDim();
     return (): void => {
-      awareness.off('change', applyDim);
+      focusAwareness.off('change', applyDim);
     };
-  }, [editor, caretProvider]);
+  }, [editor, awareness]);
 }

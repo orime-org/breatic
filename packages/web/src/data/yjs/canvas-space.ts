@@ -7,7 +7,7 @@ import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
 
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
-import { createUndoManagerCache } from '@web/data/yjs/undo-manager-cache';
+import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
 import { toNodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -150,9 +150,11 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
  * Process-wide cache of canvas undo managers, keyed by canvas-space document
  * name — so a stack survives the tab switch that remounts `useCanvasSpace`.
  * The caching itself (stale-binding heal, eviction on doc destroy) is shared
- * with the other Space types; see {@link createUndoManagerCache}.
+ * with the other Space types; see {@link createDocScopedCache}.
  */
-const canvasUndoCache = createUndoManagerCache(createCanvasUndoManager);
+const canvasUndoCache = createDocScopedCache(createCanvasUndoManager, (manager) =>
+  manager.destroy(),
+);
 
 /**
  * Get-or-create the cached canvas undo manager for a space document. The first
@@ -164,7 +166,7 @@ const canvasUndoCache = createUndoManagerCache(createCanvasUndoManager);
  * @returns The cached (or newly created) undo manager for that space doc.
  */
 export function getCanvasUndoManager(doc: Y.Doc, name: string): Y.UndoManager {
-  return canvasUndoCache.get(doc, name);
+  return canvasUndoCache.get(doc, name, undefined);
 }
 
 /**
