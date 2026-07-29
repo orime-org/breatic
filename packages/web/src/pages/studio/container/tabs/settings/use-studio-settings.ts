@@ -29,6 +29,8 @@ export interface StudioSettingsActions {
   uploadAvatar: (image: Blob) => void;
   removeAvatar: () => void;
   leave: () => void;
+  /** Drop a stale avatar failure — the picker closing means it is done with. */
+  clearAvatarError: () => void;
   saving: boolean;
   uploadingAvatar: boolean;
   leaving: boolean;
@@ -181,12 +183,22 @@ export function useStudioSettings(
     [mutateRemoveAvatar],
   );
   const leave = React.useCallback((): void => mutateLeave(), [mutateLeave]);
+  // Clearing only when the NEXT upload starts is one step too late: a user who
+  // gives up on a failed image and closes the dialog gets the old message
+  // again the moment they open it with a different one, and it lingers until
+  // they press Confirm. The error belongs to an attempt, and dismissing the
+  // picker ends that attempt.
+  const clearAvatarError = React.useCallback(
+    (): void => setAvatarError(null),
+    [],
+  );
 
   return {
     save,
     uploadAvatar,
     removeAvatar,
     leave,
+    clearAvatarError,
     saving: updateMutation.isPending,
     uploadingAvatar: avatarMutation.isPending,
     leaving: leaveMutation.isPending,

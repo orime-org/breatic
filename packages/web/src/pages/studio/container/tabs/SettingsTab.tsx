@@ -45,6 +45,7 @@ export function SettingsTab({
         error={settings.avatarError}
         onUpload={settings.uploadAvatar}
         onRemove={settings.removeAvatar}
+        onDismissError={settings.clearAvatarError}
       />
       <BasicInfoSection
         studio={studio}

@@ -120,9 +120,10 @@ export function AvatarCropDialog({
   const [objectUrl, setObjectUrl] = React.useState<string | null>(null);
 
   // Creation and cleanup live in ONE effect, with the URL exposed through
-  // state. Minting it in a `useMemo` and revoking it from a separate effect
-  // leaks under StrictMode: the render phase runs twice, so two URLs are
-  // created, and only the one the effect happened to observe is ever revoked.
+  // state. Minting it during render instead leaves the image pointing at a URL
+  // that has already been revoked: StrictMode runs the render phase twice, so
+  // two URLs exist, and a cleanup keyed on the surviving one frees the URL
+  // actually on screen while the other is never freed at all.
   React.useEffect(() => {
     if (file === null) {
       setObjectUrl(null);

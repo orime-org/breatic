@@ -182,4 +182,111 @@ describe('AvatarCropDialog — object URL lifetime', () => {
 
     await waitFor(() => expect(revoked).toContain(first));
   });
+
+  it('still shows a URL that has not been revoked, under StrictMode', async () => {
+    // StrictMode is the only condition that separates the two ways of doing
+    // this, and counting is not enough to tell them apart: BOTH mint two URLs
+    // and revoke one (measured, not assumed). What differs is WHICH one.
+    //
+    // Minting during render: pass one creates A, pass two creates B and React
+    // keeps B, so A is stranded — and the effect, keyed on B, revokes B on
+    // StrictMode's simulated unmount. The image is then pointed at a URL that
+    // has been released, with A never freed.
+    //
+    // Minting inside the effect: A is created and released by its own cleanup,
+    // B is created on the remount and is the one displayed.
+    //
+    // So the assertion is about the URL actually in use, not about counts.
+    render(
+      <React.StrictMode>
+        <AvatarCropDialog
+          file={pickedFile('strict.png')}
+          uploading={false}
+          error={null}
+          onCancel={vi.fn()}
+          onConfirm={vi.fn()}
+        />
+      </React.StrictMode>,
+    );
+
+    await waitFor(() => expect(document.querySelector('img')).not.toBeNull());
+    const shown = document.querySelector('img')!.getAttribute('src');
+    expect(shown).not.toBeNull();
+    expect(revoked).not.toContain(shown);
+  });
+});
+
+describe('AvatarCropDialog — a gesture interrupted by the dialog closing', () => {
+  /**
+   * Give the image and its frame real layout boxes. jsdom reports every
+   * element as 0x0, and the dialog deliberately refuses to draw a selection it
+   * cannot measure — so without this there is nothing to drag.
+   * @param img - The image element.
+   */
+  function giveLayout(img: HTMLElement): void {
+    // Deliberately not square: the selection is the largest square that fits,
+    // so a square image gives a selection with nowhere to move — every drag
+    // clamps back to the same place and the test passes whatever the code
+    // does. A 200x100 image leaves 100px of travel.
+    for (const [prop, value] of [
+      ['offsetWidth', 200],
+      ['offsetHeight', 100],
+      ['offsetLeft', 0],
+      ['offsetTop', 0],
+    ] as const) {
+      Object.defineProperty(img, prop, { configurable: true, value });
+    }
+    const frame = img.parentElement!;
+    Object.defineProperty(frame, 'clientWidth', {
+      configurable: true,
+      value: 200,
+    });
+    Object.defineProperty(frame, 'clientHeight', {
+      configurable: true,
+      value: 100,
+    });
+  }
+
+  it('does not resume that gesture on the next image', async () => {
+    // Closing mid-drag unmounts the element holding pointer capture, so the
+    // pointerup never reaches its handler and the gesture cannot end itself.
+    // Carried into the next file, merely moving the pointer would drag the
+    // selection with no button held.
+    const { rerender } = render(
+      <AvatarCropDialog
+        file={pickedFile('one.png')}
+        uploading={false}
+        error={null}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+    const img = document.querySelector('img')!;
+    giveLayout(img);
+    fireEvent.load(img);
+
+    const selection = await screen.findByTestId('avatar-crop-selection');
+    selection.setPointerCapture = vi.fn();
+    fireEvent.pointerDown(selection, { clientX: 50, clientY: 50, pointerId: 1 });
+
+    // The dialog closes with the pointer still down, then a new file arrives.
+    rerender(
+      <AvatarCropDialog
+        file={pickedFile('two.png')}
+        uploading={false}
+        error={null}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+    const nextImg = document.querySelector('img')!;
+    giveLayout(nextImg);
+    fireEvent.load(nextImg);
+
+    const next = await screen.findByTestId('avatar-crop-selection');
+    const before = next.style.left;
+    fireEvent.pointerMove(next.parentElement!, { clientX: 150, clientY: 150 });
+
+    expect(next.style.left).toBe(before);
+  });
 });

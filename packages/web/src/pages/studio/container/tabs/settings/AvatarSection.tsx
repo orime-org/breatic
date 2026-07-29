@@ -30,6 +30,8 @@ interface AvatarSectionProps {
   error: string | null;
   onUpload: (image: Blob) => void;
   onRemove: () => void;
+  /** Drops a stale upload failure when the picker is dismissed. */
+  onDismissError: () => void;
 }
 
 /**
@@ -52,6 +54,7 @@ interface AvatarSectionProps {
  * @param props.error - The last upload failure.
  * @param props.onUpload - Called with the cropped, encoded avatar.
  * @param props.onRemove - Called to clear the avatar.
+ * @param props.onDismissError - Called when the picker is dismissed.
  * @returns The avatar section.
  */
 export function AvatarSection({
@@ -61,6 +64,7 @@ export function AvatarSection({
   error,
   onUpload,
   onRemove,
+  onDismissError,
 }: AvatarSectionProps): React.JSX.Element {
   const t = useTranslation();
   const inputRef = React.useRef<HTMLInputElement | null>(null);
@@ -149,7 +153,12 @@ export function AvatarSection({
         file={picked}
         uploading={uploading}
         error={error}
-        onCancel={() => setPicked(null)}
+        onCancel={() => {
+          setPicked(null);
+          // Dismissing ends the attempt the error belonged to; leaving it set
+          // would greet the next picked image with it.
+          onDismissError();
+        }}
         onConfirm={handleConfirm}
       />
 

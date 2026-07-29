@@ -273,6 +273,23 @@ describe('useStudioSettings — avatar error lifetime', () => {
 
     await waitFor(() => expect(result.current.avatarError).toBeNull());
   });
+
+  it('drops the error when the picker is dismissed, not only on the next upload', async () => {
+    // Clearing on the next upload alone is one step too late. Someone who
+    // gives up on a failed image closes the dialog, opens it again with a
+    // different one, and is greeted by the old message — it survives until
+    // they press Confirm, which is the one moment the bug never showed. The
+    // error belongs to an attempt, and dismissing ends that attempt.
+    vi.mocked(studiosApi.uploadAvatar).mockRejectedValueOnce(new Error('boom'));
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.uploadAvatar(new Blob(['x'], { type: 'image/webp' }));
+    await waitFor(() => expect(result.current.avatarError).not.toBeNull());
+
+    result.current.clearAvatarError();
+
+    await waitFor(() => expect(result.current.avatarError).toBeNull());
+  });
 });
 
 describe('useStudioSettings — callback stability', () => {
