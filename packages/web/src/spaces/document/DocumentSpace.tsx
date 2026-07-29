@@ -50,7 +50,19 @@ export function DocumentSpace({
     editable: !readOnly,
     synced,
   });
-  const editor = handle?.editor ?? null;
+  // Nothing is offered until the document's real content is in. Editing before
+  // that is not a lesser version of editing this document — it is editing a
+  // different one: what gets typed ends up BESIDE the server's content when it
+  // arrives rather than in it, and undoing back to empty in that window
+  // destroys the redo stack, because the paragraph that keeps the two layers
+  // agreeing is only seeded once a sync has happened. Both measured.
+  //
+  // The cost is that an unreachable collab service leaves the document
+  // permanently unavailable rather than editable-but-doomed. That is the
+  // honest reading of the situation — nothing typed then would have been
+  // saved — and `ConnectionBanner` at the project level says why (user
+  // 2026-07-29 weighed this against the alternative and chose it).
+  const editor = synced ? (handle?.editor ?? null) : null;
   const history = useDocumentHistory(handle?.undoManager ?? null);
 
   return (

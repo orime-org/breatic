@@ -16,6 +16,8 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 // the identity are baked in at construction. A container test therefore has to
 // supply a provider; without one the body correctly renders its loading state.
 const socketAwareness = new Awareness(new Y.Doc());
+// Mutable so a test can put the socket in its pre-sync state.
+const socketState = { synced: true };
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: (): {
     provider: { awareness: unknown };
@@ -24,7 +26,7 @@ vi.mock('@web/data/yjs/use-socket', () => ({
     authFailedReason: null;
   } => ({
     provider: { awareness: socketAwareness },
-    synced: true,
+    synced: socketState.synced,
     status: 'connected',
     authFailedReason: null,
   }),
@@ -44,6 +46,23 @@ describe('DocumentSpace', () => {
     _resetDocumentEditorCacheForTests();
     _resetForTests();
     useCurrentUserStore.setState({ user: null });
+    socketState.synced = true;
+  });
+
+  it('does not offer the editor until the document has synced', async () => {
+    // Editing a document whose real content has not arrived is not a smaller
+    // version of editing it — it is editing a different document. Anything
+    // typed lands beside the server's content once that turns up rather than
+    // in it, and undoing back to empty in that window destroys the redo stack,
+    // because the paragraph that keeps Yjs and ProseMirror agreeing is only
+    // seeded after a sync. Measured, both of them.
+    socketState.synced = false;
+    render(<DocumentSpace projectId='p1' spaceId='doc-unsynced' />);
+
+    expect(await screen.findByTestId('document-space')).toBeInTheDocument();
+    expect(screen.getByTestId('document-space-loading')).toBeInTheDocument();
+    expect(screen.queryByTestId('document-toolbar')).toBeNull();
+    expect(screen.queryByTestId('document-editor-content')).toBeNull();
   });
 
   it('renders the editor mount and the toolbar', async () => {
