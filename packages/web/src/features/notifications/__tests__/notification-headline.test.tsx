@@ -10,6 +10,7 @@ import {
   renderSlottedText,
 } from '@web/features/notifications/notification-headline';
 import type { Notification } from '@web/data/api/notifications';
+import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { useTranslation } from '@web/i18n/use-translation';
 
 const NUL = String.fromCodePoint(0);
@@ -73,14 +74,16 @@ describe('notificationHeadline', () => {
     const n = makeNotification({
       type: 'access.role_upgrade_request',
       projectId: 'proj-9',
-      payload: {
-        requesterName: 'Alex',
-        requesterHandle: 'alex-h',
-        projectName: 'My Project',
-        projectSlug: 'my-proj',
-      },
+      payload: { requesterUserId: 'u-alex', projectId: 'proj-9' },
     });
-    render(<MemoryRouter>{notificationHeadline(n, t)}</MemoryRouter>);
+    // Names and links come from the resolved map, so a later rename changes
+    // what this row shows without touching the stored notification.
+    const resolved = {
+      users: { 'u-alex': { slug: 'alex-h', name: 'Alex' } },
+      studios: {},
+      projects: { 'proj-9': { slug: 'my-proj', name: 'My Project' } },
+    };
+    render(<MemoryRouter>{notificationHeadline(n, resolved, t)}</MemoryRouter>);
 
     const actorLink = screen.getByRole('link', { name: /Alex/ });
     expect(actorLink).toHaveAttribute('href', '/studio/alex-h');
@@ -101,14 +104,14 @@ describe('notificationHeadline', () => {
   it('renders the studio entity link for a studio invite', () => {
     const n = makeNotification({
       type: 'studio.invite_request',
-      payload: {
-        inviterName: 'Bo',
-        inviterHandle: 'bo-h',
-        studioName: 'Design Team',
-        studioSlug: 'design-team',
-      },
+      payload: { inviterUserId: 'u-bo', studioId: 's-design' },
     });
-    render(<MemoryRouter>{notificationHeadline(n, t)}</MemoryRouter>);
+    const resolved = {
+      users: { 'u-bo': { slug: 'bo-h', name: 'Bo' } },
+      studios: { 's-design': { slug: 'design-team', name: 'Design Team' } },
+      projects: {},
+    };
+    render(<MemoryRouter>{notificationHeadline(n, resolved, t)}</MemoryRouter>);
 
     expect(screen.getByRole('link', { name: /Bo/ })).toHaveAttribute(
       'href',
@@ -124,13 +127,17 @@ describe('notificationHeadline', () => {
     const n = makeNotification({
       type: 'access.role_upgrade_request',
       projectId: 'proj-9',
-      payload: {
-        requesterName: 'Alex',
-        requesterHandle: '',
-        projectName: 'My Project',
-      },
+      payload: { requesterUserId: 'u-gone', requesterName: 'Alex', projectId: 'proj-9' },
     });
-    render(<MemoryRouter>{notificationHeadline(n, t)}</MemoryRouter>);
+    // The actor is absent from the resolved map (deleted account, or a user
+    // mid-onboarding with no personal studio) — the row keeps the stored name
+    // as text but must not render a link to nowhere.
+    const resolved = {
+      users: {},
+      studios: {},
+      projects: { 'proj-9': { slug: 'my-proj', name: 'My Project' } },
+    };
+    render(<MemoryRouter>{notificationHeadline(n, resolved, t)}</MemoryRouter>);
 
     // The actor is plain text — only the project entity link remains.
     expect(screen.queryByRole('link', { name: /Alex/ })).toBeNull();
@@ -145,7 +152,9 @@ describe('notificationHeadline', () => {
     });
     render(
       <MemoryRouter>
-        <span data-testid='h'>{notificationHeadline(n, t)}</span>
+        <span data-testid='h'>
+          {notificationHeadline(n, EMPTY_RESOLVED, t)}
+        </span>
       </MemoryRouter>,
     );
     expect(screen.getByTestId('h')).toHaveTextContent('unknown.future_type');

@@ -27,6 +27,8 @@ import {
   type NotificationAction,
 } from '@web/data/api/notifications';
 import { notificationHeadline } from '@web/features/notifications/notification-headline';
+import { EMPTY_RESOLVED } from '@web/data/api/notifications';
+import type { NotificationResolved } from '@web/data/api/notifications';
 import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -190,7 +192,10 @@ export function BellMenu(): React.JSX.Element {
     refetchOnWindowFocus: false,
     retry: false,
   });
-  const notifications = inboxQuery.data ?? [];
+  const notifications = inboxQuery.data?.items ?? [];
+  // Display names and links come from here, not from the notification payloads
+  // — the payloads hold ids so a rename can never strand an old entry.
+  const resolved = inboxQuery.data?.resolved ?? EMPTY_RESOLVED;
   const count = notifications.length;
 
   const decideMutation = useMutation({
@@ -312,6 +317,7 @@ export function BellMenu(): React.JSX.Element {
               <li key={n.id} data-testid={`bell-notification-${n.id}`}>
                 <NotificationItem
                   notification={n}
+                  resolved={resolved}
                   decidePending={
                     (decideMutation.isPending &&
                       decideMutation.variables?.notificationId === n.id) ||
@@ -366,6 +372,8 @@ export function BellMenu(): React.JSX.Element {
 
 interface NotificationItemProps {
   notification: Notification;
+  /** Current identities for the ids this notification carries. */
+  resolved: NotificationResolved;
   decidePending: boolean;
   onApprove: () => void;
   onReject: () => void;
@@ -383,6 +391,7 @@ interface NotificationItemProps {
  * invites, or a mark-read action for the informational rows.
  * @param root0 - Notification item props.
  * @param root0.notification - Notification rendered by this row.
+ * @param root0.resolved - Current identities for the ids it carries.
  * @param root0.decidePending - Whether a decision/action for this row is in flight (disables buttons).
  * @param root0.onApprove - Called when the owner approves a role-upgrade request.
  * @param root0.onReject - Called when the owner rejects a role-upgrade request.
@@ -394,6 +403,7 @@ interface NotificationItemProps {
  */
 function NotificationItem({
   notification,
+  resolved,
   decidePending,
   onApprove,
   onReject,
@@ -403,7 +413,7 @@ function NotificationItem({
   onMarkRead,
 }: NotificationItemProps): React.JSX.Element {
   const t = useTranslation();
-  const headline = notificationHeadline(notification, t);
+  const headline = notificationHeadline(notification, resolved, t);
   const subtitle = subtitleFor(notification, t);
   const isUpgradeRequest =
     notification.type === 'access.role_upgrade_request';

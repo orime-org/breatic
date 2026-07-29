@@ -18,14 +18,15 @@ vi.mock('@web/data/api/studios', () => ({
 // settle after the assertion).
 vi.mock('@web/data/api/notifications', () => ({
   notificationsApi: { list: vi.fn() },
+  EMPTY_RESOLVED: { users: {}, studios: {}, projects: {} },
 }));
 import { studiosApi } from '@web/data/api/studios';
-import { notificationsApi } from '@web/data/api/notifications';
+import { notificationsApi , EMPTY_RESOLVED } from '@web/data/api/notifications';
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(studiosApi.listUserStudios).mockResolvedValue([]);
-  vi.mocked(notificationsApi.list).mockResolvedValue([]);
+  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED });
 });
 
 function setup() {
