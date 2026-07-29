@@ -69,6 +69,7 @@ function validateLocally(value: string): SlugError {
  * UX helper only — the authoritative uniqueness guard is the insert-time unique
  * index, so a slug shown `available` can still lose a race and 409 on submit.
  * @param rawSlug the current (un-debounced) slug input value.
+ * @param options extra context — notably the caller's own slug, for renaming.
  * @returns the derived status + the failure reason when not available.
  */
 export function useSlugAvailability(

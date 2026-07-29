@@ -241,9 +241,9 @@ export function AvatarCropDialog({
         prev === null
           ? prev
           : moveRect(prev, step.dx, step.dy, {
-              width: box.width,
-              height: box.height,
-            }),
+            width: box.width,
+            height: box.height,
+          }),
       );
     },
     [box, uploading],
@@ -369,12 +369,22 @@ export function AvatarCropDialog({
                   onPointerUp={endGesture}
                   onPointerCancel={endGesture}
                 >
+                  {/* `application` is the ARIA role for a widget that draws
+                      itself and takes the keyboard over — which is what this
+                      is: the arrow keys move the selection. There is no
+                      standard role for a two-dimensional selection region, and
+                      the lint rules' allow-lists cover only the handful of
+                      built-in interactive roles, so the exemption is about
+                      their default list rather than about this markup. It is
+                      focusable, labelled, keyboard-operable and shows a focus
+                      ring. */}
+                  {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
                   <div
                     role='application'
                     tabIndex={0}
                     aria-label={t('studio.container.settings.avatarCropRegion')}
                     data-testid='avatar-crop-selection'
-                    className='absolute cursor-move border-2 border-white outline-none ring-offset-0 focus-visible:ring-2 focus-visible:ring-white'
+                    className='absolute cursor-move border border-white outline-none focus-visible:ring-1 focus-visible:ring-white'
                     style={{
                       left: rect.x,
                       top: rect.y,
@@ -396,6 +406,7 @@ export function AvatarCropDialog({
                       />
                     ))}
                   </div>
+                  {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
                 </div>
               </>
             ) : null}

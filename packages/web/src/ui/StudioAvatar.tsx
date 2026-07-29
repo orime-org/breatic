@@ -87,9 +87,9 @@ interface StudioAvatarProps {
  * avatar is just their personal studio's avatar, round like any other
  * personal studio.
  *
- * Initials are always two characters (see {@link initialsOf}). They used to be
- * one in some places and two in others, which made the same person look like
- * two different people across screens.
+ * Initials are always two characters (see `initialsOf`). They used to be one
+ * in some places and two in others, which made the same person look like two
+ * different people across screens.
  *
  * The radius is applied to the fallback as well as the root: the primitive
  * hardcodes `rounded-full` on that child, so a squared avatar whose fallback
@@ -100,6 +100,7 @@ interface StudioAvatarProps {
  * @param props.avatarUrl - The uploaded image, or `null` for initials.
  * @param props.size - Which step of the `--avatar-*` scale to draw at.
  * @param props.className - Extra layout classes.
+ * @param props.'data-testid' - Test hook forwarded to the root element.
  * @returns The avatar.
  */
 export function StudioAvatar({
