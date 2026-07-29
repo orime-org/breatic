@@ -178,18 +178,6 @@ export async function upsertMember(
 }
 
 /**
- * Soft-delete (remove / kick) an active member — state-only.
- *
- * Flips `deleted_at` on the active row; the row physically remains (soft
- * delete is the only deletion mode). Returns false when there is no active row
- * (non-member or already removed), so the caller distinguishes success from
- * NotFound without a separate read.
- * @param studioId - Studio UUID
- * @param userId - The member's user UUID
- * @param tx - Optional drizzle transaction handle
- * @returns true if an active row was soft-deleted; false otherwise
- */
-/**
  * Read a member's role **inside a transaction, holding a row lock** on that
  * member row.
  *
@@ -275,6 +263,18 @@ export async function lockAdminUserId(
   return rows[0]?.userId ?? null;
 }
 
+/**
+ * Soft-delete (remove / kick) an active member — state-only.
+ *
+ * Flips `deleted_at` on the active row; the row physically remains (soft
+ * delete is the only deletion mode). Returns false when there is no active row
+ * (non-member or already removed), so the caller distinguishes success from
+ * NotFound without a separate read.
+ * @param studioId - Studio UUID
+ * @param userId - The member's user UUID
+ * @param tx - Optional drizzle transaction handle
+ * @returns true if an active row was soft-deleted; false otherwise
+ */
 export async function softDelete(
   studioId: string,
   userId: string,

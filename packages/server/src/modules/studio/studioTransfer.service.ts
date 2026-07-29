@@ -188,13 +188,38 @@ export async function confirmTransfer(
 
     // TOCTOU guard (adversarial review): the request-time non-guest check
     // (#1612 / D3) can go stale within the 7-day TTL — the recipient may have
-    // been demoted to guest since the request. Re-verify BEFORE the swap;
-    // otherwise updateRole would flip a guest's still-active row straight to
-    // admin. Reads committed state; a ConflictError rolls the whole transaction
-    // back (including the mark-read).
-    const recipientRole = await studioMembersRepo.getRole(
+    // been demoted to guest, or left, since the request. Re-verify BEFORE the
+    // swap; otherwise updateRole would flip a guest's still-active row straight
+    // to admin.
+    //
+    // Both re-reads take a ROW LOCK, admin row FIRST — the same order the
+    // writes below use, and the same order the leave / kick path uses. Locking
+    // only the recipient would deadlock outright: this transaction would hold
+    // the recipient's row and then need the admin's (to demote), while a
+    // concurrent leave holds the admin's row and needs the recipient's.
+    //
+    // Locking the admin row also settles which admin this transfer is actually
+    // moving. The request names its initiator in a payload written up to seven
+    // days ago; if the studio has changed hands since, that request is stale.
+    // Confirming one anyway fails in two distinct ways, both observed:
+    //   - the studio went to a THIRD party — the promote collides with
+    //     studio_members_one_admin_per_studio, surfacing as an unclassified
+    //     500 rather than a conflict;
+    //   - the studio went to the RECIPIENT already — the promote is a no-op so
+    //     nothing collides, but the demote still runs and pushes the stale
+    //     initiator to maintainer. If they had been demoted to guest, that is
+    //     a silent privilege GRANT off a week-old notification.
+    const currentAdminUserId = await studioMembersRepo.lockAdminUserId(
+      studioId,
+      tx,
+    );
+    if (currentAdminUserId === null || currentAdminUserId !== fromUserId) {
+      throw new ConflictError(t("server.error.conflict"));
+    }
+    const recipientRole = await studioMembersRepo.lockMemberRole(
       studioId,
       receiverUserId,
+      tx,
     );
     if (!recipientRole || recipientRole === "guest") {
       throw new ConflictError(t("server.error.conflict"));

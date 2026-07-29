@@ -43,6 +43,8 @@ import { initCore, ConflictError, ForbiddenError, NotFoundError, projectMembersR
 import { studioMembersRepo } from "@breatic/domain";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
+import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
+import { waitUntilBlockedOn } from "./lock-probe.js";
 
 // integration-setup.ts injects the container URLs into process.env; the
 // worker is shared with sibling suites that may have already inited.
@@ -156,6 +158,25 @@ async function countAdmins(studioId: string): Promise<number> {
   return Number(rows[0]!.n);
 }
 
+/**
+ * Read back the id of the newest actionable notification of a given type.
+ *
+ * Both transfer handshakes return void — the request travels as a notification,
+ * and the confirm step takes THAT notification's id.
+ * @param userId - the recipient whose inbox to read.
+ * @param type - the notification type to look for.
+ * @returns the newest matching notification's id.
+ */
+async function latestNotificationId(userId: string, type: string): Promise<string> {
+  const rows = await sql<{ id: string }[]>`
+    SELECT id FROM notifications
+    WHERE user_id = ${userId} AND type = ${type} AND deleted_at IS NULL
+    ORDER BY created_at DESC LIMIT 1
+  `;
+  return rows[0]!.id;
+}
+
+
 describe("leaveStudio", () => {
   it("removes the member and hands their owned projects to the studio's admin", async () => {
     const admin = await insertUser();
@@ -248,16 +269,11 @@ describe("leaveStudio — concurrency invariants", () => {
     const studio = await insertStudioWithAdmin(admin.id);
     await insertMember(studio.id, receiver.id, "maintainer");
 
-    // requestTransfer returns void — the handshake travels as an actionable
-    // notification, and confirmTransfer takes THAT notification's id.
     await studioTransferService.requestTransfer(studio.slug, admin.id, receiver.id);
-    const reqs = await sql<{ id: string }[]>`
-      SELECT id FROM notifications
-      WHERE user_id = ${receiver.id} AND type = 'studio.transfer_request'
-        AND deleted_at IS NULL
-      ORDER BY created_at DESC LIMIT 1
-    `;
-    const notificationId = reqs[0]!.id;
+    const notificationId = await latestNotificationId(
+      receiver.id,
+      "studio.transfer_request",
+    );
 
     await Promise.allSettled([
       studioTransferService.confirmTransfer(notificationId, receiver.id),
@@ -267,19 +283,14 @@ describe("leaveStudio — concurrency invariants", () => {
     expect(await countAdmins(studio.id)).toBe(1);
   });
 
-  // ⚠️ THIS ONE DOES NOT GUARD ANYTHING YET — it passes for the wrong reason.
-  //
-  // The hole it describes lives in the project-transfer path, which validates
-  // the recipient's studio role OUTSIDE its transaction and can therefore
-  // revive a membership row a concurrent leave just soft-deleted. That path is
-  // not fixed yet (design section 5.4.1), and this test cannot fail it: the
-  // handover here is a bare repo call with no membership check to race
-  // against, and the assertion is skipped entirely when the leave loses.
-  //
-  // Kept as the placeholder for the real thing, which needs the transfer
-  // service locked first and then a deterministic interleaving — not
-  // Promise.allSettled, which never guarantees the ordering that breaks it.
-  it("nobody owns a project in a studio they have left", async () => {
+  it("nobody owns a project in a studio they have left, even when a project transfer confirms across the leave", async () => {
+    // The cross-module window (design section 5.4.1): confirming a project
+    // transfer checks the recipient's eligibility and THEN hands the project
+    // over. Without a lock on those reads, a leave can commit in between —
+    // and `materializeOwner` upserts with `deleted_at = null`, so it REVIVES
+    // the very membership row the leave just soft-deleted. The result is a
+    // permanent inconsistency: someone who is not a studio member owns one of
+    // that studio's projects, and can still open it.
     const admin = await insertUser();
     const member = await insertUser();
     const studio = await insertStudioWithAdmin(admin.id);
@@ -287,17 +298,56 @@ describe("leaveStudio — concurrency invariants", () => {
     const project = await insertProject(studio.id, admin.id);
     await insertProjectMember(project, member.id, "editor");
 
-    await Promise.allSettled([
-      studioMemberService.leaveStudio(studio.slug, member.id),
-      projectMembersRepo.materializeOwner(project, member.id),
-    ]);
+    await projectTransferService.requestProjectTransfer(project, admin.id, member.id);
+    const notificationId = await latestNotificationId(
+      member.id,
+      "project.transfer_request",
+    );
 
-    const studioRole = await studioMembersRepo.getRole(studio.id, member.id);
-    const projectRole = await projectMembersRepo.getRole(project, member.id);
-    // Whichever order they land in, these two must agree: a non-member
-    // cannot hold any project role in that studio.
-    if (studioRole === null) {
-      expect(projectRole).toBeNull();
-    }
+    // The gate: hold a row lock on the ADMIN's project_members row — the first
+    // row the confirm writes (it demotes the outgoing owner before promoting
+    // the recipient). The transfer therefore parks with every eligibility read
+    // already done and no write applied yet, which is exactly the window the
+    // fix has to close. The leaving member owns no project, so the leave path
+    // never touches this row: only the transfer is gated.
+    let openGate!: () => void;
+    const gateHeld = new Promise<void>((r) => {
+      openGate = r;
+    });
+    const gate = sql.begin(async (t) => {
+      await t`
+        SELECT 1 FROM project_members
+        WHERE project_id = ${project} AND user_id = ${admin.id}
+          AND deleted_at IS NULL
+        FOR UPDATE
+      `;
+      await gateHeld;
+    });
+
+    const transfer = projectTransferService.confirmProjectTransfer(
+      notificationId,
+      member.id,
+    );
+    await waitUntilBlockedOn(sql, "project_members");
+
+    const leave = studioMemberService.leaveStudio(studio.slug, member.id);
+    // Give the leave time to either block (locked — the fix) or run start to
+    // finish (unlocked — the bug). Both are fine here; the assertions below
+    // are what separates them.
+    await new Promise((r) => setTimeout(r, 300));
+
+    openGate();
+    await gate;
+    await Promise.allSettled([transfer, leave]);
+
+    // Unconditional, deliberately: an `if (studioRole === null)` guard would
+    // let the whole assertion be skipped whenever the race lands the other
+    // way, which is how the previous version of this test passed while
+    // guarding nothing. The leave is queued behind the transfer, so it always
+    // gets to run — the member always ends up out.
+    expect(await studioMembersRepo.getRole(studio.id, member.id)).toBeNull();
+    expect(await projectMembersRepo.getRole(project, member.id)).toBeNull();
+    // And the project it passed through is not left ownerless.
+    expect(await projectMembersRepo.getOwner(project)).toBe(admin.id);
   });
 });
