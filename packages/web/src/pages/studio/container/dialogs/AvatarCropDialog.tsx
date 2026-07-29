@@ -20,6 +20,7 @@ import {
 import {
   imageBoxWithin,
   initialSquareCrop,
+  rescaleCrop,
   type ImageBox,
 } from '@web/pages/studio/container/dialogs/avatar-crop';
 import {
@@ -104,6 +105,9 @@ export function AvatarCropDialog({
   const imgRef = React.useRef<HTMLImageElement | null>(null);
   const gestureRef = React.useRef<Gesture | null>(null);
   const rectRef = React.useRef<CropRect | null>(null);
+  // The box as last measured, read inside `measure` — reading the state there
+  // would see whatever value the callback closed over, not the latest one.
+  const boxRef = React.useRef<ImageBox | null>(null);
 
   const [box, setBox] = React.useState<ImageBox | null>(null);
   const [rect, setRect] = React.useState<CropRect | null>(null);
@@ -127,6 +131,7 @@ export function AvatarCropDialog({
   React.useEffect(() => {
     setBox(null);
     setRect(null);
+    boxRef.current = null;
     setLocalError(null);
   }, [file]);
 
@@ -134,11 +139,22 @@ export function AvatarCropDialog({
     const frame = frameRef.current;
     const img = imgRef.current;
     if (!frame || !img) return;
+    // Layout measurements, NOT `getBoundingClientRect`: the dialog animates in
+    // with a scale transform, which the rect reflects and the ResizeObserver
+    // below does not. Measuring through the rect therefore reads ~95% of the
+    // real size, and no later layout change ever arrives to correct it.
     const next = imageBoxWithin(
-      frame.getBoundingClientRect(),
-      img.getBoundingClientRect(),
+      { width: frame.clientWidth, height: frame.clientHeight },
+      {
+        left: img.offsetLeft,
+        top: img.offsetTop,
+        width: img.offsetWidth,
+        height: img.offsetHeight,
+      },
     );
     if (next === null) return;
+    const prevBox = boxRef.current;
+    boxRef.current = next;
     setBox((prev) =>
       prev !== null &&
       prev.x === next.x &&
@@ -148,7 +164,16 @@ export function AvatarCropDialog({
         ? prev
         : next,
     );
-    setRect((prev) => prev ?? initialSquareCrop(next));
+    // The dialog animates open, so the first measurement is of a box that is
+    // still growing; a selection seeded from it has to travel with the image
+    // rather than stay at numbers that no longer describe anything.
+    setRect((prev) =>
+      prev === null
+        ? initialSquareCrop(next)
+        : prevBox === null
+          ? prev
+          : rescaleCrop(prev, prevBox, next),
+    );
   }, []);
 
   React.useEffect(() => {
