@@ -17,6 +17,24 @@ describe('VideoNode', () => {
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
   });
 
+  // Same inset as the image node (user 2026-07-29): media flush against the
+  // shell's 1px border merges with it, so the node boundary stops reading as a
+  // boundary. Matches the 4px the hover preview card already applies.
+  it('insets the player from the shell border', () => {
+    render(
+      <VideoNode
+        data={{
+          kind: 'video',
+          content: 'https://e.com/v.mp4',
+          status: 'idle',
+        }}
+      />,
+    );
+    const media = screen.getByTestId('node-media-inset');
+    expect(media.className).toContain('p-1');
+    expect(media).toContainElement(screen.getByTestId('media-player'));
+  });
+
   it('renders video element with src + poster', () => {
     render(
       <VideoNode

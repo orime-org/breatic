@@ -6,6 +6,7 @@ import * as React from 'react';
 import type { VideoNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
+import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
@@ -63,12 +64,14 @@ export const VideoNode = React.memo(function VideoNode({
           <NodePlaceholder modality='video' onActivate={onActivate} />
         }
         content={
-          <MediaPlayer
-            modality='video'
-            src={data.content ?? ''}
-            poster={data.coverUrl}
-            onDimensions={setResolution}
-          />
+          <NodeMediaInset>
+            <MediaPlayer
+              modality='video'
+              src={data.content ?? ''}
+              poster={data.coverUrl}
+              onDimensions={setResolution}
+            />
+          </NodeMediaInset>
         }
       />
     </ContentNodeFrame>

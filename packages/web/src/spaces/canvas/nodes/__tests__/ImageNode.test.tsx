@@ -41,6 +41,21 @@ describe('ImageNode', () => {
     ).toBe('https://e.com/x.jpg');
   });
 
+  // The media must not touch the shell's 1px border: with no inset the image
+  // edge and the border line merge into one, and the node's boundary stops
+  // reading as a boundary (user 2026-07-29). The hover preview card already
+  // insets its image by 4px (`HoverCardContent`'s `p-1`); this matches it.
+  it('insets the image from the shell border', () => {
+    render(
+      <ImageNode
+        data={{ kind: 'image', content: 'https://e.com/x.jpg', status: 'idle' }}
+      />,
+    );
+    const media = screen.getByTestId('node-media-inset');
+    expect(media.className).toContain('p-1');
+    expect(media).toContainElement(screen.getByTestId('image-node-img'));
+  });
+
   it('handling status shows skeleton even with url', () => {
     render(
       <ImageNode
@@ -100,10 +115,15 @@ describe('ImageNode', () => {
         data={{ kind: 'image', status: 'idle', content: 'blob:img' }}
       />,
     );
-    // Concentric-radius geometry: the shell is rounded-sm (6px) + 1px border
-    // with zero padding, so a child carrying its own 6px radius curves faster
-    // than the border's inner arc and opens a gap in all four corners. The
-    // shell clips every child to its rounded box; the img carries NO radius.
+    // Concentric-radius geometry: the shell is rounded-sm (6px) + 1px border,
+    // so a child carrying its own 6px radius would curve faster than the
+    // border's inner arc and open a gap in all four corners. The shell clips
+    // every child to its rounded box; the img carries NO radius.
+    //
+    // Since 2026-07-29 the media is also inset 4px (NodeMediaInset), so it no
+    // longer reaches those corners and the clip does not engage — but both
+    // properties are kept: remove the inset and the clip is load-bearing
+    // again, and a radius on the img would be wrong either way.
     expect(screen.getByTestId('image-node').className).toContain(
       'overflow-hidden',
     );

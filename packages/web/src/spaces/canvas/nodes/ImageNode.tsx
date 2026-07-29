@@ -6,6 +6,7 @@ import * as React from 'react';
 import type { ImageNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
+import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
 
@@ -62,26 +63,28 @@ export const ImageNode = React.memo(function ImageNode({
           <NodePlaceholder modality='image' onActivate={onActivate} />
         }
         content={
-          <img
-            src={data.content ?? ''}
-            alt=''
-            // Offscreen nodes still mount once on canvas load (xyflow #3883,
-            // see onlyRenderVisibleElements in CanvasSpace) — lazy defers
-            // their fetch to viewport proximity (#1772).
-            loading='lazy'
-            decoding='async'
-            data-testid='image-node-img'
-            className='block h-auto w-full'
-            onLoad={(e) => {
-              const img = e.currentTarget;
-              if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                setResolution({
-                  width: img.naturalWidth,
-                  height: img.naturalHeight,
-                });
-              }
-            }}
-          />
+          <NodeMediaInset>
+            <img
+              src={data.content ?? ''}
+              alt=''
+              // Offscreen nodes still mount once on canvas load (xyflow #3883,
+              // see onlyRenderVisibleElements in CanvasSpace) — lazy defers
+              // their fetch to viewport proximity (#1772).
+              loading='lazy'
+              decoding='async'
+              data-testid='image-node-img'
+              className='block h-auto w-full'
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                  setResolution({
+                    width: img.naturalWidth,
+                    height: img.naturalHeight,
+                  });
+                }
+              }}
+            />
+          </NodeMediaInset>
         }
       />
     </ContentNodeFrame>
