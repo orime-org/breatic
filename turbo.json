@@ -55,5 +55,10 @@
       "cache": false
     }
   },
-  "globalDependencies": [".env"]
+  "globalDependencies": [
+    ".env",
+    "tsconfig.base.json",
+    "eslint.config.mjs",
+    "eslint-rules/**"
+  ]
 }
