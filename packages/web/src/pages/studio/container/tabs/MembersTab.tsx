@@ -282,12 +282,15 @@ export function MembersTab({
                 >
                   <td className='py-2.5'>
                     <span className='flex items-center gap-3'>
-                      <span
-                        aria-hidden='true'
-                        className='flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground'
-                      >
-                        {inv.name.slice(0, 1).toUpperCase()}
-                      </span>
+                      {/* An invitee has no studio of their own here yet, but
+                          they are still a person — same round avatar, same
+                          two-character initials as every other member row. */}
+                      <StudioAvatar
+                        name={inv.name}
+                        type='personal'
+                        avatarUrl={null}
+                        size='md'
+                      />
                       <span className='flex min-w-0 flex-col'>
                         <span className='truncate font-semibold text-foreground'>
                           {inv.name}

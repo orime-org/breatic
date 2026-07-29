@@ -383,6 +383,23 @@ describe("GET /studios/slug-available — excluding the studio being renamed", (
     expect(body.data.available).toBe(true);
   });
 
+  it("rejects a non-uuid excludeStudioId instead of letting Postgres 500 on it", async () => {
+    // The value reaches the query as a uuid comparison, so anything that is
+    // not one makes Postgres reject the statement — a user-supplied string
+    // turning into a server error.
+    const admin = await insertUser();
+    const studio = await insertStudio(admin);
+    const cookie = await loginCookie(admin);
+
+    const res = await app.request(
+      `/api/v1/studios/slug-available?slug=${studio.slug}&excludeStudioId=not-a-uuid`,
+      { headers: { Cookie: cookie } },
+    );
+
+    // 422 is this repo's code for a validation failure (ValidationError).
+    expect(res.status).toBe(422);
+  });
+
   it("still reports another studio's slug as taken when excluding your own", async () => {
     const admin = await insertUser();
     const other = await insertUser();

@@ -113,18 +113,25 @@ export function AvatarCropDialog({
   const [rect, setRect] = React.useState<CropRect | null>(null);
   const [localError, setLocalError] = React.useState<string | null>(null);
   const [preparing, setPreparing] = React.useState(false);
+  const [decodeFailed, setDecodeFailed] = React.useState(false);
 
   rectRef.current = rect;
 
-  const objectUrl = React.useMemo(
-    () => (file === null ? null : URL.createObjectURL(file)),
-    [file],
-  );
+  const [objectUrl, setObjectUrl] = React.useState<string | null>(null);
 
+  // Creation and cleanup live in ONE effect, with the URL exposed through
+  // state. Minting it in a `useMemo` and revoking it from a separate effect
+  // leaks under StrictMode: the render phase runs twice, so two URLs are
+  // created, and only the one the effect happened to observe is ever revoked.
   React.useEffect(() => {
-    if (objectUrl === null) return;
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [objectUrl]);
+    if (file === null) {
+      setObjectUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setObjectUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   // A new file starts a fresh crop; a failed upload keeps the current one,
   // because `file` has not changed.
@@ -132,7 +139,14 @@ export function AvatarCropDialog({
     setBox(null);
     setRect(null);
     boxRef.current = null;
+    // A gesture in progress dies with the dialog. `endGesture` cannot do this
+    // for us: closing mid-drag unmounts the element holding pointer capture,
+    // so the eventual pointerup lands on whatever is behind and never reaches
+    // its handler. A gesture left here would resume on the NEXT image, where
+    // the pointer merely hovering drags the selection with no button held.
+    gestureRef.current = null;
     setLocalError(null);
+    setDecodeFailed(false);
   }, [file]);
 
   const measure = React.useCallback((): void => {
@@ -302,7 +316,9 @@ export function AvatarCropDialog({
   }, [box, onConfirm, rect, t]);
 
   const busy = uploading || preparing;
-  const shown = error ?? localError;
+  const shown = decodeFailed
+    ? t('studio.container.settings.avatarError.not_an_image')
+    : (error ?? localError);
 
   return (
     <Dialog
@@ -345,6 +361,13 @@ export function AvatarCropDialog({
                 alt=''
                 draggable={false}
                 onLoad={measure}
+                // Without this a file the browser cannot decode — a HEIC
+                // straight off a phone, a truncated JPEG, anything renamed to
+                // .png — never fires `load`, so the box is never measured, the
+                // selection never appears, and Confirm stays disabled forever.
+                // The user would be left staring at an empty frame with no
+                // explanation and only Cancel to press.
+                onError={() => setDecodeFailed(true)}
                 className='max-h-full max-w-full select-none'
               />
             )}

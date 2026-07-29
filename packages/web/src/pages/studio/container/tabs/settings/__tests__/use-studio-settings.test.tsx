@@ -253,6 +253,52 @@ describe('useStudioSettings — changing the slug', () => {
   });
 });
 
+describe('useStudioSettings — avatar error lifetime', () => {
+  it('clears a previous failure when the next attempt starts', async () => {
+    // Clearing only on success left the message set for good: the next crop
+    // dialog opened already showing an error about an upload the user had
+    // moved on from.
+    vi.mocked(studiosApi.uploadAvatar).mockRejectedValueOnce(
+      new Error('boom'),
+    );
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.uploadAvatar(new Blob(['x'], { type: 'image/webp' }));
+    await waitFor(() => expect(result.current.avatarError).not.toBeNull());
+
+    vi.mocked(studiosApi.uploadAvatar).mockResolvedValueOnce(
+      updated(TEAM, { avatarUrl: 'https://cdn/new.webp' }),
+    );
+    result.current.uploadAvatar(new Blob(['y'], { type: 'image/webp' }));
+
+    await waitFor(() => expect(result.current.avatarError).toBeNull());
+  });
+});
+
+describe('useStudioSettings — callback stability', () => {
+  it('hands back the same callbacks across renders', async () => {
+    // They used to depend on the mutation OBJECT, which React Query rebuilds
+    // every render — so every callback was new every render, and every child
+    // they are passed to re-rendered for nothing.
+    const { result, rerender } = renderHook(() => useStudioSettings(TEAM), {
+      wrapper,
+    });
+    const first = {
+      save: result.current.save,
+      uploadAvatar: result.current.uploadAvatar,
+      removeAvatar: result.current.removeAvatar,
+      leave: result.current.leave,
+    };
+
+    rerender();
+
+    expect(result.current.save).toBe(first.save);
+    expect(result.current.uploadAvatar).toBe(first.uploadAvatar);
+    expect(result.current.removeAvatar).toBe(first.removeAvatar);
+    expect(result.current.leave).toBe(first.leave);
+  });
+});
+
 describe('useStudioSettings — leaving', () => {
   it('sends the user to their own studio and drops the one they left', async () => {
     client.setQueryData(['studio', 'acme'], TEAM);

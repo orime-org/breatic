@@ -267,4 +267,28 @@ describe("the list endpoint resolves ids to current identities", () => {
       expect(view.resolved.studios[s.id]).toMatchObject({ slug: s.slug });
     }
   });
+
+  it("resolves a user through their LIVE personal studio when a soft-deleted one also exists", async () => {
+    // Soft-deleted rows are deliberately no longer filtered out — a
+    // notification naming nobody is not a usable record. But that means one
+    // user can match more than one row, and the query has no ordering, so
+    // building the map by last-write-wins would pick an arbitrary one. Here
+    // the dead row is inserted AFTER the live one, which is the order that
+    // catches it.
+    const admin = await insertUserWithHandle(`nid-a6-${seq}`);
+    const recipient = await insertUserWithHandle(`nid-r6-${seq}`);
+    await sql`
+      INSERT INTO studios (created_by_user_id, slug, type, name, deleted_at)
+      VALUES (${admin}, ${`nid-dead-${seq++}`}, 'personal', 'Deleted Identity', now())
+    `;
+    const studio = await insertStudio(admin, "Acme Team");
+    await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio.id}, ${recipient}, 'maintainer')`;
+    await studioTransferService.requestTransfer(studio.slug, admin, recipient);
+    const cookie = await loginCookie(recipient);
+
+    const view = await listNotifications(cookie);
+
+    expect(view.resolved.users[admin]).toMatchObject({ deleted: false });
+    expect(view.resolved.users[admin]!.name).not.toBe("Deleted Identity");
+  });
 });

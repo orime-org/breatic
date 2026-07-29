@@ -186,10 +186,13 @@ function headlinePartsFor(
 
   // Names and links come from `resolved`, never from the payload. The payload
   // holds ids precisely so a rename cannot strand this row: whatever the target
-  // is called RIGHT NOW is what the reader should see and click. A target the
-  // server could not resolve (deleted) is absent from the map — the entity then
-  // renders as plain text instead of a dead link, falling back to the stored
-  // name as a label so the sentence still reads.
+  // is called RIGHT NOW is what the reader should see and click.
+  //
+  // Two different outcomes, handled separately. A soft-deleted target IS in the
+  // map, flagged `deleted` — it keeps its name and loses only the link, because
+  // "someone invited you to something" reads as nothing at all. A target that
+  // is genuinely unresolvable is absent, and falls back to the stored name as
+  // plain text.
   const projectId = str(p, 'projectId') || n.projectId || '';
   const projectRef = projectId ? resolved.projects[projectId] : undefined;
   const projectHref =

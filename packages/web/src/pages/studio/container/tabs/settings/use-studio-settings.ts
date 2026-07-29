@@ -120,8 +120,11 @@ export function useStudioSettings(
 
   const avatarMutation = useMutation({
     mutationFn: (image: Blob) => studiosApi.uploadAvatar(studio.slug, image),
+    // Cleared when a new attempt starts, not only when one succeeds: otherwise
+    // a failure leaves the message set for good, and the next crop dialog opens
+    // already showing an error about an upload the user has moved on from.
+    onMutate: () => setAvatarError(null),
     onSuccess: (next) => {
-      setAvatarError(null);
       absorb(next);
       toast.success(t('studio.container.settings.avatarSaved'));
     },
@@ -155,22 +158,29 @@ export function useStudioSettings(
     onError: (err) => toast.error(messageFor(err)),
   });
 
+  // Depend on `.mutate`, not on the mutation object. React Query hands back a
+  // fresh object every render, so depending on it makes every one of these
+  // callbacks new every render — which defeats the point of wrapping them and
+  // pushes a re-render through every child they are passed to. `.mutate` is
+  // stable for the mutation's lifetime.
+  const { mutate: mutateUpdate } = updateMutation;
+  const { mutate: mutateAvatar } = avatarMutation;
+  const { mutate: mutateRemoveAvatar } = removeAvatarMutation;
+  const { mutate: mutateLeave } = leaveMutation;
+
   const save = React.useCallback(
-    (patch: UpdateStudioInput): void => updateMutation.mutate(patch),
-    [updateMutation],
+    (patch: UpdateStudioInput): void => mutateUpdate(patch),
+    [mutateUpdate],
   );
   const uploadAvatar = React.useCallback(
-    (image: Blob): void => avatarMutation.mutate(image),
-    [avatarMutation],
+    (image: Blob): void => mutateAvatar(image),
+    [mutateAvatar],
   );
   const removeAvatar = React.useCallback(
-    (): void => removeAvatarMutation.mutate(),
-    [removeAvatarMutation],
+    (): void => mutateRemoveAvatar(),
+    [mutateRemoveAvatar],
   );
-  const leave = React.useCallback(
-    (): void => leaveMutation.mutate(),
-    [leaveMutation],
-  );
+  const leave = React.useCallback((): void => mutateLeave(), [mutateLeave]);
 
   return {
     save,

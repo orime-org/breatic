@@ -208,14 +208,23 @@ export async function getPersonalIdentitiesByCreators(
 }
 
 /**
- * Batch-resolve each user's active personal studio `name` + URL `slug` (handle).
+ * Batch-resolve each user's personal studio `name` + URL `slug` (handle).
  *
  * Backs the bell notification actor identity: the slug is both the `@handle`
- * shown beside the name and the `/studio/{slug}` link target. Users with no
- * active personal studio (mid-onboarding) are absent from the map; callers
- * fall back.
+ * shown beside the name and the `/studio/{slug}` link target.
+ *
+ * Soft-deleted studios ARE returned, flagged `deleted`, because a notification
+ * is a record of something that happened and "someone invited you" with the
+ * someone missing is not a usable record. Callers keep the name and drop only
+ * the link. Users with no personal studio at all (mid-onboarding) are absent
+ * from the map; callers fall back.
+ *
+ * A live row always wins over a soft-deleted one. Without the active-only
+ * filter a user can match more than one row, and the query has no ordering —
+ * so building the map by last-write-wins would pick an arbitrary row and could
+ * show a stale name for someone who is perfectly present.
  * @param createdByUserIds - User UUIDs to resolve (empty input → empty map)
- * @returns Map of `userId → { name, slug }`
+ * @returns Map of `userId → { name, slug, deleted }`
  */
 export async function getPersonalProfilesByCreators(
   createdByUserIds: string[],
@@ -235,12 +244,20 @@ export async function getPersonalProfilesByCreators(
         eq(studios.type, "personal"),
       ),
     );
-  return new Map(
-    rows.map((r) => [
-      r.createdByUserId,
-      { name: r.name, slug: r.slug, deleted: r.deletedAt !== null },
-    ]),
-  );
+  const byUser = new Map<
+    string,
+    { name: string; slug: string; deleted: boolean }
+  >();
+  for (const row of rows) {
+    const held = byUser.get(row.createdByUserId);
+    if (held !== undefined && !held.deleted) continue;
+    byUser.set(row.createdByUserId, {
+      name: row.name,
+      slug: row.slug,
+      deleted: row.deletedAt !== null,
+    });
+  }
+  return byUser;
 }
 
 /**

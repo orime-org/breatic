@@ -89,12 +89,20 @@ export function BasicInfoSection({
 
   const slugChanged = patch.slug !== undefined;
   const dirty = Object.keys(patch).length > 0;
+  // An emptied field reads as `idle` from the availability check, not as
+  // `invalid` — so without the explicit emptiness test it slips past the gate
+  // and the user walks all the way through the destructive confirmation before
+  // the server rejects it. The name has no availability check at all and needs
+  // the same guard.
   const slugBlocked =
     slugChanged &&
-    (availability.status === 'invalid' ||
+    (patch.slug === '' ||
+      availability.status === 'invalid' ||
       availability.status === 'taken' ||
       availability.status === 'checking');
-  const canSubmit = canEdit && dirty && !saving && !slugBlocked;
+  const nameBlocked = patch.name !== undefined && patch.name === '';
+  const canSubmit =
+    canEdit && dirty && !saving && !slugBlocked && !nameBlocked;
 
   const submit = React.useCallback((): void => {
     if (slugChanged) {
@@ -134,6 +142,7 @@ export function BasicInfoSection({
         label={t('studio.container.settings.slug')}
         value={slug}
         onChange={setSlug}
+        disabled={!canEdit || saving}
         error={
           availability.status === 'invalid' || availability.status === 'taken'
             ? (availability.reason ?? null)

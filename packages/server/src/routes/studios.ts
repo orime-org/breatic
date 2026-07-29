@@ -29,7 +29,7 @@ import { requireStudioRole } from "@server/middleware/studio-role.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { studioService, projectService, recentService } from "@server/modules";
-import { getStorageConfig } from "@breatic/core";
+import { getStorageConfig, ValidationError } from "@breatic/core";
 import { readBoundedBody } from "@server/utils/read-bounded-body.js";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioAvatarService from "@server/modules/studio/studioAvatar.service.js";
@@ -98,10 +98,24 @@ studios.get(
   rateLimitFor("slug-check", "user"),
   async (c) => {
     const slug = c.req.query("slug") ?? "";
-    // `excludeStudioId` is sent by the rename form so a studio's own slug does
-    // not come back as taken by itself. Passing an id here leaks nothing — the
-    // answer is about the slug, not about that studio.
+    // `excludeStudioId` lets a caller ask "ignoring this studio's own claim,
+    // is the slug free" — the question a rename form has. Passing an id here
+    // leaks nothing: the answer is about the slug, not about that studio.
+    //
+    // Validated rather than passed through, because it reaches the query as a
+    // uuid comparison and anything that is not a uuid makes Postgres reject
+    // the statement — a user-supplied string turning into a 500.
+    //
+    // No client sends it today: the web rename form knows its own slug and
+    // short-circuits locally instead of asking. It stays because it is the
+    // endpoint's honest contract, and it is covered by tests.
     const excludeStudioId = c.req.query("excludeStudioId");
+    if (
+      excludeStudioId !== undefined &&
+      !z.string().uuid().safeParse(excludeStudioId).success
+    ) {
+      throw new ValidationError("excludeStudioId must be a uuid");
+    }
     const data = await studioService.checkStudioSlug(slug, excludeStudioId);
     return c.json({ data });
   },
