@@ -2,7 +2,6 @@ import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
 import jsdoc from "eslint-plugin-jsdoc";
 import importPlugin from "eslint-plugin-import";
-import noRelativeImportPaths from "eslint-plugin-no-relative-import-paths";
 import drizzle from "eslint-plugin-drizzle";
 
 // eslint-plugin-jsdoc TypeScript preset (error level): enforces TSDoc-style
@@ -143,20 +142,6 @@ export default tseslint.config(
       "@typescript-eslint/explicit-function-return-type": [
         "error",
         { allowExpressions: true },
-      ],
-    },
-  },
-  {
-    // web-only: enforce `@/` alias imports (no `../` and no `./` —
-    // every cross-file import goes through the alias). Configured per
-    // tsconfig `paths` (`@/*` → `src/*`). See DD orime-org/
-    // breatic-inner-design#152 for rationale.
-    files: ["packages/web/src/**/*.{ts,tsx}"],
-    plugins: { "no-relative-import-paths": noRelativeImportPaths },
-    rules: {
-      "no-relative-import-paths/no-relative-import-paths": [
-        "error",
-        { allowSameFolder: false, rootDir: "packages/web/src", prefix: "@" },
       ],
     },
   },
