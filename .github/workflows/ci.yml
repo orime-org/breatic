@@ -393,18 +393,6 @@ jobs:
         # the PR. See scripts/lint-no-hardcoded-secrets.sh.
         run: pnpm lint:no-hardcoded-secrets
 
-      - name: Lint no-sync-in-request-path (event loop)
-        # Enforce CLAUDE.md prohibition list #10 (CI maximal-strictness
-        # guard suite, inner ADR 2026-06-01): synchronous fs/child_process
-        # calls (readFileSync / execSync / …) block the event loop and are
-        # forbidden in request-handling code — use the async form. This is
-        # a path proxy: boot-time / first-use loaders (config/, infra/,
-        # *-loader.ts, model-catalog/, fs-sandbox, worker providers/shared)
-        # are allowlisted with justification in the script; prohibition
-        # #10 still needs human review for hot-path sync I/O. See
-        # scripts/lint-no-sync-in-request-path.sh.
-        run: pnpm lint:no-sync-in-request-path
-
       - name: Lint schema-timestamps (deleted_at + created_at)
         # Enforce CLAUDE.md soft-delete + created_at mandates (CI maximal-
         # strictness guard suite, inner ADR 2026-06-01): every Drizzle
@@ -414,17 +402,6 @@ jobs:
         # credit_balances derives its soft-delete from users.deleted_at).
         # See scripts/lint-schema-timestamps.sh.
         run: pnpm lint:schema-timestamps
-
-      - name: Lint no-param-as-string (all packages)
-        # Enforce 2026-05-30 type-assertion governance: a Hono route
-        # param `c.req.param(name)` already resolves to `string`, so
-        # `... as string` is a redundant cast that lies about a possible
-        # `undefined`. Use getProjectId(c) for the :pid behind
-        # requireRole, or read the param directly. This grep gate is
-        # belt-and-suspenders alongside the type-aware
-        # no-unnecessary-type-assertion eslint rule (which also catches
-        # it). Hard-fails the PR. See scripts/lint-no-param-as-string.sh.
-        run: pnpm lint:no-param-as-string
 
       - name: Build packages (shared → core)
         run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core

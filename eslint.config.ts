@@ -280,6 +280,31 @@ export default tseslint.config(
     ],
     rules: {
       "breatic/no-drizzle-type-leak": "error",
+      "breatic/no-param-as-string": "error",
+    },
+  },
+  {
+    // Backend only — web has no event loop shared across requests. The
+    // exemptions are the paths that run before traffic arrives: startup
+    // config, infrastructure wiring, catalogue and skill loaders, and the
+    // agent's own filesystem sandbox, whose whole job is synchronous access.
+    files: [
+      "packages/{core,domain,server,worker,collab}/src/**/*.ts",
+    ],
+    ignores: [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.spec.ts",
+      "**/config/**",
+      "**/config.ts",
+      "**/infra/**",
+      "**/*-loader.ts",
+      "**/model-catalog/**",
+      "**/agent/tools/fs-sandbox.ts",
+      "**/providers/shared.ts",
+    ],
+    rules: {
+      "breatic/no-sync-in-request-path": "error",
     },
   },
   {

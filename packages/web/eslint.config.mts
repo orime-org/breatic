@@ -241,6 +241,7 @@ export default [
       'breatic/no-postgres-outside-core': 'error',
       'breatic/no-ioredis-outside-core': 'error',
       'breatic/no-drizzle-type-leak': 'error',
+      'breatic/no-param-as-string': 'error',
     },
   },
 ];
