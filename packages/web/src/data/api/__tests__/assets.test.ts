@@ -127,8 +127,6 @@ describe('assetsApi.fetchUploadConfig — session-cached knobs', () => {
     assetsApi.resetUploadConfigCache();
     vi.mocked(apiGet).mockResolvedValue({
       maxUploadBytes: 2147483648,
-      clientMaxAttempts: 3,
-      clientRetryBaseDelayMs: 1000,
       clientRequestTimeoutMs: 30000,
       clientPutMinBytesPerSec: 65536,
     });
@@ -148,8 +146,6 @@ describe('assetsApi.fetchUploadConfig — session-cached knobs', () => {
       .mockRejectedValueOnce(new Error('down'))
       .mockResolvedValueOnce({
         maxUploadBytes: 1,
-        clientMaxAttempts: 3,
-        clientRetryBaseDelayMs: 1000,
         clientRequestTimeoutMs: 30000,
         clientPutMinBytesPerSec: 65536,
       });

@@ -12,6 +12,7 @@
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
+import { requestRaw } from "@worker/providers/http.js";
 
 /**
  * Generate speech via ElevenLabs official TTS API.
@@ -53,13 +54,18 @@ export async function generate(
     body.voice_settings = voiceSettings;
   }
 
-  const resp = await fetch(
+  const resp = await requestRaw(
     `${resolved.baseUrl}/text-to-speech/${voiceId}`,
     {
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
+    },
+    {
+      provider: "elevenlabs-tts",
+      // No client-side idempotency key: a replayed submit bills twice.
+      replaySafe: false,
+      timeoutMs: resolved.timeout * 1000,
     },
   );
 

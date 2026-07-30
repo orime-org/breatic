@@ -9,6 +9,13 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { env } from "@breatic/core";
+import { httpRequest } from "@breatic/shared";
+
+/**
+ * Per-attempt ceiling for one search call. Still a literal here; task #22
+ * moves every tool's timeout into `config/agent.yaml` in one pass.
+ */
+const SEARCH_TIMEOUT_MS = 10_000;
 
 /**
  * Search the web using the Brave Search API.
@@ -43,13 +50,21 @@ export const webSearch = tool({
       url.searchParams.set("q", query);
       url.searchParams.set("count", String(n));
 
-      const res = await fetch(url, {
-        headers: {
-          Accept: "application/json",
-          "X-Subscription-Token": apiKey,
+      const res = await httpRequest(
+        url.toString(),
+        {
+          headers: {
+            Accept: "application/json",
+            "X-Subscription-Token": apiKey,
+          },
         },
-        signal: AbortSignal.timeout(10_000),
-      });
+        {
+          // A search query only reads: safe to replay.
+          replaySafe: true,
+          timeoutMs: SEARCH_TIMEOUT_MS,
+          label: "web_search",
+        },
+      );
 
       if (!res.ok) {
         return `Error: Brave Search returned HTTP ${res.status}`;

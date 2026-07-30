@@ -17,11 +17,10 @@ upload:
   # (413). Also protects local-storage mode, which buffers the whole
   # file in server memory. Default 2 GiB.
   max_upload_bytes: 2147483648
-  # Browser-side attempts for presign + PUT, including the first
-  # (matches worker job_attempts=3). Transient errors only.
-  client_max_attempts: 3
-  # Base backoff (ms) between browser retry attempts, full-jittered.
-  client_retry_base_delay_ms: 1000
+  # Browser retry count and backoff base are no longer configured here: they
+  # are fixed inside the shared HTTP transport (@breatic/shared), the same code
+  # the backend runs, so the two cannot disagree about how many tries an upload
+  # gets. Timeouts stay here because they genuinely differ per caller.
   # Per-attempt timeout (ms) for browser API requests (presign/config).
   # Also the floor for the PUT stall guard below.
   client_request_timeout_ms: 30000

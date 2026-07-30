@@ -16,11 +16,11 @@
 
 import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
+import { getWorkerConfig } from "@breatic/core";
+import { bearerHeaders, extractNested } from "@breatic/shared";
 import {
-  bearerHeaders,
   requestWithRetry,
   pollUntilDone,
-  extractNested,
   queryBilling,
 } from "@worker/providers/http.js";
 
@@ -93,9 +93,13 @@ export async function generate(
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
-      "wavespeed",
+      {
+        provider: "wavespeed",
+        // No client-side idempotency key: a replayed submit bills twice.
+        replaySafe: false,
+        timeoutMs: resolved.timeout * 1000,
+      },
     );
 
     if (extractOutputUrl(data) !== undefined) {
@@ -132,8 +136,9 @@ export async function generate(
         successStatuses: new Set(["completed"]),
         failureStatuses: new Set(["failed"]),
         errorPath: ["data", "error"],
-        interval: 3000,
-        maxWait: 600_000,
+        // 3D outlives the shared ceiling; the value is a deploy knob.
+        maxWait: getWorkerConfig().poll_max_wait_3d,
+        timeoutMs: resolved.timeout * 1000,
         provider: "wavespeed",
       },
     );

@@ -170,16 +170,12 @@ describe("Assets routes", () => {
       const body = (await res.json()) as {
         data: {
           maxUploadBytes: number;
-          clientMaxAttempts: number;
-          clientRetryBaseDelayMs: number;
           clientRequestTimeoutMs: number;
           clientPutMinBytesPerSec: number;
         };
       };
       expect(body.data).toEqual({
         maxUploadBytes: 1024,
-        clientMaxAttempts: 2,
-        clientRetryBaseDelayMs: 250,
         clientRequestTimeoutMs: 5000,
         clientPutMinBytesPerSec: 1024,
       });

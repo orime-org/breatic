@@ -126,9 +126,13 @@ export async function generate(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
-      "google",
+      {
+        provider: "google",
+        // No client-side idempotency key: a replayed submit bills twice.
+        replaySafe: false,
+        timeoutMs: resolved.timeout * 1000,
+      },
     );
 
     const operationName = data.name as string | undefined;
@@ -145,12 +149,18 @@ export async function generate(
    * @throws {Error} on operation error or timeout
    */
   const poll = async (operationName: string): Promise<Record<string, unknown>> => {
-    let elapsed = 0;
-    while (elapsed < MAX_WAIT) {
+    // Measured on the clock rather than by summing intervals: adding up only
+    // the sleeps let a slow vendor extend the deadline for free, so the
+    // nominal budget below meant nothing. (VEO polls its own way instead of
+    // using the shared `pollUntilDone` because Google reports completion with
+    // a boolean `done` rather than a status string.)
+    const deadline = Date.now() + MAX_WAIT;
+    while (Date.now() < deadline) {
       const result = await requestWithRetry(
         `${resolved.baseUrl}/${operationName}?${queryParams}`,
         { method: "GET", headers: {} },
-        "google",
+        // Reading operation status has no side effects: safe to replay.
+        { provider: "google", replaySafe: true, timeoutMs: resolved.timeout * 1000 },
       );
 
       if (result.done) {
@@ -164,7 +174,6 @@ export async function generate(
       }
 
       await sleep(POLL_INTERVAL);
-      elapsed += POLL_INTERVAL;
     }
 
     throw new Error(`Google VEO operation did not complete within ${MAX_WAIT / 1000}s`);

@@ -109,8 +109,6 @@ describe('fileToNodeSpec — MIME → which node + whether to upload', () => {
 /** The knob fixture threaded through the upload orchestration tests. */
 const CFG = {
   maxUploadBytes: 2147483648,
-  clientMaxAttempts: 3,
-  clientRetryBaseDelayMs: 1000,
   clientRequestTimeoutMs: 30000,
   clientPutMinBytesPerSec: 65536,
 };

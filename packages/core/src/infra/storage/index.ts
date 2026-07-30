@@ -12,11 +12,10 @@
 
 import { createHash } from "node:crypto";
 
-import { newId } from "@breatic/shared";
+import { newId, fullJitter } from "@breatic/shared";
 
 import { env } from "@core/config/env.js";
 import { getStorageConfig } from "@core/config/storage.js";
-import { fullJitter } from "@core/infra/retry.js";
 
 /** Metadata returned by StorageAdapter.head() after a client upload. */
 export interface ObjectHead {

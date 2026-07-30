@@ -84,9 +84,13 @@ export async function generate(
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
-      "fal",
+      {
+        provider: "fal",
+        // No client-side idempotency key: a replayed submit bills twice.
+        replaySafe: false,
+        timeoutMs: resolved.timeout * 1000,
+      },
     );
 
     const requestId = submitData.request_id as string | undefined;
@@ -117,8 +121,7 @@ export async function generate(
       successStatuses: new Set(["COMPLETED"]),
       failureStatuses: new Set(["FAILED"]),
       errorPath: ["error"],
-      interval: 2000,
-      maxWait: 300_000,
+      timeoutMs: resolved.timeout * 1000,
       provider: "fal",
     });
 
@@ -126,7 +129,8 @@ export async function generate(
     return requestWithRetry(
       responseUrl,
       { method: "GET", headers },
-      "fal",
+      // Fetching a finished result only reads: safe to replay.
+      { provider: "fal", replaySafe: true, timeoutMs: resolved.timeout * 1000 },
     );
   };
 

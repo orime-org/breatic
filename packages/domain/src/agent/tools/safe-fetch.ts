@@ -148,7 +148,34 @@ function assertIpAllowed(ip: string): void {
 /** Options accepted by {@link safeFetch}. A subset of `RequestInit`. */
 export interface SafeFetchOptions {
   headers?: Record<string, string>;
+  /** Per-hop deadline; applies alongside `signal`, not instead of it. */
   timeoutMs?: number;
+  /**
+   * Caller cancellation, honoured on every hop.
+   *
+   * Supplied by the shared HTTP transport when this function is used as its
+   * fetch implementation: that signal carries both the per-attempt deadline
+   * and the user's stop button. Retrying happens ABOVE this guard, so each
+   * replay re-runs the full per-hop DNS and range check — which is the point
+   * of driving it this way rather than retrying inside a connection pool.
+   */
+  signal?: AbortSignal;
+}
+
+/**
+ * Combine the caller's cancellation with this hop's own deadline.
+ * @param callerSignal - The caller's signal, if any.
+ * @param timeoutMs - This hop's ceiling in milliseconds.
+ * @returns A signal that aborts on whichever fires first.
+ */
+function hopSignal(
+  callerSignal: AbortSignal | undefined,
+  timeoutMs: number,
+): AbortSignal {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return callerSignal === undefined
+    ? deadline
+    : AbortSignal.any([callerSignal, deadline]);
 }
 
 /**
@@ -173,6 +200,14 @@ export async function safeFetch(
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    // Stop before spending a DNS lookup or a request on a cancelled call.
+    // Checked per hop, so a long redirect chain cannot outlive the caller.
+    if (opts.signal?.aborted === true) {
+      throw opts.signal.reason instanceof Error
+        ? opts.signal.reason
+        : new Error("safeFetch cancelled by caller");
+    }
+
     const parsed = new URL(current);
 
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -186,7 +221,7 @@ export async function safeFetch(
     const res = await fetch(current, {
       headers,
       redirect: "manual",
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: hopSignal(opts.signal, timeoutMs),
     });
 
     // Not a redirect — return to caller.

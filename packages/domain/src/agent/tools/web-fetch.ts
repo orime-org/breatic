@@ -10,12 +10,42 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
+import { httpRequest } from "@breatic/shared";
+
 import { safeFetch, SsrfError } from "@domain/agent/tools/safe-fetch.js";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36";
 
 const DEFAULT_MAX_CHARS = 60_000;
+
+/**
+ * Per-attempt ceiling for one page fetch. Still a literal here; task #22
+ * moves every tool's timeout into `config/agent.yaml` in one pass.
+ */
+const FETCH_TIMEOUT_MS = 30_000;
+
+/**
+ * Present {@link safeFetch} with the standard fetch signature so the shared
+ * transport can drive it.
+ *
+ * Retrying ABOVE the guard rather than inside a connection pool is the whole
+ * reason for this shape: every replay re-runs the per-hop DNS resolution and
+ * range check, so a rebinding answer on a later attempt is still caught. A
+ * pool-level retry would reconnect beneath the check and see none of it.
+ *
+ * `init` here always comes from the transport, which passes plain header
+ * records and its own composed signal.
+ * @param input - Request URL, as handed over by the transport.
+ * @param init - Headers plus the transport's per-attempt signal.
+ * @returns The guarded response.
+ * @throws {SsrfError} When any hop resolves to a non-public address.
+ */
+const guardedFetch: typeof fetch = async (input, init) =>
+  safeFetch(typeof input === "string" ? input : String(input), {
+    headers: init?.headers as Record<string, string> | undefined,
+    signal: init?.signal ?? undefined,
+  });
 
 /**
  * Remove HTML tags, scripts, and styles; unescape entities.
@@ -77,9 +107,21 @@ export const webFetch = tool({
     const limit = maxChars ?? DEFAULT_MAX_CHARS;
 
     try {
-      const res = await safeFetch(url, {
-        headers: { "User-Agent": USER_AGENT },
-      });
+      const res = await httpRequest(
+        url,
+        { headers: { "User-Agent": USER_AGENT } },
+        {
+          // Fetching a page only reads, so a flaky attempt is safe to replay.
+          replaySafe: true,
+          timeoutMs: FETCH_TIMEOUT_MS,
+          // Every replay goes back through the SSRF guard.
+          fetchImpl: guardedFetch,
+          // A blocked address is blocked on every attempt — replaying it
+          // would only burn the budget before returning the same refusal.
+          isFatal: (err) => err instanceof SsrfError,
+          label: "web_fetch",
+        },
+      );
 
       if (!res.ok) {
         return JSON.stringify({

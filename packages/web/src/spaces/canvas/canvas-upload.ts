@@ -247,11 +247,9 @@ export async function runMediaUpload(
           size: file.size,
           hash,
         }),
-      {
-        attempts: cfg.clientMaxAttempts,
-        baseDelayMs: cfg.clientRetryBaseDelayMs,
-        ...(deps.sleep !== undefined && { sleep: deps.sleep }),
-      },
+      // Attempt budget and backoff come from the shared transport; only the
+      // injectable timer belongs to the caller (tests avoid real waits).
+      deps.sleep === undefined ? {} : { sleep: deps.sleep },
     );
     if (isDedupHit(res)) {
       // Instant dedup (presign already returned the existing row's canonical).

@@ -19,8 +19,6 @@ describe("getStorageConfig", () => {
   it("loads the upload config from config/storage.yaml", () => {
     const cfg = getStorageConfig();
     expect(cfg.upload.max_upload_bytes).toBe(2147483648);
-    expect(cfg.upload.client_max_attempts).toBe(3);
-    expect(cfg.upload.client_retry_base_delay_ms).toBe(1000);
     expect(cfg.upload.client_request_timeout_ms).toBe(30000);
     expect(cfg.upload.client_put_min_bytes_per_sec).toBe(65536);
   });

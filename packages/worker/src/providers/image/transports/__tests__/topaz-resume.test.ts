@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as httpModule from "@worker/providers/http.js";
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
@@ -16,11 +16,13 @@ import type { ResolvedModel } from "@worker/providers/shared.js";
  * must NOT carry any client id — only the returned id is persisted.
  *
  * Only the async endpoint path (`modelId` ending in `/async`) is resumable.
- * The cost-estimate call uses raw `fetch`, stubbed here to fail (cost 0) so
- * it never leaves the process.
+ * The cost-estimate call goes through the shared transport too, stubbed here
+ * to a non-ok response so it short-circuits to cost 0 and never leaves the
+ * process.
  */
 const requestWithRetryMock = vi.fn();
 const pollUntilDoneMock = vi.fn();
+const requestRawMock = vi.fn();
 
 vi.mock("@worker/providers/http.js", async (importOriginal) => {
   const actual = await importOriginal<typeof httpModule>();
@@ -28,14 +30,11 @@ vi.mock("@worker/providers/http.js", async (importOriginal) => {
     ...actual,
     requestWithRetry: (...args: unknown[]) => requestWithRetryMock(...args),
     pollUntilDone: (...args: unknown[]) => pollUntilDoneMock(...args),
+    requestRaw: (...args: unknown[]) => requestRawMock(...args),
   };
 });
 
 import { generate } from "@worker/providers/image/transports/topaz.js";
-
-// estimateCost() uses raw fetch; a non-ok response short-circuits it to cost 0.
-const fetchMock = vi.fn();
-vi.stubGlobal("fetch", fetchMock);
 
 const RESOLVED: ResolvedModel = {
   modelName: "topaz-upscale",
@@ -61,13 +60,9 @@ describe("topaz image transport resume (#1628 ⑦)", () => {
   beforeEach(() => {
     requestWithRetryMock.mockReset();
     pollUntilDoneMock.mockReset();
-    fetchMock.mockReset();
+    requestRawMock.mockReset();
     pollUntilDoneMock.mockResolvedValue(COMPLETED_RESULT);
-    fetchMock.mockResolvedValue({ ok: false });
-  });
-
-  afterAll(() => {
-    vi.unstubAllGlobals();
+    requestRawMock.mockResolvedValue({ ok: false });
   });
 
   it("fresh run: submits WITHOUT a client id, persists the vendor id, then polls", async () => {

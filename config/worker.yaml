@@ -26,12 +26,10 @@ job_backoff_delay_ms: 2000
 # slowest single-step operation (large video upload, 3D generation).
 lock_duration_ms: 600000
 
-# ── HTTP Retry (AIGC provider API calls) ──────────
-# Max retries on 429 Too Many Requests.
-http_max_retries: 3
-
-# Base delay (ms) for exponential backoff: delay = base * 2^attempt.
-http_retry_base_delay: 2000
+# HTTP retry count and backoff base are no longer configured here: they are
+# fixed inside the shared HTTP transport (@breatic/shared) so the worker, the
+# agent tools and the browser upload cannot drift apart. Per-attempt timeouts
+# are still per-caller — they come from each model's `timeout`.
 
 # ── Polling (async AIGC tasks) ────────────────────
 # Default interval (ms) between poll requests.
@@ -39,6 +37,12 @@ poll_interval: 3000
 
 # Max wait time (ms) before giving up on an async task.
 poll_max_wait: 300000            # 5 minutes
+
+# Longer ceiling for 3D generation, which routinely runs past the 5-minute
+# default. Every other modality uses `poll_max_wait` above — this is the only
+# per-modality override, so it is spelled out rather than generalised into a
+# per-modality table nobody else would fill in.
+poll_max_wait_3d: 600000         # 10 minutes
 
 # ── Billing ───────────────────────────────────────
 # Timeout (ms) for WaveSpeed billing API queries.

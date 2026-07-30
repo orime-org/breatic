@@ -11,8 +11,9 @@
  */
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
-import { bearerHeaders } from "@worker/providers/http.js";
+import { bearerHeaders } from "@breatic/shared";
 import { logger } from "@breatic/core";
+import { requestWithRetry } from "@worker/providers/http.js";
 
 /**
  * Generate speech via MiniMax official TTS API.
@@ -56,19 +57,20 @@ export async function generate(
     },
   };
 
-  const resp = await fetch(`${resolved.baseUrl}/v1/t2a_v2`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(resolved.timeout * 1000),
-  });
-
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    throw new Error(`MiniMax TTS API HTTP ${resp.status}: ${text}`);
-  }
-
-  const data = (await resp.json()) as Record<string, unknown>;
+  const data = await requestWithRetry(
+    `${resolved.baseUrl}/v1/t2a_v2`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    },
+    {
+      provider: "minimax-tts",
+      // No client-side idempotency key: a replayed submit bills twice.
+      replaySafe: false,
+      timeoutMs: resolved.timeout * 1000,
+    },
+  );
 
   // Check for API errors
   const baseResp = (data.base_resp ?? {}) as Record<string, unknown>;

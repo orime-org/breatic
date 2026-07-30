@@ -16,11 +16,10 @@
 
 import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
+import { bearerHeaders, extractNested } from "@breatic/shared";
 import {
-  bearerHeaders,
   requestWithRetry,
   pollUntilDone,
-  extractNested,
 } from "@worker/providers/http.js";
 
 /**
@@ -78,9 +77,13 @@ export async function generate(
         method: "POST",
         headers,
         body: JSON.stringify(params),
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
-      "wavespeed",
+      {
+        provider: "wavespeed",
+        // No client-side idempotency key: a replayed submit bills twice.
+        replaySafe: false,
+        timeoutMs: resolved.timeout * 1000,
+      },
     );
 
     // Synchronous result available
@@ -114,8 +117,7 @@ export async function generate(
       successStatuses: new Set(["completed"]),
       failureStatuses: new Set(["failed"]),
       errorPath: ["data", "error"],
-      interval: 2000,
-      maxWait: 300_000,
+      timeoutMs: resolved.timeout * 1000,
       provider: "wavespeed",
     });
   };

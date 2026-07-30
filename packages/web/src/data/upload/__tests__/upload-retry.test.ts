@@ -1,11 +1,30 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+/**
+ * Browser upload resilience.
+ *
+ * The verdict on what counts as transient now lives in `@breatic/shared` and is
+ * exercised there (`src/http/__tests__/decide-retry.test.ts`, 42 cases) — it
+ * used to be a second opinion here that had already drifted from the backend's.
+ * What still belongs to this file is the browser-specific wiring:
+ *
+ *   - translating the three error shapes the browser produces (a PUT's
+ *     `UploadHttpError`, the project's `ApiException` with a FLAT `.status`, and
+ *     a raw axios error) into that shared verdict,
+ *   - the stall guard that scales the PUT timeout with file size.
+ *
+ * The flat-status path has its own regression here because getting it wrong once
+ * already made presign retries silently dead: `apiGet` normalizes every failure
+ * into an `ApiException` whose status sits on `.status`, so reading only the
+ * axios `{ response: { status } }` shape judged every transient presign failure
+ * as final.
+ */
+
 import { describe, it, expect, vi } from 'vitest';
 
 import {
   retryTransient,
-  isTransientUploadError,
   computePutTimeoutMs,
   putFileWithRetry,
   UploadHttpError,
@@ -14,8 +33,6 @@ import {
 
 const CFG: UploadClientConfig = {
   maxUploadBytes: 2147483648,
-  clientMaxAttempts: 3,
-  clientRetryBaseDelayMs: 1000,
   clientRequestTimeoutMs: 30000,
   clientPutMinBytesPerSec: 65536,
 };
@@ -32,95 +49,98 @@ function fakeSleep(): { sleep: (ms: number) => Promise<void>; delays: number[] }
   };
 }
 
-describe('isTransientUploadError — retry only what can heal', () => {
-  it('retries 5xx and 429, never other 4xx', () => {
-    expect(isTransientUploadError(new UploadHttpError(500))).toBe(true);
-    expect(isTransientUploadError(new UploadHttpError(503))).toBe(true);
-    expect(isTransientUploadError(new UploadHttpError(429))).toBe(true);
-    expect(isTransientUploadError(new UploadHttpError(403))).toBe(false);
-    expect(isTransientUploadError(new UploadHttpError(413))).toBe(false);
-    expect(isTransientUploadError(new UploadHttpError(422))).toBe(false);
-  });
+/** An `ApiException` as `apiGet` rejects with: a FLAT `.status`. */
+function apiError(status: number): unknown {
+  const e = new Error('api') as Error & { status: number; name: string };
+  e.name = 'ApiException';
+  e.status = status;
+  return e;
+}
 
-  it('retries network failures and per-attempt timeouts', () => {
-    expect(isTransientUploadError(new TypeError('Failed to fetch'))).toBe(true);
-    expect(
-      isTransientUploadError(new DOMException('aborted', 'AbortError')),
-    ).toBe(true);
-    expect(
-      isTransientUploadError(new DOMException('timed out', 'TimeoutError')),
-    ).toBe(true);
-  });
-
-  it('reads status off axios-shaped errors (presign path)', () => {
-    expect(isTransientUploadError({ response: { status: 502 } })).toBe(true);
-    expect(isTransientUploadError({ response: { status: 404 } })).toBe(false);
-  });
-
-  it('reads status off the project ApiException flat .status (real presign error shape)', () => {
-    // apiGet rejects with ApiException { status, name: 'ApiException' } —
-    // a FLAT status, not { response: { status } }. Adversarial #2: without
-    // this, every transient presign failure (503/429/network-0) is judged
-    // non-transient and the presign retry is dead.
-    const apiErr = (status: number): unknown => {
-      const e = new Error('api') as Error & { status: number; name: string };
-      e.name = 'ApiException';
-      e.status = status;
-      return e;
-    };
-    expect(isTransientUploadError(apiErr(503))).toBe(true);
-    expect(isTransientUploadError(apiErr(429))).toBe(true);
-    expect(isTransientUploadError(apiErr(0))).toBe(true); // network drop
-    expect(isTransientUploadError(apiErr(403))).toBe(false);
-    expect(isTransientUploadError(apiErr(413))).toBe(false);
-  });
-
-  it('does not retry unknown programming errors', () => {
-    expect(isTransientUploadError(new Error('undefined is not a function'))).toBe(
-      false,
-    );
-  });
-});
-
-describe('retryTransient — 3 attempts, full-jitter backoff', () => {
-  it('retries transient failures up to the attempt budget then throws', async () => {
+describe('retryTransient — shared budget, browser error shapes', () => {
+  it('retries a transient failure to the shared budget then throws', async () => {
     const fn = vi.fn().mockRejectedValue(new UploadHttpError(500));
     const { sleep, delays } = fakeSleep();
 
     await expect(
-      retryTransient(fn, {
-        attempts: 3,
-        baseDelayMs: 1000,
-        sleep,
-        random: () => 1,
-      }),
+      retryTransient(fn, { sleep, random: () => 1 }),
     ).rejects.toBeInstanceOf(UploadHttpError);
+    // First attempt plus two retries — the count is fixed in the shared
+    // transport, so the browser cannot drift from the backend.
     expect(fn).toHaveBeenCalledTimes(3);
-    // full jitter with random()=1 → base * 2^attemptIndex
+    // random()=1 pins full jitter to its ceiling: base * 2^attemptIndex.
     expect(delays).toEqual([1000, 2000]);
   });
 
-  it('stops immediately on a non-transient error', async () => {
+  it('stops immediately on a non-transient status', async () => {
     const fn = vi.fn().mockRejectedValue(new UploadHttpError(403));
     const { sleep } = fakeSleep();
 
-    await expect(
-      retryTransient(fn, { attempts: 3, baseDelayMs: 1000, sleep }),
-    ).rejects.toBeInstanceOf(UploadHttpError);
+    await expect(retryTransient(fn, { sleep })).rejects.toBeInstanceOf(
+      UploadHttpError,
+    );
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it('stops on first success', async () => {
+  it('stops on the first success', async () => {
     const fn = vi
       .fn()
       .mockRejectedValueOnce(new TypeError('network'))
       .mockResolvedValueOnce('ok');
     const { sleep } = fakeSleep();
 
-    await expect(
-      retryTransient(fn, { attempts: 3, baseDelayMs: 1000, sleep }),
-    ).resolves.toBe('ok');
+    await expect(retryTransient(fn, { sleep })).resolves.toBe('ok');
     expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads the flat .status off an ApiException (presign retry regression)', async () => {
+    // Without this translation every transient presign failure reads as final
+    // and the presign retry is dead — which is exactly what shipped once.
+    const { sleep } = fakeSleep();
+    for (const status of [503, 429]) {
+      const fn = vi.fn().mockRejectedValue(apiError(status));
+      await expect(retryTransient(fn, { sleep })).rejects.toThrow();
+      expect(fn).toHaveBeenCalledTimes(3);
+    }
+  });
+
+  it('treats an ApiException status of 0 as a dropped connection, not a status code', async () => {
+    // `apiGet` reports "no response reached us" as `.status = 0`. Passed to the
+    // shared predicate as a status it would be a nonsensical code and refused;
+    // it has to arrive as a transport failure instead.
+    const { sleep } = fakeSleep();
+    const fn = vi.fn().mockRejectedValue(apiError(0));
+    await expect(retryTransient(fn, { sleep })).rejects.toThrow();
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not retry a client-error ApiException', async () => {
+    const { sleep } = fakeSleep();
+    for (const status of [403, 413]) {
+      const fn = vi.fn().mockRejectedValue(apiError(status));
+      await expect(retryTransient(fn, { sleep })).rejects.toThrow();
+      expect(fn).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('reads the nested axios shape as a defensive fallback', async () => {
+    const { sleep } = fakeSleep();
+    const transient = vi.fn().mockRejectedValue({ response: { status: 502 } });
+    await expect(retryTransient(transient, { sleep })).rejects.toBeTruthy();
+    expect(transient).toHaveBeenCalledTimes(3);
+
+    const final = vi.fn().mockRejectedValue({ response: { status: 404 } });
+    await expect(retryTransient(final, { sleep })).rejects.toBeTruthy();
+    expect(final).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry an unknown programming error', async () => {
+    const { sleep } = fakeSleep();
+    const fn = vi.fn().mockRejectedValue(new Error('undefined is not a function'));
+    await expect(retryTransient(fn, { sleep })).rejects.toThrow();
+    // A bug in our own code carries no status and is not a network fault; the
+    // shared predicate refuses it rather than hammering it three times.
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -147,16 +167,13 @@ describe('computePutTimeoutMs — stall guard scales with size', () => {
   });
 });
 
-describe('putFileWithRetry — PUT with attempts + timeout signal', () => {
+describe('putFileWithRetry — PUT through the shared transport', () => {
   const file = new File(['x'.repeat(16)], 'a.png', { type: 'image/png' });
 
-  it('resolves on success and sends content-type + same-origin credentials + a signal', async () => {
+  it('sends content-type, same-origin credentials and a per-attempt signal', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 });
 
-    await putFileWithRetry('https://put', file, CFG, {
-      fetchImpl,
-      sleep: fakeSleep().sleep,
-    });
+    await putFileWithRetry('https://put', file, CFG, { fetchImpl });
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
@@ -168,35 +185,32 @@ describe('putFileWithRetry — PUT with attempts + timeout signal', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it('retries 5xx to the attempt budget then throws the HTTP error', async () => {
+  it('retries a 5xx to the shared budget then throws the HTTP error', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 500 });
-    const { sleep } = fakeSleep();
 
     await expect(
-      putFileWithRetry('https://put', file, CFG, { fetchImpl, sleep }),
+      putFileWithRetry('https://put', file, CFG, { fetchImpl }),
     ).rejects.toMatchObject({ status: 500 });
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it('does not retry a 403', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 403 });
-    const { sleep } = fakeSleep();
 
     await expect(
-      putFileWithRetry('https://put', file, CFG, { fetchImpl, sleep }),
+      putFileWithRetry('https://put', file, CFG, { fetchImpl }),
     ).rejects.toMatchObject({ status: 403 });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('retries a network failure and succeeds', async () => {
+  it('retries a dropped connection and succeeds', async () => {
     const fetchImpl = vi
       .fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValueOnce({ ok: true, status: 200 });
-    const { sleep } = fakeSleep();
 
     await expect(
-      putFileWithRetry('https://put', file, CFG, { fetchImpl, sleep }),
+      putFileWithRetry('https://put', file, CFG, { fetchImpl }),
     ).resolves.toBeUndefined();
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });

@@ -65,17 +65,18 @@ function detectKind(contentType: string): "image" | "video" | "audio" | "documen
 /**
  * `GET /assets/upload-config` — browser upload knobs from
  * `config/storage.yaml` (`upload:` section). The frontend fetches this
- * once per session and caches it: upload size cap (pre-checked on file
- * selection; authoritatively enforced by /presign) + retry attempts /
- * backoff base for presign + PUT.
+ * once per session and caches it: the upload size cap (pre-checked on file
+ * selection; authoritatively enforced by /presign) plus the timeouts.
+ *
+ * Retry count and backoff base are deliberately NOT served here — they are
+ * fixed inside `@breatic/shared`, the same transport the backend runs, so the
+ * browser cannot be told a different number than the server uses.
  */
 assets.get("/upload-config", requireAuth, (c) => {
   const { upload } = getStorageConfig();
   return c.json({
     data: {
       maxUploadBytes: upload.max_upload_bytes,
-      clientMaxAttempts: upload.client_max_attempts,
-      clientRetryBaseDelayMs: upload.client_retry_base_delay_ms,
       clientRequestTimeoutMs: upload.client_request_timeout_ms,
       clientPutMinBytesPerSec: upload.client_put_min_bytes_per_sec,
     },

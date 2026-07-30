@@ -19,6 +19,7 @@
  */
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
+import { requestWithRetry } from "@worker/providers/http.js";
 
 /** Part types used in the Google API request body. */
 interface FilePart {
@@ -140,22 +141,20 @@ export async function generate(
 ): Promise<{ url: string; model: string; cost: number }> {
   const body = buildRequestBody(prompt, params);
 
-  const response = await fetch(
+  const data = await requestWithRetry(
     `${resolved.baseUrl}/models/${resolved.modelId}:generateContent?key=${resolved.apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
+    },
+    {
+      provider: "google",
+      // No client-side idempotency key: a replayed submit bills twice.
+      replaySafe: false,
+      timeoutMs: resolved.timeout * 1000,
     },
   );
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Google API HTTP ${response.status}: ${text}`);
-  }
-
-  const data = (await response.json()) as Record<string, unknown>;
 
   const url = extractImageUrl(data);
   if (!url) {

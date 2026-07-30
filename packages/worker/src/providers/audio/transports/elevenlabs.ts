@@ -12,6 +12,7 @@
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
+import { requestRaw } from "@worker/providers/http.js";
 
 /**
  * Generate sound effects via ElevenLabs official API.
@@ -48,12 +49,20 @@ export async function generate(
     body.loop = params.loop;
   }
 
-  const resp = await fetch(`${resolved.baseUrl}/sound-generation`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(resolved.timeout * 1000),
-  });
+  const resp = await requestRaw(
+    `${resolved.baseUrl}/sound-generation`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    },
+    {
+      provider: "elevenlabs-sfx",
+      // No client-side idempotency key: a replayed submit bills twice.
+      replaySafe: false,
+      timeoutMs: resolved.timeout * 1000,
+    },
+  );
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");

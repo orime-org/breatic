@@ -25,10 +25,10 @@
 import { createHmac } from "node:crypto";
 import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
+import { extractNested } from "@breatic/shared";
 import {
   requestWithRetry,
   pollUntilDone,
-  extractNested,
 } from "@worker/providers/http.js";
 
 /**
@@ -149,9 +149,19 @@ export async function generate(
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
-      "klingai",
+      {
+        provider: "klingai",
+        // The only call site where replay-safety depends on runtime state.
+        // Kling deduplicates on `external_task_id`, but only the resume path
+        // sends one (see the body above), and that id is derived
+        // deterministically from our task UUID — so a resumed submit is
+        // rejected vendor-side rather than billed again. A first submit
+        // carries no key and must not be replayed. No HTTP-method rule could
+        // express this: same verb, same endpoint, two correct answers.
+        replaySafe: resume !== undefined,
+        timeoutMs: resolved.timeout * 1000,
+      },
     );
 
     const taskId = extractNested(data, ["data", "task_id"]) as string | undefined;
@@ -173,6 +183,7 @@ export async function generate(
       successStatuses: new Set(["succeed"]),
       failureStatuses: new Set(["failed"]),
       errorPath: ["data", "task_status_msg"],
+      timeoutMs: resolved.timeout * 1000,
       provider: "klingai",
     });
 

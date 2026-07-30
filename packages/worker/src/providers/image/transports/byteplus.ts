@@ -19,7 +19,8 @@
  */
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
-import { bearerHeaders } from "@worker/providers/http.js";
+import { bearerHeaders } from "@breatic/shared";
+import { requestWithRetry } from "@worker/providers/http.js";
 
 /**
  * Build BytePlus images/generations request body.
@@ -96,22 +97,20 @@ export async function generate(
 ): Promise<{ url: string; model: string; cost: number }> {
   const body = buildRequestBody(prompt, resolved, params);
 
-  const response = await fetch(
+  const data = await requestWithRetry(
     `${resolved.baseUrl}/images/generations`,
     {
       method: "POST",
       headers: bearerHeaders(resolved.apiKey),
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
+    },
+    {
+      provider: "byteplus",
+      // No client-side idempotency key: a replayed submit bills twice.
+      replaySafe: false,
+      timeoutMs: resolved.timeout * 1000,
     },
   );
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`BytePlus API HTTP ${response.status}: ${text}`);
-  }
-
-  const data = (await response.json()) as Record<string, unknown>;
 
   const url = extractImageUrl(data);
   if (!url) {

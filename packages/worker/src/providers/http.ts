@@ -2,203 +2,251 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Shared HTTP utilities for AIGC provider transports.
+ * Worker-side composition of the shared HTTP transport.
  *
- * Provides retry with exponential backoff, generic polling,
- * nested JSON extraction, and WaveSpeed billing lookup.
+ * The transport itself lives in `@breatic/shared` — it is business-agnostic
+ * and the browser uses it too. This module supplies the two things a
+ * library layer is not allowed to acquire for itself: configuration (from
+ * `worker.yaml`) and a logger. It also hosts the one genuinely
+ * vendor-specific call, WaveSpeed's billing lookup, which is a consumer of
+ * the transport rather than part of it.
+ *
+ * `bearerHeaders` and `extractNested` moved to `@breatic/shared` outright:
+ * they take no configuration and need no logger, so re-exporting them here
+ * would be a pure pass-through with nothing to compose. Transports import
+ * them from `@breatic/shared` directly.
  */
 
-import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
 import { getWorkerConfig } from "@breatic/core";
-import { exponentialJitterDelay } from "@breatic/core";
+import {
+  bearerHeaders,
+  extractNested,
+  httpRequest,
+  httpRequestJson,
+  pollUntilDone as sharedPollUntilDone,
+  type HttpRetryEvent,
+  type PollEvent,
+} from "@breatic/shared";
+
+import type { ResolvedModel } from "@worker/providers/shared.js";
 
 /**
- * Lazy-loaded HTTP config values, pulled from the worker config on each call.
- * @returns The retry / poll / billing timing values used by the helpers below
+ * Route transport telemetry into the worker's logger.
+ *
+ * The transport emits events instead of logging because library packages
+ * must not log; this is the application-layer end of that contract. Without
+ * it a vendor that intermittently 503s would retry silently and nobody
+ * would know the provider was degraded.
+ * @param event - A retry or poll event from the transport.
  */
-function httpConfig(): {
-  maxRetries: number;
-  retryBaseDelay: number;
-  defaultPollInterval: number;
-  defaultMaxWait: number;
-  billingTimeout: number;
-} {
-  const cfg = getWorkerConfig();
-  return {
-    maxRetries: cfg.http_max_retries,
-    retryBaseDelay: cfg.http_retry_base_delay,
-    defaultPollInterval: cfg.poll_interval,
-    defaultMaxWait: cfg.poll_max_wait,
-    billingTimeout: cfg.billing_timeout,
-  };
-}
-
-/**
- * Standard bearer auth headers.
- * @param apiKey - API key placed in the `Authorization: Bearer` header
- * @returns Headers with bearer auth and a JSON content type
- */
-export function bearerHeaders(apiKey: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${apiKey}`,
-    "Content-Type": "application/json",
-  };
-}
-
-/**
- * Extract a value from a nested object using a key path.
- * @param data - Source object
- * @param path - Array of keys (e.g. `["data", "status"]`)
- * @param defaultValue - Fallback if path not found
- * @returns The extracted value or defaultValue
- */
-export function extractNested(
-  data: Record<string, unknown>,
-  path: string[],
-  defaultValue: unknown = undefined,
-): unknown {
-  let current: unknown = data;
-  for (const key of path) {
-    if (current !== null && typeof current === "object" && key in (current as Record<string, unknown>)) {
-      current = (current as Record<string, unknown>)[key];
-    } else {
-      return defaultValue;
-    }
+function logTransportEvent(event: HttpRetryEvent | PollEvent): void {
+  switch (event.type) {
+    case "retry":
+      logger.warn(
+        {
+          provider: event.label,
+          url: event.url,
+          attempt: event.attempt,
+          delay: event.delayMs,
+          reason: event.reason,
+          status: event.status,
+        },
+        "provider_http_retry",
+      );
+      break;
+    case "exhausted":
+      // Only worth a log when a replay was actually declined or spent —
+      // a plain 404 is the caller's business, not a transport incident.
+      if (event.reason !== "client_error" && event.reason !== "nothing_to_retry") {
+        logger.warn(
+          {
+            provider: event.label,
+            url: event.url,
+            attempts: event.attempts,
+            reason: event.reason,
+            status: event.status,
+          },
+          "provider_http_gave_up",
+        );
+      }
+      break;
+    case "poll_failed":
+      logger.warn(
+        {
+          provider: event.label,
+          url: event.url,
+          status: event.status,
+          errorMsg: event.error,
+        },
+        "poll_task_failed",
+      );
+      break;
+    case "poll_timeout":
+      logger.warn(
+        { provider: event.label, url: event.url, maxWait: event.maxWaitMs },
+        "poll_timeout",
+      );
+      break;
   }
-  return current ?? defaultValue;
+}
+
+/** What a provider call needs to state about itself. */
+export interface ProviderRequestOptions {
+  /** Vendor name, for telemetry. */
+  provider: string;
+  /**
+   * Whether delivering this exact request a second time is free of side
+   * effects — the caller's fact, not a preference.
+   *
+   * A generation submit is `false` unless the vendor accepts a client-side
+   * idempotency key: a replay of an accepted-but-unacknowledged submit
+   * bills a second generation upstream (the risk documented in the
+   * 2026-07-07 retry-idempotency decision). Polls, reads and billing
+   * lookups are `true`.
+   */
+  replaySafe: boolean;
+  /** Per-attempt timeout, normally `resolved.timeout * 1000`. */
+  timeoutMs: number;
 }
 
 /**
- * Make an HTTP request with exponential backoff retry on 429.
- * @param url - Request URL
- * @param options - Fetch options (method, headers, body)
- * @param provider - Provider name for logging
- * @returns Parsed JSON response
- * @throws {Error} if retries exhausted
+ * Make a JSON provider request, replaying only what the caller declared
+ * safe to replay.
+ * @param url - Request URL.
+ * @param init - Fetch init (method, headers, body). Do not set `signal`
+ *   here — each attempt is given its own deadline from `timeoutMs`.
+ * @param options - Vendor name, replay-safety fact, per-attempt timeout.
+ * @returns The parsed JSON response.
+ * @throws {Error} On a non-ok final status (carrying the vendor's body) or
+ *   a failure that produced no response.
  */
 export async function requestWithRetry(
   url: string,
-  options: RequestInit,
-  provider = "unknown",
+  init: RequestInit,
+  options: ProviderRequestOptions,
 ): Promise<Record<string, unknown>> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt <= httpConfig().maxRetries; attempt++) {
-    const response = await fetch(url, options);
-
-    if (response.ok) {
-      return (await response.json()) as Record<string, unknown>;
-    }
-
-    if (response.status === 429 && attempt < httpConfig().maxRetries) {
-      const delay = exponentialJitterDelay(attempt, httpConfig().retryBaseDelay);
-      logger.warn({ provider, url, attempt: attempt + 1, delay }, "rate_limited_retry");
-      await sleep(delay);
-      lastError = new Error(`${provider} 429 Too Many Requests`);
-      continue;
-    }
-
-    const body = await response.text().catch(() => "");
-    throw new Error(`${provider} HTTP ${response.status}: ${body}`);
-  }
-
-  throw lastError ?? new Error(`${provider} request failed after retries`);
+  return httpRequestJson(url, init, {
+    replaySafe: options.replaySafe,
+    timeoutMs: options.timeoutMs,
+    onEvent: logTransportEvent,
+    label: options.provider,
+  });
 }
 
-/** Options for {@link pollUntilDone}. */
+/**
+ * Like {@link requestWithRetry}, but hands back the raw response.
+ *
+ * For the transports whose body is not JSON (ElevenLabs and Fish return
+ * audio bytes) and for the ones that treat a non-ok status as a value rather
+ * than an error (Topaz's cost estimate falls back to 0). Those callers were
+ * previously on a bare `fetch` with no retry at all — not even for a 429.
+ * @param url - Request URL.
+ * @param init - Fetch init (method, headers, body). Do not set `signal`
+ *   here — each attempt is given its own deadline from `timeoutMs`.
+ * @param options - Vendor name, replay-safety fact, per-attempt timeout.
+ * @returns The final response, ok or not.
+ * @throws {Error} On a failure that produced no response at all.
+ */
+export async function requestRaw(
+  url: string,
+  init: RequestInit,
+  options: ProviderRequestOptions,
+): Promise<Response> {
+  return httpRequest(url, init, {
+    replaySafe: options.replaySafe,
+    timeoutMs: options.timeoutMs,
+    onEvent: logTransportEvent,
+    label: options.provider,
+  });
+}
+
+/** Worker-side poll options: vendor status vocabulary plus timing. */
 export interface PollOptions {
   headers?: Record<string, string>;
   params?: Record<string, string>;
   statusPath: string[];
-  successStatuses: Set<string>;
-  failureStatuses: Set<string>;
+  successStatuses: ReadonlySet<string>;
+  failureStatuses: ReadonlySet<string>;
   errorPath?: string[];
+  /** Wait between polls; defaults to `worker.yaml` `poll_interval`. */
   interval?: number;
+  /** Total budget; defaults to `worker.yaml` `poll_max_wait`. */
   maxWait?: number;
+  /** Per-poll request timeout, normally `resolved.timeout * 1000`. */
+  timeoutMs: number;
+  /** Vendor name, for telemetry and error messages. */
   provider?: string;
 }
 
 /**
- * Poll an async task endpoint until it reaches a terminal status.
- * @param url - Poll URL
- * @param options - Polling configuration
- * @returns The full JSON response on success
- * @throws {Error} on failure status or timeout
+ * Poll a vendor task endpoint until it reports a terminal status, with the
+ * worker's configured timing as the default.
+ * @param url - The task-status endpoint.
+ * @param options - Vendor status vocabulary and timing overrides.
+ * @returns The successful poll's response body.
+ * @throws {Error} On a vendor failure status, an elapsed budget, or
+ *   cancellation.
  */
 export async function pollUntilDone(
   url: string,
   options: PollOptions,
 ): Promise<Record<string, unknown>> {
-  const interval = options.interval ?? httpConfig().defaultPollInterval;
-  const maxWait = options.maxWait ?? httpConfig().defaultMaxWait;
-  const provider = options.provider ?? "unknown";
-  let elapsed = 0;
-
-  while (elapsed < maxWait) {
-    const fetchUrl = options.params
-      ? `${url}?${new URLSearchParams(options.params).toString()}`
-      : url;
-
-    const resp = await requestWithRetry(
-      fetchUrl,
-      { method: "GET", headers: options.headers },
-      provider,
-    );
-
-    const status = String(extractNested(resp, options.statusPath, "unknown"));
-
-    if (options.successStatuses.has(status)) {
-      return resp;
-    }
-    if (options.failureStatuses.has(status)) {
-      const errorMsg = options.errorPath
-        ? String(extractNested(resp, options.errorPath, "unknown"))
-        : "unknown";
-      // #1628: log at the poll layer (not only via the bubbled-up job error)
-      // so vendor-side failures are attributable to the specific poll URL.
-      logger.warn({ provider, url, status, errorMsg }, "poll_task_failed");
-      throw new Error(`${provider} task failed: ${errorMsg}`);
-    }
-
-    await sleep(interval);
-    elapsed += interval;
-  }
-
-  // #1628: same rationale — make poll timeouts visible at this layer.
-  logger.warn({ provider, url, maxWait }, "poll_timeout");
-  throw new Error(`${provider} task did not complete within ${maxWait / 1000}s`);
+  const cfg = getWorkerConfig();
+  return sharedPollUntilDone(url, {
+    headers: options.headers,
+    params: options.params,
+    statusPath: options.statusPath,
+    successStatuses: options.successStatuses,
+    failureStatuses: options.failureStatuses,
+    errorPath: options.errorPath,
+    intervalMs: options.interval ?? cfg.poll_interval,
+    maxWaitMs: options.maxWait ?? cfg.poll_max_wait,
+    timeoutMs: options.timeoutMs,
+    onEvent: logTransportEvent,
+    label: options.provider ?? "provider",
+  });
 }
 
 /**
- * Query WaveSpeed billing API for actual cost.
- * @param resolved - Resolved provider endpoint
- * @param taskId - Prediction UUID
- * @returns Cost in USD, or 0 if billing query fails
+ * Query the WaveSpeed billing API for a prediction's actual cost.
+ *
+ * Vendor-specific by nature — the path, the request field name and the
+ * response shape are all WaveSpeed's contract — so it lives here as a
+ * consumer of the transport rather than inside it.
+ *
+ * A failed lookup returns 0 rather than throwing: the generation itself
+ * succeeded and must not be failed over an accounting query. The event is
+ * logged so a persistently broken lookup is visible instead of silently
+ * recording every generation as free.
+ * @param resolved - The resolved provider endpoint and credentials.
+ * @param taskId - The prediction UUID to price.
+ * @returns The cost in USD, or 0 when the lookup failed.
  */
-export async function queryBilling(resolved: ResolvedModel, taskId: string): Promise<number> {
+export async function queryBilling(
+  resolved: ResolvedModel,
+  taskId: string,
+): Promise<number> {
   try {
-    const resp = await fetch(`${resolved.baseUrl}/billings/search`, {
-      method: "POST",
-      headers: bearerHeaders(resolved.apiKey),
-      body: JSON.stringify({ prediction_uuids: [taskId] }),
-      signal: AbortSignal.timeout(httpConfig().billingTimeout),
-    });
-
-    if (!resp.ok) return 0;
-    const data = (await resp.json()) as { data?: Array<{ price?: number }> };
-    return data.data?.[0]?.price ?? 0;
-  } catch {
-    logger.warn({ taskId }, "billing_query_failed");
+    const data = await httpRequestJson(
+      `${resolved.baseUrl}/billings/search`,
+      {
+        method: "POST",
+        headers: bearerHeaders(resolved.apiKey),
+        body: JSON.stringify({ prediction_uuids: [taskId] }),
+      },
+      {
+        // A billing lookup only reads, so a flaky one is safe to replay.
+        replaySafe: true,
+        timeoutMs: getWorkerConfig().billing_timeout,
+        onEvent: logTransportEvent,
+        label: "wavespeed-billing",
+      },
+    );
+    const price = extractNested(data, ["data", "0", "price"], 0);
+    return typeof price === "number" ? price : 0;
+  } catch (err) {
+    logger.warn({ err, taskId }, "billing_query_failed");
     return 0;
   }
-}
-
-/**
- * Sleep for the given milliseconds.
- * @param ms - Milliseconds to sleep
- * @returns A promise that resolves after the delay elapses
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

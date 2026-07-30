@@ -22,10 +22,10 @@
 
 import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
+import { bearerHeaders, extractNested } from "@breatic/shared";
 import {
-  bearerHeaders,
   pollUntilDone,
-  extractNested,
+  requestWithRetry,
 } from "@worker/providers/http.js";
 
 /**
@@ -131,19 +131,20 @@ export async function generate(
    */
   const submit = async (): Promise<string> => {
     const submitUrl = `${resolved.baseUrl}/services/aigc/text2image/image-synthesis`;
-    const response = await fetch(submitUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`DashScope API HTTP ${response.status}: ${text}`);
-    }
-
-    const data = (await response.json()) as Record<string, unknown>;
+    const data = await requestWithRetry(
+      submitUrl,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      },
+      {
+        provider: "dashscope",
+        // No client-side idempotency key: a replayed submit bills twice.
+        replaySafe: false,
+        timeoutMs: resolved.timeout * 1000,
+      },
+    );
     const taskId = extractNested(data, ["output", "task_id"]) as string | undefined;
 
     if (!taskId) {
@@ -169,8 +170,7 @@ export async function generate(
       successStatuses: new Set(["SUCCEEDED"]),
       failureStatuses: new Set(["FAILED"]),
       errorPath: ["output", "message"],
-      interval: 3000,
-      maxWait: 300_000,
+      timeoutMs: resolved.timeout * 1000,
       provider: "dashscope",
     });
 

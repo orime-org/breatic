@@ -376,7 +376,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
       download: { max_attempts: 3, retry_base_delay_ms: 500 },
-      upload: { max_upload_bytes: 1024, client_max_attempts: 2, client_retry_base_delay_ms: 250, client_request_timeout_ms: 5000, client_put_min_bytes_per_sec: 1024 },
+      upload: { max_upload_bytes: 1024, client_request_timeout_ms: 5000, client_put_min_bytes_per_sec: 1024 },
     }),
     // Logger
     logger: { ...mocks.logger, child: () => mocks.logger },

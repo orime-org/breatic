@@ -15,8 +15,20 @@
 
 import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
-import { requestWithRetry, pollUntilDone, extractNested } from "@worker/providers/http.js";
+import { extractNested } from "@breatic/shared";
+import {
+  requestWithRetry,
+  pollUntilDone,
+  requestRaw,
+} from "@worker/providers/http.js";
 import { logger } from "@breatic/core";
+
+/**
+ * Per-attempt ceiling for the cost-estimate call, independent of the model's
+ * generation timeout: an estimate that is slow is not worth waiting on, since
+ * the caller falls back to 0 either way.
+ */
+const ESTIMATE_TIMEOUT_MS = 30_000;
 
 /**
  * Build Topaz authentication headers.
@@ -80,12 +92,21 @@ async function estimateCost(
   const formData = buildFormData(params, sourceUrl);
 
   try {
-    const response = await fetch(estimateUrl, {
-      method: "POST",
-      headers,
-      body: formData,
-      signal: AbortSignal.timeout(30_000),
-    });
+    const response = await requestRaw(
+      estimateUrl,
+      {
+        method: "POST",
+        headers,
+        body: formData,
+      },
+      {
+        provider: "topaz-estimate",
+        // A cost estimate only reads — nothing is generated or billed — so a
+        // flaky attempt is safe to replay.
+        replaySafe: true,
+        timeoutMs: ESTIMATE_TIMEOUT_MS,
+      },
+    );
 
     if (!response.ok) return 0;
 
@@ -121,9 +142,13 @@ async function generateSync(
       method: "POST",
       headers,
       body: formData,
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
     },
-    "topaz",
+    {
+      provider: "topaz",
+      // No client-side idempotency key: a replayed submit bills twice.
+      replaySafe: false,
+      timeoutMs: resolved.timeout * 1000,
+    },
   );
 
   const outputUrl = (resp.output_url ?? resp.url) as string | undefined;
@@ -178,9 +203,13 @@ async function generateAsyncPoll(
         method: "POST",
         headers,
         body: formData,
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
-      "topaz",
+      {
+        provider: "topaz",
+        // No client-side idempotency key: a replayed submit bills twice.
+        replaySafe: false,
+        timeoutMs: resolved.timeout * 1000,
+      },
     );
 
     const processId = data.process_id as string | undefined;
@@ -215,8 +244,7 @@ async function generateAsyncPoll(
         successStatuses: new Set(["completed"]),
         failureStatuses: new Set(["failed", "error"]),
         errorPath: ["error"],
-        interval: 3000,
-        maxWait: 300_000,
+        timeoutMs: resolved.timeout * 1000,
         provider: "topaz",
       },
     );

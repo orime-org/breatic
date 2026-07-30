@@ -71,8 +71,9 @@ loader:`packages/core/src/config/worker.ts`。
 | `job_attempts` | 3 | 任务失败重试次数 |
 | `job_backoff_delay_ms` | 2000 | 重试退避基延时(full-jitter,自定义 backoffStrategy)|
 | `lock_duration_ms` | 600000(10 分钟) | 任务锁时长 |
-| `http_max_retries` / `http_retry_base_delay` | 3 / 2000 | provider HTTP 重试(full-jitter)|
-| `poll_interval` | 3000 | 队列轮询间隔 |
+| ~~`http_max_retries` / `http_retry_base_delay`~~ | — | **已移除**:HTTP 重试次数与退避基延时现在固定在 `@breatic/shared` 的传输层里(首次 + 2 次重试),不再是部署可调项 —— 后端与浏览器共用同一份判定,避免两边配出不同的次数 |
+| `poll_interval` | 3000 | 异步 AIGC 任务的状态轮询间隔;全部 provider 共用 |
+| `poll_max_wait_3d` | 600000(10 分钟)| 3D 生成的轮询总时限 —— 3D 常超过 `poll_max_wait` 的 5 分钟,是唯一按模态单开的上限 |
 
 ## 6. `config/storage.yaml` — 存储下载重试 + 浏览器上传
 
@@ -90,8 +91,7 @@ loader:`packages/core/src/config/storage.ts`。
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `upload.max_upload_bytes` | 2147483648(2 GiB)| 上传硬上限(字节);超限 presign 返 413,前端选文件当场拒 |
-| `upload.client_max_attempts` | 3 | 浏览器 presign + PUT 各自总尝试次数(含首次,仅瞬时错误)|
-| `upload.client_retry_base_delay_ms` | 1000 | 浏览器重试退避基延时(full-jitter)|
+| ~~`upload.client_max_attempts`~~ / ~~`upload.client_retry_base_delay_ms`~~ | — | **已移除**:同上,浏览器的重试次数与退避基延时也来自 `@breatic/shared` 的传输层,与后端同一份 |
 | `upload.client_request_timeout_ms` | 30000 | 浏览器 API 请求单次超时;也是 PUT 停滞守卫的下限 |
 | `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(下限, 文件大小 / 该速率)|
 | `upload.presign_expires_seconds` | 300 | 云存储(S3 / 阿里云 OSS)预签名 PUT 地址的有效期(秒)。这是存储服务商自己的 PUT 窗口,跟下发记录表无关 —— 后者不设上传时限;本地存储没有预签名地址,该项不生效 |

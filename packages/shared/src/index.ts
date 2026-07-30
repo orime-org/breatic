@@ -205,3 +205,29 @@ export {
 export type { AdjustValue } from "@shared/adjust-value.js";
 
 export { newId, deriveId } from "@shared/ids.js";
+
+export { fullJitter, exponentialJitterDelay } from "@shared/backoff.js";
+export { sleep } from "@shared/sleep.js";
+
+// The one HTTP transport with retries — backend services and browser alike.
+// `decideRetry` stays internal: callers state the `replaySafe` fact and the
+// transport applies the judgement, so there is only one place a verdict is
+// ever reached.
+export { httpRequest, httpRequestJson } from "@shared/http/request.js";
+export type { HttpRequestOptions, HttpRetryEvent } from "@shared/http/request.js";
+export { pollUntilDone } from "@shared/http/poll.js";
+export type { PollOptions, PollEvent } from "@shared/http/poll.js";
+export { bearerHeaders } from "@shared/http/headers.js";
+export { extractNested } from "@shared/http/json-path.js";
+export { MAX_RETRIES } from "@shared/http/constants.js";
+// The judgement is exposed on its own for callers whose retry subject is not
+// a `fetch` — the browser's presign step retries an axios call, so it owns the
+// loop but must not own a second opinion about what is worth retrying.
+export { decideRetry } from "@shared/http/decide-retry.js";
+export type {
+  RetryDecision,
+  RetryInput,
+  RetryRefusal,
+  RetryTrigger,
+  TransportErrorKind,
+} from "@shared/http/decide-retry.js";

@@ -23,8 +23,8 @@
 
 import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
+import { bearerHeaders } from "@breatic/shared";
 import {
-  bearerHeaders,
   requestWithRetry,
   pollUntilDone,
 } from "@worker/providers/http.js";
@@ -98,9 +98,13 @@ export async function generate(
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
-      "byteplus",
+      {
+        provider: "byteplus",
+        // No client-side idempotency key: a replayed submit bills twice.
+        replaySafe: false,
+        timeoutMs: resolved.timeout * 1000,
+      },
     );
 
     // Check for immediate result
@@ -133,6 +137,7 @@ export async function generate(
       successStatuses: new Set(["succeeded"]),
       failureStatuses: new Set(["failed"]),
       errorPath: ["error", "message"],
+      timeoutMs: resolved.timeout * 1000,
       provider: "byteplus",
     });
   };
