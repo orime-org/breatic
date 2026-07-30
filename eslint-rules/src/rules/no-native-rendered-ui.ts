@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
+import { stringLiteralVisitors } from "#rules/source-visitors";
 
 /** Input types whose picker the browser or OS draws. */
 const NATIVE_INPUT_TYPES = new Set([
@@ -13,6 +14,15 @@ const NATIVE_INPUT_TYPES = new Set([
   "week",
   "range",
 ]);
+
+/** A `<select>` written as markup inside a string. */
+const SELECT_IN_MARKUP = /<select[\s>]/i;
+
+/** A media element written as markup inside a string, with its control bar on. */
+const MEDIA_WITH_CONTROLS = /<(audio|video)\b[^>]*\bcontrols\b/i;
+
+/** An input written as markup inside a string, with its type. */
+const INPUT_TYPE_IN_MARKUP = /<input\b[^>]*\btype\s*=\s*["']([a-z-]+)["']/gi;
 
 /** Comment marker that excuses one line. */
 const ALLOW_MARKER = "native-ui:allow";
@@ -30,6 +40,13 @@ const ALLOW_MARKER = "native-ui:allow";
  * The replacements are self-drawn: a colour picker in a popover, our Slider,
  * our Select, our MediaPlayer. A rare justified exception carries a
  * `native-ui:allow` comment on the same line with its reason.
+ *
+ * Markup written as a string counts as much as JSX. Assigned to innerHTML it
+ * reaches the DOM and renders the identical browser-drawn control, and the
+ * line-reading guard this replaced saw it. Interpolated strings arrive one
+ * chunk at a time, so a control split across a hole is out of reach — the
+ * cost of a miss there is one unreported control rather than a rule that
+ * reports on markup the program never builds.
  */
 export const noNativeRenderedUi = createRule({
   name: "no-native-rendered-ui",
@@ -117,6 +134,33 @@ export const noNativeRenderedUi = createRule({
           data: { type: value.value },
         });
       },
+      ...stringLiteralVisitors((node, text) => {
+        if (isAllowed(node)) return;
+        if (SELECT_IN_MARKUP.test(text)) {
+          context.report({
+            node,
+            messageId: "nativeControl",
+            data: { control: "select" },
+          });
+        }
+        const media = MEDIA_WITH_CONTROLS.exec(text);
+        if (media) {
+          context.report({
+            node,
+            messageId: "nativeControl",
+            data: { control: media[1]?.toLowerCase() ?? "media" },
+          });
+        }
+        for (const [, type] of text.matchAll(INPUT_TYPE_IN_MARKUP)) {
+          const kind = (type ?? "").toLowerCase();
+          if (!NATIVE_INPUT_TYPES.has(kind)) continue;
+          context.report({
+            node,
+            messageId: "nativeInputType",
+            data: { type: kind },
+          });
+        }
+      }),
     };
   },
 });

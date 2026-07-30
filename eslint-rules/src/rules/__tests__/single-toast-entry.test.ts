@@ -22,5 +22,21 @@ ruleTester.run("single-toast-entry", singleToastEntry, {
       code: 'import { toast } from "sonner";',
       errors: [{ messageId: "directSonnerImport", line: 1, column: 1 }],
     },
+    {
+      // Re-exporting is how one routes around a wrapper: every consumer then
+      // imports from a module of ours and still gets the untyped toast. The
+      // text guard this replaced caught it; a rule watching only
+      // ImportDeclaration does not.
+      code: "export { toast } from 'sonner';",
+      errors: [{ messageId: "directSonnerImport", line: 1, column: 1 }],
+    },
+    {
+      code: "export * from 'sonner';",
+      errors: [{ messageId: "directSonnerImport", line: 1, column: 1 }],
+    },
+    {
+      code: "const { toast } = await import('sonner');",
+      errors: [{ messageId: "directSonnerImport", line: 1, column: 25 }],
+    },
   ],
 });

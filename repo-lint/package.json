@@ -12,6 +12,7 @@
     "lint": "eslint src/"
   },
   "devDependencies": {
+    "@breatic/eslint-rules": "workspace:*",
     "@types/node": "^22.0.0",
     "anti-trojan-source": "^1.11.3",
     "tsx": "^4.19.0",

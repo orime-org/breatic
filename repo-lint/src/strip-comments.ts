@@ -8,6 +8,94 @@ export type CommentStyle = "css" | "js";
 const QUOTES = new Set(["'", '"', "`"]);
 
 /**
+ * Characters after which a slash begins a regular expression, not a division.
+ *
+ * The distinction is not decidable from the slash alone — it is the one place
+ * JavaScript's grammar needs to know what came before. This is the standard
+ * approximation: a slash divides only when something dividable precedes it,
+ * which is an identifier, a number, or a closing bracket.
+ */
+const BEFORE_REGEX = new Set([
+  "(",
+  ",",
+  "=",
+  ":",
+  "[",
+  "!",
+  "&",
+  "|",
+  "?",
+  "{",
+  "}",
+  ";",
+  "+",
+  "-",
+  "*",
+  "%",
+  "~",
+  "^",
+  "<",
+  ">",
+  "\n",
+]);
+
+/** Keywords after which a slash begins a regular expression. */
+const BEFORE_REGEX_WORDS = new Set([
+  "return",
+  "typeof",
+  "case",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "instanceof",
+  "do",
+  "else",
+  "yield",
+  "await",
+]);
+
+/**
+ * Whether a slash at this point opens a regular expression.
+ * @param before Everything emitted on this line before the slash.
+ * @returns True when a regular expression may start here.
+ */
+function opensRegex(before: string): boolean {
+  const trimmed = before.trimEnd();
+  if (trimmed.length === 0) return true;
+  const last = trimmed.at(-1) ?? "";
+  if (BEFORE_REGEX.has(last)) return true;
+  return BEFORE_REGEX_WORDS.has(/[A-Za-z$_]+$/.exec(trimmed)?.[0] ?? "");
+}
+
+/**
+ * Where a regular expression starting at `start` ends on this line.
+ *
+ * A regular expression cannot span lines, so failing to find the terminator
+ * here means this slash was never one — and answering "not a regex" costs at
+ * most one unstripped comment, where answering "regex" wrongly would swallow
+ * real code.
+ * @param line The line being scanned.
+ * @param start Index of the opening slash.
+ * @returns Index just past the closing slash, or -1 when there is none.
+ */
+function regexEnd(line: string, start: number): number {
+  let inClass = false;
+  for (let index = start + 1; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === "\\") {
+      index += 1;
+      continue;
+    }
+    if (character === "[") inClass = true;
+    else if (character === "]") inClass = false;
+    else if (character === "/" && !inClass) return index + 1;
+  }
+  return -1;
+}
+
+/**
  * Blanks out comments while keeping every line in place.
  *
  * Blanking rather than deleting is the whole point: a stripper that removes
@@ -24,13 +112,26 @@ const QUOTES = new Set(["'", '"', "`"]);
  * URL blank the rest of its line. Both are worse than not stripping at all,
  * because the failure is silent and file-wide.
  *
- * Strings are tracked only well enough for this job: it knows escapes and
- * it does not attempt template-literal interpolation, where a comment
- * marker inside `${...}` is vanishingly unlikely and the cost of being
- * wrong is one unstripped comment rather than a blanked file.
+ * Regular expressions are tracked for the same reason strings are, and were
+ * missed for longer: `/[/*]/` is ordinary code, and reading the `/*` in it as
+ * an opener blanked every following line of that file. The two never actually
+ * compete — no regular expression can begin with `*` or `/` — so the comment
+ * openers are settled first and the slash is only reconsidered afterwards.
+ *
+ * Strings and regular expressions are tracked only well enough for this job:
+ * it knows escapes, it does not attempt template-literal interpolation, and
+ * it decides regex-versus-division from the preceding token the way every
+ * tokenizer does. Each approximation is chosen so that being wrong costs one
+ * unstripped comment rather than a blanked file.
+ *
+ * Whatever the cause, a block that never closes is refused rather than
+ * returned. A caller handed text that goes blank partway through cannot tell
+ * it from text with nothing in it, so the mistake would surface as every
+ * check reporting clean.
  * @param text The file's contents.
  * @param style Which comment syntaxes to remove.
  * @returns The same text, same number of lines, with comments blanked.
+ * @throws {Error} When a block comment opens and never closes.
  */
 export function stripComments(text: string, style: CommentStyle): string {
   const out: string[] = [];
@@ -86,12 +187,34 @@ export function stripComments(text: string, style: CommentStyle): string {
       }
       if (style === "js" && twoChars === "//") break;
 
+      // Only after the two comment openers have been ruled out, because no
+      // regular expression can begin with `*` or `/` — `/*/` has a quantifier
+      // with nothing to repeat. Checking the openers first is therefore free,
+      // and checking the regex first would eat every block comment that sits
+      // where an operand belongs.
+      if (style === "js" && character === "/" && opensRegex(result)) {
+        const end = regexEnd(line, index);
+        if (end !== -1) {
+          result += line.slice(index, end);
+          index = end;
+          continue;
+        }
+      }
+
       result += character;
       index += 1;
     }
 
     if (inString !== null && inString !== "`") inString = null;
     out.push(result);
+  }
+
+  if (inBlock) {
+    throw new Error(
+      "a block comment opens and never closes, so this text goes blank partway through. " +
+        "Returning it would hand the caller a file it cannot tell from an empty one, and every " +
+        "check reading it would report clean on lines it never saw.",
+    );
   }
 
   return out.join("\n");

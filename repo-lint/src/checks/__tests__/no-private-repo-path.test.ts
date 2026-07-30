@@ -76,13 +76,34 @@ describe("no-private-repo-path", () => {
     expect(noPrivateRepoPath.run(context)).toEqual([]);
   });
 
-  it("skips the lockfile and binaries", () => {
+  it("skips bytes that are not text", () => {
     const context = fakeContext({
-      "pnpm-lock.yaml": `${PRIVATE_REPO}`,
       "logo.png": `${PRIVATE_REPO}`,
       "a.md": "clean",
     });
     expect(noPrivateRepoPath.run(context)).toEqual([]);
+  });
+
+  it("reads the lockfile, where a git dependency would name the private repo", () => {
+    // Machine-authored is not the same as harmless. A dependency resolved
+    // from the private repository writes its URL here, and that publishes
+    // the repository's existence exactly as a comment would.
+    const context = fakeContext({
+      "pnpm-lock.yaml": `  resolution: {tarball: https://github.com/orime-org/${PRIVATE_REPO}}`,
+    });
+    expect(noPrivateRepoPath.run(context)).toHaveLength(1);
+  });
+
+  it("reads the files that carry no extension, where the old list did not reach", () => {
+    // Three of the four residues that motivated the sibling bypass check
+    // lived in exactly these: a Dockerfile with no extension, and both env
+    // templates.
+    const context = fakeContext({
+      Dockerfile: `# see ${dir("engineering", "specs")}x.md`,
+      ".env.docker": `# documented in ${PRIVATE_REPO}`,
+      ".husky/pre-commit": `# rationale: ${dir("design", "decisions")}y.md`,
+    });
+    expect(noPrivateRepoPath.run(context)).toHaveLength(3);
   });
 
   it("fails rather than reports clean when it selects no files", () => {

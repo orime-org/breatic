@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { GENERATED, TEST_FILE } from "#repo-lint/file-kinds";
 
 /**
  * Unicode blocks that mean a file is not written in English.
@@ -12,20 +13,24 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
  * in any locale and BSD grep matches it bytewise, which is why the
  * original grep implementation never worked on CI and reported clean for
  * weeks with its error swallowed.
+ *
+ * The ranges start at U+3000 and reach past the basic plane, because a
+ * comment written in full-width punctuation is no more English than one
+ * written in ideographs. An earlier version began at U+3040 and let every
+ * one of the CJK punctuation marks through, along with Bopomofo, the
+ * compatibility ideographs and both extension planes. The `u` flag is what
+ * makes the last range mean anything: without it a character class cannot
+ * hold a codepoint above U+FFFF, so an extension-plane character would be
+ * matched as two unrelated halves and neither half is in any range here.
  */
-const CJK = /[\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7A3\uFF00-\uFFEF]/;
+const CJK =
+  /[\u3000-\u312F\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7A3\uF900-\uFAFF\uFF00-\uFFEF\u{20000}-\u{2FA1F}]/u;
 
 /** Files a developer reads and runs, where English is the shared language. */
 const SCANNED = /\.(ts|mts|cts|tsx|css|ya?ml|sh|mjs|cjs)$/;
 
-/** Machine-authored, so not anybody's prose. */
-const GENERATED = /(^|\/)pnpm-lock\.yaml$/;
-
 /** Product translations — the one place non-English text belongs. */
 const LOCALE_CATALOG = /^locales\//;
-
-/** Test fixtures legitimately carry Unicode: that is what they test. */
-const TEST = /(^|\/)__tests__\/|\.(test|spec)\.(ts|tsx)$/;
 
 /** Third-party IP, held to its own conventions. */
 const VENDOR = /^packages\/web\/src\/components\/ui\//;
@@ -104,7 +109,7 @@ export const noCjk = {
         SCANNED.test(path) &&
         !GENERATED.test(path) &&
         !LOCALE_CATALOG.test(path) &&
-        !TEST.test(path) &&
+        !TEST_FILE.test(path) &&
         !VENDOR.test(path) &&
         !ALLOWED.has(path),
       "source, config and shell scripts",

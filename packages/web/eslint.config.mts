@@ -220,6 +220,12 @@ export default [
     // Repository invariants, from the same plugin the root config uses — the
     // rules are defined once and imported twice, never restated by hand.
     // web has no business constructing an infrastructure client at all.
+    //
+    // Every repository-wide invariant has to be listed here as well as in the
+    // root config, because ESLint started in this package never reads that
+    // file. The two below were declared only there, under a `packages/*` glob
+    // that reads as covering web and cannot: a SQL string naming those tables
+    // was a build failure in six packages and silent in the seventh.
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['**/__tests__/**', '**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
     plugins: { breatic: breaticPlugin },
@@ -229,6 +235,8 @@ export default [
       'breatic/no-drizzle-type-leak': 'error',
       'breatic/no-param-as-string': 'error',
       'breatic/no-cors-wildcard-credentials': 'error',
+      'breatic/no-yjs-documents-outside-repo': 'error',
+      'breatic/schema-timestamps': 'error',
     },
   },
   {
@@ -321,8 +329,17 @@ export default [
   {
     // The dev gallery renders native controls on purpose, to show what we
     // replaced. Tests assert on markup rather than shipping it.
-    files: ['src/**/*.tsx'],
-    ignores: ['src/pages/_dev/**', '**/__tests__/**', '**/*.test.tsx', '**/*.spec.tsx'],
+    //
+    // `.ts` as well as `.tsx`: the same control reaches the DOM as a string
+    // of markup through innerHTML, and that lives in plain modules as often
+    // as in components. The guard this replaced read both.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/pages/_dev/**',
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+    ],
     plugins: { breatic: breaticPlugin },
     rules: {
       'breatic/no-native-rendered-ui': 'error',

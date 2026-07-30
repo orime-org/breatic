@@ -53,8 +53,14 @@ describe("stripComments", () => {
     expect(stripComments("a /* x */ b /* y */ c\n", "js")).toBe("a  b  c\n");
   });
 
-  it("handles an unterminated block comment by blanking to end of file", () => {
-    expect(stripComments("a\n/* never closed\nb\nc\n", "js")).toBe("a\n\n\n\n");
+  it("refuses an unterminated block comment instead of blanking to end of file", () => {
+    // This used to return the blanked text. That is the shape of the worst
+    // failure this module can have: the caller receives a file that is empty
+    // from some line onward and has no way to tell that from a file with
+    // nothing in it.
+    expect(() => stripComments("a\n/* never closed\nb\nc\n", "js")).toThrow(
+      /never closes/,
+    );
   });
 
 
@@ -97,5 +103,42 @@ describe("stripComments", () => {
   it("leaves text with no comments untouched", () => {
     const text = "const a = 1;\nconst b = 2;\n";
     expect(stripComments(text, "js")).toBe(text);
+  });
+
+  it("does not open a block from a slash inside a regex character class", () => {
+    // The literal that found this: a class holding both slash and star. The
+    // first version read the `/*` in it as a comment opener that never
+    // closed, so every following line came back blank and the checks reading
+    // the result reported clean on a file they had stopped seeing.
+    const text = `const SLASH_OR_STAR = /[/*]/;\nconst brand = "bg-brand-500";\n`;
+    expect(stripComments(text, "js")).toBe(text);
+  });
+
+  it("does not open a block from an escaped slash in a regex", () => {
+    // Stripping a trailing slash is ordinary code, and it spells `/\\/*$/`.
+    const text = `const trimmed = path.replace(/\\/*$/, "");\nconst next = 1;\n`;
+    expect(stripComments(text, "js")).toBe(text);
+  });
+
+  it("still treats division as division", () => {
+    const text = `const ratio = width / height / 2;\nconst next = 1;\n`;
+    expect(stripComments(text, "js")).toBe(text);
+  });
+
+  it("still strips a comment that follows a regex on the same line", () => {
+    expect(stripComments(`const re = /a\\/b/; // why\n`, "js")).toBe(
+      `const re = /a\\/b/; \n`,
+    );
+  });
+
+  it("refuses to return a file whose block comment never closes", () => {
+    // Whatever the cause — a real unterminated comment, or an opener this
+    // stripper misread — the result would be a file that goes blank partway
+    // through and says nothing about it. Every check reading that reports
+    // clean on text it never saw, which is the failure this whole suite
+    // exists to make impossible. Loud beats silent.
+    expect(() =>
+      stripComments(`const a = 1; /* opened\nconst b = 2;\n`, "js"),
+    ).toThrow(/never closes/);
   });
 });

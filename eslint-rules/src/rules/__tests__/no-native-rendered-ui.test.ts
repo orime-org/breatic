@@ -44,5 +44,20 @@ ruleTester.run("no-native-rendered-ui", noNativeRenderedUi, {
       code: "export const A = () => <audio src='x.mp3' controls />;",
       errors: [{ messageId: "nativeControl", data: { control: "audio" } }],
     },
+    {
+      // Markup assembled as a string reaches the DOM through innerHTML and
+      // renders the same browser-drawn control. The guard this replaced read
+      // lines of text and saw it; a rule that only visits JSX does not.
+      code: 'el.innerHTML = "<select><option>a</option></select>";',
+      errors: [{ messageId: "nativeControl", data: { control: "select" } }],
+    },
+    {
+      code: "el.innerHTML = `<input type=\"color\" />`;",
+      errors: [{ messageId: "nativeInputType", data: { type: "color" } }],
+    },
+    {
+      code: 'el.innerHTML = "<video src=\'x.mp4\' controls></video>";',
+      errors: [{ messageId: "nativeControl", data: { control: "video" } }],
+    },
   ],
 });

@@ -2,21 +2,44 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Every text file kind a person writes in this repository.
+ * File kinds whose bytes are not text.
  *
- * One definition rather than one per check. The guards these checks replace
- * each kept their own list, and the lists had drifted apart — which is how a
- * file kind ends up covered by one guard and invisible to the next. A check
- * that genuinely wants a different set states the difference and says why.
+ * The only list in this module, and it is deliberately the list of things to
+ * take away. Reading an image as text yields mojibake rather than findings,
+ * and a scan handed one wastes the read; that is the whole cost of an
+ * omission here, which is why a list is safe in this direction and only in
+ * this direction.
  */
-export const AUTHORED_TEXT =
-  /\.(ts|mts|cts|tsx|js|jsx|mjs|cjs|json|ya?ml|md|css|scss|html|sh|sql)$/;
+const BINARY =
+  /\.(png|jpe?g|gif|webp|avif|ico|icns|bmp|woff2?|ttf|otf|eot|pdf|zip|t?gz|bz2|mp4|mov|webm|mp3|wav|m4a|wasm)$/i;
+
+/**
+ * Whether a text scan can read this file.
+ *
+ * Every check asking "does this file contain X" starts from every tracked
+ * file and subtracts what it cannot read. The inverse — starting from a list
+ * of extensions somebody thought of — fails silently: a file kind nobody
+ * listed is never opened, and the check reports clean.
+ *
+ * That is not hypothetical. Of the four bypass residues that motivated
+ * no-auth-bypass-residue, three lived where an extension list does not
+ * reach: a Dockerfile with no extension at all, and both env templates. The
+ * same miss in the secret scan is a published credential rather than a stale
+ * mention, so the direction of the list matters most exactly where it used
+ * to be wrong.
+ * @param path Repo-relative path.
+ * @returns True when the file is text some scan can read.
+ */
+export function isScannableText(path: string): boolean {
+  return !BINARY.test(path);
+}
 
 /**
  * The lockfile, which is machine-authored.
  *
- * Nobody writes prose, a secret or a private path into it deliberately, and
- * it is large enough to slow every scan that reads it.
+ * Exempted only from checks about how people write, never from checks about
+ * what a file contains: a registry URL carrying an access token, or a git
+ * dependency naming a private repository, lands here like anywhere else.
  */
 export const GENERATED = /(^|\/)pnpm-lock\.yaml$/;
 

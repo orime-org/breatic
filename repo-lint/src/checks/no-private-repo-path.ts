@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { AUTHORED_TEXT, GENERATED } from "#repo-lint/file-kinds";
+import { isScannableText } from "#repo-lint/file-kinds";
 
 /**
  * The private repository's name, assembled rather than written.
@@ -49,18 +49,16 @@ const PRIVATE_REFERENCE = new RegExp(
  * itself in the public comment. A pointer the reader cannot follow is
  * worse than a self-contained sentence.
  *
- * Scanning every tracked text file rather than five directories, because
- * the root README and CLAUDE.md are public artifacts too and the previous
- * scan list did not include them.
+ * Scanning every tracked file whose bytes are text, rather than a list of
+ * source extensions: the root README and CLAUDE.md are public artifacts, and
+ * so are the Dockerfiles, the env templates and the commit hooks, none of
+ * which carry an extension a list would have named.
  */
 export const noPrivateRepoPath = {
   name: "no-private-repo-path",
   description: "The public repo does not cite private-repo paths",
   run(context: CheckContext): Finding[] {
-    const files = context.files(
-      (path) => AUTHORED_TEXT.test(path) && !GENERATED.test(path),
-      "public text files",
-    );
+    const files = context.files(isScannableText, "readable tracked files");
 
     const findings: Finding[] = [];
     for (const file of files) {

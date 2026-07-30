@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { AUTHORED_TEXT, GENERATED } from "#repo-lint/file-kinds";
+import { isScannableText } from "#repo-lint/file-kinds";
 import { toRepoRelative } from "#repo-lint/repo-relative";
 
 /**
@@ -45,12 +45,19 @@ interface SecretlintFile {
  * credential does. That asymmetry is why this is a hard gate rather than a
  * warning.
  *
- * Detection is secretlint's recommended preset: 27 provider token formats,
- * which are specific enough not to occur by accident, so scanning the whole
- * tree stays quiet. Its companion is the commit hook, which blocks secret
- * FILES (.env, .pem, .key); this covers the complementary case of a secret
- * pasted inline into ordinary source. False positives are handled by a
- * justified entry in .secretlintrc.json, never by narrowing the scan.
+ * Detection is secretlint's recommended preset: provider token formats
+ * specific enough not to occur by accident, so scanning the whole tree stays
+ * quiet. Its companion is the commit hook, which blocks secret FILES (.env,
+ * .pem, .key); this covers the complementary case of a secret pasted inline
+ * into ordinary source. False positives are handled by a justified entry in
+ * .secretlintrc.json, never by narrowing the scan.
+ *
+ * Scope is every tracked file whose bytes are text — not a list of source
+ * extensions. The env templates and the Dockerfiles carry no extension a
+ * list would name, and they are the files most likely to hold a credential
+ * somebody meant to keep local. The lockfile is in scope too: a registry URL
+ * with an embedded token is written there by a tool, not by a person, and it
+ * publishes just the same.
  *
  * Findings carry the scanner's own message, which masks the secret. The
  * raw file contents come back in the same reply and are deliberately never
@@ -61,10 +68,7 @@ export const noHardcodedSecrets = {
   name: "no-hardcoded-secrets",
   description: "No credential is written literally into a tracked file",
   run(context: CheckContext): Finding[] {
-    const files = context.files(
-      (path) => AUTHORED_TEXT.test(path) && !GENERATED.test(path),
-      "authored text files",
-    );
+    const files = context.files(isScannableText, "readable tracked files");
 
     const binary = resolve(context.repoRoot, "node_modules/.bin/secretlint");
     if (!existsSync(binary)) {

@@ -1,9 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-
-/** Text file kinds a trailing newline is meaningful for. */
-const TEXT_FILE = /\.(ts|tsx|mts|cts|sql|json|md|sh|ya?ml|mjs|cjs|css)$/;
+import { isScannableText } from "#repo-lint/file-kinds";
 
 /**
  * Every tracked text file ends with a newline.
@@ -14,18 +12,19 @@ const TEXT_FILE = /\.(ts|tsx|mts|cts|sql|json|md|sh|ya?ml|mjs|cjs|css)$/;
  * where a one-line addition to a migration journal produced a hunk touching
  * a line the author never edited and the review filed it as unexplained.
  *
- * No exemptions. The migrations directory is included even though drizzle-kit
- * once emitted those files without the newline: every migration since 0018 is
- * hand-written, so nothing regenerates them and there is nothing to fight.
+ * No exemptions, and that has to mean every text file rather than a list of
+ * source extensions — an earlier list left out `.html`, `.js` and `.jsx`, and
+ * a tracked HTML entry point had been sitting without its newline the whole
+ * time the check reported clean. The migrations directory is included even
+ * though drizzle-kit once emitted those files without the newline: every
+ * migration since 0018 is hand-written, so nothing regenerates them and there
+ * is nothing to fight.
  */
 export const eofNewline = {
   name: "eof-newline",
   description: "Tracked text files end with a newline",
   run(context: CheckContext): Finding[] {
-    const files = context.files(
-      (path) => TEXT_FILE.test(path),
-      "tracked text files",
-    );
+    const files = context.files(isScannableText, "tracked text files");
 
     const findings: Finding[] = [];
     for (const file of files) {

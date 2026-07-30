@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { stripComments } from "#repo-lint/strip-comments";
 
 /**
  * Reads the alias prefixes the packages declare for themselves.
@@ -102,8 +103,12 @@ export const noUnresolvedAliasInDist = {
       );
 
       for (const file of bundles) {
-        context
-          .read(file)
+        // Comments first. A doc block may show an alias inside an @example,
+        // and nothing resolves an import that exists only in prose — the
+        // reason dependency-cruiser was kept for the import graph is that it
+        // reads imports rather than text, and a text scan has to earn the
+        // same property.
+        stripComments(context.read(file), "js")
           .split("\n")
           .forEach((text, index) => {
             const hit = leaked.exec(text);

@@ -159,6 +159,38 @@ describe("no-unresolved-alias-in-dist", () => {
     expect(noUnresolvedAliasInDist.run(context)).toHaveLength(1);
   });
 
+  it("ignores an alias that appears only inside a doc comment", () => {
+    // Emitted declarations carry the source's doc blocks, and an @example
+    // showing how to import the package names the alias in prose. Nothing
+    // resolves an import that is not one.
+    const context = fakeContext({
+      "packages/domain/package.json": "{}",
+      "packages/domain/tsconfig.json": JSON.stringify({
+        compilerOptions: { paths: { "@domain/*": ["./src/*"] } },
+      }),
+      "packages/domain/dist/index.d.ts":
+        '/**\n * @example\n * import { x } from "@domain/thing.js";\n */\nexport declare const x: number;\n',
+    });
+    expect(noUnresolvedAliasInDist.run(context)).toEqual([]);
+  });
+
+  it("still catches a real import on the line after such a comment", () => {
+    // The other half of the same change: stripping comments must not strip
+    // the code, and blanking has to keep the line numbering so the report
+    // points at the import rather than near it.
+    const context = fakeContext({
+      "packages/domain/package.json": "{}",
+      "packages/domain/tsconfig.json": JSON.stringify({
+        compilerOptions: { paths: { "@domain/*": ["./src/*"] } },
+      }),
+      "packages/domain/dist/index.d.ts":
+        '/**\n * @example\n * import { x } from "@domain/thing.js";\n */\nimport { y } from "@domain/real.js";\n',
+    });
+    const findings = noUnresolvedAliasInDist.run(context);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.line).toBe(5);
+  });
+
   it("fails rather than reports clean when no tsconfig declares an alias", () => {
     const context = fakeContext({
       "packages/shared/package.json": "{}",

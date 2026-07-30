@@ -3,11 +3,8 @@
 import { resolve } from "node:path";
 import { hasConfusablesInFiles } from "anti-trojan-source";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { AUTHORED_TEXT } from "#repo-lint/file-kinds";
+import { isScannableText } from "#repo-lint/file-kinds";
 import { toRepoRelative } from "#repo-lint/repo-relative";
-
-/** Generated or secret-bearing files that are not human-authored source. */
-const SKIPPED = /(^|\/)(pnpm-lock\.yaml|\.env)/;
 
 /**
  * Invisible characters that cannot hide code from a reviewer.
@@ -37,15 +34,17 @@ const HARMLESS_CATEGORY = "Variation Selector";
  * Detection is `anti-trojan-source`'s library API rather than its CLI: the
  * CLI unconditionally calls `process.stdin.unref()`, which throws on Node 24
  * whenever stdin is not a pipe — that is, in CI.
+ *
+ * Scope is every tracked file whose bytes are text. An earlier version
+ * skipped the env templates, which is backwards: a bidi override in a
+ * template that becomes a deployed environment reads one way and sets
+ * another, and nothing else looks at those files.
  */
 export const noTrojanSource = {
   name: "no-trojan-source",
   description: "Source contains no bidi overrides or invisible controls",
   async run(context: CheckContext): Promise<Finding[]> {
-    const files = context.files(
-      (path) => AUTHORED_TEXT.test(path) && !SKIPPED.test(path),
-      "human-authored text files",
-    );
+    const files = context.files(isScannableText, "readable tracked files");
 
     const reports = await hasConfusablesInFiles({
       filePaths: files.map((file) => resolve(context.repoRoot, file)),

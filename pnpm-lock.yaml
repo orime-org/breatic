@@ -945,6 +945,9 @@ importers:
 
   repo-lint:
     devDependencies:
+      '@breatic/eslint-rules':
+        specifier: workspace:*
+        version: link:../eslint-rules
       '@types/node':
         specifier: ^22.0.0
         version: 22.0.0
