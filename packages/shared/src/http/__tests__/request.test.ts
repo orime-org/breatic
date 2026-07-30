@@ -4,22 +4,20 @@
 /**
  * Transport-level behaviour of `httpRequest` / `httpRequestJson`.
  *
- * These exercise the real retry client through an injected fetch, because
- * the whole value of this layer lives in the WIRING — three of its
- * non-obvious choices exist only because the library's documented
- * behaviour turned out to be wrong when measured (see
- * `engineering/demo/2026-07-30-ky-retry-behaviour-probe*.mjs`):
+ * These drive the real retry loop through an injected fetch, because the value
+ * of this layer is in the WIRING, not in any one predicate. A test that mocked
+ * the loop away would keep passing while the wiring regressed.
  *
- *   1. Suppressing the client's own HTTP-error throwing also suppresses
- *      retrying entirely, so we let it throw and unwrap at our boundary.
- *   2. Its method whitelist gates the retry predicate rather than being
- *      overridable by it, so the whitelist is held fully open.
- *   3. `Retry-After` is dropped once our predicate takes over, so we parse
- *      it ourselves and relay the wait.
- *
- * A test that mocked the library away would keep passing while every one
- * of those regressed, which is exactly how this PR's core value could
- * disappear silently.
+ * The loop is written directly against `fetch`. That was measured rather than
+ * assumed: an earlier cut sat on the ky retry client and needed workarounds for
+ * five of its defaults — suppressing its HTTP-error throwing also suppressed
+ * retrying; its method whitelist gated the retry predicate instead of deferring
+ * to it; `Retry-After` was dropped once the predicate took over; the predicate
+ * was not consulted on the final attempt, so exhaustion could not be reported;
+ * and it read a failing response's body, erasing the vendor error text the
+ * worker logs. That client is gone, so the tests below assert OUR behaviour —
+ * they are not checking a library's defaults. Probes kept at
+ * `engineering/demo/2026-07-30-ky-retry-behaviour-probe*.mjs`.
  */
 
 import { describe, it, expect, vi } from "vitest";

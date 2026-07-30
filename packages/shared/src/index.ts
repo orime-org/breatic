@@ -216,9 +216,10 @@ export { fullJitter, exponentialJitterDelay } from "@shared/backoff.js";
 export { sleep } from "@shared/sleep.js";
 
 // The one HTTP transport with retries — backend services and browser alike.
-// `decideRetry` stays internal: callers state the `replaySafe` fact and the
-// transport applies the judgement, so there is only one place a verdict is
-// ever reached.
+// Callers state the `replaySafe` fact and the transport applies the judgement,
+// so a verdict is reached in exactly one place. (`decideRetry` itself is
+// exported further down, for the one caller whose retry subject is not a
+// `fetch`; the point is one implementation of the judgement, not one exit.)
 export { httpRequest, httpRequestJson } from "@shared/http/request.js";
 export type { HttpRequestOptions, HttpRetryEvent } from "@shared/http/request.js";
 // The handle `httpRequest` returns. Exported because the worker's transports

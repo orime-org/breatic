@@ -30,23 +30,29 @@
  * consumes the body, so exactly one of them may be called — same rule as the
  * platform's own `Response`, and enforced the same way: a second read throws.
  *
- * There is no "discard without reading" member, and that is deliberate — but
- * the tradeoff is real and worth stating plainly rather than claiming the
- * problem away. A caller that takes a handle and neither reads nor cancels it
- * holds the connection until the peer times out, the same as holding an unread
- * `Response`. Six call sites do exactly that with a FINAL non-ok response:
- * they throw or return without touching the body. That is unchanged from
- * before this transport existed, and measured, it only pins a socket for
- * bodies past roughly 8 MB — below that the client buffers and returns the
- * connection to the pool either way. Of the six, only the agent's fetch tool
- * can be handed a body that large, because only it takes an arbitrary URL from
- * a conversation.
+ * There is no "discard without reading" member, and the tradeoff that comes
+ * with that is real. A caller who takes a handle and neither reads nor cancels
+ * it holds the connection, the same as holding an unread `Response`. Six call
+ * sites do exactly that with a FINAL non-ok response — they throw or return
+ * without touching the body: the two asset downloads, Topaz's cost estimate,
+ * the agent's fetch and search tools, and the browser upload. That behaviour
+ * is unchanged from before this transport existed.
  *
- * A release method was considered and rejected: every plausible implementation
- * aborts the request, and callers would reach for it in `finally` blocks that
- * also run on the success path, tearing down transfers that were fine. What
- * the transport does close is the other leak — it now tears down the attempts
- * it retries PAST, which no caller could ever have reached.
+ * Measured (`engineering/demo/2026-07-30-unread-body-socket-probe.mjs`): a body
+ * of 64 KiB or more stops the socket being reused, and anything smaller is
+ * buffered and the connection returns to the pool. 64 KiB is the client's
+ * stream high-water mark, not a size anyone chose. An earlier version of this
+ * comment claimed the bound was "roughly 8 MB" and called it measured; it was
+ * neither measured nor right, and the conclusion drawn from it — that only the
+ * agent's fetch tool could be handed a body that large — did not survive the
+ * real number.
+ *
+ * A release method was considered and not added: every implementation of one
+ * aborts the request, and callers reach for such things in `finally` blocks
+ * that also run on the success path, tearing down transfers that were fine.
+ * That is a judgement about how the method would be used, not a proof that it
+ * cannot be built. What the transport does close is the other leak — it tears
+ * down the attempts it retries PAST, which no caller could ever reach.
  */
 export interface GuardedResponse {
   /** Whether the status is in the 2xx range. */
