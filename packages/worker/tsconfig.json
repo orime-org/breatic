@@ -7,10 +7,6 @@
     "noUnusedParameters": false,
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["../shared/src/*"],
-      "@core/*": ["../core/src/*"],
-      "@domain/*": ["../domain/src/*"],
-      "@collab/*": ["../collab/src/*"],
       "@worker/*": ["../worker/src/*"]
     }
   },
