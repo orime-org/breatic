@@ -195,7 +195,7 @@ async function seedStudio(): Promise<Seeded> {
 
 describe("requestTransfer", () => {
   it("lands an actionable transfer-request notification with the actor identity + a future expiry", async () => {
-    const { slug, adminId, memberId, adminName, adminSlug } = await seedStudio();
+    const { studioId, slug, adminId, memberId, adminName } = await seedStudio();
 
     await studioTransferService.requestTransfer(slug, adminId, memberId);
 
@@ -205,17 +205,22 @@ describe("requestTransfer", () => {
     expect(reqs[0]!.expires_at).not.toBeNull();
     expect(reqs[0]!.expires_at!.getTime()).toBeGreaterThan(Date.now());
 
-    // The bell payload carries the initiating admin's identity (name + @handle)
-    // + the studio slug, so the row renders "[Admin] asked you to take over
-    // [studio]" with both clickable.
+    // The bell payload carries the initiating admin's id + the studio id, so
+    // the row renders "[Admin] asked you to take over [studio]" with both
+    // clickable — the names and links come from resolving those ids at read
+    // time, not from a copy frozen when the request was sent.
     const [reqPayload] = await sql<{ payload: Record<string, unknown> }[]>`
       SELECT payload FROM notifications WHERE id = ${reqs[0]!.id}
     `;
+    // Ids, not names: the handle and slug are resolved at read time so a
+    // rename cannot leave this notification pointing at the wrong place.
     expect(reqPayload!.payload).toMatchObject({
       fromName: adminName,
-      fromHandle: adminSlug,
-      studioSlug: slug,
+      fromUserId: adminId,
+      studioId,
     });
+    expect(reqPayload!.payload).not.toHaveProperty("fromHandle");
+    expect(reqPayload!.payload).not.toHaveProperty("studioSlug");
   });
 
   it("rejects transferring to a non-member with NotFound", async () => {
@@ -256,7 +261,7 @@ describe("requestTransfer", () => {
 
 describe("confirmTransfer", () => {
   it("demotes the old admin, promotes the recipient, notifies the old admin (accepter identity) — exactly one active admin", async () => {
-    const { studioId, slug, adminId, memberId, memberName, memberSlug } =
+    const { studioId, slug, adminId, memberId, memberName } =
       await seedStudio();
     await studioTransferService.requestTransfer(slug, adminId, memberId);
     const [req] = await transferRequestsFor(memberId);
@@ -277,9 +282,10 @@ describe("confirmTransfer", () => {
     expect(approved).toHaveLength(1);
     expect(approved[0]!.payload).toMatchObject({
       accepterName: memberName,
-      accepterHandle: memberSlug,
-      studioSlug: slug,
+      accepterUserId: memberId,
+      studioId,
     });
+    expect(approved[0]!.payload).not.toHaveProperty("accepterHandle");
   });
 
   it("refuses to confirm an expired request with Conflict (roles unchanged)", async () => {
@@ -342,6 +348,70 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
       roles.find((r) => r.user_id === uid)?.role;
     expect(roleOf(adminId)).toBe("admin");
     expect(roleOf(memberId)).toBe("guest");
+  });
+
+  it("rejects confirm when the studio changed hands after the request (the initiator is no longer admin)", async () => {
+    // A request names its initiator in a payload written up to seven days
+    // ago. If the studio has since moved to somebody else, confirming that
+    // stale request would demote whoever holds the role now — and promote the
+    // long-since-demoted initiator back up to maintainer on the way past.
+    const { studioId, slug, adminId, memberId } = await seedStudio();
+    const successorId = await insertUser();
+    await insertMemberRaw(studioId, successorId, "maintainer");
+    await studioTransferService.requestTransfer(slug, adminId, memberId);
+    const [stale] = await transferRequestsFor(memberId);
+
+    // The studio changes hands to the successor (demote first — the one-admin
+    // partial unique rejects a second active admin).
+    await sql`UPDATE studio_members SET role = 'maintainer' WHERE studio_id = ${studioId} AND user_id = ${adminId}`;
+    await sql`UPDATE studio_members SET role = 'admin' WHERE studio_id = ${studioId} AND user_id = ${successorId}`;
+
+    await expect(
+      studioTransferService.confirmTransfer(stale!.id, memberId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    const roles = await sql<{ user_id: string; role: string }[]>`
+      SELECT user_id, role FROM studio_members
+      WHERE studio_id = ${studioId} AND deleted_at IS NULL
+    `;
+    const roleOf = (uid: string): string | undefined =>
+      roles.find((r) => r.user_id === uid)?.role;
+    expect(roleOf(successorId)).toBe("admin");
+    expect(roleOf(adminId)).toBe("maintainer");
+    expect(roleOf(memberId)).toBe("maintainer");
+    expect(await activeAdminCount(studioId)).toBe(1);
+  });
+
+  it("rejects confirm when the recipient already became admin by another route (no bystander gets demoted)", async () => {
+    // The variant the one-admin index cannot catch, because the promotion it
+    // would perform is a no-op: the recipient IS already the admin. The DEMOTE
+    // still runs, so the stale request's initiator — a plain member by now —
+    // gets pushed to maintainer for no reason. A guest would be pushed UP.
+    const { studioId, slug, adminId, memberId } = await seedStudio();
+    const bystanderId = await insertUser();
+    await insertMemberRaw(studioId, bystanderId, "guest");
+    await studioTransferService.requestTransfer(slug, adminId, memberId);
+    const [stale] = await transferRequestsFor(memberId);
+
+    // The studio moves to the recipient by some other route, and the original
+    // initiator ends up a guest.
+    await sql`UPDATE studio_members SET role = 'guest' WHERE studio_id = ${studioId} AND user_id = ${adminId}`;
+    await sql`UPDATE studio_members SET role = 'admin' WHERE studio_id = ${studioId} AND user_id = ${memberId}`;
+
+    await expect(
+      studioTransferService.confirmTransfer(stale!.id, memberId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    const roles = await sql<{ user_id: string; role: string }[]>`
+      SELECT user_id, role FROM studio_members
+      WHERE studio_id = ${studioId} AND deleted_at IS NULL
+    `;
+    const roleOf = (uid: string): string | undefined =>
+      roles.find((r) => r.user_id === uid)?.role;
+    expect(roleOf(memberId)).toBe("admin");
+    // Still a guest — the stale request did not hand them a promotion.
+    expect(roleOf(adminId)).toBe("guest");
+    expect(roleOf(bystanderId)).toBe("guest");
   });
 });
 

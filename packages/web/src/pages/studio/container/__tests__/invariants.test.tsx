@@ -24,6 +24,8 @@ const TEAM_DETAIL: StudioDetail = {
   name: 'Acme Studio',
   type: 'team',
   memberCount: 4,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'admin',
 };
 
@@ -36,6 +38,8 @@ beforeEach(() => {
       name: 'Acme Studio',
       type: 'team',
       memberCount: 4,
+      avatarUrl: null,
+      bio: null,
       myStudioRole: 'guest',
     },
   ]);

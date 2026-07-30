@@ -41,6 +41,17 @@ const storageConfigSchema = z.object({
       client_put_min_bytes_per_sec: 65536,
       presign_expires_seconds: 300,
     }),
+
+  avatar: z
+    .object({
+      /**
+       * Hard cap on an avatar upload, in bytes. Unlike a project asset, an
+       * avatar arrives THROUGH the server (no presigned direct upload), so
+       * this bound is also the bound on what the process buffers.
+       */
+      max_bytes: z.number().int().positive().default(1048576),
+    })
+    .default({ max_bytes: 1048576 }),
 });
 
 /** Validated storage configuration type. */

@@ -239,11 +239,12 @@ describe("createInvite", () => {
     expect(payload.token).toBe(result.token);
     // …and the inviter's identity (name + @handle) for the actor-first bell row
     // ("[Owner] invited you to [Test Project]", the name clickable to the studio).
-    expect(payload).toMatchObject({
-      inviterName: "Owner",
-      inviterHandle: "proj-owner",
-      projectSlug: "test-project",
-    });
+    expect(payload).toMatchObject({ inviterName: "Owner" });
+    // Ids, not names: the @handle and slug are resolved at read time.
+    expect(payload).toHaveProperty("inviterUserId");
+    expect(payload).toHaveProperty("projectId");
+    expect(payload).not.toHaveProperty("inviterHandle");
+    expect(payload).not.toHaveProperty("projectSlug");
   });
 
   it("rejects an unregistered email with NotFound", async () => {
@@ -312,11 +313,10 @@ describe("confirmInvite", () => {
         ),
       );
     expect(ownerNotices).toHaveLength(1);
-    expect(ownerNotices[0]?.payload).toMatchObject({
-      inviteeName: "Invitee",
-      inviteeHandle: "proj-invitee",
-      projectSlug: "test-project",
-    });
+    expect(ownerNotices[0]?.payload).toMatchObject({ inviteeName: "Invitee" });
+    expect(ownerNotices[0]?.payload).toHaveProperty("inviteeUserId");
+    expect(ownerNotices[0]?.payload).toHaveProperty("projectId");
+    expect(ownerNotices[0]?.payload).not.toHaveProperty("inviteeHandle");
     // The invitee's bell notification is marked read.
     const inviteeUnread = await db
       .select({ id: schema.notifications.id })

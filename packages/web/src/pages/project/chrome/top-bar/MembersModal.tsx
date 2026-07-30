@@ -5,8 +5,8 @@ import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '@web/lib/toast';
 
-import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { Button } from '@web/components/ui/button';
+import { StudioAvatar } from '@web/ui/StudioAvatar';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,18 +61,6 @@ const ROLE_OPTIONS: ReadonlyArray<{
   { value: 'editor', labelKey: 'role.editor' },
   { value: 'viewer', labelKey: 'role.viewer' },
 ];
-
-/**
- * Derives up-to-two uppercase initials from a member's display name.
- * @param name - Member display name to abbreviate.
- * @returns the initials, or `?` when the name is empty.
- */
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
-}
 
 /**
  * Members management modal — opened by the "Manage collaborators" button
@@ -412,11 +400,12 @@ function ModalMemberRow({
   const t = useTranslation();
   return (
     <div className='flex items-center gap-3 py-2'>
-      <Avatar className='h-9 w-9 shrink-0'>
-        <AvatarFallback className='text-xs font-semibold'>
-          {initialsOf(member.name)}
-        </AvatarFallback>
-      </Avatar>
+      <StudioAvatar
+        name={member.name}
+        type='personal'
+        avatarUrl={member.avatarUrl ?? null}
+        size='md'
+      />
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
         <span className='truncate text-sm font-medium text-foreground'>
           {member.name}

@@ -103,6 +103,9 @@ export const studios = pgTable(
     // same pointer model as `name`. Set via UI upload (#1809); Google OAuth
     // never imports it.
     avatarUrl: text("avatar_url"),
+    // Self-description shown on the studio's front door (nullable = unset).
+    // The API stores NULL for a cleared bio, so "no bio" has one representation.
+    bio: varchar("bio", { length: 500 }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

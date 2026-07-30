@@ -135,10 +135,8 @@ export async function requestProjectTransfer(
     payload: {
       fromUserId,
       fromName: from?.name ?? "",
-      fromHandle: from?.slug ?? "",
       projectId,
       projectName: project.name,
-      projectSlug: project.slug,
     },
     expiresAt,
   });
@@ -203,7 +201,6 @@ export async function confirmProjectTransfer(
       fromUserId?: unknown;
       projectId?: unknown;
       projectName?: unknown;
-      projectSlug?: unknown;
     };
     if (
       typeof payload.fromUserId !== "string" ||
@@ -214,31 +211,47 @@ export async function confirmProjectTransfer(
     const { fromUserId, projectId } = payload;
     const projectName =
       typeof payload.projectName === "string" ? payload.projectName : "";
-    const projectSlug =
-      typeof payload.projectSlug === "string" ? payload.projectSlug : "";
 
     // TOCTOU guard (adversarial review): the request-time two-layer eligibility
     // (ADR D3) can go stale within the 7-day TTL — the recipient may have been
     // demoted to studio guest or kicked from the studio since the request. Re-
     // verify BOTH layers BEFORE the swap; otherwise materializeOwner (ON CONFLICT
     // DO UPDATE, no setWhere) would revive a soft-deleted / guest row straight to
-    // owner and move the project out of its studio. Reads committed state; a
-    // ConflictError rolls the whole transaction back (including the mark-read).
-    const recipientProjectRole = await projectMembersRepo.getRole(
+    // owner and move the project out of its studio.
+    //
+    // Both re-reads take a ROW LOCK, and the order is load-bearing:
+    //   1. the recipient's `studio_members` row
+    //   2. the recipient's `project_members` row
+    // Re-reading without the lock left a window wide enough to lose the guard
+    // entirely: a concurrent leave / kick could commit between the check and
+    // materializeOwner, and since that upsert clears `deleted_at`, it REVIVED
+    // the membership row the leave had just soft-deleted. The result was a
+    // permanent inconsistency — a non-member owning one of the studio's
+    // projects, still able to open it. Leaving locks `studio_members` first
+    // and then writes `project_members`, so taking the two in the same order
+    // here makes the two transactions queue rather than deadlock.
+    //
+    // The project row itself is read unlocked: `studio_id` is immutable, so
+    // there is nothing here for a concurrent writer to change.
+    const project = await projectRepo.getProjectById(projectId);
+    if (!project) throw new ConflictError(t("server.error.conflict"));
+    const recipientStudioRole = await studioMembersRepo.lockMemberRole(
+      project.studioId,
+      receiverUserId,
+      tx,
+    );
+    if (!recipientStudioRole || recipientStudioRole === "guest") {
+      throw new ConflictError(t("server.error.conflict"));
+    }
+    const recipientProjectRole = await projectMembersRepo.lockMemberRole(
       projectId,
       receiverUserId,
+      tx,
     );
     if (
       recipientProjectRole !== "editor" &&
       recipientProjectRole !== "viewer"
     ) {
-      throw new ConflictError(t("server.error.conflict"));
-    }
-    const project = await projectRepo.getProjectById(projectId);
-    const recipientStudioRole = project
-      ? await studioMembersRepo.getRole(project.studioId, receiverUserId)
-      : null;
-    if (!recipientStudioRole || recipientStudioRole === "guest") {
       throw new ConflictError(t("server.error.conflict"));
     }
 
@@ -263,10 +276,10 @@ export async function confirmProjectTransfer(
     await notificationService.createProjectTransferApproved({
       userId: fromUserId,
       payload: {
+        projectId,
         projectName,
-        projectSlug,
+        accepterUserId: receiverUserId,
         accepterName: accepter?.name ?? "",
-        accepterHandle: accepter?.slug ?? "",
       },
       tx,
     });

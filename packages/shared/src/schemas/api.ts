@@ -34,31 +34,101 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export const SLUG_REGEX = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 /**
+ * Slugs nobody may claim, because the product needs the name for itself or
+ * the word would let a studio impersonate the platform.
+ *
+ * A studio slug is a namespace claim — it becomes `/studio/{slug}`, and for a
+ * personal studio it doubles as the user's `@handle` — so this cannot be a
+ * frontend courtesy: a request sent straight to the API has to be refused too.
+ * It is enforced on the internal `studioSlug` fragment that every write path
+ * validates against, rather than in each service where a new path could
+ * forget it.
+ *
+ * Contents are a product/legal matter and belong to whoever owns naming
+ * policy; this is the mechanism plus the list as it stood. Note that entries
+ * shorter than the 6-character minimum can never reach this check — the length
+ * rule refuses them first — so they are redundant here.
+ */
+export const RESERVED_STUDIO_SLUGS: ReadonlySet<string> = new Set([
+  "admin",
+  "api",
+  "app",
+  "www",
+  "studio",
+  "project",
+  "collection",
+  "breatic",
+  "orime",
+  "login",
+  "settings",
+]);
+
+/**
+ * Studio slug length bounds: long enough to be a meaningful handle, short
+ * enough to fit `studios.slug varchar(40)` with margin. Exported so the
+ * frontend's live input hint counts to the same numbers the server enforces.
+ */
+export const STUDIO_SLUG_BOUNDS = { min: 6, max: 39 } as const;
+
+/**
+ * The one studio-slug rule: character shape, length, and reserved words.
+ *
+ * Every schema that accepts a slug composes this, so the three write paths
+ * (personal-studio setup, team-studio creation, studio rename) cannot drift
+ * apart — and a fourth added later inherits the rule by construction. Failure
+ * messages are stable codes the frontend maps to localised copy.
+ */
+const studioSlug = z
+  .string()
+  .min(STUDIO_SLUG_BOUNDS.min)
+  .max(STUDIO_SLUG_BOUNDS.max)
+  .regex(SLUG_REGEX, "slug_invalid_format")
+  .refine((value) => !RESERVED_STUDIO_SLUGS.has(value), "slug_reserved");
+
+/**
  * `POST /auth/setup-studio` body — the second registration step. The
  * authenticated (but studio-less) user picks the slug for their personal
- * studio; the server validates the format here and re-checks uniqueness
- * against `studios.slug` before creating the studio.
+ * studio; the server validates it here and re-checks uniqueness against
+ * `studios.slug` before creating the studio.
  */
 export const setupStudioSchema = z.object({
-  slug: z
-    .string()
-    .min(6)
-    .max(39)
-    .regex(SLUG_REGEX, "slug_invalid_format"),
+  slug: studioSlug,
 });
 export type SetupStudioInput = z.infer<typeof setupStudioSchema>;
 
 /**
  * `POST /api/v1/studios` body — create a team studio. The authenticated user
  * picks a display name + a globally-unique slug (handle); the server validates
- * format here and enforces uniqueness via the `studios_slug_idx` unique index.
+ * it here and enforces uniqueness via the `studios_slug_idx` unique index.
  * Name and slug are independent (the user types both — option C).
  */
 export const createTeamStudioSchema = z.object({
   name: z.string().trim().min(1).max(255),
-  slug: z.string().min(6).max(39).regex(SLUG_REGEX, "slug_invalid_format"),
+  slug: studioSlug,
 });
 export type CreateTeamStudioInput = z.infer<typeof createTeamStudioSchema>;
+
+/**
+ * `PATCH /api/v1/studio/:slug` body — edit a studio's display name, URL slug,
+ * or bio. Admin-only; every field is optional so the settings form can send
+ * only what changed, but an entirely empty patch is refused rather than
+ * treated as a successful no-op (it means the client sent nothing to apply).
+ *
+ * `bio` accepts the empty string, which clears it — distinct from omitting the
+ * field, which leaves it untouched. Its 500-character ceiling is an interface
+ * contract matching the column, not a tunable.
+ */
+export const updateStudioSchema = z
+  .object({
+    name: z.string().trim().min(1).max(255).optional(),
+    slug: studioSlug.optional(),
+    bio: z.string().max(500).optional(),
+  })
+  .refine(
+    (patch) => Object.values(patch).some((v) => v !== undefined),
+    "empty_patch",
+  );
+export type UpdateStudioInput = z.infer<typeof updateStudioSchema>;
 
 export const loginSchema = z.object({
   email: z.string().email(),

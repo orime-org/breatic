@@ -84,10 +84,10 @@ describe('SlugSetupPage', () => {
 
   it('renders the slug form with an enabled submit and the available line when available', () => {
     setup();
-    expect(screen.getByLabelText('Handle')).toBeInTheDocument();
+    expect(screen.getByLabelText('Slug')).toBeInTheDocument();
     // When the live check reports `available`, the helper line shows the
     // availability confirmation (it replaces the default URL helper).
-    expect(screen.getByText('Handle is available')).toBeInTheDocument();
+    expect(screen.getByText('Slug is available')).toBeInTheDocument();
     const submit = screen.getByRole('button', { name: 'Continue' });
     expect(submit).toBeInTheDocument();
     // Availability is `available`, so submit is enabled.
@@ -116,7 +116,7 @@ describe('SlugSetupPage', () => {
     setAvailability('invalid', 'format');
     const user = userEvent.setup();
     setup();
-    await user.type(screen.getByLabelText('Handle'), 'Bad_Slug');
+    await user.type(screen.getByLabelText('Slug'), 'Bad_Slug');
     expect(
       screen.getByText('Lowercase letters, numbers and hyphens only.'),
     ).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe('SlugSetupPage', () => {
     setAvailability('invalid', 'length');
     const user = userEvent.setup();
     setup();
-    await user.type(screen.getByLabelText('Handle'), 'abc');
+    await user.type(screen.getByLabelText('Slug'), 'abc');
     expect(screen.getByText('Must be 6–39 characters.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Continue' }));
@@ -141,9 +141,9 @@ describe('SlugSetupPage', () => {
     setAvailability('invalid', 'reserved');
     const user = userEvent.setup();
     setup();
-    await user.type(screen.getByLabelText('Handle'), 'settings');
+    await user.type(screen.getByLabelText('Slug'), 'settings');
     expect(
-      screen.getByText('That handle is already in use.'),
+      screen.getByText('That Slug is already in use.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Continue' }));
@@ -154,7 +154,7 @@ describe('SlugSetupPage', () => {
     setAvailability('checking');
     const user = userEvent.setup();
     setup();
-    await user.type(screen.getByLabelText('Handle'), 'pending-handle');
+    await user.type(screen.getByLabelText('Slug'), 'pending-handle');
     expect(screen.getByText('Checking availability…')).toBeInTheDocument();
     // Cannot submit while still checking.
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
@@ -166,7 +166,7 @@ describe('SlugSetupPage', () => {
     });
     const user = userEvent.setup();
     setup();
-    await user.type(screen.getByLabelText('Handle'), 'my-handle');
+    await user.type(screen.getByLabelText('Slug'), 'my-handle');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     await waitFor(() =>
@@ -189,12 +189,12 @@ describe('SlugSetupPage', () => {
     );
     const user = userEvent.setup();
     setup();
-    await user.type(screen.getByLabelText('Handle'), 'taken-handle');
+    await user.type(screen.getByLabelText('Slug'), 'taken-handle');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     await waitFor(() =>
       expect(
-        screen.getByText('That handle is already in use.'),
+        screen.getByText('That Slug is already in use.'),
       ).toBeInTheDocument(),
     );
     expect(screen.queryByTestId('studio-page')).not.toBeInTheDocument();
@@ -208,7 +208,7 @@ describe('SlugSetupPage', () => {
     );
     const user = userEvent.setup();
     setup();
-    await user.type(screen.getByLabelText('Handle'), 'good-handle');
+    await user.type(screen.getByLabelText('Slug'), 'good-handle');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     const alert = await screen.findByRole('alert');

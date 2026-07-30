@@ -16,6 +16,7 @@ import { cn } from '@web/lib/utils';
 import { useUIStore } from '@web/stores';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { Member, MemberRole } from '@web/data/api/members';
+import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 export type { Member, MemberRole };
 
@@ -43,18 +44,6 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
   editor: 'role.editor',
   viewer: 'role.viewer',
 };
-
-/**
- * Derives up-to-two uppercase initials from a member's display name.
- * @param name - Member display name to abbreviate.
- * @returns the initials, or `?` when the name is empty.
- */
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
-}
 
 /**
  * Members trigger + popover · TopBar group A.
@@ -115,17 +104,25 @@ export const MembersStack = React.forwardRef<
             style={{ marginRight: '-4px' }}
           >
             {visible.map((m, i) => (
-              <AvatarChip
+              // The stacking offset lives on a wrapper so the avatar itself
+              // stays a plain avatar with no positioning of its own.
+              <span
                 key={m.id}
-                initials={initialsOf(m.name)}
+                className='inline-flex'
                 style={{ marginLeft: i === 0 ? 0 : '-4px', zIndex: 10 - i }}
-              />
+              >
+                <StudioAvatar
+                  name={m.name}
+                  type='personal'
+                  avatarUrl={m.avatarUrl ?? null}
+                  size='sm'
+                  className='border border-background'
+                />
+              </span>
             ))}
             {overflow > 0 ? (
-              <AvatarChip
-                key='overflow'
-                initials={`+${overflow}`}
-                muted
+              <OverflowChip
+                count={overflow}
                 style={{ marginLeft: '-4px', zIndex: 1 }}
               />
             ) : null}
@@ -204,11 +201,12 @@ function MemberRow({ member, isMe }: MemberRowProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
-      <Avatar className='h-8 w-8 shrink-0'>
-        <AvatarFallback className='text-xs font-semibold'>
-          {initialsOf(member.name)}
-        </AvatarFallback>
-      </Avatar>
+      <StudioAvatar
+        name={member.name}
+        type='personal'
+        avatarUrl={member.avatarUrl ?? null}
+        size='md'
+      />
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
         <span className='flex items-center gap-1.5 truncate text-sm text-foreground'>
           {member.name}
@@ -242,20 +240,21 @@ function MemberRow({ member, isMe }: MemberRowProps): React.JSX.Element {
 }
 
 /**
- * Small overlapping avatar bubble used in the trigger's stacked member preview.
- * @param root0 - Avatar chip props.
- * @param root0.initials - Text to display; sliced to two uppercase characters.
- * @param root0.muted - Whether to render the muted overflow style (e.g. the `+N` chip).
+ * The `+N` bubble closing the stacked member preview when there are more
+ * members than fit.
+ *
+ * It is deliberately NOT a `StudioAvatar`: it stands for a count, not for
+ * anyone, so it never shows an image and never takes a name.
+ * @param root0 - Overflow chip props.
+ * @param root0.count - How many members are hidden behind the chip.
  * @param root0.style - Inline style for stacking offset and z-index.
- * @returns the stacked avatar bubble.
+ * @returns the `+N` bubble.
  */
-function AvatarChip({
-  initials,
-  muted,
+function OverflowChip({
+  count,
   style,
 }: {
-  initials: string;
-  muted?: boolean;
+  count: number;
   style?: React.CSSProperties;
 }): React.JSX.Element {
   return (
@@ -265,13 +264,10 @@ function AvatarChip({
         height: 'var(--avatar-sm)',
         ...style,
       }}
-      className={cn(
-        'border border-background',
-        muted && 'bg-muted text-muted-foreground',
-      )}
+      className='border border-background bg-muted text-muted-foreground'
     >
       <AvatarFallback className='text-2xs font-semibold'>
-        {initials.slice(0, 2).toUpperCase()}
+        {`+${count}`}
       </AvatarFallback>
     </Avatar>
   );

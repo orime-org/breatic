@@ -18,6 +18,8 @@ const personal: StudioSummary = {
   name: 'Me',
   type: 'personal',
   memberCount: 1,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'admin',
 };
 const teamAdmin: StudioSummary = {
@@ -26,6 +28,8 @@ const teamAdmin: StudioSummary = {
   name: 'Team A',
   type: 'team',
   memberCount: 3,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'admin',
 };
 const teamMaintainer: StudioSummary = {
@@ -34,6 +38,8 @@ const teamMaintainer: StudioSummary = {
   name: 'Team C',
   type: 'team',
   memberCount: 5,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'maintainer',
 };
 const teamGuest: StudioSummary = {
@@ -42,6 +48,8 @@ const teamGuest: StudioSummary = {
   name: 'Team M',
   type: 'team',
   memberCount: 8,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'guest',
 };
 
@@ -68,6 +76,8 @@ describe('defaultCreateStudioId (spec §7.1 — default selection)', () => {
     name: s.name,
     type: s.type,
     memberCount: s.memberCount,
+    avatarUrl: null,
+    bio: null,
     myStudioRole: s.myStudioRole,
   });
 

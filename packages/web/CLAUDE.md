@@ -49,12 +49,13 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 全站**每个可见滚动容器(纵向 + 横向)一律用 `components/ui/scroll-area.tsx` 的 `ScrollArea`**(`scrollbars` 属性选轴),**严禁**裸 `overflow-auto`/`overflow-y-auto`/`overflow-x-auto`/`overflow-scroll` 滚动容器和任何组件级滚动条样式重声明(user 2026-07-15 拍板)。判定题:**这个元素会出现滚动条吗?会 → 包 `<ScrollArea>`,没有第二个选项**(故意隐藏滚动条的滚动容器如 SpaceTabBar 用 `[scrollbar-width:none]` 豁免)。行为契约(滚动/悬停出现 · overlay 零占位 · hover/拖拽只变色 · 不扰动输入态 · 缩放安全拖拽)全部内建在组件里,细节见 [docs/ARCHITECTURE.md#key-conventions](../../docs/ARCHITECTURE.md#frontend)。`lint:no-inline-scrollbar` CI 强制。**布局陷阱**:Radix viewport 内层是自动高度 `display:table` 包裹层,`h-full` 垂直居中在里面会塌陷 —— 居中空态/加载态放 ScrollArea **外面**(StudioRecentPage 模式);内容 padding / 高度上限放 `viewportClassName`(真正滚动的元素)。
 
 ## 产品术语「不翻译表」(DNT glossary,MANDATORY)
-8 个产品实体 / 类型名 + 角色名是**品牌词汇,全语言永远英文**(含非英文 locale 的句子内嵌),不本地化。这是工业界 DNT(do-not-translate)惯例(Figma "Frame" / GitHub "Repository" / Notion "Database"):一份术语表 + 一个固定写法 + CI 机器守,保证全站一个名字。
+8 个产品实体 / 类型名 + 角色名 + `Slug` 是**品牌词汇,全语言永远英文**(含非英文 locale 的句子内嵌),不本地化。这是工业界 DNT(do-not-translate)惯例(Figma "Frame" / GitHub "Repository" / Notion "Database"):一份术语表 + 一个固定写法 + CI 机器守,保证全站一个名字。
 
 | 类 | 词(永远英文) |
 |---|---|
 | 实体 / 类型名 | `Studio` · `Project` · `Collection` · `Space` · `Work` · `Canvas` · `Document` · `Timeline` |
 | 角色名 | `Owner` · `Editor` · `Viewer` · `Admin` · `Maintainer` · `Guest` |
+| 字段名 | `Slug`(2026-07-29 收编)—— 界面上首字母大写写作 `Slug`(含句中),**但 slug 的值一律原样小写**(它是真实 URL 的一部分,显示成 `Orime-studio` 会跟地址栏的 `orime-studio` 对不上)|
 
 **三条规则**:
 

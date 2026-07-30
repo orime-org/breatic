@@ -13,6 +13,8 @@ const TEAM: StudioDetail = {
   name: 'Acme Studio',
   type: 'team',
   memberCount: 4,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'admin',
 };
 
@@ -22,6 +24,8 @@ const PERSONAL: StudioDetail = {
   name: 'Alex',
   type: 'personal',
   memberCount: 1,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'admin',
 };
 

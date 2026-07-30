@@ -23,13 +23,16 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { createTeamStudioSchema } from "@breatic/shared";
+import { createTeamStudioSchema, updateStudioSchema } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { studioService, projectService, recentService } from "@server/modules";
+import { getStorageConfig, ValidationError } from "@breatic/core";
+import { readBoundedBody } from "@server/utils/read-bounded-body.js";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
+import * as studioAvatarService from "@server/modules/studio/studioAvatar.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
 
@@ -95,7 +98,25 @@ studios.get(
   rateLimitFor("slug-check", "user"),
   async (c) => {
     const slug = c.req.query("slug") ?? "";
-    const data = await studioService.checkStudioSlug(slug);
+    // `excludeStudioId` lets a caller ask "ignoring this studio's own claim,
+    // is the slug free" — the question a rename form has. Passing an id here
+    // leaks nothing: the answer is about the slug, not about that studio.
+    //
+    // Validated rather than passed through, because it reaches the query as a
+    // uuid comparison and anything that is not a uuid makes Postgres reject
+    // the statement — a user-supplied string turning into a 500.
+    //
+    // No client sends it today: the web rename form knows its own slug and
+    // short-circuits locally instead of asking. It stays because it is the
+    // endpoint's honest contract, and it is covered by tests.
+    const excludeStudioId = c.req.query("excludeStudioId");
+    if (
+      excludeStudioId !== undefined &&
+      !z.string().uuid().safeParse(excludeStudioId).success
+    ) {
+      throw new ValidationError("excludeStudioId must be a uuid");
+    }
+    const data = await studioService.checkStudioSlug(slug, excludeStudioId);
     return c.json({ data });
   },
 );
@@ -135,6 +156,82 @@ studio.get("/:slug", async (c) => {
   const user = c.get("user");
   const slug = c.req.param("slug");
   const data = await studioService.getStudioDetail(slug, user.id);
+  return c.json({ data });
+});
+
+/**
+ * `PATCH /api/v1/studio/:slug` — edit the studio's display name, URL slug,
+ * and/or bio. Admin-only; every field is optional so the settings form sends
+ * only what changed, and an entirely empty patch is a `400` rather than a
+ * successful no-op.
+ *
+ * Changing the slug frees the old one immediately — no redirect, no alias
+ * (rule 7) — so every existing link to the old address breaks. The frontend
+ * puts this behind a confirmation in the danger zone; the API simply applies
+ * it. Personal studios are editable: their name, handle and bio are the
+ * owner's own profile.
+ *
+ * Rate limited per user: a rename churns every link to the studio, and the
+ * slug-availability probe next to it is already limited.
+ * @returns `200` with `{ data: Studio }`; `400` invalid or empty patch,
+ *   `403` not the admin, `404` no such studio, `409` slug taken,
+ *   `429` rate limited
+ */
+studio.patch(
+  "/:slug",
+  requireStudioRole("admin"),
+  rateLimitFor("studio-update", "user"),
+  zValidator("json", updateStudioSchema),
+  async (c) => {
+    const slug = c.req.param("slug");
+    const data = await studioService.updateStudio(slug, c.req.valid("json"));
+    return c.json({ data });
+  },
+);
+
+/**
+ * `POST /api/v1/studio/:slug/avatar` — upload the studio's avatar. Admin-only.
+ *
+ * The body is the image bytes themselves, not a multipart envelope. Multipart
+ * would be a wrapper around a single file with no other fields, and its
+ * envelope bytes (`--boundary…`) are what the sniffer would see — every valid
+ * upload would be refused as "not an image" unless we first parsed the whole
+ * body in memory or took on a streaming parser dependency the repo does not
+ * have. One file, no envelope.
+ *
+ * The `Content-Type` header is ignored: the type is sniffed from the bytes,
+ * because the header is the client's claim about content the client chose.
+ *
+ * Rate limited — every call permanently adds a storage object that runtime
+ * never deletes, so an unthrottled admin could write to storage without bound.
+ * @returns `200` with `{ data: Studio }`; `403` not the admin, `404` no such
+ *   studio, `413` over the byte cap, `415` not an accepted image,
+ *   `422` empty body, `429` rate limited
+ */
+studio.post(
+  "/:slug/avatar",
+  requireStudioRole("admin"),
+  rateLimitFor("avatar-upload", "user"),
+  async (c) => {
+    const slug = c.req.param("slug");
+    const { avatar } = getStorageConfig();
+    const bytes = await readBoundedBody(c, avatar.max_bytes);
+    const data = await studioAvatarService.setAvatar(slug, bytes);
+    return c.json({ data });
+  },
+);
+
+/**
+ * `DELETE /api/v1/studio/:slug/avatar` — drop the studio's avatar, falling
+ * the UI back to initials. Admin-only.
+ *
+ * Clears the column only; the stored object is left in place, since runtime
+ * never deletes from storage.
+ * @returns `200` with `{ data: Studio }`; `403` not the admin, `404` no such studio
+ */
+studio.delete("/:slug/avatar", requireStudioRole("admin"), async (c) => {
+  const slug = c.req.param("slug");
+  const data = await studioAvatarService.clearAvatar(slug);
   return c.json({ data });
 });
 
@@ -198,15 +295,43 @@ studio.post("/:slug/members", requireStudioRole("admin"), async (c) => {
 /**
  * `DELETE /api/v1/studio/:slug/members/:userId` — remove (kick) a member.
  * Admin-only; clears the member's access across all the studio's projects and
- * transfers their owned projects to the acting admin, in one transaction.
+ * transfers their owned projects to **the studio's admin**, in one
+ * transaction. The service resolves the admin itself rather than taking the
+ * caller's id — the two coincide here because of the gate above, but the
+ * self-service leave route has no such actor, and one definition of "who
+ * inherits" beats two.
  * @returns `200` with `{ data: { ok: true } }`; `403` personal / not admin,
  *   `404` not a member, `409` the sole admin (transfer first)
  */
 studio.delete("/:slug/members/:userId", requireStudioRole("admin"), async (c) => {
-  const user = c.get("user");
   const slug = c.req.param("slug");
   const targetUserId = c.req.param("userId");
-  await studioMemberService.removeMember(slug, targetUserId, user.id);
+  await studioMemberService.removeMember(slug, targetUserId);
+  return c.json({ data: { ok: true } });
+});
+
+/**
+ * `DELETE /api/v1/studio/:slug/membership` — leave a studio of one's own
+ * accord. Any active member of the studio; the sole admin has to transfer
+ * first.
+ *
+ * The path is `/membership`, not `/members/me`, because the sibling kick route
+ * above claims `/members/:userId` — `me` would match that wildcard and be
+ * refused by its admin gate, so the only people entitled to leave would be
+ * exactly the people turned away. Reordering the two registrations does make
+ * `me` win, but only as long as nobody reorders them again; a path that cannot
+ * collide needs no such discipline.
+ *
+ * Gated on membership rather than admin for the same reason: the callers are
+ * precisely the non-admins. A non-member is refused with 403, like every other
+ * studio route, which also keeps the studio's existence hidden.
+ * @returns `200` with `{ data: { ok: true } }`; `403` not a member or the
+ *   studio is personal, `404` no such studio, `409` the sole admin
+ */
+studio.delete("/:slug/membership", requireStudioRole("guest"), async (c) => {
+  const user = c.get("user");
+  const slug = c.req.param("slug");
+  await studioMemberService.leaveStudio(slug, user.id);
   return c.json({ data: { ok: true } });
 });
 

@@ -43,6 +43,8 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore, projectMembersRepo } from "@breatic/core";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
+import * as projectMembersService from "@server/modules/project/projectMembers.service.js";
+import { waitUntilBlockedOn } from "./lock-probe.js";
 
 try {
   initCore(process.env);
@@ -243,7 +245,7 @@ async function seedProjectTransfer(opts?: {
 
 describe("requestProjectTransfer", () => {
   it("lands an actionable transfer-request notification with the actor identity + a future expiry", async () => {
-    const { projectId, projectSlug, ownerId, recipientId, ownerName, ownerSlug } =
+    const { projectId, ownerId, recipientId, ownerName } =
       await seedProjectTransfer();
 
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
@@ -257,11 +259,15 @@ describe("requestProjectTransfer", () => {
     const [reqPayload] = await sql<{ payload: Record<string, unknown> }[]>`
       SELECT payload FROM notifications WHERE id = ${reqs[0]!.id}
     `;
+    // Ids, not names: the handle and slug are resolved at read time so a
+    // rename cannot leave this notification pointing at the wrong place.
     expect(reqPayload!.payload).toMatchObject({
       fromName: ownerName,
-      fromHandle: ownerSlug,
-      projectSlug,
+      fromUserId: ownerId,
+      projectId,
     });
+    expect(reqPayload!.payload).not.toHaveProperty("fromHandle");
+    expect(reqPayload!.payload).not.toHaveProperty("projectSlug");
   });
 
   it("rejects a non-owner initiator with Forbidden", async () => {
@@ -322,14 +328,8 @@ describe("requestProjectTransfer", () => {
 
 describe("confirmProjectTransfer", () => {
   it("demotes the old owner to editor, promotes the recipient to owner (from editor), notifies the old owner, emits the activity — exactly one owner", async () => {
-    const {
-      projectId,
-      ownerId,
-      recipientId,
-      recipientName,
-      recipientSlug,
-      projectSlug,
-    } = await seedProjectTransfer();
+    const { projectId, ownerId, recipientId, recipientName } =
+      await seedProjectTransfer();
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
     const [req] = await transferRequestsFor(recipientId);
 
@@ -351,9 +351,10 @@ describe("confirmProjectTransfer", () => {
     expect(approved).toHaveLength(1);
     expect(approved[0]!.payload).toMatchObject({
       accepterName: recipientName,
-      accepterHandle: recipientSlug,
-      projectSlug,
+      accepterUserId: recipientId,
+      projectId,
     });
+    expect(approved[0]!.payload).not.toHaveProperty("accepterHandle");
   });
 
   it("promotes a recipient who was a project viewer to owner (viewer can receive)", async () => {
@@ -443,6 +444,105 @@ describe("confirmProjectTransfer — TOCTOU eligibility re-check", () => {
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(await getProjectRole(projectId, ownerId)).toBe("owner");
+    expect(await activeOwnerCount(projectId)).toBe(1);
+  });
+});
+
+describe("confirmProjectTransfer — concurrency invariants", () => {
+  it("a member-removal racing the confirm cannot leave the project ownerless", async () => {
+    // `projectMembersService.remove` reads the target's role and then soft-
+    // deletes their row as two separate statements with no transaction at all.
+    // Its read can therefore see "editor" while a confirm is mid-flight, and
+    // its delete then lands on the row that confirm has since promoted to
+    // owner — taking the project's only owner with it. The owner-uniqueness
+    // index cannot catch this: it forbids two owners, not zero.
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer();
+    await projectTransferService.requestProjectTransfer(
+      projectId,
+      ownerId,
+      recipientId,
+    );
+    const [req] = await transferRequestsFor(recipientId);
+
+    // Park the confirm on its first write (demoting the outgoing owner) by
+    // holding that row from another connection. Every eligibility read is
+    // done by then; nothing is written yet.
+    let openGate!: () => void;
+    const gateHeld = new Promise<void>((r) => {
+      openGate = r;
+    });
+    const gate = sql.begin(async (t) => {
+      await t`
+        SELECT 1 FROM project_members
+        WHERE project_id = ${projectId} AND user_id = ${ownerId}
+          AND deleted_at IS NULL
+        FOR UPDATE
+      `;
+      await gateHeld;
+    });
+
+    const transfer = projectTransferService.confirmProjectTransfer(
+      req!.id,
+      recipientId,
+    );
+    await waitUntilBlockedOn(sql, "project_members");
+
+    const removal = projectMembersService.remove(projectId, recipientId, ownerId);
+    await new Promise((r) => setTimeout(r, 300));
+
+    openGate();
+    await gate;
+    await Promise.allSettled([transfer, removal]);
+
+    // Whoever wins, the project keeps exactly one owner.
+    expect(await activeOwnerCount(projectId)).toBe(1);
+  });
+
+  it("a concurrent role change cannot demote the owner the confirm just installed", async () => {
+    // Same shape as the removal above: `changeRole` reads the target's role
+    // outside any transaction and then writes unconditionally. Its "you are
+    // not the owner, so I may demote you" decision can be stale by the time
+    // the write lands, turning the project's new owner into a viewer.
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer();
+    await projectTransferService.requestProjectTransfer(
+      projectId,
+      ownerId,
+      recipientId,
+    );
+    const [req] = await transferRequestsFor(recipientId);
+
+    let openGate!: () => void;
+    const gateHeld = new Promise<void>((r) => {
+      openGate = r;
+    });
+    const gate = sql.begin(async (t) => {
+      await t`
+        SELECT 1 FROM project_members
+        WHERE project_id = ${projectId} AND user_id = ${ownerId}
+          AND deleted_at IS NULL
+        FOR UPDATE
+      `;
+      await gateHeld;
+    });
+
+    const transfer = projectTransferService.confirmProjectTransfer(
+      req!.id,
+      recipientId,
+    );
+    await waitUntilBlockedOn(sql, "project_members");
+
+    const demotion = projectMembersService.changeRole(
+      projectId,
+      recipientId,
+      "viewer",
+      ownerId,
+    );
+    await new Promise((r) => setTimeout(r, 300));
+
+    openGate();
+    await gate;
+    await Promise.allSettled([transfer, demotion]);
+
     expect(await activeOwnerCount(projectId)).toBe(1);
   });
 });

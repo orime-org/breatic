@@ -157,7 +157,6 @@ describe("request", () => {
         payload: expect.objectContaining({
           requesterUserId: VIEWER,
           requesterName: "Vicky Viewer",
-          requesterHandle: "vicky",
           requestedRole: "editor",
           message: "Need to edit",
         }),
@@ -202,7 +201,6 @@ describe("approve", () => {
         projectId: PID,
         payload: expect.objectContaining({
           deciderName: "Olivia Owner",
-          deciderHandle: "olivia",
         }),
       }),
     );
@@ -334,7 +332,6 @@ describe("reject", () => {
         projectId: PID,
         payload: expect.objectContaining({
           deciderName: "Olivia Owner",
-          deciderHandle: "olivia",
           reason: "Too many editors already",
         }),
       }),
