@@ -58,24 +58,37 @@ jobs:
     # #147. Every environment requires a real login; no mode switch is left,
     # so any file naming one is residue.
     #
-    # This file is itself in the guard's scan range — a workflow `env:` block
+    # This file is itself in the check's scan range — a workflow `env:` block
     # injects real environment variables, so it is a place the mode could be
     # re-introduced for real rather than merely described. That is why the
-    # forbidden tokens are NOT spelled out here; they live in the script,
-    # which is the one file that must contain them. See
-    # scripts/lint-no-noaccount.sh for the token list, the exclusions, and
-    # why the end-to-end self-test is a separate step rather than inline.
+    # forbidden names are NOT spelled out here; they live in the check, which
+    # assembles them from parts so that even it does not contain them.
     #
-    # Same no-Node arrangement as the job above: no pnpm alias available, so
-    # the script is invoked twice by hand.
+    # The end-to-end self-test the shell version ran as a second step is now
+    # the check's unit tests, which plant each forbidden name and assert it
+    # is found — the same assurance, without staging a probe into the index.
     steps:
       - uses: actions/checkout@v6
 
-      - name: Scan for auth-bypass residue
-        run: bash scripts/lint-no-noaccount.sh
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
 
-      - name: Verify the residue scanner still detects a plant
-        run: bash scripts/lint-no-noaccount.sh --self-test
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Scan for auth-bypass residue
+        # This one check by name. The repo-wide suite includes one that
+        # reads build output, and this job installs without building; an
+        # unknown name is a hard error, so a rename cannot make this job
+        # quietly stop checking anything.
+        run: pnpm lint:repo no-auth-bypass-residue
 
   lint-typecheck-test:
     name: Lint + Typecheck + Test

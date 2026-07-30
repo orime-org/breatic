@@ -3,6 +3,7 @@
 import type { Check } from "#repo-lint/check";
 import { eofNewline } from "#repo-lint/checks/eof-newline";
 import { migrationStyle } from "#repo-lint/checks/migration-style";
+import { noAuthBypassResidue } from "#repo-lint/checks/no-auth-bypass-residue";
 import { noBrandUsage } from "#repo-lint/checks/no-brand-usage";
 import { noCjk } from "#repo-lint/checks/no-cjk";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
@@ -23,6 +24,7 @@ import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
 export const CHECKS: readonly Check[] = [
   eofNewline,
   migrationStyle,
+  noAuthBypassResidue,
   noBrandUsage,
   noCjk,
   noHardcodedSecrets,
