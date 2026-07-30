@@ -122,22 +122,30 @@ async function readChunk(
   let onAbort: (() => void) | undefined;
 
   try {
+    // Reject BEFORE tearing the request down, in both branches. Aborting a
+    // real request makes its body stream error out, and that rejection lands
+    // in the microtask queue too — abort first and it can win the race below,
+    // surfacing a bare "This operation was aborted" instead of the reason.
+    // The caller has to be able to tell an idle body apart from its own
+    // cancellation, so which error wins cannot be left to ordering luck.
+    // Measured against a real socket; a hand-built stream in a unit test
+    // ignores the abort entirely and never exposes this.
     const deadline = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
-        ctx.abortRequest();
         reject(
           new Error(
             `${label} response body stalled: no data for ${idleTimeoutMs}ms (idle timeout)`,
           ),
         );
+        ctx.abortRequest();
       }, idleTimeoutMs);
     });
 
     const cancellation = new Promise<never>((_resolve, reject) => {
       if (callerSignal === undefined) return;
       onAbort = (): void => {
-        ctx.abortRequest();
         reject(abortErrorOf(callerSignal, label));
+        ctx.abortRequest();
       };
       callerSignal.addEventListener("abort", onAbort, { once: true });
     });

@@ -169,6 +169,54 @@ describe("response body idle deadline", () => {
     await expect(res.text()).rejects.toThrow(/user pressed stop/);
   });
 
+  it("reports the idle deadline, not the abort the deadline itself triggers", async () => {
+    // A real fetch body errors the moment its request is aborted, and that
+    // rejection races the deadline's own. Tearing down before rejecting let
+    // the stream's bare "aborted" win, leaving the caller unable to tell a
+    // stalled body from its own cancellation. Caught against a real socket:
+    // the streams above ignore aborts, so they cannot expose the ordering.
+    const fetchImpl = ((_url: string, init?: RequestInit): Promise<Response> => {
+      const signal = init?.signal;
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"partial":'));
+          signal?.addEventListener("abort", () => {
+            controller.error(new DOMException("This operation was aborted", "AbortError"));
+          });
+        },
+      });
+      return Promise.resolve(new Response(stream, { status: 200 }));
+    }) as unknown as typeof fetch;
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, opts(fetchImpl));
+
+    await expect(res.text()).rejects.toThrow(/idle timeout/);
+  });
+
+  it("reports the caller's cancellation, not the abort it triggers", async () => {
+    const fetchImpl = ((_url: string, init?: RequestInit): Promise<Response> => {
+      const signal = init?.signal;
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"partial":'));
+          signal?.addEventListener("abort", () => {
+            controller.error(new DOMException("This operation was aborted", "AbortError"));
+          });
+        },
+      });
+      return Promise.resolve(new Response(stream, { status: 200 }));
+    }) as unknown as typeof fetch;
+    const controller = new AbortController();
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchImpl, 5_000),
+      signal: controller.signal,
+    });
+    setTimeout(() => controller.abort(new Error("user pressed stop")), 30);
+
+    await expect(res.text()).rejects.toThrow(/user pressed stop/);
+  });
+
   it("exposes the metadata callers actually use without handing out the raw response", async () => {
     const { response, push, finish } = streamingBody(503);
     push("upstream is down");
