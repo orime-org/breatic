@@ -342,4 +342,30 @@ export default [
       'breatic/no-native-rendered-ui': 'error',
     },
   },
+  {
+    // Tests assert on class strings rather than shipping them.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/__tests__/**', '**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-raw-design-values': 'error',
+    },
+  },
+  {
+    // The hex rule carries two more: the brand mark is a fixed logo colour,
+    // and the inpaint brush works in pigment rather than UI surfaces.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/ui/BrandMark.tsx',
+      'src/spaces/canvas/inpaint/**',
+      'src/stores/inpaint.ts',
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-raw-hex-color': 'error',
+    },
+  },
 ];

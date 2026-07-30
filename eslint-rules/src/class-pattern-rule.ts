@@ -24,6 +24,13 @@ interface ClassPatternRuleSpec {
    * permits one specific spelling without excusing anything else present.
    */
   readonly stripAllowed?: RegExp;
+  /**
+   * A comment marker that excuses the line it sits on. This is the rule's
+   * own escape hatch, kept from the guard it replaces, rather than a blanket
+   * eslint-disable — it names which rule is being excused and asks for a
+   * reason on the same line.
+   */
+  readonly allowMarker?: string;
   /** Message shown on a hit. */
   readonly message: string;
 }
@@ -51,12 +58,28 @@ export function createClassPatternRule(
     },
     defaultOptions: [],
     create(context) {
+      const allowedLines = new Set<number>();
+      if (spec.allowMarker !== undefined) {
+        const marker = spec.allowMarker;
+        for (const comment of context.sourceCode.getAllComments()) {
+          if (!comment.value.includes(marker)) continue;
+          for (
+            let line = comment.loc.start.line;
+            line <= comment.loc.end.line;
+            line += 1
+          ) {
+            allowedLines.add(line);
+          }
+        }
+      }
+
       /**
        * Reports the node when the class string carries the banned pattern.
        * @param node Node to report on.
        * @param text The class string to test.
        */
       function check(node: TSESTree.Node, text: string): void {
+        if (allowedLines.has(node.loc.start.line)) return;
         if (spec.exemptWholeString?.test(text)) return;
         const subject = spec.stripAllowed
           ? text.replace(spec.stripAllowed, "")

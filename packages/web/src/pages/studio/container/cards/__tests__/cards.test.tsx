@@ -79,7 +79,7 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
     const menu = screen.getByRole('button', MORE);
     // Neutral mock `.cardmenu` was 2px; the design-system rebuild's unified
     // radius scale conforms all chrome affordances to --radius-chrome (6px) via
-    // rounded-chrome (see lint:no-raw-design-values). Inset 7px and the default
+    // rounded-chrome (see breatic/no-raw-design-values). Inset 7px and the default
     // rgba(0,0,0,.45) -> hover rgba(0,0,0,.7) are unchanged. The 70% black hover
     // is permitted by breatic/hover-pattern (black is a fixed color, not a mode-aware token).
     expect(menu.className).toContain('rounded-chrome');

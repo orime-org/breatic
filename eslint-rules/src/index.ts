@@ -13,6 +13,8 @@ import { noLibraryProcessExit } from "#rules/rules/no-library-process-exit";
 import { noNativeRenderedUi } from "#rules/rules/no-native-rendered-ui";
 import { noParamAsString } from "#rules/rules/no-param-as-string";
 import { noPostgresOutsideCore } from "#rules/rules/no-postgres-outside-core";
+import { noRawDesignValues } from "#rules/rules/no-raw-design-values";
+import { noRawHexColor } from "#rules/rules/no-raw-hex-color";
 import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
 import { noYjsDocumentsOutsideRepo } from "#rules/rules/no-yjs-documents-outside-repo";
 import { onePxBorder } from "#rules/rules/one-px-border";
@@ -43,6 +45,8 @@ export const breaticPlugin = {
     "no-native-rendered-ui": noNativeRenderedUi,
     "no-param-as-string": noParamAsString,
     "no-postgres-outside-core": noPostgresOutsideCore,
+    "no-raw-design-values": noRawDesignValues,
+    "no-raw-hex-color": noRawHexColor,
     "no-sync-in-request-path": noSyncInRequestPath,
     "no-yjs-documents-outside-repo": noYjsDocumentsOutsideRepo,
     "one-px-border": onePxBorder,

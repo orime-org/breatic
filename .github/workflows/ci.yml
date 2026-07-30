@@ -112,16 +112,6 @@ jobs:
         # Authorized by an internal design ADR (studio brand exemption)
         run: pnpm lint:no-brand-usage
 
-      - name: Lint no raw design values (anti-drift token guard)
-        # Design-system 9th rebuild anti-drift gate: ban raw px font sizes
-        # (text-[Npx]), raw neutral primitives ([var(--neutral-N)]), raw radius
-        # (rounded-[Npx]), and raw hex colors in packages/web/src — components
-        # must consume design tokens, never hardcode values. Correct token
-        # consumption (h-[var(--btn-chrome)] etc.) is allowed. Logo (BrandMark) +
-        # inpaint brush ink + theme/tokens.css are exempt. See
-        # scripts/lint-no-raw-design-values.sh.
-        run: pnpm lint:no-raw-design-values
-
       - name: Lint no-extreme token values (design-system 9th rigid guard)
         # Lock the pure-neutral + off-extreme + scheme-D status-readability
         # invariants of theme/tokens.css: every --neutral-* / direct-hex
