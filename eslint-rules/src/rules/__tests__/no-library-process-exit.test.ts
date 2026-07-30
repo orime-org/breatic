@@ -19,22 +19,22 @@ ruleTester.run("no-library-process-exit", noLibraryProcessExit, {
       // a comment and a blank line — exactly the shape where the bash guard
       // reports an off-by-one line.
       code: "// header\n\nexport function bad(): void {\n  process.exit(1);\n}\n",
-      errors: [{ messageId: "noProcessExit", line: 4, column: 3 }],
+      errors: [{ messageId: "forbiddenMember", line: 4, column: 3 }],
     },
     {
       code: "process.exit();",
-      errors: [{ messageId: "noProcessExit", line: 1, column: 1 }],
+      errors: [{ messageId: "forbiddenMember", line: 1, column: 1 }],
     },
     {
       // Aliasing the member still reaches the same primitive.
       code: "const bail = process.exit;\nbail(1);",
-      errors: [{ messageId: "noProcessExit", line: 1, column: 14 }],
+      errors: [{ messageId: "forbiddenMember", line: 1, column: 14 }],
     },
     {
       // Bracket access is the same call written differently. The bash guard
       // it replaces missed this one — its regex only matched `process.exit`.
       code: 'process["exit"](1);',
-      errors: [{ messageId: "noProcessExit", line: 1, column: 1 }],
+      errors: [{ messageId: "forbiddenMember", line: 1, column: 1 }],
     },
   ],
 });

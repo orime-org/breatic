@@ -32,6 +32,13 @@ beforeAll(() => {
   writeFileSync(join(root, "uncommitted.ts"), "export const b = 2;\n");
   execFileSync("mkdir", ["-p", join(root, "ignored")]);
   writeFileSync(join(root, "ignored", "junk.ts"), "export const c = 3;\n");
+  // Nested, so the repo-relative path arithmetic is exercised at more than
+  // one level deep.
+  execFileSync("mkdir", ["-p", join(root, "ignored", "nested", "deep")]);
+  writeFileSync(
+    join(root, "ignored", "nested", "deep", "leaf.ts"),
+    "export const d = 4;\n",
+  );
 });
 
 afterAll(() => {
@@ -78,5 +85,55 @@ describe("createContext", () => {
     const context = createContext(root);
     expect(context.exists("committed.ts")).toBe(true);
     expect(context.exists("nope.ts")).toBe(false);
+  });
+
+  describe("walk", () => {
+    // The only code here that reads a directory rather than asking git, and
+    // the only place a repo-relative path is computed by arithmetic on an
+    // absolute one. The fake the check tests run against implements a
+    // different algorithm, so nothing exercised this until now.
+
+    it("returns repo-relative paths for files at any depth", () => {
+      const found = createContext(root).walk(
+        "ignored",
+        () => true,
+        "everything",
+      );
+      expect(found).toContain("ignored/junk.ts");
+      expect(found).toContain("ignored/nested/deep/leaf.ts");
+      // Not absolute, and no leading separator: the slice has to land on the
+      // character after the root, and one off in either direction shows up
+      // here rather than as a mysteriously unreadable path later.
+      expect(found.every((path) => path.startsWith("ignored/"))).toBe(true);
+    });
+
+    it("reads directories git ignores, because build output is ignored", () => {
+      // The difference from `files` that gives this method a reason to
+      // exist: the check that reads built output would find nothing if this
+      // asked git what it tracks.
+      expect(createContext(root).walk("ignored", () => true, "everything"))
+        .not.toHaveLength(0);
+    });
+
+    it("selects rather than returning everything", () => {
+      const found = createContext(root).walk(
+        "ignored",
+        (path) => path.endsWith("leaf.ts"),
+        "leaves",
+      );
+      expect(found).toEqual(["ignored/nested/deep/leaf.ts"]);
+    });
+
+    it("refuses a directory that is not there rather than reporting clean", () => {
+      expect(() =>
+        createContext(root).walk("never-built", () => true, "everything"),
+      ).toThrow(/does not exist/);
+    });
+
+    it("refuses a selection that matches nothing under the directory", () => {
+      expect(() =>
+        createContext(root).walk("ignored", () => false, "nothing at all"),
+      ).toThrow(/matched none/);
+    });
   });
 });

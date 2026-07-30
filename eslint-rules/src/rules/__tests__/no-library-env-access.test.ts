@@ -19,16 +19,16 @@ ruleTester.run("no-library-env-access", noLibraryEnvAccess, {
   invalid: [
     {
       code: "// header\n\nexport const url = process.env.DATABASE_URL;\n",
-      errors: [{ messageId: "noProcessEnv", line: 3, column: 20 }],
+      errors: [{ messageId: "forbiddenMember", line: 3, column: 20 }],
     },
     {
       code: 'export const url = process["env"].DATABASE_URL;',
-      errors: [{ messageId: "noProcessEnv", line: 1, column: 20 }],
+      errors: [{ messageId: "forbiddenMember", line: 1, column: 20 }],
     },
     {
       // Destructuring off the whole env object is the same read.
       code: "const { DATABASE_URL } = process.env;",
-      errors: [{ messageId: "noProcessEnv", line: 1, column: 26 }],
+      errors: [{ messageId: "forbiddenMember", line: 1, column: 26 }],
     },
   ],
 });

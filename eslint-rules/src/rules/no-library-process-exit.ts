@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
-import type { TSESTree } from "@typescript-eslint/utils";
-import { createRule } from "#rules/create-rule";
+import { createProcessMemberRule } from "#rules/process-member-rule";
 
 /**
  * Library packages must not end the process.
@@ -12,35 +11,15 @@ import { createRule } from "#rules/create-rule";
  * Only the application entry owns that decision, so libraries throw a typed
  * error and let the entry catch, log the context, and exit.
  *
- * Known boundary: reaching the same primitive through a destructured binding
- * (`const { exit } = process`) or through `globalThis` is not flagged. Both
- * require deliberate effort to write, and a guard that tries to enumerate
- * every evasion never converges — this one covers the ways the call is
- * actually written.
+ * The known boundary — a destructured binding or a trip through `globalThis`
+ * is not flagged — is documented once on the factory this shares with the
+ * environment rule, so closing it later closes it for both.
  */
-export const noLibraryProcessExit = createRule({
+export const noLibraryProcessExit = createProcessMemberRule({
   name: "no-library-process-exit",
-  meta: {
-    type: "problem",
-    docs: {
-      description:
-        "Library packages must throw a typed error instead of ending the process",
-    },
-    schema: [],
-    messages: {
-      noProcessExit:
-        "Library packages must not call process.exit — throw a typed error and let the application entry decide whether to exit.",
-    },
-  },
-  defaultOptions: [],
-  create(context) {
-    return {
-      [[
-        "MemberExpression[computed=false][object.name='process'][property.name='exit']",
-        "MemberExpression[computed=true][object.name='process'][property.value='exit']",
-      ].join(", ")](node: TSESTree.MemberExpression): void {
-        context.report({ node, messageId: "noProcessExit" });
-      },
-    };
-  },
+  description:
+    "Library packages must throw a typed error instead of ending the process",
+  member: "exit",
+  message:
+    "Library packages must not call process.exit — throw a typed error and let the application entry decide whether to exit.",
 });

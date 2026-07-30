@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
@@ -9,16 +11,39 @@ const STORES = new Set(["localStorage", "sessionStorage"]);
 /** The methods that take a key as their first argument. */
 const KEYED_METHODS = new Set(["getItem", "setItem", "removeItem"]);
 
+/** Where the product declares the prefix, once. */
+const REGISTRY = "../../../packages/web/src/lib/storage-keys.ts";
+
+/** How that declaration is written. */
+const DECLARATION = /STORAGE_PREFIX\s*=\s*['"`]([^'"`]+)/;
+
 /**
- * The prefix every persisted key carries.
+ * Reads the prefix out of the registry rather than restating it.
  *
- * Stated here rather than read from the product's registry because a lint
- * rule runs with the working directory of whichever package eslint was
- * started in, so it has no reliable path to that file. The two are held
- * together by this rule's own test, which reads the registry and fails if
- * they ever disagree.
+ * A guard carrying its own copy of the value it guards agrees with the
+ * product right up until somebody changes one of them, and then it keeps
+ * passing while checking the wrong string. An earlier version restated it,
+ * reasoning that a rule runs with the working directory of whichever package
+ * eslint was started in and so cannot find the file — which is true of the
+ * working directory and beside the point, since the path is derived from
+ * this module's own location. The sibling half of this same invariant reads
+ * the registry, and so does this rule's test.
+ * @returns The prefix the product declares.
+ * @throws {Error} When the registry is gone or no longer declares it.
  */
-export const PREFIX = "breatic.";
+function declaredPrefix(): string {
+  const path = fileURLToPath(new URL(REGISTRY, import.meta.url));
+  const declared = DECLARATION.exec(readFileSync(path, "utf8"))?.[1];
+  if (declared === undefined) {
+    throw new Error(
+      `${path} no longer declares STORAGE_PREFIX, so this rule has nothing to check keys against. Restating the prefix here would let the rule pass while checking a string the product stopped using.`,
+    );
+  }
+  return declared;
+}
+
+/** The prefix every persisted key carries, as the product declares it. */
+export const PREFIX = declaredPrefix();
 
 /**
  * Reads a node's value when it is a plain string with no interpolation.
