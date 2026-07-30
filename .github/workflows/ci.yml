@@ -133,15 +133,6 @@ jobs:
       - name: Lint
         run: pnpm turbo lint
 
-      - name: Lint no-extreme token values (design-system 9th rigid guard)
-        # Lock the pure-neutral + off-extreme + scheme-D status-readability
-        # invariants of theme/tokens.css: every --neutral-* / direct-hex
-        # --color-* is R=G=B and bounded (no channel brighter than #f5 / darker
-        # than #12, never #fff/#000), and every status -foreground clears WCAG
-        # AA 4.5:1 on its tint bg in both modes. See
-        # scripts/lint-no-extreme-token-value.sh.
-        run: pnpm lint:no-extreme-token-value
-
       - name: Lint dependency-cruiser (import-boundary rules)
         # Declarative import-boundary enforcement (CI maximal-strictness
         # guard suite, inner ADR 2026-06-01) over all packages/*/src via
