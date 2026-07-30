@@ -36,7 +36,7 @@ pnpm test / typecheck / lint
 # 代码风格
 
 - **函数定义格式规范(MANDATORY)**:命名函数单元(函数声明 / 类方法 / 类 / 变量赋值的箭头·函数表达式)必须有 TSDoc 文档注释 + 显式返回类型 + `@throws {ErrorType}` 异常类型;类型信息归签名(显式)、注释禁写类型,唯异常类型签名表达不了归注释。**不分导出 / 私有**(规则只有 0/1);内联匿名回调 + 测试豁免。详见 [docs/ARCHITECTURE.md#coding-standards-function-definition-format](./docs/ARCHITECTURE.md#coding-standards-function-definition-format)
-- **文件头版权声明(MANDATORY)**:每个首方 TypeScript 源文件(`packages/*/src/**/*.{ts,tsx}`,含测试)顶部必须有 SPDX 双行头(`// Copyright (c) 2026 Orime, Inc.` + `// SPDX-License-Identifier: LicenseRef-BOSL-1.0`);shadcn vendor(`web` 的 `components/ui/`)豁免(第三方 IP,不挂 Orime 版权)。CI `lint:no-missing-license-header` 强制;一次性补全走 `scripts/add-license-headers.sh`(幂等)。详见 [docs/ARCHITECTURE.md#coding-standards-function-definition-format](./docs/ARCHITECTURE.md#coding-standards-function-definition-format)
+- **文件头版权声明(MANDATORY)**:每个首方 TypeScript 源文件(`packages/*/src/**/*.{ts,tsx}` + `eslint-rules/src/**/*.ts`,含测试)顶部必须有 SPDX 双行头(`// Copyright (c) 2026 Orime, Inc.` + `// SPDX-License-Identifier: LicenseRef-BOSL-1.0`);shadcn vendor(`web` 的 `components/ui/`)豁免(第三方 IP,不挂 Orime 版权)。CI `breatic/no-missing-license-header` 强制,**双行都校验**(只校验第一行等于只强制了一半);缺头跑 `pnpm lint:fix` 自动补(规则自带 fixer,头文本只有它一处定义)。详见 [docs/ARCHITECTURE.md#coding-standards-function-definition-format](./docs/ARCHITECTURE.md#coding-standards-function-definition-format)
 - TypeScript strict,禁止 `any`(用 `unknown`),禁止 `var`/`require`
 - ESLint + eslint-plugin-jsdoc 强制(`recommended-typescript-error` + require-jsdoc 全量 + explicit-function-return-type)
 - 前端命名规范见 [docs/ARCHITECTURE.md#naming-conventions](./docs/ARCHITECTURE.md#naming-conventions)
@@ -96,7 +96,7 @@ pnpm test / typecheck / lint
 | 12 | `var` / `require()` |
 | 13 | YAML 中文 |
 | 14 | AIGC sync 路径 |
-| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:每个包用**全局唯一前缀** `@shared` / `@core` / `@domain` / `@collab` / `@worker` / `@server` / `@web`,**全项目无 `@/`**(规则零例外:任一包源码被另一包 resolution 上下文 import 时,`@/` 会撞车,唯一前缀消除歧义)。测试代码豁免。CI `lint:no-relative-import` 强制 |
+| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:每个包用**全局唯一前缀** `@shared` / `@core` / `@domain` / `@collab` / `@worker` / `@server` / `@web`,**全项目无 `@/`**(规则零例外:任一包源码被另一包 resolution 上下文 import 时,`@/` 会撞车,唯一前缀消除歧义)。测试代码豁免。CI `breatic/no-relative-import` 强制(含动态 `import()` / `require()` / 裸 `"."`,旧正则守卫这三种都漏)|
 
 # 编码行为准则
 

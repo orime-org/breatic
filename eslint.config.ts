@@ -351,9 +351,38 @@ export default tseslint.config(
     // Only test files, and deliberately not excluding them: this is the one
     // rule whose subject IS the test file. It reads the path rather than the
     // contents, so the block only has to put it in front of the right files.
-    files: ["packages/*/src/**/*.{test,spec}.{ts,tsx}"],
+    files: [
+      "packages/*/src/**/*.{test,spec}.{ts,tsx}",
+      "eslint-rules/src/**/*.{test,spec}.ts",
+    ],
     rules: {
       "breatic/test-file-location": "error",
+    },
+  },
+  {
+    // Every first-party source file, tests included — an unlicensed file is
+    // unlicensed wherever it travels, and a test file travels in the repo
+    // like any other. eslint-rules is first-party too, so it is in scope;
+    // the shadcn vendor directory is third-party IP and must NOT carry an
+    // Orime copyright, which is why it is excluded rather than merely
+    // unenforced.
+    files: ["packages/*/src/**/*.{ts,tsx}", "eslint-rules/src/**/*.ts"],
+    ignores: ["packages/web/src/components/ui/**"],
+    rules: {
+      "breatic/no-missing-license-header": "error",
+    },
+  },
+  {
+    // Tests are exempt: they are not shipped, so the resolution concern that
+    // motivates the alias style does not reach them.
+    files: ["packages/*/src/**/*.{ts,tsx}", "eslint-rules/src/**/*.ts"],
+    ignores: [
+      "**/__tests__/**",
+      "**/*.test.{ts,tsx}",
+      "**/*.spec.{ts,tsx}",
+    ],
+    rules: {
+      "breatic/no-relative-import": "error",
     },
   },
   {

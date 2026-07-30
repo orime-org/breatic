@@ -10,14 +10,17 @@ import { noIoredisOutsideCore } from "#rules/rules/no-ioredis-outside-core";
 import { noLibraryEnvAccess } from "#rules/rules/no-library-env-access";
 import { noLibraryLogger } from "#rules/rules/no-library-logger";
 import { noLibraryProcessExit } from "#rules/rules/no-library-process-exit";
+import { noMissingLicenseHeader } from "#rules/rules/no-missing-license-header";
 import { noNativeRenderedUi } from "#rules/rules/no-native-rendered-ui";
 import { noParamAsString } from "#rules/rules/no-param-as-string";
 import { noPostgresOutsideCore } from "#rules/rules/no-postgres-outside-core";
 import { noRawDesignValues } from "#rules/rules/no-raw-design-values";
 import { noRawHexColor } from "#rules/rules/no-raw-hex-color";
+import { noRelativeImport } from "#rules/rules/no-relative-import";
 import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
 import { noYjsDocumentsOutsideRepo } from "#rules/rules/no-yjs-documents-outside-repo";
 import { onePxBorder } from "#rules/rules/one-px-border";
+import { overlaySurface } from "#rules/rules/overlay-surface";
 import { singleToastEntry } from "#rules/rules/single-toast-entry";
 import { singleTooltipProvider } from "#rules/rules/single-tooltip-provider";
 import { testFileLocation } from "#rules/rules/test-file-location";
@@ -43,14 +46,17 @@ export const breaticPlugin = {
     "no-library-env-access": noLibraryEnvAccess,
     "no-library-logger": noLibraryLogger,
     "no-library-process-exit": noLibraryProcessExit,
+    "no-missing-license-header": noMissingLicenseHeader,
     "no-native-rendered-ui": noNativeRenderedUi,
     "no-param-as-string": noParamAsString,
     "no-postgres-outside-core": noPostgresOutsideCore,
     "no-raw-design-values": noRawDesignValues,
     "no-raw-hex-color": noRawHexColor,
+    "no-relative-import": noRelativeImport,
     "no-sync-in-request-path": noSyncInRequestPath,
     "no-yjs-documents-outside-repo": noYjsDocumentsOutsideRepo,
     "one-px-border": onePxBorder,
+    "overlay-surface": overlaySurface,
     "single-toast-entry": singleToastEntry,
     "single-tooltip-provider": singleTooltipProvider,
     "test-file-location": testFileLocation,

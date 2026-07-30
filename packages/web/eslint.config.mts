@@ -377,4 +377,42 @@ export default [
       'breatic/test-file-location': 'error',
     },
   },
+  {
+    // Tests included: an unlicensed file is unlicensed wherever it travels.
+    // The shadcn vendor directory is excluded because it is third-party IP
+    // and must not carry an Orime copyright — not merely because nobody
+    // got around to adding one.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/components/ui/**'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-missing-license-header': 'error',
+    },
+  },
+  {
+    // Tests are exempt: they are not shipped, so the resolution concern
+    // that motivates the alias style does not reach them. The vendor
+    // directory is not exempt — shadcn components sit inside our build and
+    // resolve like everything else.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-relative-import': 'error',
+    },
+  },
+  {
+    // The overlay families are listed inside the rule, so this only has to
+    // put it in front of the vendor components. Tooltip is in the directory
+    // and in neither family; the rule ignores it by name.
+    files: ['src/components/ui/*.tsx'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/overlay-surface': 'error',
+    },
+  },
 ];

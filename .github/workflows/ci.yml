@@ -121,12 +121,6 @@ jobs:
         # scripts/lint-no-extreme-token-value.sh.
         run: pnpm lint:no-extreme-token-value
 
-      - name: Lint overlay surface (popover panel unification)
-        # Every popover/overlay panel surface uses bg-popover (tooltip inverse
-        # is the only exception): bans bg-elevated / bg-card as a panel bg in
-        # the overlay component set. See scripts/lint-overlay-surface.sh.
-        run: pnpm lint:overlay-surface
-
       - name: Lint storage-key-prefix (web persisted keys)
         # Enforce user decision 2026-06-08: every localStorage / sessionStorage
         # key carries the `breatic.` prefix, routed through the central registry
@@ -206,14 +200,6 @@ jobs:
         # services again. See scripts/lint-no-raw-sql-outside-repo.sh.
         run: pnpm lint:no-raw-sql-outside-repo
 
-      - name: Lint no-missing-license-header (every src ts/tsx carries the SPDX header)
-        # Enforce the file-header mandate (CLAUDE.md code style + ARCHITECTURE.md):
-        # every first-party packages/*/src .ts/.tsx file must start with the
-        # Copyright + SPDX-License-Identifier: LicenseRef-BOSL-1.0 header.
-        # shadcn vendor (components/ui) is exempt - third-party IP.
-        # See scripts/lint-no-missing-license-header.sh.
-        run: pnpm lint:no-missing-license-header
-
       - name: Lint service-logging (server + worker + collab entries)
         # Enforce CLAUDE.md "industrial-grade server standards": every
         # long-running service entry must wire a logger AND
@@ -222,15 +208,6 @@ jobs:
         # stops a logger / health wire from being removed unnoticed. See
         # scripts/lint-service-logging.sh for rationale.
         run: pnpm lint:service-logging
-
-      - name: Lint no-relative-import (all packages)
-        # Enforce CLAUDE.md prohibition list (2026-05-29): non-test source must
-        # import via a path alias, never a relative './' or '../' path.
-        # Every package uses a globally-unique prefix (@shared / @core /
-        # @domain / @collab / @worker / @server / @web); no bare @/.
-        # Hard-fails the PR on any relative import in non-test source. See
-        # scripts/lint-no-relative-import.sh for rationale + exclusions.
-        run: pnpm lint:no-relative-import
 
       - name: Lint doc-links (TSDoc {@link} targets must resolve)
         # A comment pointing at a deleted symbol is a lie that no other check

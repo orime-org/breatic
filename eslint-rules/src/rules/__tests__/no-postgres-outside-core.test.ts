@@ -1,12 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
 import { noPostgresOutsideCore } from "../no-postgres-outside-core";
-
-RuleTester.afterAll = afterAll;
-RuleTester.describe = describe;
-RuleTester.it = it;
 
 const ruleTester = new RuleTester();
 

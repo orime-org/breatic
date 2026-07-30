@@ -27,7 +27,7 @@
 #
 # Implementation note: BSD grep on macOS treats `--exclude` after `--include`
 # as a no-op, so file filtering uses `find` + a per-file scan loop — portable
-# across BSD + GNU. (Same pattern as lint-no-relative-import.sh.)
+# across BSD + GNU.
 
 set -euo pipefail
 
@@ -55,8 +55,7 @@ CANDIDATES=$(find packages/web/src \
 MATCHES=""
 for file in $CANDIDATES; do
   # Strip // line comments + /* ... */ block comments (incl. multi-line)
-  # before grepping, so doc-comment prose doesn't false-positive. Same
-  # stripper as lint-no-relative-import.sh.
+  # before grepping, so doc-comment prose doesn't false-positive.
   cleaned=$(sed -e 's@//.*$@@' -e 's@/\*[^*]*\*/@@g' "$file" \
     | awk '
         BEGIN { in_block = 0 }

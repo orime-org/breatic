@@ -1,11 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
-import {
-  AST_NODE_TYPES,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
+import { moduleSourceVisitors } from "#rules/source-visitors";
 
 /** What a caller must provide to ban one infrastructure client module. */
 interface InfraClientRuleSpec {
@@ -50,36 +47,13 @@ export function createInfraClientRule(
     },
     defaultOptions: [],
     create(context) {
-      /**
-       * Reports when the node's module specifier is the banned one.
-       * @param node The node carrying the specifier.
-       * @param source The specifier literal, absent on `export ... {}`.
-       */
-      function checkSource(
-        node: TSESTree.Node,
-        source: TSESTree.Node | null | undefined,
-      ): void {
-        if (
-          source?.type === AST_NODE_TYPES.Literal &&
-          source.value === spec.module
-        ) {
-          context.report({ node, messageId: "noDirectClient" });
-        }
-      }
-
-      return {
-        ImportDeclaration: (node: TSESTree.ImportDeclaration): void =>
-          checkSource(node, node.source),
-        ExportNamedDeclaration: (node: TSESTree.ExportNamedDeclaration): void =>
-          checkSource(node, node.source),
-        ExportAllDeclaration: (node: TSESTree.ExportAllDeclaration): void =>
-          checkSource(node, node.source),
-        ImportExpression: (node: TSESTree.ImportExpression): void =>
-          checkSource(node, node.source),
-        "CallExpression[callee.name='require']": (
-          node: TSESTree.CallExpression,
-        ): void => checkSource(node, node.arguments[0]),
-      };
+      return moduleSourceVisitors(
+        (node: TSESTree.Node, source: TSESTree.StringLiteral): void => {
+          if (source.value === spec.module) {
+            context.report({ node, messageId: "noDirectClient" });
+          }
+        },
+      );
     },
   });
 }
