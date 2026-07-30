@@ -3,6 +3,7 @@
 import { resolve } from "node:path";
 import { hasConfusablesInFiles } from "anti-trojan-source";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { toRepoRelative } from "#repo-lint/repo-relative";
 
 /** Text file kinds a human reads and a machine parses. */
 const SCANNED =
@@ -57,9 +58,7 @@ export const noTrojanSource = {
 
     const findings: Finding[] = [];
     for (const report of reports ?? []) {
-      const relative = report.file.startsWith(`${context.repoRoot}/`)
-        ? report.file.slice(context.repoRoot.length + 1)
-        : report.file;
+      const relative = toRepoRelative(context.repoRoot, report.file);
       for (const hit of report.findings) {
         if (hit.category === HARMLESS_CATEGORY) continue;
         findings.push({
