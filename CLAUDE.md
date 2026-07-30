@@ -96,7 +96,7 @@ pnpm test / typecheck / lint
 | 12 | `var` / `require()` |
 | 13 | YAML 中文 |
 | 14 | AIGC sync 路径 |
-| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:每个包用**全局唯一前缀** `@shared` / `@core` / `@domain` / `@collab` / `@worker` / `@server` / `@web`,**全项目无 `@/`**(规则零例外:任一包源码被另一包 resolution 上下文 import 时,`@/` 会撞车,唯一前缀消除歧义)。测试代码豁免。CI `breatic/no-relative-import` 强制(含动态 `import()` / `require()` / 裸 `"."`,旧正则守卫这三种都漏)|
+| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:每个包用**全局唯一前缀** `@shared` / `@core` / `@domain` / `@collab` / `@worker` / `@server` / `@web`,**全项目无 `@/`**(规则零例外:任一包源码被另一包 resolution 上下文 import 时,`@/` 会撞车,唯一前缀消除歧义)。测试代码豁免。CI `breatic/no-relative-import` 强制(覆盖 import / 两种 re-export / 动态 `import()` / `require()` / 裸 `"."`),**带 autofix**:`pnpm lint:fix` 直接改写成正确别名,别名从文件自身路径推导、不依赖 eslint 从哪个目录启动 |
 
 # 编码行为准则
 

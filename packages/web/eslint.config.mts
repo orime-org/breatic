@@ -10,7 +10,6 @@ import reactHooks from 'eslint-plugin-react-hooks';
 // @ts-expect-error -- plugin ships its own loose flat-config types; the
 // flatConfigs.recommended entry is used unchanged.
 import jsxA11y from 'eslint-plugin-jsx-a11y';
-import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
 import jsdoc from 'eslint-plugin-jsdoc';
 import { breaticPlugin } from '@breatic/eslint-rules';
 
@@ -54,7 +53,6 @@ export default [
     },
     plugins: {
       'react-hooks': reactHooks,
-      'no-relative-import-paths': noRelativeImportPaths,
     },
     rules: {
       // React rules
@@ -157,18 +155,6 @@ export default [
       'jsx-a11y/no-redundant-roles': [
         'error',
         { ul: ['list'], li: ['listitem'] },
-      ],
-
-      // Import path style — full migration to the `@web/` alias for ALL
-      // imports (no `../` and no `./`). Plugin auto-fixes most violations.
-      // tsconfig.json maps `@web/* → src/*`. allowSameFolder=false means
-      // even sibling `./Foo` imports rewrite to an alias path.
-      // `prefix` is joined as the FIRST PATH SEGMENT, not a bare sigil, so it
-      // must be the full alias (`@web`) — `@` alone would emit `@/pages/Foo`,
-      // which no tsconfig paths entry maps. Pinned by import-alias-contract.test.
-      'no-relative-import-paths/no-relative-import-paths': [
-        'error',
-        { allowSameFolder: false, rootDir: 'src', prefix: '@web' },
       ],
     },
   },
@@ -394,6 +380,12 @@ export default [
     // that motivates the alias style does not reach them. The vendor
     // directory is not exempt — shadcn components sit inside our build and
     // resolve like everything else.
+    //
+    // This replaces eslint-plugin-no-relative-import-paths, which visited
+    // only ImportDeclaration (so `export { x } from './y'` walked past it)
+    // and resolved its root through the working directory (so the answer
+    // depended on where eslint was invoked). The alias contract that pinned
+    // its `prefix` option now lives beside the rule, in eslint-rules.
     files: ['src/**/*.{ts,tsx}'],
     ignores: [
       '**/__tests__/**',
