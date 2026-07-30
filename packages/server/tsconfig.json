@@ -6,6 +6,12 @@
     "baseUrl": ".",
     "paths": {
       "@server/*": ["./src/*"],
+      // The integration suites drive all three services in one process —
+      // a task submitted here really runs in the worker and really lands
+      // in the collaborative document — so they import those services by
+      // source path. Neither is a library: no exports field, nothing to
+      // point a type entry at, and nothing in production imports them.
+      // These two entries are what lets those files typecheck.
       "@worker/*": ["../worker/src/*"],
       "@collab/*": ["../collab/src/*"]
     }

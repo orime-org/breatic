@@ -167,4 +167,28 @@ describe("no-unresolved-alias-in-dist", () => {
     });
     expect(() => noUnresolvedAliasInDist.run(context)).toThrow(/match nothing/);
   });
+
+  it("ignores an alias that appears only inside a comment", () => {
+    // A doc block may show the package's own entry point in an @example,
+    // and nothing resolves an import that exists only in prose. Live
+    // regression: domain documents its tool registry that way, and this
+    // reported it as an alias that survived the build.
+    const context = fakeContext({
+      "packages/shared/package.json": "{}",
+      "packages/shared/tsconfig.json": TSCONFIG,
+      "packages/shared/dist/index.js":
+        '/**\n * @example\n * import { a } from "@core/thing.js";\n */\nconst a = 1;\n',
+    });
+    expect(noUnresolvedAliasInDist.run(context)).toEqual([]);
+  });
+
+  it("still catches a real import on the line after a comment", () => {
+    const context = fakeContext({
+      "packages/shared/package.json": "{}",
+      "packages/shared/tsconfig.json": TSCONFIG,
+      "packages/shared/dist/index.js":
+        '// see "@core/x.js"\nimport { a } from "@core/real.js";\n',
+    });
+    expect(noUnresolvedAliasInDist.run(context)).toHaveLength(1);
+  });
 });

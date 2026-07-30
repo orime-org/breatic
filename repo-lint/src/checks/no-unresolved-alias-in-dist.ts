@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { stripComments } from "#repo-lint/strip-comments";
 
 /**
  * Reads the alias prefixes the packages declare for themselves.
@@ -102,8 +103,12 @@ export const noUnresolvedAliasInDist = {
       );
 
       for (const file of bundles) {
-        context
-          .read(file)
+        // Comments first. A doc block may show an alias inside an @example,
+        // and nothing resolves an import that exists only in prose —
+        // reading it as a leak sends someone chasing a defect that is not
+        // there. Measured: domain's tool registry documents its own entry
+        // point that way, and this reported it as a survived alias.
+        stripComments(context.read(file), "js")
           .split("\n")
           .forEach((text, index) => {
             const hit = leaked.exec(text);
