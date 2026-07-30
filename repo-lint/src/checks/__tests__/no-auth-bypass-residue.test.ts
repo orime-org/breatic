@@ -13,9 +13,28 @@ const SWITCH = ["LOGIN", "MODE"].join("_");
 const BYPASS_VALUE = ["No", "Account"].join("");
 const FRONTEND_SYMBOL = `${["inject", "Dev"].join("")}User`;
 
+/** The file the allowlist names, which must exist for the exemption to be live. */
+const ALLOWLISTED = {
+  "packages/core/src/db/migrations/0016_delete-dev-mock-user.sql":
+    "-- the migration names what it removes\n",
+};
+
+/**
+ * Builds a context holding the allowlisted file plus the given ones.
+ *
+ * The check refuses to run against a tree where an exemption points at
+ * nothing, so every case has to bring it along — the same shape no-cjk's
+ * tests use for the same reason.
+ * @param files Repo-relative path to contents.
+ * @returns A context the check will run against.
+ */
+function contextWith(files: Record<string, string>) {
+  return fakeContext({ ...ALLOWLISTED, ...files });
+}
+
 describe("no-auth-bypass-residue", () => {
   it("passes a repo with no residue", () => {
-    const context = fakeContext({
+    const context = contextWith({
       "README.md": "Every environment requires a real login.\n",
       "packages/server/src/index.ts": "export const x = 1;\n",
     });
@@ -23,7 +42,7 @@ describe("no-auth-bypass-residue", () => {
   });
 
   it("catches the switch, its values and the frontend symbol", () => {
-    const context = fakeContext({
+    const context = contextWith({
       "a.ts": `const mode = "${SWITCH}";`,
       "b.ts": `if (mode === "${BYPASS_VALUE}") {}`,
       "c.ts": `import { ${FRONTEND_SYMBOL} } from "x";`,
@@ -35,7 +54,7 @@ describe("no-auth-bypass-residue", () => {
   // check arrives with this exercising it rather than with three of its
   // predecessors standing in.
   it.each(BYPASS_NAMES)("catches %s — %s", (name) => {
-    const context = fakeContext({ "a.ts": `const x = "${name}";` });
+    const context = contextWith({ "a.ts": `const x = "${name}";` });
     const findings = noAuthBypassResidue.run(context);
     // Not exactly one: some names contain another, so planting the longer
     // one legitimately reports both. What has to hold is that the planted
@@ -54,7 +73,7 @@ describe("no-auth-bypass-residue", () => {
     // Three of the four residues that motivated this were a README, a
     // Dockerfile with no extension, and an env template. An extension
     // filter would have missed them.
-    const context = fakeContext({
+    const context = contextWith({
       Dockerfile: `ENV ${SWITCH}=x`,
       ".env.dev": `${SWITCH}=x`,
       "README.md": `set ${SWITCH}`,
@@ -65,26 +84,26 @@ describe("no-auth-bypass-residue", () => {
   it("catches a mention inside a comment", () => {
     // A comment saying the mode used to exist still tells a reader that
     // auth might be optional, and the mode is gone.
-    const context = fakeContext({ "a.ts": `// ${SWITCH} was removed in #147` });
+    const context = contextWith({ "a.ts": `// ${SWITCH} was removed in #147` });
     expect(noAuthBypassResidue.run(context)).toHaveLength(1);
   });
 
   it("names the file and line", () => {
-    const context = fakeContext({ "a.ts": `one\ntwo\nconst m = "${SWITCH}";` });
+    const context = contextWith({ "a.ts": `one\ntwo\nconst m = "${SWITCH}";` });
     const findings = noAuthBypassResidue.run(context);
     expect(findings[0]?.file).toBe("a.ts");
     expect(findings[0]?.line).toBe(3);
   });
 
   it("reports each distinct name on a line separately", () => {
-    const context = fakeContext({
+    const context = contextWith({
       "a.ts": `const m = "${SWITCH}"; const v = "${BYPASS_VALUE}";`,
     });
     expect(noAuthBypassResidue.run(context)).toHaveLength(2);
   });
 
   it("permits the migration that had to name what it deleted", () => {
-    const context = fakeContext({
+    const context = contextWith({
       "packages/core/src/db/migrations/0016_delete-dev-mock-user.sql": `-- removes the ${BYPASS_VALUE} mock user`,
       "a.ts": "clean",
     });
@@ -92,7 +111,7 @@ describe("no-auth-bypass-residue", () => {
   });
 
   it("skips binaries the way git does", () => {
-    const context = fakeContext({
+    const context = contextWith({
       "logo.png": `\u0000${SWITCH}`,
       "a.ts": "clean",
     });
@@ -100,7 +119,7 @@ describe("no-auth-bypass-residue", () => {
   });
 
   it("fails rather than reports clean when it selects no files", () => {
-    const context = fakeContext({
+    const context = contextWith({
       "packages/core/src/db/migrations/0016_delete-dev-mock-user.sql": "x",
     });
     expect(() => noAuthBypassResidue.run(context)).toThrow(/matched none/);
@@ -116,7 +135,7 @@ describe("no-auth-bypass-residue", () => {
     // passed either way and tested nothing.
     const forbidden = BYPASS_NAMES[0]?.[0] ?? "";
     expect(forbidden).not.toBe("");
-    const context = fakeContext({
+    const context = contextWith({
       "docs/notes.md": "nothing here\n",
       "assets/blob.dat": `${forbidden}\u0000\u0000not text`,
     });
@@ -124,7 +143,7 @@ describe("no-auth-bypass-residue", () => {
 
     // And the same name in a text file is still reported, so the skip above
     // is the binary decision rather than the name having stopped matching.
-    const readable = fakeContext({ "docs/notes.md": `${forbidden}\n` });
+    const readable = contextWith({ "docs/notes.md": `${forbidden}\n` });
     expect(noAuthBypassResidue.run(readable)).toHaveLength(1);
   });
 });

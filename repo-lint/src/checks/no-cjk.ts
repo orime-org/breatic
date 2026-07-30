@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { assertAllowlistIsLive } from "#repo-lint/allowlist";
 import { GENERATED, TEST_FILE } from "#repo-lint/file-kinds";
 
 /**
@@ -54,29 +55,6 @@ const ALLOWED: ReadonlyMap<string, string> = new Map([
   ],
 ]);
 
-/**
- * Every allowlisted path still names a real file.
- *
- * An exemption is a hole with a reason attached, and the reason expires
- * the moment the file does. Left unchecked the entry sits there pointing
- * at nothing until some unrelated file lands on that path and is waved
- * through for a reason that was never about it.
- *
- * This one is not hypothetical: moving the denylist one directory up made
- * its entry stale within the same change. That time the scan went red and
- * said so, because the file still existed somewhere. Delete it instead and
- * nothing would have complained at all.
- * @param context The check context.
- * @throws {Error} When an allowlisted file no longer exists.
- */
-function assertAllowlistIsLive(context: CheckContext): void {
-  for (const [path, reason] of ALLOWED) {
-    if (context.exists(path)) continue;
-    throw new Error(
-      `${path} is allowlisted here — "${reason}" — but no such file exists. An exemption outliving its file waves through whatever lands on that path next; remove the entry or fix the path.`,
-    );
-  }
-}
 
 /**
  * Source, config and shell scripts are written in English.
@@ -103,7 +81,7 @@ export const noCjk = {
   name: "no-cjk",
   description: "Source, config and scripts are written in English",
   run(context: CheckContext): Finding[] {
-    assertAllowlistIsLive(context);
+    assertAllowlistIsLive(context, ALLOWED);
     const files = context.files(
       (path) =>
         SCANNED.test(path) &&

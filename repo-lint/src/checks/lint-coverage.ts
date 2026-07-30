@@ -9,6 +9,47 @@ interface Manifest {
   readonly scripts?: Record<string, string>;
 }
 
+/** Where the workspace is defined, which is the only place it is defined. */
+const WORKSPACE = "pnpm-workspace.yaml";
+
+/**
+ * Matches the manifest of every package the workspace declares.
+ *
+ * Read from pnpm-workspace.yaml rather than restated. This check exists to
+ * report a package nothing lints, and a hand-kept list of where packages live
+ * fails in exactly that way: a package added outside it is not looked for,
+ * so it is never reported as unlinted. Restating the list here would put the
+ * check's own blind spot in the same shape as the defect it reports.
+ * @param context The check context.
+ * @returns A pattern over repo-relative manifest paths.
+ * @throws {Error} When the workspace file is missing or declares no packages.
+ */
+function workspaceManifests(context: CheckContext): RegExp {
+  if (!context.exists(WORKSPACE)) {
+    throw new Error(
+      `${WORKSPACE} is not there, so this check cannot know which packages the workspace has. Guessing would mean reporting clean for packages it never looked for.`,
+    );
+  }
+  const lines = context.read(WORKSPACE).split("\n");
+  const start = lines.findIndex((line) => /^packages:\s*$/.test(line));
+  const globs: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (start === -1) break;
+    const entry = /^\s+-\s*["']?([^"'\s]+)["']?\s*$/.exec(line);
+    if (entry?.[1] === undefined) break;
+    globs.push(entry[1]);
+  }
+  if (globs.length === 0) {
+    throw new Error(
+      `${WORKSPACE} declares no packages, so this check would look at nothing and report clean.`,
+    );
+  }
+  const alternatives = globs.map((glob) =>
+    glob.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]+"),
+  );
+  return new RegExp(`^(${alternatives.join("|")})/package\\.json$`);
+}
+
 /**
  * Every workspace package runs the linter.
  *
@@ -39,9 +80,9 @@ export const lintCoverage = {
   name: "lint-coverage",
   description: "Every workspace package runs the linter",
   run(context: CheckContext): Finding[] {
+    const declared = workspaceManifests(context);
     const manifests = context.files(
-      (path) =>
-        /^(packages\/[^/]+|eslint-rules|repo-lint)\/package\.json$/.test(path),
+      (path) => declared.test(path),
       "workspace package manifests",
     );
 

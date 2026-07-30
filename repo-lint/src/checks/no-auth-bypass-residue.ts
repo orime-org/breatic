@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { assertAllowlistIsLive } from "#repo-lint/allowlist";
 
 /**
  * Every name the deleted dev-bypass auth mode went by.
@@ -77,6 +78,8 @@ export const noAuthBypassResidue = {
         );
       }
     }
+
+    assertAllowlistIsLive(context, ALLOWED);
 
     const files = context.textFiles(
       (path) => !ALLOWED.has(path),

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { TSESLint, TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
+import { stringLiteralVisitors } from "#rules/source-visitors";
 
 /** What a caller must provide to ban a set of tokens from a scope. */
 interface ForbiddenTokenRuleSpec {
@@ -80,12 +81,10 @@ export function createForbiddenTokenRule(
       }
 
       return {
+        // An identifier is this rule's own concern; the two string forms are
+        // the shared pair, so the backtick half cannot drift out of one copy.
         Identifier: (node: TSESTree.Identifier): void => check(node, node.name),
-        Literal: (node: TSESTree.Literal): void => {
-          if (typeof node.value === "string") check(node, node.value);
-        },
-        TemplateElement: (node: TSESTree.TemplateElement): void =>
-          check(node, node.value.raw),
+        ...stringLiteralVisitors(check),
       };
     },
   });
