@@ -31,7 +31,7 @@ const TINTS: ReadonlyArray<readonly [string, number]> = [
   ["-border", 40],
 ];
 
-/** The brightest and darkest a neutral surface may be. */
+/** The brightest a neutral surface may be. */
 const BRIGHTEST = 245;
 /** The darkest a neutral surface may be. */
 const DARKEST = 18;
@@ -55,69 +55,85 @@ const DARKEST = 18;
 const COLOURFUL = /(palette|status|note)/i;
 
 /**
- * Checks that neutral and direct surface colours stay neutral and bounded.
+ * Wraps one message as this check's single-finding result.
+ *
+ * Every branch below reports at most one thing about one token, and spelling
+ * the wrapper out at each of them cost more lines than the checks did.
+ * @param message What is wrong with the value.
+ * @returns A one-element finding list.
+ */
+function only(message: string): Finding[] {
+  return [{ file: TOKENS, message }];
+}
+
+/**
+ * Checks one token stays neutral and bounded, if it is one this rule owns.
+ *
+ * A neutral primitive is the source every surface derives from, so a hue in
+ * one of them re-tints the whole app; and the ramp stops short of white and
+ * black on purpose, because pure white glares and pure black crushes every
+ * shadow below it.
+ * @param mode Which block the value came from, for the message.
+ * @param name The custom property's name.
+ * @param value Its declared value.
+ * @returns The problem with this value, or nothing.
+ */
+function checkNeutralToken(
+  mode: string,
+  name: string,
+  value: string,
+): Finding[] {
+  const isNeutral = name.startsWith("--neutral-");
+  const isSurface = name.startsWith("--color-") && !COLOURFUL.test(name);
+  if (!isNeutral && !isSurface) return [];
+
+  const channels = channelsOf(value);
+  if (channels === null) {
+    if (OPAQUE_NOTATION.test(value)) {
+      return only(`${mode} ${name}: ${value} — functional notation hides the channels, so nothing can check the value is neutral. Write it as a hex.`);
+    }
+    if (isNeutral) {
+      return only(`${mode} ${name}: ${value} — neutral primitives are plain hex, not a reference or an expression. They are the source every other token derives from.`);
+    }
+    // A --color-* that defers to a primitive is checked at the primitive.
+    return [];
+  }
+
+  if (channels.r !== channels.g || channels.g !== channels.b) {
+    return only(`${mode} ${name}: ${value} — channels are not equal, so this surface carries a hue. One tinted neutral re-tints every surface in the app.`);
+  }
+  if (channels.r > BRIGHTEST) {
+    return only(`${mode} ${name}: ${value} — brighter than #f5f5f5. Pure white is a glare surface; the ramp stops short of it deliberately.`);
+  }
+  if (channels.r < DARKEST) {
+    return only(`${mode} ${name}: ${value} — darker than #121212. Pure black crushes every shadow below it.`);
+  }
+  return [];
+}
+
+/**
+ * Checks every neutral and surface token in both modes.
  * @param sheet The parsed stylesheet.
- * @returns Every value that is tinted or too close to an extreme.
+ * @returns Every problem with a neutral or surface value.
  */
 function checkNeutrals(sheet: TokenSheet): Finding[] {
-  const findings: Finding[] = [];
   const modes: ReadonlyArray<readonly [string, ReadonlyMap<string, string>]> = [
     ["light", sheet.light],
     ["dark", sheet.dark],
   ];
-
-  for (const [mode, values] of modes) {
-    for (const [name, value] of values) {
-      const isNeutral = name.startsWith("--neutral-");
-      const isSurface = name.startsWith("--color-") && !COLOURFUL.test(name);
-      if (!isNeutral && !isSurface) continue;
-
-      const channels = channelsOf(value);
-      if (channels === null) {
-        if (OPAQUE_NOTATION.test(value)) {
-          findings.push({
-            file: TOKENS,
-            message: `${mode} ${name}: ${value} — functional notation hides the channels, so nothing can check the value is neutral. Write it as a hex.`,
-          });
-        } else if (isNeutral) {
-          findings.push({
-            file: TOKENS,
-            message: `${mode} ${name}: ${value} — neutral primitives are plain hex, not a reference or an expression. They are the source every other token derives from.`,
-          });
-        }
-        // A --color-* that defers to a primitive is checked at the primitive.
-        continue;
-      }
-
-      if (channels.r !== channels.g || channels.g !== channels.b) {
-        findings.push({
-          file: TOKENS,
-          message: `${mode} ${name}: ${value} — channels are not equal, so this surface carries a hue. One tinted neutral re-tints every surface in the app.`,
-        });
-      } else if (channels.r > BRIGHTEST) {
-        findings.push({
-          file: TOKENS,
-          message: `${mode} ${name}: ${value} — brighter than #f5f5f5. Pure white is a glare surface; the ramp stops short of it deliberately.`,
-        });
-      } else if (channels.r < DARKEST) {
-        findings.push({
-          file: TOKENS,
-          message: `${mode} ${name}: ${value} — darker than #121212. Pure black crushes every shadow below it.`,
-        });
-      }
-    }
-  }
-  return findings;
+  return modes.flatMap(([mode, values]) =>
+    [...values].flatMap(([name, value]) =>
+      checkNeutralToken(mode, name, value),
+    ),
+  );
 }
 
 /**
- * Checks the palette is exactly the ratified seven, declared where it works.
+ * Checks no palette token exists beyond the ratified seven and their tints.
  * @param sheet The parsed stylesheet.
- * @returns Every structural problem with the palette.
+ * @returns One finding per unexpected palette token.
  */
-function checkPalette(sheet: TokenSheet): Finding[] {
-  const findings: Finding[] = [];
-
+function checkPaletteMembership(sheet: TokenSheet): Finding[] {
   const expected = new Set(
     PALETTE.flatMap((colour) => [
       `--color-palette-${colour}`,
@@ -125,6 +141,8 @@ function checkPalette(sheet: TokenSheet): Finding[] {
       `--color-palette-${colour}-border`,
     ]),
   );
+
+  const findings: Finding[] = [];
   for (const name of [...sheet.light.keys(), ...sheet.darkOverrides.keys()]) {
     if (name.startsWith("--color-palette-") && !expected.has(name)) {
       findings.push({
@@ -133,75 +151,119 @@ function checkPalette(sheet: TokenSheet): Finding[] {
       });
     }
   }
-
-  // A palette token inside @theme is tree-shaken out of the production
-  // build. That is not theoretical — the pink border vanished from dist once.
-  const declaration = /--color-palette-[a-z0-9-]+\s*:/gi;
-  let match = declaration.exec(sheet.source);
-  while (match !== null) {
-    const inside = sheet.themeRanges.some(
-      ([from, to]) => match !== null && match.index > from && match.index < to,
-    );
-    if (inside) {
-      findings.push({
-        file: TOKENS,
-        message: `${match[0].replace(/\s*:$/, "")} is declared inside @theme, where Tailwind tree-shakes it out of the production build because nothing references it as a utility class. Declare palette tokens in :root.`,
-      });
-    }
-    match = declaration.exec(sheet.source);
-  }
-
-  for (const colour of PALETTE) {
-    const name = `--color-palette-${colour}`;
-    const lightValue = sheet.light.get(name);
-    const darkValue = sheet.darkOverrides.get(name);
-
-    if (lightValue === undefined || !isHex(lightValue)) {
-      findings.push({
-        file: TOKENS,
-        message: `${name} has no plain hex light value. Each palette colour is hand-tuned per mode, so both values are stated outright.`,
-      });
-    }
-    if (darkValue === undefined || !isHex(darkValue)) {
-      findings.push({
-        file: TOKENS,
-        message: `${name} has no plain hex dark value. Without one the light colour shows through in dark mode, where it was never tuned to read.`,
-      });
-    }
-    if (
-      lightValue !== undefined &&
-      darkValue !== undefined &&
-      isHex(lightValue) &&
-      isHex(darkValue) &&
-      normaliseHex(lightValue) === normaliseHex(darkValue)
-    ) {
-      findings.push({
-        file: TOKENS,
-        message: `${name} is the same colour in both modes. A flattened pair silently kills dark-mode readability — the two values exist because one colour cannot serve both grounds.`,
-      });
-    }
-
-    for (const [suffix, percent] of TINTS) {
-      const tint = sheet.light.get(name + suffix);
-      const canonical = new RegExp(
-        `^color-mix\\(in srgb,\\s*var\\(${name}\\)\\s+${percent}%\\s*,\\s*transparent\\)$`,
-      );
-      if (tint === undefined || !canonical.test(tint)) {
-        findings.push({
-          file: TOKENS,
-          message: `${name}${suffix} is not the canonical ${percent}% mix of ${name}. Deriving it any other way breaks the rule that dark mode only has to override the seven identities.`,
-        });
-      }
-      if (sheet.darkOverrides.has(name + suffix)) {
-        findings.push({
-          file: TOKENS,
-          message: `${name}${suffix} is re-declared in the dark block. Tints follow their identity automatically; overriding one means dark mode has a value nobody tuned.`,
-        });
-      }
-    }
-  }
-
   return findings;
+}
+
+/**
+ * Checks no palette token is declared where the build removes it.
+ *
+ * A palette token inside `@theme` is tree-shaken out of the production build,
+ * because nothing references it as a utility class. That is not theoretical —
+ * the pink border vanished from the built stylesheet once.
+ * @param sheet The parsed stylesheet.
+ * @returns One finding per palette token declared inside `@theme`.
+ */
+function checkPalettePlacement(sheet: TokenSheet): Finding[] {
+  const declaration = /--color-palette-[a-z0-9-]+\s*:/gi;
+  const findings: Finding[] = [];
+  for (const match of sheet.source.matchAll(declaration)) {
+    const inside = sheet.themeRanges.some(
+      ([from, to]) => match.index > from && match.index < to,
+    );
+    if (!inside) continue;
+    findings.push({
+      file: TOKENS,
+      message: `${match[0].replace(/\s*:$/, "")} is declared inside @theme, where Tailwind tree-shakes it out of the production build because nothing references it as a utility class. Declare palette tokens in :root.`,
+    });
+  }
+  return findings;
+}
+
+/**
+ * Checks a colour's tints derive from its identity and stay out of dark mode.
+ * @param sheet The parsed stylesheet.
+ * @param name The identity token, without a tint suffix.
+ * @returns Every problem with that colour's derived tints.
+ */
+function checkPaletteTints(sheet: TokenSheet, name: string): Finding[] {
+  const findings: Finding[] = [];
+  for (const [suffix, percent] of TINTS) {
+    const tint = sheet.light.get(name + suffix);
+    const canonical = new RegExp(
+      `^color-mix\\(in srgb,\\s*var\\(${name}\\)\\s+${percent}%\\s*,\\s*transparent\\)$`,
+    );
+    if (tint === undefined || !canonical.test(tint)) {
+      findings.push({
+        file: TOKENS,
+        message: `${name}${suffix} is not the canonical ${percent}% mix of ${name}. Deriving it any other way breaks the rule that dark mode only has to override the seven identities.`,
+      });
+    }
+    if (sheet.darkOverrides.has(name + suffix)) {
+      findings.push({
+        file: TOKENS,
+        message: `${name}${suffix} is re-declared in the dark block. Tints follow their identity automatically; overriding one means dark mode has a value nobody tuned.`,
+      });
+    }
+  }
+  return findings;
+}
+
+/**
+ * Checks one palette colour: both hand-tuned values, and its derived tints.
+ * @param sheet The parsed stylesheet.
+ * @param colour One of the ratified seven.
+ * @returns Every problem with that colour's identity or tints.
+ */
+function checkPaletteColour(sheet: TokenSheet, colour: string): Finding[] {
+  const name = `--color-palette-${colour}`;
+  const lightValue = sheet.light.get(name);
+  const darkValue = sheet.darkOverrides.get(name);
+
+  const findings: Finding[] = [];
+  if (lightValue === undefined || !isHex(lightValue)) {
+    findings.push({
+      file: TOKENS,
+      message: `${name} has no plain hex light value. Each palette colour is hand-tuned per mode, so both values are stated outright.`,
+    });
+  }
+  if (darkValue === undefined || !isHex(darkValue)) {
+    findings.push({
+      file: TOKENS,
+      message: `${name} has no plain hex dark value. Without one the light colour shows through in dark mode, where it was never tuned to read.`,
+    });
+  }
+  if (
+    lightValue !== undefined &&
+    darkValue !== undefined &&
+    isHex(lightValue) &&
+    isHex(darkValue) &&
+    normaliseHex(lightValue) === normaliseHex(darkValue)
+  ) {
+    findings.push({
+      file: TOKENS,
+      message: `${name} is the same colour in both modes. A flattened pair silently kills dark-mode readability — the two values exist because one colour cannot serve both grounds.`,
+    });
+  }
+
+  findings.push(...checkPaletteTints(sheet, name));
+  return findings;
+}
+
+/**
+ * Checks the palette is exactly the ratified seven, declared where it works.
+ *
+ * Three separable questions — which tokens exist, where they are declared,
+ * and whether each colour's own values hold — kept apart so a reader looking
+ * for one of them is not reading the other two.
+ * @param sheet The parsed stylesheet.
+ * @returns Every structural problem with the palette.
+ */
+function checkPalette(sheet: TokenSheet): Finding[] {
+  return [
+    ...checkPaletteMembership(sheet),
+    ...checkPalettePlacement(sheet),
+    ...PALETTE.flatMap((colour) => checkPaletteColour(sheet, colour)),
+  ];
 }
 
 /**
