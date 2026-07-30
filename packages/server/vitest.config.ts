@@ -22,6 +22,14 @@ import { resolve } from "node:path";
 // The limit is the thing that was wrong, so the limit is what changes.
 export default defineConfig({
   test: {
+    // One process per package — see packages/web/vitest.config.ts for the
+    // measurements behind this. Isolation stays on.
+    pool: "forks",
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
     globals: true,
     setupFiles: ["./src/__tests__/setup.ts"],
     // Scan ALL of src/ for unit tests — co-located *.test.ts next to

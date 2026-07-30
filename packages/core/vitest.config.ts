@@ -22,6 +22,14 @@ import { resolve } from "node:path";
 // The limit is the thing that was wrong, so the limit is what changes.
 export default defineConfig({
   test: {
+    // One process per package — see packages/web/vitest.config.ts for the
+    // measurements behind this. Isolation stays on.
+    pool: "forks",
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
     testTimeout: 120_000,
     // core no longer reads process.env itself; this setup file
     // stands in for the application entry, loading .env (best-effort)

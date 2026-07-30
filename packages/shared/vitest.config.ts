@@ -3,6 +3,14 @@ import { resolve } from "node:path";
 
 export default defineConfig({
   test: {
+    // One process per package — see packages/web/vitest.config.ts for the
+    // measurements behind this. Isolation stays on.
+    pool: "forks",
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
     globals: true,
     // See packages/core/vitest.config.ts for the 5s → 15s rationale.
     testTimeout: 15_000,

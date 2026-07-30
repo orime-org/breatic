@@ -29,7 +29,7 @@ const render = (
   baseRender(args[0], { ...args[1], wrapper: TooltipProvider });
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
-import { dragScrollDelta } from '@web/spaces/canvas/generate/reference-mention-caret';
+import { dragScrollDelta, referenceMentionCaretKey } from '@web/spaces/canvas/generate/reference-mention-caret';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -909,12 +909,23 @@ describe('drag source restore on drop (#1776, Safari selection-follows-drop-care
     });
   }
 
-  /** The plugin's handleDrop prop, bound for direct invocation. */
+  /**
+   * The plugin's handleDrop prop, bound for direct invocation.
+   *
+   * Found through the exported key object rather than by matching the
+   * string `'referenceMentionCaret$'`. ProseMirror appends a counter when a
+   * key name is created more than once in a process — the first is
+   * `name$`, the next `name$1` — and that counter lives in a module the
+   * test runner keeps across files. So the literal matched only when this
+   * file happened to be the first one to build the editor, which held right
+   * up until every file in the package started sharing one process.
+   * @param editor The editor whose plugin to reach into.
+   * @returns The bound handleDrop.
+   * @throws {Error} When the plugin or the prop is absent.
+   */
   function handleDropOf(editor: CoreEditor): (view: unknown, event: unknown, slice: unknown, moved: boolean) => boolean {
-    const plugin = editor.state.plugins.find(
-      (pl) => (pl as unknown as { key?: string }).key === 'referenceMentionCaret$',
-    );
-    const fn = (plugin?.props as { handleDrop?: unknown }).handleDrop;
+    const plugin = referenceMentionCaretKey.get(editor.state);
+    const fn = (plugin?.props as { handleDrop?: unknown } | undefined)?.handleDrop;
     if (typeof fn !== 'function') throw new Error('handleDrop prop missing');
     return fn.bind(plugin) as ReturnType<typeof handleDropOf>;
   }

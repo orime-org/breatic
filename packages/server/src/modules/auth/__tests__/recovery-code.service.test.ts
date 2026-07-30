@@ -85,8 +85,10 @@ describe("RecoveryCodeService — property-based round-trip", () => {
   it(
     "[property] any generated code passes hash + verify round-trip",
     async () => {
-      // Bcrypt cost 12 takes ~200ms per op (hash + verify ≈ 400ms);
-      // 20 runs × 2 ops ≈ 8s on dev box.
+      // Bcrypt at cost 12 is slow on purpose. What that costs in
+      // wall-clock time depends on the share of a core this worker gets,
+      // so the limit lives in the package's vitest config where the
+      // measurement behind it is written down.
       await fc.assert(
         fc.asyncProperty(fc.integer({ min: 0, max: 1000 }), async () => {
           const code = generateRecoveryCode();
@@ -97,7 +99,9 @@ describe("RecoveryCodeService — property-based round-trip", () => {
         { numRuns: 20 },
       );
     },
-    30_000,
+    // No inline limit: it would override the package's, which is derived
+    // from what these actually cost under a full parallel run. This one
+    // used to raise the old default and now only lowers the real one.
   );
 
   it(
@@ -113,6 +117,5 @@ describe("RecoveryCodeService — property-based round-trip", () => {
         { numRuns: 10 },
       );
     },
-    30_000,
   );
 });
