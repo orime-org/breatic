@@ -20,7 +20,6 @@
     "lint:no-brand-usage": "bash scripts/lint-no-brand-usage.sh",
     "lint:no-raw-design-values": "bash scripts/lint-no-raw-design-values.sh",
     "lint:no-extreme-token-value": "bash scripts/lint-no-extreme-token-value.sh && bash scripts/lint-no-extreme-token-value.sh --self-test",
-    "lint:no-native-rendered-ui": "bash scripts/lint-no-native-rendered-ui.sh && bash scripts/lint-no-native-rendered-ui.sh --self-test",
     "lint:overlay-surface": "bash scripts/lint-overlay-surface.sh",
     "lint:eof-newline": "bash scripts/lint-eof-newline.sh && bash scripts/lint-eof-newline.sh --self-test",
     "lint:migration-style": "bash scripts/lint-migration-style.sh && bash scripts/lint-migration-style.sh --self-test",

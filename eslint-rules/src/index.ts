@@ -10,6 +10,7 @@ import { noIoredisOutsideCore } from "#rules/rules/no-ioredis-outside-core";
 import { noLibraryEnvAccess } from "#rules/rules/no-library-env-access";
 import { noLibraryLogger } from "#rules/rules/no-library-logger";
 import { noLibraryProcessExit } from "#rules/rules/no-library-process-exit";
+import { noNativeRenderedUi } from "#rules/rules/no-native-rendered-ui";
 import { noParamAsString } from "#rules/rules/no-param-as-string";
 import { noPostgresOutsideCore } from "#rules/rules/no-postgres-outside-core";
 import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
@@ -39,6 +40,7 @@ export const breaticPlugin = {
     "no-library-env-access": noLibraryEnvAccess,
     "no-library-logger": noLibraryLogger,
     "no-library-process-exit": noLibraryProcessExit,
+    "no-native-rendered-ui": noNativeRenderedUi,
     "no-param-as-string": noParamAsString,
     "no-postgres-outside-core": noPostgresOutsideCore,
     "no-sync-in-request-path": noSyncInRequestPath,

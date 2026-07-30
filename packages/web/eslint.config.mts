@@ -332,4 +332,14 @@ export default [
       'breatic/active-border': 'error',
     },
   },
+  {
+    // The dev gallery renders native controls on purpose, to show what we
+    // replaced. Tests assert on markup rather than shipping it.
+    files: ['src/**/*.tsx'],
+    ignores: ['src/pages/_dev/**', '**/__tests__/**', '**/*.test.tsx', '**/*.spec.tsx'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-native-rendered-ui': 'error',
+    },
+  },
 ];

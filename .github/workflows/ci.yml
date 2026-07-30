@@ -131,18 +131,6 @@ jobs:
         # scripts/lint-no-extreme-token-value.sh.
         run: pnpm lint:no-extreme-token-value
 
-      - name: Lint no-native-rendered-ui (self-drawn controls only)
-        # For a creative product, any interactive control whose visual skin is
-        # drawn by the browser/OS renders differently per engine (Chrome vs
-        # Safari) — fatal inconsistency. Bans native <input type=color/date/
-        # time/range>, <select>, and <audio|video controls> in web/src; use the
-        # self-drawn primitive (Slider / Select / react-colorful picker /
-        # MediaPlayer). Generalises the scrollbar guard's lesson to the whole
-        # class so each new native primitive is caught mechanically, not in
-        # review. title-tooltip / native-validation are mandate-only (too noisy
-        # to grep). See packages/web/CLAUDE.md + scripts/lint-no-native-rendered-ui.sh.
-        run: pnpm lint:no-native-rendered-ui
-
       - name: Lint overlay surface (popover panel unification)
         # Every popover/overlay panel surface uses bg-popover (tooltip inverse
         # is the only exception): bans bg-elevated / bg-card as a panel bg in
