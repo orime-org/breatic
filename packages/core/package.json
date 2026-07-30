@@ -8,11 +8,11 @@
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "types": "./src/index.ts"
+      "types": "./dist/index.d.ts"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm",
+    "build": "tsup src/index.ts --format esm && tsc --emitDeclarationOnly && tsc-alias",
     "dev": "tsup src/index.ts --format esm --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

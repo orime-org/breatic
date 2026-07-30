@@ -23,7 +23,6 @@
     "baseUrl": ".",
     "paths": {
       "@web/*": ["src/*"],
-      "@shared/*": ["../shared/src/*"],
       "@locales/*": ["../../locales/*"]
     }
   },

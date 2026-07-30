@@ -35,6 +35,7 @@
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jsdoc": "^63.0.1",
     "secretlint": "^13.0.2",
+    "tsc-alias": "^1.9.1",
     "tsx": "^4.19.0",
     "turbo": "^2.4.0",
     "typedoc": "^0.28.18",

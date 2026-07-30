@@ -5,8 +5,6 @@
     "rootDir": "./src",
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["../shared/src/*"],
-      "@core/*": ["../core/src/*"],
       "@domain/*": ["./src/*"]
     }
   },
