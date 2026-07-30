@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
+import { activeBorder } from "#rules/rules/active-border";
 import { hoverPattern } from "#rules/rules/hover-pattern";
 import { noCollabAuthPrimitives } from "#rules/rules/no-collab-auth-primitives";
 import { noCorsWildcardCredentials } from "#rules/rules/no-cors-wildcard-credentials";
@@ -13,6 +14,7 @@ import { noParamAsString } from "#rules/rules/no-param-as-string";
 import { noPostgresOutsideCore } from "#rules/rules/no-postgres-outside-core";
 import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
 import { noYjsDocumentsOutsideRepo } from "#rules/rules/no-yjs-documents-outside-repo";
+import { onePxBorder } from "#rules/rules/one-px-border";
 import { singleToastEntry } from "#rules/rules/single-toast-entry";
 import { singleTooltipProvider } from "#rules/rules/single-tooltip-provider";
 
@@ -27,6 +29,7 @@ import { singleTooltipProvider } from "#rules/rules/single-tooltip-provider";
 export const breaticPlugin = {
   meta: { name: "@breatic/eslint-rules", version: "0.1.0" },
   rules: {
+    "active-border": activeBorder,
     "hover-pattern": hoverPattern,
     "no-collab-auth-primitives": noCollabAuthPrimitives,
     "no-cors-wildcard-credentials": noCorsWildcardCredentials,
@@ -40,6 +43,7 @@ export const breaticPlugin = {
     "no-postgres-outside-core": noPostgresOutsideCore,
     "no-sync-in-request-path": noSyncInRequestPath,
     "no-yjs-documents-outside-repo": noYjsDocumentsOutsideRepo,
+    "one-px-border": onePxBorder,
     "single-toast-entry": singleToastEntry,
     "single-tooltip-provider": singleTooltipProvider,
   },

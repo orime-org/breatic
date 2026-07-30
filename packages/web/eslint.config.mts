@@ -306,4 +306,30 @@ export default [
       'breatic/no-inline-scrollbar': 'error',
     },
   },
+  {
+    // The vendor primitives are scanned too: ours are token-customised
+    // rather than pristine shadcn, so the one-pixel rule applies to them.
+    files: ['src/**/*.tsx'],
+    ignores: ['**/__tests__/**', '**/*.test.tsx', '**/*.spec.tsx'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/one-px-border': 'error',
+    },
+  },
+  {
+    // The vendor primitives are exempt here: a checked checkbox border moves
+    // together with its fill, so it is part of that system rather than an
+    // independent activation indicator.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/components/ui/**',
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/active-border': 'error',
+    },
+  },
 ];

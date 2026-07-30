@@ -18,7 +18,7 @@ interface NodeShellProps {
 }
 
 // The node carries a single 1px border whose colour reflects its state.
-// One flat border, no rings or focus glow (rigid 1px rule, lint:1px-border).
+// One flat border, no rings or focus glow (rigid 1px rule, breatic/one-px-border).
 // Hover changes ONLY the border (never the background) and ONLY while idle —
 // the handling / error / selected state colours must not be overridden on hover.
 const STATUS_BORDER: Record<DisplayStatus, string> = {
