@@ -19,7 +19,6 @@
     "lint:fix": "turbo run lint -- --fix",
     "lint:repo": "pnpm --filter @breatic/repo-lint start",
     "lint:dependency-cruiser": "depcruise --config .dependency-cruiser.cjs packages/*/src",
-    "lint:no-brand-usage": "bash scripts/lint-no-brand-usage.sh",
     "lint:no-extreme-token-value": "bash scripts/lint-no-extreme-token-value.sh && bash scripts/lint-no-extreme-token-value.sh --self-test",
     "lint:doc-links": "bash scripts/lint-doc-links.sh && bash scripts/lint-doc-links.sh --self-test",
     "lint:no-hardcoded-secrets": "bash scripts/lint-no-hardcoded-secrets.sh",

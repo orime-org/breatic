@@ -4,10 +4,17 @@ import { describe, expect, it } from "vitest";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
 
-// Assembled, not written, for the same reason the check assembles it: a
-// fixture spelling it out would make this file a violation, and the rule
+// Assembled, not written, for the same reason the check assembles them: a
+// fixture spelling one out would make this file a violation, and the rule
 // would need an exemption for its own test.
 const PRIVATE_REPO = ["breatic", "inner"].join("-");
+
+/**
+ * Builds a private-repo directory path without writing it literally.
+ * @param parts Path segments, e.g. ("engineering", "specs").
+ * @returns The joined path with a trailing slash.
+ */
+const dir = (...parts: string[]): string => `${parts.join("/")}/`;
 
 describe("no-private-repo-path", () => {
   it("passes source that does not cite the private repo", () => {
@@ -26,25 +33,25 @@ describe("no-private-repo-path", () => {
 
   it("catches a spec path even without the repo name", () => {
     const context = fakeContext({
-      "packages/core/src/a.ts": "// see engineering/specs/2026-01-01-x.md\n",
+      "packages/core/src/a.ts": `// see ${dir("engineering", "specs")}2026-01-01-x.md\n`,
     });
     expect(noPrivateRepoPath.run(context)).toHaveLength(1);
   });
 
   it("catches each of the private directories", () => {
     const context = fakeContext({
-      "a.md": "engineering/specs/x.md",
-      "b.md": "engineering/decisions/x.md",
-      "c.md": "engineering/audit/x.md",
-      "d.md": "engineering/plans/x.md",
-      "e.md": "design/decisions/x.md",
+      "a.md": `${dir("engineering", "specs")}x.md`,
+      "b.md": `${dir("engineering", "decisions")}x.md`,
+      "c.md": `${dir("engineering", "audit")}x.md`,
+      "d.md": `${dir("engineering", "plans")}x.md`,
+      "e.md": `${dir("design", "decisions")}x.md`,
     });
     expect(noPrivateRepoPath.run(context)).toHaveLength(5);
   });
 
   it("names the right line", () => {
     const context = fakeContext({
-      "packages/core/src/a.ts": "one\ntwo\n// engineering/specs/x.md\n",
+      "packages/core/src/a.ts": `one\ntwo\n// ${dir("engineering", "specs")}x.md\n`,
     });
     expect(noPrivateRepoPath.run(context)[0]?.line).toBe(3);
   });
@@ -53,7 +60,7 @@ describe("no-private-repo-path", () => {
     // The shell version scanned packages, docs, scripts, config and
     // .github. The root README and CLAUDE.md are public artifacts too.
     const context = fakeContext({
-      "README.md": "see engineering/plans/x.md",
+      "README.md": `see ${dir("engineering", "plans")}x.md`,
       "CLAUDE.md": `see ${PRIVATE_REPO}`,
     });
     expect(noPrivateRepoPath.run(context)).toHaveLength(2);

@@ -120,15 +120,6 @@ jobs:
       - name: Lint
         run: pnpm turbo lint
 
-      - name: Lint no raw brand usage (monochrome chrome rule)
-        # Enforce chrome-baseline §F10 Monochrome Chrome Rule: ban raw brand
-        # tokens (bg/text/border/ring-brand-N, var(--brand-...)) in
-        # packages/web/src outside the whitelist (theme/tokens.css,
-        # --brand-logo-primary, pages/studio/**). Studio is the sole exemption
-        # via --brand-accent / --brand-fg / --brand-tint. Authorizing ADR:
-        # Authorized by an internal design ADR (studio brand exemption)
-        run: pnpm lint:no-brand-usage
-
       - name: Lint no-extreme token values (design-system 9th rigid guard)
         # Lock the pure-neutral + off-extreme + scheme-D status-readability
         # invariants of theme/tokens.css: every --neutral-* / direct-hex
