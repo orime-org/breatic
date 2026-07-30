@@ -103,13 +103,6 @@ jobs:
       - name: Lint
         run: pnpm turbo lint
 
-      - name: Lint hover patterns
-        # Enforce inner ADR 2026-05-21-hover-pattern-standard: ban
-        # `hover:bg-<token>/<2-digit>` Tailwind alpha-modifier hovers
-        # in packages/web/src — solid token swap or `hover:opacity-90`
-        # only. Fast grep; hard-fails the PR on violation.
-        run: pnpm lint:hover
-
       - name: Lint no raw brand usage (monochrome chrome rule)
         # Enforce chrome-baseline §F10 Monochrome Chrome Rule: ban raw brand
         # tokens (bg/text/border/ring-brand-N, var(--brand-...)) in
@@ -151,18 +144,6 @@ jobs:
         # borders (border-status-*) are a separate system. shadcn vendor
         # (components/ui) exempt per ADR 14. See scripts/lint-active-border.sh.
         run: pnpm lint:active-border
-
-      - name: Lint no-inline-scrollbar (one Scroller component)
-        # Every visible scroller uses OUR Scroller component
-        # (components/ui/scroll-area.tsx), vertical AND horizontal (#1773,
-        # user-ratified 2026-07-15): overlay bar, scroll-only visibility, no
-        # layout space, hover = color only, input state (focus/selection)
-        # untouched by scrollbar interaction. Banned in components: raw
-        # overflow-* scrollers outside the component, webkit scrollbar paint
-        # rules, scrollbar-width/scrollbar-color re-declarations. Hiding via
-        # scrollbar-width:none stays allowed (SpaceTabBar). See
-        # scripts/lint-no-inline-scrollbar.sh.
-        run: pnpm lint:no-inline-scrollbar
 
       - name: Lint no-native-rendered-ui (self-drawn controls only)
         # For a creative product, any interactive control whose visual skin is

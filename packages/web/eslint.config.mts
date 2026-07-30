@@ -281,4 +281,29 @@ export default [
       'breatic/single-toast-entry': 'error',
     },
   },
+  {
+    // Tests included, matching the guard this replaces — it had no path
+    // exclusion at all, only the black/white carve-out that lives in the
+    // rule. A test asserting on a class string asserts on shipped markup.
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/hover-pattern': 'error',
+    },
+  },
+  {
+    // Tests excluded, matching the guard this replaces. They assert on the
+    // class strings a component produces, so the overflow utility appears
+    // there as an expectation rather than as markup.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-inline-scrollbar': 'error',
+    },
+  },
 ];

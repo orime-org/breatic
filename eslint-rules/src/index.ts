@@ -1,8 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
+import { hoverPattern } from "#rules/rules/hover-pattern";
 import { noCollabAuthPrimitives } from "#rules/rules/no-collab-auth-primitives";
 import { noCorsWildcardCredentials } from "#rules/rules/no-cors-wildcard-credentials";
 import { noDrizzleTypeLeak } from "#rules/rules/no-drizzle-type-leak";
+import { noInlineScrollbar } from "#rules/rules/no-inline-scrollbar";
 import { noIoredisOutsideCore } from "#rules/rules/no-ioredis-outside-core";
 import { noLibraryEnvAccess } from "#rules/rules/no-library-env-access";
 import { noLibraryLogger } from "#rules/rules/no-library-logger";
@@ -25,9 +27,11 @@ import { singleTooltipProvider } from "#rules/rules/single-tooltip-provider";
 export const breaticPlugin = {
   meta: { name: "@breatic/eslint-rules", version: "0.1.0" },
   rules: {
+    "hover-pattern": hoverPattern,
     "no-collab-auth-primitives": noCollabAuthPrimitives,
     "no-cors-wildcard-credentials": noCorsWildcardCredentials,
     "no-drizzle-type-leak": noDrizzleTypeLeak,
+    "no-inline-scrollbar": noInlineScrollbar,
     "no-ioredis-outside-core": noIoredisOutsideCore,
     "no-library-env-access": noLibraryEnvAccess,
     "no-library-logger": noLibraryLogger,
