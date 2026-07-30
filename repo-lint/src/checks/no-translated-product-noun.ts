@@ -44,7 +44,7 @@ function flatten(
  * frozen-product-terms test — the two halves are deliberate and neither
  * covers the other.
  */
-export const noTranslatedProductNoun: Check = {
+export const noTranslatedProductNoun = {
   name: "no-translated-product-noun",
   description: "Product nouns stay English in every locale",
   run(context: CheckContext): Finding[] {
@@ -71,4 +71,4 @@ export const noTranslatedProductNoun: Check = {
     }
     return findings;
   },
-};
+} satisfies Check;

@@ -1,0 +1,86 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+import { describe, expect, it } from "vitest";
+import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
+import { fakeContext } from "#repo-lint/__tests__/fake-context";
+
+// Assembled, not written, for the same reason the check assembles it: a
+// fixture spelling it out would make this file a violation, and the rule
+// would need an exemption for its own test.
+const PRIVATE_REPO = ["breatic", "inner"].join("-");
+
+describe("no-private-repo-path", () => {
+  it("passes source that does not cite the private repo", () => {
+    const context = fakeContext({
+      "packages/core/src/a.ts": "// see the internal design record\n",
+    });
+    expect(noPrivateRepoPath.run(context)).toEqual([]);
+  });
+
+  it("catches the private repo by name", () => {
+    const context = fakeContext({
+      "packages/core/src/a.ts": `// see ${PRIVATE_REPO} for the rationale\n`,
+    });
+    expect(noPrivateRepoPath.run(context)).toHaveLength(1);
+  });
+
+  it("catches a spec path even without the repo name", () => {
+    const context = fakeContext({
+      "packages/core/src/a.ts": "// see engineering/specs/2026-01-01-x.md\n",
+    });
+    expect(noPrivateRepoPath.run(context)).toHaveLength(1);
+  });
+
+  it("catches each of the private directories", () => {
+    const context = fakeContext({
+      "a.md": "engineering/specs/x.md",
+      "b.md": "engineering/decisions/x.md",
+      "c.md": "engineering/audit/x.md",
+      "d.md": "engineering/plans/x.md",
+      "e.md": "design/decisions/x.md",
+    });
+    expect(noPrivateRepoPath.run(context)).toHaveLength(5);
+  });
+
+  it("names the right line", () => {
+    const context = fakeContext({
+      "packages/core/src/a.ts": "one\ntwo\n// engineering/specs/x.md\n",
+    });
+    expect(noPrivateRepoPath.run(context)[0]?.line).toBe(3);
+  });
+
+  it("covers the repository root, which the old scan list did not", () => {
+    // The shell version scanned packages, docs, scripts, config and
+    // .github. The root README and CLAUDE.md are public artifacts too.
+    const context = fakeContext({
+      "README.md": "see engineering/plans/x.md",
+      "CLAUDE.md": `see ${PRIVATE_REPO}`,
+    });
+    expect(noPrivateRepoPath.run(context)).toHaveLength(2);
+  });
+
+  it("leaves a public directory of a similar name alone", () => {
+    // `docs/` and `packages/` may legitimately contain the word design or
+    // engineering; only the private layout is a violation.
+    const context = fakeContext({
+      "docs/a.md": "the engineering team decided; see docs/decisions.md",
+      "packages/core/src/design.ts": "// design tokens live here",
+    });
+    expect(noPrivateRepoPath.run(context)).toEqual([]);
+  });
+
+  it("skips the lockfile and binaries", () => {
+    const context = fakeContext({
+      "pnpm-lock.yaml": `${PRIVATE_REPO}`,
+      "logo.png": `${PRIVATE_REPO}`,
+      "a.md": "clean",
+    });
+    expect(noPrivateRepoPath.run(context)).toEqual([]);
+  });
+
+  it("fails rather than reports clean when it selects no files", () => {
+    expect(() => noPrivateRepoPath.run(fakeContext({ "a.png": "x" }))).toThrow(
+      /matched none/,
+    );
+  });
+});

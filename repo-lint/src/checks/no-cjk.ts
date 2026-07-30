@@ -70,7 +70,7 @@ const ALLOWED: ReadonlyMap<string, string> = new Map([
  * by AI as much as by people and are allowed to be Chinese. The rule is
  * about what compiles into the product or gets run.
  */
-export const noCjk: Check = {
+export const noCjk = {
   name: "no-cjk",
   description: "Source, config and scripts are written in English",
   run(context: CheckContext): Finding[] {
@@ -100,4 +100,4 @@ export const noCjk: Check = {
     }
     return findings;
   },
-};
+} satisfies Check;

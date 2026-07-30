@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check } from "#repo-lint/check";
 import { eofNewline } from "#repo-lint/checks/eof-newline";
+import { migrationStyle } from "#repo-lint/checks/migration-style";
 import { noCjk } from "#repo-lint/checks/no-cjk";
+import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
 import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
 
@@ -15,7 +17,9 @@ import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
  */
 export const CHECKS: readonly Check[] = [
   eofNewline,
+  migrationStyle,
   noCjk,
+  noPrivateRepoPath,
   noTranslatedProductNoun,
   noTrojanSource,
 ];

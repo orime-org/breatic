@@ -40,7 +40,7 @@ const HARMLESS_CATEGORY = "Variation Selector";
  * CLI unconditionally calls `process.stdin.unref()`, which throws on Node 24
  * whenever stdin is not a pipe — that is, in CI.
  */
-export const noTrojanSource: Check = {
+export const noTrojanSource = {
   name: "no-trojan-source",
   description: "Source contains no bidi overrides or invisible controls",
   async run(context: CheckContext): Promise<Finding[]> {
@@ -71,4 +71,4 @@ export const noTrojanSource: Check = {
     }
     return findings;
   },
-};
+} satisfies Check;

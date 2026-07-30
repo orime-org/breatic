@@ -18,7 +18,7 @@ const TEXT_FILE = /\.(ts|tsx|mts|cts|sql|json|md|sh|ya?ml|mjs|cjs|css)$/;
  * once emitted those files without the newline: every migration since 0018 is
  * hand-written, so nothing regenerates them and there is nothing to fight.
  */
-export const eofNewline: Check = {
+export const eofNewline = {
   name: "eof-newline",
   description: "Tracked text files end with a newline",
   run(context: CheckContext): Finding[] {
@@ -43,4 +43,4 @@ export const eofNewline: Check = {
     }
     return findings;
   },
-};
+} satisfies Check;
