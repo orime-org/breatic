@@ -80,6 +80,7 @@ describe("import alias contract (fixer output ↔ resolvable aliases)", () => {
       "packages/collab/src/",
       "packages/web/src/",
       "eslint-rules/src/",
+      "repo-lint/src/",
     ]);
   });
 });

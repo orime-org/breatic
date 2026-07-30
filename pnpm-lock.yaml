@@ -20,9 +20,6 @@ importers:
       '@secretlint/secretlint-rule-preset-recommend':
         specifier: ^13.0.2
         version: 13.0.2
-      anti-trojan-source:
-        specifier: ^1.11.3
-        version: 1.11.3
       dependency-cruiser:
         specifier: ^17.4.3
         version: 17.4.3
@@ -945,6 +942,24 @@ importers:
       vitest:
         specifier: ^3.0.0
         version: 3.0.0(@types/node@22.0.0)(jiti@2.6.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.6.4)(lightningcss@1.32.0)(sass@1.51.0)(tsx@4.19.0)(yaml@2.8.3)
+
+  repo-lint:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.0.0
+      anti-trojan-source:
+        specifier: ^1.11.3
+        version: 1.11.3
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.3
+      typescript:
+        specifier: ~5.8.0
+        version: 5.8.2
+      vitest:
+        specifier: ^3.0.0
+        version: 3.0.0(@types/node@22.0.0)(jiti@2.6.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.6.4)(lightningcss@1.32.0)(sass@1.51.0)(tsx@4.22.3)(yaml@2.8.3)
 
 packages:
 

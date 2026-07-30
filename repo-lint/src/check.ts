@@ -1,0 +1,64 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/** One thing a check found wrong. */
+export interface Finding {
+  /** Repo-relative path of the offending file. */
+  readonly file: string;
+  /** 1-based line, when the finding is about a particular line. */
+  readonly line?: number;
+  /** What is wrong, phrased so the reader knows what to do about it. */
+  readonly message: string;
+}
+
+/** What a check is handed when it runs. */
+export interface CheckContext {
+  /** Absolute path of the repository root. */
+  readonly repoRoot: string;
+  /**
+   * Every file git tracks, repo-relative, matching the predicate.
+   *
+   * Sourced from `git ls-files`, so build output, dependencies and anything
+   * else ignored is absent by construction — no per-check exclude list to
+   * maintain, and none to drift.
+   * @param select Which of the tracked files this check is about.
+   * @param label What the selection is, named in the error if it is empty.
+   * @returns The matching paths.
+   * @throws {Error} If nothing matches. A filter that selects no files is a
+   *   broken filter, and reporting "clean" is how these checks have died
+   *   before.
+   */
+  files(select: (path: string) => boolean, label: string): string[];
+  /**
+   * Reads a tracked file.
+   * @param file Repo-relative path.
+   * @returns Its contents as UTF-8 text.
+   * @throws {Error} If the file cannot be read.
+   */
+  read(file: string): string;
+  /**
+   * Whether a path exists, for checks that assert something is in place.
+   * @param path Repo-relative path.
+   * @returns True when it exists.
+   */
+  exists(path: string): boolean;
+}
+
+/** A repository-wide invariant that is not about one source file's AST. */
+export interface Check {
+  /** Stable id, used in output and to name the check in CI logs. */
+  readonly name: string;
+  /** One line on what it enforces, printed when it fails. */
+  readonly description: string;
+  /**
+   * Looks for violations.
+   *
+   * May be async: some checks delegate to a tool with a promise-based API,
+   * and forcing them through a sync shim would only move the await.
+   * @param context Access to the repository's files.
+   * @returns Everything wrong, empty when clean.
+   * @throws {Error} When the check cannot run at all — an unreadable target
+   *   or an empty candidate set is a failure, never a pass.
+   */
+  run(context: CheckContext): Finding[] | Promise<Finding[]>;
+}

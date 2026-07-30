@@ -101,7 +101,11 @@ export default tseslint.config(
     // Generator<Y,R,N> signature carries them like a return type does.
     // eslint-rules/ is first-party source like any package: the guard rules
     // themselves are held to the same documentation standard they enforce.
-    files: ["packages/*/src/**/*.{ts,tsx}", "eslint-rules/src/**/*.ts"],
+    files: [
+      "packages/*/src/**/*.{ts,tsx}",
+      "eslint-rules/src/**/*.ts",
+      "repo-lint/src/**/*.ts",
+    ],
     ignores: ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}", "**/__tests__/**"],
     plugins: jsdocTs.plugins,
     rules: {
@@ -354,6 +358,7 @@ export default tseslint.config(
     files: [
       "packages/*/src/**/*.{test,spec}.{ts,tsx}",
       "eslint-rules/src/**/*.{test,spec}.ts",
+      "repo-lint/src/**/*.{test,spec}.ts",
     ],
     rules: {
       "breatic/test-file-location": "error",
@@ -366,7 +371,11 @@ export default tseslint.config(
     // the shadcn vendor directory is third-party IP and must NOT carry an
     // Orime copyright, which is why it is excluded rather than merely
     // unenforced.
-    files: ["packages/*/src/**/*.{ts,tsx}", "eslint-rules/src/**/*.ts"],
+    files: [
+      "packages/*/src/**/*.{ts,tsx}",
+      "eslint-rules/src/**/*.ts",
+      "repo-lint/src/**/*.ts",
+    ],
     ignores: ["packages/web/src/components/ui/**"],
     rules: {
       "breatic/no-missing-license-header": "error",
@@ -375,7 +384,11 @@ export default tseslint.config(
   {
     // Tests are exempt: they are not shipped, so the resolution concern that
     // motivates the alias style does not reach them.
-    files: ["packages/*/src/**/*.{ts,tsx}", "eslint-rules/src/**/*.ts"],
+    files: [
+      "packages/*/src/**/*.{ts,tsx}",
+      "eslint-rules/src/**/*.ts",
+      "repo-lint/src/**/*.ts",
+    ],
     ignores: [
       "**/__tests__/**",
       "**/*.test.{ts,tsx}",
