@@ -257,16 +257,6 @@ jobs:
         # the PR. See scripts/lint-no-hardcoded-secrets.sh.
         run: pnpm lint:no-hardcoded-secrets
 
-      - name: Lint schema-timestamps (deleted_at + created_at)
-        # Enforce CLAUDE.md soft-delete + created_at mandates (CI maximal-
-        # strictness guard suite, inner ADR 2026-06-01): every Drizzle
-        # pgTable must carry created_at (no exemption) and deleted_at.
-        # deleted_at has a small justified allowlist (payments +
-        # credit_transactions are append-only financial ledgers;
-        # credit_balances derives its soft-delete from users.deleted_at).
-        # See scripts/lint-schema-timestamps.sh.
-        run: pnpm lint:schema-timestamps
-
       - name: Build packages (shared → core)
         run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
 

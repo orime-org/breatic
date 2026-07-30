@@ -32,7 +32,6 @@
     "lint:no-noaccount": "bash scripts/lint-no-noaccount.sh && bash scripts/lint-no-noaccount.sh --self-test",
     "lint:no-trojan-source": "bash scripts/lint-no-trojan-source.sh",
     "lint:no-translated-product-noun": "bash scripts/lint-no-translated-product-noun.sh",
-    "lint:schema-timestamps": "bash scripts/lint-schema-timestamps.sh",
     "lint:no-unresolved-alias-in-dist": "bash scripts/lint-no-unresolved-alias-in-dist.sh",
     "lint:storage-key-prefix": "bash scripts/lint-storage-key-prefix.sh",
     "typecheck": "turbo run typecheck",

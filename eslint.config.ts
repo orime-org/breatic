@@ -386,6 +386,16 @@ export default tseslint.config(
     },
   },
   {
+    // Every package, not just core's schema file: the rule only reacts to a
+    // pgTable call, so a table declared somewhere new is covered the day it
+    // appears rather than the day someone remembers to widen a glob.
+    files: ["packages/*/src/**/*.ts"],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
+    rules: {
+      "breatic/schema-timestamps": "error",
+    },
+  },
+  {
     ignores: ["**/dist/**", "**/node_modules/**", "**/*.js", "**/*.mjs"],
   },
 );

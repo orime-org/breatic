@@ -19,6 +19,7 @@ import { noRawHexColor } from "#rules/rules/no-raw-hex-color";
 import { noRelativeImport } from "#rules/rules/no-relative-import";
 import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
 import { noYjsDocumentsOutsideRepo } from "#rules/rules/no-yjs-documents-outside-repo";
+import { schemaTimestamps } from "#rules/rules/schema-timestamps";
 import { onePxBorder } from "#rules/rules/one-px-border";
 import { overlaySurface } from "#rules/rules/overlay-surface";
 import { singleToastEntry } from "#rules/rules/single-toast-entry";
@@ -56,6 +57,7 @@ export const breaticPlugin = {
     "no-sync-in-request-path": noSyncInRequestPath,
     "no-yjs-documents-outside-repo": noYjsDocumentsOutsideRepo,
     "one-px-border": onePxBorder,
+    "schema-timestamps": schemaTimestamps,
     "overlay-surface": overlaySurface,
     "single-toast-entry": singleToastEntry,
     "single-tooltip-provider": singleTooltipProvider,
