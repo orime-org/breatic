@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { isScannableText } from "#repo-lint/file-kinds";
 
 /**
  * Every tracked text file ends with a newline.
@@ -24,7 +23,7 @@ export const eofNewline = {
   name: "eof-newline",
   description: "Tracked text files end with a newline",
   run(context: CheckContext): Finding[] {
-    const files = context.files(isScannableText, "tracked text files");
+    const files = context.textFiles("tracked text files");
 
     const findings: Finding[] = [];
     for (const file of files) {

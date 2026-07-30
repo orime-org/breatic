@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { isScannableText } from "#repo-lint/file-kinds";
 
 /**
  * The private repository's name, assembled rather than written.
@@ -58,7 +57,7 @@ export const noPrivateRepoPath = {
   name: "no-private-repo-path",
   description: "The public repo does not cite private-repo paths",
   run(context: CheckContext): Finding[] {
-    const files = context.files(isScannableText, "readable tracked files");
+    const files = context.textFiles("readable tracked files");
 
     const findings: Finding[] = [];
     for (const file of files) {

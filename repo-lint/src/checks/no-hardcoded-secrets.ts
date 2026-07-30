@@ -5,7 +5,6 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { isScannableText } from "#repo-lint/file-kinds";
 import { toRepoRelative } from "#repo-lint/repo-relative";
 
 /**
@@ -68,7 +67,7 @@ export const noHardcodedSecrets = {
   name: "no-hardcoded-secrets",
   description: "No credential is written literally into a tracked file",
   run(context: CheckContext): Finding[] {
-    const files = context.files(isScannableText, "readable tracked files");
+    const files = context.textFiles("readable tracked files");
 
     const binary = resolve(context.repoRoot, "node_modules/.bin/secretlint");
     if (!existsSync(binary)) {

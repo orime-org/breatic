@@ -2,16 +2,38 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * File kinds whose bytes are not text.
+ * File kinds whose bytes are not text, skipped without opening them.
  *
- * The only list in this module, and it is deliberately the list of things to
- * take away. Reading an image as text yields mojibake rather than findings,
- * and a scan handed one wastes the read; that is the whole cost of an
- * omission here, which is why a list is safe in this direction and only in
- * this direction.
+ * A fast path, not the decision. An earlier version of this comment claimed
+ * the whole cost of an omission here was a wasted read — that was measured
+ * and is false: 20 KB of random bytes handed to no-trojan-source produced
+ * 2400 findings, one per control character, which is how a real finding gets
+ * buried. The content sniff below is what actually decides, so a kind nobody
+ * listed costs a read and nothing else.
  */
 const BINARY =
   /\.(png|jpe?g|gif|webp|avif|ico|icns|bmp|woff2?|ttf|otf|eot|pdf|zip|t?gz|bz2|mp4|mov|webm|mp3|wav|m4a|wasm)$/i;
+
+/** How much of a file decides whether it is text — the length git reads. */
+const SNIFF = 8000;
+
+/**
+ * Whether what was read is text rather than bytes.
+ *
+ * A NUL byte is the signal git itself uses, and it is the one that survives
+ * being read as UTF-8. Decoding failures are the second signal: bytes that
+ * are not valid UTF-8 arrive as U+FFFD, and a file that is mostly those is
+ * not text in any useful sense. Both are judged over the opening of the file
+ * only, so the cost does not grow with its size.
+ * @param text The file's contents, decoded as UTF-8.
+ * @returns True when a text scan can say something meaningful about it.
+ */
+export function isTextContent(text: string): boolean {
+  const opening = text.slice(0, SNIFF);
+  if (opening.includes("\u0000")) return false;
+  const undecodable = (opening.match(/\uFFFD/g) ?? []).length;
+  return undecodable / Math.max(opening.length, 1) < 0.1;
+}
 
 /**
  * Whether a text scan can read this file.

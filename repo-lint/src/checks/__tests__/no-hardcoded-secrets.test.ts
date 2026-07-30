@@ -35,6 +35,14 @@ function contextOver(files: string[]): CheckContext {
       if (matched.length === 0) throw new Error(`selection "${label}" matched none`);
       return matched;
     },
+    // Text-sniffing is not what these cases are about — the sniff itself is
+    // covered by file-kinds' unit tests and by the real run — so this hands
+    // back the same selection without opening anything.
+    textFiles: (label: string): string[] => {
+      const matched = files.filter(() => true);
+      if (matched.length === 0) throw new Error(`selection "${label}" matched none`);
+      return matched;
+    },
     walk: (): string[] => {
       throw new Error("not used");
     },

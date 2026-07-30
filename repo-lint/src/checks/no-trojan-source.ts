@@ -3,7 +3,6 @@
 import { resolve } from "node:path";
 import { hasConfusablesInFiles } from "anti-trojan-source";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { isScannableText } from "#repo-lint/file-kinds";
 import { toRepoRelative } from "#repo-lint/repo-relative";
 
 /**
@@ -44,7 +43,7 @@ export const noTrojanSource = {
   name: "no-trojan-source",
   description: "Source contains no bidi overrides or invisible controls",
   async run(context: CheckContext): Promise<Finding[]> {
-    const files = context.files(isScannableText, "readable tracked files");
+    const files = context.textFiles("readable tracked files");
 
     const reports = await hasConfusablesInFiles({
       filePaths: files.map((file) => resolve(context.repoRoot, file)),

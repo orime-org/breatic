@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { CheckContext } from "#repo-lint/check";
+import { isScannableText, isTextContent } from "#repo-lint/file-kinds";
 
 /**
  * Builds a context over an in-memory file set.
@@ -48,6 +49,17 @@ export function fakeContext(
         );
       }
       return matched;
+    },
+    textFiles(label: string): string[] {
+      const readable = this.files(isScannableText, label).filter((path) =>
+        isTextContent(files[path] ?? ""),
+      );
+      if (readable.length === 0) {
+        throw new Error(
+          `selection "${label}" matched files, but none of them turned out to be text.`,
+        );
+      }
+      return readable;
     },
     read(file: string): string {
       const content = files[file];

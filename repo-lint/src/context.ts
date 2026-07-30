@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { CheckContext } from "#repo-lint/check";
+import { isScannableText, isTextContent } from "#repo-lint/file-kinds";
 
 /**
  * Lists the files the repository is about to consist of.
@@ -104,6 +105,19 @@ export function createContext(repoRoot: string): CheckContext {
         );
       }
       return found;
+    },
+
+    textFiles(label: string): string[] {
+      const readable = this.files(isScannableText, label).filter((path) =>
+        isTextContent(this.read(path)),
+      );
+      if (readable.length === 0) {
+        throw new Error(
+          `selection "${label}" matched files, but none of them turned out to be text. ` +
+            `A scan with nothing readable reports clean forever, so this is a failure, not a pass.`,
+        );
+      }
+      return readable;
     },
 
     read(file: string): string {

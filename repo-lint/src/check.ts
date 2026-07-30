@@ -55,6 +55,21 @@ export interface CheckContext {
   ): string[];
 
   /**
+   * Every file a text scan can actually read, having opened them to find out.
+   *
+   * For the checks that go through a file character by character. An
+   * extension list alone is not enough to decide this: a binary whose kind
+   * nobody listed is read as text and answers with one finding per control
+   * byte — measured at 2400 findings for 20 KB of random data, which buries
+   * whatever the check was looking for. The extension list stays as the fast
+   * path; this opens what survives it and judges the bytes.
+   * @param label What the selection is, named in the error if it is empty.
+   * @returns The readable paths.
+   * @throws {Error} If nothing is readable, for the same reason `files` does.
+   */
+  textFiles(label: string): string[];
+
+  /**
    * Reads a tracked file.
    * @param file Repo-relative path.
    * @returns Its contents as UTF-8 text.

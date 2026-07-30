@@ -25,6 +25,10 @@ function withTokens(css: string): CheckContext {
   return {
     repoRoot: REPO_ROOT,
     files: (): string[] => [TOKENS],
+    // Text-sniffing is not what these cases are about — the sniff itself is
+    // covered by file-kinds' unit tests and by the real run — so this hands
+    // back the same selection without opening anything.
+    textFiles: (): string[] => [TOKENS],
     walk: (): string[] => {
       throw new Error("not used");
     },
