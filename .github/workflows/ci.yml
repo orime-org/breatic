@@ -160,16 +160,6 @@ jobs:
         # services again. See scripts/lint-no-raw-sql-outside-repo.sh.
         run: pnpm lint:no-raw-sql-outside-repo
 
-      - name: Lint doc-links (TSDoc {@link} targets must resolve)
-        # A comment pointing at a deleted symbol is a lie that no other check
-        # catches: tsc, tests and runtime all ignore prose. #1840 found a
-        # comment referencing `insertInitialState`, moved out of the repo
-        # months earlier. This asks a question with a definite answer — does
-        # the symbol resolve — rather than judging whether a sentence is true.
-        # Also runs --self-test, so a checker that can no longer fail fails CI.
-        # See scripts/lint-doc-links.sh for scope and known gaps.
-        run: pnpm lint:doc-links
-
       - name: Build packages (shared → core)
         run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
 

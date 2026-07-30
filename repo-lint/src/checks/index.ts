@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check } from "#repo-lint/check";
+import { docLinks } from "#repo-lint/checks/doc-links";
 import { eofNewline } from "#repo-lint/checks/eof-newline";
 import { migrationStyle } from "#repo-lint/checks/migration-style";
 import { noAuthBypassResidue } from "#repo-lint/checks/no-auth-bypass-residue";
@@ -23,6 +24,7 @@ import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
  * repository itself rather than any one file's contents.
  */
 export const CHECKS: readonly Check[] = [
+  docLinks,
   eofNewline,
   migrationStyle,
   noAuthBypassResidue,
