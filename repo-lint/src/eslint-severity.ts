@@ -48,14 +48,17 @@ export async function loudestSeverities(
   const rank: Record<Severity, number> = { off: 0, warn: 1, error: 2 };
   const loudest = new Map<string, Severity>();
 
-  // Longest first, so a file inside packages/web is attributed to web's own
-  // config rather than to the root one that never reads it.
-  const roots = [...configDirs].sort((a, b) => b.length - a.length);
+  const roots = [...configDirs];
 
   for (const root of roots) {
     const owned = files.filter((file) =>
       root === "" ? true : file.startsWith(`${root}/`),
     );
+    // Attribution happens here, and only here: a file under a deeper config
+    // directory belongs to that directory, so it is dropped from this one.
+    // ESLint started in packages/web never reads the root config, and asking
+    // the root about a web file would answer with rules that do not govern it.
+    //
     // Every file, not a sample of them. A rule's glob can be as narrow as one
     // filename — service-observability names the three service entries, and
     // test-file-location only ever matches a test — so a representative file
@@ -72,7 +75,12 @@ export async function loudestSeverities(
     const eslint = new ESLint({ cwd: join(repoRoot, root) });
     for (const probe of probes) {
       const relative = root === "" ? probe : probe.slice(root.length + 1);
+      // Undefined for a path the config ignores — measured against ESLint 10,
+      // which answers that way rather than throwing. An ignored file has no
+      // severities to contribute, and reading through the undefined threw a
+      // TypeError naming neither the file nor this check.
       const config = await eslint.calculateConfigForFile(relative);
+      if (config === undefined || config === null) continue;
       for (const [id, entry] of Object.entries(config.rules ?? {})) {
         const severity = severityOf(entry);
         const seen = loudest.get(id);

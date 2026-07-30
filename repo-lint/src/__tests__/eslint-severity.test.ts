@@ -129,4 +129,25 @@ describe("loudestSeverities", () => {
     ]);
     expect(severities.get("eqeqeq")).toBe("error");
   });
+
+  it("passes over a file the config globally ignores", async () => {
+    // calculateConfigForFile returns undefined for an ignored path — measured
+    // against ESLint 10 — and reading .rules off that throws a TypeError that
+    // names neither the file nor the check. An ignored file has no severities
+    // to contribute, so it is simply not asked.
+    writeFileSync(
+      join(root, "eslint.config.mjs"),
+      `export default [
+  { ignores: ["src/generated/**"] },
+  { files: ["src/**/*.js"], rules: { eqeqeq: "error" } },
+];\n`,
+    );
+    mkdirSync(join(root, "src/generated"), { recursive: true });
+    writeFileSync(join(root, "src/generated/big.js"), "var a = 1;\n");
+    const severities = await loudestSeverities(root, [""], [
+      "src/a.js",
+      "src/generated/big.js",
+    ]);
+    expect(severities.get("eqeqeq")).toBe("error");
+  });
 });
