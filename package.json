@@ -24,7 +24,6 @@
     "lint:migration-style": "bash scripts/lint-migration-style.sh && bash scripts/lint-migration-style.sh --self-test",
     "lint:no-private-repo-path": "bash scripts/lint-no-private-repo-path.sh && bash scripts/lint-no-private-repo-path.sh --self-test",
     "lint:doc-links": "bash scripts/lint-doc-links.sh && bash scripts/lint-doc-links.sh --self-test",
-    "lint:dev-proxy-target": "bash scripts/lint-dev-proxy-target.sh && bash scripts/lint-dev-proxy-target.sh --self-test",
     "lint:no-cjk": "bash scripts/lint-no-cjk.sh",
     "lint:no-hardcoded-secrets": "bash scripts/lint-no-hardcoded-secrets.sh",
     "lint:service-logging": "bash scripts/lint-service-logging.sh",

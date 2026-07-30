@@ -407,4 +407,21 @@ export default [
       'breatic/overlay-surface': 'error',
     },
   },
+  {
+    // Every file in the package, root config files included — the dev proxy
+    // is decided in proxy-targets.mts / dev-ports.mts / vite.config.mts,
+    // none of which live under src/. Scoping by directory rather than by
+    // filename is the point: the guard this replaces named vite.config.ts,
+    // went blind when the file became .mts, and reported clean for months.
+    files: ['**/*.{ts,tsx,mts,cts,js,mjs,cjs}'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-deployed-host': 'error',
+    },
+  },
+  {
+    // Build output and Playwright artefacts are not ours to lint. Without
+    // this the package-wide scope above would try to parse minified bundles.
+    ignores: ['dist/**', 'test-results/**', 'coverage/**', 'playwright-report/**'],
+  },
 ];

@@ -4,6 +4,7 @@ import { activeBorder } from "#rules/rules/active-border";
 import { hoverPattern } from "#rules/rules/hover-pattern";
 import { noCollabAuthPrimitives } from "#rules/rules/no-collab-auth-primitives";
 import { noCorsWildcardCredentials } from "#rules/rules/no-cors-wildcard-credentials";
+import { noDeployedHost } from "#rules/rules/no-deployed-host";
 import { noDrizzleTypeLeak } from "#rules/rules/no-drizzle-type-leak";
 import { noInlineScrollbar } from "#rules/rules/no-inline-scrollbar";
 import { noIoredisOutsideCore } from "#rules/rules/no-ioredis-outside-core";
@@ -41,6 +42,7 @@ export const breaticPlugin = {
     "hover-pattern": hoverPattern,
     "no-collab-auth-primitives": noCollabAuthPrimitives,
     "no-cors-wildcard-credentials": noCorsWildcardCredentials,
+    "no-deployed-host": noDeployedHost,
     "no-drizzle-type-leak": noDrizzleTypeLeak,
     "no-inline-scrollbar": noInlineScrollbar,
     "no-ioredis-outside-core": noIoredisOutsideCore,

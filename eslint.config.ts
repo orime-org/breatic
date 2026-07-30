@@ -396,6 +396,16 @@ export default tseslint.config(
     },
   },
   {
+    // Every package: a deployed host hardcoded in the server or the worker
+    // is the same mistake as one in the dev proxy, and neither reads its
+    // target from source. Tests included — a test that talks to production
+    // is the version of this that nobody notices until it does damage.
+    files: ["packages/*/src/**/*.{ts,tsx}"],
+    rules: {
+      "breatic/no-deployed-host": "error",
+    },
+  },
+  {
     ignores: ["**/dist/**", "**/node_modules/**", "**/*.js", "**/*.mjs"],
   },
 );
