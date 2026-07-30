@@ -380,6 +380,15 @@ export async function httpRequest(
         : new Error(`${label} request to ${url} failed: ${String(failure)}`);
     }
 
+    // The response we are about to walk away from has no owner. Ownership was
+    // only ever defined for two of the three outcomes: an ok response and the
+    // final non-ok one both go to a guard that holds `abortRequest`. The one
+    // we retry past was left with nobody — `dispose()` above keeps the request
+    // alive on purpose, because a returned handle still needs it, so this is
+    // the one path that has to say "not this one". A body left unread and
+    // un-aborted holds its connection until the peer gives up.
+    if (abortRequest !== null) abortRequest();
+
     // Cancellable: a user who presses stop 20 ms into an eight-second
     // `Retry-After` backoff should not wait it out, and must not have one
     // more attempt dispatched on their behalf afterwards. Rejecting here

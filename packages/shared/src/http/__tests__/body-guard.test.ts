@@ -217,6 +217,99 @@ describe("response body idle deadline", () => {
     await expect(res.text()).rejects.toThrow(/user pressed stop/);
   });
 
+  it("cancelling the stream leaves no unhandled rejection", async () => {
+    // Cancelling used to tear the request down first, which errors the source
+    // body; the spec then has `cancel()` on an errored stream return a
+    // rejected promise, and that rejection was left floating. Node terminates
+    // the process for an unhandled rejection, so a consumer that merely broke
+    // out of a `for await` — or whose disk filled mid-write — killed the whole
+    // worker with every other job in flight. Measured in a child process:
+    // `engineering/demo/2026-07-30-stream-cancel-crash-repro.ts`.
+    const rejections: unknown[] = [];
+    const capture = (reason: unknown): void => {
+      rejections.push(reason);
+    };
+    process.on("unhandledRejection", capture);
+
+    try {
+      const fetchImpl = ((_url: string, init?: RequestInit): Promise<Response> => {
+        const signal = init?.signal;
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("first"));
+            // A real body errors when its request is aborted. Without this the
+            // cancel path cannot reject and the defect is invisible.
+            signal?.addEventListener("abort", () => {
+              controller.error(new DOMException("This operation was aborted", "AbortError"));
+            });
+          },
+        });
+        return Promise.resolve(new Response(stream, { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      const res = await httpRequest(URL_UNDER_TEST, {}, opts(fetchImpl, 5_000));
+      const reader = res.stream().getReader();
+      await reader.read();
+      await reader.cancel(new Error("consumer stopped early"));
+
+      // Let the microtask queue drain so any floating rejection surfaces.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", capture);
+    }
+  });
+
+  it("refuses a second read instead of answering with nothing", async () => {
+    // A one-shot resource read twice used to return an empty string, turning a
+    // caller's mistake into a plausible value. The platform's own `Response`
+    // throws, and the interface claims the same rule, so it has to hold.
+    const { response, push, finish } = streamingBody();
+    push("payload");
+    finish();
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, opts(fetchReturning(response)));
+    expect(await res.text()).toBe("payload");
+
+    await expect(res.text()).rejects.toThrow(/already consumed/);
+    await expect(res.json()).rejects.toThrow(/already consumed/);
+    await expect(res.arrayBuffer()).rejects.toThrow(/already consumed/);
+    expect(() => res.stream()).toThrow(/already consumed/);
+  });
+
+  it("tears the request down when cancelled before any read starts", async () => {
+    // The transport's per-attempt listener retires when the headers land, and
+    // the read path only listens while a read is in flight. A caller that holds
+    // the handle and cancels before reading used to leave the server streaming
+    // to nobody, because nothing was watching in between.
+    let aborted = false;
+    const fetchImpl = ((_url: string, init?: RequestInit): Promise<Response> => {
+      init?.signal?.addEventListener("abort", () => {
+        aborted = true;
+      });
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("first"));
+        },
+      });
+      return Promise.resolve(new Response(stream, { status: 200 }));
+    }) as unknown as typeof fetch;
+    const controller = new AbortController();
+
+    // Take the handle and never read it — just cancel.
+    await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchImpl, 5_000),
+      signal: controller.signal,
+    });
+    expect(aborted).toBe(false);
+
+    controller.abort(new Error("user pressed stop"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(aborted).toBe(true);
+  });
+
   it("exposes the metadata callers actually use without handing out the raw response", async () => {
     const { response, push, finish } = streamingBody(503);
     push("upstream is down");

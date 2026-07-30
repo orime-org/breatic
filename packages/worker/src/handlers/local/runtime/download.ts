@@ -15,9 +15,15 @@
  * a timeout nor a retry, and both mattered here: a stalled transfer never
  * returned, and the queue's lock extender keeps renewing the lock of a job
  * whose handler is stuck, so the job held a concurrency slot until the
- * process restarted rather than failing and being retried. A dropped
- * connection meanwhile failed the whole ffmpeg job, which then re-ran from
- * the beginning — re-downloading anyway, just far more expensively.
+ * process restarted rather than failing and being retried.
+ *
+ * What the transport replays is bounded, and worth being precise about: it
+ * covers failures up to and including the response headers. A connection that
+ * drops PART-WAY THROUGH the body is not replayed — the bytes are already
+ * being written to disk, so resuming would mean range requests and partial-file
+ * bookkeeping this layer does not do. Such a failure fails the job, which the
+ * queue then retries from the top. That is the same outcome as before this
+ * change; what improved is everything up to the first byte.
  *
  * Failure modes propagate as thrown `Error` — the caller is inside
  * `runLocalHandler` which will mark the task failed.

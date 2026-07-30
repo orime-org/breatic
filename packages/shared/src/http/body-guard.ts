@@ -27,8 +27,18 @@
  * A response whose body can only be read under an idle deadline.
  *
  * Mirrors the small part of `Response` the callers use. Each read method
- * consumes the body, so exactly one of them may be called — same rule as
- * the platform's own `Response`.
+ * consumes the body, so exactly one of them may be called — same rule as the
+ * platform's own `Response`, and enforced the same way: a second read throws.
+ *
+ * There is no "discard without reading" member, and that is deliberate. A
+ * caller that takes a handle and neither reads nor cancels it holds the
+ * connection until the peer times out — the same as holding an unread
+ * `Response`. Adding a release method looked attractive until it was measured:
+ * every plausible implementation aborts the request, and callers would reach
+ * for it in `finally` blocks that also run on the success path, tearing down
+ * transfers that were fine. The reachable version of the problem was closed at
+ * the source instead — the transport now tears down the attempts it retries
+ * past, which is where responses were actually being dropped.
  */
 export interface GuardedResponse {
   /** Whether the status is in the 2xx range. */
@@ -198,11 +208,62 @@ function concat(chunks: readonly Uint8Array[]): Uint8Array {
 
 /**
  * Wrap a response so its body can only be read under an idle deadline.
+ *
+ * The handle takes ownership of the request. Two obligations come with that,
+ * both learned by getting them wrong:
+ *
+ * A cancellation has to reach the live request for as long as the request is
+ * live — not merely while a read happens to be in flight. The transport's
+ * per-attempt listener retires when the headers land, and `readChunk` listens
+ * only for the duration of one pending read, so between "handle returned" and
+ * "first read issued" nothing was watching: pressing stop left the server
+ * streaming to nobody. That window is covered here rather than by asking every
+ * caller to read immediately, an invariant invisible at the call site.
+ *
+ * The body is a one-shot resource, so a second read is refused instead of
+ * being answered with nothing. The platform's own `Response` throws; returning
+ * an empty string would turn a caller's mistake into a plausible value.
  * @param ctx - The response, deadline, cancellation and teardown hook.
  * @returns A handle exposing the metadata callers use and guarded reads.
  */
 export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
   const { response } = ctx;
+
+  let claimed = false;
+
+  /**
+   * Forward a cancellation that arrives before any read has started.
+   *
+   * Deliberately narrow: once a read owns the body, `readChunk` handles
+   * cancellation itself, and it must reject with the caller's reason BEFORE
+   * aborting — the abort errors the source stream, and that error would
+   * otherwise win the race and mask the reason. A listener that stayed armed
+   * here would preempt exactly that ordering, so `claim` retires it.
+   */
+  const onCallerAbort = (): void => {
+    ctx.abortRequest();
+  };
+  ctx.callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+
+  /** Retire the pre-read cancellation listener. */
+  const settle = (): void => {
+    ctx.callerSignal?.removeEventListener("abort", onCallerAbort);
+  };
+
+  /**
+   * Take ownership of the body for one read.
+   * @param method - The read method being invoked, for the message.
+   * @throws {Error} When another read already consumed the body.
+   */
+  const claim = (method: string): void => {
+    if (claimed) {
+      throw new Error(
+        `${ctx.label} response body was already consumed; ${method}() cannot read it again`,
+      );
+    }
+    claimed = true;
+    settle();
+  };
 
   return {
     ok: response.ok,
@@ -210,29 +271,32 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
     headers: response.headers,
 
     async text(): Promise<string> {
+      claim("text");
       return new TextDecoder().decode(concat(await drain(ctx)));
     },
 
     async json(): Promise<unknown> {
-      const raw = new TextDecoder().decode(concat(await drain(ctx)));
-      return JSON.parse(raw);
+      claim("json");
+      return JSON.parse(new TextDecoder().decode(concat(await drain(ctx))));
     },
 
     async arrayBuffer(): Promise<ArrayBuffer> {
+      claim("arrayBuffer");
       const joined = concat(await drain(ctx));
       // Allocate and copy rather than slicing the view's own `buffer`. That
       // property is typed `ArrayBuffer | SharedArrayBuffer`, so slicing it
       // yields a union no `ArrayBuffer` consumer accepts — and whether the
-      // surrounding tsconfig happens to complain varies by package, which is
-      // how a cast here passed one checker while failing another. Allocating
-      // the exact size is unambiguous, and it also guarantees the caller gets
-      // a buffer sized to the bytes rather than to a larger allocation.
+      // surrounding tsconfig complains varies by package, which is how a cast
+      // here passed one checker while failing another. Allocating the exact
+      // size is unambiguous, and hands back a buffer sized to the bytes rather
+      // than to a possibly larger allocation.
       const out = new ArrayBuffer(joined.byteLength);
       new Uint8Array(out).set(joined);
       return out;
     },
 
     stream(): ReadableStream<Uint8Array> {
+      claim("stream");
       const body = response.body;
       if (body === null) {
         return new ReadableStream<Uint8Array>({
@@ -244,8 +308,8 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
       const reader = body.getReader();
       return new ReadableStream<Uint8Array>({
         async pull(controller) {
-          // Each pull is deadline-guarded, so the protection travels with
-          // the stream rather than stopping at this function's boundary.
+          // Each pull is deadline-guarded, so the protection travels with the
+          // stream rather than stopping at this function's boundary.
           const { done, value } = await readChunk(reader, ctx);
           if (done) {
             controller.close();
@@ -255,8 +319,30 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
           if (value !== undefined) controller.enqueue(value);
         },
         cancel(reason): void {
-          ctx.abortRequest();
-          void reader.cancel(reason);
+          // The order here is the OPPOSITE of readChunk's. There, rejecting
+          // before the teardown keeps the real reason from being masked by the
+          // abort. Here there is no race and nothing to reject — the consumer
+          // initiated this and already holds its own error — while aborting
+          // FIRST is what makes the following cancel fail: the streams spec has
+          // `cancel()` on an already-errored stream return a promise rejected
+          // with the stored error, without running the underlying cancel
+          // algorithm.
+          //
+          // And that rejection must be handled. Left floating it is an
+          // unhandled rejection, which Node terminates the process for. Only
+          // collab installs a safety net, so a consumer that merely broke out
+          // of a `for await` — or whose disk filled mid-write — took the whole
+          // worker down with every other job in flight. Measured in a child
+          // process: `engineering/demo/2026-07-30-stream-cancel-crash-repro.ts`.
+          void reader
+            .cancel(reason)
+            .catch(() => {
+              // Already errored or released: nothing left to release, and the
+              // consumer's own failure is the one that counts.
+            })
+            .finally(() => {
+              ctx.abortRequest();
+            });
         },
       });
     },
