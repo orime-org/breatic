@@ -40,11 +40,17 @@ const DARKEST = 18;
  * Token families whose values are colours by design and not neutrals.
  *
  * Only three of the guard's seven exemption terms are carried over. The
- * other four — brand, shadow, destructive, canvas-grid — were measured
- * dead: removing each leaves the file clean, because the tokens they name
- * either do not start with `--color-` (so they never reach this test at
- * all) or no longer exist. An exemption that cannot fire only serves to
- * admit a real violation there later.
+ * other four were measured dead — removing each leaves the file clean —
+ * for two different reasons worth stating separately. `brand`, `shadow`
+ * and `destructive` name tokens that either do not start with `--color-`,
+ * so they never reach this test, or no longer exist at all.
+ * `canvas-grid` is different: `--color-canvas-grid` does start with
+ * `--color-` and does reach the test — it passes on its own merits,
+ * because both its values are already equal-channel greys. Exempting it
+ * would mean a future tint of the dot grid went unreported.
+ *
+ * An exemption that cannot fire only serves to admit a real violation
+ * there later, which is why none of the four is carried over.
  */
 const COLOURFUL = /(palette|status|note)/i;
 

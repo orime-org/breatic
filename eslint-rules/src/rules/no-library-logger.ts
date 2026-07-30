@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
-
-/** The levels the guard this rule replaces counted as logging. */
-const LOGGER_LEVELS = ["info", "warn", "error", "debug", "fatal", "trace"];
+import { isLoggerLevelAccess } from "#rules/logger-shape";
 
 /**
  * Reads the accessed member's name, used only to fill in the message.
@@ -52,9 +50,11 @@ export const noLibraryLogger = createRule({
   defaultOptions: [],
   create(context) {
     return {
-      [`MemberExpression[computed=false][object.name='logger'][property.name=/^(${LOGGER_LEVELS.join("|")})$/]`](
-        node: TSESTree.MemberExpression,
-      ): void {
+      MemberExpression(node: TSESTree.MemberExpression): void {
+        // Any logger, not only a bare `logger` identifier: a scoped, child
+        // or injected one is the shape most likely to appear inside a class
+        // or a service, and the guard this replaces matched all of them.
+        if (!isLoggerLevelAccess(node)) return;
         context.report({
           node,
           messageId: "noLoggerCall",

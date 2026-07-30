@@ -4,6 +4,22 @@ import { describe, expect, it } from "vitest";
 import { noUnresolvedAliasInDist } from "#repo-lint/checks/no-unresolved-alias-in-dist";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
 
+/** The aliases the real tsconfigs declare, which the check derives from. */
+const TSCONFIG = JSON.stringify({
+  compilerOptions: {
+    paths: {
+      "@shared/*": ["../shared/src/*"],
+      "@core/*": ["../core/src/*"],
+      "@domain/*": ["../domain/src/*"],
+      "@server/*": ["./src/*"],
+      "@worker/*": ["../worker/src/*"],
+      "@collab/*": ["../collab/src/*"],
+      "@web/*": ["./src/*"],
+      "@locales/*": ["../../locales/*"],
+    },
+  },
+});
+
 /**
  * Builds a context holding one package with the given built output.
  * @param bundle Contents of that package's built module.
@@ -13,6 +29,7 @@ import { fakeContext } from "#repo-lint/__tests__/fake-context";
 function built(bundle: string, name = "shared") {
   return fakeContext({
     [`packages/${name}/package.json`]: "{}",
+    [`packages/${name}/tsconfig.json`]: TSCONFIG,
     [`packages/${name}/dist/index.js`]: bundle,
   });
 }
@@ -84,6 +101,7 @@ describe("no-unresolved-alias-in-dist", () => {
   it("skips source maps, which carry the pre-bundle source verbatim", () => {
     const context = fakeContext({
       "packages/shared/package.json": "{}",
+      "packages/shared/tsconfig.json": TSCONFIG,
       "packages/shared/dist/index.js": "const a = 1;\n",
       "packages/shared/dist/index.js.map": '{"sources":["@core/x.ts"]}',
     });
@@ -101,7 +119,10 @@ describe("no-unresolved-alias-in-dist", () => {
   it("fails rather than reports clean when a package is not built", () => {
     // The failure mode this check exists to prevent, one level up: an
     // unbuilt tree must not read as a clean one.
-    const context = fakeContext({ "packages/shared/package.json": "{}" });
+    const context = fakeContext({
+      "packages/shared/package.json": "{}",
+      "packages/shared/tsconfig.json": TSCONFIG,
+    });
     expect(() => noUnresolvedAliasInDist.run(context)).toThrow(/does not exist/);
   });
 
@@ -109,5 +130,28 @@ describe("no-unresolved-alias-in-dist", () => {
     expect(() => noUnresolvedAliasInDist.run(fakeContext({ "a.md": "x" }))).toThrow(
       /matched none/,
     );
+  });
+
+  it("derives the alias list rather than carrying a copy of it", () => {
+    // The hand-kept list is how the shell guard went blind: it named seven
+    // prefixes while the tsconfigs declared eight. An alias declared but
+    // absent from any hardcoded list must still be caught.
+    const context = fakeContext({
+      "packages/shared/package.json": "{}",
+      "packages/shared/tsconfig.json": JSON.stringify({
+        compilerOptions: { paths: { "@invented/*": ["../invented/src/*"] } },
+      }),
+      "packages/shared/dist/index.js": 'import x from "@invented/thing.js";\n',
+    });
+    expect(noUnresolvedAliasInDist.run(context)).toHaveLength(1);
+  });
+
+  it("fails rather than reports clean when no tsconfig declares an alias", () => {
+    const context = fakeContext({
+      "packages/shared/package.json": "{}",
+      "packages/shared/tsconfig.json": "{}",
+      "packages/shared/dist/index.js": "const a = 1;\n",
+    });
+    expect(() => noUnresolvedAliasInDist.run(context)).toThrow(/match nothing/);
   });
 });

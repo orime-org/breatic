@@ -18,6 +18,30 @@ ruleTester.run("no-library-logger", noLibraryLogger, {
     { code: 'export const hint = "the route handler calls logger.info, not us";' },
   ],
   invalid: [
+    // A scoped, child or injected logger is the shape most likely to appear
+    // inside a class or a service. The text guard matched all of these; a
+    // rule that only knew the bare identifier let exactly them through.
+    {
+      filename: "/repo/packages/core/src/a.ts",
+      code: `class Service { run() { this.logger.error("x"); } }`,
+      errors: [{ messageId: "noLoggerCall" }],
+    },
+    {
+      filename: "/repo/packages/core/src/a.ts",
+      code: `function run(deps) { deps.logger.warn("x"); }`,
+      errors: [{ messageId: "noLoggerCall" }],
+    },
+    {
+      filename: "/repo/packages/domain/src/a.ts",
+      code: `function run(ctx) { ctx.logger.info("x"); }`,
+      errors: [{ messageId: "noLoggerCall" }],
+    },
+    {
+      filename: "/repo/packages/shared/src/a.ts",
+      code: `childLogger.debug("x");`,
+      errors: [{ messageId: "noLoggerCall" }],
+    },
+
     {
       code: "declare const logger: { info: (m: string) => void };\nlogger.info('started');",
       errors: [{ messageId: "noLoggerCall", data: { method: "info" }, line: 2, column: 1 }],

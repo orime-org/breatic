@@ -16,11 +16,15 @@ export interface CheckContext {
   /** Absolute path of the repository root. */
   readonly repoRoot: string;
   /**
-   * Every file git tracks, repo-relative, matching the predicate.
+   * Every file the repository is about to consist of, matching the predicate.
    *
-   * Sourced from `git ls-files`, so build output, dependencies and anything
-   * else ignored is absent by construction — no per-check exclude list to
-   * maintain, and none to drift.
+   * That is the tracked set plus anything written but not committed yet, and
+   * minus anything ignored — build output, dependencies, local scratch. It is
+   * deliberately not just the tracked set: a file that exists in the working
+   * tree is part of what the next commit contains, and judging only what is
+   * committed means a new file reads as clean right up until it lands.
+   * Either way there is no per-check exclude list to maintain, and none to
+   * drift.
    * @param select Which of the tracked files this check is about.
    * @param label What the selection is, named in the error if it is empty.
    * @returns The matching paths.

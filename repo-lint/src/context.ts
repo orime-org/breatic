@@ -62,7 +62,7 @@ export function createContext(repoRoot: string): CheckContext {
       const matched = tracked.filter(select);
       if (matched.length === 0) {
         throw new Error(
-          `selection "${label}" matched none of the ${tracked.length} tracked files. ` +
+          `selection "${label}" matched none of the ${tracked.length} files in the working tree. ` +
             `A filter that selects nothing reports clean forever, so this is a failure, not a pass.`,
         );
       }

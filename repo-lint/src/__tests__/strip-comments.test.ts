@@ -57,6 +57,43 @@ describe("stripComments", () => {
     expect(stripComments("a\n/* never closed\nb\nc\n", "js")).toBe("a\n\n\n\n");
   });
 
+
+  it("does not open a block comment from inside a string literal", () => {
+    // Live regression: `accept='image/*,video/*'` opened a block that never
+    // closed, so every later line in that file became invisible to the
+    // checks reading the result — silently, and file-wide.
+    const text = `const accept = 'image/*,video/*';\nconst c = "bg-brand-500";\n`;
+    expect(stripComments(text, "js")).toBe(text);
+  });
+
+  it("does not treat // inside a string as a line comment", () => {
+    const text = `const a = <a href="https://x.io" className="bg-brand-500" />;\n`;
+    expect(stripComments(text, "js")).toBe(text);
+  });
+
+  it("keeps a string open across lines only for a template literal", () => {
+    // A single-quoted string cannot span lines, so an unbalanced quote must
+    // not swallow the rest of the file.
+    const text = `const a = 'unclosed;\nconst b = "bg-brand-500";\n`;
+    expect(stripComments(text, "js")).toContain("bg-brand-500");
+  });
+
+  it("handles an escaped quote inside a string", () => {
+    const text = `const a = "he said \\"/*\\" and left";\nconst b = 1;\n`;
+    expect(stripComments(text, "js")).toBe(text);
+  });
+
+  it("still strips a comment that follows a string on the same line", () => {
+    expect(stripComments(`const a = "x"; // why\n`, "js")).toBe(
+      `const a = "x"; \n`,
+    );
+  });
+
+  it("does not open a block from a string in CSS either", () => {
+    const text = `a { background: url("/*not-a-comment*/"); color: red; }\n`;
+    expect(stripComments(text, "css")).toBe(text);
+  });
+
   it("leaves text with no comments untouched", () => {
     const text = "const a = 1;\nconst b = 2;\n";
     expect(stripComments(text, "js")).toBe(text);

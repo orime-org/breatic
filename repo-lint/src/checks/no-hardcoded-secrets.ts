@@ -5,13 +5,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { AUTHORED_TEXT, GENERATED } from "#repo-lint/file-kinds";
 import { toRepoRelative } from "#repo-lint/repo-relative";
-
-/** Text files a person authors, where a pasted credential would land. */
-const AUTHORED = /\.(ts|mts|cts|tsx|js|jsx|mjs|cjs|json|ya?ml|md|css|scss|html|sh|sql)$/;
-
-/** Machine-authored and large; nobody pastes a key into a lockfile. */
-const GENERATED = /(^|\/)pnpm-lock\.yaml$/;
 
 /**
  * How many paths to hand the scanner at once.
@@ -67,7 +62,7 @@ export const noHardcodedSecrets = {
   description: "No credential is written literally into a tracked file",
   run(context: CheckContext): Finding[] {
     const files = context.files(
-      (path) => AUTHORED.test(path) && !GENERATED.test(path),
+      (path) => AUTHORED_TEXT.test(path) && !GENERATED.test(path),
       "authored text files",
     );
 

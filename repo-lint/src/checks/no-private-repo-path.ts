@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { AUTHORED_TEXT, GENERATED } from "#repo-lint/file-kinds";
 
 /**
  * The private repository's name, assembled rather than written.
@@ -30,12 +31,6 @@ const PRIVATE_REFERENCE = new RegExp(
   [PRIVATE_REPO, ...PRIVATE_DIRECTORIES].join("|"),
 );
 
-/** File kinds a person reads. Binaries would only produce noise. */
-const TEXT = /\.(ts|mts|cts|tsx|js|mjs|cjs|json|ya?ml|md|css|scss|html|sh|sql)$/;
-
-/** Machine-authored, and large enough to slow every run down. */
-const GENERATED = /(^|\/)pnpm-lock\.yaml$/;
-
 /**
  * The public repository does not name paths inside the private one.
  *
@@ -63,7 +58,7 @@ export const noPrivateRepoPath = {
   description: "The public repo does not cite private-repo paths",
   run(context: CheckContext): Finding[] {
     const files = context.files(
-      (path) => TEXT.test(path) && !GENERATED.test(path),
+      (path) => AUTHORED_TEXT.test(path) && !GENERATED.test(path),
       "public text files",
     );
 

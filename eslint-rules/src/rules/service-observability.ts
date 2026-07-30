@@ -2,21 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
+import { isLoggerLevelAccess } from "#rules/logger-shape";
 
 /** The long-running services, each with one entry point. */
 const SERVICE_ENTRY = /packages\/(server|worker|collab)\/src\/index\.ts$/;
 
 /**
- * The three idiomatic ways a logger is obtained here.
+ * The two ways a logger is constructed here.
  *
- * Not stylistic alternatives — each service does it differently: collab
- * builds a named child, worker initialises the shared one, and server calls
- * a level on the default.
+ * Not stylistic alternatives: collab builds a named child and worker
+ * initialises the shared one. The third idiom — server calling a level on
+ * the default logger — is a call on an existing one rather than a
+ * construction, so it is recognised through LOGGER_LEVEL below.
  */
 const LOGGER_FACTORY = new Set(["createLogger", "initLogger"]);
-
-/** Levels whose presence proves a logger is in hand and being used. */
-const LOGGER_LEVEL = new Set(["info", "warn", "error", "debug", "fatal", "trace"]);
 
 /** The call that puts /healthz on the air. */
 const HEALTH_SERVER = "startHealthServer";
@@ -82,12 +81,7 @@ export const serviceObservability = createRule<
           callee.property.type === AST_NODE_TYPES.Identifier
         ) {
           if (callee.property.name === HEALTH_SERVER) hasHealthServer = true;
-          if (
-            LOGGER_LEVEL.has(callee.property.name) &&
-            calleeMentionsLogger(callee.object)
-          ) {
-            hasLogger = true;
-          }
+          if (isLoggerLevelAccess(callee)) hasLogger = true;
         }
       },
 
@@ -100,26 +94,3 @@ export const serviceObservability = createRule<
     };
   },
 });
-
-/**
- * Whether the object a level was called on is a logger.
- *
- * Accepts `logger.info(...)` and `something.logger.info(...)`, which is how
- * a scoped or child logger reads, and rejects `console.info(...)` — the
- * library boundary forbids that, and counting it here would let a service
- * satisfy the rule with the very thing another rule bans.
- * @param object The member expression's object.
- * @returns True when it names a logger.
- */
-function calleeMentionsLogger(object: TSESTree.Node): boolean {
-  if (object.type === AST_NODE_TYPES.Identifier) {
-    return /logger$/i.test(object.name);
-  }
-  if (
-    object.type === AST_NODE_TYPES.MemberExpression &&
-    object.property.type === AST_NODE_TYPES.Identifier
-  ) {
-    return /logger$/i.test(object.property.name);
-  }
-  return false;
-}

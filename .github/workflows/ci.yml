@@ -160,8 +160,8 @@ jobs:
         # services again. See scripts/lint-no-raw-sql-outside-repo.sh.
         run: pnpm lint:no-raw-sql-outside-repo
 
-      - name: Build packages (shared → core)
-        run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
+      - name: Build packages
+        run: pnpm turbo build
 
       - name: Repo-wide checks (repo-lint)
         # The invariants ESLint structurally cannot hold: they are about

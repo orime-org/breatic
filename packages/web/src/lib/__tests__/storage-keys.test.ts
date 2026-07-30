@@ -20,7 +20,7 @@ describe('storage-keys registry', () => {
   });
 
   it('pins STORAGE_PREFIX to "breatic."', () => {
-    // The project-wide rule (lint:storage-key-prefix): every persisted key
+    // The project-wide rule (breatic/storage-key-prefix): every persisted key
     // carries this prefix. Changing it is a breaking, cross-site decision.
     expect(STORAGE_PREFIX).toBe('breatic.');
   });

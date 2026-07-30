@@ -127,7 +127,7 @@ describe('frozen product terms (#1336)', () => {
    * translated form that collides with a genuine common word that legitimately
    * stays localized (画布 = drawing surface, 文件/文档 = a file, 時間軸/タイムライン
    * = the video-editor track, スペース/스페이스 = a Workspace substring), so they
-   * cannot go in the blanket lint:no-translated-product-noun denylist. They are
+   * cannot go in the blanket no-translated-product-noun denylist. They are
    * frozen per-key here instead: each space-type / entity key must CONTAIN the
    * English term inside its (still-translated) sentence and NOT contain any of
    * the localized noun forms. The blanket forms (Project / Collection / Work /
@@ -178,7 +178,7 @@ describe('frozen product terms (#1336)', () => {
   /**
    * Role-name collision keys (#1337 sentence freeze): most role-name
    * translations are collision-free and owned by the blanket
-   * lint:no-translated-product-noun denylist (所有者 / 编辑者 / 管理员 / …). A
+   * no-translated-product-noun denylist (所有者 / 编辑者 / 管理员 / …). A
    * few translated role forms collide with a legitimate word, so they cannot
    * go in the blanket guard and are frozen per-key here instead:
    *   - Editor: the Editor *tool* feature stays エディター / 에디터, so only the

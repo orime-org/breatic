@@ -3,48 +3,56 @@
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 
 /**
- * Every alias that only the build understands.
+ * Reads the alias prefixes the packages declare for themselves.
  *
- * Seven package prefixes plus `@locales`, which the guard this replaces
- * did not list — it is declared in the web package's tsconfig and would
- * have leaked as silently as any other. `@breatic/shared` is deliberately
- * absent: that is a real workspace package name and resolves at runtime.
+ * Derived rather than listed, because a hand-kept list is how the guard
+ * this replaces went blind: it named seven prefixes while the tsconfigs
+ * declared eight, so a leak through `@locales` was invisible. Reading the
+ * declarations means a new alias is covered the day it is added.
+ *
+ * A real package name is never in here — `@breatic/shared` resolves at
+ * runtime and is not an alias — because tsconfig `paths` only ever carries
+ * the compile-time ones. Asserted below rather than assumed.
+ * @param context Access to the repository's files.
+ * @returns The prefixes, without the leading `@` or the trailing `/*`.
+ * @throws {Error} If no tsconfig declares any alias, which would leave this
+ *   check matching nothing at all.
  */
-const INTERNAL_ALIASES = [
-  "shared",
-  "core",
-  "domain",
-  "collab",
-  "worker",
-  "server",
-  "web",
-  "locales",
-];
+function internalAliases(context: CheckContext): string[] {
+  const configs = context.files(
+    (path) => /^packages\/[^/]+\/tsconfig\.json$/.test(path),
+    "package tsconfigs",
+  );
+  const prefixes = new Set<string>();
+  for (const config of configs) {
+    // tsconfig permits comments, which JSON.parse does not.
+    const parsed = JSON.parse(
+      context.read(config).replace(/^\s*\/\/.*$/gm, ""),
+    ) as { compilerOptions?: { paths?: Record<string, unknown> } };
+    for (const key of Object.keys(parsed.compilerOptions?.paths ?? {})) {
+      const prefix = key.replace(/\/\*$/, "").replace(/^@/, "");
+      if (prefix !== "" && !prefix.includes("/")) prefixes.add(prefix);
+    }
+  }
+  if (prefixes.size === 0) {
+    throw new Error(
+      "no package tsconfig declares a path alias, so this check would match nothing",
+    );
+  }
+  return [...prefixes].sort();
+}
 
 /**
- * An alias surviving into built output, in any form that loads a module.
+ * Built modules, and nothing else in the output directory.
  *
- * `require` is in the alternation where the guard had only `from|import`.
- * Nothing in the repo emits CommonJS today, so that gap was latent rather
- * than live — but a build format is a configuration line away from
- * changing, and a guard that only covers today's output format is one
- * config change from silent.
+ * The anchor is what keeps source maps out: `index.js.map` ends in `.map`,
+ * so it does not match, and that matters — a map carries the pre-bundle
+ * source verbatim, aliases and all, while never being loaded by a bundler
+ * and so never able to fail to resolve. The guard this replaces expressed
+ * the same thing as a separate exclusion, which read like an oversight and
+ * was in fact redundant with its own extension filter.
  */
-const LEAKED_ALIAS = new RegExp(
-  `(from|import|require)\\s*\\(?\\s*['"]@(${INTERNAL_ALIASES.join("|")})/`,
-);
-
-/** Built modules. */
 const BUNDLE = /\.(js|mjs|cjs)$/;
-
-/**
- * Source maps carry the pre-bundle source, aliases and all.
- *
- * They are not loaded by a bundler and cannot fail to resolve, so a hit in
- * one is noise. This exclusion is undocumented in the guard and reads like
- * an oversight; it is load-bearing.
- */
-const SOURCE_MAP = /\.map$/;
 
 /**
  * Built output resolves on its own — no internal alias survives into it.
@@ -68,6 +76,11 @@ export const noUnresolvedAliasInDist = {
   name: "no-unresolved-alias-in-dist",
   description: "No internal path alias survives into built output",
   run(context: CheckContext): Finding[] {
+    const aliases = internalAliases(context);
+    const leaked = new RegExp(
+      `(from|import|require)\\s*\\(?\\s*['"]@(${aliases.join("|")})/`,
+    );
+
     const packages = context
       .files(
         (path) => /^packages\/[^/]+\/package\.json$/.test(path),
@@ -79,7 +92,7 @@ export const noUnresolvedAliasInDist = {
     for (const name of packages) {
       const bundles = context.walk(
         `packages/${name}/dist`,
-        (path) => BUNDLE.test(path) && !SOURCE_MAP.test(path),
+        (path) => BUNDLE.test(path),
         `built modules of ${name}`,
       );
 
@@ -88,7 +101,7 @@ export const noUnresolvedAliasInDist = {
           .read(file)
           .split("\n")
           .forEach((text, index) => {
-            const hit = LEAKED_ALIAS.exec(text);
+            const hit = leaked.exec(text);
             if (hit) {
               findings.push({
                 file,

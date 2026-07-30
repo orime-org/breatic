@@ -3,11 +3,8 @@
 import { resolve } from "node:path";
 import { hasConfusablesInFiles } from "anti-trojan-source";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { AUTHORED_TEXT } from "#repo-lint/file-kinds";
 import { toRepoRelative } from "#repo-lint/repo-relative";
-
-/** Text file kinds a human reads and a machine parses. */
-const SCANNED =
-  /\.(ts|mts|cts|tsx|js|jsx|mjs|cjs|json|ya?ml|md|css|scss|html|sh|sql)$/;
 
 /** Generated or secret-bearing files that are not human-authored source. */
 const SKIPPED = /(^|\/)(pnpm-lock\.yaml|\.env)/;
@@ -46,7 +43,7 @@ export const noTrojanSource = {
   description: "Source contains no bidi overrides or invisible controls",
   async run(context: CheckContext): Promise<Finding[]> {
     const files = context.files(
-      (path) => SCANNED.test(path) && !SKIPPED.test(path),
+      (path) => AUTHORED_TEXT.test(path) && !SKIPPED.test(path),
       "human-authored text files",
     );
 
