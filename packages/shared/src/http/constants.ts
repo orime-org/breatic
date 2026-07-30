@@ -11,7 +11,7 @@
  * (so "3" was three). Both knobs are gone; one transport now gets one answer,
  * compiled in, and the two cannot disagree again.
  *
- * What genuinely varies by scenario — per-attempt timeout, polling
+ * What genuinely varies by scenario — how long to wait for headers, polling
  * interval, total wait — stays a parameter, because a video generation and
  * a text lookup cannot share a timeout and a 2 GiB upload cannot share one
  * with a 100 KB one.
@@ -38,23 +38,20 @@ export const BASE_DELAY_MS = 1000;
 export const MAX_RETRY_AFTER_MS = 10_000;
 
 /**
- * Every HTTP verb, handed to the underlying client so that its own
- * method whitelist stops gating our predicate.
+ * Default maximum silence between response-body chunks.
  *
- * The client treats `methods` as a gate IN FRONT OF its retry hook — a
- * verb outside the list is never even offered to the hook (measured, see
- * `engineering/demo/2026-07-30-ky-retry-behaviour-probe-round3.mjs` check
- * C1). Since this transport keys on the caller's `replaySafe` fact rather
- * than on the verb, that gate has to be held open or a POST carrying a
- * vendor idempotency key could never be replayed.
+ * Idle, not total: the clock resets on every chunk, so a slow 500 MB asset
+ * download finishes while a connection that flushed headers and then went
+ * quiet is cut. Fixed rather than configured for the same reason as the
+ * retry count — "how long may a live connection send nothing" has one
+ * defensible answer, and it does not vary by vendor the way first-response
+ * latency does.
+ *
+ * 30s rather than the 300s that Node's own client defaults to: five minutes
+ * of silence before anyone notices is far longer than this system needs to
+ * tolerate, because a failure here is cheap — the transport replays, and a
+ * worker job that does fail lands in the queue's own retry chain. Go and
+ * python-requests ship no default at all, so there is no third precedent to
+ * follow; this number is our judgement, not an industry constant.
  */
-export const ALL_HTTP_METHODS: readonly string[] = [
-  "get",
-  "post",
-  "put",
-  "patch",
-  "delete",
-  "head",
-  "options",
-  "trace",
-];
+export const BODY_IDLE_TIMEOUT_MS = 30_000;

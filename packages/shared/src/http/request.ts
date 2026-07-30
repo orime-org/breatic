@@ -30,6 +30,10 @@ import {
   type RetryTrigger,
   type TransportErrorKind,
 } from "@shared/http/decide-retry.js";
+import { guardResponseBody, type GuardedResponse } from "@shared/http/body-guard.js";
+import { BODY_IDLE_TIMEOUT_MS } from "@shared/http/constants.js";
+import { redactUrl } from "@shared/http/redact-url.js";
+import { sleep } from "@shared/sleep.js";
 
 /** What happened on one attempt, for the application layer to log. */
 export type HttpRetryEvent =
@@ -66,11 +70,34 @@ export interface HttpRequestOptions {
    */
   replaySafe: boolean;
   /**
-   * Per-attempt timeout in milliseconds. Stays a parameter because it
-   * genuinely varies — vendor latencies differ by an order of magnitude
-   * and an upload's stall guard scales with file size.
+   * How long one attempt may wait FOR RESPONSE HEADERS, in milliseconds.
+   * Stays a parameter because it genuinely varies — vendor latencies differ
+   * by an order of magnitude and an upload's stall guard scales with file
+   * size.
+   *
+   * This deadline ends when the headers arrive. Reading the body is a
+   * separate wait with its own deadline; see `bodyIdleTimeoutMs`.
    */
   timeoutMs: number;
+  /**
+   * Maximum silence between body chunks, in milliseconds. Defaults to
+   * {@link BODY_IDLE_TIMEOUT_MS}.
+   *
+   * Idle rather than total, so a slow-but-alive transfer finishes while a
+   * connection that flushed headers and went quiet is cut. A total budget
+   * cannot serve both: the same number would have to tolerate a 500 MB
+   * asset download and catch a stalled 2 KB JSON reply.
+   *
+   * Separate from `timeoutMs` because the two waits differ by orders of
+   * magnitude in the same call — a vendor may take 60s to start answering
+   * and then stream steadily, or answer instantly and stall mid-body.
+   *
+   * Optional, and callers are expected to leave it alone: unlike
+   * first-response latency, "how long may a live connection send nothing"
+   * does not vary by vendor. It exists as a parameter so tests can drive it
+   * without waiting 30 seconds.
+   */
+  bodyIdleTimeoutMs?: number;
   /**
    * Sink for retry telemetry. This layer never logs (library packages must
    * not), so the application layer routes these to its logger.
@@ -108,6 +135,16 @@ interface AttemptDeadline {
   timedOut: () => boolean;
   /** Clears the timer and detaches the caller listener. */
   dispose: () => void;
+  /**
+   * Tear down the request itself.
+   *
+   * Handed to the body guard, which outlives the headers deadline: when a
+   * body goes idle, dropping the reader is not enough to release the
+   * connection — aborting the request is. Measured: an abort raised after
+   * the headers arrived does interrupt an in-flight body read
+   * (`engineering/demo/2026-07-30-body-idle-timeout-probe.mjs`, check 2).
+   */
+  abort: () => void;
 }
 
 /**
@@ -165,6 +202,10 @@ function startAttemptDeadline(
       clearTimeout(timer);
       callerSignal?.removeEventListener("abort", onCallerAbort);
     },
+    // Survives dispose() on purpose: dispose only retires the HEADERS
+    // deadline, while the request stays live for as long as its body is
+    // being read.
+    abort: (): void => controller.abort(),
   };
 }
 
@@ -196,15 +237,6 @@ function classifyThrown(
 }
 
 /**
- * Sleep between attempts.
- * @param ms - Milliseconds to wait.
- * @returns A promise resolving once the delay elapses.
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
  * Perform an HTTP request, replaying it when — and only when — the
  * caller's declared replay-safety and the failure kind together allow it.
  *
@@ -213,23 +245,51 @@ function sleep(ms: number): Promise<void> {
  * transport's. The agent's fetch tool needs the status of a 404; the
  * worker's provider transports want an exception. Only a failure that
  * produced no response at all rejects here.
+ *
+ * What comes back is a guarded handle, not the raw response. Handing out a
+ * raw one is what let the body deadline be bypassed: its holder can read a
+ * body with no deadline at all, and every call site did. The handle exposes
+ * the metadata callers use and reads that cannot escape the deadline.
  * @param url - Absolute request URL.
  * @param init - Standard fetch init (method, headers, body). Any `signal`
  *   on it is replaced by this call's per-attempt signal.
- * @param options - Replay-safety fact, per-attempt timeout, and hooks.
- * @returns The final response, ok or not.
+ * @param options - Replay-safety fact, both deadlines, and hooks.
+ * @returns The final response, ok or not, as a body-guarded handle.
  * @throws {Error} When no response was ever obtained — a network failure,
- *   an attempt timeout, or a caller abort — after replays are spent.
+ *   an attempt timeout, or a caller abort — after replays are spent. Also
+ *   when the caller cancels during a backoff wait.
  */
 export async function httpRequest(
   url: string,
   init: RequestInit,
   options: HttpRequestOptions,
-): Promise<Response> {
+): Promise<GuardedResponse> {
   const label = options.label ?? "http";
   const doFetch = options.fetchImpl ?? fetch;
 
+  /**
+   * Wrap a response so its body is read under the idle deadline.
+   * @param response - The response to hand out.
+   * @param abortRequest - Teardown for the attempt that produced it.
+   * @returns The guarded handle.
+   */
+  const guard = (response: Response, abortRequest: () => void): GuardedResponse =>
+    guardResponseBody({
+      response,
+      idleTimeoutMs: options.bodyIdleTimeoutMs ?? BODY_IDLE_TIMEOUT_MS,
+      callerSignal: options.signal,
+      abortRequest,
+      label,
+    });
+
+  // These three describe ONE attempt's outcome and are rewritten together on
+  // every pass. Letting them accumulate independently meant an early non-ok
+  // response outlived the attempt that produced it and was handed back as
+  // the outcome of a later, response-less failure — so a dropped connection
+  // surfaced as the vendor's earlier 503, and an SSRF block surfaced as an
+  // HTTP error instead of a refusal.
   let lastResponse: Response | null = null;
+  let lastAbort: (() => void) | null = null;
   let lastError: unknown = null;
 
   // Unbounded by design: `decideRetry` owns the budget and refuses past
@@ -243,12 +303,16 @@ export async function httpRequest(
 
     try {
       const response = await doFetch(url, { ...init, signal: deadline.signal });
-      if (response.ok) return response;
+      if (response.ok) return guard(response, deadline.abort);
       lastResponse = response;
+      lastAbort = deadline.abort;
+      lastError = null;
       status = response.status;
       retryAfter = response.headers.get("retry-after");
     } catch (error) {
       lastError = error;
+      lastResponse = null;
+      lastAbort = null;
       transportError = classifyThrown(
         error,
         options.signal,
@@ -256,6 +320,8 @@ export async function httpRequest(
         options.isFatal,
       );
     } finally {
+      // Retires the HEADERS deadline only. The request stays live while its
+      // body is read, which is why `deadline.abort` outlives this call.
       deadline.dispose();
     }
 
@@ -269,12 +335,16 @@ export async function httpRequest(
       attempt: index + 1,
     });
 
+    // Redacted at construction, not at the logging end: some vendors put
+    // their API key in the query string, and an event that carries one is a
+    // credential waiting for any future consumer to write it somewhere.
+    const safeUrl = redactUrl(url);
     options.onEvent?.(
       decision.retry
         ? {
             type: "retry",
             label,
-            url,
+            url: safeUrl,
             attempt: index + 1,
             delayMs: decision.delayMs,
             reason: decision.reason,
@@ -283,7 +353,7 @@ export async function httpRequest(
         : {
             type: "exhausted",
             label,
-            url,
+            url: safeUrl,
             attempts: index + 1,
             reason: decision.reason,
             status,
@@ -291,13 +361,19 @@ export async function httpRequest(
     );
 
     if (!decision.retry) {
-      if (lastResponse !== null) return lastResponse;
+      if (lastResponse !== null && lastAbort !== null) {
+        return guard(lastResponse, lastAbort);
+      }
       throw lastError instanceof Error
         ? lastError
         : new Error(`${label} request to ${url} failed: ${String(lastError)}`);
     }
 
-    await sleep(decision.delayMs);
+    // Cancellable: a user who presses stop 20 ms into an eight-second
+    // `Retry-After` backoff should not wait it out, and must not have one
+    // more attempt dispatched on their behalf afterwards. Rejecting here
+    // also means the abort — not the earlier response — is what surfaces.
+    await sleep(decision.delayMs, options.signal);
   }
 }
 

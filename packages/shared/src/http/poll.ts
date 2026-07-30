@@ -17,6 +17,7 @@
 
 import { sleep } from "@shared/sleep.js";
 import { extractNested } from "@shared/http/json-path.js";
+import { redactUrl } from "@shared/http/redact-url.js";
 import { httpRequestJson, type HttpRetryEvent } from "@shared/http/request.js";
 
 /** Terminal outcomes worth reporting to the application layer's logger. */
@@ -130,17 +131,17 @@ export async function pollUntilDone(
         options.errorPath === undefined
           ? "unknown"
           : String(extractNested(response, options.errorPath, "unknown"));
-      options.onEvent?.({ type: "poll_failed", label, url: pollUrl, status, error });
+      options.onEvent?.({ type: "poll_failed", label, url: redactUrl(pollUrl), status, error });
       throw new Error(`${label} task failed: ${error}`);
     }
 
-    await sleep(options.intervalMs);
+    await sleep(options.intervalMs, options.signal);
   }
 
   options.onEvent?.({
     type: "poll_timeout",
     label,
-    url: pollUrl,
+    url: redactUrl(pollUrl),
     maxWaitMs: options.maxWaitMs,
   });
   throw new Error(

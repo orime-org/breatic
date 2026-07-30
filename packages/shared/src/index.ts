@@ -221,6 +221,10 @@ export { sleep } from "@shared/sleep.js";
 // ever reached.
 export { httpRequest, httpRequestJson } from "@shared/http/request.js";
 export type { HttpRequestOptions, HttpRetryEvent } from "@shared/http/request.js";
+// The handle `httpRequest` returns. Exported because the worker's transports
+// name it in their own signatures; `guardResponseBody` itself stays internal
+// so nothing outside this package can mint an unguarded one.
+export type { GuardedResponse } from "@shared/http/body-guard.js";
 export { pollUntilDone } from "@shared/http/poll.js";
 export type { PollOptions, PollEvent } from "@shared/http/poll.js";
 export { bearerHeaders } from "@shared/http/headers.js";

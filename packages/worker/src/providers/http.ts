@@ -25,6 +25,7 @@ import {
   httpRequest,
   httpRequestJson,
   pollUntilDone as sharedPollUntilDone,
+  type GuardedResponse,
   type HttpRetryEvent,
   type PollEvent,
 } from "@breatic/shared";
@@ -135,24 +136,29 @@ export async function requestWithRetry(
 }
 
 /**
- * Like {@link requestWithRetry}, but hands back the raw response.
+ * Like {@link requestWithRetry}, but hands back the response itself so the
+ * caller decides how to read it.
  *
  * For the transports whose body is not JSON (ElevenLabs and Fish return
  * audio bytes) and for the ones that treat a non-ok status as a value rather
  * than an error (Topaz's cost estimate falls back to 0). Those callers were
  * previously on a bare `fetch` with no retry at all — not even for a 429.
+ *
+ * What comes back is body-guarded, not a raw `Response`: reading megabytes of
+ * audio needs a deadline as much as waiting for the headers did, and a raw
+ * response is exactly what let that deadline be skipped.
  * @param url - Request URL.
  * @param init - Fetch init (method, headers, body). Do not set `signal`
  *   here — each attempt is given its own deadline from `timeoutMs`.
- * @param options - Vendor name, replay-safety fact, per-attempt timeout.
- * @returns The final response, ok or not.
+ * @param options - Vendor name, replay-safety fact, header timeout.
+ * @returns The final response, ok or not, with its body under a deadline.
  * @throws {Error} On a failure that produced no response at all.
  */
 export async function requestRaw(
   url: string,
   init: RequestInit,
   options: ProviderRequestOptions,
-): Promise<Response> {
+): Promise<GuardedResponse> {
   return httpRequest(url, init, {
     replaySafe: options.replaySafe,
     timeoutMs: options.timeoutMs,
