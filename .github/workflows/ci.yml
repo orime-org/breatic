@@ -129,16 +129,6 @@ jobs:
         # scripts/lint-no-extreme-token-value.sh.
         run: pnpm lint:no-extreme-token-value
 
-      - name: Lint storage-key-prefix (web persisted keys)
-        # Enforce user decision 2026-06-08: every localStorage / sessionStorage
-        # key carries the `breatic.` prefix, routed through the central registry
-        # packages/web/src/lib/storage-keys.ts (STORAGE_KEYS.*). Bans bare
-        # non-prefixed key literals that risk a silent same-origin storage
-        # collision with extensions / sibling apps. The pre-React inline script
-        # in src/index.html is prefix-checked too (it cannot import the
-        # registry). See scripts/lint-storage-key-prefix.sh for scope.
-        run: pnpm lint:storage-key-prefix
-
       - name: Lint dependency-cruiser (import-boundary rules)
         # Declarative import-boundary enforcement (CI maximal-strictness
         # guard suite, inner ADR 2026-06-01) over all packages/*/src via

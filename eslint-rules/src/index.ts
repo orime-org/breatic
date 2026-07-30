@@ -23,6 +23,7 @@ import { noYjsDocumentsOutsideRepo } from "#rules/rules/no-yjs-documents-outside
 import { schemaTimestamps } from "#rules/rules/schema-timestamps";
 import { onePxBorder } from "#rules/rules/one-px-border";
 import { overlaySurface } from "#rules/rules/overlay-surface";
+import { storageKeyPrefix } from "#rules/rules/storage-key-prefix";
 import { singleToastEntry } from "#rules/rules/single-toast-entry";
 import { singleTooltipProvider } from "#rules/rules/single-tooltip-provider";
 import { testFileLocation } from "#rules/rules/test-file-location";
@@ -62,6 +63,7 @@ export const breaticPlugin = {
     "schema-timestamps": schemaTimestamps,
     "overlay-surface": overlaySurface,
     "single-toast-entry": singleToastEntry,
+    "storage-key-prefix": storageKeyPrefix,
     "single-tooltip-provider": singleTooltipProvider,
     "test-file-location": testFileLocation,
   },

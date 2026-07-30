@@ -398,6 +398,21 @@ export default [
     },
   },
   {
+    // Tests are exempt: a key a test hands to a hook is test input, not a
+    // key the product persists. The registry holds the real ones and its
+    // own unit test pins their prefixes.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/storage-key-prefix': 'error',
+    },
+  },
+  {
     // The overlay families are listed inside the rule, so this only has to
     // put it in front of the vendor components. Tooltip is in the directory
     // and in neither family; the rule ignores it by name.
