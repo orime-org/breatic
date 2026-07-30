@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CheckContext } from "#repo-lint/check";
 
@@ -67,6 +67,37 @@ export function createContext(repoRoot: string): CheckContext {
         );
       }
       return matched;
+    },
+
+    walk(
+      directory: string,
+      select: (path: string) => boolean,
+      label: string,
+    ): string[] {
+      const absolute = resolve(repoRoot, directory);
+      if (!existsSync(absolute)) {
+        throw new Error(
+          `${directory} does not exist. This check reads build output, so run the build first — ` +
+            `reporting clean because there was nothing to look at is the failure mode it exists to prevent.`,
+        );
+      }
+      const entries = readdirSync(absolute, {
+        recursive: true,
+        withFileTypes: true,
+      });
+      const found = entries
+        .filter((entry) => entry.isFile())
+        .map((entry) => {
+          const parentRelative = entry.parentPath.slice(repoRoot.length + 1);
+          return `${parentRelative}/${entry.name}`;
+        })
+        .filter(select);
+      if (found.length === 0) {
+        throw new Error(
+          `selection "${label}" matched none of the files under ${directory}.`,
+        );
+      }
+      return found;
     },
 
     read(file: string): string {

@@ -30,6 +30,27 @@ export interface CheckContext {
    */
   files(select: (path: string) => boolean, label: string): string[];
   /**
+   * Every file under a directory git does not track, matching the predicate.
+   *
+   * For build output, which is the one thing a check may need to read that
+   * is deliberately absent from the repository. Separate from `files` so
+   * that reaching outside the tracked set is a visible decision rather
+   * than something a predicate can do by accident.
+   * @param directory Repo-relative directory to walk.
+   * @param select Which of the files found this check is about.
+   * @param label What the selection is, named in the error if it is empty.
+   * @returns The matching repo-relative paths.
+   * @throws {Error} If the directory is missing, or nothing matches. A
+   *   check whose subject is build output must say "build first", never
+   *   report clean because there was nothing to look at.
+   */
+  walk(
+    directory: string,
+    select: (path: string) => boolean,
+    label: string,
+  ): string[];
+
+  /**
    * Reads a tracked file.
    * @param file Repo-relative path.
    * @returns Its contents as UTF-8 text.

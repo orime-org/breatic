@@ -30,6 +30,25 @@ export function fakeContext(
       }
       return matched;
     },
+    walk(
+      directory: string,
+      select: (path: string) => boolean,
+      label: string,
+    ): string[] {
+      // The fake treats the same map as if it were on disk: a check that
+      // reads build output is given fixture paths under that directory.
+      const under = paths.filter((path) => path.startsWith(`${directory}/`));
+      if (under.length === 0) {
+        throw new Error(`${directory} does not exist.`);
+      }
+      const matched = under.filter(select);
+      if (matched.length === 0) {
+        throw new Error(
+          `selection "${label}" matched none of the files under ${directory}.`,
+        );
+      }
+      return matched;
+    },
     read(file: string): string {
       const content = files[file];
       if (content === undefined) throw new Error(`no such file: ${file}`);

@@ -7,6 +7,7 @@ import { noBrandUsage } from "#repo-lint/checks/no-brand-usage";
 import { noCjk } from "#repo-lint/checks/no-cjk";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
+import { noUnresolvedAliasInDist } from "#repo-lint/checks/no-unresolved-alias-in-dist";
 import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
 
 /**
@@ -24,4 +25,5 @@ export const CHECKS: readonly Check[] = [
   noPrivateRepoPath,
   noTranslatedProductNoun,
   noTrojanSource,
+  noUnresolvedAliasInDist,
 ];

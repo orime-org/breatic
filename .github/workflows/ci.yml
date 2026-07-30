@@ -139,14 +139,6 @@ jobs:
         # registry). See scripts/lint-storage-key-prefix.sh for scope.
         run: pnpm lint:storage-key-prefix
 
-      - name: Repo-wide checks (repo-lint)
-        # The invariants ESLint structurally cannot hold: they are about
-        # files it never parses (SQL, YAML, shell, build output) or about
-        # the repository rather than any one file's contents. One step for
-        # all of them — each check reports its own findings, and a check
-        # that cannot run at all is a failure, never a pass.
-        run: pnpm lint:repo
-
       - name: Lint dependency-cruiser (import-boundary rules)
         # Declarative import-boundary enforcement (CI maximal-strictness
         # guard suite, inner ADR 2026-06-01) over all packages/*/src via
@@ -210,17 +202,17 @@ jobs:
       - name: Build packages (shared → core)
         run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
 
-      - name: Lint no-unresolved-alias-in-dist (after build)
-        # Enforce that shipped dist/ carries no UNRESOLVED internal
-        # path-alias (@shared / @core / @collab / @worker). A multi-entry
-        # tsup build can code-split and leave cross-chunk `@shared/*`
-        # specifiers externalized in the emitted dist — `pnpm build`
-        # exits 0 even with the leak, so a green build is NOT proof the
-        # dist is loadable (the web app crashes at runtime with
-        # "Failed to resolve import"). Runs AFTER the build step above so
-        # dist/ exists. Hard-fails the PR. See
-        # scripts/lint-no-unresolved-alias-in-dist.sh.
-        run: pnpm lint:no-unresolved-alias-in-dist
+      - name: Repo-wide checks (repo-lint)
+        # The invariants ESLint structurally cannot hold: they are about
+        # files it never parses (SQL, YAML, shell, build output) or about
+        # the repository rather than any one file's contents. One step for
+        # all of them — each check reports its own findings, and a check
+        # that cannot run at all is a failure, never a pass.
+        #
+        # After the build, because one of these checks reads dist: it
+        # asserts no internal alias survived, and an unbuilt tree must
+        # not be mistaken for a clean one.
+        run: pnpm lint:repo
 
       - name: Typecheck (all packages)
         # tsc --noEmit across every workspace package (shared / core /

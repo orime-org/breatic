@@ -28,6 +28,9 @@ function contextOver(files: string[]): CheckContext {
       if (matched.length === 0) throw new Error(`selection "${label}" matched none`);
       return matched;
     },
+    walk: (): string[] => {
+      throw new Error("not used");
+    },
     read: (): string => {
       throw new Error("not used");
     },

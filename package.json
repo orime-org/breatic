@@ -25,7 +25,6 @@
     "lint:service-logging": "bash scripts/lint-service-logging.sh",
     "lint:no-raw-sql-outside-repo": "bash scripts/lint-no-raw-sql-outside-repo.sh",
     "lint:no-noaccount": "bash scripts/lint-no-noaccount.sh && bash scripts/lint-no-noaccount.sh --self-test",
-    "lint:no-unresolved-alias-in-dist": "bash scripts/lint-no-unresolved-alias-in-dist.sh",
     "lint:storage-key-prefix": "bash scripts/lint-storage-key-prefix.sh",
     "typecheck": "turbo run typecheck",
     "docs": "turbo run docs",
