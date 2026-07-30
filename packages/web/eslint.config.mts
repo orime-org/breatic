@@ -449,6 +449,24 @@ export default [
     plugins: { breatic: breaticPlugin },
     rules: {
       'breatic/no-deployed-host': 'error',
+    },
+  },
+  {
+    // Documentation links are scoped like every other doc rule in this file:
+    // a test's comments are fixture prose, and components/ui is vendored
+    // third-party source this repository deliberately does not restyle.
+    // Declared apart from no-deployed-host above rather than beside it — a
+    // deployed hostname in a test or in vendored code is still a deployed
+    // hostname, so that rule keeps the wider scope.
+    files: ['**/*.{ts,tsx,mts,cts,js,mjs,cjs}'],
+    ignores: [
+      'src/components/ui/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+      '**/__tests__/**',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
       'breatic/doc-link-resolves': 'error',
     },
   },
