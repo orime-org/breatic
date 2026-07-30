@@ -9,8 +9,16 @@ const STORES = new Set(["localStorage", "sessionStorage"]);
 /** The methods that take a key as their first argument. */
 const KEYED_METHODS = new Set(["getItem", "setItem", "removeItem"]);
 
-/** The prefix every persisted key carries. */
-const PREFIX = "breatic.";
+/**
+ * The prefix every persisted key carries.
+ *
+ * Stated here rather than read from the product's registry because a lint
+ * rule runs with the working directory of whichever package eslint was
+ * started in, so it has no reliable path to that file. The two are held
+ * together by this rule's own test, which reads the registry and fails if
+ * they ever disagree.
+ */
+export const PREFIX = "breatic.";
 
 /**
  * Reads a node's value when it is a plain string with no interpolation.

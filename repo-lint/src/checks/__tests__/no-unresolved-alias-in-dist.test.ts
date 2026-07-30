@@ -108,6 +108,19 @@ describe("no-unresolved-alias-in-dist", () => {
     expect(noUnresolvedAliasInDist.run(context)).toEqual([]);
   });
 
+  it("catches an alias left in a type declaration", () => {
+    // An alias in a `.d.ts` fails every consumer's typecheck rather than
+    // their runtime, which makes it later and no less broken. The guard
+    // this replaces looked only at modules.
+    const context = fakeContext({
+      "packages/shared/package.json": "{}",
+      "packages/shared/tsconfig.json": TSCONFIG,
+      "packages/shared/dist/index.js": "const a = 1;\n",
+      "packages/shared/dist/index.d.ts": 'import type { A } from "@core/a.js";\n',
+    });
+    expect(noUnresolvedAliasInDist.run(context)).toHaveLength(1);
+  });
+
   it("names the file and line", () => {
     const findings = noUnresolvedAliasInDist.run(
       built('const a = 1;\nimport { b } from "@core/b.js";\n'),

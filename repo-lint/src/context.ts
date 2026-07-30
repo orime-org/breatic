@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { CheckContext } from "#repo-lint/check";
 
 /**
@@ -34,7 +34,13 @@ function listTrackedFiles(repoRoot: string): string[] {
       maxBuffer: 64 * 1024 * 1024,
     },
   );
-  return [...new Set(stdout.split("\0").filter((path) => path.length > 0))];
+  const listed = new Set(stdout.split("\0").filter((path) => path.length > 0));
+  // A file deleted from the working tree is still in the index, so it comes
+  // back from the listing above with nothing behind it — reading it throws
+  // ENOENT and takes the whole run down. Dropping it here is safe in the
+  // one way that matters: a file with no contents cannot be hiding a
+  // violation, so nothing goes unchecked by leaving it out.
+  return [...listed].filter((path) => existsSync(join(repoRoot, path)));
 }
 
 /**

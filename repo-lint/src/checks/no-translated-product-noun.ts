@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { TRANSLATED_PRODUCT_NOUNS } from "#repo-lint/checks/product-noun-denylist";
+import { TRANSLATED_PRODUCT_NOUNS } from "#repo-lint/product-noun-denylist";
 
 /** The non-English catalogs. English is the source, so it is not scanned. */
 const TRANSLATED_CATALOG = /^locales\/(zh-CN|zh-TW|ja|ko)\.json$/;

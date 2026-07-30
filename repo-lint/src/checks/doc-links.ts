@@ -3,13 +3,13 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { toRepoRelative } from "#repo-lint/repo-relative";
+import { complaintsFrom } from "#repo-lint/doc-complaints";
 
 /** Shared validation settings, so no package can drift on the flags. */
 const OPTIONS = "typedoc.doclinks.json";
 
 /** How each package is fed to the documentation resolver. */
-interface ScanTarget {
+export interface ScanTarget {
   /** Package directory name under packages/. */
   readonly name: string;
   /** What to start from. */
@@ -31,7 +31,7 @@ interface ScanTarget {
  * links can resolve there. That is the rule for web: a link within a
  * file, backticks for anything else.
  */
-const TARGETS: readonly ScanTarget[] = [
+export const TARGETS: readonly ScanTarget[] = [
   { name: "shared", entry: "packages/shared/src/index.ts", strategy: "resolve" },
   { name: "core", entry: "packages/core/src/index.ts", strategy: "resolve" },
   { name: "domain", entry: "packages/domain/src/index.ts", strategy: "resolve" },
@@ -40,46 +40,6 @@ const TARGETS: readonly ScanTarget[] = [
   { name: "collab", entry: "packages/collab/src/index.ts", strategy: "resolve" },
   { name: "web", entry: "packages/web/src", strategy: "expand" },
 ];
-
-/**
- * The colour codes the resolver wraps its severity in.
- *
- * It writes them even when its output is a pipe, so the severity marker is
- * not at the start of the line until they are removed. Measured the hard
- * way: a first probe on a clean package produced no output at all, and
- * "no escape codes in an empty string" is not evidence about a failing one.
- *
- * The rule against control characters in a pattern exists to catch typos,
- * and cannot tell one from a deliberate escape sequence, so it is disabled
- * for this line alone.
- */
-// eslint-disable-next-line no-control-regex -- deliberate; see above
-const COLOUR = /\u001b\[[0-9;]*m/g;
-
-/** A warning or error line from the resolver, once uncoloured. */
-const COMPLAINT = /^\[(warning|error)\]/;
-
-/**
- * Pulls a file and line out of a resolver complaint, when it names one.
- *
- * The resolver writes `... in /abs/path/file.ts:12`, so the location is
- * recoverable and worth recovering: a finding that names the file is one
- * somebody can act on without searching.
- * @param repoRoot Absolute path of the repository root.
- * @param text One complaint line.
- * @returns The file and line it names, or null.
- */
-function locationOf(
-  repoRoot: string,
-  text: string,
-): { file: string; line?: number } | null {
-  const match = /(\/[^\s:]+\.tsx?):(\d+)/.exec(text);
-  if (match === null) return null;
-  return {
-    file: toRepoRelative(repoRoot, match[1] ?? ""),
-    line: Number(match[2]),
-  };
-}
 
 /**
  * Every doc-comment link points at something that exists.
@@ -160,16 +120,25 @@ export const docLinks = {
         );
       }
       const output = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
+      const complaints = complaintsFrom(context.repoRoot, output, target.entry);
 
-      for (const line of output.replace(COLOUR, "").split("\n")) {
-        if (!COMPLAINT.test(line)) continue;
-        const where = locationOf(context.repoRoot, line);
-        findings.push({
-          file: where?.file ?? target.entry,
-          line: where?.line,
-          message: `${line.trim()} — a comment pointing at something that no longer exists is checked by nobody, so it survives and misleads the next reader. Fix the target, or write the name in backticks if it lives in another package.`,
-        });
+      // A resolver that died, or that failed for a reason it did not put in
+      // a line this recognises, has not scanned the package — and an
+      // unscanned package must not read as a clean one. The check exists
+      // because nothing else verifies prose; a silent skip would put it
+      // back to nothing.
+      if (run.signal !== null) {
+        throw new Error(
+          `the documentation resolver was killed by ${run.signal} while scanning ${target.name}, so that package was not checked.`,
+        );
       }
+      if (run.status !== 0 && complaints.length === 0) {
+        throw new Error(
+          `the documentation resolver exited ${String(run.status)} for ${target.name} without reporting anything this recognises, so that package was not checked. Its output was:\n${output.trim()}`,
+        );
+      }
+
+      findings.push(...complaints);
     }
     return findings;
   },

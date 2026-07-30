@@ -1,7 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { storageKeyPrefix } from "../storage-key-prefix";
+import { describe, expect, it } from "vitest";
+import { PREFIX, storageKeyPrefix } from "../storage-key-prefix";
 
 const ruleTester = new RuleTester();
 
@@ -66,4 +70,22 @@ ruleTester.run("storage-key-prefix", storageKeyPrefix, {
       errors: [{ messageId: "bareKey" }],
     },
   ],
+});
+
+describe("the prefix it enforces", () => {
+  it("is the one the product declares", () => {
+    // The rule cannot read the registry at lint time — eslint's working
+    // directory is whichever package it was started in — so the two are
+    // kept in step here instead. Change one and this fails rather than
+    // the rule quietly enforcing a string nothing uses.
+    const registry = readFileSync(
+      resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "../../../../packages/web/src/lib/storage-keys.ts",
+      ),
+      "utf8",
+    );
+    const declared = /STORAGE_PREFIX\s*=\s*['"`]([^'"`]+)/.exec(registry);
+    expect(declared?.[1]).toBe(PREFIX);
+  });
 });

@@ -43,7 +43,7 @@ function internalAliases(context: CheckContext): string[] {
 }
 
 /**
- * Built modules, and nothing else in the output directory.
+ * Built modules and their type declarations, and nothing else.
  *
  * The anchor is what keeps source maps out: `index.js.map` ends in `.map`,
  * so it does not match, and that matters — a map carries the pre-bundle
@@ -51,8 +51,13 @@ function internalAliases(context: CheckContext): string[] {
  * and so never able to fail to resolve. The guard this replaces expressed
  * the same thing as a separate exclusion, which read like an oversight and
  * was in fact redundant with its own extension filter.
+ *
+ * Declarations are in for the same reason the modules are. An alias left
+ * in a `.d.ts` resolves for nobody outside the package that wrote it, so
+ * every consumer's typecheck fails on a file none of them can fix — the
+ * same leak as an unresolvable import, arriving one build later.
  */
-const BUNDLE = /\.(js|mjs|cjs)$/;
+const BUNDLE = /\.(js|mjs|cjs|d\.ts|d\.mts|d\.cts)$/;
 
 /**
  * Built output resolves on its own — no internal alias survives into it.

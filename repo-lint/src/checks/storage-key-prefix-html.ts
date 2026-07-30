@@ -10,8 +10,37 @@ const WEB_HTML = /^packages\/web\/src\/.*\.html$/;
 const KEYED_ACCESS =
   /(localStorage|sessionStorage)\s*\.\s*(getItem|setItem|removeItem)\s*\(\s*['"`]([^'"`]*)/g;
 
-/** The prefix every persisted key carries. */
-const PREFIX = "breatic.";
+/** Where the product declares the prefix, once. */
+const REGISTRY = "packages/web/src/lib/storage-keys.ts";
+
+/** How that declaration is written. */
+const DECLARATION = /STORAGE_PREFIX\s*=\s*['"`]([^'"`]+)/;
+
+/**
+ * Reads the prefix out of the registry rather than restating it.
+ *
+ * A guard carrying its own copy of the value it guards agrees with the
+ * product right up until somebody changes one of them, and then it keeps
+ * passing while checking the wrong string. Reading the real declaration
+ * removes that possibility instead of documenting it.
+ * @param context The check context.
+ * @returns The prefix the product declares.
+ * @throws {Error} When the registry is gone or no longer declares it.
+ */
+function declaredPrefix(context: CheckContext): string {
+  if (!context.exists(REGISTRY)) {
+    throw new Error(
+      `${REGISTRY} is missing, so there is nothing to check keys against. A guard that cannot find the value it enforces must not report clean.`,
+    );
+  }
+  const match = DECLARATION.exec(context.read(REGISTRY));
+  if (match?.[1] === undefined) {
+    throw new Error(
+      `${REGISTRY} no longer declares STORAGE_PREFIX in a form this can read.`,
+    );
+  }
+  return match[1];
+}
 
 /**
  * Persisted keys carry the product's prefix — the HTML half.
@@ -31,6 +60,7 @@ export const storageKeyPrefixHtml = {
   name: "storage-key-prefix-html",
   description: "Persisted keys in inline HTML scripts carry the prefix",
   run(context: CheckContext): Finding[] {
+    const prefix = declaredPrefix(context);
     const documents = context.files(
       (path) => WEB_HTML.test(path),
       "web HTML documents",
@@ -43,11 +73,11 @@ export const storageKeyPrefixHtml = {
       lines.forEach((text, index) => {
         for (const hit of text.matchAll(KEYED_ACCESS)) {
           const key = hit[3] ?? "";
-          if (key.startsWith(PREFIX)) continue;
+          if (key.startsWith(prefix)) continue;
           findings.push({
             file,
             line: index + 1,
-            message: `'${key}' has no '${PREFIX}' prefix. This script runs before the module graph exists so it cannot import the registry — keep the literal here in step with the registry entry it mirrors.`,
+            message: `'${key}' has no '${prefix}' prefix. This script runs before the module graph exists so it cannot import the registry — keep the literal here in step with the registry entry it mirrors.`,
           });
         }
       });

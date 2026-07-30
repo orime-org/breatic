@@ -54,3 +54,31 @@ export function moduleSourceVisitors(
     ): void => visit(node, node.arguments[0]),
   };
 }
+
+/**
+ * Builds the visitors that see every string a file spells out.
+ *
+ * Two ways to write one — a plain literal and a template chunk — and a
+ * rule that watches only the first guards the quotes people happen to use
+ * rather than the string itself. Backticks are ordinary in this codebase,
+ * so missing them is not a hypothetical gap.
+ *
+ * Template interpolation is out of scope by construction: each chunk
+ * between the holes arrives separately, so a rule sees `bg-brand-` and
+ * `-500` rather than the joined result. That is the right trade — judging
+ * the joined result would need to evaluate the expressions, and a rule
+ * that guessed at them would report on strings the program never builds.
+ * @param onText Called once per literal string chunk found.
+ * @returns A listener object to return from a rule's `create`.
+ */
+export function stringLiteralVisitors(
+  onText: (node: TSESTree.Node, text: string) => void,
+): Record<string, (node: never) => void> {
+  return {
+    Literal: (node: TSESTree.Literal): void => {
+      if (typeof node.value === "string") onText(node, node.value);
+    },
+    TemplateElement: (node: TSESTree.TemplateElement): void =>
+      onText(node, node.value.raw),
+  };
+}

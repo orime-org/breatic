@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { TSESTree } from "@typescript-eslint/utils";
+import { stringLiteralVisitors } from "#rules/source-visitors";
 import { createRule } from "#rules/create-rule";
 
 /**
@@ -122,12 +123,6 @@ export const overlaySurface = createRule<[], "wrongSurface">({
       }
     }
 
-    return {
-      Literal: (node: TSESTree.Literal): void => {
-        if (typeof node.value === "string") check(node, node.value);
-      },
-      TemplateElement: (node: TSESTree.TemplateElement): void =>
-        check(node, node.value.raw),
-    };
+    return stringLiteralVisitors(check);
   },
 });

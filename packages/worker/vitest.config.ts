@@ -1,8 +1,10 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
-// `testTimeout: 15_000` — see packages/core/vitest.config.ts for the
-// 5s → 15s rationale (bcrypt cost-12 + property-based round-trips).
+// `testTimeout: 15_000` — this package's own figure. Nothing here hashes
+// a password, so a long-running case here is a stuck one; the packages
+// that do pay for bcrypt raise theirs on measured grounds, and the
+// reasoning lives in packages/core/vitest.config.ts.
 //
 // `pool: 'forks'` + `poolOptions.forks.singleFork: true` —
 // the worker package runs ~6 ffmpeg-heavy test files
