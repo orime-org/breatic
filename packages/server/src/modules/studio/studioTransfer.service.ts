@@ -102,10 +102,8 @@ export async function requestTransfer(
     payload: {
       fromUserId: fromAdminUserId,
       fromName: from?.name ?? "",
-      fromHandle: from?.slug ?? "",
       studioId: studio.id,
       studioName: studio.name,
-      studioSlug: studio.slug,
     },
     expiresAt,
   });
@@ -172,7 +170,6 @@ export async function confirmTransfer(
       fromUserId?: unknown;
       studioId?: unknown;
       studioName?: unknown;
-      studioSlug?: unknown;
     };
     if (
       typeof payload.fromUserId !== "string" ||
@@ -183,19 +180,37 @@ export async function confirmTransfer(
     const { fromUserId, studioId } = payload;
     const studioName =
       typeof payload.studioName === "string" ? payload.studioName : "";
-    const studioSlug =
-      typeof payload.studioSlug === "string" ? payload.studioSlug : "";
 
     // TOCTOU guard (adversarial review): the request-time non-guest check
     // (#1612 / D3) can go stale within the 7-day TTL — the recipient may have
-    // been demoted to guest since the request. Re-verify BEFORE the swap;
-    // otherwise updateRole would flip a guest's still-active row straight to
-    // admin. Reads committed state; a ConflictError rolls the whole transaction
-    // back (including the mark-read).
-    const recipientRole = await studioMembersRepo.getRole(
-      studioId,
-      receiverUserId,
-    );
+    // been demoted to guest, or left, since the request. Re-verify BEFORE the
+    // swap; otherwise updateRole would flip a guest's still-active row straight
+    // to admin.
+    //
+    // One locked read of the whole membership — the same call the leave / kick
+    // path makes, so the two queue on identical rows in identical order rather
+    // than deadlocking. See `lockMembership` for why this cannot be narrowed
+    // to the two rows we care about.
+    const members = await studioMembersRepo.lockMembership(studioId, tx);
+    const currentAdminUserId =
+      members.find((m) => m.role === "admin")?.userId ?? null;
+    const recipientRole =
+      members.find((m) => m.userId === receiverUserId)?.role ?? null;
+
+    // Which admin is this transfer actually moving? The request names its
+    // initiator in a payload written up to seven days ago; if the studio has
+    // changed hands since, that request is stale. Confirming one anyway fails
+    // in two distinct ways, both observed:
+    //   - the studio went to a THIRD party — the promote collides with
+    //     studio_members_one_admin_per_studio, surfacing as an unclassified
+    //     500 rather than a conflict;
+    //   - the studio went to the RECIPIENT already — the promote is a no-op so
+    //     nothing collides, but the demote still runs and pushes the stale
+    //     initiator to maintainer. If they had been demoted to guest, that is
+    //     a silent privilege GRANT off a week-old notification.
+    if (currentAdminUserId === null || currentAdminUserId !== fromUserId) {
+      throw new ConflictError(t("server.error.conflict"));
+    }
     if (!recipientRole || recipientRole === "guest") {
       throw new ConflictError(t("server.error.conflict"));
     }
@@ -227,9 +242,9 @@ export async function confirmTransfer(
       userId: fromUserId,
       payload: {
         studioName,
-        studioSlug,
+        studioId,
         accepterName: accepter?.name ?? "",
-        accepterHandle: accepter?.slug ?? "",
+        accepterUserId: receiverUserId,
       },
       tx,
     });

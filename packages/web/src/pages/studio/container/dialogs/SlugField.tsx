@@ -32,6 +32,13 @@ interface SlugFieldProps {
    * collection slugs are not unique, so they never check).
    */
   availability?: 'checking' | 'available';
+  /**
+   * Greys the input out, matching how the caller treats its other fields —
+   * the settings form disables Name and Bio for a non-admin and while a save
+   * is in flight, and a Slug that stayed editable there would be the one field
+   * inviting an edit nobody can submit.
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -50,6 +57,7 @@ interface SlugFieldProps {
  * @param props.bounds the slug length bounds.
  * @param props.helper the always-on explanatory line (optional).
  * @param props.availability the live async availability state (optional).
+ * @param props.disabled whether the input is greyed out (optional).
  * @returns the slug field.
  */
 export function SlugField({
@@ -62,6 +70,7 @@ export function SlugField({
   bounds,
   helper,
   availability,
+  disabled = false,
 }: SlugFieldProps): React.JSX.Element {
   const t = useTranslation();
   const message =
@@ -88,6 +97,7 @@ export function SlugField({
         id={id}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
         placeholder={placeholder}
         aria-invalid={error !== null}
         aria-describedby={describedBy}

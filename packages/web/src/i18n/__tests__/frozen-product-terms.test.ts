@@ -60,6 +60,12 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
   ['spaces.kind.canvas', 'Canvas'],
   ['spaces.kind.document', 'Document'],
   ['spaces.kind.timeline', 'Timeline'],
+  // Slug (2026-07-29). The blanket guard bans the four old translated forms;
+  // these pin the label keys themselves, so a NEW translation of the word
+  // (one nobody has thought of yet) still fails here.
+  ['studio.container.settings.slug', 'Slug'],
+  ['studio.container.dialog.slugLabel', 'Slug'],
+  ['auth.onboarding.slugLabel', 'Slug'],
 ];
 
 /** Zero-consumer dead keys removed as part of #1336 (decision A). */

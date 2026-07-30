@@ -40,6 +40,7 @@ vi.mock('@web/data/api/notifications', () => ({
     markAllRead: vi.fn(),
     respondAction: vi.fn(),
   },
+  EMPTY_RESOLVED: { users: {}, studios: {}, projects: {} },
 }));
 
 vi.mock('@web/data/api/role-upgrade-requests', () => ({
@@ -61,7 +62,7 @@ vi.mock('@web/lib/toast', () => ({
   },
 }));
 
-import { notificationsApi } from '@web/data/api/notifications';
+import { notificationsApi , EMPTY_RESOLVED } from '@web/data/api/notifications';
 import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
 import { toast } from '@web/lib/toast';
 
@@ -119,7 +120,7 @@ beforeEach(() => {
   // A known user — the inbox query is gated on `userId`, so without this the
   // query stays disabled and nothing renders.
   useCurrentUserStore.setState({ user: SELF });
-  vi.mocked(notificationsApi.list).mockResolvedValue([]);
+  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED });
 });
 
 describe('BellMenu — empty list', () => {
@@ -157,7 +158,7 @@ describe('BellMenu — auth gate (boot-race, #1261)', () => {
 describe('BellMenu — 4 notification types render', () => {
   it('renders one row per notification with the right headline + action affordance', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N1, 'access.role_upgrade_request', {
         projectName: 'Q1 Sprint',
         message: 'Need editor for review',
@@ -166,7 +167,7 @@ describe('BellMenu — 4 notification types render', () => {
         studioName: 'Acme',
         inviteeName: 'Alex',
       }),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
@@ -181,11 +182,11 @@ describe('BellMenu — 4 notification types render', () => {
   });
 
   it('badge dot appears when unread count > 0', async () => {
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N1, 'access.role_upgrade_approved', {
         projectName: 'Demo',
       }),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     setup();
     await waitFor(() => {
       expect(screen.getByTestId('bell-unread-dot')).toBeInTheDocument();
@@ -194,14 +195,14 @@ describe('BellMenu — 4 notification types render', () => {
 
   it('renders the headline in full — never single-line `truncate` (it clipped the actor-first copy with an ellipsis)', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N1, 'access.role_upgrade_rejected', {
+        deciderUserId: 'u-decider',
         deciderName: 'bangbang',
-        deciderHandle: 'bangbang',
+        projectId: 'p-canvas',
         projectName: 'canvas',
-        projectSlug: 'canvas',
       }),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
     const headline = await screen.findByTestId(
@@ -216,11 +217,11 @@ describe('BellMenu — 4 notification types render', () => {
 describe('BellMenu — approve / reject mutations on upgrade-request rows', () => {
   it('clicking approve calls roleUpgradeRequestsApi.decide(approved)', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N1, 'access.role_upgrade_request', {
         projectName: 'Demo',
       }),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
@@ -236,11 +237,11 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
 
   it('clicking reject calls decide(rejected) + success toast', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N1, 'access.role_upgrade_request', {
         projectName: 'Demo',
       }),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
@@ -256,11 +257,11 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
 
   it('toasts error when decide rejects', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N1, 'access.role_upgrade_request', {
         projectName: 'Demo',
       }),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     vi.mocked(roleUpgradeRequestsApi.decide).mockRejectedValueOnce(
       new ApiException({
         status: 409,
@@ -281,12 +282,12 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
 describe('BellMenu — mark-read affordance on non-decision rows', () => {
   it('clicking mark-read calls notificationsApi.markRead(id)', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N2, 'studio.invite_accepted', {
         studioName: 'Demo',
         inviteeName: 'Alex',
       }),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     vi.mocked(notificationsApi.markRead).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
@@ -302,7 +303,7 @@ describe('BellMenu — studio notification types (slice 3)', () => {
   it('renders transfer_request with confirm/cancel + a TTL countdown', async () => {
     const user = userEvent.setup();
     const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(
         N1,
         'studio.transfer_request',
@@ -310,12 +311,11 @@ describe('BellMenu — studio notification types (slice 3)', () => {
           studioName: 'Acme',
           fromUserId: 'u-admin',
           fromName: 'Alex',
-          fromHandle: 'alex-h',
           studioId: 's1',
         },
         { expiresAt },
       ),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
@@ -330,14 +330,14 @@ describe('BellMenu — studio notification types (slice 3)', () => {
 
   it('confirm calls respondAction(id, confirm) + success toast', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(
         N1,
         'studio.transfer_request',
         { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
         { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
       ),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
@@ -352,14 +352,14 @@ describe('BellMenu — studio notification types (slice 3)', () => {
 
   it('cancel calls respondAction(id, cancel)', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(
         N1,
         'studio.transfer_request',
         { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
         { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
       ),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
@@ -372,14 +372,14 @@ describe('BellMenu — studio notification types (slice 3)', () => {
 
   it('toasts the server error when respondAction rejects', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(
         N1,
         'studio.transfer_request',
         { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
         { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
       ),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     vi.mocked(notificationsApi.respondAction).mockRejectedValueOnce(
       new ApiException({ status: 409, code: 'CONFLICT', message: 'Request expired' }),
     );
@@ -394,13 +394,14 @@ describe('BellMenu — studio notification types (slice 3)', () => {
 
   it('renders transfer_approved as a read-on-click row', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N2, 'studio.transfer_approved', {
+        studioId: 's1',
         studioName: 'Acme',
+        accepterUserId: 'u-dee',
         accepterName: 'Dee',
-        accepterHandle: 'dee-h',
       }),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
@@ -417,7 +418,7 @@ describe('BellMenu — studio invite-confirm handshake', () => {
     const expiresAt = new Date(
       Date.now() + 3 * 24 * 60 * 60 * 1000,
     ).toISOString();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(
         N1,
         'studio.invite_request',
@@ -430,7 +431,7 @@ describe('BellMenu — studio invite-confirm handshake', () => {
         },
         { expiresAt },
       ),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
@@ -447,14 +448,14 @@ describe('BellMenu — studio invite-confirm handshake', () => {
 
   it('confirm calls respondAction(id, confirm) + success toast', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(
         N1,
         'studio.invite_request',
         { invitationId: 'inv-1', studioName: 'Acme', role: 'guest' },
         { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
       ),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
@@ -469,14 +470,14 @@ describe('BellMenu — studio invite-confirm handshake', () => {
 
   it('cancel calls respondAction(id, cancel)', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(
         N1,
         'studio.invite_request',
         { invitationId: 'inv-1', studioName: 'Acme', role: 'guest' },
         { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
       ),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
@@ -489,12 +490,12 @@ describe('BellMenu — studio invite-confirm handshake', () => {
 
   it('renders invite_accepted as a read-on-click row', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N2, 'studio.invite_accepted', {
         studioName: 'Acme',
         inviteeName: 'Dee',
       }),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
@@ -511,7 +512,7 @@ describe('BellMenu — project invite navigates to the landing page (#1337)', ()
     const expiresAt = new Date(
       Date.now() + 3 * 24 * 60 * 60 * 1000,
     ).toISOString();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(
         N1,
         'project.invite_request',
@@ -525,7 +526,7 @@ describe('BellMenu — project invite navigates to the landing page (#1337)', ()
         },
         { expiresAt },
       ),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
@@ -546,7 +547,7 @@ describe('BellMenu — project invite navigates to the landing page (#1337)', ()
 
   it('clicking the row navigates to /project-invite?token=… and closes the popover', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(
         N1,
         'project.invite_request',
@@ -558,7 +559,7 @@ describe('BellMenu — project invite navigates to the landing page (#1337)', ()
         },
         { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
       ),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
     await user.click(await screen.findByTestId(`bell-open-invite-${N1}`));
@@ -574,12 +575,12 @@ describe('BellMenu — project invite navigates to the landing page (#1337)', ()
 
   it('renders project.invite_accepted as a read-on-click row', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce([
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N2, 'project.invite_accepted', {
         projectName: 'Q1 Sprint',
         inviteeName: 'Dee',
       }),
-    ]);
+    ], resolved: EMPTY_RESOLVED });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 

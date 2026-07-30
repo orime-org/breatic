@@ -57,9 +57,8 @@ describe("createRoleUpgradeRequest", () => {
       payload: {
         requesterUserId: REQUESTER,
         requesterName: "Vicky",
-        requesterHandle: "vicky",
+        projectId: PID,
         projectName: "Demo",
-        projectSlug: "demo-slug",
         requestedRole: "editor",
         message: "please",
       },
@@ -94,10 +93,10 @@ describe("createRoleUpgradeApproved / Rejected", () => {
       requesterUserId: REQUESTER,
       projectId: PID,
       payload: {
+        deciderUserId: OWNER,
         deciderName: "Olivia",
-        deciderHandle: "olivia",
+        projectId: PID,
         projectName: "Demo",
-        projectSlug: "demo-slug",
         newRole: "editor",
       },
     });
@@ -123,10 +122,10 @@ describe("createRoleUpgradeApproved / Rejected", () => {
       requesterUserId: REQUESTER,
       projectId: PID,
       payload: {
+        deciderUserId: OWNER,
         deciderName: "Olivia",
-        deciderHandle: "olivia",
+        projectId: PID,
         projectName: "Demo",
-        projectSlug: "demo-slug",
         reason: "Too many editors",
       },
     });

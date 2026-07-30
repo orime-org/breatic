@@ -110,7 +110,7 @@ describe("removeMember", () => {
     const ownedByMember = await insertProject(studio.id, member.id); // member owns this
     const adminProject = await insertProject(studio.id, admin.id); // admin owns this
 
-    await studioMemberService.removeMember(studio.slug, member.id, admin.id);
+    await studioMemberService.removeMember(studio.slug, member.id);
 
     // member loses studio membership + project access
     expect(await studioMembersRepo.getRole(studio.id, member.id)).toBeNull();
@@ -125,7 +125,7 @@ describe("removeMember", () => {
     const admin = await insertUser();
     const studio = await insertStudioWithAdmin(admin.id);
     await expect(
-      studioMemberService.removeMember(studio.slug, admin.id, admin.id),
+      studioMemberService.removeMember(studio.slug, admin.id),
     ).rejects.toMatchObject({ statusCode:409 });
   });
 });

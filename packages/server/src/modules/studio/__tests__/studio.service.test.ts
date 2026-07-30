@@ -71,6 +71,8 @@ const STUDIO: Studio = {
   slug: "alice-handle",
   type: "personal",
   name: "alice-handle",
+  avatarUrl: null,
+  bio: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
@@ -82,6 +84,8 @@ const TEAM_STUDIO: Studio = {
   slug: "acme",
   type: "team",
   name: "Acme",
+  avatarUrl: null,
+  bio: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
@@ -164,7 +168,7 @@ describe("getPersonalStudioIdentitiesByUserIds", () => {
 describe("getPersonalStudioProfilesByUserIds", () => {
   it("delegates to the repo's batch profile lookup (name + slug)", async () => {
     const profiles = new Map([
-      ["user-1", { name: "Alice", slug: "alice-handle" }],
+      ["user-1", { name: "Alice", slug: "alice-handle", deleted: false }],
     ]);
     vi.mocked(studioRepo.getPersonalProfilesByCreators).mockResolvedValueOnce(
       profiles,
@@ -198,6 +202,8 @@ describe("getStudioDetail", () => {
       slug: "alice-handle",
       name: "alice-handle",
       type: "personal",
+      avatarUrl: null,
+      bio: null,
       memberCount: 3,
       myStudioRole: "admin",
     });
@@ -255,6 +261,8 @@ describe("listUserStudios", () => {
         slug: "alice-handle",
         name: "alice-handle",
         type: "personal",
+        avatarUrl: null,
+        bio: null,
         memberCount: 1,
         myStudioRole: "admin",
       },

@@ -94,6 +94,7 @@ export { checkInfraReady } from "@core/infra/connectivity-check.js";
 export { InfraNotReadyError } from "@core/infra/errors.js";
 export { createQueue, createQueueEvents, createWorker, defaultJobOpts, closeQueues } from "@core/infra/queue.js";
 export { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@core/infra/storage/index.js";
+export { sniffMimeType } from "@core/infra/storage/sniff-mime.js";
 export type { PersistedObject } from "@core/infra/storage/index.js";
 export {
   publishNodeEvent,

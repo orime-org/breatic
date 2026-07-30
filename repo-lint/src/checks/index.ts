@@ -8,6 +8,7 @@ import { noAuthBypassResidue } from "#repo-lint/checks/no-auth-bypass-residue";
 import { noBrandUsage } from "#repo-lint/checks/no-brand-usage";
 import { noCjk } from "#repo-lint/checks/no-cjk";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
+import { noNotificationNameKeys } from "#repo-lint/checks/no-notification-name-keys";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
 import { serviceEntriesPresent } from "#repo-lint/checks/service-entries-present";
@@ -31,6 +32,7 @@ export const CHECKS: readonly Check[] = [
   noBrandUsage,
   noCjk,
   noHardcodedSecrets,
+  noNotificationNameKeys,
   noPrivateRepoPath,
   noTranslatedProductNoun,
   noTrojanSource,

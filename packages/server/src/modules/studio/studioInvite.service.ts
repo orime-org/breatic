@@ -112,7 +112,6 @@ export async function createInvite(
   ]);
   const inviter = profiles.get(inviterUserId);
   const inviterName = inviter?.name ?? "";
-  const inviterHandle = inviter?.slug ?? "";
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   let invitationId = "";
@@ -138,9 +137,8 @@ export async function createInvite(
           invitationId,
           studioId: studio.id,
           studioName: studio.name,
-          studioSlug: studio.slug,
+          inviterUserId,
           inviterName,
-          inviterHandle,
           role,
         },
         expiresAt,
@@ -236,15 +234,15 @@ export async function confirmInvite(
     if (!inserted) throw new ConflictError(t("server.studio.already_member"));
 
     let studioName = "";
-    let studioSlug = "";
+    let studioId = "";
     if (accepted.notificationId) {
       const notif = await notificationRepo.findById(accepted.notificationId, tx);
       const payload = (notif?.payload ?? {}) as {
         studioName?: unknown;
-        studioSlug?: unknown;
+        studioId?: unknown;
       };
       if (typeof payload.studioName === "string") studioName = payload.studioName;
-      if (typeof payload.studioSlug === "string") studioSlug = payload.studioSlug;
+      if (typeof payload.studioId === "string") studioId = payload.studioId;
       await notificationRepo.markRead(accepted.notificationId, receiverUserId, tx);
     }
 
@@ -255,10 +253,10 @@ export async function confirmInvite(
     await notificationService.createStudioInviteAccepted({
       userId: accepted.invitedBy,
       payload: {
+        studioId,
         studioName,
-        studioSlug,
+        inviteeUserId: accepted.invitedUserId,
         inviteeName: invitee?.name ?? "",
-        inviteeHandle: invitee?.slug ?? "",
       },
       tx,
     });

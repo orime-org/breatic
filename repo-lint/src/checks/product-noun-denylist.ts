@@ -29,6 +29,12 @@ export const TRANSLATED_PRODUCT_NOUNS: ReadonlyMap<string, readonly string[]> =
     ["Work", ["作品", "작품"]],
     ["Studio", ["工作室", "スタジオ", "스튜디오"]],
     ["Space", ["工作面", "作業面"]],
+    // Slug had four names on screen — Handle, ハンドル, 핸들, 网址标识 —
+    // none matching what it is called in the URL, the API or the schema, so
+    // reading any two of them together needed a mental translation step. The
+    // ja and ko forms transliterate "handle" and mean nothing else here;
+    // 网址标识 was a coinage for this field.
+    ["Slug", ["网址标识", "網址標識", "ハンドル", "핸들"]],
     ["Owner", ["所有者", "拥有者", "擁有者", "オーナー", "소유자"]],
     ["Editor", ["编辑者", "編輯者", "編集者", "편집자"]],
     [

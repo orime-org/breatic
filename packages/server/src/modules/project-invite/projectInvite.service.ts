@@ -123,7 +123,6 @@ export async function createInvite(
   ]);
   const inviter = profiles.get(inviterUserId);
   const inviterName = inviter?.name ?? "";
-  const inviterHandle = inviter?.slug ?? "";
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   let invitationId = "";
@@ -155,9 +154,8 @@ export async function createInvite(
           invitationId,
           projectId,
           projectName: project.name,
-          projectSlug: project.slug,
+          inviterUserId,
           inviterName,
-          inviterHandle,
           role,
           token,
         },
@@ -270,10 +268,10 @@ export async function confirmInvite(
       userId: accepted.invitedBy,
       projectId: accepted.projectId,
       payload: {
+        projectId: accepted.projectId,
         projectName: project?.name ?? "",
-        projectSlug: project?.slug ?? "",
+        inviteeUserId: accepted.invitedUserId,
         inviteeName: invitee?.name ?? "",
-        inviteeHandle: invitee?.slug ?? "",
       },
       tx,
     });

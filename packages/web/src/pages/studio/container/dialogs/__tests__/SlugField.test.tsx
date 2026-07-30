@@ -9,7 +9,7 @@ import { ITEM_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util'
 
 const BASE = {
   id: 'demo-slug',
-  label: 'Handle',
+  label: 'Slug',
   value: '',
   onChange: () => {},
   bounds: ITEM_SLUG_BOUNDS,
@@ -21,7 +21,7 @@ describe('SlugField helper', () => {
     const helper = screen.getByText('Part of the URL.');
     expect(helper).toBeInTheDocument();
     // The input is described by the helper for screen readers.
-    expect(screen.getByLabelText('Handle')).toHaveAttribute(
+    expect(screen.getByLabelText('Slug')).toHaveAttribute(
       'aria-describedby',
       expect.stringContaining('demo-slug-helper'),
     );
@@ -35,7 +35,7 @@ describe('SlugField helper', () => {
     ).toBeInTheDocument();
     // Both the helper and the error are referenced for assistive tech.
     const described = screen
-      .getByLabelText('Handle')
+      .getByLabelText('Slug')
       .getAttribute('aria-describedby');
     expect(described).toContain('demo-slug-helper');
     expect(described).toContain('demo-slug-error');

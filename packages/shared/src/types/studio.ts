@@ -38,6 +38,10 @@ export interface Studio {
   type: StudioType;
   /** Display name (editable). */
   name: string;
+  /** Avatar URL, or `null` when none was uploaded. */
+  avatarUrl: string | null;
+  /** Self-description shown on the studio's front door; `null` when unset. */
+  bio: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -89,6 +93,14 @@ export interface StudioSummary {
   slug: string;
   name: string;
   type: StudioType;
+  /**
+   * The studio's avatar, or `null` when none was uploaded (callers render
+   * initials). For a personal studio this is the user's own avatar — display
+   * identity lives on the personal studio, not on `users` (#1808).
+   */
+  avatarUrl: string | null;
+  /** Self-description shown on the studio's front door; `null` when unset. */
+  bio: string | null;
   memberCount: number;
   /**
    * The viewing user's CURRENT role in this studio (`studio_members.role`),

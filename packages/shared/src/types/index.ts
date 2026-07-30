@@ -14,6 +14,8 @@ export type {
   PaymentEntity,
   CreditTransactionEntity,
   NotificationEntity,
+  NotificationRef,
+  NotificationListView,
   ProjectEntity,
   ProjectVisibility,
   ProjectDetail,

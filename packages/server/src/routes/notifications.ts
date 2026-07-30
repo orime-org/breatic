@@ -26,6 +26,7 @@ import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { notificationService } from "@server/modules";
+import { withResolvedRefs } from "@server/modules/notification/notification-refs.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
@@ -52,7 +53,12 @@ route.get("/", async (c) => {
   const list = unreadOnly
     ? await notificationService.listUnread(user.id)
     : await notificationService.listAll(user.id);
-  return c.json({ data: list });
+  // Notifications store ids; the names they display are resolved here, at read
+  // time, so a renamed studio or a changed @handle never leaves an old entry
+  // pointing somewhere wrong. `resolved` sits INSIDE `data` because the
+  // frontend's request helper unwraps the envelope and drops anything beside it.
+  const data = await withResolvedRefs(list);
+  return c.json({ data });
 });
 
 /**

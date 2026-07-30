@@ -128,12 +128,21 @@ export function createApp(): Hono {
       try {
         const data = await readFile(real);
         const ext = real.split(".").pop() ?? "";
+        // webp is here because it is what the product itself produces — the
+        // avatar cropper encodes to it, and image generation outputs it. Left
+        // out, the browser is told octet-stream and downloads the file rather
+        // than rendering it.
         const mimeTypes: Record<string, string> = {
           png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+          webp: "image/webp",
           mp4: "video/mp4", mp3: "audio/mpeg", wav: "audio/wav",
           glb: "model/gltf-binary", json: "application/json",
         };
         c.header("Content-Type", mimeTypes[ext] ?? "application/octet-stream");
+        // Serve exactly the declared type. Without this a file crafted to be
+        // valid in two formats at once could be re-interpreted by the browser
+        // as something executable, under our own origin.
+        c.header("X-Content-Type-Options", "nosniff");
         c.header("Cache-Control", "public, max-age=86400");
         return c.body(data);
       } catch {

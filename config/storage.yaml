@@ -33,3 +33,12 @@ upload:
   # provider's own PUT window — unrelated to the upload-grant ledger, which has
   # no time limit (#1826, design §3.2). Local storage has no presigned URL.
   presign_expires_seconds: 300
+
+# Studio avatars. Registered in docs/CONFIGURATION.md.
+avatar:
+  # Hard cap on one avatar upload, in bytes. Avatars do NOT use presigned
+  # direct upload — the bytes come through the server — so this is also the
+  # bound on what the process buffers per request. The frontend crops to
+  # 512x512 WebP before sending, which lands around 30–60 KB, so 1 MiB is
+  # generous for anything the product itself produces.
+  max_bytes: 1048576

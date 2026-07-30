@@ -11,8 +11,9 @@
  *
  *   - softDeleteAllInStudioForUser — soft-deletes the user's active rows ONLY
  *     in that studio's projects (other studios / other users untouched).
- *   - listOwnedProjectsInStudio   — the projects they actively own in the
- *     studio (used BEFORE the soft-delete to know what to reassign).
+ *   - lockOwnedProjectsInStudio   — the projects they actively own in the
+ *     studio (read BEFORE the soft-delete to know what to reassign, under a
+ *     row lock so a concurrent transfer cannot invalidate the answer).
  *   - materializeOwner            — insert / revive / promote the admin to
  *     owner; relies on the kicked owner's row already being soft-deleted in
  *     the same tx (else the one-owner partial unique would reject it).
@@ -32,7 +33,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore, projectMembersRepo } from "@breatic/core";
+import { db, initCore, projectMembersRepo } from "@breatic/core";
 
 try {
   initCore(process.env);
@@ -146,7 +147,7 @@ describe("softDeleteAllInStudioForUser — clear the kicked member's project acc
   });
 });
 
-describe("listOwnedProjectsInStudio — projects the kicked member owns", () => {
+describe("lockOwnedProjectsInStudio — projects the kicked member owns", () => {
   it("returns only the projects the user actively OWNS in that studio", async () => {
     const member = await insertUser();
     const admin = await insertUser();
@@ -161,7 +162,11 @@ describe("listOwnedProjectsInStudio — projects the kicked member owns", () => 
     await insertProjectMemberRaw(justViewer, member, "viewer"); // not owner — excluded
     await insertProjectMemberRaw(ownedElsewhere, member, "owner"); // other studio — excluded
 
-    const ids = await projectMembersRepo.listOwnedProjectsInStudio(studio, member);
+    // Takes a row lock, so it only makes sense inside a transaction — and the
+    // signature enforces that rather than leaving a lock-less variant around.
+    const ids = await db.transaction((tx) =>
+      projectMembersRepo.lockOwnedProjectsInStudio(studio, member, tx),
+    );
 
     expect([...ids].sort()).toEqual([owned, ownedToo].sort());
   });

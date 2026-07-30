@@ -173,7 +173,7 @@ export default function SlugSetupPage(): React.JSX.Element {
               id='onboarding-slug-helper'
               className='text-xs text-muted-foreground'
             >
-              {t('auth.onboarding.helper', { slug: slug.trim() || 'your-handle' })}
+              {t('auth.onboarding.helper', { slug: slug.trim() || 'your-slug' })}
             </p>
           )}
         </div>
