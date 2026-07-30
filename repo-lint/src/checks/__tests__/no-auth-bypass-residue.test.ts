@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { describe, expect, it } from "vitest";
-import { noAuthBypassResidue } from "#repo-lint/checks/no-auth-bypass-residue";
+import {
+  BYPASS_NAMES,
+  noAuthBypassResidue,
+} from "#repo-lint/checks/no-auth-bypass-residue";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
 
 // Assembled for the same reason the check assembles them: a fixture that
@@ -26,6 +29,25 @@ describe("no-auth-bypass-residue", () => {
       "c.ts": `import { ${FRONTEND_SYMBOL} } from "x";`,
     });
     expect(noAuthBypassResidue.run(context)).toHaveLength(3);
+  });
+
+  // Reading the list rather than a sample of it, so a name added to the
+  // check arrives with this exercising it rather than with three of its
+  // predecessors standing in.
+  it.each(BYPASS_NAMES)("catches %s — %s", (name) => {
+    const context = fakeContext({ "a.ts": `const x = "${name}";` });
+    const findings = noAuthBypassResidue.run(context);
+    // Not exactly one: some names contain another, so planting the longer
+    // one legitimately reports both. What has to hold is that the planted
+    // name is seen at all, and that everything reported names something
+    // from the list rather than whatever else was on the line.
+    expect(findings.length).toBeGreaterThan(0);
+    for (const finding of findings) {
+      expect(finding.file).toBe("a.ts");
+      expect(
+        BYPASS_NAMES.some(([known]) => finding.message.includes(known)),
+      ).toBe(true);
+    }
   });
 
   it("scans files with no extension at all", () => {

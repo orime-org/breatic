@@ -25,8 +25,15 @@ interface Manifest {
  * looks exactly like passing. So the opt-in is made non-deletable rather
  * than left to memory.
  *
- * What scope each package should lint is a separate question, tracked
- * separately; this only requires that some scope is linted.
+ * The import-graph rules are a second linter with its own scope, handed
+ * directories by hand on one line of the root manifest, so the same failure
+ * has a second home: two packages added to the workspace sat outside that
+ * line and had no import rule applied to them at all. Both halves are
+ * checked here because they are one question — is this package linted — asked
+ * of two tools.
+ *
+ * Which paths within a package each tool should read is a narrower question
+ * this check does not answer; it requires only that the package is reached.
  */
 export const lintCoverage = {
   name: "lint-coverage",
@@ -57,6 +64,42 @@ export const lintCoverage = {
         });
       }
     }
+    findings.push(...uncruisedPackages(context, manifests));
     return findings;
   },
 } satisfies Check;
+
+/**
+ * Reports packages the import-graph linter is never pointed at.
+ *
+ * Its directories are arguments on one line rather than something derived,
+ * so a package can join the workspace and never appear there. `packages/*`
+ * covers the ones nested under it; anything at the repository root has to be
+ * named, and the two that were added at the root were not.
+ * @param context The check context.
+ * @param manifests Every workspace package manifest, repo-relative.
+ * @returns One finding per package outside the cruise arguments.
+ */
+function uncruisedPackages(
+  context: CheckContext,
+  manifests: readonly string[],
+): Finding[] {
+  const root = "package.json";
+  if (!context.exists(root)) return [];
+  const script =
+    (JSON.parse(context.read(root)) as Manifest).scripts?.[
+      "lint:dependency-cruiser"
+    ] ?? "";
+
+  const findings: Finding[] = [];
+  for (const file of manifests) {
+    const directory = file.slice(0, -"/package.json".length);
+    if (directory.startsWith("packages/")) continue;
+    if (script.includes(`${directory}/src`)) continue;
+    findings.push({
+      file: root,
+      message: `\`lint:dependency-cruiser\` never reads ${directory}/src, so no import rule applies there. A package outside the cruise arguments looks exactly like a package whose imports are all legal.`,
+    });
+  }
+  return findings;
+}

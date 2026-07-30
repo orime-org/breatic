@@ -37,7 +37,11 @@ export const testFileLocation = createRule({
   create(context) {
     return {
       Program(node: TSESTree.Program): void {
-        const path = context.filename;
+        // Normalised the way every other path-reading rule here does it:
+        // the filename arrives with the platform's separator, and a rule
+        // that split on "/" alone would see one long segment on Windows and
+        // report every correctly-placed test file.
+        const path = context.filename.replace(/\\/g, "/");
         if (!TEST_FILE.test(path)) return;
         if (path.split("/").includes(TEST_DIR)) return;
         context.report({ node, messageId: "wrongLocation" });

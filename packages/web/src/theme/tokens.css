@@ -91,8 +91,9 @@ html[data-theme='light'] {
   --color-canvas-grid: #c4c4c4;
 
   /* Brand raw · logo SVG only (chrome / canvas / studio forbidden →
-     fails the no-brand-usage check). Whitelist: this file and
-     `--brand-logo-primary`. */
+     fails the no-brand-usage check). The check reads this file like any
+     other and exempts only the logo token by name, so a brand value used
+     anywhere else here is reported too. */
   --brand-50: hsl(8, 58%, 97%);
   --brand-100: hsl(8, 58%, 92%);
   --brand-200: hsl(8, 58%, 82%);

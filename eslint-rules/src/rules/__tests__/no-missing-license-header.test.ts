@@ -27,23 +27,28 @@ ruleTester.run("no-missing-license-header", noMissingLicenseHeader, {
       errors: [{ messageId: "missingHeader" }],
       output: `${HEADER}\n\n`,
     },
-    // The copyright line alone passed the guard, which read one line.
-    {
-      code: `// Copyright (c) 2026 Orime, Inc.\nexport const x = 1;\n`,
-      errors: [{ messageId: "missingHeader" }],
-      output: `${HEADER}\n\n// Copyright (c) 2026 Orime, Inc.\nexport const x = 1;\n`,
-    },
     // Right lines, wrong order.
     {
+      // Reversed: both lines are header material, so both are rewritten
+      // rather than pushed down under a second copy of themselves.
       code: `// SPDX-License-Identifier: LicenseRef-BOSL-1.0\n// Copyright (c) 2026 Orime, Inc.\n`,
       errors: [{ messageId: "missingHeader" }],
-      output: `${HEADER}\n\n// SPDX-License-Identifier: LicenseRef-BOSL-1.0\n// Copyright (c) 2026 Orime, Inc.\n`,
+      output: `${HEADER}\n`,
     },
-    // A different licence must not satisfy it.
+    // A different licence must not satisfy it, and must be corrected in
+    // place: prepending left the file with two copyright lines and a stale
+    // licence, and then it passed.
     {
       code: `// Copyright (c) 2026 Orime, Inc.\n// SPDX-License-Identifier: MIT\n`,
       errors: [{ messageId: "missingHeader" }],
-      output: `${HEADER}\n\n// Copyright (c) 2026 Orime, Inc.\n// SPDX-License-Identifier: MIT\n`,
+      output: `${HEADER}\n`,
+    },
+    // Only the copyright line: the case `eslint --fix` used to answer with a
+    // duplicate, which then satisfied the rule.
+    {
+      code: `// Copyright (c) 2026 Orime, Inc.\nexport const x = 1;\n`,
+      errors: [{ messageId: "missingHeader" }],
+      output: `${HEADER}\nexport const x = 1;\n`,
     },
     // Header present but not at the top — it has to be the first thing.
     {

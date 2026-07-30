@@ -64,8 +64,9 @@ export const noBrandUsage = {
     const findings: Finding[] = [];
     for (const file of files) {
       const style = file.endsWith(".css") ? "css" : "js";
-      const source = context.read(file).split("\n");
-      const code = stripComments(context.read(file), style).split("\n");
+      const text = context.read(file);
+      const source = text.split("\n");
+      const code = stripComments(text, style).split("\n");
 
       code.forEach((text, index) => {
         if (!RAW_BRAND.test(text)) return;

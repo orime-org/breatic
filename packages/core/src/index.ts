@@ -119,6 +119,7 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // task / node-history / agent / model-catalog / canvas-lock) lives in
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
+export * as projectsRepo from "@core/project/projects.repo.js";
 export {
   projectActivitiesRepo,
   encodeActivityCursor,

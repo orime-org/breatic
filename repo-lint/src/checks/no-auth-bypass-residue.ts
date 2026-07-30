@@ -11,8 +11,12 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
  *
  * The list is the single source of truth: the pattern is derived from it,
  * never written alongside it, so the two cannot disagree.
+ *
+ * Exported so the tests plant every entry rather than a sample of them. A
+ * test naming three of eight reads as covering the list, and the name added
+ * ninth would arrive with nothing exercising it.
  */
-const BYPASS_NAMES: ReadonlyArray<readonly [string, string]> = [
+export const BYPASS_NAMES: ReadonlyArray<readonly [string, string]> = [
   // The mode switch, backend and frontend.
   [["LOGIN", "MODE"].join("_"), "the mode switch"],
   [["VITE", "LOGIN", "MODE"].join("_"), "the frontend mode switch"],

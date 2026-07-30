@@ -56,6 +56,40 @@ export function moduleSourceVisitors(
 }
 
 /**
+ * Collects the lines a comment excuses.
+ *
+ * Several rules carry a per-line escape marker, and each one wrote the same
+ * dozen lines to find it. Two copies had already drifted on when they run —
+ * one collected at `create` time and one inside a `Program` visitor — which
+ * is the drift that matters here, because a rule reporting before its own
+ * markers are collected excuses nothing.
+ *
+ * A block comment spanning several lines excuses all of them: the marker
+ * belongs to the passage, and a reader who wrapped their reason onto a
+ * second line did not mean to narrow it.
+ * @param sourceCode The linted file's source, for its comments.
+ * @param marker Text that, appearing in a comment, excuses its lines.
+ * @returns The 1-based line numbers the marker covers.
+ */
+export function allowMarkerLines(
+  sourceCode: TSESLint.SourceCode,
+  marker: string,
+): ReadonlySet<number> {
+  const lines = new Set<number>();
+  for (const comment of sourceCode.getAllComments()) {
+    if (!comment.value.includes(marker)) continue;
+    for (
+      let line = comment.loc.start.line;
+      line <= comment.loc.end.line;
+      line += 1
+    ) {
+      lines.add(line);
+    }
+  }
+  return lines;
+}
+
+/**
  * Builds the visitors that see every string a file spells out.
  *
  * Two ways to write one — a plain literal and a template chunk — and a
@@ -73,7 +107,7 @@ export function moduleSourceVisitors(
  */
 export function stringLiteralVisitors(
   onText: (node: TSESTree.Node, text: string) => void,
-): Record<string, (node: never) => void> {
+): TSESLint.RuleListener {
   return {
     Literal: (node: TSESTree.Literal): void => {
       if (typeof node.value === "string") onText(node, node.value);

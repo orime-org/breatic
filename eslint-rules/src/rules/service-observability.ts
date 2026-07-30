@@ -13,7 +13,8 @@ const SERVICE_ENTRY = /packages\/(server|worker|collab)\/src\/index\.ts$/;
  * Not stylistic alternatives: collab builds a named child and worker
  * initialises the shared one. The third idiom — server calling a level on
  * the default logger — is a call on an existing one rather than a
- * construction, so it is recognised through LOGGER_LEVEL below.
+ * construction, so it is recognised through `isLoggerLevelAccess`, imported
+ * above from the shared logger shape.
  */
 const LOGGER_FACTORY = new Set(["createLogger", "initLogger"]);
 

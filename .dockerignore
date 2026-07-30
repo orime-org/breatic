@@ -1,11 +1,33 @@
+# The build copies the whole workspace, so everything a developer's tree
+# carries and the image must not is named here rather than left out of a
+# hand-kept list of things to copy.
+
 # Dependencies (installed in Docker)
 node_modules
 packages/*/node_modules
 
 # Build output (built in Docker)
+dist
 packages/*/dist
 *.tsbuildinfo
 .turbo
+
+# Local working directories — untracked, so present only on a developer's
+# machine, where they would otherwise be shipped into the build context.
+coverage
+logs
+uploads
+sandbox
+worktrees
+tasks
+*.log
+.remember
+.superpowers
+.gstack
+.playwright-mcp
+api-reference
+site
+CLAUDE.local.md
 
 # Environment (secrets — never copy into image)
 .env

@@ -42,7 +42,6 @@ export function namesALogger(node: TSESTree.Node): boolean {
   ) {
     return /logger$/i.test(node.property.name);
   }
-  if (node.type === AST_NODE_TYPES.ThisExpression) return false;
   return false;
 }
 

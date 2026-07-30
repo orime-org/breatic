@@ -150,16 +150,6 @@ jobs:
         # can't false-positive on a doc-comment naming a banned alias.
         run: pnpm lint:dependency-cruiser
 
-      - name: Lint no-raw-sql-outside-repo (core + server)
-        # Enforce ADR 2026-05-31 "second-pass adjustment" second-layer CI guard: a table's SQL
-        # lives in exactly one *.repo.ts home (one table, one repo home). Raw
-        # sql`...` and Drizzle db.select/.insert/.update/.delete are
-        # forbidden outside *.repo.ts in core + server (db.transaction
-        # orchestration is allowed). This is what stops the auth-role
-        # query — or any query — from scattering and drifting across
-        # services again. See scripts/lint-no-raw-sql-outside-repo.sh.
-        run: pnpm lint:no-raw-sql-outside-repo
-
       - name: Build packages
         run: pnpm turbo build
 

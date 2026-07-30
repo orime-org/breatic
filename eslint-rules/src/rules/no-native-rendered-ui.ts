@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
-import { stringLiteralVisitors } from "#rules/source-visitors";
+import {
+  allowMarkerLines,
+  stringLiteralVisitors,
+} from "#rules/source-visitors";
 
 /** Input types whose picker the browser or OS draws. */
 const NATIVE_INPUT_TYPES = new Set([
@@ -66,7 +69,10 @@ export const noNativeRenderedUi = createRule({
   },
   defaultOptions: [],
   create(context) {
-    const allowedLines = new Set<number>();
+    // Collected here rather than in a `Program` visitor: a rule that fills
+    // its excuse list from a visitor is racing its own reports, and the
+    // sibling factory doing the same thing collects it at create time.
+    const allowedLines = allowMarkerLines(context.sourceCode, ALLOW_MARKER);
 
     /**
      * Whether the node sits on a line carrying the escape marker.
@@ -78,18 +84,6 @@ export const noNativeRenderedUi = createRule({
     }
 
     return {
-      Program(): void {
-        for (const comment of context.sourceCode.getAllComments()) {
-          if (!comment.value.includes(ALLOW_MARKER)) continue;
-          for (
-            let line = comment.loc.start.line;
-            line <= comment.loc.end.line;
-            line += 1
-          ) {
-            allowedLines.add(line);
-          }
-        }
-      },
       "JSXOpeningElement[name.name='select']"(
         node: TSESTree.JSXOpeningElement,
       ): void {

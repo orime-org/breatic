@@ -74,4 +74,38 @@ describe("lint-coverage", () => {
       /matched none/,
     );
   });
+
+  it("reports a package the dependency graph is never cruised for", () => {
+    // The import-graph rules are a second linter with a second scope, and it
+    // is given directories by hand. Two packages added to the workspace sat
+    // outside its arguments and had no import rule applied to them at all —
+    // which is the same shape as a package with no lint script, one tool
+    // over.
+    const context = fakeContext({
+      "package.json": JSON.stringify({
+        scripts: {
+          "lint:dependency-cruiser": "depcruise --config x packages/*/src",
+        },
+      }),
+      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "repo-lint/package.json": manifest({ lint: "eslint src/" }),
+    });
+    const findings = lintCoverage.run(context);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toMatch(/repo-lint\/src/);
+  });
+
+  it("accepts a cruise argument list that covers every package", () => {
+    const context = fakeContext({
+      "package.json": JSON.stringify({
+        scripts: {
+          "lint:dependency-cruiser":
+            "depcruise --config x packages/*/src repo-lint/src",
+        },
+      }),
+      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "repo-lint/package.json": manifest({ lint: "eslint src/" }),
+    });
+    expect(lintCoverage.run(context)).toEqual([]);
+  });
 });

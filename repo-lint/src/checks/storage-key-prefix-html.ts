@@ -68,7 +68,10 @@ export const storageKeyPrefixHtml = {
 
     const findings: Finding[] = [];
     for (const file of documents) {
-      // Script comments only; an HTML comment cannot contain live code.
+      // Script comments only. An HTML comment is left alone, so a keyed
+      // access written inside `<!-- -->` is still reported — deliberately:
+      // commented-out markup is the usual way a key gets reintroduced, and
+      // a key sitting there unprefixed is a key somebody will uncomment.
       const lines = stripComments(context.read(file), "js").split("\n");
       lines.forEach((text, index) => {
         for (const hit of text.matchAll(KEYED_ACCESS)) {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { TSESLint, TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
+import { allowMarkerLines } from "#rules/source-visitors";
 
 /** What a caller must provide to ban a class-name pattern. */
 interface ClassPatternRuleSpec {
@@ -58,20 +59,10 @@ export function createClassPatternRule(
     },
     defaultOptions: [],
     create(context) {
-      const allowedLines = new Set<number>();
-      if (spec.allowMarker !== undefined) {
-        const marker = spec.allowMarker;
-        for (const comment of context.sourceCode.getAllComments()) {
-          if (!comment.value.includes(marker)) continue;
-          for (
-            let line = comment.loc.start.line;
-            line <= comment.loc.end.line;
-            line += 1
-          ) {
-            allowedLines.add(line);
-          }
-        }
-      }
+      const allowedLines =
+        spec.allowMarker === undefined
+          ? new Set<number>()
+          : allowMarkerLines(context.sourceCode, spec.allowMarker);
 
       /**
        * Reports the node when the class string carries the banned pattern.

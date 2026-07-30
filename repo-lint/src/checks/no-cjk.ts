@@ -55,27 +55,6 @@ const ALLOWED: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * Source, config and shell scripts are written in English.
- *
- * breatic is a global open-source project, so the code a contributor in any
- * country opens has to be readable to them — that covers comments as much
- * as identifiers. Separately, every user-facing string belongs in
- * `locales/*.json` behind `t()`, so CJK in a source string is also a string
- * that was never translated.
- *
- * Scope comes from `git ls-files`, which closes a blind spot the shell
- * version had: it enumerated `find packages`, so the repository root and
- * everything under `scripts/` that was not `.sh` — the `.mjs`, `.cjs` and
- * `.ts` files there — were outside every one of its three scan blocks and
- * reported clean by construction. Measured before the change: widening to
- * every tracked file of these kinds adds no findings beyond the two
- * allowlisted files, so this closes the hole without a cleanup.
- *
- * Documentation is deliberately absent from the scan: prose specs are read
- * by AI as much as by people and are allowed to be Chinese. The rule is
- * about what compiles into the product or gets run.
- */
-/**
  * Every allowlisted path still names a real file.
  *
  * An exemption is a hole with a reason attached, and the reason expires
@@ -99,6 +78,27 @@ function assertAllowlistIsLive(context: CheckContext): void {
   }
 }
 
+/**
+ * Source, config and shell scripts are written in English.
+ *
+ * breatic is a global open-source project, so the code a contributor in any
+ * country opens has to be readable to them — that covers comments as much
+ * as identifiers. Separately, every user-facing string belongs in
+ * `locales/*.json` behind `t()`, so CJK in a source string is also a string
+ * that was never translated.
+ *
+ * Scope comes from `git ls-files`, which closes a blind spot the shell
+ * version had: it enumerated `find packages`, so the repository root and
+ * everything under `scripts/` that was not `.sh` — the `.mjs`, `.cjs` and
+ * `.ts` files there — were outside every one of its three scan blocks and
+ * reported clean by construction. Measured before the change: widening to
+ * every tracked file of these kinds adds no findings beyond the two
+ * allowlisted files, so this closes the hole without a cleanup.
+ *
+ * Documentation is deliberately absent from the scan: prose specs are read
+ * by AI as much as by people and are allowed to be Chinese. The rule is
+ * about what compiles into the product or gets run.
+ */
 export const noCjk = {
   name: "no-cjk",
   description: "Source, config and scripts are written in English",

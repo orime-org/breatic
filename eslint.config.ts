@@ -353,6 +353,24 @@ export default tseslint.config(
     },
   },
   {
+    // One table, one repo home: a table's queries live in its own repo
+    // module, so the same query cannot end up written twice in two services
+    // and drifting. The db layer itself legitimately touches the driver, and
+    // the connectivity ping runs `SELECT 1` against no table at all.
+    files: ["packages/{collab,core,domain,server}/src/**/*.ts"],
+    ignores: [
+      "**/*.repo.ts",
+      "packages/*/src/db/**",
+      "**/connectivity-check.ts",
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.spec.ts",
+    ],
+    rules: {
+      "breatic/no-raw-sql-outside-repo": "error",
+    },
+  },
+  {
     // collab authenticates through core. Reaching the session key or the
     // members table from here is the drift this prevents.
     files: ["packages/collab/src/**/*.ts"],
