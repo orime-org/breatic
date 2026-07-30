@@ -245,4 +245,40 @@ export default [
       'breatic/no-cors-wildcard-credentials': 'error',
     },
   },
+  {
+    // The app-level provider lives in App.tsx; the dev gallery is a separate
+    // page tree and legitimately mounts its own. The vendor primitive file
+    // needed an exemption from the text guard because its JSDoc examples read
+    // as JSX — the AST never sees a comment, so that exemption is gone.
+    files: ['src/**/*.tsx'],
+    ignores: [
+      'src/App.tsx',
+      'src/pages/_dev/**',
+      '**/__tests__/**',
+      '**/*.test.tsx',
+      '**/*.spec.tsx',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/single-tooltip-provider': 'error',
+    },
+  },
+  {
+    // The wrapper imports sonner by definition, and the Toaster surface
+    // mounts it. Tests spy on sonner directly, which still exercises the
+    // wrapper since it delegates.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/lib/toast.ts',
+      'src/components/ui/sonner.tsx',
+      'src/pages/_dev/**',
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/single-toast-entry': 'error',
+    },
+  },
 ];

@@ -176,26 +176,6 @@ jobs:
         # to grep). See packages/web/CLAUDE.md + scripts/lint-no-native-rendered-ui.sh.
         run: pnpm lint:no-native-rendered-ui
 
-      - name: Lint single tooltip provider (one app-level provider)
-        # The app mounts exactly ONE <TooltipProvider> (App.tsx); its
-        # delayDuration is the calibrated timing every tooltip shares, and
-        # Radix skip-delay grouping works only within one provider. A
-        # component nesting its own provider overrides the timing and splits
-        # skip-delay — the bug that shipped twice (GenerateToolbar 300ms #337,
-        # ThumbnailHoverPreview 200ms). Tooltips inherit the app provider;
-        # TipTap NodeViews too (createPortal inherits context). See
-        # scripts/lint-single-tooltip-provider.sh.
-        run: pnpm lint:single-tooltip-provider
-
-      - name: Lint single toast entry (one wrapper — typed + de-duped)
-        # Every toast routes through @web/lib/toast, never sonner directly. The
-        # wrapper exposes only typed methods (subsumes the old "toast must be
-        # typed" rule — a bare toast()/message() can't compile against it) and
-        # adds a content-derived id so identical repeats refresh one toast
-        # instead of stacking (user 2026-07-18). See
-        # scripts/lint-single-toast-entry.sh.
-        run: pnpm lint:single-toast-entry
-
       - name: Lint overlay surface (popover panel unification)
         # Every popover/overlay panel surface uses bg-popover (tooltip inverse
         # is the only exception): bans bg-elevated / bg-card as a panel bg in

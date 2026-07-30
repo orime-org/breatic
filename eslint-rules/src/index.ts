@@ -11,6 +11,8 @@ import { noParamAsString } from "#rules/rules/no-param-as-string";
 import { noPostgresOutsideCore } from "#rules/rules/no-postgres-outside-core";
 import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
 import { noYjsDocumentsOutsideRepo } from "#rules/rules/no-yjs-documents-outside-repo";
+import { singleToastEntry } from "#rules/rules/single-toast-entry";
+import { singleTooltipProvider } from "#rules/rules/single-tooltip-provider";
 
 /**
  * The repository's own ESLint plugin.
@@ -34,5 +36,7 @@ export const breaticPlugin = {
     "no-postgres-outside-core": noPostgresOutsideCore,
     "no-sync-in-request-path": noSyncInRequestPath,
     "no-yjs-documents-outside-repo": noYjsDocumentsOutsideRepo,
+    "single-toast-entry": singleToastEntry,
+    "single-tooltip-provider": singleTooltipProvider,
   },
 } as const;
