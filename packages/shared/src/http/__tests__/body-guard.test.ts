@@ -261,6 +261,104 @@ describe("response body idle deadline", () => {
     }
   });
 
+  it("survives cancelling a body that something else already errored", async () => {
+    // The other half of the crash fix, and the half nothing was testing. The
+    // test above pins the ORDER (cancel before abort); this one pins the
+    // `.catch()`. They fail for different reasons and neither substitutes for
+    // the other — verified by deleting each alone.
+    //
+    // The order fix removed our own abort as a cause of the rejection, but not
+    // every cause: a peer reset can error the inner body while no pull is
+    // outstanding, which is a real window in the asset download's backpressure.
+    // Cancelling an already-errored stream still rejects, and an unhandled one
+    // kills the process.
+    const rejections: unknown[] = [];
+    const capture = (reason: unknown): void => {
+      rejections.push(reason);
+    };
+    process.on("unhandledRejection", capture);
+
+    try {
+      let errorBody: (() => void) | undefined;
+      const fetchImpl = ((): Promise<Response> => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("first"));
+            errorBody = (): void => {
+              controller.error(new Error("socket reset by peer"));
+            };
+          },
+        });
+        return Promise.resolve(new Response(stream, { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      const res = await httpRequest(URL_UNDER_TEST, {}, opts(fetchImpl, 5_000));
+      const guarded = res.stream();
+      const reader = guarded.getReader();
+
+      // Deliberately do NOT read. One chunk is already queued, so the stream
+      // is at its high-water mark and no pull is outstanding — the same
+      // backpressure window the asset download sits in while its write side
+      // catches up. Reading here would start another pull, and the peer's
+      // error would then surface through THAT pull and error the outer stream;
+      // cancelling an already-errored outer stream rejects without ever
+      // reaching the source's cancel, so the catch under test would not run.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // The peer dies while nobody is pulling.
+      errorBody?.();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Only now does the consumer give up. Cancelling an errored stream
+      // rejects; unhandled, that is a dead process.
+      await reader.cancel(new Error("consumer stopped")).catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", capture);
+    }
+  });
+
+  it("cancels the source before tearing the request down, so it closes gracefully", async () => {
+    // The third pin on the crash fix, and the one that took two attempts to
+    // get right. `.catch()` and the cancel-then-abort order are each enough on
+    // their own to prevent the crash, so no test that only asks "did it die"
+    // can tell them apart — deleting the order alone stays green. The order
+    // has a different observable consequence: cancelling first lets the
+    // source's own cancel algorithm run, which is how a body closes cleanly.
+    // Abort first and the source is errored, so per spec `cancel()` rejects
+    // immediately WITHOUT invoking that algorithm — the connection is ripped
+    // out instead of released.
+    let sourceCancelled: unknown = "never called";
+    const fetchImpl = ((_url: string, init?: RequestInit): Promise<Response> => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("chunk"));
+          // A real body errors when its request is aborted. Without this the
+          // teardown has no effect on the source and the ordering becomes
+          // unobservable — which is exactly why an earlier version of this
+          // test stayed green against the wrong order.
+          init?.signal?.addEventListener("abort", () => {
+            controller.error(new DOMException("This operation was aborted", "AbortError"));
+          });
+        },
+        cancel(reason) {
+          sourceCancelled = reason;
+        },
+      });
+      return Promise.resolve(new Response(stream, { status: 200 }));
+    }) as unknown as typeof fetch;
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, opts(fetchImpl, 5_000));
+    const reader = res.stream().getReader();
+    await reader.read();
+    await reader.cancel(new Error("consumer stopped"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(sourceCancelled).not.toBe("never called");
+  });
+
   it("refuses a second read instead of answering with nothing", async () => {
     // A one-shot resource read twice used to return an empty string, turning a
     // caller's mistake into a plausible value. The platform's own `Response`

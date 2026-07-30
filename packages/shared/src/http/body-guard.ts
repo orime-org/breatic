@@ -30,15 +30,23 @@
  * consumes the body, so exactly one of them may be called — same rule as the
  * platform's own `Response`, and enforced the same way: a second read throws.
  *
- * There is no "discard without reading" member, and that is deliberate. A
- * caller that takes a handle and neither reads nor cancels it holds the
- * connection until the peer times out — the same as holding an unread
- * `Response`. Adding a release method looked attractive until it was measured:
- * every plausible implementation aborts the request, and callers would reach
- * for it in `finally` blocks that also run on the success path, tearing down
- * transfers that were fine. The reachable version of the problem was closed at
- * the source instead — the transport now tears down the attempts it retries
- * past, which is where responses were actually being dropped.
+ * There is no "discard without reading" member, and that is deliberate — but
+ * the tradeoff is real and worth stating plainly rather than claiming the
+ * problem away. A caller that takes a handle and neither reads nor cancels it
+ * holds the connection until the peer times out, the same as holding an unread
+ * `Response`. Six call sites do exactly that with a FINAL non-ok response:
+ * they throw or return without touching the body. That is unchanged from
+ * before this transport existed, and measured, it only pins a socket for
+ * bodies past roughly 8 MB — below that the client buffers and returns the
+ * connection to the pool either way. Of the six, only the agent's fetch tool
+ * can be handed a body that large, because only it takes an arbitrary URL from
+ * a conversation.
+ *
+ * A release method was considered and rejected: every plausible implementation
+ * aborts the request, and callers would reach for it in `finally` blocks that
+ * also run on the success path, tearing down transfers that were fine. What
+ * the transport does close is the other leak — it now tears down the attempts
+ * it retries PAST, which no caller could ever have reached.
  */
 export interface GuardedResponse {
   /** Whether the status is in the 2xx range. */
@@ -319,21 +327,25 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
           if (value !== undefined) controller.enqueue(value);
         },
         cancel(reason): void {
-          // The order here is the OPPOSITE of readChunk's. There, rejecting
-          // before the teardown keeps the real reason from being masked by the
-          // abort. Here there is no race and nothing to reject — the consumer
-          // initiated this and already holds its own error — while aborting
-          // FIRST is what makes the following cancel fail: the streams spec has
-          // `cancel()` on an already-errored stream return a promise rejected
-          // with the stored error, without running the underlying cancel
-          // algorithm.
+          // Teardown runs LAST here, same as in readChunk — cancel first,
+          // then abort. That ordering is load-bearing: aborting first errors
+          // the inner body, and the spec then has `cancel()` return a promise
+          // rejected with the stored error without running the underlying
+          // cancel algorithm. An earlier version aborted first and left that
+          // rejection floating, which Node terminates the process for.
           //
-          // And that rejection must be handled. Left floating it is an
-          // unhandled rejection, which Node terminates the process for. Only
-          // collab installs a safety net, so a consumer that merely broke out
-          // of a `for await` — or whose disk filled mid-write — took the whole
-          // worker down with every other job in flight. Measured in a child
-          // process: `engineering/demo/2026-07-30-stream-cancel-crash-repro.ts`.
+          // The `.catch()` is NOT redundant now that the order is right. Our
+          // own abort can no longer cause the rejection, but something else
+          // can: the peer or upstream may have errored the inner body already
+          // — in `downloadToTempDir` there is a backpressure window where no
+          // pull is outstanding and a reset lands there. Cancelling a body
+          // that is already errored still rejects, and only collab installs an
+          // unhandled-rejection net, so without this the worker dies with
+          // every job in flight.
+          //
+          // Measured both halves: `engineering/demo/2026-07-30-stream-cancel-crash-repro.ts`
+          // for the ordering, and the "already errored before cancel" test
+          // below for this catch. Deleting either one alone still crashes.
           void reader
             .cancel(reason)
             .catch(() => {
