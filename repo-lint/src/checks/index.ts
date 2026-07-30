@@ -8,6 +8,7 @@ import { noCjk } from "#repo-lint/checks/no-cjk";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
+import { serviceEntriesPresent } from "#repo-lint/checks/service-entries-present";
 import { storageKeyPrefixHtml } from "#repo-lint/checks/storage-key-prefix-html";
 import { noUnresolvedAliasInDist } from "#repo-lint/checks/no-unresolved-alias-in-dist";
 import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
@@ -29,5 +30,6 @@ export const CHECKS: readonly Check[] = [
   noTranslatedProductNoun,
   noTrojanSource,
   noUnresolvedAliasInDist,
+  serviceEntriesPresent,
   storageKeyPrefixHtml,
 ];

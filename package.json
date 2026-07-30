@@ -21,7 +21,6 @@
     "lint:dependency-cruiser": "depcruise --config .dependency-cruiser.cjs packages/*/src",
     "lint:no-extreme-token-value": "bash scripts/lint-no-extreme-token-value.sh && bash scripts/lint-no-extreme-token-value.sh --self-test",
     "lint:doc-links": "bash scripts/lint-doc-links.sh && bash scripts/lint-doc-links.sh --self-test",
-    "lint:service-logging": "bash scripts/lint-service-logging.sh",
     "lint:no-raw-sql-outside-repo": "bash scripts/lint-no-raw-sql-outside-repo.sh",
     "lint:no-noaccount": "bash scripts/lint-no-noaccount.sh && bash scripts/lint-no-noaccount.sh --self-test",
     "typecheck": "turbo run typecheck",

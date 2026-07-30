@@ -399,6 +399,16 @@ export default tseslint.config(
     },
   },
   {
+    // Only the three service entries, and the rule reads the path itself so
+    // the decision is testable. The other half of this invariant — that
+    // these files exist at all — cannot be a rule and lives in the
+    // repo-wide checks: a deleted entry is a file nothing lints.
+    files: ["packages/{server,worker,collab}/src/index.ts"],
+    rules: {
+      "breatic/service-observability": "error",
+    },
+  },
+  {
     // Every package, not just core's schema file: the rule only reacts to a
     // pgTable call, so a table declared somewhere new is covered the day it
     // appears rather than the day someone remembers to widen a glob.
