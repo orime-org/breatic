@@ -270,7 +270,9 @@ export default tseslint.config(
   },
   {
     // Every package, because a leaked row type is a problem wherever it
-    // surfaces. Repos are exempt: mapping the row is their job.
+    // surfaces. Repos get their own block for the one exemption they need —
+    // mapping the row is their job — because `ignores` applies to every rule
+    // in a block, and neither of the two rules below should stop at a repo.
     files: ["packages/*/src/**/*.{ts,tsx}"],
     ignores: [
       "**/*.repo.ts",
@@ -280,6 +282,18 @@ export default tseslint.config(
     ],
     rules: {
       "breatic/no-drizzle-type-leak": "error",
+    },
+  },
+  {
+    // A route parameter asserted into a string, and a wildcard CORS origin
+    // shipped with credentials, are wrong in a repo as much as anywhere.
+    files: ["packages/*/src/**/*.{ts,tsx}"],
+    ignores: [
+      "**/__tests__/**",
+      "**/*.test.{ts,tsx}",
+      "**/*.spec.{ts,tsx}",
+    ],
+    rules: {
       "breatic/no-param-as-string": "error",
       "breatic/no-cors-wildcard-credentials": "error",
     },
