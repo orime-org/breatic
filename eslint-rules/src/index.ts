@@ -19,6 +19,7 @@ import { noRawDesignValues } from "#rules/rules/no-raw-design-values";
 import { noRawHexColor } from "#rules/rules/no-raw-hex-color";
 import { noRelativeImport } from "#rules/rules/no-relative-import";
 import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
+import { docLinkResolves } from "#rules/rules/doc-link-resolves";
 import { noRawSqlOutsideRepo } from "#rules/rules/no-raw-sql-outside-repo";
 import { noYjsDocumentsOutsideRepo } from "#rules/rules/no-yjs-documents-outside-repo";
 import { schemaTimestamps } from "#rules/rules/schema-timestamps";
@@ -60,6 +61,7 @@ export const breaticPlugin = {
     "no-raw-hex-color": noRawHexColor,
     "no-relative-import": noRelativeImport,
     "no-sync-in-request-path": noSyncInRequestPath,
+    "doc-link-resolves": docLinkResolves,
     "no-raw-sql-outside-repo": noRawSqlOutsideRepo,
     "no-yjs-documents-outside-repo": noYjsDocumentsOutsideRepo,
     "one-px-border": onePxBorder,

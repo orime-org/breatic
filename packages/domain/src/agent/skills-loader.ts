@@ -156,7 +156,7 @@ export class SkillRegistry {
    * Build an XML summary of all available skills for the system prompt.
    *
    * Only includes name and description; full content is loaded on demand
-   * via {@link loadSkillContent}.
+   * via `loadSkillContent`.
    * @returns An XML string listing each skill with its availability status
    */
   buildSummaryXml(): string {

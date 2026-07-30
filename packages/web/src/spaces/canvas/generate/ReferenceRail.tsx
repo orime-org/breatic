@@ -11,7 +11,7 @@ import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 
 interface ReferenceRailProps {
-  /** The node's derived reference rows (from {@link deriveReferences}). */
+  /** The node's derived reference rows (from `deriveReferences`). */
   references: ReferenceRailItem[];
   /**
    * Remove a row — the caller routes by the ROW's identity (`focus: true`

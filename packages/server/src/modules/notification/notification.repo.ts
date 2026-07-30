@@ -83,7 +83,7 @@ function toEntity(row: typeof notifications.$inferSelect): NotificationEntity {
  * Create a notification row.
  *
  * Caller is the per-type service constructor (e.g.
- * `createRoleUpgradeRequest`) — see {@link notification.service}.
+ * `createRoleUpgradeRequest`) — see `notification.service`.
  * @param input - User, type, payload, and optional project scope to insert
  * @param tx - optional drizzle transaction; threaded so caller can
  *   bundle the INSERT with related writes (e.g. project_members

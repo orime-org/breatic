@@ -100,7 +100,7 @@ export const assetsApi = {
    * local mode (same-origin app endpoint — cookie auth): `credentials:
    * 'same-origin'` attaches the session cookie only to our own origin and
    * never leaks it to cloud storage.
-   * @param uploadUrl - The presigned `uploadUrl` from {@link presign}.
+   * @param uploadUrl - The presigned `uploadUrl` from `presign`.
    * @param file - The browser `File` to upload.
    * @throws {Error} When the storage responds with a non-2xx status.
    */
@@ -122,8 +122,8 @@ export const assetsApi = {
    * activity row is recorded — call AFTER the PUT succeeded.
    * @param params - Upload identity + optional canvas context.
    * @param params.projectId - Owning project.
-   * @param params.key - Storage key returned by {@link presign} (regular path).
-   * @param params.kind - Asset kind returned by {@link presign}.
+   * @param params.key - Storage key returned by `presign` (regular path).
+   * @param params.kind - Asset kind returned by `presign`.
    * @param params.hash - Content sha256 (ledger registration / dedup lookup).
    * @param params.dedup - True for a dedup report (presign said `alreadyExists`).
    * @param params.nodeId - Canvas node the asset landed on, when node-bound.

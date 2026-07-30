@@ -449,6 +449,7 @@ export default [
     plugins: { breatic: breaticPlugin },
     rules: {
       'breatic/no-deployed-host': 'error',
+      'breatic/doc-link-resolves': 'error',
     },
   },
   {

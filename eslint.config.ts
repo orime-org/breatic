@@ -371,6 +371,22 @@ export default tseslint.config(
     },
   },
   {
+    // Doc comments are the one thing here nothing else verifies, and the
+    // documentation generator only ever sees the exported surface — which
+    // is the minority of comments, since every named function carries one.
+    files: [
+      "packages/{collab,core,domain,server,shared,worker}/src/**/*.{ts,tsx}",
+      "eslint-rules/src/**/*.ts",
+      "repo-lint/src/**/*.ts",
+    ],
+    // Tests carry the same fixture carve-out every other documentation rule
+    // here gives them: a comment in a fixture describes the fixture.
+    ignores: ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}", "**/__tests__/**"],
+    rules: {
+      "breatic/doc-link-resolves": "error",
+    },
+  },
+  {
     // collab authenticates through core. Reaching the session key or the
     // members table from here is the drift this prevents.
     files: ["packages/collab/src/**/*.ts"],
