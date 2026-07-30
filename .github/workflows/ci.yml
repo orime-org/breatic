@@ -232,15 +232,6 @@ jobs:
         # scripts/lint-no-relative-import.sh for rationale + exclusions.
         run: pnpm lint:no-relative-import
 
-      - name: Lint test-file-location (all test files under __tests__/)
-        # Every *.test.ts(x) / *.spec.ts(x) lives in a __tests__/ directory,
-        # never colocated next to its source (2026-07-15, user-ratified):
-        # 93% of tests already did, and the unwritten+unguarded convention
-        # let core/domain/server stragglers drift in. Doc alone recurs; this
-        # guard is the enforcement half. Runs --self-test too, so a broken
-        # checker fails CI. See scripts/lint-test-file-location.sh.
-        run: pnpm lint:test-file-location
-
       - name: Lint doc-links (TSDoc {@link} targets must resolve)
         # A comment pointing at a deleted symbol is a lie that no other check
         # catches: tsc, tests and runtime all ignore prose. #1840 found a

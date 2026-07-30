@@ -20,6 +20,7 @@ import { noYjsDocumentsOutsideRepo } from "#rules/rules/no-yjs-documents-outside
 import { onePxBorder } from "#rules/rules/one-px-border";
 import { singleToastEntry } from "#rules/rules/single-toast-entry";
 import { singleTooltipProvider } from "#rules/rules/single-tooltip-provider";
+import { testFileLocation } from "#rules/rules/test-file-location";
 
 /**
  * The repository's own ESLint plugin.
@@ -52,5 +53,6 @@ export const breaticPlugin = {
     "one-px-border": onePxBorder,
     "single-toast-entry": singleToastEntry,
     "single-tooltip-provider": singleTooltipProvider,
+    "test-file-location": testFileLocation,
   },
 } as const;

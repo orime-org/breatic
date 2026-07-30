@@ -348,6 +348,15 @@ export default tseslint.config(
     },
   },
   {
+    // Only test files, and deliberately not excluding them: this is the one
+    // rule whose subject IS the test file. It reads the path rather than the
+    // contents, so the block only has to put it in front of the right files.
+    files: ["packages/*/src/**/*.{test,spec}.{ts,tsx}"],
+    rules: {
+      "breatic/test-file-location": "error",
+    },
+  },
+  {
     ignores: ["**/dist/**", "**/node_modules/**", "**/*.js", "**/*.mjs"],
   },
 );

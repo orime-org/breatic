@@ -368,4 +368,13 @@ export default [
       'breatic/no-raw-hex-color': 'error',
     },
   },
+  {
+    // Only test files, and deliberately not excluding them: this is the one
+    // rule whose subject IS the test file.
+    files: ['src/**/*.{test,spec}.{ts,tsx}'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/test-file-location': 'error',
+    },
+  },
 ];
