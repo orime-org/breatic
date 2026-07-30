@@ -35,6 +35,9 @@ importers:
       eslint-plugin-jsdoc:
         specifier: ^63.0.1
         version: 63.0.1(eslint@10.1.0(jiti@2.6.1))
+      globals:
+        specifier: ^16.5.0
+        version: 16.5.0
       secretlint:
         specifier: ^13.0.2
         version: 13.0.2
@@ -954,6 +957,9 @@ importers:
       anti-trojan-source:
         specifier: ^1.11.3
         version: 1.11.3
+      eslint:
+        specifier: ^10.1.0
+        version: 10.1.0(jiti@2.6.1)
       tsx:
         specifier: ^4.19.0
         version: 4.22.3

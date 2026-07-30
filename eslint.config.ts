@@ -1,4 +1,5 @@
 import eslint from "@eslint/js";
+import globals from "globals";
 import tseslint from "typescript-eslint";
 import jsdoc from "eslint-plugin-jsdoc";
 import importPlugin from "eslint-plugin-import";
@@ -35,6 +36,12 @@ export default tseslint.config(
     // (e.g. no-unnecessary-type-assertion) can run. `projectService`
     // auto-discovers the nearest package tsconfig per file.
     languageOptions: {
+      // Everything this file governs runs in Node. Naming the environment is
+      // what tells ESLint's scope analysis that Buffer, process and
+      // setTimeout exist — without it they are undeclared names, and a doc
+      // comment that links to one is reported as pointing at nothing. web
+      // declares its own environment in its own config.
+      globals: globals.node,
       parserOptions: {
         projectService: true,
         tsconfigRootDir: import.meta.dirname,

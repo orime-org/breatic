@@ -20,6 +20,29 @@ const DATA_METHODS = new Set(["select", "insert", "update", "delete"]);
 const DATABASE_HANDLES = new Set(["db", "tx", "trx", "yjsDb"]);
 
 /**
+ * Names the last segment of the expression a call or tag reads from.
+ *
+ * A handle is not always a bare identifier. Namespace imports are the
+ * prevailing style in the packages this rule governs, so the client arrives
+ * as `core.db` as readily as `db`, and a field on `this` is the same handle
+ * again. Reading only an identifier lost both — and the shell guard this
+ * replaced, matching the text `db.`, caught them.
+ * @param node The object of a member expression, or a template's tag.
+ * @returns The name to judge, or null when there is no name to read.
+ */
+function handleName(node: TSESTree.Node): string | null {
+  if (node.type === AST_NODE_TYPES.Identifier) return node.name;
+  if (
+    node.type === AST_NODE_TYPES.MemberExpression &&
+    !node.computed &&
+    node.property.type === AST_NODE_TYPES.Identifier
+  ) {
+    return node.property.name;
+  }
+  return null;
+}
+
+/**
  * A table's SQL lives in that table's repo and nowhere else.
  *
  * One table, one repo home. The drift this exists to prevent already
@@ -61,20 +84,20 @@ export const noRawSqlOutsideRepo = createRule<
   create(context) {
     return {
       TaggedTemplateExpression(node: TSESTree.TaggedTemplateExpression): void {
-        if (node.tag.type !== AST_NODE_TYPES.Identifier) return;
-        if (!RAW_TAGS.has(node.tag.name)) return;
+        const tag = handleName(node.tag);
+        if (tag === null || !RAW_TAGS.has(tag)) return;
         context.report({ node, messageId: "rawTemplate" });
       },
       MemberExpression(node: TSESTree.MemberExpression): void {
         if (node.computed) return;
-        if (node.object.type !== AST_NODE_TYPES.Identifier) return;
         if (node.property.type !== AST_NODE_TYPES.Identifier) return;
-        if (!DATABASE_HANDLES.has(node.object.name)) return;
+        const handle = handleName(node.object);
+        if (handle === null || !DATABASE_HANDLES.has(handle)) return;
         if (!DATA_METHODS.has(node.property.name)) return;
         context.report({
           node,
           messageId: "queryBuilder",
-          data: { handle: node.object.name, method: node.property.name },
+          data: { handle, method: node.property.name },
         });
       },
     };
