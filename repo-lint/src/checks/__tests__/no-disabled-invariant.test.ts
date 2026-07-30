@@ -172,4 +172,37 @@ describe("no-disabled-invariant", () => {
       /matched none/,
     );
   });
+
+  // Four spellings ESLint accepts that a value-parsing scan missed. The scan
+  // no longer reads the value at all: naming one of our rules in a
+  // configuration comment is the thing being reported, whatever it is set to.
+  it("reports the array spelling", () => {
+    const context = fakeContext({
+      "packages/core/src/a.ts": `/* ${CONFIG} breatic/no-relative-import: ["off"] */\nimport x from "./y";\n`,
+    });
+    expect(noDisabledInvariant.run(context)).toHaveLength(1);
+  });
+
+  it("reports a quoted rule id, the spelling this repo's own configs use", () => {
+    const context = fakeContext({
+      "packages/core/src/a.ts": `/* ${CONFIG} "breatic/no-relative-import": "off" */\nimport x from "./y";\n`,
+    });
+    expect(noDisabledInvariant.run(context)).toHaveLength(1);
+  });
+
+  it("reports a configuration comment that wraps onto a second line", () => {
+    const context = fakeContext({
+      "packages/core/src/a.ts": `/* ${CONFIG}\n   breatic/no-relative-import: "off" */\nimport x from "./y";\n`,
+    });
+    expect(noDisabledInvariant.run(context)).toHaveLength(1);
+  });
+
+  it("examines a configuration comment sharing a line with a directive", () => {
+    // The two syntaxes were checked in order, so whichever came first hid the
+    // other — and the comment justifying that said a line can only be one.
+    const context = fakeContext({
+      "packages/core/src/a.ts": `const a = 1; // ${OFF}-line breatic/a\n/* ${CONFIG} breatic/b: "off" */\nconst c = 2;\n`,
+    });
+    expect(noDisabledInvariant.run(context)).toHaveLength(2);
+  });
 });

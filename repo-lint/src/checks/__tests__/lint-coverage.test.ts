@@ -149,4 +149,51 @@ describe("lint-coverage", () => {
       ),
     ).toThrow(/pnpm-workspace\.yaml/);
   });
+
+  // A hand-written parser stopped at the first line that was not an entry, so
+  // an ordinary YAML comment or blank line inside the list silently truncated
+  // it — and a package that is never looked for is never reported as unlinted,
+  // which is the exact failure this check exists to report.
+  it("reads the whole list past a comment inside it", () => {
+    const context = fakeContext({
+      "pnpm-workspace.yaml":
+        'packages:\n  - "packages/*"\n  # the two guard packages live at the root\n  - "repo-lint"\n',
+      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "repo-lint/package.json": manifest({ build: "tsc" }),
+    });
+    const findings = lintCoverage.run(context);
+    expect(findings.some((f) => f.file === "repo-lint/package.json")).toBe(true);
+  });
+
+  it("reads the whole list past a blank line inside it", () => {
+    const context = fakeContext({
+      "pnpm-workspace.yaml":
+        'packages:\n  - "packages/*"\n\n  - "repo-lint"\n',
+      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "repo-lint/package.json": manifest({ build: "tsc" }),
+    });
+    const findings = lintCoverage.run(context);
+    expect(findings.some((f) => f.file === "repo-lint/package.json")).toBe(true);
+  });
+
+  it("accepts the inline-array spelling of the same list", () => {
+    const context = fakeContext({
+      "pnpm-workspace.yaml": 'packages: ["packages/*", "repo-lint"]\n',
+      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "repo-lint/package.json": manifest({ build: "tsc" }),
+    });
+    const findings = lintCoverage.run(context);
+    expect(findings.some((f) => f.file === "repo-lint/package.json")).toBe(true);
+  });
+
+  it("accepts an entry carrying a trailing comment", () => {
+    const context = fakeContext({
+      "pnpm-workspace.yaml":
+        'packages:\n  - "packages/*"\n  - "repo-lint" # the checks themselves\n',
+      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "repo-lint/package.json": manifest({ build: "tsc" }),
+    });
+    const findings = lintCoverage.run(context);
+    expect(findings.some((f) => f.file === "repo-lint/package.json")).toBe(true);
+  });
 });

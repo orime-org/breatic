@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
+import { parse } from "yaml";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 
 /** A package manifest, as far as this check reads one. */
@@ -30,15 +31,20 @@ function workspaceManifests(context: CheckContext): RegExp {
       `${WORKSPACE} is not there, so this check cannot know which packages the workspace has. Guessing would mean reporting clean for packages it never looked for.`,
     );
   }
-  const lines = context.read(WORKSPACE).split("\n");
-  const start = lines.findIndex((line) => /^packages:\s*$/.test(line));
-  const globs: string[] = [];
-  for (const line of lines.slice(start + 1)) {
-    if (start === -1) break;
-    const entry = /^\s+-\s*["']?([^"'\s]+)["']?\s*$/.exec(line);
-    if (entry?.[1] === undefined) break;
-    globs.push(entry[1]);
-  }
+  // Parsed, not pattern-matched. A hand-written reader stopped at the first
+  // line that was not an entry, so a comment or a blank line inside the list
+  // silently truncated it — and a package that is never looked for is never
+  // reported as unlinted, which is this check's whole subject. The repository
+  // already depends on a YAML parser for its own config files; there was never
+  // a reason for this one to be different.
+  const parsed: unknown = parse(context.read(WORKSPACE));
+  const declared =
+    typeof parsed === "object" && parsed !== null
+      ? (parsed as { packages?: unknown }).packages
+      : undefined;
+  const globs = Array.isArray(declared)
+    ? declared.filter((entry): entry is string => typeof entry === "string")
+    : [];
   if (globs.length === 0) {
     throw new Error(
       `${WORKSPACE} declares no packages, so this check would look at nothing and report clean.`,

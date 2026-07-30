@@ -29,14 +29,22 @@ const DIRECTIVE_COMMENT = new RegExp(
 );
 
 /**
- * An inline configuration comment, with its body.
+ * An inline configuration comment, with its body, wherever it sits.
  *
  * A second syntax entirely, and the one ESLint is silent about: measured
  * against ESLint 10, a rule switched off this way produces no message and no
  * entry in `suppressedMessages` either. Requiring whitespace after the word
  * is what separates it from the directive above, which continues with `-`.
+ *
+ * Matched over the whole file rather than line by line, because a block
+ * comment may wrap — and a scan that read one line at a time saw the opening
+ * without the rule name and the rule name without the opening, so neither
+ * half looked like anything.
  */
-const CONFIG_COMMENT = new RegExp(`(?://|/\\*|\\*)\\s*${CONFIG}\\s+(.*)`);
+const CONFIG_COMMENTS = new RegExp(
+  `/\\*\\s*${CONFIG}\\s+([\\s\\S]*?)\\*/|//\\s*${CONFIG}\\s+(.*)`,
+  "g",
+);
 
 /** Our own rules, as named in a directive. */
 const OURS = /breatic\/([a-z0-9-]+)/g;
@@ -44,14 +52,23 @@ const OURS = /breatic\/([a-z0-9-]+)/g;
 /**
  * One of our rules given a severity in an inline config comment.
  *
- * Both spellings of every severity: ESLint accepts the words and the numbers
- * interchangeably, and a scan that knew only the words would be answered with
- * a digit.
+ * The rule id may be quoted — that is the spelling this repository's own
+ * configs use — and the severity may be a word, a number, or either wrapped
+ * in an array alongside options. Rather than enumerate those, the value is
+ * captured up to the next entry and asked one question: does it say error.
+ * Everything else silences the rule to some degree, and an enumeration is
+ * what let the array spelling through.
  */
-const OURS_CONFIGURED = /breatic\/([a-z0-9-]+)\s*:\s*(?:"([a-z]+)"|'([a-z]+)'|(\d))/g;
+const OURS_CONFIGURED = /["']?breatic\/([a-z0-9-]+)["']?\s*:\s*([^,]*)/g;
 
-/** Severities that stop a rule failing the build. */
-const SILENCED = new Set(["off", "0", "warn", "1"]);
+/**
+ * Whether a severity still fails the build.
+ * @param value The text following the colon, up to the next entry.
+ * @returns True when the rule remains an error.
+ */
+function staysAnError(value: string): boolean {
+  return /\berror\b|\b2\b/.test(value);
+}
 
 /**
  * Strips what ESLint does not read as rule names.
@@ -71,47 +88,57 @@ const REMEDY =
   "If this case genuinely belongs outside the rule, put the exception in the rule with its reason, where it is reviewed once and applies wherever it should.";
 
 /**
- * Judges one line for every syntax that switches one of our rules off.
- *
- * The two syntaxes are checked in order rather than together because the
- * directive begins with the same word the inline configuration comment does,
- * and a line is only ever one of them.
+ * Judges one line for a directive comment switching off our rules.
  * @param file Repo-relative path, for the finding.
  * @param line One-based line number, for the finding.
  * @param text The line's text.
  * @returns One finding per rule this line silences.
  */
-function judgeLine(file: string, line: number, text: string): Finding[] {
+function judgeDirective(file: string, line: number, text: string): Finding[] {
   const directive = DIRECTIVE_COMMENT.exec(text);
-  if (directive) {
-    const named = ruleList(directive[1] ?? "");
-    if (named === "") {
-      return [
-        {
-          file,
-          line,
-          message: `switches off every rule here, this repository's included. A directive naming no rule is the widest form there is: it takes the fewest characters to write and removes the most, and nothing downstream records that it happened. ${REMEDY}`,
-        },
-      ];
-    }
-    return [...named.matchAll(OURS)].map(([, rule]) => ({
-      file,
-      line,
-      message: `switches off "breatic/${rule}" for this line. These rules replaced shell guards that had no way to be switched off, and the ones worth having are the ones that hold everywhere. ${REMEDY}`,
-    }));
+  if (!directive) return [];
+  const named = ruleList(directive[1] ?? "");
+  if (named === "") {
+    return [
+      {
+        file,
+        line,
+        message: `switches off every rule here, this repository's included. A directive naming no rule is the widest form there is: it takes the fewest characters to write and removes the most, and nothing downstream records that it happened. ${REMEDY}`,
+      },
+    ];
   }
+  return [...named.matchAll(OURS)].map(([, rule]) => ({
+    file,
+    line,
+    message: `switches off "breatic/${rule}" for this line. These rules replaced shell guards that had no way to be switched off, and the ones worth having are the ones that hold everywhere. ${REMEDY}`,
+  }));
+}
 
-  const config = CONFIG_COMMENT.exec(text);
-  if (!config) return [];
-  return [...(config[1] ?? "").matchAll(OURS_CONFIGURED)]
-    .filter(([, , word, quoted, digit]) =>
-      SILENCED.has(word ?? quoted ?? digit ?? ""),
-    )
-    .map(([, rule, word, quoted, digit]) => ({
-      file,
-      line,
-      message: `sets "breatic/${rule}" to ${word ?? quoted ?? digit} in an inline configuration comment, which stops it failing the build. ESLint reports nothing when a rule is silenced this way — not a message, and not an entry in suppressedMessages either — so this scan is the only place it can be seen. ${REMEDY}`,
-    }));
+/**
+ * Judges a whole file for configuration comments that weaken our rules.
+ *
+ * Whole-file rather than per-line: a block comment may wrap, and it may share
+ * a line with a directive. Both were invisible to a scan that read one line
+ * and decided it was one syntax or the other.
+ * @param file Repo-relative path, for the finding.
+ * @param text The file's contents.
+ * @returns One finding per rule a configuration comment weakens.
+ */
+function judgeConfigComments(file: string, text: string): Finding[] {
+  const findings: Finding[] = [];
+  for (const comment of text.matchAll(CONFIG_COMMENTS)) {
+    const body = comment[1] ?? comment[2] ?? "";
+    const line = text.slice(0, comment.index).split("\n").length;
+    for (const [, rule, value] of body.matchAll(OURS_CONFIGURED)) {
+      if (staysAnError(value ?? "")) continue;
+      findings.push({
+        file,
+        line,
+        message: `sets "breatic/${rule}" to something other than an error in a configuration comment, which stops it failing the build. ESLint reports nothing when a rule is weakened this way — not a message, and not an entry in suppressedMessages either — so this scan is the only place it can be seen. ${REMEDY}`,
+      });
+    }
+  }
+  return findings;
 }
 
 /**
@@ -146,12 +173,11 @@ export const noDisabledInvariant = {
 
     const findings: Finding[] = [];
     for (const file of files) {
-      context
-        .read(file)
-        .split("\n")
-        .forEach((text, index) => {
-          findings.push(...judgeLine(file, index + 1, text));
-        });
+      const text = context.read(file);
+      text.split("\n").forEach((line, index) => {
+        findings.push(...judgeDirective(file, index + 1, line));
+      });
+      findings.push(...judgeConfigComments(file, text));
     }
     return findings;
   },
