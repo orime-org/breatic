@@ -78,7 +78,7 @@ export const noAuthBypassResidue = {
       }
     }
 
-    const files = context.files(
+    const files = context.textFiles(
       (path) => !ALLOWED.has(path),
       "tracked files outside the allowlist",
     );
@@ -86,9 +86,6 @@ export const noAuthBypassResidue = {
     const findings: Finding[] = [];
     for (const file of files) {
       const text = context.read(file);
-      // Skip binaries the way git does: a NUL byte means it is not text.
-      if (text.includes("\u0000")) continue;
-
       text.split("\n").forEach((line, index) => {
         for (const [name, what] of BYPASS_NAMES) {
           if (!line.includes(name)) continue;

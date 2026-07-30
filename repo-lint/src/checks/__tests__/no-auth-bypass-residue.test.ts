@@ -105,4 +105,26 @@ describe("no-auth-bypass-residue", () => {
     });
     expect(() => noAuthBypassResidue.run(context)).toThrow(/matched none/);
   });
+
+  it("skips a file whose bytes are not text", () => {
+    // It scans every tracked file rather than a list of extensions, which is
+    // the point — three of the four original residues lived where an
+    // extension list does not reach. That makes reading a binary as text a
+    // real possibility, so the shared text decision has to hold here too.
+    // The forbidden name is really in the fixture, so this fails if the
+    // binary is scanned rather than skipped — a placeholder name would have
+    // passed either way and tested nothing.
+    const forbidden = BYPASS_NAMES[0]?.[0] ?? "";
+    expect(forbidden).not.toBe("");
+    const context = fakeContext({
+      "docs/notes.md": "nothing here\n",
+      "assets/blob.dat": `${forbidden}\u0000\u0000not text`,
+    });
+    expect(noAuthBypassResidue.run(context)).toEqual([]);
+
+    // And the same name in a text file is still reported, so the skip above
+    // is the binary decision rather than the name having stopped matching.
+    const readable = fakeContext({ "docs/notes.md": `${forbidden}\n` });
+    expect(noAuthBypassResidue.run(readable)).toHaveLength(1);
+  });
 });

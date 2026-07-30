@@ -72,7 +72,7 @@ export const storageKeyPrefixHtml = {
       // access written inside `<!-- -->` is still reported — deliberately:
       // commented-out markup is the usual way a key gets reintroduced, and
       // a key sitting there unprefixed is a key somebody will uncomment.
-      const lines = stripComments(context.read(file), "js").split("\n");
+      const lines = stripComments(context.read(file), "js", file).split("\n");
       lines.forEach((text, index) => {
         for (const hit of text.matchAll(KEYED_ACCESS)) {
           const key = hit[3] ?? "";

@@ -108,7 +108,7 @@ export const noUnresolvedAliasInDist = {
         // reason dependency-cruiser was kept for the import graph is that it
         // reads imports rather than text, and a text scan has to earn the
         // same property.
-        stripComments(context.read(file), "js")
+        stripComments(context.read(file), "js", file)
           .split("\n")
           .forEach((text, index) => {
             const hit = leaked.exec(text);

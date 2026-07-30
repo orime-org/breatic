@@ -141,4 +141,13 @@ describe("stripComments", () => {
       stripComments(`const a = 1; /* opened\nconst b = 2;\n`, "js"),
     ).toThrow(/never closes/);
   });
+
+  it("names the source in the refusal, so the bad file can be found", () => {
+    // Without this the message says a block comment is unterminated
+    // somewhere in the repository and stops there, which leaves whoever
+    // hits it grepping for an unclosed comment across every tracked file.
+    expect(() => stripComments("/* never closed", "js", "packages/x/a.ts")).toThrow(
+      /packages\/x\/a\.ts/,
+    );
+  });
 });

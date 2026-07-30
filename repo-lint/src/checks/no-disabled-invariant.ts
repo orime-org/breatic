@@ -142,7 +142,7 @@ export const noDisabledInvariant = {
   name: "no-disabled-invariant",
   description: "None of this repository's own rules is switched off inline",
   run(context: CheckContext): Finding[] {
-    const files = context.textFiles("readable tracked files");
+    const files = context.textFiles(() => true, "readable tracked files");
 
     const findings: Finding[] = [];
     for (const file of files) {

@@ -63,11 +63,12 @@ export interface CheckContext {
    * byte — measured at 2400 findings for 20 KB of random data, which buries
    * whatever the check was looking for. The extension list stays as the fast
    * path; this opens what survives it and judges the bytes.
+   * @param select Which of those files this check is about.
    * @param label What the selection is, named in the error if it is empty.
    * @returns The readable paths.
    * @throws {Error} If nothing is readable, for the same reason `files` does.
    */
-  textFiles(label: string): string[];
+  textFiles(select: (path: string) => boolean, label: string): string[];
 
   /**
    * Reads a tracked file.

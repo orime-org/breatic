@@ -130,10 +130,17 @@ function regexEnd(line: string, start: number): number {
  * check reporting clean.
  * @param text The file's contents.
  * @param style Which comment syntaxes to remove.
+ * @param source Where the text came from, named in the error. Without it the
+ *   refusal says a block comment is unterminated somewhere in the repository
+ *   and leaves the reader to find which file.
  * @returns The same text, same number of lines, with comments blanked.
  * @throws {Error} When a block comment opens and never closes.
  */
-export function stripComments(text: string, style: CommentStyle): string {
+export function stripComments(
+  text: string,
+  style: CommentStyle,
+  source = "this text",
+): string {
   const out: string[] = [];
   let inBlock = false;
   // A string may span lines only when it is a template literal, so the
@@ -211,7 +218,7 @@ export function stripComments(text: string, style: CommentStyle): string {
 
   if (inBlock) {
     throw new Error(
-      "a block comment opens and never closes, so this text goes blank partway through. " +
+      `${source}: a block comment opens and never closes, so it goes blank partway through. ` +
         "Returning it would hand the caller a file it cannot tell from an empty one, and every " +
         "check reading it would report clean on lines it never saw.",
     );

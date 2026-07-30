@@ -67,7 +67,7 @@ export const noHardcodedSecrets = {
   name: "no-hardcoded-secrets",
   description: "No credential is written literally into a tracked file",
   run(context: CheckContext): Finding[] {
-    const files = context.textFiles("readable tracked files");
+    const files = context.textFiles(() => true, "readable tracked files");
 
     const binary = resolve(context.repoRoot, "node_modules/.bin/secretlint");
     if (!existsSync(binary)) {

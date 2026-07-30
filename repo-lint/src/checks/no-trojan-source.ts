@@ -43,7 +43,7 @@ export const noTrojanSource = {
   name: "no-trojan-source",
   description: "Source contains no bidi overrides or invisible controls",
   async run(context: CheckContext): Promise<Finding[]> {
-    const files = context.textFiles("readable tracked files");
+    const files = context.textFiles(() => true, "readable tracked files");
 
     const reports = await hasConfusablesInFiles({
       filePaths: files.map((file) => resolve(context.repoRoot, file)),

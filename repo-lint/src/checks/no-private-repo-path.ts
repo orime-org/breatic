@@ -57,7 +57,7 @@ export const noPrivateRepoPath = {
   name: "no-private-repo-path",
   description: "The public repo does not cite private-repo paths",
   run(context: CheckContext): Finding[] {
-    const files = context.textFiles("readable tracked files");
+    const files = context.textFiles(() => true, "readable tracked files");
 
     const findings: Finding[] = [];
     for (const file of files) {

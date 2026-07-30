@@ -107,10 +107,11 @@ export function createContext(repoRoot: string): CheckContext {
       return found;
     },
 
-    textFiles(label: string): string[] {
-      const readable = this.files(isScannableText, label).filter((path) =>
-        isTextContent(this.read(path)),
-      );
+    textFiles(select: (path: string) => boolean, label: string): string[] {
+      const readable = this.files(
+        (path) => isScannableText(path) && select(path),
+        label,
+      ).filter((path) => isTextContent(this.read(path)));
       if (readable.length === 0) {
         throw new Error(
           `selection "${label}" matched files, but none of them turned out to be text. ` +

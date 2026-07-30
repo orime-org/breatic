@@ -23,7 +23,7 @@ export const eofNewline = {
   name: "eof-newline",
   description: "Tracked text files end with a newline",
   run(context: CheckContext): Finding[] {
-    const files = context.textFiles("tracked text files");
+    const files = context.textFiles(() => true, "tracked text files");
 
     const findings: Finding[] = [];
     for (const file of files) {
