@@ -1,12 +1,9 @@
-# Storage retry / resilience config (#1625 Slice 2).
+# Browser upload + avatar limits. Registered in docs/CONFIGURATION.md.
 #
-# downloadValidated re-fetches transient failures (5xx / 429) with a
-# full-jittered linear backoff. Registered in docs/CONFIGURATION.md.
-download:
-  # Total attempts including the first.
-  max_attempts: 3
-  # Base backoff (ms). Effective ceiling = base * attempt, then full-jittered.
-  retry_base_delay_ms: 500
+# Download retry parameters used to live here. They are gone: retrying an
+# asset transfer is now the shared HTTP transport's job (@breatic/shared),
+# which every caller goes through, so the count and backoff cannot differ
+# between the download path, the provider calls and the browser upload.
 
 # Browser upload knobs (#1609 asset slice 2). Served to the frontend via
 # GET /assets/upload-config (session-cached). Registered in
@@ -17,10 +14,6 @@ upload:
   # (413). Also protects local-storage mode, which buffers the whole
   # file in server memory. Default 2 GiB.
   max_upload_bytes: 2147483648
-  # Browser retry count and backoff base are no longer configured here: they
-  # are fixed inside the shared HTTP transport (@breatic/shared), the same code
-  # the backend runs, so the two cannot disagree about how many tries an upload
-  # gets. Timeouts stay here because they genuinely differ per caller.
   # Per-attempt timeout (ms) for browser API requests (presign/config).
   # Also the floor for the PUT stall guard below.
   client_request_timeout_ms: 30000

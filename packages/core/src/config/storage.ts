@@ -4,7 +4,9 @@
 /**
  * Storage YAML configuration loader.
  *
- * Reads `config/storage.yaml` for download retry parameters (#1625 Slice 2).
+ * Reads `config/storage.yaml` for browser upload and avatar limits. Retry
+ * parameters are absent by design: retrying is the shared HTTP transport's
+ * job, so no caller gets its own count.
  */
 
 import { readFileSync } from "node:fs";
@@ -14,20 +16,10 @@ import { z } from "zod";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const storageConfigSchema = z.object({
-  download: z
-    .object({
-      /** Total download attempts including the first. */
-      max_attempts: z.number().int().positive().default(3),
-      /** Base backoff (ms); effective ceiling = base * attempt, then jittered. */
-      retry_base_delay_ms: z.number().int().min(0).default(500),
-    })
-    .default({ max_attempts: 3, retry_base_delay_ms: 500 }),
   upload: z
     .object({
       /** Hard upload cap in bytes; presign rejects larger files (413). */
       max_upload_bytes: z.number().int().positive().default(2147483648),
-      // Retry count and backoff base are absent by design: they are fixed in
-      // the shared HTTP transport so browser and backend cannot diverge.
       /** Per-attempt browser API request timeout (ms); PUT timeout floor. */
       client_request_timeout_ms: z.number().int().positive().default(30000),
       /** PUT stall guard rate: per-attempt timeout = max(floor, size/rate). */

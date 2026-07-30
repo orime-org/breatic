@@ -77,23 +77,17 @@ loader:`packages/core/src/config/worker.ts`。
 | `poll_interval` | 3000 | 异步 AIGC 任务的状态轮询间隔;全部 provider 共用 |
 | `poll_max_wait_3d` | 600000(10 分钟)| 3D 生成的轮询总时限 —— 3D 常超过 `poll_max_wait` 的 5 分钟,是唯一按模态单开的上限 |
 
-## 6. `config/storage.yaml` — 存储下载重试 + 浏览器上传
+## 6. `config/storage.yaml` — 浏览器上传 + 头像
 
 loader:`packages/core/src/config/storage.ts`。
 
-`download.*`:`downloadValidated` 转存 provider 结果时,对瞬时失败(5xx / 429)的重试参数;退避加 full-jitter(#1625)。
-
-| 参数 | 默认 | 含义 |
-|---|---|---|
-| `download.max_attempts` | 3 | 下载总尝试次数(含首次)|
-| `download.retry_base_delay_ms` | 500 | 退避基延时(× 尝试次数,再 full-jitter)|
+重试次数与退避基延时**不在这里配**:重试是 `@breatic/shared` 传输层的职责,所有调用方(资产下载 / provider 调用 / 浏览器上传)共用同一份,任何一方都拿不到自己的旋钮。超时仍按调用方配置 —— 它是真的因场景而异。
 
 `upload.*`:浏览器上传旋钮(#1609 资产层片2)。前端经 `GET /assets/upload-config`(会话缓存)取;上传上限在 `/assets/presign` 权威校验(413),前端选文件时预检只为体验。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `upload.max_upload_bytes` | 2147483648(2 GiB)| 上传硬上限(字节);超限 presign 返 413,前端选文件当场拒 |
-| ~~`upload.client_max_attempts`~~ / ~~`upload.client_retry_base_delay_ms`~~ | — | **已移除**:同上,浏览器的重试次数与退避基延时也来自 `@breatic/shared` 的传输层,与后端同一份 |
 | `upload.client_request_timeout_ms` | 30000 | 浏览器 API 请求单次超时;也是 PUT 停滞守卫的下限 |
 | `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(下限, 文件大小 / 该速率)|
 | `upload.presign_expires_seconds` | 300 | 云存储(S3 / 阿里云 OSS)预签名 PUT 地址的有效期(秒)。这是存储服务商自己的 PUT 窗口,跟下发记录表无关 —— 后者不设上传时限;本地存储没有预签名地址,该项不生效 |

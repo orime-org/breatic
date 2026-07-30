@@ -172,6 +172,16 @@ export function computePutTimeoutMs(
 export interface PutFileDeps {
   /** fetch implementation (default: global fetch). */
   fetchImpl?: typeof fetch;
+  /**
+   * Replacement for the transport's backoff wait (tests).
+   *
+   * Without it this function's tests sleep through the real jittered backoff
+   * on every run — several seconds of nothing, sitting next to
+   * timing-sensitive assertions. `retryTransient` above kept its own seam
+   * because it still owns its loop; this one had to move down into the
+   * transport, since that is where the waiting now happens.
+   */
+  sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 /**
@@ -208,6 +218,7 @@ export async function putFileWithRetry(
       // timeout stays a parameter while the attempt count does not.
       timeoutMs: computePutTimeoutMs(file.size, cfg),
       ...(deps.fetchImpl !== undefined && { fetchImpl: deps.fetchImpl }),
+      ...(deps.sleepImpl !== undefined && { sleepImpl: deps.sleepImpl }),
     },
   );
   if (!res.ok) throw new UploadHttpError(res.status);

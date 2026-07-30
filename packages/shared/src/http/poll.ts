@@ -66,6 +66,11 @@ export interface PollOptions {
   signal?: AbortSignal;
   /** Vendor name, for telemetry and error messages. */
   label?: string;
+  /**
+   * Replacement for both waits — between polls here, and between retries
+   * inside the transport. FOR TESTS ONLY; production leaves it unset.
+   */
+  sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 /**
@@ -81,6 +86,7 @@ export async function pollUntilDone(
   options: PollOptions,
 ): Promise<Record<string, unknown>> {
   const label = options.label ?? "provider";
+  const doSleep = options.sleepImpl ?? sleep;
   const query =
     options.params === undefined
       ? ""
@@ -116,6 +122,7 @@ export async function pollUntilDone(
         onEvent: options.onEvent,
         fetchImpl: options.fetchImpl,
         signal: options.signal,
+        sleepImpl: options.sleepImpl,
         label,
       },
     );
@@ -135,7 +142,7 @@ export async function pollUntilDone(
       throw new Error(`${label} task failed: ${error}`);
     }
 
-    await sleep(options.intervalMs, options.signal);
+    await doSleep(options.intervalMs, options.signal);
   }
 
   options.onEvent?.({

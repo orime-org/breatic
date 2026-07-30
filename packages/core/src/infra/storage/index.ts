@@ -12,10 +12,9 @@
 
 import { createHash } from "node:crypto";
 
-import { newId, fullJitter } from "@breatic/shared";
+import { newId, httpRequest, ASSET_HEADER_TIMEOUT_MS } from "@breatic/shared";
 
 import { env } from "@core/config/env.js";
-import { getStorageConfig } from "@core/config/storage.js";
 
 /** Metadata returned by StorageAdapter.head() after a client upload. */
 export interface ObjectHead {
@@ -197,39 +196,61 @@ export function sha256Hex(data: Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
-/** A download failure worth retrying (server 5xx / 429 — self-healing). */
-class TransientDownloadError extends Error {}
-
 /**
- * One download attempt with transfer-stream completeness guards.
- * @param sourceUrl - The remote URL to download (120s timeout).
+ * Download a remote file with transfer-stream completeness guards, shared
+ * by every StorageAdapter.persistFromUrl. A silently-truncated or empty
+ * response must NOT be hashed / stored / registered / billed as a
+ * complete asset (asset-layer adversarial holes #3 truncation / #5
+ * zero-byte): it throws so the worker's Stage-2 persist path fails the
+ * task (markFailed + no charge) instead of storing wrong content.
+ *
+ * Retries come from the shared transport rather than from a loop here. The
+ * loop this replaces retried only HTTP 5xx and 429, so a connection dropped
+ * mid-download — by far the likelier failure on this path — failed the whole
+ * generation after the credits had already been spent. It also ignored
+ * `Retry-After`. Re-downloading is safe to replay by construction: it
+ * re-fetches and re-uploads under a fresh key, and job-level retry is fenced
+ * off after the provider call, so this is the correct resilience layer
+ * (adversarial #E).
+ *
+ * Permanent failures (HTTP 4xx, truncation, zero-byte) are not retried:
+ * 4xx is refused by the transport's own predicate, and the completeness
+ * checks below run after it has returned, so a truncated body fails outright
+ * rather than being re-fetched. That matches the previous behaviour.
+ * @param sourceUrl - The remote URL to download.
+ * @param deps - Test seams. Production passes nothing.
+ * @param deps.sleepImpl - Replacement for the transport's backoff wait.
  * @returns The full downloaded bytes plus the resolved content type.
- * @throws {TransientDownloadError} On HTTP 5xx / 429 (retryable).
- * @throws {Error} On HTTP 4xx, a content-length mismatch (truncation), or
- *   a zero-byte body (permanent — not retried).
+ * @throws {Error} On a permanent failure, or after replays are exhausted.
  */
-async function downloadOnce(
+export async function downloadValidated(
   sourceUrl: string,
+  deps?: { sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void> },
 ): Promise<{ buffer: Buffer; contentType: string }> {
-  const response = await fetch(sourceUrl, {
-    signal: AbortSignal.timeout(120_000),
-    // Request an uncompressed transfer so content-length equals the bytes
-    // we receive and the completeness check below actually validates the
-    // wire (adversarial #B round-3: undici does NOT throw on a truncated
-    // gzip/br stream — it silently returns the partial decoded bytes; an
-    // identity transfer restores real truncation detection). If a server
-    // ignores this and still encodes, the isEncoded fallback skips the
-    // length check to avoid a false "truncated" on a complete body.
-    headers: { "accept-encoding": "identity" },
-  });
+  const response = await httpRequest(
+    sourceUrl,
+    {
+      // Request an uncompressed transfer so content-length equals the bytes
+      // we receive and the completeness check below actually validates the
+      // wire (adversarial #B round-3: undici does NOT throw on a truncated
+      // gzip/br stream — it silently returns the partial decoded bytes; an
+      // identity transfer restores real truncation detection). If a server
+      // ignores this and still encodes, the isEncoded fallback skips the
+      // length check to avoid a false "truncated" on a complete body.
+      headers: { "accept-encoding": "identity" },
+    },
+    {
+      replaySafe: true,
+      timeoutMs: ASSET_HEADER_TIMEOUT_MS,
+      label: "download",
+      sleepImpl: deps?.sleepImpl,
+    },
+  );
+
   if (!response.ok) {
-    if (response.status >= 500 || response.status === 429) {
-      throw new TransientDownloadError(
-        `Download ${sourceUrl}: HTTP ${response.status}`,
-      );
-    }
     throw new Error(`Failed to download ${sourceUrl}: HTTP ${response.status}`);
   }
+
   const contentType =
     response.headers.get("content-type") ?? "application/octet-stream";
   const buffer = Buffer.from(await response.arrayBuffer());
@@ -249,49 +270,4 @@ async function downloadOnce(
     throw new Error(`Empty download ${sourceUrl}: received 0 bytes`);
   }
   return { buffer, contentType };
-}
-
-/**
- * Download a remote file with transfer-stream completeness guards, shared
- * by every StorageAdapter.persistFromUrl. A silently-truncated or empty
- * response must NOT be hashed / stored / registered / billed as a
- * complete asset (asset-layer adversarial holes #3 truncation / #5
- * zero-byte): it throws so the worker's Stage-2 persist path fails the
- * task (markFailed + no charge) instead of storing wrong content.
- *
- * Server-side transient failures (HTTP 5xx / 429, common self-healing CDN
- * blips) are retried up to `maxAttempts` with linear backoff — the
- * re-fetch is idempotent (re-download → re-upload under a fresh key), and
- * job-level retry is fenced off after the provider call, so this is the
- * correct resilience layer (adversarial #E). Permanent failures (HTTP 4xx,
- * truncation, zero-byte) throw immediately without retry.
- * @param sourceUrl - The remote URL to download (120s timeout per attempt).
- * @param opts - Retry tuning (defaults from config/storage.yaml; jittered).
- * @param opts.maxAttempts - Total attempts including the first.
- * @param opts.retryBackoffMs - Base backoff (× attempt, then full-jittered).
- * @returns The full downloaded bytes plus the resolved content type.
- * @throws {Error} On a permanent failure, or after exhausting retries.
- */
-export async function downloadValidated(
-  sourceUrl: string,
-  opts?: { maxAttempts?: number; retryBackoffMs?: number },
-): Promise<{ buffer: Buffer; contentType: string }> {
-  const cfg = getStorageConfig().download;
-  const maxAttempts = opts?.maxAttempts ?? cfg.max_attempts;
-  const backoffMs = opts?.retryBackoffMs ?? cfg.retry_base_delay_ms;
-  let attempt = 0;
-  for (;;) {
-    attempt += 1;
-    try {
-      return await downloadOnce(sourceUrl);
-    } catch (err) {
-      const retryable = err instanceof TransientDownloadError;
-      if (!retryable || attempt >= maxAttempts) throw err;
-      // Full-jittered linear backoff (ceiling = backoffMs * attempt) so
-      // correlated CDN blips do not re-fetch in synchronized waves (#1625).
-      await new Promise((resolve) =>
-        setTimeout(resolve, fullJitter(backoffMs * attempt)),
-      );
-    }
-  }
 }

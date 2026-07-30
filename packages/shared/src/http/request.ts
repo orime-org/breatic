@@ -126,6 +126,18 @@ export interface HttpRequestOptions {
   isFatal?: (error: unknown) => boolean;
   /** Provider or tool name, for telemetry. */
   label?: string;
+  /**
+   * Replacement for the between-attempt wait. FOR TESTS ONLY — production
+   * callers must leave this unset so every caller backs off identically.
+   *
+   * The seam belongs here rather than in each caller. Before the retry logic
+   * was centralised, the browser upload owned its own wait and injected a
+   * fake one in tests; removing that wait without providing this left its
+   * suite sleeping through ~10s of real backoff on every run, right next to
+   * timing-sensitive assertions. A caller cannot stub a wait it no longer
+   * performs, so the layer that performs it has to offer the seam.
+   */
+  sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 /** One attempt's deadline, plus the teardown that must always run. */
@@ -266,6 +278,7 @@ export async function httpRequest(
 ): Promise<GuardedResponse> {
   const label = options.label ?? "http";
   const doFetch = options.fetchImpl ?? fetch;
+  const doSleep = options.sleepImpl ?? sleep;
 
   /**
    * Wrap a response so its body is read under the idle deadline.
@@ -282,16 +295,6 @@ export async function httpRequest(
       label,
     });
 
-  // These three describe ONE attempt's outcome and are rewritten together on
-  // every pass. Letting them accumulate independently meant an early non-ok
-  // response outlived the attempt that produced it and was handed back as
-  // the outcome of a later, response-less failure — so a dropped connection
-  // surfaced as the vendor's earlier 503, and an SSRF block surfaced as an
-  // HTTP error instead of a refusal.
-  let lastResponse: Response | null = null;
-  let lastAbort: (() => void) | null = null;
-  let lastError: unknown = null;
-
   // Unbounded by design: `decideRetry` owns the budget and refuses past
   // MAX_RETRIES, so the exit is the predicate rather than a second counter
   // that could disagree with it.
@@ -300,19 +303,27 @@ export async function httpRequest(
     let status: number | undefined;
     let retryAfter: string | null | undefined;
     let transportError: TransportErrorKind | undefined;
+    // Declared per attempt on purpose. These describe THIS attempt's outcome,
+    // and scoping them here is what makes it impossible to report one
+    // attempt's result as another's. Hoisted out of the loop, an early non-ok
+    // response outlived the attempt that produced it and was handed back as
+    // the outcome of a later, response-less failure — a dropped connection
+    // surfaced as the vendor's earlier 503, and an SSRF refusal surfaced as an
+    // HTTP error. Clearing them by hand would work too, but only for as long
+    // as everyone remembers to.
+    let response: Response | null = null;
+    let abortRequest: (() => void) | null = null;
+    let failure: unknown = null;
 
     try {
-      const response = await doFetch(url, { ...init, signal: deadline.signal });
-      if (response.ok) return guard(response, deadline.abort);
-      lastResponse = response;
-      lastAbort = deadline.abort;
-      lastError = null;
-      status = response.status;
-      retryAfter = response.headers.get("retry-after");
+      const attempted = await doFetch(url, { ...init, signal: deadline.signal });
+      if (attempted.ok) return guard(attempted, deadline.abort);
+      response = attempted;
+      abortRequest = deadline.abort;
+      status = attempted.status;
+      retryAfter = attempted.headers.get("retry-after");
     } catch (error) {
-      lastError = error;
-      lastResponse = null;
-      lastAbort = null;
+      failure = error;
       transportError = classifyThrown(
         error,
         options.signal,
@@ -361,19 +372,19 @@ export async function httpRequest(
     );
 
     if (!decision.retry) {
-      if (lastResponse !== null && lastAbort !== null) {
-        return guard(lastResponse, lastAbort);
+      if (response !== null && abortRequest !== null) {
+        return guard(response, abortRequest);
       }
-      throw lastError instanceof Error
-        ? lastError
-        : new Error(`${label} request to ${url} failed: ${String(lastError)}`);
+      throw failure instanceof Error
+        ? failure
+        : new Error(`${label} request to ${url} failed: ${String(failure)}`);
     }
 
     // Cancellable: a user who presses stop 20 ms into an eight-second
     // `Retry-After` backoff should not wait it out, and must not have one
     // more attempt dispatched on their behalf afterwards. Rejecting here
     // also means the abort — not the earlier response — is what surfaces.
-    await sleep(decision.delayMs, options.signal);
+    await doSleep(decision.delayMs, options.signal);
   }
 }
 

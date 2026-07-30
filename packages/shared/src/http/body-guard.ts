@@ -212,12 +212,16 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
 
     async arrayBuffer(): Promise<ArrayBuffer> {
       const joined = concat(await drain(ctx));
-      // Copy into a standalone buffer: the concatenated view may be backed
-      // by a larger allocation, and callers hand this to audio decoders.
-      return joined.buffer.slice(
-        joined.byteOffset,
-        joined.byteOffset + joined.byteLength,
-      ) as ArrayBuffer;
+      // Allocate and copy rather than slicing the view's own `buffer`. That
+      // property is typed `ArrayBuffer | SharedArrayBuffer`, so slicing it
+      // yields a union no `ArrayBuffer` consumer accepts — and whether the
+      // surrounding tsconfig happens to complain varies by package, which is
+      // how a cast here passed one checker while failing another. Allocating
+      // the exact size is unambiguous, and it also guarantees the caller gets
+      // a buffer sized to the bytes rather than to a larger allocation.
+      const out = new ArrayBuffer(joined.byteLength);
+      new Uint8Array(out).set(joined);
+      return out;
     },
 
     stream(): ReadableStream<Uint8Array> {

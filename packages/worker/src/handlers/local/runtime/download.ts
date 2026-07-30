@@ -11,16 +11,62 @@
  * Local handlers should NOT talk to OSS SDKs directly; they should use
  * this helper so credentials + region config stay in one place.
  *
+ * Goes through the shared HTTP transport. On a bare `fetch` this had neither
+ * a timeout nor a retry, and both mattered here: a stalled transfer never
+ * returned, and the queue's lock extender keeps renewing the lock of a job
+ * whose handler is stuck, so the job held a concurrency slot until the
+ * process restarted rather than failing and being retried. A dropped
+ * connection meanwhile failed the whole ffmpeg job, which then re-ran from
+ * the beginning — re-downloading anyway, just far more expensively.
+ *
  * Failure modes propagate as thrown `Error` — the caller is inside
  * `runLocalHandler` which will mark the task failed.
  */
 
 import { createWriteStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { join, extname } from "node:path";
 
-import { newId } from "@breatic/shared";
+import { logger } from "@breatic/core";
+import { newId, httpRequest, ASSET_HEADER_TIMEOUT_MS } from "@breatic/shared";
+import type { HttpRetryEvent } from "@breatic/shared";
+
+/**
+ * Report a transfer that had to be replayed, or gave up.
+ *
+ * Kept separate from the provider transports' telemetry so an on-call
+ * engineer can tell "the vendor is degraded" apart from "our own object
+ * store is degraded" — they have different owners and different fixes.
+ * @param event - A retry or exhaustion event from the transport.
+ */
+function logDownloadEvent(event: HttpRetryEvent): void {
+  if (event.type === "retry") {
+    logger.warn(
+      {
+        url: event.url,
+        attempt: event.attempt,
+        delay: event.delayMs,
+        reason: event.reason,
+        status: event.status,
+      },
+      "asset_download_retry",
+    );
+    return;
+  }
+  if (event.reason !== "client_error" && event.reason !== "nothing_to_retry") {
+    logger.warn(
+      {
+        url: event.url,
+        attempts: event.attempts,
+        reason: event.reason,
+        status: event.status,
+      },
+      "asset_download_gave_up",
+    );
+  }
+}
 
 /**
  * Download a URL into a job temp dir. Returns the downloaded path.
@@ -30,26 +76,49 @@ import { newId } from "@breatic/shared";
  * @param options.suffix - File extension override (e.g. `".mp4"`).
  *   When absent, derived from the URL path; falls back to `.bin`.
  * @returns Absolute path to the downloaded file
+ * @throws {Error} On a non-ok status, a transfer that produced no bytes, or
+ *   a transport failure that survived its replays.
  */
 export async function downloadToTempDir(
   url: string,
   tempDir: string,
   options: { suffix?: string } = {},
 ): Promise<string> {
-  const response = await fetch(url);
+  const response = await httpRequest(
+    url,
+    {},
+    {
+      // Fetching an asset again has no side effects: it is a read, and the
+      // bytes land in a temp file this function owns.
+      replaySafe: true,
+      timeoutMs: ASSET_HEADER_TIMEOUT_MS,
+      onEvent: logDownloadEvent,
+      label: "asset-download",
+    },
+  );
   if (!response.ok) {
     throw new Error(`Download failed: ${url} → HTTP ${response.status}`);
-  }
-  if (!response.body) {
-    throw new Error(`Download failed: ${url} → empty response body`);
   }
 
   const suffix = options.suffix ?? deriveSuffixFromUrl(url);
   const filename = `${newId()}${suffix}`;
   const path = join(tempDir, `in-${filename}`);
 
-  const nodeStream = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
+  // The guarded stream carries the body's idle deadline with it, so a
+  // transfer that stops mid-file aborts here instead of hanging the job.
+  const nodeStream = Readable.fromWeb(
+    response.stream() as Parameters<typeof Readable.fromWeb>[0],
+  );
   await pipeline(nodeStream, createWriteStream(path));
+
+  // Checked after the fact rather than by inspecting `response.body`: a
+  // present-but-empty body is just as unusable to ffmpeg as an absent one,
+  // and only the written file proves which we got.
+  const { size } = await stat(path);
+  if (size === 0) {
+    throw new Error(`Download failed: ${url} → received 0 bytes`);
+  }
+
   return path;
 }
 

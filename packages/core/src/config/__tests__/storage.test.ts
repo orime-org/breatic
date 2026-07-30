@@ -5,14 +5,14 @@ import { describe, it, expect } from "vitest";
 
 import { getStorageConfig } from "@core/config/storage.js";
 
-/** Pins the shipped config/storage.yaml download-retry defaults (#1625 Slice 2). */
+/**
+ * Pins the shipped config/storage.yaml defaults.
+ *
+ * The download-retry assertions that used to open this file are gone with the
+ * knobs themselves: retrying an asset transfer is the shared HTTP transport's
+ * job now, so no caller has its own count to configure.
+ */
 describe("getStorageConfig", () => {
-  it("loads the download retry config from config/storage.yaml", () => {
-    const cfg = getStorageConfig();
-    expect(cfg.download.max_attempts).toBe(3);
-    expect(cfg.download.retry_base_delay_ms).toBe(500);
-  });
-
   // Asset upload slice 2 (#1609): every file is hashed (no size line —
   // user decision 2026-07-07 superseding the earlier 500MB line) and a
   // configurable upload cap protects storage cost + local-mode memory.

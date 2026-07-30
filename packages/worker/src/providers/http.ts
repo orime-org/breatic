@@ -167,6 +167,25 @@ export async function requestRaw(
   });
 }
 
+/**
+ * The 2s poll interval that seven transports carried before this transport
+ * existed, restored verbatim.
+ *
+ * Nothing explains why those seven differ from the 3s default — no comment,
+ * no commit message, no vendor documentation — and the split is not even
+ * self-consistent: WaveSpeed's audio, image, speech, understanding and video
+ * transports use 2s while its own 3D transport uses the default. Dropping
+ * them during unification made five modalities poll 50% slower with no error
+ * and no bug report, which is the kind of change that later gets mistaken
+ * for the baseline.
+ *
+ * Restored rather than normalised on purpose: how fast we poll trades
+ * perceived latency against vendor call volume, and that is a product call,
+ * not something to settle inside a retry refactor. Whether these should
+ * converge is tracked as its own question.
+ */
+export const INHERITED_POLL_INTERVAL_MS = 2000;
+
 /** Worker-side poll options: vendor status vocabulary plus timing. */
 export interface PollOptions {
   headers?: Record<string, string>;

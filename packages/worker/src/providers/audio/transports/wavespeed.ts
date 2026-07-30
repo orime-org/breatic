@@ -20,6 +20,7 @@ import {
   requestWithRetry,
   pollUntilDone,
   queryBilling,
+  INHERITED_POLL_INTERVAL_MS,
 } from "@worker/providers/http.js";
 
 /**
@@ -128,6 +129,7 @@ export async function generate(
         failureStatuses: new Set(["failed"]),
         errorPath: ["data", "error"],
         timeoutMs: resolved.timeout * 1000,
+        interval: INHERITED_POLL_INTERVAL_MS,
         provider: "wavespeed",
       })),
     taskId,

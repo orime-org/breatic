@@ -55,3 +55,17 @@ export const MAX_RETRY_AFTER_MS = 10_000;
  * follow; this number is our judgement, not an industry constant.
  */
 export const BODY_IDLE_TIMEOUT_MS = 30_000;
+
+/**
+ * How long an asset transfer may wait for response HEADERS.
+ *
+ * Shared by the two download paths — pulling a vendor's output into our own
+ * storage, and pulling an asset back out for local processing — because they
+ * are the same wait against the same class of endpoint. Reading the bytes is
+ * governed by {@link BODY_IDLE_TIMEOUT_MS}, so this is not a total budget and
+ * does not need to accommodate file size.
+ *
+ * Generous compared to a vendor API call: object stores can take a long
+ * while to answer for a large object, and answering slowly is not a failure.
+ */
+export const ASSET_HEADER_TIMEOUT_MS = 120_000;
