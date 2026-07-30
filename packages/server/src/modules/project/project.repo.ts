@@ -61,11 +61,6 @@ function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
 }
 
 /**
- * Get a project by ID (excludes soft-deleted).
- * @param id - Project UUID
- * @returns The project entity, or null if not found or soft-deleted
- */
-/**
  * Resolve project ids to their CURRENT name + slug, in one query.
  *
  * The read half of storing ids instead of names in notifications: the id is

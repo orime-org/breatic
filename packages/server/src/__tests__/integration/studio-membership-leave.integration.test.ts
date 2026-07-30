@@ -283,6 +283,33 @@ describe("leaveStudio — concurrency invariants", () => {
     expect(await countAdmins(studio.id)).toBe(1);
   });
 
+  it("a studio always ends with exactly one admin when a role change races an admin transfer", async () => {
+    // The third path with the same shape as the two above, and the one that
+    // kept its unlocked read the longest: the admin demotes a maintainer to
+    // guest from the Members tab while that maintainer is confirming a
+    // transfer of the admin role to themselves. Reading the target's role
+    // outside the transaction answers "maintainer" about someone who is the
+    // admin by the time the write lands, and the write does not re-check —
+    // `updateRole` matches on studio + user only. The studio ends with none.
+    const admin = await insertUser();
+    const receiver = await insertUser();
+    const studio = await insertStudioWithAdmin(admin.id);
+    await insertMember(studio.id, receiver.id, "maintainer");
+
+    await studioTransferService.requestTransfer(studio.slug, admin.id, receiver.id);
+    const notificationId = await latestNotificationId(
+      receiver.id,
+      "studio.transfer_request",
+    );
+
+    await Promise.allSettled([
+      studioTransferService.confirmTransfer(notificationId, receiver.id),
+      studioMemberService.updateMemberRole(studio.slug, receiver.id, "guest"),
+    ]);
+
+    expect(await countAdmins(studio.id)).toBe(1);
+  });
+
   it("an unrelated member can still leave while the admin role is mid-handover", async () => {
     // The failure mode this pins is NOT corruption, it is a false refusal.
     // Under READ COMMITTED, a `SELECT ... WHERE role = 'admin' FOR UPDATE`
