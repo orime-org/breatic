@@ -2,21 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { breaticPlugin } from "@breatic/eslint-rules";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import {
+  configDirectories,
+  loudestSeverities,
+  type Severity,
+} from "#repo-lint/eslint-severity";
 
 /** The config ESLint reads for every package except web. */
 const ROOT_CONFIG = "eslint.config.ts";
-
-/** The config ESLint reads when it is started inside the web package. */
-const WEB_CONFIG = "packages/web/eslint.config.mts";
-
-/**
- * A rule turned on in a config, in either quote style.
- *
- * The root config is double-quoted and web's is single-quoted, and a scan
- * that assumed one would report every rule the other alone enables as dead —
- * which is the opposite of this check's job.
- */
-const ENABLED = /["']breatic\/([a-z0-9-]+)["']\s*:/g;
 
 /** A `files` glob in a config, with its contents. */
 const FILES_GLOB = /files:\s*\[([^\]]*)\]/g;
@@ -52,26 +45,29 @@ function readConfig(context: CheckContext, path: string): string {
  * fixture rather than of this repository's own configs, which change.
  * @param context The check context.
  * @param registered Every rule name the plugin exports.
+ * @param severities The severity each rule resolves to, as ESLint reports it.
  * @returns One finding per unenabled rule and per web-claiming root glob.
- * @throws {Error} When either config file is missing.
+ * @throws {Error} When the root config file is missing.
  */
 export function auditEslintWiring(
   context: CheckContext,
   registered: readonly string[],
+  severities: ReadonlyMap<string, Severity>,
 ): Finding[] {
   const root = readConfig(context, ROOT_CONFIG);
-  const web = context.exists(WEB_CONFIG) ? context.read(WEB_CONFIG) : "";
-
-  const enabled = new Set(
-    [...`${root}\n${web}`.matchAll(ENABLED)].map((match) => match[1]),
-  );
 
   const findings: Finding[] = [];
   for (const name of registered) {
-    if (enabled.has(name)) continue;
+    const reached = severities.get(`breatic/${name}`);
+    if (reached === "error") continue;
     findings.push({
       file: ROOT_CONFIG,
-      message: `"breatic/${name}" is exported by the plugin and switched on by no config, so it never runs. A rule with a file, an export and a passing unit test still reports nothing until a config names it, and reporting nothing is indistinguishable from finding nothing.`,
+      message:
+        reached === undefined
+          ? `"breatic/${name}" is exported by the plugin and reaches no file, so it never runs. A rule with a file, an export and a passing unit test still reports nothing until a config puts it in front of some source, and reporting nothing is indistinguishable from finding nothing.`
+          : reached === "off"
+            ? `"breatic/${name}" reaches source but is switched off there, so it never reports. Deleting the line and setting it to "off" produce the same silence; this check reads the configuration ESLint actually resolves, so both are visible here.`
+            : `"breatic/${name}" reaches source only as a warning, which does not fail the build. An invariant that only warns is a suggestion, and this repository already decided these are not suggestions.`,
     });
   }
 
@@ -106,7 +102,24 @@ export function auditEslintWiring(
 export const eslintRulesEnabled = {
   name: "eslint-rules-enabled",
   description: "Every plugin rule is switched on by some config",
-  run(context: CheckContext): Finding[] {
-    return auditEslintWiring(context, Object.keys(breaticPlugin.rules ?? {}));
+  async run(context: CheckContext): Promise<Finding[]> {
+    const everything = context.files(() => true, "every file");
+    // Tests included: test-file-location's whole subject is where a test
+    // sits, so excluding tests would make the one rule that only ever matches
+    // them look like it matches nothing.
+    const sources = context.files(
+      (path) => /\.(ts|tsx|mts|cts|mjs|cjs|js|jsx)$/.test(path),
+      "first-party source files",
+    );
+    const severities = await loudestSeverities(
+      context.repoRoot,
+      configDirectories(everything),
+      sources,
+    );
+    return auditEslintWiring(
+      context,
+      Object.keys(breaticPlugin.rules ?? {}),
+      severities,
+    );
   },
 } satisfies Check;

@@ -15,6 +15,7 @@
     "@breatic/eslint-rules": "workspace:*",
     "@types/node": "^22.0.0",
     "anti-trojan-source": "^1.11.3",
+    "eslint": "^10.1.0",
     "tsx": "^4.19.0",
     "typescript": "~5.8.0",
     "vitest": "^3.0.0"
