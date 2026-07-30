@@ -1,0 +1,19 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 13581033b5a5635796d4cf492f0828e853d011c4..d7f4eb43a2cf0311cb2a0aaaa16418c06064b145 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -134,7 +134,13 @@ var DialogContentModal = React.forwardRef(
+     const composedRefs = useComposedRefs(forwardedRef, context.contentRef, contentRef);
+     React.useEffect(() => {
+       const content = contentRef.current;
+-      if (content) return hideOthers(content);
++      // Upstream radix-ui/primitives#3822: focus guards must stay out of
++      // hideOthers, or they end up tabindex="0" with aria-hidden="true" —
++      // a WCAG 2.1.1 Level A violation. Remove this patch once released.
++      if (content) {
++        const focusGuards = Array.from(document.querySelectorAll("[data-radix-focus-guard]"));
++        return hideOthers([content, ...focusGuards]);
++      }
+     }, []);
+     return /* @__PURE__ */ jsx(
+       DialogContentImpl,

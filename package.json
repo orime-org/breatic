@@ -48,6 +48,14 @@
   "pnpm": {
     "overrides": {
       "ioredis": "5.10.1"
+    },
+    "patchedDependencies": {
+      "@radix-ui/react-dialog@1.1.15": "patches/@radix-ui__react-dialog@1.1.15.patch",
+      "@radix-ui/react-select@2.2.6": "patches/@radix-ui__react-select@2.2.6.patch",
+      "@radix-ui/react-popover@1.1.15": "patches/@radix-ui__react-popover@1.1.15.patch",
+      "@radix-ui/react-popover@1.1.6": "patches/@radix-ui__react-popover@1.1.6.patch",
+      "@radix-ui/react-menu@2.1.16": "patches/@radix-ui__react-menu@2.1.16.patch",
+      "@radix-ui/react-menu@2.1.17": "patches/@radix-ui__react-menu@2.1.17.patch"
     }
   }
 }

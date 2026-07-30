@@ -1,0 +1,19 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index f9b94f39dfddef678ef3086354f8d7413ae27e52..f426ebf7fdb9ad9a57b2d949625db4dd9d595235 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -308,7 +308,13 @@ var SelectContentImpl = React.forwardRef(
+     const [isPositioned, setIsPositioned] = React.useState(false);
+     const firstValidItemFoundRef = React.useRef(false);
+     React.useEffect(() => {
+-      if (content) return hideOthers(content);
++      // Upstream radix-ui/primitives#3822: focus guards must stay out of
++      // hideOthers, or they end up tabindex="0" with aria-hidden="true" —
++      // a WCAG 2.1.1 Level A violation. Remove this patch once released.
++      if (content) {
++        const focusGuards = Array.from(document.querySelectorAll("[data-radix-focus-guard]"));
++        return hideOthers([content, ...focusGuards]);
++      }
+     }, [content]);
+     useFocusGuards();
+     const focusFirst = React.useCallback(

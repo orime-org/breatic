@@ -1,0 +1,19 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 289118f9b8ba69c9a8baaeb4a471c4ea49f61efc..d4f5425d4071d13809445979c35d42958121cf15 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -129,7 +129,13 @@ var PopoverContentModal = React.forwardRef(
+     const isRightClickOutsideRef = React.useRef(false);
+     React.useEffect(() => {
+       const content = contentRef.current;
+-      if (content) return hideOthers(content);
++      // Upstream radix-ui/primitives#3822: focus guards must stay out of
++      // hideOthers, or they end up tabindex="0" with aria-hidden="true" —
++      // a WCAG 2.1.1 Level A violation. Remove this patch once released.
++      if (content) {
++        const focusGuards = Array.from(document.querySelectorAll("[data-radix-focus-guard]"));
++        return hideOthers([content, ...focusGuards]);
++      }
+     }, []);
+     return /* @__PURE__ */ jsx(RemoveScroll, { as: Slot, allowPinchZoom: true, children: /* @__PURE__ */ jsx(
+       PopoverContentImpl,
