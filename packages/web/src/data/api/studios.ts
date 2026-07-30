@@ -19,6 +19,7 @@ import type {
   StudioDetail,
   StudioMembersView,
   StudioSummary,
+  UpdateStudioInput,
 } from '@breatic/shared';
 
 /**
@@ -217,6 +218,59 @@ export const studiosApi = {
       `/studio/${slug}/transfer-admin`,
       body,
     );
+  },
+  /**
+   * `PATCH /api/v1/studio/:slug` — edit the studio's name, slug and/or bio.
+   * Admin-only; every field is optional but the patch may not be empty.
+   *
+   * Changing the slug frees the old one immediately — no redirect, no alias —
+   * so every existing link to the studio breaks. Callers put this behind a
+   * confirmation.
+   * @param slug the studio's CURRENT URL handle.
+   * @param body the fields to change.
+   * @returns the updated studio.
+   */
+  update(slug: string, body: UpdateStudioInput): Promise<Studio> {
+    return apiPatch<Studio, UpdateStudioInput>(`/studio/${slug}`, body);
+  },
+  /**
+   * `POST /api/v1/studio/:slug/avatar` — upload the studio's avatar.
+   * Admin-only.
+   *
+   * The body is the image bytes themselves rather than a multipart envelope:
+   * the server sniffs the type from the bytes, and a multipart wrapper's own
+   * bytes are what it would see. The `Content-Type` header is sent for
+   * courtesy only — the server ignores it, since it is the client's claim
+   * about content the client chose.
+   * @param slug the studio's URL handle.
+   * @param image the encoded avatar (512×512, produced by the crop dialog).
+   * @returns the updated studio, carrying the new `avatarUrl`.
+   */
+  uploadAvatar(slug: string, image: Blob): Promise<Studio> {
+    return apiPost<Studio, Blob>(`/studio/${slug}/avatar`, image, {
+      headers: { 'Content-Type': image.type },
+    });
+  },
+  /**
+   * `DELETE /api/v1/studio/:slug/avatar` — drop the avatar, falling the UI
+   * back to initials. Admin-only.
+   * @param slug the studio's URL handle.
+   * @returns the updated studio, with `avatarUrl` cleared.
+   */
+  removeAvatar(slug: string): Promise<Studio> {
+    return apiDelete<Studio>(`/studio/${slug}/avatar`);
+  },
+  /**
+   * `DELETE /api/v1/studio/:slug/membership` — leave the studio.
+   *
+   * Any active member; the sole admin has to transfer the studio first
+   * (`409`). Leaving revokes access to every project in the studio and hands
+   * any project the member owned to the admin.
+   * @param slug the studio's URL handle.
+   * @returns once the membership is gone.
+   */
+  leave(slug: string): Promise<{ ok: true }> {
+    return apiDelete<{ ok: true }>(`/studio/${slug}/membership`);
   },
   /**
    * `GET /api/v1/studio-invitations/:token` — the landing-page view for an email

@@ -36,6 +36,8 @@ export function getEmptyContainerView(): StudioContainerView {
       name: '',
       type: 'team',
       memberCount: 0,
+      avatarUrl: null,
+      bio: null,
       myStudioRole: null,
     },
     projects: [],

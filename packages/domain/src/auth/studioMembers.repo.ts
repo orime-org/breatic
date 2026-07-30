@@ -178,6 +178,113 @@ export async function upsertMember(
 }
 
 /**
+ * Read a member's role **inside a transaction, holding a row lock** on that
+ * member row.
+ *
+ * Distinct from `getRole`, which is the unlocked read used by route-level
+ * role resolution. A membership mutation that decides based on `getRole`
+ * acts on a snapshot from outside its own transaction: a concurrent admin
+ * transfer can commit in between, and the mutation then soft-deletes the row
+ * that just became admin — leaving the studio with zero admins and no way
+ * back. Locking the row makes the concurrent writer queue instead of
+ * interleaving.
+ *
+ * `FOR UPDATE OF studio_members` locks only this table; the `studios` join
+ * is a liveness guard, and locking studio rows would serialise unrelated
+ * membership work across the whole studio.
+ *
+ * For one member's row this narrow lock is sound, because the condition names
+ * no column a concurrent writer rewrites: a role change leaves
+ * `user_id`/`deleted_at` alone, so the re-check after waiting still matches
+ * and the caller sees the NEW role. Anything that has to reason about the
+ * studio's admin must use {@link lockMembership} instead — see there for why
+ * filtering on `role` breaks under concurrency.
+ *
+ * **Ordering across tables: `studio_members` before `project_members`.**
+ * Leaving locks membership first and then writes project rows; a caller that
+ * took a project row first would deadlock against it.
+ * @param studioId - Studio UUID
+ * @param userId - User UUID
+ * @param tx - The enclosing transaction; the lock is meaningless without one
+ * @returns Role, or null if the studio is missing/deleted or the user has no
+ *   active membership
+ */
+export async function lockMemberRole(
+  studioId: string,
+  userId: string,
+  tx: DbTx,
+): Promise<StudioRole | null> {
+  const rows = await tx
+    .select({ role: studioMembers.role })
+    .from(studioMembers)
+    .innerJoin(studios, eq(studios.id, studioMembers.studioId))
+    .where(
+      and(
+        eq(studioMembers.studioId, studioId),
+        eq(studioMembers.userId, userId),
+        isNull(studioMembers.deletedAt),
+        isNull(studios.deletedAt),
+      ),
+    )
+    .for("update", { of: studioMembers })
+    .limit(1);
+  return rows[0] ? (rows[0].role as StudioRole) : null;
+}
+
+/**
+ * Lock and return every active member of a studio — the serialisation point
+ * for any change that has to keep "exactly one admin" true.
+ *
+ * Takes the whole membership rather than the two rows a caller happens to
+ * care about, and that is the point: **the search condition must not mention
+ * a column the concurrent writer changes.** Under READ COMMITTED, a
+ * `SELECT ... FOR UPDATE` that blocks re-checks its condition against the
+ * UPDATED row once the lock frees, and skips the row if it no longer matches
+ * — without restarting the scan to find whoever matches now. So a query
+ * filtered on `role = 'admin'` returns EMPTY exactly when it matters most:
+ * while the admin role is mid-handover, having waited for that handover and
+ * then decided the studio has no admin at all. Filtering only on `studio_id`
+ * and `deleted_at` leaves nothing for a role change to invalidate; the caller
+ * finds the admin in the returned rows, which are the post-wait truth.
+ *
+ * A member row can still vanish from the result — soft delete makes
+ * `deleted_at IS NULL` fail on re-check — and that is correct: a member
+ * removed while we waited really is gone.
+ *
+ * Locking every row also removes the ordering question inside this table.
+ * Two callers issuing the same query acquire the same rows in the same
+ * order, so they queue instead of deadlocking, and no caller has to reason
+ * about which of the admin row and the target row to take first.
+ *
+ * **Ordering across tables still holds: `studio_members` before
+ * `project_members`.** Leaving locks the membership here and then writes
+ * project rows; a path that took a project row first would deadlock against
+ * it.
+ * @param studioId - Studio UUID
+ * @param tx - The enclosing transaction; the lock is meaningless without one
+ * @returns Every active member of an active studio; empty when the studio is
+ *   missing or soft-deleted
+ */
+export async function lockMembership(
+  studioId: string,
+  tx: DbTx,
+): Promise<ReadonlyArray<{ userId: string; role: StudioRole }>> {
+  const rows = await tx
+    .select({ userId: studioMembers.userId, role: studioMembers.role })
+    .from(studioMembers)
+    .innerJoin(studios, eq(studios.id, studioMembers.studioId))
+    .where(
+      and(
+        eq(studioMembers.studioId, studioId),
+        isNull(studioMembers.deletedAt),
+        isNull(studios.deletedAt),
+      ),
+    )
+    .for("update", { of: studioMembers });
+  return rows.map((r) => ({ userId: r.userId, role: r.role as StudioRole }));
+}
+
+/**
  * Soft-delete (remove / kick) an active member — state-only.
  *
  * Flips `deleted_at` on the active row; the row physically remains (soft

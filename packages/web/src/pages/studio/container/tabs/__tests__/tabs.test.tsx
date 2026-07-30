@@ -185,7 +185,11 @@ function withQuery(ui: ReactElement) {
       mutations: { retry: false },
     },
   });
-  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 describe('MembersTab (spec §3.7)', () => {
@@ -213,6 +217,8 @@ const TEAM: StudioDetail = {
   name: 'Acme',
   type: 'team',
   memberCount: 3,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'admin',
 };
 const PERSONAL: StudioDetail = {
@@ -221,6 +227,8 @@ const PERSONAL: StudioDetail = {
   name: 'Alex',
   type: 'personal',
   memberCount: 1,
+  avatarUrl: null,
+  bio: null,
   myStudioRole: 'admin',
 };
 
@@ -235,9 +243,28 @@ describe('SettingsTab (spec §3.11 danger zone)', () => {
     expect(screen.queryByText('Danger zone')).toBeNull();
   });
 
-  it('hides the danger zone from a team Member', () => {
+  // A member sees the danger zone too, with different contents. Hiding it
+  // from non-admins hid the leave button from the only people who can use it
+  // — an admin has to transfer the studio rather than leave it.
+  it('shows a team Member the danger zone, holding their leave action', () => {
     withQuery(
       <SettingsTab studio={{ ...TEAM, myStudioRole: 'guest' }} members={[]} />,
+    );
+    expect(screen.getByText('Danger zone')).toBeInTheDocument();
+    expect(screen.getByTestId('settings-leave-open')).toBeInTheDocument();
+    // Transfer and delete belong to the admin.
+    expect(screen.queryByTestId('settings-transfer-open')).toBeNull();
+  });
+
+  it('shows the Admin transfer / delete, and no leave action', () => {
+    withQuery(<SettingsTab studio={TEAM} members={[]} />);
+    expect(screen.getByTestId('settings-transfer-open')).toBeInTheDocument();
+    expect(screen.queryByTestId('settings-leave-open')).toBeNull();
+  });
+
+  it('shows no danger zone to a non-member viewing the front door', () => {
+    withQuery(
+      <SettingsTab studio={{ ...TEAM, myStudioRole: null }} members={[]} />,
     );
     expect(screen.queryByText('Danger zone')).toBeNull();
   });

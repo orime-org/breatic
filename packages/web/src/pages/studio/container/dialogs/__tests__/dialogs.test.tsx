@@ -18,7 +18,7 @@ describe('NewItemDialog (spec §3.12)', () => {
     render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
     expect(screen.getByText('New project')).toBeInTheDocument();
     expect(screen.getByLabelText('Name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Handle')).toBeInTheDocument();
+    expect(screen.getByLabelText('Slug')).toBeInTheDocument();
   });
 
   it('shows the space-type picker for a project but not for a collection', () => {
@@ -47,7 +47,7 @@ describe('NewItemDialog (spec §3.12)', () => {
       <NewItemDialog kind='project' open onOpenChange={() => {}} onCreate={onCreate} />,
     );
     await user.type(screen.getByLabelText('Name'), 'My Project');
-    await user.type(screen.getByLabelText('Handle'), 'Bad_Slug');
+    await user.type(screen.getByLabelText('Slug'), 'Bad_Slug');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).not.toHaveBeenCalled();
     expect(screen.getByText(/Lowercase letters/)).toBeInTheDocument();
@@ -66,7 +66,7 @@ describe('NewItemDialog (spec §3.12)', () => {
       />,
     );
     await user.type(screen.getByLabelText('Name'), 'Moodboard');
-    await user.type(screen.getByLabelText('Handle'), 'mood-board');
+    await user.type(screen.getByLabelText('Slug'), 'mood-board');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).toHaveBeenCalledWith({
       name: 'Moodboard',
@@ -84,7 +84,7 @@ describe('NewItemDialog (spec §3.12)', () => {
       <NewItemDialog kind='project' open onOpenChange={() => {}} onCreate={onCreate} />,
     );
     await user.type(screen.getByLabelText('Name'), 'Secret');
-    await user.type(screen.getByLabelText('Handle'), 'secret-proj');
+    await user.type(screen.getByLabelText('Slug'), 'secret-proj');
     await user.click(screen.getByLabelText(/invite only/));
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).toHaveBeenCalledWith({
@@ -154,7 +154,7 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
     render(<NewStudioDialog open onOpenChange={() => {}} />);
     expect(screen.getByText('New Studio')).toBeInTheDocument();
     expect(screen.getByLabelText('Name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Handle')).toBeInTheDocument();
+    expect(screen.getByLabelText('Slug')).toBeInTheDocument();
     // The personal/team radio is gone (a team studio is the only thing created here).
     expect(screen.queryByLabelText('Team')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Personal')).not.toBeInTheDocument();
@@ -169,7 +169,7 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
   it('shows an available line for a free slug', () => {
     setAvailability('available');
     render(<NewStudioDialog open onOpenChange={() => {}} />);
-    expect(screen.getByText('Handle is available')).toBeInTheDocument();
+    expect(screen.getByText('Slug is available')).toBeInTheDocument();
   });
 
   it('shows taken and keeps Create disabled for a taken slug', async () => {
@@ -196,7 +196,7 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
     const user = userEvent.setup();
     render(<NewStudioDialog open onOpenChange={() => {}} />);
     await user.type(screen.getByLabelText('Name'), 'Nova');
-    await user.type(screen.getByLabelText('Handle'), 'nova-lab');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(mockMutate).toHaveBeenCalledWith(
       { name: 'Nova', slug: 'nova-lab' },

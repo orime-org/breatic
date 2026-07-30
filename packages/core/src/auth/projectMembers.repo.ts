@@ -82,6 +82,55 @@ export async function getRole(
 }
 
 /**
+ * Read a member's project role **inside a transaction, holding a row lock** on
+ * that member row.
+ *
+ * Distinct from {@link getRole}, which is the unlocked read behind
+ * `requireRole` / `onAuthenticate`. A mutation that decides based on the
+ * unlocked read is acting on a snapshot taken outside its own transaction,
+ * and every write in this repo that follows such a decision is an upsert
+ * clearing `deleted_at` ({@link materializeOwner},
+ * {@link materializeBaselineViewer}) — so a membership revocation committing
+ * in that window is not merely missed, it is UNDONE. Locking the row makes
+ * the concurrent writer queue instead of interleaving.
+ *
+ * `FOR UPDATE OF project_members` locks only this table; the `projects` join
+ * is a liveness guard, and locking the project row would serialise unrelated
+ * membership work across every member of that project.
+ *
+ * **Lock ordering (invariant, shared with the studio-membership paths): take
+ * `studio_members` rows BEFORE `project_members` rows.** Leaving / being
+ * kicked locks the studio rows first and then writes project rows; a caller
+ * that grabbed the project row first would deadlock against it.
+ * @param projectId - Project UUID
+ * @param userId - User UUID
+ * @param tx - The enclosing transaction; the lock is meaningless without one
+ * @returns Role, or null if the project is missing/deleted or the user has no
+ *   active membership
+ */
+export async function lockMemberRole(
+  projectId: string,
+  userId: string,
+  tx: DbTx,
+): Promise<ProjectRole | null> {
+  const rows = await tx
+    .select({ role: projectMembers.role })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, userId),
+        isNull(projectMembers.deletedAt),
+        isNull(projects.deletedAt),
+      ),
+    )
+    .for("update", { of: projectMembers })
+    .limit(1);
+  return rows[0] ? (rows[0].role as ProjectRole) : null;
+}
+
+/**
  * Get the user id of the active owner of a project.
  *
  * Owner uniqueness is enforced by the partial unique index
@@ -357,18 +406,24 @@ export async function updateRole(
 /**
  * Soft-delete a member row.
  *
- * Caller MUST refuse to remove an owner (V1: owners are removed
- * only via transfer-owner, which is deferred). Returns `false` if
- * no active row matched.
+ * Caller MUST refuse to remove an owner (owners change hands only via
+ * transfer-owner), and MUST make that decision under
+ * {@link lockMemberRole} in the same transaction — this statement matches on
+ * `deleted_at IS NULL` alone, so it happily deletes a row that became the
+ * owner after an unlocked check said otherwise. Returns `false` if no active
+ * row matched.
  * @param projectId - Project UUID
  * @param userId - Target user UUID
+ * @param tx - Optional drizzle transaction handle
  * @returns `true` if a row was soft-deleted
  */
 export async function softDelete(
   projectId: string,
   userId: string,
+  tx?: DbTx,
 ): Promise<boolean> {
-  const rows = await db
+  const handle = tx ?? db;
+  const rows = await handle
     .update(projectMembers)
     .set({ deletedAt: sql`now()` })
     .where(
@@ -425,24 +480,35 @@ export async function softDeleteAllInStudioForUser(
 }
 
 /**
- * List the projects a user actively OWNS within one studio — read BEFORE the
- * kick's soft-delete so the caller knows which projects to hand to the admin.
+ * List the projects a user actively OWNS within one studio, **holding a row
+ * lock on each** — read BEFORE the leave/kick soft-deletes them, so the caller
+ * knows which projects to hand to the admin.
  *
  * Inner-joins `projects` to scope by `studio_id` and filters role='owner' +
  * both rows active. Returns bare project ids (the caller reassigns each via
- * `materializeOwner` in the same tx).
+ * {@link materializeOwner} in the same tx).
+ *
+ * The lock, and the mandatory `tx`, are what make the result still true by the
+ * time the caller acts on it. Unlocked, a project transfer committing in the
+ * gap moves one of these projects to somebody else — and the caller, still
+ * believing this user owns it, hands it to the admin as well and collides with
+ * `project_members_one_owner_per_project`. There is no correct way to call
+ * this outside a transaction, so it does not offer one.
+ *
+ * `FOR UPDATE OF project_members` locks only the membership rows; the
+ * `projects` join is a scope filter, and locking project rows would serialise
+ * unrelated work across the studio.
  * @param studioId - Studio UUID
- * @param userId - The kicked member's user UUID
- * @param tx - Optional drizzle transaction handle
+ * @param userId - The departing member's user UUID
+ * @param tx - The enclosing transaction; the lock is meaningless without one
  * @returns the ids of active projects the user owns in this studio
  */
-export async function listOwnedProjectsInStudio(
+export async function lockOwnedProjectsInStudio(
   studioId: string,
   userId: string,
-  tx?: DbTx,
+  tx: DbTx,
 ): Promise<string[]> {
-  const handle = tx ?? db;
-  const rows = await handle
+  const rows = await tx
     .select({ projectId: projectMembers.projectId })
     .from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
@@ -454,7 +520,8 @@ export async function listOwnedProjectsInStudio(
         eq(projects.studioId, studioId),
         isNull(projects.deletedAt),
       ),
-    );
+    )
+    .for("update", { of: projectMembers });
   return rows.map((r) => r.projectId);
 }
 

@@ -320,4 +320,76 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
     expect(body.data.ok).toBe(true);
     expect(await studioMembersRepo.getRole(studio.id, member)).toBe("maintainer");
   });
+
+  // Leaving is the one studio-membership route whose caller is deliberately
+  // NOT the admin, so its gate and its path both have to differ from the kick
+  // route next door. Putting it at `/members/me` would have collapsed into
+  // the `:userId` wildcard above and been rejected by the admin gate — that
+  // is, the only people entitled to use it would have been the only people
+  // refused. These cases pin both halves.
+  describe("DELETE /studio/:slug/membership (self-service leave)", () => {
+    it("lets a NON-ADMIN member leave — the admin gate on the sibling route must not apply", async () => {
+      const admin = await insertUser();
+      const studio = await insertTeamStudio(admin);
+      await insertMemberRaw(studio.id, admin, "admin");
+      const member = await insertUser();
+      await insertMemberRaw(studio.id, member, "guest");
+
+      const res = await app.request(
+        `/api/v1/studio/${studio.slug}/membership`,
+        { method: "DELETE", headers: { Cookie: await loginCookie(member) } },
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { ok: boolean } };
+      expect(body.data.ok).toBe(true);
+      expect(await studioMembersRepo.getRole(studio.id, member)).toBeNull();
+      // The admin is untouched — leaving removes only the caller.
+      expect(await studioMembersRepo.getRole(studio.id, admin)).toBe("admin");
+    });
+
+    it("lets a maintainer leave too", async () => {
+      const admin = await insertUser();
+      const studio = await insertTeamStudio(admin);
+      await insertMemberRaw(studio.id, admin, "admin");
+      const member = await insertUser();
+      await insertMemberRaw(studio.id, member, "maintainer");
+
+      const res = await app.request(
+        `/api/v1/studio/${studio.slug}/membership`,
+        { method: "DELETE", headers: { Cookie: await loginCookie(member) } },
+      );
+
+      expect(res.status).toBe(200);
+      expect(await studioMembersRepo.getRole(studio.id, member)).toBeNull();
+    });
+
+    it("→ 403 for a non-member, matching every other studio route", async () => {
+      const admin = await insertUser();
+      const studio = await insertTeamStudio(admin);
+      await insertMemberRaw(studio.id, admin, "admin");
+      const stranger = await insertUser();
+
+      const res = await app.request(
+        `/api/v1/studio/${studio.slug}/membership`,
+        { method: "DELETE", headers: { Cookie: await loginCookie(stranger) } },
+      );
+
+      expect(res.status).toBe(403);
+    });
+
+    it("→ 409 for the sole admin, who has to transfer first", async () => {
+      const admin = await insertUser();
+      const studio = await insertTeamStudio(admin);
+      await insertMemberRaw(studio.id, admin, "admin");
+
+      const res = await app.request(
+        `/api/v1/studio/${studio.slug}/membership`,
+        { method: "DELETE", headers: { Cookie: await loginCookie(admin) } },
+      );
+
+      expect(res.status).toBe(409);
+      expect(await studioMembersRepo.getRole(studio.id, admin)).toBe("admin");
+    });
+  });
 });

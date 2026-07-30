@@ -27,6 +27,18 @@ export interface SlugAvailabilityResult {
   reason?: SlugError;
 }
 
+/** Extra context for the check. */
+export interface SlugAvailabilityOptions {
+  /**
+   * The slug the asking studio already holds, for the rename form.
+   *
+   * Without it the form is blocked by its own initial state: the server
+   * truthfully answers "taken" about a slug taken by the very studio doing
+   * the asking.
+   */
+  ownSlug?: string;
+}
+
 /**
  * Run the same shape + length + reserved checks the server enforces, so an
  * obviously-invalid slug never hits the network.
@@ -57,13 +69,21 @@ function validateLocally(value: string): SlugError {
  * UX helper only — the authoritative uniqueness guard is the insert-time unique
  * index, so a slug shown `available` can still lose a race and 409 on submit.
  * @param rawSlug the current (un-debounced) slug input value.
+ * @param options extra context — notably the caller's own slug, for renaming.
  * @returns the derived status + the failure reason when not available.
  */
-export function useSlugAvailability(rawSlug: string): SlugAvailabilityResult {
+export function useSlugAvailability(
+  rawSlug: string,
+  options?: SlugAvailabilityOptions,
+): SlugAvailabilityResult {
   const trimmed = rawSlug.trim();
   const slug = useDebounce(trimmed, 300);
   const localError = validateLocally(slug);
-  const enabled = slug.length > 0 && localError === null;
+  // The caller's own slug needs no server answer — it is theirs. The local
+  // checks above still apply: this says "this one is yours", not "skip
+  // validation", so a studio holding a since-reserved slug cannot re-submit it.
+  const isOwn = options?.ownSlug !== undefined && slug === options.ownSlug;
+  const enabled = slug.length > 0 && localError === null && !isOwn;
 
   const query = useQuery({
     queryKey: ['studio-slug-available', slug],
@@ -84,6 +104,11 @@ export function useSlugAvailability(rawSlug: string): SlugAvailabilityResult {
   }
   if (localError !== null) {
     return { status: 'invalid', reason: localError };
+  }
+  // Checked after the local rules so the exemption cannot smuggle through a
+  // slug that is no longer valid at all.
+  if (isOwn) {
+    return { status: 'available' };
   }
   if (query.isFetching || query.data === undefined) {
     return { status: 'checking' };

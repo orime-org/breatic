@@ -152,10 +152,13 @@ describe("createInvite", () => {
       );
     expect(reqNotif?.payload).toMatchObject({
       inviterName: "Inviter",
-      inviterHandle: "svc-inviter",
       studioName: "Svc Team",
-      studioSlug: "svc-team",
     });
+    // Ids, not names: the @handle and slug are resolved at read time.
+    expect(reqNotif?.payload).toHaveProperty("inviterUserId");
+    expect(reqNotif?.payload).toHaveProperty("studioId");
+    expect(reqNotif?.payload).not.toHaveProperty("inviterHandle");
+    expect(reqNotif?.payload).not.toHaveProperty("studioSlug");
   });
 
   it("rejects an unregistered email with NotFound", async () => {
@@ -244,10 +247,11 @@ describe("confirmInvite", () => {
     expect(adminNotices).toHaveLength(1);
     expect(adminNotices[0]?.payload).toMatchObject({
       inviteeName: "Invitee",
-      inviteeHandle: "svc-invitee",
       studioName: "Svc Team",
-      studioSlug: "svc-team",
     });
+    expect(adminNotices[0]?.payload).toHaveProperty("inviteeUserId");
+    expect(adminNotices[0]?.payload).toHaveProperty("studioId");
+    expect(adminNotices[0]?.payload).not.toHaveProperty("inviteeHandle");
   });
 
   it("under concurrency, exactly one confirm wins; the invitee gets ONE membership", async () => {

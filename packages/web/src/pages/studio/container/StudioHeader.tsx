@@ -6,6 +6,7 @@ import type * as React from 'react';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
+import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 interface StudioHeaderProps {
   studio: StudioDetail;
@@ -25,16 +26,15 @@ export function StudioHeader({
   studio,
 }: StudioHeaderProps): React.JSX.Element {
   const t = useTranslation();
-  const initial = studio.name.slice(0, 1).toUpperCase();
   const isTeam = studio.type === 'team';
   return (
     <div className={`${CENTER_COLUMN} flex shrink-0 items-center gap-3 pt-[22px]`}>
-      <span
-        aria-hidden='true'
-        className='flex h-10 w-10 items-center justify-center rounded-chrome bg-muted text-sm font-bold text-muted-foreground'
-      >
-        {initial}
-      </span>
+      <StudioAvatar
+        name={studio.name}
+        type={studio.type}
+        avatarUrl={studio.avatarUrl}
+        size='lg'
+      />
       <span className='text-lg font-bold'>{studio.name}</span>
       <span className='rounded-full bg-muted px-2 py-0.5 text-2xs font-bold uppercase tracking-wide text-muted-foreground'>
         {isTeam

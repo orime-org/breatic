@@ -4,7 +4,11 @@
 import * as React from 'react';
 import { Link } from 'react-router-dom';
 
-import type { Notification, NotificationType } from '@web/data/api/notifications';
+import type {
+  Notification,
+  NotificationType,
+  NotificationResolved,
+} from '@web/data/api/notifications';
 import type { useTranslation } from '@web/i18n/use-translation';
 
 /**
@@ -102,68 +106,68 @@ function projectPath(slug: string, projectId: string): string {
 
 /** Per-type config for a notification whose entity is a project. */
 const PROJECT_ROWS: Partial<
-  Record<NotificationType, { key: string; nameField: string; handleField: string }>
+  Record<NotificationType, { key: string; nameField: string; actorIdField: string }>
 > = {
   'access.role_upgrade_request': {
     key: 'roleUpgradeRequest',
     nameField: 'requesterName',
-    handleField: 'requesterHandle',
+    actorIdField: 'requesterUserId',
   },
   'access.role_upgrade_approved': {
     key: 'roleUpgradeApproved',
     nameField: 'deciderName',
-    handleField: 'deciderHandle',
+    actorIdField: 'deciderUserId',
   },
   'access.role_upgrade_rejected': {
     key: 'roleUpgradeRejected',
     nameField: 'deciderName',
-    handleField: 'deciderHandle',
+    actorIdField: 'deciderUserId',
   },
   'project.invite_request': {
     key: 'projectInviteRequest',
     nameField: 'inviterName',
-    handleField: 'inviterHandle',
+    actorIdField: 'inviterUserId',
   },
   'project.invite_accepted': {
     key: 'projectInviteAccepted',
     nameField: 'inviteeName',
-    handleField: 'inviteeHandle',
+    actorIdField: 'inviteeUserId',
   },
   'project.transfer_request': {
     key: 'projectTransferRequest',
     nameField: 'fromName',
-    handleField: 'fromHandle',
+    actorIdField: 'fromUserId',
   },
   'project.transfer_approved': {
     key: 'projectTransferApproved',
     nameField: 'accepterName',
-    handleField: 'accepterHandle',
+    actorIdField: 'accepterUserId',
   },
 };
 
 /** Per-type config for a notification whose entity is a studio. */
 const STUDIO_ROWS: Partial<
-  Record<NotificationType, { key: string; nameField: string; handleField: string }>
+  Record<NotificationType, { key: string; nameField: string; actorIdField: string }>
 > = {
   'studio.transfer_request': {
     key: 'studioTransferRequest',
     nameField: 'fromName',
-    handleField: 'fromHandle',
+    actorIdField: 'fromUserId',
   },
   'studio.transfer_approved': {
     key: 'studioTransferApproved',
     nameField: 'accepterName',
-    handleField: 'accepterHandle',
+    actorIdField: 'accepterUserId',
   },
   'studio.invite_request': {
     key: 'studioInviteRequest',
     nameField: 'inviterName',
-    handleField: 'inviterHandle',
+    actorIdField: 'inviterUserId',
   },
   'studio.invite_accepted': {
     key: 'studioInviteAccepted',
     nameField: 'inviteeName',
-    handleField: 'inviteeHandle',
+    actorIdField: 'inviteeUserId',
   },
 };
 
@@ -171,37 +175,57 @@ const STUDIO_ROWS: Partial<
  * Map a notification to its headline actor + entity. Returns null for an unknown
  * / dead type (the caller falls back to the raw type string).
  * @param n - The notification to describe.
+ * @param resolved - Current identities for the ids it carries.
  * @returns The resolved headline parts, or null when the type isn't handled.
  */
-function headlinePartsFor(n: Notification): HeadlineParts | null {
+function headlinePartsFor(
+  n: Notification,
+  resolved: NotificationResolved,
+): HeadlineParts | null {
   const p = n.payload;
+
+  // Names and links come from `resolved`, never from the payload. The payload
+  // holds ids precisely so a rename cannot strand this row: whatever the target
+  // is called RIGHT NOW is what the reader should see and click.
+  //
+  // Two different outcomes, handled separately. A soft-deleted target IS in the
+  // map, flagged `deleted` — it keeps its name and loses only the link, because
+  // "someone invited you to something" reads as nothing at all. A target that
+  // is genuinely unresolvable is absent, and falls back to the stored name as
+  // plain text.
+  const projectId = str(p, 'projectId') || n.projectId || '';
+  const projectRef = projectId ? resolved.projects[projectId] : undefined;
   const projectHref =
-    n.projectId !== null
-      ? projectPath(str(p, 'projectSlug'), n.projectId)
+    projectRef && !projectRef.deleted
+      ? projectPath(projectRef.slug, projectId)
       : null;
-  const studioHref = str(p, 'studioSlug')
-    ? studioPath(str(p, 'studioSlug'))
-    : null;
+
+  const studioId = str(p, 'studioId');
+  const studioRef = studioId ? resolved.studios[studioId] : undefined;
+  const studioHref =
+    studioRef && !studioRef.deleted ? studioPath(studioRef.slug) : null;
 
   const projectRow = PROJECT_ROWS[n.type];
   if (projectRow) {
+    const actor = resolved.users[str(p, projectRow.actorIdField)];
     return {
       key: projectRow.key,
       entityParam: 'project',
-      actorName: str(p, projectRow.nameField),
-      actorHandle: str(p, projectRow.handleField),
-      entityLabel: str(p, 'projectName'),
+      actorName: actor?.name ?? str(p, projectRow.nameField),
+      actorHandle: actor && !actor.deleted ? actor.slug : '',
+      entityLabel: projectRef?.name ?? str(p, 'projectName'),
       entityHref: projectHref,
     };
   }
   const studioRow = STUDIO_ROWS[n.type];
   if (studioRow) {
+    const actor = resolved.users[str(p, studioRow.actorIdField)];
     return {
       key: studioRow.key,
       entityParam: 'studio',
-      actorName: str(p, studioRow.nameField),
-      actorHandle: str(p, studioRow.handleField),
-      entityLabel: str(p, 'studioName'),
+      actorName: actor?.name ?? str(p, studioRow.nameField),
+      actorHandle: actor && !actor.deleted ? actor.slug : '',
+      entityLabel: studioRef?.name ?? str(p, 'studioName'),
       entityHref: studioHref,
     };
   }
@@ -245,14 +269,16 @@ function actorNode(
  * page) are clickable links dropped into the translated sentence frame. Both links
  * open in a NEW tab so the reader keeps their place in the bell.
  * @param n - The notification to render a headline for.
+ * @param resolved - Current identities for the ids the notification carries.
  * @param t - The translation function.
  * @returns The headline as a React node, or the raw type for an unknown notification.
  */
 export function notificationHeadline(
   n: Notification,
+  resolved: NotificationResolved,
   t: ReturnType<typeof useTranslation>,
 ): React.ReactNode {
-  const parts = headlinePartsFor(n);
+  const parts = headlinePartsFor(n, resolved);
   if (!parts) return n.type;
 
   const actor = actorNode(parts.actorName, parts.actorHandle, t);

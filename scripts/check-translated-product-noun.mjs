@@ -46,6 +46,12 @@ const DENY = {
   // Space: only the distinctive forms; the katakana / hangul forms are a
   // Workspace substring and are enforced per-key by frozen-product-terms.test.
   Space: ['工作面', '作業面'],
+  // Slug (user decision 2026-07-29). It had four names on screen — Handle,
+  // ハンドル, 핸들, 网址标识 — none of which matched what it is called in the
+  // URL, the API or the schema, so reading any two of those together needed a
+  // mental translation step. The ja/ko forms are transliterations of "handle"
+  // and have no other meaning here; 网址标识 was a coinage for this field.
+  Slug: ['网址标识', '網址標識', 'ハンドル', '핸들'],
   // Role names — collision-free forms only (see header). The Editor tool
   // (エディター / 에디터), ko Viewer (뷰어), and ja/ko Creator role-label form
   // (クリエイター / 크리에이터) collide with legitimate words and are frozen

@@ -13,6 +13,7 @@ import {
 import { authApi } from '@web/data/api/auth';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 /**
  * Studio account menu — the current-user avatar in the studio top bar, opening a
@@ -26,7 +27,6 @@ export function StudioAccountMenu(): React.JSX.Element {
   const t = useTranslation();
   const user = useCurrentUserStore((s) => s.user);
   const clear = useCurrentUserStore((s) => s.clear);
-  const initial = user?.name.slice(0, 1).toUpperCase() ?? '?';
 
   /**
    * Sign out: invalidate the server session, then clear the local user so
@@ -52,17 +52,21 @@ export function StudioAccountMenu(): React.JSX.Element {
         <button
           type='button'
           aria-label={t('studio.topBar.account')}
-          className='ml-1 flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-bold text-muted-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          // Hover dims rather than tinting the background: with an avatar set
+          // the background is covered by the image, so a background hover is
+          // invisible. Opacity also leaves the element's box untouched — this
+          // button is the popover's anchor, and anything that resizes it
+          // (a scale, a border) makes the popover jump on hover.
+          className='ml-1 flex shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
-          {user?.avatarUrl ? (
-            <img
-              src={user.avatarUrl}
-              alt=''
-              className='h-full w-full object-cover'
-            />
-          ) : (
-            initial
-          )}
+          <StudioAvatar
+            name={user?.name ?? '?'}
+            // The signed-in user is shown through their personal studio —
+            // display identity lives there, not on the user row.
+            type='personal'
+            avatarUrl={user?.avatarUrl ?? null}
+            size='sm'
+          />
         </button>
       </PopoverTrigger>
       <PopoverContent

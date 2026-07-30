@@ -18,7 +18,7 @@
  * line-replacement, and we never silently drop a notification.
  */
 
-import { projectMembersRepo } from "@breatic/core";
+import { db, projectMembersRepo } from "@breatic/core";
 import { publishMembersChanged } from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { ConflictError, NotFoundError } from "@breatic/core";
@@ -64,13 +64,16 @@ export async function getOwner(projectId: string): Promise<string | null> {
 
 /**
  * Change a member's role (editor ↔ viewer; owner cannot be PATCH'd).
+ *
+ * The role check and the write share one transaction, and the check takes a
+ * row lock — see {@link remove} for why an unlocked check here is not a check
+ * at all.
  * @param projectId - Project UUID
  * @param targetUserId - Member whose role is changing
  * @param newRole - 'editor' or 'viewer'
  * @param actorUserId - Acting user (activity feed attribution); optional for legacy callers
  * @throws {NotFoundError} if no active member row matches
- * @throws {ConflictError} if the target is the owner (use
- *   transfer-owner, V1-deferred)
+ * @throws {ConflictError} if the target is the owner (use transfer-owner)
  */
 export async function changeRole(
   projectId: string,
@@ -78,21 +81,29 @@ export async function changeRole(
   newRole: Exclude<ProjectRole, "owner">,
   actorUserId?: string,
 ): Promise<void> {
-  const current = await projectMembersRepo.getRole(projectId, targetUserId);
-  if (current === null) {
-    throw new NotFoundError(t("server.error.not_found"));
-  }
-  if (current === "owner") {
-    throw new ConflictError(t("server.error.conflict"));
-  }
-  const updated = await projectMembersRepo.updateRole(
-    projectId,
-    targetUserId,
-    newRole,
-  );
-  if (!updated) {
-    throw new NotFoundError(t("server.error.not_found"));
-  }
+  const current = await db.transaction(async (tx) => {
+    const role = await projectMembersRepo.lockMemberRole(
+      projectId,
+      targetUserId,
+      tx,
+    );
+    if (role === null) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    if (role === "owner") {
+      throw new ConflictError(t("server.error.conflict"));
+    }
+    const updated = await projectMembersRepo.updateRole(
+      projectId,
+      targetUserId,
+      newRole,
+      tx,
+    );
+    if (!updated) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    return role;
+  });
   await publishMembersChanged(projectId, {
     affectedUserId: targetUserId,
     action: "update",
@@ -109,9 +120,15 @@ export async function changeRole(
 /**
  * Remove a member from a project (soft delete).
  *
- * The owner cannot be removed (V1: transfer-owner is the only way
- * to demote an owner, and that endpoint is deferred). Removing
- * yourself is allowed if you are not the owner.
+ * The owner cannot be removed (ownership changes hands only via
+ * transfer-owner). Removing yourself is allowed if you are not the owner.
+ *
+ * The role check and the soft delete share one transaction, and the check
+ * takes a row lock. Read outside a transaction, "you are not the owner" is a
+ * claim about the past: an owner transfer confirming in the gap promotes this
+ * very row, and the delete — which matches on `deleted_at IS NULL` alone —
+ * then takes the project's only owner with it. The one-owner partial unique
+ * index cannot save us, because it forbids two owners, not zero.
  * @param projectId - Project UUID
  * @param targetUserId - Member being removed
  * @param actorUserId - Acting user (activity feed attribution); optional for legacy callers
@@ -123,17 +140,28 @@ export async function remove(
   targetUserId: string,
   actorUserId?: string,
 ): Promise<void> {
-  const current = await projectMembersRepo.getRole(projectId, targetUserId);
-  if (current === null) {
-    throw new NotFoundError(t("server.error.not_found"));
-  }
-  if (current === "owner") {
-    throw new ConflictError(t("server.error.conflict"));
-  }
-  const removed = await projectMembersRepo.softDelete(projectId, targetUserId);
-  if (!removed) {
-    throw new NotFoundError(t("server.error.not_found"));
-  }
+  const current = await db.transaction(async (tx) => {
+    const role = await projectMembersRepo.lockMemberRole(
+      projectId,
+      targetUserId,
+      tx,
+    );
+    if (role === null) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    if (role === "owner") {
+      throw new ConflictError(t("server.error.conflict"));
+    }
+    const removed = await projectMembersRepo.softDelete(
+      projectId,
+      targetUserId,
+      tx,
+    );
+    if (!removed) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    return role;
+  });
   await publishMembersChanged(projectId, {
     affectedUserId: targetUserId,
     action: "remove",

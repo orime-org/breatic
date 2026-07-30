@@ -11,7 +11,7 @@
  * `studios_slug_idx`.
  */
 
-import { and, eq, isNull, inArray, sql } from "drizzle-orm";
+import { and, eq, ne, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { studios, studioMembers } from "@breatic/core";
@@ -29,6 +29,8 @@ function toEntity(row: typeof studios.$inferSelect): Studio {
     slug: row.slug,
     type: row.type as StudioType,
     name: row.name,
+    avatarUrl: row.avatarUrl,
+    bio: row.bio,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -206,35 +208,92 @@ export async function getPersonalIdentitiesByCreators(
 }
 
 /**
- * Batch-resolve each user's active personal studio `name` + URL `slug` (handle).
+ * Batch-resolve each user's personal studio `name` + URL `slug` (handle).
  *
  * Backs the bell notification actor identity: the slug is both the `@handle`
- * shown beside the name and the `/studio/{slug}` link target. Users with no
- * active personal studio (mid-onboarding) are absent from the map; callers
- * fall back.
+ * shown beside the name and the `/studio/{slug}` link target.
+ *
+ * Soft-deleted studios ARE returned, flagged `deleted`, because a notification
+ * is a record of something that happened and "someone invited you" with the
+ * someone missing is not a usable record. Callers keep the name and drop only
+ * the link. Users with no personal studio at all (mid-onboarding) are absent
+ * from the map; callers fall back.
+ *
+ * A live row always wins over a soft-deleted one. Without the active-only
+ * filter a user can match more than one row, and the query has no ordering —
+ * so building the map by last-write-wins would pick an arbitrary row and could
+ * show a stale name for someone who is perfectly present.
  * @param createdByUserIds - User UUIDs to resolve (empty input → empty map)
- * @returns Map of `userId → { name, slug }`
+ * @returns Map of `userId → { name, slug, deleted }`
  */
 export async function getPersonalProfilesByCreators(
   createdByUserIds: string[],
-): Promise<Map<string, { name: string; slug: string }>> {
+): Promise<Map<string, { name: string; slug: string; deleted: boolean }>> {
   if (createdByUserIds.length === 0) return new Map();
   const rows = await db
     .select({
       createdByUserId: studios.createdByUserId,
       name: studios.name,
       slug: studios.slug,
+      deletedAt: studios.deletedAt,
     })
     .from(studios)
     .where(
       and(
         inArray(studios.createdByUserId, createdByUserIds),
         eq(studios.type, "personal"),
-        isNull(studios.deletedAt),
       ),
     );
+  const byUser = new Map<
+    string,
+    { name: string; slug: string; deleted: boolean }
+  >();
+  for (const row of rows) {
+    const held = byUser.get(row.createdByUserId);
+    if (held !== undefined && !held.deleted) continue;
+    byUser.set(row.createdByUserId, {
+      name: row.name,
+      slug: row.slug,
+      deleted: row.deletedAt !== null,
+    });
+  }
+  return byUser;
+}
+
+/**
+ * Resolve studio ids to their CURRENT name + slug, in one query.
+ *
+ * The read half of storing ids instead of names. Notifications keep the id
+ * and look the display identity up at render time, so a studio that has been
+ * renamed — or whose slug has been released and re-claimed by somebody else —
+ * still resolves to the right place.
+ *
+ * Soft-deleted studios ARE returned, flagged `deleted`. Soft delete is
+ * deactivation, not erasure — the caller keeps naming the target while
+ * dropping its link. Erasure is a separate path that anonymises the row
+ * itself, at which point this returns the anonymised value with no special
+ * case here. Only a studio that never existed is absent.
+ * @param studioIds - Studio UUIDs (deduped by the caller)
+ * @returns Map of `studioId → { name, slug, deleted }`
+ */
+export async function getIdentitiesByStudioIds(
+  studioIds: string[],
+): Promise<Map<string, { name: string; slug: string; deleted: boolean }>> {
+  if (studioIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      id: studios.id,
+      name: studios.name,
+      slug: studios.slug,
+      deletedAt: studios.deletedAt,
+    })
+    .from(studios)
+    .where(inArray(studios.id, studioIds));
   return new Map(
-    rows.map((r) => [r.createdByUserId, { name: r.name, slug: r.slug }]),
+    rows.map((r) => [
+      r.id,
+      { name: r.name, slug: r.slug, deleted: r.deletedAt !== null },
+    ]),
   );
 }
 
@@ -253,6 +312,74 @@ export async function getBySlug(slug: string): Promise<Studio | null> {
     .from(studios)
     .where(and(eq(studios.slug, slug), isNull(studios.deletedAt)))
     .limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Is this slug claimed by an active studio OTHER than the given one?
+ *
+ * The exclusion is what makes the rename form usable: a studio's current slug
+ * is of course "taken" — by itself — so a check without it tells an admin
+ * their own handle is unavailable the moment they focus the field. Creation
+ * passes no exclusion and behaves exactly as before.
+ *
+ * Advisory only. The authoritative guard is the `studios_slug_idx` unique
+ * index at write time, so a slug reported free here can still lose a
+ * concurrent race and surface as a conflict on submit.
+ * @param slug - The candidate slug
+ * @param excludeStudioId - A studio whose own claim on the slug does not count
+ * @returns true when some other active studio already holds it
+ */
+export async function isSlugTaken(
+  slug: string,
+  excludeStudioId?: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: studios.id })
+    .from(studios)
+    .where(
+      and(
+        eq(studios.slug, slug),
+        isNull(studios.deletedAt),
+        excludeStudioId ? ne(studios.id, excludeStudioId) : undefined,
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Apply a settings patch to a studio — display name, slug, bio, and/or avatar.
+ *
+ * Only the keys present in `patch` are written, so an absent field keeps its
+ * current value. A `bio` or `avatarUrl` of `null` clears it; the service maps
+ * an empty-string bio to `null` so the column has one representation of "no
+ * bio".
+ *
+ * A slug collision surfaces as the unique-index violation rather than being
+ * pre-checked here — the pre-check is advisory and racy, the index is not.
+ * @param id - Studio UUID
+ * @param patch - The fields to write (at least one)
+ * @param patch.name - New display name
+ * @param patch.slug - New URL handle
+ * @param patch.bio - New bio, or `null` to clear it
+ * @param patch.avatarUrl - New avatar URL, or `null` to fall back to initials
+ * @returns The updated studio, or `null` if it is missing / soft-deleted
+ */
+export async function updateStudio(
+  id: string,
+  patch: {
+    name?: string;
+    slug?: string;
+    bio?: string | null;
+    avatarUrl?: string | null;
+  },
+): Promise<Studio | null> {
+  const rows = await db
+    .update(studios)
+    .set({ ...patch, updatedAt: sql`now()` })
+    .where(and(eq(studios.id, id), isNull(studios.deletedAt)))
+    .returning();
   return rows[0] ? toEntity(rows[0]) : null;
 }
 

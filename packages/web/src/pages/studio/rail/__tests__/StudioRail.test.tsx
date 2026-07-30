@@ -13,7 +13,16 @@ function s(
   name: string,
   role: StudioSummary['myStudioRole'],
 ): StudioSummary {
-  return { id, slug: id, name, type: 'team', memberCount: 1, myStudioRole: role };
+  return {
+    id,
+    slug: id,
+    name,
+    type: 'team',
+    avatarUrl: null,
+    bio: null,
+    memberCount: 1,
+    myStudioRole: role,
+  };
 }
 
 describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④⑤ by role)', () => {
@@ -101,7 +110,16 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
 
   it('splits personal / my-team / joined into three groups (#1661)', () => {
     const studios = [
-      { id: 'me', slug: 'me', name: 'My Personal', type: 'personal' as const, memberCount: 1, myStudioRole: 'admin' as const },
+      {
+        id: 'me',
+        slug: 'me',
+        name: 'My Personal',
+        type: 'personal' as const,
+        avatarUrl: null,
+        bio: null,
+        memberCount: 1,
+        myStudioRole: 'admin' as const,
+      },
       s('myteam', 'My Team', 'admin'),
       s('join', 'Joined', 'guest'),
     ];

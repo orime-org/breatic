@@ -324,6 +324,16 @@ jobs:
         # See scripts/lint-no-missing-license-header.sh.
         run: pnpm lint:no-missing-license-header
 
+      - name: Lint no-notification-name-keys (notifications carry ids, not names)
+        # A stored slug is a snapshot. Renaming a studio releases the old slug
+        # for anyone to claim, and a personal studio's slug IS its owner's
+        # @handle - so a notification holding a copy can end up naming a
+        # stranger, with nothing in the stored string to reveal it. The
+        # consumers read these payloads by string key out of an opaque record,
+        # so re-adding one compiles cleanly and only fails at runtime; the type
+        # checker cannot cover this. See scripts/lint-no-notification-name-keys.sh.
+        run: pnpm lint:no-notification-name-keys
+
       - name: Lint no-collab-auth-table-sql (collab routes auth through core)
         # Enforce ADR 2026-05-31 "second-pass adjustment" auth unification: collab must NOT
         # hand-roll the session / role lookups (raw project_members SQL

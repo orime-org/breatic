@@ -32,6 +32,8 @@ loader:`packages/server/src/config/rate-limits.ts`(`getRateLimit(action)`);中�
 | `resend-verify` | 1 / 60s | IP | 重发验证邮件 |
 | `slug-check` | 60 / 60s | user | studio slug 可用性检查 |
 | `studio-create` | 10 / 3600s | user | 建 studio |
+| `studio-update` | 30 / 3600s | user | 改 studio 名称 / slug / 简介 |
+| `avatar-upload` | 20 / 3600s | user | 上传 studio 头像(每次都永久新增一个存储对象)|
 | `presign` | 30 / 60s | user | 上传预签名 URL |
 | `asset-report` | 120 / 60s | user | 活动流上报(`/assets/uploaded`、`/assets/deleted`) |
 
@@ -95,6 +97,12 @@ loader:`packages/core/src/config/storage.ts`。
 | `upload.client_request_timeout_ms` | 30000 | 浏览器 API 请求单次超时;也是 PUT 停滞守卫的下限 |
 | `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(下限, 文件大小 / 该速率)|
 | `upload.presign_expires_seconds` | 300 | 云存储(S3 / 阿里云 OSS)预签名 PUT 地址的有效期(秒)。这是存储服务商自己的 PUT 窗口,跟下发记录表无关 —— 后者不设上传时限;本地存储没有预签名地址,该项不生效 |
+
+`avatar.*`:studio 头像。头像**不走预签名直传**,字节经服务器进来,所以这个上限同时也是单次请求在进程里缓冲的上限。前端裁剪成 512×512 WebP 后约 30–60 KB。
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `avatar.max_bytes` | 1048576(1 MiB)| 单次头像上传字节上限;超限返 413 |
 
 ## 7. `config/agent.yaml` — LLM 韧性(节选)
 
