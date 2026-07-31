@@ -243,7 +243,7 @@ describe('useStudioSettings — changing the slug', () => {
       wrapper,
     });
 
-    result.current.uploadAvatar(new Blob(['x'], { type: 'image/png' }));
+    result.current.uploadAvatar(new Blob(['x'], { type: 'image/webp' }));
 
     await waitFor(() =>
       expect(useCurrentUserStore.getState().user?.avatarUrl).toBe(
@@ -263,13 +263,13 @@ describe('useStudioSettings — avatar error lifetime', () => {
     );
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
 
-    result.current.uploadAvatar(new Blob(['x'], { type: 'image/png' }));
+    result.current.uploadAvatar(new Blob(['x'], { type: 'image/webp' }));
     await waitFor(() => expect(result.current.avatarError).not.toBeNull());
 
     vi.mocked(studiosApi.uploadAvatar).mockResolvedValueOnce(
       updated(TEAM, { avatarUrl: 'https://cdn/new.webp' }),
     );
-    result.current.uploadAvatar(new Blob(['y'], { type: 'image/png' }));
+    result.current.uploadAvatar(new Blob(['y'], { type: 'image/webp' }));
 
     await waitFor(() => expect(result.current.avatarError).toBeNull());
   });
@@ -283,7 +283,7 @@ describe('useStudioSettings — avatar error lifetime', () => {
     vi.mocked(studiosApi.uploadAvatar).mockRejectedValueOnce(new Error('boom'));
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
 
-    result.current.uploadAvatar(new Blob(['x'], { type: 'image/png' }));
+    result.current.uploadAvatar(new Blob(['x'], { type: 'image/webp' }));
     await waitFor(() => expect(result.current.avatarError).not.toBeNull());
 
     result.current.clearAvatarError();

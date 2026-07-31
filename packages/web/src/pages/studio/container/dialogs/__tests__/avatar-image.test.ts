@@ -7,18 +7,17 @@
  *
  * Drawing and decoding are browser APIs that jsdom cannot run, so they stay
  * out of here and are covered by the real-browser smoke. What IS covered is
- * every branch that decides something: the two input gates, and the encode
- * step — which is now a single request for PNG, so what these tests pin is
- * mostly that it STAYS single. A reintroduced format negotiation would be
- * invisible in a smoke run (the picture would look identical) and would only
- * surface as avatars stored under a format nobody expects.
+ * every branch that decides something: the two input gates, and the
+ * encode-format fallback — which matters precisely because a real browser
+ * almost never takes it (they all support WebP), so a smoke run would leave
+ * it unexercised and a mistake there ships as a broken image.
  */
 
 import { describe, it, expect, vi } from 'vitest';
 
 import {
   AVATAR_OUTPUT_PX,
-  AVATAR_OUTPUT_TYPE,
+  AVATAR_OUTPUT_QUALITY,
   MAX_AVATAR_INPUT_BYTES,
   MAX_AVATAR_INPUT_EDGE_PX,
   checkAvatarFile,
@@ -83,67 +82,84 @@ describe('encodeAvatarBlob', () => {
    * A stand-in for `canvas.toBlob` that answers with whatever type the
    * caller's browser would really produce.
    * @param produced - The MIME type each requested type actually comes back as.
-   * @returns The stub encoder plus the types it was asked for.
+   * @returns The stub encoder plus the calls it recorded.
    */
-  function encoderProducing(produced: Record<string, string | null>): {
-    encode: (type: string) => Promise<Blob | null>;
-    calls: string[];
+  function encoderProducing(
+    produced: Record<string, string | null>,
+  ): {
+    encode: (type: string, quality: number) => Promise<Blob | null>;
+    calls: Array<{ type: string; quality: number }>;
   } {
-    const calls: string[] = [];
-    const encode = vi.fn(async (type: string): Promise<Blob | null> => {
-      calls.push(type);
-      const actual = produced[type];
-      if (actual === undefined || actual === null) return null;
-      return new Blob(['x'], { type: actual });
-    });
+    const calls: Array<{ type: string; quality: number }> = [];
+    const encode = vi.fn(
+      async (type: string, quality: number): Promise<Blob | null> => {
+        calls.push({ type, quality });
+        const actual = produced[type];
+        if (actual === undefined || actual === null) return null;
+        return new Blob(['x'], { type: actual });
+      },
+    );
     return { encode, calls };
   }
 
-  it('asks for PNG once and ships what came back', async () => {
-    const { encode, calls } = encoderProducing({ 'image/png': 'image/png' });
+  it('returns the WebP when the browser really encodes WebP', async () => {
+    const { encode, calls } = encoderProducing({ 'image/webp': 'image/webp' });
+
+    const blob = await encodeAvatarBlob(encode);
+
+    expect(blob.type).toBe('image/webp');
+    expect(calls).toEqual([
+      { type: 'image/webp', quality: AVATAR_OUTPUT_QUALITY },
+    ]);
+  });
+
+  it('re-encodes as JPEG when the browser silently falls back to PNG', async () => {
+    // `toBlob` does not report an unsupported type — it quietly hands back a
+    // PNG. Trusting the requested type would ship a PNG under a .webp name,
+    // and the browser decodes by declared type, so it would render broken.
+    const { encode, calls } = encoderProducing({
+      'image/webp': 'image/png',
+      'image/jpeg': 'image/jpeg',
+    });
+
+    const blob = await encodeAvatarBlob(encode);
+
+    expect(blob.type).toBe('image/jpeg');
+    expect(calls.map((c) => c.type)).toEqual(['image/webp', 'image/jpeg']);
+  });
+
+  it('accepts whatever the second attempt produced rather than looping', async () => {
+    // A browser that supports neither is hypothetical, but retrying forever
+    // would hang the dialog. PNG is a format the server accepts anyway, so
+    // the worst case is a larger upload, not a failure.
+    const { encode, calls } = encoderProducing({
+      'image/webp': 'image/png',
+      'image/jpeg': 'image/png',
+    });
 
     const blob = await encodeAvatarBlob(encode);
 
     expect(blob.type).toBe('image/png');
-    expect(calls).toEqual(['image/png']);
-  });
-
-  it('never asks for a second format', async () => {
-    // PNG is what `toBlob` falls back to when it cannot honour a type, so it
-    // is the one request that cannot come back as something else. There is
-    // nothing for a fallback to catch, and a second encode would only be a
-    // slower way to get the same bytes. Every other type stubbed to null, so
-    // a retry would surface as a throw rather than pass unnoticed.
-    const { encode, calls } = encoderProducing({
-      'image/png': 'image/png',
-      'image/webp': null,
-      'image/jpeg': null,
-    });
-
-    await encodeAvatarBlob(encode);
-
-    expect(calls).toEqual(['image/png']);
-  });
-
-  it('passes no quality argument, because PNG has none', async () => {
-    // `toBlob` consults quality only for lossy types. Passing one here would
-    // read as a knob that does something.
-    const { encode } = encoderProducing({ 'image/png': 'image/png' });
-
-    await encodeAvatarBlob(encode);
-
-    expect(encode).toHaveBeenCalledWith('image/png');
+    expect(calls).toHaveLength(2);
   });
 
   it('throws when the canvas produces nothing at all', async () => {
-    // A tainted or out-of-memory canvas, which no retry fixes.
-    const { encode } = encoderProducing({ 'image/png': null });
+    const { encode } = encoderProducing({ 'image/webp': null });
 
     await expect(encodeAvatarBlob(encode)).rejects.toThrow();
   });
 
-  it('outputs a 512px square in the one stored format', () => {
+  it('throws when the fallback attempt also produces nothing', async () => {
+    const { encode } = encoderProducing({
+      'image/webp': 'image/png',
+      'image/jpeg': null,
+    });
+
+    await expect(encodeAvatarBlob(encode)).rejects.toThrow();
+  });
+
+  it('outputs 512px square at quality 0.9', () => {
     expect(AVATAR_OUTPUT_PX).toBe(512);
-    expect(AVATAR_OUTPUT_TYPE).toBe('image/png');
+    expect(AVATAR_OUTPUT_QUALITY).toBe(0.9);
   });
 });
