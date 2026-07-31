@@ -5,25 +5,6 @@ import { axe } from 'vitest-axe';
 import { expect } from 'vitest';
 
 /**
- * Run axe-core against the given container and assert there are no
- * violations. Use this in a per-component test file to add a runtime
- * a11y invariant alongside the existing behavior tests.
- *
- * Layer B of the a11y CI plan — layer A (jsx-a11y ESLint plugin) catches
- * static issues at build time; this layer catches runtime issues (e.g.
- * Radix Missing Description, mis-wired aria-labelledby, etc.) once the
- * component is actually rendered.
- * @param container — the root element returned by Testing Library's
- *   `render()` call. Pass the entire popup overlay element when the
- *   component renders into a portal outside `container` (e.g. dialog,
- *   popover, sheet) — use `document.body` instead.
- * @example
- *   it('has no a11y violations', async () => {
- *     const { container } = render(<TopBar {...defaultProps} />);
- *     await expectNoA11yViolations(container);
- *   });
- */
-/**
  * Per-call axe rule overrides. Use sparingly — only when a rule
  * triggers on a documented industry convention that is genuinely
  * accessible at runtime but trips axe's conservative static checks
@@ -66,10 +47,20 @@ export const ARIA_HIDDEN_FOCUS_OFF: RuleOverrides = {
 
 /**
  * Run axe-core against `container` and assert there are no violations.
+ *
+ * Layer B of the a11y CI plan — layer A (the jsx-a11y ESLint plugin) catches
+ * static issues at build time; this layer catches the ones that only exist
+ * once the component is rendered (Radix's missing description, a mis-wired
+ * `aria-labelledby`, and the like).
  * @param container - The element (or selector) returned by Testing Library's
  *   `render()`; pass `document.body` when the component portals outside it.
  * @param extraRules - Per-call axe rule overrides merged on top of the defaults.
  * @returns A promise that resolves once the assertion has run.
+ * @example
+ *   it('has no a11y violations', async () => {
+ *     const { container } = render(<TopBar {...defaultProps} />);
+ *     await expectNoA11yViolations(container);
+ *   });
  */
 export async function expectNoA11yViolations(
   container: Element | string,
