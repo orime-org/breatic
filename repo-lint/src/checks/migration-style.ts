@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
-import { parse } from "libpg-query";
+import { loadModule, parsePlpgsqlBody, parseSql } from "plpgsql-parser";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 
 /** The two hand-written migration folders. */
@@ -10,18 +10,35 @@ const MIGRATION = /^packages\/core\/src\/db\/migrations(-yjs)?\/[^/]+\.sql$/;
 const BREAKPOINT = "--> statement-breakpoint";
 
 /**
- * Turns a character offset into the line a reader would call it.
+ * How many bytes a piece of the file takes, which is what the parser counts.
+ * @param text Any slice of the migration.
+ * @returns Its length in UTF-8 bytes.
+ */
+function byteLength(text: string): number {
+  return Buffer.from(text, "utf8").length;
+}
+
+/**
+ * Turns an offset the parser reported into the line a reader would call it.
  *
- * Skips forward over whitespace first. A statement's span begins immediately
- * after the previous statement's semicolon, so its offset lands on the
- * newline that ends the previous line and the number comes out one short of
- * the line the statement is written on.
+ * The parser counts bytes; the file was read as a string. Every character
+ * outside ASCII makes the two disagree, and five migrations here already
+ * carry some — so the offset is converted through the same encoding the file
+ * was read with rather than used as if it indexed characters.
+ *
+ * Then it skips forward over whitespace. A statement's span begins
+ * immediately after the previous statement's semicolon, so its offset lands
+ * on the newline ending the previous line and the number would come out one
+ * short of the line the statement is written on.
  * @param sql The migration's text.
- * @param offset A character offset into it.
+ * @param byteOffset A byte offset into it, as the parser reports.
  * @returns The one-based line number.
  */
-function lineAt(sql: string, offset: number): number {
-  const from = Math.max(offset, 0);
+function lineAt(sql: string, byteOffset: number): number {
+  const bytes = Buffer.from(sql, "utf8");
+  const from = bytes
+    .subarray(0, Math.max(byteOffset, 0))
+    .toString("utf8").length;
   const begins = from + (sql.slice(from).match(/^\s*/)?.[0].length ?? 0);
   return sql.slice(0, begins).split("\n").length;
 }
@@ -64,6 +81,79 @@ function collectForeignKeys(node: unknown, found: ForeignKey[]): void {
   for (const value of Object.values(record)) collectForeignKeys(value, found);
 }
 
+/**
+ * Every `DO $$ ... $$` block in a tree, with its body and where it sits.
+ *
+ * PostgreSQL parses a DO block's body as an opaque string — it is PL/pgSQL,
+ * read at execution time by a different parser — so a foreign key declared
+ * inside one is invisible to the SQL tree. Ours are all declared inside one,
+ * in the idempotent shape drizzle emits, which made this the blind spot that
+ * mattered most.
+ * @param node Any node of the parse tree.
+ * @param found The accumulator. Mutated.
+ */
+function collectDoBlocks(
+  node: unknown,
+  found: Array<{ body: string; offset: number }>,
+): void {
+  if (node === null || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    for (const item of node) collectDoBlocks(item, found);
+    return;
+  }
+  const record = node as Record<string, unknown>;
+  const statement = record["DoStmt"];
+  if (typeof statement === "object" && statement !== null) {
+    const args = (statement as Record<string, unknown>)["args"];
+    if (Array.isArray(args)) {
+      for (const arg of args) {
+        const element = (arg as Record<string, unknown>)["DefElem"];
+        if (typeof element !== "object" || element === null) continue;
+        const fields = element as Record<string, unknown>;
+        if (fields["defname"] !== "as") continue;
+        const value = (fields["arg"] as Record<string, unknown> | undefined)?.[
+          "String"
+        ] as Record<string, unknown> | undefined;
+        const body = value?.["sval"];
+        if (typeof body === "string") {
+          found.push({
+            body,
+            offset:
+              typeof fields["location"] === "number" ? fields["location"] : 0,
+          });
+        }
+      }
+    }
+  }
+  for (const value of Object.values(record)) collectDoBlocks(value, found);
+}
+
+/**
+ * The SQL statements written inside a PL/pgSQL body.
+ *
+ * The PL/pgSQL parser hands each one back as the text it was written as, so
+ * each goes to the SQL parser in turn. Nothing here takes the body apart by
+ * hand — every step is one parser or the other.
+ * @param node Any node of the PL/pgSQL parse tree.
+ * @param found The accumulator. Mutated.
+ * @returns The SQL each embedded statement holds.
+ */
+function embeddedStatements(node: unknown, found: string[] = []): string[] {
+  if (node === null || typeof node !== "object") return found;
+  if (Array.isArray(node)) {
+    for (const item of node) embeddedStatements(item, found);
+    return found;
+  }
+  const record = node as Record<string, unknown>;
+  const expression = record["PLpgSQL_expr"];
+  if (typeof expression === "object" && expression !== null) {
+    const query = (expression as Record<string, unknown>)["query"];
+    if (typeof query === "string") found.push(query);
+  }
+  for (const value of Object.values(record)) embeddedStatements(value, found);
+  return found;
+}
+
 /** One migration, as the parser sees it. */
 interface ParsedMigration {
   /** Character offset of each statement, in order. */
@@ -99,9 +189,10 @@ async function readMigration(
   sql: string,
   file: string,
 ): Promise<ParsedMigration> {
+  await loadModule();
   let tree: unknown;
   try {
-    tree = await parse(sql);
+    tree = await parseSql(sql);
   } catch (cause) {
     throw new Error(
       `${file} is not SQL PostgreSQL can parse, so neither of this check's questions can be answered about it. Reporting it clean would pass exactly the file nothing could read.`,
@@ -117,6 +208,25 @@ async function readMigration(
     : [];
   const foreignKeys: ForeignKey[] = [];
   collectForeignKeys(tree, foreignKeys);
+
+  // And again inside every DO block, whose body the SQL parser only ever sees
+  // as a string. Every foreign key in this repository is declared inside one.
+  const blocks: Array<{ body: string; offset: number }> = [];
+  collectDoBlocks(tree, blocks);
+  for (const block of blocks) {
+    for (const statement of embeddedStatements(
+      await parsePlpgsqlBody(`DO $$${block.body}$$;`),
+    )) {
+      const inside: ForeignKey[] = [];
+      collectForeignKeys(await parseSql(statement), inside);
+      // Reported at the DO block, not inside it: the inner parser counts
+      // lines within the body, and the two numbering schemes are not worth
+      // splicing together for a finding that names the block anyway.
+      foreignKeys.push(
+        ...inside.map((key) => ({ name: key.name, offset: block.offset })),
+      );
+    }
+  }
   return { starts, foreignKeys };
 }
 
@@ -144,11 +254,19 @@ async function crowdedFragments(
   const findings: Finding[] = [];
   let offset = 0;
   for (const fragment of sql.split(BREAKPOINT)) {
+    // A file ending with the marker leaves an empty piece behind, and the
+    // parser rejects an empty query outright — so an ordinary migration was
+    // blamed as unreadable SQL. Nothing to separate in a piece holding no
+    // statement, so there is nothing to ask about it either.
+    if (fragment.trim() === "") {
+      offset += fragment.length + BREAKPOINT.length;
+      continue;
+    }
     const { starts } = await readMigration(fragment, file);
     if (starts.length > 1) {
       findings.push({
         file,
-        line: lineAt(sql, offset + (starts[1] ?? 0)),
+        line: lineAt(sql, byteLength(sql.slice(0, offset)) + (starts[1] ?? 0)),
         message: `this statement shares a fragment with the one before it — ${starts.length} statements between two \`${BREAKPOINT}\` markers. Drizzle splits on that marker and runs each fragment separately, so every boundary needs one of its own; a fragment holding several statements goes out as a single raw call however many markers sit elsewhere in the file.`,
       });
     }

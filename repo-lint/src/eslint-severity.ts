@@ -6,8 +6,15 @@ import { dirname, join } from "node:path";
 /** The severity a rule ends up with, normalised across ESLint's two spellings. */
 export type Severity = "off" | "warn" | "error";
 
-/** Config files ESLint reads, in every extension flat config allows. */
-export const CONFIG_FILE = /(^|\/)eslint\.config\.(m?[jt]s|cjs)$/;
+/**
+ * Config files ESLint reads, in every extension flat config allows.
+ *
+ * Six names, matching the list in ESLint's own config loader. Five were
+ * written here at first, and the one left out — eslint.config.cts — is a
+ * letter away from the spelling this repository already uses for the one
+ * package that carries its own config.
+ */
+export const CONFIG_FILE = /(^|\/)eslint\.config\.([cm]?[jt]s)$/;
 
 /** How the three severities order, loudest last. */
 const RANK: Record<Severity, number> = { off: 0, warn: 1, error: 2 };

@@ -44,6 +44,11 @@ describe("configDirectories", () => {
   });
 
   it("accepts every extension flat config allows", () => {
+    // Six names, not five: ESLint's own loader lists eslint.config.cts
+    // alongside the rest, and a package carrying its config under that name
+    // is one letter from packages/web/eslint.config.mts. Missed here, such a
+    // package is invisible to the half of eslint-rules-enabled that catches a
+    // root glob claiming a package it cannot govern.
     expect(
       configDirectories([
         "a/eslint.config.js",
@@ -51,8 +56,9 @@ describe("configDirectories", () => {
         "c/eslint.config.cjs",
         "d/eslint.config.ts",
         "e/eslint.config.mts",
+        "f/eslint.config.cts",
       ]),
-    ).toHaveLength(5);
+    ).toHaveLength(6);
   });
 
   it("is not fooled by a file that merely mentions the name", () => {

@@ -78,6 +78,33 @@ END $$;
     await expect(migrationStyle.run(migration(sql))).resolves.toEqual([]);
   });
 
+  it("sees an unnamed foreign key inside a DO block", async () => {
+    // The blind spot the parser introduced and the text scan did not have:
+    // PostgreSQL stores a DO block's body as an opaque string, and every
+    // foreign key in this repository is declared inside one, in the
+    // idempotent shape drizzle emits.
+    const sql = `DO $$ BEGIN
+	ALTER TABLE "a" ADD COLUMN "b" uuid REFERENCES "t"("id");
+EXCEPTION
+	WHEN duplicate_object THEN null;
+END $$;
+`;
+    const findings = await migrationStyle.run(migration(sql));
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("CONSTRAINT");
+  });
+
+  it("passes a named foreign key inside a DO block", async () => {
+    // The shape 0030 and the other hand-written migrations actually use.
+    const sql = `DO $$ BEGIN
+	ALTER TABLE "a" ADD CONSTRAINT "a_b_t_id_fk" FOREIGN KEY ("b") REFERENCES "t"("id");
+EXCEPTION
+	WHEN duplicate_object THEN null;
+END $$;
+`;
+    await expect(migrationStyle.run(migration(sql))).resolves.toEqual([]);
+  });
+
   it("does not count semicolons in prose", async () => {
     // An earlier version did, and reported three historical migrations that
     // each hold one statement.
@@ -145,6 +172,30 @@ ALTER TABLE "a" ADD COLUMN "c" text;
         'ALTER TABLE "a" ADD COLUMN "x" text;\nALTER TABLE "a" ADD COLUMN "y" text;\n',
     });
     await expect(migrationStyle.run(context)).resolves.toHaveLength(1);
+  });
+
+  it("accepts a migration that ends with the marker", async () => {
+    // Splitting on the marker leaves an empty trailing piece, and the parser
+    // rejects an empty query outright — so a perfectly ordinary file was
+    // blamed as unreadable SQL.
+    const sql = `ALTER TABLE "a" ADD COLUMN "x" text;
+--> statement-breakpoint
+ALTER TABLE "a" ADD COLUMN "y" text;
+--> statement-breakpoint
+`;
+    await expect(migrationStyle.run(migration(sql))).resolves.toEqual([]);
+  });
+
+  it("reports the right line in a file holding non-ASCII text", async () => {
+    // The parser counts in bytes; the file is read as a string. A comment
+    // with any non-ASCII character in it pushes every reported line down,
+    // and five migrations here already contain some.
+    const sql = `-- 中文注释，占的字节数比字符数多
+ALTER TABLE "a" ADD COLUMN "b" uuid REFERENCES "t"("id");
+`;
+    const findings = await migrationStyle.run(migration(sql));
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.line).toBe(2);
   });
 
   it("refuses rather than reports clean on SQL it cannot read", async () => {
