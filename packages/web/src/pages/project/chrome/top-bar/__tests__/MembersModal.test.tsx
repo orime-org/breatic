@@ -11,7 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
 import type { Member } from '@web/data/api/members';
 import { useUIStore } from '@web/stores/ui';
-import { ARIA_HIDDEN_FOCUS_OFF, expectNoA11yViolations } from '@web/test-utils/a11y';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 /**
  * Render the modal inside a fresh QueryClientProvider. The modal invalidates
@@ -44,7 +44,7 @@ describe('MembersModal', () => {
       useUIStore.getState().setActiveOverlayId('members-modal');
     });
     renderModal(<MembersModal />);
-    await expectNoA11yViolations(document.body, ARIA_HIDDEN_FOCUS_OFF);
+    await expectNoA11yViolations(document.body);
   });
 
   it('renders header / 5 stub member rows when open', () => {

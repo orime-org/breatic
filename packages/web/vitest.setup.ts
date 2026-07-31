@@ -52,23 +52,20 @@ beforeAll(() => {
 // Also reset locale to the default so a test that switched languages
 // doesn't poison the next file in the run.
 afterEach(() => {
-  // Detach every <style> living inside the render tree BEFORE cleanup takes
-  // the tree away. Removing a container does not take its sheets out of
-  // `document.styleSheets` in jsdom — measured, they stay listed with
-  // `document.contains(ownerNode) === false`, so a one-process run of this
-  // package reached the last file with 93 sheets of which 90 belonged to
-  // components unmounted long before. axe walks `document.styleSheets` when
-  // it works out what is visible, so those ghosts were deciding the verdict
-  // of a11y assertions in files that never rendered them. Removing the
-  // <style> while it is still attached is what makes jsdom deregister it.
-  for (const style of Array.from(document.querySelectorAll('style'))) {
-    if (style.parentElement !== document.head) style.remove();
-  }
+  // The two resets come first and the hygiene sweep last, deliberately: an
+  // exception in the sweep must not be able to skip them. Under one process
+  // per package a skipped `cleanup()` or locale reset does not stay inside
+  // the test that broke — it reaches every file that runs afterwards.
   cleanup();
-  // A sheet whose owner was already detached before this hook ran cannot be
-  // reached by querySelectorAll, so it is collected from the sheet list
-  // itself. Re-attaching and removing is what makes jsdom deregister it —
-  // removal is the only event it listens for.
+  setLocale('en');
+  // Removing a container does not take its sheets out of
+  // `document.styleSheets` in jsdom: they stay listed with
+  // `document.contains(ownerNode) === false`. Re-attaching and removing is
+  // what makes jsdom deregister them — removal is the only event it listens
+  // for, so removing an already-detached node does nothing.
+  //
+  // This is memory hygiene, not correctness: measured, the a11y assertions
+  // reach the same verdict with the ghost count at 134 as they do at 0.
   for (const sheet of Array.from(document.styleSheets)) {
     const node = sheet.ownerNode as Element | null;
     if (node !== null && !document.contains(node)) {
@@ -76,8 +73,16 @@ afterEach(() => {
       node.remove();
     }
   }
-  setLocale('en');
 });
+
+// A note on the <style> elements vitest injects for each file's CSS imports:
+// they land in the one head every file in the package shares and nothing takes
+// them back out. Measured over a full one-process run, that accumulation peaks
+// at three — not worth reclaiming, and reclaiming it is actively wrong: a
+// library that injects its stylesheet once per process (sonner) never injects
+// it again, so giving sheets back leaves every later file without CSS the
+// isolated run had. An earlier commit on this branch claimed a peak of 105;
+// that figure does not reproduce, and what it actually counted is not known.
 
 // jsdom lacks several APIs that Radix / cmdk / shadcn primitives use.
 // Provide minimal polyfills so component tests focus on contracts.
