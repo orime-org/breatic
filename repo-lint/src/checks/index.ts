@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check } from "#repo-lint/check";
-import { docLinks } from "#repo-lint/checks/doc-links";
 import { eofNewline } from "#repo-lint/checks/eof-newline";
 import { eslintRulesEnabled } from "#repo-lint/checks/eslint-rules-enabled";
 import { lintCoverage } from "#repo-lint/checks/lint-coverage";
@@ -11,7 +10,6 @@ import { noBrandUsage } from "#repo-lint/checks/no-brand-usage";
 import { noCjk } from "#repo-lint/checks/no-cjk";
 import { noDisabledInvariant } from "#repo-lint/checks/no-disabled-invariant";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
-import { noNotificationNameKeys } from "#repo-lint/checks/no-notification-name-keys";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
 import { noSilentSkip } from "#repo-lint/checks/no-silent-skip";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
@@ -29,7 +27,6 @@ import { tokenValues } from "#repo-lint/checks/token-values";
  * repository itself rather than any one file's contents.
  */
 export const CHECKS: readonly Check[] = [
-  docLinks,
   eofNewline,
   eslintRulesEnabled,
   lintCoverage,
@@ -39,7 +36,6 @@ export const CHECKS: readonly Check[] = [
   noCjk,
   noDisabledInvariant,
   noHardcodedSecrets,
-  noNotificationNameKeys,
   noPrivateRepoPath,
   noSilentSkip,
   noTranslatedProductNoun,

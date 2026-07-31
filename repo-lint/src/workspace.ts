@@ -97,16 +97,3 @@ export function declaredBy(
     return included.some((glob) => minimatch(path, glob));
   };
 }
-
-/**
- * Names every directory the workspace treats as a package.
- * @param context The check context.
- * @returns Repo-relative package directories.
- * @throws {Error} When the workspace declares packages but none are present.
- */
-export function workspacePackages(context: CheckContext): string[] {
-  const declared = declaredBy(workspaceGlobs(context));
-  return context
-    .files(declared, "workspace package manifests")
-    .map((path) => path.slice(0, -"/package.json".length));
-}

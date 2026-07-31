@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { describe, expect, it } from "vitest";
-import { declaredBy, workspaceGlobs, workspacePackages } from "#repo-lint/workspace";
+import { declaredBy, workspaceGlobs } from "#repo-lint/workspace";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
 
 describe("declaredBy", () => {
@@ -73,17 +73,5 @@ describe("workspaceGlobs", () => {
     expect(() =>
       workspaceGlobs(fakeContext({ "pnpm-workspace.yaml": "packages: []\n" })),
     ).toThrow(/declares no packages/);
-  });
-});
-
-describe("workspacePackages", () => {
-  it("names the directory of each declared package", () => {
-    const context = fakeContext({
-      "pnpm-workspace.yaml": 'packages:\n  - "packages/*"\n  - "repo-lint"\n',
-      "packages/core/package.json": "{}",
-      "repo-lint/package.json": "{}",
-      "packages/core/src/index.ts": "",
-    });
-    expect(workspacePackages(context)).toEqual(["packages/core", "repo-lint"]);
   });
 });

@@ -388,10 +388,14 @@ export default tseslint.config(
     // Doc comments are the one thing here nothing else verifies, and the
     // documentation generator only ever sees the exported surface — which
     // is the minority of comments, since every named function carries one.
+    // Every file the linter reaches, not only the ones under src: a config
+    // file at a package root carries doc comments like any other, and this
+    // is now the only thing that reads them — the documentation generator
+    // was retired once this rule covered what it covered and more.
     files: [
-      "packages/{collab,core,domain,server,shared,worker}/src/**/*.{ts,tsx}",
-      "eslint-rules/src/**/*.ts",
-      "repo-lint/src/**/*.ts",
+      "packages/{collab,core,domain,server,shared,worker}/**/*.{ts,tsx}",
+      "eslint-rules/**/*.ts",
+      "repo-lint/**/*.ts",
     ],
     // Tests carry the same fixture carve-out every other documentation rule
     // here gives them: a comment in a fixture describes the fixture.
