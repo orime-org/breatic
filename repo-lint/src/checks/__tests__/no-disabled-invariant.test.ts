@@ -131,6 +131,29 @@ describe("no-disabled-invariant", () => {
     expect(noDisabledInvariant.run(context)).toHaveLength(2);
   });
 
+  // ESLint accepts `-- reason` after an inline configuration comment too, and
+  // the reason is prose. Read as part of the severity, a reason that happens
+  // to contain the word "error" — which a reason for silencing an error rule
+  // very often does — makes the rule read as still enabled, and the check
+  // that exists to report the silencing reports clean instead. The directive
+  // path stripped the description; this one did not, so the same invariant
+  // was enforced in one place and not the other.
+  it("reports a rule switched off despite a reason that says error", () => {
+    const context = fakeContext({
+      "packages/core/src/a.ts": `/* ${CONFIG} breatic/no-library-logger: "off" -- the error path must log here */\nlogger.info("x");\n`,
+    });
+    const findings = noDisabledInvariant.run(context);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toMatch(/no-library-logger/);
+  });
+
+  it("reports a rule switched off despite a reason containing a 2", () => {
+    const context = fakeContext({
+      "packages/core/src/a.ts": `/* ${CONFIG} breatic/no-relative-import: 0 -- 2 files need it */\nimport x from "./y";\n`,
+    });
+    expect(noDisabledInvariant.run(context)).toHaveLength(1);
+  });
+
   it("leaves a third-party rule configured inline alone", () => {
     const context = fakeContext({
       "packages/core/src/a.ts": `/* ${CONFIG} @typescript-eslint/no-explicit-any: "off" */\nconst a: any = 1;\n`,

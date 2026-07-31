@@ -12,11 +12,23 @@ import {
 /** The config ESLint reads for every package except web. */
 const ROOT_CONFIG = "eslint.config.ts";
 
-/** The package that carries its own config, and so is out of the root's reach. */
-const WEB_PACKAGE = "packages/web";
-
 /** Extensions ESLint is pointed at anywhere in this repository. */
 const SOURCE = /\.(ts|tsx|mts|cts|mjs|cjs|js|jsx)$/;
+
+/**
+ * Directories the root config cannot govern, derived rather than named.
+ *
+ * A directory carrying its own flat config is the one ESLint resolves for a
+ * file inside it, so nothing the root config says about that file applies.
+ * Today `packages/web` is the only one — and naming it here is what would
+ * make the second such package invisible to this check on the day it appears,
+ * with the list needed to notice already computed one line away.
+ * @param files Every repo-relative path the repository consists of.
+ * @returns Repo-relative directories, root excluded.
+ */
+export function packagesOutOfRootReach(files: readonly string[]): string[] {
+  return configDirectories(files).filter((directory) => directory !== "");
+}
 
 /**
  * Refuses to run when the root config is not where this check expects it.
@@ -39,15 +51,17 @@ function requireRootConfig(context: CheckContext): void {
  * @param context The check context.
  * @param registered Every rule name the plugin exports.
  * @param severities The severity each rule resolves to, as ESLint reports it.
- * @param rootOverWeb What the root config alone would make of a web file.
- * @returns One finding per unenabled rule and per rule the root claims for web.
+ * @param rootOverOthers What the root config alone makes of files in packages
+ *   that carry their own config, keyed by that package's directory.
+ * @returns One finding per unenabled rule and per rule the root claims for a
+ *   package it cannot govern.
  * @throws {Error} When the root config file is missing.
  */
 export function auditEslintWiring(
   context: CheckContext,
   registered: readonly string[],
   severities: ReadonlyMap<string, Severity>,
-  rootOverWeb: ReadonlyMap<string, Severity>,
+  rootOverOthers: ReadonlyMap<string, ReadonlyMap<string, Severity>>,
 ): Finding[] {
   requireRootConfig(context);
 
@@ -66,12 +80,14 @@ export function auditEslintWiring(
     });
   }
 
-  for (const [id, severity] of rootOverWeb) {
-    if (severity === "off" || !id.startsWith("breatic/")) continue;
-    findings.push({
-      file: ROOT_CONFIG,
-      message: `"${id}" is declared here for files in the ${WEB_PACKAGE} package, which this config never governs — that package carries its own config, and that is the one ESLint resolves for a file inside it. The declaration reads as covering web and covers nothing there. Name the packages this file can reach, and declare the rule in ${WEB_PACKAGE}/eslint.config.mts as well if it should apply there.`,
-    });
+  for (const [directory, reached] of rootOverOthers) {
+    for (const [id, severity] of reached) {
+      if (severity === "off" || !id.startsWith("breatic/")) continue;
+      findings.push({
+        file: ROOT_CONFIG,
+        message: `"${id}" is declared here for files in ${directory}, which this config never governs — that directory carries a config of its own, and that is the one ESLint resolves for a file inside it. The declaration reads as covering ${directory} and covers nothing there. Name the packages this file can reach, and declare the rule in ${directory}'s own config as well if it should apply there.`,
+      });
+    }
   }
 
   return findings;
@@ -89,17 +105,22 @@ export function auditEslintWiring(
  * whole build still green.
  *
  * The second half guards the way that line goes missing. The root config is
- * read for six packages and never for web, so a `packages/*` glob there reads
- * as repo-wide while governing nothing in the largest source tree in the
- * repository. Two rules were declared that way and enforced everywhere except
- * web, which is exactly the shape of failure that leaves no trace.
+ * read for six packages and never for the one that carries a config of its
+ * own, so a `packages/*` glob there reads as repo-wide while governing
+ * nothing in the largest source tree in the repository. Two rules were
+ * declared that way and enforced everywhere except web, which is exactly the
+ * shape of failure that leaves no trace.
  *
  * That half asks ESLint rather than reading the config's text. A scan for
  * glob spellings has to know them all, and knew three: `packages/**`, a
  * repo-wide `**`, a block carrying no `files` key at all and — the one no
  * scan of this file could ever see — a block spread in from an imported
- * config all walked past it. Loading the config and asking what it makes of a
- * real web file leaves nothing to enumerate.
+ * config all walked past it. Loading the config and asking what it makes of
+ * a real file leaves nothing to enumerate.
+ *
+ * Which packages to ask about is derived, not named. `packages/web` is the
+ * only one today, and writing that down is what would leave the second such
+ * package unasked on the day it appears.
  */
 export const eslintRulesEnabled = {
   name: "eslint-rules-enabled",
@@ -119,18 +140,25 @@ export const eslintRulesEnabled = {
       configDirectories(everything),
       sources,
     );
-    // Every web source file, for the same reason the probes above are every
-    // file: a glob narrow enough to name one of them is still a glob that
-    // claims web.
-    const webSources = context.files(
-      (path) => path.startsWith(`${WEB_PACKAGE}/`) && SOURCE.test(path),
-      "web package source files",
-    );
+    // Every source file under each of them, for the same reason the probes
+    // above are every file: a glob narrow enough to name one file is still a
+    // glob claiming a package the root config cannot reach.
+    const rootOverOthers = new Map<string, Map<string, Severity>>();
+    for (const directory of packagesOutOfRootReach(everything)) {
+      const owned = context.files(
+        (path) => path.startsWith(`${directory}/`) && SOURCE.test(path),
+        `source files in ${directory}`,
+      );
+      rootOverOthers.set(
+        directory,
+        await severitiesUnderConfig(context.repoRoot, ROOT_CONFIG, owned),
+      );
+    }
     return auditEslintWiring(
       context,
       Object.keys(breaticPlugin.rules ?? {}),
       severities,
-      await severitiesUnderConfig(context.repoRoot, ROOT_CONFIG, webSources),
+      rootOverOthers,
     );
   },
 } satisfies Check;

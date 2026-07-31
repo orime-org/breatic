@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { describe, expect, it } from "vitest";
-import { auditEslintWiring } from "#repo-lint/checks/eslint-rules-enabled";
+import {
+  auditEslintWiring,
+  packagesOutOfRootReach,
+} from "#repo-lint/checks/eslint-rules-enabled";
 import type { Severity } from "#repo-lint/eslint-severity";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
 
@@ -25,6 +28,43 @@ function resolved(map: Record<string, Severity>): Map<string, Severity> {
     Object.entries(map).map(([name, severity]) => [`breatic/${name}`, severity]),
   );
 }
+
+/**
+ * What the root config alone makes of one package that carries its own.
+ * @param directory The package directory, as the check derives it.
+ * @param map Rule short names to the severity the root config gives them.
+ * @returns The shape the audit receives.
+ */
+function underRoot(
+  directory: string,
+  map: Record<string, Severity>,
+): Map<string, Map<string, Severity>> {
+  return new Map([[directory, resolved(map)]]);
+}
+
+describe("packagesOutOfRootReach", () => {
+  // Which packages the root config cannot govern is derivable from the tree —
+  // every directory that carries a config of its own — and the check already
+  // derives that list for another purpose two lines earlier. Naming one of
+  // them instead means the second package to gain its own config is never
+  // asked what the root config claims about it, and nothing says so.
+  it("names every directory carrying its own config", () => {
+    expect(
+      packagesOutOfRootReach([
+        "eslint.config.ts",
+        "packages/web/eslint.config.mts",
+        "packages/studio/eslint.config.ts",
+        "packages/core/src/index.ts",
+      ]),
+    ).toEqual(["packages/web", "packages/studio"]);
+  });
+
+  it("leaves the repository root out, since that is the config in question", () => {
+    expect(packagesOutOfRootReach(["eslint.config.ts", "a/src/b.ts"])).toEqual(
+      [],
+    );
+  });
+});
 
 describe("auditEslintWiring", () => {
   it("passes when every registered rule reaches source as an error", () => {
@@ -94,17 +134,23 @@ describe("auditEslintWiring", () => {
       context,
       ["a"],
       resolved({ a: "error" }),
-      resolved({ a: "error" }),
+      underRoot("packages/web", { a: "error" }),
     );
     expect(findings).toHaveLength(1);
     expect(findings[0]?.message).toMatch(/never governs/);
+    expect(findings[0]?.message).toMatch(/packages\/web/);
     expect(findings[0]?.message).toMatch(/breatic\/a/);
   });
 
   it("reports a rule the root config downgrades to a warning over web", () => {
     const context = fakeContext({ "eslint.config.ts": config(["a"]) });
     expect(
-      auditEslintWiring(context, ["a"], resolved({ a: "error" }), resolved({ a: "warn" })),
+      auditEslintWiring(
+        context,
+        ["a"],
+        resolved({ a: "error" }),
+        underRoot("packages/web", { a: "warn" }),
+      ),
     ).toHaveLength(1);
   });
 
@@ -112,7 +158,12 @@ describe("auditEslintWiring", () => {
     // Set to "off" for web it claims nothing, so nobody is misled about it.
     const context = fakeContext({ "eslint.config.ts": config(["a"]) });
     expect(
-      auditEslintWiring(context, ["a"], resolved({ a: "error" }), resolved({ a: "off" })),
+      auditEslintWiring(
+        context,
+        ["a"],
+        resolved({ a: "error" }),
+        underRoot("packages/web", { a: "off" }),
+      ),
     ).toEqual([]);
   });
 
@@ -120,7 +171,9 @@ describe("auditEslintWiring", () => {
     // The root config's other blocks come from presets we do not write, and
     // whether those reach web is not this check's subject.
     const context = fakeContext({ "eslint.config.ts": config(["a"]) });
-    const reaching = new Map<string, Severity>([["no-undef", "error"]]);
+    const reaching = new Map([
+      ["packages/web", new Map<string, Severity>([["no-undef", "error"]])],
+    ]);
     expect(
       auditEslintWiring(context, ["a"], resolved({ a: "error" }), reaching),
     ).toEqual([]);

@@ -4,12 +4,15 @@
 /**
  * File kinds whose bytes are not text, skipped without opening them.
  *
- * A fast path, not the decision. An earlier version of this comment claimed
- * the whole cost of an omission here was a wasted read — that was measured
- * and is false: 20 KB of random bytes handed to no-trojan-source produced
- * 2400 findings, one per control character, which is how a real finding gets
- * buried. The content sniff below is what actually decides, so a kind nobody
- * listed costs a read and nothing else.
+ * A fast path, not the decision — the content sniff below is what actually
+ * settles it, so a kind missing from this list is still kept out of every
+ * text scan. Two earlier versions of this comment put the cost of that
+ * omission too low. The first said it was a wasted read; measured, 20 KB of
+ * random bytes handed to no-trojan-source produced 2400 findings, one per
+ * control character, which is how a real finding gets buried. The second
+ * repeated the wasted-read claim after no-silent-skip made the omission
+ * report a finding of its own: a kind nobody lists now fails the build until
+ * somebody decides whether it is binary or is broken text.
  */
 const BINARY =
   /\.(png|jpe?g|gif|webp|avif|ico|icns|bmp|woff2?|ttf|otf|eot|pdf|zip|t?gz|bz2|mp4|mov|webm|mp3|wav|m4a|wasm)$/i;

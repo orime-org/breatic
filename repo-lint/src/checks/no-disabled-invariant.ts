@@ -71,16 +71,20 @@ function staysAnError(value: string): boolean {
 }
 
 /**
- * Strips what ESLint does not read as rule names.
+ * Strips what ESLint does not read as configuration.
  *
  * A description after `--` is prose, and a block comment's terminator is
- * punctuation; counting either as a rule name would let a rule-less directive
- * pass by carrying a reason.
- * @param rest Everything following the directive on the line.
- * @returns The part ESLint parses as a rule list.
+ * punctuation. ESLint accepts a description after either comment syntax, so
+ * both callers below strip it here rather than each in its own way — which is
+ * how it came to be stripped for directives and not for configuration
+ * comments. Left in, prose is read as configuration: a reason for silencing a
+ * rule says the word "error" more often than not, and the value parser then
+ * read the rule as still failing the build and said nothing.
+ * @param text Everything following the comment's opening word.
+ * @returns The part ESLint parses as configuration.
  */
-function ruleList(rest: string): string {
-  return rest.split("--")[0]?.replace(/\*\/.*$/, "").trim() ?? "";
+function withoutDescription(text: string): string {
+  return text.split("--")[0]?.replace(/\*\/.*$/, "").trim() ?? "";
 }
 
 /** Where an exception belongs instead, said the same way in every message. */
@@ -97,7 +101,7 @@ const REMEDY =
 function judgeDirective(file: string, line: number, text: string): Finding[] {
   const directive = DIRECTIVE_COMMENT.exec(text);
   if (!directive) return [];
-  const named = ruleList(directive[1] ?? "");
+  const named = withoutDescription(directive[1] ?? "");
   if (named === "") {
     return [
       {
@@ -127,7 +131,7 @@ function judgeDirective(file: string, line: number, text: string): Finding[] {
 function judgeConfigComments(file: string, text: string): Finding[] {
   const findings: Finding[] = [];
   for (const comment of text.matchAll(CONFIG_COMMENTS)) {
-    const body = comment[1] ?? comment[2] ?? "";
+    const body = withoutDescription(comment[1] ?? comment[2] ?? "");
     const line = text.slice(0, comment.index).split("\n").length;
     for (const [, rule, value] of body.matchAll(OURS_CONFIGURED)) {
       if (staysAnError(value ?? "")) continue;
