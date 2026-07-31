@@ -238,7 +238,7 @@ export async function closeCollabRedis(): Promise<void> {
  * The single home for the Redis `/healthz` + boot-connectivity probe so
  * the `=== "PONG"` check can't drift across the ~6 call sites
  * (server / worker / collab health + the connectivity checks). Unlike
- * {@link pingDb} there is NO default client: Redis is multi-connection
+ * `pingDb` there is NO default client: Redis is multi-connection
  * by role (general / queue / stream / subscriber — each needs its own
  * socket), so the caller passes the specific client it wants to probe.
  * @param client - ioredis client to ping

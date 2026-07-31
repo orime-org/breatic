@@ -8,9 +8,10 @@
  * are migrated here — dependency-cruiser sees only real imports (not
  * comments), so it can't false-positive on a doc-comment naming a banned
  * alias the way the grep guards had to defend against. Guards whose mandate
- * is NOT a pure import edge stay as their own scripts: no-relative-import
- * (import SYNTAX, which the resolver erases), no-library-logger (a logger.*
- * CALL), no-raw-sql-outside-repo (a usage), no-core-process-env, etc.
+ * is NOT a pure import edge live elsewhere: no-relative-import (import
+ * SYNTAX, which the resolver erases), no-library-logger (a logger.* CALL),
+ * no-raw-sql-outside-repo (a usage), no-library-env-access, etc. Those are
+ * migrating from scripts/ to AST rules in eslint-rules/.
  * No circular-dep / orphan rules are enabled (separate opt-in).
  *
  * @type {import('dependency-cruiser').IConfiguration}
@@ -20,7 +21,7 @@ module.exports = {
     {
       name: "routes-no-data-layer",
       comment:
-        "Prohibition #1 (路由层不碰数据层): a server route handler must call " +
+        "Prohibition #1 (route layer must not reach the data layer): a server route handler must call " +
         "a *.service, never a *.repo directly. The repo is the data-access " +
         "layer; the service owns the business logic. A route reaching a repo " +
         "skips the service layer. Route a read/write through the owning " +
@@ -32,7 +33,7 @@ module.exports = {
     {
       name: "server-no-sync-aigc",
       comment:
-        "Prohibition #14 (AIGC sync 路径, PROXY): heavy AIGC generation must " +
+        "Prohibition #14 (no synchronous AIGC path; PROXY rule): heavy AIGC generation must " +
         "run async in the worker, never synchronously in a server request. " +
         "The only server modules allowed to import the AI SDK are the three " +
         "streaming entry points CLAUDE.md permits (Agent chat + memory " +
@@ -67,7 +68,7 @@ module.exports = {
     {
       name: "collab-no-domain-import",
       comment:
-        "ADR 2026-05-31 二次调整 (抽离 @breatic/domain): collab depends on " +
+        "ADR 2026-05-31 second revision (extracting @breatic/domain): collab depends on " +
         "core + shared ONLY; it must NOT import @breatic/domain (the " +
         "server+worker-only AIGC business — credit / task / node-history / " +
         "agent / model-catalog / canvas-lock). Migrated from " +

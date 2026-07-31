@@ -1,25 +1,28 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
-// Per CLAUDE.md "industrial-grade server standards" the project tightens
-// vitest's default `testTimeout` from 5s to 15s. The 5s default
-// is too tight for two project realities:
+// What a test here may cost in wall-clock time.
 //
-// - bcrypt-cost-12 invariants (auth.service.invariant.test.ts) -
-//   each `bcrypt.hash` call is ~500ms on a warm CPU; under turbo
-//   parallelism the worker can be CPU-starved and a single hash
-//   has been observed to push past 5s. Lowering the cost would
-//   violate the security mandate; raising the timeout matches
-//   the real-world variance.
-// - property-based round-trips (`fast-check`) frequently chain
-//   100–1000 iterations and an outlier run can punch through 5s
-//   on a noisy runner.
+// Two things in this package are deliberately expensive: bcrypt at cost 12,
+// which is slow by design because that is what makes it worth using, and the
+// property-based round-trips that repeat it. Their cost is not fixed — it is
+// whatever share of a core the worker gets, and `turbo test` runs sixteen
+// packages on twelve cores, so that share is well under one.
 //
-// Keep `testTimeout: 15_000` in sync across all packages so the
-// `turbo test` aggregate doesn't surface flake-y reds.
+// Measured rather than guessed, because this limit has already been too low
+// once: a single `verify` takes 0.49s idle and was observed at 3.63s under a
+// full parallel run, and the twenty-iteration property goes from 9.7s to past
+// the thirty seconds it was allowed. That is a factor of seven on this
+// machine; CI runners have fewer cores than this one, so the real worst case
+// is worse. Twelve times the idle cost leaves room for that without letting
+// something genuinely hung sit here for an hour.
+//
+// Lowering the bcrypt cost instead would violate the security mandate, and
+// dropping iterations would weaken an invariant on the authentication path.
+// The limit is the thing that was wrong, so the limit is what changes.
 export default defineConfig({
   test: {
-    testTimeout: 15_000,
+    testTimeout: 120_000,
     // core no longer reads process.env itself; this setup file
     // stands in for the application entry, loading .env (best-effort)
     // and running initCore(process.env) before any test imports
