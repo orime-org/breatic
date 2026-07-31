@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 
 import {
   connectableCreatableTypes,
@@ -56,6 +56,22 @@ describe('connectableCreatableTypes — creatable ∩ rule-compatible targets', 
 // "visually blank": inside the pane, not a node, not the floating panel.
 describe('isBlankCanvasRelease — what counts as visually blank canvas', () => {
   /**
+   * Every chain this block attached to the document, so it can take them back.
+   *
+   * The shared `cleanup()` in vitest.setup.ts only removes the containers
+   * testing-library itself created by `render()`; anything appended to
+   * `document.body` by hand is this file's own to remove. Left behind, the
+   * eight chains below survive into every later file in the run — and the
+   * a11y assertions elsewhere scan `document.body`, so they end up judging
+   * this file's leftovers.
+   */
+  const attached: HTMLElement[] = [];
+
+  afterEach(() => {
+    for (const root of attached.splice(0)) root.remove();
+  });
+
+  /**
    * Builds a chain of nested divs (outermost first) and returns the innermost.
    * @param classes - Class names, outermost first ('' = no class).
    * @returns The innermost element.
@@ -70,6 +86,7 @@ describe('isBlankCanvasRelease — what counts as visually blank canvas', () => 
       parent = el;
     }
     document.body.appendChild(root);
+    attached.push(root);
     return parent;
   }
 
