@@ -54,9 +54,7 @@ import {
 } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-
-/** Days an unconfirmed transfer request stays actionable before it self-voids. */
-const TRANSFER_TTL_DAYS = 7;
+import { deferredRequestExpiry } from "@server/config/limits.js";
 
 /**
  * The current project owner asks another project collaborator to take over as owner.
@@ -68,7 +66,7 @@ const TRANSFER_TTL_DAYS = 7;
  * the project's studio (the studio check blocks transferring the project out of
  * its studio to an outside collaborator, and blocks guests). Drops an actionable
  * `project.transfer_request` notification that expires after
- * {@link TRANSFER_TTL_DAYS} days. No role change here — the swap is deferred
+ * the configured request TTL. No role change here — the swap is deferred
  * until the recipient confirms.
  * @param projectId - The project whose owner role is being transferred
  * @param fromUserId - The acting owner initiating the transfer
@@ -125,9 +123,7 @@ export async function requestProjectTransfer(
     throw new ValidationError(t("server.error.validation"));
   }
 
-  const expiresAt = new Date(
-    Date.now() + TRANSFER_TTL_DAYS * 24 * 60 * 60 * 1000,
-  );
+  const expiresAt = deferredRequestExpiry();
   const profiles = await studioRepo.getPersonalProfilesByCreators([fromUserId]);
   const from = profiles.get(fromUserId);
   await notificationService.createProjectTransferRequest({

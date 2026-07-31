@@ -49,6 +49,7 @@
     "lint:no-postgres-outside-core": "bash scripts/lint-no-postgres-outside-core.sh",
     "lint:no-ioredis-outside-core": "bash scripts/lint-no-ioredis-outside-core.sh",
     "lint:no-noaccount": "bash scripts/lint-no-noaccount.sh && bash scripts/lint-no-noaccount.sh --self-test",
+    "lint:no-hardcoded-request-ttl": "bash scripts/lint-no-hardcoded-request-ttl.sh && bash scripts/lint-no-hardcoded-request-ttl.sh --self-test",
     "lint:no-param-as-string": "bash scripts/lint-no-param-as-string.sh",
     "lint:no-relative-import": "bash scripts/lint-no-relative-import.sh",
     "lint:no-sync-in-request-path": "bash scripts/lint-no-sync-in-request-path.sh",

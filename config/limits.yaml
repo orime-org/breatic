@@ -23,6 +23,17 @@ project_collaborator_cap: 100
 #   `images.max_items` payload cap enforced at execute time (#1735).
 canvas_reference_pool_cap: 50
 
+# ── Deferred-decision request TTL ──────────────────────
+# deferred_request_ttl_days: how long a request that someone else must
+#   answer stays live before it silently voids. Covers all five: studio
+#   invite, project invite, studio transfer, project transfer, role
+#   upgrade. One knob on purpose — five separate ones is five chances to
+#   drift, and a user cannot reason about "how long do I have" if the
+#   answer depends on which flow they are in. Expiry is a DECISION GATE,
+#   not a display filter: an expired request cannot be acted on, and the
+#   act of trying flips it to the terminal `expired` status.
+deferred_request_ttl_days: 7
+
 # ── Node history paging ────────────────────────────────
 # node_history_page_size: page size the frontend requests per infinite-
 #   scroll page of GET /canvas/nodes/:id/history (#1619). Served to the

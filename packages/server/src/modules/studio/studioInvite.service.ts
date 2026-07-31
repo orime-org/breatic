@@ -44,12 +44,13 @@ import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { InvitationLandingView } from "@breatic/shared";
+import {
+  deferredRequestExpiry,
+  deferredRequestTtlSeconds,
+} from "@server/config/limits.js";
 
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
 type InvitableRole = "maintainer" | "guest";
-
-/** Days a pending invite stays actionable before it self-voids. */
-const INVITE_TTL_DAYS = 7;
 
 /**
  * Invite a registered user into a studio — creates a PENDING invite (it does
@@ -112,7 +113,7 @@ export async function createInvite(
   ]);
   const inviter = profiles.get(inviterUserId);
   const inviterName = inviter?.name ?? "";
-  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = deferredRequestExpiry();
 
   let invitationId = "";
   try {
@@ -328,13 +329,11 @@ export async function revokeInvite(
   });
 }
 
-/** TTL of the email-link token — matches the invite's 7-day window. */
-const INVITE_TOKEN_TTL_SECONDS = INVITE_TTL_DAYS * 24 * 60 * 60;
-
 /**
  * Issue a one-time email-link token for an invite (mirrors the email-verify
  * token): a 64-hex random token stored in Redis (`{env}:studio-invite:{token}`
- * → invitationId) with the invite's 7-day TTL. The route embeds it in the
+ * → invitationId) with the same TTL as the invitation row it unlocks, so the
+ * link cannot outlive the invite. The route embeds it in the
  * `/studio-invite?token=` link.
  * @param invitationId - The invitation the token resolves to
  * @returns The 64-char hex token to embed in the invite link
@@ -345,7 +344,7 @@ export async function issueInviteToken(invitationId: string): Promise<string> {
     `${env.ENV}:studio-invite:${token}`,
     invitationId,
     "EX",
-    INVITE_TOKEN_TTL_SECONDS,
+    deferredRequestTtlSeconds(),
   );
   return token;
 }

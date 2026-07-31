@@ -30,6 +30,7 @@ export const limitsConfigSchema = z.object({
   activity_feed_page_max: z.number().int().positive().default(100),
   canvas_reference_pool_cap: z.number().int().positive().default(50),
   node_history_page_size: z.number().int().positive().default(20),
+  deferred_request_ttl_days: z.number().int().positive().default(7),
 });
 
 let _cached: z.infer<typeof limitsConfigSchema> | null = null;
@@ -92,4 +93,34 @@ export function getCanvasReferencePoolCap(): number {
  */
 export function getNodeHistoryPageSize(): number {
   return loadConfig().node_history_page_size;
+}
+
+/**
+ * How many days a deferred-decision request stays live (#28) — one TTL for
+ * all five: studio invite, project invite, studio transfer, project transfer,
+ * role upgrade. Prefer {@link deferredRequestExpiry}; reach for the raw number
+ * only where a duration, not an instant, is what the caller needs.
+ * @returns The request TTL in days.
+ */
+export function getDeferredRequestTtlDays(): number {
+  return loadConfig().deferred_request_ttl_days;
+}
+
+/**
+ * The single place a request TTL becomes an instant: `now + TTL`. Every create
+ * path stamps BOTH the request row and its bell notification from one call, so
+ * the two projections of "is this still live" can never disagree.
+ * @returns The moment the request being created will expire.
+ */
+export function deferredRequestExpiry(): Date {
+  return new Date(Date.now() + getDeferredRequestTtlDays() * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * The same TTL as a second count, for the Redis-backed invite tokens whose
+ * expiry must match the invitation row they unlock.
+ * @returns The request TTL in seconds.
+ */
+export function deferredRequestTtlSeconds(): number {
+  return getDeferredRequestTtlDays() * 24 * 60 * 60;
 }

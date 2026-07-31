@@ -334,6 +334,16 @@ jobs:
         # checker cannot cover this. See scripts/lint-no-notification-name-keys.sh.
         run: pnpm lint:no-notification-name-keys
 
+      - name: Lint no-hardcoded-request-ttl (one knob for every deferred decision)
+        # Five flows ask someone to answer later - studio invite, project
+        # invite, studio transfer, project transfer, role upgrade. Four used to
+        # carry their own `const X_TTL_DAYS = 7` and the fifth had no expiry at
+        # all, so a role-upgrade request could sit pending forever. Five copies
+        # is five chances to drift, and re-introducing one compiles perfectly:
+        # nothing breaks until someone edits config/limits.yaml and four of the
+        # five ignore it. See scripts/lint-no-hardcoded-request-ttl.sh.
+        run: pnpm lint:no-hardcoded-request-ttl
+
       - name: Lint no-collab-auth-table-sql (collab routes auth through core)
         # Enforce ADR 2026-05-31 "second-pass adjustment" auth unification: collab must NOT
         # hand-roll the session / role lookups (raw project_members SQL

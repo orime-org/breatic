@@ -54,9 +54,10 @@ import type {
   PendingProjectInvitationSummary,
   ProjectInvitationLandingView,
 } from "@breatic/shared";
-
-/** Days a pending invite stays actionable before it self-voids. */
-const INVITE_TTL_DAYS = 7;
+import {
+  deferredRequestExpiry,
+  deferredRequestTtlSeconds,
+} from "@server/config/limits.js";
 
 /**
  * Invite a registered user into a project — creates a PENDING invite (it does
@@ -123,7 +124,7 @@ export async function createInvite(
   ]);
   const inviter = profiles.get(inviterUserId);
   const inviterName = inviter?.name ?? "";
-  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = deferredRequestExpiry();
 
   let invitationId = "";
   let token = "";
@@ -368,14 +369,12 @@ export async function listPending(
   return invitesRepo.listPendingByProject(projectId);
 }
 
-/** TTL of the email-link token — matches the invite's 7-day window. */
-const INVITE_TOKEN_TTL_SECONDS = INVITE_TTL_DAYS * 24 * 60 * 60;
-
 /**
  * Issue a one-time email-link token for an invite (mirrors the studio-invite
  * token): a 64-hex random token stored in Redis
- * (`{env}:project-invite:{token}` → invitationId) with the invite's 7-day TTL.
- * The route embeds it in the `/project-invite?token=` link.
+ * (`{env}:project-invite:{token}` → invitationId) with the same TTL as the
+ * invitation row it unlocks, so the link cannot outlive the invite. The route
+ * embeds it in the `/project-invite?token=` link.
  * @param invitationId - The invitation the token resolves to
  * @returns The 64-char hex token to embed in the invite link
  */
@@ -385,7 +384,7 @@ export async function issueInviteToken(invitationId: string): Promise<string> {
     `${env.ENV}:project-invite:${token}`,
     invitationId,
     "EX",
-    INVITE_TOKEN_TTL_SECONDS,
+    deferredRequestTtlSeconds(),
   );
   return token;
 }
