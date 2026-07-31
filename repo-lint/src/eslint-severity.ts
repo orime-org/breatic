@@ -9,6 +9,9 @@ export type Severity = "off" | "warn" | "error";
 /** Config files ESLint reads, in every extension flat config allows. */
 export const CONFIG_FILE = /(^|\/)eslint\.config\.(m?[jt]s|cjs)$/;
 
+/** How the three severities order, loudest last. */
+const RANK: Record<Severity, number> = { off: 0, warn: 1, error: 2 };
+
 /**
  * Normalises the severity of one rule entry.
  *
@@ -23,6 +26,37 @@ export function severityOf(entry: unknown): Severity {
   if (value === 0 || value === "off") return "off";
   if (value === 1 || value === "warn") return "warn";
   return "error";
+}
+
+/**
+ * Asks ESLint about one file and keeps whichever severity is loudest so far.
+ *
+ * Both callers below ask a different question of ESLint and then do exactly
+ * this with the answer; written twice, the two copies drift, which is how a
+ * spelling ends up handled in one place and not the other.
+ * @param eslint The instance to ask.
+ * @param file The path to ask about, as that instance resolves paths.
+ * @param loudest The map to fold the answer into. Mutated.
+ * @throws {Error} When ESLint cannot calculate a config for the file.
+ */
+async function foldFile(
+  eslint: ESLint,
+  file: string,
+  loudest: Map<string, Severity>,
+): Promise<void> {
+  // Undefined for a path the config ignores — measured against ESLint 10,
+  // which answers that way rather than throwing. An ignored file has no
+  // severities to contribute, and reading through the undefined threw a
+  // TypeError naming neither the file nor this check.
+  const config = await eslint.calculateConfigForFile(file);
+  if (config === undefined || config === null) return;
+  for (const [id, entry] of Object.entries(config.rules ?? {})) {
+    const severity = severityOf(entry);
+    const seen = loudest.get(id);
+    if (seen === undefined || RANK[severity] > RANK[seen]) {
+      loudest.set(id, severity);
+    }
+  }
 }
 
 /**
@@ -45,19 +79,20 @@ export async function loudestSeverities(
   configDirs: readonly string[],
   files: readonly string[],
 ): Promise<Map<string, Severity>> {
-  const rank: Record<Severity, number> = { off: 0, warn: 1, error: 2 };
   const loudest = new Map<string, Severity>();
-
   const roots = [...configDirs];
 
   for (const root of roots) {
     const owned = files.filter((file) =>
       root === "" ? true : file.startsWith(`${root}/`),
     );
-    // Attribution happens here, and only here: a file under a deeper config
+    // Attribution stated rather than assumed: a file under a deeper config
     // directory belongs to that directory, so it is dropped from this one.
-    // ESLint started in packages/web never reads the root config, and asking
-    // the root about a web file would answer with rules that do not govern it.
+    // ESLint 10 resolves each file's config from the file's own location and
+    // would attribute them the same way unasked — but that is a default, and
+    // it is the opposite of the ESLint 9 default it replaced. Saying which
+    // config governs which file keeps this answer the same across that kind
+    // of change instead of quietly following it.
     //
     // Every file, not a sample of them. A rule's glob can be as narrow as one
     // filename — service-observability names the three service entries, and
@@ -75,20 +110,39 @@ export async function loudestSeverities(
     const eslint = new ESLint({ cwd: join(repoRoot, root) });
     for (const probe of probes) {
       const relative = root === "" ? probe : probe.slice(root.length + 1);
-      // Undefined for a path the config ignores — measured against ESLint 10,
-      // which answers that way rather than throwing. An ignored file has no
-      // severities to contribute, and reading through the undefined threw a
-      // TypeError naming neither the file nor this check.
-      const config = await eslint.calculateConfigForFile(relative);
-      if (config === undefined || config === null) continue;
-      for (const [id, entry] of Object.entries(config.rules ?? {})) {
-        const severity = severityOf(entry);
-        const seen = loudest.get(id);
-        if (seen === undefined || rank[severity] > rank[seen]) {
-          loudest.set(id, severity);
-        }
-      }
+      await foldFile(eslint, relative, loudest);
     }
+  }
+  return loudest;
+}
+
+/**
+ * Asks one named config what it would make of files it may not govern.
+ *
+ * `loudestSeverities` lets ESLint pick each file's own config, which is what
+ * a real run does. This asks the opposite question — what would THIS config
+ * say about these files — which is the only way to catch a config claiming
+ * files it never reaches. Both questions go to ESLint's own matcher, so every
+ * glob spelling is covered, including the blocks that arrive by spreading an
+ * imported config and so appear nowhere in the file's own text.
+ * @param repoRoot Absolute path of the repository root.
+ * @param configFile Repo-relative path of the config to use for every file.
+ * @param files Repo-relative files to ask about.
+ * @returns For each rule name, the loudest severity this config gives it.
+ * @throws {Error} When ESLint cannot read the config or calculate a config.
+ */
+export async function severitiesUnderConfig(
+  repoRoot: string,
+  configFile: string,
+  files: readonly string[],
+): Promise<Map<string, Severity>> {
+  const eslint = new ESLint({
+    cwd: repoRoot,
+    overrideConfigFile: join(repoRoot, configFile),
+  });
+  const loudest = new Map<string, Severity>();
+  for (const file of files) {
+    await foldFile(eslint, file, loudest);
   }
   return loudest;
 }

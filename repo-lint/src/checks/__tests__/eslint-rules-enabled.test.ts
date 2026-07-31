@@ -6,10 +6,8 @@ import type { Severity } from "#repo-lint/eslint-severity";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
 
 /** A config file body that turns on exactly the named rules. */
-function config(names: readonly string[], quote = '"'): string {
-  const lines = names.map(
-    (name) => `      ${quote}breatic/${name}${quote}: "error",`,
-  );
+function config(names: readonly string[]): string {
+  const lines = names.map((name) => `      "breatic/${name}": "error",`);
   return `export default [\n  {\n    files: ["packages/{core,server}/src/**"],\n    rules: {\n${lines.join("\n")}\n    },\n  },\n];\n`;
 }
 
@@ -35,6 +33,7 @@ describe("auditEslintWiring", () => {
       context,
       ["a", "b"],
       resolved({ a: "error", b: "error" }),
+      new Map(),
     );
     expect(findings).toEqual([]);
   });
@@ -48,6 +47,7 @@ describe("auditEslintWiring", () => {
       context,
       ["a", "never-turned-on"],
       resolved({ a: "error" }),
+      new Map(),
     );
     expect(findings).toHaveLength(1);
     expect(findings[0]?.message).toMatch(/never-turned-on/);
@@ -59,7 +59,12 @@ describe("auditEslintWiring", () => {
     // line produce identical silence. The check that read config text saw the
     // second and not the first, because it only looked for the rule's name.
     const context = fakeContext({ "eslint.config.ts": config(["a"]) });
-    const findings = auditEslintWiring(context, ["a"], resolved({ a: "off" }));
+    const findings = auditEslintWiring(
+      context,
+      ["a"],
+      resolved({ a: "off" }),
+      new Map(),
+    );
     expect(findings).toHaveLength(1);
     expect(findings[0]?.message).toMatch(/switched off/);
   });
@@ -68,42 +73,74 @@ describe("auditEslintWiring", () => {
     // A warning does not fail the build, so the invariant is gone in the way
     // that matters while the config still reads as though it were enforced.
     const context = fakeContext({ "eslint.config.ts": config(["a"]) });
-    const findings = auditEslintWiring(context, ["a"], resolved({ a: "warn" }));
+    const findings = auditEslintWiring(
+      context,
+      ["a"],
+      resolved({ a: "warn" }),
+      new Map(),
+    );
     expect(findings).toHaveLength(1);
     expect(findings[0]?.message).toMatch(/only as a warning/);
   });
 
-  it("reports a root-config glob that claims the web package", () => {
-    // ESLint started in packages/web never reads the root config, so a glob
-    // there matching web governs nothing while reading as though it governed
-    // everything.
-    const context = fakeContext({
-      "eslint.config.ts": `export default [\n  {\n    files: ["packages/*/src/**/*.ts"],\n    rules: { "breatic/a": "error" },\n  },\n];\n`,
-    });
-    const findings = auditEslintWiring(context, ["a"], resolved({ a: "error" }));
+  it("reports one of our rules the root config declares for a web file", () => {
+    // The root config is never the one ESLint resolves for a file in
+    // packages/web — that package carries its own — so a rule declared here
+    // for web governs nothing there while reading as though it governed
+    // everything. Which globs did that is ESLint's question to answer, so the
+    // answer arrives already resolved rather than parsed out of config text.
+    const context = fakeContext({ "eslint.config.ts": config(["a"]) });
+    const findings = auditEslintWiring(
+      context,
+      ["a"],
+      resolved({ a: "error" }),
+      resolved({ a: "error" }),
+    );
     expect(findings).toHaveLength(1);
-    expect(findings[0]?.message).toMatch(/cannot reach/);
+    expect(findings[0]?.message).toMatch(/never governs/);
+    expect(findings[0]?.message).toMatch(/breatic\/a/);
   });
 
-  it("reports a root-config glob that names the web package outright", () => {
-    const context = fakeContext({
-      "eslint.config.ts": `export default [\n  {\n    files: ["packages/web/src/**/*.ts"],\n    rules: { "breatic/a": "error" },\n  },\n];\n`,
-    });
+  it("reports a rule the root config downgrades to a warning over web", () => {
+    const context = fakeContext({ "eslint.config.ts": config(["a"]) });
     expect(
-      auditEslintWiring(context, ["a"], resolved({ a: "error" })),
+      auditEslintWiring(context, ["a"], resolved({ a: "error" }), resolved({ a: "warn" })),
     ).toHaveLength(1);
   });
 
-  it("accepts a root-config glob that names the packages it can reach", () => {
+  it("leaves a rule the root config switches off over web alone", () => {
+    // Set to "off" for web it claims nothing, so nobody is misled about it.
     const context = fakeContext({ "eslint.config.ts": config(["a"]) });
-    expect(auditEslintWiring(context, ["a"], resolved({ a: "error" }))).toEqual(
-      [],
-    );
+    expect(
+      auditEslintWiring(context, ["a"], resolved({ a: "error" }), resolved({ a: "off" })),
+    ).toEqual([]);
+  });
+
+  it("leaves someone else's rule reaching web alone", () => {
+    // The root config's other blocks come from presets we do not write, and
+    // whether those reach web is not this check's subject.
+    const context = fakeContext({ "eslint.config.ts": config(["a"]) });
+    const reaching = new Map<string, Severity>([["no-undef", "error"]]);
+    expect(
+      auditEslintWiring(context, ["a"], resolved({ a: "error" }), reaching),
+    ).toEqual([]);
+  });
+
+  it("accepts a root config that reaches nothing in web", () => {
+    const context = fakeContext({ "eslint.config.ts": config(["a"]) });
+    expect(
+      auditEslintWiring(context, ["a"], resolved({ a: "error" }), new Map()),
+    ).toEqual([]);
   });
 
   it("fails rather than reports clean when the root config is missing", () => {
     expect(() =>
-      auditEslintWiring(fakeContext({ "a.ts": "x" }), ["a"], resolved({})),
+      auditEslintWiring(
+        fakeContext({ "a.ts": "x" }),
+        ["a"],
+        resolved({}),
+        new Map(),
+      ),
     ).toThrow(/eslint\.config\.ts/);
   });
 });

@@ -5,37 +5,30 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import {
   configDirectories,
   loudestSeverities,
+  severitiesUnderConfig,
   type Severity,
 } from "#repo-lint/eslint-severity";
 
 /** The config ESLint reads for every package except web. */
 const ROOT_CONFIG = "eslint.config.ts";
 
-/** A `files` glob in a config, with its contents. */
-const FILES_GLOB = /files:\s*\[([^\]]*)\]/g;
+/** The package that carries its own config, and so is out of the root's reach. */
+const WEB_PACKAGE = "packages/web";
+
+/** Extensions ESLint is pointed at anywhere in this repository. */
+const SOURCE = /\.(ts|tsx|mts|cts|mjs|cjs|js|jsx)$/;
 
 /**
- * A glob that would match a path inside the web package.
- *
- * Either spelling: the wildcard form, which reads as repo-wide, and the
- * outright naming, which reads as deliberate. Both govern nothing.
- */
-const CLAIMS_WEB = /packages\/(\*|\{[^}]*\bweb\b[^}]*\}|web)\//;
-
-/**
- * Reads a config, refusing rather than treating a missing one as empty.
+ * Refuses to run when the root config is not where this check expects it.
  * @param context The check context.
- * @param path Repo-relative path to the config.
- * @returns The file's contents.
- * @throws {Error} When the config is not where this check expects it.
+ * @throws {Error} When the config is missing.
  */
-function readConfig(context: CheckContext, path: string): string {
-  if (!context.exists(path)) {
+function requireRootConfig(context: CheckContext): void {
+  if (!context.exists(ROOT_CONFIG)) {
     throw new Error(
-      `${path} is not there. This check answers "is every rule switched on somewhere", and a config it cannot read makes every rule look switched off — or, worse, makes the answer depend on which file happens to be missing.`,
+      `${ROOT_CONFIG} is not there. This check answers "is every rule switched on somewhere", and a config it cannot read makes every rule look switched off — or, worse, makes the answer depend on which file happens to be missing.`,
     );
   }
-  return context.read(path);
 }
 
 /**
@@ -46,15 +39,17 @@ function readConfig(context: CheckContext, path: string): string {
  * @param context The check context.
  * @param registered Every rule name the plugin exports.
  * @param severities The severity each rule resolves to, as ESLint reports it.
- * @returns One finding per unenabled rule and per web-claiming root glob.
+ * @param rootOverWeb What the root config alone would make of a web file.
+ * @returns One finding per unenabled rule and per rule the root claims for web.
  * @throws {Error} When the root config file is missing.
  */
 export function auditEslintWiring(
   context: CheckContext,
   registered: readonly string[],
   severities: ReadonlyMap<string, Severity>,
+  rootOverWeb: ReadonlyMap<string, Severity>,
 ): Finding[] {
-  const root = readConfig(context, ROOT_CONFIG);
+  requireRootConfig(context);
 
   const findings: Finding[] = [];
   for (const name of registered) {
@@ -71,11 +66,11 @@ export function auditEslintWiring(
     });
   }
 
-  for (const [, globs] of root.matchAll(FILES_GLOB)) {
-    if (!CLAIMS_WEB.test(globs ?? "")) continue;
+  for (const [id, severity] of rootOverWeb) {
+    if (severity === "off" || !id.startsWith("breatic/")) continue;
     findings.push({
       file: ROOT_CONFIG,
-      message: `the glob ${(globs ?? "").trim().replace(/\s+/g, " ")} matches paths in the web package, which this config cannot reach — ESLint started in packages/web reads that package's own config and never this file. Name the packages this file governs, and declare the rule in packages/web/eslint.config.mts as well if it should apply there.`,
+      message: `"${id}" is declared here for files in the ${WEB_PACKAGE} package, which this config never governs — that package carries its own config, and that is the one ESLint resolves for a file inside it. The declaration reads as covering web and covers nothing there. Name the packages this file can reach, and declare the rule in ${WEB_PACKAGE}/eslint.config.mts as well if it should apply there.`,
     });
   }
 
@@ -98,17 +93,25 @@ export function auditEslintWiring(
  * as repo-wide while governing nothing in the largest source tree in the
  * repository. Two rules were declared that way and enforced everywhere except
  * web, which is exactly the shape of failure that leaves no trace.
+ *
+ * That half asks ESLint rather than reading the config's text. A scan for
+ * glob spellings has to know them all, and knew three: `packages/**`, a
+ * repo-wide `**`, a block carrying no `files` key at all and — the one no
+ * scan of this file could ever see — a block spread in from an imported
+ * config all walked past it. Loading the config and asking what it makes of a
+ * real web file leaves nothing to enumerate.
  */
 export const eslintRulesEnabled = {
   name: "eslint-rules-enabled",
   description: "Every plugin rule is switched on by some config",
   async run(context: CheckContext): Promise<Finding[]> {
+    requireRootConfig(context);
     const everything = context.files(() => true, "every file");
     // Tests included: test-file-location's whole subject is where a test
     // sits, so excluding tests would make the one rule that only ever matches
     // them look like it matches nothing.
     const sources = context.files(
-      (path) => /\.(ts|tsx|mts|cts|mjs|cjs|js|jsx)$/.test(path),
+      (path) => SOURCE.test(path),
       "first-party source files",
     );
     const severities = await loudestSeverities(
@@ -116,10 +119,18 @@ export const eslintRulesEnabled = {
       configDirectories(everything),
       sources,
     );
+    // Every web source file, for the same reason the probes above are every
+    // file: a glob narrow enough to name one of them is still a glob that
+    // claims web.
+    const webSources = context.files(
+      (path) => path.startsWith(`${WEB_PACKAGE}/`) && SOURCE.test(path),
+      "web package source files",
+    );
     return auditEslintWiring(
       context,
       Object.keys(breaticPlugin.rules ?? {}),
       severities,
+      await severitiesUnderConfig(context.repoRoot, ROOT_CONFIG, webSources),
     );
   },
 } satisfies Check;

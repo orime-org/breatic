@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
+import { minimatch } from "minimatch";
 import { parse } from "yaml";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 
@@ -116,36 +117,68 @@ export const lintCoverage = {
   },
 } satisfies Check;
 
+/** The root manifest, which is where the import-graph linter's scope lives. */
+const ROOT_MANIFEST = "package.json";
+
+/** The script whose arguments decide what the import-graph linter reads. */
+const CRUISE_SCRIPT = "lint:dependency-cruiser";
+
+/**
+ * Reads the cruise arguments, refusing rather than treating absence as clean.
+ * @param context The check context.
+ * @returns The script's whitespace-separated words.
+ * @throws {Error} When the root manifest or the cruise script is not there.
+ */
+function cruiseWords(context: CheckContext): string[] {
+  if (!context.exists(ROOT_MANIFEST)) {
+    throw new Error(
+      `${ROOT_MANIFEST} is not there, so this check cannot know what the import-graph linter reads. Skipping that half would report clean for packages it never looked at.`,
+    );
+  }
+  const script = (JSON.parse(context.read(ROOT_MANIFEST)) as Manifest).scripts?.[
+    CRUISE_SCRIPT
+  ];
+  if (script === undefined) {
+    throw new Error(
+      `the root manifest has no \`${CRUISE_SCRIPT}\` script, so no import rule applies to any package. Reported one package at a time this would read as a list of packages to add to the arguments, when the arguments are gone.`,
+    );
+  }
+  return script.split(/\s+/).filter((word) => word.length > 0);
+}
+
 /**
  * Reports packages the import-graph linter is never pointed at.
  *
- * Its directories are arguments on one line rather than something derived,
- * so a package can join the workspace and never appear there. `packages/*`
- * covers the ones nested under it; anything at the repository root has to be
- * named, and the two that were added at the root were not.
+ * Its directories are arguments on one line rather than something derived, so
+ * a package can join the workspace and never appear there. Every word of the
+ * script is tried as a glob against the package's `src`, which is what the
+ * shell does with those words before the linter ever sees them; the flags and
+ * the command name are tried too and match nothing, so no word needs to be
+ * recognised as a path.
+ *
+ * Asked as a glob, not as a substring, and of every package rather than only
+ * the ones outside `packages/`. Both shortcuts answered a question next to the
+ * real one: a hard-coded `packages/` skip reports clean for a package under it
+ * however the arguments are narrowed, and a substring test is satisfied by any
+ * longer path that happens to end in the package's own.
  * @param context The check context.
  * @param manifests Every workspace package manifest, repo-relative.
  * @returns One finding per package outside the cruise arguments.
+ * @throws {Error} When the cruise arguments cannot be read.
  */
 function uncruisedPackages(
   context: CheckContext,
   manifests: readonly string[],
 ): Finding[] {
-  const root = "package.json";
-  if (!context.exists(root)) return [];
-  const script =
-    (JSON.parse(context.read(root)) as Manifest).scripts?.[
-      "lint:dependency-cruiser"
-    ] ?? "";
+  const words = cruiseWords(context);
 
   const findings: Finding[] = [];
   for (const file of manifests) {
-    const directory = file.slice(0, -"/package.json".length);
-    if (directory.startsWith("packages/")) continue;
-    if (script.includes(`${directory}/src`)) continue;
+    const source = `${file.slice(0, -"/package.json".length)}/src`;
+    if (words.some((word) => minimatch(source, word))) continue;
     findings.push({
-      file: root,
-      message: `\`lint:dependency-cruiser\` never reads ${directory}/src, so no import rule applies there. A package outside the cruise arguments looks exactly like a package whose imports are all legal.`,
+      file: ROOT_MANIFEST,
+      message: `\`${CRUISE_SCRIPT}\` never reads ${source}, so no import rule applies there. A package outside the cruise arguments looks exactly like a package whose imports are all legal.`,
     });
   }
   return findings;

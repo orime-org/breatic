@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   configDirectories,
   loudestSeverities,
+  severitiesUnderConfig,
   severityOf,
 } from "#repo-lint/eslint-severity";
 
@@ -149,5 +150,84 @@ describe("loudestSeverities", () => {
       "src/generated/big.js",
     ]);
     expect(severities.get("eqeqeq")).toBe("error");
+  });
+});
+
+describe("severitiesUnderConfig", () => {
+  // Its own fixture, written once and never rewritten, because the question
+  // here is what one fixed config makes of files it does not govern.
+  let root: string;
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), "repo-lint-claims-"));
+    mkdirSync(join(root, "packages/web/src"), { recursive: true });
+    mkdirSync(join(root, "packages/core/src"), { recursive: true });
+    // A block that is spread in from elsewhere: it exists in the resolved
+    // config and appears nowhere in the config file's own text, so no scan of
+    // that text can see the glob it carries.
+    writeFileSync(
+      join(root, "shared.mjs"),
+      `export default [
+  { files: ["packages/web/**/*.js"], rules: { "no-alert": "error" } },
+];\n`,
+    );
+    writeFileSync(
+      join(root, "eslint.config.mjs"),
+      `import shared from "./shared.mjs";
+export default [
+  ...shared,
+  { files: ["packages/**/*.js"], rules: { "no-var": "error" } },
+  { files: ["packages/core/**/*.js"], rules: { eqeqeq: "error" } },
+];\n`,
+    );
+    writeFileSync(join(root, "packages/web/src/a.js"), "const a = 1;\n");
+    writeFileSync(join(root, "packages/core/src/b.js"), "const b = 2;\n");
+    // The web package's own config, which is the one a real run resolves for
+    // a file inside it — and which this function deliberately does not use.
+    writeFileSync(
+      join(root, "packages/web/eslint.config.mjs"),
+      `export default [{ files: ["src/**/*.js"], rules: { curly: "error" } }];\n`,
+    );
+    execFileSync("npm", ["init", "-y"], { cwd: root, stdio: "pipe" });
+  });
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("sees a wildcard glob that reaches across every package", async () => {
+    // `packages/**` was one of the spellings a scan for glob text walked past,
+    // because it looked for `packages/*/` and this is not that.
+    const severities = await severitiesUnderConfig(root, "eslint.config.mjs", [
+      "packages/web/src/a.js",
+    ]);
+    expect(severities.get("no-var")).toBe("error");
+  });
+
+  it("sees a glob carried by a block the config file spreads in", async () => {
+    // The spelling no amount of care with a text scan could have caught: the
+    // glob is in another file, and this one only names it.
+    const severities = await severitiesUnderConfig(root, "eslint.config.mjs", [
+      "packages/web/src/a.js",
+    ]);
+    expect(severities.get("no-alert")).toBe("error");
+  });
+
+  it("leaves out a rule the config aims at some other package", async () => {
+    const severities = await severitiesUnderConfig(root, "eslint.config.mjs", [
+      "packages/web/src/a.js",
+    ]);
+    expect(severities.has("eqeqeq")).toBe(false);
+  });
+
+  it("answers for the named config, not the one that would really govern", async () => {
+    // packages/web carries its own config and that is what a real run reads.
+    // Following it here would answer "what governs this file", which is the
+    // opposite of the question — a config claiming files it never reaches is
+    // exactly what this is for.
+    const severities = await severitiesUnderConfig(root, "eslint.config.mjs", [
+      "packages/web/src/a.js",
+    ]);
+    expect(severities.has("curly")).toBe(false);
   });
 });

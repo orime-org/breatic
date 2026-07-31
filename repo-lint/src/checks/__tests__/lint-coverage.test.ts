@@ -19,6 +19,22 @@ const WORKSPACE = {
 };
 
 /**
+ * The root manifest, which is where the import-graph linter's scope lives.
+ *
+ * Present in every case because its absence is a refusal, not a pass: a check
+ * that skipped this half when the file was missing would report clean for
+ * packages it never looked at.
+ */
+const ROOT = {
+  "package.json": JSON.stringify({
+    scripts: {
+      "lint:dependency-cruiser":
+        "depcruise --config x packages/*/src eslint-rules/src repo-lint/src",
+    },
+  }),
+};
+
+/**
  * Builds a context holding the workspace definition plus the given files.
  *
  * The check reads which packages the workspace declares rather than
@@ -27,7 +43,7 @@ const WORKSPACE = {
  * @returns A context the check will run against.
  */
 function contextWith(files: Record<string, string>) {
-  return fakeContext({ ...WORKSPACE, ...files });
+  return fakeContext({ ...WORKSPACE, ...ROOT, ...files });
 }
 
 describe("lint-coverage", () => {
@@ -71,8 +87,9 @@ describe("lint-coverage", () => {
   });
 
   it("ignores manifests outside the workspace", () => {
+    // The root manifest is a manifest and is not a workspace package; the
+    // globs decide, so it is never asked for a lint script of its own.
     const context = contextWith({
-      "package.json": manifest({ test: "turbo test" }),
       "packages/core/package.json": manifest({ lint: "eslint src/" }),
     });
     expect(lintCoverage.run(context)).toEqual([]);
@@ -112,6 +129,65 @@ describe("lint-coverage", () => {
     expect(findings[0]?.message).toMatch(/repo-lint\/src/);
   });
 
+  it("reports a packages/ package the cruise arguments stopped covering", () => {
+    // The hole a hard-coded skip left: anything under packages/ was taken to
+    // be covered, because the argument list happened to open with
+    // packages/*/src. Narrow that one argument and every other package under
+    // it goes uncruised — with this check still reporting clean, which is the
+    // exact shape of failure it exists to report, one level up.
+    const context = contextWith({
+      "package.json": JSON.stringify({
+        scripts: {
+          "lint:dependency-cruiser":
+            "depcruise --config x packages/core/src repo-lint/src",
+        },
+      }),
+      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/web/package.json": manifest({ lint: "eslint ." }),
+      "repo-lint/package.json": manifest({ lint: "eslint src/" }),
+    });
+    const findings = lintCoverage.run(context);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toMatch(/packages\/web\/src/);
+  });
+
+  it("does not count a longer path that merely contains a package's own", () => {
+    // A substring test answers "is this text in the script", not "is this
+    // directory cruised". Any argument ending in the package's path satisfies
+    // the first question while covering nothing of the second.
+    const context = contextWith({
+      "package.json": JSON.stringify({
+        scripts: {
+          "lint:dependency-cruiser":
+            "depcruise --config x packages/*/src vendor/repo-lint/src",
+        },
+      }),
+      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "repo-lint/package.json": manifest({ lint: "eslint src/" }),
+    });
+    const findings = lintCoverage.run(context);
+    expect(findings.some((f) => f.message.includes("repo-lint/src"))).toBe(true);
+  });
+
+  it("refuses rather than reports clean when the root manifest is gone", () => {
+    // Returning early there was the same fail-open one level down: the half
+    // of the check that reads the cruise arguments simply did not run, and
+    // every package came back uncruised-but-unreported.
+    const context = fakeContext({
+      ...WORKSPACE,
+      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+    });
+    expect(() => lintCoverage.run(context)).toThrow(/package\.json is not there/);
+  });
+
+  it("refuses rather than reports clean when the cruise script is gone", () => {
+    const context = contextWith({
+      "package.json": JSON.stringify({ scripts: { test: "turbo test" } }),
+      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+    });
+    expect(() => lintCoverage.run(context)).toThrow(/no `lint:dependency-cruiser`/);
+  });
+
   it("accepts a cruise argument list that covers every package", () => {
     const context = contextWith({
       "package.json": JSON.stringify({
@@ -132,6 +208,7 @@ describe("lint-coverage", () => {
     // pattern. A restated list would not look for it, and so would never
     // report it as unlinted — the exact failure this check exists to report.
     const context = fakeContext({
+      ...ROOT,
       "pnpm-workspace.yaml": 'packages:\n  - "packages/*"\n  - "tools/*"\n',
       "packages/core/package.json": manifest({ lint: "eslint src/" }),
       "tools/codegen/package.json": manifest({ build: "tsc" }),
@@ -156,6 +233,7 @@ describe("lint-coverage", () => {
   // which is the exact failure this check exists to report.
   it("reads the whole list past a comment inside it", () => {
     const context = fakeContext({
+      ...ROOT,
       "pnpm-workspace.yaml":
         'packages:\n  - "packages/*"\n  # the two guard packages live at the root\n  - "repo-lint"\n',
       "packages/core/package.json": manifest({ lint: "eslint src/" }),
@@ -167,6 +245,7 @@ describe("lint-coverage", () => {
 
   it("reads the whole list past a blank line inside it", () => {
     const context = fakeContext({
+      ...ROOT,
       "pnpm-workspace.yaml":
         'packages:\n  - "packages/*"\n\n  - "repo-lint"\n',
       "packages/core/package.json": manifest({ lint: "eslint src/" }),
@@ -178,6 +257,7 @@ describe("lint-coverage", () => {
 
   it("accepts the inline-array spelling of the same list", () => {
     const context = fakeContext({
+      ...ROOT,
       "pnpm-workspace.yaml": 'packages: ["packages/*", "repo-lint"]\n',
       "packages/core/package.json": manifest({ lint: "eslint src/" }),
       "repo-lint/package.json": manifest({ build: "tsc" }),
@@ -188,6 +268,7 @@ describe("lint-coverage", () => {
 
   it("accepts an entry carrying a trailing comment", () => {
     const context = fakeContext({
+      ...ROOT,
       "pnpm-workspace.yaml":
         'packages:\n  - "packages/*"\n  - "repo-lint" # the checks themselves\n',
       "packages/core/package.json": manifest({ lint: "eslint src/" }),
