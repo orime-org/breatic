@@ -11,6 +11,15 @@ import { resolve } from "node:path";
 // packages/core/vitest.config.ts.
 export default defineConfig({
   test: {
+    // One process for this package instead of one per file — rationale and
+    // measurements in packages/web/vitest.config.ts, where the effect was
+    // largest.
+    pool: "forks",
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
     testTimeout: 15_000,
     setupFiles: ["./vitest.setup.ts"],
   },
