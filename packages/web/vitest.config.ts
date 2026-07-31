@@ -14,15 +14,22 @@ export default defineConfig({
     // See packages/core/vitest.config.ts for the 5s → 15s rationale.
     testTimeout: 15_000,
     // `pool: 'forks'` + `singleFork: true` — one process for the whole
-    // package instead of one per file. Measured on a 12-core machine:
-    // turbo runs ten packages at once and each package's vitest then opens
-    // its own batch, which peaked at 37 processes and a load average of 26,
-    // saturating the machine. The per-file processes were also paying the
-    // same fixed cost over and over: setup 93.1s → 2.0s, building the jsdom
-    // environment 232.7s → 0.48s, collecting files 66.4s → 4.3s. Wall clock
-    // for this package went 52s → 37s, so this is faster as well as
-    // cheaper. Isolation stays on: the control run with isolation disabled
-    // was 76s with 105 failures, which is both slower and wrong.
+    // package instead of one per file. Measured on a 12-core machine: turbo
+    // runs the nine packages that have tests at once and each package's
+    // vitest then opened its own batch, which peaked at 37 processes and a
+    // load average of 26, saturating the machine. The per-file processes
+    // were also paying the same fixed cost over and over: setup 110s → 2.0s,
+    // building the jsdom environment 260s → 0.4s, collecting files 63s →
+    // 3.9s. Wall clock for this package went 56s → 30s (two runs each), so
+    // this is faster as well as cheaper.
+    //
+    // `isolate` stays on and is load-bearing, but note what it still covers
+    // here: vitest builds the jsdom environment once outside the file loop
+    // and only resets mocks and the module registry between files
+    // (vitest 3's `runBaseTests`), so files share one document — see
+    // vitest.setup.ts for what that costs. Modules are still isolated, and
+    // that matters: the control run with `--no-isolate` was 59s with 104
+    // failures, both slower and wrong.
     pool: 'forks',
     poolOptions: {
       forks: {

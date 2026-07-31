@@ -30,6 +30,7 @@ declare module 'vitest' {
   }
 }
 import { cleanup } from '@testing-library/react';
+import { onlineManager } from '@tanstack/react-query';
 import { setLocale, setLocaleMessages } from '@breatic/shared';
 
 import en from '../../locales/en.json';
@@ -58,6 +59,13 @@ afterEach(() => {
   // the test that broke — it reaches every file that runs afterwards.
   cleanup();
   setLocale('en');
+  // React Query's online state is a process-wide singleton, so a test that
+  // goes offline to exercise a paused fetch takes every later file with it if
+  // it never comes back — queries sit in `pending` forever and fail somewhere
+  // with no relation to the cause. Restoring it here rather than in the file
+  // that flips it means a test can end any way it likes, including failing
+  // between the two calls.
+  onlineManager.setOnline(true);
   // Removing a container does not take its sheets out of
   // `document.styleSheets` in jsdom: they stay listed with
   // `document.contains(ownerNode) === false`. Re-attaching and removing is

@@ -26,8 +26,16 @@ import { resolve } from "node:path";
 // test takes 200-500ms and there are ~30 of them, so the upper
 // bound is ~15s instead of ~3s parallel). That's acceptable for
 // CI; for local dev iteration on a single file, run
-// `pnpm --filter @breatic/worker exec vitest run <file>` which
-// inherits this config but only loads the requested file.
+// `pnpm build && pnpm --filter @breatic/worker exec vitest run <file>`
+// which inherits this config but only loads the requested file. The
+// build is not optional: `--filter` skips turbo's dependency graph, so
+// without it the run resolves `@breatic/*` from whatever dist happens
+// to be on disk.
+//
+// Every other package now sets the same two options for a different
+// reason — the process count under turbo, measured in
+// packages/web/vitest.config.ts. Both reasons have to survive any change
+// to this policy; this one is specific to ffmpeg contention.
 // Domain-import plumbing (#1672) — tests that value-import
 // `@worker/providers/shared.js` pull in @breatic/domain (the single model
 // config reader). Two pieces make that work under vitest:

@@ -6,8 +6,8 @@ import { resolve } from "node:path";
 // Two things in this package are deliberately expensive: bcrypt at cost 12,
 // which is slow by design because that is what makes it worth using, and the
 // property-based round-trips that repeat it. Their cost is not fixed — it is
-// whatever share of a core the worker gets, and `turbo test` runs sixteen
-// packages on twelve cores, so that share is well under one.
+// whatever share of a core the worker gets, and `turbo test` runs the nine
+// packages that have tests on twelve cores, so that share can fall under one.
 //
 // Measured rather than guessed, because this limit has already been too low
 // once: a single `verify` takes 0.49s idle and was observed at 3.63s under a
@@ -22,12 +22,9 @@ import { resolve } from "node:path";
 // The limit is the thing that was wrong, so the limit is what changes.
 export default defineConfig({
   test: {
-    // One process for this package instead of one per file. Turbo already
-    // runs packages in parallel; the second layer of per-file processes is
-    // what took a twelve-core machine to 37 processes and a load average of
-    // 26, and each of those processes paid the same fixed setup cost over
-    // again. Isolation stays on. Measurements are in
-    // packages/web/vitest.config.ts, where the effect was largest.
+    // One process for this package instead of one per file — rationale and
+    // measurements in packages/web/vitest.config.ts, where the effect was
+    // largest.
     pool: "forks",
     poolOptions: {
       forks: {
