@@ -53,10 +53,13 @@ const ALLOWED: ReadonlyMap<string, string> = new Map([
  * reader that auth is optional somewhere, or — inside a workflow's `env:`
  * block — it actually puts the bypass back.
  *
- * Scope is every tracked file, with no extension filter, because the four
- * residues that motivated this were a README, a spike script, a Dockerfile
- * with no extension at all, and both env templates. A list of extensions
- * would have missed three of them.
+ * Scope is every tracked file whose bytes are text, which is subtraction from
+ * the whole tree rather than a list of source extensions to select from. The
+ * four residues that motivated this were a README, a spike script, a
+ * Dockerfile with no extension at all, and both env templates; a list would
+ * have missed three of them. The one list left is of kinds not worth opening,
+ * and no-silent-skip reports anything the sniff drops that the list does not
+ * account for, so the subtraction stays on the record.
  *
  * Comments are not stripped, deliberately. A comment saying the mode used
  * to exist still tells a reader auth might be optional, and the mode is

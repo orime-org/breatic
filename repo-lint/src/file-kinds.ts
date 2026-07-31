@@ -25,6 +25,11 @@ const SNIFF = 8000;
  * are not valid UTF-8 arrive as U+FFFD, and a file that is mostly those is
  * not text in any useful sense. Both are judged over the opening of the file
  * only, so the cost does not grow with its size.
+ *
+ * Saying no here removes a file from every content scan at once, so the
+ * no-silent-skip check reports each file this rejects that the binary list
+ * above does not already account for. A subtraction nobody can see is the
+ * failure this suite exists to remove, and this used to be one.
  * @param text The file's contents, decoded as UTF-8.
  * @returns True when a text scan can say something meaningful about it.
  */

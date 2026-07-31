@@ -13,6 +13,7 @@ import { noDisabledInvariant } from "#repo-lint/checks/no-disabled-invariant";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
 import { noNotificationNameKeys } from "#repo-lint/checks/no-notification-name-keys";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
+import { noSilentSkip } from "#repo-lint/checks/no-silent-skip";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
 import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
 import { noUnresolvedAliasInDist } from "#repo-lint/checks/no-unresolved-alias-in-dist";
@@ -40,6 +41,7 @@ export const CHECKS: readonly Check[] = [
   noHardcodedSecrets,
   noNotificationNameKeys,
   noPrivateRepoPath,
+  noSilentSkip,
   noTranslatedProductNoun,
   noTrojanSource,
   noUnresolvedAliasInDist,
