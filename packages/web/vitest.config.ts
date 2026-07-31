@@ -13,6 +13,22 @@ export default defineConfig({
     exclude: ['node_modules', 'dist', 'tests/smoke/**', 'tests/visual/**'],
     // See packages/core/vitest.config.ts for the 5s → 15s rationale.
     testTimeout: 15_000,
+    // `pool: 'forks'` + `singleFork: true` — one process for the whole
+    // package instead of one per file. Measured on a 12-core machine:
+    // turbo runs ten packages at once and each package's vitest then opens
+    // its own batch, which peaked at 37 processes and a load average of 26,
+    // saturating the machine. The per-file processes were also paying the
+    // same fixed cost over and over: setup 93.1s → 2.0s, building the jsdom
+    // environment 232.7s → 0.48s, collecting files 66.4s → 4.3s. Wall clock
+    // for this package went 52s → 37s, so this is faster as well as
+    // cheaper. Isolation stays on: the control run with isolation disabled
+    // was 76s with 105 failures, which is both slower and wrong.
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
   },
   resolve: {
     alias: {

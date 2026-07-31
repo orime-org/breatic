@@ -29,7 +29,10 @@ const render = (
   baseRender(args[0], { ...args[1], wrapper: TooltipProvider });
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
-import { dragScrollDelta } from '@web/spaces/canvas/generate/reference-mention-caret';
+import {
+  dragScrollDelta,
+  referenceMentionCaretKey,
+} from '@web/spaces/canvas/generate/reference-mention-caret';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -909,12 +912,22 @@ describe('drag source restore on drop (#1776, Safari selection-follows-drop-care
     });
   }
 
-  /** The plugin's handleDrop prop, bound for direct invocation. */
+  /**
+   * The plugin's handleDrop prop, bound for direct invocation.
+   *
+   * Found through the key object rather than by comparing its string form.
+   * ProseMirror derives that string from a module-level counter — the first
+   * `new PluginKey('x')` in a process yields `x$`, the next `x$1`, and so on
+   * — so the literal is only correct while this file has the process to
+   * itself. Running the package in one process (measured) loads this module
+   * three times and the plugin arrives as `referenceMentionCaret$2`; the
+   * lookup then finds nothing and every test here dies on a property of
+   * undefined. The same counter is why the notes on `y-sync$` warn that a
+   * duplicate copy of a package silently breaks name-based lookup.
+   */
   function handleDropOf(editor: CoreEditor): (view: unknown, event: unknown, slice: unknown, moved: boolean) => boolean {
-    const plugin = editor.state.plugins.find(
-      (pl) => (pl as unknown as { key?: string }).key === 'referenceMentionCaret$',
-    );
-    const fn = (plugin?.props as { handleDrop?: unknown }).handleDrop;
+    const plugin = referenceMentionCaretKey.get(editor.state);
+    const fn = (plugin?.props as { handleDrop?: unknown } | undefined)?.handleDrop;
     if (typeof fn !== 'function') throw new Error('handleDrop prop missing');
     return fn.bind(plugin) as ReturnType<typeof handleDropOf>;
   }
