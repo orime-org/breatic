@@ -38,7 +38,12 @@ upload:
 avatar:
   # Hard cap on one avatar upload, in bytes. Avatars do NOT use presigned
   # direct upload — the bytes come through the server — so this is also the
-  # bound on what the process buffers per request. The frontend crops to
-  # 512x512 WebP before sending, which lands around 30–60 KB, so 1 MiB is
-  # generous for anything the product itself produces.
+  # bound on what the process buffers per request.
+  #
+  # The frontend crops to a 512x512 lossless PNG before sending. Measured at
+  # that size: a photograph lands around 300-700 KB, and the incompressible
+  # ceiling (random pixels, RGBA as canvas emits) is 878 KB. So 1 MiB clears
+  # even the pathological case, but only just — this was 17x headroom back
+  # when the crop shipped as WebP at 30-60 KB, and it is now roughly 1.2x.
+  # Raise it if avatars start being refused.
   max_bytes: 1048576
