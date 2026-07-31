@@ -49,7 +49,7 @@ body {
    thickness bucket and two static colors — interaction states (hover
    geometry / hover shading) are UA-private and vary between browser builds
    (probed: MCP Chrome 150 did not widen author-colored bars on hover, the
-   user's Chrome did). lint:no-inline-scrollbar enforces the single owner
+   user's Chrome did). the no-inline-scrollbar rule enforces the single owner
    (no scrollbar re-declarations, no raw overflow-* scrollers outside the
    component).
 
@@ -148,7 +148,7 @@ body {
    shadow per the design system (containers carry no shadow). ONLY a node being
    dragged lifts off the canvas. Targets ReactFlow's `.dragging` class on the
    node wrapper + the `.canvas-node-shell` hook on the shell, using the shadow
-   token (not a raw value, so lint:no-raw-design-values stays clean). */
+   token (not a raw value, so breatic/no-raw-design-values stays clean). */
 .react-flow__node.dragging .canvas-node-shell {
   box-shadow: var(--shadow-md);
 }

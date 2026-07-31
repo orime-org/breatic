@@ -33,7 +33,7 @@ function withDedupId(
 
 /**
  * The application's SINGLE toast entry point (mandate: `packages/web/CLAUDE.md`).
- * Every notice MUST route through here — the `lint:single-toast-entry` CI guard
+ * Every notice MUST route through here — the `breatic/single-toast-entry` CI guard
  * forbids importing `toast` straight from 'sonner' anywhere but this file and
  * the Toaster component — so two invariants always hold:
  *

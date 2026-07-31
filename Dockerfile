@@ -5,23 +5,25 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 WORKDIR /app
 
-# Copy workspace config + package.json files first (layer caching)
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml .npmrc ./
-COPY packages/shared/package.json packages/shared/
-COPY packages/core/package.json packages/core/
-COPY packages/domain/package.json packages/domain/
-COPY packages/server/package.json packages/server/
-COPY packages/worker/package.json packages/worker/
-COPY packages/collab/package.json packages/collab/
-COPY packages/web/package.json packages/web/
+# Fetch every package named in the lockfile into the local store. This layer
+# is keyed on the lockfile alone, so editing source never re-downloads.
+#
+# Nothing in this stage enumerates the packages in the workspace, and that is
+# the point. The previous version listed each one's package.json by hand, so
+# adding a member to pnpm-workspace.yaml left this file describing a workspace
+# that no longer existed — the install tolerated it and `pnpm deploy` did not,
+# which is a build failure several minutes into CI for a line nobody knew was
+# a second copy of the workspace definition.
+COPY pnpm-lock.yaml .npmrc ./
+RUN pnpm fetch
 
-# Install all dependencies (including devDependencies for build)
-RUN pnpm install --frozen-lockfile --ignore-scripts=false
+# The whole workspace, so nothing here can fall out of step with it.
+COPY . .
 
-# Copy source code + config + locales
-COPY packages/ packages/
-COPY tsconfig.base.json turbo.json ./
-COPY locales/ locales/
+# Install all dependencies (including devDependencies for build) from the
+# store fetched above, so this re-runs on a source change but downloads
+# nothing.
+RUN pnpm install --offline --frozen-lockfile --ignore-scripts=false
 
 # Build backend packages (shared → core → server + collab + worker)
 RUN pnpm turbo build --filter=@breatic/server --filter=@breatic/collab --filter=@breatic/worker

@@ -25,7 +25,7 @@
  */
 
 import { describe, it, expect, afterAll } from "vitest";
-import { rmSync } from "node:fs";
+import { readdirSync, rmSync } from "node:fs";
 import crypto from "node:crypto";
 import { LocalStorageAdapter } from "@core/infra/storage/local.js";
 
@@ -114,6 +114,39 @@ describe("uploadStream — atomic publish (Gate-2 R5 H9)", () => {
     const after = await adapter.head(key);
     expect(after.exists).toBe(true);
     expect(after.size).toBe(4);
+  });
+
+  it("an aborted upload leaves no temp file, however early it aborts", async () => {
+    // The abort paths destroy the write stream and remove the temp file with
+    // nothing between the two. Destroying is asynchronous: if the file has not
+    // finished opening, the open completes AFTER the removal and recreates it,
+    // so the `.part` outlives the request. Measured in isolation: 30 out of 30
+    // rounds left a file behind that way, 0 out of 30 when the close is awaited.
+    //
+    // The over-limit path reaches it soonest — the size check runs before the
+    // first write, so only one `await reader.read()` separates opening the file
+    // from destroying it. A fast disk wins that race and a slow one does not,
+    // which is why this surfaced on CI as an ENOTEMPTY from the suite's own
+    // cleanup and never locally.
+    const before = new Set(readdirSync(adapter.getFilePath(TEST_PREFIX)));
+    for (let round = 0; round < 40; round += 1) {
+      const key = `${TEST_PREFIX}/abort-${crypto.randomUUID()}.bin`;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(64));
+          controller.close();
+        },
+      });
+      await adapter.uploadStream(key, body, 1);
+    }
+    // The leak appears AFTER the call returns — that is the whole point of it.
+    // Checking immediately measures nothing: the open that recreates the file
+    // has not run yet, so the directory looks clean either way.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const after = readdirSync(adapter.getFilePath(TEST_PREFIX)).filter(
+      (name) => !before.has(name),
+    );
+    expect(after).toEqual([]);
   });
 
   it("an over-limit body leaves NO object at the final key (nothing to reclaim, nothing to 404)", async () => {

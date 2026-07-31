@@ -5,7 +5,7 @@
  * Fixed fill-colour swatches for the reset-empty-image panel (#1623, D2). These
  * hex values are the literal PIXEL colour baked into the generated PNG — image
  * CONTENT, not design tokens — so each carries a `design-value: allow` escape
- * for `lint:no-raw-design-values` (a themed token would be wrong: the blank
+ * for `breatic/no-raw-design-values` (a themed token would be wrong: the blank
  * canvas must be exactly the colour the user picked, in every viewer's theme).
  */
 

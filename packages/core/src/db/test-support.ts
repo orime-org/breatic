@@ -11,7 +11,7 @@
  * migrations against an arbitrary connection URL - typically a fresh
  * testcontainer Postgres whose URL is only known at runtime - WITHOUT
  * importing `drizzle-orm` themselves and WITHOUT touching the
- * env-bound singleton {@link db}.
+ * env-bound singleton `db`.
  *
  * Both helpers go through {@link createPgClient} so test connections
  * inherit the same production-safety lifecycle defaults as the rest of
@@ -61,8 +61,8 @@ export function createTestDb(url: string, max = 3): TestDb {
 /**
  * Run all pending migrations against an arbitrary connection URL.
  *
- * Unlike {@link runMigrations} (which migrates the env-bound singleton
- * {@link db}), this targets a caller-supplied URL - used by test global
+ * Unlike `runMigrations` (which migrates the env-bound singleton
+ * `db`), this targets a caller-supplied URL - used by test global
  * setup to migrate a freshly-started container before any test runs.
  * Creates a throwaway single-connection client and closes it before
  * returning, so it leaves no open pool behind.

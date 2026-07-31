@@ -27,7 +27,7 @@ interface StudioTabBarProps {
  * The studio container tab bar (spec §2.2) — a horizontal 5-tab strip (4 for
  * personal studios). The active tab gets the neutral activation border
  * (`border-active-border`, the single source for neutral selected/active
- * borders — ruled 2026-07-11, enforced by lint:active-border); inactive tabs
+ * borders — ruled 2026-07-11, enforced by breatic/active-border); inactive tabs
  * are muted and darken on hover. Each label may
  * carry a muted count chip. Renders into a parent `<Tabs>` Root, which
  * supplies keyboard arrow navigation + the ARIA tablist roles.

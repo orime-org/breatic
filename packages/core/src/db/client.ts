@@ -225,7 +225,7 @@ export async function pingDb(client: Sql = rawPg): Promise<boolean> {
 // A SECOND lazy pool, identical in shape to the business `db`/`rawPg`
 // above but bound to `env.YJS_DATABASE_URL`. It goes through the SAME
 // `createPgClient` factory, so it inherits the same production-grade
-// connection-lifecycle defaults — the `lint:no-postgres-outside-core`
+// connection-lifecycle defaults — the `breatic/no-postgres-outside-core`
 // guard stays satisfied (no second `from "postgres"` import). The Yjs
 // document store lives in its own database (a separate transaction /
 // failure domain); early-stage it may be a second db on the same

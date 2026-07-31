@@ -5,7 +5,7 @@
  * Cross-modality execute-gate rule (#1675). THE single source of truth for
  * "which source inputs does a generation mode require". Lives in domain
  * (backend-only); the frontend never runs this — the catalog projection
- * ships the computed {@link ModelEntry.sourcesByMode} on the wire and the
+ * ships the computed `ModelEntry.sourcesByMode` on the wire and the
  * Generate panel reads that. The server calls `violatesSourceRequirement`
  * directly (it can import domain), applying the SAME rule to the submitted
  * params. One rule, two consumers (frontend via wire, server via call),
@@ -92,7 +92,7 @@ function sourcesForMode(modality: string, mode: string): readonly SourceType[] {
 }
 
 /**
- * Compute the wire {@link ModelEntry.sourcesByMode}: each of a model's modes →
+ * Compute the wire `ModelEntry.sourcesByMode`: each of a model's modes →
  * the source types it requires. Called by the catalog projection so the
  * frontend can read `sourcesByMode[activeMode]` without running any rule.
  * @param modality - The model's modality.

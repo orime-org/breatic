@@ -12,7 +12,7 @@
  * The values only need to satisfy the schema (URL shape + non-empty);
  * these unit tests never open a real connection.
  *
- * Lives OUTSIDE `src/` on purpose: the `lint:no-core-process-env` guard
+ * Lives OUTSIDE `src/` on purpose: the `breatic/no-library-env-access` guard
  * (extended to domain) only scans `src/`, and this harness legitimately
  * reads/sets `process.env` while standing in for the app entry. tsup
  * builds from `src/index.ts`, so this is never bundled.

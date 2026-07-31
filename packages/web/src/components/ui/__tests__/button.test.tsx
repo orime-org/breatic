@@ -29,7 +29,7 @@ describe('Button', () => {
     render(<Button size='icon' aria-label='Pick'>i</Button>);
     const cls = screen.getByRole('button').className;
     // Button ladder: icon collapses to a square at the default rung, driven by
-    // the --btn-default token (no raw px — see lint:no-raw-design-values).
+    // the --btn-default token (no raw px — see breatic/no-raw-design-values).
     expect(cls).toContain('h-[var(--btn-default)]');
     expect(cls).toContain('w-[var(--btn-default)]');
   });

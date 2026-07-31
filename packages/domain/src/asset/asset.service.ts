@@ -38,8 +38,7 @@
  * record.
  */
 
-import { and, eq, isNull } from "drizzle-orm";
-import { db, projects, NotFoundError } from "@breatic/core";
+import { NotFoundError, projectsRepo } from "@breatic/core";
 import {
   registerWithDedup,
   type RegisterAssetInput,
@@ -60,13 +59,11 @@ import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
  * @throws {NotFoundError} If the project does not exist or is soft-deleted.
  */
 export async function resolveOwnerStudioId(projectId: string): Promise<string> {
-  const proj = await db
-    .select({ studioId: projects.studioId })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
-    .limit(1);
-  if (!proj[0]) throw new NotFoundError(`Project ${projectId} not found`);
-  return proj[0].studioId;
+  const studioId = await projectsRepo.findOwnerStudioId(projectId);
+  if (studioId === undefined) {
+    throw new NotFoundError(`Project ${projectId} not found`);
+  }
+  return studioId;
 }
 
 /**

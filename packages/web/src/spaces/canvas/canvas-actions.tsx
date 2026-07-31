@@ -33,7 +33,7 @@ export interface CanvasActions {
   activateNodeUpload: (nodeId: string, modality: Modality) => void;
   /**
    * Persist a text node's inline-edited content to the Yjs doc (frontend-owned
-   * write, same pattern as {@link renameNode}). Bound to the text body's
+   * write, same pattern as `renameNode`). Bound to the text body's
    * contenteditable commit; without it what the user types is discarded on blur.
    */
   setNodeContent: (nodeId: string, content: string) => void;
