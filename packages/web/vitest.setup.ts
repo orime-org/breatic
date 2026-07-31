@@ -10,7 +10,7 @@ import '@testing-library/jest-dom/vitest';
 // silently does nothing and tests fail with "Invalid Chai property:
 // toHaveNoViolations". Wiring the matcher by hand is the documented
 // workaround until vitest-axe ships a fixed dist.
-import { afterEach, beforeAll, expect } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect } from 'vitest';
 // Namespace import: vitest-axe v0.1.0's `dist/matchers.d.ts` mis-types
 // `toHaveNoViolations` as a type-only re-export (it is actually a
 // runtime function), so a named import errors at tsc. Importing as a
@@ -54,6 +54,25 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   setLocale('en');
+});
+
+// Each test file that imports CSS has vitest inject it as a <style> into the
+// one jsdom document every file in the run shares, and nothing takes it back
+// out. Measured over a one-process run of this package, the head grew from 2
+// style elements to 105 — every file paying for every earlier file's CSS.
+// axe walks the style sheets while deciding what is visible, so the a11y
+// assertions were reaching a different verdict late in the run than they did
+// on their own. The sheets belong to the file that imported them, so the file
+// gives them back when it finishes.
+const sheetsAtFileStart: Element[] = [];
+beforeAll(() => {
+  sheetsAtFileStart.push(...Array.from(document.head.querySelectorAll('style')));
+});
+afterAll(() => {
+  for (const style of Array.from(document.head.querySelectorAll('style'))) {
+    if (!sheetsAtFileStart.includes(style)) style.remove();
+  }
+  sheetsAtFileStart.length = 0;
 });
 
 // jsdom lacks several APIs that Radix / cmdk / shadcn primitives use.
