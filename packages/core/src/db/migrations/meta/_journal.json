@@ -330,6 +330,13 @@
       "when": 1781160000000,
       "tag": "0046_notifications_ids_not_names",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1785456000000,
+      "tag": "0047_request_tables",
+      "breakpoints": true
     }
   ]
 }

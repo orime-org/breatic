@@ -987,6 +987,158 @@ export const projectInvitations = pgTable(
   ],
 );
 
+// ── Deferred-decision requests (2026-07-31) ──────────────────────────
+//
+// Role upgrades, project transfers and studio transfers: three flows where
+// someone asks and someone else answers later. They used to live as rows in
+// `notifications`, a table built to ANNOUNCE things — it has `read_at` and
+// nothing else: no status, no uniqueness, no expiry. So all three inherited
+// the same three defects: a request could never time out, the same person
+// could file it any number of times, and "already decided" was indistinguishable
+// from "already read". The two invite flows above own tables and consequently
+// have all three; these three owned nothing and kept breaking.
+//
+// They are modelled on `studio_invitations` / `project_invitations` on purpose —
+// same lifecycle shape, same partial-unique-index trick, same reaping rule:
+//
+//   - `status` is append-only through the lifecycle; rows are soft-deleted only.
+//   - A timed-out row KEEPS `status = 'pending'` and holds its uniqueness slot
+//     until something flips it. A partial index predicate must be immutable, so
+//     it cannot reference `now()` — the create path reaps stale pendings to
+//     `expired` before inserting, exactly as `expireStalePending` does (#1769).
+//   - All FKs are `onDelete: restrict` except `notification_id` (`set null` —
+//     the bell row may be GC'd).
+//
+// Uniqueness GRAIN differs by table and is deliberate: a role upgrade is one
+// live request per (project, requester), so two viewers may each ask; a
+// transfer is one live request per CONTAINER, since a project has exactly one
+// owner and can never be offered to two people at once. All three partial
+// unique indexes live in the migration.
+
+export const roleUpgradeRequests = pgTable(
+  "role_upgrade_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    requesterUserId: uuid("requester_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Role being asked for — 'editor' (a viewer asking to edit). */
+    requestedRole: varchar("requested_role", { length: 16 }).notNull(),
+    /** Optional note the requester wrote for the decider. */
+    message: text("message"),
+    /**
+     * Lifecycle: 'pending' | 'approved' | 'rejected' | 'expired' | 'cancelled'.
+     * 'approved' / 'rejected' rather than the transfers' 'accepted' /
+     * 'declined': an upgrade is decided FOR you, a transfer is one you accept.
+     */
+    status: varchar("status", { length: 16 }).notNull(),
+    /** Who decided. Null while pending, and stays null on expiry / cancel. */
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /**
+     * The bell notification that surfaces this request, so deciding / cancelling
+     * / reaping can mark it read in the same transaction — the bell entry then
+     * disappears with the request instead of outliving it.
+     */
+    notificationId: uuid("notification_id").references(() => notifications.id, {
+      onDelete: "set null",
+    }),
+    /** Request times out after this; the decision path refuses expired rows. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("role_upgrade_requests_project_id_idx").on(
+      table.projectId,
+      table.deletedAt,
+    ),
+    index("role_upgrade_requests_requester_user_id_idx").on(
+      table.requesterUserId,
+    ),
+    // One LIVE pending request per (project, requester) is enforced by a partial
+    // unique index (`role_upgrade_requests_one_pending`) in the migration.
+  ],
+);
+
+export const projectTransfers = pgTable(
+  "project_transfers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    /** The current owner, offering the project away. */
+    fromUserId: uuid("from_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** The member being offered ownership. */
+    toUserId: uuid("to_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled'. */
+    status: varchar("status", { length: 16 }).notNull(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** Bell row for the recipient; marked read in the deciding transaction. */
+    notificationId: uuid("notification_id").references(() => notifications.id, {
+      onDelete: "set null",
+    }),
+    /** Offer times out after this; the decision path refuses expired rows. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("project_transfers_project_id_idx").on(
+      table.projectId,
+      table.deletedAt,
+    ),
+    index("project_transfers_to_user_id_idx").on(table.toUserId),
+    // One LIVE pending transfer per PROJECT (not per recipient) is enforced by a
+    // partial unique index (`project_transfers_one_pending`) in the migration.
+  ],
+);
+
+export const studioTransfers = pgTable(
+  "studio_transfers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    /** The current admin, offering the studio away. */
+    fromUserId: uuid("from_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** The member being offered adminship. */
+    toUserId: uuid("to_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled'. */
+    status: varchar("status", { length: 16 }).notNull(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** Bell row for the recipient; marked read in the deciding transaction. */
+    notificationId: uuid("notification_id").references(() => notifications.id, {
+      onDelete: "set null",
+    }),
+    /** Offer times out after this; the decision path refuses expired rows. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("studio_transfers_studio_id_idx").on(table.studioId, table.deletedAt),
+    index("studio_transfers_to_user_id_idx").on(table.toUserId),
+    // One LIVE pending transfer per STUDIO (not per recipient) is enforced by a
+    // partial unique index (`studio_transfers_one_pending`) in the migration.
+  ],
+);
+
 // ── Project Activities ───────────────────────────────────────────────
 //
 // Unified project activity feed (ADR 2026-07-04 project-activity-feed):
