@@ -565,40 +565,6 @@
       }
     }
   },
-  "workspace": {
-    "label": "ワークスペース",
-    "copy_success": "Project のコピーに成功しました",
-    "delete_success": "Project の削除に成功しました",
-    "project_name_required": "Project 名は必須です",
-    "rename_success": "Project の名前変更に成功しました",
-    "create_failed": "Project の作成に失敗しました",
-    "copy_failed": "Project のコピーに失敗しました",
-    "copy_project": "Project をコピー",
-    "rename_project": "Project の名前を変更",
-    "delete_project": "Project を削除",
-    "btn_confirm": "確認",
-    "btn_cancel": "キャンセル",
-    "rename_project_title": "Project の名前を変更",
-    "rename_project_placeholder": "新しい Project 名を入力してください",
-    "delete_project_content_title": "Project を削除",
-    "delete_project_content_description": "この操作は元に戻せません。",
-    "recent_projects": "最近の Projects",
-    "create_new_project": "新しい Project を作成",
-    "no_more_data": "これ以上の Projects はありません",
-    "create_project_title": "新しい Project を作成",
-    "create_project_placeholder": "新しい Project の名前を入力してください",
-    "use_case": "ユースケース",
-    "use_case_description": "ユースケースの説明",
-    "home_tooltip": "ホームに戻る",
-    "create_user_case_title": "ユースケースを作成",
-    "create_user_case_description": "このユースケースに基づいて新しい Project が作成されます。",
-    "create_user_case_placeholder": "新しい Project 名を入力",
-    "not_logged_in": {
-      "title": "ログインしていません",
-      "description": "ログインしてすべての製品機能を体験してください",
-      "login_button": "今すぐログイン"
-    }
-  },
   "project": {
     "leaveGuard": {
       "title": "作業中ですが移動しますか?",

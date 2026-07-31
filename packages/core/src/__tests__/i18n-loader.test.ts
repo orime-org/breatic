@@ -57,8 +57,8 @@ describe("i18n loader", () => {
       expect(t("editor.accept")).toBe("Accept");
     });
 
-    it("should resolve a frontend workspace key", () => {
-      expect(t("workspace.create_new_project")).toBe("Create new project");
+    it("should resolve a frontend studio key", () => {
+      expect(t("studio.container.projects.new")).toBe("New project");
     });
 
     it("should interpolate parameters", () => {

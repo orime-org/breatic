@@ -565,40 +565,6 @@
       }
     }
   },
-  "workspace": {
-    "label": "Workspace",
-    "copy_success": "Project copy success",
-    "copy_failed": "Failed to copy project",
-    "delete_success": "Project delete success",
-    "project_name_required": "Project name is required",
-    "rename_success": "Project rename success",
-    "create_failed": "Failed to create project",
-    "copy_project": "Copy project",
-    "rename_project": "Rename project",
-    "delete_project": "Delete project",
-    "btn_confirm": "Confirm",
-    "btn_cancel": "Cancel",
-    "rename_project_title": "Rename project",
-    "rename_project_placeholder": "Please enter the new project name",
-    "delete_project_content_title": "Delete Project",
-    "delete_project_content_description": "This action can't be undone.",
-    "recent_projects": "Recent projects",
-    "create_new_project": "Create new project",
-    "no_more_data": "No more projects",
-    "create_project_title": "Create new project",
-    "create_project_placeholder": "Please input the name of the new project",
-    "use_case": "Use case",
-    "use_case_description": "Use case description",
-    "home_tooltip": "Go to home",
-    "create_user_case_title": "Create Use Case",
-    "create_user_case_description": "This will create a new project based on this useCase.",
-    "create_user_case_placeholder": "Enter the new project name",
-    "not_logged_in": {
-      "title": "Not Logged In",
-      "description": "Log in to experience all product features",
-      "login_button": "Log In Now"
-    }
-  },
   "project": {
     "leaveGuard": {
       "title": "Leave with work in progress?",

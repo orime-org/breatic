@@ -565,40 +565,6 @@
       }
     }
   },
-  "workspace": {
-    "label": "워크스페이스",
-    "copy_success": "Project 복사에 성공했습니다",
-    "copy_failed": "Project 복사에 실패했습니다",
-    "delete_success": "Project 삭제에 성공했습니다",
-    "project_name_required": "Project 이름은 필수입니다",
-    "rename_success": "Project 이름 변경에 성공했습니다",
-    "create_failed": "Project 생성에 실패했습니다",
-    "copy_project": "Project 복사",
-    "rename_project": "Project 이름 변경",
-    "delete_project": "Project 삭제",
-    "btn_confirm": "확인",
-    "btn_cancel": "취소",
-    "rename_project_title": "Project 이름 변경",
-    "rename_project_placeholder": "새 Project 이름을 입력하세요",
-    "delete_project_content_title": "Project 삭제",
-    "delete_project_content_description": "이 작업은 되돌릴 수 없습니다.",
-    "recent_projects": "최근 Projects",
-    "create_new_project": "새 Project 만들기",
-    "no_more_data": "더 이상 Projects가 없습니다",
-    "create_project_title": "새 Project 만들기",
-    "create_project_placeholder": "새 Project의 이름을 입력하세요",
-    "use_case": "사용 사례",
-    "use_case_description": "사용 사례 설명",
-    "home_tooltip": "홈으로 이동",
-    "create_user_case_title": "사용 사례 만들기",
-    "create_user_case_description": "이 사용 사례를 기반으로 새 Project가 생성됩니다.",
-    "create_user_case_placeholder": "새 Project 이름을 입력하세요",
-    "not_logged_in": {
-      "title": "로그인하지 않음",
-      "description": "로그인하여 모든 제품 기능을 사용해 보세요",
-      "login_button": "지금 로그인"
-    }
-  },
   "project": {
     "leaveGuard": {
       "title": "작업 중인데 나가시겠어요?",
