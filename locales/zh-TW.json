@@ -42,7 +42,8 @@
       "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。",
       "member_limit_reached": "該 Studio 已達到成員數上限。",
       "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
-      "avatar_unsupported_type": "該檔案不是支援的圖片格式。請使用 PNG、JPEG 或 WebP。"
+      "avatar_unsupported_type": "該檔案不是支援的圖片格式。",
+      "avatar_unsupported_size": "該圖片尺寸不符合頭像要求。"
     },
     "project": {
       "email_not_registered": "該信箱尚未註冊。",
@@ -1291,7 +1292,7 @@
         "bioCount": "{count}/{max}",
         "slugHelper": "這個 Studio 網址的一部分。只能用小寫字母、數字和連字號。",
         "avatarUpload": "上傳圖片",
-        "avatarHint": "方形圖片效果最好。支援 PNG、JPEG、WebP，最大 20 MB。",
+        "avatarHint": "方形圖片效果最好。支援常見圖片格式，最大 20 MB。",
         "avatarRemove": "移除",
         "avatarRemoveTitle": "要移除這張頭像嗎？",
         "avatarRemoveBody": "這個 Studio 會回到顯示首字母。你隨時可以再上傳新圖片。",

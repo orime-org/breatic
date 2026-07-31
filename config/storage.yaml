@@ -38,7 +38,18 @@ upload:
 avatar:
   # Hard cap on one avatar upload, in bytes. Avatars do NOT use presigned
   # direct upload — the bytes come through the server — so this is also the
-  # bound on what the process buffers per request. The frontend crops to
-  # 512x512 WebP before sending, which lands around 30–60 KB, so 1 MiB is
-  # generous for anything the product itself produces.
+  # bound on what the process buffers per request. It is a security boundary,
+  # not a product rule: it is what stops an arbitrary body before anything
+  # else gets a chance to look at it.
+  #
+  # THIS NUMBER IS TIED TO THE OUTPUT SIZE. The frontend crops to a 512x512
+  # lossless PNG. Measured with Chrome's own encoder at that size: a
+  # photograph is ~550 KB and random pixels — incompressible, worse than any
+  # real picture — are ~880 KB. 1 MiB clears that worst case with room to
+  # spare, and it cannot creep up, because the ceiling is a function of the
+  # pixel count and the pixel count is fixed.
+  #
+  # So: change AVATAR_OUTPUT_PX and this has to move with it. At 1024x1024
+  # the worst case is around 3.5 MB and 1 MiB would start refusing real
+  # avatars.
   max_bytes: 1048576

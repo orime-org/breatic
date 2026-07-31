@@ -42,7 +42,8 @@
       "cannot_change_admin_role": "The admin role can only be changed by transferring it.",
       "member_limit_reached": "This studio has reached its member limit.",
       "leave_last_admin": "Transfer the admin role before leaving this Studio.",
-      "avatar_unsupported_type": "That file is not a supported image. Use PNG, JPEG or WebP."
+      "avatar_unsupported_type": "That file is not a supported image.",
+      "avatar_unsupported_size": "That image is not a valid avatar size."
     },
     "project": {
       "email_not_registered": "No account is registered with that email.",
@@ -1291,7 +1292,7 @@
         "bioCount": "{count}/{max}",
         "slugHelper": "Part of this Studio's web address. Lowercase letters, numbers and hyphens only.",
         "avatarUpload": "Upload image",
-        "avatarHint": "A square image works best. PNG, JPEG or WebP, up to 20 MB.",
+        "avatarHint": "A square image works best. Any common image format, up to 20 MB.",
         "avatarRemove": "Remove",
         "avatarRemoveTitle": "Remove this avatar?",
         "avatarRemoveBody": "The Studio falls back to its initials. You can upload a new image at any time.",

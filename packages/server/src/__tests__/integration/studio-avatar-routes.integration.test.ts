@@ -35,6 +35,7 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { AVATAR_OUTPUT_PX } from "@breatic/shared";
 import {
   initCore,
   getRedis,
@@ -74,9 +75,11 @@ afterAll(async () => {
  * Build a minimal PNG: signature + IHDR, optionally with the `acTL` chunk
  * that makes it an animated PNG.
  * @param animated - include `acTL`, turning it into an APNG.
+ * @param edge - square edge to declare in IHDR; defaults to what the crop
+ *   dialog produces, so most cases read as "a normal avatar".
  * @returns the file bytes.
  */
-function pngBytes(animated = false): Buffer {
+function pngBytes(animated = false, edge = AVATAR_OUTPUT_PX): Buffer {
   const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const chunk = (type: string, payload: Buffer): Buffer => {
     const len = Buffer.alloc(4);
@@ -85,8 +88,8 @@ function pngBytes(animated = false): Buffer {
     return Buffer.concat([len, Buffer.from(type, "ascii"), payload, Buffer.alloc(4)]);
   };
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(1, 0);
-  ihdr.writeUInt32BE(1, 4);
+  ihdr.writeUInt32BE(edge, 0);
+  ihdr.writeUInt32BE(edge, 4);
   ihdr[8] = 8;
   ihdr[9] = 6;
   const parts = [sig, chunk("IHDR", ihdr)];
@@ -202,9 +205,9 @@ describe("POST /studio/:slug/avatar — what gets accepted", () => {
     const stored = await readAvatar(studio.id);
     expect(stored).not.toBeNull();
     // Key shape: the studio id from the row, the extension from the server's
-    // whitelist. Nothing the client sent appears in it.
+    // whitelist, a timestamp and a nonce. Nothing the client sent appears.
     expect(stored).toMatch(
-      new RegExp(`avatar/${studio.id}/\\d+\\.png$`),
+      new RegExp(`avatar/${studio.id}/\\d+-[0-9a-f]{8}\\.png$`),
     );
   });
 
@@ -221,17 +224,46 @@ describe("POST /studio/:slug/avatar — what gets accepted", () => {
     expect(await readAvatar(studio.id)).toMatch(/\.png$/);
   });
 
-  it("accepts JPEG and WebP, each under its own extension", async () => {
+  it("refuses JPEG and WebP — the crop step converts, so these never arrive", async () => {
+    // The picker still takes any image the browser can decode; what reaches
+    // here is always the canvas re-encode, and that is PNG. Accepting other
+    // formats would mean accepting bytes whose dimensions this server cannot
+    // read, which is the one thing the size rule below depends on.
     const admin = await insertUser();
     const jpegStudio = await insertStudio(admin);
     const webpStudio = await insertStudio(admin);
     const cookie = await loginCookie(admin);
 
-    expect((await uploadAvatar(jpegStudio.slug, cookie, JPEG_BYTES)).status).toBe(200);
-    expect((await uploadAvatar(webpStudio.slug, cookie, WEBP_BYTES)).status).toBe(200);
+    expect((await uploadAvatar(jpegStudio.slug, cookie, JPEG_BYTES)).status).toBe(415);
+    expect((await uploadAvatar(webpStudio.slug, cookie, WEBP_BYTES)).status).toBe(415);
 
-    expect(await readAvatar(jpegStudio.id)).toMatch(/\.jpg$/);
-    expect(await readAvatar(webpStudio.id)).toMatch(/\.webp$/);
+    expect(await readAvatar(jpegStudio.id)).toBeNull();
+    expect(await readAvatar(webpStudio.id)).toBeNull();
+  });
+
+  it("refuses a PNG that is not the agreed square", async () => {
+    const admin = await insertUser();
+    const studio = await insertStudio(admin);
+    const cookie = await loginCookie(admin);
+
+    const res = await uploadAvatar(studio.slug, cookie, pngBytes(false, 256));
+
+    expect(res.status).toBe(422);
+    expect(await readAvatar(studio.id)).toBeNull();
+  });
+
+  it("refuses a small PNG that declares enormous dimensions", async () => {
+    // This is what the byte cap cannot catch: a few hundred bytes of header
+    // claiming 25000 square, which every viewer's browser would then try to
+    // decode. Reading IHDR costs 24 bytes and no decompression.
+    const admin = await insertUser();
+    const studio = await insertStudio(admin);
+    const cookie = await loginCookie(admin);
+
+    const res = await uploadAvatar(studio.slug, cookie, pngBytes(false, 25000));
+
+    expect(res.status).toBe(422);
+    expect(await readAvatar(studio.id)).toBeNull();
   });
 
   it("decides the type from the BYTES, not the Content-Type header", async () => {
@@ -251,11 +283,12 @@ describe("POST /studio/:slug/avatar — what gets accepted", () => {
     const studio = await insertStudio(admin);
     const cookie = await loginCookie(admin);
 
+    // Two identical uploads, back to back — the case where only the key's
+    // nonce keeps them apart. Relying on the clock here would pass or fail
+    // depending on how fast the machine is.
     await uploadAvatar(studio.slug, cookie, pngBytes());
     const first = await readAvatar(studio.id);
-    // A different second upload, so a same-millisecond key would still be a
-    // distinct object rather than an accidental match.
-    await uploadAvatar(studio.slug, cookie, JPEG_BYTES);
+    await uploadAvatar(studio.slug, cookie, pngBytes());
     const second = await readAvatar(studio.id);
 
     expect(second).not.toBe(first);
@@ -390,8 +423,8 @@ describe("DELETE /studio/:slug/avatar", () => {
 
 describe("avatarStorageKey", () => {
   it("builds the key from the studio id and a whitelisted extension only", () => {
-    expect(avatarStorageKey("s-1", "webp", 1700000000000)).toBe(
-      "avatar/s-1/1700000000000.webp",
+    expect(avatarStorageKey("s-1", "png", 1700000000000, "abcd1234")).toBe(
+      "avatar/s-1/1700000000000-abcd1234.png",
     );
   });
 

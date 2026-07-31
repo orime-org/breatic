@@ -11,20 +11,13 @@
  *
  * Format conversion happens here rather than on the server, and it costs
  * nothing: cropping already has to encode the canvas to a file, and that step
- * has to name a format. Choosing WebP there IS the conversion. Renaming the
+ * has to name a format. Choosing PNG there IS the conversion. Renaming the
  * extension instead is not an option — once the source is drawn onto a canvas
  * the original encoding is gone, and a name that disagrees with the bytes
  * renders as a broken image, since browsers decode by declared type.
- *
- * WHY WEBP HERE, when generated project assets are PNG (product decision,
- * 2026-07-31, after this file was briefly switched to PNG and switched back):
- * those assets get forwarded to external generation APIs, which constrains
- * their format. An avatar's bytes go nowhere but an `<img>` in our own UI, so
- * nothing constrains the format and size is free to win — measured at 512×512,
- * a photograph is ~88 KB as WebP against ~610 KB as lossless PNG. Before
- * changing this, check whether that consumer story still holds; "everything
- * else is PNG" on its own is not a reason.
  */
+
+import { AVATAR_OUTPUT_PX } from '@breatic/shared';
 
 import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
 
@@ -40,7 +33,8 @@ import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
  * reason to tune "how big is obviously not a portrait", and the authoritative
  * limit — the one that protects the server — is `avatar.max_bytes` in
  * `config/storage.yaml`, enforced on upload. That one caps the CROPPED result
- * (~30–60 KB in practice), so the two never race.
+ * (~550 KB for a photograph as PNG), and the two never race: this gate is
+ * 20 MB and about the file the user picked, not about what we produce.
  */
 export const MAX_AVATAR_INPUT_BYTES = 20 * 1024 * 1024;
 
@@ -54,14 +48,29 @@ export const MAX_AVATAR_INPUT_BYTES = 20 * 1024 * 1024;
  */
 export const MAX_AVATAR_INPUT_EDGE_PX = 8000;
 
-/** The stored avatar is always a 512×512 square, whatever was cropped. */
-export const AVATAR_OUTPUT_PX = 512;
-
-/** Encoder quality; at 512px this lands around 30–60 KB. */
-export const AVATAR_OUTPUT_QUALITY = 0.9;
-
-const PRIMARY_TYPE = 'image/webp';
-const FALLBACK_TYPE = 'image/jpeg';
+/**
+ * The one format an avatar is stored in — settled, not a default to revisit.
+ *
+ * PNG is lossless, so there is no quality knob to pass and none is: `toBlob`
+ * only consults its quality argument for lossy types. It is also the format
+ * `toBlob` falls back to whenever it cannot honour the requested type, which
+ * makes it the one request that can never come back as something else — so
+ * unlike a lossy target, this needs no "check what actually came out" step.
+ *
+ * The cost is size, and it cannot be tuned away from here: a browser's PNG
+ * encoder takes no parameters. Measured in Chrome at this size, a photograph
+ * is ~550 KB and random pixels — the incompressible worst case — are ~880 KB,
+ * against ~41 KB for the same picture as WebP. Getting PNG smaller means
+ * palette quantisation or a better DEFLATE search, neither of which
+ * `canvas.toBlob` offers; it would take a WASM encoder here or re-encoding on
+ * the server, and the second contradicts this pipeline's "server does no image
+ * processing" shape.
+ *
+ * Those two numbers are what `avatar.max_bytes` (1 MiB) is sized against, and
+ * they are a function of {@link AVATAR_OUTPUT_PX}. Change the output size and
+ * that cap has to move with it — 1024² would put the worst case near 3.5 MB.
+ */
+export const AVATAR_OUTPUT_TYPE = 'image/png';
 
 /** Why a picked file cannot be used, or `null` when it can. */
 export type AvatarFileProblem = 'too_large' | 'empty';
@@ -101,34 +110,26 @@ export function checkAvatarPixels(
 }
 
 /** A canvas encode step — `canvas.toBlob` in production, a stub in tests. */
-export type CanvasEncoder = (
-  type: string,
-  quality: number,
-) => Promise<Blob | null>;
+export type CanvasEncoder = (type: string) => Promise<Blob | null>;
 
 /**
- * Encode the prepared canvas, insisting on a format the result actually is.
+ * Encode the prepared canvas as the avatar's one format.
  *
- * `toBlob` does not fail on a type it cannot produce — it quietly answers with
- * a PNG. So the produced type is checked rather than assumed; a PNG handed out
- * as WebP would be uploaded under the wrong extension and render broken.
+ * There is no format negotiation left. `toBlob` never fails on a type it
+ * cannot produce — it quietly answers with a PNG — so asking for PNG is the
+ * one request whose answer cannot be a surprise, and the old
+ * check-then-fall-back-to-JPEG dance has nothing left to catch.
  *
- * The second attempt's result is accepted whatever it turns out to be. A
- * browser supporting neither WebP nor JPEG is hypothetical, and retrying past
- * that point would hang the dialog; PNG is a format the server accepts anyway,
- * so the cost is a larger upload rather than a failure.
+ * A null result is different: that is the canvas refusing to encode at all
+ * (tainted by a cross-origin draw, or out of memory), which no retry fixes.
  * @param encode - The canvas encode step.
  * @returns The encoded avatar.
  * @throws {Error} When the canvas produces no blob at all.
  */
 export async function encodeAvatarBlob(encode: CanvasEncoder): Promise<Blob> {
-  const primary = await encode(PRIMARY_TYPE, AVATAR_OUTPUT_QUALITY);
-  if (primary === null) throw new Error('canvas produced no image');
-  if (primary.type === PRIMARY_TYPE) return primary;
-
-  const fallback = await encode(FALLBACK_TYPE, AVATAR_OUTPUT_QUALITY);
-  if (fallback === null) throw new Error('canvas produced no image');
-  return fallback;
+  const blob = await encode(AVATAR_OUTPUT_TYPE);
+  if (blob === null) throw new Error('canvas produced no image');
+  return blob;
 }
 
 /**
@@ -164,7 +165,6 @@ export async function renderAvatarBlob(
     AVATAR_OUTPUT_PX,
   );
   return encodeAvatarBlob(
-    (type, quality) =>
-      new Promise((resolve) => canvas.toBlob(resolve, type, quality)),
+    (type) => new Promise((resolve) => canvas.toBlob(resolve, type)),
   );
 }
