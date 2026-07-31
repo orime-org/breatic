@@ -10,7 +10,7 @@ import '@testing-library/jest-dom/vitest';
 // silently does nothing and tests fail with "Invalid Chai property:
 // toHaveNoViolations". Wiring the matcher by hand is the documented
 // workaround until vitest-axe ships a fixed dist.
-import { afterAll, afterEach, beforeAll, expect } from 'vitest';
+import { afterEach, beforeAll, expect } from 'vitest';
 // Namespace import: vitest-axe v0.1.0's `dist/matchers.d.ts` mis-types
 // `toHaveNoViolations` as a type-only re-export (it is actually a
 // runtime function), so a named import errors at tsc. Importing as a
@@ -52,27 +52,31 @@ beforeAll(() => {
 // Also reset locale to the default so a test that switched languages
 // doesn't poison the next file in the run.
 afterEach(() => {
-  cleanup();
-  setLocale('en');
-});
-
-// Each test file that imports CSS has vitest inject it as a <style> into the
-// one jsdom document every file in the run shares, and nothing takes it back
-// out. Measured over a one-process run of this package, the head grew from 2
-// style elements to 105 — every file paying for every earlier file's CSS.
-// axe walks the style sheets while deciding what is visible, so the a11y
-// assertions were reaching a different verdict late in the run than they did
-// on their own. The sheets belong to the file that imported them, so the file
-// gives them back when it finishes.
-const sheetsAtFileStart: Element[] = [];
-beforeAll(() => {
-  sheetsAtFileStart.push(...Array.from(document.head.querySelectorAll('style')));
-});
-afterAll(() => {
-  for (const style of Array.from(document.head.querySelectorAll('style'))) {
-    if (!sheetsAtFileStart.includes(style)) style.remove();
+  // Detach every <style> living inside the render tree BEFORE cleanup takes
+  // the tree away. Removing a container does not take its sheets out of
+  // `document.styleSheets` in jsdom — measured, they stay listed with
+  // `document.contains(ownerNode) === false`, so a one-process run of this
+  // package reached the last file with 93 sheets of which 90 belonged to
+  // components unmounted long before. axe walks `document.styleSheets` when
+  // it works out what is visible, so those ghosts were deciding the verdict
+  // of a11y assertions in files that never rendered them. Removing the
+  // <style> while it is still attached is what makes jsdom deregister it.
+  for (const style of Array.from(document.querySelectorAll('style'))) {
+    if (style.parentElement !== document.head) style.remove();
   }
-  sheetsAtFileStart.length = 0;
+  cleanup();
+  // A sheet whose owner was already detached before this hook ran cannot be
+  // reached by querySelectorAll, so it is collected from the sheet list
+  // itself. Re-attaching and removing is what makes jsdom deregister it —
+  // removal is the only event it listens for.
+  for (const sheet of Array.from(document.styleSheets)) {
+    const node = sheet.ownerNode as Element | null;
+    if (node !== null && !document.contains(node)) {
+      document.head.appendChild(node);
+      node.remove();
+    }
+  }
+  setLocale('en');
 });
 
 // jsdom lacks several APIs that Radix / cmdk / shadcn primitives use.
