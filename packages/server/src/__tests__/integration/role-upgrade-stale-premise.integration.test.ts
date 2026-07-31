@@ -248,7 +248,7 @@ describe("role-upgrade approve re-checks its premises", () => {
   });
 
   it("a former owner cannot reject the project's role-upgrade requests either", async () => {
-    const { formerOwnerId, requesterId, projectId, requestId } =
+    const { formerOwnerId, requesterId, requestId } =
       await seedTransferredAwayFromDecider("former-owner-reject");
 
     // Reject writes no role, but it still CONSUMES the request and tells the
