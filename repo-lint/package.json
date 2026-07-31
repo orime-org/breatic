@@ -9,7 +9,7 @@
     "start": "tsx src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "eslint src/"
+    "lint": "eslint ."
   },
   "devDependencies": {
     "@breatic/eslint-rules": "workspace:*",

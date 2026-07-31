@@ -16,7 +16,7 @@
     "dev": "tsup src/index.ts --format esm --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "lint": "eslint src/",
+    "lint": "eslint .",
     "clean": "rm -rf dist"
   },
   "dependencies": {

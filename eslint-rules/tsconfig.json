@@ -4,8 +4,11 @@
     "noEmit": true,
     "declaration": false,
     "declarationMap": false,
-    "sourceMap": false,
-    "rootDir": "./src"
+    "sourceMap": false
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "vitest.config.ts",
+    "vitest.setup.ts"
+  ]
 }

@@ -2,7 +2,6 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["../shared/src/*"],
@@ -11,5 +10,11 @@
       "@worker/*": ["../worker/src/*"]
     }
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "drizzle-yjs.config.ts",
+    "drizzle.config.ts",
+    "vitest.config.ts",
+    "vitest.setup.ts"
+  ]
 }
