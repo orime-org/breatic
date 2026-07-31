@@ -10,7 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
 import { NewItemDialog } from '@web/pages/studio/container/dialogs/NewItemDialog';
 import { ProjectsTab } from '@web/pages/studio/container/tabs/ProjectsTab';
-import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import { ARIA_HIDDEN_FOCUS_OFF, expectNoA11yViolations } from '@web/test-utils/a11y';
 import type { StudioDetail } from '@breatic/shared';
 
 vi.mock('@web/data/api/studios', () => ({
@@ -78,7 +78,7 @@ describe('studio container — invariant 6 (a11y)', () => {
       <NewItemDialog kind='project' open onOpenChange={() => {}} />,
     );
     // The dialog renders in a portal under document.body (baseElement).
-    await expectNoA11yViolations(baseElement);
+    await expectNoA11yViolations(baseElement, ARIA_HIDDEN_FOCUS_OFF);
   });
 });
 

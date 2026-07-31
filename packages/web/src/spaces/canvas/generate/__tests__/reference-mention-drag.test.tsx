@@ -29,6 +29,7 @@ const render = (
   baseRender(args[0], { ...args[1], wrapper: TooltipProvider });
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import { Y_UNDO_PLUGIN_KEY_NAME } from '@web/spaces/canvas/generate/collab-plugin-keys';
 import {
   dragScrollDelta,
   referenceMentionCaretKey,
@@ -871,7 +872,7 @@ describe('drop residue heal (D1)', () => {
       const p = onlyChipPos(editor);
       // Isolate the move into its own undo capture.
       const plugin = editor.state.plugins.find(
-        (pl) => (pl as unknown as { key?: string }).key === 'y-undo$',
+        (pl) => (pl as unknown as { key?: string }).key === Y_UNDO_PLUGIN_KEY_NAME,
       );
       (plugin?.getState(editor.state) as { undoManager: { stopCapturing: () => void } })
         .undoManager.stopCapturing();
