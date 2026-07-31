@@ -2,14 +2,15 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["../shared/src/*"],
       "@core/*": ["../core/src/*"],
-      "@collab/*": ["../collab/src/*"],
-      "@worker/*": ["../worker/src/*"]
+      "@collab/*": ["../collab/src/*"]
     }
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "vitest.config.ts"
+  ]
 }

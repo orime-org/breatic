@@ -8,10 +8,12 @@
  * it loads the developer's `.env` (best-effort) and runs `initCore`
  * once before any test imports library code that reads `env.*`.
  *
- * This file lives OUTSIDE `src/` on purpose: the `lint:no-core-
- * process-env` guard only scans `src/`, and this test harness
- * legitimately reads `process.env` while standing in for the app
- * entry. tsup builds from `src/index.ts`, so this is never bundled.
+ * This file lives OUTSIDE `src/` on purpose: the guard that keeps
+ * `process.env` out of library code — the `breatic/no-library-env-access`
+ * ESLint rule, declared over `packages/{core,shared,domain}/src/**` — only
+ * reaches `src/`, and this test harness legitimately reads `process.env`
+ * while standing in for the app entry. tsup builds from `src/index.ts`, so
+ * this is never bundled.
  */
 
 import { config } from "dotenv";

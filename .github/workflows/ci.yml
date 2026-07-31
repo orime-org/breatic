@@ -18,20 +18,37 @@ jobs:
     name: Dev Proxy Guard
     runs-on: ubuntu-latest
 
-    # Defense in depth with .husky/pre-commit — both call the SAME script, so
-    # the pair cannot drift. They were separate implementations once and both
-    # silently died: each filtered on `vite.config.ts` after the file became
-    # `.mts`, so neither ever ran (#1831).
+    # Defense in depth with .husky/pre-commit. Both run the SAME rule —
+    # breatic/no-deployed-host — so the pair cannot drift. They were separate
+    # implementations once and BOTH silently died: each filtered on
+    # `vite.config.ts` after the file became `.mts`, so neither ever ran
+    # (#1831). The rule judges every string in the package rather than three
+    # filenames, which is what retires that failure mode instead of restating
+    # it in a new syntax.
     #
-    # This job installs no Node, so it calls the script directly rather than
-    # through `pnpm lint:dev-proxy-target`. That costs nothing here: the
-    # script runs its own matcher self-test inline on every invocation, so a
-    # matcher that has gone blind fails the scan regardless of entry point.
+    # This job used to skip the Node setup and call a shell script, which was
+    # cheaper but meant a second implementation of the same check. One
+    # implementation with three callers is worth the install.
     steps:
       - uses: actions/checkout@v6
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Check vite dev-proxy targets
-        run: bash scripts/lint-dev-proxy-target.sh
+        # The whole web package: the proxy is decided across three root
+        # config files, and naming them here is what went blind last time.
+        run: pnpm --filter @breatic/web exec eslint .
 
   auth-bypass-residue:
     name: Auth Bypass Residue
@@ -41,24 +58,37 @@ jobs:
     # #147. Every environment requires a real login; no mode switch is left,
     # so any file naming one is residue.
     #
-    # This file is itself in the guard's scan range — a workflow `env:` block
+    # This file is itself in the check's scan range — a workflow `env:` block
     # injects real environment variables, so it is a place the mode could be
     # re-introduced for real rather than merely described. That is why the
-    # forbidden tokens are NOT spelled out here; they live in the script,
-    # which is the one file that must contain them. See
-    # scripts/lint-no-noaccount.sh for the token list, the exclusions, and
-    # why the end-to-end self-test is a separate step rather than inline.
+    # forbidden names are NOT spelled out here; they live in the check, which
+    # assembles them from parts so that even it does not contain them.
     #
-    # Same no-Node arrangement as the job above: no pnpm alias available, so
-    # the script is invoked twice by hand.
+    # The end-to-end self-test the shell version ran as a second step is now
+    # the check's unit tests, which plant each forbidden name and assert it
+    # is found — the same assurance, without staging a probe into the index.
     steps:
       - uses: actions/checkout@v6
 
-      - name: Scan for auth-bypass residue
-        run: bash scripts/lint-no-noaccount.sh
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
 
-      - name: Verify the residue scanner still detects a plant
-        run: bash scripts/lint-no-noaccount.sh --self-test
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Scan for auth-bypass residue
+        # This one check by name. The repo-wide suite includes one that
+        # reads build output, and this job installs without building; an
+        # unknown name is a hard error, so a rename cannot make this job
+        # quietly stop checking anything.
+        run: pnpm lint:repo no-auth-bypass-residue
 
   lint-typecheck-test:
     name: Lint + Typecheck + Test
@@ -103,157 +133,6 @@ jobs:
       - name: Lint
         run: pnpm turbo lint
 
-      - name: Lint hover patterns
-        # Enforce inner ADR 2026-05-21-hover-pattern-standard: ban
-        # `hover:bg-<token>/<2-digit>` Tailwind alpha-modifier hovers
-        # in packages/web/src — solid token swap or `hover:opacity-90`
-        # only. Fast grep; hard-fails the PR on violation.
-        run: pnpm lint:hover
-
-      - name: Lint no raw brand usage (monochrome chrome rule)
-        # Enforce chrome-baseline §F10 Monochrome Chrome Rule: ban raw brand
-        # tokens (bg/text/border/ring-brand-N, var(--brand-...)) in
-        # packages/web/src outside the whitelist (theme/tokens.css,
-        # --brand-logo-primary, pages/studio/**). Studio is the sole exemption
-        # via --brand-accent / --brand-fg / --brand-tint. Authorizing ADR:
-        # Authorized by an internal design ADR (studio brand exemption)
-        run: pnpm lint:no-brand-usage
-
-      - name: Lint no raw design values (anti-drift token guard)
-        # Design-system 9th rebuild anti-drift gate: ban raw px font sizes
-        # (text-[Npx]), raw neutral primitives ([var(--neutral-N)]), raw radius
-        # (rounded-[Npx]), and raw hex colors in packages/web/src — components
-        # must consume design tokens, never hardcode values. Correct token
-        # consumption (h-[var(--btn-chrome)] etc.) is allowed. Logo (BrandMark) +
-        # inpaint brush ink + theme/tokens.css are exempt. See
-        # scripts/lint-no-raw-design-values.sh.
-        run: pnpm lint:no-raw-design-values
-
-      - name: Lint no-extreme token values (design-system 9th rigid guard)
-        # Lock the pure-neutral + off-extreme + scheme-D status-readability
-        # invariants of theme/tokens.css: every --neutral-* / direct-hex
-        # --color-* is R=G=B and bounded (no channel brighter than #f5 / darker
-        # than #12, never #fff/#000), and every status -foreground clears WCAG
-        # AA 4.5:1 on its tint bg in both modes. See
-        # scripts/lint-no-extreme-token-value.sh.
-        run: pnpm lint:no-extreme-token-value
-
-      - name: Lint 1px borders / focus rings (rigid 1px guard)
-        # Enforce the rigid "all borders & focus rings are 1px solid, no glow"
-        # rule across packages/web/src: bans ring-offset, ring width >= 2, and
-        # border width >= 2. See scripts/lint-1px-border.sh.
-        run: pnpm lint:1px-border
-
-      - name: Lint active-border consistency (one neutral activation border)
-        # A NEUTRAL border expressing selection/activation must be
-        # border-active-border (the Input focus colour) — no border-primary /
-        # border-foreground stand-ins (user-ratified 2026-07-11). Colour
-        # borders (border-status-*) are a separate system. shadcn vendor
-        # (components/ui) exempt per ADR 14. See scripts/lint-active-border.sh.
-        run: pnpm lint:active-border
-
-      - name: Lint no-inline-scrollbar (one Scroller component)
-        # Every visible scroller uses OUR Scroller component
-        # (components/ui/scroll-area.tsx), vertical AND horizontal (#1773,
-        # user-ratified 2026-07-15): overlay bar, scroll-only visibility, no
-        # layout space, hover = color only, input state (focus/selection)
-        # untouched by scrollbar interaction. Banned in components: raw
-        # overflow-* scrollers outside the component, webkit scrollbar paint
-        # rules, scrollbar-width/scrollbar-color re-declarations. Hiding via
-        # scrollbar-width:none stays allowed (SpaceTabBar). See
-        # scripts/lint-no-inline-scrollbar.sh.
-        run: pnpm lint:no-inline-scrollbar
-
-      - name: Lint no-native-rendered-ui (self-drawn controls only)
-        # For a creative product, any interactive control whose visual skin is
-        # drawn by the browser/OS renders differently per engine (Chrome vs
-        # Safari) — fatal inconsistency. Bans native <input type=color/date/
-        # time/range>, <select>, and <audio|video controls> in web/src; use the
-        # self-drawn primitive (Slider / Select / react-colorful picker /
-        # MediaPlayer). Generalises the scrollbar guard's lesson to the whole
-        # class so each new native primitive is caught mechanically, not in
-        # review. title-tooltip / native-validation are mandate-only (too noisy
-        # to grep). See packages/web/CLAUDE.md + scripts/lint-no-native-rendered-ui.sh.
-        run: pnpm lint:no-native-rendered-ui
-
-      - name: Lint single tooltip provider (one app-level provider)
-        # The app mounts exactly ONE <TooltipProvider> (App.tsx); its
-        # delayDuration is the calibrated timing every tooltip shares, and
-        # Radix skip-delay grouping works only within one provider. A
-        # component nesting its own provider overrides the timing and splits
-        # skip-delay — the bug that shipped twice (GenerateToolbar 300ms #337,
-        # ThumbnailHoverPreview 200ms). Tooltips inherit the app provider;
-        # TipTap NodeViews too (createPortal inherits context). See
-        # scripts/lint-single-tooltip-provider.sh.
-        run: pnpm lint:single-tooltip-provider
-
-      - name: Lint single toast entry (one wrapper — typed + de-duped)
-        # Every toast routes through @web/lib/toast, never sonner directly. The
-        # wrapper exposes only typed methods (subsumes the old "toast must be
-        # typed" rule — a bare toast()/message() can't compile against it) and
-        # adds a content-derived id so identical repeats refresh one toast
-        # instead of stacking (user 2026-07-18). See
-        # scripts/lint-single-toast-entry.sh.
-        run: pnpm lint:single-toast-entry
-
-      - name: Lint overlay surface (popover panel unification)
-        # Every popover/overlay panel surface uses bg-popover (tooltip inverse
-        # is the only exception): bans bg-elevated / bg-card as a panel bg in
-        # the overlay component set. See scripts/lint-overlay-surface.sh.
-        run: pnpm lint:overlay-surface
-
-      - name: Lint storage-key-prefix (web persisted keys)
-        # Enforce user decision 2026-06-08: every localStorage / sessionStorage
-        # key carries the `breatic.` prefix, routed through the central registry
-        # packages/web/src/lib/storage-keys.ts (STORAGE_KEYS.*). Bans bare
-        # non-prefixed key literals that risk a silent same-origin storage
-        # collision with extensions / sibling apps. The pre-React inline script
-        # in src/index.html is prefix-checked too (it cannot import the
-        # registry). See scripts/lint-storage-key-prefix.sh for scope.
-        run: pnpm lint:storage-key-prefix
-
-      - name: Lint no-CJK in production source + YAML config
-        # Enforce inner DD 2026-05-22-breatic-i18n-migration-rev-3 +
-        # CLAUDE.md prohibition list #13 "no CJK in YAML" (CI maximal-strictness
-        # guard suite, inner ADR 2026-06-01): every user-facing string must
-        # live in locales/*.json and route through the shared t() helper,
-        # and code / comments / YAML config must be English. This grep
-        # hard-fails the PR if any production .ts / .tsx / .css or any
-        # config/workflow YAML (pnpm-lock excluded) carries hardcoded CJK
-        # (tests + vendored shadcn primitives are exempted; see
-        # scripts/lint-no-cjk.sh).
-        run: pnpm lint:no-cjk
-
-      - name: Lint no-trojan-source (CVE-2021-42574 security)
-        # Enforce the source character-set SECURITY guard (CI maximal-
-        # strictness guard suite, inner ADR 2026-06-01): block Trojan Source
-        # attacks — bidirectional-override + invisible control characters
-        # that make the code a human reviewer sees differ from what the
-        # compiler parses (a hidden logic flip can pass review this way).
-        # Detection is anti-trojan-source's public hasConfusablesInFiles API
-        # (scripts/check-trojan-source.mjs), not its bin/ CLI (which crashes
-        # on Node 24). This is the security half of the charset story; the
-        # readability half (no CJK comments) is lint:no-cjk above. It only
-        # flags the dangerous bidi / zero-width subset — ordinary non-ASCII
-        # text (CJK, accents, typography, emoji) is NOT flagged. Hard-fails
-        # the PR. See scripts/lint-no-trojan-source.sh.
-        run: pnpm lint:no-trojan-source
-
-      - name: Lint no-translated-product-noun (i18n DNT glossary)
-        # Enforce the product-term do-not-translate glossary (user decision
-        # 2026-06-17): the 8 product entity / type nouns (Studio / Project /
-        # Collection / Space / Work / Canvas / Document / Timeline) are brand
-        # vocabulary kept in English in every locale, even inside translated
-        # sentences. This blanket guard scans the four non-English locale
-        # catalogs' VALUES and hard-fails if any collision-free translated form
-        # of Project / Collection / Work / Studio / Space survives —
-        # future-proofing every new key. Collision forms (Canvas's form is also
-        # the drawing surface, Timeline's the video track, Document's "a file",
-        # Space's katakana/hangul form a Workspace substring) stay localized and
-        # are enforced per-key by frozen-product-terms.test instead. See
-        # scripts/lint-no-translated-product-noun.sh.
-        run: pnpm lint:no-translated-product-noun
-
       - name: Lint dependency-cruiser (import-boundary rules)
         # Declarative import-boundary enforcement (CI maximal-strictness
         # guard suite, inner ADR 2026-06-01) over all packages/*/src via
@@ -271,264 +150,20 @@ jobs:
         # can't false-positive on a doc-comment naming a banned alias.
         run: pnpm lint:dependency-cruiser
 
-      - name: Lint no-raw-sql-outside-repo (core + server)
-        # Enforce ADR 2026-05-31 "second-pass adjustment" second-layer CI guard: a table's SQL
-        # lives in exactly one *.repo.ts home (one table, one repo home). Raw
-        # sql`...` and Drizzle db.select/.insert/.update/.delete are
-        # forbidden outside *.repo.ts in core + server (db.transaction
-        # orchestration is allowed). This is what stops the auth-role
-        # query — or any query — from scattering and drifting across
-        # services again. See scripts/lint-no-raw-sql-outside-repo.sh.
-        run: pnpm lint:no-raw-sql-outside-repo
+      - name: Build packages
+        run: pnpm turbo build
 
-      - name: Lint no-yjs-documents-sql-outside-repo (one shared table, one repo)
-        # Enforce 2026-06-02 ADR "DB adapter unification": yjs_documents is
-        # shared infra (collab persistence/auth/space-rpc + server project
-        # create/delete/duplicate). no-raw-sql-outside-repo only proves SQL
-        # sits in SOME *.repo.ts; it does NOT prove a SHARED table has a
-        # SINGLE repo. This guard locks the table — by raw name or Drizzle
-        # symbol — to its one home (core/db/yjs-documents.repo.ts) so it can
-        # never scatter across services again. See
-        # scripts/lint-no-yjs-documents-sql-outside-repo.sh.
-        run: pnpm lint:no-yjs-documents-sql-outside-repo
-
-      - name: Lint no-postgres-outside-core (one DB driver home)
-        # Enforce 2026-06-02 ADR "DB adapter unification": the postgres.js
-        # driver may be imported only in @breatic/core (the pool factory +
-        # db/rawPg singletons + pingDb/checkPgReachable). Every other
-        # package reaches Postgres through those core exports + the repos,
-        # so the driver / its pool lifecycle / its `Sql` type never leak
-        # across the package boundary (collab used to hand-roll its own
-        # postgres.js pools). drizzle-orm/postgres-js (the Drizzle adapter)
-        # is a different specifier and is allowed. See
-        # scripts/lint-no-postgres-outside-core.sh.
-        run: pnpm lint:no-postgres-outside-core
-
-      - name: Lint no-ioredis-outside-core (one Redis driver home)
-        # Enforce the 2026-06-02 Redis adapter unification plan: the ioredis driver may
-        # be imported only in @breatic/core (the client factory +
-        # get{Redis,QueueRedis,StreamRedis} singletons + pingRedis + the
-        # re-exported Redis type). Every other package reaches Redis
-        # through those core exports, so the driver / its Redis type never
-        # leak across the package boundary (collab + domain used to import
-        # ioredis directly). Redis is multi-connection by protocol so the
-        # *connections* aren't collapsed — only the *driver package* is
-        # locked to core. See scripts/lint-no-ioredis-outside-core.sh.
-        run: pnpm lint:no-ioredis-outside-core
-
-      - name: Lint no-missing-license-header (every src ts/tsx carries the SPDX header)
-        # Enforce the file-header mandate (CLAUDE.md code style + ARCHITECTURE.md):
-        # every first-party packages/*/src .ts/.tsx file must start with the
-        # Copyright + SPDX-License-Identifier: LicenseRef-BOSL-1.0 header.
-        # shadcn vendor (components/ui) is exempt - third-party IP.
-        # See scripts/lint-no-missing-license-header.sh.
-        run: pnpm lint:no-missing-license-header
-
-      - name: Lint no-notification-name-keys (notifications carry ids, not names)
-        # A stored slug is a snapshot. Renaming a studio releases the old slug
-        # for anyone to claim, and a personal studio's slug IS its owner's
-        # @handle - so a notification holding a copy can end up naming a
-        # stranger, with nothing in the stored string to reveal it. The
-        # consumers read these payloads by string key out of an opaque record,
-        # so re-adding one compiles cleanly and only fails at runtime; the type
-        # checker cannot cover this. See scripts/lint-no-notification-name-keys.sh.
-        run: pnpm lint:no-notification-name-keys
-
-      - name: Lint no-hardcoded-request-ttl (one knob for every deferred decision)
-        # Five flows ask someone to answer later - studio invite, project
-        # invite, studio transfer, project transfer, role upgrade. Four used to
-        # carry their own `const X_TTL_DAYS = 7` and the fifth had no expiry at
-        # all, so a role-upgrade request could sit pending forever. Five copies
-        # is five chances to drift, and re-introducing one compiles perfectly:
-        # nothing breaks until someone edits config/limits.yaml and four of the
-        # five ignore it. See scripts/lint-no-hardcoded-request-ttl.sh.
-        run: pnpm lint:no-hardcoded-request-ttl
-
-      - name: Lint no-collab-auth-table-sql (collab routes auth through core)
-        # Enforce ADR 2026-05-31 "second-pass adjustment" auth unification: collab must NOT
-        # hand-roll the session / role lookups (raw project_members SQL
-        # or a raw :session: redis key). Both moved to @breatic/core
-        # (getSession + loadProjectRole) so auth is identical across
-        # services; this guard locks collab out of re-introducing the
-        # drift. See scripts/lint-no-collab-auth-table-sql.sh.
-        run: pnpm lint:no-collab-auth-table-sql
-
-      - name: Lint no-library-logger (core + shared + domain)
-        # Enforce CLAUDE.md "server-side industrial-grade standards" mandate (commits
-        # adf36d1 / 026c5aa / 201a839): @breatic/core, @breatic/shared
-        # and @breatic/domain must NOT call logger.{info,warn,error,
-        # debug,fatal,trace} or console.* (console output counts as
-        # logging too). Library code throws or returns a sentinel;
-        # the application layer (server route / collab hook / worker job
-        # handler) owns audit logging. Hard-fails the PR on any library
-        # logger/console call. See scripts/lint-no-library-logger.sh for
-        # the exclusion list and rationale.
-        run: pnpm lint:no-library-logger
-
-      - name: Lint no-library-process-exit (core + shared + domain)
-        # Enforce CLAUDE.md "process lifecycle, library layer forbidden" mandate:
-        # @breatic/core, @breatic/shared and @breatic/domain must NOT
-        # call process.exit(). A library throws a typed error
-        # (InfraNotReadyError etc.); the application entry (server /
-        # worker / collab) catches it, logs the context, and decides
-        # whether to process.exit(1). See
-        # scripts/lint-no-library-process-exit.sh for rationale.
-        run: pnpm lint:no-library-process-exit
-
-      - name: Lint service-logging (server + worker + collab entries)
-        # Enforce CLAUDE.md "industrial-grade server standards": every
-        # long-running service entry must wire a logger AND
-        # startHealthServer. collab ran 15 days with dead file logging
-        # (2026-06-01 to 06-16) because a transport died silently; this
-        # stops a logger / health wire from being removed unnoticed. See
-        # scripts/lint-service-logging.sh for rationale.
-        run: pnpm lint:service-logging
-
-      - name: Lint no-relative-import (all packages)
-        # Enforce CLAUDE.md prohibition list (2026-05-29): non-test source must
-        # import via a path alias, never a relative './' or '../' path.
-        # Every package uses a globally-unique prefix (@shared / @core /
-        # @domain / @collab / @worker / @server / @web); no bare @/.
-        # Hard-fails the PR on any relative import in non-test source. See
-        # scripts/lint-no-relative-import.sh for rationale + exclusions.
-        run: pnpm lint:no-relative-import
-
-      - name: Lint test-file-location (all test files under __tests__/)
-        # Every *.test.ts(x) / *.spec.ts(x) lives in a __tests__/ directory,
-        # never colocated next to its source (2026-07-15, user-ratified):
-        # 93% of tests already did, and the unwritten+unguarded convention
-        # let core/domain/server stragglers drift in. Doc alone recurs; this
-        # guard is the enforcement half. Runs --self-test too, so a broken
-        # checker fails CI. See scripts/lint-test-file-location.sh.
-        run: pnpm lint:test-file-location
-
-      - name: Lint doc-links (TSDoc {@link} targets must resolve)
-        # A comment pointing at a deleted symbol is a lie that no other check
-        # catches: tsc, tests and runtime all ignore prose. #1840 found a
-        # comment referencing `insertInitialState`, moved out of the repo
-        # months earlier. This asks a question with a definite answer — does
-        # the symbol resolve — rather than judging whether a sentence is true.
-        # Also runs --self-test, so a checker that can no longer fail fails CI.
-        # See scripts/lint-doc-links.sh for scope and known gaps.
-        run: pnpm lint:doc-links
-
-      - name: Lint eof-newline (every text file ends with a newline)
-        # A file without a trailing newline makes the NEXT edit show the last
-        # existing line as modified, so reviewers read a change nobody made.
-        # #1839 hit this on _journal.json. One byte, one definite answer, zero
-        # possible false positives. See scripts/lint-eof-newline.sh.
-        run: pnpm lint:eof-newline
-
-      - name: Lint migration-style (statement separators + named FKs)
-        # Every migration since 0018 is hand-written, so the two conventions
-        # drizzle-kit used to emit are now the author's job — and #1839 shipped
-        # one missing both. Counts statements on non-comment lines only: prose
-        # headers in this repo contain semicolons, and counting those reported
-        # three untouchable historical migrations as violations.
-        # See scripts/lint-migration-style.sh.
-        run: pnpm lint:migration-style
-
-      - name: Lint no-private-repo-path (public repo must not cite private paths)
-        # This repo is public. A comment citing an internal spec path leaks the
-        # private repo's existence, layout and document names, and is a dead
-        # reference for anyone outside the team. PR #364 removed such citations;
-        # they returned within days because a rule without a guard is a
-        # suggestion. See scripts/lint-no-private-repo-path.sh.
-        run: pnpm lint:no-private-repo-path
-
-      - name: Lint no-cors-wildcard-credentials (security)
-        # Enforce CLAUDE.md prohibition list #5 (CI maximal-strictness
-        # guard suite, inner ADR 2026-06-01): a CORS config must NOT pair
-        # a wildcard origin ("*" / ["*"]) with credentials: true — that
-        # would accept credentialed cross-origin requests from any origin.
-        # Origins must be a specific whitelist (env ALLOWED_ORIGINS).
-        # See scripts/lint-no-cors-wildcard-credentials.sh.
-        run: pnpm lint:no-cors-wildcard-credentials
-
-      - name: Lint no-hardcoded-secrets (security)
-        # Enforce CLAUDE.md prohibition list #4 (CI maximal-strictness
-        # guard suite, inner ADR 2026-06-01): API keys, tokens, passwords
-        # and credentialed connection strings must come from the
-        # environment, never be committed inline in source. Detection is
-        # secretlint + preset-recommend (27 battle-tested provider rules:
-        # AWS / GCP / Stripe / GitHub / Slack / OpenAI / private keys / DB
-        # connection strings / …) — provider token formats are low-FP.
-        # Complements the .husky/pre-commit hook (which blocks secret
-        # FILES); this catches inline secrets. The local-dev default DSN is
-        # allowlisted with justification in .secretlintrc.json. Hard-fails
-        # the PR. See scripts/lint-no-hardcoded-secrets.sh.
-        run: pnpm lint:no-hardcoded-secrets
-
-      - name: Lint no-sync-in-request-path (event loop)
-        # Enforce CLAUDE.md prohibition list #10 (CI maximal-strictness
-        # guard suite, inner ADR 2026-06-01): synchronous fs/child_process
-        # calls (readFileSync / execSync / …) block the event loop and are
-        # forbidden in request-handling code — use the async form. This is
-        # a path proxy: boot-time / first-use loaders (config/, infra/,
-        # *-loader.ts, model-catalog/, fs-sandbox, worker providers/shared)
-        # are allowlisted with justification in the script; prohibition
-        # #10 still needs human review for hot-path sync I/O. See
-        # scripts/lint-no-sync-in-request-path.sh.
-        run: pnpm lint:no-sync-in-request-path
-
-      - name: Lint schema-timestamps (deleted_at + created_at)
-        # Enforce CLAUDE.md soft-delete + created_at mandates (CI maximal-
-        # strictness guard suite, inner ADR 2026-06-01): every Drizzle
-        # pgTable must carry created_at (no exemption) and deleted_at.
-        # deleted_at has a small justified allowlist (payments +
-        # credit_transactions are append-only financial ledgers;
-        # credit_balances derives its soft-delete from users.deleted_at).
-        # See scripts/lint-schema-timestamps.sh.
-        run: pnpm lint:schema-timestamps
-
-      - name: Lint no-drizzle-type-leak (repo boundary)
-        # Enforce CLAUDE.md prohibition list #3 (CI maximal-strictness
-        # guard suite, inner ADR 2026-06-01): Drizzle's $inferSelect /
-        # $inferInsert row-type helpers are allowed ONLY inside *.repo.ts
-        # (mapped to a hand-written domain entity via toEntity). Exporting
-        # them from the schema or using them in a service signature couples
-        # business logic + the API response to the DB column layout. This
-        # is a PROXY (catches explicit $infer tokens, not implicit Drizzle
-        # types) — prohibition #3 still needs human review. See
-        # scripts/lint-no-drizzle-type-leak.sh.
-        run: pnpm lint:no-drizzle-type-leak
-
-      - name: Lint no-param-as-string (all packages)
-        # Enforce 2026-05-30 type-assertion governance: a Hono route
-        # param `c.req.param(name)` already resolves to `string`, so
-        # `... as string` is a redundant cast that lies about a possible
-        # `undefined`. Use getProjectId(c) for the :pid behind
-        # requireRole, or read the param directly. This grep gate is
-        # belt-and-suspenders alongside the type-aware
-        # no-unnecessary-type-assertion eslint rule (which also catches
-        # it). Hard-fails the PR. See scripts/lint-no-param-as-string.sh.
-        run: pnpm lint:no-param-as-string
-
-      - name: Lint no-core-process-env (core + shared + domain)
-        # Enforce CLAUDE.md env-injection mandate: @breatic/core,
-        # @breatic/shared and @breatic/domain must NOT read process.env /
-        # load .env — config ACQUISITION is an application decision. The
-        # composition root (server / worker / collab entry) calls
-        # initCore(process.env) once; library code reads injected config
-        # via the env Proxy / getConfig() / getRawEnvVar(). Hard-fails the
-        # PR on any process.env in library src. See
-        # scripts/lint-no-core-process-env.sh.
-        run: pnpm lint:no-core-process-env
-
-      - name: Build packages (shared → core)
-        run: pnpm turbo build --filter=@breatic/shared --filter=@breatic/core
-
-      - name: Lint no-unresolved-alias-in-dist (after build)
-        # Enforce that shipped dist/ carries no UNRESOLVED internal
-        # path-alias (@shared / @core / @collab / @worker). A multi-entry
-        # tsup build can code-split and leave cross-chunk `@shared/*`
-        # specifiers externalized in the emitted dist — `pnpm build`
-        # exits 0 even with the leak, so a green build is NOT proof the
-        # dist is loadable (the web app crashes at runtime with
-        # "Failed to resolve import"). Runs AFTER the build step above so
-        # dist/ exists. Hard-fails the PR. See
-        # scripts/lint-no-unresolved-alias-in-dist.sh.
-        run: pnpm lint:no-unresolved-alias-in-dist
+      - name: Repo-wide checks (repo-lint)
+        # The invariants ESLint structurally cannot hold: they are about
+        # files it never parses (SQL, YAML, shell, build output) or about
+        # the repository rather than any one file's contents. One step for
+        # all of them — each check reports its own findings, and a check
+        # that cannot run at all is a failure, never a pass.
+        #
+        # After the build, because one of these checks reads dist: it
+        # asserts no internal alias survived, and an unbuilt tree must
+        # not be mistaken for a clean one.
+        run: pnpm lint:repo
 
       - name: Typecheck (all packages)
         # tsc --noEmit across every workspace package (shared / core /

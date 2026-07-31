@@ -21,7 +21,7 @@
  * expired / revoked invitee can be re-invited (a fresh pending row).
  *
  * Drizzle row types never leak past this repo (prohibition #3 /
- * lint:no-drizzle-type-leak): callers see the hand-written shapes below and the
+ * breatic/no-drizzle-type-leak): callers see the hand-written shapes below and the
  * `@breatic/shared` entities.
  */
 

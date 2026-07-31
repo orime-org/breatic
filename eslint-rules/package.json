@@ -1,0 +1,23 @@
+{
+  "name": "@breatic/eslint-rules",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/rule-tester": "8.58.0",
+    "@typescript-eslint/utils": "8.58.0",
+    "vitest": "^3.0.0"
+  },
+  "imports": {
+    "#rules/*": "./src/*.ts"
+  }
+}

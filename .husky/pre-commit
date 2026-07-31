@@ -14,12 +14,19 @@ if git diff --cached --name-only | grep -qE '\.pem$|\.key$|id_rsa'; then
 fi
 
 # Guard: dev-server proxy target must be localhost, never a deployed host.
-# Delegates to the same script CI runs, so the two halves of this
-# defence-in-depth pair cannot drift apart. They used to be separate
+# Runs the same rule CI runs (breatic/no-deployed-host), so the two halves of
+# this defence-in-depth pair cannot drift apart. They used to be separate
 # implementations and BOTH silently stopped working: each filtered on
 # `vite.config.ts` while the file had been renamed to `.mts`, and each only
 # matched a literal `target:` line while the targets moved into
-# `proxy-targets.mts` (#1831). One implementation, two callers.
-if git diff --cached --name-only | grep -qE 'packages/web/(vite\.config\.mts|proxy-targets\.mts|dev-ports\.mts)$'; then
-  bash scripts/lint-dev-proxy-target.sh || exit 1
+# `proxy-targets.mts` (#1831).
+#
+# The trigger is any staged web file, not three filenames — renaming or moving
+# the proxy config must not be a way past the check, which is exactly how the
+# previous version died.
+STAGED_WEB=$(git diff --cached --name-only --diff-filter=ACMR \
+  | grep -E '^packages/web/.*\.(ts|tsx|mts|cts|js|mjs|cjs)$' || true)
+if [ -n "$STAGED_WEB" ]; then
+  echo "$STAGED_WEB" | sed 's|^packages/web/||' | xargs \
+    pnpm --filter @breatic/web exec eslint || exit 1
 fi

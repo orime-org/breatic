@@ -59,7 +59,7 @@ export interface NewNotificationInput {
 /**
  * Map a Drizzle `notifications` row to the domain {@link NotificationEntity}.
  * Keeps the Drizzle `$inferSelect` type contained inside the repo
- * (prohibition #3 / lint:no-drizzle-type-leak) — callers see the
+ * (prohibition #3 / breatic/no-drizzle-type-leak) — callers see the
  * hand-written entity only.
  * @param row - Raw `notifications` table row from a Drizzle select
  * @returns The mapped domain entity (keeps `$inferSelect` out of callers)
@@ -83,7 +83,7 @@ function toEntity(row: typeof notifications.$inferSelect): NotificationEntity {
  * Create a notification row.
  *
  * Caller is the per-type service constructor (e.g.
- * `createRoleUpgradeRequest`) — see {@link notification.service}.
+ * `createRoleUpgradeRequest`) — see `notification.service`.
  * @param input - User, type, payload, and optional project scope to insert
  * @param tx - optional drizzle transaction; threaded so caller can
  *   bundle the INSERT with related writes (e.g. project_members

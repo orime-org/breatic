@@ -1,0 +1,26 @@
+{
+  "name": "@breatic/repo-lint",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#repo-lint/*": "./src/*.ts"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@breatic/eslint-rules": "workspace:*",
+    "@types/node": "^22.0.0",
+    "anti-trojan-source": "^1.11.3",
+    "eslint": "^10.1.0",
+    "plpgsql-parser": "^18.2.2",
+    "minimatch": "^10.2.5",
+    "tsx": "^4.19.0",
+    "yaml": "^2.7.0",
+    "typescript": "~5.8.0",
+    "vitest": "^3.0.0"
+  }
+}

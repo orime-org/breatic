@@ -8,7 +8,7 @@
  *
  * Exercised with a fake client (only `.ping()` is needed) so no real
  * connection is built. core's own test may import the driver type
- * directly (tests are exempt from lint:no-ioredis-outside-core).
+ * directly (tests are exempt from breatic/no-ioredis-outside-core).
  */
 
 import { describe, it, expect, vi } from "vitest";

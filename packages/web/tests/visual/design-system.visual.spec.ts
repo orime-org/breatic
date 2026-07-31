@@ -1,6 +1,6 @@
 /**
  * Design-system visual regression — the third leg of the token-governance trio
- * (token single-source + `lint:no-raw-design-values` + this baseline). It
+ * (token single-source + `breatic/no-raw-design-values` + this baseline). It
  * freezes the migrated design system as a screenshot baseline so any future
  * visual drift is caught automatically, not by eye.
  *

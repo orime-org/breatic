@@ -30,6 +30,7 @@ declare module 'vitest' {
   }
 }
 import { cleanup } from '@testing-library/react';
+import { onlineManager } from '@tanstack/react-query';
 import { setLocale, setLocaleMessages } from '@breatic/shared';
 
 import en from '../../locales/en.json';
@@ -52,9 +53,46 @@ beforeAll(() => {
 // Also reset locale to the default so a test that switched languages
 // doesn't poison the next file in the run.
 afterEach(() => {
+  // The two resets come first and the hygiene sweep last, deliberately: an
+  // exception in the sweep must not be able to skip them. Under one process
+  // per package a skipped `cleanup()` or locale reset does not stay inside
+  // the test that broke — it reaches every file that runs afterwards.
   cleanup();
   setLocale('en');
+  // React Query's online state is a process-wide singleton, so a test that
+  // goes offline to exercise a paused fetch takes every later file with it if
+  // it never comes back — queries sit in `pending` forever and fail somewhere
+  // with no relation to the cause. Restoring it here rather than in the file
+  // that flips it means a test can end any way it likes, including failing
+  // between the two calls.
+  onlineManager.setOnline(true);
+  // Removing a container does not take its sheets out of
+  // `document.styleSheets` in jsdom: they stay listed with
+  // `document.contains(ownerNode) === false`. Re-attaching and removing is
+  // what makes jsdom deregister them — removal is the only event it listens
+  // for, so removing an already-detached node does nothing.
+  //
+  // This is memory hygiene, not correctness: measured, the a11y assertions
+  // reach the same verdict with the ghost count at 134 as they do at 0.
+  for (const sheet of Array.from(document.styleSheets)) {
+    // `ownerNode` is `Element | ProcessingInstruction | null`; only an Element
+    // can be re-attached and removed, so narrow rather than assert.
+    const node = sheet.ownerNode;
+    if (node instanceof Element && !document.contains(node)) {
+      document.head.appendChild(node);
+      node.remove();
+    }
+  }
 });
+
+// A note on the <style> elements vitest injects for each file's CSS imports:
+// they land in the one head every file in the package shares and nothing takes
+// them back out. Measured over a full one-process run, that accumulation peaks
+// at three — not worth reclaiming, and reclaiming it is actively wrong: a
+// library that injects its stylesheet once per process (sonner) never injects
+// it again, so giving sheets back leaves every later file without CSS the
+// isolated run had. An earlier commit on this branch claimed a peak of 105;
+// that figure does not reproduce, and what it actually counted is not known.
 
 // jsdom lacks several APIs that Radix / cmdk / shadcn primitives use.
 // Provide minimal polyfills so component tests focus on contracts.

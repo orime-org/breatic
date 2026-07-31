@@ -2,7 +2,6 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "baseUrl": ".",
@@ -10,9 +9,11 @@
       "@shared/*": ["../shared/src/*"],
       "@core/*": ["../core/src/*"],
       "@domain/*": ["../domain/src/*"],
-      "@collab/*": ["../collab/src/*"],
       "@worker/*": ["../worker/src/*"]
     }
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "vitest.config.ts"
+  ]
 }

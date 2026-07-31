@@ -1,2 +1,4 @@
 packages:
   - "packages/*"
+  - "eslint-rules"
+  - "repo-lint"

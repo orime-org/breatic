@@ -27,7 +27,7 @@ export * as schema from "@core/db/schema.js";
 // Yjs document store schema (separate database — see `yjsDb`). Exported
 // so the collab-side repo can import the table definition from core.
 // Wildcard re-export (not a named `{ yjsDocuments }`) so the
-// lint:no-yjs-documents-sql-outside-repo guard's symbol scan doesn't
+// breatic/no-yjs-documents-outside-repo guard's symbol scan doesn't
 // trip on the barrel — it gates QUERIES, and a re-export isn't one.
 export * from "@core/db/yjs-schema.js";
 // Pure initial-meta-doc encoder — stays in core (no DB dependency);
@@ -119,6 +119,7 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // task / node-history / agent / model-catalog / canvas-lock) lives in
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
+export * as projectsRepo from "@core/project/projects.repo.js";
 export {
   projectActivitiesRepo,
   encodeActivityCursor,

@@ -17,7 +17,7 @@ export interface SupportedLang {
  * this list). Each `nativeName` is written in its own script so the
  * option reads correctly to a speaker of that language regardless of
  * the active UI locale; these are constant product data, intentionally
- * NOT localized (hence the `lint:no-cjk` allowlist entry for this file).
+ * NOT localized (hence this file's entry in the no-cjk check's allowlist).
  */
 export const SUPPORTED_LANGS: SupportedLang[] = [
   { code: 'en', glyph: 'EN', nativeName: 'English' },

@@ -4,7 +4,9 @@
 /**
  * Central registry of every browser-persisted (localStorage) key.
  *
- * One project-wide rule, enforced by `lint:storage-key-prefix`: every
+ * One project-wide rule, enforced by the `breatic/storage-key-prefix` ESLint
+ * rule and, for the inline script in index.html that cannot import this file,
+ * by the storage-key-prefix-html check: every
  * persisted key carries the `breatic.` prefix, so the app's keys never
  * collide with another tenant on the same origin, a browser extension, or a
  * future sibling app. Add new keys HERE and reference `STORAGE_KEYS.*` at the
@@ -17,7 +19,7 @@
  * key value, update that inline `<script>` too.
  */
 
-/** The prefix every persisted key must carry (enforced by lint:storage-key-prefix). */
+/** The prefix every persisted key must carry. */
 export const STORAGE_PREFIX = 'breatic.';
 
 /**

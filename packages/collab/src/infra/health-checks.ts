@@ -68,7 +68,8 @@ export interface CollabHealthProbes {
 /**
  * Assemble the `/healthz` check list for the collab service.
  * @param probes - Per-dependency reachability thunks
- * @returns The check array to hand to {@link startHealthServer}
+ * @returns The check array to hand to `startHealthServer`, which core owns
+ *   and this file does not import
  */
 export function buildCollabHealthChecks(probes: CollabHealthProbes): HealthCheck[] {
   return [
