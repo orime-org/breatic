@@ -414,6 +414,25 @@ export default tseslint.config(
     },
   },
   {
+    // Where the five deferred decisions live — studio invite, project invite,
+    // studio transfer, project transfer, role upgrade. Their shared TTL is
+    // config/limits.yaml -> deferred_request_ttl_days, reached through
+    // deferredRequestExpiry(); that helper lives in server/src/config, outside
+    // this tree, so it needs no exception. Session lifetime is deliberately
+    // out of scope: a 30-day session is a different concept that happens to be
+    // measured in days, and sweeping it in would make this rule about day
+    // arithmetic rather than about request TTLs.
+    //
+    // Tests are exempt because they legitimately construct arbitrary instants,
+    // including deliberately-expired ones — which is exactly how the expiry
+    // gate is verified.
+    files: ["packages/server/src/modules/**/*.ts"],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
+    rules: {
+      "breatic/no-hardcoded-request-ttl": "error",
+    },
+  },
+  {
     // Only test files, and deliberately not excluding them: this is the one
     // rule whose subject IS the test file. It reads the path rather than the
     // contents, so the block only has to put it in front of the right files.
