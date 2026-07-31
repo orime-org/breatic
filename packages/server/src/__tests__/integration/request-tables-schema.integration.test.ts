@@ -98,11 +98,20 @@ const EXPECTED_INDEXES = [
   "studio_transfers_one_pending",
 ] as const;
 
+// These three catalog queries use postgres.js's `IN ${sql([...])}` list form,
+// which expands to one scalar parameter per element. The tempting
+// `= ANY(${sql.array([...])})` is TIMING-DEPENDENT and must not be used here:
+// `sql.array` types a string array as OID 25 (scalar text — `inferType` has no
+// string branch, so it falls through to the `|| 25` default), and the real
+// array OID is patched in from `typeArrayMap`, a shared map that starts empty
+// and is filled by a `pg_type` query when a pooled connection comes up. Serialize
+// a parameter before that lands and Postgres receives scalar text, answering
+// "op ANY/ALL (array) requires array on right side".
 describe("the three request tables exist with their uniqueness", () => {
   it("all three tables are present", async () => {
     const rows = await sql<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name = ANY(${sql.array([...EXPECTED_TABLES])})
+      WHERE table_schema = 'public' AND table_name IN ${sql([...EXPECTED_TABLES])}
       ORDER BY table_name
     `;
     expect(rows.map((r) => r.table_name).sort()).toEqual([...EXPECTED_TABLES].sort());
@@ -111,7 +120,7 @@ describe("the three request tables exist with their uniqueness", () => {
   it("all three partial unique indexes are present", async () => {
     const rows = await sql<{ indexname: string }[]>`
       SELECT indexname FROM pg_indexes
-      WHERE schemaname = 'public' AND indexname = ANY(${sql.array([...EXPECTED_INDEXES])})
+      WHERE schemaname = 'public' AND indexname IN ${sql([...EXPECTED_INDEXES])}
       ORDER BY indexname
     `;
     expect(rows.map((r) => r.indexname).sort()).toEqual([...EXPECTED_INDEXES].sort());
@@ -121,7 +130,7 @@ describe("the three request tables exist with their uniqueness", () => {
     const rows = await sql<{ table_name: string; is_nullable: string }[]>`
       SELECT table_name, is_nullable FROM information_schema.columns
       WHERE table_schema = 'public' AND column_name = 'expires_at'
-        AND table_name = ANY(${sql.array([...EXPECTED_TABLES])})
+        AND table_name IN ${sql([...EXPECTED_TABLES])}
     `;
     expect(rows).toHaveLength(EXPECTED_TABLES.length);
     expect(rows.every((r) => r.is_nullable === "NO")).toBe(true);
