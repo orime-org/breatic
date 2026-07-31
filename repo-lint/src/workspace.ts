@@ -47,6 +47,24 @@ export function workspaceGlobs(context: CheckContext): string[] {
   return globs;
 }
 
+/** The file whose presence makes a directory a package. */
+const MANIFEST = "package.json";
+
+/**
+ * Turns a workspace entry into a glob over manifest paths.
+ *
+ * Which is how pnpm globs them: the entries name directories, and pnpm looks
+ * for a manifest beneath each. The distinction is not cosmetic — matching a
+ * glob against the directory answers differently at the exclusion's own
+ * edge, because a trailing `/**` requires a segment after it while the same
+ * glob over `<dir>/package.json` has one.
+ * @param entry A workspace entry, without any leading `!`.
+ * @returns The glob to match a manifest path against.
+ */
+function overManifests(entry: string): string {
+  return `${entry.replace(/\/+$/, "")}/${MANIFEST}`;
+}
+
 /**
  * Decides whether a manifest belongs to a package the workspace declares.
  *
@@ -56,21 +74,27 @@ export function workspaceGlobs(context: CheckContext): string[] {
  * path segment, so `**` looked exactly one directory deep, and the leading
  * `!` became a literal that matched nothing. So the globs go to a glob
  * matcher, and the exclusion form pnpm documents is honoured as one.
+ *
+ * Matched over manifest paths rather than over directories, which is the
+ * shape pnpm globs and the shape that agrees with it at the edge: measured
+ * against pnpm, a workspace excluding `**\/fixtures/**` drops a package at
+ * `packages/core/fixtures` as well as everything under it, while matching
+ * the directory kept the first of the two.
  * @param globs The workspace's `packages` entries, in order.
  * @returns A predicate over repo-relative manifest paths.
  */
 export function declaredBy(
   globs: readonly string[],
 ): (path: string) => boolean {
-  const included = globs.filter((glob) => !glob.startsWith("!"));
+  const included = globs
+    .filter((glob) => !glob.startsWith("!"))
+    .map(overManifests);
   const excluded = globs
     .filter((glob) => glob.startsWith("!"))
-    .map((glob) => glob.slice(1));
+    .map((glob) => overManifests(glob.slice(1)));
   return (path: string): boolean => {
-    if (!path.endsWith("/package.json")) return false;
-    const directory = path.slice(0, -"/package.json".length);
-    if (excluded.some((glob) => minimatch(directory, glob))) return false;
-    return included.some((glob) => minimatch(directory, glob));
+    if (excluded.some((glob) => minimatch(path, glob))) return false;
+    return included.some((glob) => minimatch(path, glob));
   };
 }
 
