@@ -31,32 +31,43 @@ type RuleOverrides = Record<string, { enabled: boolean }>;
  * holding two buttons still passed, so the assertion had gone blind to our own
  * markup. Excluding the nodes keeps the rule live for everything we write.
  *
- * What is left unexplained is narrower than "the guards misbehave", and worth
- * writing down because it also decides how much this rule covers.
- * `aria-hidden-focus` runs its `focusable-modal-open` check first: while a
- * modal is open, focusable content behind it is unreachable anyway, so the
- * rule reports nothing. axe decides "a modal is open" by looking for a
- * `dialog, [role=dialog], [aria-modal=true]` in the scanned tree that it also
- * considers visible on screen (axe-core 4.11 `isModalOpen`), and in jsdom that
- * is the only path to true — the fallback probes `elementsFromPoint`, which
- * jsdom does not implement usefully.
+ * How much this rule covers at all is a separate matter, and it is less than
+ * it looks. `aria-hidden-focus` includes a `focusable-modal-open` check, and
+ * axe-core 4.11's `focusableModalOpenEvaluate` returns `undefined` — not a
+ * failure — once `isModalOpen()` is true: with a modal up, focusable content
+ * behind it is unreachable anyway, so axe declines to judge. An `undefined`
+ * check lands the result in `incomplete`, and `toHaveNoViolations` reads only
+ * `violations`. So whenever axe sees an open modal, this rule cannot fail a
+ * test here, silently. Measured on one of these dialog suites run alone: a
+ * planted `aria-hidden` violation came back `violations=0 incomplete=1`.
  *
- * Measured: on its own, this assertion sees zero violations even with the rule
- * on, so axe is finding the dialog. In a full package run, with exactly one
- * `[role=dialog]` present and its display, visibility and opacity identical,
- * axe reports the guards — which it can only do if it stopped counting that
- * dialog as an open modal. So some input to axe's visibility walk differs, and
- * it is not: leftover DOM, the guards' attributes or computed style, the guard
- * nodes surviving across files (they do not — each file gets fresh ones),
- * style-sheet count (equal counts still fail), `@xyflow/react`'s stylesheet
- * (injecting it into an isolated run changes nothing), or axe-core's cache and
- * teardown (resetting both changes nothing).
+ * Note that axe looks for that modal — `dialog, [role=dialog],
+ * [aria-modal=true]`, visible on screen — across the whole document, not
+ * inside the container passed here: `axe._tree` is built from
+ * `ownerDocument.documentElement` regardless of include/exclude. A dialog left
+ * in the body by an earlier file therefore counts.
  *
- * The practical consequence: inside an open dialog this rule covers our markup
- * in a full run and is inert in a single-file run. Excluding the guards is
- * what keeps the full run — the one CI does — honest.
+ * Which leaves one thing measured but unexplained. Run alone, these assertions
+ * see zero violations even with the rule on, so axe is finding the dialog. In
+ * a full package run, with exactly one `[role=dialog]` in the document and its
+ * display, visibility and opacity identical, axe reports the guards — which it
+ * can only do having stopped counting that dialog as an open modal. Some input
+ * to axe's visibility walk differs between the two runs and has not been
+ * found; ruled out are leftover DOM, the guards' attributes and computed
+ * style, the guard nodes surviving across files (they do not — each file gets
+ * fresh ones), style-sheet count (equal counts still fail), `@xyflow/react`'s
+ * stylesheet (injecting it into a lone run changes nothing), and axe-core's
+ * cache and teardown (resetting both changes nothing).
+ *
+ * So: excluding the guards is what keeps the full run — the one CI does —
+ * reporting our own markup instead of Radix's. It does not make the rule
+ * enforced in a single-file run; nothing here does.
+ *
+ * Flat, not nested. axe reads a nested array as a frame selector chain
+ * ("this selector, inside that frame"), so `[['a', 'b']]` would quietly mean
+ * "b inside frame a" rather than "a and b".
  */
-const EXCLUDE_RADIX_FOCUS_GUARDS = [['[data-radix-focus-guard]']];
+const EXCLUDE_RADIX_FOCUS_GUARDS = ['[data-radix-focus-guard]'];
 
 /**
  * Run axe-core against `container` and assert there are no violations.

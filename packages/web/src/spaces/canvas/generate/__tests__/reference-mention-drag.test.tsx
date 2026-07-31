@@ -920,11 +920,15 @@ describe('drag source restore on drop (#1776, Safari selection-follows-drop-care
    * ProseMirror derives that string from a module-level counter — the first
    * `new PluginKey('x')` in a process yields `x$`, the next `x$1`, and so on
    * — so the literal is only correct while this file has the process to
-   * itself. Running the package in one process (measured) loads this module
-   * three times and the plugin arrives as `referenceMentionCaret$2`; the
-   * lookup then finds nothing and every test here dies on a property of
-   * undefined. The same counter is why the notes on `y-sync$` warn that a
-   * duplicate copy of a package silently breaks name-based lookup.
+   * itself. With one process per package the module is re-evaluated once per
+   * test file that reaches it, and eight files do, directly or through
+   * `reference-mention` / `PromptEditor` / `GeneratePanelContainer` /
+   * `CanvasSpace`. Which suffix this file then sees depends on where vitest
+   * schedules it, and that order is not fixed — the sequencer sorts by the
+   * previous run's durations, falling back to file size. So no literal is
+   * right; the key object is. The same counter is why the notes on `y-sync$`
+   * warn that a duplicate copy of a package silently breaks name-based
+   * lookup.
    */
   function handleDropOf(editor: CoreEditor): (view: unknown, event: unknown, slice: unknown, moved: boolean) => boolean {
     const plugin = referenceMentionCaretKey.get(editor.state);

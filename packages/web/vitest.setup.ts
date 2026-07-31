@@ -75,8 +75,10 @@ afterEach(() => {
   // This is memory hygiene, not correctness: measured, the a11y assertions
   // reach the same verdict with the ghost count at 134 as they do at 0.
   for (const sheet of Array.from(document.styleSheets)) {
-    const node = sheet.ownerNode as Element | null;
-    if (node !== null && !document.contains(node)) {
+    // `ownerNode` is `Element | ProcessingInstruction | null`; only an Element
+    // can be re-attached and removed, so narrow rather than assert.
+    const node = sheet.ownerNode;
+    if (node instanceof Element && !document.contains(node)) {
       document.head.appendChild(node);
       node.remove();
     }
