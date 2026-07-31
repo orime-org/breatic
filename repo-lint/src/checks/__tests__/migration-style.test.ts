@@ -8,12 +8,20 @@ const dir = "packages/core/src/db/migrations";
 
 /**
  * Wraps one migration body as a context.
+ *
+ * The journal comes with it because that file is what marks the directory as
+ * a migration set — drizzle writes and maintains one in every folder it
+ * manages, and the check finds folders by it rather than by a path written
+ * down here.
  * @param sql The migration text.
  * @param name The file name, defaulting to a plausible one.
  * @returns A context over that one migration.
  */
 function migration(sql: string, name = "0018_thing.sql") {
-  return fakeContext({ [`${dir}/${name}`]: sql });
+  return fakeContext({
+    [`${dir}/meta/_journal.json`]: "{}",
+    [`${dir}/${name}`]: sql,
+  });
 }
 
 describe("migration-style", () => {
@@ -168,10 +176,42 @@ ALTER TABLE "a" ADD COLUMN "c" text;
 
   it("covers the yjs migration folder as well", async () => {
     const context = fakeContext({
+      "packages/core/src/db/migrations-yjs/meta/_journal.json": "{}",
       "packages/core/src/db/migrations-yjs/0001_a.sql":
         'ALTER TABLE "a" ADD COLUMN "x" text;\nALTER TABLE "a" ADD COLUMN "y" text;\n',
     });
     await expect(migrationStyle.run(context)).resolves.toHaveLength(1);
+  });
+
+  it("finds a migration set the repository gains, wherever it is put", async () => {
+    // Both folders were named in a pattern here, and a third database is
+    // something this repository has already done once — the yjs store is the
+    // second. A new set under a path the pattern does not spell would go
+    // unchecked while the two named ones kept it green, which is the one
+    // failure a guard must not have. Drizzle writes a journal into every
+    // folder it manages, so the folders are found by that.
+    const context = fakeContext({
+      "packages/core/src/db/migrations/meta/_journal.json": "{}",
+      "packages/core/src/db/migrations/0018_thing.sql":
+        'ALTER TABLE "a" ADD COLUMN "x" text;\n',
+      "packages/analytics/src/db/migrations/meta/_journal.json": "{}",
+      "packages/analytics/src/db/migrations/0001_a.sql":
+        'ALTER TABLE "a" ADD COLUMN "x" text;\nALTER TABLE "a" ADD COLUMN "y" text;\n',
+    });
+    const findings = await migrationStyle.run(context);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.file).toBe("packages/analytics/src/db/migrations/0001_a.sql");
+  });
+
+  it("passes over a snapshot beside the migrations", async () => {
+    // The meta folder holds drizzle's own JSON, not SQL, and reading it as a
+    // migration would blame the tool's bookkeeping.
+    const context = fakeContext({
+      [`${dir}/meta/_journal.json`]: "{}",
+      [`${dir}/meta/0000_snapshot.json`]: "{}",
+      [`${dir}/0018_thing.sql`]: 'ALTER TABLE "a" ADD COLUMN "x" text;\n',
+    });
+    await expect(migrationStyle.run(context)).resolves.toEqual([]);
   });
 
   it("accepts a migration that ends with the marker", async () => {

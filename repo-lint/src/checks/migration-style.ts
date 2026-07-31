@@ -3,8 +3,45 @@
 import { loadModule, parsePlpgsqlBody, parseSql } from "plpgsql-parser";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 
-/** The two hand-written migration folders. */
-const MIGRATION = /^packages\/core\/src\/db\/migrations(-yjs)?\/[^/]+\.sql$/;
+/** The journal drizzle writes into every folder it manages a set in. */
+const JOURNAL = /^(.+)\/meta\/_journal\.json$/;
+
+/**
+ * Every folder holding a drizzle migration set.
+ *
+ * Found by the journal rather than named in a pattern here. Two folders were
+ * spelt out, and a third database is something this repository has already
+ * done once — the yjs document store is the second. A set added under a path
+ * the pattern did not spell would go unchecked while the two named ones kept
+ * the check green, and a guard reporting clean about files it never looked
+ * for is the failure this whole suite exists to remove. The journal is
+ * drizzle's own bookkeeping, present in every set it manages and in nothing
+ * else, so it marks the folders without anyone having to remember to.
+ * @param context The check context.
+ * @returns Repo-relative migration folders.
+ * @throws {Error} When the repository holds no migration journal at all.
+ */
+function migrationFolders(context: CheckContext): string[] {
+  return context
+    .files((path) => JOURNAL.test(path), "drizzle migration journals")
+    .map((path) => JOURNAL.exec(path)?.[1])
+    .filter((folder): folder is string => folder !== undefined);
+}
+
+/**
+ * Whether a path is a migration sitting directly in one of the folders.
+ *
+ * Directly, because drizzle keeps its snapshots in a `meta` subfolder and
+ * those are its own bookkeeping rather than anyone's migration.
+ * @param folders The migration folders.
+ * @param path A repo-relative path.
+ * @returns True when the path is a migration in one of them.
+ */
+function migrationIn(folders: readonly string[], path: string): boolean {
+  if (!path.endsWith(".sql")) return false;
+  const cut = path.lastIndexOf("/");
+  return cut >= 0 && folders.includes(path.slice(0, cut));
+}
 
 /** The marker drizzle splits a migration file on. */
 const BREAKPOINT = "--> statement-breakpoint";
@@ -304,8 +341,9 @@ export const migrationStyle = {
   name: "migration-style",
   description: "Migrations separate statements and name their foreign keys",
   async run(context: CheckContext): Promise<Finding[]> {
+    const folders = migrationFolders(context);
     const migrations = context.files(
-      (path) => MIGRATION.test(path),
+      (path) => migrationIn(folders, path),
       "hand-written migrations",
     );
 
