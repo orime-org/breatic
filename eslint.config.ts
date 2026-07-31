@@ -294,7 +294,12 @@ export default tseslint.config(
     // surfaces. Repos get their own block for the one exemption they need —
     // mapping the row is their job — because `ignores` applies to every rule
     // in a block, and neither of the two rules below should stop at a repo.
-    files: ["packages/{collab,core,domain,server,shared,worker}/src/**/*.{ts,tsx}"],
+    //
+    // The whole package, not just src/: the shell guard this replaced ran
+    // `find packages -name '*.ts'`, and narrowing it to src/ on the way into
+    // ESLint quietly dropped every file at the package root. A drizzle row
+    // type leaking out of a drizzle.config.ts is the same leak.
+    files: ["packages/{collab,core,domain,server,shared,worker}/**/*.{ts,tsx}"],
     ignores: [
       "**/*.repo.ts",
       "**/__tests__/**",
@@ -307,8 +312,10 @@ export default tseslint.config(
   },
   {
     // A route parameter asserted into a string, and a wildcard CORS origin
-    // shipped with credentials, are wrong in a repo as much as anywhere.
-    files: ["packages/{collab,core,domain,server,shared,worker}/src/**/*.{ts,tsx}"],
+    // shipped with credentials, are wrong in a repo as much as anywhere — and
+    // as wrong at the package root as inside src/, which is where the shell
+    // guard these replaced looked and where narrowing to src/ stopped looking.
+    files: ["packages/{collab,core,domain,server,shared,worker}/**/*.{ts,tsx}"],
     ignores: [
       "**/__tests__/**",
       "**/*.test.{ts,tsx}",

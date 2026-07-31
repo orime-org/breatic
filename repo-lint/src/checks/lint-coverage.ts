@@ -15,7 +15,51 @@ interface Manifest {
 const WORKSPACE = "pnpm-workspace.yaml";
 
 /**
- * Matches the manifest of every package the workspace declares.
+ * Decides whether a manifest belongs to a package the workspace declares.
+ *
+ * pnpm's own documented example for this file is `packages/**` alongside
+ * `!**\/test/**`, and both spellings defeated the converter that used to
+ * translate these globs into a regular expression by hand: `*` became one
+ * path segment, so `**` looked exactly one directory deep, and `!` became a
+ * literal that matched nothing. A package that is never looked for is never
+ * reported as unlinted, which is this check's whole subject — so the globs go
+ * to a glob matcher, and the exclusion form pnpm documents is honoured as an
+ * exclusion.
+ * @param globs The workspace's `packages` entries, in order.
+ * @returns A predicate over repo-relative manifest paths.
+ */
+function declaredBy(globs: readonly string[]): (path: string) => boolean {
+  const included = globs.filter((glob) => !glob.startsWith("!"));
+  const excluded = globs
+    .filter((glob) => glob.startsWith("!"))
+    .map((glob) => glob.slice(1));
+  return (path: string): boolean => {
+    if (!path.endsWith("/package.json")) return false;
+    const directory = path.slice(0, -"/package.json".length);
+    if (excluded.some((glob) => minimatch(directory, glob))) return false;
+    return included.some((glob) => minimatch(directory, glob));
+  };
+}
+
+/**
+ * Whether a lint script hands ESLint the whole package.
+ *
+ * Asked as "is `.` among the words", not by working out which words are paths
+ * and which are flag values — that is shell parsing, and every attempt at it
+ * in this suite has been a source of quiet wrong answers. `.` is the only
+ * argument that means the package, so its presence is the question, and flags
+ * around it change nothing.
+ * @param script The package's `lint` script.
+ * @returns True when ESLint is pointed at the package rather than into it.
+ */
+function coversThePackage(script: string): boolean {
+  return script
+    .split(/\s+/)
+    .some((word) => word.replace(/^['"]|['"]$/g, "") === ".");
+}
+
+/**
+ * Reads the package globs the workspace declares.
  *
  * Read from pnpm-workspace.yaml rather than restated. This check exists to
  * report a package nothing lints, and a hand-kept list of where packages live
@@ -23,10 +67,10 @@ const WORKSPACE = "pnpm-workspace.yaml";
  * so it is never reported as unlinted. Restating the list here would put the
  * check's own blind spot in the same shape as the defect it reports.
  * @param context The check context.
- * @returns A pattern over repo-relative manifest paths.
+ * @returns The `packages` entries, in the order the file lists them.
  * @throws {Error} When the workspace file is missing or declares no packages.
  */
-function workspaceManifests(context: CheckContext): RegExp {
+function workspaceGlobs(context: CheckContext): string[] {
   if (!context.exists(WORKSPACE)) {
     throw new Error(
       `${WORKSPACE} is not there, so this check cannot know which packages the workspace has. Guessing would mean reporting clean for packages it never looked for.`,
@@ -51,10 +95,7 @@ function workspaceManifests(context: CheckContext): RegExp {
       `${WORKSPACE} declares no packages, so this check would look at nothing and report clean.`,
     );
   }
-  const alternatives = globs.map((glob) =>
-    glob.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]+"),
-  );
-  return new RegExp(`^(${alternatives.join("|")})/package\\.json$`);
+  return globs;
 }
 
 /**
@@ -87,9 +128,9 @@ export const lintCoverage = {
   name: "lint-coverage",
   description: "Every workspace package runs the linter",
   run(context: CheckContext): Finding[] {
-    const declared = workspaceManifests(context);
+    const declared = declaredBy(workspaceGlobs(context));
     const manifests = context.files(
-      (path) => declared.test(path),
+      declared,
       "workspace package manifests",
     );
 
@@ -109,6 +150,13 @@ export const lintCoverage = {
         findings.push({
           file,
           message: `its \`lint\` script is \`${script}\`, which does not run eslint — the shared rules are enforced by eslint alone, so nothing enforces them here.`,
+        });
+        continue;
+      }
+      if (!coversThePackage(script)) {
+        findings.push({
+          file,
+          message: `its \`lint\` script is \`${script}\`, which points eslint at part of the package rather than at \`.\`. Whatever sits outside that path is read by no rule at all — which is how every config file at every package root came to be linted by nothing, with this check reporting clean because the package did run the linter.`,
         });
       }
     }

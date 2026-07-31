@@ -49,9 +49,9 @@ function contextWith(files: Record<string, string>) {
 describe("lint-coverage", () => {
   it("passes when every package lints", () => {
     const context = contextWith({
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
       "packages/web/package.json": manifest({ lint: "eslint ." }),
-      "repo-lint/package.json": manifest({ lint: "eslint src/" }),
+      "repo-lint/package.json": manifest({ lint: "eslint ." }),
     });
     expect(lintCoverage.run(context)).toEqual([]);
   });
@@ -60,12 +60,34 @@ describe("lint-coverage", () => {
     // The failure this exists for: every rule goes dark for that package
     // and the whole suite still reports green.
     const context = contextWith({
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
       "packages/worker/package.json": manifest({ build: "tsup" }),
     });
     const findings = lintCoverage.run(context);
     expect(findings).toHaveLength(1);
     expect(findings[0]?.file).toBe("packages/worker/package.json");
+  });
+
+  it("catches a lint script that points eslint at a subdirectory", () => {
+    // Eight packages ran `eslint src/`, so every config file at the package
+    // root was read by no rule at all — and the suite reported clean, because
+    // "this package runs the linter" was true and "the linter sees the
+    // package" was never asked. Narrowing it again should not be silent.
+    const context = contextWith({
+      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+    });
+    const findings = lintCoverage.run(context);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toMatch(/src\//);
+  });
+
+  it("accepts an invocation that covers the package and carries flags", () => {
+    const context = contextWith({
+      "packages/core/package.json": manifest({
+        lint: "eslint . --max-warnings 0",
+      }),
+    });
+    expect(lintCoverage.run(context)).toEqual([]);
   });
 
   it("catches a lint script that does not run eslint", () => {
@@ -90,7 +112,7 @@ describe("lint-coverage", () => {
     // The root manifest is a manifest and is not a workspace package; the
     // globs decide, so it is never asked for a lint script of its own.
     const context = contextWith({
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
     });
     expect(lintCoverage.run(context)).toEqual([]);
   });
@@ -98,7 +120,7 @@ describe("lint-coverage", () => {
   it("ignores a manifest nested deeper than a package root", () => {
     const context = contextWith({
       "packages/web/src/thing/package.json": manifest({}),
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
     });
     expect(lintCoverage.run(context)).toEqual([]);
   });
@@ -121,8 +143,8 @@ describe("lint-coverage", () => {
           "lint:dependency-cruiser": "depcruise --config x packages/*/src",
         },
       }),
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
-      "repo-lint/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
+      "repo-lint/package.json": manifest({ lint: "eslint ." }),
     });
     const findings = lintCoverage.run(context);
     expect(findings).toHaveLength(1);
@@ -142,9 +164,9 @@ describe("lint-coverage", () => {
             "depcruise --config x packages/core/src repo-lint/src",
         },
       }),
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
       "packages/web/package.json": manifest({ lint: "eslint ." }),
-      "repo-lint/package.json": manifest({ lint: "eslint src/" }),
+      "repo-lint/package.json": manifest({ lint: "eslint ." }),
     });
     const findings = lintCoverage.run(context);
     expect(findings).toHaveLength(1);
@@ -162,8 +184,8 @@ describe("lint-coverage", () => {
             "depcruise --config x packages/*/src vendor/repo-lint/src",
         },
       }),
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
-      "repo-lint/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
+      "repo-lint/package.json": manifest({ lint: "eslint ." }),
     });
     const findings = lintCoverage.run(context);
     expect(findings.some((f) => f.message.includes("repo-lint/src"))).toBe(true);
@@ -175,7 +197,7 @@ describe("lint-coverage", () => {
     // every package came back uncruised-but-unreported.
     const context = fakeContext({
       ...WORKSPACE,
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
     });
     expect(() => lintCoverage.run(context)).toThrow(/package\.json is not there/);
   });
@@ -183,7 +205,7 @@ describe("lint-coverage", () => {
   it("refuses rather than reports clean when the cruise script is gone", () => {
     const context = contextWith({
       "package.json": JSON.stringify({ scripts: { test: "turbo test" } }),
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
     });
     expect(() => lintCoverage.run(context)).toThrow(/no `lint:dependency-cruiser`/);
   });
@@ -196,8 +218,8 @@ describe("lint-coverage", () => {
             "depcruise --config x packages/*/src repo-lint/src",
         },
       }),
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
-      "repo-lint/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
+      "repo-lint/package.json": manifest({ lint: "eslint ." }),
     });
     expect(lintCoverage.run(context)).toEqual([]);
   });
@@ -210,7 +232,7 @@ describe("lint-coverage", () => {
     const context = fakeContext({
       ...ROOT,
       "pnpm-workspace.yaml": 'packages:\n  - "packages/*"\n  - "tools/*"\n',
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
       "tools/codegen/package.json": manifest({ build: "tsc" }),
     });
     const findings = lintCoverage.run(context);
@@ -236,7 +258,7 @@ describe("lint-coverage", () => {
       ...ROOT,
       "pnpm-workspace.yaml":
         'packages:\n  - "packages/*"\n  # the two guard packages live at the root\n  - "repo-lint"\n',
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
       "repo-lint/package.json": manifest({ build: "tsc" }),
     });
     const findings = lintCoverage.run(context);
@@ -248,18 +270,54 @@ describe("lint-coverage", () => {
       ...ROOT,
       "pnpm-workspace.yaml":
         'packages:\n  - "packages/*"\n\n  - "repo-lint"\n',
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
       "repo-lint/package.json": manifest({ build: "tsc" }),
     });
     const findings = lintCoverage.run(context);
     expect(findings.some((f) => f.file === "repo-lint/package.json")).toBe(true);
   });
 
+  // pnpm's own documented example for this file is
+  // `packages/**` plus `!**/test/**`. A hand-written glob-to-regex converter
+  // turned `*` into one path segment and knew nothing of `!`, so the first
+  // spelling looked only one directory deep and the second matched everything.
+  // A package that is never looked for is never reported as unlinted, which
+  // is the failure this check exists to report.
+  it("finds a package nested deeper than one directory under the glob", () => {
+    const context = fakeContext({
+      ...ROOT,
+      "pnpm-workspace.yaml": 'packages:\n  - "packages/**"\n',
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
+      "packages/tools/codegen/package.json": manifest({ build: "tsc" }),
+    });
+    const findings = lintCoverage.run(context);
+    expect(
+      findings.some((f) => f.file === "packages/tools/codegen/package.json"),
+    ).toBe(true);
+  });
+
+  it("honours an exclusion entry rather than reading it as a pattern", () => {
+    // Both halves asserted together, because either alone passes for the
+    // wrong reason: a matcher that matches nothing satisfies the exclusion,
+    // and a matcher that ignores `!` satisfies the inclusion.
+    const context = fakeContext({
+      ...ROOT,
+      "pnpm-workspace.yaml":
+        'packages:\n  - "packages/**"\n  - "!**/fixtures/**"\n',
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
+      "packages/tools/codegen/package.json": manifest({ build: "tsc" }),
+      "packages/core/fixtures/sample/package.json": manifest({}),
+    });
+    const files = lintCoverage.run(context).map((f) => f.file);
+    expect(files).toContain("packages/tools/codegen/package.json");
+    expect(files).not.toContain("packages/core/fixtures/sample/package.json");
+  });
+
   it("accepts the inline-array spelling of the same list", () => {
     const context = fakeContext({
       ...ROOT,
       "pnpm-workspace.yaml": 'packages: ["packages/*", "repo-lint"]\n',
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
       "repo-lint/package.json": manifest({ build: "tsc" }),
     });
     const findings = lintCoverage.run(context);
@@ -271,7 +329,7 @@ describe("lint-coverage", () => {
       ...ROOT,
       "pnpm-workspace.yaml":
         'packages:\n  - "packages/*"\n  - "repo-lint" # the checks themselves\n',
-      "packages/core/package.json": manifest({ lint: "eslint src/" }),
+      "packages/core/package.json": manifest({ lint: "eslint ." }),
       "repo-lint/package.json": manifest({ build: "tsc" }),
     });
     const findings = lintCoverage.run(context);
