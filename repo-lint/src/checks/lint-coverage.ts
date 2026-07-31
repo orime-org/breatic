@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
+import { resolve } from "node:path";
 import { minimatch } from "minimatch";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import { declaredBy, workspaceGlobs } from "#repo-lint/workspace";
@@ -12,20 +13,37 @@ interface Manifest {
 }
 
 /**
+ * An arbitrary fixed directory to resolve arguments against.
+ *
+ * Fixed rather than the working directory so the answer is about the argument
+ * and not about where the process happens to have been started.
+ */
+const BASE = "/package";
+
+/**
  * Whether a lint script hands ESLint the whole package.
  *
- * Asked as "is `.` among the words", not by working out which words are paths
- * and which are flag values — that is shell parsing, and every attempt at it
- * in this suite has been a source of quiet wrong answers. `.` is the only
- * argument that means the package, so its presence is the question, and flags
- * around it change nothing.
+ * Every word is resolved as a path against a fixed base, and a word that
+ * resolves back to the base is the package itself. No word is worked out to
+ * be a path or a flag value first — that is shell parsing, and every attempt
+ * at it in this suite has been a source of quiet wrong answers; a flag simply
+ * resolves to somewhere that is not the base.
+ *
+ * Resolution rather than comparison against the character `.`, because `./`
+ * and `.//` and a quoted `'./'` all name the same directory, and each was
+ * read as a narrowing — with a message telling the reader to point ESLint at
+ * what it was already pointed at. Empty words are dropped first: they come
+ * from a leading or trailing space in the script and would resolve to the
+ * base, reading as coverage where nothing was said at all.
  * @param script The package's `lint` script.
  * @returns True when ESLint is pointed at the package rather than into it.
  */
 function coversThePackage(script: string): boolean {
   return script
     .split(/\s+/)
-    .some((word) => word.replace(/^['"]|['"]$/g, "") === ".");
+    .map((word) => word.replace(/^['"]|['"]$/g, ""))
+    .filter((word) => word.length > 0)
+    .some((word) => resolve(BASE, word) === BASE);
 }
 
 /**

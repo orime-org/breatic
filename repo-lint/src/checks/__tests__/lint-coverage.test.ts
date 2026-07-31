@@ -90,6 +90,31 @@ describe("lint-coverage", () => {
     expect(lintCoverage.run(context)).toEqual([]);
   });
 
+  it.each(["eslint ./", "eslint .//", "eslint './'"])(
+    "accepts %j, which is the same directory spelt differently",
+    (lint) => {
+      // Comparing the word against the single character `.` made every other
+      // spelling of the package root read as a narrowing, and the message it
+      // then printed told the reader to point eslint at what it was already
+      // pointed at. Path equality is the question; character equality was a
+      // stand-in for it that only answered one spelling.
+      expect(lintCoverage.run(contextWith({
+        "packages/core/package.json": manifest({ lint }),
+      }))).toEqual([]);
+    },
+  );
+
+  it("is not satisfied by the empty word a stray space leaves behind", () => {
+    // Splitting on whitespace turns a leading or trailing space into an empty
+    // word, and an empty path resolves to the directory it is resolved
+    // against — so the package would read as covered on the strength of a
+    // space.
+    const context = contextWith({
+      "packages/core/package.json": manifest({ lint: " eslint src/ " }),
+    });
+    expect(lintCoverage.run(context)).toHaveLength(1);
+  });
+
   it("catches a lint script that does not run eslint", () => {
     const context = contextWith({
       "packages/core/package.json": manifest({ lint: "echo skipped" }),
