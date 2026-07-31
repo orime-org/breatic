@@ -59,9 +59,14 @@ export const noNotificationNameKeys = {
   name: "no-notification-name-keys",
   description: "Notification payloads carry ids, not names or slugs",
   run(context: CheckContext): Finding[] {
-    const files = context.files(
-      (path) => PAYLOAD_SITES.some((site) => path.startsWith(site)),
-      "notification payload definitions and consumers",
+    // One selection per site, not one selection over both. A selection throws
+    // when it matches nothing, so folding two sites together meant a site
+    // that had moved took the other one's word for it: the scan covered half
+    // of what it names and reported clean. Moving a directory is an ordinary
+    // refactor, and the consumers — the half no type checker can hold — are
+    // the expensive half to stop looking at.
+    const files = PAYLOAD_SITES.flatMap((site) =>
+      context.files((path) => path.startsWith(site), `files under ${site}`),
     );
 
     const findings: Finding[] = [];

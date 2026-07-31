@@ -1,0 +1,88 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+import { minimatch } from "minimatch";
+import { parse } from "yaml";
+import type { CheckContext } from "#repo-lint/check";
+
+/** Where the workspace is defined, which is the only place it is defined. */
+export const WORKSPACE = "pnpm-workspace.yaml";
+
+/**
+ * Reads the package globs the workspace declares.
+ *
+ * Read rather than restated. Two checks ask which packages exist, and a
+ * hand-kept list in either of them fails the same way: a package added
+ * outside the list is not looked for, so it is never reported — which is what
+ * both checks exist to report. Restated twice, the two lists also drift from
+ * each other, and the one that drifts is the one nobody notices.
+ * @param context The check context.
+ * @returns The `packages` entries, in the order the file lists them.
+ * @throws {Error} When the workspace file is missing or declares no packages.
+ */
+export function workspaceGlobs(context: CheckContext): string[] {
+  if (!context.exists(WORKSPACE)) {
+    throw new Error(
+      `${WORKSPACE} is not there, so this check cannot know which packages the workspace has. Guessing would mean reporting clean for packages it never looked for.`,
+    );
+  }
+  // Parsed, not pattern-matched. A hand-written reader stopped at the first
+  // line that was not an entry, so a comment or a blank line inside the list
+  // silently truncated it — and a package that is never looked for is never
+  // reported, which is the subject of both callers. The repository already
+  // depends on a YAML parser for its own config files; there was never a
+  // reason for this one to be different.
+  const parsed: unknown = parse(context.read(WORKSPACE));
+  const declared =
+    typeof parsed === "object" && parsed !== null
+      ? (parsed as { packages?: unknown }).packages
+      : undefined;
+  const globs = Array.isArray(declared)
+    ? declared.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  if (globs.length === 0) {
+    throw new Error(
+      `${WORKSPACE} declares no packages, so this check would look at nothing and report clean.`,
+    );
+  }
+  return globs;
+}
+
+/**
+ * Decides whether a manifest belongs to a package the workspace declares.
+ *
+ * pnpm's own documented example for this file is `packages/**` alongside an
+ * exclusion entry, and both spellings defeated the converter that used to
+ * translate these globs into a regular expression by hand: `*` became one
+ * path segment, so `**` looked exactly one directory deep, and the leading
+ * `!` became a literal that matched nothing. So the globs go to a glob
+ * matcher, and the exclusion form pnpm documents is honoured as one.
+ * @param globs The workspace's `packages` entries, in order.
+ * @returns A predicate over repo-relative manifest paths.
+ */
+export function declaredBy(
+  globs: readonly string[],
+): (path: string) => boolean {
+  const included = globs.filter((glob) => !glob.startsWith("!"));
+  const excluded = globs
+    .filter((glob) => glob.startsWith("!"))
+    .map((glob) => glob.slice(1));
+  return (path: string): boolean => {
+    if (!path.endsWith("/package.json")) return false;
+    const directory = path.slice(0, -"/package.json".length);
+    if (excluded.some((glob) => minimatch(directory, glob))) return false;
+    return included.some((glob) => minimatch(directory, glob));
+  };
+}
+
+/**
+ * Names every directory the workspace treats as a package.
+ * @param context The check context.
+ * @returns Repo-relative package directories.
+ * @throws {Error} When the workspace declares packages but none are present.
+ */
+export function workspacePackages(context: CheckContext): string[] {
+  const declared = declaredBy(workspaceGlobs(context));
+  return context
+    .files(declared, "workspace package manifests")
+    .map((path) => path.slice(0, -"/package.json".length));
+}
