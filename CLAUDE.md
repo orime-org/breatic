@@ -96,7 +96,7 @@ pnpm test / typecheck / lint
 | 12 | `var` / `require()` |
 | 13 | YAML 中文 |
 | 14 | AIGC sync 路径 |
-| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:每个包用**全局唯一前缀** `@shared` / `@core` / `@domain` / `@collab` / `@worker` / `@server` / `@web`,**全项目无 `@/`**(规则零例外:任一包源码被另一包 resolution 上下文 import 时,`@/` 会撞车,唯一前缀消除歧义)。测试代码豁免。CI `breatic/no-relative-import` 强制(覆盖 import / 两种 re-export / 动态 `import()` / `require()` / 裸 `"."`),**带 autofix**:`pnpm lint:fix` 直接改写成正确别名,别名从文件自身路径推导、不依赖 eslint 从哪个目录启动 |
+| 15 | 非测试代码用相对路径 import(`./` / `../`)— 一律走 path alias:每个包用**全局唯一前缀** `@shared` / `@core` / `@domain` / `@collab` / `@worker` / `@server` / `@web`,**全项目无 `@/`**(规则零例外:任一包源码被另一包 resolution 上下文 import 时,`@/` 会撞车,唯一前缀消除歧义)。测试代码豁免。CI `breatic/no-relative-import` 强制(覆盖 import / 两种 re-export / 动态 `import()` / `require()` / 裸 `"."`),**带 autofix**:`pnpm lint:fix` 直接改写成正确别名,别名从文件自身路径推导、不依赖 eslint 从哪个目录启动。**判定一条 tsconfig 别名是不是死的,不能只看本包源码 grep 得到几次** —— 三个库包(`shared` / `core` / `domain`)的 `exports.types` 指向自己的 `src`(不发布 npm 的内部包一律如此,换来「改了类型立刻看到、不等构建」;4 个应用包无 `exports`,只被集成测试按 `@breatic/<pkg>/src/...` 直取源码,后果相同),消费方 `import` 包名后 TypeScript 会进被依赖包的**源码**、撞上它内部写的别名,所以**消费方必须能解析被依赖包的内部别名**(例:`packages/web/src` 一次都不用 `@shared/*`,但 web 的 tsconfig 必须有它,否则读不了 `shared/src/index.ts`)。真判据 = **依赖图允许的方向 + 传递可达**,`grep` 零命中只是必要条件 |
 
 # 编码行为准则
 
