@@ -36,6 +36,7 @@ import { shieldCaller } from "@shared/http/caller-callback.js";
 import {
   BODY_IDLE_TIMEOUT_MS,
   HTTP_ERROR_BODY_EXCERPT_CHARS,
+  MAX_TIMER_MS,
 } from "@shared/http/constants.js";
 import { redactUrl } from "@shared/http/redact-url.js";
 import { sleep } from "@shared/sleep.js";
@@ -329,6 +330,7 @@ export async function httpRequest(
   // put their API key in the query string, so the raw URL must not reach a
   // message anyone might write down.
   const safeUrl = redactUrl(url);
+  refuseUnusableOptions(options, label, safeUrl);
 
   /**
    * Report one attempt's outcome without letting the sink change it.
@@ -346,12 +348,22 @@ export async function httpRequest(
    * Wrap a response so its body is read under the idle deadline.
    * @param response - The response to hand out.
    * @param abortRequest - Teardown for the attempt that produced it.
+   * @param serverWaitMs - The wait this response asked for, already parsed by
+   *   the attempt that received it. Passed in rather than re-read here: the
+   *   header's date form is relative to a clock, so parsing it a second time
+   *   a few hundred milliseconds later returns null once the named instant
+   *   has passed — the decision would have seen a wait and the caller would
+   *   have been told there was none.
    * @returns The guarded handle.
    */
-  const guard = (response: Response, abortRequest: () => void): GuardedResponse =>
+  const guard = (
+    response: Response,
+    abortRequest: () => void,
+    serverWaitMs: number | null,
+  ): GuardedResponse =>
     guardResponseBody({
       response,
-      retryAfterMs: parseRetryAfter(response.headers.get("retry-after"), Date.now()),
+      retryAfterMs: serverWaitMs,
       idleTimeoutMs: options.bodyIdleTimeoutMs ?? BODY_IDLE_TIMEOUT_MS,
       callerSignal: options.signal,
       ...(options.maxBodyBytes !== undefined && { maxBytes: options.maxBodyBytes }),
@@ -366,7 +378,7 @@ export async function httpRequest(
   for (let index = 0; ; index++) {
     const deadline = startAttemptDeadline(options.signal, options.timeoutMs);
     let status: number | undefined;
-    let retryAfter: string | null | undefined;
+    let serverWaitMs: number | null = null;
     let transportError: TransportErrorKind | undefined;
     // Declared per attempt on purpose. These describe THIS attempt's outcome,
     // and scoping them here is what makes it impossible to report one
@@ -392,11 +404,13 @@ export async function httpRequest(
           `${label} fetch implementation for ${safeUrl} did not return a Response`,
         );
       }
-      if (attempted.ok) return guard(attempted, deadline.abort);
+      // Parsed once, here, and used by both consumers: the retry decision
+      // below and the handle handed to the caller.
+      serverWaitMs = parseRetryAfter(attempted.headers.get("retry-after"), Date.now());
+      if (attempted.ok) return guard(attempted, deadline.abort, serverWaitMs);
       response = attempted;
       abortRequest = deadline.abort;
       status = attempted.status;
-      retryAfter = attempted.headers.get("retry-after");
     } catch (error) {
       failure = error;
       transportError = classifyThrown(
@@ -413,7 +427,7 @@ export async function httpRequest(
 
     const decision = decideRetry({
       status,
-      retryAfter,
+      retryAfterMs: serverWaitMs,
       transportError,
       replaySafe: options.replaySafe,
       bodyReplayable: bodyCanBeResent(init.body),
@@ -431,16 +445,16 @@ export async function httpRequest(
         attempts: index + 1,
         reason: decision.reason,
         status,
-        // The other half of the ceiling decision: past it we do not wait, and
-        // we hand the figure back so the layer above can say what was asked
-        // instead of leaving someone in front of a spinner. It was computed
-        // and then dropped — nothing outside `decideRetry` ever read it.
-        ...(decision.retryAfterMs !== undefined && {
-          retryAfterMs: decision.retryAfterMs,
-        }),
+        // Whenever the server named a wait, it travels back — not only on the
+        // refusal that is ABOUT the wait. A run that spent its attempts on
+        // 503s and met a 429 with `Retry-After` on the last one ends as
+        // `attempts_exhausted`, and reporting that without the figure left
+        // the layer above with nothing to say about when to come back, on the
+        // one occasion the server had said so explicitly.
+        ...(serverWaitMs !== null && { retryAfterMs: serverWaitMs }),
       });
       if (response !== null && abortRequest !== null) {
-        return guard(response, abortRequest);
+        return guard(response, abortRequest, serverWaitMs);
       }
       throw failure instanceof Error
         ? failure
@@ -476,20 +490,27 @@ export async function httpRequest(
     // also means the abort — not the earlier response — is what surfaces.
     try {
       await doSleep(decision.delayMs, options.signal);
-    } catch (cancelled) {
+    } catch (interrupted) {
       // Without this the log's last word was "attempt 1 is being replayed in
       // 113ms" and then silence, which reads exactly like a process that died
       // mid-backoff. Every request this layer starts now ends with a terminal
       // event.
+      //
+      // Which terminal event depends on what actually happened. Reporting
+      // `caller_aborted` unconditionally meant any failure of the wait — an
+      // injected sleep that rejects, a timer subsystem that is unwell — was
+      // logged as a person pressing stop, while the error that reached the
+      // caller said something else entirely. On-call then goes looking for a
+      // user action that never happened.
       emit({
         type: "exhausted",
         label,
         url: safeUrl,
         attempts: index + 1,
-        reason: "caller_aborted",
+        reason: options.signal?.aborted === true ? "caller_aborted" : "wait_failed",
         status,
       });
-      throw cancelled;
+      throw interrupted;
     }
   }
 }
@@ -509,6 +530,54 @@ class TransportContractError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "TransportContractError";
+  }
+}
+
+/**
+ * Whether a duration is one a timer can actually hold.
+ * @param ms - The candidate duration.
+ * @returns True when it can be honoured as given.
+ */
+function usableDuration(ms: number): boolean {
+  return Number.isFinite(ms) && ms > 0 && ms <= MAX_TIMER_MS;
+}
+
+/**
+ * Refuse options the transport cannot honour as given.
+ *
+ * Checked at the boundary and refused rather than repaired, because every
+ * repair available here is a silent lie: clamping a 30-day timeout to 24.8
+ * days is a number nobody asked for, and the platform's own repair — folding
+ * it to one millisecond — inverts the instruction entirely. The same goes for
+ * a NaN byte ceiling, where every comparison is false and a caller that
+ * believes it set a cap has none at all.
+ * @param options - The caller's options.
+ * @param label - Provider or tool name, for the message.
+ * @param safeUrl - The redacted request URL, for the message.
+ * @throws {TransportContractError} When an option cannot be honoured.
+ */
+function refuseUnusableOptions(
+  options: HttpRequestOptions,
+  label: string,
+  safeUrl: string,
+): void {
+  if (!usableDuration(options.timeoutMs)) {
+    throw new TransportContractError(
+      `${label} request to ${safeUrl} asked for a timeout of ${options.timeoutMs}ms, which no timer can hold (expected 1..${MAX_TIMER_MS})`,
+    );
+  }
+  if (options.bodyIdleTimeoutMs !== undefined && !usableDuration(options.bodyIdleTimeoutMs)) {
+    throw new TransportContractError(
+      `${label} request to ${safeUrl} asked for a body idle timeout of ${options.bodyIdleTimeoutMs}ms, which no timer can hold (expected 1..${MAX_TIMER_MS})`,
+    );
+  }
+  if (
+    options.maxBodyBytes !== undefined &&
+    (!Number.isFinite(options.maxBodyBytes) || options.maxBodyBytes < 0)
+  ) {
+    throw new TransportContractError(
+      `${label} request to ${safeUrl} asked for a byte ceiling of ${options.maxBodyBytes}, which cannot bound anything (expected a non-negative finite number)`,
+    );
   }
 }
 

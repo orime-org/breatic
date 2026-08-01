@@ -23,7 +23,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { decideRetry } from "@shared/http/decide-retry.js";
+import { decideRetry, parseRetryAfter } from "@shared/http/decide-retry.js";
 import {
   MAX_RETRIES,
   BASE_DELAY_MS,
@@ -183,19 +183,20 @@ describe("decideRetry — backoff delay", () => {
   });
 
   it("uses a numeric Retry-After (seconds) in preference to the backoff", () => {
-    const d = decideRetry({ ...base, status: 429, retryAfter: "3" });
+    const d = decideRetry({ ...base, status: 429, retryAfterMs: 3000 });
     expect(d).toMatchObject({ retry: true, delayMs: 3000 });
   });
 
-  it("uses an HTTP-date Retry-After, measured against the injected clock", () => {
+  it("reads an HTTP-date Retry-After against the clock it is given", () => {
+    // A parsing question, asked of the parser. The decision no longer parses:
+    // the header's date form is relative to a clock, and parsing it twice a
+    // few hundred milliseconds apart produced two different answers — one of
+    // them null once the named instant had passed.
     const target = new Date(NOW + 4000).toUTCString();
-    const d = decideRetry({ ...base, status: 429, retryAfter: target });
+    const ms = parseRetryAfter(target, NOW);
     // toUTCString() truncates to whole seconds, so allow a sub-second skew.
-    expect(d.retry).toBe(true);
-    if (d.retry) {
-      expect(d.delayMs).toBeGreaterThanOrEqual(3000);
-      expect(d.delayMs).toBeLessThanOrEqual(4000);
-    }
+    expect(ms).toBeGreaterThanOrEqual(3000);
+    expect(ms).toBeLessThanOrEqual(4000);
   });
 
   it("refuses a wait longer than an interactive caller can accept, and says how long was asked", () => {
@@ -208,7 +209,7 @@ describe("decideRetry — backoff delay", () => {
     const d = decideRetry({
       ...base,
       status: 429,
-      retryAfter: "20",
+      retryAfterMs: 20000,
       interactive: true,
     });
     expect(d).toMatchObject({
@@ -219,25 +220,25 @@ describe("decideRetry — backoff delay", () => {
   });
 
   it("honours a wait an interactive caller can accept, exactly as asked", () => {
-    const d = decideRetry({ ...base, status: 429, retryAfter: "5", interactive: true });
+    const d = decideRetry({ ...base, status: 429, retryAfterMs: 5000, interactive: true });
     expect(d).toMatchObject({ retry: true, delayMs: 5000 });
   });
 
   it("treats the interactive ceiling itself as acceptable, not as over", () => {
     // 10s is the limit of what the user's attention stays on the task
     // (Nielsen's third response-time limit). At the limit, not past it.
-    const d = decideRetry({ ...base, status: 429, retryAfter: "10", interactive: true });
+    const d = decideRetry({ ...base, status: 429, retryAfterMs: 10000, interactive: true });
     expect(d).toMatchObject({ retry: true, delayMs: MAX_RETRY_AFTER_INTERACTIVE_MS });
   });
 
   it("lets a background caller wait far longer than an interactive one", () => {
     // Nobody is watching a worker, so the vendor's own recovery timeline wins.
-    const d = decideRetry({ ...base, status: 429, retryAfter: "55" });
+    const d = decideRetry({ ...base, status: 429, retryAfterMs: 55000 });
     expect(d).toMatchObject({ retry: true, delayMs: 55_000 });
   });
 
   it("refuses even a background wait past the background ceiling", () => {
-    const d = decideRetry({ ...base, status: 429, retryAfter: "61" });
+    const d = decideRetry({ ...base, status: 429, retryAfterMs: 61000 });
     expect(d).toMatchObject({
       retry: false,
       reason: "retry_after_too_long",
@@ -246,13 +247,13 @@ describe("decideRetry — backoff delay", () => {
   });
 
   it("treats the background ceiling itself as acceptable", () => {
-    const d = decideRetry({ ...base, status: 429, retryAfter: "60" });
+    const d = decideRetry({ ...base, status: 429, retryAfterMs: 60000 });
     expect(d).toMatchObject({ retry: true, delayMs: MAX_RETRY_AFTER_BACKGROUND_MS });
   });
 
   it("never clamps: a hostile Retry-After is refused, not quietly shortened", () => {
     // A day-long wait used to come back as a 10s delay — a number nobody sent.
-    const d = decideRetry({ ...base, status: 429, retryAfter: "86400" });
+    const d = decideRetry({ ...base, status: 429, retryAfterMs: 86400000 });
     expect(d.retry).toBe(false);
     expect(d).toMatchObject({ retryAfterMs: 86_400_000 });
   });
@@ -265,27 +266,32 @@ describe("decideRetry — backoff delay", () => {
     // No usable instruction puts us back where we are when the server says
     // nothing: estimating for ourselves.
     const past = new Date(NOW - 60_000).toUTCString();
-    const d = decideRetry({ ...base, status: 429, retryAfter: past, attempt: 1 });
+    expect(parseRetryAfter(past, NOW)).toBeNull();
+    const d = decideRetry({ ...base, status: 429, retryAfterMs: null, attempt: 1 });
     expect(d).toMatchObject({ retry: true, delayMs: BASE_DELAY_MS });
   });
 
   it("still honours an explicit Retry-After of zero", () => {
     // The distinction the change turns on: `0` is an instruction the server
     // chose to send, a stale date is an instruction that expired.
-    const d = decideRetry({ ...base, status: 429, retryAfter: "0", attempt: 1 });
+    const d = decideRetry({ ...base, status: 429, retryAfterMs: 0, attempt: 1 });
     expect(d).toMatchObject({ retry: true, delayMs: 0 });
   });
 
   it.each(["", "   ", "soon", "-5", "NaN", "3.5.1"])(
-    "falls back to the jittered backoff for the malformed Retry-After %o",
-    (retryAfter) => {
-      const d = decideRetry({ ...base, status: 429, retryAfter, attempt: 1 });
+    "reads the malformed Retry-After %o as no instruction at all",
+    (raw) => {
+      // Two halves of the same rule, each asked of the layer that owns it:
+      // the parser refuses to guess, and the decision treats "no usable
+      // instruction" exactly as it treats a server that said nothing.
+      expect(parseRetryAfter(raw, NOW)).toBeNull();
+      const d = decideRetry({ ...base, status: 429, retryAfterMs: null, attempt: 1 });
       expect(d).toMatchObject({ retry: true, delayMs: BASE_DELAY_MS });
     },
   );
 
   it("ignores Retry-After on a transport error (no response carried one)", () => {
-    const d = decideRetry({ ...base, transportError: "network", retryAfter: "30" });
+    const d = decideRetry({ ...base, transportError: "network", retryAfterMs: 30000 });
     expect(d).toMatchObject({ retry: true, delayMs: BASE_DELAY_MS });
   });
 
@@ -299,7 +305,6 @@ describe("decideRetry — backoff delay", () => {
       status: 503,
       replaySafe: true,
       attempt: 1,
-      now,
     });
     expect(d.retry).toBe(true);
     if (d.retry) {

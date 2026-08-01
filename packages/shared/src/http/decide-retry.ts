@@ -51,6 +51,14 @@ export type RetryRefusal =
   | "fatal_error"
   /** The attempt budget is spent. */
   | "attempts_exhausted"
+  /**
+   * The between-attempt wait itself failed, without the caller having
+   * cancelled. Distinct from `caller_aborted` because they call for different
+   * responses: one is a person pressing stop, the other is our own timer
+   * machinery being unwell, and reporting the second as the first sends
+   * on-call looking for a user action that never happened.
+   */
+  | "wait_failed"
   /** Neither a failing status nor a transport error was present. */
   | "nothing_to_retry"
   /**
@@ -106,8 +114,16 @@ export interface RetryInput {
   status?: number;
   /** Set when no response arrived, naming which transport failure it was. */
   transportError?: TransportErrorKind;
-  /** Raw `Retry-After` header value, when the response carried one. */
-  retryAfter?: string | null;
+  /**
+   * The wait the response asked for, ALREADY PARSED, or null when it named
+   * none or named one that cannot be used.
+   *
+   * Parsed by the caller rather than here because the guarded handle exposes
+   * the same figure, and the header's date form is relative to a clock: two
+   * parses a few hundred milliseconds apart disagree, one of them returning
+   * null once the named instant has passed. One parse, one answer.
+   */
+  retryAfterMs?: number | null;
   /**
    * Caller-owned fact: delivering this exact request again produces no
    * additional side effects.
@@ -140,8 +156,6 @@ export interface RetryInput {
   attempt: number;
   /** Uniform `[0, 1)` source; injectable for deterministic tests. */
   rand?: () => number;
-  /** Clock for HTTP-date `Retry-After`; injectable for deterministic tests. */
-  now?: () => number;
 }
 
 /**
@@ -210,7 +224,7 @@ function serverDirectedWaitMs(input: RetryInput): number | null {
   // A transport error means no response existed, so no header could have
   // arrived — ignore any value a caller passed alongside it.
   if (input.transportError !== undefined) return null;
-  return parseRetryAfter(input.retryAfter, (input.now ?? Date.now)());
+  return input.retryAfterMs ?? null;
 }
 
 /**
@@ -309,6 +323,18 @@ export function decideRetry(input: RetryInput): RetryDecision {
     return { retry: false, reason: "client_error" };
   }
 
+  // Is this a failure at all? A 3xx the transport does not follow — a 304, or
+  // a redirect an SSRF guard returns unfollowed — is not ok, so it reaches
+  // here, and answering with the caller's side-effect declaration blamed that
+  // declaration for a response that never failed. An on-call engineer reading
+  // "not_replay_safe, status 304" goes looking for a bug that is not there.
+  const failed =
+    (input.status !== undefined && input.status >= 500) ||
+    input.transportError !== undefined;
+  if (!failed) {
+    return { retry: false, reason: "nothing_to_retry" };
+  }
+
   // ── Application semantics: only the caller knows this ──
   if (!input.replaySafe) {
     return { retry: false, reason: "not_replay_safe" };
@@ -332,6 +358,7 @@ export function decideRetry(input: RetryInput): RetryDecision {
     return scheduleRetry(input, "attempt_timeout");
   }
 
-  // A 2xx/3xx status, or neither status nor transport error: not a failure.
+  // Every failure kind above is handled; this is the arm no known input
+  // reaches, kept so the function is total rather than throwing at runtime.
   return { retry: false, reason: "nothing_to_retry" };
 }

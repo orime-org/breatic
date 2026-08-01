@@ -140,3 +140,14 @@ export const ASSET_HEADER_TIMEOUT_MS = 120_000;
  * fails, and fails with what it said rather than a budget timeout.
  */
 export const POLL_TRANSIENT_FAILURES_TOLERATED = 2;
+
+/**
+ * The largest delay a timer can actually hold.
+ *
+ * `setTimeout` stores its delay in a signed 32-bit integer and CLAMPS anything
+ * larger to one millisecond — with a warning on stderr and nothing else. So a
+ * caller granting a 30-day deadline got the exact opposite: an attempt that
+ * aborted almost immediately, was classified as a timeout, and was replayed.
+ * A value past this bound is refused rather than accepted and inverted.
+ */
+export const MAX_TIMER_MS = 2_147_483_647;

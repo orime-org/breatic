@@ -28,12 +28,27 @@
  * regression was invisible to a green suite.
  */
 
+import { getEventListeners } from "node:events";
+
 import { describe, it, expect } from "vitest";
 
 import { httpRequest, httpRequestJson } from "@shared/http/request.js";
 import { guardResponseBody, type GuardedResponse } from "@shared/http/body-guard.js";
 
 const URL_UNDER_TEST = "https://vendor.test/v1/generate";
+
+/**
+ * How many abort listeners are still attached to a signal.
+ *
+ * Node exposes this, and it is the only way to see a leak of this shape from
+ * outside: a listener left behind pins the whole response behind it, on a
+ * signal that may outlive the request by hours.
+ * @param signal - The signal to inspect.
+ * @returns The listener count.
+ */
+function listenerCount(signal: AbortSignal): number {
+  return getEventListeners(signal, "abort").length;
+}
 
 /** A body that arrives only when the test says so. */
 function streamingBody(status = 200): {
@@ -876,6 +891,55 @@ describe("response body idle deadline", () => {
     } finally {
       process.off("unhandledRejection", onUnhandled);
     }
+  });
+
+  it("keeps the parse failure as the cause of the one it reports", async () => {
+    // The message deliberately leaves the body out — it can be megabytes and
+    // can carry a token the vendor echoed — but discarding the original threw
+    // away the only thing that says WHERE the body stopped being JSON. That
+    // is the difference between "the vendor sent HTML" and "the vendor sent
+    // JSON truncated at 8 KB": two faults, two different fixes.
+    const { response, push, finish } = streamingBody();
+    push('{"id": 1, "name": ');
+    finish();
+    const { guarded } = countingGuard(response, undefined, 5_000);
+
+    await expect(guarded.json()).rejects.toMatchObject({
+      message: expect.stringContaining("could not be parsed as JSON"),
+      cause: expect.any(SyntaxError),
+    });
+  });
+
+  it("lets go of the caller's signal when the body cannot even be opened", async () => {
+    // `getReader()` sat outside the try/finally that owns `relay.retire()`, so
+    // a body another layer had already locked left the relay armed on a handle
+    // that could never be read — an abort listener, and the whole response
+    // behind it, pinned to a signal that may outlive the request by hours.
+    const controller = new AbortController();
+    const locked = new Response(
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(new TextEncoder().encode("x"));
+          c.close();
+        },
+      }),
+      { status: 200 },
+    );
+    // Someone else takes the body first, so ours cannot open it.
+    locked.body?.getReader();
+
+    const handle = guardResponseBody({
+      response: locked,
+      idleTimeoutMs: 5_000,
+      callerSignal: controller.signal,
+      abortRequest: (): void => {},
+      label: "probe",
+      url: "https://vendor.test/x",
+      retryAfterMs: null,
+    });
+
+    await expect(handle.text()).rejects.toThrow(/locked/i);
+    expect(listenerCount(controller.signal)).toBe(0);
   });
 
   it("releases its hold on the source body when a stream pull fails", async () => {

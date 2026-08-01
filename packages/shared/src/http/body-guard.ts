@@ -388,7 +388,17 @@ async function drain(
     return [];
   }
 
-  const reader = body.getReader();
+  // Opening the body is INSIDE the relay's care. It sat outside, so a body
+  // another layer had already locked left the relay armed on a handle that
+  // could never be read — an abort listener, and the whole response behind it,
+  // pinned to a signal that may outlive the request by hours.
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = body.getReader();
+  } catch (error) {
+    relay.retire();
+    throw error;
+  }
   const chunks: Uint8Array[] = [];
   try {
     for (;;) {
@@ -480,15 +490,22 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
       const text = new TextDecoder().decode(concat(await drain(ctx, relay, spend)));
       try {
         return JSON.parse(text);
-      } catch {
+      } catch (error) {
         // The platform's own SyntaxError says "Unexpected token < in JSON at
         // position 0" and nothing else — not which provider, not which request.
         // A vendor answering an HTML error page produced exactly that, and it
         // reached the logs with no way to trace it back. The body itself stays
         // out of the message: it can be megabytes, and it can carry a token the
         // vendor echoed.
+        //
+        // The original is kept as `cause` rather than discarded. It is the only
+        // thing that says WHERE the body stopped being JSON, which is the
+        // difference between "the vendor sent HTML" and "the vendor sent JSON
+        // that was truncated at 8 KB" — two different faults with two
+        // different fixes.
         throw new Error(
           `${ctx.label} response from ${ctx.url} could not be parsed as JSON`,
+          { cause: error },
         );
       }
     },
@@ -530,7 +547,16 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
           },
         });
       }
-      const reader = body.getReader();
+      // Same rule as `drain`, and it matters more here: `claim()` has already
+      // marked the body consumed, so a throw from `getReader()` leaves a
+      // handle that can neither be read nor retired.
+      let reader: ReadableStreamDefaultReader<Uint8Array>;
+      try {
+        reader = body.getReader();
+      } catch (error) {
+        relay.retire();
+        throw error;
+      }
       return new ReadableStream<Uint8Array>({
         async pull(controller) {
           // Each pull is deadline-guarded, so the protection travels with the

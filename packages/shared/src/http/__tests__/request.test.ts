@@ -469,6 +469,163 @@ describe("httpRequest — a broken telemetry sink cannot change the outcome", ()
   });
 });
 
+describe("httpRequest — the server's wait is read once", () => {
+  it("reports one figure, not two readings of the same header", async () => {
+    // The field's own documentation gives the reason it exists: "two parsers
+    // of the same header are two chances to disagree" — and the transport was
+    // the second parser, re-reading the header with its own `Date.now()` when
+    // it built the handle. In IMF-fixdate form that reading is relative to a
+    // clock, so the two could differ, with the later one returning null once
+    // the named instant had passed.
+    //
+    // What this pins is the property that matters and survives: the refusal
+    // and the handle carry the SAME number, because there is one reading. The
+    // window between the two old parses was under a millisecond, so no test
+    // could have caught them drifting — which is exactly why the duplication
+    // had to go rather than be asserted around.
+    const events: HttpRetryEvent[] = [];
+    const { fetchImpl } = scriptedFetch([
+      new Response("slow down", { status: 429, headers: { "retry-after": "300" } }),
+    ]);
+
+    const out = await httpRequest(
+      "https://x.test/limited",
+      {},
+      opts({ fetchImpl, onEvent: (e) => events.push(e) }),
+    );
+
+    expect(events.at(-1)).toMatchObject({
+      type: "exhausted",
+      reason: "retry_after_too_long",
+      retryAfterMs: 300_000,
+    });
+    expect(out.retryAfterMs).toBe(300_000);
+  });
+
+  it("hands the server's figure back on exhaustion, whatever ended the request", async () => {
+    // The contract is that a refusal carries the number the server asked for.
+    // It was attached only to the `retry_after_too_long` refusal — so a run
+    // that spent its attempts on 503s and then met a 429 with `Retry-After`
+    // on the last one reported exhaustion with no figure at all, and the
+    // layer above had nothing to say about when to come back.
+    const events: HttpRetryEvent[] = [];
+    const { fetchImpl } = scriptedFetch([
+      res(503),
+      res(503),
+      new Response("slow down", { status: 429, headers: { "retry-after": "90" } }),
+    ]);
+
+    await httpRequest("https://x.test/limited", {}, opts({ fetchImpl, onEvent: (e) => events.push(e) }));
+
+    expect(events.at(-1)).toMatchObject({ type: "exhausted", retryAfterMs: 90_000 });
+  });
+});
+
+describe("httpRequest — refuses inputs it cannot honour", () => {
+  it("rejects a timeout past what a timer can hold, instead of silently becoming 1ms", async () => {
+    // `setTimeout` clamps anything above 2^31-1 to ONE MILLISECOND, with only
+    // a warning on stderr. A caller granting a 30-day deadline therefore got
+    // the opposite of what it asked for: the attempt aborted almost
+    // immediately, was classified as a timeout, and was replayed — three
+    // near-instant attempts against a service that had been given half a
+    // month. Silently doing the reverse of an instruction is worse than
+    // refusing it.
+    const { fetchImpl } = scriptedFetch([res(200)]);
+    await expect(
+      httpRequest("https://x.test/slow", {}, opts({ fetchImpl, timeoutMs: 30 * 24 * 60 * 60 * 1000 })),
+    ).rejects.toThrow(/timeout/i);
+  });
+
+  it.each([Number.NaN, -1, 0])("rejects the unusable timeout %o", async (timeoutMs) => {
+    const { fetchImpl } = scriptedFetch([res(200)]);
+    await expect(
+      httpRequest("https://x.test/slow", {}, opts({ fetchImpl, timeoutMs })),
+    ).rejects.toThrow(/timeout/i);
+  });
+
+  it("rejects a NaN byte ceiling instead of treating it as unbounded", async () => {
+    // Every comparison against NaN is false, so `seen > maxBytes` never fired
+    // and a caller that believed it had set a cap had none. The cap exists for
+    // exactly one caller — the one whose URL is chosen by a model — so
+    // silently disabling it is the worst outcome available.
+    const { fetchImpl } = scriptedFetch([res(200)]);
+    await expect(
+      httpRequest("https://x.test/big", {}, opts({ fetchImpl, maxBodyBytes: Number.NaN })),
+    ).rejects.toThrow(/byte/i);
+  });
+});
+
+describe("httpRequest — a failed wait is not a cancellation", () => {
+  it("does not report a person pressing stop when nobody did", async () => {
+    // The catch around the between-attempt wait emitted `caller_aborted`
+    // unconditionally. Any failure of the wait — an injected sleep that
+    // rejects, a timer subsystem that is unwell — was therefore logged as a
+    // user action, while the error reaching the caller said something else
+    // entirely. Two stories about one request, and on-call reads the log.
+    const events: HttpRetryEvent[] = [];
+    const { fetchImpl } = scriptedFetch([res(503), res(200)]);
+
+    await expect(
+      httpRequest(
+        "https://x.test/x",
+        {},
+        opts({
+          fetchImpl,
+          onEvent: (e) => events.push(e),
+          sleepImpl: (): Promise<void> => Promise.reject(new Error("timer subsystem is down")),
+        }),
+      ),
+    ).rejects.toThrow("timer subsystem is down");
+
+    expect(events.at(-1)).toMatchObject({ type: "exhausted", reason: "wait_failed" });
+  });
+
+  it("still reports a cancellation as one", async () => {
+    const events: HttpRetryEvent[] = [];
+    const controller = new AbortController();
+    const { fetchImpl } = scriptedFetch([res(503), res(200)]);
+
+    await expect(
+      httpRequest(
+        "https://x.test/x",
+        {},
+        opts({
+          fetchImpl,
+          signal: controller.signal,
+          onEvent: (e) => events.push(e),
+          sleepImpl: (): Promise<void> => {
+            controller.abort(new Error("user pressed stop"));
+            return Promise.reject(new Error("user pressed stop"));
+          },
+        }),
+      ),
+    ).rejects.toThrow("user pressed stop");
+
+    expect(events.at(-1)).toMatchObject({ type: "exhausted", reason: "caller_aborted" });
+  });
+});
+
+describe("httpRequest — a non-failure is not a refusal", () => {
+  it("reports nothing_to_retry for a 304, not the caller's declaration", async () => {
+    // A conditional GET answered 304 is not ok, so it enters the loop — and
+    // the `!replaySafe` arm sat ahead of the is-this-even-a-failure arm, so
+    // telemetry blamed the caller's side-effect declaration for a response
+    // that contains no failure at all. An on-call engineer reading
+    // "not_replay_safe, status 304" looks for a bug that is not there.
+    const events: HttpRetryEvent[] = [];
+    const { fetchImpl } = scriptedFetch([new Response(null, { status: 304 })]);
+
+    const out = await httpRequest(
+      "https://x.test/cached",
+      {},
+      opts({ fetchImpl, replaySafe: false, onEvent: (e) => events.push(e) }),
+    );
+
+    expect(out.status).toBe(304);
+    expect(events.at(-1)).toMatchObject({ type: "exhausted", reason: "nothing_to_retry" });
+  });
+});
+
 describe("httpRequestJson", () => {
   it("parses a successful JSON body", async () => {
     const { fetchImpl } = scriptedFetch([res(200, { data: { id: "abc" } })]);
