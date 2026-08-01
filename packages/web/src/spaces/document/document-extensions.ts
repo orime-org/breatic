@@ -97,6 +97,26 @@ export function buildDocumentExtensions(
       // deletes their paragraph. Verified by mutation — switching this back on
       // turns the document to an empty string in the per-client undo test.
       undoRedo: false,
+      // Off for the same reason, one layer down: TrailingNode appends a
+      // paragraph whenever the last block is not one, and in a shared document
+      // that append is a WRITE. It broadcasts, it lands on the undo stack of
+      // whoever opened the file, and it fires for a read-only viewer too —
+      // `setEditable(false)` stops keystrokes, not a plugin's own
+      // appendTransaction. The server drops a viewer's update without an error,
+      // so that client sits permanently one paragraph ahead with nothing to
+      // signal it.
+      //
+      // It also revives the defect the seeded body exists to prevent: undo back
+      // past the appended paragraph, click once, and it is re-appended as a
+      // fresh local edit — clearing the redo stack and stranding the text just
+      // undone. The seed only ever covered an EMPTY body; this fires on a body
+      // that merely ENDS in a heading, a table, an image.
+      //
+      // What is lost is the convenience of always having a paragraph to click
+      // after a trailing table or image. That belongs to the editing slice and
+      // has to be built without writing to the document — a rendered affordance
+      // that inserts only when the user actually puts the caret in it.
+      trailingNode: false,
     }),
     // ── Schema completed here; UI for these lands in later slices ──
     TaskList,

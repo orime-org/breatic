@@ -61,6 +61,29 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
  * **Call this only once the document has synced.** Seeding a body that merely
  * has not loaded yet adds a paragraph the server's real content then merges
  * behind, leaving a stray empty line at the top — measured, not theorised.
+ *
+ * ## The invariant this exists to hold
+ *
+ * **A document body always holds at least one block.** Every writer to a
+ * document body — this editor, the backend that creates a Space, an importer, a
+ * generator — has to honour it. A body that reaches zero blocks puts the editor
+ * and the fragment into the disagreement described above, and the next click
+ * repairs it destructively. It is not enough to avoid emptying the body; a
+ * writer that CREATES one must create it non-empty.
+ *
+ * ## Known limitation: this does not converge across clients
+ *
+ * The `length > 0` guard below is a purely LOCAL read. Two clients that are
+ * both synced against an empty body each see zero and each insert — and Yjs
+ * keeps both, because concurrent inserts are never deduplicated. The document
+ * then opens with two empty paragraphs: the stray blank line the sync gate was
+ * built to prevent, arriving from the other side instead.
+ *
+ * Reachable whenever two people open a brand-new Space within the same round
+ * trip. The fix is not a smarter guard — no local read can settle it — but
+ * moving the seed to the one writer that runs exactly once: the backend, at the
+ * moment it creates the Space. That is the next slice; this client-side seed is
+ * what stands between the destructive repair and today's users until then.
  * @param doc - The document Space's Y.Doc, already synced.
  */
 export function seedEmptyBody(doc: Y.Doc): void {
