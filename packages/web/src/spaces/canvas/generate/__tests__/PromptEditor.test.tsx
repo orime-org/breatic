@@ -29,7 +29,7 @@ import * as Y from 'yjs';
 import {
   renderCollabCaret,
   renderCollabSelection,
-} from '@web/spaces/canvas/generate/caret-render';
+} from '@web/features/collab-editor/caret-render';
 import {
   PromptEditor,
   type PromptEditorHandle,

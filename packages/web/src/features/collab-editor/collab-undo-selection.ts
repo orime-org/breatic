@@ -35,7 +35,7 @@ import type { EditorState } from '@tiptap/pm/state';
 import {
   Y_SYNC_PLUGIN_KEY_NAME,
   Y_UNDO_PLUGIN_KEY_NAME,
-} from '@web/spaces/canvas/generate/collab-plugin-keys';
+} from '@web/features/collab-editor/collab-plugin-keys';
 
 /** The sync binding's fields this fix touches (structural, library-internal shape). */
 interface SyncBinding {

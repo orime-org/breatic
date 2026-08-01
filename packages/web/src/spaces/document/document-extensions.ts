@@ -25,8 +25,6 @@
  */
 
 import type { Extensions } from '@tiptap/core';
-import { Collaboration } from '@tiptap/extension-collaboration';
-import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
 import { Highlight } from '@tiptap/extension-highlight';
 import { Image } from '@tiptap/extension-image';
 import { Placeholder } from '@tiptap/extension-placeholder';
@@ -44,11 +42,7 @@ import type * as Y from 'yjs';
 import { t } from '@breatic/shared';
 
 import type { CaretUserIdentity } from '@web/data/yjs/use-caret-user';
-import {
-  renderCollabCaret,
-  renderCollabSelection,
-} from '@web/spaces/canvas/generate/caret-render';
-import { CollabUndoSelection } from '@web/spaces/canvas/generate/collab-undo-selection';
+import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import { Audio, Video } from '@web/spaces/document/document-media-nodes';
 
 /** Inputs that switch on the collaborative layers; all optional. */
@@ -148,43 +142,22 @@ export function buildDocumentExtensions(
     }),
   ];
 
-  if (fragment) {
-    extensions.push(
-      Collaboration.configure({
-        fragment,
-        // Supplying the manager is about being able to READ it — a plugin-key
-        // lookup misses silently against a duplicated binding. It is not about
-        // outliving anything: the manager and the editor share a lifetime,
-        // exactly as the binding assumes, because the EDITOR is what survives a
-        // tab switch (see `document-editor-cache`).
-        ...(undoManager ? { yUndoOptions: { undoManager } } : {}),
-      }),
-      // Undo must restore the selection the edit started from. Upstream emits
-      // its stack-item-popped hand-off AFTER the restore transaction has run,
-      // so the editor keeps the caret where it was at undo time and the late
-      // write lingers — the next remote change then applies that stale
-      // selection and yanks the local caret. This extension hands the stored
-      // selection over in time. Same fix the canvas prompt editor carries.
-      CollabUndoSelection,
-    );
-  }
-
-  // Carets need both an awareness-bearing provider and an identity to publish;
-  // the extension throws when the provider is absent.
-  if (caretProvider?.awareness && caretUser) {
-    extensions.push(
-      CollaborationCaret.configure({
-        provider: caretProvider,
-        user: caretUser,
-        // Receiver-side safe render: a whitelisted hue resolves to a theme
-        // token, so a remote client's colour string is never inlined into the
-        // DOM. Both builders are supplied — the default selectionRender
-        // inlines the raw remote colour too.
-        render: renderCollabCaret,
-        selectionRender: renderCollabSelection,
-      }),
-    );
-  }
+  // The collaboration wiring is shared with every other collaborative editor —
+  // history binding, undo selection hand-off, caret refresh, caret rendering.
+  // Assembling it here by hand is how this editor shipped without the caret
+  // refresh in the first place. Supplying the undo manager is about being able
+  // to READ it: a plugin-key lookup misses silently against a duplicated
+  // binding. It is not about outliving anything — the manager and the editor
+  // share a lifetime, exactly as the binding assumes, because the EDITOR is
+  // what survives a tab switch (see `document-editor-cache`).
+  extensions.push(
+    ...buildCollabExtensions({
+      fragment,
+      caretProvider,
+      caretUser,
+      undoManager,
+    }),
+  );
 
   // Resolved per render of the placeholder decoration rather than captured as
   // a string, because the editor is built once per document and would

@@ -12,7 +12,7 @@ import {
   safeCaretColor,
   shouldRenderLabelBelow,
   shouldFlipLabelLeft,
-} from '@web/spaces/canvas/generate/caret-render';
+} from '@web/features/collab-editor/caret-render';
 
 // Awareness payloads are UNTRUSTED wire data from other clients (CRITICAL
 // PATH — Yjs collab). The renderer must never inline a free-form remote
@@ -160,7 +160,7 @@ describe('shouldFlipLabelLeft — right-edge clip → flip left (B4)', () => {
 });
 
 describe('collaboration caret CSS contract (index.css)', () => {
-  const css = readFileSync(resolve(__dirname, '../../../../index.css'), 'utf8');
+  const css = readFileSync(resolve(__dirname, '../../../index.css'), 'utf8');
 
   // A remote caret at the document start renders as a DIRECT child of the block
   // editor (before the <p>); an inline box before a block takes its own line,

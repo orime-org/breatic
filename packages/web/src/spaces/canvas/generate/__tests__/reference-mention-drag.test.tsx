@@ -29,7 +29,7 @@ const render = (
   baseRender(args[0], { ...args[1], wrapper: TooltipProvider });
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
-import { Y_UNDO_PLUGIN_KEY_NAME } from '@web/spaces/canvas/generate/collab-plugin-keys';
+import { Y_UNDO_PLUGIN_KEY_NAME } from '@web/features/collab-editor/collab-plugin-keys';
 import {
   dragScrollDelta,
   referenceMentionCaretKey,

@@ -31,7 +31,7 @@ import type { Editor } from '@tiptap/core';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { Y_SYNC_PLUGIN_KEY_NAME } from '@web/spaces/canvas/generate/collab-plugin-keys';
+import { Y_SYNC_PLUGIN_KEY_NAME } from '@web/features/collab-editor/collab-plugin-keys';
 
 /**
  * Meta key a MACHINE-DERIVED (non-user-typed) local editor transaction sets so

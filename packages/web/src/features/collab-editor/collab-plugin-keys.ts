@@ -3,10 +3,11 @@
 
 /**
  * y-prosemirror plugin-key NAMES, located by string rather than by importing
- * `ySyncPluginKey` / `yUndoPluginKey`. Three collab plugins on the prompt
- * editor — the local-user-input tracker, the chip-boundary caret, and the
- * undo-selection restore — read y-prosemirror internal state (and its
- * per-transaction meta) by these names.
+ * `ySyncPluginKey` / `yUndoPluginKey`. Read by the shared undo-selection
+ * restore, which every collaborative editor carries, and by the prompt
+ * editor's own local-user-input tracker and chip-boundary caret — all of which
+ * reach y-prosemirror's internal state (and its per-transaction meta) through
+ * these names.
  *
  * WHY BY NAME, and its LIMIT (do not overclaim): a name lookup is robust
  * against importing the WRONG `@tiptap/y-tiptap` instance (a transitive dep

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { Collaboration } from '@tiptap/extension-collaboration';
-import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
 import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
 import { Placeholder } from '@tiptap/extension-placeholder';
@@ -14,6 +12,7 @@ import type * as Y from 'yjs';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useCollabCaretFocus } from '@web/data/yjs/use-collab-caret-focus';
+import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 
 import {
   extractAtMentionedSourceIds,
@@ -24,12 +23,6 @@ import {
   type MentionOccurrence,
   type ChipDisplaySnapshot,
 } from '@web/spaces/canvas/generate/at-reference';
-import {
-  renderCollabCaret,
-  renderCollabSelection,
-} from '@web/spaces/canvas/generate/caret-render';
-import { CollabCaretRefresh } from '@web/spaces/canvas/generate/collab-caret-refresh';
-import { CollabUndoSelection } from '@web/spaces/canvas/generate/collab-undo-selection';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import {
@@ -159,30 +152,13 @@ export const PromptEditor = React.forwardRef<
         // Gapcursor was the wrong tool: its valid() rejects textblock
         // parents, so it never fired inside the paragraph (batch-2 item 5).
         // Collaboration provides history (yUndo); do NOT add UndoRedo alongside.
-        Collaboration.configure({ fragment }),
-        // Undo/redo must restore the PRE-EDIT selection; upstream yjs emits
-        // stack-item-popped after the restore transaction already ran, so this
-        // hands the stored selection over in time (see the module doc).
-        CollabUndoSelection,
-        CollabCaretRefresh,
-        // Remote collaborator carets (batch-2 item 14): mounted only when the
-        // canvas-space doc's awareness is available — the extension THROWS in
+        // The whole collaboration half — history binding, undo selection
+        // hand-off, caret refresh, and safely-rendered collaborator carets —
+        // comes from one place, shared with the document editor. Carets within
+        // it mount only when awareness is available: the extension THROWS in
         // onCreate on a null provider, and before the socket's first connect
         // there is genuinely nothing to publish carets through.
-        ...(caretProvider?.awareness && caretUser
-          ? [
-            CollaborationCaret.configure({
-              provider: caretProvider,
-              user: caretUser,
-              // Receiver-side safe render: whitelisted hue → theme-adaptive
-              // palette var; never inlines free-form remote color strings.
-              // BOTH builders — the default selectionRender inlines the raw
-              // remote color too (adversarial round-1 HIGH).
-              render: renderCollabCaret,
-              selectionRender: renderCollabSelection,
-            }),
-          ]
-          : []),
+        ...buildCollabExtensions({ fragment, caretProvider, caretUser }),
         Placeholder.configure({ placeholder }),
         ReferenceMention.configure({
           suggestion: makeReferenceSuggestion({
