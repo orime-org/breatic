@@ -3,23 +3,17 @@
     "error": {
       "not_found": "リソースが見つかりません",
       "forbidden": "アクセス権限がありません",
-      "unauthorized": "認証情報が無効または期限切れです",
       "conflict": "リソースの競合",
       "validation": "入力データが無効です",
       "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",
       "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
-      "internal": "内部サーバーエラー",
-      "stripe_not_configured": "決済システムが設定されていません",
-      "storage_not_configured": "ストレージシステムが設定されていません",
-      "field_required": "少なくとも 1 つのフィールドを指定してください"
+      "internal": "内部サーバーエラー"
     },
     "auth": {
       "invalid_credentials": "メールアドレスまたはパスワードが正しくありません",
       "email_taken": "このメールアドレスは既に登録されています",
-      "no_password": "このアカウントはソーシャルログインを使用しています",
       "token_expired": "セッションが期限切れです。再度ログインしてください",
-      "register_success": "アカウントが作成されました",
       "logout_success": "ログアウトしました",
       "not_authenticated": "認証されていません",
       "google_oauth_unconfigured": "このサーバーでは Google サインインは利用できません",
@@ -51,57 +45,11 @@
       "collaborator_limit_reached": "この Project はコラボレーター数の上限に達しています。"
     },
     "payment": {
-      "checkout_created": "決済セッションが作成されました",
-      "credits_granted": "{amount} クレジットがチャージされました",
-      "payment_completed": "決済完了",
-      "payment_failed": "決済失敗",
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
       "price_not_configured": "プラン {tier} の価格が設定されていません"
     },
-    "credits": {
-      "deducted": "{amount} クレジット消費",
-      "added": "{amount} クレジット追加",
-      "balance": "現在の残高：{balance}"
-    },
-    "task": {
-      "created": "タスクが作成されました",
-      "running": "タスク実行中",
-      "completed": "タスク完了",
-      "failed": "タスク失敗：{error}",
-      "not_your_task": "このタスクへのアクセス権限がありません"
-    },
     "email": {
-      "verify_subject": "メールアドレスの確認 — Breatic",
-      "verify_body": "以下のリンクをクリックしてメールアドレスを確認してください：\n\n{link}\n\nこのリンクは24時間有効です。\n",
-      "reset_subject": "パスワードのリセット — Breatic",
-      "reset_body": "以下のリンクをクリックしてパスワードをリセットしてください：\n\n{link}\n\nこのリンクは1時間有効です。\n\nリセットを依頼していない場合は、このメールを無視してください。\n",
-      "welcome_subject": "Breatic へようこそ",
-      "welcome_body": "Breatic へようこそ、{name}さん！AIで素晴らしいコンテンツを作りましょう。"
-    },
-    "models": {
-      "image": {
-        "nano-banana-pro": "最高画質、4K対応",
-        "nano-banana-2": "高速万能、ウェブ検索対応",
-        "nano-banana": "定番、画質と速度のバランス",
-        "seedream-5.0-lite": "フォトリアル、東洋美学に強い",
-        "midjourney-v7": "アート、高い表現力",
-        "z-image-turbo": "超高速、低コスト",
-        "qwen-image": "多彩な中国画"
-      },
-      "video": {
-        "kling-o3-pro": "最高画質、複雑なカメラワーク",
-        "wan-2.6": "アニメ風、参照画像対応",
-        "seedance-2.0": "ダンス・人体モーション専門",
-        "veo-3.1": "映画品質"
-      },
-      "audio": {
-        "minimax-music-02": "万能、ボーカル対応",
-        "elevenlabs-sfx-v2": "効果音、ループ対応"
-      },
-      "tts": {
-        "elevenlabs-v3": "最も自然、52種の声色",
-        "gemini-tts": "複数話者の対話"
-      }
+      "welcome_subject": "Breatic へようこそ"
     },
     "text_tool": {
       "already_running": "別のテキストツールが実行中です。お待ちください。"
@@ -109,32 +57,8 @@
   },
   "cancel": "キャンセル",
   "loading": "読み込み中...",
-  "next": "次へ",
-  "agent": {
-    "placeholder": "作りたいものを説明してください...",
-    "thinking": "考え中...",
-    "tool_running": "{tool} を使用中...",
-    "plan_ready": "プラン完成 — 確認して生成",
-    "confirm_plan": "確認して生成",
-    "new_chat": "新しいチャット"
-  },
   "chat": {
-    "modelSelect": {
-      "selectAModel": "モデルを選択",
-      "quality": "品質",
-      "aspectRatio": "アスペクト比",
-      "ariaLabel": "モデルを選択"
-    },
     "composer": {
-      "focusEditor": "エディターにフォーカス",
-      "mentionUpstream": "上流ノードを参照",
-      "upstreamResource": "上流リソース",
-      "removeUpstream": "上流を削除",
-      "upload": "アップロード",
-      "uploadFiles": "ファイルをアップロード",
-      "attachment": "添付ファイル",
-      "removeUpload": "添付を削除",
-      "addToInput": "入力欄に追加",
       "selectMode": {
         "label": "選択モード — キャンバスでノードをクリックして参照を追加",
         "title": "選択モード"
@@ -147,13 +71,6 @@
         "title": "Skill を選択"
       },
       "send": "送信"
-    },
-    "panel": {
-      "newConversation": "新しい会話",
-      "history": "履歴"
-    },
-    "recognizedPick": {
-      "fallback": "認識結果"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
@@ -182,27 +99,6 @@
     }
   },
   "canvas": {
-    "new_project": "新規 Project",
-    "generating": "生成中...",
-    "completed": "完了",
-    "failed": "生成失敗",
-    "generating_by": "{user} が生成中",
-    "parameter_mode": "パラメータモード",
-    "intelligent_mode": "インテリジェントモード",
-    "resize": "サイズ変更",
-    "ratio169": "16:9",
-    "ratio916": "9:16",
-    "ratio11": "1:1",
-    "youtube": "YouTube広告",
-    "tiktok": "TikTok、YouTube Shorts",
-    "instagram": "Instagram、Facebook投稿",
-    "toolbar": {
-      "openMinimap": "ミニマップを開く",
-      "closeMinimap": "ミニマップを閉じる",
-      "undoTooltip": "元に戻す (Ctrl+Z)",
-      "redoTooltip": "やり直し (Shift+Ctrl+Z)",
-      "fitToView": "ビューに合わせる"
-    },
     "group": {
       "group": "グループ化",
       "ungroup": "グループ解除",
@@ -218,63 +114,11 @@
       "backgroundPink": "ピンク",
       "backgroundTeal": "ティール"
     },
-    "comment": {
-      "composerPlaceholder": "コメントを入力...",
-      "replyPlaceholder": "ディスカッションに返信...",
-      "send": "コメントを送信",
-      "timeJustNow": "たった今",
-      "timeMinutesAgo": "{count} 分前",
-      "timeHoursAgo": "{count} 時間前",
-      "timeEarlier": "それ以前"
-    },
     "handle": {
-      "agentNodes": "Agent ノード",
       "nodeText": "テキスト",
       "nodeImage": "画像",
       "nodeVideo": "動画",
-      "nodeAudio": "オーディオ",
-      "subtitleText": "テキスト内容を読み込み/作成",
-      "subtitleImage": "画像を読み込み/生成",
-      "subtitleVideo": "動画クリップを読み込み/生成",
-      "subtitleAudio": "オーディオ内容を読み込み/作成"
-    },
-    "node": {
-      "processing": "処理中...",
-      "image": {
-        "loading": "画像を読み込み中...",
-        "uploadFailed": "画像のアップロードに失敗"
-      },
-      "video": {
-        "loading": "動画を読み込み中...",
-        "uploadFailed": "動画のアップロードに失敗"
-      },
-      "audio": {
-        "uploadFailed": "オーディオのアップロードに失敗",
-        "recordingUploadFailed": "録音のアップロードに失敗"
-      }
-    },
-    "upstream": {
-      "text": "テキスト",
-      "file": "ファイル"
-    },
-    "rightPanel": {
-      "collapse": "パネルを折りたたむ",
-      "share": "共有",
-      "background": "背景",
-      "pageSummary": "ページ概要"
-    },
-    "overlay": {
-      "input": "入力"
-    },
-    "pickMode": {
-      "clickHereOrPress": "ここをクリックするか",
-      "toExit": "を押して終了"
-    },
-    "textToolbar": {
-      "paragraph": "段落",
-      "orderedList": "番号付きリスト",
-      "unorderedList": "箇条書き",
-      "bold": "太字"
+      "nodeAudio": "オーディオ"
     },
     "emptyState": {
       "title": "キャンバスは空です",
@@ -294,7 +138,6 @@
       "copy": "コピー",
       "duplicate": "複製",
       "rename": "名前を変更",
-      "delete": "削除",
       "deleteNode": "ノードを削除",
       "deleteGroup": "グループを削除",
       "deleteSelection": "選択を削除",
@@ -385,9 +228,6 @@
     "minimap": {
       "label": "キャンバスのミニマップ"
     },
-    "activity": {
-      "reportFailed": "アップロードを Project アクティビティに記録できませんでした"
-    },
     "connection": {
       "rejected": "{source}は{target}に接続できません",
       "kindText": "テキスト",
@@ -444,29 +284,14 @@
     }
   },
   "editor": {
-    "label": "エディター",
-    "accept": "採用",
-    "reject": "却下",
-    "polish": "推敲",
-    "expand": "拡張",
-    "summarize": "要約",
-    "translate": "翻訳",
-    "rewrite": "書き直し",
-    "continue_writing": "続きを書く",
-    "generate": "生成",
-    "character": "キャラクター",
-    "storyboard": "絵コンテ",
-    "script": "脚本",
-    "comingSoon": "エディターはまもなく公開"
+    "accept": "採用"
   },
   "auth": {
     "email": "メールアドレス",
     "password": "パスワード",
-    "name": "名前",
     "or": "または",
     "invalidEmail": "有効なメールアドレスを入力してください。",
     "passwordTooShort": "パスワードは 8 文字以上にしてください。",
-    "nameRequired": "名前を入力してください。",
     "passwordShow": "パスワードを表示",
     "passwordHide": "パスワードを非表示",
     "login": {
@@ -573,227 +398,37 @@
       "leave": "移動する"
     },
     "toolbar": {
-      "copy": "コピー",
-      "delete": "削除",
-      "cannotDeleteWhileExecuting": "実行中は削除できません",
-      "uploadFile": "ファイルをアップロード",
-      "uploading": "アップロード中...",
-      "pleaseInputTexts": "テキストを入力してください",
-      "pleaseInputUrl": "URLを入力してください",
-      "inputUrl": "URLを入力",
-      "unsupportedFileFormat": "サポートされていないファイル形式: .{extension}",
-      "fileParseFailed": "ファイルの解析に失敗しました。ファイル形式を確認してください",
-      "clickToSelectImageFile": "画像ファイルを選択するにはクリック",
-      "clickToSelectAudioFile": "音声ファイルを選択するにはクリック",
-      "clickToSelectVideoFile": "動画ファイルを選択するにはクリック",
-      "orDropFileHere": "またはファイルをここにドロップ",
-      "credits": "クレジット",
-      "startRecording": "録音を開始",
-      "exitRecording": "録音を終了",
-      "clickToStartRecord": "クリックして録音を開始",
-      "clickStopButtonToFinish": "停止ボタンをクリックして録音を終了",
-      "recordingNotReady": "録音機能の準備ができていません。後でもう一度お試しください",
-      "cannotAccessMicrophone": "マイクにアクセスできません。権限設定を確認してください",
-      "uploadFailedUrlIncorrect": "アップロードに失敗しました。URLが正しくありません。",
-      "uploadFailed": "アップロードに失敗しました。",
-      "audioFormatsSupported": "URLでサポートされている音声形式",
-      "audioFormatsMustBe": "はMP3、OGG、WAV、WEBMである必要があります",
-      "loadingAudio": "音声を読み込み中...",
-      "textNode": "テキスト",
-      "imageNode": "画像",
-      "wrapUngroup": "グループ化/解除",
-      "group": "グループ化",
-      "ungroup": "グループ解除",
-      "layout": "レイアウト",
-      "layoutGrid": "グリッドレイアウト",
-      "layoutHorizontal": "横並びレイアウト",
-      "backgroundColor": "背景色",
-      "expand": "展開",
-      "collapse": "折りたたみ"
-    },
-    "resultsCard": {
-      "clickToSelectResults": "結果を選択するにはクリック",
-      "resultsSelected": "件の結果が選択されました",
-      "resultSelected": "件の結果が選択されました",
-      "selectResultsToTransfer": "次のノードに転送する結果を選択"
-    },
-    "panel": {
-      "resultsSelected": "件の結果が選択されました",
-      "runHistory": "実行履歴",
-      "assets": "アセット",
-      "generatedResults": "生成された結果",
-      "exportedResults": "エクスポート結果",
-      "all": "すべて",
-      "texts": "テキスト",
-      "images": "画像",
-      "audios": "音声",
-      "videos": "動画",
-      "generatedAt": "生成時刻",
-      "uploadedAt": "アップロード時刻",
-      "exportedAt": "エクスポート時刻",
-      "today": "今日",
-      "yesterday": "昨日",
-      "upload": "アップロード",
-      "videoEditor": "動画エディター",
-      "generated": "生成",
-      "selected": "選択済み",
-      "loading": "読み込み中...",
-      "noMore": "これ以上ありません...",
-      "pullToRefresh": "引っ張って更新",
-      "releaseToRefresh": "離して更新"
-    },
-    "canvas": {
-      "noRunsYet": "まだ実行されていません",
-      "noRunsDescBefore": "このノードを実行するたびに、入力、出力、および",
-      "noRunsCreditUsage": "クレジット使用量",
-      "noRunsDescAfter": "がここに表示されます。"
-    },
-    "form": {
-      "selectAModel": "モデルを選択",
-      "aspectRatio": "アスペクト比",
-      "duration": "時間",
-      "resolution": "解像度",
-      "selectLanguage": "言語を選択",
-      "selectAVoice": "音声を選択",
-      "fillModel": "フィルモデル",
-      "musicDescription": "音楽の説明",
-      "musicDescriptionPlaceholder": "曲調、ジャンル、メロディー、および関連する音楽要素。（10-2000文字が必要）",
-      "splittingRules": "分割ルール*",
-      "splittingRulesPlaceholder": "入力テキストの分割方法を説明（オプション）",
-      "processingRules": "処理ルール*",
-      "processingRulesPlaceholder": "仕上げのルールとスタイルを説明してください（オプション）。"
-    },
-    "videoEditor": {
-      "noExportResultsYet": "エクスポート結果はまだありません",
-      "startToEdit": "編集を開始",
-      "videos": "動画",
-      "audios": "音声",
-      "images": "画像",
-      "texts": "テキスト",
-      "deleteWarning": "このエディターノードは現在使用中で削除できません。まず編集ページを閉じてください。",
-      "close": "閉じる"
-    },
-    "emptyState": {
-      "noResultsYet": "まだ結果が生成されていません。",
-      "clickThe": "クリック",
-      "buttonToBringIdeasToLife": "ボタンをクリックして、アイデアを実現しましょう！"
+      "uploadFile": "ファイルをアップロード"
     },
     "header": {
-      "autosavedAt": "自動保存時刻",
-      "monitor": "モニター",
-      "darkMode": "ダークモード",
-      "lightMode": "ライトモード",
-      "importWorkflow": "ワークフローをインポート",
-      "exportWorkflow": "ワークフローをエクスポート",
-      "exportWithResources": "リソースを含めてエクスポート",
-      "exportWithoutResources": "リソースを含めずにエクスポート",
-      "discord": "Discord",
-      "workflowExportedWithResourcesSuccessfully": "ワークフローがリソースを含めて正常にエクスポートされました",
-      "failedToExportWorkflowWithResources": "ワークフローのエクスポートに失敗しました（リソースを含む）",
-      "exportWithoutResourcesNotImplemented": "リソースを含めないエクスポート機能はまだ実装されていません",
-      "exportSuccessful": "エクスポート成功",
-      "exportFailed": "エクスポート失敗！",
-      "importSuccessful": "インポート成功",
-      "importFailed": "インポート失敗！",
-      "renameFailed": "Project 名を変更できませんでした",
-      "importing": "インポート中...",
-      "exporting": "エクスポート中...",
-      "english": "English",
-      "simplifiedChinese": "簡体字中国語",
-      "traditionalChinese": "繁体字中国語",
-      "japanese": "日本語"
-    },
-    "modal": {
-      "confirm": "確認",
-      "cancel": "キャンセル"
+      "renameFailed": "Project 名を変更できませんでした"
     },
     "space": {
       "timeout": {
         "create": "Space の作成がタイムアウトしました",
-        "retry": "ページを更新して再試行してください",
-        "delete": "Space の削除がタイムアウトしました"
+        "retry": "ページを更新して再試行してください"
       },
       "error": {
         "create": "Space の作成に失敗しました",
         "notSynced": "Project を同期中です。しばらくしてから再試行してください"
       },
       "loading": {
-        "create": "Space を作成中…",
-        "delete": "Space を削除中…"
+        "create": "Space を作成中…"
       },
       "noActive": "開いている Spaces がありません — ドロワーから開くか、+ で新規作成してください。"
     }
   },
   "common": {
-    "confirm": "確認",
-    "cancel": "キャンセル",
-    "save": "保存",
-    "delete": "削除",
-    "close": "閉じる",
-    "export": "エクスポート",
-    "import": "インポート",
-    "undo": "元に戻す",
-    "redo": "やり直す",
-    "previous": "前へ",
-    "next": "次へ",
-    "appTitle": "ビデオエディター",
-    "backToWorkbench": "ワークベンチに戻る",
-    "syncData": "データを保存",
-    "copy": "コピー",
-    "download": "ダウンロード",
-    "mention": "メンション",
-    "fullscreen": "全画面",
-    "edit": "編集"
+    "cancel": "キャンセル"
   },
   "message": {
-    "projectSaved": "Project を保存しました",
-    "saveProjectFailed": "Project の保存に失敗しました",
-    "projectLoaded": "Project を読み込みました",
-    "loadProjectFailed": "Project の読み込みに失敗しました",
-    "mockDataLoaded": "モックデータを読み込みました",
-    "loadMockDataFailed": "モックデータの読み込みに失敗しました",
-    "noContentToExport": "エクスポートするコンテンツがありません",
-    "exportImageFailed": "画像のエクスポートに失敗しました",
-    "exportVideoFailed": "動画のエクスポートに失敗しました",
-    "unknownError": "不明なエラー",
-    "mediaDeleted": "メディアを削除しました",
-    "addedToTimeline": "タイムラインに追加しました",
-    "clipCopied": "クリップをコピーしました",
-    "movePlayheadToSplit": "分割するにはプレイヘッドをクリップ内に移動してください",
-    "clipSplit": "クリップを分割しました",
-    "clipDeleted": "クリップを削除しました",
-    "autoSaving": "自動保存中...",
-    "autoSaveSuccess": "自動保存が成功しました",
-    "autoSaveFailed": "自動保存に失敗しました",
-    "saving": "保存中...",
-    "saveSuccess": "保存が成功しました",
-    "saveFailed": "保存に失敗しました"
+    "addedToTimeline": "タイムラインに追加しました"
   },
   "members": {
     "popover": {
       "title": "Project メンバー",
       "manage": "コラボレーターを管理",
-      "remove": "削除",
-      "removeSuccess": "メンバーを削除しました。",
-      "removeFailed": "メンバーを削除できませんでした。再試行してください。",
-      "self_label": "(あなた)",
       "isMe": "(自分)"
-    },
-    "panel": {
-      "title": "メンバー管理",
-      "subtitle": "権限を含めたメンバー管理",
-      "invite_section": "新規メンバーを招待",
-      "invite_placeholder": "メールまたはユーザー ID",
-      "invite_button": "招待",
-      "list_count": "メンバー ({count})",
-      "list_note": "Owner は Creator に固定",
-      "confirm_remove": "このメンバーを削除しますか?",
-      "done": "完了"
-    },
-    "role": {
-      "owner": "Owner",
-      "edit": "編集",
-      "view": "閲覧"
     },
     "modal": {
       "title": "コラボレーター管理",
@@ -827,21 +462,10 @@
     "tab": {
       "new": "新規 Canvas",
       "drawer": "全 Canvases",
-      "close": "閉じる",
-      "rename": "名前変更",
-      "duplicate": "複製",
-      "delete": "削除",
-      "lock": "ロック",
-      "unlock": "ロック解除",
       "closeAria": "Space タブを閉じる"
     },
     "drawer": {
       "title": "すべての Spaces",
-      "count": "個",
-      "tag_open": "開いた",
-      "tag_active": "現在",
-      "nodes_count": "{count} ノード",
-      "confirm_delete": "この Space を削除しますか?",
       "new_canvas": "新規 Canvas",
       "new_document": "新規 Document",
       "new_timeline": "新規 Timeline",
@@ -868,19 +492,6 @@
         "deleteFail": "削除に失敗しました"
       }
     },
-    "new_dialog": {
-      "title": "新規 Space",
-      "subtitle": "種類を選んで名前を付けてください。",
-      "name_label": "名前",
-      "name_placeholder": "例: シーン v3",
-      "create": "作成",
-      "cancel": "キャンセル",
-      "placeholder_kind_unsupported": "{kind} はまだサポートされていません。"
-    },
-    "placeholder": {
-      "title": "近日公開",
-      "description": "{kind} タイプの Space は今後のリリースで対応予定です。"
-    },
     "kind": {
       "canvas": "Canvas",
       "canvasSub": "無限キャンバス + ノード",
@@ -899,8 +510,7 @@
       "namePlaceholder": "例:Cyberpunk Concept",
       "nameRemaining": "{count, plural, other {残り # 文字}}",
       "cancel": "キャンセル",
-      "submit": "作成",
-      "submitting": "作成中…"
+      "submit": "作成"
     },
     "rename": {
       "inputAriaLabel": "Space の名前を変更",
@@ -912,7 +522,6 @@
     "readonly": {
       "label": "読み取り専用",
       "description": "この Space はタブバーで開いていません。読み取り専用プレビューでズームとコピーは可能ですが編集はできません。",
-      "close": "読み取り専用プレビューを閉じる",
       "canvas": {
         "title": "読み取り専用 Canvas",
         "description": "実際の ReactFlow viewer は canvas-space 実装完了時に接続。ここではノードとエッジの読み取り専用スナップショットを表示します(ズーム/コピー可)。"
@@ -927,24 +536,6 @@
       }
     },
     "lockedAria": "ロック中"
-  },
-  "image": {
-    "flipVertical": "上下反転",
-    "flipHorizontal": "左右反転",
-    "rotateLeft": "左に回転",
-    "rotateRight": "右に回転",
-    "zoomOut": "縮小",
-    "zoomIn": "拡大",
-    "closePreview": "プレビューを閉じる"
-  },
-  "document": {
-    "editorComingSoon": "テキストエディターはまもなく公開",
-    "imageDialog": {
-      "insertImage": "画像を挿入",
-      "upload": "アップロード",
-      "embedUrl": "URL を埋め込む",
-      "dropOrBrowse": "ここに画像をドロップまたはクリックして参照"
-    }
   },
   "menu": {
     "createAria": "作成メニュー",
@@ -966,16 +557,10 @@
     "zoomIn": "拡大",
     "fit": "フィット",
     "fitAria": "ビューポートにフィット",
-    "expand": "全画面",
     "snap": {
       "on": "グリッドにスナップを有効化",
       "off": "グリッドにスナップを無効化",
       "label": "グリッドにスナップ"
-    },
-    "guides": {
-      "on": "整列ガイドを有効化",
-      "off": "整列ガイドを無効化",
-      "label": "整列ガイド"
     },
     "minimap": {
       "show": "ミニマップを表示",
@@ -1011,16 +596,8 @@
   "notifications": {
     "title": "通知",
     "empty": "保留中の通知はありません",
-    "roleHint": {
-      "editor": "編集",
-      "viewer": "閲覧"
-    },
     "reject": "却下",
     "approve": "承認",
-    "request": {
-      "audio": "ボイスオーバーと BGM 部分に参加したい",
-      "project": "あなたの prompt スタイルを自分の Project で参考にしたい"
-    },
     "loading": "読み込み中…",
     "markRead": "既読にする",
     "approvedToast": "アップグレードを承認しました。",
@@ -1105,14 +682,8 @@
     },
     "topBar": {
       "home": "Studio ホーム",
-      "recent": "最近",
-      "search": "検索",
-      "notifications": "通知",
       "account": "アカウント",
       "signOut": "ログアウト"
-    },
-    "createProject": {
-      "failed": "Project の作成に失敗:{reason}"
     },
     "container": {
       "shell": {
@@ -1157,7 +728,6 @@
       },
       "card": {
         "assetCount": "アセット {count} 個",
-        "fromStudio": "{studio} より",
         "more": "その他の操作",
         "createdAt": "{time}に作成"
       },
@@ -1202,7 +772,6 @@
       "members": {
         "invite": "メンバーを招待",
         "colName": "名前",
-        "colEmail": "メール",
         "colRole": "ロール",
         "colJoined": "参加日",
         "roleAdmin": "Admin",
@@ -1239,7 +808,6 @@
         "name": "名前",
         "slug": "Slug",
         "description": "説明",
-        "avatar": "アバター",
         "dangerTitle": "危険な操作",
         "transfer": "Studio を譲渡",
         "delete": "Studio を削除",
@@ -1301,9 +869,6 @@
         "slugHelperProject": "Project のURLの一部です。ブラウザのアドレスに表示されます。小文字・数字・ハイフン(-)のみ使用できます。",
         "slugHelperCollection": "Collection のURLの一部です。ブラウザのアドレスに表示されます。小文字・数字・ハイフン(-)のみ使用できます。",
         "descriptionLabel": "説明(任意)",
-        "typeLabel": "種類",
-        "typePersonal": "個人",
-        "typeTeam": "チーム",
         "create": "作成",
         "cancel": "キャンセル",
         "slugFormat": "小文字・数字・ハイフンのみ使用できます。",
@@ -1316,9 +881,6 @@
         "visibilityLabel": "公開範囲",
         "visibilityStudioOption": "Studio 内に表示 — 全メンバー",
         "visibilityPrivateOption": "非公開 — 招待のみ"
-      },
-      "empty": {
-        "newCard": "+ 新規"
       },
       "toolbar": {
         "sortLabel": "並び替え",

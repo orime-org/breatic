@@ -3,23 +3,17 @@
     "error": {
       "not_found": "Resource not found",
       "forbidden": "Access denied",
-      "unauthorized": "Invalid or expired credentials",
       "conflict": "Resource conflict",
       "validation": "Invalid input",
       "upload_too_large": "File exceeds the upload size limit.",
       "insufficient_credits": "Insufficient credits: required {required}, available {available}",
       "rate_limited": "Too many requests, please try again later",
-      "internal": "Internal server error",
-      "stripe_not_configured": "Payment system is not configured",
-      "storage_not_configured": "Storage system is not configured",
-      "field_required": "At least one field must be provided"
+      "internal": "Internal server error"
     },
     "auth": {
       "invalid_credentials": "Invalid email or password",
       "email_taken": "Email already registered",
-      "no_password": "This account uses social login",
       "token_expired": "Session expired, please log in again",
-      "register_success": "Account created successfully",
       "logout_success": "Logged out",
       "not_authenticated": "Not authenticated",
       "google_oauth_unconfigured": "Google sign-in is not available on this server",
@@ -54,87 +48,17 @@
       "already_running": "Another text tool is already running. Please wait."
     },
     "payment": {
-      "checkout_created": "Checkout session created",
-      "credits_granted": "{amount} credits added to your account",
-      "payment_completed": "Payment completed",
-      "payment_failed": "Payment failed",
       "tier_not_found": "Unknown pricing tier: {tier}. Available: {available}",
       "price_not_configured": "Price not configured for tier: {tier}"
     },
-    "credits": {
-      "deducted": "Credits deducted: {amount}",
-      "added": "Credits added: {amount}",
-      "balance": "Current balance: {balance}"
-    },
-    "task": {
-      "created": "Task created",
-      "running": "Task is running",
-      "completed": "Task completed",
-      "failed": "Task failed: {error}",
-      "not_your_task": "You don't have access to this task"
-    },
     "email": {
-      "verify_subject": "Verify your email — Breatic",
-      "verify_body": "Click the link below to verify your email address:\n\n{link}\n\nThis link expires in 24 hours.\n",
-      "reset_subject": "Reset your password — Breatic",
-      "reset_body": "Click the link below to reset your password:\n\n{link}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, you can safely ignore this email.\n",
-      "welcome_subject": "Welcome to Breatic",
-      "welcome_body": "Welcome to Breatic, {name}! Start creating amazing content with AI."
-    },
-    "models": {
-      "image": {
-        "nano-banana-pro": "Best quality, up to 4K resolution",
-        "nano-banana-2": "Fast, versatile, web search enabled",
-        "nano-banana": "Classic, balanced quality and speed",
-        "seedream-5.0-lite": "Photorealistic, strong with Asian aesthetics",
-        "midjourney-v7": "Artistic, highly stylized",
-        "z-image-turbo": "Ultra-fast, budget-friendly",
-        "qwen-image": "Multi-style Chinese art"
-      },
-      "video": {
-        "kling-o3-pro": "Best quality, complex camera movements",
-        "wan-2.6": "Anime-style, reference images supported",
-        "seedance-2.0": "Dance and human motion specialist",
-        "veo-3.1": "Cinematic quality, film-grade"
-      },
-      "audio": {
-        "minimax-music-02": "Best all-round, vocals supported",
-        "elevenlabs-sfx-v2": "Sound effects, loop mode"
-      },
-      "tts": {
-        "elevenlabs-v3": "Most natural, 52 voices",
-        "gemini-tts": "Multi-speaker dialogue"
-      }
+      "welcome_subject": "Welcome to Breatic"
     }
   },
   "cancel": "Cancel",
   "loading": "Loading...",
-  "next": "Next",
-  "agent": {
-    "placeholder": "Describe what you want to create...",
-    "thinking": "Thinking...",
-    "tool_running": "Using {tool}...",
-    "plan_ready": "Plan ready — confirm to generate",
-    "confirm_plan": "Confirm & Generate",
-    "new_chat": "New Chat"
-  },
   "chat": {
-    "modelSelect": {
-      "selectAModel": "Select a Model",
-      "quality": "Quality",
-      "aspectRatio": "Aspect Ratio",
-      "ariaLabel": "Select model"
-    },
     "composer": {
-      "focusEditor": "Focus editor",
-      "mentionUpstream": "Mention upstream",
-      "upstreamResource": "Upstream resource",
-      "removeUpstream": "Remove upstream",
-      "upload": "Upload",
-      "uploadFiles": "Upload files",
-      "attachment": "Attachment",
-      "removeUpload": "Remove upload",
-      "addToInput": "Add to input",
       "selectMode": {
         "label": "Select mode — click nodes on the canvas to add references",
         "title": "Select mode"
@@ -147,13 +71,6 @@
         "title": "Pick Skill"
       },
       "send": "Send"
-    },
-    "panel": {
-      "newConversation": "New conversation",
-      "history": "History"
-    },
-    "recognizedPick": {
-      "fallback": "Recognized result"
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",
@@ -182,27 +99,6 @@
     }
   },
   "canvas": {
-    "new_project": "New Project",
-    "generating": "Generating...",
-    "completed": "Completed",
-    "failed": "Generation failed",
-    "generating_by": "Being generated by {user}",
-    "parameter_mode": "Parameter Mode",
-    "intelligent_mode": "Intelligent Mode",
-    "resize": "Resize",
-    "ratio169": "16:9",
-    "ratio916": "9:16",
-    "ratio11": "1:1",
-    "youtube": "YouTube Ads",
-    "tiktok": "TikTok, YouTube Shorts",
-    "instagram": "Instagram, Facebook Posts",
-    "toolbar": {
-      "openMinimap": "Open minimap",
-      "closeMinimap": "Close minimap",
-      "undoTooltip": "Undo (Ctrl+Z)",
-      "redoTooltip": "Redo (Shift+Ctrl+Z)",
-      "fitToView": "Fit to view"
-    },
     "group": {
       "group": "Group",
       "ungroup": "Ungroup",
@@ -218,63 +114,11 @@
       "backgroundPink": "Pink",
       "backgroundTeal": "Teal"
     },
-    "comment": {
-      "composerPlaceholder": "Enter your comment...",
-      "replyPlaceholder": "Reply to discussion...",
-      "send": "Send comment",
-      "timeJustNow": "Just now",
-      "timeMinutesAgo": "{count} minutes ago",
-      "timeHoursAgo": "{count} hours ago",
-      "timeEarlier": "Earlier"
-    },
     "handle": {
-      "agentNodes": "Agent Nodes",
       "nodeText": "Text",
       "nodeImage": "Image",
       "nodeVideo": "Video",
-      "nodeAudio": "Audio",
-      "subtitleText": "Loads/Creates text content",
-      "subtitleImage": "Loads/Generates images",
-      "subtitleVideo": "Loads/Generates video clips",
-      "subtitleAudio": "Loads/Creates audio content"
-    },
-    "node": {
-      "processing": "Processing...",
-      "image": {
-        "loading": "Loading Image...",
-        "uploadFailed": "Image upload failed"
-      },
-      "video": {
-        "loading": "Loading Video...",
-        "uploadFailed": "Video upload failed"
-      },
-      "audio": {
-        "uploadFailed": "Audio upload failed",
-        "recordingUploadFailed": "Recording upload failed"
-      }
-    },
-    "upstream": {
-      "text": "Text",
-      "file": "File"
-    },
-    "rightPanel": {
-      "collapse": "Collapse panel",
-      "share": "Share",
-      "background": "Background",
-      "pageSummary": "Page Summary"
-    },
-    "overlay": {
-      "input": "Input"
-    },
-    "pickMode": {
-      "clickHereOrPress": "Click here or press",
-      "toExit": "to exit"
-    },
-    "textToolbar": {
-      "paragraph": "Paragraph",
-      "orderedList": "Ordered list",
-      "unorderedList": "Unordered list",
-      "bold": "Bold"
+      "nodeAudio": "Audio"
     },
     "emptyState": {
       "title": "The canvas is empty",
@@ -294,7 +138,6 @@
       "copy": "Copy",
       "duplicate": "Duplicate",
       "rename": "Rename",
-      "delete": "Delete",
       "deleteNode": "Delete node",
       "deleteGroup": "Delete group",
       "deleteSelection": "Delete selection",
@@ -385,9 +228,6 @@
     "minimap": {
       "label": "Canvas minimap"
     },
-    "activity": {
-      "reportFailed": "Failed to record the upload in project activity"
-    },
     "connection": {
       "rejected": "{source} can't connect into {target}",
       "kindText": "Text",
@@ -444,29 +284,14 @@
     }
   },
   "editor": {
-    "label": "Editor",
-    "accept": "Accept",
-    "reject": "Reject",
-    "polish": "Polish",
-    "expand": "Expand",
-    "summarize": "Summarize",
-    "translate": "Translate",
-    "rewrite": "Rewrite",
-    "continue_writing": "Continue Writing",
-    "generate": "Generate",
-    "character": "Character",
-    "storyboard": "Storyboard",
-    "script": "Script",
-    "comingSoon": "Editor coming soon"
+    "accept": "Accept"
   },
   "auth": {
     "email": "Email",
     "password": "Password",
-    "name": "Name",
     "or": "or",
     "invalidEmail": "Please enter a valid email address.",
     "passwordTooShort": "Password must be at least 8 characters.",
-    "nameRequired": "Please enter your name.",
     "passwordShow": "Show password",
     "passwordHide": "Hide password",
     "login": {
@@ -573,227 +398,37 @@
       "leave": "Leave anyway"
     },
     "toolbar": {
-      "copy": "Copy",
-      "delete": "Delete",
-      "cannotDeleteWhileExecuting": "Cannot delete while executing",
-      "uploadFile": "Upload file",
-      "uploading": "Uploading...",
-      "pleaseInputTexts": "Please input texts",
-      "pleaseInputUrl": "Please input the URL",
-      "inputUrl": "Input URL",
-      "unsupportedFileFormat": "Unsupported file format: .{extension}",
-      "fileParseFailed": "File parsing failed, please check the file format",
-      "clickToSelectImageFile": "Click to select an image file",
-      "clickToSelectAudioFile": "Click to select an audio file",
-      "clickToSelectVideoFile": "Click to select a video file",
-      "orDropFileHere": "or drop a file here",
-      "credits": "credits",
-      "startRecording": "Start recording",
-      "exitRecording": "Exit recording",
-      "clickToStartRecord": "Click to start record",
-      "clickStopButtonToFinish": "Click the stop button to finish recording",
-      "recordingNotReady": "Recording function is not ready, please try again later",
-      "cannotAccessMicrophone": "Cannot access microphone, please check permission settings",
-      "uploadFailedUrlIncorrect": "Upload failed. The URL is incorrect.",
-      "uploadFailed": "Upload failed.",
-      "audioFormatsSupported": "The audio formats supported",
-      "audioFormatsMustBe": "by the URL must be MP3, OGG, WAV, WEBM",
-      "loadingAudio": "Loading Audio...",
-      "textNode": "Text",
-      "imageNode": "Image",
-      "wrapUngroup": "Wrap / Ungroup",
-      "group": "Group",
-      "ungroup": "Ungroup",
-      "layout": "Layout",
-      "layoutGrid": "Grid layout",
-      "layoutHorizontal": "Horizontal layout",
-      "backgroundColor": "Background color",
-      "expand": "Expand",
-      "collapse": "Collapse"
-    },
-    "resultsCard": {
-      "clickToSelectResults": "Click to select results",
-      "resultsSelected": "results selected",
-      "resultSelected": "result selected",
-      "selectResultsToTransfer": "Select Results to Transfer to The Next Node"
-    },
-    "panel": {
-      "resultsSelected": "results selected",
-      "runHistory": "Run history",
-      "assets": "Assets",
-      "generatedResults": "Generated Results",
-      "exportedResults": "Exported Results",
-      "all": "All",
-      "texts": "Texts",
-      "images": "Images",
-      "audios": "Audios",
-      "videos": "Videos",
-      "generatedAt": "Generated at",
-      "uploadedAt": "Uploaded at",
-      "exportedAt": "Exported at",
-      "today": "Today",
-      "yesterday": "Yesterday",
-      "upload": "Upload",
-      "videoEditor": "Video Editor",
-      "generated": "Generated",
-      "selected": "selected",
-      "loading": "Loading...",
-      "noMore": "No more...",
-      "pullToRefresh": "Pull to refresh",
-      "releaseToRefresh": "Release to refresh"
-    },
-    "canvas": {
-      "noRunsYet": "No runs yet",
-      "noRunsDescBefore": "Each time you run this node, the result will appear here — inputs, outputs, and ",
-      "noRunsCreditUsage": "credit usage",
-      "noRunsDescAfter": "."
-    },
-    "form": {
-      "selectAModel": "Select a Model",
-      "aspectRatio": "Aspect Ratio",
-      "duration": "Duration",
-      "resolution": "Resolution",
-      "selectLanguage": "Select Language",
-      "selectAVoice": "Select a voice",
-      "fillModel": "Fill Model",
-      "musicDescription": "Music description",
-      "musicDescriptionPlaceholder": "Tune, genre, melody, and related musical elements. (10-2000 characters required)",
-      "splittingRules": "Splitting Rules*",
-      "splittingRulesPlaceholder": "Describe how to split the input text (optional)",
-      "processingRules": "Processing Rules*",
-      "processingRulesPlaceholder": "Please describe the rules and style for polishing (optional)."
-    },
-    "videoEditor": {
-      "noExportResultsYet": "No Export Results Yet",
-      "startToEdit": "Start to Edit",
-      "videos": "Videos",
-      "audios": "Audios",
-      "images": "Images",
-      "texts": "Texts",
-      "deleteWarning": "This editor node is currently in use and cannot be deleted. Please close the editing page first.",
-      "close": "Close"
-    },
-    "emptyState": {
-      "noResultsYet": "You haven't generated any results yet.",
-      "clickThe": "Click the",
-      "buttonToBringIdeasToLife": "button to bring your ideas to life!"
+      "uploadFile": "Upload file"
     },
     "header": {
-      "autosavedAt": "Autosaved at",
-      "monitor": "Monitor",
-      "darkMode": "Dark Mode",
-      "lightMode": "Light Mode",
-      "importWorkflow": "Import Workflow",
-      "exportWorkflow": "Export Workflow",
-      "exportWithResources": "Export with Resources",
-      "exportWithoutResources": "Export without Resources",
-      "discord": "Discord",
-      "workflowExportedWithResourcesSuccessfully": "Workflow exported with resources successfully",
-      "failedToExportWorkflowWithResources": "Failed to export workflow with resources",
-      "exportWithoutResourcesNotImplemented": "Export without resources feature is not implemented yet",
-      "exportSuccessful": "Export successful",
-      "exportFailed": "Export failed!",
-      "importSuccessful": "Import successful",
-      "importFailed": "Import failed!",
-      "renameFailed": "Couldn't rename the project",
-      "importing": "Importing...",
-      "exporting": "Exporting...",
-      "english": "English",
-      "simplifiedChinese": "Simplified Chinese",
-      "traditionalChinese": "Traditional Chinese",
-      "japanese": "Japanese"
-    },
-    "modal": {
-      "confirm": "Confirm",
-      "cancel": "Cancel"
+      "renameFailed": "Couldn't rename the project"
     },
     "space": {
       "timeout": {
         "create": "Space creation timed out",
-        "retry": "Refresh the page and try again",
-        "delete": "Space deletion timed out"
+        "retry": "Refresh the page and try again"
       },
       "error": {
         "create": "Failed to create space",
         "notSynced": "Project is still syncing — try again in a moment"
       },
       "loading": {
-        "create": "Creating Space…",
-        "delete": "Deleting Space…"
+        "create": "Creating Space…"
       },
       "noActive": "No open spaces — open one from the drawer or click + to create."
     }
   },
   "common": {
-    "confirm": "Confirm",
-    "cancel": "Cancel",
-    "save": "Save",
-    "delete": "Delete",
-    "close": "Close",
-    "export": "Export",
-    "import": "Import",
-    "undo": "Undo",
-    "redo": "Redo",
-    "previous": "Previous",
-    "next": "Next",
-    "appTitle": "Video Editor",
-    "backToWorkbench": "Back to Workbench",
-    "syncData": "Sync Data",
-    "copy": "Copy",
-    "download": "Download",
-    "mention": "Mention",
-    "fullscreen": "Fullscreen",
-    "edit": "Edit"
+    "cancel": "Cancel"
   },
   "message": {
-    "projectSaved": "Project saved",
-    "saveProjectFailed": "Failed to save project",
-    "projectLoaded": "Project loaded",
-    "loadProjectFailed": "Failed to load project",
-    "mockDataLoaded": "Mock data loaded",
-    "loadMockDataFailed": "Failed to load mock data",
-    "noContentToExport": "No content to export",
-    "exportImageFailed": "Failed to export image",
-    "exportVideoFailed": "Failed to export video",
-    "unknownError": "Unknown error",
-    "mediaDeleted": "Media deleted",
-    "addedToTimeline": "Added to timeline",
-    "clipCopied": "Clip copied",
-    "movePlayheadToSplit": "Move playhead inside the clip to split",
-    "clipSplit": "Clip split",
-    "clipDeleted": "Clip deleted",
-    "autoSaving": "Auto saving...",
-    "autoSaveSuccess": "Auto save successful",
-    "autoSaveFailed": "Auto save failed",
-    "saving": "Saving...",
-    "saveSuccess": "Save successful",
-    "saveFailed": "Save failed"
+    "addedToTimeline": "Added to timeline"
   },
   "members": {
     "popover": {
       "title": "Project members",
       "manage": "Manage collaborators",
-      "remove": "Remove",
-      "removeSuccess": "Member removed.",
-      "removeFailed": "Could not remove the member. Please try again.",
-      "self_label": "(you)",
       "isMe": "(you)"
-    },
-    "panel": {
-      "title": "Member management",
-      "subtitle": "Manage project members and roles",
-      "invite_section": "Invite collaborator",
-      "invite_placeholder": "Email or user ID",
-      "invite_button": "Invite",
-      "list_count": "Members ({count})",
-      "list_note": "Owner is permanently bound to project creator",
-      "confirm_remove": "Remove this collaborator?",
-      "done": "Done"
-    },
-    "role": {
-      "owner": "Owner",
-      "edit": "Editor",
-      "view": "Viewer"
     },
     "modal": {
       "title": "Collaborators",
@@ -827,21 +462,10 @@
     "tab": {
       "new": "New canvas",
       "drawer": "All canvases",
-      "close": "Close tab",
-      "rename": "Rename",
-      "duplicate": "Duplicate",
-      "delete": "Delete",
-      "lock": "Lock",
-      "unlock": "Unlock",
       "closeAria": "Close space tab"
     },
     "drawer": {
       "title": "All spaces",
-      "count": "total",
-      "tag_open": "Open",
-      "tag_active": "Active",
-      "nodes_count": "{count} nodes",
-      "confirm_delete": "Delete this space?",
       "new_canvas": "New canvas",
       "new_document": "New document",
       "new_timeline": "New timeline",
@@ -868,19 +492,6 @@
         "deleteFail": "Failed to delete"
       }
     },
-    "new_dialog": {
-      "title": "New space",
-      "subtitle": "Pick a kind and give it a name.",
-      "name_label": "Name",
-      "name_placeholder": "e.g. Scene v3",
-      "create": "Create",
-      "cancel": "Cancel",
-      "placeholder_kind_unsupported": "{kind} spaces are not yet supported in V1."
-    },
-    "placeholder": {
-      "title": "Coming soon",
-      "description": "The {kind} space type will be available in a future release."
-    },
     "kind": {
       "canvas": "Canvas",
       "canvasSub": "Infinite canvas + nodes",
@@ -899,8 +510,7 @@
       "namePlaceholder": "e.g. Cyberpunk Concept",
       "nameRemaining": "{count, plural, one {# character left} other {# characters left}}",
       "cancel": "Cancel",
-      "submit": "Create",
-      "submitting": "Creating…"
+      "submit": "Create"
     },
     "rename": {
       "inputAriaLabel": "Rename space",
@@ -912,7 +522,6 @@
     "readonly": {
       "label": "Read-only",
       "description": "This space is not open in the tab bar; read-only preview lets you pan/zoom and copy content, but not edit.",
-      "close": "Close read-only preview",
       "canvas": {
         "title": "Read-only canvas",
         "description": "Real ReactFlow viewer plugs in once canvas-space is complete; here we show a read-only snapshot of nodes and edges, with zoom and copy."
@@ -927,24 +536,6 @@
       }
     },
     "lockedAria": "Locked"
-  },
-  "image": {
-    "flipVertical": "Flip vertical",
-    "flipHorizontal": "Flip horizontal",
-    "rotateLeft": "Rotate left",
-    "rotateRight": "Rotate right",
-    "zoomOut": "Zoom out",
-    "zoomIn": "Zoom in",
-    "closePreview": "Close preview"
-  },
-  "document": {
-    "editorComingSoon": "Text editor coming soon",
-    "imageDialog": {
-      "insertImage": "Insert Image",
-      "upload": "Upload",
-      "embedUrl": "Embed URL",
-      "dropOrBrowse": "Drop image here or click to browse"
-    }
   },
   "menu": {
     "createAria": "Create menu",
@@ -966,16 +557,10 @@
     "zoomIn": "Zoom in",
     "fit": "Fit",
     "fitAria": "Fit to viewport",
-    "expand": "Fullscreen",
     "snap": {
       "on": "Enable snap to grid",
       "off": "Disable snap to grid",
       "label": "Snap to grid"
-    },
-    "guides": {
-      "on": "Enable alignment guides",
-      "off": "Disable alignment guides",
-      "label": "Alignment guides"
     },
     "minimap": {
       "show": "Show minimap",
@@ -1011,16 +596,8 @@
   "notifications": {
     "title": "Notifications",
     "empty": "No pending notifications",
-    "roleHint": {
-      "editor": "Edit",
-      "viewer": "View"
-    },
     "reject": "Reject",
     "approve": "Approve",
-    "request": {
-      "audio": "Wants to join for voice-over and BGM",
-      "project": "Wants to reference your prompt style for their project"
-    },
     "loading": "Loading…",
     "markRead": "Mark read",
     "approvedToast": "Upgrade approved.",
@@ -1105,14 +682,8 @@
     },
     "topBar": {
       "home": "Studio home",
-      "recent": "Recent",
-      "search": "Search",
-      "notifications": "Notifications",
       "account": "Account",
       "signOut": "Sign out"
-    },
-    "createProject": {
-      "failed": "Failed to create project: {reason}"
     },
     "container": {
       "shell": {
@@ -1157,7 +728,6 @@
       },
       "card": {
         "assetCount": "{count} assets",
-        "fromStudio": "From {studio}",
         "more": "More actions",
         "createdAt": "Created {time}"
       },
@@ -1202,7 +772,6 @@
       "members": {
         "invite": "Invite member",
         "colName": "Name",
-        "colEmail": "Email",
         "colRole": "Role",
         "colJoined": "Joined",
         "roleAdmin": "Admin",
@@ -1239,7 +808,6 @@
         "name": "Name",
         "slug": "Slug",
         "description": "Description",
-        "avatar": "Avatar",
         "dangerTitle": "Danger zone",
         "transfer": "Transfer Studio",
         "delete": "Delete Studio",
@@ -1301,9 +869,6 @@
         "slugHelperProject": "Part of the project's web address. Use lowercase letters, numbers and hyphens (-) only.",
         "slugHelperCollection": "Part of the collection's web address. Use lowercase letters, numbers and hyphens (-) only.",
         "descriptionLabel": "Description (optional)",
-        "typeLabel": "Type",
-        "typePersonal": "Personal",
-        "typeTeam": "Team",
         "create": "Create",
         "cancel": "Cancel",
         "slugFormat": "Lowercase letters, numbers and hyphens only.",
@@ -1316,9 +881,6 @@
         "visibilityLabel": "Visibility",
         "visibilityStudioOption": "Studio — all members",
         "visibilityPrivateOption": "Private — invite only"
-      },
-      "empty": {
-        "newCard": "+ New"
       },
       "toolbar": {
         "sortLabel": "Sort",

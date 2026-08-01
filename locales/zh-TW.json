@@ -3,23 +3,17 @@
     "error": {
       "not_found": "資源未找到",
       "forbidden": "沒有存取權限",
-      "unauthorized": "憑證無效或已過期",
       "conflict": "資源衝突",
       "validation": "輸入資料無效",
       "upload_too_large": "檔案超過上傳大小限制。",
       "insufficient_credits": "積分不足：需要 {required}，可用 {available}",
       "rate_limited": "請求過於頻繁，請稍後再試",
-      "internal": "伺服器內部錯誤",
-      "stripe_not_configured": "支付系統未設定",
-      "storage_not_configured": "儲存系統未設定",
-      "field_required": "至少需要提供一個欄位"
+      "internal": "伺服器內部錯誤"
     },
     "auth": {
       "invalid_credentials": "電子郵件或密碼錯誤",
       "email_taken": "該電子郵件已註冊",
-      "no_password": "此帳號使用社交登入",
       "token_expired": "登入已過期，請重新登入",
-      "register_success": "帳號建立成功",
       "logout_success": "已登出",
       "not_authenticated": "未登入",
       "google_oauth_unconfigured": "本伺服器未開啟 Google 登入",
@@ -51,57 +45,11 @@
       "collaborator_limit_reached": "該 Project 已達到協作者數上限。"
     },
     "payment": {
-      "checkout_created": "支付工作階段已建立",
-      "credits_granted": "已儲值 {amount} 積分",
-      "payment_completed": "支付完成",
-      "payment_failed": "支付失敗",
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
       "price_not_configured": "方案 {tier} 的價格未設定"
     },
-    "credits": {
-      "deducted": "已扣除 {amount} 積分",
-      "added": "已增加 {amount} 積分",
-      "balance": "目前餘額：{balance}"
-    },
-    "task": {
-      "created": "任務已建立",
-      "running": "任務執行中",
-      "completed": "任務完成",
-      "failed": "任務失敗：{error}",
-      "not_your_task": "您沒有權限存取此任務"
-    },
     "email": {
-      "verify_subject": "驗證您的電子郵件 — Breatic",
-      "verify_body": "點擊以下連結驗證您的電子郵件地址：\n\n{link}\n\n連結 24 小時內有效。\n",
-      "reset_subject": "重設密碼 — Breatic",
-      "reset_body": "點擊以下連結重設密碼：\n\n{link}\n\n連結 1 小時內有效。\n\n如果您沒有要求重設密碼，請忽略此郵件。\n",
-      "welcome_subject": "歡迎加入 Breatic",
-      "welcome_body": "歡迎來到 Breatic，{name}！開始用 AI 創作精彩內容吧。"
-    },
-    "models": {
-      "image": {
-        "nano-banana-pro": "最高畫質，支援 4K",
-        "nano-banana-2": "快速多能，支援聯網搜尋",
-        "nano-banana": "經典款，畫質與速度均衡",
-        "seedream-5.0-lite": "照片級寫實，擅長東方美學",
-        "midjourney-v7": "藝術風格化，高創造力",
-        "z-image-turbo": "極速出圖，經濟實惠",
-        "qwen-image": "多風格中國畫"
-      },
-      "video": {
-        "kling-o3-pro": "最高畫質，複雜運鏡",
-        "wan-2.6": "動漫風，支援參考圖",
-        "seedance-2.0": "舞蹈和人體運動專家",
-        "veo-3.1": "電影級畫質"
-      },
-      "audio": {
-        "minimax-music-02": "最全能，支援人聲",
-        "elevenlabs-sfx-v2": "音效，支援循環"
-      },
-      "tts": {
-        "elevenlabs-v3": "最自然，52 種音色",
-        "gemini-tts": "多角色對話"
-      }
+      "welcome_subject": "歡迎加入 Breatic"
     },
     "text_tool": {
       "already_running": "另一個文字工具正在執行,請稍候。"
@@ -109,32 +57,8 @@
   },
   "cancel": "取消",
   "loading": "載入中...",
-  "next": "下一步",
-  "agent": {
-    "placeholder": "描述您想創作的內容...",
-    "thinking": "思考中...",
-    "tool_running": "正在使用 {tool}...",
-    "plan_ready": "方案已就緒 — 確認後開始生成",
-    "confirm_plan": "確認並生成",
-    "new_chat": "新對話"
-  },
   "chat": {
-    "modelSelect": {
-      "selectAModel": "選擇模型",
-      "quality": "品質",
-      "aspectRatio": "寬高比",
-      "ariaLabel": "選擇模型"
-    },
     "composer": {
-      "focusEditor": "聚焦編輯器",
-      "mentionUpstream": "提及上游節點",
-      "upstreamResource": "上游資源",
-      "removeUpstream": "移除上游",
-      "upload": "上傳",
-      "uploadFiles": "上傳檔案",
-      "attachment": "附件",
-      "removeUpload": "移除附件",
-      "addToInput": "加到輸入框",
       "selectMode": {
         "label": "選取模式 — 在畫布點節點加入引用",
         "title": "選取模式"
@@ -147,13 +71,6 @@
         "title": "選擇 Skill"
       },
       "send": "傳送"
-    },
-    "panel": {
-      "newConversation": "新建對話",
-      "history": "歷史"
-    },
-    "recognizedPick": {
-      "fallback": "識別結果"
     },
     "empty": {
       "greetingWithName": "嗨,{name}!",
@@ -182,27 +99,6 @@
     }
   },
   "canvas": {
-    "new_project": "新建 Project",
-    "generating": "生成中...",
-    "completed": "已完成",
-    "failed": "生成失敗",
-    "generating_by": "{user} 正在生成",
-    "parameter_mode": "參數模式",
-    "intelligent_mode": "智慧模式",
-    "resize": "調整大小",
-    "ratio169": "16:9",
-    "ratio916": "9:16",
-    "ratio11": "1:1",
-    "youtube": "YouTube 廣告",
-    "tiktok": "TikTok、YouTube Shorts",
-    "instagram": "Instagram、Facebook 貼文",
-    "toolbar": {
-      "openMinimap": "開啟縮圖",
-      "closeMinimap": "關閉縮圖",
-      "undoTooltip": "復原 (Ctrl+Z)",
-      "redoTooltip": "重做 (Shift+Ctrl+Z)",
-      "fitToView": "符合視窗"
-    },
     "group": {
       "group": "群組",
       "ungroup": "取消群組",
@@ -218,63 +114,11 @@
       "backgroundPink": "粉色",
       "backgroundTeal": "青色"
     },
-    "comment": {
-      "composerPlaceholder": "輸入你的評論...",
-      "replyPlaceholder": "回覆討論...",
-      "send": "傳送評論",
-      "timeJustNow": "剛剛",
-      "timeMinutesAgo": "{count} 分鐘前",
-      "timeHoursAgo": "{count} 小時前",
-      "timeEarlier": "更早"
-    },
     "handle": {
-      "agentNodes": "Agent 節點",
       "nodeText": "文字",
       "nodeImage": "圖片",
       "nodeVideo": "影片",
-      "nodeAudio": "音訊",
-      "subtitleText": "載入/建立文字內容",
-      "subtitleImage": "載入/生成圖片",
-      "subtitleVideo": "載入/生成影片片段",
-      "subtitleAudio": "載入/建立音訊內容"
-    },
-    "node": {
-      "processing": "處理中...",
-      "image": {
-        "loading": "正在載入圖片...",
-        "uploadFailed": "圖片上傳失敗"
-      },
-      "video": {
-        "loading": "正在載入影片...",
-        "uploadFailed": "影片上傳失敗"
-      },
-      "audio": {
-        "uploadFailed": "音訊上傳失敗",
-        "recordingUploadFailed": "錄音上傳失敗"
-      }
-    },
-    "upstream": {
-      "text": "文字",
-      "file": "檔案"
-    },
-    "rightPanel": {
-      "collapse": "折疊面板",
-      "share": "分享",
-      "background": "背景",
-      "pageSummary": "頁面摘要"
-    },
-    "overlay": {
-      "input": "輸入"
-    },
-    "pickMode": {
-      "clickHereOrPress": "點擊此處或按",
-      "toExit": "退出"
-    },
-    "textToolbar": {
-      "paragraph": "段落",
-      "orderedList": "有序清單",
-      "unorderedList": "無序清單",
-      "bold": "粗體"
+      "nodeAudio": "音訊"
     },
     "emptyState": {
       "title": "畫布是空的",
@@ -294,7 +138,6 @@
       "copy": "複製",
       "duplicate": "複製副本",
       "rename": "重新命名",
-      "delete": "刪除",
       "deleteNode": "刪除節點",
       "deleteGroup": "刪除群組",
       "deleteSelection": "刪除選取",
@@ -385,9 +228,6 @@
     "minimap": {
       "label": "畫布縮略圖"
     },
-    "activity": {
-      "reportFailed": "上傳未能記錄到 Project 活動"
-    },
     "connection": {
       "rejected": "{source}無法接入{target}",
       "kindText": "文字",
@@ -444,29 +284,14 @@
     }
   },
   "editor": {
-    "label": "編輯器",
-    "accept": "接受",
-    "reject": "拒絕",
-    "polish": "潤飾",
-    "expand": "擴寫",
-    "summarize": "摘要",
-    "translate": "翻譯",
-    "rewrite": "改寫",
-    "continue_writing": "續寫",
-    "generate": "生成",
-    "character": "角色",
-    "storyboard": "分鏡",
-    "script": "劇本",
-    "comingSoon": "編輯器即將上線"
+    "accept": "接受"
   },
   "auth": {
     "email": "電子郵件",
     "password": "密碼",
-    "name": "名稱",
     "or": "或",
     "invalidEmail": "請輸入有效的電子郵件地址。",
     "passwordTooShort": "密碼至少 8 個字元。",
-    "nameRequired": "請填寫你的名稱。",
     "passwordShow": "顯示密碼",
     "passwordHide": "隱藏密碼",
     "login": {
@@ -573,227 +398,37 @@
       "leave": "仍然離開"
     },
     "toolbar": {
-      "copy": "複製",
-      "delete": "刪除",
-      "cannotDeleteWhileExecuting": "執行中無法刪除",
-      "uploadFile": "上傳文件",
-      "uploading": "上傳中...",
-      "pleaseInputTexts": "請輸入文本",
-      "pleaseInputUrl": "請輸入URL",
-      "inputUrl": "輸入URL",
-      "unsupportedFileFormat": "不支援的檔案格式: .{extension}",
-      "fileParseFailed": "檔案解析失敗，請檢查檔案格式",
-      "clickToSelectImageFile": "點擊選擇圖片檔案",
-      "clickToSelectAudioFile": "點擊選擇音頻檔案",
-      "clickToSelectVideoFile": "點擊選擇視頻檔案",
-      "orDropFileHere": "或拖拽檔案到此處",
-      "credits": "積分",
-      "startRecording": "開始錄音",
-      "exitRecording": "退出錄音",
-      "clickToStartRecord": "點擊開始錄音",
-      "clickStopButtonToFinish": "點擊停止按鈕完成錄音",
-      "recordingNotReady": "錄音功能未準備好，請稍後再試",
-      "cannotAccessMicrophone": "無法訪問麥克風，請檢查權限設置",
-      "uploadFailedUrlIncorrect": "上傳失敗。URL不正確。",
-      "uploadFailed": "上傳失敗。",
-      "audioFormatsSupported": "URL支持的音頻格式",
-      "audioFormatsMustBe": "必須是MP3、OGG、WAV、WEBM",
-      "loadingAudio": "載入音頻中...",
-      "textNode": "文本",
-      "imageNode": "圖片",
-      "wrapUngroup": "包裹解組",
-      "group": "打組",
-      "ungroup": "解組",
-      "layout": "佈局",
-      "layoutGrid": "宮格佈局",
-      "layoutHorizontal": "水平佈局",
-      "backgroundColor": "背景顏色",
-      "expand": "展開",
-      "collapse": "摺疊"
-    },
-    "resultsCard": {
-      "clickToSelectResults": "點擊選擇結果",
-      "resultsSelected": "個結果已選擇",
-      "resultSelected": "個結果已選擇",
-      "selectResultsToTransfer": "選擇結果以傳輸到下一個節點"
-    },
-    "panel": {
-      "resultsSelected": "個結果已選擇",
-      "runHistory": "運行歷史",
-      "assets": "資源",
-      "generatedResults": "生成結果",
-      "exportedResults": "導出結果",
-      "all": "全部",
-      "texts": "文本",
-      "images": "圖片",
-      "audios": "音頻",
-      "videos": "視頻",
-      "generatedAt": "生成於",
-      "uploadedAt": "上傳於",
-      "exportedAt": "導出於",
-      "today": "今天",
-      "yesterday": "昨天",
-      "upload": "上傳",
-      "videoEditor": "視頻編輯器",
-      "generated": "生成",
-      "selected": "已選擇",
-      "loading": "載入中...",
-      "noMore": "暫無更多...",
-      "pullToRefresh": "下拉刷新",
-      "releaseToRefresh": "鬆開刷新"
-    },
-    "canvas": {
-      "noRunsYet": "暫無運行記錄",
-      "noRunsDescBefore": "每次運行此節點時，結果會顯示在這裡 — 輸入、輸出和",
-      "noRunsCreditUsage": "積分消耗",
-      "noRunsDescAfter": "。"
-    },
-    "form": {
-      "selectAModel": "選擇模型",
-      "aspectRatio": "寬高比",
-      "duration": "時長",
-      "resolution": "解析度",
-      "selectLanguage": "選擇語言",
-      "selectAVoice": "選擇語音",
-      "fillModel": "填充模型",
-      "musicDescription": "音樂描述",
-      "musicDescriptionPlaceholder": "曲調、風格、旋律及相關音樂元素。（需要10-2000個字符）",
-      "splittingRules": "分割規則*",
-      "splittingRulesPlaceholder": "描述如何分割輸入文本（可選）",
-      "processingRules": "處理規則*",
-      "processingRulesPlaceholder": "請描述潤色的規則和風格（可選）。"
-    },
-    "videoEditor": {
-      "noExportResultsYet": "暫無導出結果",
-      "startToEdit": "開始編輯",
-      "videos": "視頻",
-      "audios": "音頻",
-      "images": "圖片",
-      "texts": "文本",
-      "deleteWarning": "此編輯器節點正在使用中，無法刪除。請先關閉編輯頁面。",
-      "close": "關閉"
-    },
-    "emptyState": {
-      "noResultsYet": "您還沒有生成任何結果。",
-      "clickThe": "點擊",
-      "buttonToBringIdeasToLife": "按鈕，讓您的想法變為現實！"
+      "uploadFile": "上傳文件"
     },
     "header": {
-      "autosavedAt": "自動保存於",
-      "monitor": "監控",
-      "darkMode": "深色模式",
-      "lightMode": "淺色模式",
-      "importWorkflow": "導入工作流",
-      "exportWorkflow": "導出工作流",
-      "exportWithResources": "導出包含資源",
-      "exportWithoutResources": "導出不包含資源",
-      "discord": "Discord",
-      "workflowExportedWithResourcesSuccessfully": "工作流已成功導出（包含資源）",
-      "failedToExportWorkflowWithResources": "導出工作流失敗（包含資源）",
-      "exportWithoutResourcesNotImplemented": "導出不包含資源功能尚未實現",
-      "exportSuccessful": "導出成功",
-      "exportFailed": "導出失敗！",
-      "importSuccessful": "導入成功",
-      "importFailed": "導入失敗！",
-      "renameFailed": "重新命名 Project 失敗",
-      "importing": "導入中...",
-      "exporting": "導出中...",
-      "english": "English",
-      "simplifiedChinese": "簡體中文",
-      "traditionalChinese": "繁體中文",
-      "japanese": "日本語"
-    },
-    "modal": {
-      "confirm": "確認",
-      "cancel": "取消"
+      "renameFailed": "重新命名 Project 失敗"
     },
     "space": {
       "timeout": {
         "create": "Space 建立逾時",
-        "retry": "請重新整理頁面再試一次",
-        "delete": "Space 刪除逾時"
+        "retry": "請重新整理頁面再試一次"
       },
       "error": {
         "create": "Space 建立失敗",
         "notSynced": "Project 正在同步,請稍後再試"
       },
       "loading": {
-        "create": "正在建立 Space…",
-        "delete": "正在刪除 Space…"
+        "create": "正在建立 Space…"
       },
       "noActive": "沒有開啟的 Space — 點抽屜裡的 Space 開啟,或點 + 新增。"
     }
   },
   "common": {
-    "confirm": "確認",
-    "cancel": "取消",
-    "save": "儲存",
-    "delete": "刪除",
-    "close": "關閉",
-    "export": "匯出",
-    "import": "匯入",
-    "undo": "復原",
-    "redo": "重做",
-    "previous": "上一步",
-    "next": "下一步",
-    "appTitle": "影片編輯器",
-    "backToWorkbench": "返回工作臺",
-    "syncData": "同步數據",
-    "copy": "複製",
-    "download": "下載",
-    "mention": "提及",
-    "fullscreen": "全螢幕",
-    "edit": "編輯"
+    "cancel": "取消"
   },
   "message": {
-    "projectSaved": "Project 已儲存",
-    "saveProjectFailed": "儲存 Project 失敗",
-    "projectLoaded": "Project 已載入",
-    "loadProjectFailed": "載入 Project 失敗",
-    "mockDataLoaded": "模擬資料已載入",
-    "loadMockDataFailed": "載入模擬資料失敗",
-    "noContentToExport": "沒有可匯出的內容",
-    "exportImageFailed": "圖片匯出失敗",
-    "exportVideoFailed": "影片匯出失敗",
-    "unknownError": "未知錯誤",
-    "mediaDeleted": "素材已刪除",
-    "addedToTimeline": "已加入時間軸",
-    "clipCopied": "片段已複製",
-    "movePlayheadToSplit": "請將播放頭移至片段內部進行分割",
-    "clipSplit": "片段已分割",
-    "clipDeleted": "片段已刪除",
-    "autoSaving": "自動儲存中...",
-    "autoSaveSuccess": "自動儲存成功",
-    "autoSaveFailed": "自動儲存失敗",
-    "saving": "儲存中...",
-    "saveSuccess": "儲存成功",
-    "saveFailed": "儲存失敗"
+    "addedToTimeline": "已加入時間軸"
   },
   "members": {
     "popover": {
       "title": "Project 成員",
       "manage": "管理協作者",
-      "remove": "移除",
-      "removeSuccess": "已移除成員。",
-      "removeFailed": "成員移除失敗,請重試。",
-      "self_label": "(你)",
       "isMe": "(你)"
-    },
-    "panel": {
-      "title": "協作者管理",
-      "subtitle": "管理 Project 成員及其權限",
-      "invite_section": "邀請新協作者",
-      "invite_placeholder": "電子郵件或使用者 ID",
-      "invite_button": "邀請",
-      "list_count": "成員 ({count})",
-      "list_note": "Owner 永久綁定 Project Creator",
-      "confirm_remove": "確認移除此協作者?",
-      "done": "完成"
-    },
-    "role": {
-      "owner": "Owner",
-      "edit": "編輯",
-      "view": "檢視"
     },
     "modal": {
       "title": "協作者管理",
@@ -827,21 +462,10 @@
     "tab": {
       "new": "新增 Canvas",
       "drawer": "所有 Canvases",
-      "close": "關閉",
-      "rename": "重新命名",
-      "duplicate": "複製",
-      "delete": "刪除",
-      "lock": "鎖定",
-      "unlock": "解鎖",
       "closeAria": "關閉 Space 標籤頁"
     },
     "drawer": {
       "title": "所有 Spaces",
-      "count": "個",
-      "tag_open": "已開啟",
-      "tag_active": "目前",
-      "nodes_count": "{count} 節點",
-      "confirm_delete": "確認刪除此 Space?",
       "new_canvas": "新增 Canvas",
       "new_document": "新增 Document",
       "new_timeline": "新增 Timeline",
@@ -868,19 +492,6 @@
         "deleteFail": "刪除失敗"
       }
     },
-    "new_dialog": {
-      "title": "新增 Space",
-      "subtitle": "選擇類型並取個名字。",
-      "name_label": "名稱",
-      "name_placeholder": "如 場景 v3",
-      "create": "建立",
-      "cancel": "取消",
-      "placeholder_kind_unsupported": "{kind} 類型 Space 暫未支援。"
-    },
-    "placeholder": {
-      "title": "即將上線",
-      "description": "{kind} 類型的 Space 將在未來版本支援。"
-    },
     "kind": {
       "canvas": "Canvas",
       "canvasSub": "無限畫布 + 節點",
@@ -899,8 +510,7 @@
       "namePlaceholder": "例:Cyberpunk Concept",
       "nameRemaining": "{count, plural, other {還可輸入 # 個字元}}",
       "cancel": "取消",
-      "submit": "建立",
-      "submitting": "建立中…"
+      "submit": "建立"
     },
     "rename": {
       "inputAriaLabel": "重新命名 Space",
@@ -912,7 +522,6 @@
     "readonly": {
       "label": "唯讀",
       "description": "此 Space 未在標籤列開啟;唯讀預覽,可縮放與複製內容,不可編輯。",
-      "close": "關閉唯讀預覽",
       "canvas": {
         "title": "唯讀 Canvas",
         "description": "真實 ReactFlow viewer 在 canvas-space 完整實作時接入;此處展示節點與邊的唯讀快照,支援縮放與複製。"
@@ -927,24 +536,6 @@
       }
     },
     "lockedAria": "已鎖定"
-  },
-  "image": {
-    "flipVertical": "垂直翻轉",
-    "flipHorizontal": "水平翻轉",
-    "rotateLeft": "向左旋轉",
-    "rotateRight": "向右旋轉",
-    "zoomOut": "縮小",
-    "zoomIn": "放大",
-    "closePreview": "關閉預覽"
-  },
-  "document": {
-    "editorComingSoon": "文字編輯器即將上線",
-    "imageDialog": {
-      "insertImage": "插入圖片",
-      "upload": "上傳",
-      "embedUrl": "嵌入 URL",
-      "dropOrBrowse": "拖入圖片或點擊瀏覽"
-    }
   },
   "menu": {
     "createAria": "建立選單",
@@ -966,16 +557,10 @@
     "zoomIn": "放大",
     "fit": "適應",
     "fitAria": "適應視窗",
-    "expand": "全螢幕",
     "snap": {
       "on": "啟用對齊格線",
       "off": "停用對齊格線",
       "label": "對齊格線"
-    },
-    "guides": {
-      "on": "啟用對齊參考線",
-      "off": "停用對齊參考線",
-      "label": "對齊參考線"
     },
     "minimap": {
       "show": "顯示縮圖",
@@ -1011,16 +596,8 @@
   "notifications": {
     "title": "通知",
     "empty": "沒有待處理通知",
-    "roleHint": {
-      "editor": "編輯",
-      "viewer": "檢視"
-    },
     "reject": "拒絕",
     "approve": "核准",
-    "request": {
-      "audio": "想加入做配音和 BGM 部分",
-      "project": "想參考你的 prompt 風格做我自己的 Project"
-    },
     "loading": "載入中…",
     "markRead": "標為已讀",
     "approvedToast": "已通過升級申請。",
@@ -1105,14 +682,8 @@
     },
     "topBar": {
       "home": "Studio 首頁",
-      "recent": "最近",
-      "search": "搜尋",
-      "notifications": "通知",
       "account": "帳號",
       "signOut": "登出"
-    },
-    "createProject": {
-      "failed": "建立 Project 失敗:{reason}"
     },
     "container": {
       "shell": {
@@ -1157,7 +728,6 @@
       },
       "card": {
         "assetCount": "{count} 個素材",
-        "fromStudio": "來自 {studio}",
         "more": "更多操作",
         "createdAt": "建立於 {time}"
       },
@@ -1202,7 +772,6 @@
       "members": {
         "invite": "邀請成員",
         "colName": "名稱",
-        "colEmail": "電子郵件",
         "colRole": "角色",
         "colJoined": "加入時間",
         "roleAdmin": "Admin",
@@ -1239,7 +808,6 @@
         "name": "名稱",
         "slug": "Slug",
         "description": "簡介",
-        "avatar": "頭像",
         "dangerTitle": "危險操作",
         "transfer": "轉讓 Studio",
         "delete": "刪除 Studio",
@@ -1301,9 +869,6 @@
         "slugHelperProject": "Project 網址的一部分，會出現在瀏覽器網址列。只能使用小寫字母、數字和連字號(-)。",
         "slugHelperCollection": "Collection 網址的一部分，會出現在瀏覽器網址列。只能使用小寫字母、數字和連字號(-)。",
         "descriptionLabel": "簡介(選填)",
-        "typeLabel": "類型",
-        "typePersonal": "個人",
-        "typeTeam": "團隊",
         "create": "建立",
         "cancel": "取消",
         "slugFormat": "只能用小寫字母、數字和連字號。",
@@ -1316,9 +881,6 @@
         "visibilityLabel": "可見性",
         "visibilityStudioOption": "Studio 內可見 — 所有成員",
         "visibilityPrivateOption": "私有 — 僅受邀"
-      },
-      "empty": {
-        "newCard": "+ 新增"
       },
       "toolbar": {
         "sortLabel": "排序",

@@ -3,16 +3,12 @@
     "error": {
       "not_found": "资源未找到",
       "forbidden": "没有访问权限",
-      "unauthorized": "凭证无效或已过期",
       "conflict": "资源冲突",
       "validation": "输入数据无效",
       "upload_too_large": "文件超过上传大小限制。",
       "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
       "rate_limited": "请求过于频繁，请稍后再试",
-      "internal": "服务器内部错误",
-      "stripe_not_configured": "支付系统未配置",
-      "storage_not_configured": "存储系统未配置",
-      "field_required": "至少需要提供一个字段"
+      "internal": "服务器内部错误"
     },
     "text_tool": {
       "already_running": "另一个文本工具正在运行,请稍候。"
@@ -20,9 +16,7 @@
     "auth": {
       "invalid_credentials": "邮箱或密码错误",
       "email_taken": "该邮箱已注册",
-      "no_password": "此账号使用社交登录",
       "token_expired": "登录已过期，请重新登录",
-      "register_success": "账号创建成功",
       "logout_success": "已退出登录",
       "not_authenticated": "未登录",
       "google_oauth_unconfigured": "本服务器未开启 Google 登录",
@@ -54,87 +48,17 @@
       "collaborator_limit_reached": "该 Project 已达到协作者数上限。"
     },
     "payment": {
-      "checkout_created": "支付会话已创建",
-      "credits_granted": "已充值 {amount} 积分",
-      "payment_completed": "支付完成",
-      "payment_failed": "支付失败",
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
       "price_not_configured": "套餐 {tier} 的价格未配置"
     },
-    "credits": {
-      "deducted": "已扣除 {amount} 积分",
-      "added": "已增加 {amount} 积分",
-      "balance": "当前余额：{balance}"
-    },
-    "task": {
-      "created": "任务已创建",
-      "running": "任务执行中",
-      "completed": "任务完成",
-      "failed": "任务失败：{error}",
-      "not_your_task": "您没有权限访问此任务"
-    },
     "email": {
-      "verify_subject": "验证您的邮箱 — Breatic",
-      "verify_body": "点击以下链接验证您的邮箱地址：\n\n{link}\n\n链接 24 小时内有效。\n",
-      "reset_subject": "重置密码 — Breatic",
-      "reset_body": "点击以下链接重置密码：\n\n{link}\n\n链接 1 小时内有效。\n\n如果您没有请求重置密码，请忽略此邮件。\n",
-      "welcome_subject": "欢迎加入 Breatic",
-      "welcome_body": "欢迎来到 Breatic，{name}！开始用 AI 创作精彩内容吧。"
-    },
-    "models": {
-      "image": {
-        "nano-banana-pro": "最高画质，支持 4K",
-        "nano-banana-2": "快速多能，支持联网搜索",
-        "nano-banana": "经典款，画质与速度均衡",
-        "seedream-5.0-lite": "照片级写实，擅长东方美学",
-        "midjourney-v7": "艺术风格化，高创造力",
-        "z-image-turbo": "极速出图，经济实惠",
-        "qwen-image": "多风格中国画"
-      },
-      "video": {
-        "kling-o3-pro": "最高画质，复杂运镜",
-        "wan-2.6": "动漫风，支持参考图",
-        "seedance-2.0": "舞蹈和人体运动专家",
-        "veo-3.1": "电影级画质"
-      },
-      "audio": {
-        "minimax-music-02": "最全能，支持人声",
-        "elevenlabs-sfx-v2": "音效，支持循环"
-      },
-      "tts": {
-        "elevenlabs-v3": "最自然，52 种音色",
-        "gemini-tts": "多角色对话"
-      }
+      "welcome_subject": "欢迎加入 Breatic"
     }
   },
   "cancel": "取消",
   "loading": "加载中...",
-  "next": "下一步",
-  "agent": {
-    "placeholder": "描述你想创作的内容...",
-    "thinking": "思考中...",
-    "tool_running": "正在使用 {tool}...",
-    "plan_ready": "方案已就绪 — 确认后开始生成",
-    "confirm_plan": "确认并生成",
-    "new_chat": "新对话"
-  },
   "chat": {
-    "modelSelect": {
-      "selectAModel": "选择模型",
-      "quality": "质量",
-      "aspectRatio": "宽高比",
-      "ariaLabel": "选择模型"
-    },
     "composer": {
-      "focusEditor": "聚焦编辑器",
-      "mentionUpstream": "提及上游节点",
-      "upstreamResource": "上游资源",
-      "removeUpstream": "移除上游",
-      "upload": "上传",
-      "uploadFiles": "上传文件",
-      "attachment": "附件",
-      "removeUpload": "移除附件",
-      "addToInput": "添加到输入框",
       "selectMode": {
         "label": "选中模式 — 在画布点节点添加引用",
         "title": "选中模式"
@@ -147,13 +71,6 @@
         "title": "选择 Skill"
       },
       "send": "发送"
-    },
-    "panel": {
-      "newConversation": "新建对话",
-      "history": "历史"
-    },
-    "recognizedPick": {
-      "fallback": "识别结果"
     },
     "empty": {
       "greetingWithName": "嗨, {name}!",
@@ -182,27 +99,6 @@
     }
   },
   "canvas": {
-    "new_project": "新建 Project",
-    "generating": "生成中...",
-    "completed": "已完成",
-    "failed": "生成失败",
-    "generating_by": "{user} 正在生成",
-    "parameter_mode": "参数模式",
-    "intelligent_mode": "智能模式",
-    "resize": "调整大小",
-    "ratio169": "16:9",
-    "ratio916": "9:16",
-    "ratio11": "1:1",
-    "youtube": "YouTube 广告",
-    "tiktok": "TikTok, YouTube Shorts",
-    "instagram": "Instagram, Facebook 帖子",
-    "toolbar": {
-      "openMinimap": "打开缩略图",
-      "closeMinimap": "关闭缩略图",
-      "undoTooltip": "撤销 (Ctrl+Z)",
-      "redoTooltip": "重做 (Shift+Ctrl+Z)",
-      "fitToView": "适合窗口"
-    },
     "group": {
       "group": "编组",
       "ungroup": "取消编组",
@@ -218,63 +114,11 @@
       "backgroundPink": "粉色",
       "backgroundTeal": "青色"
     },
-    "comment": {
-      "composerPlaceholder": "输入你的评论...",
-      "replyPlaceholder": "回复讨论...",
-      "send": "发送评论",
-      "timeJustNow": "刚刚",
-      "timeMinutesAgo": "{count} 分钟前",
-      "timeHoursAgo": "{count} 小时前",
-      "timeEarlier": "更早"
-    },
     "handle": {
-      "agentNodes": "Agent 节点",
       "nodeText": "文本",
       "nodeImage": "图片",
       "nodeVideo": "视频",
-      "nodeAudio": "音频",
-      "subtitleText": "加载/创建文本内容",
-      "subtitleImage": "加载/生成图片",
-      "subtitleVideo": "加载/生成视频片段",
-      "subtitleAudio": "加载/创建音频内容"
-    },
-    "node": {
-      "processing": "处理中...",
-      "image": {
-        "loading": "加载图片中...",
-        "uploadFailed": "图片上传失败"
-      },
-      "video": {
-        "loading": "加载视频中...",
-        "uploadFailed": "视频上传失败"
-      },
-      "audio": {
-        "uploadFailed": "音频上传失败",
-        "recordingUploadFailed": "录音上传失败"
-      }
-    },
-    "upstream": {
-      "text": "文本",
-      "file": "文件"
-    },
-    "rightPanel": {
-      "collapse": "折叠面板",
-      "share": "分享",
-      "background": "背景",
-      "pageSummary": "页面摘要"
-    },
-    "overlay": {
-      "input": "输入"
-    },
-    "pickMode": {
-      "clickHereOrPress": "点击此处或按",
-      "toExit": "退出"
-    },
-    "textToolbar": {
-      "paragraph": "段落",
-      "orderedList": "有序列表",
-      "unorderedList": "无序列表",
-      "bold": "加粗"
+      "nodeAudio": "音频"
     },
     "emptyState": {
       "title": "画布是空的",
@@ -294,7 +138,6 @@
       "copy": "复制",
       "duplicate": "复制副本",
       "rename": "重命名",
-      "delete": "删除",
       "deleteNode": "删除节点",
       "deleteGroup": "删除编组",
       "deleteSelection": "删除选中",
@@ -385,9 +228,6 @@
     "minimap": {
       "label": "画布缩略图"
     },
-    "activity": {
-      "reportFailed": "上传未能记录到 Project 活动"
-    },
     "connection": {
       "rejected": "{source}无法接入{target}",
       "kindText": "文本",
@@ -444,29 +284,14 @@
     }
   },
   "editor": {
-    "label": "编辑器",
-    "accept": "接受",
-    "reject": "拒绝",
-    "polish": "润色",
-    "expand": "扩写",
-    "summarize": "摘要",
-    "translate": "翻译",
-    "rewrite": "改写",
-    "continue_writing": "续写",
-    "generate": "生成",
-    "character": "角色",
-    "storyboard": "分镜",
-    "script": "剧本",
-    "comingSoon": "编辑器即将上线"
+    "accept": "接受"
   },
   "auth": {
     "email": "邮箱",
     "password": "密码",
-    "name": "名字",
     "or": "或",
     "invalidEmail": "请输入有效的邮箱地址。",
     "passwordTooShort": "密码至少 8 个字符。",
-    "nameRequired": "请填写你的名字。",
     "passwordShow": "显示密码",
     "passwordHide": "隐藏密码",
     "login": {
@@ -573,227 +398,37 @@
       "leave": "仍然离开"
     },
     "toolbar": {
-      "copy": "复制",
-      "delete": "删除",
-      "cannotDeleteWhileExecuting": "执行中无法删除",
-      "uploadFile": "上传文件",
-      "uploading": "上传中...",
-      "pleaseInputTexts": "请输入文本",
-      "pleaseInputUrl": "请输入URL",
-      "inputUrl": "输入URL",
-      "unsupportedFileFormat": "不支持的文件格式: .{extension}",
-      "fileParseFailed": "文件解析失败，请检查文件格式",
-      "clickToSelectImageFile": "点击选择图片文件",
-      "clickToSelectAudioFile": "点击选择音频文件",
-      "clickToSelectVideoFile": "点击选择视频文件",
-      "orDropFileHere": "或拖拽文件到此处",
-      "credits": "积分",
-      "startRecording": "开始录音",
-      "exitRecording": "退出录音",
-      "clickToStartRecord": "点击开始录音",
-      "clickStopButtonToFinish": "点击停止按钮完成录音",
-      "recordingNotReady": "录音功能未准备好，请稍后再试",
-      "cannotAccessMicrophone": "无法访问麦克风，请检查权限设置",
-      "uploadFailedUrlIncorrect": "上传失败。URL不正确。",
-      "uploadFailed": "上传失败。",
-      "audioFormatsSupported": "URL支持的音频格式",
-      "audioFormatsMustBe": "必须是MP3、OGG、WAV、WEBM",
-      "loadingAudio": "加载音频中...",
-      "textNode": "文本",
-      "imageNode": "图片",
-      "wrapUngroup": "包裹解组",
-      "group": "打组",
-      "ungroup": "解组",
-      "layout": "布局",
-      "layoutGrid": "宫格布局",
-      "layoutHorizontal": "水平布局",
-      "backgroundColor": "背景颜色",
-      "expand": "展开",
-      "collapse": "折叠"
-    },
-    "resultsCard": {
-      "clickToSelectResults": "点击选择结果",
-      "resultsSelected": "个结果已选择",
-      "resultSelected": "个结果已选择",
-      "selectResultsToTransfer": "选择结果以传输到下一个节点"
-    },
-    "panel": {
-      "resultsSelected": "个结果已选择",
-      "runHistory": "运行历史",
-      "assets": "资源",
-      "generatedResults": "生成结果",
-      "exportedResults": "导出结果",
-      "all": "全部",
-      "texts": "文本",
-      "images": "图片",
-      "audios": "音频",
-      "videos": "视频",
-      "generatedAt": "生成于",
-      "uploadedAt": "上传于",
-      "exportedAt": "导出于",
-      "today": "今天",
-      "yesterday": "昨天",
-      "upload": "上传",
-      "videoEditor": "视频编辑器",
-      "generated": "生成",
-      "selected": "已选择",
-      "loading": "加载中...",
-      "noMore": "暂无更多...",
-      "pullToRefresh": "下拉刷新",
-      "releaseToRefresh": "松开刷新"
-    },
-    "canvas": {
-      "noRunsYet": "暂无运行记录",
-      "noRunsDescBefore": "每次运行此节点后，结果将显示在这里——输入、输出以及",
-      "noRunsCreditUsage": "点数使用情况",
-      "noRunsDescAfter": "。"
-    },
-    "form": {
-      "selectAModel": "选择模型",
-      "aspectRatio": "宽高比",
-      "duration": "时长",
-      "resolution": "分辨率",
-      "selectLanguage": "选择语言",
-      "selectAVoice": "选择语音",
-      "fillModel": "填充模型",
-      "musicDescription": "音乐描述",
-      "musicDescriptionPlaceholder": "曲调、风格、旋律及相关音乐元素。（需要10-2000个字符）",
-      "splittingRules": "分割规则*",
-      "splittingRulesPlaceholder": "描述如何分割输入文本（可选）",
-      "processingRules": "处理规则*",
-      "processingRulesPlaceholder": "请描述润色的规则和风格（可选）。"
-    },
-    "videoEditor": {
-      "noExportResultsYet": "暂无导出结果",
-      "startToEdit": "开始编辑",
-      "videos": "视频",
-      "audios": "音频",
-      "images": "图片",
-      "texts": "文本",
-      "deleteWarning": "此编辑器节点正在使用中，无法删除。请先关闭编辑页面。",
-      "close": "关闭"
-    },
-    "emptyState": {
-      "noResultsYet": "您还没有生成任何结果。",
-      "clickThe": "点击",
-      "buttonToBringIdeasToLife": "按钮，让您的想法变为现实！"
+      "uploadFile": "上传文件"
     },
     "header": {
-      "autosavedAt": "自动保存于",
-      "monitor": "监控",
-      "darkMode": "深色模式",
-      "lightMode": "浅色模式",
-      "importWorkflow": "导入工作流",
-      "exportWorkflow": "导出工作流",
-      "exportWithResources": "导出包含资源",
-      "exportWithoutResources": "导出不包含资源",
-      "discord": "Discord",
-      "workflowExportedWithResourcesSuccessfully": "工作流已成功导出（包含资源）",
-      "failedToExportWorkflowWithResources": "导出工作流失败（包含资源）",
-      "exportWithoutResourcesNotImplemented": "导出不包含资源功能尚未实现",
-      "exportSuccessful": "导出成功",
-      "exportFailed": "导出失败！",
-      "importSuccessful": "导入成功",
-      "importFailed": "导入失败！",
-      "renameFailed": "重命名 Project 失败",
-      "importing": "导入中...",
-      "exporting": "导出中...",
-      "english": "English",
-      "simplifiedChinese": "简体中文",
-      "traditionalChinese": "繁體中文",
-      "japanese": "日本語"
-    },
-    "modal": {
-      "confirm": "确认",
-      "cancel": "取消"
+      "renameFailed": "重命名 Project 失败"
     },
     "space": {
       "timeout": {
         "create": "Space 创建超时",
-        "retry": "请刷新页面重试",
-        "delete": "Space 删除超时"
+        "retry": "请刷新页面重试"
       },
       "error": {
         "create": "Space 创建失败",
         "notSynced": "Project 正在同步,请稍后再试"
       },
       "loading": {
-        "create": "正在创建 Space…",
-        "delete": "正在删除 Space…"
+        "create": "正在创建 Space…"
       },
       "noActive": "没有打开的 Space — 点抽屉里的 Space 打开,或点 + 新建。"
     }
   },
   "common": {
-    "confirm": "确认",
-    "cancel": "取消",
-    "save": "保存",
-    "delete": "删除",
-    "close": "关闭",
-    "export": "导出",
-    "import": "导入",
-    "undo": "撤销",
-    "redo": "重做",
-    "previous": "上一步",
-    "next": "下一步",
-    "appTitle": "视频编辑器",
-    "backToWorkbench": "返回工作台",
-    "syncData": "同步数据",
-    "copy": "复制",
-    "download": "下载",
-    "mention": "提及",
-    "fullscreen": "全屏",
-    "edit": "编辑"
+    "cancel": "取消"
   },
   "message": {
-    "projectSaved": "Project 已保存",
-    "saveProjectFailed": "保存 Project 失败",
-    "projectLoaded": "Project 已加载",
-    "loadProjectFailed": "加载 Project 失败",
-    "mockDataLoaded": "Mock数据已加载",
-    "loadMockDataFailed": "加载Mock数据失败",
-    "noContentToExport": "没有可导出的内容",
-    "exportImageFailed": "图片导出失败",
-    "exportVideoFailed": "视频导出失败",
-    "unknownError": "未知错误",
-    "mediaDeleted": "素材已删除",
-    "addedToTimeline": "已添加到时间轴",
-    "clipCopied": "片段已复制",
-    "movePlayheadToSplit": "请将播放头移动到片段内部进行分割",
-    "clipSplit": "片段已分割",
-    "clipDeleted": "片段已删除",
-    "autoSaving": "自动保存中...",
-    "autoSaveSuccess": "自动保存成功",
-    "autoSaveFailed": "自动保存失败",
-    "saving": "保存中...",
-    "saveSuccess": "保存成功",
-    "saveFailed": "保存失败"
+    "addedToTimeline": "已添加到时间轴"
   },
   "members": {
     "popover": {
       "title": "Project 成员",
       "manage": "管理协作者",
-      "remove": "移除",
-      "removeSuccess": "已移除成员。",
-      "removeFailed": "成员移除失败,请重试。",
-      "self_label": "(你)",
       "isMe": "(你)"
-    },
-    "panel": {
-      "title": "协作者管理",
-      "subtitle": "管理 Project 成员及其权限",
-      "invite_section": "邀请新协作者",
-      "invite_placeholder": "邮箱或用户 ID",
-      "invite_button": "邀请",
-      "list_count": "成员 ({count})",
-      "list_note": "Owner 永久绑定 Project Creator",
-      "confirm_remove": "确认移除此协作者?",
-      "done": "完成"
-    },
-    "role": {
-      "owner": "Owner",
-      "edit": "编辑",
-      "view": "只读"
     },
     "modal": {
       "title": "协作者管理",
@@ -827,21 +462,10 @@
     "tab": {
       "new": "新建 Canvas",
       "drawer": "所有 Canvases",
-      "close": "关闭",
-      "rename": "重命名",
-      "duplicate": "复制",
-      "delete": "删除",
-      "lock": "锁定",
-      "unlock": "解锁",
       "closeAria": "关闭 Space 标签页"
     },
     "drawer": {
       "title": "所有 Spaces",
-      "count": "个",
-      "tag_open": "已打开",
-      "tag_active": "当前",
-      "nodes_count": "{count} 节点",
-      "confirm_delete": "确认删除此 Space?",
       "new_canvas": "新建 Canvas",
       "new_document": "新建 Document",
       "new_timeline": "新建 Timeline",
@@ -868,19 +492,6 @@
         "deleteFail": "删除失败"
       }
     },
-    "new_dialog": {
-      "title": "新建 Space",
-      "subtitle": "选择类型,给它起个名字。",
-      "name_label": "名称",
-      "name_placeholder": "如 场景 v3",
-      "create": "创建",
-      "cancel": "取消",
-      "placeholder_kind_unsupported": "{kind} 类型 Space 暂未支持。"
-    },
-    "placeholder": {
-      "title": "即将上线",
-      "description": "{kind} 类型的 Space 将在未来版本中支持。"
-    },
     "kind": {
       "canvas": "Canvas",
       "canvasSub": "无限画布 + 节点",
@@ -899,8 +510,7 @@
       "namePlaceholder": "例:Cyberpunk Concept",
       "nameRemaining": "{count, plural, other {还可输入 # 个字符}}",
       "cancel": "取消",
-      "submit": "创建",
-      "submitting": "创建中…"
+      "submit": "创建"
     },
     "rename": {
       "inputAriaLabel": "重命名 Space",
@@ -912,7 +522,6 @@
     "readonly": {
       "label": "只读",
       "description": "此 Space 未在标签栏打开;只读预览,可缩放与复制内容,不可编辑。",
-      "close": "关闭只读预览",
       "canvas": {
         "title": "只读 Canvas",
         "description": "真实 ReactFlow viewer 在 canvas-space 完整实现时接入; 此处展示节点与边的只读快照,支持缩放与复制。"
@@ -927,24 +536,6 @@
       }
     },
     "lockedAria": "已锁定"
-  },
-  "image": {
-    "flipVertical": "垂直翻转",
-    "flipHorizontal": "水平翻转",
-    "rotateLeft": "向左旋转",
-    "rotateRight": "向右旋转",
-    "zoomOut": "缩小",
-    "zoomIn": "放大",
-    "closePreview": "关闭预览"
-  },
-  "document": {
-    "editorComingSoon": "文本编辑器即将上线",
-    "imageDialog": {
-      "insertImage": "插入图片",
-      "upload": "上传",
-      "embedUrl": "嵌入 URL",
-      "dropOrBrowse": "拖入图片或点击选择"
-    }
   },
   "menu": {
     "createAria": "创建菜单",
@@ -966,16 +557,10 @@
     "zoomIn": "放大",
     "fit": "适应",
     "fitAria": "适应窗口",
-    "expand": "全屏",
     "snap": {
       "on": "开启网格吸附",
       "off": "关闭网格吸附",
       "label": "网格吸附"
-    },
-    "guides": {
-      "on": "开启对齐参考线",
-      "off": "关闭对齐参考线",
-      "label": "对齐参考线"
     },
     "minimap": {
       "show": "显示缩略图",
@@ -1011,16 +596,8 @@
   "notifications": {
     "title": "通知",
     "empty": "没有待处理通知",
-    "roleHint": {
-      "editor": "编辑",
-      "viewer": "查看"
-    },
     "reject": "拒绝",
     "approve": "批准",
-    "request": {
-      "audio": "想加入做配音和 BGM 部分",
-      "project": "想参考你的 prompt 风格做我自己的 Project"
-    },
     "loading": "加载中…",
     "markRead": "标为已读",
     "approvedToast": "已通过升级申请。",
@@ -1105,14 +682,8 @@
     },
     "topBar": {
       "home": "Studio 主页",
-      "recent": "最近",
-      "search": "搜索",
-      "notifications": "通知",
       "account": "账号",
       "signOut": "退出登录"
-    },
-    "createProject": {
-      "failed": "创建 Project 失败:{reason}"
     },
     "container": {
       "shell": {
@@ -1157,7 +728,6 @@
       },
       "card": {
         "assetCount": "{count} 个素材",
-        "fromStudio": "来自 {studio}",
         "more": "更多操作",
         "createdAt": "创建于 {time}"
       },
@@ -1202,7 +772,6 @@
       "members": {
         "invite": "邀请成员",
         "colName": "名称",
-        "colEmail": "邮箱",
         "colRole": "角色",
         "colJoined": "加入时间",
         "roleAdmin": "Admin",
@@ -1239,7 +808,6 @@
         "name": "名称",
         "slug": "Slug",
         "description": "简介",
-        "avatar": "头像",
         "dangerTitle": "危险操作",
         "transfer": "转让 Studio",
         "delete": "删除 Studio",
@@ -1301,9 +869,6 @@
         "slugHelperProject": "Project 地址的一部分，会出现在浏览器网址里。只能用小写字母、数字和连字符(-)。",
         "slugHelperCollection": "Collection 地址的一部分，会出现在浏览器网址里。只能用小写字母、数字和连字符(-)。",
         "descriptionLabel": "简介(可选)",
-        "typeLabel": "类型",
-        "typePersonal": "个人",
-        "typeTeam": "团队",
         "create": "创建",
         "cancel": "取消",
         "slugFormat": "只能用小写字母、数字和连字符。",
@@ -1316,9 +881,6 @@
         "visibilityLabel": "可见性",
         "visibilityStudioOption": "Studio 内可见 — 所有成员",
         "visibilityPrivateOption": "私有 — 仅受邀"
-      },
-      "empty": {
-        "newCard": "+ 新建"
       },
       "toolbar": {
         "sortLabel": "排序",

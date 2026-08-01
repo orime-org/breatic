@@ -3,6 +3,7 @@
 import type { Check } from "#repo-lint/check";
 import { eofNewline } from "#repo-lint/checks/eof-newline";
 import { eslintRulesEnabled } from "#repo-lint/checks/eslint-rules-enabled";
+import { i18nNoDeadKeys } from "#repo-lint/checks/i18n-no-dead-keys";
 import { lintCoverage } from "#repo-lint/checks/lint-coverage";
 import { migrationStyle } from "#repo-lint/checks/migration-style";
 import { noAuthBypassResidue } from "#repo-lint/checks/no-auth-bypass-residue";
@@ -30,6 +31,7 @@ import { tokenValues } from "#repo-lint/checks/token-values";
 export const CHECKS: readonly Check[] = [
   eofNewline,
   eslintRulesEnabled,
+  i18nNoDeadKeys,
   lintCoverage,
   migrationStyle,
   noAuthBypassResidue,
