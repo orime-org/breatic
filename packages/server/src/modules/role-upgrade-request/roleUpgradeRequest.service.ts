@@ -43,8 +43,14 @@ import * as projectService from "@server/modules/project/project.service.js";
 import * as requestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { deferredRequestExpiry } from "@server/config/limits.js";
+import { isUniqueViolation } from "@server/utils/pg-error.js";
+import {
+  isRefused,
+  refusalError,
+} from "@server/utils/deferred-decision.js";
+import type { Refused } from "@server/utils/deferred-decision.js";
 import { projectMembersRepo } from "@breatic/core";
-import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
+import { ConflictError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { NotificationEntity } from "@breatic/shared";
@@ -134,9 +140,12 @@ interface DecisionInput {
  * @throws {ForbiddenError} when the caller is not the project's current owner.
  */
 export async function approve(input: DecisionInput): Promise<void> {
-  let promoted: { projectId: string; requesterUserId: string } | null = null;
-  await db.transaction(async (tx) => {
-    const req = await openForDecision(tx, input);
+  const outcome = await db.transaction<
+    Refused | { projectId: string; requesterUserId: string }
+  >(async (tx) => {
+    const opened = await openForDecision(tx, input);
+    if (isRefused(opened)) return opened;
+    const req = opened;
     const won = await projectMembersRepo.updateRoleUnderOwner(
       req.projectId,
       req.requesterUserId,
@@ -148,10 +157,10 @@ export async function approve(input: DecisionInput): Promise<void> {
     if (!won) {
       // The requester is no longer the viewer this request was filed about —
       // promoted by another route, or removed from the project. The request
-      // has stopped being answerable, so it is retired rather than left to
+      // has stopped being answerable, so it is settled rather than left to
       // occupy its slot for another week.
-      await retire(req, tx);
-      throw new ConflictError(t("server.error.conflict"));
+      await settle(req, "expired", null, tx);
+      return { refusal: "conflict" };
     }
     await settle(req, "approved", input.ownerUserId, tx);
     const [decider, project] = await Promise.all([
@@ -170,23 +179,22 @@ export async function approve(input: DecisionInput): Promise<void> {
       },
       tx,
     });
-    promoted = { projectId: req.projectId, requesterUserId: req.requesterUserId };
+    return { projectId: req.projectId, requesterUserId: req.requesterUserId };
   });
+  // The refusal is raised only now: its own writes had to commit first.
+  if (isRefused(outcome)) throw refusalError(outcome.refusal);
   // Activity row AFTER the role bump committed (best-effort audit; the helper
   // announces the live signal itself).
-  if (promoted !== null) {
-    const done = promoted as { projectId: string; requesterUserId: string };
-    await recordProjectActivity({
-      projectId: done.projectId,
-      actorUserId: input.ownerUserId,
-      type: "member:role-changed",
-      payload: {
-        role: "editor",
-        previousRole: "viewer",
-        targetUserId: done.requesterUserId,
-      },
-    });
-  }
+  await recordProjectActivity({
+    projectId: outcome.projectId,
+    actorUserId: input.ownerUserId,
+    type: "member:role-changed",
+    payload: {
+      role: "editor",
+      previousRole: "viewer",
+      targetUserId: outcome.requesterUserId,
+    },
+  });
 }
 
 /**
@@ -205,15 +213,17 @@ export async function approve(input: DecisionInput): Promise<void> {
 export async function reject(
   input: DecisionInput & { reason?: string | null },
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    const req = await openForDecision(tx, input);
+  const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
+    const opened = await openForDecision(tx, input);
+    if (isRefused(opened)) return opened;
+    const req = opened;
     const role = await projectMembersRepo.getRole(
       req.projectId,
       req.requesterUserId,
     );
     if (role !== "viewer") {
-      await retire(req, tx);
-      throw new ConflictError(t("server.error.conflict"));
+      await settle(req, "expired", null, tx);
+      return { refusal: "conflict" };
     }
     await settle(req, "rejected", input.ownerUserId, tx);
     const [decider, project] = await Promise.all([
@@ -232,7 +242,9 @@ export async function reject(
       },
       tx,
     });
+    return { done: true };
   });
+  if (isRefused(outcome)) throw refusalError(outcome.refusal);
 }
 
 /**
@@ -250,19 +262,19 @@ export async function cancel(
   requestId: string,
   requesterUserId: string,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
+  const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
     const cancelled = await requestsRepo.cancelIfPending(
       requestId,
       requesterUserId,
       tx,
     );
-    if (!cancelled) {
-      throw new NotFoundError(t("server.error.notFound"));
-    }
+    if (!cancelled) return { refusal: "not_found" };
     if (cancelled.notificationId !== null) {
       await notificationRepo.retire(cancelled.notificationId, tx);
     }
+    return { done: true };
   });
+  if (isRefused(outcome)) throw refusalError(outcome.refusal);
 }
 
 /**
@@ -299,36 +311,32 @@ interface OpenRequest {
  * still comes back and can be reported as "already handled" rather than
  * "never existed" — the repo header explains why putting `status` in a
  * `FOR UPDATE` predicate destroys exactly that distinction.
+ * Refusals come back as VALUES, not exceptions: the timed-out branch settles
+ * the row before refusing, and throwing here would abort the transaction that
+ * write lives in. The caller raises them after the commit.
  * @param tx - The deciding transaction; the lock is meaningless without one.
  * @param input - Request id and the deciding caller.
- * @returns The locked request, ready for its premise check.
- * @throws {NotFoundError} when there is no such request.
- * @throws {ConflictError} when it was already handled or has timed out.
- * @throws {ForbiddenError} when the caller is not the project's current owner.
+ * @returns The locked request, or why the decision is refused.
  */
 async function openForDecision(
   tx: DbTx,
   input: DecisionInput,
-): Promise<OpenRequest> {
+): Promise<OpenRequest | Refused> {
   const row = await requestsRepo.lockRequest(input.requestId, tx);
-  if (!row) {
-    throw new NotFoundError(t("server.error.notFound"));
-  }
+  if (!row) return { refusal: "not_found" };
   const req: OpenRequest = {
     id: row.id,
     projectId: row.projectId,
     requesterUserId: row.requesterUserId,
     notificationId: row.notificationId,
   };
-  if (row.status !== "pending") {
-    throw new ConflictError(t("server.error.conflict"));
-  }
+  if (row.status !== "pending") return { refusal: "conflict" };
   if (row.expired) {
     // Nobody answered in time. Somebody has to write that down, or the row
     // stays `pending` forever and holds this viewer's slot — "expired" is by
     // definition the case where no other path runs.
     await settle(req, "expired", null, tx);
-    throw new ConflictError(t("server.error.conflict"));
+    return { refusal: "conflict" };
   }
   const decider = await projectMembersRepo.getRole(
     row.projectId,
@@ -337,7 +345,7 @@ async function openForDecision(
   if (decider !== "owner") {
     // Deliberately leaves the request pending: this caller's lack of authority
     // says nothing about the request, which the CURRENT owner can still answer.
-    throw new ForbiddenError(t("server.error.forbidden"));
+    return { refusal: "forbidden" };
   }
   return req;
 }
@@ -356,15 +364,6 @@ async function settle(
   tx: DbTx,
 ): Promise<void> {
   await requestsRepo.settleIfPending(req.id, status, decidedByUserId, tx);
-  await retire(req, tx);
-}
-
-/**
- * Take down the bell entry announcing a request that is over.
- * @param req - The locked request.
- * @param tx - The enclosing transaction.
- */
-async function retire(req: OpenRequest, tx: DbTx): Promise<void> {
   if (req.notificationId !== null) {
     await notificationRepo.retire(req.notificationId, tx);
   }
@@ -385,21 +384,4 @@ async function resolveActorProfile(
   ]);
   const p = profiles.get(userId);
   return { name: p?.name ?? "", handle: p?.slug ?? "" };
-}
-
-/**
- * Recognise the unique-index violation the one-live-request rule raises.
- *
- * Matched on SQLSTATE rather than on the message: the text is localised by the
- * server's locale setting, the code is not.
- * @param err - Whatever the transaction threw.
- * @returns True when this is a duplicate-key violation.
- */
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code?: unknown }).code === "23505"
-  );
 }

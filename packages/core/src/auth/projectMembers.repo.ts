@@ -463,6 +463,50 @@ export async function updateRoleUnderOwner(
 }
 
 /**
+ * Change a member's role only if they still hold the role the caller assumed —
+ * check and write in the one statement, so nothing can slip between them.
+ *
+ * The demotion half of a deferred transfer. A transfer request names its
+ * initiator in a row written up to a week earlier, and the project may have
+ * changed hands since; demoting whoever that row names, unconditionally, is a
+ * privilege GRANT when they have meanwhile been pushed BELOW the rank being
+ * demoted to. Requiring the role they are being demoted FROM makes a stale
+ * request write nothing and say so.
+ *
+ * Unlike {@link updateRoleUnderOwner} this asks nothing about who is calling —
+ * the caller's authority is established elsewhere (they hold the request row's
+ * lock). It only pins the subject's own role.
+ * @param projectId - Project UUID
+ * @param userId - The member being re-roled
+ * @param fromRole - The role they must still hold for the write to happen
+ * @param toRole - The role to move them to
+ * @param tx - Optional drizzle transaction handle
+ * @returns `true` if the row was updated; `false` when the role had moved on
+ */
+export async function updateRoleIfCurrent(
+  projectId: string,
+  userId: string,
+  fromRole: ProjectRole,
+  toRole: Exclude<ProjectRole, "owner">,
+  tx?: DbTx,
+): Promise<boolean> {
+  const handle = tx ?? db;
+  const rows = await handle
+    .update(projectMembers)
+    .set({ role: toRole })
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, userId),
+        eq(projectMembers.role, fromRole),
+        isNull(projectMembers.deletedAt),
+      ),
+    )
+    .returning({ projectId: projectMembers.projectId });
+  return rows.length > 0;
+}
+
+/**
  * Soft-delete a member row.
  *
  * Caller MUST refuse to remove an owner (owners change hands only via

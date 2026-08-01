@@ -104,6 +104,26 @@ route.post("/read-all", async (c) => {
  * caller must own the notification (the service's markRead userId guard);
  * a missing / already-decided / other-user's notification collapses to 404.
  */
+/**
+ * Read the id of the row an actionable bell entry stands for.
+ *
+ * These entries never carry the state they display — the invite or offer is a
+ * row of its own, and the entry only points at it. A payload missing that
+ * pointer is an entry nothing can act on, which is indistinguishable from a
+ * missing one as far as the caller is concerned.
+ * @param payload - The notification's opaque jsonb payload
+ * @param key - Which pointer to read (`invitationId` / `transferId`)
+ * @returns The row id
+ * @throws {NotFoundError} when the payload carries no such pointer
+ */
+function readRowId(payload: unknown, key: string): string {
+  const value = (payload as Record<string, unknown> | null)?.[key];
+  if (typeof value !== "string") {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  return value;
+}
+
 route.post("/:id/action", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
@@ -113,32 +133,41 @@ route.post("/:id/action", async (c) => {
     throw new NotFoundError(t("server.error.not_found"));
   }
   switch (notification.type) {
-    case "studio.transfer_request":
+    case "studio.transfer_request": {
+      // Like the invite below: the offer's source of truth is the
+      // `studio_transfers` row whose id rides in the payload, not this entry.
+      const transferId = readRowId(notification.payload, "transferId");
       if (body.action === "confirm") {
-        await studioTransferService.confirmTransfer(id, user.id);
+        await studioTransferService.confirmTransfer(transferId, user.id);
       } else {
-        await studioTransferService.cancelTransfer(id, user.id);
+        await studioTransferService.declineTransfer(transferId, user.id);
       }
       break;
-    case "project.transfer_request":
+    }
+    case "project.transfer_request": {
+      const transferId = readRowId(notification.payload, "transferId");
       if (body.action === "confirm") {
-        await projectTransferService.confirmProjectTransfer(id, user.id);
+        await projectTransferService.confirmProjectTransfer(
+          transferId,
+          user.id,
+        );
       } else {
-        await projectTransferService.cancelProjectTransfer(id, user.id);
+        await projectTransferService.declineProjectTransfer(
+          transferId,
+          user.id,
+        );
       }
       break;
+    }
     case "studio.invite_request": {
       // The invite's source of truth is the studio_invitations row whose id
       // rides in the notification payload (the notification is just the entry
       // point); confirm/decline act on that invitation.
-      const payload = notification.payload as { invitationId?: unknown };
-      if (typeof payload.invitationId !== "string") {
-        throw new NotFoundError(t("server.error.not_found"));
-      }
+      const invitationId = readRowId(notification.payload, "invitationId");
       if (body.action === "confirm") {
-        await studioInviteService.confirmInvite(payload.invitationId, user.id);
+        await studioInviteService.confirmInvite(invitationId, user.id);
       } else {
-        await studioInviteService.declineInvite(payload.invitationId, user.id);
+        await studioInviteService.declineInvite(invitationId, user.id);
       }
       break;
     }

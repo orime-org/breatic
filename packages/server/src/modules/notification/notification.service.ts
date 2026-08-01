@@ -168,6 +168,14 @@ export interface StudioTransferRequestPayload {
   fromName: string;
   studioId: string;
   studioName: string;
+  /**
+   * The `studio_transfers` row this entry announces.
+   *
+   * The offer's source of truth is that row, not this entry — the bell's
+   * confirm / decline buttons act on the id carried here, exactly as the
+   * invite entries carry their `invitationId`.
+   */
+  transferId: string;
 }
 
 /**
@@ -196,6 +204,14 @@ export interface ProjectTransferRequestPayload {
   fromName: string;
   projectId: string;
   projectName: string;
+  /**
+   * The `project_transfers` row this entry announces.
+   *
+   * The offer's source of truth is that row, not this entry — the bell's
+   * confirm / decline buttons act on the id carried here, exactly as the
+   * invite entries carry their `invitationId`.
+   */
+  transferId: string;
 }
 
 /**

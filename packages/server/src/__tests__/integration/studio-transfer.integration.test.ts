@@ -135,12 +135,15 @@ interface TransferNotif {
   id: string;
   type: string;
   expires_at: Date | null;
+  /** The row the entry announces — what the decision endpoints act on. */
+  transfer_id: string;
 }
 
 /** The recipient's transfer-request notifications, newest first. */
 async function transferRequestsFor(userId: string): Promise<TransferNotif[]> {
   return sql<TransferNotif[]>`
-    SELECT id, type, expires_at FROM notifications
+    SELECT id, type, expires_at, payload->>'transferId' AS transfer_id
+    FROM notifications
     WHERE user_id = ${userId} AND type = 'studio.transfer_request'
       AND deleted_at IS NULL
     ORDER BY created_at DESC
@@ -156,8 +159,18 @@ async function countByType(userId: string, type: string): Promise<number> {
 }
 
 /** Force a notification's expiry into the past (simulate the 7-day timeout). */
-async function expireNotification(id: string): Promise<void> {
-  await sql`UPDATE notifications SET expires_at = now() - interval '1 hour' WHERE id = ${id}`;
+async function expireTransfer(transferId: string): Promise<void> {
+  // Both projections move together, exactly as the create path writes them:
+  // the decision gate reads the ROW, the bell reads the entry, and a test that
+  // aged only one of them would stop exercising the gate it claims to.
+  await sql`
+    UPDATE studio_transfers SET expires_at = now() - interval '1 hour'
+    WHERE id = ${transferId}
+  `;
+  await sql`
+    UPDATE notifications SET expires_at = now() - interval '1 hour'
+    WHERE payload->>'transferId' = ${transferId}
+  `;
 }
 
 interface Seeded {
@@ -266,7 +279,7 @@ describe("confirmTransfer", () => {
     await studioTransferService.requestTransfer(slug, adminId, memberId);
     const [req] = await transferRequestsFor(memberId);
 
-    await studioTransferService.confirmTransfer(req!.id, memberId);
+    await studioTransferService.confirmTransfer(req!.transfer_id, memberId);
 
     expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("maintainer");
     expect(await studioMembersRepo.getRole(studioId, memberId)).toBe("admin");
@@ -292,10 +305,10 @@ describe("confirmTransfer", () => {
     const { studioId, slug, adminId, memberId } = await seedStudio();
     await studioTransferService.requestTransfer(slug, adminId, memberId);
     const [req] = await transferRequestsFor(memberId);
-    await expireNotification(req!.id);
+    await expireTransfer(req!.transfer_id);
 
     await expect(
-      studioTransferService.confirmTransfer(req!.id, memberId),
+      studioTransferService.confirmTransfer(req!.transfer_id, memberId),
     ).rejects.toMatchObject({ statusCode: 409 });
 
     // The whole transaction rolled back — roles are unchanged.
@@ -310,8 +323,8 @@ describe("confirmTransfer", () => {
     const [req] = await transferRequestsFor(memberId);
 
     const results = await Promise.allSettled([
-      studioTransferService.confirmTransfer(req!.id, memberId),
-      studioTransferService.confirmTransfer(req!.id, memberId),
+      studioTransferService.confirmTransfer(req!.transfer_id, memberId),
+      studioTransferService.confirmTransfer(req!.transfer_id, memberId),
     ]);
 
     const fulfilled = results.filter((r) => r.status === "fulfilled").length;
@@ -336,7 +349,7 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
     await sql`UPDATE studio_members SET role = 'guest' WHERE studio_id = ${studioId} AND user_id = ${memberId}`;
 
     await expect(
-      studioTransferService.confirmTransfer(req!.id, memberId),
+      studioTransferService.confirmTransfer(req!.transfer_id, memberId),
     ).rejects.toMatchObject({ statusCode: 409 });
 
     // The swap did NOT happen: the admin stays admin, the recipient stays guest.
@@ -367,7 +380,7 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
     await sql`UPDATE studio_members SET role = 'admin' WHERE studio_id = ${studioId} AND user_id = ${successorId}`;
 
     await expect(
-      studioTransferService.confirmTransfer(stale!.id, memberId),
+      studioTransferService.confirmTransfer(stale!.transfer_id, memberId),
     ).rejects.toMatchObject({ statusCode: 409 });
 
     const roles = await sql<{ user_id: string; role: string }[]>`
@@ -399,7 +412,7 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
     await sql`UPDATE studio_members SET role = 'admin' WHERE studio_id = ${studioId} AND user_id = ${memberId}`;
 
     await expect(
-      studioTransferService.confirmTransfer(stale!.id, memberId),
+      studioTransferService.confirmTransfer(stale!.transfer_id, memberId),
     ).rejects.toMatchObject({ statusCode: 409 });
 
     const roles = await sql<{ user_id: string; role: string }[]>`
@@ -415,13 +428,13 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
   });
 });
 
-describe("cancelTransfer", () => {
+describe("declineTransfer", () => {
   it("marks the request read and changes no roles", async () => {
     const { studioId, slug, adminId, memberId } = await seedStudio();
     await studioTransferService.requestTransfer(slug, adminId, memberId);
     const [req] = await transferRequestsFor(memberId);
 
-    await studioTransferService.cancelTransfer(req!.id, memberId);
+    await studioTransferService.declineTransfer(req!.transfer_id, memberId);
 
     // No role swap.
     expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("admin");
@@ -429,9 +442,11 @@ describe("cancelTransfer", () => {
     expect(await activeAdminCount(studioId)).toBe(1);
     // No approved notification was sent.
     expect(await countByType(adminId, "studio.transfer_approved")).toBe(0);
-    // A second cancel is a no-op NotFound (already decided).
+    // A second click reports 409, not 404. Telling "already answered" apart
+    // from "no such offer" is the whole reason the offer has a status column:
+    // while it was only a bell entry, both collapsed into the same silence.
     await expect(
-      studioTransferService.cancelTransfer(req!.id, memberId),
-    ).rejects.toMatchObject({ statusCode: 404 });
+      studioTransferService.declineTransfer(req!.transfer_id, memberId),
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 });

@@ -235,9 +235,16 @@ describe("request", () => {
 
   it("turns the one-live-request violation into a conflict", async () => {
     // The index speaks SQLSTATE; the route needs an AppError. Matched on the
-    // code rather than the message, which is localised.
+    // code rather than the message, which is localised — and on the shape
+    // drizzle actually throws inside a transaction: the driver error carrying
+    // `code` is hung off `.cause`, so a flat top-level check never fires and
+    // the conflict escapes as an unclassified 500.
     vi.mocked(requestsRepo.createPending).mockRejectedValueOnce(
-      Object.assign(new Error("duplicate key"), { code: "23505" }),
+      Object.assign(new Error("Failed query"), {
+        cause: Object.assign(new Error("duplicate key value"), {
+          code: "23505",
+        }),
+      }),
     );
 
     await expect(

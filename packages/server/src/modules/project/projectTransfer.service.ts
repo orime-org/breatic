@@ -2,45 +2,47 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Project transfer-owner handshake service (#1611) — mirrors the studio
- * transfer-admin handshake (see studioTransfer.service), but moves the project
- * OWNER role instead of the studio admin role.
+ * Project transfer-owner handshake — the owner offers the project to a
+ * collaborator, who answers later.
  *
- * Three operations:
- *   - `requestProjectTransfer`: the current project owner asks a non-guest
- *     studio member to take over as owner. Drops an actionable
- *     `project.transfer_request` notification (confirm/cancel) in the
- *     recipient's inbox, expiring after 7 days.
- *   - `confirmProjectTransfer`: the recipient accepts. In ONE db.transaction:
- *     mark the request read (the CAS serialization point), then demote the old
- *     owner to editor FIRST (#1611 / D1 one-rank-down demotion) and promote the recipient to
- *     owner SECOND via `materializeOwner` (insert / revive / promote — the
- *     recipient may not yet be a project member), then notify the old owner via
- *     `project.transfer_approved`. AFTER the tx commits, append the
- *     `member:ownership-transferred` activity (best-effort audit).
- *   - `cancelProjectTransfer`: the recipient declines. Only marks the request
- *     read — no role change. An unconfirmed request self-voids once its 7-day
- *     `expires_at` passes.
+ * Four operations: `requestProjectTransfer` files an offer,
+ * `confirmProjectTransfer` / `declineProjectTransfer` are the recipient's two
+ * answers, and `withdrawProjectTransfer` lets the project's CURRENT owner take
+ * the offer back.
  *
- * Authorization model (route layer enforces the initiator gate):
- *   - requestProjectTransfer: caller must be the project owner (`requireRole('owner')`);
- *     the service re-verifies (defense-in-depth) since only the owner — NOT the
- *     studio admin — may initiate a project transfer (ADR D4).
- *   - confirm / cancel: caller must own the notification (the markRead userId guard).
+ * The offer lives in `project_transfers`; the bell entry only announces it. It
+ * used to BE the bell entry, which is a table with no status, no uniqueness and
+ * no expiry — so an offer could be filed any number of times, could never be
+ * withdrawn, and "already answered" was indistinguishable from "already read".
  *
- * Atomicity & once-only: confirm runs in a single db transaction — the
- * mark-read CAS (UPDATE … WHERE read_at IS NULL) is the serialization point, so
- * under concurrency only the first confirm swaps roles; the loser's UPDATE
- * matches zero rows and the whole transaction rolls back. The
- * `project_members_one_owner_per_project` partial unique is the data-integrity
- * backstop: a transfer is applied EXACTLY ONCE and the project always has
- * exactly one active owner.
+ * ONE LIVE OFFER PER PROJECT. A project has exactly one owner, so it can never
+ * be offered to two people at once; the partial unique index keys on the
+ * project alone. `createPending` reaps a timed-out offer in the transaction
+ * that takes the slot, because a partial index predicate cannot mention
+ * `now()` — without that, one unanswered offer would freeze the project's
+ * ownership for good.
+ *
+ * A confirm re-checks every premise, because it runs up to a week after the
+ * offer was made and all three participants may have moved:
+ *
+ *   1. lock the offer by id (never by status — see the repo header)
+ *   2. it must still be pending, else 409
+ *   3. it must not have timed out, else retire it and 409
+ *   4. the caller must be the named recipient, else 403
+ *   5. the recipient must still be an eligible project + studio member
+ *   6. the initiator must still be the owner — enforced by demoting only from
+ *      `owner`, so a stale offer writes nothing
+ *
+ * Step 6 is not paranoia. Demoting whoever the offer names, unconditionally,
+ * promotes a former owner who has since been pushed below editor — a privilege
+ * grant off a week-old row.
  */
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
+import * as transfersRepo from "@server/modules/project/projectTransfers.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { buildProjectTransferMail } from "@server/utils/notification-mail.js";
@@ -52,28 +54,37 @@ import {
   NotFoundError,
   ValidationError,
 } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { deferredRequestExpiry } from "@server/config/limits.js";
+import { isUniqueViolation } from "@server/utils/pg-error.js";
+import {
+  isRefused,
+  refusalError,
+} from "@server/utils/deferred-decision.js";
+import type { Refused } from "@server/utils/deferred-decision.js";
 
 /**
- * The current project owner asks another project collaborator to take over as owner.
+ * The current owner offers the project to another collaborator.
  *
- * Loads the project + its studio, refuses personal-studio projects, verifies the
- * caller is the current owner (ADR D4: only the owner initiates — not the studio
- * admin), and requires the recipient to satisfy BOTH layers (ADR D3, 2026-07-08):
- * already a member of THIS project (editor or viewer) AND a non-guest member of
- * the project's studio (the studio check blocks transferring the project out of
- * its studio to an outside collaborator, and blocks guests). Drops an actionable
- * `project.transfer_request` notification that expires after
- * the configured request TTL. No role change here — the swap is deferred
- * until the recipient confirms.
- * @param projectId - The project whose owner role is being transferred
+ * Refuses personal-studio projects, verifies the caller is the current owner
+ * (ADR D4: only the owner initiates — not the studio admin), and requires the
+ * recipient to satisfy BOTH layers (ADR D3): already a member of THIS project
+ * (editor or viewer) AND a non-guest member of the project's studio. The studio
+ * layer is what stops ownership leaving the studio to an outside collaborator.
+ *
+ * The offer row and its bell entry are written in one transaction and carry the
+ * same deadline — they are two projections of one fact, and a null `expires_at`
+ * on the bell side reads as "never expires", so an entry created without one
+ * outlives the offer it announces.
+ * @param projectId - The project whose owner role is being offered
  * @param fromUserId - The acting owner initiating the transfer
- * @param toUserId - The project collaborator proposed as the new owner
- * @param origin - The request Origin for the best-effort email link; omit to skip the email
+ * @param toUserId - The collaborator proposed as the new owner
+ * @param origin - Request Origin for the best-effort email link; omit to skip it
  * @throws {NotFoundError} project or studio not found
  * @throws {ForbiddenError} the studio is personal, or the caller is not the owner
+ * @throws {ConflictError} this project already has a live offer outstanding
  * @throws {ValidationError} the recipient is the acting owner, is not a project
  *   member (editor/viewer), is not a studio member (would transfer out of the
  *   studio), or is a studio guest
@@ -99,7 +110,7 @@ export async function requestProjectTransfer(
   if (toUserId === fromUserId) {
     throw new ValidationError(t("server.error.validation"));
   }
-  // Recipient eligibility is TWO layers (ADR D3, 2026-07-08 — both required):
+  // Recipient eligibility is TWO layers (ADR D3 — both required):
   // 1) project layer — must ALREADY collaborate on this project (editor or
   //    viewer). A recipient with the owner role would be the initiator (rejected
   //    by the self-transfer guard above), so only editor / viewer / null occur.
@@ -126,94 +137,95 @@ export async function requestProjectTransfer(
   const expiresAt = deferredRequestExpiry();
   const profiles = await studioRepo.getPersonalProfilesByCreators([fromUserId]);
   const from = profiles.get(fromUserId);
-  await notificationService.createProjectTransferRequest({
-    userId: toUserId,
-    payload: {
-      fromUserId,
-      fromName: from?.name ?? "",
-      projectId,
-      projectName: project.name,
-    },
-    expiresAt,
-  });
+  try {
+    await db.transaction(async (tx) => {
+      const transferId = await transfersRepo.createPending({
+        projectId,
+        fromUserId,
+        toUserId,
+        expiresAt,
+        tx,
+      });
+      const notification =
+        await notificationService.createProjectTransferRequest({
+          userId: toUserId,
+          payload: {
+            fromUserId,
+            fromName: from?.name ?? "",
+            projectId,
+            projectName: project.name,
+            transferId,
+          },
+          expiresAt,
+          tx,
+        });
+      await transfersRepo.attachNotification(transferId, notification.id, tx);
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ConflictError(t("server.error.conflict"));
+    }
+    throw err;
+  }
 
   // Best-effort transfer email — the bell notification above is the always-
   // delivered path; this only fires when an SMTP backend is configured and the
   // caller passed an origin (the route's HTTP Origin). A send failure must NOT
-  // fail the request (the request + bell already landed).
+  // fail the request (the offer + bell already committed).
   if (origin) {
-    await sendBestEffortMail(async () => {
-      // Resolve the recipient INSIDE the best-effort boundary — a DB read blip
-      // must not fail this request (the transfer-request bell already committed).
-      const recipient = await userRepo.getUserById(toUserId);
-      if (!recipient) return null;
-      return buildProjectTransferMail({
-        recipientEmail: recipient.email,
-        initiatorName: from?.name ?? "",
-        projectName: project.name,
-        projectLink: `${origin}/project/${project.slug}-${projectId}`,
-      });
-    }, { userId: toUserId, subject: "project_transfer" });
+    await sendBestEffortMail(
+      async () => {
+        // Resolve the recipient INSIDE the best-effort boundary — a DB read blip
+        // must not fail this request (the offer already committed).
+        const recipient = await userRepo.getUserById(toUserId);
+        if (!recipient) return null;
+        return buildProjectTransferMail({
+          recipientEmail: recipient.email,
+          initiatorName: from?.name ?? "",
+          projectName: project.name,
+          projectLink: `${origin}/project/${project.slug}-${projectId}`,
+        });
+      },
+      { userId: toUserId, subject: "project_transfer" },
+    );
   }
 }
 
 /**
- * The recipient confirms a transfer — atomically swaps the owner role to them.
+ * The recipient accepts — the owner role moves to them.
  *
- * In one transaction: (1) mark-read CAS on the request (serialization point),
- * (2) re-read + gate the notification (right type, still within its TTL),
- * (3) demote the old owner to editor FIRST, (4) promote the recipient to owner
- * SECOND via materializeOwner (order avoids the one-owner partial unique),
- * (5) notify the old owner with `project.transfer_approved`. After the tx
- * commits, append the `member:ownership-transferred` activity (best-effort).
- * @param notificationId - The `project.transfer_request` notification id
- * @param receiverUserId - The recipient confirming (owns the notification)
- * @throws {NotFoundError} the notification is missing, already decided, not a
- *   project transfer request, or the old owner row is gone (stale request)
- * @throws {ConflictError} the request has already expired (past its 7-day TTL)
- * @throws {ValidationError} the notification payload is malformed
+ * In one transaction: lock and gate the offer, re-verify both eligibility
+ * layers under row locks, demote the old owner FIRST and promote the recipient
+ * SECOND, settle the offer and retire its bell entry, then notify the old
+ * owner. After the commit, append the ownership-transferred activity.
+ *
+ * The demote-then-promote order is load-bearing: the reverse collides with
+ * `project_members_one_owner_per_project` mid-transaction.
+ * @param transferId - The `project_transfers` row id
+ * @param receiverUserId - The recipient confirming
+ * @throws {NotFoundError} there is no such offer
+ * @throws {ForbiddenError} the caller is not the offer's named recipient
+ * @throws {ConflictError} the offer was already answered, has timed out, the
+ *   recipient no longer qualifies, or the initiator no longer owns the project
  */
 export async function confirmProjectTransfer(
-  notificationId: string,
+  transferId: string,
   receiverUserId: string,
 ): Promise<void> {
-  let activity: { projectId: string; oldOwnerId: string } | null = null;
-  await db.transaction(async (tx) => {
-    const won = await notificationRepo.markRead(
-      notificationId,
-      receiverUserId,
-      tx,
-    );
-    if (!won) throw new NotFoundError(t("server.error.not_found"));
+  const outcome = await db.transaction<
+    Refused | { projectId: string; oldOwnerId: string }
+  >(async (tx) => {
+    const opened = await openForDecision(tx, transferId, receiverUserId);
+    if (isRefused(opened)) return opened;
+    const offer = opened;
+    const { projectId, fromUserId } = offer;
 
-    const row = await notificationRepo.findById(notificationId, tx);
-    if (!row || row.type !== "project.transfer_request") {
-      throw new NotFoundError(t("server.error.not_found"));
-    }
-    if (row.expiresAt !== null && row.expiresAt.getTime() <= Date.now()) {
-      throw new ConflictError(t("server.error.conflict"));
-    }
-    const payload = row.payload as {
-      fromUserId?: unknown;
-      projectId?: unknown;
-      projectName?: unknown;
-    };
-    if (
-      typeof payload.fromUserId !== "string" ||
-      typeof payload.projectId !== "string"
-    ) {
-      throw new ValidationError(t("server.error.validation"));
-    }
-    const { fromUserId, projectId } = payload;
-    const projectName =
-      typeof payload.projectName === "string" ? payload.projectName : "";
-
-    // TOCTOU guard (adversarial review): the request-time two-layer eligibility
-    // (ADR D3) can go stale within the 7-day TTL — the recipient may have been
-    // demoted to studio guest or kicked from the studio since the request. Re-
-    // verify BOTH layers BEFORE the swap; otherwise materializeOwner (ON CONFLICT
-    // DO UPDATE, no setWhere) would revive a soft-deleted / guest row straight to
-    // owner and move the project out of its studio.
+    // The request-time two-layer eligibility (ADR D3) can go stale within the
+    // TTL — the recipient may have been demoted to studio guest or kicked from
+    // the studio since. Re-verify BOTH layers BEFORE the swap; otherwise
+    // materializeOwner (ON CONFLICT DO UPDATE, no setWhere) would revive a
+    // soft-deleted / guest row straight to owner and move the project out of
+    // its studio.
     //
     // Both re-reads take a ROW LOCK, and the order is load-bearing:
     //   1. the recipient's `studio_members` row
@@ -230,40 +242,44 @@ export async function confirmProjectTransfer(
     // The project row itself is read unlocked: `studio_id` is immutable, so
     // there is nothing here for a concurrent writer to change.
     const project = await projectRepo.getProjectById(projectId);
-    if (!project) throw new ConflictError(t("server.error.conflict"));
+    if (!project) return { refusal: "conflict" };
     const recipientStudioRole = await studioMembersRepo.lockMemberRole(
       project.studioId,
       receiverUserId,
       tx,
     );
     if (!recipientStudioRole || recipientStudioRole === "guest") {
-      throw new ConflictError(t("server.error.conflict"));
+      await settle(offer, "expired", tx);
+      return { refusal: "conflict" };
     }
     const recipientProjectRole = await projectMembersRepo.lockMemberRole(
       projectId,
       receiverUserId,
       tx,
     );
-    if (
-      recipientProjectRole !== "editor" &&
-      recipientProjectRole !== "viewer"
-    ) {
-      throw new ConflictError(t("server.error.conflict"));
+    if (recipientProjectRole !== "editor" && recipientProjectRole !== "viewer") {
+      await settle(offer, "expired", tx);
+      return { refusal: "conflict" };
     }
 
-    // Demote the old owner to editor FIRST (drops zero owners), then promote the
-    // recipient to owner SECOND — the reverse order would collide with
-    // project_members_one_owner_per_project. materializeOwner inserts / revives
-    // / promotes the recipient, covering the case where they were not yet a
-    // project member.
-    const demoted = await projectMembersRepo.updateRole(
+    // Demote the old owner FIRST (drops zero owners), then promote the
+    // recipient SECOND. Demoting only FROM `owner` is the initiator's premise
+    // check: if the project changed hands since the offer was made, this writes
+    // nothing rather than promoting a former owner who has since been pushed
+    // below editor.
+    const demoted = await projectMembersRepo.updateRoleIfCurrent(
       projectId,
       fromUserId,
+      "owner",
       "editor",
       tx,
     );
-    if (!demoted) throw new NotFoundError(t("server.error.not_found"));
+    if (!demoted) {
+      await settle(offer, "expired", tx);
+      return { refusal: "conflict" };
+    }
     await projectMembersRepo.materializeOwner(projectId, receiverUserId, tx);
+    await settle(offer, "accepted", tx);
 
     const profiles = await studioRepo.getPersonalProfilesByCreators([
       receiverUserId,
@@ -273,42 +289,161 @@ export async function confirmProjectTransfer(
       userId: fromUserId,
       payload: {
         projectId,
-        projectName,
+        projectName: project.name,
         accepterUserId: receiverUserId,
         accepterName: accepter?.name ?? "",
       },
       tx,
     });
-    activity = { projectId, oldOwnerId: fromUserId };
+    return { projectId, oldOwnerId: fromUserId };
   });
+
+  // The refusal is raised only now: its own writes had to commit first.
+  if (isRefused(outcome)) throw refusalError(outcome.refusal);
 
   // Activity row AFTER the swap committed (best-effort audit; the helper
   // announces the live `activity:new` signal itself). The actor is the old
   // owner — they transferred the project away.
-  if (activity !== null) {
-    const done = activity as { projectId: string; oldOwnerId: string };
-    await recordProjectActivity({
-      projectId: done.projectId,
-      actorUserId: done.oldOwnerId,
-      type: "member:ownership-transferred",
-      payload: { previousOwnerId: done.oldOwnerId, newOwnerId: receiverUserId },
-    });
-  }
+  await recordProjectActivity({
+    projectId: outcome.projectId,
+    actorUserId: outcome.oldOwnerId,
+    type: "member:ownership-transferred",
+    payload: {
+      previousOwnerId: outcome.oldOwnerId,
+      newOwnerId: receiverUserId,
+    },
+  });
 }
 
 /**
- * The recipient cancels (declines) a transfer — marks the request read, no role
- * change. Idempotent on a second click: a missing / already-decided request
- * collapses to NotFound.
- * @param notificationId - The `project.transfer_request` notification id
- * @param receiverUserId - The recipient declining (owns the notification)
- * @throws {NotFoundError} the notification is missing, already decided, or not
- *   owned by `receiverUserId`
+ * The recipient declines — no role changes, and the project's slot is freed at
+ * once so the owner can offer it to somebody else.
+ * @param transferId - The `project_transfers` row id
+ * @param receiverUserId - The recipient declining
+ * @throws {NotFoundError} there is no such offer
+ * @throws {ForbiddenError} the caller is not the offer's named recipient
+ * @throws {ConflictError} the offer was already answered or has timed out
  */
-export async function cancelProjectTransfer(
-  notificationId: string,
+export async function declineProjectTransfer(
+  transferId: string,
   receiverUserId: string,
 ): Promise<void> {
-  const ok = await notificationRepo.markRead(notificationId, receiverUserId);
-  if (!ok) throw new NotFoundError(t("server.error.not_found"));
+  const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
+    const opened = await openForDecision(tx, transferId, receiverUserId);
+    if (isRefused(opened)) return opened;
+    await settle(opened, "declined", tx);
+    return { done: true };
+  });
+  if (isRefused(outcome)) throw refusalError(outcome.refusal);
+}
+
+/**
+ * The project's CURRENT owner takes an outstanding offer back.
+ *
+ * Withdrawal belongs to whoever owns the project now, not to whoever sent the
+ * offer. Giving it to the sender strands the project: after a transfer the
+ * former owner is gone, and a second, unanswered offer would block ownership
+ * for a week with the only key held by someone who has left.
+ * @param transferId - The `project_transfers` row id
+ * @param projectId - The project the caller was authorised as owner of
+ * @throws {NotFoundError} no live offer of this project matches that id
+ */
+export async function withdrawProjectTransfer(
+  transferId: string,
+  projectId: string,
+): Promise<void> {
+  const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
+    const withdrawn = await transfersRepo.cancelIfPending(
+      transferId,
+      projectId,
+      tx,
+    );
+    if (!withdrawn) return { refusal: "not_found" };
+    if (withdrawn.notificationId !== null) {
+      await notificationRepo.retire(withdrawn.notificationId, tx);
+    }
+    return { done: true };
+  });
+  if (isRefused(outcome)) throw refusalError(outcome.refusal);
+}
+
+/**
+ * The project's live offer, for both sides' "transfer pending" surfaces.
+ * @param projectId - The project being viewed.
+ * @returns The live offer, or null when there is none.
+ */
+export async function findLiveProjectTransfer(
+  projectId: string,
+): Promise<{
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  expiresAt: Date;
+} | null> {
+  return transfersRepo.findLiveForContainer(projectId);
+}
+
+/** A locked offer that has passed the gates every answer shares. */
+interface OpenOffer {
+  id: string;
+  projectId: string;
+  fromUserId: string;
+  notificationId: string | null;
+}
+
+/**
+ * Lock the offer and run the gates both answers share: it exists, it is still
+ * pending, it has not timed out, and the caller is its named recipient.
+ *
+ * The recipient check is the one that cannot be skipped. It used to be implicit
+ * in the mark-read guard on the recipient's own bell entry; once the offer is a
+ * row of its own, nothing else binds the caller to it, and any signed-in user
+ * holding the id could accept a transfer meant for somebody else.
+ * @param tx - The deciding transaction; the lock is meaningless without one.
+ * @param transferId - The offer id.
+ * @param receiverUserId - The caller answering.
+ * Refusals come back as VALUES, not exceptions: the timed-out branch settles
+ * the row before refusing, and throwing here would abort the transaction that
+ * write lives in. The caller raises them after the commit.
+ * @returns The locked offer, or why the decision is refused.
+ */
+async function openForDecision(
+  tx: DbTx,
+  transferId: string,
+  receiverUserId: string,
+): Promise<OpenOffer | Refused> {
+  const row = await transfersRepo.lockRequest(transferId, tx);
+  if (!row) return { refusal: "not_found" };
+  const offer: OpenOffer = {
+    id: row.id,
+    projectId: row.projectId,
+    fromUserId: row.fromUserId,
+    notificationId: row.notificationId,
+  };
+  if (row.toUserId !== receiverUserId) return { refusal: "forbidden" };
+  if (row.status !== "pending") return { refusal: "conflict" };
+  if (row.expired) {
+    // Nobody answered in time. Somebody has to write that down, or the row
+    // stays `pending` forever and holds the project's only transfer slot.
+    await settle(offer, "expired", tx);
+    return { refusal: "conflict" };
+  }
+  return offer;
+}
+
+/**
+ * Move an offer to a terminal status and take its bell entry down with it.
+ * @param offer - The locked offer.
+ * @param status - Terminal status to settle on.
+ * @param tx - The deciding transaction.
+ */
+async function settle(
+  offer: OpenOffer,
+  status: "accepted" | "declined" | "expired",
+  tx: DbTx,
+): Promise<void> {
+  await transfersRepo.settleIfPending(offer.id, status, tx);
+  if (offer.notificationId !== null) {
+    await notificationRepo.retire(offer.notificationId, tx);
+  }
 }
