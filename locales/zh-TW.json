@@ -565,40 +565,6 @@
       }
     }
   },
-  "workspace": {
-    "label": "工作臺",
-    "copy_success": "Project 複製成功",
-    "delete_success": "Project 刪除成功",
-    "project_name_required": "Project 名稱是必需的",
-    "rename_success": "Project 重新命名成功",
-    "create_failed": "建立 Project 失敗",
-    "copy_failed": "複製 Project 失敗",
-    "copy_project": "複製 Project",
-    "rename_project": "重新命名 Project",
-    "delete_project": "刪除 Project",
-    "btn_confirm": "確認",
-    "btn_cancel": "取消",
-    "rename_project_title": "重新命名 Project",
-    "rename_project_placeholder": "請輸入新的 Project 名稱",
-    "delete_project_content_title": "刪除 Project",
-    "delete_project_content_description": "此操作無法撤銷。",
-    "recent_projects": "最近的 Projects",
-    "create_new_project": "建立新 Project",
-    "no_more_data": "沒有更多 Projects",
-    "create_project_title": "建立新 Project",
-    "create_project_placeholder": "請輸入新 Project 的名稱",
-    "use_case": "用例",
-    "use_case_description": "用例描述",
-    "home_tooltip": "返回首頁",
-    "create_user_case_title": "建立用例",
-    "create_user_case_description": "這將基於此用例建立一個新 Project。",
-    "create_user_case_placeholder": "輸入新 Project 名稱",
-    "not_logged_in": {
-      "title": "未登入",
-      "description": "登入以體驗所有產品功能",
-      "login_button": "立即登入"
-    }
-  },
   "project": {
     "leaveGuard": {
       "title": "有未完成的操作,確定離開?",
