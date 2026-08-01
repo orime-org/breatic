@@ -287,13 +287,18 @@ export const PromptEditor = React.forwardRef<
         });
     };
     awareness.on('change', applyDim);
-    // ALSO re-sync after every editor transaction: the yCursorPlugin refresh is
-    // BATCHED into a setTimeout(0), and a local transaction inside that window
-    // rebuilds a caret widget from a thunk that captured the PRE-FLIP user —
-    // its build-time class would overwrite applyDim's correction and stick
-    // (an away client's heartbeats are deep-equal → 'update' only, never
-    // 'change', so nothing else would heal it). Reconciling on transaction
-    // covers every DOM rebuild path (adversarial round 2, jsdom-reproduced).
+    // ALSO re-sync after every editor transaction. The yCursorPlugin's refresh
+    // is BATCHED into a setTimeout(0), so inside that window the decorations
+    // still carry thunks that captured the PRE-FLIP user; a caret widget the
+    // view rebuilds from one would take its class from that stale user and keep
+    // it (an away client's heartbeats are deep-equal → 'update' only, never
+    // 'change', so nothing else would heal it). Reconciling here covers any
+    // rebuild in that window regardless of which path caused it — cheap and
+    // idempotent (a handful of carets at most).
+    // NOTE the one rebuild path we could reproduce (a local STRUCTURAL edit,
+    // e.g. a split) no longer reaches this: @tiptap/y-tiptap 3.0.7+ drops every
+    // remote decoration on a local structural transaction and waits for the
+    // collaborator to republish. This stays for the rest of that window.
     editor.on('transaction', applyDim);
     applyDim();
     return (): void => {

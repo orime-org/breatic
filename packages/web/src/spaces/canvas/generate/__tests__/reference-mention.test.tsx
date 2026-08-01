@@ -269,8 +269,13 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
   });
 
   it('hides the popup on start with zero items and shows it once items arrive', () => {
+    // Visibility follows what the LIVE POOL matches, not what the plugin hands
+    // us: @tiptap/suggestion fires onStart (and the first onUpdate of every
+    // change) with an empty `props.items` and resolves the real rows on a later
+    // onUpdate, so every show path computes from `getPool` itself.
+    let pool: ReferenceRailItem[] = [];
     const suggestion = makeReferenceSuggestion({
-      getPool: () => [],
+      getPool: () => pool,
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
@@ -287,8 +292,10 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       ) as HTMLElement;
       expect(el).toBeDefined();
       expect(el.style.display).toBe('none'); // zero matches → hidden
-      handlers.onUpdate?.(props([row], editor));
+      pool = [row];
+      handlers.onUpdate?.(props([], editor));
       expect(el.style.display).toBe(''); // a match arrived → shown
+      pool = [];
       handlers.onUpdate?.(props([], editor));
       expect(el.style.display).toBe('none'); // narrowed back to zero → hidden
     } finally {
@@ -953,7 +960,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
     const handlers = render();
-    const before = new Set(Array.from(document.body.children));
     try {
       editorB.commands.insertContent('@');
       Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
@@ -963,6 +969,11 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
           TextSelection.create(editorA.state.doc, 2),
         ),
       );
+      // Snapshot the body AFTER the editors' own suggestion sessions mounted
+      // their popups. @tiptap/suggestion mounts synchronously on the `@`, so a
+      // snapshot taken earlier would make "the first new child of body" one of
+      // THEIRS rather than the one the handlers under test are about to create.
+      const before = new Set(Array.from(document.body.children));
       handlers.onStart?.(props([textRow], editorA));
       const el = Array.from(document.body.children).find(
         (c) => !before.has(c),
@@ -994,11 +1005,14 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
     const handlers = render();
-    const before = new Set(Array.from(document.body.children));
     try {
       // An @ in the doc makes the editor's suggestion plugin ACTIVE with the
       // caret in range → SuggestionPluginKey.getState(...).active is true.
       editor.commands.insertContent('@');
+      // Snapshot after the editor's OWN suggestion mounted its popup, so the
+      // element found below is the one these handlers create (see the repro
+      // test above for why the plugin's own popup is already in the body).
+      const before = new Set(Array.from(document.body.children));
       handlers.onStart?.(props([textRow], editor));
       const el = Array.from(document.body.children).find(
         (c) => !before.has(c),
@@ -1030,13 +1044,18 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
     const handlers = render();
-    const before = new Set(Array.from(document.body.children));
     try {
       editor.commands.insertContent('@');
+      // Snapshot after the editor's own suggestion mounted its popup (see the
+      // repro test above) — without this the element found below is the
+      // plugin's own, which is hidden anyway, so every assertion here would
+      // pass without ever exercising the handlers under test.
+      const before = new Set(Array.from(document.body.children));
       handlers.onStart?.(props([textRow], editor));
       const el = Array.from(document.body.children).find(
         (c) => !before.has(c),
       ) as HTMLElement;
+      expect(el.style.display).toBe(''); // local open → visible before dismissal
       document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
       expect(el.style.display).toBe('none');
       // A MACHINE-derived selection move (dispatchMachineEdit tags it) is NOT the

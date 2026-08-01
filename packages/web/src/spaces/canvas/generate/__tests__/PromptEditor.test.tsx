@@ -358,7 +358,7 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     );
   });
 
-  it('keeps the dim after a local transaction rebuilds the caret from a stale thunk (resurrection race)', async () => {
+  it('a local structural edit hides the parked remote caret, and it comes back still dimmed', async () => {
     const { awareness, editorEl } = await mountWithAwareness(true);
     const doc = awareness.doc;
     const fragment = doc.getXmlFragment('prompt');
@@ -390,27 +390,26 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     await waitFor(() =>
       expect(editorEl.querySelector('.collaboration-carets__caret')).not.toBeNull(),
     );
-    // Reaching the STALE-thunk branch needs precise staging (adversarial R3 —
-    // a Y-origin doc.transact recreates decorations from CURRENT awareness and
-    // can never exercise it, which made the first version of this test pass
-    // even with the fix deleted):
-    // 1. park the batched yCursor refresh with fake timers, so the flip's
-    //    fresh decorations never land;
-    // 2. flip focused=false — the awareness handler dims the existing DOM;
-    // 3. dispatch a PM-SIDE structural transaction (split forces the widget's
-    //    parent desc to rebuild; plain insertText reuses the widget DOM) —
-    //    the widget rebuilds from the PRE-FLIP thunk (focused=true), and only
-    //    the transaction resync re-dims it: this assertion goes RED without
-    //    editor.on('transaction', applyDim);
-    // 4. release the batched refresh — key-equality DOM reuse must not
-    //    resurrect the pre-flip class either.
+    // The staging is precise because the yCursor refresh is BATCHED into a
+    // setTimeout(0): fake timers park it, so each step below is observed on its
+    // own rather than through one coalesced rebuild.
+    // 1. flip focused=false — the awareness handler dims the EXISTING caret DOM
+    //    (prosemirror-view reuses a widget whose key is unchanged without
+    //    re-invoking its builder, so nothing else would dim it);
+    // 2. a local STRUCTURAL edit — since @tiptap/y-tiptap 3.0.7 the cursor
+    //    plugin drops every remote decoration on one, because the ProseMirror
+    //    doc now leads the Yjs mapping and a parked position would render in
+    //    the wrong place. The caret is HIDDEN, not re-dimmed;
+    // 3. the collaborator republishes and the refresh lands — the caret returns,
+    //    and it must return DIMMED (they are still away). Its class comes from
+    //    the builder, which reads the CURRENT awareness user.
     vi.useFakeTimers();
     try {
-      pushRemote(false);
+      const caretEl = (): Element | null =>
+        editorEl.querySelector('.collaboration-carets__caret');
       const blurred = (): boolean | undefined =>
-        editorEl
-          .querySelector('.collaboration-carets__caret')
-          ?.classList.contains('collaboration-carets__caret--blurred');
+        caretEl()?.classList.contains('collaboration-carets__caret--blurred');
+      pushRemote(false);
       expect(blurred()).toBe(true); // awareness-handler path
       const editor = (
         editorEl.querySelector('.ProseMirror') as unknown as {
@@ -420,11 +419,12 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
       act(() => {
         editor.view.dispatch(editor.view.state.tr.split(2));
       });
-      expect(blurred()).toBe(true); // stale-thunk rebuild, re-dimmed by the resync
+      expect(caretEl()).toBeNull(); // upstream hid the now-stale remote caret
+      pushRemote(false); // the collaborator republishes its parked cursor
       act(() => {
-        vi.runOnlyPendingTimers(); // batched yCursor refresh (DOM reuse path)
+        vi.runOnlyPendingTimers(); // release the batched yCursor refresh
       });
-      expect(blurred()).toBe(true);
+      expect(blurred()).toBe(true); // back, and still dimmed
     } finally {
       vi.useRealTimers();
     }

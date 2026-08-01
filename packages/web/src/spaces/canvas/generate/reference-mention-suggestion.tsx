@@ -256,9 +256,20 @@ export function makeReferenceSuggestion(input: {
       return {
         onStart: (props: SuggestionProps<ReferenceRailItem>): void => {
           latestProps = props;
+          // `props.items` is NOT the resolved list here. @tiptap/suggestion
+          // resolves items through an ASYNC pipeline (so a remote resolver can
+          // be awaited and aborted): it fires onStart immediately with
+          // `initialItems ?? []` — and we configure no `initialItems`, so it is
+          // always EMPTY — then awaits `items()` and delivers the real rows on a
+          // LATER onUpdate. Reading it here would hide the popup the user just
+          // opened (zero matches → hidden, I3) until that update lands.
+          // Our resolver is synchronous over the live pool, so compute the rows
+          // ourselves — the same live-inputs rule the focus re-show already
+          // follows (see computeItems).
+          const startItems = computeItems(props.query);
           component = new ReactRenderer(ReferenceMentionList, {
             props: {
-              items: props.items,
+              items: startItems,
               command: (item: ReferenceRailItem) => latestProps?.command(item),
               emptyLabel: input.emptyLabel,
             },
@@ -375,7 +386,7 @@ export function makeReferenceSuggestion(input: {
           wasOpenBeforeExit = false; // consume the one-shot restart signal
           dismissed = !keepOpen;
           if (keepOpen) {
-            showFor(props.items);
+            showFor(startItems);
           } else {
             el.style.display = 'none';
           }
@@ -383,8 +394,14 @@ export function makeReferenceSuggestion(input: {
         },
         onUpdate: (props: SuggestionProps<ReferenceRailItem>): void => {
           latestProps = props;
-          // props.items is already computed by the plugin (items() → computeItems
-          // with the live mode). ALWAYS refresh the list content so a visible
+          // Computed here rather than read off `props.items` for the same reason
+          // onStart does: the plugin fires onUpdate TWICE per change — once
+          // immediately with an empty list and `loading: true`, then again with
+          // the awaited rows. Taking the first one at face value would blank the
+          // list and hide the popup mid-typing. Our resolver is synchronous, so
+          // both calls compute the same live rows and the popup never flickers.
+          const updated = computeItems(props.query);
+          // ALWAYS refresh the list content so a visible
           // popup stays current. But change VISIBILITY only on a genuine LOCAL
           // KEYSTROKE: a remote peer's edit — OR a machine-derived local dispatch
           // (the edge-driven cascade-clear deleting a chip before the `@`) —
@@ -393,17 +410,17 @@ export function makeReferenceSuggestion(input: {
           // the round-4 hole was that the old "not remote" test let the local
           // cascade through). A local keystroke is also the user re-engaging, so
           // it clears any dismissal.
-          updateContent(props.items);
+          updateContent(updated);
           if (isLocalUserInput(props.editor)) {
             // Local keystroke = the user re-engaging → clear any dismissal and
             // apply the normal I3 visibility (empty → hidden, else shown).
             dismissed = false;
-            showFor(props.items);
+            showFor(updated);
           } else if (!dismissed) {
             // Non-keystroke content change to a VISIBLE (non-dismissed) popup →
             // keep I3 (a peer emptying the pool still hides it) but NEVER re-open
             // a popup the user dismissed (residual 1).
-            showFor(props.items);
+            showFor(updated);
           }
           place(props.clientRect);
         },
