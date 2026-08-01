@@ -55,7 +55,8 @@
 - [x] Package exports → dist/，turbo dev dependsOn ^build，消除 import.meta.dirname 脆弱性
 - [x] .env.dev + .env.docker 双模板，替代 .env.example
 - [x] 登录页完整修复：response parsing、用户信息显示、Google OAuth 头像同步、401 循环修复
-- [x] 共享依赖版本单一来源：`pnpm-workspace.yaml` 的 catalog 收编 9 个包的 Node 类型库 + web 的 32 个 tiptap 包，包内一律写 `catalog:`；tiptap 全线对齐 3.29.2（含 y-tiptap 3.0.8），消除同一依赖多版本并存
+- [x] 共享依赖版本单一来源（第一批）：`pnpm-workspace.yaml` 的 catalog 收编 9 个包的 Node 类型库 + web 的 32 个 tiptap 包，包内一律写 `catalog:`；tiptap 全线对齐 3.29.2（含 y-tiptap 3.0.8）
+- [ ] 共享依赖版本单一来源（剩余）：catalog 外仍有 6 个包版本声明分叉（`eslint` / `@eslint/js` 跨大版本且**实际装了两份**，`typescript` / `typescript-eslint` / `yjs` / `y-protocols` 声明分叉但当前被 pnpm dedupe 成一份）；另需 CI 守卫拦「绕过 catalog 直接写版本号」，否则这次收编是一次性的、会重新漂
 - [ ] CD pipeline：GitHub Actions → Docker build → 自动部署
 
 ---
