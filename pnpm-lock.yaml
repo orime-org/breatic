@@ -212,6 +212,9 @@ importers:
       '@typescript-eslint/utils':
         specifier: 8.58.0
         version: 8.58.0(eslint@9.39.5(jiti@2.6.1))(typescript@5.8.2)
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.6.1)
       vitest:
         specifier: 'catalog:'
         version: 3.0.0(@types/node@22.0.0)(@vitest/ui@4.1.6)(jsdom@29.1.1(canvas@3.2.3))(less@4.6.4)(lightningcss@1.32.0)(sass@1.51.0)
