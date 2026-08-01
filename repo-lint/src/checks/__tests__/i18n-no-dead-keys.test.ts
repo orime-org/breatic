@@ -148,23 +148,45 @@ describe("i18n-no-dead-keys", () => {
     expect(findings).toHaveLength(1);
   });
 
-  it("does not let test scaffolding outside __tests__ keep a key alive", () => {
-    // Naming conventions miss helpers kept beside the code they serve — the
-    // real one is packages/web/src/test-utils/a11y.ts, which sits under src,
-    // is named like a module, and is imported only by tests. The second
-    // marker is the vitest import, which nothing shipped has.
+  it("keeps a key that only test scaffolding names, and that is deliberate", () => {
+    // The naming convention does not reach a helper kept beside the code it
+    // serves, so this one stays in the scan and its mention counts. A content
+    // sniff for the vitest import was tried and reverted: it dropped a shipped
+    // component over a comment mentioning the phrase, reporting 37 live keys
+    // for deletion, and still missed core's db/test-support.ts. The residual
+    // here is the cheap direction — a dead key survives a sweep. The fix, if
+    // it ever bites, is to move the helper into __tests__.
+    expect(
+      i18nNoDeadKeys.run(
+        repo(
+          { members: { stack: { removeAria: "Remove {name}" } } },
+          {
+            "packages/web/src/test-utils/a11y.ts":
+              "export const K = 'members.stack.removeAria';",
+            "packages/web/src/app.tsx": "export const App = () => null;",
+          },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not let a .test.mts file keep a key alive", () => {
+    // Widening the scan to every TypeScript extension opened a seam: the
+    // shared TEST_FILE only knew .ts/.tsx, so a test file with the newer
+    // extension read as application code. Both patterns now cover the same
+    // extensions, and this pins that they agree.
     const findings = i18nNoDeadKeys.run(
       repo(
-        { members: { stack: { removeAria: "Remove {name}" } } },
+        { spaces: { drawer: { newCanvas: "New canvas" } } },
         {
-          "packages/web/src/test-utils/a11y.ts":
-            "import { expect } from 'vitest';\nexport const K = 'members.stack.removeAria';",
+          "packages/web/src/thing.test.mts":
+            "const rows = ['spaces.drawer.newCanvas'];",
           "packages/web/src/app.tsx": "export const App = () => null;",
         },
       ),
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0]?.message).toContain("members.stack.removeAria");
+    expect(findings[0]?.message).toContain("spaces.drawer.newCanvas");
   });
 
   it("scans a package source that is not under src's default extension set", () => {

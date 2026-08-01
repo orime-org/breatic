@@ -78,5 +78,11 @@ export const GENERATED = /(^|\/)pnpm-lock\.yaml$/;
  *
  * Their content is fixture data rather than something the product ships, so
  * a rule about what ships does not reach them.
+ *
+ * The suffix half covers every TypeScript extension rather than the two that
+ * happen to exist today. A caller whose own pattern admits `.mts` while this
+ * one does not gets a file that is test material by name and shipped code by
+ * scope — a seam nobody would think to look for, since both regexes read as
+ * if they agree about which extensions there are.
  */
-export const TEST_FILE = /(^|\/)__tests__\/|\.(test|spec)\.(ts|tsx)$/;
+export const TEST_FILE = /(^|\/)__tests__\/|\.(test|spec)\.([cm]?ts|tsx)$/;

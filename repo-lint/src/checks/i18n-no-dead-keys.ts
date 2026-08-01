@@ -9,6 +9,23 @@ const SOURCE_CATALOG = "locales/en.json";
 /**
  * Where an application source lives: under a package's `src`, in TypeScript.
  *
+ * Test material is subtracted by `TEST_FILE`, which knows it by directory and
+ * by suffix. That misses scaffolding kept beside the code it serves —
+ * `packages/web/src/test-utils/a11y.ts` and `packages/core/src/db/
+ * test-support.ts` are both under `src`, are named like modules, and are
+ * imported only by tests. They stay in the scan, deliberately.
+ *
+ * A content sniff was tried and reverted, and the reason is the whole design
+ * of this check. Skipping any file whose text matched an import of vitest
+ * meant one comment mentioning that phrase, in a shipped component, dropped
+ * the file and had 37 live keys reported for deletion — measured. It also
+ * missed `test-support.ts`, which imports drizzle. So it bought a cheap risk
+ * (a helper keeping a dead key alive one more sweep) by taking on the
+ * expensive one (a live key deleted, a raw id in the UI), which is backwards
+ * from the asymmetry this check is built around. If a helper here ever does
+ * hold up a dead key, move the helper into `__tests__/`; do not teach the
+ * scan to guess from content.
+ *
  * The question this check asks is "does deleting this key change what a user
  * sees", so the files whose word counts are the ones that ship. Everything
  * else merely *names* a key — a test fixture, a sentence in a spec, this
@@ -35,18 +52,6 @@ const SOURCE_CATALOG = "locales/en.json";
  * with the reason.
  */
 const APPLICATION_SOURCE = /^packages\/[^/]+\/src\/.*\.([cm]?ts|tsx)$/;
-
-/**
- * An import of the test framework, which no shipped module has.
- *
- * `TEST_FILE` catches test material by where it sits and what it is called,
- * and that misses scaffolding kept beside the code it serves —
- * `packages/web/src/test-utils/a11y.ts` is under `src`, is named like a
- * module, and is imported by 25 test files and nothing else. Naming a third
- * directory convention would just move the blind spot, so the second marker
- * is semantic: importing vitest is something only test material does.
- */
-const TEST_FRAMEWORK_IMPORT = /\bfrom\s+["']vitest["']/;
 
 /**
  * Keys whose only consumer builds the id somewhere this scan cannot see, each
@@ -124,6 +129,15 @@ const TEMPLATE_PREFIX = /`([a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)*\.)\$\{/g;
  * cost the same: a live key called dead ships a raw id to the UI, while a dead
  * key called live only survives another pass.
  *
+ * How generous, stated plainly: `DOTTED_LITERAL` cannot tell a message id from
+ * any other dotted expression, so ordinary property access counts. Measured by
+ * fabricating twelve keys named like code — nine survived, among them
+ * `user.email`, `canvas.width`, and `Math.max`. A dead key whose name collides
+ * with a common expression is therefore invisible here. Narrowing this means
+ * matching the translation call instead of the mention, which is a different
+ * change with its own trade-offs; what must not happen is reading the scope
+ * above as if it closed this too.
+ *
  * One honest caveat about the self-exclusion. This check no longer reads its
  * own source, which closes a real mechanism — the tests below pin it — but on
  * this repository it closed nothing observable: every namespace the examples
@@ -152,7 +166,6 @@ export const i18nNoDeadKeys = {
       "application sources that could read a message",
     )) {
       const text = context.read(file);
-      if (TEST_FRAMEWORK_IMPORT.test(text)) continue;
       for (const match of text.matchAll(DOTTED_LITERAL)) literals.add(match[0]);
       for (const match of text.matchAll(TRANSLATION_CALL)) {
         const id = match[1];
