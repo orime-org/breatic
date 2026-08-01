@@ -61,6 +61,10 @@ export const webSearch = tool({
         {
           // A search query only reads: safe to replay.
           replaySafe: true,
+          // A chat turn is waiting on this, so a long server-directed wait is
+          // judged against the ten-second ceiling rather than the sixty-second
+          // one meant for background work.
+          interactive: true,
           timeoutMs: SEARCH_TIMEOUT_MS,
           label: "web_search",
         },

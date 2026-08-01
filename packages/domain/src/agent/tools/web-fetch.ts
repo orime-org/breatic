@@ -26,7 +26,13 @@ const USER_AGENT =
  * There used to be a `DEFAULT_MAX_CHARS = 60_000` here, while
  * `config/agent.yaml` carried `web_fetch_max_chars: 50000` that nothing ever
  * read. Two numbers for one limit, disagreeing, and the one an operator could
- * actually change was the dead one. The yaml is now the only copy.
+ * actually change was the dead one.
+ *
+ * The yaml is now the only copy the TOOL reads. There is still a second
+ * literal — the `.default()` in core's zod schema — and saying otherwise here
+ * was wrong. That one is the schema's answer for a deployment whose yaml omits
+ * the key, which is a different question from "what does the tool use", and
+ * it is where every other knob in that file keeps its default too.
  */
 
 /**
@@ -93,7 +99,11 @@ export const webFetch = tool({
   }),
   execute: async ({ url, maxChars }): Promise<string> => {
     const agentCfg = getAgentConfig();
-    const limit = maxChars ?? agentCfg.web_fetch_max_chars;
+    // The configured value is a CEILING, not a starting point. `maxChars ??
+    // config` let the model name any figure it liked and win — so an operator
+    // who set 50000 could be handed ten million, and CONFIGURATION.md said the
+    // tool argument could only lower it. The argument narrows; it never widens.
+    const limit = Math.min(maxChars ?? agentCfg.web_fetch_max_chars, agentCfg.web_fetch_max_chars);
 
     try {
       const res = await httpRequest(
@@ -102,6 +112,10 @@ export const webFetch = tool({
         {
           // Fetching a page only reads, so a flaky attempt is safe to replay.
           replaySafe: true,
+          // Someone is watching a chat turn wait on this. Without it the tool
+          // took the sixty-second background ceiling, which is the figure for
+          // work nobody is sitting in front of.
+          interactive: true,
           timeoutMs: FETCH_TIMEOUT_MS,
           // The one caller on this transport that does not choose its own
           // URL: the model names the host, so how many bytes come back is
@@ -152,7 +166,16 @@ export const webFetch = tool({
       });
     } catch (err: unknown) {
       if (err instanceof SsrfError) {
-        return JSON.stringify({ error: `Blocked: ${err.message}`, url });
+        // Deliberately NOT the guard's own message. It names the address the
+        // hostname resolved to — "Blocked IP range 'linkLocal' for
+        // 169.254.169.254" — and this string goes straight back to the model.
+        // Handing that over turns the tool into an internal-address oracle:
+        // ask for a name, learn where it points. The detailed message still
+        // exists on the thrown error for whoever logs it.
+        return JSON.stringify({
+          error: "Blocked: this URL is not permitted",
+          url,
+        });
       }
       const msg = err instanceof Error ? err.message : String(err);
       return JSON.stringify({ error: msg, url });

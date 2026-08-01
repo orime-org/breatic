@@ -22,6 +22,8 @@ export interface ApiError {
   message: string;
   /** Optional backend `error.code` for typed handling. */
   code?: string;
+  /** The raw `Retry-After` header, when the server sent one. */
+  retryAfter?: string;
 }
 
 /**
@@ -31,6 +33,16 @@ export interface ApiError {
 export class ApiException extends Error {
   readonly status: number;
   readonly code?: string;
+  /**
+   * The raw `Retry-After` the server sent, when it sent one.
+   *
+   * Kept because our own rate limiter sets it on every 429 and the shared
+   * retry verdict reads it — without it, the presign half of an upload was
+   * making that decision with the one input the server actually supplied
+   * missing, and waiting a number of its own instead of the number it was
+   * told.
+   */
+  readonly retryAfter?: string;
 
   /**
    * Build an `ApiException` from a normalized API error.
@@ -41,6 +53,7 @@ export class ApiException extends Error {
     this.name = 'ApiException';
     this.status = error.status;
     this.code = error.code;
+    this.retryAfter = error.retryAfter;
   }
 }
 

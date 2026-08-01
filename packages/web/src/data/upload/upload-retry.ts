@@ -40,16 +40,41 @@ export interface UploadClientConfig {
 export class UploadHttpError extends Error {
   /** The HTTP response status. */
   readonly status: number;
+  /**
+   * The wait the storage asked for, when it asked for one.
+   *
+   * The second half of the ceiling decision: past the limit we do not wait,
+   * and the figure comes back with the failure so the person who started the
+   * upload can be told when to try again rather than just that it failed.
+   */
+  readonly retryAfterMs: number | null;
 
   /**
-   * Build the error from the PUT response status.
+   * Build the error from the PUT response.
    * @param status - The non-2xx HTTP status the PUT target responded with.
+   * @param retryAfterMs - The wait it asked for, already parsed, or null.
    */
-  constructor(status: number) {
+  constructor(status: number, retryAfterMs: number | null = null) {
     super(`Asset upload failed (HTTP ${status})`);
     this.name = 'UploadHttpError';
     this.status = status;
+    this.retryAfterMs = retryAfterMs;
   }
+}
+
+/**
+ * Read the server's `Retry-After` off a presign failure, when it sent one.
+ *
+ * Our own rate limiter sets it on every 429, so this is the input the shared
+ * verdict needs in order to apply the ceiling rule on this half of the upload
+ * at all. Without it the loop was deciding with the server's answer discarded.
+ * @param err - The thrown value.
+ * @returns The raw header value, or undefined.
+ */
+function retryAfterOf(err: unknown): string | undefined {
+  if (typeof err !== 'object' || err === null) return undefined;
+  const value = (err as { retryAfter?: unknown }).retryAfter;
+  return typeof value === 'string' ? value : undefined;
 }
 
 /**
@@ -146,6 +171,11 @@ export async function retryTransient<T>(
       const decision = decideRetry({
         status: status === null || status === 0 ? undefined : status,
         transportError: transportKind(err, status),
+        // The server's own instruction, which used to be dropped on the floor
+        // here: `ApiException` did not carry response headers, so the ceiling
+        // rule could never fire on this half and the comment below claiming
+        // both halves behaved alike was simply untrue.
+        ...(retryAfterOf(err) !== undefined && { retryAfter: retryAfterOf(err) }),
         // Presign is an idempotent signature issue and a PUT overwrites the
         // same key with the same bytes — replaying either is side-effect free.
         replaySafe: true,
@@ -239,5 +269,5 @@ export async function putFileWithRetry(
       ...(deps.sleepImpl !== undefined && { sleepImpl: deps.sleepImpl }),
     },
   );
-  if (!res.ok) throw new UploadHttpError(res.status);
+  if (!res.ok) throw new UploadHttpError(res.status, res.retryAfterMs);
 }

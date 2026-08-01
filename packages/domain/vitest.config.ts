@@ -22,6 +22,20 @@ export default defineConfig({
     },
     testTimeout: 15_000,
     setupFiles: ["./vitest.setup.ts"],
+    server: {
+      deps: {
+        // `@opentelemetry/api` rides in as a transitive dependency of the
+        // Vercel AI SDK, and its ESM build imports its own files without
+        // extensions — which Node's native ESM loader rejects outright when
+        // the package is externalised (open-telemetry/opentelemetry-js#3989).
+        // The failure lands during collection, so ANY test importing an agent
+        // tool could not run at all, which is a large part of why the tools
+        // had none. Inlining routes the whole chain through vite instead.
+        //
+        // Same list as packages/worker/vitest.config.ts, which hit this first.
+        inline: [/@opentelemetry/, /node_modules\/ai\//, /@ai-sdk\//],
+      },
+    },
   },
   resolve: {
     alias: {

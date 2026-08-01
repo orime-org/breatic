@@ -26,6 +26,7 @@
 
 import {
   decideRetry,
+  parseRetryAfter,
   type RetryRefusal,
   type RetryTrigger,
   type TransportErrorKind,
@@ -53,6 +54,11 @@ export type HttpRetryEvent =
       attempts: number;
       reason: RetryRefusal;
       status?: number;
+      /**
+       * The wait the server asked for, when it asked for one longer than this
+       * caller's ceiling. Present only on a `retry_after_too_long` refusal.
+       */
+      retryAfterMs?: number;
     };
 
 /** Per-call inputs. Retry COUNT is fixed in constants and absent here. */
@@ -271,6 +277,10 @@ function classifyThrown(
 ): TransportErrorKind {
   if (callerSignal?.aborted === true) return "caller_aborted";
   if (deadline.timedOut()) return "timeout";
+  // Our own contract breach outranks the caller's predicate: the caller
+  // classifies what ITS fetch implementation throws, and this is what the
+  // transport itself refused to accept from that implementation.
+  if (error instanceof TransportContractError) return "fatal";
   if (isFatal?.(error) === true) return "fatal";
   return "network";
 }
@@ -306,6 +316,29 @@ export async function httpRequest(
   const label = options.label ?? "http";
   const doFetch = options.fetchImpl ?? fetch;
   const doSleep = options.sleepImpl ?? sleep;
+  // Redacted once, up front, because everything that names this request uses
+  // it: the retry events, and every error the body guard reports. Some vendors
+  // put their API key in the query string, so the raw URL must not reach a
+  // message anyone might write down.
+  const safeUrl = redactUrl(url);
+
+  /**
+   * Report one attempt's outcome without letting the sink change it.
+   *
+   * Telemetry is the application's business and its failures are the
+   * application's bug; what it must never do is decide the fate of the request
+   * it is describing.
+   * @param event - What happened on this attempt.
+   */
+  const emit = (event: HttpRetryEvent): void => {
+    try {
+      options.onEvent?.(event);
+    } catch {
+      // Deliberately swallowed, and this is the one place in the transport
+      // where that is right: a broken logger is not a transport failure, and
+      // this layer cannot log the fact (library packages must not).
+    }
+  };
 
   /**
    * Wrap a response so its body is read under the idle deadline.
@@ -316,11 +349,13 @@ export async function httpRequest(
   const guard = (response: Response, abortRequest: () => void): GuardedResponse =>
     guardResponseBody({
       response,
+      retryAfterMs: parseRetryAfter(response.headers.get("retry-after"), Date.now()),
       idleTimeoutMs: options.bodyIdleTimeoutMs ?? BODY_IDLE_TIMEOUT_MS,
       callerSignal: options.signal,
       ...(options.maxBodyBytes !== undefined && { maxBytes: options.maxBodyBytes }),
       abortRequest,
       label,
+      url: safeUrl,
     });
 
   // Unbounded by design: `decideRetry` owns the budget and refuses past
@@ -345,6 +380,16 @@ export async function httpRequest(
 
     try {
       const attempted = await doFetch(url, { ...init, signal: deadline.signal });
+      // Checked before anything is recorded about the attempt. A fetch
+      // implementation that hands back something else is OUR bug, not the
+      // network's, and the fields below were being assigned before the first
+      // line that touches the object — so a duck-typed stand-in was replayed
+      // three times and then returned to the caller dressed as a response.
+      if (!(attempted instanceof Response)) {
+        throw new TransportContractError(
+          `${label} fetch implementation for ${safeUrl} did not return a Response`,
+        );
+      }
       if (attempted.ok) return guard(attempted, deadline.abort);
       response = attempted;
       abortRequest = deadline.abort;
@@ -375,32 +420,22 @@ export async function httpRequest(
       attempt: index + 1,
     });
 
-    // Redacted at construction, not at the logging end: some vendors put
-    // their API key in the query string, and an event that carries one is a
-    // credential waiting for any future consumer to write it somewhere.
-    const safeUrl = redactUrl(url);
-    options.onEvent?.(
-      decision.retry
-        ? {
-            type: "retry",
-            label,
-            url: safeUrl,
-            attempt: index + 1,
-            delayMs: decision.delayMs,
-            reason: decision.reason,
-            status,
-          }
-        : {
-            type: "exhausted",
-            label,
-            url: safeUrl,
-            attempts: index + 1,
-            reason: decision.reason,
-            status,
-          },
-    );
-
     if (!decision.retry) {
+      emit({
+        type: "exhausted",
+        label,
+        url: safeUrl,
+        attempts: index + 1,
+        reason: decision.reason,
+        status,
+        // The other half of the ceiling decision: past it we do not wait, and
+        // we hand the figure back so the layer above can say what was asked
+        // instead of leaving someone in front of a spinner. It was computed
+        // and then dropped — nothing outside `decideRetry` ever read it.
+        ...(decision.retryAfterMs !== undefined && {
+          retryAfterMs: decision.retryAfterMs,
+        }),
+      });
       if (response !== null && abortRequest !== null) {
         return guard(response, abortRequest);
       }
@@ -418,11 +453,59 @@ export async function httpRequest(
     // un-aborted holds its connection until the peer gives up.
     if (abortRequest !== null) abortRequest();
 
+    // Reported AFTER the teardown above, not before. The sink belongs to the
+    // application, and when one threw, the exception escaped in place of the
+    // real outcome and took the teardown with it — leaking the very response
+    // we had just decided to abandon.
+    emit({
+      type: "retry",
+      label,
+      url: safeUrl,
+      attempt: index + 1,
+      delayMs: decision.delayMs,
+      reason: decision.reason,
+      status,
+    });
+
     // Cancellable: a user who presses stop 20 ms into an eight-second
     // `Retry-After` backoff should not wait it out, and must not have one
     // more attempt dispatched on their behalf afterwards. Rejecting here
     // also means the abort — not the earlier response — is what surfaces.
-    await doSleep(decision.delayMs, options.signal);
+    try {
+      await doSleep(decision.delayMs, options.signal);
+    } catch (cancelled) {
+      // Without this the log's last word was "attempt 1 is being replayed in
+      // 113ms" and then silence, which reads exactly like a process that died
+      // mid-backoff. Every request this layer starts now ends with a terminal
+      // event.
+      emit({
+        type: "exhausted",
+        label,
+        url: safeUrl,
+        attempts: index + 1,
+        reason: "caller_aborted",
+        status,
+      });
+      throw cancelled;
+    }
+  }
+}
+
+/**
+ * A fetch implementation that broke the contract this transport drives it by.
+ *
+ * Its own type, because the failure is deterministic — the same stand-in
+ * returns the same non-Response on every attempt — and the retry predicate
+ * only skips replays for failures it can recognise as such.
+ */
+class TransportContractError extends Error {
+  /**
+   * Build the refusal.
+   * @param message - What the implementation did instead.
+   */
+  constructor(message: string) {
+    super(message);
+    this.name = "TransportContractError";
   }
 }
 

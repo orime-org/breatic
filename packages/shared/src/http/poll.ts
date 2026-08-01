@@ -87,11 +87,17 @@ export async function pollUntilDone(
 ): Promise<Record<string, unknown>> {
   const label = options.label ?? "provider";
   const doSleep = options.sleepImpl ?? sleep;
-  const query =
-    options.params === undefined
-      ? ""
-      : `?${new URLSearchParams(options.params).toString()}`;
-  const pollUrl = `${url}${query}`;
+  // Merged, not concatenated. `${url}?${params}` produced "...?a=1?b=2" for a
+  // status URL that already carried a query — and these URLs come back from
+  // the vendor, so whether one does is not ours to decide.
+  const pollUrl = ((): string => {
+    if (options.params === undefined) return url;
+    const parsed = new URL(url);
+    for (const [key, value] of Object.entries(options.params)) {
+      parsed.searchParams.set(key, value);
+    }
+    return parsed.href;
+  })();
 
   // Measured on the clock, not by summing intervals. Adding up only the
   // sleeps let a slow vendor extend the deadline for free — with 10-second

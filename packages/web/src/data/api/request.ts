@@ -60,10 +60,16 @@ function normalizeError(err: unknown): ApiError {
     const data = err.response?.data as
       | { error?: { code?: string; message?: string } }
       | undefined;
+    // Our own rate limiter puts `Retry-After` on every 429, and the shared
+    // retry verdict is built to read it. Dropping it here meant the presign
+    // half of an upload decided how long to wait with the server's own answer
+    // discarded.
+    const retryAfter = err.response?.headers?.['retry-after'] as string | undefined;
     return {
       status,
       message: data?.error?.message ?? err.message,
       code: data?.error?.code,
+      retryAfter,
     };
   }
   if (err instanceof Error) {

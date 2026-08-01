@@ -62,6 +62,16 @@ export interface GuardedResponse {
   /** Response headers. */
   readonly headers: Headers;
   /**
+   * The wait this response asked for, in milliseconds, or null when it named
+   * none or named one that cannot be read.
+   *
+   * Parsed here rather than left to each caller because the transport has
+   * already parsed it to make its own decision, and two parsers of the same
+   * header are two chances to disagree. It is the response's own statement,
+   * not a retry verdict: it is present whether or not anything was retried.
+   */
+  readonly retryAfterMs: number | null;
+  /**
    * Read the whole body as text.
    * @returns The decoded body.
    * @throws {Error} On an idle-deadline breach or the caller's cancellation.
@@ -134,18 +144,31 @@ export interface BodyGuardContext {
   abortRequest: () => void;
   /** Provider or tool name, for error messages. */
   label: string;
+  /** The wait this response asked for, already parsed. */
+  retryAfterMs: number | null;
+  /**
+   * Which request this body belongs to, ALREADY REDACTED.
+   *
+   * Every failure this module reports used to name only the label — "probe
+   * response body stalled" — which tells an on-call engineer the provider and
+   * nothing else. A vendor with twenty endpoints produced twenty identical
+   * messages. Redaction happens at the caller because some vendors put their
+   * key in the query string, and an error that carries one is a credential
+   * waiting for any future log to write it down.
+   */
+  url: string;
 }
 
 /**
  * Turn an abort signal's reason into a throwable error.
  * @param signal - The signal that was aborted.
- * @param label - Provider or tool name, for the fallback message.
+ * @param ctx - The guard's context, for the fallback message.
  * @returns The caller's own error when it supplied one, else a generic one.
  */
-function abortErrorOf(signal: AbortSignal, label: string): Error {
+function abortErrorOf(signal: AbortSignal, ctx: BodyGuardContext): Error {
   return signal.reason instanceof Error
     ? signal.reason
-    : new Error(`${label} response body read cancelled by caller`);
+    : new Error(`${ctx.label} body read of ${ctx.url} cancelled by caller`);
 }
 
 /**
@@ -177,15 +200,15 @@ interface CancellationRelay {
  * @returns A relay that survives for as long as the request does.
  */
 function armCancellation(ctx: BodyGuardContext): CancellationRelay {
-  const { callerSignal, label } = ctx;
+  const { callerSignal } = ctx;
   let landed: Error | null =
-    callerSignal?.aborted === true ? abortErrorOf(callerSignal, label) : null;
+    callerSignal?.aborted === true ? abortErrorOf(callerSignal, ctx) : null;
   const waiting = new Set<(error: Error) => void>();
 
   /** Turn the caller's cancellation into an outcome for whoever is waiting. */
   const onAbort = (): void => {
     if (callerSignal === undefined) return;
-    landed = abortErrorOf(callerSignal, label);
+    landed = abortErrorOf(callerSignal, ctx);
     // Reject the pending reads BEFORE tearing the request down. Aborting a
     // real request errors its body stream, and that rejection lands in the
     // microtask queue too — abort first and it can win the race, surfacing a
@@ -238,14 +261,14 @@ function armCancellation(ctx: BodyGuardContext): CancellationRelay {
  * @returns A meter to feed every chunk; a no-op when no cap was set.
  */
 function meterBytes(ctx: BodyGuardContext): (chunk: Uint8Array) => void {
-  const { maxBytes, label } = ctx;
+  const { maxBytes } = ctx;
   if (maxBytes === undefined) return (): void => {};
   let seen = 0;
   return (chunk: Uint8Array): void => {
     seen += chunk.byteLength;
     if (seen > maxBytes) {
       throw new Error(
-        `${label} response body exceeded ${maxBytes} bytes and was refused`,
+        `${ctx.label} body of ${ctx.url} exceeded ${maxBytes} bytes and was refused`,
       );
     }
   };
@@ -273,7 +296,7 @@ async function readChunk(
   relay: CancellationRelay,
   spend: (chunk: Uint8Array) => void,
 ): Promise<ReadableStreamReadResult<Uint8Array>> {
-  const { idleTimeoutMs, label } = ctx;
+  const { idleTimeoutMs } = ctx;
 
   const already = relay.error();
   if (already !== null) {
@@ -291,7 +314,7 @@ async function readChunk(
       timer = setTimeout(() => {
         reject(
           new Error(
-            `${label} response body stalled: no data for ${idleTimeoutMs}ms (idle timeout)`,
+            `${ctx.label} body of ${ctx.url} stalled: no data for ${idleTimeoutMs}ms (idle timeout)`,
           ),
         );
         ctx.abortRequest();
@@ -333,7 +356,16 @@ async function drain(
 ): Promise<Uint8Array[]> {
   const body = ctx.response.body;
   if (body === null) {
+    // A cancellation that already landed outranks the absence of a body.
+    // Returning "no chunks" here made `text()` resolve to "" for a request the
+    // caller had already stopped — a plausible value, and indistinguishable
+    // from a response that genuinely carried nothing.
+    const already = relay.error();
     relay.retire();
+    if (already !== null) {
+      ctx.abortRequest();
+      throw already;
+    }
     return [];
   }
 
@@ -407,7 +439,7 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
   const claim = (method: string): void => {
     if (claimed) {
       throw new Error(
-        `${ctx.label} response body was already consumed; ${method}() cannot read it again`,
+        `${ctx.label} body of ${ctx.url} was already consumed; ${method}() cannot read it again`,
       );
     }
     claimed = true;
@@ -417,6 +449,7 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
     ok: response.ok,
     status: response.status,
     headers: response.headers,
+    retryAfterMs: ctx.retryAfterMs,
 
     async text(): Promise<string> {
       claim("text");
@@ -425,7 +458,20 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
 
     async json(): Promise<unknown> {
       claim("json");
-      return JSON.parse(new TextDecoder().decode(concat(await drain(ctx, relay, spend))));
+      const text = new TextDecoder().decode(concat(await drain(ctx, relay, spend)));
+      try {
+        return JSON.parse(text);
+      } catch {
+        // The platform's own SyntaxError says "Unexpected token < in JSON at
+        // position 0" and nothing else — not which provider, not which request.
+        // A vendor answering an HTML error page produced exactly that, and it
+        // reached the logs with no way to trace it back. The body itself stays
+        // out of the message: it can be megabytes, and it can carry a token the
+        // vendor echoed.
+        throw new Error(
+          `${ctx.label} response from ${ctx.url} could not be parsed as JSON`,
+        );
+      }
     },
 
     async arrayBuffer(): Promise<ArrayBuffer> {
@@ -447,7 +493,18 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
       claim("stream");
       const body = response.body;
       if (body === null) {
+        // Same rule as `drain`: a stop the caller already pressed is the
+        // outcome, not an empty stream that looks like a clean finish.
+        const already = relay.error();
         relay.retire();
+        if (already !== null) {
+          ctx.abortRequest();
+          return new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(already);
+            },
+          });
+        }
         return new ReadableStream<Uint8Array>({
           start(controller) {
             controller.close();
@@ -516,15 +573,24 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
           // for the ordering, and the "already errored before cancel" test
           // below for this catch. Deleting either one alone still crashes.
           relay.retire();
-          void reader
-            .cancel(reason)
-            .catch(() => {
+          void (async (): Promise<void> => {
+            try {
+              await reader.cancel(reason);
+            } catch {
               // Already errored or released: nothing left to release, and the
               // consumer's own failure is the one that counts.
-            })
-            .finally(() => {
+            }
+            try {
               ctx.abortRequest();
-            });
+            } catch {
+              // The teardown belongs to the layer above and a broken one is
+              // its bug — but this chain is not awaited by anyone, so letting
+              // it throw here produced an unhandled rejection and ended the
+              // process. Measured in a child process: exit code 1, which is
+              // the same shape that once took the worker down with every job
+              // it was running.
+            }
+          })();
         },
       });
     },

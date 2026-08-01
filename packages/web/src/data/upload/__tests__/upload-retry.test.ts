@@ -193,7 +193,7 @@ describe('putFileWithRetry — PUT through the shared transport', () => {
   const file = new File(['x'.repeat(16)], 'a.png', { type: 'image/png' });
 
   it('sends content-type, same-origin credentials and a per-attempt signal', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
 
     await putFileWithRetry('https://put', file, CFG, { fetchImpl });
 
@@ -208,7 +208,7 @@ describe('putFileWithRetry — PUT through the shared transport', () => {
   });
 
   it('retries a 5xx to the shared budget then throws the HTTP error', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('busy', { status: 500 }));
 
     await expect(
       putFileWithRetry('https://put', file, CFG, { fetchImpl }),
@@ -217,7 +217,7 @@ describe('putFileWithRetry — PUT through the shared transport', () => {
   });
 
   it('does not retry a 403', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 403 });
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('nope', { status: 403 }));
 
     await expect(
       putFileWithRetry('https://put', file, CFG, { fetchImpl }),
@@ -229,7 +229,7 @@ describe('putFileWithRetry — PUT through the shared transport', () => {
     const fetchImpl = vi
       .fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockResolvedValueOnce({ ok: true, status: 200 });
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
 
     await expect(
       putFileWithRetry('https://put', file, CFG, { fetchImpl }),

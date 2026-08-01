@@ -257,9 +257,22 @@ describe("decideRetry — backoff delay", () => {
     expect(d).toMatchObject({ retryAfterMs: 86_400_000 });
   });
 
-  it("treats a past HTTP-date Retry-After as no delay, never negative", () => {
+  it("falls back to its own backoff when the Retry-After date has already passed", () => {
+    // This asserted `delayMs: 0` and was wrong about what the floor meant. A
+    // date in the past describes a moment that has gone — clock skew, or a
+    // cached response — so it carries no usable instruction, and clamping it
+    // to zero turned the polite path into three attempts with no gap at all.
+    // No usable instruction puts us back where we are when the server says
+    // nothing: estimating for ourselves.
     const past = new Date(NOW - 60_000).toUTCString();
-    const d = decideRetry({ ...base, status: 429, retryAfter: past });
+    const d = decideRetry({ ...base, status: 429, retryAfter: past, attempt: 1 });
+    expect(d).toMatchObject({ retry: true, delayMs: BASE_DELAY_MS });
+  });
+
+  it("still honours an explicit Retry-After of zero", () => {
+    // The distinction the change turns on: `0` is an instruction the server
+    // chose to send, a stale date is an instruction that expired.
+    const d = decideRetry({ ...base, status: 429, retryAfter: "0", attempt: 1 });
     expect(d).toMatchObject({ retry: true, delayMs: 0 });
   });
 

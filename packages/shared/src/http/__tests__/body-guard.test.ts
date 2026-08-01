@@ -100,6 +100,8 @@ function countingGuard(
       teardowns += 1;
     },
     label: "probe",
+    url: "https://vendor.test/x",
+    retryAfterMs: null,
   });
   return { guarded, teardowns: (): number => teardowns };
 }
@@ -599,6 +601,36 @@ describe("response body idle deadline", () => {
     expect(await res.text()).toBe("under the cap");
   });
 
+  it.each([
+    ["null", "null"],
+    ["a bare string", '"just text"'],
+    ["a number", "42"],
+  ])("names the shape when a vendor answers %s", async (_name, payload) => {
+    // The array case below was the only one covered, and `Array.isArray` alone
+    // catches it — so the `typeof` half of the check could be deleted with the
+    // suite still green. `null` is the case the fix was written for first.
+    const { response, push, finish } = streamingBody();
+    push(payload);
+    finish();
+
+    await expect(
+      httpRequestJson(URL_UNDER_TEST, {}, opts(fetchReturning(response), 5_000)),
+    ).rejects.toThrow(/expected a JSON object/);
+  });
+
+  it("says which request produced an unparseable body, and names itself", async () => {
+    // The sibling gap: the shape check builds a message with the label and the
+    // redacted URL, while three lines above it a malformed body escaped as a
+    // bare V8 SyntaxError — no label, no URL, nothing for on-call to trace.
+    const { response, push, finish } = streamingBody();
+    push("{not json");
+    finish();
+
+    await expect(
+      httpRequestJson(URL_UNDER_TEST, {}, opts(fetchReturning(response), 5_000)),
+    ).rejects.toThrow(/probe.*vendor\.test.*could not be parsed as JSON/s);
+  });
+
   it("names the shape when a vendor answers JSON that is not an object", async () => {
     // `httpRequestJson` promised its callers a record and cast an unchecked
     // `unknown` into one. A vendor answering `null` or a list still satisfied
@@ -611,6 +643,264 @@ describe("response body idle deadline", () => {
     await expect(
       httpRequestJson(URL_UNDER_TEST, {}, opts(fetchReturning(response), 5_000)),
     ).rejects.toThrow(/expected a JSON object.*got an array/);
+  });
+
+  it("accepts a body of exactly the cap — the limit is a maximum, not a barrier", async () => {
+    // Measured, not assumed: with only the over-and-under cases below, flipping
+    // `>` to `>=` left all 129 tests green. A boundary nobody pins is a
+    // boundary free to move.
+    const { response, push, finish } = streamingBody();
+    push("x".repeat(50));
+    finish();
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchReturning(response), 5_000),
+      maxBodyBytes: 50,
+    });
+
+    expect(await res.text()).toHaveLength(50);
+  });
+
+  it("refuses one byte past the cap", async () => {
+    const { response, push, finish } = streamingBody();
+    push("x".repeat(51));
+    finish();
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchReturning(response), 5_000),
+      maxBodyBytes: 50,
+    });
+
+    await expect(res.text()).rejects.toThrow(/exceeded 50 bytes/);
+  });
+
+  it("surfaces the caller's cancellation even when the body is absent", async () => {
+    // A cancelled read must not resolve. With no body to drain, `text()`
+    // returned "" — a plausible value for a request the caller had already
+    // stopped, and indistinguishable from a genuinely empty response.
+    const controller = new AbortController();
+    controller.abort(new Error("user pressed stop"));
+    const fetchImpl = (() =>
+      Promise.resolve(new Response(null, { status: 204 }))) as unknown as typeof fetch;
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchImpl, 5_000),
+      signal: controller.signal,
+    });
+
+    await expect(res.text()).rejects.toThrow(/user pressed stop/);
+  });
+
+  it("hands the caller the wait the server asked for, when it refused to serve it", async () => {
+    // The decision this implements has two halves: past the ceiling, do not
+    // wait — AND tell the layer above what was asked, so it can say so instead
+    // of leaving someone in front of a spinner. The figure was computed and
+    // then dropped: nothing outside `decideRetry` ever read it.
+    const events: unknown[] = [];
+    const fetchImpl = (() =>
+      Promise.resolve(
+        new Response("busy", { status: 429, headers: { "retry-after": "45" } }),
+      )) as unknown as typeof fetch;
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchImpl, 5_000),
+      interactive: true,
+      onEvent: (e): void => {
+        events.push(e);
+      },
+    });
+
+    expect(res.retryAfterMs).toBe(45_000);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "exhausted",
+        reason: "retry_after_too_long",
+        retryAfterMs: 45_000,
+      }),
+    ]);
+  });
+
+  it("reports no wait when the server named none", async () => {
+    const { response, push, finish } = streamingBody(404);
+    push("nope");
+    finish();
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, opts(fetchReturning(response), 5_000));
+
+    expect(res.retryAfterMs).toBeNull();
+  });
+
+  it("does not let a broken telemetry sink change the request's outcome", async () => {
+    // `onEvent` belongs to the application. When it threw, the exception
+    // escaped `httpRequest` in place of the real result AND skipped the line
+    // below it — the one that tears down the response we are walking away
+    // from. A logger that blows up must not leak a connection, and must not
+    // be mistaken for what the server said.
+    let attempts = 0;
+    const fetchImpl = (() => {
+      attempts += 1;
+      return Promise.resolve(new Response("busy", { status: 503 }));
+    }) as unknown as typeof fetch;
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchImpl, 5_000),
+      onEvent: (): never => {
+        throw new Error("the logger blew up");
+      },
+    });
+
+    expect(attempts).toBe(3);
+    expect(res.status).toBe(503);
+  });
+
+  it("reports a terminal event when the caller cancels during the backoff wait", async () => {
+    // Telemetry's last word was "attempt 1 is being replayed in 113ms" and
+    // then nothing at all. On-call could not tell a cancelled request from a
+    // process that died mid-backoff.
+    const events: Array<{ type: string; reason?: string }> = [];
+    const controller = new AbortController();
+    const fetchImpl = (() =>
+      Promise.resolve(new Response("busy", { status: 503 }))) as unknown as typeof fetch;
+
+    await expect(
+      httpRequest(URL_UNDER_TEST, {}, {
+        ...opts(fetchImpl, 5_000),
+        signal: controller.signal,
+        onEvent: (e): void => {
+          events.push(e);
+        },
+        sleepImpl: (): Promise<void> => {
+          controller.abort(new Error("user pressed stop"));
+          return Promise.reject(new Error("user pressed stop"));
+        },
+      }),
+    ).rejects.toThrow(/user pressed stop/);
+
+    expect(events.map((e) => e.type)).toEqual(["retry", "exhausted"]);
+    expect(events[1]?.reason).toBe("caller_aborted");
+  });
+
+  it("refuses a fetch implementation that did not return a Response", async () => {
+    // Our own bug, not the network's. It was classified as a network failure
+    // and replayed three times, and worse: the attempt's outcome fields were
+    // assigned BEFORE the line that threw, so the last failure came back to
+    // the caller dressed as a response.
+    let attempts = 0;
+    const notAResponse = (() => {
+      attempts += 1;
+      return Promise.resolve({ ok: false, status: 500 } as unknown as Response);
+    }) as unknown as typeof fetch;
+
+    await expect(
+      httpRequest(URL_UNDER_TEST, {}, opts(notAResponse, 5_000)),
+    ).rejects.toThrow(/did not return a Response/);
+    expect(attempts).toBe(1);
+  });
+
+  it("falls back to its own backoff when Retry-After names a time already past", async () => {
+    // A well-formed date in the past parses to a negative wait, which was
+    // floored to zero — so the "polite" path hammered the server three times
+    // with no gap at all, which is exactly what honouring Retry-After is for.
+    const delays: number[] = [];
+    const fetchImpl = (() =>
+      Promise.resolve(
+        new Response("busy", {
+          status: 429,
+          headers: { "retry-after": new Date(Date.now() - 60_000).toUTCString() },
+        }),
+      )) as unknown as typeof fetch;
+
+    await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchImpl, 5_000),
+      sleepImpl: async (ms: number): Promise<void> => {
+        delays.push(ms);
+      },
+    });
+
+    expect(delays).toHaveLength(2);
+    expect(delays.every((d) => d > 0)).toBe(true);
+  });
+
+  it("survives a teardown hook that throws, instead of ending the process", async () => {
+    // Measured in a child process before the fix: exit code 1. The teardown
+    // ran inside a `.finally()` on a voided promise chain, so throwing there
+    // produced an unhandled rejection — the same shape that once took the
+    // worker down with every job it was running. The teardown belongs to the
+    // layer above; a broken one is its bug and must not be this module's crash.
+    const seen: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      seen.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const { response, push } = streamingBody();
+      push("first");
+      const handle = guardResponseBody({
+        response,
+        idleTimeoutMs: 5_000,
+        abortRequest: (): void => {
+          throw new Error("the teardown blew up");
+        },
+        label: "probe",
+        url: "https://vendor.test/x",
+        retryAfterMs: null,
+      });
+      const reader = handle.stream().getReader();
+      await reader.read();
+      await reader.cancel(new Error("consumer done"));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(seen).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("releases its hold on the source body when a stream pull fails", async () => {
+    // Retiring the relay was tested; letting go of the reader was not, and
+    // measured by mutation the `releaseLock()` could be deleted with every
+    // test still green. A reader that keeps its lock leaves the source body
+    // owned by nobody — unreadable, and uncancellable by anything else.
+    const { response, push } = streamingBody(); // one chunk, then silence
+    push("first");
+    const { guarded } = countingGuard(response, undefined, 40);
+
+    const reader = guarded.stream().getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("first");
+    await expect(reader.read()).rejects.toThrow(/idle/i);
+
+    expect(response.body?.locked).toBe(false);
+  });
+
+  // There is deliberately no sibling asserting the same thing after `cancel()`.
+  // One was written and it was wrong: per the streams spec `reader.cancel()`
+  // cancels the stream but does NOT release the reader, so `locked` stays true
+  // and the assertion could never hold. It was red against the unmutated
+  // source — which made every mutation run look "caught", because a
+  // permanently red test turns a mutation harness into a rubber stamp.
+
+  it("retires the relay when the consumer cancels the stream", async () => {
+    // The third exit from `stream()`, and the one that had no test: `done`
+    // and a failed pull were both pinned, `cancel()` was not. Measured by
+    // mutation against a genuinely green baseline — an earlier run reported
+    // this as covered, but the test doing the reporting was red no matter
+    // what, which turns a mutation harness into a rubber stamp.
+    const { response, push } = streamingBody();
+    push("first");
+    const controller = new AbortController();
+    const { guarded, teardowns } = countingGuard(response, controller.signal, 5_000);
+
+    const reader = guarded.stream().getReader();
+    await reader.read();
+    await reader.cancel(new Error("consumer done"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(teardowns()).toBe(1);
+
+    controller.abort(new Error("user pressed stop"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // Still one: a relay left armed would tear down a request that ended.
+    expect(teardowns()).toBe(1);
   });
 
   it("exposes the metadata callers actually use without handing out the raw response", async () => {

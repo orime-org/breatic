@@ -153,7 +153,7 @@ const IMF_FIXDATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2}
  * @param nowMs - Current epoch milliseconds, for the HTTP-date form.
  * @returns The wait the server asked for, verbatim, or null when it named none we can read.
  */
-function parseRetryAfter(
+export function parseRetryAfter(
   raw: string | null | undefined,
   nowMs: number,
 ): number | null {
@@ -167,8 +167,15 @@ function parseRetryAfter(
   if (!IMF_FIXDATE.test(value)) return null;
   const at = Date.parse(value);
   if (Number.isNaN(at)) return null;
-  // A date already in the past means "retry now", never a negative wait.
-  return Math.max(at - nowMs, 0);
+  const wait = at - nowMs;
+  // A date already past carries no usable instruction — it describes a moment
+  // that has gone, whether through clock skew or a cached response. Flooring it
+  // to zero turned the polite path into the impolite one: three attempts with
+  // no gap between them, which is the opposite of what honouring Retry-After is
+  // for. With no usable instruction we are back to estimating for ourselves,
+  // exactly as when the server said nothing. An explicit `Retry-After: 0` is
+  // different and is still honoured: that is an instruction, not a stale one.
+  return wait > 0 ? wait : null;
 }
 
 /**
