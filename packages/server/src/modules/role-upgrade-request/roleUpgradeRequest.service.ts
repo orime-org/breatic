@@ -171,6 +171,22 @@ export async function approve(input: DecisionInput): Promise<void> {
       tx,
     );
     if (!won) {
+      // The conditional write refuses for TWO different reasons, and they call
+      // for opposite treatment. Ask which one it was rather than assuming.
+      const stillOwner = await projectMembersRepo.getRole(
+        req.projectId,
+        input.ownerUserId,
+        tx,
+      );
+      if (stillOwner !== "owner") {
+        // The caller lost the project between the gate and this statement — a
+        // transfer committed underneath them. Their lack of authority says
+        // nothing about the request, which the NEW owner can still answer, so
+        // it is left exactly as it was. Settling here would let a decision the
+        // caller was no longer entitled to make destroy a valid request, and
+        // the new owner would never see it.
+        return { refusal: "forbidden" };
+      }
       // The requester is no longer the viewer this request was filed about —
       // promoted by another route, or removed from the project. The request
       // has stopped being answerable, so it is settled rather than left to

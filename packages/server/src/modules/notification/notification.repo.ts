@@ -238,6 +238,35 @@ export async function retire(id: string, tx?: DbTx): Promise<void> {
 }
 
 /**
+ * Retire every unread bell entry announcing something on a project that is
+ * being deleted.
+ *
+ * Deleting a project settles the requests and offers it carried, and their
+ * entries have to come down with them: the unread query hides an entry only
+ * once its own deadline passes, so a week-long request leaves buttons standing
+ * over a row that now answers 404. Keyed on the project rather than on
+ * individual ids because the cascade is about a project, and every entry it
+ * needs to take down carries that project id already.
+ * @param projectId - The project being deleted
+ * @param tx - The delete transaction; retiring must commit with the cascade
+ */
+export async function retireByProject(
+  projectId: string,
+  tx: DbTx,
+): Promise<void> {
+  await tx
+    .update(notifications)
+    .set({ readAt: sql`now()` })
+    .where(
+      and(
+        eq(notifications.projectId, projectId),
+        isNull(notifications.readAt),
+        isNull(notifications.deletedAt),
+      ),
+    );
+}
+
+/**
  * Mark all of a user's unread notifications as read.
  * @param userId - Inbox owner whose unread notifications to clear
  * @returns count of rows updated.

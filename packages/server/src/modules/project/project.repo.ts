@@ -20,10 +20,12 @@ import { eq, and, isNull, isNotNull, or, desc, inArray } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectActivitiesRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
 import {
   projects,
   studios,
+  projectInvitations,
   projectMembers,
   projectTransfers,
   roleUpgradeRequests,
@@ -454,23 +456,22 @@ export async function deleteProject(id: string): Promise<void> {
         and(eq(projectMemoryEntries.projectId, id), isNull(projectMemoryEntries.deletedAt)),
       );
 
-    await tx
-      .update(projectMembers)
-      .set({ deletedAt: now })
-      .where(
-        and(
-          eq(projectMembers.projectId, id),
-          isNull(projectMembers.deletedAt),
-        ),
-      );
-
-    // The two deferred-request tables die with the project too. Left behind, a
-    // pending row is undecidable and unkillable: every decision path resolves
-    // the caller's role through a join that filters deleted projects, so it
-    // answers 403 forever and deliberately leaves the row pending; the reaper
-    // only runs from a NEW request on the same key, and filing one needs a live
-    // project. The row then holds its uniqueness slot permanently and its
-    // `restrict` foreign key blocks the project from ever being hard-deleted.
+    // The pending-request tables die with the project, and they go FIRST.
+    //
+    // Left behind, a pending row is undecidable and unkillable: every decision
+    // path resolves the caller's role through a join that filters deleted
+    // projects, so it answers 403 forever and deliberately leaves the row
+    // pending; the reaper only runs from a NEW request on the same key, and
+    // filing one needs a live project. The row then holds its uniqueness slot
+    // permanently and its `restrict` foreign key blocks the project from ever
+    // being hard-deleted.
+    //
+    // ORDER IS LOAD-BEARING. Both decision paths take these rows before they
+    // touch `project_members` — the transfer locks its offer then the member
+    // rows, the role upgrade locks its request then writes the member row. A
+    // cascade that took `project_members` first would close the cycle, and
+    // deleting a project while somebody answers a request would abort one side
+    // with a deadlock rather than serialising them.
     await tx
       .update(roleUpgradeRequests)
       .set({ deletedAt: now })
@@ -488,6 +489,36 @@ export async function deleteProject(id: string): Promise<void> {
         and(
           eq(projectTransfers.projectId, id),
           isNull(projectTransfers.deletedAt),
+        ),
+      );
+
+    // Pending invites are the same shape and were the same defect: a live
+    // pending row on a dead project holds its one-pending slot and its restrict
+    // FK forever, and `confirmInvite` never checks project liveness — so the
+    // invitee could still accept and land an active member row on a project
+    // nobody can open.
+    await tx
+      .update(projectInvitations)
+      .set({ deletedAt: now })
+      .where(
+        and(
+          eq(projectInvitations.projectId, id),
+          isNull(projectInvitations.deletedAt),
+        ),
+      );
+
+    // Their bell entries come down with them. The unread query only hides an
+    // entry once its own deadline passes, so a week-long request would leave
+    // buttons standing over rows that now answer 404.
+    await notificationRepo.retireByProject(id, tx);
+
+    await tx
+      .update(projectMembers)
+      .set({ deletedAt: now })
+      .where(
+        and(
+          eq(projectMembers.projectId, id),
+          isNull(projectMembers.deletedAt),
         ),
       );
 

@@ -99,14 +99,19 @@ projects.post(
  * surface; the recipient sees the same offer in their bell.
  * @returns `200` with `{ data: { id, fromUserId, toUserId, expiresAt } | null }`
  */
-projects.get("/:id/transfer", requireRoleOnParam("id", "owner"), async (c) => {
-  const live = await projectTransferService.findLiveProjectTransfer(
-    c.req.param("id"),
-  );
-  return c.json({
-    data: live ? { ...live, expiresAt: live.expiresAt.toISOString() } : null,
-  });
-});
+projects.get(
+  "/:id/transfer",
+  zValidator("param", z.object({ id: z.string().uuid() })),
+  requireRoleOnParam("id", "owner"),
+  async (c) => {
+    const live = await projectTransferService.findLiveProjectTransfer(
+      c.req.param("id"),
+    );
+    return c.json({
+      data: live ? { ...live, expiresAt: live.expiresAt.toISOString() } : null,
+    });
+  },
+);
 
 /**
  * `DELETE /projects/:id/transfer/:transferId` — the CURRENT owner withdraws an
@@ -121,10 +126,15 @@ projects.get("/:id/transfer", requireRoleOnParam("id", "owner"), async (c) => {
  */
 projects.delete(
   "/:id/transfer/:transferId",
+  // Registered BEFORE the role middleware, which reads `:id` and puts it
+  // straight into a uuid comparison of its own — a validator behind it would
+  // never see a bad `:id`, and the 500 it exists to prevent would happen in
+  // the middleware instead.
+  zValidator(
+    "param",
+    z.object({ id: z.string().uuid(), transferId: z.string().uuid() }),
+  ),
   requireRoleOnParam("id", "owner"),
-  // `transferId` reaches a uuid comparison; anything that is not a uuid makes
-  // Postgres reject the statement, turning a user-supplied string into a 500.
-  zValidator("param", z.object({ id: z.string().uuid(), transferId: z.string().uuid() })),
   async (c) => {
     await projectTransferService.withdrawProjectTransfer(
       c.req.param("transferId"),

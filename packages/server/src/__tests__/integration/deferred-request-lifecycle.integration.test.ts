@@ -379,6 +379,12 @@ describe("a deleted project takes its outstanding requests with it", () => {
       SELECT deleted_at FROM role_upgrade_requests WHERE id = ${requestId}
     `;
     expect(rows[0]!.deleted_at).not.toBeNull();
+    // And the announcement comes down with it. The unread query hides an entry
+    // only once its own deadline passes, so a week-long request would otherwise
+    // leave Approve and Reject standing over a row that now answers 404.
+    expect((await stateOf("role_upgrade_requests", requestId)).bellUnread).toBe(
+      false,
+    );
   });
 
   it("project transfer: the offer does not outlive the project", async () => {
@@ -400,6 +406,9 @@ describe("a deleted project takes its outstanding requests with it", () => {
       SELECT deleted_at FROM project_transfers WHERE id = ${transferId}
     `;
     expect(rows[0]!.deleted_at).not.toBeNull();
+    expect((await stateOf("project_transfers", transferId)).bellUnread).toBe(
+      false,
+    );
   });
 });
 
@@ -560,6 +569,54 @@ describe("a request refused for lack of standing is left alone", () => {
       status: "pending",
       bellUnread: true,
     });
+  });
+});
+
+describe("a decider who loses the project mid-decision destroys nothing", () => {
+  it("role upgrade: the request survives for whoever owns it now", async () => {
+    // The conditional write refuses for two different reasons — the requester's
+    // role moved, or the decider stopped being the owner — and only the first
+    // means the request is over. Conflating them lets a caller who is no longer
+    // entitled to decide write off a request the NEW owner never gets to see.
+    const { ownerId, memberId, projectId } = await seedScene();
+    await roleUpgradeService.request({
+      ownerUserId: ownerId,
+      requesterUserId: memberId,
+      projectId,
+      projectName: "Demo",
+    });
+    const requestId = await liveRequestId(
+      "role_upgrade_requests",
+      "project_id",
+      projectId,
+    );
+
+    // The project changes hands between the gate and the write. Reproduced by
+    // demoting the decider directly: the conditional write's EXISTS is what
+    // notices, and it notices the same way either way.
+    const third = await insertUser(`dl-newowner-${seq++}`);
+    await sql`
+      UPDATE project_members SET role = 'editor'
+      WHERE project_id = ${projectId} AND user_id = ${ownerId}
+    `;
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${projectId}, ${third}, 'owner', ${ownerId})
+    `;
+
+    await expect(
+      roleUpgradeService.approve({ requestId, ownerUserId: ownerId }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    expect(await stateOf("role_upgrade_requests", requestId)).toEqual({
+      status: "pending",
+      bellUnread: true,
+    });
+    // And the new owner can answer it.
+    await roleUpgradeService.approve({ requestId, ownerUserId: third });
+    expect((await stateOf("role_upgrade_requests", requestId)).status).toBe(
+      "approved",
+    );
   });
 });
 

@@ -20,6 +20,7 @@
  */
 
 import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
@@ -79,12 +80,20 @@ route.get("/count", async (c) => {
  * is already read, or belongs to a different user — all collapse to a
  * 404 response (defense in depth on top of the userId scope).
  */
-route.patch("/:id/read", async (c) => {
+// `:id` reaches a uuid comparison, and this is the confirm / decline entry
+// point for both transfer flows — the half that the per-request withdraw
+// routes' guard does not cover.
+const notificationParamSchema = z.object({ id: z.string().uuid() });
+
+route.patch(
+  "/:id/read",
+  zValidator("param", notificationParamSchema),
+  async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   await notificationService.markRead(id, user.id);
-  return c.json({ data: { ok: true } });
-});
+  return c.json({ data: { ok: true } });  },
+);
 
 /**
  * `POST /api/v1/users/me/notifications/read-all` — mark every unread
@@ -124,7 +133,10 @@ function readRowId(payload: unknown, key: string): string {
   return value;
 }
 
-route.post("/:id/action", async (c) => {
+route.post(
+  "/:id/action",
+  zValidator("param", notificationParamSchema),
+  async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   const body = actionSchema.parse(await c.req.json());
@@ -179,7 +191,7 @@ route.post("/:id/action", async (c) => {
       // Not an actionable type — nothing to confirm/cancel.
       throw new NotFoundError(t("server.error.not_found"));
   }
-  return c.json({ data: { ok: true } });
-});
+  return c.json({ data: { ok: true } });  },
+);
 
 export { route as notificationsRoute };

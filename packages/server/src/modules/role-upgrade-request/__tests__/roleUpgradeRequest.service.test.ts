@@ -410,8 +410,15 @@ describe("approve", () => {
   it("retires the request when its subject is no longer a viewer", async () => {
     // The conditional write refused: the requester was promoted or removed
     // while the request waited. Nothing to grant, so the request is over.
+    //
+    // Two `getRole` answers, because the refusal is ambiguous on its own: the
+    // gate asks first, and the `!won` branch asks again to find out WHICH
+    // premise failed. Both say owner here, so the caller still holds the
+    // project and the refusal is about the requester.
     vi.mocked(requestsRepo.lockRequest).mockResolvedValueOnce(lockedRow());
-    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("owner");
+    vi.mocked(projectMembersRepo.getRole)
+      .mockResolvedValueOnce("owner")
+      .mockResolvedValueOnce("owner");
     vi.mocked(projectMembersRepo.updateRoleUnderOwner).mockResolvedValueOnce(
       false,
     );
@@ -429,6 +436,30 @@ describe("approve", () => {
     expect(
       notificationService.createRoleUpgradeApproved,
     ).not.toHaveBeenCalled();
+  });
+
+  it("leaves the request alone when it is the DECIDER who lost the project", async () => {
+    // The same refused write, the other reason: a transfer committed between
+    // the gate and the statement. The caller may no longer decide, but the
+    // request is still perfectly valid for whoever owns the project now —
+    // settling it here would let a stranger destroy it, and the new owner
+    // would never see it.
+    vi.mocked(requestsRepo.lockRequest).mockResolvedValueOnce(lockedRow());
+    vi.mocked(projectMembersRepo.getRole)
+      .mockResolvedValueOnce("owner")
+      .mockResolvedValueOnce("editor");
+    vi.mocked(projectMembersRepo.updateRoleUnderOwner).mockResolvedValueOnce(
+      false,
+    );
+
+    await expect(
+      roleUpgradeRequestService.approve({
+        requestId: RID,
+        ownerUserId: OWNER,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(requestsRepo.settleIfPending).not.toHaveBeenCalled();
+    expect(notificationRepo.retire).not.toHaveBeenCalled();
   });
 });
 
