@@ -688,7 +688,6 @@
       "exportWithResources": "리소스 포함하여 내보내기",
       "exportWithoutResources": "리소스 없이 내보내기",
       "discord": "Discord",
-      "backToWorkspace": "워크스페이스로 돌아가기",
       "workflowExportedWithResourcesSuccessfully": "리소스를 포함한 워크플로를 성공적으로 내보냈습니다",
       "failedToExportWorkflowWithResources": "리소스를 포함한 워크플로 내보내기에 실패했습니다",
       "exportWithoutResourcesNotImplemented": "리소스 없이 내보내기 기능은 아직 구현되지 않았습니다",

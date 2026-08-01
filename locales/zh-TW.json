@@ -688,7 +688,6 @@
       "exportWithResources": "導出包含資源",
       "exportWithoutResources": "導出不包含資源",
       "discord": "Discord",
-      "backToWorkspace": "返回工作區",
       "workflowExportedWithResourcesSuccessfully": "工作流已成功導出（包含資源）",
       "failedToExportWorkflowWithResources": "導出工作流失敗（包含資源）",
       "exportWithoutResourcesNotImplemented": "導出不包含資源功能尚未實現",

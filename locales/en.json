@@ -688,7 +688,6 @@
       "exportWithResources": "Export with Resources",
       "exportWithoutResources": "Export without Resources",
       "discord": "Discord",
-      "backToWorkspace": "Back to Workspace",
       "workflowExportedWithResourcesSuccessfully": "Workflow exported with resources successfully",
       "failedToExportWorkflowWithResources": "Failed to export workflow with resources",
       "exportWithoutResourcesNotImplemented": "Export without resources feature is not implemented yet",

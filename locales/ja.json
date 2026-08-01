@@ -688,7 +688,6 @@
       "exportWithResources": "リソースを含めてエクスポート",
       "exportWithoutResources": "リソースを含めずにエクスポート",
       "discord": "Discord",
-      "backToWorkspace": "ワークスペースに戻る",
       "workflowExportedWithResourcesSuccessfully": "ワークフローがリソースを含めて正常にエクスポートされました",
       "failedToExportWorkflowWithResources": "ワークフローのエクスポートに失敗しました（リソースを含む）",
       "exportWithoutResourcesNotImplemented": "リソースを含めないエクスポート機能はまだ実装されていません",
