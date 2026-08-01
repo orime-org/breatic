@@ -27,6 +27,7 @@ import {
   renderCollabCaret,
   renderCollabSelection,
 } from '@web/spaces/canvas/generate/caret-render';
+import { CollabCaretRefresh } from '@web/spaces/canvas/generate/collab-caret-refresh';
 import { CollabUndoSelection } from '@web/spaces/canvas/generate/collab-undo-selection';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
@@ -162,6 +163,7 @@ export const PromptEditor = React.forwardRef<
         // stack-item-popped after the restore transaction already ran, so this
         // hands the stored selection over in time (see the module doc).
         CollabUndoSelection,
+        CollabCaretRefresh,
         // Remote collaborator carets (batch-2 item 14): mounted only when the
         // canvas-space doc's awareness is available — the extension THROWS in
         // onCreate on a null provider, and before the socket's first connect
@@ -287,18 +289,26 @@ export const PromptEditor = React.forwardRef<
         });
     };
     awareness.on('change', applyDim);
-    // ALSO re-sync after every editor transaction: the yCursorPlugin refresh is
-    // BATCHED into a setTimeout(0), and a local transaction inside that window
-    // rebuilds a caret widget from a thunk that captured the PRE-FLIP user —
-    // its build-time class would overwrite applyDim's correction and stick
-    // (an away client's heartbeats are deep-equal → 'update' only, never
-    // 'change', so nothing else would heal it). Reconciling on transaction
-    // covers every DOM rebuild path (adversarial round 2, jsdom-reproduced).
-    editor.on('transaction', applyDim);
+    // This listener is the ONLY one needed. Earlier there was a second
+    // subscription on `editor.on('transaction')`, guarding the window where the
+    // yCursorPlugin's batched refresh (a setTimeout(0)) had not run yet and the
+    // decorations still carried thunks capturing the pre-flip user. Under
+    // @tiptap/y-tiptap 3.0.8 no transaction can reach that window any more —
+    // its yCursorPlugin.apply has exactly four outcomes, and none of them lets
+    // a widget rebuild from a stale thunk:
+    //   local structural edit   → DecorationSet.empty, so there is no caret
+    //   remote / awareness bump → decorations rebuilt, builder reads the
+    //                             CURRENT awareness, so the class is right
+    //   local non-structural    → prevState.map() keeps them, and the widget is
+    //                             keyed by clientId so prosemirror-view reuses
+    //                             the same DOM node without re-invoking the
+    //                             builder (measured: insert before / after / at
+    //                             the caret and delete around it all keep both
+    //                             the node identity and the class)
+    //   anything else           → prevState untouched
     applyDim();
     return (): void => {
       awareness.off('change', applyDim);
-      editor.off('transaction', applyDim);
     };
   }, [editor, caretProvider]);
   // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
