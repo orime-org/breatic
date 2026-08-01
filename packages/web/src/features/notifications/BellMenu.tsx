@@ -6,6 +6,7 @@ import { Bell } from 'lucide-react';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
+import { expiresInLabel } from '@web/lib/expires-in';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { Button } from '@web/components/ui/button';
@@ -56,31 +57,6 @@ function timeAgoLabel(createdAt: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   return `${days}d ago`;
-}
-
-/**
- * Formats the remaining time until an actionable notification's `expiresAt` as
- * a coarse "expires in Nd/Nh/Nm" label (or "expired" once past).
- * @param expiresAt - ISO timestamp of when the notification self-voids.
- * @param t - Translation function for the localized label.
- * @returns the localized countdown label.
- */
-function expiresInLabel(
-  expiresAt: string,
-  t: ReturnType<typeof useTranslation>,
-): string {
-  const diffMs = new Date(expiresAt).getTime() - Date.now();
-  if (diffMs <= 0) return t('notifications.expiresLabel.expired');
-  const minutes = Math.round(diffMs / 60_000);
-  if (minutes < 60) {
-    return t('notifications.expiresLabel.minutes', { count: minutes });
-  }
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) {
-    return t('notifications.expiresLabel.hours', { count: hours });
-  }
-  const days = Math.round(hours / 24);
-  return t('notifications.expiresLabel.days', { count: days });
 }
 
 /**
@@ -138,6 +114,24 @@ function toastKeyFor(kind: ActionKind, action: NotificationAction): string {
  */
 function projectInviteTokenOf(payload: Record<string, unknown>): string | null {
   return typeof payload.token === 'string' ? payload.token : null;
+}
+
+/**
+ * Reads the id of the row an actionable bell entry stands for.
+ *
+ * These entries never hold the state they display — the request or offer is a
+ * row of its own, and the entry only points at it. Acting on the entry's own id
+ * answers 404, which is why the pointer is read here rather than assumed.
+ * @param payload - The notification's opaque payload.
+ * @param key - Which pointer to read (`requestId` / `transferId`).
+ * @returns the row id, or null if absent / malformed.
+ */
+function rowIdOf(
+  payload: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = payload[key];
+  return typeof value === 'string' ? value : null;
 }
 
 /**
@@ -200,10 +194,10 @@ export function BellMenu(): React.JSX.Element {
 
   const decideMutation = useMutation({
     mutationFn: (input: {
-      notificationId: string;
+      requestId: string;
       decision: 'approved' | 'rejected';
     }) =>
-      roleUpgradeRequestsApi.decide(input.notificationId, {
+      roleUpgradeRequestsApi.decide(input.requestId, {
         decision: input.decision,
       }),
     onSuccess: async (_data, vars) => {
@@ -222,6 +216,24 @@ export function BellMenu(): React.JSX.Element {
       toast.error(msg);
     },
   });
+
+  /**
+   * Decide a role-upgrade request from its bell entry.
+   *
+   * The entry points at the request row; without that pointer there is nothing
+   * to decide, and the bell says so rather than firing a call that answers 404.
+   */
+  const decide = React.useCallback(
+    (n: Notification, decision: 'approved' | 'rejected'): void => {
+      const requestId = rowIdOf(n.payload, 'requestId');
+      if (requestId === null) {
+        toast.error(t('notifications.decideFailed'));
+        return;
+      }
+      decideMutation.mutate({ requestId, decision });
+    },
+    [decideMutation, t],
+  );
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => notificationsApi.markRead(id),
@@ -320,22 +332,13 @@ export function BellMenu(): React.JSX.Element {
                   resolved={resolved}
                   decidePending={
                     (decideMutation.isPending &&
-                      decideMutation.variables?.notificationId === n.id) ||
+                      decideMutation.variables?.requestId ===
+                        rowIdOf(n.payload, 'requestId')) ||
                     (actionMutation.isPending &&
                       actionMutation.variables?.id === n.id)
                   }
-                  onApprove={() =>
-                    decideMutation.mutate({
-                      notificationId: n.id,
-                      decision: 'approved',
-                    })
-                  }
-                  onReject={() =>
-                    decideMutation.mutate({
-                      notificationId: n.id,
-                      decision: 'rejected',
-                    })
-                  }
+                  onApprove={() => decide(n, 'approved')}
+                  onReject={() => decide(n, 'rejected')}
                   onConfirm={() =>
                     actionMutation.mutate({
                       id: n.id,
@@ -430,7 +433,11 @@ function NotificationItem({
   // confirm/cancel controls; the backend dispatches on the notification type.
   // The TTL countdown also shows for the project invite (still time-boxed).
   const isInviteRequest = isStudioInviteRequest || isProjectInviteRequest;
-  const isActionable = isTransferRequest || isStudioInviteRequest;
+  // Everything with a deadline shows its countdown. The role upgrade was left
+  // out while it had no deadline to show; it has one now, and it was the only
+  // time-boxed row in the list hiding that fact from the person deciding it.
+  const isActionable =
+    isTransferRequest || isStudioInviteRequest || isUpgradeRequest;
 
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>

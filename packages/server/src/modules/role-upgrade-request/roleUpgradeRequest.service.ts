@@ -102,6 +102,7 @@ export async function request(
         projectId: input.projectId,
         expiresAt,
         payload: {
+          requestId,
           requesterUserId: input.requesterUserId,
           requesterName: requester.name,
           projectId: input.projectId,

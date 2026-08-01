@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -24,6 +24,7 @@ import { studiosApi } from '@web/data/api/studios';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { expiresInLabel } from '@web/lib/expires-in';
 import type { StudioMember } from '@web/pages/studio/container/container-types';
 
 /**
@@ -34,6 +35,11 @@ import type { StudioMember } from '@web/pages/studio/container/container-types';
  * handshake: it dispatches a request the recipient accepts via their bell; the
  * admin role does not change until then. Replaces the former per-member-row
  * "Transfer admin" action (single entry, avoids two places).
+ *
+ * A studio has one admin, so it can hold only one outstanding offer. While it
+ * does, this entry becomes that offer's status and a withdraw button rather
+ * than a second picker — sending again would just answer 409, and the withdraw
+ * is the only way to redirect an offer to somebody else before it times out.
  * @param root0 - Transfer section props.
  * @param root0.slug - The studio's URL handle (the transfer request path param).
  * @param root0.members - The studio members (source of the maintainer candidates).
@@ -47,18 +53,32 @@ export function TransferStudioSection({
   members: readonly StudioMember[];
 }): React.JSX.Element {
   const t = useTranslation();
+  const queryClient = useQueryClient();
   const [open, setOpen] = React.useState(false);
   const [selected, setSelected] = React.useState('');
+  const liveKey = React.useMemo(
+    () => ['studio-transfer', 'live', slug],
+    [slug],
+  );
 
   const candidates = members.filter((m) => m.studioRole === 'maintainer');
+
+  const liveQuery = useQuery({
+    queryKey: liveKey,
+    queryFn: () => studiosApi.liveTransfer(slug),
+  });
+  const live = liveQuery.data ?? null;
+  const recipientName = members.find((m) => m.id === live?.toUserId)?.name ?? '';
 
   const transferMutation = useMutation({
     mutationFn: (userId: string) =>
       studiosApi.requestTransfer(slug, { toUserId: userId }),
-    onSuccess: () => {
+    onSuccess: async () => {
       setOpen(false);
       setSelected('');
       toast.success(t('studio.container.members.transferRequested'));
+      // The entry flips to its pending state off this read.
+      await queryClient.invalidateQueries({ queryKey: liveKey });
     },
     onError: (err) =>
       toast.error(
@@ -67,6 +87,55 @@ export function TransferStudioSection({
           : t('studio.container.members.actionFailed'),
       ),
   });
+
+  const withdrawMutation = useMutation({
+    mutationFn: (transferId: string) =>
+      studiosApi.withdrawTransfer(slug, transferId),
+    onSuccess: async () => {
+      toast.success(t('studio.container.settings.transferWithdrawn'));
+      await queryClient.invalidateQueries({ queryKey: liveKey });
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiException
+          ? err.message
+          : t('studio.container.settings.transferWithdrawFailed'),
+      ),
+  });
+
+  const onWithdraw = React.useCallback(() => {
+    if (live) withdrawMutation.mutate(live.id);
+  }, [live, withdrawMutation]);
+
+  if (live) {
+    return (
+      <div
+        className='flex items-center gap-3'
+        data-testid='settings-transfer-pending'
+      >
+        <span className='text-xs text-muted-foreground'>
+          {t('studio.container.settings.transferPending', {
+            name: recipientName,
+          })}
+        </span>
+        <span
+          className='text-2xs text-muted-foreground'
+          data-testid='settings-transfer-expiry'
+        >
+          {expiresInLabel(live.expiresAt, t)}
+        </span>
+        <button
+          type='button'
+          className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-accent'
+          disabled={withdrawMutation.isPending}
+          onClick={onWithdraw}
+          data-testid='settings-transfer-withdraw'
+        >
+          {t('studio.container.settings.transferWithdraw')}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <>

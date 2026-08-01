@@ -562,8 +562,15 @@
       "sending": "發送中…",
       "toast": {
         "sent": "申請已發送 — Project Owner 會在通知中看到。",
-        "failed": "申請發送失敗,請重試。"
-      }
+        "failed": "申請發送失敗,請重試。",
+        "withdrawn": "申請已撤回。",
+        "withdrawFailed": "撤回失敗，請重試。"
+      },
+      "pendingAriaLabel": "已申請 Editor 權限",
+      "pendingTitle": "申請已送出",
+      "pendingDescription": "Owner 尚未答覆。想改天再問或換個說法，可以先撤回。",
+      "withdraw": "撤回",
+      "withdrawing": "撤回中…"
     }
   },
   "workspace": {
@@ -852,7 +859,11 @@
       "transferSend": "傳送請求",
       "transferNoCandidates": "暫無合適的成員。請先新增一位同屬本 Studio 的 Editor 或 Viewer。",
       "transferSuccess": "已向 {name} 傳送轉讓請求。",
-      "transferFailed": "轉讓請求傳送失敗,請重試。"
+      "transferFailed": "轉讓請求傳送失敗,請重試。",
+      "transferPending": "等待 {name} 接受。",
+      "transferWithdraw": "撤回",
+      "transferWithdrawn": "轉讓申請已撤回。",
+      "transferWithdrawFailed": "撤回轉讓申請失敗。"
     },
     "stack": {
       "triggerAria": "Project 成員（{count}）",
@@ -1323,7 +1334,11 @@
         "leaveBody": "之後想回來需要重新收到邀請。",
         "leaveLosesProjects": "你會失去這個 Studio 裡所有 Project 的存取權限。",
         "leaveHandsOver": "你在這裡擁有的 Project 會轉交給這個 Studio 的 Admin。",
-        "leaveDone": "已退出該 Studio"
+        "leaveDone": "已退出該 Studio",
+        "transferPending": "等待 {name} 接受。",
+        "transferWithdraw": "撤回",
+        "transferWithdrawn": "轉讓申請已撤回。",
+        "transferWithdrawFailed": "撤回轉讓申請失敗。"
       },
       "dialog": {
         "newProjectTitle": "新增 Project",

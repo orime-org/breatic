@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { apiPatch, apiPost } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 import type { Notification } from '@web/data/api/notifications';
 
 export interface SubmitRoleUpgradeBody {
@@ -13,42 +13,83 @@ export interface DecideRoleUpgradeBody {
   reason?: string;
 }
 
+/** What a viewer gets back after asking: the request, and the bell entry. */
+export interface FiledRoleUpgradeRequest {
+  requestId: string;
+  notification: Notification;
+}
+
+/** The caller's own outstanding request on a project. */
+export interface LiveRoleUpgradeRequest {
+  id: string;
+  /** ISO instant; the request stops being answerable after it. */
+  expiresAt: string;
+}
+
 export const roleUpgradeRequestsApi = {
   /**
-   * Viewer asks owner for editor role. Server gates on
-   * `requireRole('viewer')` — editors / owners get 403 because they
-   * don't need to upgrade (editor is the highest non-owner role).
-   *
-   * Returns the freshly-created notification row that landed in the
-   * owner's inbox, so the client can optimistically mark the action
-   * complete + show a "sent" toast.
+   * Viewer asks the owner for the editor role. The server gates on
+   * `requireRole('viewer')` — editors and owners get 403, since editor is
+   * already the highest non-owner role.
    * @param projectId - Project the viewer wants edit access to.
-   * @param body - Optional message included with the upgrade request.
-   * @returns The created request notification placed in the owner's inbox.
+   * @param body - Optional message included with the request.
+   * @returns The new request's id and the bell entry announcing it.
    */
-  submit(projectId: string, body: SubmitRoleUpgradeBody): Promise<Notification> {
-    return apiPost<Notification, SubmitRoleUpgradeBody>(
+  submit(
+    projectId: string,
+    body: SubmitRoleUpgradeBody,
+  ): Promise<FiledRoleUpgradeRequest> {
+    return apiPost<FiledRoleUpgradeRequest, SubmitRoleUpgradeBody>(
       `/projects/${projectId}/role-upgrade-requests`,
       body,
     );
   },
 
   /**
-   * Owner approves or rejects a pending upgrade request. The
-   * `notificationId` is the id of the original request notification
-   * (the request lives in the notifications table; there's no
-   * separate request relation — see spec § 7).
+   * The caller's own live request on a project, or null.
    *
-   * Server gates on the notification's `userId` matching the caller
-   * (defense in depth — only the owner can act on their own inbox).
-   * @param notificationId - Id of the original request notification to decide on.
-   * @param body - The decision (approved / rejected) and an optional reason.
+   * "Live" means pending AND not past its deadline. The two are different
+   * questions: the uniqueness index deliberately ignores the deadline, so a
+   * request that died on day eight is still `pending` — showing it would put a
+   * cancel button on something already over.
+   * @param projectId - Project being viewed.
+   * @returns Their live request, or null when they have none.
+   */
+  mine(projectId: string): Promise<LiveRoleUpgradeRequest | null> {
+    return apiGet<LiveRoleUpgradeRequest | null>(
+      `/projects/${projectId}/role-upgrade-requests/mine`,
+    );
+  },
+
+  /**
+   * The owner approves or rejects a request.
+   *
+   * Keyed on the REQUEST id, not the notification's. The request owns a row
+   * with a status, a deadline and a uniqueness rule; the bell entry only
+   * announces it, and the id for it rides in that entry's payload.
+   * @param requestId - The `role_upgrade_requests` row being decided.
+   * @param body - The decision and an optional reason.
    * @returns An acknowledgement once the decision is recorded.
    */
-  decide(notificationId: string, body: DecideRoleUpgradeBody): Promise<{ ok: true }> {
+  decide(
+    requestId: string,
+    body: DecideRoleUpgradeBody,
+  ): Promise<{ ok: true }> {
     return apiPatch<{ ok: true }, DecideRoleUpgradeBody>(
-      `/role-upgrade-requests/${notificationId}/decision`,
+      `/role-upgrade-requests/${requestId}/decision`,
       body,
     );
+  },
+
+  /**
+   * The requester withdraws their own request, freeing the slot at once.
+   *
+   * Without this a viewer is held hostage by their own unanswered ask: one
+   * live request per person per project, and only time releases it.
+   * @param requestId - The `role_upgrade_requests` row being withdrawn.
+   * @returns An acknowledgement once it is withdrawn.
+   */
+  cancel(requestId: string): Promise<{ ok: true }> {
+    return apiDelete<{ ok: true }>(`/role-upgrade-requests/${requestId}`);
   },
 };

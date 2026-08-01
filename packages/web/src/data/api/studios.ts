@@ -11,6 +11,9 @@
  */
 
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
+// One shape for "a container has an outstanding ownership offer" — a project and
+// a studio differ in what changes hands, not in what the offer looks like.
+import type { LiveTransfer } from '@web/data/api/projects';
 import type {
   InvitationLandingView,
   ProjectSummary,
@@ -218,6 +221,33 @@ export const studiosApi = {
       `/studio/${slug}/transfer-admin`,
       body,
     );
+  },
+
+  /**
+   * `GET /api/v1/studio/:slug/transfer` — the studio's outstanding adminship
+   * offer, or null. Admin-only; it is the admin's own "pending · withdraw"
+   * surface.
+   * @param slug the studio's URL handle.
+   * @returns the live offer, or null when there is none.
+   */
+  liveTransfer(slug: string): Promise<LiveTransfer | null> {
+    return apiGet<LiveTransfer | null>(`/studio/${slug}/transfer`);
+  },
+
+  /**
+   * `DELETE /api/v1/studio/:slug/transfer/:transferId` — the CURRENT admin
+   * withdraws an outstanding offer, freeing the studio's slot at once.
+   *
+   * Withdrawal belongs to whoever administers the studio now, not to whoever
+   * sent the offer: after a transfer the former admin is gone, and a second
+   * unanswered offer would block adminship for a week with the only key held by
+   * someone who has left.
+   * @param slug the studio's URL handle.
+   * @param transferId the offer being withdrawn.
+   * @returns once the offer is withdrawn.
+   */
+  withdrawTransfer(slug: string, transferId: string): Promise<{ ok: true }> {
+    return apiDelete<{ ok: true }>(`/studio/${slug}/transfer/${transferId}`);
   },
   /**
    * `PATCH /api/v1/studio/:slug` — edit the studio's name, slug and/or bio.

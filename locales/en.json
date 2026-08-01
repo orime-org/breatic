@@ -562,8 +562,15 @@
       "sending": "Sending…",
       "toast": {
         "sent": "Request sent — the owner will see it in their notifications.",
-        "failed": "Could not send the request. Please try again."
-      }
+        "failed": "Could not send the request. Please try again.",
+        "withdrawn": "Request withdrawn.",
+        "withdrawFailed": "Could not withdraw the request. Please try again."
+      },
+      "pendingAriaLabel": "Editor access requested",
+      "pendingTitle": "Request sent",
+      "pendingDescription": "The Owner has not answered yet. Withdraw it if you would rather ask later or ask differently.",
+      "withdraw": "Withdraw",
+      "withdrawing": "Withdrawing…"
     }
   },
   "workspace": {
@@ -852,7 +859,11 @@
       "transferSend": "Send request",
       "transferNoCandidates": "No eligible members yet. Add an Editor or Viewer who also belongs to this Studio first.",
       "transferSuccess": "Transfer request sent to {name}.",
-      "transferFailed": "Could not send the transfer request. Please try again."
+      "transferFailed": "Could not send the transfer request. Please try again.",
+      "transferPending": "Waiting for {name} to accept.",
+      "transferWithdraw": "Withdraw",
+      "transferWithdrawn": "Transfer request withdrawn.",
+      "transferWithdrawFailed": "Could not withdraw the transfer request."
     },
     "stack": {
       "triggerAria": "Project members ({count})",
@@ -1323,7 +1334,11 @@
         "leaveBody": "You will need a new invitation to come back.",
         "leaveLosesProjects": "You lose access to every Project in this Studio.",
         "leaveHandsOver": "Any Project you own here is handed to the Studio's Admin.",
-        "leaveDone": "You have left the Studio"
+        "leaveDone": "You have left the Studio",
+        "transferPending": "Waiting for {name} to accept.",
+        "transferWithdraw": "Withdraw",
+        "transferWithdrawn": "Transfer request withdrawn.",
+        "transferWithdrawFailed": "Could not withdraw the transfer request."
       },
       "dialog": {
         "newProjectTitle": "New project",

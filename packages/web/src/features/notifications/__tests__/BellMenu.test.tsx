@@ -31,6 +31,8 @@ const SELF = {
 const PID = '11111111-1111-4111-8111-111111111111';
 const N1 = '22222222-2222-4222-8222-222222222222';
 const N2 = '33333333-3333-4333-8333-333333333333';
+// The request row a bell entry points at — what the decision endpoint takes.
+const REQ1 = '44444444-4444-4444-8444-444444444444';
 
 vi.mock('@web/data/api/notifications', () => ({
   notificationsApi: {
@@ -220,6 +222,7 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
     vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N1, 'access.role_upgrade_request', {
         projectName: 'Demo',
+        requestId: REQ1,
       }),
     ], resolved: EMPTY_RESOLVED });
     vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({ ok: true });
@@ -227,8 +230,10 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
     await user.click(screen.getByTestId('bell-trigger'));
     await user.click(await screen.findByTestId(`bell-approve-${N1}`));
 
+    // Keyed on the REQUEST row, not the bell entry: the entry only announces
+    // it, and the decision endpoint answers 404 for an entry id.
     await waitFor(() => {
-      expect(roleUpgradeRequestsApi.decide).toHaveBeenCalledWith(N1, {
+      expect(roleUpgradeRequestsApi.decide).toHaveBeenCalledWith(REQ1, {
         decision: 'approved',
       });
     });
@@ -240,6 +245,7 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
     vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N1, 'access.role_upgrade_request', {
         projectName: 'Demo',
+        requestId: REQ1,
       }),
     ], resolved: EMPTY_RESOLVED });
     vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({ ok: true });
@@ -248,7 +254,7 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
     await user.click(await screen.findByTestId(`bell-reject-${N1}`));
 
     await waitFor(() => {
-      expect(roleUpgradeRequestsApi.decide).toHaveBeenCalledWith(N1, {
+      expect(roleUpgradeRequestsApi.decide).toHaveBeenCalledWith(REQ1, {
         decision: 'rejected',
       });
     });
@@ -260,6 +266,7 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
     vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
       fakeNotification(N1, 'access.role_upgrade_request', {
         projectName: 'Demo',
+        requestId: REQ1,
       }),
     ], resolved: EMPTY_RESOLVED });
     vi.mocked(roleUpgradeRequestsApi.decide).mockRejectedValueOnce(
@@ -276,6 +283,28 @@ describe('BellMenu — approve / reject mutations on upgrade-request rows', () =
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Already reviewed');
     });
+  });
+
+  it('refuses to decide an entry that points at no request', async () => {
+    // Nothing to decide, so the bell says so rather than firing a call that
+    // answers 404 with a message about a request the user never saw.
+    const user = userEvent.setup();
+    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
+      items: [
+        fakeNotification(N1, 'access.role_upgrade_request', {
+          projectName: 'Demo',
+        }),
+      ],
+      resolved: EMPTY_RESOLVED,
+    });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await user.click(await screen.findByTestId(`bell-approve-${N1}`));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
+    expect(roleUpgradeRequestsApi.decide).not.toHaveBeenCalled();
   });
 });
 

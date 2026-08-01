@@ -34,6 +34,7 @@ import {
 } from '@web/components/ui/select';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { useTranslation } from '@web/i18n/use-translation';
+import { expiresInLabel } from '@web/lib/expires-in';
 import { membersApi } from '@web/data/api/members';
 import type { Member, MemberRole } from '@web/data/api/members';
 import { projectsApi } from '@web/data/api/projects';
@@ -251,9 +252,44 @@ function TransferOwnershipSection({
   members,
 }: TransferOwnershipSectionProps): React.JSX.Element {
   const t = useTranslation();
+  const queryClient = useQueryClient();
   const [expanded, setExpanded] = React.useState(false);
   const [selected, setSelected] = React.useState('');
   const [sending, setSending] = React.useState(false);
+  const [withdrawing, setWithdrawing] = React.useState(false);
+  const liveKey = React.useMemo(
+    () => ['project-transfer', 'live', projectId],
+    [projectId],
+  );
+
+  // A project has one owner, so it can hold only one outstanding offer. While
+  // it does, this section is that offer's status rather than a second picker —
+  // sending again would just answer 409.
+  const liveQuery = useQuery({
+    queryKey: liveKey,
+    queryFn: () => projectsApi.liveTransfer(projectId),
+  });
+  const live = liveQuery.data ?? null;
+  const recipientName =
+    members.find((m) => m.userId === live?.toUserId)?.name ?? '';
+
+  /**
+   * Withdraws the outstanding offer, freeing the project's slot at once.
+   * @throws {never} network / API errors are caught and surfaced as an error toast.
+   */
+  async function handleWithdraw(): Promise<void> {
+    if (!live || withdrawing) return;
+    setWithdrawing(true);
+    try {
+      await projectsApi.withdrawTransfer(projectId, live.id);
+      toast.success(t('members.modal.transferWithdrawn'));
+      await queryClient.invalidateQueries({ queryKey: liveKey });
+    } catch {
+      toast.error(t('members.modal.transferWithdrawFailed'));
+    } finally {
+      setWithdrawing(false);
+    }
+  }
 
   const candidatesQuery = useQuery({
     queryKey: ['transfer-candidates', projectId],
@@ -278,6 +314,8 @@ function TransferOwnershipSection({
       toast.success(t('members.modal.transferSuccess', { name }));
       setExpanded(false);
       setSelected('');
+      // The section flips to its pending state off this read.
+      await queryClient.invalidateQueries({ queryKey: liveKey });
     } catch {
       toast.error(t('members.modal.transferFailed'));
     } finally {
@@ -299,7 +337,18 @@ function TransferOwnershipSection({
             {t('members.modal.transferHint')}
           </span>
         </div>
-        {!expanded ? (
+        {live ? (
+          <Button
+            variant='outline'
+            size='sm'
+            className='h-8 shrink-0 text-xs'
+            disabled={withdrawing}
+            onClick={() => void handleWithdraw()}
+            data-testid='members-modal-transfer-withdraw'
+          >
+            {t('members.modal.transferWithdraw')}
+          </Button>
+        ) : !expanded ? (
           <Button
             variant='outline'
             size='sm'
@@ -312,7 +361,19 @@ function TransferOwnershipSection({
         ) : null}
       </div>
 
-      {expanded ? (
+      {live ? (
+        <div
+          className='mt-3 flex items-center gap-2 text-xs text-muted-foreground'
+          data-testid='members-modal-transfer-pending'
+        >
+          <span>
+            {t('members.modal.transferPending', { name: recipientName })}
+          </span>
+          <span data-testid='members-modal-transfer-expiry'>
+            {expiresInLabel(live.expiresAt, t)}
+          </span>
+        </div>
+      ) : expanded ? (
         <div
           className='mt-3 flex flex-col gap-3'
           data-testid='members-modal-transfer-panel'

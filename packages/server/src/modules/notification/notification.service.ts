@@ -35,6 +35,14 @@ export type { NotificationEntity };
  */
 export interface RoleUpgradeRequestPayload {
   requesterUserId: string;
+  /**
+   * The `role_upgrade_requests` row this entry announces.
+   *
+   * The request's source of truth is that row, not this entry — the bell's
+   * approve / reject buttons act on the id carried here, exactly as the invite
+   * and transfer entries carry theirs.
+   */
+  requestId: string;
   /** The project the request is about — resolved to its current name at read time. */
   projectId: string;
   /** Requester's personal-studio display name — shown actor-first in the bell. */

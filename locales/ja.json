@@ -562,8 +562,15 @@
       "sending": "送信中…",
       "toast": {
         "sent": "リクエストを送信しました — Owner に通知が表示されます。",
-        "failed": "リクエストの送信に失敗しました。再試行してください。"
-      }
+        "failed": "リクエストの送信に失敗しました。再試行してください。",
+        "withdrawn": "リクエストを取り消しました。",
+        "withdrawFailed": "リクエストを取り消せませんでした。もう一度お試しください。"
+      },
+      "pendingAriaLabel": "Editor 権限をリクエスト済み",
+      "pendingTitle": "リクエストを送信しました",
+      "pendingDescription": "Owner はまだ返答していません。改めて依頼したい場合は取り消せます。",
+      "withdraw": "取り消す",
+      "withdrawing": "取り消し中…"
     }
   },
   "workspace": {
@@ -852,7 +859,11 @@
       "transferSend": "リクエストを送信",
       "transferNoCandidates": "対象のメンバーがいません。まず同じ Studio に属する Editor または Viewer を追加してください。",
       "transferSuccess": "{name} に委譲リクエストを送信しました。",
-      "transferFailed": "委譲リクエストを送信できませんでした。もう一度お試しください。"
+      "transferFailed": "委譲リクエストを送信できませんでした。もう一度お試しください。",
+      "transferPending": "{name} の承諾を待っています。",
+      "transferWithdraw": "取り消す",
+      "transferWithdrawn": "譲渡リクエストを取り消しました。",
+      "transferWithdrawFailed": "譲渡リクエストを取り消せませんでした。"
     },
     "stack": {
       "triggerAria": "Project メンバー({count})",
@@ -1323,7 +1334,11 @@
         "leaveBody": "戻るには新しい招待が必要になります。",
         "leaveLosesProjects": "この Studio 内のすべての Project にアクセスできなくなります。",
         "leaveHandsOver": "ここであなたが所有している Project は Studio の Admin に引き継がれます。",
-        "leaveDone": "Studio を退出しました"
+        "leaveDone": "Studio を退出しました",
+        "transferPending": "{name} の承諾を待っています。",
+        "transferWithdraw": "取り消す",
+        "transferWithdrawn": "譲渡リクエストを取り消しました。",
+        "transferWithdrawFailed": "譲渡リクエストを取り消せませんでした。"
       },
       "dialog": {
         "newProjectTitle": "Project を新規作成",

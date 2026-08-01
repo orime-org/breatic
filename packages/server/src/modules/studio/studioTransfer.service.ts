@@ -277,14 +277,20 @@ export async function declineTransfer(
  * the offer. Giving it to the sender strands the studio: after a transfer the
  * former admin is gone, and a second, unanswered offer would block adminship
  * for a week with the only key held by someone who has left.
+ * Keyed on the slug the caller was authorised against, the same handle every
+ * other admin-gated studio route takes — resolving it here rather than in the
+ * route keeps the "no such studio" answer in one place.
  * @param transferId - The `studio_transfers` row id
- * @param studioId - The studio the caller was authorised as admin of
- * @throws {NotFoundError} no live offer of this studio matches that id
+ * @param slug - The studio's URL handle, as the caller was authorised on
+ * @throws {NotFoundError} no such studio, or no live offer of it matches that id
  */
 export async function withdrawTransfer(
   transferId: string,
-  studioId: string,
+  slug: string,
 ): Promise<void> {
+  const studio = await studioRepo.getBySlug(slug);
+  if (!studio) throw new NotFoundError(t("server.error.not_found"));
+  const studioId = studio.id;
   const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
     const withdrawn = await transfersRepo.cancelIfPending(
       transferId,
@@ -302,16 +308,19 @@ export async function withdrawTransfer(
 
 /**
  * The studio's live offer, for both sides' "transfer pending" surfaces.
- * @param studioId - The studio being viewed.
+ * @param slug - The studio's URL handle.
  * @returns The live offer, or null when there is none.
+ * @throws {NotFoundError} no such studio.
  */
-export async function findLiveTransfer(studioId: string): Promise<{
+export async function findLiveTransfer(slug: string): Promise<{
   id: string;
   fromUserId: string;
   toUserId: string;
   expiresAt: Date;
 } | null> {
-  return transfersRepo.findLiveForContainer(studioId);
+  const studio = await studioRepo.getBySlug(slug);
+  if (!studio) throw new NotFoundError(t("server.error.not_found"));
+  return transfersRepo.findLiveForContainer(studio.id);
 }
 
 /** A locked offer that has passed the gates every answer shares. */

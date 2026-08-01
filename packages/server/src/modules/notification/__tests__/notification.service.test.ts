@@ -57,6 +57,7 @@ describe("createRoleUpgradeRequest", () => {
       projectId: PID,
       expiresAt,
       payload: {
+        requestId: "r-1",
         requesterUserId: REQUESTER,
         requesterName: "Vicky",
         projectId: PID,

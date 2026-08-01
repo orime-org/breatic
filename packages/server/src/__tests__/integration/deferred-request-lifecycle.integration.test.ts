@@ -470,7 +470,7 @@ describe("withdrawing frees the container's slot at once", () => {
       studioId,
     );
 
-    await studioTransferService.withdrawTransfer(transferId, studioId);
+    await studioTransferService.withdrawTransfer(transferId, studioSlug);
 
     expect(await stateOf("studio_transfers", transferId)).toEqual({
       status: "cancelled",

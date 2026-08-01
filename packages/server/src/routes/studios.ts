@@ -375,6 +375,46 @@ studio.post("/:slug/transfer-admin", requireStudioRole("admin"), async (c) => {
 });
 
 /**
+ * `GET /api/v1/studio/:slug/transfer` — the studio's outstanding adminship
+ * offer, or null.
+ *
+ * Admin-gated because it is the admin's own "transfer pending · withdraw"
+ * surface; the recipient sees the same offer in their bell.
+ * @returns `200` with `{ data: { id, fromUserId, toUserId, expiresAt } | null }`
+ */
+studio.get("/:slug/transfer", requireStudioRole("admin"), async (c) => {
+  const live = await studioTransferService.findLiveTransfer(
+    c.req.param("slug"),
+  );
+  return c.json({
+    data: live ? { ...live, expiresAt: live.expiresAt.toISOString() } : null,
+  });
+});
+
+/**
+ * `DELETE /api/v1/studio/:slug/transfer/:transferId` — the CURRENT admin
+ * withdraws an outstanding offer, freeing the studio's slot at once.
+ *
+ * Withdrawal belongs to whoever administers the studio now, not to whoever sent
+ * the offer: after a transfer the former admin is gone, and a second unanswered
+ * offer would block adminship for a week with the only key held by someone who
+ * has left. The service matches the offer against this studio, so an id from
+ * elsewhere answers 404.
+ * @returns `200` with `{ data: { ok: true } }`; `404` no live offer matches
+ */
+studio.delete(
+  "/:slug/transfer/:transferId",
+  requireStudioRole("admin"),
+  async (c) => {
+    await studioTransferService.withdrawTransfer(
+      c.req.param("transferId"),
+      c.req.param("slug"),
+    );
+    return c.json({ data: { ok: true } });
+  },
+);
+
+/**
  * `DELETE /api/v1/studio/:slug/invitations/:invitationId` — the admin revokes a
  * pending invite. Admin-only; flips it to `revoked` and clears the invitee's
  * bell notification.
