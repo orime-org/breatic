@@ -55,6 +55,7 @@
 - [x] Package exports → dist/，turbo dev dependsOn ^build，消除 import.meta.dirname 脆弱性
 - [x] .env.dev + .env.docker 双模板，替代 .env.example
 - [x] 登录页完整修复：response parsing、用户信息显示、Google OAuth 头像同步、401 循环修复
+- [x] 共享依赖版本单一来源：`pnpm-workspace.yaml` 的 catalog 收编 9 个包的 Node 类型库 + web 的 32 个 tiptap 包，包内一律写 `catalog:`；tiptap 全线对齐 3.29.2（含 y-tiptap 3.0.8），消除同一依赖多版本并存
 - [ ] CD pipeline：GitHub Actions → Docker build → 自动部署
 
 ---
