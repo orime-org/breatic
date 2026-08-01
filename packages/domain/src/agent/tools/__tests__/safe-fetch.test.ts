@@ -19,6 +19,7 @@
  * classic way this guard gets bypassed.
  */
 
+import { getEventListeners } from "node:events";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const lookupMock = vi.hoisted(() => vi.fn());
@@ -297,27 +298,86 @@ describe("safeFetch — cancellation", () => {
     expect(init?.signal?.aborted).toBe(true);
   });
 
-  it("re-checks every hop under the caller's signal, not just the first", async () => {
+  it("aborts a hop that never answers, on its own deadline", async () => {
+    // The per-hop deadline had two tests before this one and NEITHER asserted
+    // anything about it: measured by mutation, the whole timer could be made a
+    // no-op and the suite stayed green. Without it a hop that connects and then
+    // says nothing hangs forever — and in the worker that means a job holding a
+    // concurrency slot until the process restarts.
     resolvesTo("93.184.216.34");
-    const seen: Array<AbortSignal | null | undefined> = [];
+    let handed: AbortSignal | undefined;
     vi.stubGlobal(
       "fetch",
-      vi.fn((url: string, init?: RequestInit) => {
-        seen.push(init?.signal);
-        return Promise.resolve(
-          String(url).endsWith("/final")
-            ? new Response("done")
-            : redirect("https://example.com/final"),
-        );
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            handed = init?.signal ?? undefined;
+            handed?.addEventListener("abort", () =>
+              reject(handed?.reason ?? new Error("aborted")),
+            );
+          }),
+      ),
+    );
+
+    await expect(
+      safeFetch("https://example.com/silent", { timeoutMs: 20 }),
+    ).rejects.toThrow(/exceeded 20ms/);
+    expect(handed?.aborted).toBe(true);
+  });
+
+  it("stops a redirect chain the moment the caller cancels", async () => {
+    // A long chain must not outlive the user's stop. This asserts the
+    // behaviour — the next hop is never issued — rather than the mechanism.
+    //
+    // The earlier version asserted that EVERY past hop's signal read
+    // `aborted` after the chain had already finished. That was a statement
+    // about listeners still being attached to hops we had walked away from,
+    // which is precisely the leak fixed here: an abandoned hop keeps nothing,
+    // and it does not need to, because its request is already over.
+    resolvesTo("93.184.216.34");
+    const ac = new AbortController();
+    const issued: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        issued.push(String(url));
+        // The stop lands while hop one is in flight.
+        ac.abort(new Error("user pressed stop"));
+        return Promise.resolve(redirect("https://example.com/second"));
       }),
     );
+
+    await expect(
+      safeFetch("https://example.com/start", { signal: ac.signal }),
+    ).rejects.toThrow(/user pressed stop/);
+
+    expect(issued).toEqual(["https://example.com/start"]);
+  });
+
+  it("still forwards a cancellation that lands while a hop is in flight", async () => {
+    // The other half of the same invariant: the hop we have NOT walked away
+    // from must still see the caller's stop, because that is the request
+    // actually holding a socket.
+    resolvesTo("93.184.216.34");
     const ac = new AbortController();
-    await safeFetch("https://example.com/start", { signal: ac.signal });
-    expect(seen).toHaveLength(2);
-    ac.abort(new Error("stop"));
-    // Both hops observe the cancellation, so a long redirect chain cannot
-    // outlive the user's stop.
-    expect(seen.every((s) => s?.aborted === true)).toBe(true);
+    let handed: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((resolve) => {
+            handed = init?.signal ?? undefined;
+            setTimeout(() => resolve(new Response("done")), 5);
+          }),
+      ),
+    );
+
+    const pending = safeFetch("https://example.com/only", { signal: ac.signal });
+    await new Promise((r) => setTimeout(r, 1));
+    ac.abort(new Error("user pressed stop"));
+
+    expect(handed?.aborted).toBe(true);
+    await pending;
   });
 
   it("releases each redirect hop's body instead of holding its connection", async () => {
@@ -352,6 +412,147 @@ describe("safeFetch — cancellation", () => {
     await safeFetch("https://example.com/start");
 
     expect(cancelled).toBe(true);
+  });
+
+  it("refuses a malformed Location as an SSRF failure, not a bare TypeError", async () => {
+    // A Location we cannot parse is a URL we cannot check, so refusing is
+    // right. What matters is the TYPE: the transport skips its retries only
+    // for errors the caller recognises as deterministic, and `web_fetch`
+    // recognises `SsrfError`. A TypeError out of `new URL()` looked like
+    // weather, so the same unparseable redirect was followed three times.
+    resolvesTo("93.184.216.34");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(null, {
+            status: 302,
+            headers: { location: "http://[not-a-url" },
+          }),
+        ),
+      ),
+    );
+
+    await expect(safeFetch("https://example.com/start")).rejects.toThrow(SsrfError);
+  });
+
+  it("refuses a malformed starting URL as an SSRF failure too", async () => {
+    // Same rule at the other end of the chain. It is deterministic either way;
+    // only the type decides whether the budget gets spent on it.
+    resolvesTo("93.184.216.34");
+    await expect(safeFetch("http://[not-a-url")).rejects.toThrow(SsrfError);
+  });
+
+  it("drops credential headers when a redirect crosses to another origin", async () => {
+    // `safeFetch` presents itself as a safe `fetch`, and the platform's own
+    // fetch removes Authorization on a cross-origin redirect. Ours hoisted the
+    // header map outside the hop loop and re-sent it verbatim, so a redirect
+    // to any host would have handed that host the credential. No caller passes
+    // one through here today; the contract was still broken.
+    resolvesTo("93.184.216.34");
+    const sent: Array<Record<string, string>> = [];
+    let hop = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) => {
+        sent.push({ ...(init?.headers as Record<string, string>) });
+        hop += 1;
+        return Promise.resolve(
+          hop === 1
+            ? new Response(null, {
+                status: 302,
+                headers: { location: "https://elsewhere.example/take-it" },
+              })
+            : new Response("done"),
+        );
+      }),
+    );
+
+    await safeFetch("https://example.com/start", {
+      headers: { authorization: "Bearer secret", "user-agent": "probe" },
+    });
+
+    expect(sent[0]?.authorization).toBe("Bearer secret");
+    expect(sent[1]?.authorization).toBeUndefined();
+    // Non-credential headers survive: the rule is about secrets, not about
+    // forgetting who we are.
+    expect(sent[1]?.["user-agent"]).toBe("probe");
+  });
+
+  it("keeps credential headers when the redirect stays on the same origin", async () => {
+    resolvesTo("93.184.216.34");
+    const sent: Array<Record<string, string>> = [];
+    let hop = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) => {
+        sent.push({ ...(init?.headers as Record<string, string>) });
+        hop += 1;
+        return Promise.resolve(
+          hop === 1
+            ? new Response(null, {
+                status: 302,
+                headers: { location: "https://example.com/moved" },
+              })
+            : new Response("done"),
+        );
+      }),
+    );
+
+    await safeFetch("https://example.com/start", {
+      headers: { authorization: "Bearer secret" },
+    });
+
+    expect(sent[1]?.authorization).toBe("Bearer secret");
+  });
+
+  it("leaves exactly one abort listener behind — the returned response's", async () => {
+    // One deadline is armed per hop, each registering a listener on the
+    // caller's signal, and nothing removed them: a four-hop chain left four
+    // behind on a signal the caller may keep for a whole session.
+    //
+    // One is not a leak, it is the contract: the response we hand back still
+    // has an unread body, and the caller's stop has to reach that request
+    // while it is being read. The three hops we walked away from keep nothing.
+    resolvesTo("93.184.216.34");
+    let hop = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        hop += 1;
+        return Promise.resolve(
+          hop <= 3
+            ? new Response(null, {
+                status: 302,
+                headers: { location: `https://example.com/hop${hop}` },
+              })
+            : new Response("done"),
+        );
+      }),
+    );
+    const ac = new AbortController();
+
+    await safeFetch("https://example.com/start", { signal: ac.signal });
+
+    expect(hop).toBe(4);
+    expect(getEventListeners(ac.signal, "abort")).toHaveLength(1);
+  });
+
+  it("keeps nothing at all when the chain ends in a failure", async () => {
+    // No response was handed out, so there is no body anyone can read and no
+    // reason to stay attached.
+    resolvesTo("93.184.216.34");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new Error("connection reset"))),
+    );
+    const ac = new AbortController();
+
+    await expect(
+      safeFetch("https://example.com/start", { signal: ac.signal }),
+    ).rejects.toThrow(/connection reset/);
+
+    expect(getEventListeners(ac.signal, "abort")).toHaveLength(0);
   });
 
   it("refuses to issue any request when the signal is already aborted", async () => {

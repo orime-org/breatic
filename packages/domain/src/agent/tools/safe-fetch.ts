@@ -162,6 +162,48 @@ export interface SafeFetchOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Header names carrying a credential, dropped when a redirect leaves the
+ * origin the caller aimed at.
+ *
+ * `Authorization` is the one the Fetch Standard itself removes on a
+ * cross-origin redirect (whatwg/fetch#1544, shipped in Gecko and WebKit); the
+ * stated goal is to scope a developer-set credential to the origin of the
+ * initial request. The other two are on the browser's forbidden list so a page
+ * could never set them — but this runs in Node, where a caller can, so they are
+ * covered here too.
+ *
+ * The limit is worth stating rather than hiding: a vendor's own scheme
+ * (`X-Api-Key`, `X-Subscription-Token`) is NOT recognised. The spec does not
+ * recognise it either, and guessing which custom headers are secret would mean
+ * silently dropping ones that are not.
+ */
+const CREDENTIAL_HEADERS: ReadonlySet<string> = new Set([
+  "authorization",
+  "cookie",
+  "proxy-authorization",
+]);
+
+/**
+ * Drop credential headers when a redirect crosses to a different origin.
+ * @param headers - The headers sent on the previous hop.
+ * @param from - The URL the redirect came from.
+ * @param to - The URL the redirect points at.
+ * @returns The headers to send on the next hop.
+ */
+function headersForNextHop(
+  headers: Record<string, string>,
+  from: string,
+  to: string,
+): Record<string, string> {
+  if (new URL(from).origin === new URL(to).origin) return headers;
+  return Object.fromEntries(
+    Object.entries(headers).filter(
+      ([name]) => !CREDENTIAL_HEADERS.has(name.toLowerCase()),
+    ),
+  );
+}
+
 /** A hop's signal plus the clock it has to be able to stop. */
 interface HopDeadline {
   /** Aborts on this hop's deadline or the caller's cancellation. */
@@ -182,6 +224,19 @@ interface HopDeadline {
    * both halves of a request rather than a new one.
    */
   headersArrived: () => void;
+  /**
+   * Detach from the caller's signal — this hop is over and nothing will read
+   * its body.
+   *
+   * Separate from `headersArrived` because the two retire different
+   * things at different times. Only the hop whose response is RETURNED keeps
+   * its listener: the caller's cancellation still has to reach that request
+   * while the body is being read. Every hop we walk past, and every hop that
+   * failed, is finished the moment we leave it — and leaving the listener
+   * attached meant a five-hop chain left five behind on a signal the caller may
+   * hold for a whole session.
+   */
+  release: () => void;
 }
 
 /**
@@ -205,22 +260,33 @@ function hopSignal(
     );
   }, timeoutMs);
 
+  /**
+   * Forward the caller's cancellation to this hop.
+   * @returns Nothing.
+   */
+  const onCallerAbort = (): void => controller.abort(callerSignal?.reason);
+
   if (callerSignal !== undefined) {
     if (callerSignal.aborted) {
       controller.abort(callerSignal.reason);
     } else {
-      // No `once` cleanup on purpose: the caller's cancellation must keep
-      // reaching the request for as long as the body is being read, which is
-      // long after this function has returned.
-      callerSignal.addEventListener(
-        "abort",
-        () => controller.abort(callerSignal.reason),
-        { once: true },
-      );
+      // Registered for the whole life of the hop, not just the fetch: the
+      // caller's cancellation must keep reaching the returned response while
+      // its body is being read, which is long after this function returns.
+      // `release()` is what takes it off again for every hop that does NOT get
+      // returned.
+      callerSignal.addEventListener("abort", onCallerAbort, { once: true });
     }
   }
 
-  return { signal: controller.signal, headersArrived: (): void => clearTimeout(timer) };
+  return {
+    signal: controller.signal,
+    headersArrived: (): void => clearTimeout(timer),
+    release: (): void => {
+      clearTimeout(timer);
+      callerSignal?.removeEventListener("abort", onCallerAbort);
+    },
+  };
 }
 
 /**
@@ -232,9 +298,13 @@ function hopSignal(
  * @param url - The initial URL to fetch
  * @param opts - Optional headers and hop timeout
  * @returns A `Response` from the final (non-redirect) hop
- * @throws {SsrfError} if any hop resolves to a non-public IP or matches
- *   a blocked hostname
- * @throws {TypeError} for malformed URLs
+ * @throws {SsrfError} if any hop resolves to a non-public IP, matches a
+ *   blocked hostname, or carries a URL this guard cannot parse and therefore
+ *   cannot check. A URL that will not parse is refused as an SSRF failure
+ *   rather than a `TypeError` ON PURPOSE: the transport above skips its
+ *   replays only for errors the caller recognises as deterministic, and an
+ *   unparseable URL is exactly that — replaying it three times spends the
+ *   whole budget re-deriving the same answer.
  */
 export async function safeFetch(
   url: string,
@@ -242,65 +312,104 @@ export async function safeFetch(
 ): Promise<Response> {
   let current = url;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
+  let headers: Record<string, string> = { ...(opts.headers ?? {}) };
+  let deadline: HopDeadline | undefined;
 
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    // Stop before spending a DNS lookup or a request on a cancelled call.
-    // Checked per hop, so a long redirect chain cannot outlive the caller.
-    if (opts.signal?.aborted === true) {
-      throw opts.signal.reason instanceof Error
-        ? opts.signal.reason
-        : new Error("safeFetch cancelled by caller");
-    }
+  try {
+    for (let hopCount = 0; hopCount <= MAX_REDIRECTS; hopCount++) {
+      // Stop before spending a DNS lookup or a request on a cancelled call.
+      // Checked per hop, so a long redirect chain cannot outlive the caller.
+      if (opts.signal?.aborted === true) {
+        throw opts.signal.reason instanceof Error
+          ? opts.signal.reason
+          : new Error("safeFetch cancelled by caller");
+      }
 
-    const parsed = new URL(current);
+      const parsed = parseOrRefuse(current);
 
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new SsrfError(
-        `Only http/https allowed, got '${parsed.protocol}'`,
-      );
-    }
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new SsrfError(
+          `Only http/https allowed, got '${parsed.protocol}'`,
+        );
+      }
 
-    await assertHostnameAllowed(parsed.hostname);
+      await assertHostnameAllowed(parsed.hostname);
 
-    const hop = hopSignal(opts.signal, timeoutMs);
-    let res: Response;
-    try {
-      res = await fetch(current, {
-        headers,
-        redirect: "manual",
-        signal: hop.signal,
-      });
-    } finally {
-      // Whether the headers arrived or the hop failed, this clock is done. On
-      // a redirect the next hop gets its own.
-      hop.headersArrived();
-    }
+      deadline = hopSignal(opts.signal, timeoutMs);
+      let res: Response;
+      try {
+        res = await fetch(current, {
+          headers,
+          redirect: "manual",
+          signal: deadline.signal,
+        });
+      } finally {
+        // Whether the headers arrived or the hop failed, this clock is done. On
+        // a redirect the next hop gets its own.
+        deadline.headersArrived();
+      }
 
-    // Not a redirect — return to caller.
-    if (res.status < 300 || res.status >= 400) {
-      return res;
-    }
+      // Not a redirect — return to caller.
+      if (res.status < 300 || res.status >= 400) {
+        return res;
+      }
 
-    const location = res.headers.get("location");
-    if (!location) {
-      // 3xx without a Location header — pass it back, caller decides.
-      return res;
-    }
+      const location = res.headers.get("location");
+      if (!location) {
+        // 3xx without a Location header — pass it back, caller decides.
+        return res;
+      }
 
-    // Let this hop's body go before asking for the next one. Dropping the
-    // reference is not the same thing: an unread body holds its connection
-    // until the peer gives up, so a chain of redirects held one apiece — and
-    // a redirect is the common case, not the exotic one (http to https, a
-    // tracking hop, a CDN). A 3xx body is a stub page, so this resolves at
-    // once. The catch is required rather than tidy: cancelling a body the
-    // peer already errored returns a rejected promise, and an unhandled
-    // rejection ends the process.
-    await res.body?.cancel().catch(() => {});
+      // Let this hop's body go before asking for the next one. Dropping the
+      // reference is not the same thing: an unread body holds its connection
+      // until the peer gives up, so a chain of redirects held one apiece — and
+      // a redirect is the common case, not the exotic one (http to https, a
+      // tracking hop, a CDN). A 3xx body is a stub page, so this resolves at
+      // once. The catch is required rather than tidy: cancelling a body the
+      // peer already errored returns a rejected promise, and an unhandled
+      // rejection ends the process.
+      await res.body?.cancel().catch(() => {});
 
-    // Resolve relative redirect against the current URL.
-    current = new URL(location, current).href;
+      // Resolve relative redirect against the current URL.
+      const next = parseOrRefuse(location, current).href;
+      // Scope any credential to the origin the caller aimed at, the way the
+      // platform's own fetch does. Computed BEFORE `current` moves on, because
+      // the question is about the step between the two.
+      headers = headersForNextHop(headers, current, next);
+      current = next;
+
+      // This hop is finished and nothing will read its body, so it must stop
+      // holding a listener on the caller's signal. Only the response we RETURN
+      // keeps one.
+      deadline.release();
+      deadline = undefined;
+      }
+
+    throw new SsrfError(`Too many redirects (>${MAX_REDIRECTS})`);
+  } catch (err) {
+    // Nothing will read a body we never handed out, so the last hop's listener
+    // goes too. The success paths above return without reaching this.
+    deadline?.release();
+    throw err;
   }
+}
 
-  throw new SsrfError(`Too many redirects (>${MAX_REDIRECTS})`);
+/**
+ * Parse a URL, refusing an unparseable one as an SSRF failure.
+ *
+ * A URL we cannot parse is a URL we cannot check, which is the guard's whole
+ * subject — and the TYPE matters as much as the refusal: `new URL()` throws a
+ * `TypeError`, which the transport above reads as weather and replays. The
+ * same malformed `Location` was followed three times before this existed.
+ * @param input - The URL text.
+ * @param base - Base URL for a relative reference.
+ * @returns The parsed URL.
+ * @throws {SsrfError} When it cannot be parsed.
+ */
+function parseOrRefuse(input: string, base?: string): URL {
+  try {
+    return base === undefined ? new URL(input) : new URL(input, base);
+  } catch {
+    throw new SsrfError(`Unparseable URL: ${input}`);
+  }
 }

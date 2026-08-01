@@ -57,6 +57,32 @@ function plainHeaders(headers: HeadersInit | undefined): Record<string, string> 
 }
 
 /**
+ * Read the target URL off whatever `fetch` was handed.
+ *
+ * `typeof fetch` accepts a `Request`, and that object carries a method, a body
+ * and headers of its own — everything this seam refuses elsewhere, arriving
+ * through the one parameter that was not being checked. The previous code ran
+ * it through `String(input)`, which yields "[object Request]": the request's
+ * own contents were dropped, and what came out was a `TypeError` from the URL
+ * parser rather than a refusal the transport recognises as final, so the same
+ * broken request was replayed three times.
+ *
+ * A `URL` is fine and is deliberately not refused — it stringifies to exactly
+ * the one thing this seam needs and carries nothing else.
+ * @param input - Whatever the caller passed as the request.
+ * @returns The URL to fetch.
+ * @throws {UnsupportedRequestError} For a `Request`, which carries more than
+ *   this seam can honour.
+ */
+function targetUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  throw new UnsupportedRequestError(
+    "the request arrived as a Request object, which carries a method, body and headers this seam cannot honour",
+  );
+}
+
+/**
  * Present {@link safeFetch} with the standard fetch signature so the shared
  * transport can drive it.
  *
@@ -87,7 +113,7 @@ export const guardedFetch: typeof fetch = async (
       `asked for ${method}${body !== null ? " with a body" : ""}, and only GET is carried`,
     );
   }
-  return safeFetch(typeof input === "string" ? input : String(input), {
+  return safeFetch(targetUrl(input), {
     headers: plainHeaders(init?.headers),
     signal: init?.signal ?? undefined,
   });

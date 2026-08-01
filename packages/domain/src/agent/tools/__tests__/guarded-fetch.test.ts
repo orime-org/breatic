@@ -11,7 +11,10 @@
  * an untested seam that quietly dropped whatever did not fit.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+const lookupMock = vi.hoisted(() => vi.fn());
+vi.mock("node:dns/promises", () => ({ lookup: lookupMock }));
 
 import {
   guardedFetch,
@@ -19,6 +22,17 @@ import {
 } from "@domain/agent/tools/guarded-fetch.js";
 
 describe("guardedFetch — the transport/SSRF seam", () => {
+  const realFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    lookupMock.mockReset();
+    lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
   it("refuses a method the guard cannot carry instead of downgrading it", async () => {
     // The failure this prevents is not an error — it is the absence of one. A
     // POST silently becoming a GET returns a plausible 200 from the wrong
@@ -35,15 +49,50 @@ describe("guardedFetch — the transport/SSRF seam", () => {
     ).rejects.toThrow(UnsupportedRequestError);
   });
 
-  it("treats an absent method as GET, the way fetch itself does", async () => {
+  it("treats an absent method as GET and lets the request through", async () => {
     // Not a redundant case: reading `init.method` without a default would make
     // every transport-driven call — none of which set one — fail closed.
-    // A rejection here would mean the guard refuses its only real caller, so
-    // this asserts it gets PAST the gate. It then fails on DNS, which is the
-    // guard doing its job on a domain that does not resolve.
-    await expect(guardedFetch("https://not-a-real-host.invalid/")).rejects.not.toThrow(
-      UnsupportedRequestError,
+    //
+    // The assertion is that the request was ISSUED, not merely that it failed
+    // with something other than a refusal. The earlier version asserted
+    // `rejects.not.toThrow(UnsupportedRequestError)` against a `.invalid`
+    // hostname: it did a live DNS lookup on every run and would have passed on
+    // any rejection at all, including one that meant the guard was broken.
+    const issued = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response("ok")),
     );
+    globalThis.fetch = issued as unknown as typeof fetch;
+
+    const res = await guardedFetch("https://example.test/");
+
+    expect(res.status).toBe(200);
+    expect(issued).toHaveBeenCalledTimes(1);
+    expect(issued.mock.calls[0]?.[0]).toBe("https://example.test/");
+  });
+
+  it("refuses a Request object rather than stringifying it into a broken URL", async () => {
+    // `typeof fetch` accepts a Request, and the seam used to run it through
+    // `String(input)` — which yields "[object Request]", drops the method,
+    // body and headers it carries, and then dies in the URL parser. The error
+    // that came out was a plain TypeError, so the transport did not recognise
+    // it as final and replayed the same broken request three times.
+    const req = new Request("https://example.test/api", { method: "POST" });
+
+    await expect(guardedFetch(req)).rejects.toThrow(UnsupportedRequestError);
+  });
+
+  it("accepts a URL object, which stringifies to exactly the right thing", async () => {
+    // The sibling of the case above, and the reason the fix is not "refuse
+    // anything that is not a string": a URL is a faithful carrier of the one
+    // thing this seam needs.
+    const issued = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response("ok")),
+    );
+    globalThis.fetch = issued as unknown as typeof fetch;
+
+    await guardedFetch(new URL("https://example.test/path?q=1"));
+
+    expect(issued.mock.calls[0]?.[0]).toBe("https://example.test/path?q=1");
   });
 
   it("refuses headers given as a Headers instance instead of losing them", async () => {
