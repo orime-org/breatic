@@ -38,7 +38,7 @@
  * the agent's fetch and search tools, and the browser upload. That behaviour
  * is unchanged from before this transport existed.
  *
- * Measured (`engineering/demo/2026-07-30-unread-body-socket-probe.mjs`): a body
+ * Measured against a real socket: a body
  * of 64 KiB or more stops the socket being reused, and anything smaller is
  * buffered and the connection returns to the pool. 64 KiB is the client's
  * stream high-water mark, not a size anyone chose. An earlier version of this
@@ -83,6 +83,22 @@ export interface GuardedResponse {
   /**
    * Expose the body as a stream that carries the deadline with it, for
    * payloads too large to buffer (asset downloads write straight to disk).
+   *
+   * One obligation comes back to the consumer, and it is easy to get wrong:
+   * CATCH the promise from `cancel()`. Per the streams spec, cancelling a
+   * stream that has already errored returns a promise rejected with the
+   * stored error, and an uncaught rejection terminates a Node process — so
+   * the textbook `finally { void reader.cancel() }` is a crash waiting for a
+   * stalled body. Measured on both this stream and a plain one
+   * against a real socket: the
+   * behaviour is the platform's, identical either way, so nothing here can
+   * fix it for the caller.
+   *
+   * It is spelled out because THIS stream errors far more readily than most:
+   * it fails on its own the moment a body goes quiet past the idle deadline,
+   * which is precisely when a consumer is winding down and reaching for
+   * `cancel()`. `pipeline()` handles this correctly and is what the one
+   * consumer in the repo uses; hand-rolled reader loops must not skip it.
    * @returns A stream whose every pull is deadline-guarded.
    */
   stream(): ReadableStream<Uint8Array>;
@@ -96,6 +112,20 @@ export interface BodyGuardContext {
   idleTimeoutMs: number;
   /** The caller's cancellation, if any. */
   callerSignal?: AbortSignal;
+  /**
+   * Largest body this caller will accept, in bytes. Unbounded when absent.
+   *
+   * A parameter rather than a fixed number because the acceptable size varies
+   * by orders of magnitude between callers on this same transport: a vendor's
+   * JSON reply is kilobytes, a generated video is hundreds of megabytes, and
+   * one figure cannot serve both.
+   *
+   * It exists because ONE caller does not choose its own URL. The agent's
+   * fetch tool is handed a URL by the model, so whoever owns that host
+   * decides how many bytes arrive — and the tool's own character limit is
+   * applied to a string that is already in memory by then.
+   */
+  maxBytes?: number;
   /**
    * Tear down the underlying request. Called when the deadline is breached,
    * because dropping the reader alone can leave the connection held open —
@@ -119,8 +149,111 @@ function abortErrorOf(signal: AbortSignal, label: string): Error {
 }
 
 /**
- * Read one chunk, failing if the wait exceeds the idle deadline or the
- * caller cancels.
+ * The single place a caller's cancellation is turned into an outcome.
+ *
+ * There used to be two: one armed while no read had started, one armed for
+ * the duration of each read, handing off to each other. Every handoff is a
+ * seam, and `stream()` opened one wide — it returns a lazy stream, so the
+ * gap between "read method called" and "a read is actually in flight" can be
+ * arbitrarily long, or never close at all. Measured: pressing stop in that
+ * gap reached nothing. One relay, armed from the moment the handle exists
+ * until the body is finished, has no handoff to get wrong.
+ */
+interface CancellationRelay {
+  /** The cancellation that already landed, or null while none has. */
+  readonly error: () => Error | null;
+  /**
+   * Arm a rejection for the duration of one read.
+   * @returns The promise to race, and the disposer that unregisters it.
+   */
+  wait: () => { promise: Promise<never>; dispose: () => void };
+  /** Stop relaying — the body is finished and nothing is left to cancel. */
+  retire: () => void;
+}
+
+/**
+ * Build the relay and arm it on the caller's signal.
+ * @param ctx - The guard's context.
+ * @returns A relay that survives for as long as the request does.
+ */
+function armCancellation(ctx: BodyGuardContext): CancellationRelay {
+  const { callerSignal, label } = ctx;
+  let landed: Error | null =
+    callerSignal?.aborted === true ? abortErrorOf(callerSignal, label) : null;
+  const waiting = new Set<(error: Error) => void>();
+
+  /** Turn the caller's cancellation into an outcome for whoever is waiting. */
+  const onAbort = (): void => {
+    if (callerSignal === undefined) return;
+    landed = abortErrorOf(callerSignal, label);
+    // Reject the pending reads BEFORE tearing the request down. Aborting a
+    // real request errors its body stream, and that rejection lands in the
+    // microtask queue too — abort first and it can win the race, surfacing a
+    // bare "This operation was aborted" instead of the caller's own reason.
+    // Which error wins cannot be left to ordering luck, because the caller
+    // has to tell an idle body apart from its own cancellation. Measured
+    // against a real socket; a hand-built stream ignores the abort entirely
+    // and never exposes this.
+    for (const reject of waiting) reject(landed);
+    waiting.clear();
+    ctx.abortRequest();
+  };
+
+  if (landed !== null) {
+    // The caller cancelled before this handle existed — a race the transport
+    // loses whenever a response resolves in the same tick as a stop. Nothing
+    // will fire later: `abort` was dispatched before we were watching, and a
+    // listener added now never runs. Tear the request down here or it stays
+    // live with nobody left to end it.
+    ctx.abortRequest();
+  } else {
+    callerSignal?.addEventListener("abort", onAbort, { once: true });
+  }
+
+  return {
+    error: (): Error | null => landed,
+    wait: (): { promise: Promise<never>; dispose: () => void } => {
+      let reject!: (error: Error) => void;
+      const promise = new Promise<never>((_resolve, rejectFn) => {
+        reject = rejectFn;
+      });
+      waiting.add(reject);
+      return { promise, dispose: (): boolean => waiting.delete(reject) };
+    },
+    retire: (): void => {
+      waiting.clear();
+      callerSignal?.removeEventListener("abort", onAbort);
+    },
+  };
+}
+
+/**
+ * Count a body's bytes against the caller's cap.
+ *
+ * Enforced as chunks arrive rather than on the finished buffer, which is the
+ * whole point: a cap checked afterwards has already paid for the memory it
+ * was meant to refuse. It applies to `stream()` as well as the buffered
+ * reads — the cap describes the response, not the method the caller picked.
+ * @param ctx - The guard's context, for the cap and the label.
+ * @returns A meter to feed every chunk; a no-op when no cap was set.
+ */
+function meterBytes(ctx: BodyGuardContext): (chunk: Uint8Array) => void {
+  const { maxBytes, label } = ctx;
+  if (maxBytes === undefined) return (): void => {};
+  let seen = 0;
+  return (chunk: Uint8Array): void => {
+    seen += chunk.byteLength;
+    if (seen > maxBytes) {
+      throw new Error(
+        `${label} response body exceeded ${maxBytes} bytes and was refused`,
+      );
+    }
+  };
+}
+
+/**
+ * Read one chunk, failing if the wait exceeds the idle deadline, the caller
+ * cancels, or the body outgrows its cap.
  *
  * The deadline is armed per chunk rather than once for the whole body —
  * that is the difference between "no data for N ms" and "took longer than
@@ -128,32 +261,32 @@ function abortErrorOf(signal: AbortSignal, label: string): Error {
  * finish.
  * @param reader - Reader over the source body.
  * @param ctx - The guard's context.
+ * @param relay - The guard's single cancellation relay.
+ * @param spend - The guard's byte meter, fed every chunk that arrives.
  * @returns The chunk, or a done marker at the end of the body.
- * @throws {Error} On an idle-deadline breach or the caller's cancellation.
+ * @throws {Error} On an idle-deadline breach, the caller's cancellation, or a
+ *   body that outgrew its cap.
  */
 async function readChunk(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   ctx: BodyGuardContext,
+  relay: CancellationRelay,
+  spend: (chunk: Uint8Array) => void,
 ): Promise<ReadableStreamReadResult<Uint8Array>> {
-  const { callerSignal, idleTimeoutMs, label } = ctx;
+  const { idleTimeoutMs, label } = ctx;
 
-  if (callerSignal?.aborted === true) {
+  const already = relay.error();
+  if (already !== null) {
     ctx.abortRequest();
-    throw abortErrorOf(callerSignal, label);
+    throw already;
   }
 
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let onAbort: (() => void) | undefined;
+  const waiter = relay.wait();
 
   try {
-    // Reject BEFORE tearing the request down, in both branches. Aborting a
-    // real request makes its body stream error out, and that rejection lands
-    // in the microtask queue too — abort first and it can win the race below,
-    // surfacing a bare "This operation was aborted" instead of the reason.
-    // The caller has to be able to tell an idle body apart from its own
-    // cancellation, so which error wins cannot be left to ordering luck.
-    // Measured against a real socket; a hand-built stream in a unit test
-    // ignores the abort entirely and never exposes this.
+    // Same ordering rule as the relay's, for the same reason: reject first,
+    // tear down second.
     const deadline = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
         reject(
@@ -165,42 +298,56 @@ async function readChunk(
       }, idleTimeoutMs);
     });
 
-    const cancellation = new Promise<never>((_resolve, reject) => {
-      if (callerSignal === undefined) return;
-      onAbort = (): void => {
-        reject(abortErrorOf(callerSignal, label));
+    const result = await Promise.race([reader.read(), deadline, waiter.promise]);
+    if (result.value !== undefined) {
+      try {
+        spend(result.value);
+      } catch (error) {
+        // Same ordering rule again: decide the failure first, tear the
+        // request down second, so the cap is what the caller sees rather
+        // than the abort it triggers.
         ctx.abortRequest();
-      };
-      callerSignal.addEventListener("abort", onAbort, { once: true });
-    });
-
-    return await Promise.race([reader.read(), deadline, cancellation]);
+        throw error;
+      }
+    }
+    return result;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
-    if (onAbort !== undefined) ctx.callerSignal?.removeEventListener("abort", onAbort);
+    waiter.dispose();
   }
 }
 
 /**
  * Drain the whole body under the deadline.
  * @param ctx - The guard's context.
+ * @param relay - The guard's single cancellation relay.
+ * @param spend - The guard's byte meter, fed every chunk that arrives.
  * @returns Every chunk, in order.
- * @throws {Error} On an idle-deadline breach or the caller's cancellation.
+ * @throws {Error} On an idle-deadline breach, the caller's cancellation, or a
+ *   body that outgrew its cap.
  */
-async function drain(ctx: BodyGuardContext): Promise<Uint8Array[]> {
+async function drain(
+  ctx: BodyGuardContext,
+  relay: CancellationRelay,
+  spend: (chunk: Uint8Array) => void,
+): Promise<Uint8Array[]> {
   const body = ctx.response.body;
-  if (body === null) return [];
+  if (body === null) {
+    relay.retire();
+    return [];
+  }
 
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   try {
     for (;;) {
-      const { done, value } = await readChunk(reader, ctx);
+      const { done, value } = await readChunk(reader, ctx, relay, spend);
       if (done) return chunks;
       if (value !== undefined) chunks.push(value);
     }
   } finally {
     reader.releaseLock();
+    relay.retire();
   }
 }
 
@@ -227,12 +374,17 @@ function concat(chunks: readonly Uint8Array[]): Uint8Array {
  * both learned by getting them wrong:
  *
  * A cancellation has to reach the live request for as long as the request is
- * live — not merely while a read happens to be in flight. The transport's
- * per-attempt listener retires when the headers land, and `readChunk` listens
- * only for the duration of one pending read, so between "handle returned" and
- * "first read issued" nothing was watching: pressing stop left the server
- * streaming to nobody. That window is covered here rather than by asking every
- * caller to read immediately, an invariant invisible at the call site.
+ * live — not merely while a read happens to be in flight. That is what
+ * `armCancellation` is for, and the reason it is ONE relay rather than a
+ * listener per phase: an earlier cut had a pre-read listener that `claim()`
+ * retired plus a per-read listener inside `readChunk`, and the handoff between
+ * them was a hole. `text()`/`json()`/`arrayBuffer()` hid it, because they start
+ * draining in the same tick. `stream()` does not — it hands back a lazy stream
+ * whose next pull arrives whenever the consumer gets to it, so the uncovered
+ * gap could last as long as a slow disk cared to make it. Measured on the real
+ * transport: a stop pressed in that gap reached nothing at all. The window is
+ * covered here rather than by asking every caller to read immediately, an
+ * invariant invisible at the call site.
  *
  * The body is a one-shot resource, so a second read is refused instead of
  * being answered with nothing. The platform's own `Response` throws; returning
@@ -244,25 +396,8 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
   const { response } = ctx;
 
   let claimed = false;
-
-  /**
-   * Forward a cancellation that arrives before any read has started.
-   *
-   * Deliberately narrow: once a read owns the body, `readChunk` handles
-   * cancellation itself, and it must reject with the caller's reason BEFORE
-   * aborting — the abort errors the source stream, and that error would
-   * otherwise win the race and mask the reason. A listener that stayed armed
-   * here would preempt exactly that ordering, so `claim` retires it.
-   */
-  const onCallerAbort = (): void => {
-    ctx.abortRequest();
-  };
-  ctx.callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
-
-  /** Retire the pre-read cancellation listener. */
-  const settle = (): void => {
-    ctx.callerSignal?.removeEventListener("abort", onCallerAbort);
-  };
+  const relay = armCancellation(ctx);
+  const spend = meterBytes(ctx);
 
   /**
    * Take ownership of the body for one read.
@@ -276,7 +411,6 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
       );
     }
     claimed = true;
-    settle();
   };
 
   return {
@@ -286,17 +420,17 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
 
     async text(): Promise<string> {
       claim("text");
-      return new TextDecoder().decode(concat(await drain(ctx)));
+      return new TextDecoder().decode(concat(await drain(ctx, relay, spend)));
     },
 
     async json(): Promise<unknown> {
       claim("json");
-      return JSON.parse(new TextDecoder().decode(concat(await drain(ctx))));
+      return JSON.parse(new TextDecoder().decode(concat(await drain(ctx, relay, spend))));
     },
 
     async arrayBuffer(): Promise<ArrayBuffer> {
       claim("arrayBuffer");
-      const joined = concat(await drain(ctx));
+      const joined = concat(await drain(ctx, relay, spend));
       // Allocate and copy rather than slicing the view's own `buffer`. That
       // property is typed `ArrayBuffer | SharedArrayBuffer`, so slicing it
       // yields a union no `ArrayBuffer` consumer accepts — and whether the
@@ -313,6 +447,7 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
       claim("stream");
       const body = response.body;
       if (body === null) {
+        relay.retire();
         return new ReadableStream<Uint8Array>({
           start(controller) {
             controller.close();
@@ -323,11 +458,39 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
       return new ReadableStream<Uint8Array>({
         async pull(controller) {
           // Each pull is deadline-guarded, so the protection travels with the
-          // stream rather than stopping at this function's boundary.
-          const { done, value } = await readChunk(reader, ctx);
-          if (done) {
-            controller.close();
+          // stream rather than stopping at this function's boundary. The gaps
+          // BETWEEN pulls are covered too, by the relay — a consumer that
+          // pauses (a slow disk, a full pipe) leaves no window in which a
+          // cancellation would reach nobody.
+          let chunk: ReadableStreamReadResult<Uint8Array>;
+          try {
+            chunk = await readChunk(reader, ctx, relay, spend);
+          } catch (error) {
+            // A failed pull ends this body as surely as a finished one, and it
+            // is the ONLY exit that path has: per the streams spec a rejected
+            // `pull()` errors the stream instead of running its cancel
+            // algorithm, so `cancel()` below never gets a chance to clean up.
+            // Left out, the relay outlives the request it was relaying for —
+            // still holding a listener on the caller's signal, still able to
+            // tear down something that already ended. `drain()` retires in a
+            // `finally` for the same reason; this is that invariant's other
+            // half, which is where it went missing.
             reader.releaseLock();
+            relay.retire();
+            throw error;
+          }
+          const { done, value } = chunk;
+          if (done) {
+            // Release before closing, because `close()` throws on a stream the
+            // consumer already cancelled and the lock has to come off either
+            // way. Measured against a real socket:
+            // that throw has no observable consequence — a cancel resolves the
+            // pending read as done first, and the late error lands on an
+            // already-closed stream. So this is ordering correctness, not a bug
+            // fix, and it is recorded that way rather than dressed up as one.
+            reader.releaseLock();
+            relay.retire();
+            controller.close();
             return;
           }
           if (value !== undefined) controller.enqueue(value);
@@ -349,9 +512,10 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
           // unhandled-rejection net, so without this the worker dies with
           // every job in flight.
           //
-          // Measured both halves: `engineering/demo/2026-07-30-stream-cancel-crash-repro.ts`
+          // Measured both halves — a child process exiting non-zero pinned
           // for the ordering, and the "already errored before cancel" test
           // below for this catch. Deleting either one alone still crashes.
+          relay.retire();
           void reader
             .cancel(reason)
             .catch(() => {

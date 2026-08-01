@@ -20,7 +20,7 @@
  * over; the predicate was not consulted on the final attempt so exhaustion
  * could not be reported; and it consumed a failing response's body, which
  * erased the vendor error text the worker puts in its logs). The probes
- * are kept at `engineering/demo/2026-07-30-ky-retry-behaviour-probe*.mjs`.
+ * were run against that library directly, one workaround at a time.
  * The loop below is what those five workarounds were emulating.
  */
 
@@ -70,6 +70,21 @@ export interface HttpRequestOptions {
    */
   replaySafe: boolean;
   /**
+   * Caller-owned fact: a person is waiting on this request right now.
+   *
+   * The browser sets it; a worker or a job does not. Like `replaySafe` it
+   * describes the caller's situation rather than a preference — and like
+   * `replaySafe`, the transport cannot work it out for itself.
+   *
+   * It decides one thing: how long a server-directed `Retry-After` may be
+   * before serving it is worse than failing. Ten seconds with someone
+   * watching, sixty without (`constants.ts` carries the reasoning for both
+   * figures). Past the limit the request fails and the figure the server
+   * asked for comes back with it, so the caller can say what happened
+   * instead of leaving a person in front of a spinner.
+   */
+  interactive?: boolean;
+  /**
    * How long one attempt may wait FOR RESPONSE HEADERS, in milliseconds.
    * Stays a parameter because it genuinely varies — vendor latencies differ
    * by an order of magnitude and an upload's stall guard scales with file
@@ -98,6 +113,18 @@ export interface HttpRequestOptions {
    * without waiting 30 seconds.
    */
   bodyIdleTimeoutMs?: number;
+  /**
+   * Largest response body this caller will accept, in bytes. Unbounded when
+   * absent, which is what every caller that chooses its own URL wants: a
+   * vendor reply and a generated video differ by orders of magnitude, and the
+   * asset downloads must take whatever the file weighs.
+   *
+   * Set it where the URL is chosen by someone else. The agent's fetch tool is
+   * the case: the model names the host, so the size of the answer is decided
+   * by whoever owns it, and truncating afterwards only trims a string that is
+   * already in memory.
+   */
+  maxBodyBytes?: number;
   /**
    * Sink for retry telemetry. This layer never logs (library packages must
    * not), so the application layer routes these to its logger.
@@ -154,7 +181,7 @@ interface AttemptDeadline {
    * body goes idle, dropping the reader is not enough to release the
    * connection — aborting the request is. Measured: an abort raised after
    * the headers arrived does interrupt an in-flight body read
-   * (`engineering/demo/2026-07-30-body-idle-timeout-probe.mjs`, check 2).
+   * against a real socket.
    */
   abort: () => void;
 }
@@ -291,6 +318,7 @@ export async function httpRequest(
       response,
       idleTimeoutMs: options.bodyIdleTimeoutMs ?? BODY_IDLE_TIMEOUT_MS,
       callerSignal: options.signal,
+      ...(options.maxBodyBytes !== undefined && { maxBytes: options.maxBodyBytes }),
       abortRequest,
       label,
     });
@@ -341,6 +369,7 @@ export async function httpRequest(
       retryAfter,
       transportError,
       replaySafe: options.replaySafe,
+      ...(options.interactive !== undefined && { interactive: options.interactive }),
       // `index` counts attempts made; the predicate counts the replay
       // being considered, which is one ahead.
       attempt: index + 1,
@@ -377,7 +406,7 @@ export async function httpRequest(
       }
       throw failure instanceof Error
         ? failure
-        : new Error(`${label} request to ${url} failed: ${String(failure)}`);
+        : new Error(`${label} request to ${safeUrl} failed: ${String(failure)}`);
     }
 
     // The response we are about to walk away from has no owner. Ownership was
@@ -426,5 +455,31 @@ export async function httpRequestJson(
     throw new Error(`${label} HTTP ${response.status}: ${body}`);
   }
 
-  return (await response.json()) as Record<string, unknown>;
+  const parsed: unknown = await response.json();
+  // Checked, not asserted. `json()` hands back `unknown` because that is what
+  // it is, and casting it to a record does not make it one: a vendor that
+  // answers `null`, an array or a bare string still type-checks here and then
+  // fails as `Cannot read properties of null` somewhere in a provider
+  // transport, with nothing left to say which call produced it. The boundary
+  // is where the shape stops being a guess, so it is where the check belongs.
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(
+      `${label} expected a JSON object from ${redactUrl(url)}, got ${describeJson(parsed)}`,
+    );
+  }
+  return parsed as Record<string, unknown>;
+}
+
+/**
+ * Name a JSON value's shape for an error message, without quoting it.
+ *
+ * The value itself is deliberately left out: a body that is the wrong shape
+ * can still be megabytes long, or carry a token the vendor echoed back.
+ * @param value - The parsed body.
+ * @returns A short description of what arrived.
+ */
+function describeJson(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "an array";
+  return `a ${typeof value}`;
 }

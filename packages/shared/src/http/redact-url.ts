@@ -31,7 +31,31 @@ export function redactUrl(raw: string): string {
     return "<unparseable url>";
   }
 
+  // `origin + pathname` is an http-shaped assumption, and it fails loudly off
+  // that shape: a `data:` URL parses fine, has origin `"null"`, and carries its
+  // whole payload in the pathname — so the redaction that hides `?key=` hands a
+  // `data:` payload straight back. Measured: `data:text/plain,SECRET` used to
+  // come out as `nulltext/plain,SECRET`.
+  //
+  // This is reachable rather than theoretical. The agent's fetch tool takes a
+  // URL from the model; the SSRF guard rejects the non-http scheme; and the
+  // transport then redacts that same URL for the event it emits on the way out.
+  // The guard stops the REQUEST — it does not stop the string reaching a log.
+  // The scheme is the only part safe to name, so it is the only part named.
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return `<non-http url: ${parsed.protocol}>`;
+  }
+
+  // Query and fragment are marked separately because they are different
+  // things and the log should not claim otherwise: a fragment never reaches
+  // the server at all, and reporting `https://host/path#token=x` as
+  // `https://host/path?<redacted>` describes a query string that was never
+  // sent. Both are still dropped — a fragment sits in the same string we are
+  // about to hand to a log, so what it holds matters here even though the
+  // server never saw it.
   const base = `${parsed.origin}${parsed.pathname}`;
-  const hasQuery = parsed.search !== "" || parsed.hash !== "";
-  return hasQuery ? `${base}?<redacted>` : base;
+  const marks =
+    (parsed.search !== "" ? "?<redacted>" : "") +
+    (parsed.hash !== "" ? "#<redacted>" : "");
+  return `${base}${marks}`;
 }

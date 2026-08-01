@@ -5,47 +5,35 @@
  * Web fetch tool — retrieve URL content as text.
  *
  * Ported from backend/agent/tools/builtin/web.py (WebFetchTool).
- * Uses {@link safeFetch} to block SSRF against internal / metadata
+ * Uses {@link guardedFetch} to block SSRF against internal / metadata
  * endpoints on every hop (including redirects).
  */
 import { tool } from "ai";
 import { z } from "zod";
 import { httpRequest } from "@breatic/shared";
+import { getAgentConfig } from "@breatic/core";
 
-import { safeFetch, SsrfError } from "@domain/agent/tools/safe-fetch.js";
+import {
+  guardedFetch,
+  UnsupportedRequestError,
+} from "@domain/agent/tools/guarded-fetch.js";
+import { SsrfError } from "@domain/agent/tools/safe-fetch.js";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36";
 
-const DEFAULT_MAX_CHARS = 60_000;
+/*
+ * There used to be a `DEFAULT_MAX_CHARS = 60_000` here, while
+ * `config/agent.yaml` carried `web_fetch_max_chars: 50000` that nothing ever
+ * read. Two numbers for one limit, disagreeing, and the one an operator could
+ * actually change was the dead one. The yaml is now the only copy.
+ */
 
 /**
  * Per-attempt ceiling for one page fetch. Still a literal here; task #22
  * moves every tool's timeout into `config/agent.yaml` in one pass.
  */
 const FETCH_TIMEOUT_MS = 30_000;
-
-/**
- * Present {@link safeFetch} with the standard fetch signature so the shared
- * transport can drive it.
- *
- * Retrying ABOVE the guard rather than inside a connection pool is the whole
- * reason for this shape: every replay re-runs the per-hop DNS resolution and
- * range check, so a rebinding answer on a later attempt is still caught. A
- * pool-level retry would reconnect beneath the check and see none of it.
- *
- * `init` here always comes from the transport, which passes plain header
- * records and its own composed signal.
- * @param input - Request URL, as handed over by the transport.
- * @param init - Headers plus the transport's per-attempt signal.
- * @returns The guarded response.
- * @throws {SsrfError} When any hop resolves to a non-public address.
- */
-const guardedFetch: typeof fetch = async (input, init) =>
-  safeFetch(typeof input === "string" ? input : String(input), {
-    headers: init?.headers as Record<string, string> | undefined,
-    signal: init?.signal ?? undefined,
-  });
 
 /**
  * Remove HTML tags, scripts, and styles; unescape entities.
@@ -86,7 +74,7 @@ function normalize(text: string): string {
  * Returns a JSON object with url, status, text length, and the
  * extracted content. HTML pages are stripped to plain text.
  *
- * The URL is validated and followed via {@link safeFetch}, which
+ * The URL is validated and followed via {@link guardedFetch}, which
  * blocks any hop resolving to a private / loopback / link-local /
  * reserved / metadata IP — closing SSRF against internal services.
  */
@@ -104,7 +92,8 @@ export const webFetch = tool({
       .describe("Max characters to return"),
   }),
   execute: async ({ url, maxChars }): Promise<string> => {
-    const limit = maxChars ?? DEFAULT_MAX_CHARS;
+    const agentCfg = getAgentConfig();
+    const limit = maxChars ?? agentCfg.web_fetch_max_chars;
 
     try {
       const res = await httpRequest(
@@ -114,11 +103,22 @@ export const webFetch = tool({
           // Fetching a page only reads, so a flaky attempt is safe to replay.
           replaySafe: true,
           timeoutMs: FETCH_TIMEOUT_MS,
+          // The one caller on this transport that does not choose its own
+          // URL: the model names the host, so how many bytes come back is
+          // decided by whoever owns it. `limit` above is applied to a string
+          // that is already in memory, which is no defence — this refuses the
+          // bytes as they arrive.
+          maxBodyBytes: agentCfg.web_fetch_max_bytes,
           // Every replay goes back through the SSRF guard.
           fetchImpl: guardedFetch,
           // A blocked address is blocked on every attempt — replaying it
           // would only burn the budget before returning the same refusal.
-          isFatal: (err) => err instanceof SsrfError,
+          // Both refusals are deterministic: a blocked address is blocked on
+          // every attempt, and a request shape this seam cannot carry is one
+          // it cannot carry three times either. Without the second clause the
+          // transport would spend its whole budget re-hitting the same wall.
+          isFatal: (err) =>
+            err instanceof SsrfError || err instanceof UnsupportedRequestError,
           label: "web_fetch",
         },
       );

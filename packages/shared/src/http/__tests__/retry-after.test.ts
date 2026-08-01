@@ -17,7 +17,10 @@
 import { describe, it, expect } from "vitest";
 
 import { httpRequest } from "@shared/http/request.js";
-import { MAX_RETRY_AFTER_MS } from "@shared/http/constants.js";
+import {
+  MAX_RETRY_AFTER_INTERACTIVE_MS,
+  MAX_RETRY_AFTER_BACKGROUND_MS,
+} from "@shared/http/constants.js";
 
 const URL_UNDER_TEST = "https://vendor.test/v1/generate";
 
@@ -72,10 +75,35 @@ describe("Retry-After relay", () => {
     expect(waits).toEqual([5_000]);
   });
 
-  it("clamps an absurd Retry-After instead of pinning the caller for a day", async () => {
+  it("gives up on an absurd Retry-After rather than serving a shortened one", async () => {
+    // This used to clamp: a server asking for a day was served ten seconds, a
+    // figure nobody had sent. It satisfied neither party — not the server,
+    // whose recovery time we overrode, nor whoever was waiting.
     const { sleepImpl, waits } = recordingSleep();
     const fetchImpl = scriptedFetch([
       rateLimited("86400"),
+      new Response("{}", { status: 200 }),
+    ]);
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      replaySafe: true,
+      timeoutMs: 1_000,
+      bodyIdleTimeoutMs: 200,
+      fetchImpl,
+      sleepImpl,
+      label: "probe",
+    });
+
+    expect(waits).toEqual([]);
+    // The 429 itself comes back, so the caller can read the header and say
+    // what the service actually asked for.
+    expect(res.status).toBe(429);
+  });
+
+  it("serves a wait a background caller can accept, exactly as asked", async () => {
+    const { sleepImpl, waits } = recordingSleep();
+    const fetchImpl = scriptedFetch([
+      rateLimited("55"),
       new Response("{}", { status: 200 }),
     ]);
 
@@ -88,7 +116,32 @@ describe("Retry-After relay", () => {
       label: "probe",
     });
 
-    expect(waits).toEqual([MAX_RETRY_AFTER_MS]);
+    expect(waits).toEqual([55_000]);
+    expect(55_000).toBeLessThanOrEqual(MAX_RETRY_AFTER_BACKGROUND_MS);
+  });
+
+  it("refuses for an interactive caller a wait a background one would serve", async () => {
+    // The same 20s answer, two callers, two right outcomes: a worker waits
+    // because nobody is watching it; an upload fails because somebody is.
+    const { sleepImpl, waits } = recordingSleep();
+    const fetchImpl = scriptedFetch([
+      rateLimited("20"),
+      new Response("{}", { status: 200 }),
+    ]);
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      replaySafe: true,
+      interactive: true,
+      timeoutMs: 1_000,
+      bodyIdleTimeoutMs: 200,
+      fetchImpl,
+      sleepImpl,
+      label: "probe",
+    });
+
+    expect(waits).toEqual([]);
+    expect(res.status).toBe(429);
+    expect(20_000).toBeGreaterThan(MAX_RETRY_AFTER_INTERACTIVE_MS);
   });
 
   it("honours Retry-After even when replaying is NOT safe", async () => {

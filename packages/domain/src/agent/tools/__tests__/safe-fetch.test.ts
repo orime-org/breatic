@@ -320,6 +320,40 @@ describe("safeFetch — cancellation", () => {
     expect(seen.every((s) => s?.aborted === true)).toBe(true);
   });
 
+  it("releases each redirect hop's body instead of holding its connection", async () => {
+    // Nothing ever reads a 3xx body — we only want its Location header — but
+    // an unread body keeps its connection until the peer gives up, so a
+    // redirect chain held one per hop. Redirects are the common case here,
+    // not an exotic one: http to https, a tracking hop, a CDN.
+    resolvesTo("93.184.216.34");
+    let cancelled = false;
+    const hopBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("<html>moved</html>"));
+      },
+      cancel(): void {
+        cancelled = true;
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        Promise.resolve(
+          String(url).endsWith("/final")
+            ? new Response("done")
+            : new Response(hopBody, {
+                status: 302,
+                headers: { location: "https://example.com/final" },
+              }),
+        ),
+      ),
+    );
+
+    await safeFetch("https://example.com/start");
+
+    expect(cancelled).toBe(true);
+  });
+
   it("refuses to issue any request when the signal is already aborted", async () => {
     resolvesTo("93.184.216.34");
     const spy = vi.fn((_url: string, _init?: RequestInit) =>
@@ -344,5 +378,52 @@ describe("safeFetch — cancellation", () => {
     const init = spy.mock.calls[0]?.[1];
     expect(init?.signal).toBeInstanceOf(AbortSignal);
     expect(init?.signal?.aborted).toBe(false);
+  });
+
+  it("stops the hop clock once the headers land, so it cannot kill a live body", async () => {
+    // The hop deadline exists to bound "connect and answer", one hop at a
+    // time. Left running past the headers it becomes a TOTAL budget on the
+    // whole exchange — and this transport's body deadline is deliberately
+    // IDLE, so a page that streams steadily for longer than the hop timeout
+    // was being killed while perfectly healthy. Measured before the fix
+    // against a real socket: a
+    // body writing every 120ms died at 603ms under a 600ms hop deadline.
+    //
+    // The transport does exactly this with its own headers deadline —
+    // disposing it the moment the headers arrive — so this closes the gap
+    // between two halves of one request rather than inventing a rule.
+    resolvesTo("93.184.216.34");
+    const spy = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response("ok")),
+    );
+    vi.stubGlobal("fetch", spy);
+
+    await safeFetch("https://example.com/x", { timeoutMs: 20 });
+    const init = spy.mock.calls[0]?.[1];
+
+    // Well past the hop deadline, with the body still notionally being read.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    expect(init?.signal?.aborted).toBe(false);
+  });
+
+  it("keeps forwarding the caller's cancellation after the headers land", async () => {
+    // Stopping the clock must not also stop the stop button: the body is
+    // still being read, and pressing stop has to reach it.
+    resolvesTo("93.184.216.34");
+    const spy = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response("ok")),
+    );
+    vi.stubGlobal("fetch", spy);
+    const ac = new AbortController();
+
+    await safeFetch("https://example.com/x", { timeoutMs: 10_000, signal: ac.signal });
+    const init = spy.mock.calls[0]?.[1];
+    expect(init?.signal?.aborted).toBe(false);
+
+    ac.abort(new Error("user pressed stop"));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(init?.signal?.aborted).toBe(true);
   });
 });

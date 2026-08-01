@@ -276,6 +276,29 @@ export default tseslint.config(
     },
   },
   {
+    // HTTP leaves this codebase through the shared transport, which is where
+    // the per-attempt deadline, the body deadline, the bounded replay and the
+    // single retry verdict live. The SSRF guard is the one exemption: it IS
+    // the fetch the transport drives, per hop, with its own range check
+    // between hops.
+    //
+    // The transport itself needs no exemption — it names `fetch` as a default
+    // (`options.fetchImpl ?? fetch`) but calls it through that binding, and
+    // this rule matches calls, not references.
+    files: [
+      "packages/{core,shared,domain,server,worker,collab}/src/**/*.{ts,tsx}",
+    ],
+    ignores: [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.spec.ts",
+      "**/agent/tools/safe-fetch.ts",
+    ],
+    rules: {
+      "breatic/no-naked-fetch": "error",
+    },
+  },
+  {
     // Infrastructure clients are core's to construct — it is the one place
     // that sets pool lifetime, idle timeout, keepalive and reconnect
     // behaviour. core itself is absent from this scope for that reason.

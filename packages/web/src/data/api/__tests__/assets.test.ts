@@ -157,33 +157,6 @@ describe('assetsApi.fetchUploadConfig — session-cached knobs', () => {
   });
 });
 
-describe('assetsApi.putFile — direct PUT to the presigned URL', () => {
-  it('PUTs the file with its content type + same-origin credentials', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
-    vi.stubGlobal('fetch', fetchMock);
-    const file = new File(['x'], 'photo.png', { type: 'image/png' });
-
-    await assetsApi.putFile('https://put', file);
-
-    expect(fetchMock).toHaveBeenCalledWith('https://put', {
-      method: 'PUT',
-      body: file,
-      headers: { 'Content-Type': 'image/png' },
-      credentials: 'same-origin',
-    });
-  });
-
-  it('throws when the storage responds non-ok', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 403 }),
-    );
-    const file = new File(['x'], 'photo.png', { type: 'image/png' });
-
-    await expect(assetsApi.putFile('https://put', file)).rejects.toThrow(/403/);
-  });
-});
-
 describe('assetsApi.reportUploaded — cover reference + derived flag (#1824)', () => {
   it('rides the cover HASH on a regular video report — cover_key is retired (#1826 §4.5)', async () => {
     vi.mocked(apiPost).mockResolvedValue({ ok: true });

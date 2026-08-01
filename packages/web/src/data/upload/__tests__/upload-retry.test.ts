@@ -83,9 +83,13 @@ describe('retryTransient — shared budget, browser error shapes', () => {
   });
 
   it('stops on the first success', async () => {
+    // A dropped connection, which is what a transient failure looks like on
+    // this path. It used to be a `TypeError` here, borrowed from the days when
+    // this loop wrapped a raw `fetch` — an error shape the one remaining
+    // caller (`apiGet`, axios) does not produce for a network fault.
     const fn = vi
       .fn()
-      .mockRejectedValueOnce(new TypeError('network'))
+      .mockRejectedValueOnce(apiError(0))
       .mockResolvedValueOnce('ok');
     const { sleep } = fakeSleep();
 
@@ -140,6 +144,24 @@ describe('retryTransient — shared budget, browser error shapes', () => {
     await expect(retryTransient(fn, { sleep })).rejects.toThrow();
     // A bug in our own code carries no status and is not a network fault; the
     // shared predicate refuses it rather than hammering it three times.
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a TypeError either — the shape most of our own bugs take', async () => {
+    // The sibling above throws a plain `Error`, which is why the hole it left
+    // stayed invisible. Real programming bugs are overwhelmingly `TypeError`
+    // ("cannot read properties of undefined"), and this loop used to map every
+    // TypeError to 'network' and hammer it three times — the exact behaviour
+    // the comment beneath that branch said it was avoiding.
+    //
+    // The branch was a leftover: it was written when this loop wrapped a raw
+    // `fetch`, whose network failures ARE TypeErrors. That PUT now goes through
+    // the shared transport, and the one caller left wraps `apiGet` (axios),
+    // which reports a network fault as a flattened `.status = 0` and never as
+    // a TypeError.
+    const { sleep } = fakeSleep();
+    const fn = vi.fn().mockRejectedValue(new TypeError('cannot read properties of undefined'));
+    await expect(retryTransient(fn, { sleep })).rejects.toThrow(TypeError);
     expect(fn).toHaveBeenCalledTimes(1);
   });
 });

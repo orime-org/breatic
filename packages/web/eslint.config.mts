@@ -237,6 +237,7 @@ export default [
       'breatic/no-cors-wildcard-credentials': 'error',
       'breatic/no-yjs-documents-outside-repo': 'error',
       'breatic/schema-timestamps': 'error',
+      'breatic/no-naked-fetch': 'error',
     },
   },
   {

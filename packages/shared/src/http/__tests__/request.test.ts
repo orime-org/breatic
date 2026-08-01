@@ -17,7 +17,7 @@
  * and it read a failing response's body, erasing the vendor error text the
  * worker logs. That client is gone, so the tests below assert OUR behaviour —
  * they are not checking a library's defaults. Probes kept at
- * `engineering/demo/2026-07-30-ky-retry-behaviour-probe*.mjs`.
+ * run against that library directly.
  */
 
 import { describe, it, expect, vi } from "vitest";

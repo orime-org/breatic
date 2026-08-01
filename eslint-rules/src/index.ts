@@ -10,6 +10,7 @@ import { noInlineScrollbar } from "#rules/rules/no-inline-scrollbar";
 import { noIoredisOutsideCore } from "#rules/rules/no-ioredis-outside-core";
 import { noLibraryEnvAccess } from "#rules/rules/no-library-env-access";
 import { noLibraryLogger } from "#rules/rules/no-library-logger";
+import { noNakedFetch } from "#rules/rules/no-naked-fetch";
 import { noLibraryProcessExit } from "#rules/rules/no-library-process-exit";
 import { noMissingLicenseHeader } from "#rules/rules/no-missing-license-header";
 import { noNativeRenderedUi } from "#rules/rules/no-native-rendered-ui";
@@ -52,6 +53,7 @@ export const breaticPlugin = {
     "no-ioredis-outside-core": noIoredisOutsideCore,
     "no-library-env-access": noLibraryEnvAccess,
     "no-library-logger": noLibraryLogger,
+    "no-naked-fetch": noNakedFetch,
     "no-library-process-exit": noLibraryProcessExit,
     "no-missing-license-header": noMissingLicenseHeader,
     "no-native-rendered-ui": noNativeRenderedUi,

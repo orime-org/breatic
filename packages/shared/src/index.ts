@@ -230,7 +230,15 @@ export { pollUntilDone } from "@shared/http/poll.js";
 export type { PollOptions, PollEvent } from "@shared/http/poll.js";
 export { bearerHeaders } from "@shared/http/headers.js";
 export { extractNested } from "@shared/http/json-path.js";
-export { MAX_RETRIES, BODY_IDLE_TIMEOUT_MS, ASSET_HEADER_TIMEOUT_MS } from "@shared/http/constants.js";
+// Only the one constant a caller actually names. `MAX_RETRIES` and
+// `BODY_IDLE_TIMEOUT_MS` were exported here too and had no consumer anywhere:
+// exporting them contradicted the very thing this transport is for. They are
+// fixed rather than configurable on purpose — worker and browser each used to
+// carry their own copy and the two drifted into meaning different things — so
+// putting them on the public surface invites exactly the second opinion the
+// fixed values exist to prevent. They stay internal; the deadline a CALLER
+// legitimately varies (per attempt, per file size) is the one below.
+export { ASSET_HEADER_TIMEOUT_MS } from "@shared/http/constants.js";
 // The judgement is exposed on its own for callers whose retry subject is not
 // a `fetch` — the browser's presign step retries an axios call, so it owns the
 // loop but must not own a second opinion about what is worth retrying.

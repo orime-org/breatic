@@ -24,7 +24,12 @@
 import { describe, it, expect } from "vitest";
 
 import { decideRetry } from "@shared/http/decide-retry.js";
-import { MAX_RETRIES, BASE_DELAY_MS, MAX_RETRY_AFTER_MS } from "@shared/http/constants.js";
+import {
+  MAX_RETRIES,
+  BASE_DELAY_MS,
+  MAX_RETRY_AFTER_INTERACTIVE_MS,
+  MAX_RETRY_AFTER_BACKGROUND_MS,
+} from "@shared/http/constants.js";
 
 /** Fixed clock for HTTP-date `Retry-After` parsing. */
 const NOW = Date.UTC(2026, 6, 30, 12, 0, 0);
@@ -193,9 +198,63 @@ describe("decideRetry — backoff delay", () => {
     }
   });
 
-  it("clamps a hostile Retry-After to MAX_RETRY_AFTER_MS", () => {
+  it("refuses a wait longer than an interactive caller can accept, and says how long was asked", () => {
+    // The ceiling is a THRESHOLD, not a clamp. Clamping was the worst of both
+    // worlds: it neither honoured what the server asked (30s became 10s) nor
+    // spared the person waiting. A caller with someone watching gets the
+    // refusal and the number, so it can tell them what the server said and let
+    // them decide when to try again — we have no queue, so "completed" and
+    // "failed" are the only two outcomes there are.
+    const d = decideRetry({
+      ...base,
+      status: 429,
+      retryAfter: "20",
+      interactive: true,
+    });
+    expect(d).toMatchObject({
+      retry: false,
+      reason: "retry_after_too_long",
+      retryAfterMs: 20_000,
+    });
+  });
+
+  it("honours a wait an interactive caller can accept, exactly as asked", () => {
+    const d = decideRetry({ ...base, status: 429, retryAfter: "5", interactive: true });
+    expect(d).toMatchObject({ retry: true, delayMs: 5000 });
+  });
+
+  it("treats the interactive ceiling itself as acceptable, not as over", () => {
+    // 10s is the limit of what the user's attention stays on the task
+    // (Nielsen's third response-time limit). At the limit, not past it.
+    const d = decideRetry({ ...base, status: 429, retryAfter: "10", interactive: true });
+    expect(d).toMatchObject({ retry: true, delayMs: MAX_RETRY_AFTER_INTERACTIVE_MS });
+  });
+
+  it("lets a background caller wait far longer than an interactive one", () => {
+    // Nobody is watching a worker, so the vendor's own recovery timeline wins.
+    const d = decideRetry({ ...base, status: 429, retryAfter: "55" });
+    expect(d).toMatchObject({ retry: true, delayMs: 55_000 });
+  });
+
+  it("refuses even a background wait past the background ceiling", () => {
+    const d = decideRetry({ ...base, status: 429, retryAfter: "61" });
+    expect(d).toMatchObject({
+      retry: false,
+      reason: "retry_after_too_long",
+      retryAfterMs: 61_000,
+    });
+  });
+
+  it("treats the background ceiling itself as acceptable", () => {
+    const d = decideRetry({ ...base, status: 429, retryAfter: "60" });
+    expect(d).toMatchObject({ retry: true, delayMs: MAX_RETRY_AFTER_BACKGROUND_MS });
+  });
+
+  it("never clamps: a hostile Retry-After is refused, not quietly shortened", () => {
+    // A day-long wait used to come back as a 10s delay — a number nobody sent.
     const d = decideRetry({ ...base, status: 429, retryAfter: "86400" });
-    expect(d).toMatchObject({ retry: true, delayMs: MAX_RETRY_AFTER_MS });
+    expect(d.retry).toBe(false);
+    expect(d).toMatchObject({ retryAfterMs: 86_400_000 });
   });
 
   it("treats a past HTTP-date Retry-After as no delay, never negative", () => {

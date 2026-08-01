@@ -162,20 +162,65 @@ export interface SafeFetchOptions {
   signal?: AbortSignal;
 }
 
+/** A hop's signal plus the clock it has to be able to stop. */
+interface HopDeadline {
+  /** Aborts on this hop's deadline or the caller's cancellation. */
+  signal: AbortSignal;
+  /**
+   * Stop the deadline, keeping the caller's cancellation live.
+   *
+   * Called the moment the headers land. The deadline bounds "connect and
+   * answer" for ONE hop; leaving it running turns it into a total budget on
+   * the whole exchange, body included. That contradicts the transport above,
+   * whose body deadline is deliberately IDLE — a page streaming steadily for
+   * longer than this timeout is healthy, not stuck. Measured before this
+   * existed, against a real socket:
+   * a body writing every 120ms was killed at 603ms by a 600ms hop deadline.
+   *
+   * The transport does the same thing with its own headers deadline
+   * (`startAttemptDeadline(...).dispose()`), so this is one rule applied in
+   * both halves of a request rather than a new one.
+   */
+  headersArrived: () => void;
+}
+
 /**
  * Combine the caller's cancellation with this hop's own deadline.
+ *
+ * Built by hand rather than from `AbortSignal.timeout` + `AbortSignal.any`,
+ * because a composed signal cannot be told to drop one of its inputs — and
+ * dropping the deadline while keeping the cancellation is the whole point.
  * @param callerSignal - The caller's signal, if any.
  * @param timeoutMs - This hop's ceiling in milliseconds.
- * @returns A signal that aborts on whichever fires first.
+ * @returns The signal to pass to `fetch`, and the way to stop its clock.
  */
 function hopSignal(
   callerSignal: AbortSignal | undefined,
   timeoutMs: number,
-): AbortSignal {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  return callerSignal === undefined
-    ? deadline
-    : AbortSignal.any([callerSignal, deadline]);
+): HopDeadline {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(
+      new DOMException(`safeFetch hop exceeded ${timeoutMs}ms`, "TimeoutError"),
+    );
+  }, timeoutMs);
+
+  if (callerSignal !== undefined) {
+    if (callerSignal.aborted) {
+      controller.abort(callerSignal.reason);
+    } else {
+      // No `once` cleanup on purpose: the caller's cancellation must keep
+      // reaching the request for as long as the body is being read, which is
+      // long after this function has returned.
+      callerSignal.addEventListener(
+        "abort",
+        () => controller.abort(callerSignal.reason),
+        { once: true },
+      );
+    }
+  }
+
+  return { signal: controller.signal, headersArrived: (): void => clearTimeout(timer) };
 }
 
 /**
@@ -218,11 +263,19 @@ export async function safeFetch(
 
     await assertHostnameAllowed(parsed.hostname);
 
-    const res = await fetch(current, {
-      headers,
-      redirect: "manual",
-      signal: hopSignal(opts.signal, timeoutMs),
-    });
+    const hop = hopSignal(opts.signal, timeoutMs);
+    let res: Response;
+    try {
+      res = await fetch(current, {
+        headers,
+        redirect: "manual",
+        signal: hop.signal,
+      });
+    } finally {
+      // Whether the headers arrived or the hop failed, this clock is done. On
+      // a redirect the next hop gets its own.
+      hop.headersArrived();
+    }
 
     // Not a redirect — return to caller.
     if (res.status < 300 || res.status >= 400) {
@@ -234,6 +287,16 @@ export async function safeFetch(
       // 3xx without a Location header — pass it back, caller decides.
       return res;
     }
+
+    // Let this hop's body go before asking for the next one. Dropping the
+    // reference is not the same thing: an unread body holds its connection
+    // until the peer gives up, so a chain of redirects held one apiece — and
+    // a redirect is the common case, not the exotic one (http to https, a
+    // tracking hop, a CDN). A 3xx body is a stub page, so this resolves at
+    // once. The catch is required rather than tidy: cancelling a body the
+    // peer already errored returns a rejected promise, and an unhandled
+    // rejection ends the process.
+    await res.body?.cancel().catch(() => {});
 
     // Resolve relative redirect against the current URL.
     current = new URL(location, current).href;

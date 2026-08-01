@@ -230,13 +230,23 @@ export async function downloadValidated(
   const response = await httpRequest(
     sourceUrl,
     {
-      // Request an uncompressed transfer so content-length equals the bytes
-      // we receive and the completeness check below actually validates the
-      // wire (adversarial #B round-3: undici does NOT throw on a truncated
-      // gzip/br stream — it silently returns the partial decoded bytes; an
-      // identity transfer restores real truncation detection). If a server
-      // ignores this and still encodes, the isEncoded fallback skips the
-      // length check to avoid a false "truncated" on a complete body.
+      // Request an uncompressed transfer so content-length describes the bytes
+      // we end up with, making the completeness check below comparable at all.
+      // If a server ignores this and encodes anyway, the isEncoded fallback
+      // skips the length check rather than reporting a complete body as
+      // truncated.
+      //
+      // An earlier version of this comment said undici silently returns the
+      // partial bytes of a truncated gzip stream, and credited the identity
+      // request with restoring detection. Measured
+      // against a real chunked server, that
+      // is not what divides the cases. What divides them is whether a length
+      // was DECLARED: with a content-length, a short body throws ("terminated")
+      // whether or not it was encoded. Without one — a chunked response — the
+      // short read is silent for encoded and identity bodies alike, and no
+      // check here can catch it, because there is no declared number to compare
+      // against. That is a real gap and it is left open knowingly: our own
+      // storage and every vendor we fetch from sends a content-length.
       headers: { "accept-encoding": "identity" },
     },
     {

@@ -35,6 +35,13 @@ memory_user_max_size: 2048
 # ── Tools ─────────────────────────────────────────────────
 # Maximum characters returned from web_fetch tool output.
 web_fetch_max_chars: 50000
+# Hard byte ceiling on what web_fetch will read off the wire, refused as the
+# chunks arrive. The model names the host, so the size of the answer is not
+# ours to predict; the character limit above only trims a string that is
+# already in memory. Sized to sit far above the markup a max_chars page comes
+# from (tag stripping typically discards most of it) and far below what a
+# handful of concurrent fetches could take from the process.
+web_fetch_max_bytes: 5242880
 
 # ── LLM resilience ────────────────────────────────────────
 # Retry budget (maxRetries) for every LLM call, injected by the model-call

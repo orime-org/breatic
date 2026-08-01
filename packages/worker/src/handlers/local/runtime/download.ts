@@ -120,6 +120,16 @@ export async function downloadToTempDir(
   // Checked after the fact rather than by inspecting `response.body`: a
   // present-but-empty body is just as unusable to ffmpeg as an absent one,
   // and only the written file proves which we got.
+  //
+  // There is deliberately no content-length comparison. Measured
+  // against a real chunked server: when a
+  // length IS declared, a body that falls short makes the client throw and the
+  // pipeline above rejects — a check here would be redundant. When none is
+  // declared (a chunked response), the short read is silent, and no check can
+  // change that because there is no declared number to compare against. The
+  // gap is left open knowingly; our own storage and every vendor we fetch from
+  // sends a content-length. Pinned in the tests as a known limit rather than
+  // papered over.
   const { size } = await stat(path);
   if (size === 0) {
     throw new Error(`Download failed: ${url} → received 0 bytes`);

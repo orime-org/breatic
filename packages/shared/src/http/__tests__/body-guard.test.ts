@@ -20,7 +20,7 @@
  * the gap between chunks, so a slow 500 MB asset download is not killed for
  * being slow while a half-dead connection still gets cut. Measured
  * feasibility of doing this in portable `fetch`:
- * `engineering/demo/2026-07-30-body-idle-timeout-probe.mjs`.
+ * measured against a real socket.
  *
  * These tests drive a body that arrives in controlled chunks. A buffered
  * `new Response("...")` — what every pre-existing test in this directory
@@ -30,7 +30,8 @@
 
 import { describe, it, expect } from "vitest";
 
-import { httpRequest } from "@shared/http/request.js";
+import { httpRequest, httpRequestJson } from "@shared/http/request.js";
+import { guardResponseBody, type GuardedResponse } from "@shared/http/body-guard.js";
 
 const URL_UNDER_TEST = "https://vendor.test/v1/generate";
 
@@ -71,6 +72,36 @@ function opts(fetchImpl: typeof fetch, bodyIdleMs = 120): Parameters<typeof http
     fetchImpl,
     label: "probe",
   };
+}
+
+/**
+ * Guard one response directly, counting how often the request is torn down.
+ *
+ * The teardown count is the only way to see the relay's lifetime from outside:
+ * an `AbortController` fires its `abort` event once no matter how many times
+ * it is aborted, so a test driven through `httpRequest` cannot tell "torn down
+ * once" from "torn down again by a relay that should have retired".
+ * @param response - The response whose body is being policed.
+ * @param callerSignal - The caller's cancellation, if the test supplies one.
+ * @param idleTimeoutMs - Maximum silence between chunks.
+ * @returns The handle plus a live read of the teardown count.
+ */
+function countingGuard(
+  response: Response,
+  callerSignal?: AbortSignal,
+  idleTimeoutMs = 60,
+): { guarded: GuardedResponse; teardowns: () => number } {
+  let teardowns = 0;
+  const guarded = guardResponseBody({
+    response,
+    idleTimeoutMs,
+    ...(callerSignal !== undefined && { callerSignal }),
+    abortRequest: (): void => {
+      teardowns += 1;
+    },
+    label: "probe",
+  });
+  return { guarded, teardowns: (): number => teardowns };
 }
 
 describe("response body idle deadline", () => {
@@ -224,7 +255,7 @@ describe("response body idle deadline", () => {
     // the process for an unhandled rejection, so a consumer that merely broke
     // out of a `for await` — or whose disk filled mid-write — killed the whole
     // worker with every other job in flight. Measured in a child process:
-    // `engineering/demo/2026-07-30-stream-cancel-crash-repro.ts`.
+    // a child process whose exit code was the verdict.
     const rejections: unknown[] = [];
     const capture = (reason: unknown): void => {
       rejections.push(reason);
@@ -406,6 +437,180 @@ describe("response body idle deadline", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(aborted).toBe(true);
+  });
+
+  it("keeps forwarding a cancellation once stream() is handed out but idle", async () => {
+    // The sibling of the test above, and the hole it left. That one covers
+    // "handle taken, no read method called". This one covers "stream() called,
+    // no pull outstanding" — which `claim()` used to end coverage for, because
+    // it retired the pre-read listener the moment ANY read method was invoked.
+    // For text()/json()/arrayBuffer() that handover is instant: they start
+    // draining immediately and `readChunk` takes over within the same tick.
+    // `stream()` is lazy — it hands back a stream and the next pull arrives
+    // whenever the consumer gets round to it, or never. Measured before the
+    // fix: the abort never reached the request at all.
+    let aborted = false;
+    const fetchImpl = ((_url: string, init?: RequestInit): Promise<Response> => {
+      init?.signal?.addEventListener("abort", () => {
+        aborted = true;
+      });
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("first"));
+        },
+      });
+      return Promise.resolve(new Response(stream, { status: 200 }));
+    }) as unknown as typeof fetch;
+    const controller = new AbortController();
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchImpl, 5_000),
+      signal: controller.signal,
+    });
+    res.stream();
+    // Let the stream's own initial pull fill its queue (high-water mark 1) and
+    // then fall quiet. That quiet gap is exactly the backpressure window the
+    // worker's download sits in whenever the disk is slower than the network.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(aborted).toBe(false);
+
+    controller.abort(new Error("user pressed stop"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(aborted).toBe(true);
+  });
+
+  it("keeps forwarding a cancellation between two pulls of a stream", async () => {
+    // The same hole reached the other way. One chunk is consumed, the consumer
+    // pauses, and the cancellation lands while no read is in flight. Both entry
+    // points matter: the invariant is "for as long as the request is live", not
+    // "at the two moments we happened to test".
+    let aborted = false;
+    const fetchImpl = ((_url: string, init?: RequestInit): Promise<Response> => {
+      init?.signal?.addEventListener("abort", () => {
+        aborted = true;
+      });
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("first"));
+          controller.enqueue(new TextEncoder().encode("second"));
+        },
+      });
+      return Promise.resolve(new Response(stream, { status: 200 }));
+    }) as unknown as typeof fetch;
+    const controller = new AbortController();
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchImpl, 5_000),
+      signal: controller.signal,
+    });
+    const reader = res.stream().getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("first");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(aborted).toBe(false);
+
+    controller.abort(new Error("user pressed stop"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(aborted).toBe(true);
+  });
+
+  it("tears the request down when the caller cancelled before the handle existed", () => {
+    // A race the transport can lose whenever a response resolves in the same
+    // tick as a stop: the fetch has already produced a response, so nothing
+    // rejects, and the handle is built around a signal that is ALREADY
+    // aborted. A listener registered on it will never fire — `abort` was
+    // dispatched before we were watching — so unless the teardown happens
+    // here, the request stays live with nobody left to end it.
+    const controller = new AbortController();
+    controller.abort(new Error("user pressed stop"));
+    const { response } = streamingBody();
+
+    const { teardowns } = countingGuard(response, controller.signal);
+
+    expect(teardowns()).toBe(1);
+  });
+
+  it("retires the relay when a stream pull fails, not only when it finishes", async () => {
+    // `drain()` retires in a `finally`, so text()/json()/arrayBuffer() hand the
+    // relay back however they end. `stream()` retired only on the `done`
+    // branch, and a failing pull never reaches it: per the streams spec a
+    // rejected `pull()` ERRORS the stream rather than running its cancel
+    // algorithm, so that path had no other exit either. The relay then outlived
+    // the body it was relaying for — still holding a listener on the caller's
+    // signal, still able to tear down a request that had already ended.
+    const { response } = streamingBody(); // Nothing is ever pushed: it stalls.
+    const controller = new AbortController();
+    const { guarded, teardowns } = countingGuard(response, controller.signal, 40);
+
+    const reader = guarded.stream().getReader();
+    await expect(reader.read()).rejects.toThrow(/idle/i);
+    expect(teardowns()).toBe(1);
+
+    controller.abort(new Error("user pressed stop"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(teardowns()).toBe(1);
+  });
+
+  it("refuses a body that outgrows the caller's byte cap, before buffering it", async () => {
+    // The agent's fetch tool is handed its URL by the model, so the size of
+    // the answer belongs to whoever owns that host. Its own character limit
+    // runs on a string that is already in memory, which is no defence at all.
+    const { response, push } = streamingBody();
+    push("x".repeat(40));
+    push("x".repeat(40));
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchReturning(response), 5_000),
+      maxBodyBytes: 50,
+    });
+
+    await expect(res.text()).rejects.toThrow(/exceeded 50 bytes/);
+  });
+
+  it("caps the streamed body too, not only the buffered reads", async () => {
+    // The cap describes the response, not the read method the caller picked.
+    // Enforcing it on one path only would mean `stream()` is the way around it.
+    const { response, push } = streamingBody();
+    push("x".repeat(40));
+    push("x".repeat(40));
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchReturning(response), 5_000),
+      maxBodyBytes: 50,
+    });
+    const reader = res.stream().getReader();
+
+    expect((await reader.read()).value).toHaveLength(40);
+    await expect(reader.read()).rejects.toThrow(/exceeded 50 bytes/);
+  });
+
+  it("lets a body that fits through untouched", async () => {
+    const { response, push, finish } = streamingBody();
+    push("under the cap");
+    finish();
+
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchReturning(response), 5_000),
+      maxBodyBytes: 50,
+    });
+
+    expect(await res.text()).toBe("under the cap");
+  });
+
+  it("names the shape when a vendor answers JSON that is not an object", async () => {
+    // `httpRequestJson` promised its callers a record and cast an unchecked
+    // `unknown` into one. A vendor answering `null` or a list still satisfied
+    // the compiler and then failed inside a provider transport, far from the
+    // request that caused it.
+    const { response, push, finish } = streamingBody();
+    push("[1,2,3]");
+    finish();
+
+    await expect(
+      httpRequestJson(URL_UNDER_TEST, {}, opts(fetchReturning(response), 5_000)),
+    ).rejects.toThrow(/expected a JSON object.*got an array/);
   });
 
   it("exposes the metadata callers actually use without handing out the raw response", async () => {

@@ -87,15 +87,23 @@ function transportKind(
   status: number | null,
 ): TransportErrorKind | undefined {
   if (status !== null && status !== 0) return undefined;
-  if (
-    err instanceof DOMException &&
-    (err.name === 'AbortError' || err.name === 'TimeoutError')
-  ) {
-    return 'timeout';
-  }
-  // `fetch` surfaces a network-level failure as `TypeError`, and `apiGet`
-  // flattens one to `.status = 0`.
-  if (err instanceof TypeError || status === 0) return 'network';
+  // `apiGet` (axios) flattens a network-level failure to `.status = 0`.
+  //
+  // Two branches that used to sit above this one are gone, and they went for
+  // the same reason: both were written when this loop wrapped a raw `fetch`,
+  // and neither can fire on the one caller left. `apiGet`'s response
+  // interceptor (data/api/request.ts) rejects with an `ApiException` for
+  // EVERY failure — a normal `Error` subclass — so nothing reaching here is
+  // ever a `DOMException` (the old abort/timeout branch) and a network fault
+  // never arrives as a `TypeError` (the old network branch).
+  //
+  // Leaving them in was not harmless. The TypeError branch called every
+  // programming error 'network' and hammered it three times; the DOMException
+  // branch claimed to tell a user's cancellation apart from a deadline while
+  // doing neither. If cancellation is ever wired into presign, it needs the
+  // shared vocabulary's own `caller_aborted` — which refuses the replay
+  // outright — not a branch that maps a stop button onto a timeout.
+  if (status === 0) return 'network';
   // No status, not a network fault: a bug in our own code. Report it as
   // deterministic — hammering a programming error three times only delays the
   // report and muddies the logs.
@@ -141,6 +149,10 @@ export async function retryTransient<T>(
         // Presign is an idempotent signature issue and a PUT overwrites the
         // same key with the same bytes — replaying either is side-effect free.
         replaySafe: true,
+        // Same person, same wait: this half of the upload answers to the
+        // shared verdict too, so both halves treat a long server-directed
+        // wait the same way.
+        interactive: true,
         attempt: index + 1,
         ...(opts.random !== undefined && { rand: opts.random }),
       });
@@ -187,8 +199,10 @@ export interface PutFileDeps {
 /**
  * PUT a file to its presigned URL with the full resilience treatment:
  * per-attempt stall-guard timeout, bounded retries on transient failures,
- * full-jittered backoff. Same wire shape as the legacy single-shot
- * `assetsApi.putFile` (content-type header + same-origin credentials).
+ * full-jittered backoff. Sends the same wire shape the single-shot
+ * `assetsApi.putFile` used to (content-type header + same-origin
+ * credentials); that function is gone — it had no caller but its own test,
+ * and it was the last naked `fetch` outside the transport.
  * @param uploadUrl - The presigned PUT target.
  * @param file - The file to upload.
  * @param cfg - The upload knobs from `GET /assets/upload-config`.
@@ -211,6 +225,10 @@ export async function putFileWithRetry(
       credentials: 'same-origin',
     },
     {
+      // Someone is watching an upload they started, so a wait the storage
+      // asks for is only worth serving if it is short. Past that the upload
+      // fails with what the storage said, and they choose when to try again.
+      interactive: true,
       // Same presigned key, same bytes: a replay overwrites with identical
       // content, so there is nothing to duplicate.
       replaySafe: true,
