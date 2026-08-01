@@ -90,9 +90,10 @@ export default defineConfig(({ command, mode }) => {
         '@locales': path.resolve(__dirname, '../../locales'),
       },
     },
-    optimizeDeps: {
-      exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
-    },
+    // No optimizeDeps.exclude: the only entry here was @ffmpeg/ffmpeg and
+    // @ffmpeg/util, and neither is a dependency of this package nor imported
+    // anywhere under src — excluding them from pre-bundling asked Vite to make
+    // an exception for something it never sees.
     worker: {
       format: 'es', // ES module type
     },
