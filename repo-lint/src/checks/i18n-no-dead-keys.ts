@@ -1,29 +1,52 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
+import { TEST_FILE } from "#repo-lint/file-kinds";
 
 /** English is the source catalog; the others are translations of it. */
 const SOURCE_CATALOG = "locales/en.json";
 
 /**
- * The files that can actually read a message at runtime.
+ * Where an application source lives: under a package's `src`, in TypeScript.
  *
  * The question this check asks is "does deleting this key change what a user
- * sees", so the only files whose word counts are the ones that run in front of
- * a user. Everything else merely *names* a key: a test fixture, a sentence in
- * a spec, this file's own worked example. Counting those was the defect this
- * scope replaces — the docstring below uses `canvas.upload` to explain
- * interpolated ids, and while the scan read its own source that one comment
- * made every key in that namespace permanently unreportable.
+ * sees", so the files whose word counts are the ones that ship. Everything
+ * else merely *names* a key — a test fixture, a sentence in a spec, this
+ * check's own worked example — and a key held up only by those is dead along
+ * with whatever names it.
  *
- * Nothing outside TypeScript needs to be here: the catalogs are read through
- * `t()` in application code only, and a sweep of every tracked non-TS,
- * non-Markdown file found zero that names a catalog key.
+ * What keeps `repo-lint/` — this file included — out of its own scan is the
+ * `<pkg>/src/` shape, not the `packages/` word: both workspaces outside
+ * `packages/` (`eslint-rules`, `repo-lint`) put their source one level higher,
+ * at `<root>/src`, so they fall out on depth alone. Removing `packages/` from
+ * this pattern changes nothing today, which is exactly why it is worth saying
+ * — the word states an intent the depth happens to enforce.
+ *
+ * The intent is that only what ships to users is scanned, and it cuts the
+ * expensive way if it is ever wrong: a workspace added outside `packages/`
+ * that does read the catalogs would be invisible, and every key only it reads
+ * would be reported dead and deleted. Widen this pattern when that happens
+ * rather than exempting the keys.
+ *
+ * Nothing outside TypeScript is here because nothing outside TypeScript reads
+ * a key: a sweep of every tracked non-TS, non-Markdown file found zero naming
+ * one. That is a measurement, not a guarantee — if a config ever does, this
+ * check reports the key and `DYNAMIC_KEY_ROOTS` is where it gets recorded,
+ * with the reason.
  */
-const RUNTIME_SOURCE = /^packages\/[^/]+\/src\/.*\.tsx?$/;
+const APPLICATION_SOURCE = /^packages\/[^/]+\/src\/.*\.([cm]?ts|tsx)$/;
 
-/** Tests name keys to assert on them, which is not the same as reading them. */
-const TEST_FILE = /(^|\/)__tests__\/|\.(test|spec)\.tsx?$/;
+/**
+ * An import of the test framework, which no shipped module has.
+ *
+ * `TEST_FILE` catches test material by where it sits and what it is called,
+ * and that misses scaffolding kept beside the code it serves —
+ * `packages/web/src/test-utils/a11y.ts` is under `src`, is named like a
+ * module, and is imported by 25 test files and nothing else. Naming a third
+ * directory convention would just move the blind spot, so the second marker
+ * is semantic: importing vitest is something only test material does.
+ */
+const TEST_FRAMEWORK_IMPORT = /\bfrom\s+["']vitest["']/;
 
 /**
  * Keys whose only consumer builds the id somewhere this scan cannot see, each
@@ -32,8 +55,12 @@ const TEST_FILE = /(^|\/)__tests__\/|\.(test|spec)\.tsx?$/;
  * The bar is a mechanism the scanner is structurally blind to, not "I am
  * fairly sure this one is used" — an entry without a reason is an exemption
  * with nowhere to park, which is how a list like this stops meaning anything.
- * A dotted literal or a template prefix in any tracked file is already found
- * below, so neither belongs here.
+ *
+ * Being named somewhere is not such a mechanism, but being named somewhere
+ * outside the scanned scope now can be: a key read from a config file, or
+ * from a package that is not under `packages/`, is invisible to the scan and
+ * belongs here with that stated. A key an application source names in full,
+ * or reaches through an interpolated id, does not — the scan finds those.
  */
 const DYNAMIC_KEY_ROOTS: ReadonlyArray<{ prefix: string; reason: string }> = [];
 
@@ -83,21 +110,26 @@ const TEMPLATE_PREFIX = /`([a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)*\.)\$\{/g;
  * Every message in the catalogs is reachable from the code.
  *
  * A key nobody reads costs five translations and reads, to whoever finds it,
- * as a feature that exists. The catalogs held 354 such keys across sixteen
- * namespaces when this check was written — whole namespaces for screens that
- * had been deleted, and one that duplicated text the model configs already
- * own.
+ * as a feature that exists.
  *
- * A use means a file that runs in front of a user names the key: a dotted
- * literal anywhere in `RUNTIME_SOURCE`, quoted or not, or the static head of
- * an interpolated id, which is how an id built from a variable suffix keeps
- * every key beneath it. Files that merely name a key without reading it —
- * tests, specs, this check itself — are not scanned, because a key held up
- * only by them is dead along with whatever names it.
+ * A use means an application source names the key: a dotted literal anywhere
+ * in it, quoted or not, or the static head of an interpolated id, which is how
+ * an id built from a variable suffix keeps every key beneath it. Files that
+ * merely name a key without reading it — tests, specs, this check itself — are
+ * outside `APPLICATION_SOURCE`, because a key held up only by them is dead
+ * along with whatever names it. Measured when that scope was set: twelve keys
+ * were alive on nothing but a test fixture or a sentence in a spec.
  *
  * Within that scope the matching stays generous, since the two mistakes do not
  * cost the same: a live key called dead ships a raw id to the UI, while a dead
  * key called live only survives another pass.
+ *
+ * One honest caveat about the self-exclusion. This check no longer reads its
+ * own source, which closes a real mechanism — the tests below pin it — but on
+ * this repository it closed nothing observable: every namespace the examples
+ * here mention (`canvas.upload`, `cancel`) is independently alive in
+ * application code, so no key\'s verdict changed. The mechanism was worth
+ * closing; the evidence for it is the test, not a measured deletion.
  *
  * Only the keys nothing at all can see reach `DYNAMIC_KEY_ROOTS`, and only
  * with the reason the scan cannot see them.
@@ -115,11 +147,12 @@ export const i18nNoDeadKeys = {
     // thousand full scans of the repository.
     const literals = new Set<string>();
     const prefixes: string[] = [];
-    for (const file of context.textFiles(
-      (path) => RUNTIME_SOURCE.test(path) && !TEST_FILE.test(path),
+    for (const file of context.files(
+      (path) => APPLICATION_SOURCE.test(path) && !TEST_FILE.test(path),
       "application sources that could read a message",
     )) {
       const text = context.read(file);
+      if (TEST_FRAMEWORK_IMPORT.test(text)) continue;
       for (const match of text.matchAll(DOTTED_LITERAL)) literals.add(match[0]);
       for (const match of text.matchAll(TRANSLATION_CALL)) {
         const id = match[1];
@@ -138,7 +171,7 @@ export const i18nNoDeadKeys = {
       if (DYNAMIC_KEY_ROOTS.some(({ prefix }) => key.startsWith(prefix))) continue;
       findings.push({
         file: SOURCE_CATALOG,
-        message: `${key} is not reachable from any file. Delete it from every catalog, or — if its id is assembled somewhere this scan cannot see — add its root to DYNAMIC_KEY_ROOTS with the reason.`,
+        message: `${key} is not read by any application source. A test or a document may still name it — that is not a use, and both should go with the key. Delete it from every catalog; if instead its id is assembled somewhere this scan cannot see, add its root to DYNAMIC_KEY_ROOTS with the reason.`,
       });
     }
     return findings;

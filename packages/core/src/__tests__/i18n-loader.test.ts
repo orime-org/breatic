@@ -31,6 +31,12 @@ describe("i18n loader", () => {
   });
 
   afterEach(() => {
+    // Reload rather than only resetting the locale: one test injects fake
+    // catalogs, and doing the restore in its own body means a failed
+    // assertion leaves every later test in the file reading the fakes. That
+    // is silent — they fail for a reason that has nothing to do with them.
+    resetLocales();
+    loadLocales(resolve(import.meta.dirname, "../../../../locales"));
     setLocale("en");
   });
 
@@ -92,16 +98,20 @@ describe("i18n loader", () => {
       // Injected catalogs, not the shipped ones. The previous version read a
       // real key and asserted it came back translated — which it did, from
       // zh-CN's own entry, so the fallback branch never ran. Any key present
-      // in every catalog makes this test pass without testing anything, and
+      // in every catalog makes that shape pass without testing anything, and
       // the catalogs are complete by design, so no real key can drive it.
       resetLocales();
-      setLocaleMessages("en", { probe: { onlyInEnglish: "English text" } });
-      setLocaleMessages("zh-CN", { probe: {} });
+      setLocaleMessages("en", {
+        probe: { onlyInEnglish: "English text", inBoth: "English both" },
+      });
+      setLocaleMessages("zh-CN", { probe: { inBoth: "中文 both" } });
       setLocale("zh-CN");
-      expect(t("probe.onlyInEnglish")).toBe("English text");
 
-      resetLocales();
-      loadLocales(resolve(import.meta.dirname, "../../../../locales"));
+      // Control: proves the locale actually switched. Without it the
+      // assertion below passes just as well when zh-CN never took effect,
+      // since English is what en returns either way.
+      expect(t("probe.inBoth")).toBe("中文 both");
+      expect(t("probe.onlyInEnglish")).toBe("English text");
     });
   });
 

@@ -251,8 +251,10 @@ describe('frozen product terms (#1336)', () => {
   /**
    * Lowercase-English "studio" that names the Studio entity (not the ICU
    * {studio} placeholder, not a /studio/ URL) is capitalized to the frozen
-   * brand term. These four server / dialog strings carried a bare lowercase
-   * "studio"; after the freeze they must read "Studio".
+   * brand term. These server / dialog strings carried a bare lowercase
+   * "studio"; after the freeze they must read "Studio". A fourth entry,
+   * studio.container.members.cannotInvitePersonal, went with its key on
+   * 2026-08-01 — nothing read it.
    */
   const LOWERCASE_STUDIO_KEYS: readonly string[] = [
     'server.studio.team_limit_reached',

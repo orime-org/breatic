@@ -114,6 +114,109 @@ describe("i18n-no-dead-keys", () => {
     expect(findings[0]?.message).toContain("next");
   });
 
+  it("does not let a __tests__ directory keep a key alive", () => {
+    // Pins one half of the exclusion on its own. The path below is NOT named
+    // *.test.ts, so a version that dropped the directory half would report
+    // nothing here — which is exactly the mutation an earlier round of tests
+    // let through, because every fixture path happened to match both halves.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { spaces: { drawer: { newCanvas: "New canvas" } } },
+        {
+          "packages/web/src/i18n/__tests__/fixtures.ts":
+            "export const rows = ['spaces.drawer.newCanvas'];",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("spaces.drawer.newCanvas");
+  });
+
+  it("does not let a .test file outside __tests__ keep a key alive", () => {
+    // The other half, pinned the same way: a path that matches the suffix and
+    // not the directory.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { spaces: { drawer: { newCanvas: "New canvas" } } },
+        {
+          "packages/web/src/spaces.test.ts": "t('spaces.drawer.newCanvas')",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+  });
+
+  it("does not let test scaffolding outside __tests__ keep a key alive", () => {
+    // Naming conventions miss helpers kept beside the code they serve — the
+    // real one is packages/web/src/test-utils/a11y.ts, which sits under src,
+    // is named like a module, and is imported only by tests. The second
+    // marker is the vitest import, which nothing shipped has.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { members: { stack: { removeAria: "Remove {name}" } } },
+        {
+          "packages/web/src/test-utils/a11y.ts":
+            "import { expect } from 'vitest';\nexport const K = 'members.stack.removeAria';",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("members.stack.removeAria");
+  });
+
+  it("scans a package source that is not under src's default extension set", () => {
+    // Pins the extension half: a .mts module under src is application code.
+    // The repo has .mts files today (all at package root), so the shape is
+    // live even though none sits under src yet.
+    expect(
+      i18nNoDeadKeys.run(
+        repo(
+          { canvas: { ready: "Ready" } },
+          { "packages/web/src/boot.mts": "t('canvas.ready')" },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not scan this check's own source", () => {
+    // repo-lint keeps its source at <root>/src, one level above the shape the
+    // pattern matches, so it falls out on depth. This is the case that
+    // matters in practice — the check must not read its own worked examples.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { canvas: { ready: "Ready" } },
+        {
+          "repo-lint/src/checks/example.ts": "// e.g. t('canvas.ready')",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("canvas.ready");
+  });
+
+  it("does not scan a package-shaped tree outside packages/", () => {
+    // Pins the `packages/` word itself, which depth alone does not enforce:
+    // a workspace laid out the same way somewhere else is still out of scope.
+    // Deliberate, and the risky direction — if such a workspace ever ships
+    // code that reads the catalogs, widen the pattern rather than exempting
+    // its keys, because being invisible here means being reported dead.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { canvas: { ready: "Ready" } },
+        {
+          "tools/console/src/app.ts": "t('canvas.ready')",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("canvas.ready");
+  });
+
   it("does not let a test fixture keep a key alive", () => {
     // A test that names a key nobody reads is not evidence the key is used —
     // it is a second dead thing, and counting it means the sweep can never
