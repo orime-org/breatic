@@ -50,9 +50,6 @@
     "payment": {
       "tier_not_found": "알 수 없는 요금제: {tier}. 사용 가능: {available}",
       "price_not_configured": "{tier} 요금제의 가격이 설정되지 않았습니다"
-    },
-    "email": {
-      "welcome_subject": "Breatic에 오신 것을 환영합니다"
     }
   },
   "cancel": "취소",
@@ -283,9 +280,6 @@
       }
     }
   },
-  "editor": {
-    "accept": "적용"
-  },
   "auth": {
     "email": "이메일",
     "password": "비밀번호",
@@ -397,9 +391,6 @@
       "stay": "머무르기",
       "leave": "나가기"
     },
-    "toolbar": {
-      "uploadFile": "파일 업로드"
-    },
     "header": {
       "renameFailed": "Project 이름을 변경하지 못했습니다"
     },
@@ -420,9 +411,6 @@
   },
   "common": {
     "cancel": "취소"
-  },
-  "message": {
-    "addedToTimeline": "타임라인에 추가했습니다"
   },
   "members": {
     "popover": {
@@ -454,21 +442,15 @@
       "transferFailed": "이전 요청을 보내지 못했습니다. 다시 시도하세요."
     },
     "stack": {
-      "triggerAria": "Project 멤버({count})",
-      "removeAria": "{name} 제거"
+      "triggerAria": "Project 멤버({count})"
     }
   },
   "spaces": {
     "tab": {
-      "new": "새 Canvas",
-      "drawer": "모든 Canvases",
       "closeAria": "Space 탭 닫기"
     },
     "drawer": {
       "title": "모든 Spaces",
-      "new_canvas": "새 Canvas",
-      "new_document": "새 Document",
-      "new_timeline": "새 Timeline",
       "label": "모든 Spaces",
       "description": "{count, plural, one {# Space · 클릭하여 열거나 우측 메뉴 사용} other {# Space · 클릭하여 열거나 우측 메뉴 사용}}",
       "empty": "아직 Spaces가 없습니다",
@@ -738,7 +720,6 @@
         "emptyHint": "Project는 무한 캔버스에서 창작하는 공간입니다. 첫 Project를 만들어 시작하세요."
       },
       "collections": {
-        "title": "Collections",
         "new": "새 Collection",
         "emptyTitle": "아직 에셋 모음이 없습니다",
         "emptyHint": "에셋 모음은 Projects 간에 재사용하는 소재 모음(이미지 / 동영상 / 오디오)입니다. 백엔드 기능이 출시되면 만든 에셋 모음이 여기에 표시됩니다."
@@ -777,7 +758,6 @@
         "roleAdmin": "Admin",
         "roleGuest": "Guest",
         "remove": "삭제",
-        "cannotInvitePersonal": "개인 Studios는 멤버를 초대할 수 없습니다 — 당신뿐입니다.",
         "roleMaintainer": "Maintainer",
         "rowMenu": "멤버 작업",
         "promoteToMaintainer": "Maintainer로 지정",

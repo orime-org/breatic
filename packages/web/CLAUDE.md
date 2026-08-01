@@ -61,7 +61,7 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 
 1. **跟英文源走形态**:句中嵌的名词,单复数 = 它对应英文源那条 key 的形态(EN `New project` → `Project`;EN `Recent projects` → `Projects`)。DNT 的标准机制是把英文源里的词原样锁住,不强制单数。
 2. **只冻"指实体/类型"的引用**:`新建项目` → `新建 Project`、通知里指 Studio 实体的 `工作室` 也冻(含小写英文 `studio`,但 ICU 占位 `{studio}`/`{project}` 是变量、**绝不动**,URL `/studio/{slug}` 也不动)。
-3. **同名普通词保持翻译**(不是产品实体,别冻):绘图面 canvas(`拖入素材到画布` / `画布是空的` / `无限画布`)· 视频编辑器时间轴 timeline(`message.addedToTimeline`「添加到时间轴」)· "上传文件" 的 document(`project.toolbar.uploadFile`)。**旧 Workspace 壳曾是这里的第四个例子,2026-08-01 连同 `workspace.*` 命名空间和 `project.header.backToWorkspace` 一起删干净了** —— 现在整个仓库没有任何一条 Workspace 文案,所以这条豁免也不必留。
+3. **同名普通词保持翻译**(不是产品实体,别冻):绘图面 canvas(`拖入素材到画布` / `画布是空的` / `无限画布`)。**这条规则本身照旧成立**,但它此前列的另外三个例子已经全部随其文案一起消失 —— Workspace 壳(`workspace.*` 命名空间 + `project.header.backToWorkspace`)· 视频编辑器时间轴(`message.addedToTimeline`)· "上传文件" 的 document(`project.toolbar.uploadFile`),都在 2026-08-01 的死文案清理里删掉了,因为产品里已经没有任何地方读它们。举例没了不等于规则没了:下次再出现「同名普通词」照这条判。
 
 **强制(CI 双层)**:① repo-lint 的 `no-translated-product-noun` —— 黑名单扫 4 非英文 locale,无歧义的词(Project / Collection / Work / Studio / Space 的 `工作面`·`作業面` 形)译法残留即 fail(未来新文案自动管住);② `frozen-product-terms.test` —— 点名断言冻结 key 是英文,管角色 + 撞车词(Canvas / Timeline / Document / Space 的 `スペース`·`스페이스` 形,因译法跟绘图面 / 视频轴 / 文件 / Workspace 撞车不能全局禁)。
 

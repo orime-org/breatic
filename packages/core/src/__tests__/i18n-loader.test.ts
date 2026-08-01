@@ -19,6 +19,7 @@ import {
   getLocale,
   getAvailableLocales,
   resetLocales,
+  setLocaleMessages,
 } from "@breatic/shared";
 import { loadLocales } from "../i18n/locale-loader.js";
 import { resolve } from "node:path";
@@ -54,7 +55,7 @@ describe("i18n loader", () => {
     });
 
     it("should resolve a UI key", () => {
-      expect(t("editor.accept")).toBe("Accept");
+      expect(t("common.cancel")).toBe("Cancel");
     });
 
     it("should resolve a frontend studio key", () => {
@@ -88,11 +89,19 @@ describe("i18n loader", () => {
     });
 
     it("should fall back to English for missing keys", () => {
+      // Injected catalogs, not the shipped ones. The previous version read a
+      // real key and asserted it came back translated — which it did, from
+      // zh-CN's own entry, so the fallback branch never ran. Any key present
+      // in every catalog makes this test pass without testing anything, and
+      // the catalogs are complete by design, so no real key can drive it.
+      resetLocales();
+      setLocaleMessages("en", { probe: { onlyInEnglish: "English text" } });
+      setLocaleMessages("zh-CN", { probe: {} });
       setLocale("zh-CN");
-      // A key that exists in en but may not in zh-CN
-      const result = t("server.email.welcome_subject");
-      expect(result).toBeTruthy();
-      expect(result).not.toBe("server.email.welcome_subject");
+      expect(t("probe.onlyInEnglish")).toBe("English text");
+
+      resetLocales();
+      loadLocales(resolve(import.meta.dirname, "../../../../locales"));
     });
   });
 

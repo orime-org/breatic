@@ -50,9 +50,6 @@
     "payment": {
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
       "price_not_configured": "套餐 {tier} 的价格未配置"
-    },
-    "email": {
-      "welcome_subject": "欢迎加入 Breatic"
     }
   },
   "cancel": "取消",
@@ -283,9 +280,6 @@
       }
     }
   },
-  "editor": {
-    "accept": "接受"
-  },
   "auth": {
     "email": "邮箱",
     "password": "密码",
@@ -397,9 +391,6 @@
       "stay": "留下",
       "leave": "仍然离开"
     },
-    "toolbar": {
-      "uploadFile": "上传文件"
-    },
     "header": {
       "renameFailed": "重命名 Project 失败"
     },
@@ -420,9 +411,6 @@
   },
   "common": {
     "cancel": "取消"
-  },
-  "message": {
-    "addedToTimeline": "已添加到时间轴"
   },
   "members": {
     "popover": {
@@ -454,21 +442,15 @@
       "transferFailed": "转让请求发送失败,请重试。"
     },
     "stack": {
-      "triggerAria": "Project 成员（{count}）",
-      "removeAria": "移除 {name}"
+      "triggerAria": "Project 成员（{count}）"
     }
   },
   "spaces": {
     "tab": {
-      "new": "新建 Canvas",
-      "drawer": "所有 Canvases",
       "closeAria": "关闭 Space 标签页"
     },
     "drawer": {
       "title": "所有 Spaces",
-      "new_canvas": "新建 Canvas",
-      "new_document": "新建 Document",
-      "new_timeline": "新建 Timeline",
       "label": "所有 Spaces",
       "description": "{count, plural, other {# 个 · 点击切换或右侧操作}}",
       "empty": "暂无 Spaces",
@@ -738,7 +720,6 @@
         "emptyHint": "Project 是你在无限画布上创作的地方。创建第一个 Project,开始你的创作。"
       },
       "collections": {
-        "title": "Collections",
         "new": "新建 Collection",
         "emptyTitle": "还没有 Collections",
         "emptyHint": "Collection 是跨 Projects 复用的素材集合(图 / 视频 / 音频)。后端能力上线后,这里会列出你创建的 Collection。"
@@ -777,7 +758,6 @@
         "roleAdmin": "Admin",
         "roleGuest": "Guest",
         "remove": "移除",
-        "cannotInvitePersonal": "个人 Studios 无法邀请成员 —— 只有你自己。",
         "roleMaintainer": "Maintainer",
         "rowMenu": "成员操作",
         "promoteToMaintainer": "设为 Maintainer",

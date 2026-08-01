@@ -55,7 +55,6 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
   // Entity + space-type nouns — Title Case English.
   ['studio.container.tabs.projects', 'Projects'],
   ['studio.container.tabs.collections', 'Collections'],
-  ['studio.container.collections.title', 'Collections'],
   ['studio.container.dialog.studioLabel', 'Studio'],
   ['spaces.kind.canvas', 'Canvas'],
   ['spaces.kind.document', 'Document'],
@@ -148,13 +147,8 @@ describe('frozen product terms (#1336)', () => {
   const COLLISION_FROZEN: ReadonlyArray<
     readonly [key: string, term: string, forbidden: readonly string[]]
   > = [
-    ['spaces.drawer.new_canvas', 'Canvas', CANVAS_FORMS],
     ['spaces.readonly.canvas.title', 'Canvas', CANVAS_FORMS],
-    ['spaces.tab.new', 'Canvas', CANVAS_FORMS],
-    ['spaces.tab.drawer', 'Canvas', CANVAS_FORMS],
-    ['spaces.drawer.new_document', 'Document', DOCUMENT_FORMS],
     ['spaces.readonly.document.title', 'Document', DOCUMENT_FORMS],
-    ['spaces.drawer.new_timeline', 'Timeline', TIMELINE_FORMS],
     ['spaces.readonly.timeline.title', 'Timeline', TIMELINE_FORMS],
     ['spaces.readonly.timeline.description', 'Timeline', TIMELINE_FORMS],
     ['chrome.tooltip.newSpace', 'Space', SPACE_FORMS],
@@ -263,7 +257,6 @@ describe('frozen product terms (#1336)', () => {
   const LOWERCASE_STUDIO_KEYS: readonly string[] = [
     'server.studio.team_limit_reached',
     'server.studio.cannot_modify_personal',
-    'studio.container.members.cannotInvitePersonal',
     'studio.container.dialog.createStudioError',
   ];
 

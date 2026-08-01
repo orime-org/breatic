@@ -114,17 +114,96 @@ describe("i18n-no-dead-keys", () => {
     expect(findings[0]?.message).toContain("next");
   });
 
-  it("counts a mention outside the frontend, quotes or not", () => {
-    // The scan is deliberately generous: calling a live key dead deletes real
-    // UI text, while calling a dead key live only postpones a cleanup.
+  it("does not let a test fixture keep a key alive", () => {
+    // A test that names a key nobody reads is not evidence the key is used —
+    // it is a second dead thing, and counting it means the sweep can never
+    // reach either. Measured on the real catalogs: 12 keys were held up by
+    // nothing but test fixtures.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { spaces: { drawer: { newCanvas: "New canvas" } } },
+        {
+          "packages/web/src/i18n/__tests__/frozen-product-terms.test.ts":
+            "['spaces.drawer.newCanvas', 'Canvas']",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("spaces.drawer.newCanvas");
+  });
+
+  it("does not let a spec document keep a key alive", () => {
+    // Prose naming a key is documentation of the key, not a reader of it. If
+    // the key goes, that sentence should go with it — which cannot happen
+    // while the sentence is what protects the key.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { project: { toolbar: { uploadFile: "Upload" } } },
+        {
+          "packages/web/CLAUDE.md": "例:上传文件的 project.toolbar.uploadFile",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("project.toolbar.uploadFile");
+  });
+
+  it("does not let this check's own source keep a key alive", () => {
+    // The worst case, because it is silent and total: this file's docstring
+    // uses `canvas.upload` as its worked example, so scanning itself made
+    // every key in that namespace permanently unreportable — the guard
+    // issuing itself a pass over exactly the namespace it teaches with.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { canvas: { upload: { tooLarge: "Too large" } } },
+        {
+          "repo-lint/src/checks/i18n-no-dead-keys.ts":
+            "// e.g. t(`canvas.upload.${rejection}`) keeps every key under it",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("canvas.upload.tooLarge");
+  });
+
+  it("counts any mention inside an application source, quoted or not", () => {
+    // Within the scanned scope the matching stays generous — a bare dotted
+    // literal is enough, no call shape required — because calling a live key
+    // dead deletes real UI text while calling a dead key live only postpones
+    // a cleanup.
     expect(
       i18nNoDeadKeys.run(
         repo(
           { server: { mail: { subject: "Welcome" } } },
-          { "config/mail.yaml": "template: server.mail.subject" },
+          {
+            "packages/server/src/mail.ts":
+              "// the subject comes from server.mail.subject",
+          },
         ),
       ),
     ).toEqual([]);
+  });
+
+  it("does not count a config file, because nothing outside TypeScript reads a key", () => {
+    // Verified when the scope was set: no tracked non-TS, non-Markdown file
+    // names a catalog key. If one ever does, this check reports the key and
+    // the fix is a DYNAMIC_KEY_ROOTS entry stating why the scan cannot see
+    // it — an escape hatch that demands a written reason, rather than a scope
+    // quietly wide enough to swallow prose.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { server: { mail: { subject: "Welcome" } } },
+        {
+          "config/mail.yaml": "template: server.mail.subject",
+          "packages/server/src/mail.ts": "export const send = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("server.mail.subject");
   });
 
   it("reads the English catalog only, so a stale translation cannot hide a death", () => {
