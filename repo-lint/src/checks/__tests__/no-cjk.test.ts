@@ -102,10 +102,22 @@ describe("no-cjk", () => {
     expect(noCjk.run(context)).toEqual([]);
   });
 
+  it("bans CJK in every TypeScript extension it scans", () => {
+    // The positive half, and it has to come first: an exemption test asserting
+    // [] passes for two different reasons — the file was exempt, or it was
+    // never scanned. Without this, narrowing SCANNED would make the two
+    // patterns agree by dropping .mts/.cts entirely and no test would notice.
+    const context = withAllowlisted({
+      "packages/core/src/a.mts": 'const a = "中文";',
+      "packages/core/src/b.cts": 'const a = "中文";',
+    });
+    expect(noCjk.run(context)).toHaveLength(2);
+  });
+
   it("skips a test file on every TypeScript extension it scans", () => {
-    // SCANNED admits .mts and .cts, so the test rule has to as well — a
-    // .test.mts that reads as shipped code would have its fixture strings
-    // banned. The two patterns disagreed until 2026-08-01.
+    // The exemption half. Paired with the test above, [] here can only mean
+    // the test rule matched: the extensions are known to be scanned. The two
+    // patterns disagreed about which extensions exist until 2026-08-01.
     const context = withAllowlisted({
       "packages/core/src/a.test.mts": 'const a = "中文";',
       "packages/core/src/b.spec.cts": 'const a = "中文";',

@@ -25,5 +25,19 @@ ruleTester.run("test-file-location", testFileLocation, {
       filename: "packages/web/src/ui/Button.spec.tsx",
       errors: [{ messageId: "wrongLocation" }],
     },
+    // Every TypeScript extension, not the two that happened to exist when this
+    // rule was written. The same concept lives in repo-lint's file-kinds, and
+    // while the two disagreed a .test.mts was test material there and invisible
+    // here — sitting beside its source forever with nothing complaining.
+    {
+      code: "export const a = 1;",
+      filename: "packages/core/src/thing.test.mts",
+      errors: [{ messageId: "wrongLocation" }],
+    },
+    {
+      code: "export const a = 1;",
+      filename: "packages/core/src/thing.spec.cts",
+      errors: [{ messageId: "wrongLocation" }],
+    },
   ],
 });

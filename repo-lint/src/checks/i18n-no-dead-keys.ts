@@ -51,32 +51,12 @@ const SOURCE_CATALOG = "locales/en.json";
  * Nothing outside TypeScript is here because nothing outside TypeScript reads
  * a key: a sweep of every tracked non-TS, non-Markdown file found zero naming
  * one. That is a measurement, not a guarantee — if a config ever does, this
- * check reports the key and `DYNAMIC_KEY_ROOTS` is where it gets recorded,
- * with the reason.
+ * check reports the key, and widening this pattern is the fix. There is no
+ * per-key exemption list to reach for, deliberately: an empty one existed for
+ * three commits, was never used, and made its own call site impossible to
+ * test end to end. Add the mechanism when a key needs it, with that key in it.
  */
 const APPLICATION_SOURCE = /^packages\/[^/]+\/src\/.*\.([cm]?ts|tsx)$/;
-
-/**
- * Keys whose only consumer builds the id somewhere this scan cannot see, each
- * with the reason it cannot.
- *
- * The bar is a mechanism the scanner is structurally blind to, not "I am
- * fairly sure this one is used" — an entry without a reason is an exemption
- * with nowhere to park, which is how a list like this stops meaning anything.
- *
- * An entry matches its own key and the subtree beneath it, on a dot boundary
- * — `server.mail` covers `server.mail.subject` and not `server.mailer`. The
- * same rule `TEMPLATE_PREFIX` follows, and for the same reason: a prefix that
- * matched raw characters would exempt every sibling whose name merely starts
- * the same way, silently and forever.
- *
- * Being named somewhere is not such a mechanism, but being named somewhere
- * outside the scanned scope now can be: a key read from a config file, or
- * from a package that is not under `packages/`, is invisible to the scan and
- * belongs here with that stated. A key an application source names in full,
- * or reaches through an interpolated id, does not — the scan finds those.
- */
-const DYNAMIC_KEY_ROOTS: ReadonlyArray<{ prefix: string; reason: string }> = [];
 
 /**
  * Collects every leaf key in a catalog as its dotted path.
@@ -121,25 +101,6 @@ const TRANSLATION_CALL = /\bt\(\s*['"]([\w.-]+)['"]/g;
 const TEMPLATE_PREFIX = /`([a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)*\.)\$\{/g;
 
 /**
- * Whether a declared dynamic root covers this key.
- *
- * Exported so the boundary can be tested while `DYNAMIC_KEY_ROOTS` is empty:
- * a test that reimplemented this rule would pass against any implementation,
- * including one that dropped the boundary.
- * @param key The dotted key being judged.
- * @param roots The declared roots.
- * @returns True when a root is the key itself or an ancestor of it.
- */
-export function coveredByDynamicRoot(
-  key: string,
-  roots: ReadonlyArray<{ prefix: string }>,
-): boolean {
-  return roots.some(
-    ({ prefix }) => key === prefix || key.startsWith(`${prefix}.`),
-  );
-}
-
-/**
  * Every message in the catalogs is reachable from the code.
  *
  * A key nobody reads costs five translations and reads, to whoever finds it,
@@ -172,9 +133,6 @@ export function coveredByDynamicRoot(
  * here mention (`canvas.upload`, `cancel`) is independently alive in
  * application code, so no key\'s verdict changed. The mechanism was worth
  * closing; the evidence for it is the test, not a measured deletion.
- *
- * Only the keys nothing at all can see reach `DYNAMIC_KEY_ROOTS`, and only
- * with the reason the scan cannot see them.
  */
 export const i18nNoDeadKeys = {
   name: "i18n-no-dead-keys",
@@ -209,10 +167,9 @@ export const i18nNoDeadKeys = {
     for (const key of keys) {
       if (literals.has(key)) continue;
       if (prefixes.some((prefix) => key.startsWith(prefix))) continue;
-      if (coveredByDynamicRoot(key, DYNAMIC_KEY_ROOTS)) continue;
       findings.push({
         file: SOURCE_CATALOG,
-        message: `${key} is not read by any application source. A test or a document may still name it — that is not a use, and both should go with the key. Delete it from every catalog; if instead its id is assembled somewhere this scan cannot see, add its root to DYNAMIC_KEY_ROOTS with the reason.`,
+        message: `${key} is not read by any application source. A test or a document may still name it — that is not a use, and both should go with the key. Delete it from every catalog. If instead something outside the scanned scope reads it — a config file, a package that is not under packages/ — that reader is what this scan cannot see, and widening the scope is the fix rather than exempting the key.`,
       });
     }
     return findings;

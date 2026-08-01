@@ -93,5 +93,10 @@ export const GENERATED = /(^|\/)pnpm-lock\.yaml$/;
  * what this constant is for — and neither had it before, because the
  * extensions disagreed. No tracked file changes verdict today; both suites
  * pin the extensions so a future one cannot slip through either side.
+ *
+ * A third copy of this concept lives in
+ * `eslint-rules/src/rules/test-file-location.ts` — separate package, cannot
+ * import this one. It covers the same extensions and its docstring points
+ * back here; change one and the other has to move.
  */
 export const TEST_FILE = /(^|\/)__tests__\/|\.(test|spec)\.([cm]?ts|tsx)$/;

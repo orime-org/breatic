@@ -1,10 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import { describe, expect, it } from "vitest";
-import {
-  coveredByDynamicRoot,
-  i18nNoDeadKeys,
-} from "#repo-lint/checks/i18n-no-dead-keys";
+import { i18nNoDeadKeys } from "#repo-lint/checks/i18n-no-dead-keys";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
 
 /**
@@ -173,22 +170,6 @@ describe("i18n-no-dead-keys", () => {
     ).toEqual([]);
   });
 
-  it("exempts a declared dynamic root and its subtree, on a dot boundary", () => {
-    // DYNAMIC_KEY_ROOTS is empty and load-bearing: it is the only way to
-    // record a key the scan cannot see. Its matching has to stop at a dot for
-    // the same reason TEMPLATE_PREFIX does — a raw prefix would exempt every
-    // sibling whose name merely starts the same way, silently and forever.
-    // The rule is exported so this tests the real one; reimplementing it here
-    // would pass against any implementation, including one without the
-    // boundary.
-    const roots = [{ prefix: "server.mail" }];
-    expect(coveredByDynamicRoot("server.mail", roots)).toBe(true);
-    expect(coveredByDynamicRoot("server.mail.subject", roots)).toBe(true);
-    expect(coveredByDynamicRoot("server.mailer", roots)).toBe(false);
-    expect(coveredByDynamicRoot("server.mailbox.flag", roots)).toBe(false);
-    expect(coveredByDynamicRoot("server.mail.subject", [])).toBe(false);
-  });
-
   it("does not let a .test.mts file keep a key alive", () => {
     // Widening the scan to every TypeScript extension opened a seam: the
     // shared TEST_FILE only knew .ts/.tsx, so a test file with the newer
@@ -334,9 +315,9 @@ describe("i18n-no-dead-keys", () => {
   it("does not count a config file, because nothing outside TypeScript reads a key", () => {
     // Verified when the scope was set: no tracked non-TS, non-Markdown file
     // names a catalog key. If one ever does, this check reports the key and
-    // the fix is a DYNAMIC_KEY_ROOTS entry stating why the scan cannot see
-    // it — an escape hatch that demands a written reason, rather than a scope
-    // quietly wide enough to swallow prose.
+    // widening the scope is the fix — there is no per-key exemption list, so
+    // the answer is always "make the scan see the reader", never "make this
+    // one key special".
     const findings = i18nNoDeadKeys.run(
       repo(
         { server: { mail: { subject: "Welcome" } } },
