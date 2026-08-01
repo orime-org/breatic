@@ -41,16 +41,21 @@ export function useCollabCaretFocus(
 ): void {
   // Depend on the awareness instance, not on the object wrapping it, so that
   // neither effect below re-runs merely because a caller rebuilt its provider
-  // wrapper. This buys tidiness, not safety: publishing presence never touches
-  // the document at all — five `updateUser` calls produce zero Y.Doc
-  // transactions and zero update bytes against five awareness updates, where a
-  // single `insertContent` produces one transaction of 28 bytes.
+  // wrapper. This buys tidiness, not safety, and the reason is worth stating
+  // precisely because it is easy to state too strongly:
   //
-  // Focus does reach the document, by an unrelated route: any dispatch has
-  // ProseMirror reconcile its view of the body against the fragment, and a
-  // focus is a dispatch. What stops that write from destroying a redo stack is
-  // `seedEmptyBody` in `document-yjs`, which removes the disagreement the write
-  // would otherwise be reconciling.
+  // Publishing presence writes NOTHING to the document — measured at five focus
+  // flips: zero updates, zero update bytes, against five awareness updates.
+  // It does not follow that the document is untouched. `updateUser` is an
+  // editor command, so each call dispatches, and every dispatch has ProseMirror
+  // reconcile its view of the body against the fragment inside a Y.Doc
+  // transaction. Same measurement: six transactions, all of them empty.
+  //
+  // Empty is not the same as inert. `beforeTransaction` / `afterTransaction`
+  // fire regardless, and `CollabUndoSelection` listens to them. What keeps the
+  // reconciliation itself harmless is `seedEmptyBody` in `document-yjs`, which
+  // removes the layer disagreement the write would otherwise be resolving —
+  // without it, a reconciliation after an undo destroys the redo stack.
   const awareness = caretProvider?.awareness ?? null;
 
   // Publish. Receivers dim on a literal `false` only, so a client that never

@@ -40,50 +40,46 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
 /**
  * Give an empty body the one paragraph ProseMirror insists on.
  *
- * The two layers disagree about what an empty document is. ProseMirror's schema
- * requires at least one block, so its empty document is a single empty
- * paragraph; a Yjs fragment's is nothing at all. Left alone, that disagreement
- * surfaces the moment an undo removes the last of the content: the editor still
- * holds a paragraph the fragment no longer has, and the next dispatch — a
- * click or a window regaining focus is enough, both measured — reconciles them
- * by writing that paragraph back. The write carries the
- * dispatch's own `addToHistory` marker, which an ordinary click never sets, so
- * yjs reads it as a fresh local edit and clears the redo stack. The undone text
- * becomes unrecoverable, and the deletion syncs to every collaborator.
+ * ## The invariant
  *
- * Seeding removes the disagreement instead of reacting to it: with the
- * paragraph already in the fragment, undo takes back the text and leaves the
- * paragraph, both layers agree, and nothing is ever written back. Measured
- * across paragraphs, lists, blockquotes, headings and code blocks — all five
- * restore in full, where the previous approach (refusing to delete the body's
- * last child) held only for paragraphs.
+ * **A document body always holds at least one block.** Every writer to a body —
+ * this editor, the backend that creates a Space, an importer, a generator — has
+ * to honour it, and a writer that CREATES a body must create it non-empty.
  *
- * **Call this only once the document has synced.** Seeding a body that merely
- * has not loaded yet adds a paragraph the server's real content then merges
- * behind, leaving a stray empty line at the top — measured, not theorised.
+ * ## Why
  *
- * ## The invariant this exists to hold
+ * The two layers disagree about what an empty document is: ProseMirror's schema
+ * requires at least one block, a Yjs fragment's empty is nothing at all. The
+ * disagreement surfaces the moment an undo removes the last of the content —
+ * the editor still holds a paragraph the fragment no longer has, and the next
+ * dispatch (a click, or a window regaining focus; both measured) reconciles
+ * them by writing that paragraph back. That write carries the dispatch's own
+ * `addToHistory` marker, so yjs reads it as a fresh local edit, clears the redo
+ * stack, and syncs the deletion to everyone: the text just undone is gone for
+ * good. Seeding removes the disagreement rather than reacting to it, and covers
+ * every block type — paragraphs, lists, blockquotes, headings and code blocks
+ * all measured restoring in full.
  *
- * **A document body always holds at least one block.** Every writer to a
- * document body — this editor, the backend that creates a Space, an importer, a
- * generator — has to honour it. A body that reaches zero blocks puts the editor
- * and the fragment into the disagreement described above, and the next click
- * repairs it destructively. It is not enough to avoid emptying the body; a
- * writer that CREATES one must create it non-empty.
+ * ## Two conditions on calling it
+ *
+ * **Only once the document has synced.** Seeding a body that has merely not
+ * loaded yet adds a paragraph the server's content then merges in behind,
+ * leaving a stray blank line at the top of everyone's document.
+ *
+ * **Only from a client allowed to write.** The server drops a read-only
+ * client's update without an error, leaving that client permanently one
+ * paragraph ahead of everyone else.
  *
  * ## Known limitation: this does not converge across clients
  *
- * The `length > 0` guard below is a purely LOCAL read. Two clients that are
- * both synced against an empty body each see zero and each insert — and Yjs
- * keeps both, because concurrent inserts are never deduplicated. The document
- * then opens with two empty paragraphs: the stray blank line the sync gate was
- * built to prevent, arriving from the other side instead.
+ * The `length > 0` guard is a purely LOCAL read. Two clients synced against the
+ * same empty body each see zero and each insert; Yjs keeps both, because
+ * concurrent inserts are never deduplicated. The document then opens with two
+ * blank paragraphs — the same stray line, arriving from the other side.
  *
- * Reachable whenever two people open a brand-new Space within the same round
- * trip. The fix is not a smarter guard — no local read can settle it — but
- * moving the seed to the one writer that runs exactly once: the backend, at the
- * moment it creates the Space. That is the next slice; this client-side seed is
- * what stands between the destructive repair and today's users until then.
+ * Reachable whenever two people open a brand-new Space within one round trip.
+ * No smarter guard settles it: the fix is to move the seed to the one writer
+ * that runs exactly once, the backend, at the moment it creates the Space.
  * @param doc - The document Space's Y.Doc, already synced.
  */
 export function seedEmptyBody(doc: Y.Doc): void {

@@ -55,7 +55,17 @@ export interface DocumentUndoManager extends Y.UndoManager {
  * Build an undo manager for a document's body.
  *
  * Tracking only the sync plugin's origin is what keeps a peer's edits off our
- * stack. But that alone would not stop undo from destroying their work: when
+ * stack. It works by IDENTITY: Yjs decides membership with `Set.has`, so the
+ * key object imported here has to be the very one the active sync plugin
+ * dispatches with. Two copies of `@tiptap/y-tiptap` in the bundle and it never
+ * matches — the stack captures nothing and undo silently does nothing at all.
+ * Single-copy is therefore an invariant, enforced by a test of its own
+ * (`features/collab-editor/__tests__/single-y-tiptap-copy`), not something to
+ * re-litigate here; the name-based lookups in `collab-plugin-keys` are no help
+ * against it, and say so.
+ *
+ * Tracking the origin alone would not stop undo from destroying a peer's work:
+ * when
  * two people write into the SAME paragraph, undoing our own insert takes the
  * whole paragraph — their text with it. The binding guards against exactly this
  * with a delete filter, which has to be carried over here because supplying our

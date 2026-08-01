@@ -407,8 +407,13 @@ function ProjectWorkspace({
     // the scroll position is not among them, see `document-editor-cache`).
     // Each Space type keeps its own cache and
     // evicting an unknown name is a no-op, so both are called without checking
-    // which type this tab was. The space's Y.Doc stays cached for an instant
-    // reopen — only the memory-only state is discarded.
+    // which type this tab was.
+    //
+    // The Y.Doc goes too, though not from here: `SpaceDocSync` unmounts with
+    // the tab and releases the last reference, and the registry's deferred
+    // teardown destroys the provider and then the document. So a reopen
+    // re-dials and re-syncs from the server, and shows the loading placeholder
+    // while it does — nothing about this tab is kept warm.
     evictCanvasUndoManager(docName.canvasSpace(projectId, id));
     evictDocumentEditor(docName.documentSpace(projectId, id));
     if (id === activeSpace?.id) {
