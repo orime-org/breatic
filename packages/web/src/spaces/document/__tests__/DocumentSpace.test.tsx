@@ -16,17 +16,22 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 // the identity are baked in at construction. A container test therefore has to
 // supply a provider; without one the body correctly renders its loading state.
 const socketAwareness = new Awareness(new Y.Doc());
-// Mutable so a test can put the socket in its pre-sync state.
-const socketState = { synced: true };
+// Mutable so a test can put the socket in its pre-sync state. `synced` and
+// `hasEverSynced` are separate on purpose: the first answers "in sync right
+// now", the second "has the content ever arrived", and the container must read
+// the second.
+const socketState = { synced: true, hasEverSynced: true };
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: (): {
     provider: { awareness: unknown };
     synced: boolean;
+    hasEverSynced: boolean;
     status: 'connected';
     authFailedReason: null;
   } => ({
     provider: { awareness: socketAwareness },
     synced: socketState.synced,
+    hasEverSynced: socketState.hasEverSynced,
     status: 'connected',
     authFailedReason: null,
   }),
@@ -47,6 +52,30 @@ describe('DocumentSpace', () => {
     _resetForTests();
     useCurrentUserStore.setState({ user: null });
     socketState.synced = true;
+    socketState.hasEverSynced = true;
+  });
+
+  it('shows the content again immediately after a Space-tab switch', async () => {
+    // Switching Space tabs unmounts and remounts this body — `SpaceOutlet` is
+    // keyed on the Space id. The content is plainly still there across one: the
+    // Y.Doc, the editor and its undo stack are all held elsewhere. So the gate
+    // that withholds the editor must not restart from zero here, or the user
+    // gets a loading placeholder in front of a document already in memory.
+    //
+    // Worse while the socket happens to be down — `synced` is false, nothing
+    // will set it again until the network returns, and the document stays
+    // hidden for the whole outage.
+    const { unmount } = render(
+      <DocumentSpace projectId='p1' spaceId='doc-tabswitch' />,
+    );
+    expect(await screen.findByTestId('document-toolbar')).toBeInTheDocument();
+
+    unmount();
+    socketState.synced = false;
+    render(<DocumentSpace projectId='p1' spaceId='doc-tabswitch' />);
+
+    expect(await screen.findByTestId('document-toolbar')).toBeInTheDocument();
+    expect(screen.queryByTestId('document-space-loading')).toBeNull();
   });
 
   it('keeps the editor through a reconnect once the content has arrived', async () => {
@@ -77,6 +106,7 @@ describe('DocumentSpace', () => {
     // because the paragraph that keeps Yjs and ProseMirror agreeing is only
     // seeded after a sync. Measured, both of them.
     socketState.synced = false;
+    socketState.hasEverSynced = false;
     render(<DocumentSpace projectId='p1' spaceId='doc-unsynced' />);
 
     expect(await screen.findByTestId('document-space')).toBeInTheDocument();

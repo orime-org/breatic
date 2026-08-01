@@ -78,6 +78,7 @@ describe('useDocumentEditor', () => {
         name,
         caretProvider: { awareness },
         caretUser: CARET_USER,
+        hasEverSynced: true,
       }),
     );
   }
@@ -132,7 +133,7 @@ describe('useDocumentEditor', () => {
           name: NAME,
           caretProvider: { awareness },
           caretUser: CARET_USER,
-          hasSynced: false,
+          hasEverSynced: false,
         }),
       );
       await waitFor(() => expect(rendered.result.current).not.toBeNull());
@@ -153,31 +154,35 @@ describe('useDocumentEditor', () => {
     });
 
     it('seeds when the content arrives, not only when it was already there', async () => {
-      // THE production path, and the only one: `DocumentSpace` mounts with
-      // `hasSynced` false every time — it is React state on a component the
-      // Space-tab switch remounts — so seeding never happens on mount in the
-      // real app. It happens because the flag turns true underneath a mounted
-      // hook. Every other seeding case here starts at `hasSynced: true`, which
+      // THE production path for seeding, and the only one: seeding applies to a
+      // document nobody has opened before, and the first client to open one
+      // necessarily mounts before its content has arrived. So the flag turns
+      // true UNDERNEATH a mounted hook; it is never true at mount on the path
+      // that matters. (Later opens do mount with it already true — the latch is
+      // kept with the document in the provider registry — but by then the body
+      // has a paragraph and seeding is a no-op.)
+      //
+      // Every other seeding case here starts at `hasEverSynced: true`, which
       // means dropping the flag from the effect's dependencies leaves them all
       // green while new documents silently stop being seeded — and an unseeded
       // document is the redo-stack-destroying data loss this whole mechanism
       // exists to prevent.
       const rendered = renderHook(
-        ({ hasSynced }: { hasSynced: boolean }) =>
+        ({ hasEverSynced }: { hasEverSynced: boolean }) =>
           useDocumentEditor({
             doc,
             name: NAME,
             caretProvider: { awareness },
             caretUser: CARET_USER,
-            hasSynced,
+            hasEverSynced,
           }),
-        { initialProps: { hasSynced: false } },
+        { initialProps: { hasEverSynced: false } },
       );
       await waitFor(() => expect(rendered.result.current).not.toBeNull());
       expect(documentBodyFragment(doc).length).toBe(0);
 
       // The socket syncs and reports an empty document — it really is new.
-      act(() => rendered.rerender({ hasSynced: true }));
+      act(() => rendered.rerender({ hasEverSynced: true }));
 
       const fragment = documentBodyFragment(doc);
       expect(fragment.length).toBe(1);
@@ -196,6 +201,7 @@ describe('useDocumentEditor', () => {
             name: NAME,
             caretProvider: { awareness },
             caretUser: CARET_USER,
+            hasEverSynced: true,
             editable,
           }),
         { initialProps: { editable: false } },
@@ -221,6 +227,7 @@ describe('useDocumentEditor', () => {
           name: NAME,
           caretProvider: { awareness },
           caretUser: CARET_USER,
+          hasEverSynced: true,
           editable: false,
         }),
       );
@@ -265,6 +272,7 @@ describe('useDocumentEditor', () => {
           name: NAME,
           caretProvider: null,
           caretUser: CARET_USER,
+          hasEverSynced: true,
         }),
       );
       expect(result.current).toBeNull();

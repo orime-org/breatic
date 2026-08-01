@@ -7,6 +7,7 @@ import type * as Y from 'yjs';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import {
   acquireDocProvider,
+  hasDocEverSynced,
   releaseDocProvider,
   useCollabSocketContext,
 } from '@web/data/yjs/collab-socket';
@@ -44,6 +45,19 @@ interface SocketState {
    * once the reconnect re-syncs.
    */
   synced: boolean;
+  /**
+   * Whether this document's content has arrived at least once — the latch
+   * {@link synced} is not.
+   *
+   * Read this to decide whether the document may be shown or edited: once the
+   * content is in, the local Y.Doc holds it and offline edits merge cleanly on
+   * reconnect, so a dropped socket is no reason to take it off screen.
+   *
+   * Survives this component being unmounted and remounted, because it is kept
+   * with the document in the provider registry rather than here. That is what a
+   * Space-tab switch does, and the content is plainly still there across one.
+   */
+  hasEverSynced: boolean;
   /** High-level connection lifecycle for banner UI. */
   status: ConnectionStatus;
   /**
@@ -78,6 +92,10 @@ interface SocketState {
 export function useSocket({ name, doc }: UseSocketOptions): SocketState {
   const { ready, url } = useCollabSocketContext();
   const [synced, setSynced] = React.useState(false);
+  // Mirrored into React state so a change re-renders, but OWNED by the registry
+  // — the initial value below is read from there, which is what makes the latch
+  // survive this component being remounted.
+  const [hasEverSynced, setHasEverSynced] = React.useState(false);
   const [status, setStatus] = React.useState<ConnectionStatus>('connecting');
   const [authFailedReason, setAuthFailedReason] = React.useState<
     string | null
@@ -101,6 +119,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
     if (!ready) {
       setStatus('connecting');
       setSynced(false);
+      setHasEverSynced(false);
       setAuthFailedReason(null);
       setProvider(null);
       return;
@@ -118,6 +137,10 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       setSynced(false);
       setStatus('connecting');
     }
+    // The latch comes from the registry, which has been watching this document
+    // since it was first acquired — including while this component did not
+    // exist. This is the line that survives a Space-tab switch.
+    setHasEverSynced(hasDocEverSynced(name));
     setAuthFailedReason(null);
 
     /**
@@ -125,6 +148,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
      */
     const onSynced = (): void => {
       setSynced(true);
+      setHasEverSynced(true);
       setStatus('connected');
     };
     /**
@@ -170,6 +194,11 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       setProvider(null);
       releaseDocProvider(name);
       setSynced(false);
+      // Not a reset of the latch itself — that lives in the registry and is
+      // untouched here. This only clears the local mirror for the case where
+      // the effect re-runs for a DIFFERENT document; the branch above then
+      // reads the new document's latch.
+      setHasEverSynced(false);
       setStatus('connecting');
       setAuthFailedReason(null);
     };
@@ -178,6 +207,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
   return {
     provider,
     synced,
+    hasEverSynced,
     status,
     authFailedReason,
   };

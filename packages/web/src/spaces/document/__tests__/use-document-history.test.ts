@@ -69,6 +69,7 @@ describe('useDocumentHistory', () => {
         name: NAME,
         caretProvider: { awareness },
         caretUser: CARET_USER,
+        hasEverSynced: true,
       });
       const history = useDocumentHistory(handle?.undoManager ?? null);
       return { handle, history };

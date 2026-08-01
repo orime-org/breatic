@@ -84,6 +84,7 @@ describe('opening a document does not write to it', () => {
         name: NAME,
         caretProvider: { awareness },
         caretUser: CARET_USER,
+        hasEverSynced: true,
         editable,
       }),
     );

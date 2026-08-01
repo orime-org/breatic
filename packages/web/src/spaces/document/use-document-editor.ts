@@ -49,9 +49,16 @@ export interface UseDocumentEditorOptions {
    * merges in behind the seeded paragraph and leaves a stray blank line.
    *
    * EVER, not currently. A live "is the socket in sync" flag drops to false on
-   * every routine reconnect, and by then the content is already here.
+   * every routine reconnect, and by then the content is already here — read it
+   * from `useSocket`, which is the one place this is tracked.
+   *
+   * Required, and deliberately without a default. Either default is wrong for
+   * somebody: `true` seeds into a document that may not have loaded, `false`
+   * withholds an editor forever from a caller with no socket. A caller that
+   * cannot answer it does not yet know whether it is safe to show this
+   * document at all.
    */
-  hasSynced?: boolean;
+  hasEverSynced: boolean;
 }
 
 /**
@@ -68,7 +75,7 @@ export interface UseDocumentEditorOptions {
  * @param options.caretProvider - Provider whose awareness carries carets.
  * @param options.caretUser - This user's caret identity.
  * @param options.editable - False for read-only.
- * @param options.hasSynced - Whether content has ever arrived; gates seeding.
+ * @param options.hasEverSynced - Whether content has ever arrived; gates seeding.
  * @returns The editor and its undo manager, or null while the wiring is absent.
  */
 export function useDocumentEditor({
@@ -77,7 +84,7 @@ export function useDocumentEditor({
   caretProvider,
   caretUser,
   editable = true,
-  hasSynced = true,
+  hasEverSynced,
 }: UseDocumentEditorOptions): DocumentEditorHandle | null {
   // Once the real content is known to be in, and only from a client allowed to
   // write. A read-only client's seed is refused by the server, which would
@@ -90,8 +97,8 @@ export function useDocumentEditor({
   // connection cap) still reads as editable here. Everything such a client
   // types is refused too, so that is a wider gap than seeding.
   React.useEffect(() => {
-    if (hasSynced && editable) seedEmptyBody(doc);
-  }, [doc, hasSynced, editable]);
+    if (hasEverSynced && editable) seedEmptyBody(doc);
+  }, [doc, hasEverSynced, editable]);
 
   // Get-or-create, so the repeat calls a re-render causes are free and a
   // StrictMode double-invoke cannot produce a second editor.

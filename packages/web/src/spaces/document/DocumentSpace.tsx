@@ -36,20 +36,20 @@ export function DocumentSpace({
   const t = useTranslation();
   const name = docName.documentSpace(projectId, spaceId);
   const doc = React.useMemo(() => getDoc(name), [name]);
-  const { provider, synced } = useSocket({ name, doc });
+  // `hasEverSynced` rather than `synced`: the latter answers "is the socket in
+  // sync right now" and drops to false on every routine close — a wifi switch,
+  // a laptop waking, a collab redeploy. What matters here is whether the
+  // content has EVER arrived, because once it has the local document holds it
+  // and edits made offline merge cleanly on reconnect. Reading the live flag
+  // would tear the editor out of the DOM on every blip, taking the caret, the
+  // in-flight IME composition and the reader's place on the page with it.
+  //
+  // The latch is kept with the document in the provider registry, not here:
+  // this component is remounted on every Space-tab switch, and a latch that
+  // resets there would show a loading placeholder in front of content the
+  // local Y.Doc already holds.
+  const { provider, hasEverSynced } = useSocket({ name, doc });
   const caretUser = useCaretUser();
-
-  // `synced` answers "is the socket in sync right now" and drops to false on
-  // every routine close — a wifi switch, a laptop waking, a collab redeploy.
-  // What matters here is whether the content has EVER arrived: once it has,
-  // the local document holds it and edits made offline merge cleanly on
-  // reconnect. Latching the flag is what keeps a blip from tearing the editor
-  // out of the DOM along with the caret, the in-flight IME composition and the
-  // reader's place on the page.
-  const [hasSynced, setHasSynced] = React.useState(false);
-  React.useEffect(() => {
-    if (synced) setHasSynced(true);
-  }, [synced]);
 
   // The editor belongs to the document, not to this component: switching Space
   // tabs remounts this body, and what the Y.Doc does not hold — undo stack,
@@ -60,7 +60,7 @@ export function DocumentSpace({
     caretProvider: provider,
     caretUser,
     editable: !readOnly,
-    hasSynced,
+    hasEverSynced,
   });
   // Nothing is offered until the document's real content is in. Editing before
   // that is not a lesser version of editing this document — it is editing a
@@ -74,7 +74,7 @@ export function DocumentSpace({
   // honest reading of the situation — nothing typed then would have been
   // saved — and `ConnectionBanner` at the project level says why (user
   // 2026-07-29 weighed this against the alternative and chose it).
-  const editor = hasSynced ? (handle?.editor ?? null) : null;
+  const editor = hasEverSynced ? (handle?.editor ?? null) : null;
   const history = useDocumentHistory(handle?.undoManager ?? null);
 
   return (

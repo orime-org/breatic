@@ -65,6 +65,7 @@ describe('DocumentEditor', () => {
         name: NAME,
         caretProvider,
         caretUser: CARET_USER,
+        hasEverSynced: true,
       });
       return { handle, history: useDocumentHistory(handle?.undoManager ?? null) };
     });

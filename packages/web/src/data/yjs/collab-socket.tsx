@@ -56,6 +56,26 @@ interface DocEntry {
   provider: HocuspocusProvider;
   refcount: number;
   pendingRelease: ReturnType<typeof setTimeout> | null;
+  /**
+   * Whether this document's content has arrived from the server at least once.
+   *
+   * A latch, unlike `provider.synced`, which answers "in sync right now" and
+   * drops to false on every routine close — a wifi switch, a laptop waking, a
+   * collab redeploy. Consumers that must not show a document before its real
+   * content is in (see `DocumentSpace`) need the former: once the content has
+   * arrived the local Y.Doc holds it, and edits made offline merge cleanly.
+   *
+   * It lives here rather than in a component because it is a fact about the
+   * DOCUMENT, and the document outlives any one component — a Space tab holds
+   * it open while the body that renders it is remounted on every tab switch. As
+   * component state the latch resets on that remount and the user is shown a
+   * loading placeholder in front of content already in memory.
+   *
+   * Scoped to this entry, so it dies with the provider and the Y.Doc: what
+   * comes back after a real teardown is a fresh document whose content
+   * genuinely has not arrived.
+   */
+  hasEverSynced: boolean;
 }
 
 let sharedSocket: HocuspocusProviderWebsocket | null = null;
@@ -121,12 +141,37 @@ export function acquireDocProvider(
     document: doc,
     token: COOKIE_AUTH_PLACEHOLDER,
   });
+  const entry: DocEntry = {
+    provider,
+    refcount: 1,
+    pendingRelease: null,
+    hasEverSynced: false,
+  };
+  docEntries.set(name, entry);
+  // The registry watches for the first sync itself rather than letting a
+  // consumer report it: consumers come and go, and the one that happens to be
+  // mounted when the content lands is not necessarily the one that needs to
+  // know later. Subscribed before `attach` so no sync can precede it.
+  provider.on('synced', () => {
+    entry.hasEverSynced = true;
+  });
   // A shared-websocketProvider provider does NOT auto-attach (its constructor
   // only auto-attaches when it manages its own socket). Attach explicitly or it
   // never registers / sends its token and hangs in `connecting` forever.
   provider.attach();
-  docEntries.set(name, { provider, refcount: 1, pendingRelease: null });
   return provider;
+}
+
+/**
+ * Whether a document's content has arrived from the server at least once.
+ *
+ * See {@link DocEntry.hasEverSynced} for why this is a property of the document
+ * rather than of whichever component is currently rendering it.
+ * @param name - Document name previously passed to {@link acquireDocProvider}.
+ * @returns True once the document has synced; false before that, and for a document that is not currently held open.
+ */
+export function hasDocEverSynced(name: string): boolean {
+  return docEntries.get(name)?.hasEverSynced ?? false;
 }
 
 /**
