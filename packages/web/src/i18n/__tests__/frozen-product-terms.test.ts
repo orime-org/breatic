@@ -76,6 +76,13 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
  * a key comes back with a translated noun and a real reader, the dead-key check
  * is satisfied, the collision guard is gone, and nothing fails.
  *
+ * Reviving a key means deleting its row here first. Nothing else announces
+ * that: put the key back in the catalogs and five tests fail, one per locale,
+ * naming a file the person editing locales was not looking at. That is the
+ * intended friction — a key comes back only on purpose — but it is friction
+ * nobody warns you about, so it is written down in both places that could
+ * send you here: this docstring and the dead-key check's finding message.
+ *
  * First batch removed as part of #1336 (decision A); the rest on 2026-08-01,
  * when the dead-key check stopped counting a test fixture as a reader.
  */

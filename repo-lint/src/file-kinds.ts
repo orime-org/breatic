@@ -96,7 +96,11 @@ export const GENERATED = /(^|\/)pnpm-lock\.yaml$/;
  *
  * A third copy of this concept lives in
  * `eslint-rules/src/rules/test-file-location.ts` — separate package, cannot
- * import this one. It covers the same extensions and its docstring points
- * back here; change one and the other has to move.
+ * import this one — and it does NOT cover the same extensions. Aligning it
+ * was tried and reverted: the two flat configs that turn that rule on select
+ * only `{ts,tsx}`, so ESLint never hands it a `.mts` whatever its own regex
+ * says, and widening the regex alone is dead code that reads like a fix.
+ * Closing it means the rule, both configs, and the spec paragraph in
+ * docs/ARCHITECTURE.md moving together, which is its own change.
  */
 export const TEST_FILE = /(^|\/)__tests__\/|\.(test|spec)\.([cm]?ts|tsx)$/;

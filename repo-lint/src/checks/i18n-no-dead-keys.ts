@@ -55,6 +55,14 @@ const SOURCE_CATALOG = "locales/en.json";
  * per-key exemption list to reach for, deliberately: an empty one existed for
  * three commits, was never used, and made its own call site impossible to
  * test end to end. Add the mechanism when a key needs it, with that key in it.
+ *
+ * Widening has a floor. The `packages/<pkg>/src` shape is pinned by three
+ * tests and cannot go — dropping it lets this check read its own docstring
+ * again, which is the defect the scope exists to close. Widen within it:
+ * another extension, another path. And reviving a key deleted by an earlier
+ * sweep takes a second edit nothing else announces — its row in
+ * REMOVED_DEAD_KEYS asserts the key is absent from all five catalogs, so
+ * putting it back fails five tests until that row goes too.
  */
 const APPLICATION_SOURCE = /^packages\/[^/]+\/src\/.*\.([cm]?ts|tsx)$/;
 
@@ -169,7 +177,7 @@ export const i18nNoDeadKeys = {
       if (prefixes.some((prefix) => key.startsWith(prefix))) continue;
       findings.push({
         file: SOURCE_CATALOG,
-        message: `${key} is not read by any application source. A test or a document may still name it — that is not a use, and both should go with the key. Delete it from every catalog. If instead something outside the scanned scope reads it — a config file, a package that is not under packages/ — that reader is what this scan cannot see, and widening the scope is the fix rather than exempting the key.`,
+        message: `${key} is not read by any application source. A test or a document may still name it — that is not a use, and both should go with the key. Delete it from every catalog, and add it to REMOVED_DEAD_KEYS in packages/web/src/i18n/__tests__/frozen-product-terms.test.ts so re-adding it fails. If instead a reader exists that this scan cannot see, widen APPLICATION_SOURCE to reach it — another extension, or another path under packages/<pkg>/src. Do not drop the packages/<pkg>/src shape itself: three tests pin it, because that shape is what keeps this check from reading its own worked examples.`,
       });
     }
     return findings;

@@ -3,18 +3,8 @@
 import type { TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
-/**
- * A test file by name.
- *
- * Kept in step with `TEST_FILE` in `repo-lint/src/file-kinds.ts`, which the
- * repo-wide checks use for the same concept. The two cannot share a module —
- * separate packages, and this one must not depend on the lint suite — so the
- * only thing holding them together is that both cover every TypeScript
- * extension and both say so. When they disagreed, a `.test.mts` was test
- * material to one and shipped code to the other, and this rule — whose whole
- * job is to force test files into `__tests__/` — never saw it.
- */
-const TEST_FILE = /\.(test|spec)\.([cm]?ts|tsx)$/;
+/** A test file by name. */
+const TEST_FILE = /\.(test|spec)\.tsx?$/;
 
 /** The one directory tests live in. */
 const TEST_DIR = "__tests__";

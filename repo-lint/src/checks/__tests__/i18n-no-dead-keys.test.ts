@@ -294,6 +294,21 @@ describe("i18n-no-dead-keys", () => {
     expect(findings[0]?.message).toContain("canvas.upload.tooLarge");
   });
 
+  it("tells the reader both edits a deletion takes", () => {
+    // The message is the only place a person meets this check, and following
+    // it half way leaves five failing tests in a file they were not editing.
+    // Pinned because prose drifts from behaviour silently — three rounds of
+    // review on this check found exactly that, twice in this same docstring.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { canvas: { gone: "Gone" } },
+        { "packages/web/src/app.tsx": "export const App = () => null;" },
+      ),
+    );
+    expect(findings[0]?.message).toContain("REMOVED_DEAD_KEYS");
+    expect(findings[0]?.message).toContain("APPLICATION_SOURCE");
+  });
+
   it("counts any mention inside an application source, quoted or not", () => {
     // Within the scanned scope the matching stays generous — a bare dotted
     // literal is enough, no call shape required — because calling a live key
