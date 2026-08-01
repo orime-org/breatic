@@ -429,8 +429,10 @@ describe("avatarStorageKey", () => {
   });
 
   it("is tenant-scoped by studio, so two studios never collide", () => {
-    const a = avatarStorageKey("studio-a", "png", 1);
-    const b = avatarStorageKey("studio-b", "png", 1);
+    // Same clock, same nonce: the studio id is the only thing left to separate
+    // them, which is exactly the property being claimed.
+    const a = avatarStorageKey("studio-a", "png", 1, "same");
+    const b = avatarStorageKey("studio-b", "png", 1, "same");
     expect(a).not.toBe(b);
   });
 });
