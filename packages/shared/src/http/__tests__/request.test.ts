@@ -23,9 +23,9 @@
 
 import { describe, it, expect, vi } from "vitest";
 
-import { httpRequest, httpRequestJson } from "@shared/http/request.js";
+import { httpRequest, httpRequestJson, HttpStatusError } from "@shared/http/request.js";
 import type { HttpRetryEvent } from "@shared/http/request.js";
-import { MAX_RETRIES } from "@shared/http/constants.js";
+import { MAX_RETRIES, HTTP_ERROR_BODY_EXCERPT_CHARS } from "@shared/http/constants.js";
 
 /** A JSON response with the given status. */
 function res(status: number, body: unknown = { ok: true }, headers: Record<string, string> = {}): Response {
@@ -126,6 +126,54 @@ describe("httpRequest — replay authorization comes from the caller", () => {
     const out = await httpRequest(
       "https://x.test/kling",
       { method: "POST" },
+      opts({ fetchImpl, replaySafe: true }),
+    );
+    expect(calls()).toBe(2);
+    expect(out.status).toBe(200);
+  });
+
+  it("does not replay a body that can only be delivered once", async () => {
+    // `replaySafe` is the caller's fact about SIDE EFFECTS. Whether the bytes
+    // can physically be sent a second time is the platform's fact, and the
+    // transport owns it: a stream body is consumed by attempt 1, so the replay
+    // hands fetch an already-disturbed stream, which rejects with a TypeError
+    // about a "Response body". That was then classified as a network failure
+    // and replayed again — so the caller was handed a TypeError about a
+    // response instead of the 503 the server actually sent, after two
+    // round-trips that never left the process.
+    //
+    // Measured against a real server before the fix: with a string body the
+    // server saw 3 requests and the caller got its 503; with a stream body the
+    // server saw 1 and the caller got the TypeError.
+    const events: HttpRetryEvent[] = [];
+    const { fetchImpl, calls } = scriptedFetch([res(503), res(200)]);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("payload"));
+        controller.close();
+      },
+    });
+
+    const out = await httpRequest(
+      "https://x.test/upload",
+      { method: "POST", body, duplex: "half" } as RequestInit,
+      opts({ fetchImpl, replaySafe: true, onEvent: (e) => events.push(e) }),
+    );
+
+    expect(calls()).toBe(1);
+    expect(out.status).toBe(503);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "exhausted", reason: "body_not_replayable" }),
+    );
+  });
+
+  it("still replays a body that can be delivered again", async () => {
+    // The control for the case above: a string body is re-readable, so nothing
+    // about this request stops the transport replaying it.
+    const { fetchImpl, calls } = scriptedFetch([res(503), res(200)]);
+    const out = await httpRequest(
+      "https://x.test/upload",
+      { method: "POST", body: "payload" },
       opts({ fetchImpl, replaySafe: true }),
     );
     expect(calls()).toBe(2);
@@ -349,6 +397,76 @@ describe("httpRequest — fatal errors from the injected fetch", () => {
       expect.objectContaining({ type: "exhausted", reason: "fatal_error" }),
     ]);
   });
+
+  it("does not let a throwing predicate decide the request", async () => {
+    // `isFatal` is caller-supplied, like `onEvent`, and the rule for both is
+    // the same: a caller's broken callback describes the request, it does not
+    // decide it. A predicate that throws — reading a property off an error
+    // shape it did not anticipate — used to propagate out in place of the
+    // vendor's real failure, ending the request after one attempt with no
+    // terminal event at all. A predicate that cannot answer is not an answer
+    // of "fatal"; the transport falls back to what it would have done without
+    // one.
+    const events: HttpRetryEvent[] = [];
+    const { fetchImpl, calls } = scriptedFetch([
+      new TypeError("ECONNRESET from the socket"),
+      new TypeError("ECONNRESET from the socket"),
+      new TypeError("ECONNRESET from the socket"),
+    ]);
+
+    await expect(
+      httpRequest(
+        "https://x.test/transient",
+        {},
+        opts({
+          fetchImpl,
+          isFatal: () => {
+            throw new Error("the predicate itself is broken");
+          },
+          onEvent: (e) => events.push(e),
+        }),
+      ),
+    ).rejects.toThrow("ECONNRESET from the socket");
+
+    expect(calls()).toBe(MAX_RETRIES + 1);
+    expect(events.at(-1)).toMatchObject({ type: "exhausted", reason: "attempts_exhausted" });
+  });
+});
+
+describe("httpRequest — a broken telemetry sink cannot change the outcome", () => {
+  it("succeeds even when every event throws", async () => {
+    // Telemetry is the application's business. A sink with a bad serializer
+    // must not turn a working request into a failure.
+    const { fetchImpl } = scriptedFetch([res(503), res(200)]);
+    const out = await httpRequest(
+      "https://x.test/noisy",
+      {},
+      opts({
+        fetchImpl,
+        onEvent: () => {
+          throw new Error("the logger is broken");
+        },
+      }),
+    );
+    expect(out.status).toBe(200);
+  });
+
+  it("surfaces the real failure, not the sink's", async () => {
+    const { fetchImpl } = scriptedFetch([new TypeError("ECONNRESET")]);
+    await expect(
+      httpRequest(
+        "https://x.test/noisy",
+        {},
+        opts({
+          fetchImpl,
+          replaySafe: false,
+          onEvent: () => {
+            throw new Error("the logger is broken");
+          },
+        }),
+      ),
+    ).rejects.toThrow("ECONNRESET");
+  });
 });
 
 describe("httpRequestJson", () => {
@@ -379,5 +497,80 @@ describe("httpRequestJson", () => {
     await expect(
       httpRequestJson("https://x.test/j", {}, opts({ fetchImpl })),
     ).rejects.toThrow(/could not be parsed as JSON/);
+  });
+});
+
+describe("httpRequestJson — what the failure carries", () => {
+  /**
+   * Drive a JSON request to its non-ok exit and hand back the error.
+   * @param outcomes - What the injected fetch plays back.
+   * @param over - Option overrides.
+   * @returns The thrown error.
+   */
+  async function failure(
+    outcomes: Array<Response | Error | "hang">,
+    over: Partial<Parameters<typeof httpRequest>[2]> = {},
+  ): Promise<HttpStatusError> {
+    const { fetchImpl } = scriptedFetch(outcomes);
+    try {
+      await httpRequestJson("https://vendor.test/v1/tasks/9?key=SECRET", {}, opts({ fetchImpl, ...over }));
+    } catch (error) {
+      return error as HttpStatusError;
+    }
+    throw new Error("probe: expected the request to fail");
+  }
+
+  it("carries the wait the server named", async () => {
+    // The whole point of the Retry-After rule is that a refusal hands the
+    // server's own figure back so the layer above can say when to try again.
+    // `httpRequest` implements that and this wrapper — the shape every vendor
+    // transport and the poll loop actually call — used to drop it on the floor.
+    const rateLimited = (): Response =>
+      new Response("slow down", { status: 429, headers: { "retry-after": "45" } });
+    const error = await failure([rateLimited(), rateLimited(), rateLimited()]);
+
+    expect(error).toBeInstanceOf(HttpStatusError);
+    expect(error.status).toBe(429);
+    expect(error.retryAfterMs).toBe(45_000);
+  });
+
+  it("names the endpoint, with the query redacted", async () => {
+    // A vendor with twenty endpoints produced twenty identical messages. The
+    // body guard fixed exactly this and this path — the most frequently hit
+    // one in the transport — kept naming only the provider.
+    const error = await failure([new Response("nope", { status: 404 })], { label: "kling" });
+
+    expect(error.message).toContain("kling");
+    expect(error.message).toContain("vendor.test/v1/tasks/9");
+    expect(error.message).not.toContain("SECRET");
+    expect(error.url).not.toContain("SECRET");
+  });
+
+  it("bounds the excerpt it quotes from the body", async () => {
+    // `maxBodyBytes` is left unset by every caller that chooses its own URL,
+    // so the only bound on this body is what the peer sends. A vendor
+    // answering with a multi-megabyte HTML error page produced a
+    // multi-megabyte Error message, which then went to the application logger.
+    const huge = `${"x".repeat(5_000)}TAIL`;
+    const error = await failure([new Response(huge, { status: 502 })], { replaySafe: false });
+
+    expect(error.message.length).toBeLessThan(2_000);
+    expect(error.message).not.toContain("TAIL");
+    expect(error.bodyExcerpt.length).toBeLessThanOrEqual(HTTP_ERROR_BODY_EXCERPT_CHARS);
+  });
+
+  it("says the body was unreadable rather than pretending it was empty", async () => {
+    // `.text().catch(() => "")` erased three distinct failures — an idle
+    // deadline, a byte-cap refusal, and a caller abort — into the same
+    // `vendor HTTP 502: ` that a genuinely empty body produces.
+    const hostile = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("socket reset by peer"));
+      },
+    });
+    const error = await failure([new Response(hostile, { status: 502 })], { replaySafe: false });
+
+    expect(error.message).toMatch(/body unreadable/i);
+    expect(error.message).toContain("socket reset by peer");
   });
 });

@@ -16,6 +16,9 @@
  */
 
 import { sleep } from "@shared/sleep.js";
+import { shieldCaller } from "@shared/http/caller-callback.js";
+import { abortReason, withDeadline } from "@shared/http/cancellation.js";
+import { POLL_TRANSIENT_FAILURES_TOLERATED } from "@shared/http/constants.js";
 import { extractNested } from "@shared/http/json-path.js";
 import { redactUrl } from "@shared/http/redact-url.js";
 import { httpRequestJson, type HttpRetryEvent } from "@shared/http/request.js";
@@ -44,6 +47,17 @@ export interface PollOptions {
   headers?: Record<string, string>;
   /** Query parameters appended to the poll URL. */
   params?: Record<string, string>;
+  /**
+   * Caller-owned fact: delivering one poll again produces no additional side
+   * effects.
+   *
+   * Required, and deliberately not defaulted. The loop used to hardcode
+   * `true` on the grounds that "each poll is a plain GET" — the exact
+   * inference the transport forbids, and one this file contradicted thirteen
+   * lines from where it made it: a vendor poll can be a billed call. Whether
+   * a given vendor bills per status query is knowledge only its caller has.
+   */
+  replaySafe: boolean;
   /** Key path to the status field, e.g. `["data", "status"]`. */
   statusPath: string[];
   /** Status values meaning the task finished successfully. */
@@ -87,6 +101,20 @@ export async function pollUntilDone(
 ): Promise<Record<string, unknown>> {
   const label = options.label ?? "provider";
   const doSleep = options.sleepImpl ?? sleep;
+
+  /**
+   * Report what the loop saw without letting the sink change it.
+   *
+   * Both emissions below are followed immediately by a `throw`, so an
+   * unshielded sink that failed replaced the vendor's own terminal error — or
+   * the budget-exhausted one — with its own. The caller was then told its
+   * logger is broken, on a path whose entire purpose is to tell it why the
+   * generation failed.
+   * @param event - What the loop just observed.
+   */
+  const emit = (event: PollEvent): void => {
+    shieldCaller(() => options.onEvent?.(event), undefined);
+  };
   // Merged, not concatenated. `${url}?${params}` produced "...?a=1?b=2" for a
   // status URL that already carried a query — and these URLs come back from
   // the vendor, so whether one does is not ours to decide.
@@ -104,34 +132,71 @@ export async function pollUntilDone(
   // responses and a 3-second interval, a nominal 5-minute budget ran past
   // 20 minutes, so the number in the config meant nothing.
   const deadline = Date.now() + options.maxWaitMs;
+  const budgetSpent = (): string =>
+    `${label} task did not complete within ${options.maxWaitMs / 1000}s`;
+  let consecutiveFailures = 0;
 
-  while (Date.now() < deadline) {
+  for (;;) {
+    // Remaining budget, recomputed each turn. One iteration is NOT one
+    // request: the transport delivers up to three attempts with backoff
+    // between them, so a check only at the top of the loop let a vendor that
+    // went quiet drag the call a whole transport cycle past the figure the
+    // caller was promised. Measured before the fix: 2730ms against a 20ms
+    // budget.
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+
     // The caller may have cancelled while the previous interval elapsed.
     // Checking here rather than only inside the request matters because a
     // vendor poll can be a billed call: waking up from the sleep and firing
     // one more request for a task nobody is waiting for costs real money,
     // and the transport would only notice the abort after sending it.
     if (options.signal?.aborted === true) {
-      throw options.signal.reason instanceof Error
-        ? options.signal.reason
-        : new Error(`${label} poll cancelled by caller`);
+      throw abortReason(options.signal, `${label} poll cancelled by caller`);
     }
 
-    const response = await httpRequestJson(
-      pollUrl,
-      { method: "GET", headers: options.headers },
-      {
-        // A status query carries no side effects, so a flaky poll is always
-        // safe for the transport to replay.
-        replaySafe: true,
-        timeoutMs: options.timeoutMs,
-        onEvent: options.onEvent,
-        fetchImpl: options.fetchImpl,
-        signal: options.signal,
-        sleepImpl: options.sleepImpl,
-        label,
-      },
-    );
+    // The budget covers this whole poll — every attempt the transport makes
+    // and every backoff between them — not just the one request underneath.
+    const budget = withDeadline(options.signal, remaining, budgetSpent());
+    let response: Record<string, unknown>;
+    try {
+      response = await httpRequestJson(
+        pollUrl,
+        { method: "GET", headers: options.headers },
+        {
+          replaySafe: options.replaySafe,
+          timeoutMs: Math.min(options.timeoutMs, remaining),
+          onEvent: options.onEvent,
+          fetchImpl: options.fetchImpl,
+          signal: budget.signal,
+          sleepImpl: options.sleepImpl,
+          label,
+        },
+      );
+    } catch (error) {
+      if (budget.expired()) break;
+      // A vendor's status endpoint has a read-after-write window: the task id
+      // submit just returned is briefly invisible there. The transport is
+      // right to refuse to replay that 404 — it is a real client error for
+      // that one request — but abandoning an already-paid generation over it
+      // is not. Tolerance is bounded and consecutive, so a vendor that is
+      // genuinely gone still fails, with what it actually said.
+      //
+      // Tolerating a failure means sending the request again, so the caller's
+      // replay declaration governs this too: a vendor that bills per status
+      // query gets no second chances here either. Without that, `replaySafe:
+      // false` would stop the transport replaying while this loop quietly
+      // replayed anyway — the declaration honoured at one layer and ignored
+      // at the one above it.
+      consecutiveFailures += 1;
+      const tolerated = options.replaySafe ? POLL_TRANSIENT_FAILURES_TOLERATED : 0;
+      if (consecutiveFailures > tolerated) throw error;
+      await doSleep(options.intervalMs, options.signal);
+      continue;
+    } finally {
+      budget.dispose();
+    }
+    consecutiveFailures = 0;
 
     const status = String(extractNested(response, options.statusPath, "unknown"));
 
@@ -144,14 +209,14 @@ export async function pollUntilDone(
         options.errorPath === undefined
           ? "unknown"
           : String(extractNested(response, options.errorPath, "unknown"));
-      options.onEvent?.({ type: "poll_failed", label, url: redactUrl(pollUrl), status, error });
+      emit({ type: "poll_failed", label, url: redactUrl(pollUrl), status, error });
       throw new Error(`${label} task failed: ${error}`);
     }
 
     await doSleep(options.intervalMs, options.signal);
   }
 
-  options.onEvent?.({
+  emit({
     type: "poll_timeout",
     label,
     url: redactUrl(pollUrl),

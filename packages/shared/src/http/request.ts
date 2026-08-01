@@ -32,7 +32,11 @@ import {
   type TransportErrorKind,
 } from "@shared/http/decide-retry.js";
 import { guardResponseBody, type GuardedResponse } from "@shared/http/body-guard.js";
-import { BODY_IDLE_TIMEOUT_MS } from "@shared/http/constants.js";
+import { shieldCaller } from "@shared/http/caller-callback.js";
+import {
+  BODY_IDLE_TIMEOUT_MS,
+  HTTP_ERROR_BODY_EXCERPT_CHARS,
+} from "@shared/http/constants.js";
 import { redactUrl } from "@shared/http/redact-url.js";
 import { sleep } from "@shared/sleep.js";
 
@@ -281,7 +285,11 @@ function classifyThrown(
   // classifies what ITS fetch implementation throws, and this is what the
   // transport itself refused to accept from that implementation.
   if (error instanceof TransportContractError) return "fatal";
-  if (isFatal?.(error) === true) return "fatal";
+  // Shielded for the same reason as the telemetry sink: the predicate
+  // describes the failure, it does not get to replace it. One that throws has
+  // not answered "deterministic", so the transport does what it would have
+  // done without a predicate at all.
+  if (shieldCaller(() => isFatal?.(error) === true, false)) return "fatal";
   return "network";
 }
 
@@ -331,13 +339,7 @@ export async function httpRequest(
    * @param event - What happened on this attempt.
    */
   const emit = (event: HttpRetryEvent): void => {
-    try {
-      options.onEvent?.(event);
-    } catch {
-      // Deliberately swallowed, and this is the one place in the transport
-      // where that is right: a broken logger is not a transport failure, and
-      // this layer cannot log the fact (library packages must not).
-    }
+    shieldCaller(() => options.onEvent?.(event), undefined);
   };
 
   /**
@@ -414,6 +416,7 @@ export async function httpRequest(
       retryAfter,
       transportError,
       replaySafe: options.replaySafe,
+      bodyReplayable: bodyCanBeResent(init.body),
       ...(options.interactive !== undefined && { interactive: options.interactive }),
       // `index` counts attempts made; the predicate counts the replay
       // being considered, which is one ahead.
@@ -510,6 +513,116 @@ class TransportContractError extends Error {
 }
 
 /**
+ * Whether this body can be handed to `fetch` a second time.
+ *
+ * Answered by allow-list rather than by looking for streams, and deliberately
+ * so: an unrecognised body is treated as one-shot, which costs a replay that
+ * might have worked. The other way round costs a replay that CANNOT work,
+ * plus the real answer — the first attempt's response is discarded and the
+ * caller is handed a TypeError about a disturbed body instead. Between a
+ * missed retry and a destroyed answer, miss the retry.
+ *
+ * Every listed type can be read more than once: strings and byte buffers are
+ * values, a `Blob` opens a fresh read per use, and `FormData` /
+ * `URLSearchParams` are re-serialised on each send. A `ReadableStream` — what
+ * a streamed upload passes — cannot, and neither can an async iterable.
+ * @param body - The body from the caller's fetch init.
+ * @returns True when a replay would send the same bytes again.
+ */
+function bodyCanBeResent(body: BodyInit | null | undefined): boolean {
+  if (body === null || body === undefined) return true;
+  if (typeof body === "string") return true;
+  if (body instanceof URLSearchParams) return true;
+  if (body instanceof FormData) return true;
+  if (body instanceof Blob) return true;
+  if (body instanceof ArrayBuffer) return true;
+  return ArrayBuffer.isView(body);
+}
+
+/** Everything known about a non-ok answer from a JSON endpoint. */
+interface HttpStatusErrorInit {
+  /** Provider or tool name. */
+  label: string;
+  /** Which endpoint answered, already redacted. */
+  url: string;
+  /** The status it answered with. */
+  status: number;
+  /** The wait it asked for, already parsed, or null when it named none. */
+  retryAfterMs: number | null;
+  /** A bounded quote from the body, empty when it could not be read. */
+  bodyExcerpt: string;
+  /** Why the body could not be read, or null when it was read fine. */
+  unreadable: unknown;
+}
+
+/**
+ * A non-ok answer from a JSON endpoint, carrying what the transport learned.
+ *
+ * It exists because the previous shape — `new Error(\`${label} HTTP ${status}:
+ * ${body}\`)`, carried over verbatim from the code this transport replaces —
+ * threw away four things the layer above needs, on the single most frequently
+ * hit failure path in the whole transport: the wait the server named, which
+ * endpoint of twenty answered, why the body could not be read when it could
+ * not, and any bound at all on how much of that body ended up in a log line.
+ *
+ * Fields rather than a formatted string, because a caller deciding when to try
+ * again cannot parse a sentence.
+ */
+export class HttpStatusError extends Error {
+  /** The status the endpoint answered with. */
+  readonly status: number;
+  /** Which endpoint answered, already redacted. */
+  readonly url: string;
+  /** The wait the server asked for, or null when it named none. */
+  readonly retryAfterMs: number | null;
+  /** A bounded quote from the body; empty when it could not be read. */
+  readonly bodyExcerpt: string;
+
+  /**
+   * Build the failure.
+   * @param init - What the transport learned about this answer.
+   */
+  constructor(init: HttpStatusErrorInit) {
+    const where = `${init.label} HTTP ${init.status} from ${init.url}`;
+    super(
+      init.unreadable === null
+        ? `${where}: ${init.bodyExcerpt}`
+        : `${where} (body unreadable: ${describeCause(init.unreadable)})`,
+      init.unreadable === null ? undefined : { cause: init.unreadable },
+    );
+    this.name = "HttpStatusError";
+    this.status = init.status;
+    this.url = init.url;
+    this.retryAfterMs = init.retryAfterMs;
+    this.bodyExcerpt = init.bodyExcerpt;
+  }
+}
+
+/**
+ * Describe why a body could not be read, in one line.
+ * @param cause - Whatever the read rejected with.
+ * @returns A short description.
+ */
+function describeCause(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+/**
+ * Cut a peer-controlled body down to what an error message may carry.
+ *
+ * The ellipsis counts against the budget, so the result never exceeds
+ * {@link HTTP_ERROR_BODY_EXCERPT_CHARS} — a ceiling a caller can rely on is
+ * worth more than one extra character of vendor text.
+ * @param body - The body as read.
+ * @returns The body, or a truncated excerpt of it marked with an ellipsis.
+ */
+function truncate(body: string): string {
+  return body.length <= HTTP_ERROR_BODY_EXCERPT_CHARS
+    ? body
+    : `${body.slice(0, HTTP_ERROR_BODY_EXCERPT_CHARS - 1)}…`;
+}
+
+/**
  * {@link httpRequest} plus JSON parsing, rejecting on a non-ok final
  * status. This is the shape the worker's provider transports expect.
  *
@@ -531,11 +644,29 @@ export async function httpRequestJson(
   options: HttpRequestOptions,
 ): Promise<Record<string, unknown>> {
   const label = options.label ?? "http";
+  const safeUrl = redactUrl(url);
   const response = await httpRequest(url, init, options);
 
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`${label} HTTP ${response.status}: ${body}`);
+    // Read under the guard, and keep WHY a read failed. `.catch(() => "")`
+    // used to erase three distinct outcomes — an idle deadline, a byte-cap
+    // refusal and a caller abort — into the same empty string a genuinely
+    // empty body produces, on the path a vendor failure travels.
+    let excerpt = "";
+    let unreadable: unknown = null;
+    try {
+      excerpt = truncate(await response.text());
+    } catch (error) {
+      unreadable = error;
+    }
+    throw new HttpStatusError({
+      label,
+      url: safeUrl,
+      status: response.status,
+      retryAfterMs: response.retryAfterMs,
+      bodyExcerpt: excerpt,
+      unreadable,
+    });
   }
 
   const parsed: unknown = await response.json();

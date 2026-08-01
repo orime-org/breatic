@@ -32,6 +32,14 @@ import {
 export type RetryRefusal =
   /** The caller stated that replaying has side effects. */
   | "not_replay_safe"
+  /**
+   * The request body can only be delivered once, so there is nothing left to
+   * send. Distinct from `not_replay_safe`: that one is the caller's fact
+   * about consequences, this one is the platform's about the bytes. An
+   * on-call engineer needs to tell them apart — the first is a deliberate
+   * declaration, the second means a streamed upload cannot be retried at all.
+   */
+  | "body_not_replayable"
   /** A 4xx other than 408/429 — a fact, not weather. */
   | "client_error"
   /** The caller cancelled (a user pressed stop). */
@@ -105,6 +113,19 @@ export interface RetryInput {
    * additional side effects.
    */
   replaySafe: boolean;
+  /**
+   * Whether the request body can physically be delivered a second time.
+   *
+   * Transport-owned, unlike `replaySafe`: a one-shot source (a stream) is
+   * consumed by the first attempt, and handing the spent source back to fetch
+   * rejects with a TypeError about a disturbed body — which then looks like a
+   * network failure and gets replayed again, so the caller ends up holding
+   * that TypeError instead of the status the server actually sent.
+   *
+   * Defaults to true, which is right for every body that is not a stream and
+   * for a request with no body at all.
+   */
+  bodyReplayable?: boolean;
   /**
    * Caller-owned fact: someone is waiting on this request right now.
    *
@@ -291,6 +312,14 @@ export function decideRetry(input: RetryInput): RetryDecision {
   // ── Application semantics: only the caller knows this ──
   if (!input.replaySafe) {
     return { retry: false, reason: "not_replay_safe" };
+  }
+
+  // ── Platform semantics: the transport's own knowledge ──
+  // Checked after the caller's declaration so the more specific fact wins the
+  // reporting: a caller that already said "do not replay this" gets told that,
+  // rather than being told about a body nobody was going to re-send anyway.
+  if (input.bodyReplayable === false) {
+    return { retry: false, reason: "body_not_replayable" };
   }
 
   if (status !== undefined && status >= 500) {

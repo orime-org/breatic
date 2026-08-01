@@ -66,23 +66,43 @@ export const MAX_RETRY_AFTER_INTERACTIVE_MS = 10_000;
 export const MAX_RETRY_AFTER_BACKGROUND_MS = 60_000;
 
 /**
- * Default maximum silence between response-body chunks.
+ * Maximum silence between response-body chunks.
  *
  * Idle, not total: the clock resets on every chunk, so a slow 500 MB asset
  * download finishes while a connection that flushed headers and then went
  * quiet is cut. Fixed rather than configured for the same reason as the
  * retry count — "how long may a live connection send nothing" has one
- * defensible answer, and it does not vary by vendor the way first-response
- * latency does.
+ * defensible answer, and it does not vary by vendor.
  *
- * 30s rather than the 300s that Node's own client defaults to: five minutes
- * of silence before anyone notices is far longer than this system needs to
- * tolerate, because a failure here is cheap — the transport replays, and a
- * worker job that does fail lands in the queue's own retry chain. Go and
- * python-requests ship no default at all, so there is no third precedent to
- * follow; this number is our judgement, not an industry constant.
+ * 60s matches nginx's `proxy_read_timeout`, whose definition is this one
+ * word for word: "set only between two successive read operations, not for
+ * the transmission of the whole response". That is the closest thing to an
+ * industry answer for this exact measurement, and it is the value the most
+ * widely deployed reverse proxy applies by default.
+ *
+ * Breaching it FAILS the read; nothing is replayed. The retry loop covers the
+ * headers phase only — by the time a body is being read the loop has already
+ * returned its handle — so a caller that wants a stalled body retried has to
+ * decide that for itself (decided 2026-08-01). An earlier version of this
+ * comment justified a shorter deadline with "a failure here is cheap, the
+ * transport replays", which was never true of this phase.
  */
-export const BODY_IDLE_TIMEOUT_MS = 30_000;
+export const BODY_IDLE_TIMEOUT_MS = 60_000;
+
+/**
+ * How much of a failing response body an error message may quote.
+ *
+ * The body of a non-ok response is peer-controlled and, for the callers that
+ * choose their own URL, unbounded — `maxBodyBytes` is deliberately left unset
+ * there. Quoting it whole produced multi-megabyte `Error` messages that went
+ * straight to the application logger, carrying whatever the vendor echoed
+ * back, including request material it had no business repeating.
+ *
+ * A thousand characters is enough to read a vendor's error JSON, which is
+ * what this excerpt is for. Anything longer belongs in the response, not in
+ * an exception.
+ */
+export const HTTP_ERROR_BODY_EXCERPT_CHARS = 1_000;
 
 /**
  * How long an asset transfer may wait for response HEADERS.
@@ -104,3 +124,19 @@ export const BODY_IDLE_TIMEOUT_MS = 30_000;
  * it keeps is "one answer, in one place, when there should only be one".
  */
 export const ASSET_HEADER_TIMEOUT_MS = 120_000;
+
+/**
+ * How many consecutive failed polls a task may survive.
+ *
+ * A vendor's status endpoint has a read-after-write window: the task id its
+ * submit just returned is briefly not visible there, and the poll gets a 404.
+ * The transport is right to refuse to replay that — for that one request it
+ * is a genuine client error — but abandoning a generation the user already
+ * paid for, over a gap that closes in under a second, is not.
+ *
+ * Two tolerated failures means three consecutive polls must fail before the
+ * task is abandoned, which at any sane interval is several seconds of grace.
+ * Bounded and consecutive on purpose: a vendor that is actually gone still
+ * fails, and fails with what it said rather than a budget timeout.
+ */
+export const POLL_TRANSIENT_FAILURES_TOLERATED = 2;

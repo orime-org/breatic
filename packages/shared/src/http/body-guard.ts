@@ -144,6 +144,21 @@ export interface BodyGuardContext {
    * Tear down the underlying request. Called when the deadline is breached,
    * because dropping the reader alone can leave the connection held open —
    * aborting the request is what actually releases it.
+   *
+   * MUST NOT THROW. Three of its call sites cannot survive one: an abort
+   * listener, an idle-deadline timer callback, and a promise chain nobody
+   * awaits. A throw in any of those is an uncaught exception or an unhandled
+   * rejection, which ends the process — and no `try` at the call site can
+   * change that, because the ones that matter are not on the stack of anyone
+   * who could catch it.
+   *
+   * The contract is enforceable because this module is not part of the
+   * package's public surface: `guardResponseBody` is deliberately not
+   * exported from the package barrel, so the only implementation that can
+   * ever reach here is the transport's own `() => controller.abort()`.
+   * `AbortController.abort()` does not propagate a listener's throw to its
+   * caller — measured, not assumed — so that implementation satisfies this.
+   * Any future caller inside this package must satisfy it too.
    */
   abortRequest: () => void;
   /** Provider or tool name, for error messages. */
@@ -557,27 +572,24 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
           if (value !== undefined) controller.enqueue(value);
         },
         cancel(reason): void {
-          // Three things have to happen here and the ORDER is load-bearing.
+          // The ORDER here is load-bearing. Cancel before aborting: aborting
+          // first errors the inner body, and the spec then has `cancel()`
+          // return a promise rejected with the stored error without running
+          // the underlying cancel algorithm. An earlier version aborted first
+          // and left that rejection floating, which Node ends the process for.
           //
-          // Cancel before aborting. Aborting first errors the inner body, and
-          // the spec then has `cancel()` return a promise rejected with the
-          // stored error without running the underlying cancel algorithm. An
-          // earlier version aborted first and left that rejection floating,
-          // which Node ends the process for.
+          // The cancel is caught because the PEER can produce that same
+          // rejection independently of us: it may have errored the inner body
+          // already — a download with a backpressure window has no pull
+          // outstanding when a reset lands there — and cancelling a body that
+          // is already errored still rejects. Nothing awaits this chain, so an
+          // uncaught rejection here ends the process.
           //
-          // Catch the cancel. Our own abort can no longer cause that
-          // rejection, but the peer can: it may have errored the inner body
-          // already — `downloadToTempDir` has a backpressure window where no
-          // pull is outstanding and a reset lands there. Cancelling a body
-          // that is already errored still rejects.
-          //
-          // Catch the teardown too. It belongs to the layer above, nothing
-          // awaits this chain, and a throwing one used to become an unhandled
-          // rejection all the same.
-          //
-          // All three were measured rather than reasoned about: a child
-          // process exiting non-zero pinned the ordering, and the two tests
-          // below pin the catches. Removing any one alone still crashes.
+          // `abortRequest` is NOT caught, and that is deliberate: see its
+          // contract on BodyGuardContext. It is called from three places that
+          // cannot survive a throw, so it must not throw — a `catch` here
+          // would only cover one of the three and read as protection the other
+          // two do not have.
           relay.retire();
           void (async (): Promise<void> => {
             try {
@@ -586,16 +598,7 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
               // Already errored or released: nothing left to release, and the
               // consumer's own failure is the one that counts.
             }
-            try {
-              ctx.abortRequest();
-            } catch {
-              // The teardown belongs to the layer above and a broken one is
-              // its bug — but this chain is not awaited by anyone, so letting
-              // it throw here produced an unhandled rejection and ended the
-              // process. Measured in a child process: exit code 1, which is
-              // the same shape that once took the worker down with every job
-              // it was running.
-            }
+            ctx.abortRequest();
           })();
         },
       });

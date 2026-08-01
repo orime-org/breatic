@@ -826,26 +826,43 @@ describe("response body idle deadline", () => {
     expect(delays.every((d) => d > 0)).toBe(true);
   });
 
-  it("survives a teardown hook that throws, instead of ending the process", async () => {
-    // Measured in a child process before the fix: exit code 1. The teardown
-    // ran inside a `.finally()` on a voided promise chain, so throwing there
-    // produced an unhandled rejection — the same shape that once took the
-    // worker down with every job it was running. The teardown belongs to the
-    // layer above; a broken one is its bug and must not be this module's crash.
+  it("survives a source whose cancel rejects, instead of ending the process", async () => {
+    // The teardown chain is voided — nobody awaits it — so a rejection inside
+    // it is an UNHANDLED one, which Node ends the process for. Measured in a
+    // child process before the fix: exit code 1, the same shape that once took
+    // the worker down with every job it was running.
+    //
+    // The peer is what produces this, not us: a body the peer already errored
+    // still rejects when cancelled, and a download with a backpressure window
+    // has no pull outstanding when a reset lands there. This drives it with a
+    // source that refuses cancellation, which is the same rejection by a
+    // shorter route.
+    //
+    // An earlier version of this test drove a THROWING `abortRequest` instead.
+    // That input cannot be produced: `guardResponseBody` is not exported from
+    // the package barrel, so the only implementation that reaches it is the
+    // transport's `() => controller.abort()`, and `abort()` does not propagate
+    // a listener's throw to its caller. The `catch` it pinned protected
+    // nothing while reading as protection — see the contract on
+    // `BodyGuardContext.abortRequest`.
     const seen: unknown[] = [];
     const onUnhandled = (reason: unknown): void => {
       seen.push(reason);
     };
     process.on("unhandledRejection", onUnhandled);
     try {
-      const { response, push } = streamingBody();
-      push("first");
-      const handle = guardResponseBody({
-        response,
-        idleTimeoutMs: 5_000,
-        abortRequest: (): void => {
-          throw new Error("the teardown blew up");
+      const hostile = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("first"));
         },
+        cancel(): never {
+          throw new Error("the source refuses to be cancelled");
+        },
+      });
+      const handle = guardResponseBody({
+        response: new Response(hostile, { status: 200 }),
+        idleTimeoutMs: 5_000,
+        abortRequest: (): void => {},
         label: "probe",
         url: "https://vendor.test/x",
         retryAfterMs: null,

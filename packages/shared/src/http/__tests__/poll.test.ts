@@ -56,9 +56,30 @@ function playback(
   return { fetchImpl, urls, calls: (): number => call };
 }
 
+/**
+ * A fetch that never answers on its own but honours cancellation, the way a
+ * real one does. A double that ignores `init.signal` cannot exercise any
+ * deadline at all — it just makes the test time out, which looks like the
+ * same red for a completely different reason.
+ * @returns The fetch implementation.
+ */
+function hangingFetch(): typeof fetch {
+  return ((_url: string, init?: RequestInit): Promise<Response> =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        reject(
+          init.signal?.reason instanceof Error
+            ? init.signal.reason
+            : new DOMException("aborted", "AbortError"),
+        );
+      });
+    })) as unknown as typeof fetch;
+}
+
 /** Baseline poll options; each test varies one thing. */
 function opts(over: Partial<Parameters<typeof pollUntilDone>[1]> = {}): Parameters<typeof pollUntilDone>[1] {
   return {
+    replaySafe: true,
     statusPath: ["data", "status"],
     successStatuses: new Set(["completed"]),
     failureStatuses: new Set(["failed"]),
@@ -238,6 +259,37 @@ describe("pollUntilDone — telemetry", () => {
     );
   });
 
+  // Both emissions above are followed immediately by a `throw`. An unshielded
+  // sink that failed replaced the exception on the very next line — so the
+  // caller was told its logger is broken, on the two paths whose whole job is
+  // to say why a paid generation was abandoned. The transport had this rule
+  // and applied it only to its own events, a hundred lines from here.
+  const brokenSink = (): never => {
+    throw new Error("the logger is broken");
+  };
+
+  it("surfaces the vendor's failure even when the sink throws", async () => {
+    const { fetchImpl } = playback([
+      json({ data: { status: "failed" }, error: { message: "nsfw" } }),
+    ]);
+    await expect(
+      pollUntilDone(
+        "https://v.test/task/11",
+        opts({ fetchImpl, errorPath: ["error", "message"], onEvent: brokenSink }),
+      ),
+    ).rejects.toThrow(/nsfw/);
+  });
+
+  it("surfaces the budget timeout even when the sink throws", async () => {
+    const { fetchImpl } = playback([json({ data: { status: "processing" } })]);
+    await expect(
+      pollUntilDone(
+        "https://v.test/task/12",
+        opts({ fetchImpl, intervalMs: 10, maxWaitMs: 60, onEvent: brokenSink }),
+      ),
+    ).rejects.toThrow(/did not complete within/);
+  });
+
   it("forwards the transport's own retry events", async () => {
     // A 503 on a poll is retried by the transport beneath; the application
     // layer should still see it, so a flaky vendor is visible in the logs.
@@ -253,6 +305,108 @@ describe("pollUntilDone — telemetry", () => {
     expect(events).toContainEqual(
       expect.objectContaining({ type: "retry", reason: "server_error", status: 503 }),
     );
+  });
+});
+
+describe("pollUntilDone — replay safety is the caller's to state", () => {
+  it("does not replay a poll the caller declared billed", async () => {
+    // The loop used to hardcode `replaySafe: true` for every vendor, and the
+    // stated reason was the one inference this design forbids: "each poll is a
+    // plain GET, so it is inherently replay-safe". Thirteen lines above that,
+    // the same file asserted the opposite fact about the same requests — "a
+    // vendor poll can be a billed call ... costs real money" — and the
+    // transport's own predicate warns that the method is a poor hint in both
+    // directions. Under the design's definition a per-call-billed poll is not
+    // replay-safe, and only its caller knows which vendors bill that way.
+    const { fetchImpl, calls } = playback([new Response("upstream down", { status: 503 })]);
+    await expect(
+      pollUntilDone("https://v.test/task/1", opts({ fetchImpl, replaySafe: false })),
+    ).rejects.toThrow(/503/);
+    expect(calls()).toBe(1);
+  });
+
+  it("replays a poll the caller declared free to repeat", async () => {
+    const { fetchImpl, calls } = playback([
+      new Response("upstream down", { status: 503 }),
+      json({ data: { status: "completed" } }),
+    ]);
+    const out = await pollUntilDone(
+      "https://v.test/task/2",
+      opts({ fetchImpl, replaySafe: true }),
+    );
+    expect(calls()).toBe(2);
+    expect(out).toEqual({ data: { status: "completed" } });
+  });
+});
+
+describe("pollUntilDone — the budget is a ceiling, not a suggestion", () => {
+  it("does not overrun its budget by a whole transport cycle", async () => {
+    // The deadline was tested only at the TOP of the loop, and one iteration
+    // is not one request: the transport delivers up to three attempts with
+    // backoff between them. A vendor that stops answering right after the
+    // check passes therefore dragged the call far past the figure the caller
+    // was promised — measured at 2730ms against a 20ms budget before the fix.
+    const fetchImpl = hangingFetch();
+    const startedAt = performance.now();
+    await expect(
+      pollUntilDone(
+        "https://v.test/task/3",
+        opts({ fetchImpl, maxWaitMs: 150, timeoutMs: 60, intervalMs: 10 }),
+      ),
+    ).rejects.toThrow();
+    const elapsed = performance.now() - startedAt;
+
+    // Generous, because the last in-flight attempt still has to unwind — but
+    // far tighter than a full extra transport cycle, which is what regressed.
+    expect(elapsed).toBeLessThan(600);
+  });
+
+  it("reports the timeout even when the overrun happens inside a poll", async () => {
+    const events: Array<PollEvent | HttpRetryEvent> = [];
+    const fetchImpl = hangingFetch();
+    await expect(
+      pollUntilDone(
+        "https://v.test/task/4",
+        opts({
+          fetchImpl,
+          maxWaitMs: 150,
+          timeoutMs: 60,
+          intervalMs: 10,
+          onEvent: (e) => events.push(e),
+        }),
+      ),
+    ).rejects.toThrow(/did not complete within/);
+    expect(events).toContainEqual(expect.objectContaining({ type: "poll_timeout" }));
+  });
+});
+
+describe("pollUntilDone — a momentary hiccup is not a dead task", () => {
+  it("rides out a transient failure and collects the result", async () => {
+    // A vendor's status endpoint has a read-after-write window: the task id
+    // returned by submit is not visible there for a moment. A single 404 in
+    // that window used to abandon a generation that was already paid for —
+    // the transport correctly refuses to replay a 4xx, and the loop treated
+    // that refusal as terminal.
+    let call = 0;
+    const fetchImpl = ((): Promise<Response> => {
+      call += 1;
+      if (call === 2) return Promise.resolve(new Response("no such task", { status: 404 }));
+      return Promise.resolve(
+        json({ data: { status: call > 2 ? "completed" : "running" } }),
+      );
+    }) as unknown as typeof fetch;
+
+    const out = await pollUntilDone("https://v.test/task/5", opts({ fetchImpl }));
+    expect(out).toEqual({ data: { status: "completed" } });
+  });
+
+  it("gives up once the hiccups stop being momentary", async () => {
+    // Tolerance is bounded: a vendor that is simply gone must still fail, and
+    // must fail with what it actually said rather than a budget timeout.
+    const { fetchImpl } = playback([new Response("no such task", { status: 404 })]);
+    await expect(
+      pollUntilDone("https://v.test/task/6", opts({ fetchImpl })),
+    ).rejects.toThrow(/404/);
   });
 });
 
