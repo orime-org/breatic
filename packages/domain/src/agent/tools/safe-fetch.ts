@@ -162,48 +162,6 @@ export interface SafeFetchOptions {
   signal?: AbortSignal;
 }
 
-/**
- * Header names carrying a credential, dropped when a redirect leaves the
- * origin the caller aimed at.
- *
- * `Authorization` is the one the Fetch Standard itself removes on a
- * cross-origin redirect (whatwg/fetch#1544, shipped in Gecko and WebKit); the
- * stated goal is to scope a developer-set credential to the origin of the
- * initial request. The other two are on the browser's forbidden list so a page
- * could never set them — but this runs in Node, where a caller can, so they are
- * covered here too.
- *
- * The limit is worth stating rather than hiding: a vendor's own scheme
- * (`X-Api-Key`, `X-Subscription-Token`) is NOT recognised. The spec does not
- * recognise it either, and guessing which custom headers are secret would mean
- * silently dropping ones that are not.
- */
-const CREDENTIAL_HEADERS: ReadonlySet<string> = new Set([
-  "authorization",
-  "cookie",
-  "proxy-authorization",
-]);
-
-/**
- * Drop credential headers when a redirect crosses to a different origin.
- * @param headers - The headers sent on the previous hop.
- * @param from - The URL the redirect came from.
- * @param to - The URL the redirect points at.
- * @returns The headers to send on the next hop.
- */
-function headersForNextHop(
-  headers: Record<string, string>,
-  from: string,
-  to: string,
-): Record<string, string> {
-  if (new URL(from).origin === new URL(to).origin) return headers;
-  return Object.fromEntries(
-    Object.entries(headers).filter(
-      ([name]) => !CREDENTIAL_HEADERS.has(name.toLowerCase()),
-    ),
-  );
-}
-
 /** A hop's signal plus the clock it has to be able to stop. */
 interface HopDeadline {
   /** Aborts on this hop's deadline or the caller's cancellation. */
@@ -312,7 +270,7 @@ export async function safeFetch(
 ): Promise<Response> {
   let current = url;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  let headers: Record<string, string> = { ...(opts.headers ?? {}) };
+  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
   let deadline: HopDeadline | undefined;
 
   try {
@@ -371,12 +329,7 @@ export async function safeFetch(
       await res.body?.cancel().catch(() => {});
 
       // Resolve relative redirect against the current URL.
-      const next = parseOrRefuse(location, current).href;
-      // Scope any credential to the origin the caller aimed at, the way the
-      // platform's own fetch does. Computed BEFORE `current` moves on, because
-      // the question is about the step between the two.
-      headers = headersForNextHop(headers, current, next);
-      current = next;
+      current = parseOrRefuse(location, current).href;
 
       // This hop is finished and nothing will read its body, so it must stop
       // holding a listener on the caller's signal. Only the response we RETURN

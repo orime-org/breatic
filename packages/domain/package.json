@@ -27,13 +27,11 @@
     "@breatic/shared": "workspace:*",
     "ai": "^6.0.141",
     "drizzle-orm": "^0.45.2",
-    "html-to-text": "^9",
     "ipaddr.js": "^2.3.0",
     "yaml": "^2.7.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/html-to-text": "^9",
     "@types/node": "^22.0.0",
     "fast-check": "^4.8.0",
     "tsup": "^8.3.0",

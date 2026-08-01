@@ -6,9 +6,10 @@
  * its own URL — the model names the host — so every bound it places on the
  * answer is a real boundary rather than housekeeping.
  *
- * It had no tests at all. Measured by mutation: its byte ceiling could be
- * removed and its character limit reverted to the literal it replaced, with
- * the whole suite still green.
+ * It had no tests at all — measured by mutation, its byte ceiling could be
+ * removed with the whole suite still green. These cover what the shared
+ * transport does for this tool; the readable-text extraction and the SSRF
+ * refusal message are each their own change with their own tests.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -52,6 +53,10 @@ function serve(body: string, headers: Record<string, string> = {}): void {
     Promise.resolve(new Response(body, { status: 200, headers }))) as unknown as typeof fetch;
 }
 
+// The character limit, the readable-text extraction and the SSRF refusal
+// message are exercised by their own PRs; this file covers only what the
+// shared transport does for this tool.
+
 describe("web_fetch — bounds on an answer we do not control", () => {
   const realFetch = globalThis.fetch;
 
@@ -62,31 +67,6 @@ describe("web_fetch — bounds on an answer we do not control", () => {
 
   afterEach(() => {
     globalThis.fetch = realFetch;
-  });
-
-  it("never lets the model raise the operator's character limit", async () => {
-    // `maxChars ?? config` let the model's figure win outright, so an operator
-    // who configured 50000 could be handed ten million — while
-    // CONFIGURATION.md said the argument could only lower it. The argument
-    // narrows; it never widens.
-    const ceiling = getAgentConfig().web_fetch_max_chars;
-    serve("x".repeat(ceiling + 5_000));
-
-    const result = await run({
-      url: "https://example.test/",
-      maxChars: ceiling * 100,
-    });
-
-    expect(result.length).toBe(ceiling);
-    expect(result.truncated).toBe(true);
-  });
-
-  it("still honours a smaller figure from the model", async () => {
-    serve("y".repeat(2_000));
-
-    const result = await run({ url: "https://example.test/", maxChars: 500 });
-
-    expect(result.length).toBe(500);
   });
 
   it("refuses a body past the byte ceiling before it is buffered", async () => {
@@ -130,54 +110,6 @@ describe("web_fetch — bounds on an answer we do not control", () => {
     expect(attempts).toBe(1);
   });
 
-  it("extracts text from hostile markup without stalling the process", async () => {
-    // The tool's URL comes from the model, so its bytes come from whoever owns
-    // that host. The hand-written strip used `/<script[\s\S]*?<\/script>/` —
-    // for every `<script` with no closing tag the lazy scan runs to the end of
-    // the input, which is quadratic. Measured on 2.3 MiB of `<script ` (well
-    // under the byte ceiling): over 120 seconds of solid synchronous work,
-    // never finishing. Nothing else in the process runs during that.
-    //
-    // Against the old implementation this fails by exceeding vitest's timeout
-    // rather than by an assertion, which is a weaker red than usual — there is
-    // no way to bound synchronous work from inside the same thread. The
-    // elapsed-time assertion is what pins it going forward.
-    serve("<script ".repeat(200_000));
-
-    const started = Date.now();
-    const result = await run({ url: "https://example.test/" });
-    const elapsed = Date.now() - started;
-
-    expect(result.error).toBeUndefined();
-    expect(elapsed).toBeLessThan(5_000);
-  });
-
-  it("still reads ordinary markup as readable text", async () => {
-    serve(
-      "<html><head><style>p{color:red}</style></head><body>" +
-        "<h1>Title</h1><p>First <b>paragraph</b>.</p>" +
-        "<script>var x = 1;</script><p>Second one.</p></body></html>",
-    );
-
-    const result = await run({ url: "https://example.test/" });
-
-    expect(result.text).toContain("Title");
-    expect(result.text).toContain("First paragraph.");
-    expect(result.text).toContain("Second one.");
-    // Script and style contents are not readable content and must not reach
-    // the model as if they were.
-    expect(result.text).not.toContain("var x");
-    expect(result.text).not.toContain("color:red");
-  });
-
-  it("leaves a JSON body alone rather than running it through the extractor", async () => {
-    serve('{"id":"abc","nested":{"n":1}}', { "content-type": "application/json" });
-
-    const result = await run({ url: "https://example.test/" });
-
-    expect(result.text).toBe('{"id":"abc","nested":{"n":1}}');
-  });
-
   it("lets go of the connection when the page answers with an error", async () => {
     // Returning without touching the body leaves it unread, and an unread body
     // holds its connection until the peer gives up. The guarded handle has no
@@ -201,19 +133,5 @@ describe("web_fetch — bounds on an answer we do not control", () => {
 
     expect(result.error).toBe("HTTP 404");
     expect(served?.bodyUsed).toBe(true);
-  });
-
-  it("does not hand the model the address a blocked hostname resolved to", async () => {
-    // The guard's own message names it — "Blocked IP range 'linkLocal' for
-    // 169.254.169.254" — and this envelope goes straight back to the model.
-    // Returning it turns the tool into an internal-address oracle: ask for a
-    // name, learn where it points.
-    lookupMock.mockResolvedValue([{ address: "169.254.169.254", family: 4 }]);
-
-    const result = await run({ url: "https://internal.test/" });
-
-    expect(result.error).toMatch(/not permitted/);
-    expect(JSON.stringify(result)).not.toContain("169.254.169.254");
-    expect(JSON.stringify(result)).not.toContain("linkLocal");
   });
 });

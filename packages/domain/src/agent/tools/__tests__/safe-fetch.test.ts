@@ -443,69 +443,6 @@ describe("safeFetch — cancellation", () => {
     await expect(safeFetch("http://[not-a-url")).rejects.toThrow(SsrfError);
   });
 
-  it("drops credential headers when a redirect crosses to another origin", async () => {
-    // `safeFetch` presents itself as a safe `fetch`, and the platform's own
-    // fetch removes Authorization on a cross-origin redirect. Ours hoisted the
-    // header map outside the hop loop and re-sent it verbatim, so a redirect
-    // to any host would have handed that host the credential. No caller passes
-    // one through here today; the contract was still broken.
-    resolvesTo("93.184.216.34");
-    const sent: Array<Record<string, string>> = [];
-    let hop = 0;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((_url: string, init?: RequestInit) => {
-        sent.push({ ...(init?.headers as Record<string, string>) });
-        hop += 1;
-        return Promise.resolve(
-          hop === 1
-            ? new Response(null, {
-                status: 302,
-                headers: { location: "https://elsewhere.example/take-it" },
-              })
-            : new Response("done"),
-        );
-      }),
-    );
-
-    await safeFetch("https://example.com/start", {
-      headers: { authorization: "Bearer secret", "user-agent": "probe" },
-    });
-
-    expect(sent[0]?.authorization).toBe("Bearer secret");
-    expect(sent[1]?.authorization).toBeUndefined();
-    // Non-credential headers survive: the rule is about secrets, not about
-    // forgetting who we are.
-    expect(sent[1]?.["user-agent"]).toBe("probe");
-  });
-
-  it("keeps credential headers when the redirect stays on the same origin", async () => {
-    resolvesTo("93.184.216.34");
-    const sent: Array<Record<string, string>> = [];
-    let hop = 0;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((_url: string, init?: RequestInit) => {
-        sent.push({ ...(init?.headers as Record<string, string>) });
-        hop += 1;
-        return Promise.resolve(
-          hop === 1
-            ? new Response(null, {
-                status: 302,
-                headers: { location: "https://example.com/moved" },
-              })
-            : new Response("done"),
-        );
-      }),
-    );
-
-    await safeFetch("https://example.com/start", {
-      headers: { authorization: "Bearer secret" },
-    });
-
-    expect(sent[1]?.authorization).toBe("Bearer secret");
-  });
-
   it("leaves exactly one abort listener behind — the returned response's", async () => {
     // One deadline is armed per hop, each registering a listener on the
     // caller's signal, and nothing removed them: a four-hop chain left four

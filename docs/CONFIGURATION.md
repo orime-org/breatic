@@ -105,7 +105,7 @@ loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `llm_max_retries` | 2 | 每次 LLM 调用的重试次数(maxRetries),由 model-call wrapper 统一注入(#1625 Slice 3)|
-| `web_fetch_max_chars` | 50000 | `web_fetch` 返回给模型的字符上限。**这是上限不是默认值** —— 工具入参 `maxChars` 只能往下收,给再大的数也会被压回这个值 |
+| `web_fetch_max_chars` | 50000 | `web_fetch` 返回给模型的字符上限。**当前还是死配置**(工具里写着自己的字面量),接上它 + 让工具入参只能往下收,是单独一个 PR 的事 |
 | `web_fetch_max_bytes` | 5242880(5 MiB)| `web_fetch` **从线上读取**的字节硬上限,按 chunk 到达时拦。跟上一行不是一回事:字符上限裁的是已经进内存的字符串,而 `web_fetch` 的 URL 由模型给出,多大由对方决定 —— 只有字节上限拦得住(#36)|
 
 ## 8. 连接 / 存储上传韧性(代码内,非 yaml)
