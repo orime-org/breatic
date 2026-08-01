@@ -120,6 +120,26 @@ const collabUndoSelectionKey = new PluginKey<{ preEditSel: unknown }>(
  * case: `recoverSelectionEndpoint` returns the resolved position untouched when
  * the absolute one is absent, leaving the relative positions — which ARE valid
  * across time, that being the point of relative positions — to place the caret.
+ *
+ * Dropping them UNCONDITIONALLY is deliberate, and it is worth spelling out why,
+ * because the correction upstream performs looks like a safety net one would
+ * rather keep. `recoverSelectionEndpoint` guards three cases (the relative
+ * position resolving to null, collapsing to the doc start, or landing in the
+ * wrong block), and every one of them reads `oldAbs` as a position INTO the
+ * `oldDoc` it is handed. That holds on the path the field was built for:
+ * `beforeAllTransactions` snapshots the selection off the CURRENT state, and
+ * `_typeChanged` passes the CURRENT doc as `oldDoc` — same moment, both halves.
+ * It does not hold here. The selection this extension replays comes off the undo
+ * stack item, so its `absAnchor` belongs to the document as it stood BEFORE the
+ * user's edit, while `oldDoc` is the document as it stands before the UNDO —
+ * they differ by exactly that edit. The three guards are therefore not a net we
+ * are giving up; they are a correction computed from a position that means
+ * nothing in the document it is compared against, which is how an `absAnchor` of
+ * 5 arrived at a four-position document.
+ *
+ * Guarded by the two undo/redo caret tests in
+ * `__tests__/reference-mention-caret.test.tsx` — making this function an
+ * identity turns both red.
  * @param sel - The stored relative selection from the undo stack item.
  * @returns The same selection without its absolute-position fields.
  */
