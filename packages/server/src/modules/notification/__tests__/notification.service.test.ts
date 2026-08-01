@@ -51,9 +51,11 @@ describe("createRoleUpgradeRequest", () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
+    const expiresAt = new Date("2026-08-08T00:00:00.000Z");
     const out = await notificationService.createRoleUpgradeRequest({
       ownerUserId: OWNER,
       projectId: PID,
+      expiresAt,
       payload: {
         requesterUserId: REQUESTER,
         requesterName: "Vicky",
@@ -68,6 +70,9 @@ describe("createRoleUpgradeRequest", () => {
     expect(args?.userId).toBe(OWNER);
     expect(args?.type).toBe("access.role_upgrade_request");
     expect(args?.projectId).toBe(PID);
+    // The deadline has to reach the bell row: a null `expires_at` reads as
+    // "never expires", so the entry would outlive the request it announces.
+    expect(args?.expiresAt).toBe(expiresAt);
     expect(args?.payload).toMatchObject({
       requesterUserId: REQUESTER,
       requestedRole: "editor",

@@ -204,6 +204,40 @@ export async function markRead(
 }
 
 /**
+ * Retire the bell entry that announced something now over, by id alone.
+ *
+ * Distinct from {@link markRead}, and the difference is who is acting.
+ * `markRead` is the recipient saying "I have seen this", so it is guarded by
+ * their user id. This is the SYSTEM withdrawing an announcement whose subject
+ * no longer exists — the request was cancelled by the person who filed it, or
+ * timed out with nobody acting — and in those paths the recipient is not the
+ * actor and may not even be the same person any more, since a project can
+ * change hands while a request sits unanswered.
+ *
+ * The authority is the id itself: it is read out of the request row's
+ * `notification_id`, so only the request this entry belongs to can name it.
+ * Leaving the entry behind is the visible failure it prevents — a bell row
+ * whose buttons act on a request that is already over, counted in the unread
+ * badge forever.
+ * @param id - Notification UUID, taken from the owning request row
+ * @param tx - Optional drizzle transaction handle, so retiring the entry
+ *   commits with the decision that ended the request
+ */
+export async function retire(id: string, tx?: DbTx): Promise<void> {
+  const handle = tx ?? db;
+  await handle
+    .update(notifications)
+    .set({ readAt: sql`now()` })
+    .where(
+      and(
+        eq(notifications.id, id),
+        isNull(notifications.readAt),
+        isNull(notifications.deletedAt),
+      ),
+    );
+}
+
+/**
  * Mark all of a user's unread notifications as read.
  * @param userId - Inbox owner whose unread notifications to clear
  * @returns count of rows updated.

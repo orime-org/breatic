@@ -68,10 +68,17 @@ export interface RoleUpgradeDecisionPayload {
  * Create a notification for the owner that a viewer wants editor
  * access. Returns the inserted row so the caller can return its id
  * to the requester (or surface it in the broadcast).
+ *
+ * `expiresAt` is required and must be the same instant the request row
+ * carries. The bell's unread list and its badge both read a null `expires_at`
+ * as "never expires", so an entry created without one outlives the request it
+ * announces: on day eight the request is dead but the row still sits unread,
+ * still counted, with buttons that now answer 409.
  * @param input - Owner inbox, project scope, payload, and optional transaction
  * @param input.ownerUserId - Project owner who receives the request in their inbox
  * @param input.projectId - Project the upgrade is requested for
  * @param input.payload - Requester, project name, requested role, and message
+ * @param input.expiresAt - Same instant as the request row's `expires_at`
  * @param input.tx - Optional transaction to bundle with the role-bump write
  * @returns The inserted `access.role_upgrade_request` notification
  */
@@ -79,6 +86,7 @@ export async function createRoleUpgradeRequest(input: {
   ownerUserId: string;
   projectId: string;
   payload: RoleUpgradeRequestPayload;
+  expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
   return notificationRepo.create(
@@ -87,6 +95,7 @@ export async function createRoleUpgradeRequest(input: {
       type: "access.role_upgrade_request",
       payload: input.payload as unknown as Record<string, unknown>,
       projectId: input.projectId,
+      expiresAt: input.expiresAt,
     },
     input.tx,
   );

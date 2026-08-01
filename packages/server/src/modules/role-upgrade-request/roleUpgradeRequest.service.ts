@@ -2,41 +2,49 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Role-upgrade request service — viewer asks owner for editor rights.
+ * Role-upgrade request service — a viewer asks the owner for editor rights.
  *
- * Three operations:
- *   - `request`: viewer creates a `role_upgrade_request` notification
- *     in the owner's inbox.
- *   - `approve`: owner decides → service updates `project_members.role`
- *     to 'editor' AND creates a `role_upgrade_approved` notification in
- *     the requester's inbox AND marks the original request as read.
- *   - `reject`: owner decides → service creates a
- *     `role_upgrade_rejected` notification in the requester's inbox
- *     AND marks the original request as read. No member-table change.
+ * Four operations: `request` files one, `approve` / `reject` answer it, and
+ * `cancel` withdraws it. The request itself lives in `role_upgrade_requests`;
+ * the bell entry in `notifications` only ANNOUNCES it.
  *
- * Spec: access-permission design (2026-05-28) § 6.3.
+ * That split is the point of this module's shape. The request used to BE the
+ * bell entry, and a table built to announce things has no status, no
+ * uniqueness and no expiry — so the flow inherited three defects at once: a
+ * request could never time out, the same viewer could file any number of them,
+ * and "already decided" was indistinguishable from "already read". Every guard
+ * bolted on to compensate revealed the next gap.
  *
- * Authorization model (route layer enforces gates):
- *   - request: caller must be an active member of the project, role 'viewer'
- *   - approve / reject: caller must be the project owner
+ * A decision is answered days after it was filed, so it re-checks everything
+ * it assumed rather than trusting the request's own contents:
  *
- * Atomicity & once-only: approve / reject each run in a single db
- * transaction — the gate read, the mark-read CAS, the role bump, and the
- * outcome notification all share one transaction, so any failure rolls the
- * whole decision back. The mark-read CAS (UPDATE … WHERE read_at IS NULL) is
- * the serialization point: under concurrency only the first decision flips
- * read_at; the loser's UPDATE matches zero rows and aborts. A request is
- * therefore decided EXACTLY ONCE — never approved twice, never approved AND
- * rejected.
+ *   1. lock the request row by id (never by status — see the repo header)
+ *   2. it must still be pending, else 409 "already handled"
+ *   3. it must not have timed out, else retire it and 409
+ *   4. the caller must be the project's CURRENT owner, else 403
+ *   5. the requester must still be a viewer, else retire it and 409
+ *   6. write, settle, retire the bell entry, announce the outcome
+ *
+ * Steps 3 and 5 push the request to `expired` — it has genuinely stopped
+ * being answerable — and take its bell entry down with it. Step 4 deliberately
+ * does not: a decider lacking authority says nothing about the request, which
+ * remains perfectly valid for whoever owns the project now.
+ *
+ * The approve path holds NO row lock on `project_members`: step 5's check and
+ * the role write are one conditional statement (`updateRoleUnderOwner`), so
+ * this path cannot join the deadlock the other writers on that table form.
  */
 
 import { db } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
+import * as projectService from "@server/modules/project/project.service.js";
+import * as requestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
+import { deferredRequestExpiry } from "@server/config/limits.js";
 import { projectMembersRepo } from "@breatic/core";
-import { NotFoundError, ForbiddenError, ValidationError } from "@breatic/core";
+import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { NotificationEntity } from "@breatic/shared";
@@ -46,154 +54,320 @@ interface RoleUpgradeRequestInput {
   requesterUserId: string;
   projectId: string;
   projectName: string;
-  projectSlug: string;
   message?: string | null;
 }
 
+/** A filed request and the bell entry announcing it. */
+export interface FiledRequest {
+  requestId: string;
+  notification: NotificationEntity;
+}
+
 /**
- * Viewer creates a role-upgrade request. Inserts a single
- * notification in the owner's inbox.
- * @param input - Owner, requester, project, and optional message for the request.
- * @returns the inserted notification (caller can echo the id back to
- *   the requester for client-side optimistic display).
+ * File a request: one row in `role_upgrade_requests`, one bell entry for the
+ * owner, both in a single transaction.
+ *
+ * The two carry the SAME `expires_at`, because they are two projections of one
+ * fact and a viewer must never see them disagree. `createPending` reaps any
+ * timed-out request on this key first, so a viewer whose earlier request was
+ * never answered can file again rather than being locked out by their own
+ * silence.
+ * @param input - Owner, requester, project, and the optional note.
+ * @returns The new request's id and the bell entry announcing it.
+ * @throws {ConflictError} when this viewer already has a live request here.
  */
 export async function request(
   input: RoleUpgradeRequestInput,
-): Promise<NotificationEntity> {
+): Promise<FiledRequest> {
   const requester = await resolveActorProfile(input.requesterUserId);
-  return notificationService.createRoleUpgradeRequest({
-    ownerUserId: input.ownerUserId,
-    projectId: input.projectId,
-    payload: {
-      requesterUserId: input.requesterUserId,
-      requesterName: requester.name,
-      projectId: input.projectId,
-      projectName: input.projectName,
-      requestedRole: "editor",
-      message: input.message ?? null,
-    },
-  });
+  const expiresAt = deferredRequestExpiry();
+  try {
+    return await db.transaction(async (tx) => {
+      const requestId = await requestsRepo.createPending({
+        projectId: input.projectId,
+        requesterUserId: input.requesterUserId,
+        requestedRole: "editor",
+        message: input.message ?? undefined,
+        expiresAt,
+        tx,
+      });
+      const notification = await notificationService.createRoleUpgradeRequest({
+        ownerUserId: input.ownerUserId,
+        projectId: input.projectId,
+        expiresAt,
+        payload: {
+          requesterUserId: input.requesterUserId,
+          requesterName: requester.name,
+          projectId: input.projectId,
+          projectName: input.projectName,
+          requestedRole: "editor",
+          message: input.message ?? null,
+        },
+        tx,
+      });
+      await requestsRepo.attachNotification(requestId, notification.id, tx);
+      return { requestId, notification };
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ConflictError(t("server.error.conflict"));
+    }
+    throw err;
+  }
 }
 
 interface DecisionInput {
-  notificationId: string;
+  requestId: string;
   ownerUserId: string;
-  projectName: string;
-  projectSlug: string;
 }
 
 /**
- * Owner approves a viewer's role-upgrade request.
+ * Owner approves a request: the requester becomes an editor.
  *
- * Atomic: (1) bump member role view → edit, (2) create approved
- * notification for the requester, (3) mark the request notification
- * as read on the owner's side.
- * @param input - Notification id, owner id, and project name for the decision.
- * @throws {NotFoundError} if the request notification doesn't
- *   exist, was already decided (read), doesn't belong to
- *   `ownerUserId`, or the member role bump finds no matching row.
- * @throws {ValidationError} if the notification isn't a
- *   role-upgrade-request type (defense in depth — the route should
- *   already filter by id).
+ * The premise check and the role write are one statement, so nothing can slip
+ * between them — if the requester stopped being a viewer while the request
+ * waited, nothing is written and the request is retired instead.
+ * @param input - Request id and the deciding owner.
+ * @throws {NotFoundError} when there is no such request.
+ * @throws {ConflictError} when it was already handled, has timed out, or its
+ *   premise no longer holds.
+ * @throws {ForbiddenError} when the caller is not the project's current owner.
  */
 export async function approve(input: DecisionInput): Promise<void> {
-  let approvedActivity: { projectId: string; targetUserId: string } | null =
-    null;
+  let promoted: { projectId: string; requesterUserId: string } | null = null;
   await db.transaction(async (tx) => {
-    const req = await loadAndGate(tx, input);
-    // Serialization point: the mark-read CAS (UPDATE … WHERE read_at IS NULL)
-    // flips the request to decided. Under concurrency the row lock makes a
-    // losing decision's UPDATE match zero rows → won=false → abort, rolling
-    // back the whole transaction. Runs BEFORE the role bump so the loser does
-    // no work. A request is decided exactly once.
-    const won = await notificationRepo.markRead(req.id, input.ownerUserId, tx);
-    if (!won) {
-      throw new NotFoundError(t("server.error.notFound"));
-    }
-    const requesterUserId = String(req.payload.requesterUserId);
-    const ok = await projectMembersRepo.updateRole(
-      String(req.projectId),
-      requesterUserId,
+    const req = await openForDecision(tx, input);
+    const won = await projectMembersRepo.updateRoleUnderOwner(
+      req.projectId,
+      req.requesterUserId,
+      "viewer",
       "editor",
+      input.ownerUserId,
       tx,
     );
-    if (!ok) {
-      throw new NotFoundError(t("server.error.notFound"));
+    if (!won) {
+      // The requester is no longer the viewer this request was filed about —
+      // promoted by another route, or removed from the project. The request
+      // has stopped being answerable, so it is retired rather than left to
+      // occupy its slot for another week.
+      await retire(req, tx);
+      throw new ConflictError(t("server.error.conflict"));
     }
-    const decider = await resolveActorProfile(input.ownerUserId);
+    await settle(req, "approved", input.ownerUserId, tx);
+    const [decider, project] = await Promise.all([
+      resolveActorProfile(input.ownerUserId),
+      projectService.get(req.projectId, input.ownerUserId),
+    ]);
     await notificationService.createRoleUpgradeApproved({
-      requesterUserId,
-      projectId: String(req.projectId),
+      requesterUserId: req.requesterUserId,
+      projectId: req.projectId,
       payload: {
         deciderUserId: input.ownerUserId,
         deciderName: decider.name,
-        projectId: String(req.projectId),
-        projectName: input.projectName,
+        projectId: req.projectId,
+        projectName: project.name,
         newRole: "editor",
       },
       tx,
     });
-    approvedActivity = {
-      projectId: String(req.projectId),
-      targetUserId: requesterUserId,
-    };
+    promoted = { projectId: req.projectId, requesterUserId: req.requesterUserId };
   });
-  // Activity row AFTER the role bump committed (best-effort audit;
-  // the helper announces the live signal itself).
-  if (approvedActivity !== null) {
-    const approved = approvedActivity as {
-      projectId: string;
-      targetUserId: string;
-    };
+  // Activity row AFTER the role bump committed (best-effort audit; the helper
+  // announces the live signal itself).
+  if (promoted !== null) {
+    const done = promoted as { projectId: string; requesterUserId: string };
     await recordProjectActivity({
-      projectId: approved.projectId,
+      projectId: done.projectId,
       actorUserId: input.ownerUserId,
       type: "member:role-changed",
       payload: {
         role: "editor",
         previousRole: "viewer",
-        targetUserId: approved.targetUserId,
+        targetUserId: done.requesterUserId,
       },
     });
   }
 }
 
 /**
- * Owner rejects a viewer's role-upgrade request.
+ * Owner rejects a request: nothing changes but the request's own status.
  *
- * Atomic: (1) create rejected notification for the requester,
- * (2) mark the request notification as read on the owner's side.
- * @param input - Decision fields plus an optional rejection reason.
- * @throws {NotFoundError} if the request notification doesn't
- *   exist, was already decided (read), or doesn't belong to
- *   `ownerUserId`.
+ * The premise is re-checked here too, even though there is no write to guard.
+ * Rejecting a request whose subject already became an editor would announce a
+ * refusal of something that has already happened.
+ * @param input - Request id, deciding owner, and the optional reason shown to
+ *   the requester.
+ * @throws {NotFoundError} when there is no such request.
+ * @throws {ConflictError} when it was already handled, has timed out, or its
+ *   premise no longer holds.
+ * @throws {ForbiddenError} when the caller is not the project's current owner.
  */
 export async function reject(
   input: DecisionInput & { reason?: string | null },
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    const req = await loadAndGate(tx, input);
-    // Serialization point — see `approve`. The mark-read CAS decides the
-    // request exactly once; a losing concurrent decision aborts here and
-    // rolls back before the rejected notification is written.
-    const won = await notificationRepo.markRead(req.id, input.ownerUserId, tx);
-    if (!won) {
-      throw new NotFoundError(t("server.error.notFound"));
+    const req = await openForDecision(tx, input);
+    const role = await projectMembersRepo.getRole(
+      req.projectId,
+      req.requesterUserId,
+    );
+    if (role !== "viewer") {
+      await retire(req, tx);
+      throw new ConflictError(t("server.error.conflict"));
     }
-    const decider = await resolveActorProfile(input.ownerUserId);
+    await settle(req, "rejected", input.ownerUserId, tx);
+    const [decider, project] = await Promise.all([
+      resolveActorProfile(input.ownerUserId),
+      projectService.get(req.projectId, input.ownerUserId),
+    ]);
     await notificationService.createRoleUpgradeRejected({
-      requesterUserId: String(req.payload.requesterUserId),
-      projectId: String(req.projectId),
+      requesterUserId: req.requesterUserId,
+      projectId: req.projectId,
       payload: {
         deciderUserId: input.ownerUserId,
         deciderName: decider.name,
-        projectId: String(req.projectId),
-        projectName: input.projectName,
+        projectId: req.projectId,
+        projectName: project.name,
         reason: input.reason ?? null,
       },
       tx,
     });
   });
+}
+
+/**
+ * The requester withdraws their own request, freeing the slot at once.
+ *
+ * Without this the viewer is held hostage by their own unanswered ask: the
+ * unique index refuses a second one, and only time releases it. The owner's
+ * bell entry goes down in the same transaction, since what it announced is
+ * over.
+ * @param requestId - The request to withdraw.
+ * @param requesterUserId - The caller; must be the person who filed it.
+ * @throws {NotFoundError} when no live request of theirs matches.
+ */
+export async function cancel(
+  requestId: string,
+  requesterUserId: string,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const cancelled = await requestsRepo.cancelIfPending(
+      requestId,
+      requesterUserId,
+      tx,
+    );
+    if (!cancelled) {
+      throw new NotFoundError(t("server.error.notFound"));
+    }
+    if (cancelled.notificationId !== null) {
+      await notificationRepo.retire(cancelled.notificationId, tx);
+    }
+  });
+}
+
+/**
+ * The requester's own live request on a project, for the surface that replaces
+ * their "request editor access" button with "requested · N days left · cancel".
+ * @param projectId - The project being viewed.
+ * @param requesterUserId - The signed-in viewer.
+ * @returns Their live request, or null when they have none.
+ */
+export async function findLive(
+  projectId: string,
+  requesterUserId: string,
+): Promise<{ id: string; expiresAt: Date } | null> {
+  const row = await requestsRepo.findLiveForRequester(
+    projectId,
+    requesterUserId,
+  );
+  return row ? { id: row.id, expiresAt: row.expiresAt } : null;
+}
+
+/** A locked request that has passed every gate but its premise check. */
+interface OpenRequest {
+  id: string;
+  projectId: string;
+  requesterUserId: string;
+  notificationId: string | null;
+}
+
+/**
+ * Lock the request and run the gates every decision shares: it exists, it is
+ * still pending, it has not timed out, and the caller owns the project now.
+ *
+ * The lock keys on id alone, so a request settled by a concurrent decision
+ * still comes back and can be reported as "already handled" rather than
+ * "never existed" — the repo header explains why putting `status` in a
+ * `FOR UPDATE` predicate destroys exactly that distinction.
+ * @param tx - The deciding transaction; the lock is meaningless without one.
+ * @param input - Request id and the deciding caller.
+ * @returns The locked request, ready for its premise check.
+ * @throws {NotFoundError} when there is no such request.
+ * @throws {ConflictError} when it was already handled or has timed out.
+ * @throws {ForbiddenError} when the caller is not the project's current owner.
+ */
+async function openForDecision(
+  tx: DbTx,
+  input: DecisionInput,
+): Promise<OpenRequest> {
+  const row = await requestsRepo.lockRequest(input.requestId, tx);
+  if (!row) {
+    throw new NotFoundError(t("server.error.notFound"));
+  }
+  const req: OpenRequest = {
+    id: row.id,
+    projectId: row.projectId,
+    requesterUserId: row.requesterUserId,
+    notificationId: row.notificationId,
+  };
+  if (row.status !== "pending") {
+    throw new ConflictError(t("server.error.conflict"));
+  }
+  if (row.expired) {
+    // Nobody answered in time. Somebody has to write that down, or the row
+    // stays `pending` forever and holds this viewer's slot — "expired" is by
+    // definition the case where no other path runs.
+    await settle(req, "expired", null, tx);
+    throw new ConflictError(t("server.error.conflict"));
+  }
+  const decider = await projectMembersRepo.getRole(
+    row.projectId,
+    input.ownerUserId,
+  );
+  if (decider !== "owner") {
+    // Deliberately leaves the request pending: this caller's lack of authority
+    // says nothing about the request, which the CURRENT owner can still answer.
+    throw new ForbiddenError(t("server.error.forbidden"));
+  }
+  return req;
+}
+
+/**
+ * Move a request to a terminal status and take its bell entry down with it.
+ * @param req - The locked request.
+ * @param status - Terminal status to settle on.
+ * @param decidedByUserId - The owner who ruled, or null when nobody did.
+ * @param tx - The deciding transaction.
+ */
+async function settle(
+  req: OpenRequest,
+  status: "approved" | "rejected" | "expired",
+  decidedByUserId: string | null,
+  tx: DbTx,
+): Promise<void> {
+  await requestsRepo.settleIfPending(req.id, status, decidedByUserId, tx);
+  await retire(req, tx);
+}
+
+/**
+ * Take down the bell entry announcing a request that is over.
+ * @param req - The locked request.
+ * @param tx - The enclosing transaction.
+ */
+async function retire(req: OpenRequest, tx: DbTx): Promise<void> {
+  if (req.notificationId !== null) {
+    await notificationRepo.retire(req.notificationId, tx);
+  }
 }
 
 /**
@@ -213,52 +387,19 @@ async function resolveActorProfile(
   return { name: p?.name ?? "", handle: p?.slug ?? "" };
 }
 
-interface LoadedRequest {
-  id: string;
-  projectId: string;
-  payload: { requesterUserId: string };
-}
-
 /**
- * Load the request notification and enforce the decision gates:
- * it must exist, belong to the owner, be a role-upgrade-request type,
- * still be unread, and carry a valid requester id and project id.
- * @param tx - Active transaction handle; the read joins it so the gate sees
- *   a snapshot consistent with the rest of the decision.
- * @param input - Notification id and owner id identifying the request.
- * @returns The validated request id, project id, and requester id.
- * @throws {NotFoundError} if the notification is missing or already decided.
- * @throws {ForbiddenError} if the notification doesn't belong to the owner.
- * @throws {ValidationError} if the type, requester id, or project id is invalid.
+ * Recognise the unique-index violation the one-live-request rule raises.
+ *
+ * Matched on SQLSTATE rather than on the message: the text is localised by the
+ * server's locale setting, the code is not.
+ * @param err - Whatever the transaction threw.
+ * @returns True when this is a duplicate-key violation.
  */
-async function loadAndGate(
-  tx: DbTx,
-  input: DecisionInput,
-): Promise<LoadedRequest> {
-  const row = await notificationRepo.findById(input.notificationId, tx);
-  if (!row) {
-    throw new NotFoundError(t("server.error.notFound"));
-  }
-  if (row.userId !== input.ownerUserId) {
-    throw new ForbiddenError(t("server.error.forbidden"));
-  }
-  if (row.type !== "access.role_upgrade_request") {
-    throw new ValidationError(t("server.error.validation"));
-  }
-  if (row.readAt !== null) {
-    // Already decided — second click on stale BellMenu state.
-    throw new NotFoundError(t("server.error.notFound"));
-  }
-  const payload = row.payload as { requesterUserId?: unknown };
-  if (typeof payload.requesterUserId !== "string") {
-    throw new ValidationError(t("server.error.validation"));
-  }
-  if (row.projectId === null) {
-    throw new ValidationError(t("server.error.validation"));
-  }
-  return {
-    id: row.id,
-    projectId: row.projectId,
-    payload: { requesterUserId: payload.requesterUserId },
-  };
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "23505"
+  );
 }

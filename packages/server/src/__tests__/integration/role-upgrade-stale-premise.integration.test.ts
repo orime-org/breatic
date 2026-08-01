@@ -125,14 +125,23 @@ async function insertRoleUpgradeRequest(
   requesterId: string,
   projectId: string,
 ): Promise<string> {
-  const [row] = await sql<{ id: string }[]>`
-    INSERT INTO notifications (user_id, type, payload, project_id)
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const [notice] = await sql<{ id: string }[]>`
+    INSERT INTO notifications (user_id, type, payload, project_id, expires_at)
     VALUES (
       ${inboxUserId},
       'access.role_upgrade_request',
       ${sql.json({ requesterUserId: requesterId, projectName: "Demo", requestedRole: "editor" })},
-      ${projectId}
+      ${projectId},
+      ${expiresAt}
     )
+    RETURNING id
+  `;
+  // The request is a row of its own now; the notification only announces it.
+  const [row] = await sql<{ id: string }[]>`
+    INSERT INTO role_upgrade_requests
+      (project_id, requester_user_id, requested_role, status, notification_id, expires_at)
+    VALUES (${projectId}, ${requesterId}, 'editor', 'pending', ${notice!.id}, ${expiresAt})
     RETURNING id
   `;
   return row!.id;
@@ -217,10 +226,8 @@ describe("role-upgrade approve re-checks its premises", () => {
     // its owner, or have its access requests decided again.
     await roleUpgradeService
       .approve({
-        notificationId: requestId,
+        requestId,
         ownerUserId: formerOwnerId,
-        projectName: "Demo",
-        projectSlug: "demo-slug",
       })
       .catch(() => undefined);
 
@@ -237,10 +244,8 @@ describe("role-upgrade approve re-checks its premises", () => {
     // role gate, so the service is the only place this can be enforced.
     await expect(
       roleUpgradeService.approve({
-        notificationId: requestId,
+        requestId,
         ownerUserId: formerOwnerId,
-        projectName: "Demo",
-        projectSlug: "demo-slug",
       }),
     ).rejects.toThrow();
 
@@ -257,10 +262,8 @@ describe("role-upgrade approve re-checks its premises", () => {
     // request the new owner was supposed to answer.
     await expect(
       roleUpgradeService.reject({
-        notificationId: requestId,
+        requestId,
         ownerUserId: formerOwnerId,
-        projectName: "Demo",
-        projectSlug: "demo-slug",
       }),
     ).rejects.toThrow();
 

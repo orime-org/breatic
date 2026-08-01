@@ -106,20 +106,7 @@ describe("POST /projects/:pid/role-upgrade-requests", () => {
   });
 });
 
-describe("PATCH /role-upgrade-requests/:notificationId/decision", () => {
-  beforeEach(() => {
-    mocks.notificationRepo.findById.mockResolvedValue({
-      id: NID,
-      userId: "u-owner",
-      type: "access.role_upgrade_request",
-      payload: { requesterUserId: "u-viewer" },
-      projectId: PID,
-      readAt: null,
-      deletedAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-  });
+describe("PATCH /role-upgrade-requests/:requestId/decision", () => {
 
   it("approves the request when decision=approved", async () => {
     const app = createApp();
@@ -149,7 +136,7 @@ describe("PATCH /role-upgrade-requests/:notificationId/decision", () => {
     expect(res.status).toBe(200);
     expect(mocks.roleUpgradeRequestService.reject).toHaveBeenCalledWith(
       expect.objectContaining({
-        notificationId: NID,
+        requestId: NID,
         reason: "No room",
       }),
     );
