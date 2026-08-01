@@ -66,6 +66,11 @@ function opts(over: Partial<Parameters<typeof pollUntilDone>[1]> = {}): Paramete
     maxWaitMs: 2000,
     timeoutMs: 500,
     label: "wavespeed",
+    // Skip the between-attempt wait by default. Left real, this file's cases
+    // spent most of their runtime asleep in jittered backoff — the suite ran
+    // ~22s of which ~20s was nothing happening, right next to assertions that
+    // count attempts. Cases that are ABOUT the wait pass their own sleep.
+    sleepImpl: async (): Promise<void> => {},
     ...over,
   };
 }
@@ -213,7 +218,7 @@ describe("pollUntilDone — telemetry", () => {
         "https://v.test/task/9",
         opts({ fetchImpl, errorPath: ["error", "message"], onEvent: (e) => events.push(e) }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/nsfw/);
     expect(events).toContainEqual(
       expect.objectContaining({ type: "poll_failed", status: "failed", error: "nsfw" }),
     );
@@ -227,7 +232,7 @@ describe("pollUntilDone — telemetry", () => {
         "https://v.test/task/10",
         opts({ fetchImpl, intervalMs: 10, maxWaitMs: 60, onEvent: (e) => events.push(e) }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/did not complete within/);
     expect(events).toContainEqual(
       expect.objectContaining({ type: "poll_timeout", maxWaitMs: 60 }),
     );
@@ -273,6 +278,21 @@ describe("pollUntilDone — cancellation", () => {
         opts({
           fetchImpl: spy as unknown as typeof fetch,
           signal: ac.signal,
+          // Both cancellation cases are ABOUT the interval wait, so they get a
+          // real cancellable one back — the file-level default skips waiting,
+          // which would end the poll before the abort could land and make the
+          // assertion pass for the wrong reason.
+          sleepImpl: (ms: number, signal?: AbortSignal): Promise<void> =>
+            new Promise<void>((resolve, reject) => {
+              const timer = setTimeout(resolve, ms);
+              signal?.addEventListener("abort", () => {
+                clearTimeout(timer);
+                reject(
+                  signal.reason instanceof Error ? signal.reason : new Error("aborted"),
+                );
+              });
+            }),
+
           intervalMs: 5,
           maxWaitMs: 5000,
         }),
@@ -300,6 +320,21 @@ describe("pollUntilDone — cancellation", () => {
         opts({
           fetchImpl: spy as unknown as typeof fetch,
           signal: ac.signal,
+          // Both cancellation cases are ABOUT the interval wait, so they get a
+          // real cancellable one back — the file-level default skips waiting,
+          // which would end the poll before the abort could land and make the
+          // assertion pass for the wrong reason.
+          sleepImpl: (ms: number, signal?: AbortSignal): Promise<void> =>
+            new Promise<void>((resolve, reject) => {
+              const timer = setTimeout(resolve, ms);
+              signal?.addEventListener("abort", () => {
+                clearTimeout(timer);
+                reject(
+                  signal.reason instanceof Error ? signal.reason : new Error("aborted"),
+                );
+              });
+            }),
+
           intervalMs: 30,
           maxWaitMs: 5000,
         }),

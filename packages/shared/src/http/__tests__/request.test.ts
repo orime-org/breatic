@@ -48,7 +48,17 @@ function scriptedFetch(
       // Honour the signal so the attempt actually ends rather than leaking.
       return new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener("abort", () => {
-          reject(new DOMException("aborted", "AbortError"));
+          // Reject with the SIGNAL'S OWN REASON, the way a real fetch does.
+          // This used to be a hardcoded `DOMException("aborted")`, which meant
+          // the double did not behave like the thing it doubles — and the
+          // transport's documented promise, that a cancellation surfaces as
+          // the caller's own error rather than a generic abort, was never
+          // actually exercised by anything.
+          reject(
+            init.signal?.reason instanceof Error
+              ? init.signal.reason
+              : new DOMException("aborted", "AbortError"),
+          );
         });
       });
     }
@@ -64,6 +74,11 @@ function opts(over: Partial<Parameters<typeof httpRequest>[2]> = {}): Parameters
     replaySafe: true,
     timeoutMs: 1000,
     label: "test",
+    // Skip the between-attempt wait by default. Left real, this file's cases
+    // spent most of their runtime asleep in jittered backoff — the suite ran
+    // ~22s of which ~20s was nothing happening, right next to assertions that
+    // count attempts. Cases that are ABOUT the wait pass their own sleep.
+    sleepImpl: async (): Promise<void> => {},
     ...over,
   };
 }
@@ -140,7 +155,7 @@ describe("httpRequest — outcome shape", () => {
     const { fetchImpl, calls } = scriptedFetch([boom, boom, boom]);
     await expect(
       httpRequest("https://x.test/dead", {}, opts({ fetchImpl })),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/fetch failed/);
     expect(calls()).toBe(MAX_RETRIES + 1);
   });
 
@@ -180,7 +195,7 @@ describe("httpRequest — caller cancellation", () => {
         {},
         opts({ fetchImpl, signal: ac.signal, timeoutMs: 5000 }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/user pressed stop/);
     expect(calls()).toBe(1);
   });
 });
@@ -329,7 +344,7 @@ describe("httpRequest — fatal errors from the injected fetch", () => {
           onEvent: (e) => events.push(e),
         }),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(BlockedError);
     expect(events).toEqual([
       expect.objectContaining({ type: "exhausted", reason: "fatal_error" }),
     ]);
@@ -363,6 +378,6 @@ describe("httpRequestJson", () => {
     ]);
     await expect(
       httpRequestJson("https://x.test/j", {}, opts({ fetchImpl })),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/could not be parsed as JSON/);
   });
 });

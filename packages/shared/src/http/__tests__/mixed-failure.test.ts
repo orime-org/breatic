@@ -53,6 +53,11 @@ function opts(fetchImpl: typeof fetch): Parameters<typeof httpRequest>[2] {
     bodyIdleTimeoutMs: 200,
     fetchImpl,
     label: "probe",
+    // Skip the between-attempt wait by default. Left real, this file's cases
+    // spent most of their runtime asleep in jittered backoff — the suite ran
+    // ~22s of which ~20s was nothing happening, right next to assertions that
+    // count attempts. Cases that are ABOUT the wait pass their own sleep.
+    sleepImpl: async (): Promise<void> => {},
   };
 }
 
@@ -118,6 +123,17 @@ describe("cancellation during a backoff wait", () => {
     const inFlight = httpRequest(URL_UNDER_TEST, {}, {
       ...opts(fetchImpl),
       signal: controller.signal,
+      // This case is ABOUT the wait, so it gets a real cancellable one back —
+      // the file-level default skips waiting entirely, which would make the
+      // "did not serve out the backoff" assertion true for the wrong reason.
+      sleepImpl: (ms: number, signal?: AbortSignal): Promise<void> =>
+        new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, ms);
+          signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(signal.reason instanceof Error ? signal.reason : new Error("aborted"));
+          });
+        }),
     });
     setTimeout(() => controller.abort(new Error("user pressed stop")), 50);
 

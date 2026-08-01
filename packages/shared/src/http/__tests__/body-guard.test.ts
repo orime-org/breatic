@@ -71,6 +71,11 @@ function opts(fetchImpl: typeof fetch, bodyIdleMs = 120): Parameters<typeof http
     bodyIdleTimeoutMs: bodyIdleMs,
     fetchImpl,
     label: "probe",
+    // Skip the between-attempt wait by default. Left real, this file's cases
+    // spent most of their runtime asleep in jittered backoff — the suite ran
+    // ~22s of which ~20s was nothing happening, right next to assertions that
+    // count attempts. Cases that are ABOUT the wait pass their own sleep.
+    sleepImpl: async (): Promise<void> => {},
   };
 }
 

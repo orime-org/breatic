@@ -117,7 +117,11 @@ describe("Retry-After relay", () => {
     });
 
     expect(waits).toEqual([55_000]);
-    expect(55_000).toBeLessThanOrEqual(MAX_RETRY_AFTER_BACKGROUND_MS);
+    // The line here used to be `expect(55_000).toBeLessThanOrEqual(CEILING)` —
+    // two literals compared to each other, exercising nothing. What the case
+    // is actually about is that this figure sits under the ceiling, so the
+    // ceiling is what the assertion should mention.
+    expect(waits[0]).toBeLessThanOrEqual(MAX_RETRY_AFTER_BACKGROUND_MS);
   });
 
   it("refuses for an interactive caller a wait a background one would serve", async () => {
@@ -141,7 +145,10 @@ describe("Retry-After relay", () => {
 
     expect(waits).toEqual([]);
     expect(res.status).toBe(429);
-    expect(20_000).toBeGreaterThan(MAX_RETRY_AFTER_INTERACTIVE_MS);
+    // Same correction: assert on what the transport reported, not on two
+    // constants sitting next to each other.
+    expect(res.retryAfterMs).toBe(20_000);
+    expect(res.retryAfterMs).toBeGreaterThan(MAX_RETRY_AFTER_INTERACTIVE_MS);
   });
 
   it("honours Retry-After even when replaying is NOT safe", async () => {
@@ -207,6 +214,15 @@ describe("Retry-After relay", () => {
     });
 
     expect(waits).toHaveLength(1);
-    expect(waits[0]).toBeGreaterThan(0);
+    // Full jitter draws uniformly from [0, ceiling], so a strict `> 0` is a
+    // coin flip the suite loses roughly once in two thousand runs. What the
+    // case is about is that the wait came from OUR backoff rather than from
+    // the server, and the ceiling is what says so.
+    expect(waits[0]).toBeGreaterThanOrEqual(0);
+    // Full jitter over the first-attempt ceiling, same bound the sibling case
+    // above uses. `> 0` was a coin flip the suite loses about once in two
+    // thousand runs, and what the case is about is that the wait came from OUR
+    // backoff rather than from the server.
+    expect(waits[0]).toBeLessThan(1_000);
   });
 });
