@@ -49,7 +49,10 @@ vi.mock("ai", () => ({
 // forced per test. Default 100 keeps every other test (tiny member counts)
 // unaffected; the collaborator-cap tests below lower it.
 const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
-vi.mock("@server/config/limits.js", () => ({
+vi.mock("@server/config/limits.js", async (importOriginal) => ({
+  // Spread the real module: only the caps are being forced here, and
+  // listing exports by hand breaks the moment the config grows one.
+  ...(await importOriginal<typeof import("@server/config/limits.js")>()),
   getStudioMemberCap: () => capRefs.studio,
   getProjectCollaboratorCap: () => capRefs.project,
 }));
