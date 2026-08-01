@@ -104,13 +104,22 @@ export async function requestTransfer(
   const from = profiles.get(fromAdminUserId);
   try {
     await db.transaction(async (tx) => {
-      const transferId = await transfersRepo.createPending({
+      const filed = await transfersRepo.createPending({
         studioId: studio.id,
         fromUserId: fromAdminUserId,
         toUserId,
         expiresAt,
         tx,
       });
+      const transferId = filed.id;
+      // Reaping is the one settle path the repo cannot finish on its own: it
+      // pushed timed-out rows terminal, and their bell entries have to come
+      // down with them or they outlive the offers they announce.
+      await Promise.all(
+        filed.retiredNotificationIds.map((id) =>
+          notificationRepo.retire(id, tx),
+        ),
+      );
       const notification =
         await notificationService.createStudioTransferRequest({
           userId: toUserId,
@@ -174,6 +183,14 @@ export async function confirmTransfer(
   transferId: string,
   receiverUserId: string,
 ): Promise<void> {
+  // Resolved BEFORE the transaction opens: a display field for the outcome
+  // notification, needing no transactional consistency — and a read issued from
+  // inside a transaction reaches for a SECOND pooled connection while the first
+  // is still held, which is how a pool exhausts itself under concurrent
+  // decisions.
+  const accepterProfiles = await studioRepo.getPersonalProfilesByCreators([
+    receiverUserId,
+  ]);
   const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
     const opened = await openForDecision(tx, transferId, receiverUserId);
     if (isRefused(opened)) return opened;
@@ -212,26 +229,28 @@ export async function confirmTransfer(
       return { refusal: "conflict" };
     }
 
+    // Both writes are refusals-as-values like every other branch here. Throwing
+    // would abort the transaction — which is survivable today because nothing
+    // has been settled yet at this point, but the rule has no exceptions
+    // precisely so that the next person to add a settle above these lines does
+    // not have to notice.
     const demoted = await studioMembersRepo.updateRole(
       studioId,
       fromUserId,
       "maintainer",
       tx,
     );
-    if (!demoted) throw new NotFoundError(t("server.error.not_found"));
+    if (!demoted) return { refusal: "conflict" };
     const promoted = await studioMembersRepo.updateRole(
       studioId,
       receiverUserId,
       "admin",
       tx,
     );
-    if (!promoted) throw new NotFoundError(t("server.error.not_found"));
+    if (!promoted) return { refusal: "conflict" };
     await settle(offer, "accepted", tx);
 
-    const profiles = await studioRepo.getPersonalProfilesByCreators([
-      receiverUserId,
-    ]);
-    const accepter = profiles.get(receiverUserId);
+    const accepter = accepterProfiles.get(receiverUserId);
     await notificationService.createStudioTransferApproved({
       userId: fromUserId,
       payload: {
@@ -356,8 +375,27 @@ async function openForDecision(
 ): Promise<OpenOffer | Refused> {
   const row = await transfersRepo.lockRequest(transferId, tx);
   if (!row) return { refusal: "not_found" };
-  const studio = await studioRepo.getById(row.studioId);
-  if (!studio) return { refusal: "not_found" };
+  // Takes the transaction's own handle: a read issued from inside a
+  // transaction reaches for a second pooled connection while the first is held.
+  const studio = await studioRepo.getById(row.studioId, tx);
+  if (!studio) {
+    // The studio was soft-deleted under an outstanding offer. Nothing will ever
+    // answer it, so it is settled here rather than left holding the studio's
+    // only transfer slot — the same treatment every other dead-request branch
+    // gets, and the same `conflict` they all report.
+    await settle(
+      {
+        id: row.id,
+        studioId: row.studioId,
+        studioName: "",
+        fromUserId: row.fromUserId,
+        notificationId: row.notificationId,
+      },
+      "expired",
+      tx,
+    );
+    return { refusal: "conflict" };
+  }
   const offer: OpenOffer = {
     id: row.id,
     studioId: row.studioId,

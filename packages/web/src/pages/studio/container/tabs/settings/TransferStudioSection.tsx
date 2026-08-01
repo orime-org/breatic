@@ -66,8 +66,18 @@ export function TransferStudioSection({
   const liveQuery = useQuery({
     queryKey: liveKey,
     queryFn: () => studiosApi.liveTransfer(slug),
+    // Polls like the bell does. The offer can end without this tab doing
+    // anything — the recipient accepts or declines from their own — and a
+    // surface that never refetches keeps a Withdraw button over an offer that
+    // is already over, which answers 404 and reads as a failure.
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
   const live = liveQuery.data ?? null;
+  // Empty when the recipient is not in the loaded roster — they left the
+  // container, or were never in this particular list. The offer is still real
+  // and still confirmable by them, so the banner says so without naming a
+  // person it cannot name.
   const recipientName = members.find((m) => m.id === live?.toUserId)?.name ?? '';
 
   const transferMutation = useMutation({
@@ -114,9 +124,9 @@ export function TransferStudioSection({
         data-testid='settings-transfer-pending'
       >
         <span className='text-xs text-muted-foreground'>
-          {t('studio.container.settings.transferPending', {
-            name: recipientName,
-          })}
+          {recipientName
+            ? t('studio.container.settings.transferPending', { name: recipientName })
+            : t('studio.container.settings.transferPendingUnnamed')}
         </span>
         <span
           className='text-2xs text-muted-foreground'

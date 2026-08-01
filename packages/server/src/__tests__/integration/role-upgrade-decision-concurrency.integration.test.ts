@@ -208,6 +208,14 @@ describe("role-upgrade decision is once-only under concurrency", () => {
     // (request already decided).
     expect(fulfilled).toBe(1);
     expect(rejected).toBe(1);
+    // And the loser is told WHICH refusal it is. Counting outcomes alone
+    // cannot tell 409 "already handled" from 404 "no such request", so putting
+    // `status = 'pending'` back into the lock's WHERE — which turns the first
+    // into the second — would pass a test that only counted.
+    const loser = results.find((r) => r.status === "rejected");
+    expect((loser as PromiseRejectedResult).reason).toMatchObject({
+      statusCode: 409,
+    });
     // The requester must receive EXACTLY ONE approved notification, not two.
     expect(await countByType(requesterId, "access.role_upgrade_approved")).toBe(1);
     // The member is bumped to editor (once).

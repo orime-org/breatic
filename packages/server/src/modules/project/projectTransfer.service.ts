@@ -139,13 +139,22 @@ export async function requestProjectTransfer(
   const from = profiles.get(fromUserId);
   try {
     await db.transaction(async (tx) => {
-      const transferId = await transfersRepo.createPending({
+      const filed = await transfersRepo.createPending({
         projectId,
         fromUserId,
         toUserId,
         expiresAt,
         tx,
       });
+      const transferId = filed.id;
+      // Reaping is the one settle path the repo cannot finish on its own: it
+      // pushed timed-out rows terminal, and their bell entries have to come
+      // down with them or they outlive the offers they announce.
+      await Promise.all(
+        filed.retiredNotificationIds.map((id) =>
+          notificationRepo.retire(id, tx),
+        ),
+      );
       const notification =
         await notificationService.createProjectTransferRequest({
           userId: toUserId,
@@ -212,6 +221,14 @@ export async function confirmProjectTransfer(
   transferId: string,
   receiverUserId: string,
 ): Promise<void> {
+  // Resolved BEFORE the transaction opens: a display field for the outcome
+  // notification, needing no transactional consistency — and a read issued from
+  // inside a transaction reaches for a SECOND pooled connection while the first
+  // is still held, which is how a pool exhausts itself under concurrent
+  // decisions.
+  const accepterProfiles = await studioRepo.getPersonalProfilesByCreators([
+    receiverUserId,
+  ]);
   const outcome = await db.transaction<
     Refused | { projectId: string; oldOwnerId: string }
   >(async (tx) => {
@@ -241,8 +258,15 @@ export async function confirmProjectTransfer(
     //
     // The project row itself is read unlocked: `studio_id` is immutable, so
     // there is nothing here for a concurrent writer to change.
-    const project = await projectRepo.getProjectById(projectId);
-    if (!project) return { refusal: "conflict" };
+    const project = await projectRepo.getProjectById(projectId, tx);
+    if (!project) {
+      // The project was soft-deleted under an outstanding offer. Nothing will
+      // ever answer it, so it is settled here rather than left holding the
+      // project's only transfer slot — the same treatment the sibling branches
+      // below give every other dead offer.
+      await settle(offer, "expired", tx);
+      return { refusal: "conflict" };
+    }
     const recipientStudioRole = await studioMembersRepo.lockMemberRole(
       project.studioId,
       receiverUserId,
@@ -281,10 +305,7 @@ export async function confirmProjectTransfer(
     await projectMembersRepo.materializeOwner(projectId, receiverUserId, tx);
     await settle(offer, "accepted", tx);
 
-    const profiles = await studioRepo.getPersonalProfilesByCreators([
-      receiverUserId,
-    ]);
-    const accepter = profiles.get(receiverUserId);
+    const accepter = accepterProfiles.get(receiverUserId);
     await notificationService.createProjectTransferApproved({
       userId: fromUserId,
       payload: {

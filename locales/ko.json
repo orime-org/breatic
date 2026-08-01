@@ -863,7 +863,8 @@
       "transferPending": "{name}의 수락을 기다리는 중입니다.",
       "transferWithdraw": "취소",
       "transferWithdrawn": "이전 요청을 취소했습니다.",
-      "transferWithdrawFailed": "이전 요청을 취소하지 못했습니다."
+      "transferWithdrawFailed": "이전 요청을 취소하지 못했습니다.",
+      "transferPendingUnnamed": "수락을 기다리는 중입니다."
     },
     "stack": {
       "triggerAria": "Project 멤버({count})",
@@ -1338,7 +1339,8 @@
         "transferPending": "{name}의 수락을 기다리는 중입니다.",
         "transferWithdraw": "취소",
         "transferWithdrawn": "이전 요청을 취소했습니다.",
-        "transferWithdrawFailed": "이전 요청을 취소하지 못했습니다."
+        "transferWithdrawFailed": "이전 요청을 취소하지 못했습니다.",
+        "transferPendingUnnamed": "수락을 기다리는 중입니다."
       },
       "dialog": {
         "newProjectTitle": "새 Project",

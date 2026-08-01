@@ -405,6 +405,9 @@ studio.get("/:slug/transfer", requireStudioRole("admin"), async (c) => {
 studio.delete(
   "/:slug/transfer/:transferId",
   requireStudioRole("admin"),
+  // `transferId` reaches a uuid comparison; anything that is not a uuid makes
+  // Postgres reject the statement, turning a user-supplied string into a 500.
+  zValidator("param", z.object({ slug: z.string(), transferId: z.string().uuid() })),
   async (c) => {
     await studioTransferService.withdrawTransfer(
       c.req.param("transferId"),

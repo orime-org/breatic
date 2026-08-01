@@ -863,7 +863,8 @@
       "transferPending": "{name} の承諾を待っています。",
       "transferWithdraw": "取り消す",
       "transferWithdrawn": "譲渡リクエストを取り消しました。",
-      "transferWithdrawFailed": "譲渡リクエストを取り消せませんでした。"
+      "transferWithdrawFailed": "譲渡リクエストを取り消せませんでした。",
+      "transferPendingUnnamed": "受け取る人の承諾を待っています。"
     },
     "stack": {
       "triggerAria": "Project メンバー({count})",
@@ -1338,7 +1339,8 @@
         "transferPending": "{name} の承諾を待っています。",
         "transferWithdraw": "取り消す",
         "transferWithdrawn": "譲渡リクエストを取り消しました。",
-        "transferWithdrawFailed": "譲渡リクエストを取り消せませんでした。"
+        "transferWithdrawFailed": "譲渡リクエストを取り消せませんでした。",
+        "transferPendingUnnamed": "受け取る人の承諾を待っています。"
       },
       "dialog": {
         "newProjectTitle": "Project を新規作成",

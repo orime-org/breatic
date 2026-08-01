@@ -163,21 +163,21 @@ async function decidedAtOf(table: string, id: string): Promise<Date | null> {
 describe("role-upgrade requests repo", () => {
   it("reaps a timed-out pending on the same key, then takes the slot", async () => {
     const { ownerId, projectId } = await seedScene();
-    const stale = await roleUpgradeRequestsRepo.createPending({
+    const stale = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
       requestedRole: "editor",
       expiresAt: yesterday(),
-    });
+    })).id;
 
     // Same (project, requester): the index would refuse this if the stale row
     // still occupied the slot, which is exactly the #1769 shape.
-    const fresh = await roleUpgradeRequestsRepo.createPending({
+    const fresh = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
       requestedRole: "editor",
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     expect(fresh).not.toBe(stale);
     expect(await statusOf("role_upgrade_requests", stale)).toBe("expired");
@@ -212,24 +212,24 @@ describe("role-upgrade requests repo", () => {
       expiresAt: nextWeek(),
     });
 
-    const second = await roleUpgradeRequestsRepo.createPending({
+    const second = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: otherId,
       requestedRole: "editor",
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     expect(await statusOf("role_upgrade_requests", second)).toBe("pending");
   });
 
   it("frees the slot when the requester cancels", async () => {
     const { ownerId, projectId } = await seedScene();
-    const first = await roleUpgradeRequestsRepo.createPending({
+    const first = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
       requestedRole: "editor",
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     const cancelled = await db.transaction(async (tx) =>
       roleUpgradeRequestsRepo.cancelIfPending(first, ownerId, tx),
@@ -250,12 +250,12 @@ describe("role-upgrade requests repo", () => {
 
   it("refuses to cancel someone else's request", async () => {
     const { ownerId, otherId, projectId } = await seedScene();
-    const id = await roleUpgradeRequestsRepo.createPending({
+    const id = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
       requestedRole: "editor",
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     const cancelled = await db.transaction(async (tx) =>
       roleUpgradeRequestsRepo.cancelIfPending(id, otherId, tx),
@@ -267,12 +267,12 @@ describe("role-upgrade requests repo", () => {
 
   it("locks a pending row and reports whether it has timed out", async () => {
     const { ownerId, projectId } = await seedScene();
-    const live = await roleUpgradeRequestsRepo.createPending({
+    const live = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
       requestedRole: "editor",
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     const locked = await db.transaction(async (tx) =>
       roleUpgradeRequestsRepo.lockRequest(live, tx),
@@ -290,12 +290,12 @@ describe("role-upgrade requests repo", () => {
     // refuse it and flip it — a filter that hides it would leave the row
     // pending forever.
     const { ownerId, projectId } = await seedScene();
-    const stale = await roleUpgradeRequestsRepo.createPending({
+    const stale = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
       requestedRole: "editor",
       expiresAt: yesterday(),
-    });
+    })).id;
 
     const locked = await db.transaction(async (tx) =>
       roleUpgradeRequestsRepo.lockRequest(stale, tx),
@@ -312,12 +312,12 @@ describe("role-upgrade requests repo", () => {
     // would get an empty result here — the same answer as a bad id, at the one
     // moment where telling them apart decides what the user is told.
     const { ownerId, projectId } = await seedScene();
-    const id = await roleUpgradeRequestsRepo.createPending({
+    const id = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
       requestedRole: "editor",
       expiresAt: nextWeek(),
-    });
+    })).id;
     await db.transaction(async (tx) =>
       roleUpgradeRequestsRepo.settleIfPending(id, "approved", ownerId, tx),
     );
@@ -335,12 +335,12 @@ describe("role-upgrade requests repo", () => {
 
   it("settles exactly once, and the loser can tell", async () => {
     const { ownerId, projectId } = await seedScene();
-    const id = await roleUpgradeRequestsRepo.createPending({
+    const id = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
       requestedRole: "editor",
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     const first = await db.transaction(async (tx) =>
       roleUpgradeRequestsRepo.settleIfPending(id, "approved", ownerId, tx),
@@ -359,18 +359,18 @@ describe("role-upgrade requests repo", () => {
     // (`decided_by_user_id`, null for a self-cancel) and WHETHER anyone acted
     // at all (`decided_at`, null only when the clock ended it).
     const { ownerId, otherId, projectId } = await seedScene();
-    const decided = await roleUpgradeRequestsRepo.createPending({
+    const decided = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
       requestedRole: "editor",
       expiresAt: nextWeek(),
-    });
-    const cancelled = await roleUpgradeRequestsRepo.createPending({
+    })).id;
+    const cancelled = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: otherId,
       requestedRole: "editor",
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     await db.transaction(async (tx) =>
       roleUpgradeRequestsRepo.settleIfPending(decided, "approved", ownerId, tx),
@@ -389,12 +389,12 @@ describe("role-upgrade requests repo", () => {
     // Two different paths end a request without anyone acting, and both have
     // to leave the stamp alone. The reaper never writes the column at all; the
     // decision path DOES write it, and has to write null for this one status.
-    const reaped = await roleUpgradeRequestsRepo.createPending({
+    const reaped = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
       requestedRole: "editor",
       expiresAt: yesterday(),
-    });
+    })).id;
     await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
@@ -407,12 +407,12 @@ describe("role-upgrade requests repo", () => {
 
     // The decision path meeting a request whose deadline already passed: it
     // flips the row itself rather than leaving it pending forever.
-    const timedOut = await roleUpgradeRequestsRepo.createPending({
+    const timedOut = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: otherId,
       requestedRole: "editor",
       expiresAt: yesterday(),
-    });
+    })).id;
     const settled = await db.transaction(async (tx) => {
       const locked = await roleUpgradeRequestsRepo.lockRequest(timedOut, tx);
       expect(locked?.expired).toBe(true);
@@ -433,12 +433,12 @@ describe("role-upgrade requests repo", () => {
     // the index predicate (status only) would keep showing a request that died
     // on day 8, with a cancel button that does nothing.
     const { ownerId, otherId, projectId } = await seedScene();
-    const live = await roleUpgradeRequestsRepo.createPending({
+    const live = (await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: ownerId,
       requestedRole: "editor",
       expiresAt: nextWeek(),
-    });
+    })).id;
     await roleUpgradeRequestsRepo.createPending({
       projectId,
       requesterUserId: otherId,
@@ -463,21 +463,21 @@ describe("role-upgrade requests repo", () => {
 describe("project transfers repo", () => {
   it("reaps a timed-out pending on the project, then takes the slot", async () => {
     const { ownerId, otherId, thirdId, projectId } = await seedScene();
-    const stale = await projectTransfersRepo.createPending({
+    const stale = (await projectTransfersRepo.createPending({
       projectId,
       fromUserId: ownerId,
       toUserId: otherId,
       expiresAt: yesterday(),
-    });
+    })).id;
 
     // A DIFFERENT recipient: the slot is the project, not the pair, so this
     // proves the reap rather than a key that happens not to collide.
-    const fresh = await projectTransfersRepo.createPending({
+    const fresh = (await projectTransfersRepo.createPending({
       projectId,
       fromUserId: ownerId,
       toUserId: thirdId,
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     expect(await statusOf("project_transfers", stale)).toBe("expired");
     expect(await statusOf("project_transfers", fresh)).toBe("pending");
@@ -506,12 +506,12 @@ describe("project transfers repo", () => {
 
   it("frees the project's slot when the transfer is cancelled", async () => {
     const { ownerId, otherId, thirdId, projectId } = await seedScene();
-    const id = await projectTransfersRepo.createPending({
+    const id = (await projectTransfersRepo.createPending({
       projectId,
       fromUserId: ownerId,
       toUserId: otherId,
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     const cancelled = await db.transaction(async (tx) =>
       projectTransfersRepo.cancelIfPending(id, projectId, tx),
@@ -535,12 +535,12 @@ describe("project transfers repo", () => {
     // belong to that project. Without the guard, an id from anywhere would do.
     const mine = await seedScene();
     const theirs = await seedScene();
-    const id = await projectTransfersRepo.createPending({
+    const id = (await projectTransfersRepo.createPending({
       projectId: theirs.projectId,
       fromUserId: theirs.ownerId,
       toUserId: theirs.otherId,
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     const cancelled = await db.transaction(async (tx) =>
       projectTransfersRepo.cancelIfPending(id, mine.projectId, tx),
@@ -550,14 +550,41 @@ describe("project transfers repo", () => {
     expect(await statusOf("project_transfers", id)).toBe("pending");
   });
 
-  it("locks a pending transfer and reports its participants", async () => {
+  it("locks an already-settled offer, so it is not mistaken for a missing one", async () => {
+    // The headline invariant of this repo, asserted for THIS table rather than
+    // assumed from the two siblings that already assert it: without this,
+    // putting `status = 'pending'` back into the lock's WHERE passes the suite.
     const { ownerId, otherId, projectId } = await seedScene();
-    const id = await projectTransfersRepo.createPending({
+    const id = (await projectTransfersRepo.createPending({
       projectId,
       fromUserId: ownerId,
       toUserId: otherId,
       expiresAt: nextWeek(),
-    });
+    })).id;
+    await db.transaction(async (tx) =>
+      projectTransfersRepo.settleIfPending(id, "declined", tx),
+    );
+
+    const settled = await db.transaction(async (tx) =>
+      projectTransfersRepo.lockRequest(id, tx),
+    );
+    const missing = await db.transaction(async (tx) =>
+      projectTransfersRepo.lockRequest(randomUUID(), tx),
+    );
+
+    expect(settled?.status).toBe("declined");
+    expect(settled?.toUserId).toBe(otherId);
+    expect(missing).toBeNull();
+  });
+
+  it("locks a pending transfer and reports its participants", async () => {
+    const { ownerId, otherId, projectId } = await seedScene();
+    const id = (await projectTransfersRepo.createPending({
+      projectId,
+      fromUserId: ownerId,
+      toUserId: otherId,
+      expiresAt: nextWeek(),
+    })).id;
 
     const locked = await db.transaction(async (tx) =>
       projectTransfersRepo.lockRequest(id, tx),
@@ -573,12 +600,12 @@ describe("project transfers repo", () => {
 
   it("shows the project's live transfer and hides a timed-out one", async () => {
     const { ownerId, otherId, projectId } = await seedScene();
-    const id = await projectTransfersRepo.createPending({
+    const id = (await projectTransfersRepo.createPending({
       projectId,
       fromUserId: ownerId,
       toUserId: otherId,
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     expect(
       (await projectTransfersRepo.findLiveForContainer(projectId))?.id,
@@ -587,12 +614,12 @@ describe("project transfers repo", () => {
     await db.transaction(async (tx) =>
       projectTransfersRepo.cancelIfPending(id, projectId, tx),
     );
-    const expired = await projectTransfersRepo.createPending({
+    const expired = (await projectTransfersRepo.createPending({
       projectId,
       fromUserId: ownerId,
       toUserId: otherId,
       expiresAt: yesterday(),
-    });
+    })).id;
 
     expect(expired).toBeTruthy();
     expect(
@@ -604,19 +631,19 @@ describe("project transfers repo", () => {
 describe("studio transfers repo", () => {
   it("reaps a timed-out pending on the studio, then takes the slot", async () => {
     const { ownerId, otherId, thirdId, studioId } = await seedScene();
-    const stale = await studioTransfersRepo.createPending({
+    const stale = (await studioTransfersRepo.createPending({
       studioId,
       fromUserId: ownerId,
       toUserId: otherId,
       expiresAt: yesterday(),
-    });
+    })).id;
 
-    const fresh = await studioTransfersRepo.createPending({
+    const fresh = (await studioTransfersRepo.createPending({
       studioId,
       fromUserId: ownerId,
       toUserId: thirdId,
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     expect(await statusOf("studio_transfers", stale)).toBe("expired");
     expect(await statusOf("studio_transfers", fresh)).toBe("pending");
@@ -643,12 +670,12 @@ describe("studio transfers repo", () => {
 
   it("settles exactly once", async () => {
     const { ownerId, otherId, studioId } = await seedScene();
-    const id = await studioTransfersRepo.createPending({
+    const id = (await studioTransfersRepo.createPending({
       studioId,
       fromUserId: ownerId,
       toUserId: otherId,
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     const first = await db.transaction(async (tx) =>
       studioTransfersRepo.settleIfPending(id, "accepted", tx),
@@ -664,12 +691,12 @@ describe("studio transfers repo", () => {
 
   it("locks an already-settled offer, so it is not mistaken for a missing one", async () => {
     const { ownerId, otherId, studioId } = await seedScene();
-    const id = await studioTransfersRepo.createPending({
+    const id = (await studioTransfersRepo.createPending({
       studioId,
       fromUserId: ownerId,
       toUserId: otherId,
       expiresAt: nextWeek(),
-    });
+    })).id;
     await db.transaction(async (tx) =>
       studioTransfersRepo.settleIfPending(id, "declined", tx),
     );
@@ -689,12 +716,12 @@ describe("studio transfers repo", () => {
   it("refuses to cancel an offer belonging to another studio", async () => {
     const mine = await seedScene();
     const theirs = await seedScene();
-    const id = await studioTransfersRepo.createPending({
+    const id = (await studioTransfersRepo.createPending({
       studioId: theirs.studioId,
       fromUserId: theirs.ownerId,
       toUserId: theirs.otherId,
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     const cancelled = await db.transaction(async (tx) =>
       studioTransfersRepo.cancelIfPending(id, mine.studioId, tx),
@@ -706,22 +733,22 @@ describe("studio transfers repo", () => {
 
   it("stamps decided_at when a person ends it, and not when it times out", async () => {
     const { ownerId, otherId, studioId } = await seedScene();
-    const accepted = await studioTransfersRepo.createPending({
+    const accepted = (await studioTransfersRepo.createPending({
       studioId,
       fromUserId: ownerId,
       toUserId: otherId,
       expiresAt: nextWeek(),
-    });
+    })).id;
     await db.transaction(async (tx) =>
       studioTransfersRepo.settleIfPending(accepted, "accepted", tx),
     );
 
-    const reaped = await studioTransfersRepo.createPending({
+    const reaped = (await studioTransfersRepo.createPending({
       studioId,
       fromUserId: ownerId,
       toUserId: otherId,
       expiresAt: yesterday(),
-    });
+    })).id;
     await studioTransfersRepo.createPending({
       studioId,
       fromUserId: ownerId,
@@ -736,12 +763,12 @@ describe("studio transfers repo", () => {
     // The other way an offer dies unattended: the decision path finds it past
     // its deadline and flips it. That one DOES write the column, with null.
     const { studioId: otherStudio, ownerId: a, otherId: b } = await seedScene();
-    const timedOut = await studioTransfersRepo.createPending({
+    const timedOut = (await studioTransfersRepo.createPending({
       studioId: otherStudio,
       fromUserId: a,
       toUserId: b,
       expiresAt: yesterday(),
-    });
+    })).id;
     const settled = await db.transaction(async (tx) =>
       studioTransfersRepo.settleIfPending(timedOut, "expired", tx),
     );
@@ -752,12 +779,12 @@ describe("studio transfers repo", () => {
 
   it("shows the studio's live transfer and hides a timed-out one", async () => {
     const { ownerId, otherId, studioId } = await seedScene();
-    const live = await studioTransfersRepo.createPending({
+    const live = (await studioTransfersRepo.createPending({
       studioId,
       fromUserId: ownerId,
       toUserId: otherId,
       expiresAt: nextWeek(),
-    });
+    })).id;
 
     expect((await studioTransfersRepo.findLiveForContainer(studioId))?.id).toBe(
       live,

@@ -56,16 +56,26 @@ function toEntity(
  * that keeps a deleted project unreachable even if a member row ever
  * lingered, and it lets this one query replace a separate existence
  * SELECT (no raw `db` access outside this repo).
+ *
+ * Takes an optional transaction handle. A caller already inside one MUST pass
+ * it: `db` hands out a SECOND pooled connection, and a transaction that holds
+ * one connection while waiting for another can exhaust the pool against itself
+ * — every connection pinned by a transaction, every transaction queued behind
+ * a connection that will never free. The pool has no acquire timeout, so that
+ * state does not resolve; it stalls every query in the process, not just this
+ * route.
  * @param projectId - Project UUID
  * @param userId - User UUID
+ * @param tx - Enclosing transaction, when the caller is inside one
  * @returns Role, or null if the project is missing/deleted or the
  *   user has no active membership
  */
 export async function getRole(
   projectId: string,
   userId: string,
+  tx?: DbTx,
 ): Promise<ProjectRole | null> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({ role: projectMembers.role })
     .from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))

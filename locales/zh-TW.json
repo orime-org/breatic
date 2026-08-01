@@ -863,7 +863,8 @@
       "transferPending": "等待 {name} 接受。",
       "transferWithdraw": "撤回",
       "transferWithdrawn": "轉讓申請已撤回。",
-      "transferWithdrawFailed": "撤回轉讓申請失敗。"
+      "transferWithdrawFailed": "撤回轉讓申請失敗。",
+      "transferPendingUnnamed": "等待接收人接受。"
     },
     "stack": {
       "triggerAria": "Project 成員（{count}）",
@@ -1338,7 +1339,8 @@
         "transferPending": "等待 {name} 接受。",
         "transferWithdraw": "撤回",
         "transferWithdrawn": "轉讓申請已撤回。",
-        "transferWithdrawFailed": "撤回轉讓申請失敗。"
+        "transferWithdrawFailed": "撤回轉讓申請失敗。",
+        "transferPendingUnnamed": "等待接收人接受。"
       },
       "dialog": {
         "newProjectTitle": "新增 Project",

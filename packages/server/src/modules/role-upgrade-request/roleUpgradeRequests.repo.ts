@@ -66,16 +66,23 @@ export interface LiveRoleUpgradeRequest {
  * Only ever touches EXPIRED pendings: a live one must still trip the index,
  * because a second simultaneous request from the same person is a real
  * duplicate and refusing it is the point.
+ * Returns the bell entries of the rows it reaped. The reaper is the one settle
+ * path that cannot retire them itself — this is a repo, and the bell lives in
+ * another module's table — so it hands them up to the service, which does.
+ * Skipping that leaves an entry announcing a request that is over, and the
+ * invariant "a settled request has no live bell entry" would then rest on an
+ * unrelated filter in the unread query rather than on this write.
  * @param projectId - The project being asked about.
  * @param requesterUserId - The person asking.
  * @param tx - The enclosing transaction, shared with the insert that follows.
+ * @returns The notification ids of the rows reaped (empty when none were).
  */
 export async function expireStalePending(
   projectId: string,
   requesterUserId: string,
   tx: DbTx,
-): Promise<void> {
-  await tx
+): Promise<string[]> {
+  const rows = await tx
     .update(roleUpgradeRequests)
     .set({ status: "expired" })
     .where(
@@ -86,7 +93,18 @@ export async function expireStalePending(
         isNull(roleUpgradeRequests.deletedAt),
         lte(roleUpgradeRequests.expiresAt, sql`now()`),
       ),
-    );
+    )
+    .returning({ notificationId: roleUpgradeRequests.notificationId });
+  return rows
+    .map((r) => r.notificationId)
+    .filter((id): id is string => id !== null);
+}
+
+/** A freshly filed request, and the bell entries its reap left to take down. */
+export interface CreatedRoleUpgradeRequest {
+  id: string;
+  /** Entries of timed-out rows the insert reaped; the caller retires them. */
+  retiredNotificationIds: string[];
 }
 
 /**
@@ -103,7 +121,9 @@ export async function expireStalePending(
  * @param input.message - Optional note for the decider.
  * @param input.expiresAt - When this request stops being answerable.
  * @param input.tx - Optional enclosing transaction.
- * @returns The new request's id.
+ * @returns The new request's id, plus the bell entries of anything reaped — the
+ *   caller retires those, since taking them down is a cross-module write this
+ *   repo cannot make.
  * @throws {Error} 23505 when a LIVE pending already holds this key.
  */
 export async function createPending(input: {
@@ -113,15 +133,15 @@ export async function createPending(input: {
   message?: string;
   expiresAt: Date;
   tx?: DbTx;
-}): Promise<string> {
+}): Promise<CreatedRoleUpgradeRequest> {
   /**
    * Free the slot and take it, on whichever transaction we end up inside.
    * @param tx - The transaction both steps share.
-   * @returns The new request's id.
+   * @returns The new request's id and anything the reap took down with it.
    * @throws {Error} 23505 from the insert, or a missing returned row.
    */
-  const run = async (tx: DbTx): Promise<string> => {
-    await expireStalePending(input.projectId, input.requesterUserId, tx);
+  const run = async (tx: DbTx): Promise<CreatedRoleUpgradeRequest> => {
+    const retiredNotificationIds = await expireStalePending(input.projectId, input.requesterUserId, tx);
     const rows = await tx
       .insert(roleUpgradeRequests)
       .values({
@@ -139,7 +159,7 @@ export async function createPending(input: {
         "roleUpgradeRequestsRepo.createPending: insert returned no row",
       );
     }
-    return row.id;
+    return { id: row.id, retiredNotificationIds };
   };
   return input.tx ? run(input.tx) : db.transaction(run);
 }

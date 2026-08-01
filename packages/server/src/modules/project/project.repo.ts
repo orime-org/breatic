@@ -19,11 +19,14 @@
 import { eq, and, isNull, isNotNull, or, desc, inArray } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectActivitiesRepo } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
 import {
   projects,
   studios,
   projectMembers,
+  projectTransfers,
+  roleUpgradeRequests,
   conversations,
   nodeHistory,
   projectMemories,
@@ -93,11 +96,18 @@ export async function getIdentitiesByProjectIds(
 
 /**
  * Load one active project by id.
+ * Takes an optional transaction handle; a caller inside a transaction MUST pass
+ * it, or the read reaches for a second pooled connection while the first is
+ * still held (see `projectMembersRepo.getRole` for what that costs).
  * @param id - Project UUID
+ * @param tx - Enclosing transaction, when the caller is inside one
  * @returns The project, or `null` when missing / soft-deleted
  */
-export async function getProjectById(id: string): Promise<ProjectEntity | null> {
-  const rows = await db
+export async function getProjectById(
+  id: string,
+  tx?: DbTx,
+): Promise<ProjectEntity | null> {
+  const rows = await (tx ?? db)
     .select()
     .from(projects)
     .where(and(eq(projects.id, id), isNull(projects.deletedAt)))
@@ -451,6 +461,33 @@ export async function deleteProject(id: string): Promise<void> {
         and(
           eq(projectMembers.projectId, id),
           isNull(projectMembers.deletedAt),
+        ),
+      );
+
+    // The two deferred-request tables die with the project too. Left behind, a
+    // pending row is undecidable and unkillable: every decision path resolves
+    // the caller's role through a join that filters deleted projects, so it
+    // answers 403 forever and deliberately leaves the row pending; the reaper
+    // only runs from a NEW request on the same key, and filing one needs a live
+    // project. The row then holds its uniqueness slot permanently and its
+    // `restrict` foreign key blocks the project from ever being hard-deleted.
+    await tx
+      .update(roleUpgradeRequests)
+      .set({ deletedAt: now })
+      .where(
+        and(
+          eq(roleUpgradeRequests.projectId, id),
+          isNull(roleUpgradeRequests.deletedAt),
+        ),
+      );
+
+    await tx
+      .update(projectTransfers)
+      .set({ deletedAt: now })
+      .where(
+        and(
+          eq(projectTransfers.projectId, id),
+          isNull(projectTransfers.deletedAt),
         ),
       );
 

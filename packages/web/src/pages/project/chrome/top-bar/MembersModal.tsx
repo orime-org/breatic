@@ -268,6 +268,12 @@ function TransferOwnershipSection({
   const liveQuery = useQuery({
     queryKey: liveKey,
     queryFn: () => projectsApi.liveTransfer(projectId),
+    // Polls like the bell does. The offer can end without this tab doing
+    // anything — the recipient accepts or declines from their own — and a
+    // surface that never refetches keeps a Withdraw button over an offer that
+    // is already over, which answers 404 and reads as a failure.
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
   const live = liveQuery.data ?? null;
   const recipientName =
@@ -367,7 +373,9 @@ function TransferOwnershipSection({
           data-testid='members-modal-transfer-pending'
         >
           <span>
-            {t('members.modal.transferPending', { name: recipientName })}
+            {recipientName
+              ? t('members.modal.transferPending', { name: recipientName })
+              : t('members.modal.transferPendingUnnamed')}
           </span>
           <span data-testid='members-modal-transfer-expiry'>
             {expiresInLabel(live.expiresAt, t)}

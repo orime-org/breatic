@@ -125,6 +125,17 @@ const decisionBodySchema = z.object({
 });
 
 /**
+ * The request id, validated as a uuid before it reaches a uuid comparison.
+ *
+ * Without this the param goes straight into `WHERE id = $1` against a uuid
+ * column, and Postgres rejects the whole statement for anything that is not a
+ * uuid (SQLSTATE 22P02) — a user-supplied string turning into an unclassified
+ * 500. The same guard already exists on the studio slug-check route for the
+ * same reason.
+ */
+const requestParamSchema = z.object({ requestId: z.string().uuid() });
+
+/**
  * `PATCH /api/v1/role-upgrade-requests/:requestId/decision` — the owner
  * approves or rejects.
  *
@@ -132,6 +143,7 @@ const decisionBodySchema = z.object({
  */
 decisionRoute.patch(
   "/:requestId/decision",
+  zValidator("param", requestParamSchema),
   zValidator("json", decisionBodySchema),
   async (c) => {
     const user = c.get("user");
@@ -162,11 +174,15 @@ decisionRoute.patch(
  * matching the caller against the row's `requester_user_id`; a request that is
  * not theirs, or not live, answers 404 either way.
  */
-decisionRoute.delete("/:requestId", async (c) => {
-  const user = c.get("user");
-  await roleUpgradeRequestService.cancel(c.req.param("requestId"), user.id);
-  return c.json({ data: { ok: true } });
-});
+decisionRoute.delete(
+  "/:requestId",
+  zValidator("param", requestParamSchema),
+  async (c) => {
+    const user = c.get("user");
+    await roleUpgradeRequestService.cancel(c.req.param("requestId"), user.id);
+    return c.json({ data: { ok: true } });
+  },
+);
 
 export { projectRoleUpgradeRequests as projectRoleUpgradeRequestsRoute };
 export { decisionRoute as roleUpgradeRequestDecisionRoute };

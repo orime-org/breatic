@@ -77,14 +77,21 @@ export interface LiveStudioTransfer {
  *
  * `decided_at` stays null. It records that a PERSON ended this offer; nobody
  * did here, and the moment it died is already `expires_at`.
+ * Returns the bell entries of the rows it reaped. The reaper is the one settle
+ * path that cannot retire them itself — this is a repo, and the bell lives in
+ * another module's table — so it hands them up to the service, which does.
+ * Skipping that leaves an entry announcing a offer that is over, and the
+ * invariant "a settled offer has no live bell entry" would then rest on an
+ * unrelated filter in the unread query rather than on this write.
  * @param studioId - The studio being offered.
  * @param tx - The enclosing transaction, shared with the insert that follows.
+ * @returns The notification ids of the rows reaped (empty when none were).
  */
 export async function expireStalePending(
   studioId: string,
   tx: DbTx,
-): Promise<void> {
-  await tx
+): Promise<string[]> {
+  const rows = await tx
     .update(studioTransfers)
     .set({ status: "expired" })
     .where(
@@ -94,7 +101,18 @@ export async function expireStalePending(
         isNull(studioTransfers.deletedAt),
         lte(studioTransfers.expiresAt, sql`now()`),
       ),
-    );
+    )
+    .returning({ notificationId: studioTransfers.notificationId });
+  return rows
+    .map((r) => r.notificationId)
+    .filter((id): id is string => id !== null);
+}
+
+/** A freshly filed transfer, and the bell entries its reap left to take down. */
+export interface CreatedStudioTransfer {
+  id: string;
+  /** Entries of timed-out rows the insert reaped; the caller retires them. */
+  retiredNotificationIds: string[];
 }
 
 /**
@@ -110,7 +128,9 @@ export async function expireStalePending(
  * @param input.toUserId - The member being offered adminship.
  * @param input.expiresAt - When this offer stops being answerable.
  * @param input.tx - Optional enclosing transaction.
- * @returns The new transfer's id.
+ * @returns The new transfer's id, plus the bell entries of anything reaped — the
+ *   caller retires those, since taking them down is a cross-module write this
+ *   repo cannot make.
  * @throws {Error} 23505 when a LIVE pending already holds this studio.
  */
 export async function createPending(input: {
@@ -119,15 +139,15 @@ export async function createPending(input: {
   toUserId: string;
   expiresAt: Date;
   tx?: DbTx;
-}): Promise<string> {
+}): Promise<CreatedStudioTransfer> {
   /**
    * Free the slot and take it, on whichever transaction we end up inside.
    * @param tx - The transaction both steps share.
-   * @returns The new transfer's id.
+   * @returns The new transfer's id and anything the reap took down with it.
    * @throws {Error} 23505 from the insert, or a missing returned row.
    */
-  const run = async (tx: DbTx): Promise<string> => {
-    await expireStalePending(input.studioId, tx);
+  const run = async (tx: DbTx): Promise<CreatedStudioTransfer> => {
+    const retiredNotificationIds = await expireStalePending(input.studioId, tx);
     const rows = await tx
       .insert(studioTransfers)
       .values({
@@ -144,7 +164,7 @@ export async function createPending(input: {
         "studioTransfersRepo.createPending: insert returned no row",
       );
     }
-    return row.id;
+    return { id: row.id, retiredNotificationIds };
   };
   return input.tx ? run(input.tx) : db.transaction(run);
 }

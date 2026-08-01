@@ -88,8 +88,11 @@ vi.mock("../../notification/notification.service.js", async (importOriginal) => 
 vi.mock("../../studio/studio.service.js", () => ({
   getPersonalStudioProfilesByUserIds: vi.fn(),
 }));
-vi.mock("../../project/project.service.js", () => ({
-  get: vi.fn(),
+// The outcome notification's project label is read from the repo with the
+// transaction's own handle — reading it through the service would reach for a
+// second pooled connection while the first is still held.
+vi.mock("../../project/project.repo.js", () => ({
+  getProjectById: vi.fn(),
 }));
 // The deadline comes from `config/limits.yaml`; pinning it here keeps this
 // file away from the YAML loader and makes "both carry the SAME instant" an
@@ -101,7 +104,7 @@ vi.mock("@server/config/limits.js", () => ({
 import * as notificationRepo from "../../notification/notification.repo.js";
 import * as notificationService from "../../notification/notification.service.js";
 import * as studioService from "../../studio/studio.service.js";
-import * as projectService from "../../project/project.service.js";
+import * as projectRepo from "../../project/project.repo.js";
 import * as requestsRepo from "../roleUpgradeRequests.repo.js";
 import { projectMembersRepo } from "@breatic/core";
 import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
@@ -123,11 +126,11 @@ beforeEach(() => {
   vi.mocked(
     studioService.getPersonalStudioProfilesByUserIds,
   ).mockResolvedValue(new Map());
-  vi.mocked(projectService.get).mockResolvedValue({
+  vi.mocked(projectRepo.getProjectById).mockResolvedValue({
     id: PID,
     name: "Demo",
     slug: "demo",
-  } as Awaited<ReturnType<typeof projectService.get>>);
+  } as Awaited<ReturnType<typeof projectRepo.getProjectById>>);
 });
 
 /**
@@ -180,7 +183,10 @@ describe("request", () => {
     vi.mocked(
       studioService.getPersonalStudioProfilesByUserIds,
     ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
-    vi.mocked(requestsRepo.createPending).mockResolvedValueOnce(RID);
+    vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
+      id: RID,
+      retiredNotificationIds: [],
+    });
     vi.mocked(
       notificationService.createRoleUpgradeRequest,
     ).mockResolvedValueOnce(fakeNotification());
@@ -214,7 +220,10 @@ describe("request", () => {
   it("links the bell entry back to the request", async () => {
     // Without the link, nothing can take the entry down when the request ends,
     // and it outlives its own subject.
-    vi.mocked(requestsRepo.createPending).mockResolvedValueOnce(RID);
+    vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
+      id: RID,
+      retiredNotificationIds: [],
+    });
     vi.mocked(
       notificationService.createRoleUpgradeRequest,
     ).mockResolvedValueOnce(fakeNotification());

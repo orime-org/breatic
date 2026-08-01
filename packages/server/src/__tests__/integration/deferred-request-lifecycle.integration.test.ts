@@ -50,6 +50,7 @@ initCore(process.env);
 import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
+import * as projectRepo from "@server/modules/project/project.repo.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -345,6 +346,137 @@ describe("a request whose premise is gone is written down too", () => {
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(await stateOf("project_transfers", transferId)).toEqual({
+      status: "expired",
+      bellUnread: false,
+    });
+  });
+});
+
+describe("a deleted project takes its outstanding requests with it", () => {
+  it("role upgrade: the request does not outlive the project", async () => {
+    // Left behind it is both undecidable and unkillable: every decision path
+    // resolves the caller's role through a join that filters deleted projects,
+    // so it answers 403 forever and deliberately leaves the row pending; the
+    // reaper only runs from a new request, which needs a live project. The row
+    // would hold its slot permanently and its restrict FK would block any
+    // future hard delete.
+    const { ownerId, memberId, projectId } = await seedScene();
+    await roleUpgradeService.request({
+      ownerUserId: ownerId,
+      requesterUserId: memberId,
+      projectId,
+      projectName: "Demo",
+    });
+    const requestId = await liveRequestId(
+      "role_upgrade_requests",
+      "project_id",
+      projectId,
+    );
+
+    await projectRepo.deleteProject(projectId);
+
+    const rows = await sql<{ deleted_at: Date | null }[]>`
+      SELECT deleted_at FROM role_upgrade_requests WHERE id = ${requestId}
+    `;
+    expect(rows[0]!.deleted_at).not.toBeNull();
+  });
+
+  it("project transfer: the offer does not outlive the project", async () => {
+    const { ownerId, memberId, projectId } = await seedScene();
+    await projectTransferService.requestProjectTransfer(
+      projectId,
+      ownerId,
+      memberId,
+    );
+    const transferId = await liveRequestId(
+      "project_transfers",
+      "project_id",
+      projectId,
+    );
+
+    await projectRepo.deleteProject(projectId);
+
+    const rows = await sql<{ deleted_at: Date | null }[]>`
+      SELECT deleted_at FROM project_transfers WHERE id = ${transferId}
+    `;
+    expect(rows[0]!.deleted_at).not.toBeNull();
+  });
+});
+
+describe("reaping takes the bell entry down with the row", () => {
+  it("role upgrade: the reaped request's entry does not outlive it", async () => {
+    // The reaper is the one settle path that runs inside a repo, which cannot
+    // write another module's table — so the entry comes back up to the service
+    // to be retired. Miss that and the invariant "a settled request has no live
+    // bell entry" rests on an unrelated filter in the unread query, and leaks
+    // through every read that does not apply it.
+    const { ownerId, memberId, projectId } = await seedScene();
+    await roleUpgradeService.request({
+      ownerUserId: ownerId,
+      requesterUserId: memberId,
+      projectId,
+      projectName: "Demo",
+    });
+    const first = await liveRequestId(
+      "role_upgrade_requests",
+      "project_id",
+      projectId,
+    );
+    await ageOut("role_upgrade_requests", first);
+
+    // Filing again is what reaps the old row.
+    await roleUpgradeService.request({
+      ownerUserId: ownerId,
+      requesterUserId: memberId,
+      projectId,
+      projectName: "Demo",
+    });
+
+    expect(await stateOf("role_upgrade_requests", first)).toEqual({
+      status: "expired",
+      bellUnread: false,
+    });
+  });
+
+  it("studio transfer: the reaped offer's entry does not outlive it", async () => {
+    const { ownerId, memberId, studioId, studioSlug } = await seedScene();
+    await studioTransferService.requestTransfer(studioSlug, ownerId, memberId);
+    const first = await liveRequestId(
+      "studio_transfers",
+      "studio_id",
+      studioId,
+    );
+    await ageOut("studio_transfers", first);
+
+    await studioTransferService.requestTransfer(studioSlug, ownerId, memberId);
+
+    expect(await stateOf("studio_transfers", first)).toEqual({
+      status: "expired",
+      bellUnread: false,
+    });
+  });
+
+  it("project transfer: the reaped offer's entry does not outlive it", async () => {
+    const { ownerId, memberId, projectId } = await seedScene();
+    await projectTransferService.requestProjectTransfer(
+      projectId,
+      ownerId,
+      memberId,
+    );
+    const first = await liveRequestId(
+      "project_transfers",
+      "project_id",
+      projectId,
+    );
+    await ageOut("project_transfers", first);
+
+    await projectTransferService.requestProjectTransfer(
+      projectId,
+      ownerId,
+      memberId,
+    );
+
+    expect(await stateOf("project_transfers", first)).toEqual({
       status: "expired",
       bellUnread: false,
     });

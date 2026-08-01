@@ -39,7 +39,7 @@ import { db } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
-import * as projectService from "@server/modules/project/project.service.js";
+import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as requestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { deferredRequestExpiry } from "@server/config/limits.js";
@@ -89,7 +89,7 @@ export async function request(
   const expiresAt = deferredRequestExpiry();
   try {
     return await db.transaction(async (tx) => {
-      const requestId = await requestsRepo.createPending({
+      const filed = await requestsRepo.createPending({
         projectId: input.projectId,
         requesterUserId: input.requesterUserId,
         requestedRole: "editor",
@@ -97,6 +97,15 @@ export async function request(
         expiresAt,
         tx,
       });
+      const requestId = filed.id;
+      // Reaping is the one settle path the repo cannot finish on its own: it
+      // pushed timed-out rows terminal, and their bell entries have to come
+      // down with them or they outlive the requests they announce.
+      await Promise.all(
+        filed.retiredNotificationIds.map((id) =>
+          notificationRepo.retire(id, tx),
+        ),
+      );
       const notification = await notificationService.createRoleUpgradeRequest({
         ownerUserId: input.ownerUserId,
         projectId: input.projectId,
@@ -141,6 +150,12 @@ interface DecisionInput {
  * @throws {ForbiddenError} when the caller is not the project's current owner.
  */
 export async function approve(input: DecisionInput): Promise<void> {
+  // Resolved BEFORE the transaction opens: it is a display field for the
+  // outcome notification, it needs no transactional consistency, and a read
+  // issued from inside a transaction reaches for a SECOND pooled connection
+  // while the first is still held — which is how a pool exhausts itself under
+  // concurrent decisions.
+  const decider = await resolveActorProfile(input.ownerUserId);
   const outcome = await db.transaction<
     Refused | { projectId: string; requesterUserId: string }
   >(async (tx) => {
@@ -164,10 +179,11 @@ export async function approve(input: DecisionInput): Promise<void> {
       return { refusal: "conflict" };
     }
     await settle(req, "approved", input.ownerUserId, tx);
-    const [decider, project] = await Promise.all([
-      resolveActorProfile(input.ownerUserId),
-      projectService.get(req.projectId, input.ownerUserId),
-    ]);
+    // The project is only known once the row is locked, so this read cannot
+    // move out — it takes the transaction's own handle instead of reaching for
+    // a second connection. Read at decision time only as a fallback label; the
+    // bell resolves the current name from the id.
+    const project = await projectRepo.getProjectById(req.projectId, tx);
     await notificationService.createRoleUpgradeApproved({
       requesterUserId: req.requesterUserId,
       projectId: req.projectId,
@@ -175,7 +191,7 @@ export async function approve(input: DecisionInput): Promise<void> {
         deciderUserId: input.ownerUserId,
         deciderName: decider.name,
         projectId: req.projectId,
-        projectName: project.name,
+        projectName: project?.name ?? "",
         newRole: "editor",
       },
       tx,
@@ -214,6 +230,8 @@ export async function approve(input: DecisionInput): Promise<void> {
 export async function reject(
   input: DecisionInput & { reason?: string | null },
 ): Promise<void> {
+  // Resolved before the transaction opens — see `approve` for why.
+  const decider = await resolveActorProfile(input.ownerUserId);
   const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
     const opened = await openForDecision(tx, input);
     if (isRefused(opened)) return opened;
@@ -221,16 +239,14 @@ export async function reject(
     const role = await projectMembersRepo.getRole(
       req.projectId,
       req.requesterUserId,
+      tx,
     );
     if (role !== "viewer") {
       await settle(req, "expired", null, tx);
       return { refusal: "conflict" };
     }
     await settle(req, "rejected", input.ownerUserId, tx);
-    const [decider, project] = await Promise.all([
-      resolveActorProfile(input.ownerUserId),
-      projectService.get(req.projectId, input.ownerUserId),
-    ]);
+    const project = await projectRepo.getProjectById(req.projectId, tx);
     await notificationService.createRoleUpgradeRejected({
       requesterUserId: req.requesterUserId,
       projectId: req.projectId,
@@ -238,7 +254,7 @@ export async function reject(
         deciderUserId: input.ownerUserId,
         deciderName: decider.name,
         projectId: req.projectId,
-        projectName: project.name,
+        projectName: project?.name ?? "",
         reason: input.reason ?? null,
       },
       tx,
@@ -342,6 +358,7 @@ async function openForDecision(
   const decider = await projectMembersRepo.getRole(
     row.projectId,
     input.ownerUserId,
+    tx,
   );
   if (decider !== "owner") {
     // Deliberately leaves the request pending: this caller's lack of authority

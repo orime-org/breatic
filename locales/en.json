@@ -863,7 +863,8 @@
       "transferPending": "Waiting for {name} to accept.",
       "transferWithdraw": "Withdraw",
       "transferWithdrawn": "Transfer request withdrawn.",
-      "transferWithdrawFailed": "Could not withdraw the transfer request."
+      "transferWithdrawFailed": "Could not withdraw the transfer request.",
+      "transferPendingUnnamed": "Waiting for the recipient to accept."
     },
     "stack": {
       "triggerAria": "Project members ({count})",
@@ -1338,7 +1339,8 @@
         "transferPending": "Waiting for {name} to accept.",
         "transferWithdraw": "Withdraw",
         "transferWithdrawn": "Transfer request withdrawn.",
-        "transferWithdrawFailed": "Could not withdraw the transfer request."
+        "transferWithdrawFailed": "Could not withdraw the transfer request.",
+        "transferPendingUnnamed": "Waiting for the recipient to accept."
       },
       "dialog": {
         "newProjectTitle": "New project",

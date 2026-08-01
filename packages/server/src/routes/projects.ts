@@ -122,6 +122,9 @@ projects.get("/:id/transfer", requireRoleOnParam("id", "owner"), async (c) => {
 projects.delete(
   "/:id/transfer/:transferId",
   requireRoleOnParam("id", "owner"),
+  // `transferId` reaches a uuid comparison; anything that is not a uuid makes
+  // Postgres reject the statement, turning a user-supplied string into a 500.
+  zValidator("param", z.object({ id: z.string().uuid(), transferId: z.string().uuid() })),
   async (c) => {
     await projectTransferService.withdrawProjectTransfer(
       c.req.param("transferId"),
