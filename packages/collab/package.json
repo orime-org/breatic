@@ -18,20 +18,20 @@
     "@hocuspocus/extension-database": "^3.4.4",
     "@hocuspocus/extension-redis": "^3.4.4",
     "@hocuspocus/extension-throttle": "^3.4.4",
-    "@hocuspocus/server": "^3.4.4",
-    "dotenv": "^16.4.0",
-    "drizzle-orm": "^0.45.2",
-    "lib0": "^0.2.117",
-    "y-protocols": "^1.0.7",
-    "yaml": "^2.7.0",
-    "yjs": "^13.6.30",
-    "zod": "^4.3.6"
+    "@hocuspocus/server": "catalog:",
+    "dotenv": "catalog:",
+    "drizzle-orm": "catalog:",
+    "lib0": "catalog:",
+    "y-protocols": "catalog:",
+    "yaml": "catalog:",
+    "yjs": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "fast-check": "^4.8.0",
-    "tsup": "^8.3.0",
-    "tsx": "^4.19.0",
-    "vitest": "^3.0.0"
+    "fast-check": "catalog:",
+    "tsup": "catalog:",
+    "tsx": "catalog:",
+    "vitest": "catalog:"
   }
 }
