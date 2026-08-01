@@ -205,8 +205,8 @@ studio.patch(
  * Rate limited — every call permanently adds a storage object that runtime
  * never deletes, so an unthrottled admin could write to storage without bound.
  * @returns `200` with `{ data: Studio }`; `403` not the admin, `404` no such
- *   studio, `413` over the byte cap, `415` not an accepted image,
- *   `422` empty body, `429` rate limited
+ *   studio, `413` over the byte cap, `415` not a still PNG, `422` empty body
+ *   or a PNG that is not the agreed square, `429` rate limited
  */
 studio.post(
   "/:slug/avatar",

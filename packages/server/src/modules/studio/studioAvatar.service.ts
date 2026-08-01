@@ -35,14 +35,17 @@ import type { Studio } from "@breatic/shared";
  * below has to hold, which it can only do for a format whose header this
  * server knows how to read.
  *
- * Keyed on what the SNIFFER reports, never on what the client claims.
- * `image/apng` is what an animated PNG sniffs as (measured, not assumed);
- * both forms store as `.png`, because an APNG *is* a PNG file — the animation
- * lives in extra chunks a still decoder ignores.
+ * Keyed on what the SNIFFER reports, never on what the client claims. An
+ * ANIMATED png sniffs as `image/apng` and is deliberately absent: `canvas`
+ * cannot encode one, so it could only ever arrive from somewhere else, and it
+ * is the one shape the size rule cannot hold against. The rule reads a single
+ * frame's grid from IHDR, while the frame count has no bound at all — a file
+ * comfortably under the byte cap can declare thousands of 512x512 frames, and
+ * every viewer decodes all of them. Reading dimensions exists to stop exactly
+ * that, so admitting the format that walks past it would defeat the check.
  */
 const ACCEPTED_IMAGE_TYPES: Readonly<Record<string, string>> = {
   "image/png": "png",
-  "image/apng": "png",
 };
 
 /**

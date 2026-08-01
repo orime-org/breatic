@@ -38,7 +38,15 @@ upload:
 avatar:
   # Hard cap on one avatar upload, in bytes. Avatars do NOT use presigned
   # direct upload — the bytes come through the server — so this is also the
-  # bound on what the process buffers per request. The frontend crops to
-  # 512x512 WebP before sending, which lands around 30–60 KB, so 1 MiB is
-  # generous for anything the product itself produces.
-  max_bytes: 1048576
+  # bound on what the process buffers per request.
+  #
+  # Sized against PNG, which is what the crop dialog produces. PNG is lossless,
+  # so the byte count follows the picture rather than a quality setting: flat
+  # colour compresses to a few kilobytes, a noisy photograph barely compresses
+  # at all, and there is no knob to trade detail for size. Measured worst case
+  # for one 512x512 RGBA frame is 1,049,473 bytes — random pixels including the
+  # alpha channel, where deflate finds nothing to remove. That is already past
+  # 1 MiB, which is what this cap used to be: a legitimate crop could have been
+  # refused for having too much detail. Two MiB leaves the measured worst case
+  # a factor of two.
+  max_bytes: 2097152

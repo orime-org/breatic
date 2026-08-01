@@ -39,7 +39,8 @@
       "cannot_change_admin_role": "Admin 角色只能通过转让变更。",
       "member_limit_reached": "该 Studio 已达到成员数上限。",
       "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
-      "avatar_unsupported_type": "该文件不是支持的图片格式。请使用 PNG、JPEG 或 WebP。"
+      "avatar_unsupported_type": "这个文件无法作为图片读取，换一张试试。",
+      "avatar_unsupported_size": "这张图片的尺寸不对，请重新裁剪。"
     },
     "project": {
       "email_not_registered": "该邮箱未注册。",

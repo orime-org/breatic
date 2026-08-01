@@ -211,17 +211,28 @@ describe("POST /studio/:slug/avatar — what gets accepted", () => {
     );
   });
 
-  it("accepts an ANIMATED PNG — it sniffs as image/apng, and is still a PNG", async () => {
+  it("refuses an ANIMATED PNG — one frame's dimensions say nothing about the whole", async () => {
+    // Accepting these used to be right: the whitelist held four formats, the
+    // uploader sent whatever the picker gave them, and an animated PNG *is* a
+    // PNG — refusing it with a message that says PNG is supported would have
+    // contradicted itself.
+    //
+    // Settling on one format removed that premise. The bytes now always come
+    // from our own canvas re-encode, and `canvas.toBlob` cannot produce an
+    // animated PNG at all, so this door only ever opened for requests that did
+    // not come from us. And it is the worst door to leave open: the dimension
+    // check reads one frame's grid, while the frame count stays unbounded, so a
+    // file under the byte cap can still declare thousands of 512x512 frames and
+    // make every viewer decode gigabytes — the exact cost this gate exists to
+    // bound.
     const admin = await insertUser();
     const studio = await insertStudio(admin);
     const cookie = await loginCookie(admin);
 
     const res = await uploadAvatar(studio.slug, cookie, pngBytes(true));
 
-    expect(res.status).toBe(200);
-    // Stored as .png: an APNG *is* a PNG file, the animation lives in extra
-    // chunks a still decoder ignores.
-    expect(await readAvatar(studio.id)).toMatch(/\.png$/);
+    expect(res.status).toBe(415);
+    expect(await readAvatar(studio.id)).toBeNull();
   });
 
   it("refuses JPEG and WebP — the crop step converts, so these never arrive", async () => {

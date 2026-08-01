@@ -69,7 +69,7 @@
 
 - [ ] 积分购买页面：Stripe Checkout 跳转 + 余额显示 + 购买历史
 - [ ] 项目管理：创建/删除/重命名项目、项目列表、缩略图
-- [x] **Studio 设置(#10, 2026-07-29)**:头像(前端裁剪成 512×512 WebP,后端零图片处理)· 改名 · 改 slug(旧 slug 立即释放、无跳转,确认框写明四条后果)· 简介 · 成员自助退出(名下 project 转给 admin)。配套:全站头像统一成一个组件(形状随 `studios.type` 定圆/方)· 通知跳转改存 ID 读时反查 · `slug` 收进不翻译产品术语表。**Studio 删除仍未接线**(#26 单独做)
+- [x] **Studio 设置(#10, 2026-07-29)**:头像(前端裁剪成 512×512 PNG,后端只读 PNG 头校验尺寸、不解码)· 改名 · 改 slug(旧 slug 立即释放、无跳转,确认框写明四条后果)· 简介 · 成员自助退出(名下 project 转给 admin)。配套:全站头像统一成一个组件(形状随 `studios.type` 定圆/方)· 通知跳转改存 ID 读时反查 · `slug` 收进不翻译产品术语表。**Studio 删除仍未接线**(#26 单独做)
 - [ ] 节点交互（canvas-native，PR-C 起）：
   - text 富文本：✅ TipTap 富文本编辑器（左侧全屏面板，绑定 `data.prompt` Y.XmlFragment）
   - canvas-native mini-tools：image.crop / image.adjust / image.remove-bg / video tools / audio tools 逐条接入（前端 `new/` 分支开发中）

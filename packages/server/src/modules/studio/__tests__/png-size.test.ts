@@ -15,25 +15,48 @@ import { readPngSize } from "@server/modules/studio/png-size.js";
 
 const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+/** Overrides for the header fields a malformed-case test wants to bend. */
+interface HeaderOverrides {
+  /** Chunk type tag, for the "first chunk is not IHDR" cases. */
+  type?: Buffer;
+  /** What the chunk claims its payload length is. IHDR's is fixed at 13. */
+  declaredLength?: number;
+  /** Bits per channel. Only 8 is produced by a canvas re-encode. */
+  bitDepth?: number;
+  /** 0 for a normal image, 1 for Adam7 interlacing. */
+  interlace?: number;
+}
+
 /**
  * Build a PNG header declaring the given dimensions.
+ *
+ * Defaults describe what our own crop dialog emits — 8 bits per channel, RGBA,
+ * no interlacing — so a test that bends one field is bending exactly that one.
  * @param width - Width to write into IHDR.
  * @param height - Height to write into IHDR.
- * @param type - Chunk type to claim, for the malformed cases.
- * @returns The first 24 bytes of such a file, plus a little padding.
+ * @param o - Fields to bend away from a well-formed header.
+ * @returns The bytes of such a file's header, plus a little padding.
  */
-function pngHeader(width: number, height: number, type = "IHDR"): Buffer {
+function pngHeader(
+  width: number,
+  height: number,
+  o: HeaderOverrides = {},
+): Buffer {
   const length = Buffer.alloc(4);
-  length.writeUInt32BE(13);
-  const dims = Buffer.alloc(8);
-  dims.writeUInt32BE(width, 0);
-  dims.writeUInt32BE(height, 4);
+  length.writeUInt32BE(o.declaredLength ?? 13);
+  const payload = Buffer.alloc(13);
+  payload.writeUInt32BE(width, 0);
+  payload.writeUInt32BE(height, 4);
+  payload[8] = o.bitDepth ?? 8;
+  payload[9] = 6; // colour type: RGBA
+  payload[10] = 0; // compression: deflate, the only value the format defines
+  payload[11] = 0; // filter: the only value the format defines
+  payload[12] = o.interlace ?? 0;
   return Buffer.concat([
     SIGNATURE,
     length,
-    Buffer.from(type, "ascii"),
-    dims,
-    Buffer.alloc(5), // rest of IHDR: bit depth, colour type, ...
+    o.type ?? Buffer.from("IHDR", "ascii"),
+    payload,
   ]);
 }
 
@@ -80,7 +103,44 @@ describe("readPngSize", () => {
     // The format requires IHDR first. A file that puts something else there is
     // malformed, and reading dimensions from a fixed offset anyway would be
     // reading whatever that other chunk happens to contain.
-    expect(readPngSize(pngHeader(512, 512, "tEXt"))).toBeNull();
+    expect(
+      readPngSize(pngHeader(512, 512, { type: Buffer.from("tEXt", "ascii") })),
+    ).toBeNull();
+  });
+
+  it("refuses a chunk tag that only looks like IHDR once the high bit is dropped", () => {
+    // Comparing the tag by decoding it as "ascii" is a trap: Node's ascii
+    // decoder masks bit 7, so 0xC9 comes back as "I". Fifteen other byte
+    // quadruples decode to the string "IHDR" the same way, and each is a
+    // different chunk as far as the format is concerned — bit 5 of each byte
+    // carries meaning (ancillary, private, safe-to-copy). The tag is bytes,
+    // so it has to be compared as bytes.
+    const masked = Buffer.from([0x49 | 0x80, 0x48, 0x44, 0x52]);
+    expect(masked.toString("ascii")).toBe("IHDR"); // the trap, pinned
+    expect(readPngSize(pngHeader(512, 512, { type: masked }))).toBeNull();
+  });
+
+  it("refuses an IHDR that declares a length other than 13", () => {
+    // The format fixes IHDR's payload at 13 bytes. A file claiming anything
+    // else is malformed, and believing the dimensions inside it means trusting
+    // a header that already contradicts the spec about its own shape.
+    expect(readPngSize(pngHeader(512, 512, { declaredLength: 12 }))).toBeNull();
+    expect(readPngSize(pngHeader(512, 512, { declaredLength: 25 }))).toBeNull();
+    expect(
+      readPngSize(pngHeader(512, 512, { declaredLength: 0xffffffff })),
+    ).toBeNull();
+  });
+
+  it("refuses 16 bits per channel — same grid, twice the memory to decode", () => {
+    // Dimensions alone do not bound decode cost. At 16 bits a 512x512 RGBA
+    // frame is 2 MiB decoded instead of 1 MiB, for a file that passes every
+    // other check. A canvas re-encode is always 8, so nothing we produce is
+    // turned away.
+    expect(readPngSize(pngHeader(512, 512, { bitDepth: 16 }))).toBeNull();
+  });
+
+  it("refuses an interlaced PNG — Adam7 is seven passes over the same grid", () => {
+    expect(readPngSize(pngHeader(512, 512, { interlace: 1 }))).toBeNull();
   });
 
   it("refuses a zero dimension", () => {
