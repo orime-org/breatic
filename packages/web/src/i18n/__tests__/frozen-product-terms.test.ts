@@ -67,12 +67,35 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
   ['auth.onboarding.slugLabel', 'Slug'],
 ];
 
-/** Zero-consumer dead keys removed as part of #1336 (decision A). */
+/**
+ * Dead keys removed, asserted absent so re-adding one is a failing test.
+ *
+ * Rows leaving the freeze lists above have to land here, or the guarantee
+ * quietly disappears with them: the blanket denylist deliberately cannot cover
+ * these collision-prone nouns (see the comment on COLLISION_FROZEN), so if such
+ * a key comes back with a translated noun and a real reader, the dead-key check
+ * is satisfied, the collision guard is gone, and nothing fails.
+ *
+ * First batch removed as part of #1336 (decision A); the rest on 2026-08-01,
+ * when the dead-key check stopped counting a test fixture as a reader.
+ */
 const REMOVED_DEAD_KEYS: readonly string[] = [
   'studio.container.projects.title',
   'spaces.tab.kind_canvas',
   'spaces.tab.kind_document',
   'spaces.tab.kind_timeline',
+  'spaces.tab.new',
+  'spaces.tab.drawer',
+  'spaces.drawer.new_canvas',
+  'spaces.drawer.new_document',
+  'spaces.drawer.new_timeline',
+  'studio.container.collections.title',
+  'studio.container.members.cannotInvitePersonal',
+  'members.stack.removeAria',
+  'project.toolbar.uploadFile',
+  'message.addedToTimeline',
+  'server.email.welcome_subject',
+  'editor.accept',
 ];
 
 /**

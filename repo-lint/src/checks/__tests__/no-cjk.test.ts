@@ -86,12 +86,29 @@ describe("no-cjk", () => {
   });
 
   it("skips locale catalogs, tests, vendor and the lockfile", () => {
+    // Each exempt path exercises one half of the test rule on its own: the
+    // directory without the suffix, and the suffix without the directory.
+    // Fixtures matching both halves at once pin neither, which is how an
+    // earlier version of the i18n check shipped an exclusion nobody could
+    // break in a test.
     const context = withAllowlisted({
       "locales/zh-CN.json": '{"a":"中文"}',
-      "packages/core/src/__tests__/a.test.ts": 'const a = "中文";',
+      "packages/core/src/__tests__/fixtures.ts": 'const a = "中文";',
       "packages/core/src/b.test.ts": 'const a = "中文";',
       "packages/web/src/components/ui/x.tsx": 'const a = "中文";',
       "pnpm-lock.yaml": "# 中文",
+      "packages/core/src/ok.ts": "// fine\n",
+    });
+    expect(noCjk.run(context)).toEqual([]);
+  });
+
+  it("skips a test file on every TypeScript extension it scans", () => {
+    // SCANNED admits .mts and .cts, so the test rule has to as well — a
+    // .test.mts that reads as shipped code would have its fixture strings
+    // banned. The two patterns disagreed until 2026-08-01.
+    const context = withAllowlisted({
+      "packages/core/src/a.test.mts": 'const a = "中文";',
+      "packages/core/src/b.spec.cts": 'const a = "中文";',
       "packages/core/src/ok.ts": "// fine\n",
     });
     expect(noCjk.run(context)).toEqual([]);

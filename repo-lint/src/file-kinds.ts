@@ -84,5 +84,14 @@ export const GENERATED = /(^|\/)pnpm-lock\.yaml$/;
  * one does not gets a file that is test material by name and shipped code by
  * scope — a seam nobody would think to look for, since both regexes read as
  * if they agree about which extensions there are.
+ *
+ * It cuts both ways, and both are wanted. Callers that use this to EXEMPT
+ * (no-cjk) now exempt `.test.mts` too, so a Chinese fixture string in one
+ * stops being a violation; callers that use it to SUBTRACT from a scan
+ * (i18n-no-dead-keys) now subtract it, so it stops reading as shipped code.
+ * Either way the answer follows from the file being test material, which is
+ * what this constant is for — and neither had it before, because the
+ * extensions disagreed. No tracked file changes verdict today; both suites
+ * pin the extensions so a future one cannot slip through either side.
  */
 export const TEST_FILE = /(^|\/)__tests__\/|\.(test|spec)\.([cm]?ts|tsx)$/;

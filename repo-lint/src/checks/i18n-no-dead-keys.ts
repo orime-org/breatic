@@ -16,15 +16,18 @@ const SOURCE_CATALOG = "locales/en.json";
  * imported only by tests. They stay in the scan, deliberately.
  *
  * A content sniff was tried and reverted, and the reason is the whole design
- * of this check. Skipping any file whose text matched an import of vitest
- * meant one comment mentioning that phrase, in a shipped component, dropped
- * the file and had 37 live keys reported for deletion — measured. It also
- * missed `test-support.ts`, which imports drizzle. So it bought a cheap risk
- * (a helper keeping a dead key alive one more sweep) by taking on the
- * expensive one (a live key deleted, a raw id in the UI), which is backwards
- * from the asymmetry this check is built around. If a helper here ever does
- * hold up a dead key, move the helper into `__tests__/`; do not teach the
- * scan to guess from content.
+ * of this check. It skipped any file whose raw text matched an import of
+ * vitest — comments included. To size that, a probe comment naming the import
+ * was pasted into one shipped component and the check run: it dropped the
+ * file and reported 37 live keys for deletion. No such comment exists in the
+ * tree, so this is what the mechanism permits rather than something it did;
+ * the point is that a code comment is enough to trigger it. The sniff also
+ * missed the scaffolding it was written for, since `test-support.ts` imports
+ * drizzle. So it bought a cheap risk (a helper keeping a dead key alive one
+ * more sweep) by taking on the expensive one (a live key deleted, a raw id in
+ * the UI), which is backwards from the asymmetry this check is built around.
+ * If a helper here ever does hold up a dead key, move the helper into
+ * `__tests__/`; do not teach the scan to guess from content.
  *
  * The question this check asks is "does deleting this key change what a user
  * sees", so the files whose word counts are the ones that ship. Everything
@@ -60,6 +63,12 @@ const APPLICATION_SOURCE = /^packages\/[^/]+\/src\/.*\.([cm]?ts|tsx)$/;
  * The bar is a mechanism the scanner is structurally blind to, not "I am
  * fairly sure this one is used" — an entry without a reason is an exemption
  * with nowhere to park, which is how a list like this stops meaning anything.
+ *
+ * An entry matches its own key and the subtree beneath it, on a dot boundary
+ * — `server.mail` covers `server.mail.subject` and not `server.mailer`. The
+ * same rule `TEMPLATE_PREFIX` follows, and for the same reason: a prefix that
+ * matched raw characters would exempt every sibling whose name merely starts
+ * the same way, silently and forever.
  *
  * Being named somewhere is not such a mechanism, but being named somewhere
  * outside the scanned scope now can be: a key read from a config file, or
@@ -110,6 +119,25 @@ const TRANSLATION_CALL = /\bt\(\s*['"]([\w.-]+)['"]/g;
  * whose name merely starts with the same letters.
  */
 const TEMPLATE_PREFIX = /`([a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)*\.)\$\{/g;
+
+/**
+ * Whether a declared dynamic root covers this key.
+ *
+ * Exported so the boundary can be tested while `DYNAMIC_KEY_ROOTS` is empty:
+ * a test that reimplemented this rule would pass against any implementation,
+ * including one that dropped the boundary.
+ * @param key The dotted key being judged.
+ * @param roots The declared roots.
+ * @returns True when a root is the key itself or an ancestor of it.
+ */
+export function coveredByDynamicRoot(
+  key: string,
+  roots: ReadonlyArray<{ prefix: string }>,
+): boolean {
+  return roots.some(
+    ({ prefix }) => key === prefix || key.startsWith(`${prefix}.`),
+  );
+}
 
 /**
  * Every message in the catalogs is reachable from the code.
@@ -181,7 +209,7 @@ export const i18nNoDeadKeys = {
     for (const key of keys) {
       if (literals.has(key)) continue;
       if (prefixes.some((prefix) => key.startsWith(prefix))) continue;
-      if (DYNAMIC_KEY_ROOTS.some(({ prefix }) => key.startsWith(prefix))) continue;
+      if (coveredByDynamicRoot(key, DYNAMIC_KEY_ROOTS)) continue;
       findings.push({
         file: SOURCE_CATALOG,
         message: `${key} is not read by any application source. A test or a document may still name it — that is not a use, and both should go with the key. Delete it from every catalog; if instead its id is assembled somewhere this scan cannot see, add its root to DYNAMIC_KEY_ROOTS with the reason.`,
