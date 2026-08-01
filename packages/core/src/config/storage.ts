@@ -53,7 +53,7 @@ const storageConfigSchema = z.object({
        * avatar arrives THROUGH the server (no presigned direct upload), so
        * this bound is also the bound on what the process buffers.
        */
-      max_bytes: z.number().int().positive().default(1048576),
+      max_bytes: z.number().int().positive().default(2097152),
     })
     .default({ max_bytes: 1048576 }),
 });

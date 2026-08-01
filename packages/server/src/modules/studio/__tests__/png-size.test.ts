@@ -57,7 +57,57 @@ function pngHeader(
     length,
     o.type ?? Buffer.from("IHDR", "ascii"),
     payload,
+    Buffer.alloc(4), // IHDR's CRC, which a real file always carries
   ]);
+}
+
+/**
+ * Build one PNG chunk. The CRC is left zero — nothing here validates it, and a
+ * hostile file would not have a correct one either.
+ * @param type - Four-character chunk type.
+ * @param payload - The chunk's bytes.
+ * @returns Length, type, payload and a placeholder CRC.
+ */
+function chunk(type: string, payload: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(payload.length);
+  return Buffer.concat([
+    length,
+    Buffer.from(type, "ascii"),
+    payload,
+    Buffer.alloc(4),
+  ]);
+}
+
+/**
+ * Build an ANIMATED PNG with a given amount of filler before its acTL chunk.
+ *
+ * The filler is what defeats a sniffer with a chunk budget: push acTL past the
+ * budget and the file is reported as a still PNG.
+ * @param fillerChunks - How many tEXt chunks to bury acTL behind.
+ * @returns The file bytes.
+ */
+function animatedPng(fillerChunks: number): Buffer {
+  const actl = Buffer.alloc(8);
+  actl.writeUInt32BE(2, 0); // frame count
+  const parts = [pngHeader(512, 512)];
+  for (let i = 0; i < fillerChunks; i += 1) {
+    parts.push(chunk("tEXt", Buffer.from(`k${i}\0v`)));
+  }
+  parts.push(chunk("acTL", actl), chunk("IDAT", Buffer.alloc(8)), chunk("IEND", Buffer.alloc(0)));
+  return Buffer.concat(parts);
+}
+
+/**
+ * Build a still PNG carrying the given ancillary chunks between IHDR and IDAT.
+ * @param types - Chunk types a legitimate encoder might include.
+ * @returns The file bytes.
+ */
+function stillPngWithChunks(types: readonly string[]): Buffer {
+  const parts = [pngHeader(512, 512)];
+  for (const t of types) parts.push(chunk(t, Buffer.from([0x01])));
+  parts.push(chunk("IDAT", Buffer.alloc(8)), chunk("IEND", Buffer.alloc(0)));
+  return Buffer.concat(parts);
 }
 
 describe("readPngSize", () => {
@@ -146,5 +196,32 @@ describe("readPngSize", () => {
   it("refuses a zero dimension", () => {
     expect(readPngSize(pngHeader(0, 512))).toBeNull();
     expect(readPngSize(pngHeader(512, 0))).toBeNull();
+  });
+  it("refuses an animated PNG however far the acTL chunk is buried", () => {
+    // The whitelist keeps animated PNG out by asking a sniffer what the file
+    // is, and that sniffer gives up after a fixed number of chunks — so a file
+    // that puts enough filler before acTL is reported as a still PNG and walks
+    // straight through. Deciding it here instead means walking the chunk chain
+    // ourselves, with no budget to run out of.
+    expect(readPngSize(animatedPng(0))).toBeNull();
+    expect(readPngSize(animatedPng(511))).toBeNull();
+    expect(readPngSize(animatedPng(2000))).toBeNull();
+  });
+
+  it("accepts a still PNG that carries ancillary chunks", () => {
+    // Walking the chain must not turn away metadata a legitimate encoder adds.
+    expect(readPngSize(stillPngWithChunks(["sRGB", "gAMA", "tEXt"]))).toEqual({
+      width: 512,
+      height: 512,
+    });
+  });
+
+  it("refuses a chunk chain whose declared length runs past the file", () => {
+    // Walking the chain means reading lengths from the file being judged. A
+    // length that points past the end is the file lying about its own shape,
+    // and following it would read whatever happens to be in memory next.
+    const bytes = stillPngWithChunks([]);
+    bytes.writeUInt32BE(0xfffffff0, 8 + 4 + 4 + 13 + 4); // first chunk after IHDR
+    expect(readPngSize(bytes)).toBeNull();
   });
 });

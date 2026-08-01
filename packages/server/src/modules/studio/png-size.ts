@@ -13,13 +13,17 @@
  * Decoding to find out would reintroduce the same exposure on the server, so
  * this reads the header instead. PNG puts width and height in IHDR, which the
  * format REQUIRES to be the first chunk, immediately after the 8-byte
- * signature and the chunk's own length and type. Nothing here is decompressed:
- * the read stops after IHDR's 13 bytes, whatever the rest of the file holds.
+ * signature and the chunk's own length and type. Nothing here is decompressed —
+ * not one pixel is expanded, whatever the rest of the file holds.
  *
  * It also reads the two fields that change what a decoder must do with a grid
  * of that size — bit depth and interlacing — because dimensions alone do not
- * bound the work. What it cannot bound is a frame COUNT, which is why animated
- * PNG is refused by type before these bytes are ever reached.
+ * bound the work, and then walks the chunk chain for the one chunk that makes
+ * a PNG animated. That last part is not where it started: animation was left
+ * to the type whitelist upstream, until a file that buried `acTL` behind 511
+ * filler chunks was measured sniffing as a plain still PNG. A sniffer answers
+ * "what is this" on a budget; this answers "is this the one shape we accept"
+ * with no budget to run out of.
  */
 
 /** A PNG's pixel dimensions, as declared by its header. */
@@ -47,6 +51,47 @@ const EXPECTED_BIT_DEPTH = 8;
 
 /** Adam7 interlacing is value 1; a normal image is 0. */
 const NO_INTERLACE = 0;
+
+/** The chunk that declares a PNG animated, as bytes. */
+const ACTL_TAG = Buffer.from([0x61, 0x63, 0x54, 0x4c]);
+
+/** Every chunk starts with a 4-byte length and a 4-byte type. */
+const CHUNK_HEADER_BYTES = 8;
+
+/** And ends with a 4-byte CRC. */
+const CHUNK_CRC_BYTES = 4;
+
+/**
+ * Walk the chunk chain looking for the chunk that makes a PNG animated.
+ *
+ * The type whitelist upstream keeps animated PNG out by asking a sniffer what
+ * the file is — and that sniffer stops looking after a fixed number of chunks,
+ * so a file that buries `acTL` behind enough filler is reported as a still PNG
+ * and admitted. Measured: the same animation, with 511 `tEXt` chunks in front
+ * of `acTL`, sniffs as `image/png`. Deciding it here removes the budget the
+ * bypass depends on.
+ *
+ * Lengths come from the file being judged, so each is checked against what is
+ * actually left before it is followed. A length that runs past the end is a
+ * REFUSAL, not the end of the walk: treating it as "nothing more to see" would
+ * hand back the same bypass in a different shape, since one lying length is
+ * then enough to stop the search short of an `acTL` sitting further along.
+ * @param bytes - The uploaded file's bytes.
+ * @returns True when the chain was walked to its end with no `acTL` in it.
+ */
+function isStillChunkChain(bytes: Buffer): boolean {
+  let at = HEADER_BYTES + CHUNK_CRC_BYTES;
+  while (at + CHUNK_HEADER_BYTES <= bytes.length) {
+    if (bytes.subarray(at + 4, at + 8).equals(ACTL_TAG)) return false;
+    const length = bytes.readUInt32BE(at);
+    const next = at + CHUNK_HEADER_BYTES + length + CHUNK_CRC_BYTES;
+    // Past the end, or wrapped around it — either way the file is lying about
+    // its own shape, and what it is hiding is exactly what this walk looks for.
+    if (next <= at || next > bytes.length) return false;
+    at = next;
+  }
+  return true;
+}
 
 /**
  * Read a PNG's declared dimensions from its IHDR chunk.
@@ -83,5 +128,6 @@ export function readPngSize(bytes: Buffer): PngSize | null {
   // re-encode can produce, so refusing them turns away nothing we made.
   if (bytes[24] !== EXPECTED_BIT_DEPTH) return null;
   if (bytes[28] !== NO_INTERLACE) return null;
+  if (!isStillChunkChain(bytes)) return null;
   return { width, height };
 }
