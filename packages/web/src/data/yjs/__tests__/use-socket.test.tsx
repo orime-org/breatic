@@ -102,6 +102,26 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     expect(providerInstances[0]!.attach).toHaveBeenCalledOnce();
   });
 
+  it('hands the provider back on the very first render, with no round trip', () => {
+    // The provider has to be RENDERED state, not a ref. Callers build things
+    // out of it — an editor mounts its collaborator-caret layer only once it
+    // exists — so its arrival has to re-render them. Held in a ref it did not,
+    // and nothing else in the cold-acquire path did either: every setState in
+    // that path writes the value it already holds, so React bails out and the
+    // provider lands invisibly. Consumers then saw it only when some unrelated
+    // render happened to read the ref — the first `synced` event a network
+    // round-trip later, or a keystroke. That reads as "the editor takes a
+    // moment to appear" online, and as never appearing at all offline.
+    const doc = new Y.Doc();
+    const { result } = renderHook(
+      () => useSocket({ name: 'project-p1/document-s5', doc }),
+      { wrapper: wrapper('u1') },
+    );
+    // No `synced`, no `authenticated`, nothing emitted at all.
+    expect(result.current.provider).not.toBeNull();
+    expect(result.current.provider).toBe(providerInstances[0]);
+  });
+
   it('does NOT acquire while userId is absent (boot-race gate) — stays connecting', () => {
     const doc = new Y.Doc();
     const { result } = renderHook(
