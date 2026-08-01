@@ -12,7 +12,14 @@
  *
  * It is a constant rather than a yaml knob because changing it is never just
  * this number: `avatar.max_bytes` in `config/storage.yaml` is sized against
- * the worst-case PNG at THIS resolution (~880 KB at 512²; roughly 3.5 MB at
- * 1024²), so moving one without the other starts refusing real avatars.
+ * the worst-case PNG at THIS resolution, and moving one without the other
+ * starts refusing real avatars.
+ *
+ * That worst case is 1,049,473 bytes at 512² — measured by deflating the
+ * scanlines of an RGBA frame whose pixels AND alpha are random, the point
+ * where there is nothing left to compress. It scales with the pixel count, so
+ * 1024² is four times the raw scanlines and lands near 4.2 MB. The ~900 KB
+ * figure that is easier to reach for assumes an opaque alpha channel, and a
+ * picture with soft edges does not have one.
  */
 export const AVATAR_OUTPUT_PX = 512;

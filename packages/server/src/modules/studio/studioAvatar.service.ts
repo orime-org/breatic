@@ -95,7 +95,7 @@ export function avatarStorageKey(
  * compressed — a few hundred kilobytes of flat colour can declare tens of
  * thousands of pixels a side, and then every viewer's browser decodes
  * gigabytes for one avatar. Reading the header (not decoding) is what closes
- * that, and it costs 24 bytes of attention.
+ * that, and it reads the header rather than the picture.
  *
  * Storage is written BEFORE the database. The reverse order can leave the row
  * pointing at an object that was never written — a broken image for every
@@ -117,12 +117,17 @@ export async function setAvatar(slug: string, bytes: Buffer): Promise<Studio> {
     throw new AppError(415, t("server.studio.avatar_unsupported_type"));
   }
 
+  // Two different refusals, and they used to share one message. `null` covers
+  // eight ways of not being a PNG we can use — truncated, a lying IHDR length,
+  // a tag that only decodes to IHDR, 16-bit, interlaced, animated, a chunk
+  // chain that runs off the end, a header with no pixels behind it — and none
+  // of them is a size problem. Telling that uploader their image is the wrong
+  // size sends them to re-crop a file that would be refused at any size.
   const size = readPngSize(bytes);
-  if (
-    size === null ||
-    size.width !== AVATAR_OUTPUT_PX ||
-    size.height !== AVATAR_OUTPUT_PX
-  ) {
+  if (size === null) {
+    throw new AppError(415, t("server.studio.avatar_unsupported_type"));
+  }
+  if (size.width !== AVATAR_OUTPUT_PX || size.height !== AVATAR_OUTPUT_PX) {
     throw new AppError(422, t("server.studio.avatar_unsupported_size"));
   }
 

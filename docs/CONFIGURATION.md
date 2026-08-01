@@ -102,7 +102,7 @@ loader:`packages/core/src/config/storage.ts`。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `avatar.max_bytes` | 1048576(1 MiB)| 单次头像上传字节上限;超限返 413 |
+| `avatar.max_bytes` | 2097152(2 MiB)| 单次头像上传字节上限;超限返 413。按 PNG 最坏情况定,见上方说明 |
 
 ## 7. `config/agent.yaml` — LLM 韧性(节选)
 

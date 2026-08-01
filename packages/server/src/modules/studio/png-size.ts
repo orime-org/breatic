@@ -52,6 +52,9 @@ const EXPECTED_BIT_DEPTH = 8;
 /** Adam7 interlacing is value 1; a normal image is 0. */
 const NO_INTERLACE = 0;
 
+/** The chunk that carries the actual pixels, as bytes. */
+const IDAT_TAG = Buffer.from([0x49, 0x44, 0x41, 0x54]);
+
 /** The chunk that declares a PNG animated, as bytes. */
 const ACTL_TAG = Buffer.from([0x61, 0x63, 0x54, 0x4c]);
 
@@ -81,8 +84,11 @@ const CHUNK_CRC_BYTES = 4;
  */
 function isStillChunkChain(bytes: Buffer): boolean {
   let at = HEADER_BYTES + CHUNK_CRC_BYTES;
+  let sawImageData = false;
   while (at + CHUNK_HEADER_BYTES <= bytes.length) {
-    if (bytes.subarray(at + 4, at + 8).equals(ACTL_TAG)) return false;
+    const tag = bytes.subarray(at + 4, at + 8);
+    if (tag.equals(ACTL_TAG)) return false;
+    if (tag.equals(IDAT_TAG)) sawImageData = true;
     const length = bytes.readUInt32BE(at);
     const next = at + CHUNK_HEADER_BYTES + length + CHUNK_CRC_BYTES;
     // Past the end, or wrapped around it — either way the file is lying about
@@ -90,16 +96,26 @@ function isStillChunkChain(bytes: Buffer): boolean {
     if (next <= at || next > bytes.length) return false;
     at = next;
   }
-  return true;
+  // A signature and a well-formed IHDR with nothing behind them describe a
+  // picture nobody sent: every field the parser reads is correct and the file
+  // holds no pixels. Stored as an avatar it renders as a broken image.
+  return sawImageData;
 }
 
 /**
  * Read a PNG's declared dimensions from its IHDR chunk.
  *
- * Returns null rather than throwing for anything that is not a PNG whose
- * header says something sane — a truncated file, a different format, or a
- * width of zero. The caller turns that into one refusal message; there is
- * nothing an uploader could do differently for each case.
+ * Returns null rather than throwing for anything that is not a still PNG this
+ * product could have produced: not a PNG at all, too short to hold a header,
+ * an IHDR that lies about its own length, a tag that only decodes to "IHDR",
+ * a zero dimension, 16 bits per channel, Adam7 interlacing, an animated one,
+ * a chunk chain that runs off the end, or a header with no pixels behind it.
+ *
+ * They are one return value because they are one answer to the caller: this is
+ * not a file we can use. Note what is NOT in that list — a size we can read but
+ * do not want. That one comes back as a size, and the caller refuses it
+ * separately, because "wrong dimensions" is the only refusal an uploader can
+ * act on by cropping again.
  * @param bytes - The uploaded file's bytes.
  * @returns The declared size, or null when the header is absent or malformed.
  */

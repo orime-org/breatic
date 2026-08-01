@@ -8,7 +8,7 @@
  * boundary — what gets in, what the type is decided from, and what the stored
  * key is built out of. What this pins:
  *   - the type comes from the BYTES; the Content-Type header is ignored
- *   - an animated PNG is accepted (it sniffs as image/apng, not image/png)
+ *   - an animated PNG is refused, however far along its acTL chunk sits
  *   - a non-image is refused even when it claims to be a PNG
  *   - the byte cap holds both when Content-Length declares the size and when
  *     it is absent, which is the case a header check alone would miss

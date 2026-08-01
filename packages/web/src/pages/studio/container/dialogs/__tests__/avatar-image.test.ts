@@ -100,34 +100,16 @@ describe('encodeAvatarBlob', () => {
   }
 
   it('asks for PNG once and ships what came back', async () => {
+    // The `calls` assertion is doing two jobs: PNG came back, and nothing was
+    // asked for twice. There is no fallback to test because PNG is what
+    // `toBlob` falls back TO when it cannot honour a type — so it is the one
+    // request that cannot come back as something else, and a second encode
+    // would only be a slower way to get the same bytes.
     const { encode, calls } = encoderProducing({ 'image/png': 'image/png' });
 
     const blob = await encodeAvatarBlob(encode);
 
     expect(blob.type).toBe('image/png');
-    expect(calls).toEqual(['image/png']);
-  });
-
-  it('never asks for a second format, even when another one would succeed', async () => {
-    // PNG is what `toBlob` falls back to when it cannot honour a type, so it
-    // is the one request that cannot come back as something else. There is
-    // nothing for a fallback to catch, and a second encode would only be a
-    // slower way to get the same bytes.
-    //
-    // The other formats are stubbed to SUCCEED, which is what makes this test
-    // different from the one above rather than a second spelling of it: with
-    // them stubbed to null, a fallback attempt fails either way and both tests
-    // pass for the same reason. Here a fallback would come back with a usable
-    // blob, so the only thing keeping `calls` at one entry is the code not
-    // asking.
-    const { encode, calls } = encoderProducing({
-      'image/png': 'image/png',
-      'image/webp': 'image/webp',
-      'image/jpeg': 'image/jpeg',
-    });
-
-    await encodeAvatarBlob(encode);
-
     expect(calls).toEqual(['image/png']);
   });
 

@@ -35,7 +35,7 @@ interface HeaderOverrides {
  * @param width - Width to write into IHDR.
  * @param height - Height to write into IHDR.
  * @param o - Fields to bend away from a well-formed header.
- * @returns The bytes of such a file's header, plus a little padding.
+ * @returns Signature and IHDR only — no image data. See {@link minimalPng}.
  */
 function pngHeader(
   width: number,
@@ -110,9 +110,32 @@ function stillPngWithChunks(types: readonly string[]): Buffer {
   return Buffer.concat(parts);
 }
 
+/**
+ * Build the smallest COMPLETE PNG: a header, one IDAT, and IEND.
+ *
+ * Separate from {@link pngHeader} because a header on its own is a file that
+ * describes a picture nobody sent, and that is itself one of the cases under
+ * test.
+ * @param width - Width to write into IHDR.
+ * @param height - Height to write into IHDR.
+ * @param o - Fields to bend away from a well-formed header.
+ * @returns The file bytes.
+ */
+function minimalPng(
+  width: number,
+  height: number,
+  o: HeaderOverrides = {},
+): Buffer {
+  return Buffer.concat([
+    pngHeader(width, height, o),
+    chunk("IDAT", Buffer.alloc(8)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
 describe("readPngSize", () => {
   it("reads the dimensions a real avatar declares", () => {
-    expect(readPngSize(pngHeader(512, 512))).toEqual({
+    expect(readPngSize(minimalPng(512, 512))).toEqual({
       width: 512,
       height: 512,
     });
@@ -120,7 +143,7 @@ describe("readPngSize", () => {
 
   it("reads a non-square size rather than normalising it", () => {
     // The caller decides what is acceptable; this only reports.
-    expect(readPngSize(pngHeader(800, 600))).toEqual({
+    expect(readPngSize(minimalPng(800, 600))).toEqual({
       width: 800,
       height: 600,
     });
@@ -129,7 +152,7 @@ describe("readPngSize", () => {
   it("reads the huge dimensions a decompression bomb declares", () => {
     // The whole point: a file this small claiming 25000² is exactly what the
     // byte cap lets through and the dimension rule has to catch.
-    expect(readPngSize(pngHeader(25000, 25000))).toEqual({
+    expect(readPngSize(minimalPng(25000, 25000))).toEqual({
       width: 25000,
       height: 25000,
     });
@@ -146,7 +169,7 @@ describe("readPngSize", () => {
   it("refuses a file too short to hold a header", () => {
     expect(readPngSize(SIGNATURE)).toBeNull();
     expect(readPngSize(Buffer.alloc(0))).toBeNull();
-    expect(readPngSize(pngHeader(512, 512).subarray(0, 23))).toBeNull();
+    expect(readPngSize(minimalPng(512, 512).subarray(0, 23))).toBeNull();
   });
 
   it("refuses a PNG whose first chunk is not IHDR", () => {
@@ -154,7 +177,7 @@ describe("readPngSize", () => {
     // malformed, and reading dimensions from a fixed offset anyway would be
     // reading whatever that other chunk happens to contain.
     expect(
-      readPngSize(pngHeader(512, 512, { type: Buffer.from("tEXt", "ascii") })),
+      readPngSize(minimalPng(512, 512, { type: Buffer.from("tEXt", "ascii") })),
     ).toBeNull();
   });
 
@@ -167,17 +190,17 @@ describe("readPngSize", () => {
     // so it has to be compared as bytes.
     const masked = Buffer.from([0x49 | 0x80, 0x48, 0x44, 0x52]);
     expect(masked.toString("ascii")).toBe("IHDR"); // the trap, pinned
-    expect(readPngSize(pngHeader(512, 512, { type: masked }))).toBeNull();
+    expect(readPngSize(minimalPng(512, 512, { type: masked }))).toBeNull();
   });
 
   it("refuses an IHDR that declares a length other than 13", () => {
     // The format fixes IHDR's payload at 13 bytes. A file claiming anything
     // else is malformed, and believing the dimensions inside it means trusting
     // a header that already contradicts the spec about its own shape.
-    expect(readPngSize(pngHeader(512, 512, { declaredLength: 12 }))).toBeNull();
-    expect(readPngSize(pngHeader(512, 512, { declaredLength: 25 }))).toBeNull();
+    expect(readPngSize(minimalPng(512, 512, { declaredLength: 12 }))).toBeNull();
+    expect(readPngSize(minimalPng(512, 512, { declaredLength: 25 }))).toBeNull();
     expect(
-      readPngSize(pngHeader(512, 512, { declaredLength: 0xffffffff })),
+      readPngSize(minimalPng(512, 512, { declaredLength: 0xffffffff })),
     ).toBeNull();
   });
 
@@ -186,16 +209,16 @@ describe("readPngSize", () => {
     // frame is 2 MiB decoded instead of 1 MiB, for a file that passes every
     // other check. A canvas re-encode is always 8, so nothing we produce is
     // turned away.
-    expect(readPngSize(pngHeader(512, 512, { bitDepth: 16 }))).toBeNull();
+    expect(readPngSize(minimalPng(512, 512, { bitDepth: 16 }))).toBeNull();
   });
 
   it("refuses an interlaced PNG — Adam7 is seven passes over the same grid", () => {
-    expect(readPngSize(pngHeader(512, 512, { interlace: 1 }))).toBeNull();
+    expect(readPngSize(minimalPng(512, 512, { interlace: 1 }))).toBeNull();
   });
 
   it("refuses a zero dimension", () => {
-    expect(readPngSize(pngHeader(0, 512))).toBeNull();
-    expect(readPngSize(pngHeader(512, 0))).toBeNull();
+    expect(readPngSize(minimalPng(0, 512))).toBeNull();
+    expect(readPngSize(minimalPng(512, 0))).toBeNull();
   });
   it("refuses an animated PNG however far the acTL chunk is buried", () => {
     // The whitelist keeps animated PNG out by asking a sniffer what the file
@@ -223,5 +246,13 @@ describe("readPngSize", () => {
     const bytes = stillPngWithChunks([]);
     bytes.writeUInt32BE(0xfffffff0, 8 + 4 + 4 + 13 + 4); // first chunk after IHDR
     expect(readPngSize(bytes)).toBeNull();
+  });
+  it("refuses a header with no image data behind it", () => {
+    // Signature plus a well-formed IHDR and nothing else: every field the
+    // parser looks at is correct, and there is not one pixel in the file. It
+    // would be stored as the studio's avatar and render as a broken image.
+    // A PNG carries its pixels in IDAT, so requiring one is what separates a
+    // picture from a header that describes a picture nobody sent.
+    expect(readPngSize(pngHeader(512, 512))).toBeNull();
   });
 });
