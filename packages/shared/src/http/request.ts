@@ -297,7 +297,7 @@ function classifyThrown(
  *
  * What comes back is a guarded handle, not the raw response. Handing out a
  * raw one is what let the body deadline be bypassed: its holder can read a
- * body with no deadline at all, and every call site did. The handle exposes
+ * body with no deadline at all, and eight of them did. The handle exposes
  * the metadata callers use and reads that cannot escape the deadline.
  * @param url - Absolute request URL.
  * @param init - Standard fetch init (method, headers, body). Any `signal`

@@ -130,6 +130,79 @@ describe("web_fetch — bounds on an answer we do not control", () => {
     expect(attempts).toBe(1);
   });
 
+  it("extracts text from hostile markup without stalling the process", async () => {
+    // The tool's URL comes from the model, so its bytes come from whoever owns
+    // that host. The hand-written strip used `/<script[\s\S]*?<\/script>/` —
+    // for every `<script` with no closing tag the lazy scan runs to the end of
+    // the input, which is quadratic. Measured on 2.3 MiB of `<script ` (well
+    // under the byte ceiling): over 120 seconds of solid synchronous work,
+    // never finishing. Nothing else in the process runs during that.
+    //
+    // Against the old implementation this fails by exceeding vitest's timeout
+    // rather than by an assertion, which is a weaker red than usual — there is
+    // no way to bound synchronous work from inside the same thread. The
+    // elapsed-time assertion is what pins it going forward.
+    serve("<script ".repeat(200_000));
+
+    const started = Date.now();
+    const result = await run({ url: "https://example.test/" });
+    const elapsed = Date.now() - started;
+
+    expect(result.error).toBeUndefined();
+    expect(elapsed).toBeLessThan(5_000);
+  });
+
+  it("still reads ordinary markup as readable text", async () => {
+    serve(
+      "<html><head><style>p{color:red}</style></head><body>" +
+        "<h1>Title</h1><p>First <b>paragraph</b>.</p>" +
+        "<script>var x = 1;</script><p>Second one.</p></body></html>",
+    );
+
+    const result = await run({ url: "https://example.test/" });
+
+    expect(result.text).toContain("Title");
+    expect(result.text).toContain("First paragraph.");
+    expect(result.text).toContain("Second one.");
+    // Script and style contents are not readable content and must not reach
+    // the model as if they were.
+    expect(result.text).not.toContain("var x");
+    expect(result.text).not.toContain("color:red");
+  });
+
+  it("leaves a JSON body alone rather than running it through the extractor", async () => {
+    serve('{"id":"abc","nested":{"n":1}}', { "content-type": "application/json" });
+
+    const result = await run({ url: "https://example.test/" });
+
+    expect(result.text).toBe('{"id":"abc","nested":{"n":1}}');
+  });
+
+  it("lets go of the connection when the page answers with an error", async () => {
+    // Returning without touching the body leaves it unread, and an unread body
+    // holds its connection until the peer gives up. The guarded handle has no
+    // "throw this away" member by design, so draining is how a caller lets go.
+    // `bodyUsed` is the observable: false means nothing ever touched it.
+    let served: Response | undefined;
+    globalThis.fetch = ((): Promise<Response> => {
+      served = new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("<html>gone</html>"));
+            controller.close();
+          },
+        }),
+        { status: 404 },
+      );
+      return Promise.resolve(served);
+    }) as unknown as typeof fetch;
+
+    const result = await run({ url: "https://example.test/missing" });
+
+    expect(result.error).toBe("HTTP 404");
+    expect(served?.bodyUsed).toBe(true);
+  });
+
   it("does not hand the model the address a blocked hostname resolved to", async () => {
     // The guard's own message names it — "Blocked IP range 'linkLocal' for
     // 169.254.169.254" — and this envelope goes straight back to the model.

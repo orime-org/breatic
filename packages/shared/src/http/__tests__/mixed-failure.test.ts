@@ -99,8 +99,14 @@ describe("an outcome belongs to the attempt that produced it", () => {
 
 describe("cancellation during a backoff wait", () => {
   it("rejects with the caller's reason instead of waiting the delay out", async () => {
-    // Retry-After of 8s, clamped to the transport's 10s ceiling: long enough
-    // that waiting it out would be unmistakable in the elapsed time.
+    // Retry-After of 8s. Nothing clamps it — the ceiling decides whether to
+    // wait at all, and this caller declares nothing, so the sixty-second
+    // background ceiling applies and eight seconds is served in full. Long
+    // enough that waiting it out would be unmistakable in the elapsed time.
+    //
+    // The comment here used to say "clamped to the transport's 10s ceiling",
+    // which described a mechanism that no longer exists and named the wrong
+    // ceiling for its own caller besides.
     const rateLimited = new Response("{}", {
       status: 429,
       headers: { "content-type": "application/json", "retry-after": "8" },

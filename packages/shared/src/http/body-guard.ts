@@ -19,7 +19,8 @@
  * The guarded handle deliberately does NOT expose the underlying
  * `Response`. Handing one out is what let the deadline be bypassed before:
  * whoever holds a raw response can read its body with no deadline at all,
- * and eight call sites did exactly that. Callers get the metadata they
+ * and twelve reads across eight files did exactly that (counted on the
+ * commit this replaced, not remembered). Callers get the metadata they
  * actually use plus read methods that cannot escape the deadline.
  */
 
@@ -110,6 +111,9 @@ export interface GuardedResponse {
    * `cancel()`. `pipeline()` handles this correctly and is what the one
    * consumer in the repo uses; hand-rolled reader loops must not skip it.
    * @returns A stream whose every pull is deadline-guarded.
+   * @throws {Error} SYNCHRONOUSLY, when another read already consumed the
+   *   body — unlike its siblings, which are async and reject. It is the only
+   *   member with that shape, and the only one whose `@throws` was missing.
    */
   stream(): ReadableStream<Uint8Array>;
 }
@@ -553,25 +557,27 @@ export function guardResponseBody(ctx: BodyGuardContext): GuardedResponse {
           if (value !== undefined) controller.enqueue(value);
         },
         cancel(reason): void {
-          // Teardown runs LAST here, same as in readChunk — cancel first,
-          // then abort. That ordering is load-bearing: aborting first errors
-          // the inner body, and the spec then has `cancel()` return a promise
-          // rejected with the stored error without running the underlying
-          // cancel algorithm. An earlier version aborted first and left that
-          // rejection floating, which Node terminates the process for.
+          // Three things have to happen here and the ORDER is load-bearing.
           //
-          // The `.catch()` is NOT redundant now that the order is right. Our
-          // own abort can no longer cause the rejection, but something else
-          // can: the peer or upstream may have errored the inner body already
-          // — in `downloadToTempDir` there is a backpressure window where no
+          // Cancel before aborting. Aborting first errors the inner body, and
+          // the spec then has `cancel()` return a promise rejected with the
+          // stored error without running the underlying cancel algorithm. An
+          // earlier version aborted first and left that rejection floating,
+          // which Node ends the process for.
+          //
+          // Catch the cancel. Our own abort can no longer cause that
+          // rejection, but the peer can: it may have errored the inner body
+          // already — `downloadToTempDir` has a backpressure window where no
           // pull is outstanding and a reset lands there. Cancelling a body
-          // that is already errored still rejects, and only collab installs an
-          // unhandled-rejection net, so without this the worker dies with
-          // every job in flight.
+          // that is already errored still rejects.
           //
-          // Measured both halves — a child process exiting non-zero pinned
-          // for the ordering, and the "already errored before cancel" test
-          // below for this catch. Deleting either one alone still crashes.
+          // Catch the teardown too. It belongs to the layer above, nothing
+          // awaits this chain, and a throwing one used to become an unhandled
+          // rejection all the same.
+          //
+          // All three were measured rather than reasoned about: a child
+          // process exiting non-zero pinned the ordering, and the two tests
+          // below pin the catches. Removing any one alone still crashes.
           relay.retire();
           void (async (): Promise<void> => {
             try {

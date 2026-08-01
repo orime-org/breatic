@@ -71,6 +71,12 @@ export const webSearch = tool({
       );
 
       if (!res.ok) {
+        // Read and discard. Returning without touching the body leaves it
+        // unread, and an unread body holds its connection until the peer
+        // gives up — the handle has no "throw this away" member by design, so
+        // draining it is how a caller lets go. The text is not passed on: a
+        // vendor error page is not something the model needs.
+        await res.text().catch(() => "");
         return `Error: Brave Search returned HTTP ${res.status}`;
       }
 

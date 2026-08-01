@@ -16,8 +16,9 @@
  * was not consulted on the final attempt, so exhaustion could not be reported;
  * and it read a failing response's body, erasing the vendor error text the
  * worker logs. That client is gone, so the tests below assert OUR behaviour —
- * they are not checking a library's defaults. Probes kept at
- * run against that library directly.
+ * they are not checking a library's defaults. The probes that measured those
+ * five behaviours were run against that library directly; they live in the
+ * private engineering notes rather than in this repository.
  */
 
 import { describe, it, expect, vi } from "vitest";

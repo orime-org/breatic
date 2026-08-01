@@ -95,5 +95,12 @@ export const BODY_IDLE_TIMEOUT_MS = 30_000;
  *
  * Generous compared to a vendor API call: object stores can take a long
  * while to answer for a large object, and answering slowly is not a failure.
+ *
+ * It sits in this file even though the file's own rule is that per-attempt
+ * timeouts stay PARAMETERS, because they genuinely differ between callers.
+ * The exception is deliberate and narrow: this figure exists so the two asset
+ * download paths cannot drift apart, which is the same reason the retry count
+ * lives here. The rule it bends is "callers pick their own timeout"; the rule
+ * it keeps is "one answer, in one place, when there should only be one".
  */
 export const ASSET_HEADER_TIMEOUT_MS = 120_000;
