@@ -76,3 +76,30 @@ describe("exponentialJitterDelay (0-based attempt)", () => {
     }
   });
 });
+
+describe("fullJitter — the guard on its ceiling", () => {
+  it.each([Number.NaN, -1, -0.5, 0])("clamps the unusable ceiling %o to zero", (ceiling) => {
+    // The guard is written `if (!(ceilingMs > 0)) return 0`, and the negation
+    // is what makes it cover NaN — every comparison against NaN is false, so
+    // `ceilingMs <= 0` would have let a NaN through to `Math.round(rand() *
+    // NaN)`, i.e. a NaN delay handed to `setTimeout`, which fires immediately.
+    // Measured by mutation, that half of the guard could be flipped with the
+    // whole suite still green.
+    expect(fullJitter(ceiling)).toBe(0);
+  });
+
+  it("never exceeds the ceiling it was given", () => {
+    // The property, not one sample: the whole reason for jitter is that the
+    // delay is random, so an assertion on one value proves nothing.
+    for (const r of [0, 0.25, 0.5, 0.75, 0.999999]) {
+      expect(fullJitter(1_000, () => r)).toBeLessThanOrEqual(1_000);
+      expect(fullJitter(1_000, () => r)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("returns whole milliseconds", () => {
+    // `setTimeout` truncates a fractional delay, so a non-integer here would
+    // mean the delay reported in telemetry is not the delay actually taken.
+    expect(Number.isInteger(fullJitter(1_000, () => 0.333333))).toBe(true);
+  });
+});

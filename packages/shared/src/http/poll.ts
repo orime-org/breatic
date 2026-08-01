@@ -132,6 +132,14 @@ export async function pollUntilDone(
   // responses and a 3-second interval, a nominal 5-minute budget ran past
   // 20 minutes, so the number in the config meant nothing.
   const deadline = Date.now() + options.maxWaitMs;
+  /**
+   * What to say when the budget is what ended this.
+   *
+   * One wording for both exits — the deadline that fires inside a poll, and
+   * the loop finding no time left before starting another — because to the
+   * caller they are the same outcome.
+   * @returns The message.
+   */
   const budgetSpent = (): string =>
     `${label} task did not complete within ${options.maxWaitMs / 1000}s`;
   let consecutiveFailures = 0;

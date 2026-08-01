@@ -178,7 +178,7 @@ export interface RetryInput {
 const IMF_FIXDATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
 
 /**
- * Parse a `Retry-After` value into a bounded millisecond delay.
+ * Parse a `Retry-After` value into the wait it names, in milliseconds.
  *
  * Accepts delay-seconds and IMF-fixdate, rejecting everything else so a
  * malformed header falls back to our own backoff rather than to zero. Note

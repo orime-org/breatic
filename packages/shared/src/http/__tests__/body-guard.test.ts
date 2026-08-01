@@ -78,6 +78,29 @@ function fetchReturning(response: Response): typeof fetch {
   return (() => Promise.resolve(response)) as unknown as typeof fetch;
 }
 
+/**
+ * A fetch that answers once and then behaves like a real one under abort.
+ *
+ * A real fetch errors its response body when the request is aborted, so a
+ * deadline that acts THROUGH the signal is invisible to a double that only
+ * resolves. Kept separate from `fetchReturning` rather than folded into it:
+ * the transport aborts the attempt it walks away from, so a double that both
+ * honours abort AND hands back the same object would destroy the body a later
+ * attempt is supposed to deliver.
+ * @param response - The response to hand back.
+ * @returns The fetch implementation.
+ */
+function fetchHonouringAbort(response: Response): typeof fetch {
+  return ((_url: string, init?: RequestInit): Promise<Response> => {
+    init?.signal?.addEventListener("abort", () => {
+      void response.body?.cancel(init.signal?.reason).catch(() => {
+        // Already errored or locked by our own reader: nothing to do.
+      });
+    });
+    return Promise.resolve(response);
+  }) as unknown as typeof fetch;
+}
+
 /** Options with both deadlines set, headers generous and body tight. */
 function opts(fetchImpl: typeof fetch, bodyIdleMs = 120): Parameters<typeof httpRequest>[2] {
   return {
@@ -891,6 +914,77 @@ describe("response body idle deadline", () => {
     } finally {
       process.off("unhandledRejection", onUnhandled);
     }
+  });
+
+  it("does not let the headers deadline outlive the headers", async () => {
+    // The attempt deadline is disposed once the response arrives; without that
+    // `clearTimeout`, its abort fires mid-body and the HEADERS timeout silently
+    // becomes a TOTAL one — so any download longer than a vendor's
+    // first-response allowance dies partway through, reported as an abort.
+    // Measured by mutation: dropping the clearTimeout left the whole suite
+    // green, because every other body case here finishes in milliseconds.
+    const { response, push, finish } = streamingBody();
+    void (async () => {
+      for (let i = 0; i < 4; i += 1) {
+        push(`chunk${i} `);
+        await new Promise((r) => setTimeout(r, 90));
+      }
+      finish();
+    })();
+
+    // Headers allowance far SHORTER than the body takes to arrive: 120ms
+    // against ~360ms of trickle, under a 400ms idle deadline.
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchHonouringAbort(response), 400),
+      timeoutMs: 120,
+    });
+    const text = await res.text();
+
+    expect(text).toContain("chunk0");
+    expect(text).toContain("chunk3");
+  });
+
+  it("reads a whole body as bytes, not only fails at it", async () => {
+    // Every `arrayBuffer()` case here drove a STALL. Measured by mutation, the
+    // method could be replaced with one returning an empty buffer and the
+    // suite stayed green — on the read the audio vendors use for their output.
+    const { response, push, finish } = streamingBody();
+    push("ID3");
+    push("\u0000data");
+    finish();
+    const { guarded } = countingGuard(response, undefined, 5_000);
+
+    const bytes = new Uint8Array(await guarded.arrayBuffer());
+    expect(new TextDecoder().decode(bytes)).toBe("ID3\u0000data");
+  });
+
+  it("hands the source body back when a buffered read finishes", async () => {
+    // `releaseLock()` in drain's finally: without it the source stays owned by
+    // a reader nobody holds, so it can never be read or cancelled by anything
+    // else. Its twin in `stream()` was mutation-tested; this one was not, and
+    // could be deleted with the suite green.
+    const { response, push, finish } = streamingBody();
+    push("payload");
+    finish();
+    const { guarded } = countingGuard(response, undefined, 5_000);
+
+    await guarded.text();
+
+    // If the lock were still held, opening the body again would throw.
+    expect(() => response.body?.getReader()).not.toThrow();
+  });
+
+  it("reports a cancellation that already landed on a body-less response", async () => {
+    // `drain` treats a stop that already happened as the outcome rather than
+    // as an empty body — and `stream()` did not, so the same request answered
+    // "cancelled" through one read method and "here is nothing" through the
+    // other. A caller cannot tell an empty 204 from a stop it pressed.
+    const controller = new AbortController();
+    controller.abort(new Error("user pressed stop"));
+    const { guarded } = countingGuard(new Response(null, { status: 204 }), controller.signal);
+
+    const reader = guarded.stream().getReader();
+    await expect(reader.read()).rejects.toThrow("user pressed stop");
   });
 
   it("keeps the parse failure as the cause of the one it reports", async () => {

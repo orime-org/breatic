@@ -410,6 +410,84 @@ describe("pollUntilDone — a momentary hiccup is not a dead task", () => {
   });
 });
 
+describe("pollUntilDone — what reaches the log and the wire", () => {
+  it("merges params into a URL that already carries a query", () => {
+    // The regression the code comment describes: `${url}?${params}` produced
+    // "...?a=1?b=2" for a status URL that already had a query — and these URLs
+    // come back FROM the vendor, so whether one does is not ours to decide.
+    // Naive concatenation passed every test in this file until now.
+    const { fetchImpl, urls } = playback([json({ data: { status: "completed" } })]);
+    return pollUntilDone(
+      "https://v.test/status?token=abc",
+      opts({ fetchImpl, params: { task_id: "9" } }),
+    ).then(() => {
+      expect(urls[0]).toBe("https://v.test/status?token=abc&task_id=9");
+      expect(urls[0]?.split("?")).toHaveLength(2);
+    });
+  });
+
+  it("redacts the poll URL in its own events, not just the transport's", () => {
+    // Some vendors put the key in the query string. The transport redacts what
+    // IT reports; these two emissions are the loop's own, and were pinned at
+    // only one of the four places redaction happens.
+    const events: Array<PollEvent | HttpRetryEvent> = [];
+    const { fetchImpl } = playback([json({ data: { status: "failed" } })]);
+    return expect(
+      pollUntilDone(
+        "https://v.test/status?api_key=sk-live-SECRET",
+        opts({ fetchImpl, onEvent: (e) => events.push(e) }),
+      ),
+    )
+      .rejects.toThrow()
+      .then(() => {
+        const failed = events.find((e) => e.type === "poll_failed");
+        expect(failed?.url).not.toContain("sk-live-SECRET");
+        expect(failed?.url).toContain("v.test");
+      });
+  });
+
+  it("redacts it on the timeout event too", () => {
+    const events: Array<PollEvent | HttpRetryEvent> = [];
+    const { fetchImpl } = playback([json({ data: { status: "running" } })]);
+    return expect(
+      pollUntilDone(
+        "https://v.test/status?api_key=sk-live-SECRET",
+        opts({ fetchImpl, maxWaitMs: 60, intervalMs: 10, onEvent: (e) => events.push(e) }),
+      ),
+    )
+      .rejects.toThrow()
+      .then(() => {
+        const timedOut = events.find((e) => e.type === "poll_timeout");
+        expect(timedOut?.url).not.toContain("sk-live-SECRET");
+      });
+  });
+
+  it("carries the caller's cancellation into the request it is waiting on", () => {
+    // The loop checks the signal between polls, which is not the same as the
+    // in-flight request honouring it: a poll that has already been sent has to
+    // end too, or a person pressing stop waits out the whole request timeout.
+    const controller = new AbortController();
+    const fetchImpl = ((_u: string, init?: RequestInit): Promise<Response> =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(
+            init.signal?.reason instanceof Error
+              ? init.signal.reason
+              : new DOMException("aborted", "AbortError"),
+          );
+        });
+      })) as unknown as typeof fetch;
+
+    setTimeout(() => controller.abort(new Error("user pressed stop")), 20);
+    return expect(
+      pollUntilDone(
+        "https://v.test/status",
+        opts({ fetchImpl, signal: controller.signal, maxWaitMs: 5_000, timeoutMs: 4_000 }),
+      ),
+    ).rejects.toThrow("user pressed stop");
+  });
+});
+
 describe("pollUntilDone — cancellation", () => {
   it("rejects with the caller's reason, not a budget timeout", async () => {
     // The assertion is on WHICH failure surfaces. An earlier version of

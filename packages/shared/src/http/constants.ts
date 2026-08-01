@@ -2,19 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Fixed knobs of the shared HTTP transport.
+ * Fixed figures of the shared HTTP transport.
  *
- * These are deliberately NOT configuration. The same numbers used to live in
- * separate yaml sections for the worker and the browser, and the two had
- * already drifted into different meanings: one counted retries after the first
- * attempt (so "3" was four deliveries) while the other counted total attempts
- * (so "3" was three). Both knobs are gone; one transport now gets one answer,
- * compiled in, and the two cannot disagree again.
+ * These are deliberately NOT configuration. The retry count lived in separate
+ * yaml sections for the worker and the browser, and the two had already
+ * drifted into different MEANINGS: one counted retries after the first attempt
+ * (so "3" was four deliveries) while the other counted total attempts (so "3"
+ * was three). One transport gets one answer, compiled in, and two places
+ * cannot disagree about it again.
  *
- * What genuinely varies by scenario — how long to wait for headers, polling
- * interval, total wait — stays a parameter, because a video generation and
- * a text lookup cannot share a timeout and a 2 GiB upload cannot share one
- * with a 100 KB one.
+ * The rule for what belongs here: a figure that has one defensible answer
+ * belongs in this file, and a figure that genuinely differs between callers
+ * stays a parameter. "How many times may this be replayed" and "how long may a
+ * live connection send nothing" have one answer each. Polling interval and
+ * total polling budget do not — they describe how long a vendor takes to
+ * generate something, which is the caller's business and not the transport's.
  */
 
 /**
