@@ -27,6 +27,7 @@ import {
   renderCollabCaret,
   renderCollabSelection,
 } from '@web/spaces/canvas/generate/caret-render';
+import { CollabCaretRefresh } from '@web/spaces/canvas/generate/collab-caret-refresh';
 import { CollabUndoSelection } from '@web/spaces/canvas/generate/collab-undo-selection';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
@@ -162,6 +163,7 @@ export const PromptEditor = React.forwardRef<
         // stack-item-popped after the restore transaction already ran, so this
         // hands the stored selection over in time (see the module doc).
         CollabUndoSelection,
+        CollabCaretRefresh,
         // Remote collaborator carets (batch-2 item 14): mounted only when the
         // canvas-space doc's awareness is available — the extension THROWS in
         // onCreate on a null provider, and before the socket's first connect

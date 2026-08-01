@@ -92,6 +92,58 @@ export const sharedDepsInCatalog = {
         });
       }
     }
+
+    // Declaring the catalog is only half of it. A package can still end up
+    // installed twice through a peer nothing declares: eslint-rules pulled
+    // @typescript-eslint/rule-tester without naming eslint itself, so pnpm
+    // resolved that peer to the newest release and the lockfile carried both 9
+    // and 10 while every manifest read "catalog:". Checking the lockfile is what
+    // catches that — the catalog is a claim about what gets installed, and this
+    // is where the claim is tested.
+    const catalogued = new Set(
+      [...(context.read("pnpm-workspace.yaml").matchAll(/^\s+"([^"]+)":/gm))].map(
+        (match) => match[1],
+      ),
+    );
+    // Only what OUR packages resolve to, which is the `importers` section. The
+    // rest of the lockfile includes versions third-party packages pull in
+    // privately — @eslint/eslintrc depending on globals@14 while we use 16, say
+    // — and those are not ours to unify. A check that flagged them would be
+    // reporting something nobody can act on, and the way that ends is an
+    // exemption list nobody maintains.
+    const versions = new Map<string, Set<string>>();
+    const lock = context.read("pnpm-lock.yaml").split("\n");
+    const importersAt = lock.indexOf("importers:");
+    let dependency: string | null = null;
+    for (let index = importersAt + 1; index < lock.length; index += 1) {
+      const line = lock[index] ?? "";
+      // A non-indented line ends the importers section.
+      if (/^\S/.test(line)) break;
+      const named = /^ {6}'?([^'\s:]+)'?:$/.exec(line);
+      if (named !== null) {
+        dependency = named[1] ?? null;
+        continue;
+      }
+      const resolved = /^ {8}version: ([0-9][^(\s]*)/.exec(line);
+      if (resolved === null || dependency === null) continue;
+      if (!catalogued.has(dependency)) continue;
+      const seen = versions.get(dependency) ?? new Set<string>();
+      seen.add(resolved[1] ?? "");
+      versions.set(dependency, seen);
+    }
+    for (const [name, seen] of [...versions].sort()) {
+      if (seen.size < 2) continue;
+      findings.push({
+        file: "pnpm-lock.yaml",
+        message:
+          `"${name}" is in the catalog, yet our own packages resolve it to ` +
+          `${[...seen].sort().join(" and ")}. Usually one of them reaches it ` +
+          `through a peer it never declares, so pnpm is free to satisfy that peer ` +
+          `with whatever is newest — eslint-rules did exactly this via ` +
+          `@typescript-eslint/rule-tester and quietly installed a second ESLint ` +
+          `major. Declaring "${name}": "catalog:" in that package fixes it.`,
+      });
+    }
     return findings;
   },
 } satisfies Check;

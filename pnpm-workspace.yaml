@@ -4,12 +4,18 @@ packages:
   - "repo-lint"
 
 # Single source of truth for versions shared across packages.
-# Packages reference these with "catalog:" instead of a version range,
-# so a version can only be changed in one place — and no caret is left
-# to quietly float an install onto a newer release.
+# Packages reference these with "catalog:" instead of a version range, so a
+# version can only be changed in one place.
+#
+# Ranges keep their caret: the lockfile is what makes an install reproducible,
+# so a caret here is a statement about what we accept, not a licence for an
+# install to wander. The exception is the editor stack below, pinned exactly
+# because those packages only work as a matched set.
 catalog:
-  # Node typings: every one of our packages links the same major.
-  "@types/node": 22.0.0
+  # Node typings: every one of our packages links the same major. It only ever
+  # types test code — nothing under any src/ imports node: — so the major is
+  # what matters and patch-level fixes are worth taking.
+  "@types/node": ^22.0.0
 
   # The editor stack moves as one unit — a mixed set produces unmet
   # peer ranges and, historically, two copies of the same extension.

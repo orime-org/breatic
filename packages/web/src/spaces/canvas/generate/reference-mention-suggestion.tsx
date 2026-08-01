@@ -94,6 +94,15 @@ export function makeReferenceSuggestion(input: {
     // never opened the picker. null lets `@` trigger after any character
     // (Notion / Feishu behaviour).
     allowedPrefixes: null,
+    // The plugin's own resolver. Its RESULT is not what the popup renders —
+    // every show path calls `computeItems` itself (see `showFor`), because the
+    // rows the plugin hands back arrive a microtask late and an empty list
+    // arrives first. Keeping it wired anyway is deliberate on two counts: the
+    // plugin drives its `loading` state and its abort handling off this call,
+    // and it is the one public seam through which the filtering rules
+    // (connection compatibility, t2i excluding images) can be tested. Both
+    // paths run the same function, so there is no second source of truth to
+    // drift — only the same cheap filter run twice.
     items: ({ query }): ReferenceRailItem[] => computeItems(query),
     command: ({ editor, range, props }): void => {
       // No trailing space (user 2026-07-10): the gap between adjacent chips

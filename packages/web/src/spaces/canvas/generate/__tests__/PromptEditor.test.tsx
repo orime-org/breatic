@@ -390,44 +390,38 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     await waitFor(() =>
       expect(editorEl.querySelector('.collaboration-carets__caret')).not.toBeNull(),
     );
-    // The staging is precise because the yCursor refresh is BATCHED into a
-    // setTimeout(0): fake timers park it, so each step below is observed on its
-    // own rather than through one coalesced rebuild.
-    // 1. flip focused=false — the awareness handler dims the EXISTING caret DOM
+    // 1. The peer goes away. The awareness handler dims the EXISTING caret DOM
     //    (prosemirror-view reuses a widget whose key is unchanged without
-    //    re-invoking its builder, so nothing else would dim it);
-    // 2. a local STRUCTURAL edit — since @tiptap/y-tiptap 3.0.7 the cursor
-    //    plugin drops every remote decoration on one, because the ProseMirror
-    //    doc now leads the Yjs mapping and a parked position would render in
-    //    the wrong place. The caret is HIDDEN, not re-dimmed;
-    // 3. the collaborator republishes and the refresh lands — the caret returns,
-    //    and it must return DIMMED (they are still away). Its class comes from
-    //    the builder, which reads the CURRENT awareness user.
-    vi.useFakeTimers();
-    try {
-      const caretEl = (): Element | null =>
-        editorEl.querySelector('.collaboration-carets__caret');
-      const blurred = (): boolean | undefined =>
-        caretEl()?.classList.contains('collaboration-carets__caret--blurred');
-      pushRemote(false);
-      expect(blurred()).toBe(true); // awareness-handler path
-      const editor = (
-        editorEl.querySelector('.ProseMirror') as unknown as {
-          editor: { view: { dispatch: (tr: unknown) => void; state: { tr: { split: (pos: number) => unknown } } } };
-        }
-      ).editor;
-      act(() => {
-        editor.view.dispatch(editor.view.state.tr.split(2));
-      });
-      expect(caretEl()).toBeNull(); // upstream hid the now-stale remote caret
-      pushRemote(false); // the collaborator republishes its parked cursor
-      act(() => {
-        vi.runOnlyPendingTimers(); // release the batched yCursor refresh
-      });
-      expect(blurred()).toBe(true); // back, and still dimmed
-    } finally {
-      vi.useRealTimers();
-    }
+    //    re-invoking its builder, so nothing else would dim it).
+    pushRemote(false);
+    const caretEl = (): Element | null =>
+      editorEl.querySelector('.collaboration-carets__caret');
+    const blurred = (): boolean | undefined =>
+      caretEl()?.classList.contains('collaboration-carets__caret--blurred');
+    await waitFor(() => expect(blurred()).toBe(true));
+
+    // 2. A local STRUCTURAL edit. Since @tiptap/y-tiptap 3.0.7 the cursor plugin
+    //    drops every remote decoration on one, because the ProseMirror document
+    //    leads the Yjs mapping and a parked position would render in the wrong
+    //    place. Upstream then waits for the collaborator to republish — which an
+    //    idle peer never does, since its deep-equal heartbeats fire 'update' and
+    //    not 'change'. Left alone, pressing Enter makes every collaborator's
+    //    caret vanish until they happen to move.
+    const editor = (
+      editorEl.querySelector('.ProseMirror') as unknown as {
+        editor: { view: { dispatch: (tr: unknown) => void; state: { tr: { split: (pos: number) => unknown } } } };
+      }
+    ).editor;
+    act(() => {
+      editor.view.dispatch(editor.view.state.tr.split(2));
+    });
+
+    // 3. The peer does NOTHING. The caret must come back anyway, and come back
+    //    dimmed — the collaborator is still away. Real timers throughout: the
+    //    point is that the recovery happens on its own, not that a parked timer
+    //    can be released by hand.
+    await waitFor(() => expect(caretEl()).not.toBeNull(), { timeout: 2000 });
+    expect(blurred()).toBe(true);
   });
 
   it('renders a remote client caret with the remote user name and color', async () => {
