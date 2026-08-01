@@ -211,3 +211,42 @@ export {
 export type { AdjustValue } from "@shared/adjust-value.js";
 
 export { newId, deriveId } from "@shared/ids.js";
+
+export { fullJitter, exponentialJitterDelay } from "@shared/backoff.js";
+export { sleep } from "@shared/sleep.js";
+
+// The one HTTP transport with retries — backend services and browser alike.
+// Callers state the `replaySafe` fact and the transport applies the judgement,
+// so a verdict is reached in exactly one place. (`decideRetry` itself is
+// exported further down, for the one caller whose retry subject is not a
+// `fetch`; the point is one implementation of the judgement, not one exit.)
+export { httpRequest, httpRequestJson } from "@shared/http/request.js";
+export type { HttpRequestOptions, HttpRetryEvent } from "@shared/http/request.js";
+// The handle `httpRequest` returns. Exported because the worker's transports
+// name it in their own signatures; `guardResponseBody` itself stays internal
+// so nothing outside this package can mint an unguarded one.
+export type { GuardedResponse } from "@shared/http/body-guard.js";
+export { pollUntilDone } from "@shared/http/poll.js";
+export type { PollOptions, PollEvent } from "@shared/http/poll.js";
+export { bearerHeaders } from "@shared/http/headers.js";
+export { extractNested } from "@shared/http/json-path.js";
+// Only the one constant a caller actually names. `MAX_RETRIES` and
+// `BODY_IDLE_TIMEOUT_MS` were exported here too and had no consumer anywhere:
+// exporting them contradicted the very thing this transport is for. They are
+// fixed rather than configurable on purpose — worker and browser each used to
+// carry their own copy and the two drifted into meaning different things — so
+// putting them on the public surface invites exactly the second opinion the
+// fixed values exist to prevent. They stay internal; the deadline a CALLER
+// legitimately varies (per attempt, per file size) is the one below.
+export { ASSET_HEADER_TIMEOUT_MS } from "@shared/http/constants.js";
+// The judgement is exposed on its own for callers whose retry subject is not
+// a `fetch` — the browser's presign step retries an axios call, so it owns the
+// loop but must not own a second opinion about what is worth retrying.
+export { decideRetry } from "@shared/http/decide-retry.js";
+export type {
+  RetryDecision,
+  RetryInput,
+  RetryRefusal,
+  RetryTrigger,
+  TransportErrorKind,
+} from "@shared/http/decide-retry.js";
