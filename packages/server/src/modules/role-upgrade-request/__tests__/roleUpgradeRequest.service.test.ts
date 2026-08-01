@@ -93,6 +93,7 @@ vi.mock("../../studio/studio.service.js", () => ({
 // second pooled connection while the first is still held.
 vi.mock("../../project/project.repo.js", () => ({
   getProjectById: vi.fn(),
+  lockLiveProject: vi.fn(),
 }));
 // The deadline comes from `config/limits.yaml`; pinning it here keeps this
 // file away from the YAML loader and makes "both carry the SAME instant" an
@@ -126,6 +127,11 @@ beforeEach(() => {
   vi.mocked(
     studioService.getPersonalStudioProfilesByUserIds,
   ).mockResolvedValue(new Map());
+  vi.mocked(projectRepo.lockLiveProject).mockResolvedValue(true);
+  vi.mocked(projectMembersRepo.getRole).mockImplementation(
+    async (_projectId: string, userId: string) =>
+      userId === OWNER ? "owner" : "viewer",
+  );
   vi.mocked(projectRepo.getProjectById).mockResolvedValue({
     id: PID,
     name: "Demo",
@@ -284,7 +290,6 @@ describe("request", () => {
 describe("approve", () => {
   it("promotes, settles, retires the bell entry and announces the outcome", async () => {
     vi.mocked(requestsRepo.lockRequest).mockResolvedValueOnce(lockedRow());
-    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("owner");
     vi.mocked(projectMembersRepo.updateRoleUnderOwner).mockResolvedValueOnce(
       true,
     );
@@ -394,7 +399,8 @@ describe("approve", () => {
     // — and crucially the request survives, because it is still perfectly
     // valid for whoever owns the project now.
     vi.mocked(requestsRepo.lockRequest).mockResolvedValueOnce(lockedRow());
-    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("editor");
+    // The caller is no longer the owner.
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValue("editor");
 
     await expect(
       roleUpgradeRequestService.approve({
@@ -416,9 +422,6 @@ describe("approve", () => {
     // premise failed. Both say owner here, so the caller still holds the
     // project and the refusal is about the requester.
     vi.mocked(requestsRepo.lockRequest).mockResolvedValueOnce(lockedRow());
-    vi.mocked(projectMembersRepo.getRole)
-      .mockResolvedValueOnce("owner")
-      .mockResolvedValueOnce("owner");
     vi.mocked(projectMembersRepo.updateRoleUnderOwner).mockResolvedValueOnce(
       false,
     );
@@ -445,9 +448,11 @@ describe("approve", () => {
     // settling it here would let a stranger destroy it, and the new owner
     // would never see it.
     vi.mocked(requestsRepo.lockRequest).mockResolvedValueOnce(lockedRow());
-    vi.mocked(projectMembersRepo.getRole)
-      .mockResolvedValueOnce("owner")
-      .mockResolvedValueOnce("editor");
+    // The decider lost the project between the gate and the write.
+    vi.mocked(projectMembersRepo.getRole).mockImplementation(
+      async (_projectId: string, userId: string) =>
+        userId === OWNER ? "editor" : "viewer",
+    );
     vi.mocked(projectMembersRepo.updateRoleUnderOwner).mockResolvedValueOnce(
       false,
     );
@@ -466,9 +471,6 @@ describe("approve", () => {
 describe("reject", () => {
   it("settles, retires the bell entry and announces the refusal", async () => {
     vi.mocked(requestsRepo.lockRequest).mockResolvedValueOnce(lockedRow());
-    vi.mocked(projectMembersRepo.getRole)
-      .mockResolvedValueOnce("owner")
-      .mockResolvedValueOnce("viewer");
 
     await roleUpgradeRequestService.reject({
       requestId: RID,
@@ -498,9 +500,6 @@ describe("reject", () => {
 
   it("never writes a member row", async () => {
     vi.mocked(requestsRepo.lockRequest).mockResolvedValueOnce(lockedRow());
-    vi.mocked(projectMembersRepo.getRole)
-      .mockResolvedValueOnce("owner")
-      .mockResolvedValueOnce("viewer");
 
     await roleUpgradeRequestService.reject({
       requestId: RID,
@@ -515,7 +514,8 @@ describe("reject", () => {
     // requester they were turned down. Leaving this open would let a former
     // owner silently burn every request the real owner was meant to answer.
     vi.mocked(requestsRepo.lockRequest).mockResolvedValueOnce(lockedRow());
-    vi.mocked(projectMembersRepo.getRole).mockResolvedValueOnce("editor");
+    // The caller is no longer the owner.
+    vi.mocked(projectMembersRepo.getRole).mockResolvedValue("editor");
 
     await expect(
       roleUpgradeRequestService.reject({
@@ -531,9 +531,11 @@ describe("reject", () => {
 
   it("retires the request rather than refusing something already granted", async () => {
     vi.mocked(requestsRepo.lockRequest).mockResolvedValueOnce(lockedRow());
-    vi.mocked(projectMembersRepo.getRole)
-      .mockResolvedValueOnce("owner")
-      .mockResolvedValueOnce("editor");
+    // The requester is already an editor: nothing left to refuse.
+    vi.mocked(projectMembersRepo.getRole).mockImplementation(
+      async (_projectId: string, userId: string) =>
+        userId === OWNER ? "owner" : "editor",
+    );
 
     await expect(
       roleUpgradeRequestService.reject({

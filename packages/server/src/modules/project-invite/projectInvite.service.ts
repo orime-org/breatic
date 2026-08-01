@@ -136,6 +136,15 @@ export async function createInvite(
       // trip it and reject the re-invite with a spurious "already invited"
       // (#1769). Same transaction → freeing the slot and taking it are atomic.
       await invitesRepo.expireStalePending(projectId, invitee.id, tx);
+            // Locks the project for the length of this transaction and refuses if it
+      // is already gone. Same window the request tables have: without the lock
+      // the insert commits after the delete cascade has swept this table,
+      // leaving a live pending invite on a dead project — and `confirmInvite`
+      // never checks project liveness, so the invitee could still accept and
+      // land an active member row on something nobody can open.
+      if (!(await projectRepo.lockLiveProject(projectId, tx))) {
+        throw new NotFoundError(t("server.error.not_found"));
+      }
       invitationId = await invitesRepo.createPending({
         projectId,
         invitedUserId: invitee.id,

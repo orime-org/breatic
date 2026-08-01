@@ -138,7 +138,12 @@ export async function requestProjectTransfer(
   const profiles = await studioRepo.getPersonalProfilesByCreators([fromUserId]);
   const from = profiles.get(fromUserId);
   try {
-    await db.transaction(async (tx) => {
+    const filedOffer = await db.transaction<Refused | { done: true }>(async (tx) => {
+      // Locks the project for the length of this transaction and refuses if it
+      // is already gone — see `lockLiveProject` for what commits without it.
+      if (!(await projectRepo.lockLiveProject(projectId, tx))) {
+        return { refusal: "not_found" as const };
+      }
       const filed = await transfersRepo.createPending({
         projectId,
         fromUserId,
@@ -169,7 +174,9 @@ export async function requestProjectTransfer(
           tx,
         });
       await transfersRepo.attachNotification(transferId, notification.id, tx);
+      return { done: true as const };
     });
+    if (isRefused(filedOffer)) throw refusalError(filedOffer.refusal);
   } catch (err) {
     if (isUniqueViolation(err)) {
       throw new ConflictError(t("server.error.conflict"));

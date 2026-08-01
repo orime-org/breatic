@@ -97,6 +97,42 @@ export async function getIdentitiesByProjectIds(
 }
 
 /**
+ * Lock the project row for the length of a transaction that adds something to
+ * it, and report whether it is still alive.
+ *
+ * Filing a request, an offer or an invite must not land on a project that is
+ * being deleted, and checking liveness without a lock does not achieve that:
+ * the insert's own foreign key takes only `FOR KEY SHARE`, which does not
+ * conflict with the delete's `FOR NO KEY UPDATE`, so the two transactions run
+ * straight past each other. The cascade then cannot see the uncommitted row,
+ * and what commits is a live pending row on a dead project — undecidable
+ * (every decision path resolves the caller's role through a join that filters
+ * deleted projects), unreapable (the reaper only runs from a new request, which
+ * needs a live project), holding its uniqueness slot forever and blocking the
+ * project's hard delete through its restrict FK. Exactly the row the cascade
+ * exists to prevent.
+ *
+ * `FOR UPDATE` on both sides is what makes them serialise. The delete takes it
+ * first thing; a creator takes it and then finds either a live project (and
+ * proceeds, with the delete waiting) or a dead one (and refuses).
+ * @param id - Project UUID
+ * @param tx - The creating transaction; the lock is meaningless without one
+ * @returns `true` when the project is still alive and now locked
+ */
+export async function lockLiveProject(
+  id: string,
+  tx: DbTx,
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, id), isNull(projects.deletedAt)))
+    .for("update")
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
  * Load one active project by id.
  * Takes an optional transaction handle; a caller inside a transaction MUST pass
  * it, or the read reaches for a second pooled connection while the first is
@@ -420,6 +456,17 @@ export async function duplicateProject(
 export async function deleteProject(id: string): Promise<void> {
   await db.transaction(async (tx) => {
     const now = new Date();
+
+    // Taken FIRST, and every path that adds a project-scoped row takes it too
+    // (see `lockLiveProject`). Without it a request filed concurrently commits
+    // after the cascade has already swept its table, leaving the orphan this
+    // whole cascade exists to prevent.
+    await tx
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.id, id))
+      .for("update")
+      .limit(1);
 
     const convRows = await tx
       .select({ id: conversations.id })

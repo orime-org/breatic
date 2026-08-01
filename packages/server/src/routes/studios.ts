@@ -404,10 +404,14 @@ studio.get("/:slug/transfer", requireStudioRole("admin"), async (c) => {
  */
 studio.delete(
   "/:slug/transfer/:transferId",
+  // Registered BEFORE the role middleware, the same way the project routes do
+  // it: a validator behind a middleware that already reads the param cannot
+  // stop what the middleware does with it.
+  zValidator(
+    "param",
+    z.object({ slug: z.string(), transferId: z.string().uuid() }),
+  ),
   requireStudioRole("admin"),
-  // `transferId` reaches a uuid comparison; anything that is not a uuid makes
-  // Postgres reject the statement, turning a user-supplied string into a 500.
-  zValidator("param", z.object({ slug: z.string(), transferId: z.string().uuid() })),
   async (c) => {
     await studioTransferService.withdrawTransfer(
       c.req.param("transferId"),

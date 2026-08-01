@@ -352,6 +352,86 @@ describe("a request whose premise is gone is written down too", () => {
   });
 });
 
+describe("a request cannot be filed onto a project that is being deleted", () => {
+  it("role upgrade: filing after the delete is refused, not orphaned", async () => {
+    // The window this closes: the insert's own foreign key takes only
+    // FOR KEY SHARE, which does not conflict with the delete's FOR NO KEY
+    // UPDATE, so without an explicit lock the two transactions run past each
+    // other and the cascade cannot see the uncommitted row. What commits is a
+    // live pending request on a dead project — undecidable, unreapable, and
+    // holding its slot forever.
+    const { ownerId, memberId, projectId } = await seedScene();
+    await projectRepo.deleteProject(projectId);
+
+    await expect(
+      roleUpgradeService.request({
+        ownerUserId: ownerId,
+        requesterUserId: memberId,
+        projectId,
+        projectName: "Demo",
+      }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    const rows = await sql<{ c: number }[]>`
+      SELECT count(*)::int AS c FROM role_upgrade_requests
+      WHERE project_id = ${projectId} AND deleted_at IS NULL
+    `;
+    expect(rows[0]!.c).toBe(0);
+  });
+
+  it("project transfer: offering after the delete is refused, not orphaned", async () => {
+    const { ownerId, memberId, projectId } = await seedScene();
+    await projectRepo.deleteProject(projectId);
+
+    await expect(
+      projectTransferService.requestProjectTransfer(
+        projectId,
+        ownerId,
+        memberId,
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe("a decision is credited only to someone who still holds the project", () => {
+  it("reject: a caller who lost the project settles nothing", async () => {
+    // The same window approve was hardened against. It lives in `settle` now
+    // rather than in each caller, because a rule every caller has to remember
+    // is one that reject forgot for a whole round.
+    const { ownerId, memberId, projectId } = await seedScene();
+    await roleUpgradeService.request({
+      ownerUserId: ownerId,
+      requesterUserId: memberId,
+      projectId,
+      projectName: "Demo",
+    });
+    const requestId = await liveRequestId(
+      "role_upgrade_requests",
+      "project_id",
+      projectId,
+    );
+
+    const third = await insertUser(`dl-newowner2-${seq++}`);
+    await sql`
+      UPDATE project_members SET role = 'editor'
+      WHERE project_id = ${projectId} AND user_id = ${ownerId}
+    `;
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${projectId}, ${third}, 'owner', ${ownerId})
+    `;
+
+    await expect(
+      roleUpgradeService.reject({ requestId, ownerUserId: ownerId }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    expect(await stateOf("role_upgrade_requests", requestId)).toEqual({
+      status: "pending",
+      bellUnread: true,
+    });
+  });
+});
+
 describe("a deleted project takes its outstanding requests with it", () => {
   it("role upgrade: the request does not outlive the project", async () => {
     // Left behind it is both undecidable and unkillable: every decision path

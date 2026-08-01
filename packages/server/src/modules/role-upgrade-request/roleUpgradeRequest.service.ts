@@ -88,7 +88,16 @@ export async function request(
   const requester = await resolveActorProfile(input.requesterUserId);
   const expiresAt = deferredRequestExpiry();
   try {
-    return await db.transaction(async (tx) => {
+    const filedRequest = await db.transaction<
+      FiledRequest | { refusal: "not_found" }
+    >(async (tx) => {
+      // Locks the project for the length of this transaction and refuses if it
+      // is already gone. Without it the row commits after the delete cascade
+      // has swept this table — a live pending request on a dead project, which
+      // nobody can decide and nothing can reap.
+      if (!(await projectRepo.lockLiveProject(input.projectId, tx))) {
+        return { refusal: "not_found" as const };
+      }
       const filed = await requestsRepo.createPending({
         projectId: input.projectId,
         requesterUserId: input.requesterUserId,
@@ -124,6 +133,8 @@ export async function request(
       await requestsRepo.attachNotification(requestId, notification.id, tx);
       return { requestId, notification };
     });
+    if ("refusal" in filedRequest) throw refusalError(filedRequest.refusal);
+    return filedRequest;
   } catch (err) {
     if (isUniqueViolation(err)) {
       throw new ConflictError(t("server.error.conflict"));
@@ -182,9 +193,7 @@ export async function approve(input: DecisionInput): Promise<void> {
         // The caller lost the project between the gate and this statement — a
         // transfer committed underneath them. Their lack of authority says
         // nothing about the request, which the NEW owner can still answer, so
-        // it is left exactly as it was. Settling here would let a decision the
-        // caller was no longer entitled to make destroy a valid request, and
-        // the new owner would never see it.
+        // it is left exactly as it was.
         return { refusal: "forbidden" };
       }
       // The requester is no longer the viewer this request was filed about —
@@ -194,7 +203,9 @@ export async function approve(input: DecisionInput): Promise<void> {
       await settle(req, "expired", null, tx);
       return { refusal: "conflict" };
     }
-    await settle(req, "approved", input.ownerUserId, tx);
+    if (!(await settle(req, "approved", input.ownerUserId, tx))) {
+      return { refusal: "forbidden" };
+    }
     // The project is only known once the row is locked, so this read cannot
     // move out — it takes the transaction's own handle instead of reaching for
     // a second connection. Read at decision time only as a fallback label; the
@@ -261,7 +272,11 @@ export async function reject(
       await settle(req, "expired", null, tx);
       return { refusal: "conflict" };
     }
-    await settle(req, "rejected", input.ownerUserId, tx);
+    if (!(await settle(req, "rejected", input.ownerUserId, tx))) {
+      // Same window as approve's: a transfer committed between the gate and
+      // here. Nothing is written and the request stays valid for its new owner.
+      return { refusal: "forbidden" };
+    }
     const project = await projectRepo.getProjectById(req.projectId, tx);
     await notificationService.createRoleUpgradeRejected({
       requesterUserId: req.requesterUserId,
@@ -386,21 +401,43 @@ async function openForDecision(
 
 /**
  * Move a request to a terminal status and take its bell entry down with it.
+ *
+ * A settlement CREDITED TO A PERSON re-establishes that person's authority
+ * first, and refuses if it is gone. That check lives here rather than in each
+ * caller for one reason: the window it closes is between the gate and the
+ * write, so every write needs it, and a rule each caller has to remember is a
+ * rule one of them will forget — `reject` did, for a whole round, while
+ * `approve` had it. A transfer committing in that window would otherwise let a
+ * caller who no longer owns the project destroy a request the new owner never
+ * sees.
+ *
+ * `expired` carries no decider and needs no authority: it records that nobody
+ * came, which is true no matter who noticed.
  * @param req - The locked request.
  * @param status - Terminal status to settle on.
  * @param decidedByUserId - The owner who ruled, or null when nobody did.
  * @param tx - The deciding transaction.
+ * @returns True when it settled; false when the decider's authority was gone.
  */
 async function settle(
   req: OpenRequest,
   status: "approved" | "rejected" | "expired",
   decidedByUserId: string | null,
   tx: DbTx,
-): Promise<void> {
+): Promise<boolean> {
+  if (decidedByUserId !== null) {
+    const stillOwner = await projectMembersRepo.getRole(
+      req.projectId,
+      decidedByUserId,
+      tx,
+    );
+    if (stillOwner !== "owner") return false;
+  }
   await requestsRepo.settleIfPending(req.id, status, decidedByUserId, tx);
   if (req.notificationId !== null) {
     await notificationRepo.retire(req.notificationId, tx);
   }
+  return true;
 }
 
 /**
