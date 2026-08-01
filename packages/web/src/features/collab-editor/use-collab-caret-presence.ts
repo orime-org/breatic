@@ -2,14 +2,32 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Dims a collaborator's caret while their window is in the background, so a
- * cursor sitting still reads as "they stepped away" rather than "they are
- * about to type".
+ * Keeps this client's caret PRESENCE published, and applies everyone else's.
  *
- * Both halves live here because either alone is dead weight: an editor that
- * publishes focus but never applies the incoming flag shows nothing, and one
- * that applies it but never publishes leaves its own caret looking permanently
+ * Presence is the whole awareness payload behind a caret: who you are — name
+ * and colour — and whether your window is in the foreground, so a cursor
+ * sitting still reads as "they stepped away" rather than "they are about to
+ * type". Both halves live here because either alone is dead weight: an editor
+ * that publishes but never applies the incoming flag shows nothing, and one
+ * that applies but never publishes leaves its own caret looking permanently
  * attentive to everyone else.
+ *
+ * ## Identity is published here, not baked into the editor
+ *
+ * The caret extension takes a `user` at construction, and the editor is
+ * constructed ONCE per document — it survives Space-tab switches by design, and
+ * a rebuild with a new identity would take the undo stack and selection with
+ * it. So the identity configured on the extension is only ever the one that was
+ * current when the document was first opened. If the user renames themselves,
+ * or their derived colour changes, that configured value is stale for the rest
+ * of the session.
+ *
+ * This hook is what keeps it true: it publishes the FULL identity on every
+ * change, not just the focus flag, which overwrites the awareness field the
+ * extension seeded. That makes `caretUser` in the publish effect's dependencies
+ * load-bearing rather than incidental — narrow that list to the focus flag and
+ * collaborators will see a stale name for as long as the tab stays open, with
+ * every test still green unless one pins this.
  */
 
 import type { Editor } from '@tiptap/react';
@@ -34,7 +52,7 @@ const BLURRED_CLASS = 'collaboration-carets__caret--blurred';
  * @param caretProvider - Provider whose awareness carries carets.
  * @param caretUser - This user's caret identity; focus is published alongside it.
  */
-export function useCollabCaretFocus(
+export function useCollabCaretPresence(
   editor: Editor | null,
   caretProvider: { awareness: unknown } | null | undefined,
   caretUser: CaretUserIdentity | null | undefined,

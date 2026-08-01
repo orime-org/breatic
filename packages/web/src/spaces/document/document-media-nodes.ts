@@ -37,6 +37,12 @@ const MEDIA_NODE_BASE = {
  * `poster` exists from the first release because an unknown ATTRIBUTE is
  * dropped by the same mechanism that drops an unknown node: a client whose
  * schema lacks the attribute would strip the cover from every video it syncs.
+ * `width` and `height` are here for the same reason and none other — nothing
+ * writes them yet. The media slice lets an author size block media, and the
+ * image node has carried them since day one; a video sized on a newer bundle
+ * would otherwise snap back to default on every older client that touches the
+ * document. An attribute nothing writes is inert; an attribute nothing
+ * declared is a data loss.
  */
 export const Video = Node.create({
   name: 'video',
@@ -48,6 +54,8 @@ export const Video = Node.create({
       // Cover frame; the upload path pairs every video with one.
       poster: { default: null },
       title: { default: null },
+      width: { default: null },
+      height: { default: null },
     };
   },
 
@@ -63,6 +71,11 @@ export const Video = Node.create({
 /**
  * An audio clip embedded in the document body — a block-level atom carrying
  * the source URL.
+ *
+ * Carries `width` / `height` for the same reason the video does: a player
+ * occupies a box the author can size, and an attribute that is not declared
+ * from the first release cannot be added later without older clients erasing
+ * it. Nothing writes them yet.
  */
 export const Audio = Node.create({
   name: 'audio',
@@ -72,6 +85,8 @@ export const Audio = Node.create({
     return {
       src: { default: null },
       title: { default: null },
+      width: { default: null },
+      height: { default: null },
     };
   },
 

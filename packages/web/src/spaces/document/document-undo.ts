@@ -89,11 +89,20 @@ export interface DocumentUndoManager extends Y.UndoManager {
  */
 export function createDocumentUndoManager(doc: Y.Doc): DocumentUndoManager {
   const body = documentBodyFragment(doc);
+  // `Y.UndoManager`'s constructor registers a `doc.on('destroy', …)` listener
+  // that its own `destroy()` does not remove. Upstream works around it by
+  // diffing the doc's destroy observers across construction — and only for
+  // managers the plugin builds itself, which this is not. Same technique,
+  // applied where the responsibility actually landed.
+  const before = new Set(destroyObservers(doc));
   const manager = new Y.UndoManager(body, {
     trackedOrigins: new Set([ySyncPluginKey]),
     deleteFilter: (item) => defaultDeleteFilter(item, defaultProtectedNodes),
     captureTransaction: (tr) => tr.meta.get('addToHistory') !== false,
   }) as DocumentUndoManager;
+  const attached = destroyObservers(doc).filter(
+    (listener) => !before.has(listener),
+  );
 
   const listeners = new Set<() => void>();
   const undo = manager.undo.bind(manager);
@@ -119,5 +128,33 @@ export function createDocumentUndoManager(doc: Y.Doc): DocumentUndoManager {
     };
   };
 
+  const destroy = manager.destroy.bind(manager);
+  manager.destroy = (): void => {
+    destroy();
+    // Without this the manager stays reachable from the Y.Doc after teardown,
+    // holding its undo and redo stacks — and, through `keepItem`, the deleted
+    // content those stacks can still restore. Harmless while the doc dies with
+    // it; not harmless when the doc outlives the editor, which is what a tab
+    // closed and reopened before the deferred release fires produces.
+    attached.forEach((listener) => doc.off('destroy', listener));
+    attached.length = 0;
+  };
+
   return manager;
+}
+
+/**
+ * The doc's current `destroy` observers.
+ *
+ * Reaches a private field, the same one upstream's own workaround reads, and
+ * for the same reason: yjs offers no public way to ask what is subscribed, and
+ * removing a listener requires the exact function reference.
+ * @param doc - The Y.Doc to inspect.
+ * @returns The registered destroy listeners, or an empty list if yjs has changed shape.
+ */
+function destroyObservers(doc: Y.Doc): Array<() => void> {
+  const observers = (
+    doc as unknown as { _observers?: Map<string, Set<() => void>> }
+  )._observers;
+  return Array.from(observers?.get('destroy') ?? []);
 }

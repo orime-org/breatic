@@ -82,8 +82,12 @@ const REQUIRED_NODE_ATTRS: Readonly<Record<string, ReadonlyArray<string>>> = {
   // that already exists, which is the failure mode this file exists to catch —
   // the node survives an older client, the attribute does not.
   image: ['src', 'alt', 'title', 'width', 'height', 'textAlign'],
-  video: ['src', 'poster', 'title', 'textAlign'],
-  audio: ['src', 'title', 'textAlign'],
+  // Sizing belongs on all three, not just the image. They are the same kind of
+  // thing — block-level media the slice lets the author size — and an author
+  // who resizes a video on a newer bundle would otherwise have it snap back to
+  // default on every older client that touches the document.
+  video: ['src', 'poster', 'title', 'width', 'height', 'textAlign'],
+  audio: ['src', 'title', 'width', 'height', 'textAlign'],
   tableCell: ['colspan', 'rowspan', 'colwidth'],
   tableHeader: ['colspan', 'rowspan', 'colwidth'],
   taskItem: ['checked'],

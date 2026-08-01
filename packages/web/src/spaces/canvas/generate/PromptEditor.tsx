@@ -11,7 +11,7 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { useCollabCaretFocus } from '@web/data/yjs/use-collab-caret-focus';
+import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 
 import {
@@ -206,7 +206,7 @@ export const PromptEditor = React.forwardRef<
   // Shared with the document editor — both halves have to travel together,
   // or one side publishes into a void and the other renders a flag nobody
   // sets.
-  useCollabCaretFocus(editor, caretProvider, caretUser);
+  useCollabCaretPresence(editor, caretProvider, caretUser);
   // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
   // narrow imperative handle rather than the raw editor, keeping TipTap
   // encapsulated (same boundary as the onTextChange / onAtMentionsChange

@@ -18,7 +18,7 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 
 import type { CaretUserIdentity } from '@web/data/yjs/use-caret-user';
-import { useCollabCaretFocus } from '@web/data/yjs/use-collab-caret-focus';
+import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import {
   getDocumentEditor,
   type DocumentEditorHandle,
@@ -119,7 +119,7 @@ export function useDocumentEditor({
   }, [handle, editable]);
 
   // Dim collaborators who have switched away, and tell them when we do.
-  useCollabCaretFocus(handle?.editor ?? null, caretProvider, caretUser);
+  useCollabCaretPresence(handle?.editor ?? null, caretProvider, caretUser);
 
   return handle;
 }

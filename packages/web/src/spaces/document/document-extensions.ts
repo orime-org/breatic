@@ -44,6 +44,7 @@ import { t } from '@breatic/shared';
 import type { CaretUserIdentity } from '@web/data/yjs/use-caret-user';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import { Audio, Video } from '@web/spaces/document/document-media-nodes';
+import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
 /** Inputs that switch on the collaborative layers; all optional. */
 export interface DocumentExtensionOptions {
@@ -168,6 +169,10 @@ export function buildDocumentExtensions(
     Placeholder.configure({
       placeholder: () => t('spaces.document.placeholder'),
     }),
+    // Resolving the string per render (above) reads the live locale, but a
+    // decoration is only redrawn when something dispatches — and switching
+    // language dispatches nothing. This asks for the redraw.
+    LocaleRedraw,
   );
 
   return extensions;
