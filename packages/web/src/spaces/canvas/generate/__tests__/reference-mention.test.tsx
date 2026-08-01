@@ -363,8 +363,15 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
         imageRefsDisabled: () => hideImages,
       });
       return (
-        (s.items?.({ query: '', editor: undefined as unknown as Editor }) ??
-          []) as ReferenceRailItem[]
+        (s.items?.({
+          query: '',
+          editor: undefined as unknown as Editor,
+          // The suggestion plugin now hands `items()` an AbortSignal so an
+          // async resolver can bail when the query moves on. Ours resolves
+          // synchronously from the live pool and ignores it — the signal is
+          // here only because the call signature requires one.
+          signal: new AbortController().signal,
+        }) ?? []) as ReferenceRailItem[]
       )
         .map((r) => r.sourceNodeId)
         .sort();

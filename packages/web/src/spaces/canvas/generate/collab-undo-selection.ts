@@ -98,6 +98,40 @@ const collabUndoSelectionKey = new PluginKey<{ preEditSel: unknown }>(
   'collabUndoSelectionRestore',
 );
 
+/**
+ * Strips the absolute-position snapshot off a relative selection before it is
+ * handed to the sync binding.
+ *
+ * `@tiptap/y-tiptap` 3.0.6 started recording `absAnchor` / `absHead` alongside
+ * the relative positions, and `restoreRelativeSelection` uses them to detect a
+ * mis-resolved endpoint: it compares the absolute position against the document
+ * the binding itself captured, and re-derives the endpoint when the two
+ * disagree. That check is sound only while both halves describe the SAME
+ * moment.
+ *
+ * The selection this extension hands over does not: it was snapshotted before
+ * the user's edit and is being replayed several transactions later, so its
+ * absolute positions index a document that no longer exists. Left in place they
+ * make the upstream check "correct" an endpoint that was already right —
+ * measured on an undo of a chip deletion, an `absAnchor` of 5 arrived while the
+ * live document held 4 positions, and the caret landed at 2 instead of 5.
+ *
+ * Dropping them selects the path upstream already provides for exactly this
+ * case: `recoverSelectionEndpoint` returns the resolved position untouched when
+ * the absolute one is absent, leaving the relative positions — which ARE valid
+ * across time, that being the point of relative positions — to place the caret.
+ * @param sel - The stored relative selection from the undo stack item.
+ * @returns The same selection without its absolute-position fields.
+ */
+function withoutAbsoluteAnchors(sel: unknown): unknown {
+  if (sel === null || typeof sel !== 'object') return sel;
+  const { absAnchor: _absAnchor, absHead: _absHead, ...rest } = sel as {
+    absAnchor?: unknown;
+    absHead?: unknown;
+  };
+  return rest;
+}
+
 export const CollabUndoSelection = Extension.create({
   name: 'collabUndoSelection',
 
@@ -164,7 +198,9 @@ export const CollabUndoSelection = Extension.create({
           const onBeforeObserverCalls = (transaction: YTransactionLike): void => {
             if (transaction.origin !== undoManager) return;
             const stored = undoManager.currStackItem?.meta.get(binding);
-            if (stored != null) binding.beforeTransactionSelection = stored;
+            if (stored != null) {
+              binding.beforeTransactionSelection = withoutAbsoluteAnchors(stored);
+            }
           };
           /**
            * Clears the stale selection the upstream late `stack-item-popped`

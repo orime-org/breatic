@@ -13,7 +13,7 @@
   },
   "devDependencies": {
     "@breatic/eslint-rules": "workspace:*",
-    "@types/node": "^22.0.0",
+    "@types/node": "catalog:",
     "anti-trojan-source": "^1.11.3",
     "eslint": "^10.1.0",
     "plpgsql-parser": "^18.2.2",
