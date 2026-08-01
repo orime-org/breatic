@@ -404,6 +404,65 @@ export async function updateRole(
 }
 
 /**
+ * Change a member's role only if they still hold the role the caller assumed
+ * AND the deciding user still owns the project — both checked inside the one
+ * statement that does the write.
+ *
+ * A deferred decision is answered days after it was filed, so everything it
+ * assumed may have moved: the member could have been promoted or removed, and
+ * the decider could have transferred the project away. Reading those facts and
+ * then writing is a race; the point of this function is that there is nothing
+ * between the check and the write to race with.
+ *
+ * It deliberately takes NO row lock. A single statement locks only the row it
+ * changes and never waits on a second one, so this path cannot take part in a
+ * deadlock — which matters because the other writers on this table (the
+ * project-delete cascade, the studio kick) already form one. The `EXISTS` is
+ * unlocked, leaving a statement-wide window in which someone who has just
+ * stopped being the owner could still land a decision. That is a bounded
+ * cost and a deliberate one: the write never touches an owner row, so "exactly
+ * one owner per project" cannot break — the worst case drops from corrupt data
+ * to one microsecond of stale authority.
+ * @param projectId - Project UUID
+ * @param userId - The member being re-roled
+ * @param fromRole - The role they must still hold for the write to happen
+ * @param toRole - The role to move them to
+ * @param deciderUserId - The user whose ownership authorises this
+ * @param tx - Optional drizzle transaction handle
+ * @returns `true` if the row was updated; `false` when either premise failed
+ */
+export async function updateRoleUnderOwner(
+  projectId: string,
+  userId: string,
+  fromRole: Exclude<ProjectRole, "owner">,
+  toRole: Exclude<ProjectRole, "owner">,
+  deciderUserId: string,
+  tx?: DbTx,
+): Promise<boolean> {
+  const handle = tx ?? db;
+  const rows = await handle
+    .update(projectMembers)
+    .set({ role: toRole })
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, userId),
+        eq(projectMembers.role, fromRole),
+        isNull(projectMembers.deletedAt),
+        sql`EXISTS (
+          SELECT 1 FROM ${projectMembers} AS decider
+          WHERE decider.project_id = ${projectId}
+            AND decider.user_id = ${deciderUserId}
+            AND decider.role = 'owner'
+            AND decider.deleted_at IS NULL
+        )`,
+      ),
+    )
+    .returning({ projectId: projectMembers.projectId });
+  return rows.length > 0;
+}
+
+/**
  * Soft-delete a member row.
  *
  * Caller MUST refuse to remove an owner (owners change hands only via
