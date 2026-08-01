@@ -98,13 +98,15 @@ loader:`packages/core/src/config/storage.ts`。
 |---|---|---|
 | `avatar.max_bytes` | 1048576(1 MiB)| 单次头像上传字节上限;超限返 413 |
 
-## 7. `config/agent.yaml` — LLM 韧性(节选)
+## 7. `config/agent.yaml` — LLM 韧性 + 工具边界(节选)
 
-loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 行为 / 记忆 / 工具旋钮;韧性相关:
+loader:`packages/core/src/config/loader.ts`。`config/agent.yaml` 含 MainAgent 行为 / 记忆 / 工具旋钮;韧性与边界相关:
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `llm_max_retries` | 2 | 每次 LLM 调用的重试次数(maxRetries),由 model-call wrapper 统一注入(#1625 Slice 3)|
+| `web_fetch_max_chars` | 50000 | `web_fetch` 返回给模型的字符上限(工具入参 `maxChars` 可临时下调)|
+| `web_fetch_max_bytes` | 5242880(5 MiB)| `web_fetch` **从线上读取**的字节硬上限,按 chunk 到达时拦。跟上一行不是一回事:字符上限裁的是已经进内存的字符串,而 `web_fetch` 的 URL 由模型给出,多大由对方决定 —— 只有字节上限拦得住(#36)|
 
 ## 8. 连接 / 存储上传韧性(代码内,非 yaml)
 
