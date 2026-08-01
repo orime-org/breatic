@@ -11,6 +11,8 @@ interface SpaceOutletProps {
   type: SpaceType;
   /** Read-only mode for the current user (viewer role), forwarded to the body. */
   readOnly?: boolean;
+  /** The collab connection cannot carry a mutation, forwarded to the body. */
+  writesBlocked?: boolean;
 }
 
 /**
@@ -22,6 +24,7 @@ interface SpaceOutletProps {
  * @param root0.spaceId - The id of the Space to render.
  * @param root0.type - The Space type used to resolve the body component.
  * @param root0.readOnly - Read-only mode for the current user, forwarded to the body.
+ * @param root0.writesBlocked - Whether the connection can carry a mutation, forwarded to the body.
  * @returns The registered Space body, or an error message for an unknown type.
  */
 export function SpaceOutlet({
@@ -29,6 +32,7 @@ export function SpaceOutlet({
   spaceId,
   type,
   readOnly,
+  writesBlocked,
 }: SpaceOutletProps): React.JSX.Element {
   const def = SPACE_TYPES[type];
   if (!def) {
@@ -43,6 +47,11 @@ export function SpaceOutlet({
   }
   const Body = def.bodyComponent;
   return (
-    <Body projectId={projectId} spaceId={spaceId} readOnly={readOnly} />
+    <Body
+      projectId={projectId}
+      spaceId={spaceId}
+      readOnly={readOnly}
+      writesBlocked={writesBlocked}
+    />
   );
 }

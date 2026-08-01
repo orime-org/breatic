@@ -211,7 +211,10 @@ describe('ProjectPage — the workspace overlay follows the banner', () => {
     // The other half of the same invariant: `inert` must be absent in the
     // steady state, or the whole project page is dead to input.
     setup('connected');
-    const workspace = document.querySelector('.relative.flex.min-h-0');
+    // Selected by the same data attribute the disabled case uses, present in
+    // both states — a Tailwind class list would pin this test to styling and
+    // pass vacuously the day someone reorders the classes.
+    const workspace = document.querySelector('[data-workspace]');
     expect(workspace).not.toBeNull();
     expect(workspace?.hasAttribute('inert')).toBe(false);
   });

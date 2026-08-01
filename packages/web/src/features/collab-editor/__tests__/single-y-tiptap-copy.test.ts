@@ -19,8 +19,16 @@
  *
  * Which makes single-copy an invariant rather than a happy accident, and this
  * is where it is enforced. It can break without anyone touching this code: the
- * catalog pins our direct dependency, but `@tiptap/extension-collaboration`
- * resolves y-tiptap on its own, and an upgrade to either can drift them apart.
+ * catalog pins our direct dependency, but both collaboration extensions resolve
+ * y-tiptap on their own, and an upgrade to any of the three can drift them
+ * apart.
+ *
+ * BOTH extensions are checked, not just one. They register different plugins —
+ * `extension-collaboration` the sync and undo plugins, `extension-collaboration-caret`
+ * the cursor plugin — and each has its own dependency range on y-tiptap
+ * (`^3.0.7` in both, today). A guard that checks one proves nothing about the
+ * other: the caret path would break exactly as silently, with remote carets
+ * simply never drawn.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -29,16 +37,20 @@ import { dirname } from 'node:path';
 
 const require = createRequire(import.meta.url);
 
-describe('@tiptap/y-tiptap', () => {
-  it('resolves to the same copy for us and for the collaboration extension', () => {
-    const ours = require.resolve('@tiptap/y-tiptap');
-    const collabExtension = require.resolve('@tiptap/extension-collaboration');
-    const theirs = createRequire(dirname(collabExtension)).resolve(
-      '@tiptap/y-tiptap',
-    );
+/** Where a given package resolves `@tiptap/y-tiptap` from. */
+function yTiptapSeenBy(pkg: string): string {
+  return createRequire(dirname(require.resolve(pkg))).resolve(
+    '@tiptap/y-tiptap',
+  );
+}
 
-    // Compared as paths so a failure names both versions rather than just
+describe('@tiptap/y-tiptap', () => {
+  it('resolves to one copy for us and for both collaboration extensions', () => {
+    const ours = require.resolve('@tiptap/y-tiptap');
+
+    // Compared as paths so a failure names the versions rather than just
     // saying two objects differ.
-    expect(theirs).toBe(ours);
+    expect(yTiptapSeenBy('@tiptap/extension-collaboration')).toBe(ours);
+    expect(yTiptapSeenBy('@tiptap/extension-collaboration-caret')).toBe(ours);
   });
 });

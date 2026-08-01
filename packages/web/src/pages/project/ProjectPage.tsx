@@ -609,9 +609,11 @@ function ProjectWorkspace({
   // Cover it with a full-area `bg-black/80` overlay that
   // (a) matches the LoadingOverlay / Dialog backdrop dim pattern used
   //     elsewhere in the app (single visual vocabulary for "blocked"),
-  // (b) intercepts clicks via `onClick` + `preventDefault` so users
-  //     can't trigger half-broken flows like "creating Space..." that
-  //     never resolves (2026-05-26 user smoke report),
+  // (b) makes it unmistakable that the area is not accepting input — the
+  //     blocking itself is `inert` on the wrapper plus `writesBlocked` on the
+  //     Space body, not this element, which stopped intercepting clicks when
+  //     `inert` took over (a `preventDefault` on the curtain's mousedown made
+  //     things worse: it pinned focus inside the hidden editor),
   // (c) surfaces the OS-level "not-allowed" cursor on hover so users
   //     get an instant, language-agnostic affordance that this region
   //     is intentionally inert.
@@ -658,12 +660,19 @@ function ProjectWorkspace({
         curtain's mousedown made that worse: clicking it could not even move
         focus out.
 
-        `inert` is the platform's own answer and settles all of it at once: no
-        pointer events, no keyboard events, focus is pulled out of the subtree
-        and cannot return, and it carries `aria-hidden` semantics implicitly.
-        The explicit `aria-hidden` this replaces was in fact being IGNORED by
-        Chrome, which refuses it on an ancestor of the focused element and logs
-        a warning — precisely the case here.
+        `inert` is the platform's own answer for the subtree: no pointer
+        events, no keyboard events, focus pulled out and unable to return, and
+        `aria-hidden` semantics implicitly. The explicit `aria-hidden` it
+        replaces was in fact being IGNORED by Chrome, which refuses it on an
+        ancestor of the focused element and logs a warning — precisely the case
+        here.
+
+        What `inert` does NOT cover, and no DOM attribute could: listeners bound
+        OUTSIDE this subtree. The canvas binds its undo / paste / duplicate /
+        group shortcuts on `document`, and overlays portal out to `body`; both
+        keep firing behind the curtain. Those are gated by passing
+        `writesBlocked` down to the Space body, which folds it into the same
+        check as the viewer role. Neither half is sufficient alone.
 
         Note for anyone reading the tests: jsdom does not implement inert (it
         does not even reflect the attribute back), so the unit tests can only
@@ -672,6 +681,7 @@ function ProjectWorkspace({
       <div
         className='relative flex min-h-0 flex-1 flex-col'
         inert={workspaceDisabled || undefined}
+        data-workspace=''
         data-workspace-disabled={workspaceDisabled || undefined}
       >
         <TopBar
@@ -744,6 +754,12 @@ function ProjectWorkspace({
                   spaceId={activeSpace.id}
                   type={activeSpace.type}
                   readOnly={isViewer}
+                  // `inert` on the wrapper stops every listener bound INSIDE
+                  // it, which is not all of them: a Space body may bind
+                  // shortcuts on `document` and overlays may portal out to
+                  // `body`, and both keep firing behind the curtain. Bodies
+                  // gate their own mutations on this.
+                  writesBlocked={workspaceDisabled}
                 />
               ) : (
                 <div

@@ -467,14 +467,30 @@ function toFlowEdge(edge: CanvasEdge): Edge {
  * @param root0.projectId - Owning project id.
  * @param root0.spaceId - Canvas space id.
  * @param root0.readOnly - Viewer read-only mode; blocks node creation.
+ * @param root0.writesBlocked - The connection cannot carry a mutation; blocks the same set.
  * @returns The ReactFlow canvas surface.
  */
 function CanvasSpaceInner({
   projectId,
   spaceId,
-  readOnly = false,
+  readOnly: viewerReadOnly = false,
+  writesBlocked = false,
 }: SpaceBodyProps): React.JSX.Element {
   const t = useTranslation();
+  // Two different reasons, one identical answer at every mutating entry point:
+  // a viewer may not change this canvas, and neither may anyone whose
+  // connection cannot carry the change — the product supports no offline
+  // editing at all (user, 2026-07-29), so a mutation made then lands in a local
+  // Y.Doc with nowhere to go.
+  //
+  // Combined here rather than at the ~70 call sites below, because every one of
+  // them wants the same answer: no dragging, no resize handles, no shortcuts,
+  // no context-menu mutations, no paste. Gating only some of them is how this
+  // went wrong before — the project page marks the workspace `inert`, which
+  // stops listeners bound INSIDE that subtree, but these shortcut and paste
+  // handlers are bound on `document`, outside it, and kept firing behind an
+  // opaque curtain with only the viewer role to stop them.
+  const readOnly = viewerReadOnly || writesBlocked;
   const { nodes, edges, undo, redo, canUndo, canRedo } = useCanvasSpace(
     projectId,
     spaceId,

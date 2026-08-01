@@ -204,8 +204,8 @@ export function renderCollabCaret(user: CaretUser, clientId?: number): HTMLEleme
   // NOTE: this build-time branch only covers NEWLY built widgets. A PARKED
   // caret's widget is keyed by clientId and prosemirror-view reuses its DOM on
   // key equality WITHOUT re-invoking this builder, so a focused flip alone
-  // never reaches here — the awareness listener in PromptEditor toggles the
-  // class on the existing DOM via the data-client-id stamped below
+  // never reaches here — the awareness listener in `use-collab-caret-presence`
+  // toggles the class on the existing DOM via the data-client-id stamped below
   // (adversarial round: both flip directions were dead without it).
   if (user.focused === false) {
     caret.classList.add('collaboration-carets__caret--blurred');

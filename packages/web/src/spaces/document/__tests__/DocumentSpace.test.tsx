@@ -90,6 +90,35 @@ describe('DocumentSpace', () => {
     ).toBeInTheDocument();
   });
 
+  it('keeps a refused document on screen, read-only, once its content arrived', async () => {
+    // A Space deleted by a collaborator, or access revoked, while this tab has
+    // the document open and synced. The refusal is per-document: the shared
+    // socket stays open and the project banner — which watches the project's
+    // own document — shows nothing.
+    //
+    // Taking the content off screen would be wrong; it is right there and the
+    // user may want to copy it. Leaving it EDITABLE is worse than wrong: every
+    // keystroke goes into a local Y.Doc that will never sync, with no error and
+    // no disconnect, and none of it is there on reload. So: keep it, stop
+    // accepting edits, and say why.
+    socketState.hasEverSynced = true;
+    socketState.status = 'authFailed';
+    socketState.authFailedReason = 'Forbidden';
+    socketState.writeAccess = 'denied';
+    render(<DocumentSpace projectId='p1' spaceId='doc-revoked' />);
+
+    // The content stays.
+    expect(await screen.findByTestId('document-toolbar')).toBeInTheDocument();
+    expect(screen.queryByTestId('document-space-unavailable')).toBeNull();
+    // But it cannot be edited, and the user is told.
+    await waitFor(() =>
+      expect(
+        document.querySelector('.ProseMirror')?.getAttribute('contenteditable'),
+      ).toBe('false'),
+    );
+    expect(screen.getByTestId('document-space-refused-notice')).toBeInTheDocument();
+  });
+
   it('goes read-only, and says so, when the server refuses writes', async () => {
     // The server authenticates a connection read-only when the user is a
     // viewer OR when they are over the document's connection cap. In the

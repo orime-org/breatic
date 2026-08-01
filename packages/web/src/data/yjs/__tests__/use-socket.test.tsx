@@ -21,6 +21,8 @@ const { wsInstances, providerInstances } = vi.hoisted(() => ({
     off: ReturnType<typeof vi.fn>;
     emit: (event: string, payload?: unknown) => void;
     synced: boolean;
+    isAuthenticated: boolean;
+    authorizedScope: string | undefined;
     config: Record<string, unknown>;
   }>,
 }));
@@ -50,6 +52,8 @@ vi.mock('@hocuspocus/provider', () => ({
       for (const cb of [...(this.listeners[event] ?? [])]) cb(payload);
     }
     synced = false;
+    isAuthenticated = false;
+    authorizedScope: string | undefined = undefined;
     config: Record<string, unknown>;
     constructor(config: Record<string, unknown>) {
       this.config = config;
@@ -229,6 +233,83 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
       { wrapper: wrapper('u1') },
     );
     expect(reopened.result.current.hasEverSynced).toBe(false);
+  });
+
+  it('remembers a refusal across a consumer unmounting, the way it remembers a sync', () => {
+    // A rejection is a SETTLED FACT about the document, exactly like "the
+    // content has arrived": the server refuses this document, leaves the shared
+    // socket open, and never says it again — the handshake for this document
+    // already happened and nothing will reconnect. So a component that mounts
+    // afterwards has no way to learn it by listening.
+    //
+    // Kept only in component state, it dies on the first Space-tab switch, and
+    // the body falls back to "Loading editor…" forever — the exact state the
+    // unavailable screen exists to replace.
+    const doc = new Y.Doc();
+    const name = 'project-p1/document-refused';
+    renderHook(() => useSocket({ name, doc }), { wrapper: wrapper('u1') });
+    const body = renderHook(() => useSocket({ name, doc }), {
+      wrapper: wrapper('u1'),
+    });
+
+    act(() =>
+      providerInstances[0]!.emit('authenticationFailed', { reason: 'Forbidden' }),
+    );
+    expect(body.result.current.status).toBe('authFailed');
+
+    act(() => body.unmount());
+    act(() => vi.runAllTimers());
+    const reopened = renderHook(() => useSocket({ name, doc }), {
+      wrapper: wrapper('u1'),
+    });
+
+    expect(reopened.result.current.status).toBe('authFailed');
+    expect(reopened.result.current.authFailedReason).toBe('Forbidden');
+    // Refused means refused: a client that cannot authenticate cannot write.
+    expect(reopened.result.current.writeAccess).toBe('denied');
+  });
+
+  it('treats a refusal as losing write access, not as unchanged', () => {
+    // `writeAccess` is what the editor reads to decide whether typing is
+    // pointless. A refusal is the strongest possible form of "your updates go
+    // nowhere", so leaving it at whatever it was before — `granted`, for a
+    // document that had authenticated fine until the Space was deleted — hands
+    // the user a live editor over a dead connection.
+    const doc = new Y.Doc();
+    const { result } = renderHook(
+      () => useSocket({ name: 'project-p1/document-revoked', doc }),
+      { wrapper: wrapper('u1') },
+    );
+    act(() =>
+      providerInstances[0]!.emit('authenticated', { scope: 'read-write' }),
+    );
+    expect(result.current.writeAccess).toBe('granted');
+
+    act(() =>
+      providerInstances[0]!.emit('authenticationFailed', { reason: 'Forbidden' }),
+    );
+    expect(result.current.writeAccess).toBe('denied');
+  });
+
+  it('re-reads the granted scope on acquire, for a provider that authenticated earlier', () => {
+    // The path every Space-tab switch takes. `authenticated` fires once per
+    // handshake, so a component mounting onto an already-authenticated shared
+    // provider never hears it — it has to ask. Without the ask it would start
+    // at `unknown`, and a capped member would get a live editor back on every
+    // tab switch until the next reconnect.
+    const doc = new Y.Doc();
+    const name = 'project-p1/document-scope-reread';
+    renderHook(() => useSocket({ name, doc }), { wrapper: wrapper('u1') });
+    act(() => {
+      providerInstances[0]!.isAuthenticated = true;
+      providerInstances[0]!.authorizedScope = 'readonly';
+      providerInstances[0]!.emit('authenticated', { scope: 'readonly' });
+    });
+
+    const late = renderHook(() => useSocket({ name, doc }), {
+      wrapper: wrapper('u1'),
+    });
+    expect(late.result.current.writeAccess).toBe('denied');
   });
 
   it('reports the write access the server granted, not the one we assumed', () => {

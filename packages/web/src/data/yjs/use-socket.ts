@@ -7,7 +7,7 @@ import type * as Y from 'yjs';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import {
   acquireDocProvider,
-  hasDocEverSynced,
+  readDocFacts,
   releaseDocProvider,
   useCollabSocketContext,
 } from '@web/data/yjs/collab-socket';
@@ -175,14 +175,23 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       setSynced(false);
       setStatus('connecting');
     }
-    // The latch comes from the registry, which has been watching this document
-    // since it was first acquired — including while this component did not
-    // exist. This is the line that survives a Space-tab switch.
-    setHasEverSynced(hasDocEverSynced(name));
-    // Re-read on acquire, because a shared provider that authenticated before
-    // this component mounted will not re-emit `authenticated`.
-    setWriteAccess(readWriteAccess(provider));
-    setAuthFailedReason(null);
+    // Everything already settled comes from the registry, which has been
+    // watching this document since it was first acquired — including while this
+    // component did not exist. These are the lines that survive a Space-tab
+    // switch: neither a sync nor a refusal is ever announced twice, so a
+    // component that mounts afterwards can only be told, never hear it.
+    const facts = readDocFacts(name);
+    setHasEverSynced(facts.hasEverSynced);
+    if (facts.authFailure !== null) {
+      setStatus('authFailed');
+      setAuthFailedReason(facts.authFailure);
+      setWriteAccess('denied');
+    } else {
+      setAuthFailedReason(null);
+      // Read from the provider rather than the facts: unlike a refusal, the
+      // granted scope can change across reconnects, so the live value wins.
+      setWriteAccess(readWriteAccess(provider));
+    }
 
     /**
      * First sync landed → steady-state happy.
@@ -208,6 +217,11 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       const reason = data?.reason ?? 'unknown';
       setStatus('authFailed');
       setAuthFailedReason(reason);
+      // A refusal is the strongest form of "your updates go nowhere". Leaving
+      // this at whatever it was — `granted`, for a document that authenticated
+      // fine until the Space was deleted — hands the user a live editor over a
+      // dead connection.
+      setWriteAccess('denied');
       // Always report — an auth rejection is a genuine failure (the
       // stuck-banner bug). console for dev, Sentry for prod oncall.
       reportCollabFailure({ kind: 'auth', docName: name, reason });

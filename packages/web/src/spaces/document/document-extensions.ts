@@ -151,14 +151,18 @@ export function buildDocumentExtensions(
   // binding. It is not about outliving anything — the manager and the editor
   // share a lifetime, exactly as the binding assumes, because the EDITOR is
   // what survives a tab switch (see `document-editor-cache`).
-  extensions.push(
-    ...buildCollabExtensions({
-      fragment,
-      caretProvider,
-      caretUser,
-      undoManager,
-    }),
-  );
+  // Skipped entirely without a fragment — that is the schema-only caller, which
+  // wants the node and mark set and no collaboration at all.
+  if (fragment) {
+    extensions.push(
+      ...buildCollabExtensions({
+        fragment,
+        caretProvider,
+        caretUser,
+        undoManager,
+      }),
+    );
+  }
 
   // Resolved per render of the placeholder decoration rather than captured as
   // a string, because the editor is built once per document and would

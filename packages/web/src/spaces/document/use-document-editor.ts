@@ -92,10 +92,11 @@ export function useDocumentEditor({
   // exists to prevent, arriving from the other side. Seeding is idempotent, so
   // a re-run is free.
   //
-  // `editable` is the role, which is the only signal the client has; a
-  // connection downgraded to read-only for other reasons (a per-document
-  // connection cap) still reads as editable here. Everything such a client
-  // types is refused too, so that is a wider gap than seeding.
+  // `editable` now carries every reason writes cannot land, not just the role:
+  // `DocumentSpace` folds the server's granted scope and the project-wide
+  // connection state into it. A client the server has degraded to read-only
+  // therefore does not seed either — which it must not, since the server would
+  // drop that update and leave it a paragraph ahead of everyone else.
   React.useEffect(() => {
     if (hasEverSynced && editable) seedEmptyBody(doc);
   }, [doc, hasEverSynced, editable]);
@@ -105,8 +106,17 @@ export function useDocumentEditor({
   const handle = React.useMemo(
     () =>
       caretProvider && caretUser
-        ? getDocumentEditor(doc, name, { caretProvider, caretUser })
+        ? getDocumentEditor(doc, name, {
+          caretProvider,
+          caretUser,
+          editable,
+        })
         : null,
+    // `editableNow` is deliberately NOT a dependency: it is construction-time
+    // wiring, and the cache ignores its inputs on a hit. Later changes go
+    // through `setEditable` in the effect below, which must not rebuild the
+    // editor — that would discard the undo stack and the selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [doc, name, caretProvider, caretUser],
   );
 

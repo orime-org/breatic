@@ -27,12 +27,14 @@ import { useDocumentHistory } from '@web/spaces/document/use-document-history';
  * @param root0.spaceId - ID of the document space.
  * @param root0.projectId - ID of the owning project.
  * @param root0.readOnly - True for a viewer; the body and toolbar go read-only.
+ * @param root0.writesBlocked - The project's connection cannot carry a change; same effect, different cause.
  * @returns The document editor, or a loading placeholder while it mounts.
  */
 export function DocumentSpace({
   spaceId,
   projectId,
   readOnly = false,
+  writesBlocked = false,
 }: SpaceBodyProps): React.JSX.Element {
   const t = useTranslation();
   const name = docName.documentSpace(projectId, spaceId);
@@ -55,22 +57,33 @@ export function DocumentSpace({
   });
   const caretUser = useCaretUser();
 
-  // The server refused this connection permission to write. Two reasons produce
-  // it: the user is a viewer, or they are over the document's connection cap.
-  // Only the second is worth saying — a viewer's read-only is their role and
-  // the UI shows it everywhere else, whereas this one contradicts what the UI
-  // believes and is otherwise completely silent: the server drops each update
-  // without an error or a disconnect, so a member would write a whole document
-  // and find none of it there on reload.
+  // The server refused this connection permission to write. It does NOT say
+  // why: the wire carries only "readonly" / "read-write", and the server sets
+  // it for a viewer, for a member over the document's connection cap, and for
+  // anyone whose document was refused outright. So the notice below states the
+  // fact and what follows from it, and claims no cause — an earlier version
+  // named the connection cap, which is wrong for a member who was just demoted,
+  // and that is precisely the case this exists to catch.
+  //
+  // Suppressed for a viewer, whose read-only is their role and is shown
+  // everywhere else in the UI. What is left is the case the UI is WRONG about,
+  // and which is otherwise completely silent: the server drops each update
+  // without an error or a disconnect, so the user writes a whole document and
+  // finds none of it there on reload.
   const writesRefused = writeAccess === 'denied';
-  const degradedToReadOnly = writesRefused && !readOnly;
 
-  // A per-document auth rejection: this Space's own document was refused while
-  // the project's stays healthy, so `ConnectionBanner` — which reads the
-  // project's document — shows nothing. Reachable when a collaborator deletes
-  // the Space in the window before this tab reconciles. Nothing will retry it,
-  // so the honest thing to render is a failure, not a spinner.
-  const unavailable = status === 'authFailed' && !hasEverSynced;
+  // This Space's own document was refused. Per-document in Hocuspocus: the
+  // shared socket stays open and every sibling document stays healthy, so
+  // `ConnectionBanner` — which watches the project's document — shows nothing.
+  // Reachable when a collaborator deletes the Space, or access is revoked.
+  const refused = status === 'authFailed';
+  // Nothing will retry it, so before any content arrived the honest thing to
+  // render is a failure rather than a spinner. AFTER content has arrived it
+  // would be the wrong trade: the text is on screen and the user may want to
+  // copy it, so it stays — read-only, with the refusal stated.
+  const unavailable = refused && !hasEverSynced;
+  const refusedWithContent = refused && hasEverSynced;
+  const degradedToReadOnly = writesRefused && !readOnly && !refusedWithContent;
 
   // The editor belongs to the document, not to this component: switching Space
   // tabs remounts this body, and what the Y.Doc does not hold — undo stack,
@@ -83,7 +96,10 @@ export function DocumentSpace({
     // The server's answer wins over the role we think we have. Letting a
     // refused client keep typing is the worst of both: it looks like it is
     // working, and none of it survives.
-    editable: !readOnly && !writesRefused,
+    // Three independent reasons not to accept a keystroke, all of which mean
+    // the same thing to the editor: the role, this document's own refusal, and
+    // the project-wide connection being down.
+    editable: !readOnly && !writesRefused && !writesBlocked,
     hasEverSynced,
   });
   // Nothing is offered until the document's real content is in. Editing before
@@ -108,6 +124,25 @@ export function DocumentSpace({
       data-space-id={spaceId}
       className='flex h-full w-full flex-col bg-background'
     >
+      {refusedWithContent ? (
+        <div
+          role='alert'
+          data-testid='document-space-refused-notice'
+          className='flex shrink-0 items-center gap-2 border-b border-status-error-border bg-status-error-bg px-4 py-2 text-sm text-status-error-foreground'
+        >
+          <AlertTriangle className='h-4 w-4 shrink-0' aria-hidden />
+          <span className='min-w-0 flex-1'>{t('spaces.document.refusedNotice')}</span>
+          <button
+            type='button'
+            data-testid='document-space-refused-retry'
+            onClick={() => window.location.reload()}
+            className='inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-status-error-border px-2.5 text-sm font-medium transition-colors duration-150 hover:bg-status-error-bg focus-visible:ring-1 focus-visible:ring-status-error focus-visible:outline-none'
+          >
+            <RefreshCw className='h-3.5 w-3.5' aria-hidden />
+            {t('spaces.document.unavailable.action')}
+          </button>
+        </div>
+      ) : null}
       {degradedToReadOnly ? (
         <div
           role='status'
@@ -146,7 +181,7 @@ export function DocumentSpace({
         <DocumentEditor
           editor={editor}
           history={history}
-          readOnly={readOnly || writesRefused}
+          readOnly={readOnly || writesRefused || writesBlocked}
         />
       ) : (
         <div

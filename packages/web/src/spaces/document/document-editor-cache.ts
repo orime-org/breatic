@@ -74,6 +74,16 @@ export interface DocumentEditorInputs {
   caretProvider: { awareness: unknown };
   /** This user's caret identity, published to other clients. */
   caretUser: CaretUserIdentity;
+  /**
+   * Whether this client may type, at the moment the editor is built.
+   *
+   * Construction-time only, like the rest of this interface — a later change
+   * goes through `setEditable` on the living editor rather than rebuilding it.
+   * It is here because the DEFAULT is editable, so leaving it to the effect
+   * that follows would give a viewer a `contenteditable` document for its
+   * first paint.
+   */
+  editable: boolean;
 }
 
 /**
@@ -88,6 +98,11 @@ function createDocumentEditor(
 ): DocumentEditorHandle {
   const undoManager = createDocumentUndoManager(doc);
   const editor = new Editor({
+    // Editability is set at CONSTRUCTION, not left to the effect that keeps it
+    // in step afterwards. TipTap defaults to editable, so a viewer's editor
+    // would otherwise be `contenteditable` from its first paint until that
+    // effect runs — a window in which the document is not read-only at all.
+    editable: inputs.editable,
     extensions: buildDocumentExtensions({
       fragment: documentBodyFragment(doc),
       caretProvider: inputs.caretProvider,

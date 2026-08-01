@@ -19,6 +19,20 @@
  * What is deliberately NOT here: anything about a particular editor's content.
  * The schema, the placeholder, the mention chips are each editor's own business
  * — this module is only the collaboration wiring.
+ *
+ * ## The one thing this cannot do for you
+ *
+ * An editor that also carries its OWN history — StarterKit ships `UndoRedo` on
+ * by default — ends up with two undo stacks, and the local one is blind to who
+ * made each change: a peer's edit arrives as an ordinary local transaction, so
+ * one Cmd+Z deletes their paragraph. Collaboration owns history, and the local
+ * history has to be switched off by the editor that configures it, because that
+ * is where the extension is added. Nothing here can reach it.
+ *
+ * So it is checked instead: `__tests__/no-second-undo-stack` asserts that every
+ * editor built on this module resolves a schema without a local history plugin.
+ * A new collaborative editor has to be added to that list — which is the point,
+ * because being absent from it is the failure.
  */
 
 import type { Extensions } from '@tiptap/core';
@@ -37,10 +51,14 @@ import {
 /** What an editor has to supply to be bound to a shared document. */
 export interface CollabExtensionOptions {
   /**
-   * The fragment this editor edits. Omitting it returns an empty list, which
-   * is how a schema-only or non-collaborative caller opts out.
+   * The fragment this editor edits.
+   *
+   * Required. It used to be optional, returning an empty list when absent —
+   * which reads at the call site as "collaboration wired up" while silently
+   * producing an editor with none of it. A caller that has no fragment yet
+   * should not be calling this.
    */
-  fragment?: Y.XmlFragment;
+  fragment: Y.XmlFragment;
   /**
    * Provider whose awareness carries collaborator carets. The caret extension
    * throws on a null provider, so carets mount only once this is present.
@@ -65,7 +83,6 @@ export function buildCollabExtensions(
   options: CollabExtensionOptions,
 ): Extensions {
   const { fragment, caretProvider, caretUser, undoManager } = options;
-  if (!fragment) return [];
 
   const extensions: Extensions = [
     Collaboration.configure({

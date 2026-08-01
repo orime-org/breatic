@@ -52,30 +52,52 @@ function toAbsoluteWsUrl(url: string): string {
 // the document never detaches and never re-auths. Real unmounts (tab close /
 // leave project) settle to refcount 0 and the deferred teardown fires.
 
+/**
+ * What the server has SETTLED about a document, as opposed to what is true of
+ * the connection this instant.
+ *
+ * Each of these is announced once and then never again: the content arrives,
+ * or the server refuses this document and leaves the shared socket open. A
+ * component that mounts afterwards cannot learn either by listening, because
+ * the handshake it would have heard is over and nothing reconnects.
+ *
+ * So they live with the DOCUMENT rather than with a component. The document
+ * outlives any one of them — a Space tab holds it open while the body that
+ * renders it is remounted on every tab switch — and a fact kept in component
+ * state is silently forgotten there. Both of these were: the latch showed a
+ * loading placeholder in front of content already in memory, and the refusal
+ * reverted to that same placeholder, permanently, with no explanation.
+ *
+ * Kept together deliberately. They are read as a set on every acquire, so a
+ * fact added here is picked up by that path automatically — the previous shape,
+ * one field with its own getter, is how the second fact came to be missed.
+ *
+ * Scoped to the entry, so they die with the provider and the Y.Doc: what comes
+ * back after a real teardown is a fresh document that has settled nothing.
+ */
+export interface DocFacts {
+  /**
+   * Whether the content has arrived at least once. A latch, unlike
+   * `provider.synced`, which answers "in sync right now" and drops to false on
+   * every routine close — a wifi switch, a laptop waking, a collab redeploy.
+   * Once the content is in, the local Y.Doc holds it and offline edits merge
+   * cleanly on reconnect.
+   */
+  hasEverSynced: boolean;
+  /**
+   * The server's reason for refusing this document, or null if it has not.
+   * Refusal is per-document in Hocuspocus: the shared socket stays open and
+   * every sibling document stays healthy, which is why nothing else surfaces
+   * it.
+   */
+  authFailure: string | null;
+}
+
 interface DocEntry {
   provider: HocuspocusProvider;
   refcount: number;
   pendingRelease: ReturnType<typeof setTimeout> | null;
-  /**
-   * Whether this document's content has arrived from the server at least once.
-   *
-   * A latch, unlike `provider.synced`, which answers "in sync right now" and
-   * drops to false on every routine close — a wifi switch, a laptop waking, a
-   * collab redeploy. Consumers that must not show a document before its real
-   * content is in (see `DocumentSpace`) need the former: once the content has
-   * arrived the local Y.Doc holds it, and edits made offline merge cleanly.
-   *
-   * It lives here rather than in a component because it is a fact about the
-   * DOCUMENT, and the document outlives any one component — a Space tab holds
-   * it open while the body that renders it is remounted on every tab switch. As
-   * component state the latch resets on that remount and the user is shown a
-   * loading placeholder in front of content already in memory.
-   *
-   * Scoped to this entry, so it dies with the provider and the Y.Doc: what
-   * comes back after a real teardown is a fresh document whose content
-   * genuinely has not arrived.
-   */
-  hasEverSynced: boolean;
+  facts: DocFacts;
 }
 
 let sharedSocket: HocuspocusProviderWebsocket | null = null;
@@ -145,15 +167,18 @@ export function acquireDocProvider(
     provider,
     refcount: 1,
     pendingRelease: null,
-    hasEverSynced: false,
+    facts: { hasEverSynced: false, authFailure: null },
   };
   docEntries.set(name, entry);
-  // The registry watches for the first sync itself rather than letting a
-  // consumer report it: consumers come and go, and the one that happens to be
-  // mounted when the content lands is not necessarily the one that needs to
-  // know later. Subscribed before `attach` so no sync can precede it.
+  // The registry watches for these itself rather than letting a consumer report
+  // them: consumers come and go, and the one that happens to be mounted when
+  // the server answers is not necessarily the one that needs to know later.
+  // Subscribed before `attach` so nothing can precede them.
   provider.on('synced', () => {
-    entry.hasEverSynced = true;
+    entry.facts.hasEverSynced = true;
+  });
+  provider.on('authenticationFailed', (data: { reason?: string } | undefined) => {
+    entry.facts.authFailure = data?.reason ?? 'unknown';
   });
   // A shared-websocketProvider provider does NOT auto-attach (its constructor
   // only auto-attaches when it manages its own socket). Attach explicitly or it
@@ -162,16 +187,21 @@ export function acquireDocProvider(
   return provider;
 }
 
+/** What a document that is not currently held open has settled: nothing. */
+const NO_FACTS: DocFacts = { hasEverSynced: false, authFailure: null };
+
 /**
- * Whether a document's content has arrived from the server at least once.
+ * Everything the server has settled about a document.
  *
- * See {@link DocEntry.hasEverSynced} for why this is a property of the document
- * rather than of whichever component is currently rendering it.
+ * See {@link DocFacts} for why these belong to the document rather than to
+ * whichever component is currently rendering it. Read as a set on every
+ * acquire, so a consumer that remounts picks up what it was not there to hear.
  * @param name - Document name previously passed to {@link acquireDocProvider}.
- * @returns True once the document has synced; false before that, and for a document that is not currently held open.
+ * @returns The settled facts, or all-empty for a document not currently held open.
  */
-export function hasDocEverSynced(name: string): boolean {
-  return docEntries.get(name)?.hasEverSynced ?? false;
+export function readDocFacts(name: string): DocFacts {
+  const facts = docEntries.get(name)?.facts;
+  return facts ? { ...facts } : NO_FACTS;
 }
 
 /**

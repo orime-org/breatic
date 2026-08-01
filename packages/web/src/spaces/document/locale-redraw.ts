@@ -18,8 +18,8 @@
  * The dispatch is deliberately empty: it changes no content, produces no update
  * bytes, and is marked `addToHistory: false` so it cannot land on anyone's undo
  * stack. It does open one empty Y.Doc transaction, the same way publishing
- * caret focus does; see `use-collab-caret-focus` for why that is harmless here
- * and what keeps it so.
+ * caret focus does; see `features/collab-editor/use-collab-caret-presence` for
+ * why that is harmless here and what keeps it so.
  */
 
 import { Extension } from '@tiptap/core';
