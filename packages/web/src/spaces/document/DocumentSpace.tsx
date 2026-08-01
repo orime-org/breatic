@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 import * as React from 'react';
 
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -48,8 +49,28 @@ export function DocumentSpace({
   // this component is remounted on every Space-tab switch, and a latch that
   // resets there would show a loading placeholder in front of content the
   // local Y.Doc already holds.
-  const { provider, hasEverSynced } = useSocket({ name, doc });
+  const { provider, hasEverSynced, status, writeAccess } = useSocket({
+    name,
+    doc,
+  });
   const caretUser = useCaretUser();
+
+  // The server refused this connection permission to write. Two reasons produce
+  // it: the user is a viewer, or they are over the document's connection cap.
+  // Only the second is worth saying — a viewer's read-only is their role and
+  // the UI shows it everywhere else, whereas this one contradicts what the UI
+  // believes and is otherwise completely silent: the server drops each update
+  // without an error or a disconnect, so a member would write a whole document
+  // and find none of it there on reload.
+  const writesRefused = writeAccess === 'denied';
+  const degradedToReadOnly = writesRefused && !readOnly;
+
+  // A per-document auth rejection: this Space's own document was refused while
+  // the project's stays healthy, so `ConnectionBanner` — which reads the
+  // project's document — shows nothing. Reachable when a collaborator deletes
+  // the Space in the window before this tab reconciles. Nothing will retry it,
+  // so the honest thing to render is a failure, not a spinner.
+  const unavailable = status === 'authFailed' && !hasEverSynced;
 
   // The editor belongs to the document, not to this component: switching Space
   // tabs remounts this body, and what the Y.Doc does not hold — undo stack,
@@ -59,7 +80,10 @@ export function DocumentSpace({
     name,
     caretProvider: provider,
     caretUser,
-    editable: !readOnly,
+    // The server's answer wins over the role we think we have. Letting a
+    // refused client keep typing is the worst of both: it looks like it is
+    // working, and none of it survives.
+    editable: !readOnly && !writesRefused,
     hasEverSynced,
   });
   // Nothing is offered until the document's real content is in. Editing before
@@ -84,11 +108,45 @@ export function DocumentSpace({
       data-space-id={spaceId}
       className='flex h-full w-full flex-col bg-background'
     >
-      {editor ? (
+      {degradedToReadOnly ? (
+        <div
+          role='status'
+          aria-live='polite'
+          data-testid='document-space-readonly-notice'
+          className='flex shrink-0 items-center gap-2 border-b border-status-warning-border bg-status-warning-bg px-4 py-2 text-sm text-status-warning-foreground'
+        >
+          <AlertTriangle className='h-4 w-4 shrink-0' aria-hidden />
+          <span>{t('spaces.document.readOnlyNotice')}</span>
+        </div>
+      ) : null}
+      {unavailable ? (
+        <div
+          role='alert'
+          data-testid='document-space-unavailable'
+          className='flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center'
+        >
+          <AlertTriangle
+            className='h-6 w-6 text-status-error-foreground'
+            aria-hidden
+          />
+          <p className='max-w-md text-sm text-muted-foreground'>
+            {t('spaces.document.unavailable.text')}
+          </p>
+          <button
+            type='button'
+            data-testid='document-space-unavailable-retry'
+            onClick={() => window.location.reload()}
+            className='inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium transition-colors duration-150 hover:bg-muted focus-visible:ring-1 focus-visible:ring-active-border focus-visible:outline-none'
+          >
+            <RefreshCw className='h-3.5 w-3.5' aria-hidden />
+            {t('spaces.document.unavailable.action')}
+          </button>
+        </div>
+      ) : editor ? (
         <DocumentEditor
           editor={editor}
           history={history}
-          readOnly={readOnly}
+          readOnly={readOnly || writesRefused}
         />
       ) : (
         <div

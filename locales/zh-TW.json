@@ -930,6 +930,11 @@
     "lockedAria": "已鎖定",
     "document": {
       "loading": "正在載入編輯器…",
+      "unavailable": {
+        "text": "這個文件開不了。它可能已被刪除，或者你已經沒有存取權限了。",
+        "action": "重試"
+      },
+      "readOnlyNotice": "現在無法編輯 —— 同時開啟這個文件的人太多了。你仍然可以閱讀。",
       "placeholder": "開始寫作…",
       "toolbar": {
         "undo": "復原",

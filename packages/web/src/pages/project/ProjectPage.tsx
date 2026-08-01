@@ -644,9 +644,29 @@ function ProjectWorkspace({
           );
         }}
       />
+      {/*
+        `inert` rather than a hand-rolled block. The overlay below stops
+        POINTER input; it cannot stop the keyboard, and a caret already inside
+        the document editor when the connection drops stays there — every
+        keystroke after that reaches the editor and the local Y.Doc, behind an
+        opaque curtain, with nowhere to send it. `preventDefault` on the
+        curtain's mousedown made that worse: clicking it could not even move
+        focus out.
+
+        `inert` is the platform's own answer and settles all of it at once: no
+        pointer events, no keyboard events, focus is pulled out of the subtree
+        and cannot return, and it carries `aria-hidden` semantics implicitly.
+        The explicit `aria-hidden` this replaces was in fact being IGNORED by
+        Chrome, which refuses it on an ancestor of the focused element and logs
+        a warning — precisely the case here.
+
+        Note for anyone reading the tests: jsdom does not implement inert (it
+        does not even reflect the attribute back), so the unit tests can only
+        pin that it is set. The behaviour itself is browser-verified.
+      */}
       <div
         className='relative flex min-h-0 flex-1 flex-col'
-        aria-hidden={workspaceDisabled || undefined}
+        inert={workspaceDisabled || undefined}
         data-workspace-disabled={workspaceDisabled || undefined}
       >
         <TopBar
@@ -784,12 +804,15 @@ function ProjectWorkspace({
             </div>
           </section>
         </div>
+        {/*
+          Purely the visual curtain now. Input is stopped by `inert` on the
+          wrapper above, which covers the keyboard as well — the
+          `preventDefault` handlers this used to carry blocked only pointer
+          events and are gone.
+        */}
         {workspaceDisabled ? (
           <div
             className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
-            onClick={(e) => e.preventDefault()}
-            onMouseDown={(e) => e.preventDefault()}
-            aria-hidden
             data-testid='workspace-disabled-overlay'
           />
         ) : null}

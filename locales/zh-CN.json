@@ -930,6 +930,11 @@
     "lockedAria": "已锁定",
     "document": {
       "loading": "正在加载编辑器…",
+      "unavailable": {
+        "text": "这个文档打不开。它可能已被删除，或者你已经没有访问权限了。",
+        "action": "重试"
+      },
+      "readOnlyNotice": "现在无法编辑 —— 同时打开这个文档的人太多了。你仍然可以阅读。",
       "placeholder": "开始写作…",
       "toolbar": {
         "undo": "撤销",

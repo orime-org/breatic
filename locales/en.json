@@ -930,6 +930,11 @@
     "lockedAria": "Locked",
     "document": {
       "loading": "Loading editor…",
+      "unavailable": {
+        "text": "This document could not be opened. It may have been deleted, or you may no longer have access to it.",
+        "action": "Try again"
+      },
+      "readOnlyNotice": "Editing is unavailable right now — too many people have this document open. You can still read it.",
       "placeholder": "Start writing…",
       "toolbar": {
         "undo": "Undo",

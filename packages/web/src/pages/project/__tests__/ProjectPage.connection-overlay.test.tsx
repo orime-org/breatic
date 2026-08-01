@@ -189,11 +189,30 @@ describe('ProjectPage — the workspace overlay follows the banner', () => {
     ).toBeInTheDocument();
   });
 
-  it('marks the covered workspace inert for assistive tech too', async () => {
+  it('makes the covered workspace inert, so the keyboard is stopped too', async () => {
+    // The curtain is only paint. What actually stops input is `inert` on the
+    // wrapper: without it a caret already inside the document editor when the
+    // connection drops keeps receiving keystrokes — into a local Y.Doc with
+    // nowhere to send them, behind an opaque overlay.
+    //
+    // This asserts the attribute, not the behaviour, and deliberately so:
+    // jsdom implements no part of inert (it will not even reflect the
+    // attribute back onto the element), so there is nothing here to observe.
+    // The effect is verified in a real browser. What this does hold is the
+    // regression: remove the attribute and the test fails.
     setup('disconnected');
     await screen.findByTestId('workspace-disabled-overlay');
     const workspace = document.querySelector('[data-workspace-disabled]');
     expect(workspace).not.toBeNull();
-    expect(workspace?.getAttribute('aria-hidden')).toBe('true');
+    expect(workspace?.hasAttribute('inert')).toBe(true);
+  });
+
+  it('leaves the workspace interactive while the connection is healthy', async () => {
+    // The other half of the same invariant: `inert` must be absent in the
+    // steady state, or the whole project page is dead to input.
+    setup('connected');
+    const workspace = document.querySelector('.relative.flex.min-h-0');
+    expect(workspace).not.toBeNull();
+    expect(workspace?.hasAttribute('inert')).toBe(false);
   });
 });

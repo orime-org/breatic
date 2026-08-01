@@ -211,6 +211,31 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     expect(reopened.result.current.hasEverSynced).toBe(false);
   });
 
+  it('reports the write access the server granted, not the one we assumed', () => {
+    // The server decides per connection whether it may write: a viewer, or an
+    // otherwise-writable member who is over the per-document connection cap,
+    // is authenticated with a read-only scope. It says so on the wire
+    // (`writeAuthenticated(readOnly)` → "readonly" / "read-write"). Dropping
+    // that leaves a client rendering a live editor whose every update the
+    // server discards without an error — in a text editor, a whole document
+    // typed and lost with nothing on screen to hint at it.
+    const doc = new Y.Doc();
+    const { result } = renderHook(
+      () => useSocket({ name: 'project-p1/document-s4', doc }),
+      { wrapper: wrapper('u1') },
+    );
+    // Nothing claimed either way until the server has answered.
+    expect(result.current.writeAccess).toBe('unknown');
+
+    act(() => providerInstances[0]!.emit('authenticated', { scope: 'readonly' }));
+    expect(result.current.writeAccess).toBe('denied');
+
+    act(() =>
+      providerInstances[0]!.emit('authenticated', { scope: 'read-write' }),
+    );
+    expect(result.current.writeAccess).toBe('granted');
+  });
+
   it('on unmount: releases the doc (deferred) but never closes the shared socket synchronously', () => {
     const doc = new Y.Doc();
     const { unmount } = renderHook(

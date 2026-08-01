@@ -20,20 +20,28 @@ const socketAwareness = new Awareness(new Y.Doc());
 // `hasEverSynced` are separate on purpose: the first answers "in sync right
 // now", the second "has the content ever arrived", and the container must read
 // the second.
-const socketState = { synced: true, hasEverSynced: true };
+const socketState = {
+  synced: true,
+  hasEverSynced: true,
+  status: 'connected' as 'connected' | 'authFailed' | 'disconnected',
+  writeAccess: 'granted' as 'unknown' | 'granted' | 'denied',
+  authFailedReason: null as string | null,
+};
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: (): {
     provider: { awareness: unknown };
     synced: boolean;
     hasEverSynced: boolean;
-    status: 'connected';
-    authFailedReason: null;
+    status: string;
+    writeAccess: string;
+    authFailedReason: string | null;
   } => ({
     provider: { awareness: socketAwareness },
     synced: socketState.synced,
     hasEverSynced: socketState.hasEverSynced,
-    status: 'connected',
-    authFailedReason: null,
+    status: socketState.status,
+    writeAccess: socketState.writeAccess,
+    authFailedReason: socketState.authFailedReason,
   }),
 }));
 
@@ -53,6 +61,63 @@ describe('DocumentSpace', () => {
     useCurrentUserStore.setState({ user: null });
     socketState.synced = true;
     socketState.hasEverSynced = true;
+    socketState.status = 'connected';
+    socketState.writeAccess = 'granted';
+    socketState.authFailedReason = null;
+  });
+
+  it('says the document could not be opened, instead of loading forever', async () => {
+    // A document's own connection can be refused while the project's stays
+    // healthy — they are separate documents on the shared socket. The project
+    // banner is driven by the project's document, so it stays green and says
+    // nothing. Meanwhile this body knew the exact cause and rendered
+    // "Loading editor…", which is a lie: nothing is loading and nothing ever
+    // will. The user is left with a spinner, no explanation, and no way out.
+    socketState.synced = false;
+    socketState.hasEverSynced = false;
+    socketState.status = 'authFailed';
+    socketState.authFailedReason = 'Forbidden';
+    render(<DocumentSpace projectId='p1' spaceId='doc-refused' />);
+
+    expect(
+      await screen.findByTestId('document-space-unavailable'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('document-space-loading')).toBeNull();
+    // And a way out — this is recoverable by reloading in the cases that
+    // produce it (a Space deleted in another tab, a claim landing late).
+    expect(
+      screen.getByTestId('document-space-unavailable-retry'),
+    ).toBeInTheDocument();
+  });
+
+  it('goes read-only, and says so, when the server refuses writes', async () => {
+    // The server authenticates a connection read-only when the user is a
+    // viewer OR when they are over the document's connection cap. In the
+    // second case the UI believes this member may edit: it renders a live
+    // editor, a working toolbar and a caret, while the server discards every
+    // update it sends — no error, no disconnect. The document is written and
+    // lost, and on reload none of it is there.
+    socketState.writeAccess = 'denied';
+    render(<DocumentSpace projectId='p1' spaceId='doc-capped' />);
+    await screen.findByTestId('document-toolbar');
+
+    expect(screen.getByTestId('document-space-readonly-notice')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        document.querySelector('.ProseMirror')?.getAttribute('contenteditable'),
+      ).toBe('false'),
+    );
+  });
+
+  it('does not nag a viewer about being read-only — they already know', async () => {
+    // A viewer's read-only is their role, shown by the UI everywhere else. The
+    // notice exists for the case the UI is WRONG about, so showing it to a
+    // viewer would be noise on every document they ever open.
+    socketState.writeAccess = 'denied';
+    render(<DocumentSpace projectId='p1' spaceId='doc-viewer' readOnly />);
+    await screen.findByTestId('document-toolbar');
+
+    expect(screen.queryByTestId('document-space-readonly-notice')).toBeNull();
   });
 
   it('shows the content again immediately after a Space-tab switch', async () => {

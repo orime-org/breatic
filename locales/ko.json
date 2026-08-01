@@ -930,6 +930,11 @@
     "lockedAria": "잠김",
     "document": {
       "loading": "편집기를 불러오는 중…",
+      "unavailable": {
+        "text": "이 문서를 열 수 없습니다. 삭제되었거나 더 이상 접근 권한이 없을 수 있습니다.",
+        "action": "다시 시도"
+      },
+      "readOnlyNotice": "지금은 편집할 수 없습니다 — 이 문서를 동시에 열어 둔 사람이 너무 많습니다. 읽기는 가능합니다.",
       "placeholder": "작성을 시작하세요…",
       "toolbar": {
         "undo": "실행 취소",

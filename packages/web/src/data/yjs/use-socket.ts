@@ -36,6 +36,36 @@ export type ConnectionStatus =
   | 'authFailed'
   | 'disconnected';
 
+/**
+ * Whether the SERVER has granted this connection permission to write.
+ *
+ * Distinct from the role the UI already knows about. A connection is
+ * authenticated read-only either because the user is a viewer or because they
+ * are over the document's connection cap — and in the second case a member the
+ * UI believes may edit cannot. The server answers this on the wire at
+ * authentication time; anything it refuses afterwards is discarded silently,
+ * with no error and no disconnect, so this is the only warning a client gets.
+ *
+ *   unknown — not yet authenticated for this document
+ *   granted — may write
+ *   denied  — authenticated read-only; every update sent will be dropped
+ */
+export type WriteAccess = 'unknown' | 'granted' | 'denied';
+
+/**
+ * Read a provider's already-settled write access.
+ *
+ * Needed alongside the `authenticated` listener because the provider registry
+ * is shared: a document another component acquired first may already have
+ * authenticated, and it will not re-emit the event for a late subscriber.
+ * @param provider - The document's provider.
+ * @returns What the server granted, or `unknown` if it has not answered yet.
+ */
+function readWriteAccess(provider: HocuspocusProvider): WriteAccess {
+  if (!provider.isAuthenticated) return 'unknown';
+  return provider.authorizedScope === 'readonly' ? 'denied' : 'granted';
+}
+
 interface SocketState {
   /** The active provider (null until first connect). */
   provider: HocuspocusProvider | null;
@@ -60,6 +90,11 @@ interface SocketState {
   hasEverSynced: boolean;
   /** High-level connection lifecycle for banner UI. */
   status: ConnectionStatus;
+  /**
+   * Whether the server granted this connection permission to write. See
+   * {@link WriteAccess} — `denied` means updates are being dropped in silence.
+   */
+  writeAccess: WriteAccess;
   /**
    * If `status === 'authFailed'`, the server-provided reason string
    * (e.g. `"Forbidden"`). Used by future ErrorState code to discriminate
@@ -97,6 +132,8 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
   // survive this component being remounted.
   const [hasEverSynced, setHasEverSynced] = React.useState(false);
   const [status, setStatus] = React.useState<ConnectionStatus>('connecting');
+  const [writeAccess, setWriteAccess] =
+    React.useState<WriteAccess>('unknown');
   const [authFailedReason, setAuthFailedReason] = React.useState<
     string | null
   >(null);
@@ -120,6 +157,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       setStatus('connecting');
       setSynced(false);
       setHasEverSynced(false);
+      setWriteAccess('unknown');
       setAuthFailedReason(null);
       setProvider(null);
       return;
@@ -141,6 +179,9 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
     // since it was first acquired — including while this component did not
     // exist. This is the line that survives a Space-tab switch.
     setHasEverSynced(hasDocEverSynced(name));
+    // Re-read on acquire, because a shared provider that authenticated before
+    // this component mounted will not re-emit `authenticated`.
+    setWriteAccess(readWriteAccess(provider));
     setAuthFailedReason(null);
 
     /**
@@ -150,6 +191,14 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       setSynced(true);
       setHasEverSynced(true);
       setStatus('connected');
+    };
+    /**
+     * Authentication succeeded; the payload carries what we may do with the
+     * document. Hocuspocus sends `"readonly"` or `"read-write"`.
+     * @param data - Authentication payload carrying the granted scope.
+     */
+    const onAuthenticated = (data: { scope?: string } | undefined): void => {
+      setWriteAccess(data?.scope === 'readonly' ? 'denied' : 'granted');
     };
     /**
      * Server rejected token / membership → surface a sticky auth banner.
@@ -182,6 +231,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
     };
 
     provider.on('synced', onSynced);
+    provider.on('authenticated', onAuthenticated);
     provider.on('authenticationFailed', onAuthFailed);
     provider.on('close', onClose);
 
@@ -189,6 +239,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       // Remove our listeners BEFORE releasing — so the deferred teardown's
       // destroy() close never reaches this hook (no false disconnect report).
       provider.off('synced', onSynced);
+      provider.off('authenticated', onAuthenticated);
       provider.off('authenticationFailed', onAuthFailed);
       provider.off('close', onClose);
       setProvider(null);
@@ -200,6 +251,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       // reads the new document's latch.
       setHasEverSynced(false);
       setStatus('connecting');
+      setWriteAccess('unknown');
       setAuthFailedReason(null);
     };
   }, [ready, name, doc, url]);
@@ -209,6 +261,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
     synced,
     hasEverSynced,
     status,
+    writeAccess,
     authFailedReason,
   };
 }
