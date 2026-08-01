@@ -285,6 +285,17 @@ export default tseslint.config(
     // The transport itself needs no exemption — it names `fetch` as a default
     // (`options.fetchImpl ?? fetch`) but calls it through that binding, and
     // this rule matches calls, not references.
+    //
+    // Scoped to `src/**` of the backend packages ON PURPOSE, and the reason is
+    // worth writing down because this repo has been bitten by exactly this
+    // narrowing before: `no-auth-bypass-residue` had to widen to every tracked
+    // file, since the residue it hunted lived in a README, a Dockerfile and two
+    // env templates. The difference is what each rule is FOR. That one hunted
+    // traces of a removed feature, which can hide anywhere. This one asks
+    // whether product code bypasses the shared retry judgement — and outside
+    // `src/` there is no product code, only build and lint tooling, whose
+    // one-shot fetches answer to nobody's retry policy. `packages/web` is
+    // covered by its own config, which has the same rule.
     files: [
       "packages/{core,shared,domain,server,worker,collab}/src/**/*.{ts,tsx}",
     ],
