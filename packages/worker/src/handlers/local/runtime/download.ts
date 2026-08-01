@@ -35,44 +35,23 @@ import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { join, extname } from "node:path";
 
-import { logger } from "@breatic/core";
 import { newId, httpRequest, ASSET_HEADER_TIMEOUT_MS } from "@breatic/shared";
-import type { HttpRetryEvent } from "@breatic/shared";
+
+import { httpEventLogger } from "@worker/providers/http-telemetry.js";
 
 /**
  * Report a transfer that had to be replayed, or gave up.
  *
- * Kept separate from the provider transports' telemetry so an on-call
- * engineer can tell "the vendor is degraded" apart from "our own object
- * store is degraded" — they have different owners and different fixes.
- * @param event - A retry or exhaustion event from the transport.
+ * Named apart from the provider transports' telemetry so an on-call engineer
+ * can tell "the vendor is degraded" from "our own object store is degraded" —
+ * different owners, different fixes. Only the NAMES differ: the judgement of
+ * which outcomes are worth a line is shared, because it is one rule and two
+ * copies of it drift.
  */
-function logDownloadEvent(event: HttpRetryEvent): void {
-  if (event.type === "retry") {
-    logger.warn(
-      {
-        url: event.url,
-        attempt: event.attempt,
-        delay: event.delayMs,
-        reason: event.reason,
-        status: event.status,
-      },
-      "asset_download_retry",
-    );
-    return;
-  }
-  if (event.reason !== "client_error" && event.reason !== "nothing_to_retry") {
-    logger.warn(
-      {
-        url: event.url,
-        attempts: event.attempts,
-        reason: event.reason,
-        status: event.status,
-      },
-      "asset_download_gave_up",
-    );
-  }
-}
+const logDownloadEvent = httpEventLogger({
+  retry: "asset_download_retry",
+  gaveUp: "asset_download_gave_up",
+});
 
 /**
  * Download a URL into a job temp dir. Returns the downloaded path.

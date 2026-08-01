@@ -18,6 +18,8 @@
  */
 
 import { logger } from "@breatic/core";
+
+import { httpEventLogger } from "@worker/providers/http-telemetry.js";
 import { getWorkerConfig } from "@breatic/core";
 import {
   bearerHeaders,
@@ -41,36 +43,25 @@ import type { ResolvedModel } from "@worker/providers/shared.js";
  * would know the provider was degraded.
  * @param event - A retry or poll event from the transport.
  */
+const logHttp = httpEventLogger({
+  retry: "provider_http_retry",
+  gaveUp: "provider_http_gave_up",
+});
+
+/**
+ * Route one transport or poll event to the worker's logger.
+ *
+ * The HTTP half is shared with the asset download's sink — same rule about
+ * which refusals are worth a line, different event names so an on-call
+ * engineer can tell a degraded vendor from a degraded object store. The poll
+ * half below is this file's own, because only provider polling emits it.
+ * @param event - The event to report.
+ */
 function logTransportEvent(event: HttpRetryEvent | PollEvent): void {
   switch (event.type) {
     case "retry":
-      logger.warn(
-        {
-          provider: event.label,
-          url: event.url,
-          attempt: event.attempt,
-          delay: event.delayMs,
-          reason: event.reason,
-          status: event.status,
-        },
-        "provider_http_retry",
-      );
-      break;
     case "exhausted":
-      // Only worth a log when a replay was actually declined or spent —
-      // a plain 404 is the caller's business, not a transport incident.
-      if (event.reason !== "client_error" && event.reason !== "nothing_to_retry") {
-        logger.warn(
-          {
-            provider: event.label,
-            url: event.url,
-            attempts: event.attempts,
-            reason: event.reason,
-            status: event.status,
-          },
-          "provider_http_gave_up",
-        );
-      }
+      logHttp(event);
       break;
     case "poll_failed":
       logger.warn(
@@ -186,8 +177,15 @@ export async function requestRaw(
  */
 export const INHERITED_POLL_INTERVAL_MS = 2000;
 
-/** Worker-side poll options: vendor status vocabulary plus timing. */
-export interface PollOptions {
+/**
+ * Worker-side poll options: vendor status vocabulary plus timing.
+ *
+ * Named apart from the shared transport's `PollOptions`, which it adapts. The
+ * two were different types under one name — four fields renamed, three filled
+ * from `worker.yaml` — so importing "the" PollOptions got you whichever one
+ * your editor guessed first.
+ */
+export interface WorkerPollOptions {
   headers?: Record<string, string>;
   params?: Record<string, string>;
   statusPath: string[];
@@ -215,7 +213,7 @@ export interface PollOptions {
  */
 export async function pollUntilDone(
   url: string,
-  options: PollOptions,
+  options: WorkerPollOptions,
 ): Promise<Record<string, unknown>> {
   const cfg = getWorkerConfig();
   return sharedPollUntilDone(url, {

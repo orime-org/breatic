@@ -113,8 +113,12 @@ async function estimateCost(
     const data = (await response.json()) as Record<string, unknown>;
     const credits = (data.credits as number) ?? 0;
     return credits * (resolved.creditPrice ?? 0);
-  } catch {
-    logger.warn({ model: resolved.modelName }, "topaz_estimate_failed");
+  } catch (err) {
+    // The error object was being dropped, leaving a line that says the
+    // estimate failed and nothing about why — and this path degrades silently
+    // to a zero cost, so a persistently broken estimate is invisible unless
+    // the reason is in the log.
+    logger.warn({ err, model: resolved.modelName }, "topaz_estimate_failed");
     return 0;
   }
 }
