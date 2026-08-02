@@ -84,6 +84,11 @@ describe('DocumentSpace', () => {
     socketState.hasEverSynced = false;
     socketState.status = 'authFailed';
     socketState.authFailedReason = 'Forbidden';
+    // The real hook always pairs these: a refusal costs write access. Leaving
+    // `writeAccess` at its default would set up a combination `useSocket` can
+    // no longer produce, and a test built on an impossible state proves nothing
+    // about the real one.
+    socketState.writeAccess = 'denied';
     render(<DocumentSpace projectId='p1' spaceId='doc-refused' />);
 
     expect(

@@ -29,10 +29,10 @@
  * history has to be switched off by the editor that configures it, because that
  * is where the extension is added. Nothing here can reach it.
  *
- * So it is checked instead: `__tests__/no-second-undo-stack` asserts that every
- * editor built on this module resolves a schema without a local history plugin.
- * A new collaborative editor has to be added to that list — which is the point,
- * because being absent from it is the failure.
+ * So it is checked instead, in `__tests__/no-second-undo-stack`, for every
+ * editor that exposes a builder the test can call. That is not all of them —
+ * an editor composing its list inline inside a component cannot be reached — so
+ * the test names its own gap rather than implying full coverage.
  */
 
 import type { Extensions } from '@tiptap/core';

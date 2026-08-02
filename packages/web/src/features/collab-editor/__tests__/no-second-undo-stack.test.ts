@@ -19,6 +19,9 @@
  * added to it, and being absent from it is precisely the failure this exists
  * to catch — an imported list would grow itself and assert nothing.
  *
+ * It does NOT cover every collaborative editor today, and says so where an
+ * editor is missing. Claiming otherwise would be worse than the gap.
+ *
  * The check builds a real editor rather than reading the extension array,
  * because a preset is ONE entry there: StarterKit's own name is all an array
  * scan sees, and the `undoRedo` it contributes is invisible until the manager
