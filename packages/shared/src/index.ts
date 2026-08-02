@@ -220,25 +220,19 @@ export { sleep } from "@shared/sleep.js";
 // so a verdict is reached in exactly one place. (`decideRetry` itself is
 // exported further down, for the one caller whose retry subject is not a
 // `fetch`; the point is one implementation of the judgement, not one exit.)
-export { httpRequest, httpRequestJson } from "@shared/http/request.js";
-export type { HttpRequestOptions, HttpRetryEvent } from "@shared/http/request.js";
-// The handle `httpRequest` returns. Exported because the worker's transports
-// name it in their own signatures; `guardResponseBody` itself stays internal
-// so nothing outside this package can mint an unguarded one.
-export type { GuardedResponse } from "@shared/http/body-guard.js";
-export { pollUntilDone } from "@shared/http/poll.js";
-export type { PollOptions, PollEvent } from "@shared/http/poll.js";
-export { bearerHeaders } from "@shared/http/headers.js";
-export { extractNested } from "@shared/http/json-path.js";
-// Only the one constant a caller actually names. `MAX_RETRIES` and
-// `BODY_IDLE_TIMEOUT_MS` were exported here too and had no consumer anywhere:
-// exporting them contradicted the very thing this transport is for. They are
-// fixed rather than configurable on purpose — worker and browser each used to
-// carry their own copy and the two drifted into meaning different things — so
-// putting them on the public surface invites exactly the second opinion the
-// fixed values exist to prevent. They stay internal; the deadline a CALLER
-// legitimately varies (per attempt, per file size) is the one below.
-export { ASSET_HEADER_TIMEOUT_MS } from "@shared/http/constants.js";
+//
+// It hands back the platform's own `Response` and holds nothing afterwards.
+// Reading it — how long a read may stall, how large it may be, how to stop
+// one — belongs to the caller: the HTTP client underneath already times a
+// stalled read, and a second timer on top would be a duplicate with worse
+// information (decided 2026-08-02).
+export { httpRequest } from "@shared/http/request.js";
+export type { HttpRequestOptions, HttpOutcome } from "@shared/http/request.js";
+// No constants are exported. They are fixed rather than configurable on
+// purpose — worker and browser each used to carry their own copy of the retry
+// count and the two drifted into meaning different things — so putting them on
+// the public surface invites exactly the second opinion the fixed values exist
+// to prevent.
 // The judgement is exposed on its own for callers whose retry subject is not
 // a `fetch` — the browser's presign step retries an axios call, so it owns the
 // loop but must not own a second opinion about what is worth retrying.

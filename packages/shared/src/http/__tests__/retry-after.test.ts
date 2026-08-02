@@ -64,7 +64,6 @@ describe("Retry-After relay", () => {
     await httpRequest(URL_UNDER_TEST, {}, {
       replaySafe: true,
       timeoutMs: 1_000,
-      bodyIdleTimeoutMs: 200,
       fetchImpl,
       sleepImpl,
       label: "probe",
@@ -85,10 +84,9 @@ describe("Retry-After relay", () => {
       new Response("{}", { status: 200 }),
     ]);
 
-    const res = await httpRequest(URL_UNDER_TEST, {}, {
+    const { response: res } = await httpRequest(URL_UNDER_TEST, {}, {
       replaySafe: true,
       timeoutMs: 1_000,
-      bodyIdleTimeoutMs: 200,
       fetchImpl,
       sleepImpl,
       label: "probe",
@@ -110,7 +108,6 @@ describe("Retry-After relay", () => {
     await httpRequest(URL_UNDER_TEST, {}, {
       replaySafe: true,
       timeoutMs: 1_000,
-      bodyIdleTimeoutMs: 200,
       fetchImpl,
       sleepImpl,
       label: "probe",
@@ -133,11 +130,10 @@ describe("Retry-After relay", () => {
       new Response("{}", { status: 200 }),
     ]);
 
-    const res = await httpRequest(URL_UNDER_TEST, {}, {
+    const { response: res, retryAfterMs: named } = await httpRequest(URL_UNDER_TEST, {}, {
       replaySafe: true,
       interactive: true,
       timeoutMs: 1_000,
-      bodyIdleTimeoutMs: 200,
       fetchImpl,
       sleepImpl,
       label: "probe",
@@ -147,8 +143,8 @@ describe("Retry-After relay", () => {
     expect(res.status).toBe(429);
     // Same correction: assert on what the transport reported, not on two
     // constants sitting next to each other.
-    expect(res.retryAfterMs).toBe(20_000);
-    expect(res.retryAfterMs).toBeGreaterThan(MAX_RETRY_AFTER_INTERACTIVE_MS);
+    expect(named).toBe(20_000);
+    expect(named).toBeGreaterThan(MAX_RETRY_AFTER_INTERACTIVE_MS);
   });
 
   it("honours Retry-After even when replaying is NOT safe", async () => {
@@ -164,7 +160,6 @@ describe("Retry-After relay", () => {
     await httpRequest(URL_UNDER_TEST, {}, {
       replaySafe: false,
       timeoutMs: 1_000,
-      bodyIdleTimeoutMs: 200,
       fetchImpl,
       sleepImpl,
       label: "probe",
@@ -183,7 +178,6 @@ describe("Retry-After relay", () => {
     await httpRequest(URL_UNDER_TEST, {}, {
       replaySafe: true,
       timeoutMs: 1_000,
-      bodyIdleTimeoutMs: 200,
       fetchImpl,
       sleepImpl,
       label: "probe",
@@ -207,7 +201,6 @@ describe("Retry-After relay", () => {
     await httpRequest(URL_UNDER_TEST, {}, {
       replaySafe: true,
       timeoutMs: 1_000,
-      bodyIdleTimeoutMs: 200,
       fetchImpl,
       sleepImpl,
       label: "probe",

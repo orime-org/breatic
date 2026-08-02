@@ -51,14 +51,6 @@ export type RetryRefusal =
   | "fatal_error"
   /** The attempt budget is spent. */
   | "attempts_exhausted"
-  /**
-   * The between-attempt wait itself failed, without the caller having
-   * cancelled. Distinct from `caller_aborted` because they call for different
-   * responses: one is a person pressing stop, the other is our own timer
-   * machinery being unwell, and reporting the second as the first sends
-   * on-call looking for a user action that never happened.
-   */
-  | "wait_failed"
   /** Neither a failing status nor a transport error was present. */
   | "nothing_to_retry"
   /**

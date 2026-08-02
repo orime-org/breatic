@@ -2,37 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Turning cancellation into something a caller can act on.
+ * Composing the caller's cancellation with a deadline of our own.
  *
- * Two jobs live here because both are about the same thing — a stop that has
- * to arrive with an honest reason attached — and both were previously written
- * inline, more than once each.
+ * Composed by hand rather than with `AbortSignal.any`, which is not in the
+ * browser range this package still has to run in. Doing it here also means the
+ * abort reason is ours to choose, so "the deadline fired" and "the person
+ * pressed stop" do not arrive looking identical — and telling those apart is
+ * what decides whether the request may be replayed.
  *
- * `abortReason` existed in three copies (the body guard, the wait, and the
- * poll loop), each with its own fallback wording and its own spelling of the
- * aborted check. Three copies of a rule is a rule that drifts, and this one
- * governs what a person sees when they press stop.
- *
- * `withDeadline` is what lets a budget cover a whole operation rather than one
- * request inside it. Composed by hand rather than with `AbortSignal.any`,
- * which is not in the browser range this package still has to run in — and
- * composing it here means the reason is ours to choose, so "the budget ran
- * out" and "the person pressed stop" do not arrive looking identical.
+ * The teardown is the load-bearing part. Detaching from the caller's signal is
+ * what lets the transport hold nothing once an attempt ends: a listener left
+ * behind pins the response, and the caller's signal may outlive the request by
+ * hours.
  */
-
-/**
- * The error a cancelled operation should reject with.
- *
- * A caller that aborted with its own `Error` gets that error back — the whole
- * point of `abort(reason)` is that the reason survives — and anything else
- * (a string, a bare `DOMException`, nothing at all) becomes a described one.
- * @param signal - The signal that was aborted, if there was one.
- * @param described - What to say when the caller gave no usable reason.
- * @returns An error safe to throw or reject with.
- */
-export function abortReason(signal: AbortSignal | undefined, described: string): Error {
-  return signal?.reason instanceof Error ? signal.reason : new Error(described);
-}
 
 /** A composed signal plus the teardown that must run when it is no longer needed. */
 export interface DeadlineSignal {

@@ -50,7 +50,6 @@ function opts(fetchImpl: typeof fetch): Parameters<typeof httpRequest>[2] {
   return {
     replaySafe: true,
     timeoutMs: 1_000,
-    bodyIdleTimeoutMs: 200,
     fetchImpl,
     label: "probe",
     // Skip the between-attempt wait by default. Left real, this file's cases
@@ -96,7 +95,7 @@ describe("an outcome belongs to the attempt that produced it", () => {
     // attempt really did answer, and its answer is the outcome.
     const fetchImpl = scriptedFetch([new Error("ECONNRESET"), res(404, { detail: "gone" })]);
 
-    const out = await httpRequest(URL_UNDER_TEST, {}, opts(fetchImpl));
+    const { response: out } = await httpRequest(URL_UNDER_TEST, {}, opts(fetchImpl));
 
     expect(out.status).toBe(404);
   });

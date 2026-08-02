@@ -13,7 +13,6 @@ import { describe, it, expect } from "vitest";
 
 import { redactUrl } from "@shared/http/redact-url.js";
 import { httpRequest } from "@shared/http/request.js";
-import type { HttpRetryEvent } from "@shared/http/request.js";
 
 describe("redactUrl", () => {
   it("drops a query string carrying an API key", () => {
@@ -76,31 +75,40 @@ describe("retry telemetry", () => {
   it("reports a redacted URL, so a key in the query never reaches a log", async () => {
     const secretUrl =
       "https://generativelanguage.googleapis.com/v1beta/models/imagen:generateContent?key=AIzaSyREAL_LOOKING_SECRET";
-    const events: HttpRetryEvent[] = [];
+    // The transport reports failures by throwing and by naming the endpoint
+    // in the message. Both carry the URL, so both must carry the redacted one.
     let call = 0;
     const fetchImpl = ((): Promise<Response> => {
       call += 1;
-      return Promise.resolve(new Response("{}", { status: 503 }));
+      return Promise.reject(new TypeError("fetch failed"));
     }) as unknown as typeof fetch;
 
-    await httpRequest(
-      secretUrl,
-      {},
-      {
+    await expect(
+      httpRequest(secretUrl, {}, {
         replaySafe: true,
         timeoutMs: 1_000,
-        bodyIdleTimeoutMs: 200,
         fetchImpl,
-        onEvent: (e) => events.push(e),
+        sleepImpl: async (): Promise<void> => {},
         label: "google",
-      },
-    );
+      }),
+    ).rejects.toThrow();
 
     expect(call).toBeGreaterThan(1); // it really did retry
-    expect(events.length).toBeGreaterThan(0);
-    for (const event of events) {
-      expect(event.url).not.toContain("AIzaSyREAL_LOOKING_SECRET");
-      expect(event.url).not.toContain("key=");
+
+    let thrown = "";
+    try {
+      await httpRequest(secretUrl, {}, {
+        replaySafe: true,
+        timeoutMs: Number.NaN,
+        fetchImpl,
+        label: "google",
+      });
+    } catch (error) {
+      thrown = (error as Error).message;
     }
+
+    expect(thrown).not.toContain("AIzaSyREAL_LOOKING_SECRET");
+    expect(thrown).not.toContain("key=");
+    expect(thrown).toContain("google");
   });
 });
