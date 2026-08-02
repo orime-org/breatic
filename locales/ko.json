@@ -36,7 +36,7 @@
       "cannot_change_admin_role": "Admin 역할은 이전을 통해서만 변경할 수 있습니다.",
       "member_limit_reached": "이 Studio는 멤버 수 한도에 도달했습니다.",
       "leave_last_admin": "이 Studio를 나가기 전에 먼저 Admin을 이전하세요.",
-      "avatar_unsupported_type": "지원하지 않는 이미지 형식입니다. PNG, JPEG 또는 WebP를 사용해 주세요."
+      "avatar_unsupported_type": "이 파일은 이미지로 읽을 수 없습니다. 다른 사진을 사용해 보세요."
     },
     "project": {
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",

@@ -8,13 +8,23 @@
  * boundary — what gets in, what the type is decided from, and what the stored
  * key is built out of. What this pins:
  *   - the type comes from the BYTES; the Content-Type header is ignored
- *   - an animated PNG is accepted (it sniffs as image/apng, not image/png)
- *   - a non-image is refused even when it claims to be a PNG
+ *   - a signature with no entry in the extension table is refused, whether it
+ *     is another image format or not an image at all
+ *   - dimensions do NOT decide anything; a shape the crop dialog could never
+ *     produce is stored like any other
  *   - the byte cap holds both when Content-Length declares the size and when
  *     it is absent, which is the case a header check alone would miss
  *   - the storage key is built from the studio's row and the server's own
  *     whitelist, never from anything the client sent
- *   - only the admin may upload or remove
+ *   - the object is written to storage before the row points at it
+ *   - upload and removal are both admin-only, against a member who holds the
+ *     rank just below admin as well as against a stranger
+ *
+ * What this deliberately does NOT pin: anything about a PNG's internal
+ * structure. Whether a given animated PNG is refused depends on how far its
+ * `acTL` chunk sits from the front, because that decision now belongs to the
+ * signature sniffer and its scan budget. That is a consequence of the server
+ * not inspecting avatars, not a guarantee it makes.
  *
  * @see packages/server/src/modules/studio/studioAvatar.service.ts
  * @see inner engineering/specs 2026-07-28 studio settings design, section 2
@@ -70,13 +80,31 @@ afterAll(async () => {
   await sql?.end({ timeout: 1 });
 });
 
+/** The square the crop dialog produces — the shape a real upload has. */
+const FIXTURE_EDGE_PX = 512;
+
 /**
- * Build a minimal PNG: signature + IHDR, optionally with the `acTL` chunk
- * that makes it an animated PNG.
- * @param animated - include `acTL`, turning it into an APNG.
+ * Build a minimal PNG: signature, IHDR, one IDAT.
+ *
+ * The IHDR chunk is load-bearing, not decoration. Measured against the repo's
+ * `file-type`: the 8-byte signature alone sniffs as `application/octet-stream`
+ * and gets a 415; the detector needs a first chunk that declares type IHDR
+ * with a length of exactly 13 before it will say `image/png`. Trimming this
+ * fixture to its signature turns every accepting test in this file red.
+ *
+ * The dimensions inside that chunk are a different matter — nothing reads them
+ * — which is why they are a parameter: a test can send a shape the crop dialog
+ * could never produce and watch it be stored anyway.
+ * @param animated - include `acTL`, which makes the sniffer report APNG.
+ * @param width - width to declare in IHDR.
+ * @param height - height to declare in IHDR; defaults to a square.
  * @returns the file bytes.
  */
-function pngBytes(animated = false): Buffer {
+function pngBytes(
+  animated = false,
+  width = FIXTURE_EDGE_PX,
+  height = width,
+): Buffer {
   const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const chunk = (type: string, payload: Buffer): Buffer => {
     const len = Buffer.alloc(4);
@@ -85,8 +113,8 @@ function pngBytes(animated = false): Buffer {
     return Buffer.concat([len, Buffer.from(type, "ascii"), payload, Buffer.alloc(4)]);
   };
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(1, 0);
-  ihdr.writeUInt32BE(1, 4);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8;
   ihdr[9] = 6;
   const parts = [sig, chunk("IHDR", ihdr)];
@@ -202,36 +230,58 @@ describe("POST /studio/:slug/avatar — what gets accepted", () => {
     const stored = await readAvatar(studio.id);
     expect(stored).not.toBeNull();
     // Key shape: the studio id from the row, the extension from the server's
-    // whitelist. Nothing the client sent appears in it.
+    // whitelist, a timestamp and a nonce. Nothing the client sent appears.
     expect(stored).toMatch(
-      new RegExp(`avatar/${studio.id}/\\d+\\.png$`),
+      new RegExp(`avatar/${studio.id}/\\d+-[0-9a-f]{8}\\.png$`),
     );
   });
 
-  it("accepts an ANIMATED PNG — it sniffs as image/apng, and is still a PNG", async () => {
+  it("refuses a signature with no entry in the extension table", async () => {
+    // Not a judgement about these formats. The whitelist exists to pick the
+    // extension and content type a stored object is served under, and it holds
+    // one entry because the crop dialog's canvas re-encode produces one format.
+    // A signature that is not in it has nothing to be stored as.
+    //
+    // The APNG case belongs here rather than in one of its own, and note what
+    // it does and does not say. THIS file sniffs as `image/apng` — another key
+    // that is not in the table. It is not a claim about animated PNGs in
+    // general: the sniffer stops looking after a fixed number of chunks, so an
+    // `acTL` far enough from the front is never seen and the file sniffs as
+    // plain PNG. That is what "the server does not inspect avatars" means in
+    // practice, and it is why this assertion is written about a fixture rather
+    // than about a format.
+    const admin = await insertUser();
+    const jpegStudio = await insertStudio(admin);
+    const webpStudio = await insertStudio(admin);
+    const apngStudio = await insertStudio(admin);
+    const cookie = await loginCookie(admin);
+
+    expect((await uploadAvatar(jpegStudio.slug, cookie, JPEG_BYTES)).status).toBe(415);
+    expect((await uploadAvatar(webpStudio.slug, cookie, WEBP_BYTES)).status).toBe(415);
+    expect((await uploadAvatar(apngStudio.slug, cookie, pngBytes(true))).status).toBe(415);
+
+    expect(await readAvatar(jpegStudio.id)).toBeNull();
+    expect(await readAvatar(webpStudio.id)).toBeNull();
+    expect(await readAvatar(apngStudio.id)).toBeNull();
+  });
+
+  it("stores a PNG whatever its dimensions — the pixels are the client's business", async () => {
+    // The server used to read IHDR and refuse anything that was not 512
+    // square. It no longer does, and this pins that: an avatar is one URL on
+    // one row, shown in a fixed-size element that crops whatever it is given,
+    // uploadable only by an admin of the studio that will display it. There is
+    // nothing about the pixels for this server to have an opinion on.
+    //
+    // 2000x37 is deliberately nothing the crop dialog could produce — neither
+    // the agreed edge nor even a square.
     const admin = await insertUser();
     const studio = await insertStudio(admin);
     const cookie = await loginCookie(admin);
 
-    const res = await uploadAvatar(studio.slug, cookie, pngBytes(true));
+    const res = await uploadAvatar(studio.slug, cookie, pngBytes(false, 2000, 37));
 
     expect(res.status).toBe(200);
-    // Stored as .png: an APNG *is* a PNG file, the animation lives in extra
-    // chunks a still decoder ignores.
     expect(await readAvatar(studio.id)).toMatch(/\.png$/);
-  });
-
-  it("accepts JPEG and WebP, each under its own extension", async () => {
-    const admin = await insertUser();
-    const jpegStudio = await insertStudio(admin);
-    const webpStudio = await insertStudio(admin);
-    const cookie = await loginCookie(admin);
-
-    expect((await uploadAvatar(jpegStudio.slug, cookie, JPEG_BYTES)).status).toBe(200);
-    expect((await uploadAvatar(webpStudio.slug, cookie, WEBP_BYTES)).status).toBe(200);
-
-    expect(await readAvatar(jpegStudio.id)).toMatch(/\.jpg$/);
-    expect(await readAvatar(webpStudio.id)).toMatch(/\.webp$/);
   });
 
   it("decides the type from the BYTES, not the Content-Type header", async () => {
@@ -251,11 +301,12 @@ describe("POST /studio/:slug/avatar — what gets accepted", () => {
     const studio = await insertStudio(admin);
     const cookie = await loginCookie(admin);
 
+    // Two identical uploads, back to back — the case where only the key's
+    // nonce keeps them apart. Relying on the clock here would pass or fail
+    // depending on how fast the machine is.
     await uploadAvatar(studio.slug, cookie, pngBytes());
     const first = await readAvatar(studio.id);
-    // A different second upload, so a same-millisecond key would still be a
-    // distinct object rather than an accidental match.
-    await uploadAvatar(studio.slug, cookie, JPEG_BYTES);
+    await uploadAvatar(studio.slug, cookie, pngBytes());
     const second = await readAvatar(studio.id);
 
     expect(second).not.toBe(first);
@@ -340,6 +391,7 @@ describe("POST /studio/:slug/avatar — refusals", () => {
     const res = await uploadAvatar(studio.slug, cookie, Buffer.alloc(0));
 
     expect(res.status).toBe(422);
+    expect(await readAvatar(studio.id)).toBeNull();
   });
 
   it("refuses a maintainer — avatar changes are admin-only", async () => {
@@ -386,18 +438,42 @@ describe("DELETE /studio/:slug/avatar", () => {
 
     expect(res.status).toBe(403);
   });
+
+  it("refuses a maintainer — removal is admin-only, not member-only", async () => {
+    // The stranger case above passes at every rank, so on its own it pins
+    // "some gate exists" rather than "the gate is admin". A maintainer is the
+    // rank directly below admin, which is the one that tells those apart.
+    const admin = await insertUser();
+    const member = await insertUser();
+    const studio = await insertStudio(admin);
+    await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio.id}, ${member}, 'maintainer')`;
+    const adminCookie = await loginCookie(admin);
+    await uploadAvatar(studio.slug, adminCookie, pngBytes());
+    const stored = await readAvatar(studio.id);
+    expect(stored).not.toBeNull();
+
+    const res = await app.request(`/api/v1/studio/${studio.slug}/avatar`, {
+      method: "DELETE",
+      headers: { Cookie: await loginCookie(member) },
+    });
+
+    expect(res.status).toBe(403);
+    expect(await readAvatar(studio.id)).toBe(stored);
+  });
 });
 
 describe("avatarStorageKey", () => {
   it("builds the key from the studio id and a whitelisted extension only", () => {
-    expect(avatarStorageKey("s-1", "webp", 1700000000000)).toBe(
-      "avatar/s-1/1700000000000.webp",
+    expect(avatarStorageKey("s-1", "png", 1700000000000, "abcd1234")).toBe(
+      "avatar/s-1/1700000000000-abcd1234.png",
     );
   });
 
   it("is tenant-scoped by studio, so two studios never collide", () => {
-    const a = avatarStorageKey("studio-a", "png", 1);
-    const b = avatarStorageKey("studio-b", "png", 1);
+    // Same clock, same nonce: the studio id is the only thing left to separate
+    // them, which is exactly the property being claimed.
+    const a = avatarStorageKey("studio-a", "png", 1, "same");
+    const b = avatarStorageKey("studio-b", "png", 1, "same");
     expect(a).not.toBe(b);
   });
 });

@@ -36,7 +36,7 @@
       "cannot_change_admin_role": "Admin ロールは譲渡によってのみ変更できます。",
       "member_limit_reached": "この Studio はメンバー数の上限に達しています。",
       "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
-      "avatar_unsupported_type": "対応していない画像形式です。PNG、JPEG、WebP のいずれかをご利用ください。"
+      "avatar_unsupported_type": "このファイルは画像として読み取れませんでした。別の画像をお試しください。"
     },
     "project": {
       "email_not_registered": "そのメールアドレスは登録されていません。",

@@ -7,17 +7,18 @@
  *
  * Drawing and decoding are browser APIs that jsdom cannot run, so they stay
  * out of here and are covered by the real-browser smoke. What IS covered is
- * every branch that decides something: the two input gates, and the
- * encode-format fallback — which matters precisely because a real browser
- * almost never takes it (they all support WebP), so a smoke run would leave
- * it unexercised and a mistake there ships as a broken image.
+ * every branch that decides something: the two input gates, and the encode
+ * step — which is now a single request for PNG, so what these tests pin is
+ * mostly that it STAYS single. A reintroduced format negotiation would be
+ * invisible in a smoke run (the picture would look identical) and would only
+ * surface as avatars stored under a format nobody expects.
  */
 
 import { describe, it, expect, vi } from 'vitest';
 
 import {
   AVATAR_OUTPUT_PX,
-  AVATAR_OUTPUT_QUALITY,
+  AVATAR_OUTPUT_TYPE,
   MAX_AVATAR_INPUT_BYTES,
   MAX_AVATAR_INPUT_EDGE_PX,
   checkAvatarFile,
@@ -82,84 +83,73 @@ describe('encodeAvatarBlob', () => {
    * A stand-in for `canvas.toBlob` that answers with whatever type the
    * caller's browser would really produce.
    * @param produced - The MIME type each requested type actually comes back as.
-   * @returns The stub encoder plus the calls it recorded.
+   * @returns The stub encoder plus the types it was asked for.
    */
-  function encoderProducing(
-    produced: Record<string, string | null>,
-  ): {
-    encode: (type: string, quality: number) => Promise<Blob | null>;
-    calls: Array<{ type: string; quality: number }>;
+  function encoderProducing(produced: Record<string, string | null>): {
+    encode: (type: string) => Promise<Blob | null>;
+    calls: string[];
   } {
-    const calls: Array<{ type: string; quality: number }> = [];
-    const encode = vi.fn(
-      async (type: string, quality: number): Promise<Blob | null> => {
-        calls.push({ type, quality });
-        const actual = produced[type];
-        if (actual === undefined || actual === null) return null;
-        return new Blob(['x'], { type: actual });
-      },
-    );
+    const calls: string[] = [];
+    const encode = vi.fn(async (type: string): Promise<Blob | null> => {
+      calls.push(type);
+      const actual = produced[type];
+      if (actual === undefined || actual === null) return null;
+      return new Blob(['x'], { type: actual });
+    });
     return { encode, calls };
   }
 
-  it('returns the WebP when the browser really encodes WebP', async () => {
-    const { encode, calls } = encoderProducing({ 'image/webp': 'image/webp' });
-
-    const blob = await encodeAvatarBlob(encode);
-
-    expect(blob.type).toBe('image/webp');
-    expect(calls).toEqual([
-      { type: 'image/webp', quality: AVATAR_OUTPUT_QUALITY },
-    ]);
-  });
-
-  it('re-encodes as JPEG when the browser silently falls back to PNG', async () => {
-    // `toBlob` does not report an unsupported type — it quietly hands back a
-    // PNG. Trusting the requested type would ship a PNG under a .webp name,
-    // and the browser decodes by declared type, so it would render broken.
-    const { encode, calls } = encoderProducing({
-      'image/webp': 'image/png',
-      'image/jpeg': 'image/jpeg',
-    });
-
-    const blob = await encodeAvatarBlob(encode);
-
-    expect(blob.type).toBe('image/jpeg');
-    expect(calls.map((c) => c.type)).toEqual(['image/webp', 'image/jpeg']);
-  });
-
-  it('accepts whatever the second attempt produced rather than looping', async () => {
-    // A browser that supports neither is hypothetical, but retrying forever
-    // would hang the dialog. PNG is a format the server accepts anyway, so
-    // the worst case is a larger upload, not a failure.
-    const { encode, calls } = encoderProducing({
-      'image/webp': 'image/png',
-      'image/jpeg': 'image/png',
-    });
+  it('asks for PNG once and ships what came back', async () => {
+    // The `calls` assertion is doing two jobs: PNG came back, and nothing was
+    // asked for twice. There is no fallback to test because PNG is what
+    // `toBlob` falls back TO when it cannot honour a type — so it is the one
+    // request that cannot come back as something else, and a second encode
+    // would only be a slower way to get the same bytes.
+    const { encode, calls } = encoderProducing({ 'image/png': 'image/png' });
 
     const blob = await encodeAvatarBlob(encode);
 
     expect(blob.type).toBe('image/png');
-    expect(calls).toHaveLength(2);
+    expect(calls).toEqual(['image/png']);
+  });
+
+  it('passes no quality argument, because PNG has none', async () => {
+    // `toBlob` consults quality only for lossy types. Passing one here would
+    // read as a knob that does something.
+    const { encode } = encoderProducing({ 'image/png': 'image/png' });
+
+    await encodeAvatarBlob(encode);
+
+    expect(encode).toHaveBeenCalledWith('image/png');
   });
 
   it('throws when the canvas produces nothing at all', async () => {
-    const { encode } = encoderProducing({ 'image/webp': null });
+    // A tainted or out-of-memory canvas, which no retry fixes.
+    const { encode } = encoderProducing({ 'image/png': null });
 
     await expect(encodeAvatarBlob(encode)).rejects.toThrow();
   });
 
-  it('throws when the fallback attempt also produces nothing', async () => {
-    const { encode } = encoderProducing({
-      'image/webp': 'image/png',
-      'image/jpeg': null,
-    });
+});
 
-    await expect(encodeAvatarBlob(encode)).rejects.toThrow();
-  });
-
-  it('outputs 512px square at quality 0.9', () => {
+describe('the two output constants', () => {
+  it('pins both, because each breaks something this file cannot see', () => {
+    // Not a behaviour assertion, and the name should not suggest one:
+    // `renderAvatarBlob` is where a 512 square is actually produced, and it
+    // needs a canvas jsdom does not have. What these two lines guard is that
+    // neither number moves silently.
+    //
+    // AVATAR_OUTPUT_PX — `avatar.max_bytes` in config/storage.yaml is sized
+    // against the incompressible worst case AT this resolution, which scales
+    // with the pixel count. Raising this without raising that cap starts
+    // refusing legitimate crops of detailed pictures.
+    //
+    // AVATAR_OUTPUT_TYPE — this one IS a cross-package contract, unlike the
+    // size. The server's accepted-type table holds exactly `image/png`, keyed
+    // on what the uploaded bytes sniff as, so changing this to WebP refuses
+    // every upload with a 415: not for being too large, but for having no
+    // extension to be stored under.
     expect(AVATAR_OUTPUT_PX).toBe(512);
-    expect(AVATAR_OUTPUT_QUALITY).toBe(0.9);
+    expect(AVATAR_OUTPUT_TYPE).toBe('image/png');
   });
 });

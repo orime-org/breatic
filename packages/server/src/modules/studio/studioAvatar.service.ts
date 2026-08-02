@@ -12,9 +12,11 @@
  * fail. Changing an avatar is changing one URL.
  *
  * Uploads come THROUGH the server rather than by presigned direct upload, so
- * the byte cap is enforced here (see `readBoundedBody`) rather than at a
- * presign step.
+ * the byte cap is enforced by the route (`readBoundedBody`) rather than at a
+ * presign step. This module receives an already-bounded buffer.
  */
+
+import { randomUUID } from "node:crypto";
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { AppError, getStorageAdapter, sniffMimeType } from "@breatic/core";
@@ -24,19 +26,27 @@ import type { Studio } from "@breatic/shared";
 /**
  * Accepted image types, and the extension each is stored under.
  *
- * Keyed on what the SNIFFER reports, never on what the client claims. Two
- * entries deserve a note:
- *   - `image/apng` is what an animated PNG sniffs as (measured, not assumed).
- *     Omitting it would reject a perfectly valid PNG while the error message
- *     said PNG was supported.
- *   - both PNG forms store as `.png`, because an APNG *is* a PNG file — the
- *     animation lives in extra chunks a still decoder ignores.
+ * This is not a validation step and does not try to be one. A stored object
+ * needs an extension and a `Content-Type` to be served under, and both have to
+ * come from somewhere the client does not control — otherwise a browser is
+ * told to render the bytes as something they are not. Sniffing the signature
+ * is how that is decided; the request header is the client's claim about
+ * content the client also chose, so it takes no part.
+ *
+ * PNG only, because PNG is what the crop dialog's canvas re-encode produces —
+ * `AVATAR_OUTPUT_TYPE` in `packages/web/.../avatar-image.ts` is the other half
+ * of this pair, and changing it there without changing this refuses every
+ * upload. Anything else would be an upload that did not come from our own
+ * client, and there is no picture it could be that the client could not have
+ * sent as PNG.
+ *
+ * A file that is not in this table is refused, which makes the table look like
+ * a validation gate. It is not one, and the difference matters for what gets
+ * added here: an entry is warranted when we have somewhere to store that type,
+ * never when a type "seems safe".
  */
 const ACCEPTED_IMAGE_TYPES: Readonly<Record<string, string>> = {
   "image/png": "png",
-  "image/apng": "png",
-  "image/jpeg": "jpg",
-  "image/webp": "webp",
 };
 
 /**
@@ -47,31 +57,47 @@ const ACCEPTED_IMAGE_TYPES: Readonly<Record<string, string>> = {
  * filename or extension is exactly the input that makes path traversal
  * possible, so it does not participate.
  *
- * The timestamp makes every upload a new object rather than overwriting the
- * previous one. That is deliberate: caches and already-rendered pages keep
- * pointing at the old URL, and an overwrite would leave them showing the new
- * image under the old address (or a broken one mid-write). The cost is an
- * orphaned object per replacement, which the storage rules accept — runtime
- * never deletes.
+ * Every upload becomes a new object rather than overwriting the previous one.
+ * That is deliberate: caches and already-rendered pages keep pointing at the
+ * old URL, and an overwrite would leave them showing the new image under the
+ * old address (or a broken one mid-write). The cost is an orphaned object per
+ * replacement, which the storage rules accept — runtime never deletes.
+ *
+ * The timestamp alone does not deliver that. Two uploads landing in the same
+ * millisecond produce the same key, and the second silently replaces the
+ * first — rare over a network, ordinary for a script, and impossible to
+ * notice afterwards. The nonce is what makes the property true rather than
+ * likely; the timestamp stays because a sortable key is worth keeping.
  * @param studioId - The studio's UUID, read from its row
  * @param ext - Extension from {@link ACCEPTED_IMAGE_TYPES}
  * @param now - Millisecond timestamp to stamp into the key
+ * @param nonce - Per-upload random suffix, so the clock is not load-bearing
  * @returns The storage key
  */
 export function avatarStorageKey(
   studioId: string,
   ext: string,
   now: number,
+  nonce: string,
 ): string {
-  return `avatar/${studioId}/${now}.${ext}`;
+  return `avatar/${studioId}/${now}-${nonce}.${ext}`;
 }
 
 /**
  * Store an uploaded avatar and point the studio at it.
  *
- * The bytes are typed by sniffing their signature; the `Content-Type` header
- * is ignored entirely, since it is the client's claim about content the
- * client also chose. An unrecognised or non-image signature is refused.
+ * What the bytes contain is the client's business. An avatar is one URL on one
+ * row, shown in a fixed-size element that crops whatever it is given; it is
+ * not a project asset — nothing is billed for it and nothing else consumes it.
+ * Only an admin of this studio can get here at all. So the server takes the
+ * picture as sent: the caller has already bounded its size, and there is
+ * nothing further worth establishing about the pixels inside it.
+ *
+ * Note what is NOT part of that reasoning: who can SEE the result. The URL
+ * goes to any authenticated user who reads the studio shell (`GET /:slug` has
+ * no role gate, by decision), and the object itself is served publicly. The
+ * argument rests on who can PUT one there, which is an admin of the one studio
+ * it will appear on.
  *
  * Storage is written BEFORE the database. The reverse order can leave the row
  * pointing at an object that was never written — a broken image for every
@@ -80,7 +106,10 @@ export function avatarStorageKey(
  * @param slug - The studio's URL handle
  * @param bytes - The raw image, already bounded by the caller
  * @returns The updated studio
- * @throws {AppError} 404 no such studio, 415 the bytes are not an accepted image
+ * @throws {AppError} 404 no such studio — over HTTP this is reachable only if
+ *   the studio is soft-deleted between `requireStudioRole`'s lookup and this
+ *   one, since that middleware answers `403` for a slug it cannot resolve;
+ *   415 bytes whose signature is not one this server has an extension for
  */
 export async function setAvatar(slug: string, bytes: Buffer): Promise<Studio> {
   const studio = await studioRepo.getBySlug(slug);
@@ -92,7 +121,12 @@ export async function setAvatar(slug: string, bytes: Buffer): Promise<Studio> {
     throw new AppError(415, t("server.studio.avatar_unsupported_type"));
   }
 
-  const key = avatarStorageKey(studio.id, ext, Date.now());
+  const key = avatarStorageKey(
+    studio.id,
+    ext,
+    Date.now(),
+    randomUUID().slice(0, 8),
+  );
   const adapter = await getStorageAdapter();
   const url = await adapter.upload(key, bytes, mime);
 
@@ -109,7 +143,8 @@ export async function setAvatar(slug: string, bytes: Buffer): Promise<Studio> {
  * unreferenced from here on.
  * @param slug - The studio's URL handle
  * @returns The updated studio
- * @throws {AppError} 404 no such studio
+ * @throws {AppError} 404 no such studio — as in {@link setAvatar}, reachable
+ *   over HTTP only through a soft-delete racing the role middleware's lookup
  */
 export async function clearAvatar(slug: string): Promise<Studio> {
   const studio = await studioRepo.getBySlug(slug);
