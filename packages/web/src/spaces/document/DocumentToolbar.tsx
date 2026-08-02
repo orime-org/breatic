@@ -89,12 +89,19 @@ const HISTORY_TOOLS: ActionDef[] = [
 ];
 
 /**
- * The formatting controls, unchanged from before this editor became
- * collaborative.
+ * The formatting controls. What they DO is untouched by this slice — the
+ * editing feature set is separate work — and three things about how they do it
+ * changed, each because the document is now shared:
  *
- * This slice connects the document to a shared Yjs document; what a user can
- * write into it is a separate body of work with its own slice. These are here,
- * and behave here, exactly as they always did.
+ * 1. They are disabled for a viewer. Before, nothing was: there was no viewer
+ *    role to speak of, because the document was local to whoever opened it.
+ * 2. Their pressed state is subscribed rather than read during render. A
+ *    co-editor's change arrives with no React render behind it, so a value
+ *    computed in the render body would show whatever was true last time this
+ *    component happened to re-render.
+ * 3. Their labels go through i18n, where they were hard-coded English. Undo and
+ *    redo could not be hard-coded, and a toolbar half translated is worse than
+ *    either.
  */
 const MARK_TOOLS: ToolDef[] = [
   {

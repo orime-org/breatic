@@ -13,10 +13,12 @@
  * it back.
  *
  * yjs guards this with a delete filter: a container that still holds content is
- * refused to the undo, and only what I put in it comes out. The filter reads a
- * set of node names, and upstream's default holds exactly one — `paragraph` —
- * because it was written for an editor whose documents are only paragraphs.
- * Ours are not.
+ * refused to the undo, and only what I put in it comes out. Two things about
+ * that have to be ours. The filter reads a set of node names, and upstream's
+ * default holds exactly one — `paragraph` — because it was written for an
+ * editor whose documents are only paragraphs; ours are not. And upstream's
+ * filter never sees the container's ATTRIBUTES, so a heading that survived
+ * came back without its level and rendered as an h1.
  *
  * Measured, with the set as the only difference. Alice writes "Plan" in a
  * block, Bob appends " v2-from-bob" to it, Alice presses undo:
@@ -33,7 +35,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getSchema } from '@tiptap/core';
+import { Editor, getSchema } from '@tiptap/core';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
 
@@ -86,6 +88,54 @@ function undoAfterAPeerAppends(blockName: string): string {
   return after;
 }
 
+/**
+ * The same scenario through a REAL editor, so the document has the shape
+ * ProseMirror actually produces — nesting and attributes included.
+ *
+ * The coverage above is deliberately built by hand at the Yjs layer, because
+ * that is the only way to reach EVERY block name in one loop: a list holds list
+ * items rather than text, and a horizontal rule holds nothing at all. What it
+ * cannot show is anything about attributes, since a hand-built element has
+ * none — which is exactly where the container-survives-but-comes-back-changed
+ * defect lives.
+ * @param html - What the first client writes.
+ * @param peerText - What the second client appends into that same block.
+ * @returns The shared body's markup after the first client undoes.
+ */
+async function undoThroughRealEditor(
+  html: string,
+  peerText: string,
+): Promise<string> {
+  const doc = new Y.Doc();
+  const body = documentBodyFragment(doc);
+  const undoManager = createDocumentUndoManager(doc);
+  const editor = new Editor({
+    extensions: buildDocumentExtensions({ fragment: body, undoManager }),
+  });
+  try {
+    editor.commands.setContent(html);
+    await new Promise((r) => setTimeout(r, 40));
+    // Close the undo unit, so the peer's edit and the local one cannot be
+    // merged into a single entry by the capture timeout.
+    undoManager.stopCapturing();
+
+    doc.transact(() => {
+      const block = body.get(0) as Y.XmlElement;
+      const text = block.get(0) as Y.XmlText;
+      text.insert(text.length, peerText);
+    }, 'remote-peer');
+    await new Promise((r) => setTimeout(r, 40));
+
+    editor.commands.undo();
+    await new Promise((r) => setTimeout(r, 40));
+    return body.toString();
+  } finally {
+    editor.destroy();
+    undoManager.destroy();
+    doc.destroy();
+  }
+}
+
 describe('undo in a shared document', () => {
   const blocks = blockNodeNames();
 
@@ -106,5 +156,65 @@ describe('undo in a shared document', () => {
     // its job on what this client actually wrote.
     const after = undoAfterAPeerAppends(block);
     expect(after).not.toContain('Plan');
+  });
+
+  describe('the block that survives comes back unchanged', () => {
+    // Saving the container is not enough if it comes back stripped of what
+    // made it that block. A heading without its level renders as an h1, a code
+    // block without its language loses syntax highlighting, an ordered list
+    // without its start renumbers from 1 — each is a silent change to
+    // everyone's document, and the collaborator whose text triggered it cannot
+    // undo it because it is not on their stack.
+    it.each([
+      ['a heading keeps its level', '<h3>Plan</h3>', 'level="3"'],
+      [
+        'a code block keeps its language',
+        '<pre><code class="language-python">Plan</code></pre>',
+        'language="python"',
+      ],
+    ])('%s', async (_what, html, attribute) => {
+      const after = await undoThroughRealEditor(html, ' v2-from-bob');
+      expect(after).toContain('v2-from-bob');
+      expect(after).toContain(attribute);
+    });
+
+    it('and undoing an attribute change still restores the old value', async () => {
+      // The other direction, and the reason this cannot be fixed by refusing
+      // every attribute deletion: when the local edit WAS the attribute change,
+      // undo has to put the old value back.
+      const doc = new Y.Doc();
+      const body = documentBodyFragment(doc);
+      const undoManager = createDocumentUndoManager(doc);
+      const editor = new Editor({
+        extensions: buildDocumentExtensions({ fragment: body, undoManager }),
+      });
+      try {
+        editor.commands.setContent('<h1>Plan</h1>');
+        await new Promise((r) => setTimeout(r, 40));
+        undoManager.stopCapturing();
+
+        editor.chain().focus().setNode('heading', { level: 3 }).run();
+        await new Promise((r) => setTimeout(r, 40));
+        expect(body.toString()).toContain('level="3"');
+        undoManager.stopCapturing();
+
+        doc.transact(() => {
+          const block = body.get(0) as Y.XmlElement;
+          const text = block.get(0) as Y.XmlText;
+          text.insert(text.length, ' BOB');
+        }, 'remote-peer');
+        await new Promise((r) => setTimeout(r, 40));
+
+        editor.commands.undo();
+        await new Promise((r) => setTimeout(r, 40));
+
+        expect(body.toString()).toContain('level="1"');
+        expect(body.toString()).toContain('BOB');
+      } finally {
+        editor.destroy();
+        undoManager.destroy();
+        doc.destroy();
+      }
+    });
   });
 });

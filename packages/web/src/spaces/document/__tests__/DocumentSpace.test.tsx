@@ -230,11 +230,26 @@ describe('DocumentSpace', () => {
   });
 
   it('exposes history and formatting controls in the toolbar', async () => {
+    // The whole set, not a sample: this Space is what mounts the toolbar in
+    // production, so a control that stops reaching the screen here reaches
+    // nobody. `DocumentEditor.test` pins the same list one layer down; both
+    // matter, because a control can exist in the toolbar component and still
+    // fail to arrive through this container.
     render(<DocumentSpace projectId='p' spaceId='s' />);
     await screen.findByTestId('document-toolbar');
-    for (const id of ['undo', 'redo', 'bold', 'italic', 'strike']) {
-      expect(screen.getByTestId(`doc-tool-${id}`)).toBeInTheDocument();
-    }
+    const ids = Array.from(
+      document.querySelectorAll('[data-testid^="doc-tool-"]'),
+    ).map((el) => el.getAttribute('data-testid')?.replace('doc-tool-', ''));
+    expect(ids.sort()).toEqual([
+      'bold',
+      'bullet-list',
+      'italic',
+      'ordered-list',
+      'quote',
+      'redo',
+      'strike',
+      'undo',
+    ]);
   });
 
   it('binds the editor to THIS Space’s document, not some other doc', async () => {

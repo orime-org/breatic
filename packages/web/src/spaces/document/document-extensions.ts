@@ -28,17 +28,18 @@ import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-us
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
-/** Inputs that switch on the collaborative layers; all optional. */
+/** The body fragment, plus the optional collaborative layers. */
 export interface DocumentExtensionOptions {
   /**
    * The document's body fragment — what binds this editor to Yjs.
    *
-   * Required. It was optional so that a schema-only caller could omit it, but
-   * the only such callers were tests: production always has a fragment. A
-   * shape that exists for tests is a shape nobody maintains, and this one hid a
-   * silent "collaboration not wired up" branch. Tests wanting the schema pass a
-   * throwaway fragment — the collaboration extensions contribute no node or
-   * mark, so the schema is identical either way.
+   * Required. It was optional so that a schema-only caller could omit it, and
+   * that shape hid a silent "collaboration not wired up" branch: forget the
+   * fragment and you get a working editor bound to nothing. Callers that want
+   * only the schema pass a throwaway fragment instead — the collaboration
+   * extensions contribute no node or mark, so the schema is identical either
+   * way. `protectedNodes` in `document-undo` does exactly that in production,
+   * to read the schema's block types.
    */
   fragment: Y.XmlFragment;
   /**

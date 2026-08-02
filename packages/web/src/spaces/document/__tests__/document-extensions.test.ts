@@ -92,18 +92,26 @@ describe('the document schema', () => {
     // Assert the CONFIG, not the extension-name list: StarterKit is a bundle,
     // so its children never appear as top-level names and a name-based
     // assertion would pass even with history switched back on.
+    //
+    // Compared against stock StarterKit key by key, rather than by looking for
+    // options set to `false`. Configuration is not only switches — narrowing
+    // heading to `{ levels: [1, 2] }` or restricting the link protocols is a
+    // change to what users can write, arrives as an object, and would sail past
+    // a false-only check while this file's docstring claims to gate it.
     const starterKit = buildDocumentExtensions({ fragment: schemaFragment() }).find(
       (e) => e.name === 'starterKit',
     );
     expect(starterKit).toBeDefined();
 
-    const overrides = Object.entries(
-      (starterKit?.options ?? {}) as Record<string, unknown>,
-    )
-      .filter(([, value]) => value === false)
-      .map(([key]) => key)
+    const ours = (starterKit?.options ?? {}) as Record<string, unknown>;
+    const stock = StarterKit.configure({}).options as unknown as Record<
+      string,
+      unknown
+    >;
+    const changed = Object.keys(ours)
+      .filter((key) => ours[key] !== stock[key])
       .sort();
 
-    expect(overrides).toEqual(Object.keys(ALLOWED_STARTERKIT_OVERRIDES).sort());
+    expect(changed).toEqual(Object.keys(ALLOWED_STARTERKIT_OVERRIDES).sort());
   });
 });

@@ -655,19 +655,23 @@ function ProjectWorkspace({
       {/*
         Nothing reaches INTO this element to disable it when the connection
         drops — no `inert`, no `aria-hidden`, no `disabled`. The first two were
-        tried and removed: `inert` pulls focus out of whatever the user was
-        typing in and kills IME composition mid-word, and neither adds anything
-        the curtain does not already do by being on screen. Showing the problem
-        where it is and reaching into nothing else is the rule (decision
-        2026-08-02).
+        tried and removed: `inert` stops the whole subtree receiving input,
+        which pulls focus out of whatever the user was typing in and kills IME
+        composition mid-word. The curtain takes the pointer but not the
+        keyboard, so someone already typing can carry on — and telling the user
+        something is wrong is the whole requirement, which the curtain meets by
+        being on screen. Showing the problem where it is and reaching into
+        nothing else is the rule (decision 2026-08-02).
 
         The curtain rendered below DOES cover this element, so the workspace is
         not clickable while it shows. That is the curtain being opaque, not
         something done to the workspace.
 
-        The banner and the curtain say what went wrong. That is the whole job.
-        Edits made while offline are not lost either — the provider re-syncs on
-        every reconnect.
+        A dropped connection loses nothing: the provider re-syncs on every
+        reconnect, so edits made offline arrive when it comes back. A REFUSED
+        one is different — the server drops those updates and there is no
+        reconnect that fixes it — which is why the banner tells the user rather
+        than leaving them to find out.
 
         `data-workspace` is a stable hook for tests to find this element in
         BOTH states: `data-workspace-disabled` is conditional and cannot be

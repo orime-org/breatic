@@ -26,6 +26,45 @@ import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 
+/**
+ * What undo is allowed to delete.
+ *
+ * Upstream's filter refuses a container that still holds content, which is what
+ * keeps a co-editor's text out of my undo. It does not refuse that container's
+ * ATTRIBUTES: an attribute is a map entry rather than a child, so it fails
+ * `defaultDeleteFilter`'s first test — `item.content instanceof ContentType` —
+ * and is always deletable. Before the protected set covered every block type
+ * this could not be observed, because the container went too.
+ *
+ * Measured with the real binding: Alice writes `<h3>Plan</h3>`, Bob appends
+ * into it, Alice undoes. With upstream's filter alone the heading survives as
+ * `<heading> BOB</heading>` and renders as an h1 — Alice's `level` went with
+ * her text, for everyone, and Bob cannot undo it because it is not on his
+ * stack. A code block loses its language and stops highlighting; an ordered
+ * list loses its start and renumbers from 1.
+ *
+ * The condition is deliberately the same one upstream uses for the container:
+ * protected type, still populated. When nobody else has written into the block
+ * the container is deletable, its attributes go with it, and undo is unchanged.
+ * And when the local edit WAS an attribute change, undo still restores the old
+ * value — yjs replays that as a write, not as a deletion of Alice's item, so
+ * this filter never sees it. Both directions are pinned in
+ * `undo-protects-collaborator-text`.
+ * @param item - The yjs item undo proposes to delete.
+ * @returns True to allow the deletion, false to keep the item.
+ */
+function isDeletableByUndo(item: Y.Item): boolean {
+  const nodes = protectedNodes();
+  if (!defaultDeleteFilter(item, nodes)) return false;
+  const parent: unknown = item.parent;
+  return !(
+    item.parentSub !== null &&
+    parent instanceof Y.XmlElement &&
+    nodes.has(parent.nodeName) &&
+    parent.length > 0
+  );
+}
+
 /** Computed once; the schema is fixed for the lifetime of the bundle. */
 let protectedNodesCache: Set<string> | null = null;
 
@@ -103,11 +142,11 @@ export interface DocumentUndoManager extends Y.UndoManager {
  * supplied here: providing our own manager means the binding never builds one
  * and its defaults never apply.
  *
- * The filter itself is upstream's, unmodified. What it is given is not.
- * `defaultProtectedNodes` holds one name — `paragraph` — because it was written
- * for an editor whose documents are only paragraphs. Measured, with the set as
- * the only difference: Alice writes "Plan" in a block, Bob appends
- * " v2-from-bob", Alice presses undo.
+ * Two things about that filter are ours. **The set of protected names**, which
+ * upstream defaults to one — `paragraph` — because it was written for an editor
+ * whose documents are only paragraphs. Measured, with the set as the only
+ * difference: Alice writes "Plan" in a block, Bob appends " v2-from-bob",
+ * Alice presses undo.
  *
  *   paragraph   upstream default → `<paragraph> v2-from-bob</paragraph>`
  *   heading     upstream default → ``  (everything gone)
@@ -115,8 +154,12 @@ export interface DocumentUndoManager extends Y.UndoManager {
  *   codeBlock   upstream default → ``  (everything gone)
  *
  * So the set comes from {@link protectedNodes} — every block type in the
- * schema, derived rather than listed. Alice's own text still comes out in every
- * case; widening the set only stops the container going with it.
+ * schema, derived rather than listed.
+ *
+ * **And the filter is wrapped**, because saving the container is not enough on
+ * its own: upstream's never sees the container's attributes, so the heading
+ * came back as an h1. {@link isDeletableByUndo} covers those too. Alice's own
+ * text still comes out in every case.
  *
  * An earlier version of this file added a rule refusing to delete the body's
  * last child, to stop undo emptying the fragment; `seedEmptyBody` in
@@ -137,7 +180,7 @@ export function createDocumentUndoManager(doc: Y.Doc): DocumentUndoManager {
     () =>
       new Y.UndoManager(body, {
         trackedOrigins: new Set([ySyncPluginKey]),
-        deleteFilter: (item) => defaultDeleteFilter(item, protectedNodes()),
+        deleteFilter: isDeletableByUndo,
         captureTransaction: (tr) => tr.meta.get('addToHistory') !== false,
       }) as DocumentUndoManager,
   );
