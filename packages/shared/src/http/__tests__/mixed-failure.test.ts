@@ -20,7 +20,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { httpRequest } from "@shared/http/request.js";
+import { httpRequest, HttpRetryError } from "@shared/http/request.js";
 
 const URL_UNDER_TEST = "https://vendor.test/v1/predictions";
 
@@ -70,9 +70,13 @@ describe("an outcome belongs to the attempt that produced it", () => {
 
     // The real failure is the dropped connection. Returning the stale 503
     // would tell on-call the vendor rejected us when the network broke.
-    await expect(httpRequest(URL_UNDER_TEST, {}, opts(fetchImpl))).rejects.toThrow(
-      /ECONNRESET/,
-    );
+    // Replays happened, so it arrives wrapped with the count, and the
+    // connection error itself is the cause.
+    const thrown = await httpRequest(URL_UNDER_TEST, {}, opts(fetchImpl)).catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(HttpRetryError);
+    expect((thrown as HttpRetryError).attempts).toBe(3);
+    expect((thrown as HttpRetryError).cause).toMatchObject({ message: "ECONNRESET" });
   });
 
   it("surfaces a fatal refusal that follows a retryable status", async () => {
@@ -82,12 +86,17 @@ describe("an outcome belongs to the attempt that produced it", () => {
     // address, and the guard refuses. The refusal must reach the caller — it
     // is the only thing that distinguishes "site was down" from "someone
     // pointed us at the internal network".
-    await expect(
-      httpRequest(URL_UNDER_TEST, {}, {
-        ...opts(fetchImpl),
-        isFatal: (err) => err instanceof BlockedAddressError,
-      }),
-    ).rejects.toThrow(BlockedAddressError);
+    const thrown = await httpRequest(URL_UNDER_TEST, {}, {
+      ...opts(fetchImpl),
+      isFatal: (err) => err instanceof BlockedAddressError,
+    }).catch((e: unknown) => e);
+
+    // A replay happened before the refusal, so the count rides along and the
+    // refusal itself is the cause — losing it would erase the only thing that
+    // separates "site was down" from "someone pointed us at the internal
+    // network".
+    expect(thrown).toBeInstanceOf(HttpRetryError);
+    expect((thrown as HttpRetryError).cause).toBeInstanceOf(BlockedAddressError);
   });
 
   it("still returns the response when the LAST attempt produced one", async () => {
@@ -95,7 +104,7 @@ describe("an outcome belongs to the attempt that produced it", () => {
     // attempt really did answer, and its answer is the outcome.
     const fetchImpl = scriptedFetch([new Error("ECONNRESET"), res(404, { detail: "gone" })]);
 
-    const { response: out } = await httpRequest(URL_UNDER_TEST, {}, opts(fetchImpl));
+    const out = await httpRequest(URL_UNDER_TEST, {}, opts(fetchImpl));
 
     expect(out.status).toBe(404);
   });
@@ -103,14 +112,10 @@ describe("an outcome belongs to the attempt that produced it", () => {
 
 describe("cancellation during a backoff wait", () => {
   it("rejects with the caller's reason instead of waiting the delay out", async () => {
-    // Retry-After of 8s. Nothing clamps it — the ceiling decides whether to
-    // wait at all, and this caller declares nothing, so the sixty-second
-    // background ceiling applies and eight seconds is served in full. Long
-    // enough that waiting it out would be unmistakable in the elapsed time.
-    //
-    // The comment here used to say "clamped to the transport's 10s ceiling",
-    // which described a mechanism that no longer exists and named the wrong
-    // ceiling for its own caller besides.
+    // Retry-After of 8s. Nothing clamps it — the ceiling only decides whether
+    // to wait at all, and eight seconds is well under it, so it is served in
+    // full. Long enough that waiting it out would be unmistakable in the
+    // elapsed time.
     const rateLimited = new Response("{}", {
       status: 429,
       headers: { "content-type": "application/json", "retry-after": "8" },

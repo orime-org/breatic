@@ -212,35 +212,26 @@ export type { AdjustValue } from "@shared/adjust-value.js";
 
 export { newId, deriveId } from "@shared/ids.js";
 
-export { fullJitter, exponentialJitterDelay } from "@shared/backoff.js";
-export { sleep } from "@shared/sleep.js";
-
 // The one HTTP transport with retries — backend services and browser alike.
-// Callers state the `replaySafe` fact and the transport applies the judgement,
-// so a verdict is reached in exactly one place. (`decideRetry` itself is
-// exported further down, for the one caller whose retry subject is not a
-// `fetch`; the point is one implementation of the judgement, not one exit.)
+// Anything aimed at OUR OWN backend keeps using the browser's axios singleton;
+// anything aimed outward (cloud storage, vendor APIs, arbitrary URLs) comes
+// through here, on both sides of the wire (decided 2026-08-02).
+//
+// Three symbols, and that is the whole surface. It does six things — send,
+// judge, wait, cap at three deliveries, hand over or throw, hold nothing — and
+// no seventh, so there is nothing else worth naming here. Everything the loop
+// needs internally (the judgement, its vocabulary, the backoff maths, the
+// sleep) stays inside: an export is a promise to somebody, and nobody outside
+// this package needs those.
 //
 // It hands back the platform's own `Response` and holds nothing afterwards.
 // Reading it — how long a read may stall, how large it may be, how to stop
 // one — belongs to the caller: the HTTP client underneath already times a
 // stalled read, and a second timer on top would be a duplicate with worse
 // information (decided 2026-08-02).
-export { httpRequest } from "@shared/http/request.js";
-export type { HttpRequestOptions, HttpOutcome } from "@shared/http/request.js";
-// No constants are exported. They are fixed rather than configurable on
-// purpose — worker and browser each used to carry their own copy of the retry
-// count and the two drifted into meaning different things — so putting them on
-// the public surface invites exactly the second opinion the fixed values exist
-// to prevent.
-// The judgement is exposed on its own for callers whose retry subject is not
-// a `fetch` — the browser's presign step retries an axios call, so it owns the
-// loop but must not own a second opinion about what is worth retrying.
-export { decideRetry } from "@shared/http/decide-retry.js";
-export type {
-  RetryDecision,
-  RetryInput,
-  RetryRefusal,
-  RetryTrigger,
-  TransportErrorKind,
-} from "@shared/http/decide-retry.js";
+//
+// The delivery count rides with the failure and never with the response: a
+// caller holding a 200 has no use for "and it took two tries", while a caller
+// holding a failure has a log line to write.
+export { httpRequest, HttpRetryError } from "@shared/http/request.js";
+export type { HttpRequestOptions } from "@shared/http/request.js";

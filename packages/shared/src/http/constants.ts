@@ -35,41 +35,30 @@ export const MAX_RETRIES = 2;
 export const BASE_DELAY_MS = 1000;
 
 /**
- * How long a server may ask an INTERACTIVE caller to wait before the wait
- * stops being worth having.
+ * How long a server may ask us to wait before the wait stops being worth
+ * having.
  *
- * A threshold, not a clamp. Past it the request fails and the number the
- * server asked for goes back to the caller, so it can say what happened and
- * let the person decide when to try again. Clamping — which is what this
- * used to do — was the worst available option: a server asking for 30s got
- * silently rewritten to 10s, so we neither did what it asked nor spared the
- * person waiting, and the 10s was a number nobody had sent.
+ * A threshold, not a clamp. Past it the request stops and the response the
+ * server sent — `Retry-After` header and all — goes back to the caller, which
+ * can read the figure and decide for itself. Clamping, which this used to do,
+ * was the worst available option: a server asking for 30s got silently
+ * rewritten to 10s, so we neither did what it asked nor spared anyone the
+ * wait, and the 10s was a number nobody had sent.
  *
- * 10 seconds is Nielsen's third response-time limit: about the longest a
- * user's attention stays on a task before they go and do something else
- * (https://www.nngroup.com/articles/response-times-3-important-limits/).
- * A wait past that has already lost them, so failing outright and letting
- * them choose beats holding them there.
- */
-export const MAX_RETRY_AFTER_INTERACTIVE_MS = 10_000;
-
-/**
- * The same threshold for a caller with nobody waiting on it — a worker
- * calling a vendor. The vendor knows its own recovery timeline, and there is
- * no attention to lose, so its number wins over a much wider range.
+ * One figure rather than two. There was a second, shorter bound for callers
+ * with a person waiting, justified by Nielsen's attention limit — but "how
+ * long is a person willing to wait" is a product decision, and this layer does
+ * not hold product decisions. The caller that cares can read the header and
+ * act on it; this bound exists only so one call cannot occupy a caller for an
+ * unbounded stretch.
  *
  * 60 seconds matches Stripe's `MAX_RETRY_AFTER_WAIT` (src/RequestSender.ts),
- * which is the same bound applied for the same reason in a payments SDK.
- * Where we differ, deliberately: past the bound Stripe ignores the header and
- * falls back to its own backoff, whereas we fail. Substituting our own number
- * for the server's is exactly the guess this design refuses to make, and we
- * have no queue to defer the work to — every operation ends as completed or
- * failed, so "failed, and here is what the server said" is the honest outcome.
+ * the same bound applied for the same reason in a payments SDK. Where we
+ * differ, deliberately: past the bound Stripe ignores the header and falls
+ * back to its own backoff, whereas we stop. Substituting our own number for
+ * the server's is exactly the guess this design refuses to make.
  */
-export const MAX_RETRY_AFTER_BACKGROUND_MS = 60_000;
-
-
-
+export const MAX_RETRY_AFTER_MS = 60_000;
 
 
 /**

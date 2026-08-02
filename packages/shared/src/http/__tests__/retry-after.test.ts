@@ -18,8 +18,7 @@ import { describe, it, expect } from "vitest";
 
 import { httpRequest } from "@shared/http/request.js";
 import {
-  MAX_RETRY_AFTER_INTERACTIVE_MS,
-  MAX_RETRY_AFTER_BACKGROUND_MS,
+  MAX_RETRY_AFTER_MS,
 } from "@shared/http/constants.js";
 
 const URL_UNDER_TEST = "https://vendor.test/v1/generate";
@@ -84,7 +83,7 @@ describe("Retry-After relay", () => {
       new Response("{}", { status: 200 }),
     ]);
 
-    const { response: res } = await httpRequest(URL_UNDER_TEST, {}, {
+    const res = await httpRequest(URL_UNDER_TEST, {}, {
       replaySafe: true,
       timeoutMs: 1_000,
       fetchImpl,
@@ -98,7 +97,7 @@ describe("Retry-After relay", () => {
     expect(res.status).toBe(429);
   });
 
-  it("serves a wait a background caller can accept, exactly as asked", async () => {
+  it("serves a wait under the ceiling exactly as asked", async () => {
     const { sleepImpl, waits } = recordingSleep();
     const fetchImpl = scriptedFetch([
       rateLimited("55"),
@@ -118,33 +117,7 @@ describe("Retry-After relay", () => {
     // two literals compared to each other, exercising nothing. What the case
     // is actually about is that this figure sits under the ceiling, so the
     // ceiling is what the assertion should mention.
-    expect(waits[0]).toBeLessThanOrEqual(MAX_RETRY_AFTER_BACKGROUND_MS);
-  });
-
-  it("refuses for an interactive caller a wait a background one would serve", async () => {
-    // The same 20s answer, two callers, two right outcomes: a worker waits
-    // because nobody is watching it; an upload fails because somebody is.
-    const { sleepImpl, waits } = recordingSleep();
-    const fetchImpl = scriptedFetch([
-      rateLimited("20"),
-      new Response("{}", { status: 200 }),
-    ]);
-
-    const { response: res, retryAfterMs: named } = await httpRequest(URL_UNDER_TEST, {}, {
-      replaySafe: true,
-      interactive: true,
-      timeoutMs: 1_000,
-      fetchImpl,
-      sleepImpl,
-      label: "probe",
-    });
-
-    expect(waits).toEqual([]);
-    expect(res.status).toBe(429);
-    // Same correction: assert on what the transport reported, not on two
-    // constants sitting next to each other.
-    expect(named).toBe(20_000);
-    expect(named).toBeGreaterThan(MAX_RETRY_AFTER_INTERACTIVE_MS);
+    expect(waits[0]).toBeLessThanOrEqual(MAX_RETRY_AFTER_MS);
   });
 
   it("honours Retry-After even when replaying is NOT safe", async () => {

@@ -24,8 +24,7 @@ import { exponentialJitterDelay } from "@shared/backoff.js";
 import {
   BASE_DELAY_MS,
   MAX_RETRIES,
-  MAX_RETRY_AFTER_INTERACTIVE_MS,
-  MAX_RETRY_AFTER_BACKGROUND_MS,
+  MAX_RETRY_AFTER_MS,
 } from "@shared/http/constants.js";
 
 /** Why a replay was declined. */
@@ -134,16 +133,6 @@ export interface RetryInput {
    * for a request with no body at all.
    */
   bodyReplayable?: boolean;
-  /**
-   * Caller-owned fact: someone is waiting on this request right now.
-   *
-   * Like `replaySafe`, a statement about the caller's situation rather than
-   * a preference about retrying. It selects how long a server-directed wait
-   * may be before the wait is worse than the failure — the two ceilings in
-   * `constants.ts`. Defaults to false: a worker or a job has nobody waiting,
-   * which is the common case in this codebase.
-   */
-  interactive?: boolean;
   /** 1-based attempt counter (1 = the first retry being considered). */
   attempt: number;
   /** Uniform `[0, 1)` source; injectable for deterministic tests. */
@@ -237,17 +226,6 @@ function ownBackoffMs(input: RetryInput): number {
 }
 
 /**
- * The longest server-directed wait this caller can accept.
- * @param input - The decision input, for the caller's `interactive` statement.
- * @returns The ceiling in milliseconds.
- */
-function waitCeilingMs(input: RetryInput): number {
-  return input.interactive === true
-    ? MAX_RETRY_AFTER_INTERACTIVE_MS
-    : MAX_RETRY_AFTER_BACKGROUND_MS;
-}
-
-/**
  * Turn a would-be retry into a decision, honouring the server's own figure
  * and refusing outright when that figure is longer than the caller can give.
  *
@@ -264,7 +242,7 @@ function waitCeilingMs(input: RetryInput): number {
 function scheduleRetry(input: RetryInput, reason: RetryTrigger): RetryDecision {
   const asked = serverDirectedWaitMs(input);
   if (asked === null) return { retry: true, reason, delayMs: ownBackoffMs(input) };
-  if (asked > waitCeilingMs(input)) {
+  if (asked > MAX_RETRY_AFTER_MS) {
     return { retry: false, reason: "retry_after_too_long", retryAfterMs: asked };
   }
   return { retry: true, reason, delayMs: asked };

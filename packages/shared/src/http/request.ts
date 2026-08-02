@@ -2,192 +2,109 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The one HTTP transport with retries, shared by the backend services and
- * the browser.
+ * One HTTP request, replayed when a replay is warranted.
  *
- * Before this existed the same concern was implemented three times with three
- * different verdicts: the worker retried only 429 (so a dropped connection was
- * fatal), the browser upload retried 5xx/429/network, and the agent's tools
- * retried nothing at all. That judgement now lives in exactly one place —
- * {@link decideRetry} — and every caller states the one fact only it can know:
- * whether replaying its request is free of side effects.
+ * This layer does six things and no seventh:
  *
- * WHAT THIS LAYER IS NOT (decided 2026-08-02, and the reason a much larger
- * earlier version was thrown away):
+ *   1. send the request the caller asked for, byte for byte
+ *   2. decide whether a failure is worth replaying
+ *   3. wait as long as the server said, or work it out when it did not
+ *   4. deliver at most three times
+ *   5. hand the response over, or throw when none was ever obtained
+ *   6. hold nothing once the call is over
  *
- *   - It does not read bodies. It hands back the platform's own `Response`
- *     and forgets about it. Reading is the caller's, including how long a
- *     read may stall — the HTTP client underneath already times that, and a
- *     second timer on top of it is a duplicate with worse information.
- *   - It holds nothing after it returns. No listener on the caller's signal,
- *     no reference to the response, no callback. An object nobody holds is
- *     collected on its own, so there is no release protocol to get wrong.
- *     Measured across fourteen exit paths, 500 calls each on one signal: the
- *     listener count goes 0 -> 0 every time, and no timer survives the call.
- *     Bare `fetch` holds one listener per request in flight and drops them
- *     only when the response is collected, so this releases sooner than the
- *     platform does. The version this replaces left one listener per unread
- *     response — 200 responses, 200 listeners.
- *   - It carries no application concepts. An earlier cut had the vendor
- *     polling loop in it — which field holds the status, which values are
- *     terminal, how long a generation may take — none of which is HTTP.
+ * What it deliberately does NOT do is as load-bearing as what it does. It does
+ * not read the body — how long, how big and how to stop are the caller's, and
+ * the client underneath already times a stalled read (measured: Node's fetch
+ * rejects a server that sends headers then goes silent, after 301s, with
+ * UND_ERR_BODY_TIMEOUT). It does not log — library packages report by
+ * returning and throwing. And it does not tell the caller why it stopped: a
+ * response IS the answer, and a caller that wants to branch reads the status
+ * it already has.
  *
- * Written directly against `fetch` rather than on a retry client. That was
- * measured, not assumed: hosting this design on ky 2.0.2 required working
- * around five of its defaults (disabling its HTTP-error throwing also
- * disabled retrying; its method whitelist gated the retry predicate rather
- * than deferring to it; `Retry-After` was dropped once the predicate took
- * over; the predicate was not consulted on the final attempt so exhaustion
- * could not be reported; and it consumed a failing response's body, which
- * erased the vendor error text the worker puts in its logs). The loop below
- * is what those five workarounds were emulating.
+ * The count of deliveries rides with the failure, never with the response.
+ * A caller holding a 200 has no use for "and it took two tries"; a caller
+ * holding a failure has a log line to write.
  */
 
-import {
-  decideRetry,
-  parseRetryAfter,
-  type RetryRefusal,
-  type TransportErrorKind,
-} from "@shared/http/decide-retry.js";
+import { sleep } from "@shared/sleep.js";
 import { withDeadline } from "@shared/http/cancellation.js";
 import { MAX_TIMER_MS } from "@shared/http/constants.js";
+import { decideRetry, type TransportErrorKind, parseRetryAfter } from "@shared/http/decide-retry.js";
 import { redactUrl, UNPARSEABLE_URL } from "@shared/http/redact-url.js";
-import { sleep } from "@shared/sleep.js";
 
 /**
- * What the transport did, alongside what it got.
+ * Every delivery failed and none produced a response.
  *
- * Returned rather than reported through a callback. A callback would have to
- * be held for the duration of the call and shielded against throwing — and
- * telemetry that can change the fate of the request it describes is a bug
- * waiting to happen. Data comes back; the caller logs it if it wants to.
+ * Thrown only when a replay actually happened. A failure on the very first
+ * delivery carries no count worth reporting — "attempts: 1" states that the
+ * request was made, which the caller knew — so that one is rethrown exactly
+ * as it arrived.
  */
-export interface HttpOutcome {
+export class HttpRetryError extends Error {
+  /** How many times the request was delivered before giving up. */
+  readonly attempts: number;
+
   /**
-   * The platform's own response, whatever its status.
-   *
-   * A non-ok status is not an error here: whether a 404 is a failure is the
-   * caller's business. The call throws when no response was obtained at all,
-   * and also when the caller cancels during a backoff wait — in that second
-   * case an earlier attempt's response exists but the caller has said it no
-   * longer wants it.
-   *
-   * It is the real thing, not a wrapper. Read it, or do not — the transport
-   * has already let go of it either way.
-   *
-   * ONE CONSEQUENCE WORTH KNOWING. The transport composes the caller's signal
-   * with its own per-attempt deadline, and detaches from the caller's signal
-   * the moment an attempt ends — that detachment is what keeps an unread
-   * response from being held. So a `signal` that aborts AFTER this returns
-   * will not interrupt a read in progress. To stop a read, cancel the body:
-   * `response.body?.cancel()`. That is the same call the caller would make on
-   * a bare `fetch` response, and it is the caller's to make, because by then
-   * this layer is no longer in the picture.
+   * Build the failure.
+   * @param message - What was being attempted, with the url already redacted.
+   * @param attempts - How many deliveries were made.
+   * @param cause - The failure the last delivery produced.
    */
-  response: Response;
-  /**
-   * How many attempts were made. 1 means no replay happened.
-   *
-   * Attempts, not deliveries: an attempt that never reached the network —
-   * a fetch implementation that threw before sending, an unresolvable host —
-   * counts here too, because from this layer's side it was a try that failed.
-   */
-  attempts: number;
-  /** Why the transport stopped, whether or not the result is a failure. */
-  stopped: RetryRefusal;
-  /**
-   * The wait this response asked for via `Retry-After`, in milliseconds, or
-   * null when it named none or named one that cannot be used.
-   *
-   * Parsed once, here, because the transport had to read it anyway to make
-   * its own decision. Two parsers of one header are two chances to disagree.
-   */
-  retryAfterMs: number | null;
+  constructor(message: string, attempts: number, cause: unknown) {
+    super(message, { cause });
+    this.name = "HttpRetryError";
+    this.attempts = attempts;
+  }
 }
 
-/** Per-call inputs. Retry COUNT is fixed in constants and absent here. */
+/** What the caller must state, and the seams tests inject. */
 export interface HttpRequestOptions {
   /**
-   * Whether delivering this exact request a second time produces no
-   * additional side effects. The CALLER owns this fact — the transport
-   * cannot infer it.
+   * Caller-owned fact: delivering this exact request again produces no
+   * additional side effects.
    *
-   * This is a statement of fact about the endpoint, NOT a retry preference:
-   * answer it about what a second delivery would do, not about how badly the
-   * call should succeed. An AIGC submit without a vendor idempotency key is
-   * `false` (a replay bills a second generation); the same submit carrying
-   * one is `true`; any poll or read is `true`.
+   * A fact, not a preference. Only the caller knows that `POST /predictions`
+   * spends the vendor's money a second time, and no amount of inspecting the
+   * request would reveal it. Setting it true to "make things more reliable"
+   * inverts its meaning.
    */
   replaySafe: boolean;
   /**
-   * Caller-owned fact: a person is waiting on this request right now.
+   * How long one delivery may wait FOR RESPONSE HEADERS, in milliseconds.
    *
-   * The browser sets it; a worker or a job does not. Like `replaySafe` it
-   * describes the caller's situation rather than a preference, and like
-   * `replaySafe` the transport cannot work it out for itself.
-   *
-   * It decides one thing: how long a server-directed `Retry-After` may be
-   * before serving it is worse than failing. Ten seconds with someone
-   * watching, sixty without (`constants.ts` carries the reasoning for both).
-   * Past the limit the request fails and the figure the server asked for
-   * comes back with it, so the caller can say what happened instead of
-   * leaving a person in front of a spinner.
-   */
-  interactive?: boolean;
-  /**
-   * How long one attempt may wait FOR RESPONSE HEADERS, in milliseconds.
-   *
-   * This deadline ends when the headers arrive. What happens while the body
-   * is read is not this layer's business — see the module note.
+   * The deadline ends when the headers arrive; what happens while the body is
+   * read is not this layer's business.
    */
   timeoutMs: number;
-  /**
-   * Replacement fetch. The agent's tools pass an SSRF-guarding
-   * implementation; retrying above it means every replay is re-checked,
-   * which retrying inside a connection pool would not do.
-   */
+  /** Fetch implementation; defaults to the global one. */
   fetchImpl?: typeof fetch;
-  /**
-   * Caller cancellation (a user pressed stop). Never retried. Passed here
-   * rather than on `init`, because each attempt needs its own composed
-   * signal and anything on `init.signal` would be overwritten.
-   */
+  /** The caller's cancellation, composed with each delivery's own deadline. */
   signal?: AbortSignal;
   /**
-   * Identify a deterministic failure from `fetchImpl` — one a replay could
-   * never fix — so the budget is not spent hitting the same wall.
+   * The caller's deterministic-failure predicate.
    *
-   * Only the caller can classify this, because only it knows what its own
-   * fetch implementation throws. The agent's SSRF guard is the motivating
-   * case: a blocked address is blocked on every attempt.
+   * Some failures are the caller's own policy rather than the network's — an
+   * SSRF guard refusing an address will refuse it identically on every
+   * delivery, so replaying only burns the budget. Only the caller can
+   * recognise what its own fetch implementation throws.
    *
-   * A predicate that throws has not answered "deterministic"; the transport
-   * does what it would have done without one. It describes the failure, it
-   * does not get to replace it.
+   * If it throws, it has not answered "deterministic"; it describes the
+   * failure and does not get to replace it.
    */
   isFatal?: (error: unknown) => boolean;
-  /** Provider or tool name, for error messages. */
+  /** Provider or tool name, used only to make a thrown message legible. */
   label?: string;
-  /**
-   * Replacement for the between-attempt wait. FOR TESTS ONLY — production
-   * callers must leave this unset so every caller backs off identically.
-   *
-   * The seam belongs here rather than in each caller. Before the retry logic
-   * was centralised, the browser upload owned its own wait and injected a
-   * fake one in tests; removing that wait without providing this left its
-   * suite sleeping through ~10s of real backoff on every run, right next to
-   * timing-sensitive assertions. A caller cannot stub a wait it no longer
-   * performs, so the layer that performs it has to offer the seam.
-   */
+  /** Sleep implementation; the seam that keeps the tests off a real clock. */
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 /**
  * A fetch implementation that broke the contract this transport drives it by.
  *
- * Its own type because the failure is deterministic: the same stand-in will
- * do the same thing on every attempt, so replaying is pure waste. It is OUR
- * bug rather than the network's, and it outranks the caller's own predicate.
+ * Its own type because the failure is deterministic: the same stand-in will do
+ * the same thing on every delivery, so replaying is pure waste. It is OUR bug
+ * rather than the network's, and it outranks the caller's own predicate.
  */
 class TransportContractError extends Error {
   /**
@@ -228,8 +145,8 @@ function refuseUnusableOptions(
 ): void {
   // The transport has already learned this from redacting it. Sending it
   // anyway costs three deliveries and two backoffs against a string that can
-  // never resolve — and the rejection `fetch` produces carries the RAW url,
-  // so a key in the query string travels out in an error message that never
+  // never resolve — and the rejection `fetch` produces carries the RAW url, so
+  // a key in the query string travels out in an error message that never
   // passed through redaction. Refusing here is both cheaper and the only way
   // that key stays out of the caller's logs.
   if (safeUrl === UNPARSEABLE_URL) {
@@ -247,15 +164,15 @@ function refuseUnusableOptions(
  *
  * Answered by allow-list rather than by looking for streams, and deliberately
  * so: an unrecognised body is treated as one-shot, which costs a replay that
- * might have worked. The other way round costs a replay that CANNOT work,
- * plus the real answer — the first attempt's response is discarded and the
- * caller is handed a TypeError about a disturbed body instead. Between a
- * missed retry and a destroyed answer, miss the retry.
+ * might have worked. The other way round costs a replay that CANNOT work, plus
+ * the real answer — the first delivery's response is discarded and the caller
+ * is handed a TypeError about a disturbed body instead. Between a missed retry
+ * and a destroyed answer, miss the retry.
  *
  * Every listed type can be read more than once: strings and byte buffers are
  * values, a `Blob` opens a fresh read per use, and `FormData` /
- * `URLSearchParams` are re-serialised on each send. A `ReadableStream` — what
- * a streamed upload passes — cannot, and neither can an async iterable.
+ * `URLSearchParams` are re-serialised on each send. A `ReadableStream` — what a
+ * streamed upload passes — cannot, and neither can an async iterable.
  * @param body - The body from the caller's fetch init.
  * @returns True when a replay would send the same bytes again.
  */
@@ -270,17 +187,17 @@ function bodyCanBeResent(body: BodyInit | null | undefined): boolean {
 }
 
 /**
- * Classify a thrown fetch failure into {@link decideRetry}'s vocabulary.
+ * Classify a thrown fetch failure into the retry predicate's vocabulary.
  *
  * Keyed on observable state rather than on the error's name or message: the
- * caller's own signal tells us a cancellation, and this attempt's timeout
- * flag tells us a deadline. Everything else is a transport-level failure
- * unless the caller recognises it as deterministic. Error names would be a
- * weaker discriminator — an abort surfaces whatever reason the caller passed
- * to `abort()`, which may be any value.
- * @param error - The error the fetch attempt rejected with.
+ * caller's own signal tells us a cancellation, and this delivery's timeout flag
+ * tells us a deadline. Everything else is a transport-level failure unless the
+ * caller recognises it as deterministic. Error names would be a weaker
+ * discriminator — an abort surfaces whatever reason the caller passed to
+ * `abort()`, which may be any value at all.
+ * @param error - The error the fetch delivery rejected with.
  * @param callerSignal - The caller's cancellation signal, if any.
- * @param expired - Whether this attempt's own deadline is what fired.
+ * @param expired - Whether this delivery's own deadline is what fired.
  * @param isFatal - The caller's deterministic-failure predicate, if any.
  * @returns The transport-error kind for the predicate.
  */
@@ -314,43 +231,43 @@ function classifyThrown(
  *
  * Returns the LAST response even when it is not ok, because whether an HTTP
  * error counts as a failure is a business decision rather than a transport
- * one: the agent's fetch tool needs the status of a 404, the worker's
- * provider transports want an exception. Only a failure that produced no
- * response at all throws.
+ * one: the agent's fetch tool wants the status of a 404, a vendor transport
+ * wants an exception. A response is an answer; only the absence of one throws.
  *
  * The response comes back untouched and unheld. Read it or discard it — this
  * layer keeps no listener, no reference and no expectation either way.
  * @param url - Absolute request URL.
- * @param init - Standard fetch init (method, headers, body). Any `signal` on
- *   it is replaced by this call's per-attempt signal.
- * @param options - Replay-safety fact, the headers deadline, and hooks.
- * @returns The final response plus what the transport did to obtain it.
- * @throws {Error} When no response was ever obtained — a network failure, an
- *   attempt timeout, or a caller abort — after replays are spent. Also when
- *   the caller cancels during a backoff wait.
+ * @param init - Standard fetch init (method, headers, body). Any `signal` on it
+ *   is replaced by this call's per-delivery signal.
+ * @param options - The replay-safety fact, the headers deadline, and the seams.
+ * @returns The final response, exactly as `fetch` produced it.
+ * @throws {HttpRetryError} When replays happened and none produced a response.
+ * @throws {Error} The original failure, unwrapped, when the first delivery
+ *   failed and no replay followed — including a cancellation by the caller.
  */
 export async function httpRequest(
   url: string,
   init: RequestInit,
   options: HttpRequestOptions,
-): Promise<HttpOutcome> {
+): Promise<Response> {
   const label = options.label ?? "http";
   const doFetch = options.fetchImpl ?? fetch;
   const doSleep = options.sleepImpl ?? sleep;
   // Redacted once, up front, because everything that names this request uses
-  // it. Some vendors put their API key in the query string, so the raw URL
-  // must not reach a message anyone might write down.
+  // it. Some vendors put their API key in the query string, so the raw URL must
+  // not reach a message anyone might write down.
   const safeUrl = redactUrl(url);
   refuseUnusableOptions(options, label, safeUrl);
 
   // Unbounded by design: `decideRetry` owns the budget and refuses past
-  // MAX_RETRIES, so the exit is the predicate rather than a second counter
-  // that could disagree with it.
+  // MAX_RETRIES, so the exit is the predicate rather than a second counter that
+  // could disagree with it.
   for (let index = 0; ; index++) {
-    // A fresh deadline per attempt is the whole point. The implementation
-    // this replaces let callers pass one `AbortSignal.timeout(...)` into a
-    // retry loop; an `AbortSignal` is single-shot, so the first timeout
-    // aborted every subsequent attempt before it left the ground.
+    const attempts = index + 1;
+    // A fresh deadline per delivery is the whole point. The implementation this
+    // replaces let callers pass one `AbortSignal.timeout(...)` into a retry
+    // loop; an `AbortSignal` is single-shot, so the first timeout aborted every
+    // subsequent delivery before it left the ground.
     const deadline = withDeadline(options.signal, options.timeoutMs, `${label} attempt timed out`);
     let response: Response | null = null;
     let status: number | undefined;
@@ -360,7 +277,7 @@ export async function httpRequest(
 
     try {
       const attempted = await doFetch(url, { ...init, signal: deadline.signal });
-      // Checked before anything is recorded about the attempt. A fetch
+      // Checked before anything is recorded about the delivery. A fetch
       // implementation that hands back something else is OUR bug, not the
       // network's, and the fields below were being assigned before the first
       // line that touches the object — so a duck-typed stand-in was replayed
@@ -370,19 +287,15 @@ export async function httpRequest(
           `${label} fetch implementation for ${safeUrl} did not return a Response`,
         );
       }
-      // Parsed once, here, and used by both consumers: the retry decision
-      // below and the outcome handed to the caller.
       serverWaitMs = parseRetryAfter(attempted.headers.get("retry-after"), Date.now());
       response = attempted;
       status = attempted.status;
-      if (attempted.ok) {
-        return { response: attempted, attempts: index + 1, stopped: "nothing_to_retry", retryAfterMs: serverWaitMs };
-      }
+      if (attempted.ok) return attempted;
     } catch (error) {
       failure = error;
       transportError = classifyThrown(error, options.signal, deadline.expired(), options.isFatal);
     } finally {
-      // Always, on every path out of the attempt. This is what keeps the
+      // Always, on every path out of the delivery. This is what keeps the
       // transport from holding anything once it returns: the timer is cleared
       // and the listener on the caller's signal is detached, so a response
       // nobody reads is a response nobody holds.
@@ -395,28 +308,31 @@ export async function httpRequest(
       transportError,
       replaySafe: options.replaySafe,
       bodyReplayable: bodyCanBeResent(init.body),
-      ...(options.interactive !== undefined && { interactive: options.interactive }),
-      // `index` counts attempts made; the predicate counts the replay being
-      // considered, which is one ahead.
-      attempt: index + 1,
+      attempt: attempts,
     });
 
     if (!decision.retry) {
-      if (response !== null) {
-        return { response, attempts: index + 1, stopped: decision.reason, retryAfterMs: serverWaitMs };
-      }
-      throw failure instanceof Error
-        ? failure
-        : new Error(`${label} request to ${safeUrl} failed: ${String(failure)}`);
+      // A response is an answer, whatever its status. Only its absence throws.
+      if (response !== null) return response;
+      // One delivery, no count worth reporting: the caller learns nothing from
+      // "attempts: 1" that it did not already know, and wrapping would bury the
+      // error it can actually act on. More than one, and the count is the part
+      // it could not have worked out for itself.
+      if (attempts === 1) throw failure;
+      throw new HttpRetryError(
+        `${label} request to ${safeUrl} failed after ${attempts} attempts`,
+        attempts,
+        failure,
+      );
     }
 
-    // The response we walk away from is deliberately left alone. Cancelling
-    // its body would be this layer managing a body, which is the one thing it
-    // does not do — and the client underneath already handles an unconsumed
-    // response: a small one is buffered and its socket returns to the pool,
-    // a large one costs that socket its reuse. Measured: ten unread 404s used
-    // two connections, not ten. A lost reuse is a cost, not a leak, and it is
-    // the cost of this layer having no opinion about bodies.
+    // The response we walk away from is deliberately left alone. Cancelling its
+    // body would be this layer managing a body, which is the one thing it does
+    // not do — and the client underneath already handles an unconsumed
+    // response: a small one is buffered and its socket returns to the pool, a
+    // large one costs that socket its reuse. Measured: ten unread 404s used two
+    // connections, not ten. A lost reuse is a cost, not a leak, and it is the
+    // cost of this layer having no opinion about bodies.
     await doSleep(decision.delayMs, options.signal);
   }
 }
