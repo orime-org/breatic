@@ -112,6 +112,9 @@ const decisionBodySchema = z.object({
  * must equal the caller — the route stays project-agnostic because
  * the notification id is globally unique).
  *
+ * Either decision answers `409` once the request is past its decision window:
+ * expiry closes it to both answers.
+ *
  * Body: { decision: "approved" | "rejected"; reason?: string }
  */
 decisionRoute.patch(

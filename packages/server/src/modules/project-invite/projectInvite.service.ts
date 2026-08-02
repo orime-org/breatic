@@ -40,7 +40,12 @@ import * as invitesRepo from "@server/modules/project-invite/projectInvitations.
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
-import { getProjectCollaboratorCap } from "@server/config/limits.js";
+import {
+  getProjectCollaboratorCap,
+  getDecisionWindowDays,
+  getDecisionWindowMs,
+  getDecisionWindowSeconds,
+} from "@server/config/limits.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildProjectInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
@@ -54,9 +59,6 @@ import type {
   PendingProjectInvitationSummary,
   ProjectInvitationLandingView,
 } from "@breatic/shared";
-
-/** Days a pending invite stays actionable before it self-voids. */
-const INVITE_TTL_DAYS = 7;
 
 /**
  * Invite a registered user into a project — creates a PENDING invite (it does
@@ -72,8 +74,9 @@ const INVITE_TTL_DAYS = 7;
  * to the caller (route surfaces the copyable URL) AND embedded in
  * the notification payload (so the bell can build the same link). The token
  * lives in Redis (not the PG tx) — a tx rollback simply leaves an orphan token
- * that self-expires in 7 days. The `project_invitations_one_pending` partial
- * unique maps a duplicate LIVE pending to a ConflictError.
+ * that self-expires with the decision window. The
+ * `project_invitations_one_pending` partial unique maps a duplicate LIVE
+ * pending to a ConflictError.
  * @param projectId - The project the user is being invited into
  * @param inviterUserId - The acting owner (becomes `invitedBy`; name in payload)
  * @param email - The invitee's email; must belong to a registered user
@@ -123,7 +126,7 @@ export async function createInvite(
   ]);
   const inviter = profiles.get(inviterUserId);
   const inviterName = inviter?.name ?? "";
-  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
 
   let invitationId = "";
   let token = "";
@@ -299,7 +302,8 @@ export async function confirmInvite(
  * already-decided / not-owned invite collapses to NotFound.
  * @param invitationId - The `project_invitations` row id
  * @param receiverUserId - The invitee declining (must own the invite)
- * @throws {NotFoundError} the invite is missing, already decided, or not owned
+ * @throws {NotFoundError} the invite is missing, already decided, past its
+ *   decision window, or not owned by `receiverUserId`
  */
 export async function declineInvite(
   invitationId: string,
@@ -368,14 +372,12 @@ export async function listPending(
   return invitesRepo.listPendingByProject(projectId);
 }
 
-/** TTL of the email-link token — matches the invite's 7-day window. */
-const INVITE_TOKEN_TTL_SECONDS = INVITE_TTL_DAYS * 24 * 60 * 60;
-
 /**
  * Issue a one-time email-link token for an invite (mirrors the studio-invite
  * token): a 64-hex random token stored in Redis
- * (`{env}:project-invite:{token}` → invitationId) with the invite's 7-day TTL.
- * The route embeds it in the `/project-invite?token=` link.
+ * (`{env}:project-invite:{token}` → invitationId) with the same decision
+ * window the invite row carries. The route embeds it in the
+ * `/project-invite?token=` link.
  * @param invitationId - The invitation the token resolves to
  * @returns The 64-char hex token to embed in the invite link
  */
@@ -385,7 +387,7 @@ export async function issueInviteToken(invitationId: string): Promise<string> {
     `${env.ENV}:project-invite:${token}`,
     invitationId,
     "EX",
-    INVITE_TOKEN_TTL_SECONDS,
+    getDecisionWindowSeconds(),
   );
   return token;
 }
@@ -437,6 +439,7 @@ export async function getInviteForLanding(
     role: row.role,
     expired: row.expiresAt.getTime() <= Date.now(),
     isInvitee: row.invitedUserId === viewerUserId,
+    windowDays: getDecisionWindowDays(),
   };
 }
 

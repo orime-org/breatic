@@ -28,6 +28,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
+import type * as LimitsModule from "@server/config/limits.js";
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -38,6 +39,20 @@ vi.mock("ai", () => ({
   }),
   stepCountIs: (_n: number) => () => false,
   tool: (config: Record<string, unknown>) => config,
+}));
+
+// The decision window is mocked to a value the repo does not ship, so a write
+// site that went back to spelling out its own seven days cannot pass. Reading
+// the real getter here would only prove the test and the code agree with each
+// other — measured: with the assertions reading getDecisionWindowMs(), putting
+// `7 * 24 * 60 * 60 * 1000` back into the service left every test in this file
+// green. The other getters keep their real behaviour.
+const decisionWindow = vi.hoisted(() => ({ days: 3 }));
+vi.mock("@server/config/limits.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof LimitsModule>()),
+  getDecisionWindowDays: () => decisionWindow.days,
+  getDecisionWindowMs: () => decisionWindow.days * 24 * 60 * 60 * 1000,
+  getDecisionWindowSeconds: () => decisionWindow.days * 24 * 60 * 60,
 }));
 
 import postgres from "postgres";
@@ -244,6 +259,18 @@ async function seedProjectTransfer(opts?: {
 }
 
 describe("requestProjectTransfer", () => {
+  it("stamps the request deadline from the configured decision window", async () => {
+    // Mirror of the studio transfer's twin test: pins that the write site
+    // reads the shared window. The unit itself is held by limits.test.ts.
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer();
+    await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
+    const [req] = await transferRequestsFor(recipientId);
+
+    const aheadMs = req!.expires_at!.getTime() - Date.now();
+    const windowMs = decisionWindow.days * 24 * 60 * 60 * 1000;
+    expect(aheadMs).toBeLessThanOrEqual(windowMs);
+    expect(aheadMs).toBeGreaterThan(windowMs - 60_000);
+  });
   it("lands an actionable transfer-request notification with the actor identity + a future expiry", async () => {
     const { projectId, ownerId, recipientId, ownerName } =
       await seedProjectTransfer();
@@ -384,6 +411,9 @@ describe("confirmProjectTransfer", () => {
     expect(await getProjectRole(projectId, ownerId)).toBe("owner");
     expect(await activeOwnerCount(projectId)).toBe(1);
   });
+
+
+
 
   it("applies the transfer exactly once under two concurrent confirms", async () => {
     const { projectId, ownerId, recipientId } = await seedProjectTransfer();
@@ -548,6 +578,44 @@ describe("confirmProjectTransfer — concurrency invariants", () => {
 });
 
 describe("cancelProjectTransfer", () => {
+  it("a refused decline leaves no trace — the mark-read rolls back with it", async () => {
+    // Mirror of the studio transfer's twin test: whatever gate rejects a
+    // decline, the mark-read that serializes it has to roll back too.
+    const { recipientId } = await seedProjectTransfer();
+    const [notif] = await sql<{ id: string }[]>`
+      INSERT INTO notifications (user_id, type, payload)
+      VALUES (${recipientId}, 'project.invite_accepted', '{}'::jsonb)
+      RETURNING id
+    `;
+
+    await expect(
+      projectTransferService.cancelProjectTransfer(notif!.id, recipientId),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    const [after] = await sql<{ read_at: Date | null }[]>`
+      SELECT read_at FROM notifications WHERE id = ${notif!.id}
+    `;
+    expect(after!.read_at).toBeNull();
+  });
+  it("refuses to DECLINE an expired request with Conflict, leaving it unread", async () => {
+    // Expiry closes the request outright — see the studio transfer's twin test.
+    // Declining past the window fails exactly like confirming, and it fails
+    // whole: the mark-read that serializes the decision must not survive.
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer();
+    await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
+    const [req] = await transferRequestsFor(recipientId);
+    await expireNotification(req!.id);
+
+    await expect(
+      projectTransferService.cancelProjectTransfer(req!.id, recipientId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    const [after] = await sql<{ read_at: Date | null }[]>`
+      SELECT read_at FROM notifications WHERE id = ${req!.id}
+    `;
+    expect(after!.read_at).toBeNull();
+    expect(await getProjectRole(projectId, ownerId)).toBe("owner");
+  });
   it("marks the request read and changes no roles", async () => {
     const { projectId, ownerId, recipientId } = await seedProjectTransfer();
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);

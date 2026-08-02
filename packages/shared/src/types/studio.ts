@@ -191,8 +191,19 @@ export interface InvitationLandingView {
   studioSlug: string;
   inviterName: string;
   role: StudioRole;
-  /** True once past the 7-day window — the page shows an "expired" state. */
+  /** True once past the decision window — the page shows an "expired" state. */
   expired: boolean;
   /** True when the logged-in user is the invitee (gates the confirm button). */
   isInvitee: boolean;
+  /**
+   * The decision window in days, as the server is configured right now.
+   *
+   * The expired card prints this rather than a literal baked into five locale
+   * files. Note what that does and does not buy: the number is read when the
+   * page is rendered while the deadline was stamped when the invite was sent,
+   * so turning the window from seven to three makes an invite that genuinely
+   * had seven days say three. Rows keep the deadline they were stamped with;
+   * only the sentence follows the config.
+   */
+  windowDays: number;
 }

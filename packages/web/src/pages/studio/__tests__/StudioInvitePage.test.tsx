@@ -43,6 +43,7 @@ function makeView(o: Partial<InvitationLandingView> = {}): InvitationLandingView
     role: 'guest',
     expired: false,
     isInvitee: true,
+    windowDays: 7,
     ...o,
   };
 }
@@ -133,6 +134,20 @@ describe('StudioInvitePage', () => {
       await screen.findByText(/This invitation has expired/i),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Accept & join' })).toBeNull();
+  });
+
+  it('takes the day count in the expired copy from the server, not a literal', async () => {
+    // Deliberately NOT the shipped seven. The sentence and the deadline the
+    // server enforced are the same fact told to one person, so the copy has to
+    // follow whatever window the backend was configured with — and copy that
+    // spells out 7 would pass against a fixture that also says 7.
+    vi.mocked(studiosApi.getInvitation).mockResolvedValueOnce(
+      makeView({ expired: true, windowDays: 3 }),
+    );
+    setup();
+    expect(
+      await screen.findByText(/past its 3-day window/i),
+    ).toBeInTheDocument();
   });
 
   it('shows the not-for-this-account card when the viewer is not the invitee', async () => {

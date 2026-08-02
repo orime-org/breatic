@@ -44,7 +44,7 @@ type Phase =
  * after sign-in.
  *
  * States: `loading` (peeking) · `invalid` (no token / token gone, 404) ·
- * `expired` (7-day window elapsed) · `notMine` (signed in as someone other
+ * `expired` (decision window elapsed) · `notMine` (signed in as someone other
  * than the invitee) · `ready` (the invitee, live invite → confirm/decline) ·
  * `declined` (terminal "you declined" card). A successful confirm navigates
  * to `/studio/{slug}`, so it has no terminal phase here.
@@ -162,7 +162,10 @@ export default function StudioInvitePage(): React.JSX.Element {
         }
       >
         <p className='text-sm text-muted-foreground'>
-          {t('studio.invite.expiredBody', { studio: view?.studioName ?? '' })}
+          {t('studio.invite.expiredBody', {
+            studio: view?.studioName ?? '',
+            days: view?.windowDays ?? 0,
+          })}
         </p>
       </AuthCardShell>
     );

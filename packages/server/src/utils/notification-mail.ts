@@ -17,12 +17,24 @@
  */
 
 import type { SendMailOptions } from "@server/infra/mailer.js";
+import { getDecisionWindowDays } from "@server/config/limits.js";
 
 const BRAND = "Breatic";
-const INVITE_FOOTER =
-  "This invitation expires in 7 days. If you didn't expect it, you can ignore this email.";
-const TRANSFER_FOOTER =
-  "This transfer request expires in 7 days. If you didn't expect it, you can ignore this email.";
+/**
+ * Build the closing line of an invitation or transfer email.
+ *
+ * The duration is read rather than written: this sentence and the deadline
+ * stored on the row are the same fact told to two audiences, and a sentence
+ * the recipient has no way to check is the worst place to keep a second copy
+ * of a number.
+ * @param subject - What expires, as it opens the sentence ("This invitation").
+ * @returns The footer sentence, with the configured window in it.
+ */
+function expiryFooter(subject: string): string {
+  const days = getDecisionWindowDays();
+  const unit = days === 1 ? "day" : "days";
+  return `${subject} expires in ${days} ${unit}. If you didn't expect it, you can ignore this email.`;
+}
 
 /**
  * Escape HTML-significant chars in user-supplied strings (XSS-safe email body).
@@ -100,7 +112,7 @@ export function buildStudioInvitationMail(
     linkHref: input.inviteLink,
     linkLabel: "Open the invitation",
     linkTrailing: " to accept or decline.",
-    footer: INVITE_FOOTER,
+    footer: expiryFooter("This invitation"),
   });
 }
 
@@ -130,7 +142,7 @@ export function buildProjectInvitationMail(
     linkHref: input.inviteLink,
     linkLabel: "Open the invitation",
     linkTrailing: " to accept or decline.",
-    footer: INVITE_FOOTER,
+    footer: expiryFooter("This invitation"),
   });
 }
 
@@ -159,7 +171,7 @@ export function buildStudioTransferMail(
     linkHref: input.studioLink,
     linkLabel: `Open ${BRAND}`,
     linkTrailing: " and check your notifications to accept or decline.",
-    footer: TRANSFER_FOOTER,
+    footer: expiryFooter("This transfer request"),
   });
 }
 
@@ -188,6 +200,6 @@ export function buildProjectTransferMail(
     linkHref: input.projectLink,
     linkLabel: `Open ${BRAND}`,
     linkTrailing: " and check your notifications to accept or decline.",
-    footer: TRANSFER_FOOTER,
+    footer: expiryFooter("This transfer request"),
   });
 }

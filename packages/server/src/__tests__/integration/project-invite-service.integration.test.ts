@@ -49,9 +49,18 @@ vi.mock("ai", () => ({
 // forced per test. Default 100 keeps every other test (tiny member counts)
 // unaffected; the collaborator-cap tests below lower it.
 const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
+// The decision window comes from the same config file. Pinned here to a value
+// that is deliberately NOT the shipped seven: the invite deadline, the token
+// TTL and the number the landing page prints are all supposed to come from the
+// configured window, and anything that carries its own copy of 7 would pass
+// against a mock that also said 7.
+const decisionWindow = vi.hoisted(() => ({ days: 3 }));
 vi.mock("@server/config/limits.js", () => ({
   getStudioMemberCap: () => capRefs.studio,
   getProjectCollaboratorCap: () => capRefs.project,
+  getDecisionWindowDays: () => decisionWindow.days,
+  getDecisionWindowMs: () => decisionWindow.days * 24 * 60 * 60 * 1000,
+  getDecisionWindowSeconds: () => decisionWindow.days * 24 * 60 * 60,
 }));
 
 import { eq, and, isNull, sql } from "drizzle-orm";
@@ -404,6 +413,51 @@ describe("confirmInvite", () => {
 });
 
 describe("declineInvite / revokeInvite", () => {
+  it("the decline CAS itself refuses an expired row (repo layer)", async () => {
+    // The service test below covers the error the route returns; this covers
+    // the predicate that produces it, so neither layer can lose the guard
+    // without a red test. Mirror of the studio repo test.
+    const { invitationId } = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "viewer",
+    );
+    await db
+      .update(schema.projectInvitations)
+      .set({ expiresAt: new Date(Date.now() - 60_000) })
+      .where(eq(schema.projectInvitations.id, invitationId));
+
+    expect(await invitesRepo.declineIfPending(invitationId, INVITEE)).toBeNull();
+  });
+
+  it("refuses to decline an EXPIRED invite (past the window there is no decision left)", async () => {
+    // Expiry closes the invite outright: it is not "you may still say no".
+    // The decline CAS carries the same not-expired predicate as the accept CAS,
+    // so both answers stop at the same instant and the row stays 'pending'
+    // rather than acquiring a decision it was too late to make.
+    const { invitationId } = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "editor",
+    );
+    await db
+      .update(schema.projectInvitations)
+      .set({ expiresAt: new Date(Date.now() - 60_000) })
+      .where(eq(schema.projectInvitations.id, invitationId));
+
+    await expect(
+      inviteService.declineInvite(invitationId, INVITEE),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    const [row] = await db
+      .select({ status: schema.projectInvitations.status })
+      .from(schema.projectInvitations)
+      .where(eq(schema.projectInvitations.id, invitationId));
+    expect(row?.status).toBe("pending");
+  });
+
   it("decline leaves membership untouched and clears the pending", async () => {
     const { invitationId } = await inviteService.createInvite(
       PROJECT,
@@ -508,6 +562,33 @@ describe("re-invite lifecycle (#1769)", () => {
 });
 
 describe("email-link token (Redis round-trip)", () => {
+  it("stamps the row deadline and the token TTL from the same window", async () => {
+    // The two things the window actually enforces. Both were changed from a
+    // local constant to a config read with nothing asserting the result: a
+    // getter returning the wrong unit — or zero — would have left every test
+    // in this file green.
+    const { invitationId, token } = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "editor",
+    );
+    const windowMs = decisionWindow.days * 24 * 60 * 60 * 1000;
+
+    const [row] = await db
+      .select({ expiresAt: schema.projectInvitations.expiresAt })
+      .from(schema.projectInvitations)
+      .where(eq(schema.projectInvitations.id, invitationId));
+    const aheadMs = row!.expiresAt.getTime() - Date.now();
+    expect(aheadMs).toBeLessThanOrEqual(windowMs);
+    expect(aheadMs).toBeGreaterThan(windowMs - 60_000);
+
+    const ttl = await getRedis().ttl(`${env.ENV}:project-invite:${token}`);
+    const windowSeconds = decisionWindow.days * 24 * 60 * 60;
+    expect(ttl).toBeLessThanOrEqual(windowSeconds);
+    expect(ttl).toBeGreaterThan(windowSeconds - 60);
+  });
+
   it("respondToInvite confirm: peek → confirm → consume (single-use)", async () => {
     const { invitationId } = await inviteService.createInvite(
       PROJECT,
@@ -522,6 +603,9 @@ describe("email-link token (Redis round-trip)", () => {
     expect(landing?.projectName).toBe("Test Project");
     expect(landing?.isInvitee).toBe(true);
     expect(landing?.expired).toBe(false);
+    // The page prints this rather than spelling out a number of its own, so it
+    // has to be the window the server actually enforced.
+    expect(landing?.windowDays).toBe(decisionWindow.days);
 
     const res = await inviteService.respondToInvite(token, "confirm", INVITEE);
     expect(res.projectSlug).toBe("test-project");

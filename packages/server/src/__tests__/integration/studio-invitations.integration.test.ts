@@ -40,6 +40,7 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+import { eq } from "drizzle-orm";
 import { initCore, schema, createTestDb } from "@breatic/core";
 
 initCore(process.env);
@@ -62,7 +63,7 @@ const OTHER_STUDIO = "00000000-0000-0000-0000-0000000a0011";
 let pgClient: ReturnType<typeof createTestDb>["client"];
 let db: ReturnType<typeof createTestDb>["db"];
 
-/** 7 days out — the standard live-pending window. */
+/** Comfortably in the future — these tests care that the row is live, not how long for. */
 function future(): Date {
   return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 }
@@ -268,6 +269,27 @@ describe("declineIfPending / revokeIfPending", () => {
 
     expect(declined).toEqual({ notificationId: null });
     expect(await invitesRepo.listPendingByStudio(TEAM_STUDIO)).toHaveLength(0);
+  });
+
+  it("returns null when declining an EXPIRED pending (no decision left to make)", async () => {
+    // Expiry closes the invite outright: it is not "you may still say no".
+    // The decline CAS carries the same not-expired predicate as the accept CAS
+    // above, so both answers stop at the same instant and the row keeps its
+    // 'pending' status rather than acquiring a decision made too late.
+    const id = await invitesRepo.createPending({
+      studioId: TEAM_STUDIO,
+      invitedUserId: INVITEE,
+      role: "guest",
+      invitedBy: INVITER,
+      expiresAt: new Date(Date.now() - 1000),
+    });
+
+    expect(await invitesRepo.declineIfPending(id, INVITEE)).toBeNull();
+    const [row] = await db
+      .select({ status: schema.studioInvitations.status })
+      .from(schema.studioInvitations)
+      .where(eq(schema.studioInvitations.id, id));
+    expect(row?.status).toBe("pending");
   });
 
   it("refuses decline on behalf of another user", async () => {

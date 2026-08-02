@@ -49,6 +49,7 @@ loader:`packages/server/src/config/limits.ts`。
 | `activity_feed_page_max` | 100 | 活动流分页:客户端 `?limit` 被裁剪到的硬上限 |
 | `canvas_reference_pool_cap` | 50 | 单画布节点参考池上限(参考边 + 聚焦图合计,#1782);经 `GET /canvas/limits` 下发,前端加入时 gate(池在 Yjs,server 不 gate 协作写);区别于按模型的 `images.max_items` 执行 payload 上限(#1735)。聚焦图另受前端硬顶 `MAX_FOCUS_ENTRIES`(200,`web data/focus-images.ts`)约束——旋钮调高于 200 时聚焦图仍在 200 处被拒(带 toast) |
 | `node_history_page_size` | 20 | 节点历史找回面板每页请求的行数(无限滚动,#1619);经 `GET /canvas/limits` 下发,前端取(未加载前退化用 server 默认 20) |
+| `decision_window_days` | 7 | 等人答复的五件事共用的答复期限(天):studio 邀请 · project 邀请 · studio 转让 · project 转让 · 角色升级请求。**同一个数管四处**——落库的 `expires_at`、邮件链接令牌的 Redis TTL、邀请/转让邮件正文里的那句话、邀请落地页过期卡片里的天数,全部读它,任何一处都不许再写自己的数字。改这个值只影响此后新建的行,老行按当初盖的截止时间走 |
 
 ## 4. `config/collab.yaml` — Hocuspocus 协作服务
 
