@@ -10,7 +10,7 @@
  *   - `requestProjectTransfer`: the current project owner asks a non-guest
  *     studio member to take over as owner. Drops an actionable
  *     `project.transfer_request` notification (confirm/cancel) in the
- *     recipient's inbox, expiring after 7 days.
+ *     recipient's inbox, expiring after the configured decision window.
  *   - `confirmProjectTransfer`: the recipient accepts. In ONE db.transaction:
  *     mark the request read (the CAS serialization point), then demote the old
  *     owner to editor FIRST (#1611 / D1 one-rank-down demotion) and promote the recipient to
@@ -19,8 +19,8 @@
  *     `project.transfer_approved`. AFTER the tx commits, append the
  *     `member:ownership-transferred` activity (best-effort audit).
  *   - `cancelProjectTransfer`: the recipient declines. Only marks the request
- *     read — no role change. An unconfirmed request self-voids once its 7-day
- *     `expires_at` passes.
+ *     read — no role change. Declining is refused once `expires_at` passes:
+ *     expiry closes the request to both answers.
  *
  * Authorization model (route layer enforces the initiator gate):
  *   - requestProjectTransfer: caller must be the project owner (`requireRole('owner')`);
@@ -55,7 +55,6 @@ import {
 import { getDecisionWindowMs } from "@server/config/limits.js";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-
 
 /**
  * The current project owner asks another project collaborator to take over as owner.
@@ -124,9 +123,7 @@ export async function requestProjectTransfer(
     throw new ValidationError(t("server.error.validation"));
   }
 
-  const expiresAt = new Date(
-    Date.now() + getDecisionWindowMs(),
-  );
+  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
   const profiles = await studioRepo.getPersonalProfilesByCreators([fromUserId]);
   const from = profiles.get(fromUserId);
   await notificationService.createProjectTransferRequest({
@@ -173,7 +170,7 @@ export async function requestProjectTransfer(
  * @param receiverUserId - The recipient confirming (owns the notification)
  * @throws {NotFoundError} the notification is missing, already decided, not a
  *   project transfer request, or the old owner row is gone (stale request)
- * @throws {ConflictError} the request has already expired (past its 7-day TTL)
+ * @throws {ConflictError} the request is past its decision window
  * @throws {ValidationError} the notification payload is malformed
  */
 export async function confirmProjectTransfer(
@@ -212,7 +209,7 @@ export async function confirmProjectTransfer(
       typeof payload.projectName === "string" ? payload.projectName : "";
 
     // TOCTOU guard (adversarial review): the request-time two-layer eligibility
-    // (ADR D3) can go stale within the 7-day TTL — the recipient may have been
+    // (ADR D3) can go stale within the decision window — the recipient may have been
     // demoted to studio guest or kicked from the studio since the request. Re-
     // verify BOTH layers BEFORE the swap; otherwise materializeOwner (ON CONFLICT
     // DO UPDATE, no setWhere) would revive a soft-deleted / guest row straight to

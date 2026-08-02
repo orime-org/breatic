@@ -40,18 +40,17 @@ activity_feed_page_max: 100
 # How long a person has to answer something that is waiting on them, in
 # days. One number covers all five such flows: being invited to a studio
 # or to a project, being handed a studio or a project, and being asked to
-# approve a role upgrade.
+# approve a role upgrade. Past it a request is closed to BOTH answers —
+# neither accepting nor declining is possible any more.
 #
-# It is one number by decision (2026-06-08, re-affirmed 2026-08-02), not by
-# coincidence — before this it was the literal 7 written separately into
-# four services, with the role-upgrade flow having no deadline at all.
+# Four things read it, and they must not disagree: the deadline stored on
+# the row, the expiry of the invite link's Redis key, the sentence in the
+# invitation and transfer emails, and the day count on the invite landing
+# page. Copy that states one duration while enforcement uses another is
+# the product lying to the person reading it.
 #
-# Everything downstream reads this: the deadline stored on the row, the
-# expiry of the invite link's Redis key, and the sentence in the
-# invitation and transfer emails that tells the recipient how long they
-# have. Changing this number changes all of them together, which is the
-# point — copy that states a duration and enforcement that uses another
-# is the product lying to the person reading it.
+# Changing this affects rows written from then on; rows already carrying a
+# deadline keep the one they were stamped with.
 #
 # NOT covered here, deliberately: password reset, email verification,
 # session lifetime and recovery codes. Those are account-security

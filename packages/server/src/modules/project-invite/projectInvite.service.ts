@@ -60,7 +60,6 @@ import type {
   ProjectInvitationLandingView,
 } from "@breatic/shared";
 
-
 /**
  * Invite a registered user into a project — creates a PENDING invite (it does
  * NOT take effect until the invitee confirms) plus the actionable bell
@@ -75,7 +74,8 @@ import type {
  * to the caller (route surfaces the copyable URL) AND embedded in
  * the notification payload (so the bell can build the same link). The token
  * lives in Redis (not the PG tx) — a tx rollback simply leaves an orphan token
- * that self-expires in 7 days. The `project_invitations_one_pending` partial
+ * that self-expires with the decision window. The
+ * `project_invitations_one_pending` partial
  * unique maps a duplicate LIVE pending to a ConflictError.
  * @param projectId - The project the user is being invited into
  * @param inviterUserId - The acting owner (becomes `invitedBy`; name in payload)
@@ -371,12 +371,11 @@ export async function listPending(
   return invitesRepo.listPendingByProject(projectId);
 }
 
-/** TTL of the email-link token — matches the invite's 7-day window. */
-
 /**
  * Issue a one-time email-link token for an invite (mirrors the studio-invite
  * token): a 64-hex random token stored in Redis
- * (`{env}:project-invite:{token}` → invitationId) with the invite's 7-day TTL.
+ * (`{env}:project-invite:{token}` → invitationId) with the same decision
+ * window the invite row carries.
  * The route embeds it in the `/project-invite?token=` link.
  * @param invitationId - The invitation the token resolves to
  * @returns The 64-char hex token to embed in the invite link

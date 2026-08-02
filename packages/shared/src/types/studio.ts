@@ -196,11 +196,10 @@ export interface InvitationLandingView {
   /** True when the logged-in user is the invitee (gates the confirm button). */
   isInvitee: boolean;
   /**
-   * How long the invitee had to answer, in days, as the server is configured.
-   * The expired copy prints it instead of spelling out a number of its own:
-   * the sentence and the deadline that was enforced are the same fact told to
-   * one person, and a page that keeps its own copy of the number goes on
-   * saying seven days after the window changes.
+   * The decision window in days, as the server is configured. The expired
+   * copy prints it instead of spelling out a number of its own — a page that
+   * keeps its own copy of the number goes on stating the old one after the
+   * window changes.
    */
   windowDays: number;
 }

@@ -244,7 +244,7 @@ export interface StudioInviteAcceptedPayload {
  * @param input - Recipient inbox, payload, expiry, and optional transaction
  * @param input.userId - The proposed new admin who receives the request
  * @param input.payload - The initiating admin's user id, studio id, and studio name
- * @param input.expiresAt - When the request times out (7 days from creation)
+ * @param input.expiresAt - When the recipient's window to decide runs out
  * @param input.tx - Optional transaction to bundle with related writes
  * @returns The inserted `studio.transfer_request` notification
  */

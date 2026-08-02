@@ -10,7 +10,7 @@
  *   - `requestTransfer`: the current admin asks an existing member to take
  *     over as admin. Drops an actionable `studio.transfer_request`
  *     notification (confirm/cancel) in the recipient's inbox, expiring after
- *     7 days.
+ *     the configured decision window.
  *   - `confirmTransfer`: the recipient accepts. In ONE db.transaction: mark
  *     the request read (the CAS serialization point), then demote the old
  *     admin to maintainer FIRST and promote the recipient to admin SECOND (order
@@ -18,8 +18,9 @@
  *     `studio_members_one_admin_per_studio` partial unique), then notify the
  *     old admin via `studio.transfer_approved`.
  *   - `cancelTransfer`: the recipient declines. Only marks the request read —
- *     no role change. An unconfirmed request also self-voids once its 7-day
- *     `expires_at` passes (the inbox queries hide expired actionable rows).
+ *     no role change. Declining is refused once `expires_at` passes: expiry
+ *     closes the request to both answers (the inbox queries also hide expired
+ *     actionable rows).
  *
  * Authorization model (route layer enforces gates):
  *   - requestTransfer: caller must be the studio admin (`requireStudioRole('admin')`)
@@ -49,7 +50,6 @@ import {
 import { getDecisionWindowMs } from "@server/config/limits.js";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-
 
 /**
  * The current admin asks an existing member to take over as the studio admin.
@@ -89,9 +89,7 @@ export async function requestTransfer(
     throw new ValidationError(t("server.error.validation"));
   }
 
-  const expiresAt = new Date(
-    Date.now() + getDecisionWindowMs(),
-  );
+  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
   const profiles = await studioRepo.getPersonalProfilesByCreators([
     fromAdminUserId,
   ]);
@@ -139,7 +137,7 @@ export async function requestTransfer(
  * @param receiverUserId - The recipient confirming (owns the notification)
  * @throws {NotFoundError} the notification is missing, already decided, not a
  *   transfer request, or a member role-swap finds no active row
- * @throws {ConflictError} the request has already expired (past its 7-day TTL)
+ * @throws {ConflictError} the request is past its decision window
  */
 export async function confirmTransfer(
   notificationId: string,
@@ -181,7 +179,7 @@ export async function confirmTransfer(
       typeof payload.studioName === "string" ? payload.studioName : "";
 
     // TOCTOU guard (adversarial review): the request-time non-guest check
-    // (#1612 / D3) can go stale within the 7-day TTL — the recipient may have
+    // (#1612 / D3) can go stale within the decision window — the recipient may have
     // been demoted to guest, or left, since the request. Re-verify BEFORE the
     // swap; otherwise updateRole would flip a guest's still-active row straight
     // to admin.
@@ -197,7 +195,7 @@ export async function confirmTransfer(
       members.find((m) => m.userId === receiverUserId)?.role ?? null;
 
     // Which admin is this transfer actually moving? The request names its
-    // initiator in a payload written up to seven days ago; if the studio has
+    // initiator in a payload written a whole window ago; if the studio has
     // changed hands since, that request is stale. Confirming one anyway fails
     // in two distinct ways, both observed:
     //   - the studio went to a THIRD party — the promote collides with

@@ -53,7 +53,6 @@ import type { InvitationLandingView } from "@breatic/shared";
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
 type InvitableRole = "maintainer" | "guest";
 
-
 /**
  * Invite a registered user into a studio — creates a PENDING invite (it does
  * NOT take effect until the invitee confirms) plus the actionable bell
@@ -331,12 +330,11 @@ export async function revokeInvite(
   });
 }
 
-/** TTL of the email-link token — matches the invite's 7-day window. */
-
 /**
  * Issue a one-time email-link token for an invite (mirrors the email-verify
  * token): a 64-hex random token stored in Redis (`{env}:studio-invite:{token}`
- * → invitationId) with the invite's 7-day TTL. The route embeds it in the
+ * → invitationId) with the same decision window the invite row carries. The
+ * route embeds it in the
  * `/studio-invite?token=` link.
  * @param invitationId - The invitation the token resolves to
  * @returns The 64-char hex token to embed in the invite link

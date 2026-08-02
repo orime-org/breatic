@@ -45,7 +45,7 @@ type Phase =
  * after sign-in.
  *
  * States: `loading` (peeking) · `invalid` (no token / token gone, 404) ·
- * `expired` (7-day window elapsed) · `notMine` (signed in as someone other
+ * `expired` (decision window elapsed) · `notMine` (signed in as someone other
  * than the invitee) · `ready` (the invitee, live invite → confirm/decline) ·
  * `declined` (terminal "you declined" card). A successful confirm navigates
  * to `/project/{projectId}`, so it has no terminal phase here.

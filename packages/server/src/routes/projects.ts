@@ -65,7 +65,8 @@ const transferOwnerSchema = z.object({ toUserId: z.string().uuid() });
  * `POST /projects/:id/transfer-owner` — the project owner asks a non-guest
  * studio member to take over as owner (step 1 of the two-step handshake, #1611).
  * Owner-gated; drops an actionable `project.transfer_request` notification
- * (confirm/cancel, 7-day TTL) in the recipient's inbox. No role change yet —
+ * (confirm/cancel, expiring with the decision window) in the recipient's
+ * inbox. No role change yet —
  * that lands when the recipient confirms via the notification action endpoint.
  * @returns `201` with `{ data: { ok: true } }`; `403` not the owner / personal
  *   studio, `404` project / recipient not found, `422` recipient is the owner

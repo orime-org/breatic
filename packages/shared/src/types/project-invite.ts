@@ -65,8 +65,8 @@ export interface ProjectInvitationLandingView {
   /** True when the logged-in user is the invitee (gates the confirm button). */
   isInvitee: boolean;
   /**
-   * How long the invitee had to answer, in days, as the server is configured
-   * — mirror of the studio `InvitationLandingView` field.
+   * The decision window in days, as the server is configured. The expired copy
+   * prints it instead of spelling out a number of its own.
    */
   windowDays: number;
 }

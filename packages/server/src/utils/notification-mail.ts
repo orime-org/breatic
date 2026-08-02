@@ -23,11 +23,10 @@ const BRAND = "Breatic";
 /**
  * Build the closing line of an invitation or transfer email.
  *
- * The duration is read rather than written, because this sentence and the
- * deadline stored on the row are the same fact told to two audiences. When
- * they were two literals, changing the window meant the product kept telling
- * people seven days while enforcing something else — a sentence the recipient
- * has no way to check and every reason to believe.
+ * The duration is read rather than written: this sentence and the deadline
+ * stored on the row are the same fact told to two audiences, and a sentence
+ * the recipient has no way to check is the worst place to keep a second copy
+ * of a number.
  * @param subject - What expires, as it reads mid-sentence ("This invitation").
  * @returns The footer sentence, with the configured window in it.
  */

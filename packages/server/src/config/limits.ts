@@ -2,15 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Member-capacity limit configuration loader.
+ * Business limits configuration loader.
  *
- * Loads soft business caps from `config/limits.yaml`: how many active
- * members a studio may have, and how many people may be EXPLICITLY
- * invited to a project (any role). Auto-materialized baseline viewers
- * (open baseline — studio members who just opened the project) are
- * EXEMPT and never counted toward the project cap, so it never blocks
- * viewing access. Concurrency is bounded separately by collab's
- * `max_connections_per_document` (config/collab.yaml).
+ * Loads the operator-tunable numbers from `config/limits.yaml`:
+ *
+ *   - soft capacity caps — how many active members a studio may have, and how
+ *     many people may be EXPLICITLY invited to a project (any role).
+ *     Auto-materialized baseline viewers (open baseline — studio members who
+ *     just opened the project) are EXEMPT and never counted toward the project
+ *     cap, so it never blocks viewing access. Concurrency is bounded
+ *     separately by collab's `max_connections_per_document`
+ *     (config/collab.yaml).
+ *   - page sizes for the activity feed and the node-history panel.
+ *   - the decision window — how long someone has to answer an invitation, a
+ *     transfer, or a role-upgrade request.
  *
  * Mirrors the `pricing.ts` / `text-tools.ts` business-config loaders:
  * a yaml file under `config/` validated by a Zod schema and memoized.
@@ -33,15 +38,15 @@ export const limitsConfigSchema = z.object({
   decision_window_days: z.number().int().positive().default(7),
 });
 
-/** Hours in a day × minutes × seconds — the day→second factor, written once. */
+/** Hours per day × minutes per hour × seconds per minute — written once. */
 const SECONDS_PER_DAY = 24 * 60 * 60;
 
 let _cached: z.infer<typeof limitsConfigSchema> | null = null;
 
 /**
- * Load and cache the member-capacity limits from `config/limits.yaml`.
+ * Load and cache the business limits from `config/limits.yaml`.
  * @returns The validated limits config (memoized after the first read).
- * @throws {z.ZodError} if a cap is malformed (non-positive / non-integer).
+ * @throws {z.ZodError} if a value is malformed (non-positive / non-integer).
  */
 function loadConfig(): z.infer<typeof limitsConfigSchema> {
   if (_cached) return _cached;
@@ -104,8 +109,8 @@ export function getNodeHistoryPageSize(): number {
  * One window for all five such flows — studio invite, project invite,
  * studio transfer, project transfer, role-upgrade request. Use this one
  * when the number is being SHOWN to a person (an email sentence, a page
- * that explains why a link stopped working); use the two below when it is
- * being computed with.
+ * that explains why a link stopped working); use `getDecisionWindowMs` or
+ * `getDecisionWindowSeconds` when it is being computed with.
  *
  * Not for account-security lifetimes. Password reset, email verification,
  * sessions and recovery codes are each set against their own threat and
@@ -119,9 +124,9 @@ export function getDecisionWindowDays(): number {
 /**
  * The same window in milliseconds, for `Date.now() + window`.
  *
- * The conversion lives here rather than at each deadline write, because it
- * was written out at four separate call sites before this and that is one
- * transcription error away from two flows disagreeing.
+ * The conversion lives here rather than at each deadline write: spelled out
+ * at every call site, it is one transcription error away from two flows
+ * disagreeing about the same window.
  * @returns The decision window in milliseconds.
  */
 export function getDecisionWindowMs(): number {
@@ -131,9 +136,8 @@ export function getDecisionWindowMs(): number {
 /**
  * The same window in seconds, for Redis key expiry.
  *
- * The invite-link tokens live in Redis and must not outlive the invite they
- * open — a link that still works after the invitation is void would take a
- * person to a page that refuses them, with no explanation available.
+ * The invite-link tokens live in Redis and expire with the invite they open,
+ * so a dead link cannot resolve to a live invitation.
  * @returns The decision window in seconds.
  */
 export function getDecisionWindowSeconds(): number {
