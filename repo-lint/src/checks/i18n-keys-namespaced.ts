@@ -76,8 +76,9 @@ export const i18nKeysNamespaced = {
         unknown
       >;
       for (const [key, value] of Object.entries(parsed)) {
-        if (value !== null && typeof value === "object" && !Array.isArray(value))
-          continue;
+        const isNamespace =
+          value !== null && typeof value === "object" && !Array.isArray(value);
+        if (isNamespace) continue;
         findings.push({
           file: catalog,
           message: `${key} sits at the top level and is not a namespace, so every id under it — the id itself, if it is a message — has no dot. The dead-key check finds a use by looking for a key's dotted name, and a dotless id cannot be looked for that way: supporting it costs a second, weaker matching path, and losing it means live keys get reported dead. A message here belongs in a namespace — \`common\` if the product shares it, the feature's own namespace otherwise. Anything else here (an array, a number, null) is not a catalog shape at all: messages are named, not numbered, so give each one a key.`,
