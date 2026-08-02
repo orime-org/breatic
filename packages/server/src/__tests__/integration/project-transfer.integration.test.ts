@@ -385,6 +385,26 @@ describe("confirmProjectTransfer", () => {
     expect(await activeOwnerCount(projectId)).toBe(1);
   });
 
+  it("refuses to DECLINE an expired request with Conflict, leaving it unread", async () => {
+    // Expiry closes the request outright — see the studio transfer's twin test.
+    // Declining past the window fails exactly like confirming, and it fails
+    // whole: the mark-read that serializes the decision must not survive.
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer();
+    await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
+    const [req] = await transferRequestsFor(recipientId);
+    await expireNotification(req!.id);
+
+    await expect(
+      projectTransferService.cancelProjectTransfer(req!.id, recipientId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    const [after] = await sql<{ read_at: Date | null }[]>`
+      SELECT read_at FROM notifications WHERE id = ${req!.id}
+    `;
+    expect(after!.read_at).toBeNull();
+    expect(await getProjectRole(projectId, ownerId)).toBe("owner");
+  });
+
   it("applies the transfer exactly once under two concurrent confirms", async () => {
     const { projectId, ownerId, recipientId } = await seedProjectTransfer();
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);

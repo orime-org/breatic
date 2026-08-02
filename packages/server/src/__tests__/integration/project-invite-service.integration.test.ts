@@ -413,6 +413,33 @@ describe("confirmInvite", () => {
 });
 
 describe("declineInvite / revokeInvite", () => {
+  it("refuses to decline an EXPIRED invite (past the window there is no decision left)", async () => {
+    // Expiry closes the invite outright: it is not "you may still say no".
+    // The decline CAS carries the same not-expired predicate as the accept CAS,
+    // so both answers stop at the same instant and the row stays 'pending'
+    // rather than acquiring a decision it was too late to make.
+    const { invitationId } = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "editor",
+    );
+    await db
+      .update(schema.projectInvitations)
+      .set({ expiresAt: new Date(Date.now() - 60_000) })
+      .where(eq(schema.projectInvitations.id, invitationId));
+
+    await expect(
+      inviteService.declineInvite(invitationId, INVITEE),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    const [row] = await db
+      .select({ status: schema.projectInvitations.status })
+      .from(schema.projectInvitations)
+      .where(eq(schema.projectInvitations.id, invitationId));
+    expect(row?.status).toBe("pending");
+  });
+
   it("decline leaves membership untouched and clears the pending", async () => {
     const { invitationId } = await inviteService.createInvite(
       PROJECT,

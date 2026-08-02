@@ -303,15 +303,36 @@ export async function confirmProjectTransfer(
  * The recipient cancels (declines) a transfer — marks the request read, no role
  * change. Idempotent on a second click: a missing / already-decided request
  * collapses to NotFound.
+ *
+ * Past the decision window a decline fails just as a confirm does — mirror of
+ * the studio transfer, and of the same reasoning: expiry closes the request
+ * outright rather than leaving "no" available. The mark-read CAS runs inside
+ * the transaction so a too-late decline cannot leave the request read but
+ * undecided.
  * @param notificationId - The `project.transfer_request` notification id
  * @param receiverUserId - The recipient declining (owns the notification)
  * @throws {NotFoundError} the notification is missing, already decided, or not
  *   owned by `receiverUserId`
+ * @throws {ConflictError} the request is past its decision window
  */
 export async function cancelProjectTransfer(
   notificationId: string,
   receiverUserId: string,
 ): Promise<void> {
-  const ok = await notificationRepo.markRead(notificationId, receiverUserId);
-  if (!ok) throw new NotFoundError(t("server.error.not_found"));
+  await db.transaction(async (tx) => {
+    const ok = await notificationRepo.markRead(
+      notificationId,
+      receiverUserId,
+      tx,
+    );
+    if (!ok) throw new NotFoundError(t("server.error.not_found"));
+
+    const row = await notificationRepo.findById(notificationId, tx);
+    if (!row || row.type !== "project.transfer_request") {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    if (row.expiresAt !== null && row.expiresAt.getTime() <= Date.now()) {
+      throw new ConflictError(t("server.error.conflict"));
+    }
+  });
 }

@@ -270,6 +270,22 @@ describe("declineIfPending / revokeIfPending", () => {
     expect(await invitesRepo.listPendingByStudio(TEAM_STUDIO)).toHaveLength(0);
   });
 
+  it("returns null when declining an EXPIRED pending (no decision left to make)", async () => {
+    // Expiry closes the invite outright: it is not "you may still say no".
+    // The decline CAS carries the same not-expired predicate as the accept CAS
+    // above, so both answers stop at the same instant and the row keeps its
+    // 'pending' status rather than acquiring a decision made too late.
+    const id = await invitesRepo.createPending({
+      studioId: TEAM_STUDIO,
+      invitedUserId: INVITEE,
+      role: "guest",
+      invitedBy: INVITER,
+      expiresAt: new Date(Date.now() - 1000),
+    });
+
+    expect(await invitesRepo.declineIfPending(id, INVITEE)).toBeNull();
+  });
+
   it("refuses decline on behalf of another user", async () => {
     const id = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,

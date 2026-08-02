@@ -304,6 +304,29 @@ describe("confirmTransfer", () => {
     expect(await activeAdminCount(studioId)).toBe(1);
   });
 
+  it("refuses to DECLINE an expired request with Conflict, leaving it unread", async () => {
+    // Expiry closes the request outright: past the window there is no decision
+    // left to make, not "you may still say no". Declining an expired request
+    // must fail exactly like confirming one — and it must fail WHOLE, so the
+    // mark-read that serializes the decision cannot survive the rejection and
+    // leave a request that is neither decidable nor visible.
+    const { studioId, slug, adminId, memberId } = await seedStudio();
+    await studioTransferService.requestTransfer(slug, adminId, memberId);
+    const [req] = await transferRequestsFor(memberId);
+    await expireNotification(req!.id);
+
+    await expect(
+      studioTransferService.cancelTransfer(req!.id, memberId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    const [after] = await sql<{ read_at: Date | null }[]>`
+      SELECT read_at FROM notifications WHERE id = ${req!.id}
+    `;
+    expect(after!.read_at).toBeNull();
+    // Roles never move on a decline, expired or not.
+    expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("admin");
+  });
+
   it("applies the transfer exactly once under two concurrent confirms", async () => {
     const { studioId, slug, adminId, memberId } = await seedStudio();
     await studioTransferService.requestTransfer(slug, adminId, memberId);
