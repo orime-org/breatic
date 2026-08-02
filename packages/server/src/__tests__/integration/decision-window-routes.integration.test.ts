@@ -155,8 +155,7 @@ async function seedProject(): Promise<{
  * these tests are here to pin.
  * @param userId - Whose inbox it lands in.
  * @param type - The notification type.
- * @param payload - The type-specific payload (flat, as all three actionable
- *   kinds are).
+ * @param payload - The type-specific payload; flat for the kinds seeded here.
  * @param projectId - The project scope, for the types that carry one.
  * @returns The new notification's id.
  */

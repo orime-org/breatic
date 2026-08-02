@@ -258,10 +258,10 @@ export async function confirmTransfer(
  * answers stop at the same instant.
  *
  * The mark-read CAS runs inside the transaction because the gates below it
- * can reject a row the CAS already flipped. The CAS matches on id and
- * recipient and never looks at the type, so this endpoint aimed at any other
- * unread notification would mark it read and only then fail the type check —
- * consuming a row it had no business touching.
+ * can reject a row the CAS already flipped — the expiry gate does exactly
+ * that, on every decline that arrives too late. Without the rollback such a
+ * decline would leave the request read but undecided, and read is the once-only
+ * marker: every later attempt on it would answer 404 instead of 409.
  * @param notificationId - The `studio.transfer_request` notification id
  * @param receiverUserId - The recipient declining (owns the notification)
  * @throws {NotFoundError} the notification is missing, already decided, or not

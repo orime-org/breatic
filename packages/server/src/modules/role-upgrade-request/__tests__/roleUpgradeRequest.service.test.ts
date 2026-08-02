@@ -69,8 +69,6 @@ vi.mock("@breatic/core", () => {
 const decisionWindow = vi.hoisted(() => ({ days: 3 }));
 vi.mock("@server/config/limits.js", () => ({
   getDecisionWindowMs: vi.fn(() => decisionWindow.days * 24 * 60 * 60 * 1000),
-  getDecisionWindowDays: vi.fn(() => decisionWindow.days),
-  getDecisionWindowSeconds: vi.fn(() => decisionWindow.days * 24 * 60 * 60),
 }));
 
 vi.mock("../../notification/notification.repo.js", () => ({

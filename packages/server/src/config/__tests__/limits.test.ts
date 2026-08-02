@@ -73,15 +73,23 @@ describe("limits config — accessors read config/limits.yaml", () => {
 });
 
 /**
- * Every accessor reads ITS OWN key, and every key it reads is really in the
- * file.
+ * Each accessor reads its own key, and every key the schema knows is really in
+ * the file.
  *
  * The per-accessor tests above only prove a function returns *a* positive
- * integer — which every other key in the same file also satisfies. Verified by
- * mutation: pointing `getDecisionWindowDays` at `node_history_page_size` left
- * all 3749 unit tests in this repo green. A knob nothing binds to its key can
- * silently stop working, and — worse — a different knob starts moving what it
- * was supposed to move.
+ * integer — which every other key in the same file also satisfies. Measured:
+ * pointing `getDecisionWindowDays` at `node_history_page_size` left every unit
+ * test in this repo green. A knob nothing binds to its key can silently stop
+ * working, and — worse — a different knob starts moving what it was meant to
+ * move.
+ *
+ * HOW FAR THIS REACHES: a value can only identify a key when it is unique in
+ * the file, and today three keys ship 100 while two ship 50. So this pins
+ * `decision_window_days` (7) and `node_history_page_size` (20); pointing one
+ * of the five colliding accessors at its twin still passes. Giving the other
+ * five the same protection needs distinct fixture values, which needs a cache
+ * reset this module does not export — out of scope here, where the window is
+ * the key being added.
  *
  * The key-presence half matters because zod substitutes a default for a key
  * that is absent: rename or drop one in the yaml and the accessor keeps

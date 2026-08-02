@@ -27,7 +27,7 @@ const BRAND = "Breatic";
  * stored on the row are the same fact told to two audiences, and a sentence
  * the recipient has no way to check is the worst place to keep a second copy
  * of a number.
- * @param subject - What expires, as it reads mid-sentence ("This invitation").
+ * @param subject - What expires, as it opens the sentence ("This invitation").
  * @returns The footer sentence, with the configured window in it.
  */
 function expiryFooter(subject: string): string {
