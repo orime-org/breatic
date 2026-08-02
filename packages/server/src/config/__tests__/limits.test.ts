@@ -2,18 +2,23 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Tests for the member-capacity limits config: the schema applies the
- * default of 100 when a key is absent and rejects non-positive caps,
- * and the accessors return the (positive-integer) values shipped in
- * `config/limits.yaml`.
+ * Tests for the business limits config: the schema applies its defaults and
+ * rejects non-positive values, and each accessor returns the value of ITS OWN
+ * key as shipped in `config/limits.yaml`.
  */
 
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parse } from "yaml";
+import { MONOREPO_ROOT } from "@breatic/core";
 import {
   limitsConfigSchema,
   getStudioMemberCap,
   getProjectCollaboratorCap,
+  getActivityFeedPageLimits,
   getCanvasReferencePoolCap,
+  getNodeHistoryPageSize,
   getDecisionWindowDays,
   getDecisionWindowMs,
   getDecisionWindowSeconds,
@@ -68,12 +73,58 @@ describe("limits config — accessors read config/limits.yaml", () => {
 });
 
 /**
- * The window a person has to answer a studio invite, a project invite, a
- * studio transfer, a project transfer, or a role-upgrade request.
+ * Every accessor reads ITS OWN key, and every key it reads is really in the
+ * file.
  *
- * One number for all five, settled 2026-06-08 and re-affirmed 2026-08-02.
- * Before this it was the literal `7` written into four services separately,
- * with the fifth flow having no deadline at all.
+ * The per-accessor tests above only prove a function returns *a* positive
+ * integer — which every other key in the same file also satisfies. Verified by
+ * mutation: pointing `getDecisionWindowDays` at `node_history_page_size` left
+ * all 3749 unit tests in this repo green. A knob nothing binds to its key can
+ * silently stop working, and — worse — a different knob starts moving what it
+ * was supposed to move.
+ *
+ * The key-presence half matters because zod substitutes a default for a key
+ * that is absent: rename or drop one in the yaml and the accessor keeps
+ * answering with the schema's fallback while the operator believes the file is
+ * in charge.
+ */
+describe("accessors are bound to their keys", () => {
+  /** The shipped yaml, parsed independently of the module under test. */
+  function readShippedYaml(): Record<string, unknown> {
+    const raw = readFileSync(
+      resolve(MONOREPO_ROOT, "config", "limits.yaml"),
+      "utf-8",
+    );
+    return parse(raw) as Record<string, unknown>;
+  }
+
+  it("config/limits.yaml really carries every key the schema knows", () => {
+    const present = Object.keys(readShippedYaml());
+    for (const key of Object.keys(limitsConfigSchema.shape)) {
+      expect(present).toContain(key);
+    }
+  });
+
+  it("each accessor returns the value of its own key", () => {
+    const shipped = limitsConfigSchema.parse(readShippedYaml());
+
+    expect(getStudioMemberCap()).toBe(shipped.studio_member_cap);
+    expect(getProjectCollaboratorCap()).toBe(shipped.project_collaborator_cap);
+    expect(getCanvasReferencePoolCap()).toBe(shipped.canvas_reference_pool_cap);
+    expect(getNodeHistoryPageSize()).toBe(shipped.node_history_page_size);
+    expect(getDecisionWindowDays()).toBe(shipped.decision_window_days);
+    expect(getActivityFeedPageLimits()).toEqual({
+      default: shipped.activity_feed_page_default,
+      max: shipped.activity_feed_page_max,
+    });
+  });
+});
+
+/**
+ * The window a person has to answer a studio invite, a project invite, a
+ * studio transfer, a project transfer, or a role-upgrade request — one number
+ * for all five, where four services each carried their own copy of `7` and the
+ * fifth flow had no deadline at all.
  */
 describe("decision window", () => {
   it("defaults to 7 days when the key is absent", () => {
