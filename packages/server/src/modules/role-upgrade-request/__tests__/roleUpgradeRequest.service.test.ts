@@ -63,14 +63,14 @@ vi.mock("@breatic/core", () => {
 });
 // Deliberately NOT seven. The service is supposed to read the shared window
 // rather than carry its own copy of the number, and an implementation that
-// hardcodes 7 would pass against a mock that also says 7. Three days is a
-// value nothing else in the repo uses, so the assertion below only holds if
-// the value travelled from config to the deadline.
-const MOCK_WINDOW_DAYS = 3;
+// hardcodes 7 would pass against a mock that also says 7. Hoisted so the
+// factory and the assertions below share one source — writing the number
+// twice is the very hazard this window exists to remove.
+const decisionWindow = vi.hoisted(() => ({ days: 3 }));
 vi.mock("@server/config/limits.js", () => ({
-  getDecisionWindowMs: vi.fn(() => 3 * 24 * 60 * 60 * 1000),
-  getDecisionWindowDays: vi.fn(() => 3),
-  getDecisionWindowSeconds: vi.fn(() => 3 * 24 * 60 * 60),
+  getDecisionWindowMs: vi.fn(() => decisionWindow.days * 24 * 60 * 60 * 1000),
+  getDecisionWindowDays: vi.fn(() => decisionWindow.days),
+  getDecisionWindowSeconds: vi.fn(() => decisionWindow.days * 24 * 60 * 60),
 }));
 
 vi.mock("../../notification/notification.repo.js", () => ({
@@ -374,9 +374,8 @@ describe("reject", () => {
   });
 });
 
-
 /**
- * The seven-day window, which this flow did not have until now.
+ * The decision window, which this flow did not have until now.
  *
  * The other four decision flows (both invites, both transfers) each write a
  * deadline and each refuse a decision made after it. This one wrote nothing
@@ -410,7 +409,7 @@ describe("decision window", () => {
     expect(arg.expiresAt).toBeInstanceOf(Date);
     // The window the mocked config reports — three days, not seven. Bounded
     // rather than pinned to the millisecond so a slow machine does not fail it.
-    const window = MOCK_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const window = decisionWindow.days * 24 * 60 * 60 * 1000;
     expect(arg.expiresAt!.getTime()).toBeGreaterThanOrEqual(before + window - 5_000);
     expect(arg.expiresAt!.getTime()).toBeLessThanOrEqual(Date.now() + window + 5_000);
   });

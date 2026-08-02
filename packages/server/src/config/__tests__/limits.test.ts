@@ -85,8 +85,13 @@ describe("decision window", () => {
     expect(() => limitsConfigSchema.parse({ decision_window_days: -1 })).toThrow();
   });
 
-  it("ships 7 in config/limits.yaml", () => {
-    expect(getDecisionWindowDays()).toBe(7);
+  it("getDecisionWindowDays returns a positive integer", () => {
+    // Deliberately not pinned to the shipped seven: this is an operator knob,
+    // and a test that names its current value turns every turn of the dial
+    // into a red build. Same shape as the cap accessors above.
+    const days = getDecisionWindowDays();
+    expect(Number.isInteger(days)).toBe(true);
+    expect(days).toBeGreaterThan(0);
   });
 
   it("offers the same window in the three units its callers need", () => {

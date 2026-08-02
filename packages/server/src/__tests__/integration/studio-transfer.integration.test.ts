@@ -48,6 +48,7 @@ import postgres from "postgres";
 import { initCore } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
+import { getDecisionWindowMs } from "@server/config/limits.js";
 
 try {
   initCore(process.env);
@@ -155,7 +156,7 @@ async function countByType(userId: string, type: string): Promise<number> {
   return rows[0]!.c;
 }
 
-/** Force a notification's expiry into the past (simulate the 7-day timeout). */
+/** Force a notification's expiry into the past (simulate the window running out). */
 async function expireNotification(id: string): Promise<void> {
   await sql`UPDATE notifications SET expires_at = now() - interval '1 hour' WHERE id = ${id}`;
 }
@@ -304,6 +305,20 @@ describe("confirmTransfer", () => {
     expect(await activeAdminCount(studioId)).toBe(1);
   });
 
+  it("stamps the request deadline from the configured decision window", async () => {
+    // The write site moved from a local constant to the shared window
+    // with nothing asserting the result — a getter handing back the wrong unit
+    // would have left this file green. Read from the getter rather than naming
+    // a number, so turning the operator knob does not redden the suite.
+    const { slug, adminId, memberId } = await seedStudio();
+    await studioTransferService.requestTransfer(slug, adminId, memberId);
+    const [req] = await transferRequestsFor(memberId);
+
+    const aheadMs = req!.expires_at!.getTime() - Date.now();
+    expect(aheadMs).toBeLessThanOrEqual(getDecisionWindowMs());
+    expect(aheadMs).toBeGreaterThan(getDecisionWindowMs() - 60_000);
+  });
+
   it("refuses to DECLINE an expired request with Conflict, leaving it unread", async () => {
     // Expiry closes the request outright: past the window there is no decision
     // left to make, not "you may still say no". Declining an expired request
@@ -374,7 +389,7 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
   });
 
   it("rejects confirm when the studio changed hands after the request (the initiator is no longer admin)", async () => {
-    // A request names its initiator in a payload written up to seven days
+    // A request names its initiator in a payload written a whole window
     // ago. If the studio has since moved to somebody else, confirming that
     // stale request would demote whoever holds the role now — and promote the
     // long-since-demoted initiator back up to maintainer on the way past.

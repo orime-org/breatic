@@ -43,6 +43,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore, projectMembersRepo } from "@breatic/core";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
+import { getDecisionWindowMs } from "@server/config/limits.js";
 import * as projectMembersService from "@server/modules/project/projectMembers.service.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 
@@ -383,6 +384,17 @@ describe("confirmProjectTransfer", () => {
 
     expect(await getProjectRole(projectId, ownerId)).toBe("owner");
     expect(await activeOwnerCount(projectId)).toBe(1);
+  });
+
+  it("stamps the request deadline from the configured decision window", async () => {
+    // Mirror of the studio transfer's twin test — same reason, same shape.
+    const { projectId, ownerId, recipientId } = await seedProjectTransfer();
+    await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
+    const [req] = await transferRequestsFor(recipientId);
+
+    const aheadMs = req!.expires_at!.getTime() - Date.now();
+    expect(aheadMs).toBeLessThanOrEqual(getDecisionWindowMs());
+    expect(aheadMs).toBeGreaterThan(getDecisionWindowMs() - 60_000);
   });
 
   it("refuses to DECLINE an expired request with Conflict, leaving it unread", async () => {

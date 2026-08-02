@@ -4,8 +4,12 @@
 import { describe, it, expect, vi } from "vitest";
 
 // Three, not the seven the repo ships — a hardcoded footer would pass a mock
-// that agreed with the shipped value.
-vi.mock("@server/config/limits.js", () => ({ getDecisionWindowDays: () => 3 }));
+// that agreed with the shipped value. Mutable so the one-day case (the only
+// place the singular "day" is produced) can be exercised too.
+const decisionWindow = vi.hoisted(() => ({ days: 3 }));
+vi.mock("@server/config/limits.js", () => ({
+  getDecisionWindowDays: () => decisionWindow.days,
+}));
 
 import {
   buildStudioInvitationMail,
@@ -143,28 +147,43 @@ describe("expiry footer", () => {
       inviteLink: "https://example.test/studio-invite?token=t",
     });
     expect(mail.html).toContain("expires in 3 days");
-    expect(mail.html).not.toContain("7 days");
+  });
+
+  it("says 'day' rather than 'days' when the window is a single day", () => {
+    // The only branch in the footer. Without this, inverting the ternary
+    // leaves every other assertion in this file green.
+    decisionWindow.days = 1;
+    try {
+      const mail = buildStudioTransferMail({
+        recipientEmail: "recipient@example.com",
+        initiatorName: "Ada",
+        studioName: "Studio",
+        studioLink: "https://example.test/studio/s",
+      });
+      expect(mail.html).toContain("expires in 1 day.");
+    } finally {
+      decisionWindow.days = 3;
+    }
   });
 
   it("says the same thing on all four emails", () => {
     // Four builders, one sentence each. They shared two constants before; if a
     // later edit re-splits them, this catches the pair that drifted.
-    const common = { inviterName: "Ada", initiatorName: "Ada" };
     const htmls = [
       buildStudioInvitationMail({
-        inviteeEmail: "a@example.test", inviterName: common.inviterName,
+        inviteeEmail: "a@example.test", inviterName: "Ada",
         studioName: "S", role: "guest", inviteLink: "https://example.test/a",
       }).html,
       buildProjectInvitationMail({
-        inviteeEmail: "a@example.test", inviterName: common.inviterName,
+        inviteeEmail: "a@example.test", inviterName: "Ada",
         projectName: "P", role: "viewer", inviteLink: "https://example.test/b",
       }).html,
       buildStudioTransferMail({
-        recipientEmail: "a@example.test", initiatorName: common.initiatorName,
+        recipientEmail: "a@example.test", initiatorName: "Ada",
         studioName: "S", studioLink: "https://example.test/c",
       }).html,
       buildProjectTransferMail({
-        recipientEmail: "a@example.test", initiatorName: common.initiatorName,
+        recipientEmail: "a@example.test", initiatorName: "Ada",
         projectName: "P", projectLink: "https://example.test/d",
       }).html,
     ];

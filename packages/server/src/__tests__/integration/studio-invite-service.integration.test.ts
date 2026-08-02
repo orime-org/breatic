@@ -58,7 +58,7 @@ vi.mock("@server/config/limits.js", () => ({
 }));
 
 import { eq, and, inArray, isNull, sql } from "drizzle-orm";
-import { initCore, schema, createTestDb } from "@breatic/core";
+import { initCore, schema, createTestDb, getRedis, env } from "@breatic/core";
 import { NotFoundError, ConflictError, ForbiddenError } from "@breatic/core";
 
 initCore(process.env);
@@ -381,5 +381,33 @@ describe("email-link landing view", () => {
     // The page prints this rather than spelling out a number of its own, so it
     // has to be the window the server actually enforced.
     expect(landing?.windowDays).toBe(decisionWindow.days);
+  });
+
+  it("stamps the row deadline and the token TTL from the same window", async () => {
+    // The two things the window actually enforces. Both were changed from a
+    // local constant to a config read with nothing asserting the result: a
+    // getter returning the wrong unit — or zero — would have left every test
+    // in this file green.
+    const { invitationId } = await inviteService.createInvite(
+      "svc-team",
+      INVITER,
+      INVITEE_EMAIL,
+      "guest",
+    );
+    const windowMs = decisionWindow.days * 24 * 60 * 60 * 1000;
+
+    const [row] = await db
+      .select({ expiresAt: schema.studioInvitations.expiresAt })
+      .from(schema.studioInvitations)
+      .where(eq(schema.studioInvitations.id, invitationId));
+    const aheadMs = row!.expiresAt.getTime() - Date.now();
+    expect(aheadMs).toBeLessThanOrEqual(windowMs);
+    expect(aheadMs).toBeGreaterThan(windowMs - 60_000);
+
+    const token = await inviteService.issueInviteToken(invitationId);
+    const ttl = await getRedis().ttl(`${env.ENV}:studio-invite:${token}`);
+    const windowSeconds = decisionWindow.days * 24 * 60 * 60;
+    expect(ttl).toBeLessThanOrEqual(windowSeconds);
+    expect(ttl).toBeGreaterThan(windowSeconds - 60);
   });
 });

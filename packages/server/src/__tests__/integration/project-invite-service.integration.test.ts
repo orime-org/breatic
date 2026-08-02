@@ -544,6 +544,33 @@ describe("re-invite lifecycle (#1769)", () => {
 });
 
 describe("email-link token (Redis round-trip)", () => {
+  it("stamps the row deadline and the token TTL from the same window", async () => {
+    // The two things the window actually enforces. Both were changed from a
+    // local constant to a config read with nothing asserting the result: a
+    // getter returning the wrong unit — or zero — would have left every test
+    // in this file green.
+    const { invitationId, token } = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "editor",
+    );
+    const windowMs = decisionWindow.days * 24 * 60 * 60 * 1000;
+
+    const [row] = await db
+      .select({ expiresAt: schema.projectInvitations.expiresAt })
+      .from(schema.projectInvitations)
+      .where(eq(schema.projectInvitations.id, invitationId));
+    const aheadMs = row!.expiresAt.getTime() - Date.now();
+    expect(aheadMs).toBeLessThanOrEqual(windowMs);
+    expect(aheadMs).toBeGreaterThan(windowMs - 60_000);
+
+    const ttl = await getRedis().ttl(`${env.ENV}:project-invite:${token}`);
+    const windowSeconds = decisionWindow.days * 24 * 60 * 60;
+    expect(ttl).toBeLessThanOrEqual(windowSeconds);
+    expect(ttl).toBeGreaterThan(windowSeconds - 60);
+  });
+
   it("respondToInvite confirm: peek → confirm → consume (single-use)", async () => {
     const { invitationId } = await inviteService.createInvite(
       PROJECT,
