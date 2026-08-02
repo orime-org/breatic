@@ -2,7 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type { Editor } from '@tiptap/react';
-import { Bold, Italic, Redo2, Strikethrough, Undo2 } from 'lucide-react';
+import { useEditorState } from '@tiptap/react';
+import {
+  Bold,
+  Italic,
+  List,
+  ListOrdered,
+  Quote,
+  Redo2,
+  Strikethrough,
+  Undo2,
+} from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -16,32 +26,22 @@ interface DocumentToolbarProps {
   /** Undo / redo availability. */
   history: DocumentHistoryState;
   /**
-   * True for a viewer. Every control is disabled, for two different reasons.
-   *
-   * Undo and redo MUST be: read-only has to be enforced here as well as on the
-   * editor body, because `setEditable(false)` stops typing while a toolbar
-   * command is a programmatic dispatch and goes straight through it. The server
-   * then drops the write, leaving that viewer looking at a private fork of the
-   * document that no one else will ever see.
-   *
-   * The formatting buttons run nothing yet, so nothing would escape either way;
-   * they are disabled so that a viewer's toolbar looks uniformly unavailable,
-   * which is the truth about their role.
+   * True for a viewer. Every control is disabled — read-only has to be enforced
+   * here as well as on the editor body: `setEditable(false)` stops typing, but
+   * a toolbar command is a programmatic dispatch and goes straight through it.
+   * The server then drops the write, leaving that viewer looking at a private
+   * fork of the document that no one else will ever see.
    */
   readOnly?: boolean;
 }
 
-/**
- * A formatting button that is on screen but not yet connected to anything.
- *
- * It carries no command and no active predicate, because neither exists: the
- * marks are switched off in `document-extensions.ts`, and StarterKit's
- * `toggleBold` and friends go with them. Calling one would throw.
- */
-interface MarkToolDef {
+/** A toggle whose pressed state mirrors what is under the cursor. */
+interface ToolDef {
   id: string;
   labelKey: string;
   Icon: typeof Bold;
+  isActive: (e: Editor) => boolean;
+  run: (e: Editor) => void;
 }
 
 /** An action that is either available or not — history, in practice. */
@@ -60,11 +60,12 @@ interface ActionDef {
 }
 
 /**
- * Undo / redo.
+ * Undo / redo — the only controls this slice adds.
  *
  * History lives in a Yjs undo manager that tracks only THIS client's
- * transactions — so undo rolls back your own edits and never reaches into a
- * co-editor's work.
+ * transactions, so undo rolls back your own edits and never reaches into a
+ * co-editor's work. That is the whole reason it belongs to the collaboration
+ * slice rather than to the editing one.
  *
  * Keyboard shortcuts come from the Collaboration extension and already cover
  * both platforms: `Mod-z` (undo), `Mod-y` and `Shift-Mod-z` (redo), where `Mod`
@@ -88,48 +89,69 @@ const HISTORY_TOOLS: ActionDef[] = [
 ];
 
 /**
- * Bold, italic, strike — present, and deliberately doing nothing.
+ * The formatting controls, unchanged from before this editor became
+ * collaborative.
  *
- * This slice delivers the collaborative surface: a body bound to Yjs, carets,
- * undo, persistence. Formatting is a separate body of work that arrives whole
- * in the next one — the marks, their toolbar, and the body stylesheet that
- * makes block formatting visible at all.
- *
- * The buttons stay on screen through that gap so the toolbar has its final
- * shape from the start, and the slice that adds formatting changes behaviour
- * rather than layout. They are NOT disabled: a greyed-out control already means
- * "you do not have permission" here — that is what a viewer sees — and reusing
- * that appearance for "not built yet" would leave two people looking at
- * identical toolbars for opposite reasons.
+ * This slice connects the document to a shared Yjs document; what a user can
+ * write into it is a separate body of work with its own slice. These are here,
+ * and behave here, exactly as they always did.
  */
-const MARK_TOOLS: MarkToolDef[] = [
+const MARK_TOOLS: ToolDef[] = [
   {
     id: 'bold',
     labelKey: 'spaces.document.toolbar.bold',
     Icon: Bold,
+    isActive: (e) => e.isActive('bold'),
+    run: (e) => e.chain().focus().toggleBold().run(),
   },
   {
     id: 'italic',
     labelKey: 'spaces.document.toolbar.italic',
     Icon: Italic,
+    isActive: (e) => e.isActive('italic'),
+    run: (e) => e.chain().focus().toggleItalic().run(),
   },
   {
     id: 'strike',
     labelKey: 'spaces.document.toolbar.strike',
     Icon: Strikethrough,
+    isActive: (e) => e.isActive('strike'),
+    run: (e) => e.chain().focus().toggleStrike().run(),
+  },
+];
+
+/** Block-level formatting, likewise unchanged. */
+const BLOCK_TOOLS: ToolDef[] = [
+  {
+    id: 'bullet-list',
+    labelKey: 'spaces.document.toolbar.bulletList',
+    Icon: List,
+    isActive: (e) => e.isActive('bulletList'),
+    run: (e) => e.chain().focus().toggleBulletList().run(),
+  },
+  {
+    id: 'ordered-list',
+    labelKey: 'spaces.document.toolbar.orderedList',
+    Icon: ListOrdered,
+    isActive: (e) => e.isActive('orderedList'),
+    run: (e) => e.chain().focus().toggleOrderedList().run(),
+  },
+  {
+    id: 'quote',
+    labelKey: 'spaces.document.toolbar.quote',
+    Icon: Quote,
+    isActive: (e) => e.isActive('blockquote'),
+    run: (e) => e.chain().focus().toggleBlockquote().run(),
   },
 ];
 
 /**
- * Document toolbar — undo and redo, then the formatting buttons.
+ * Document toolbar — undo and redo, then the formatting toggles.
  *
- * Undo and redo are the working half. History comes in as a prop because it is
- * read from the undo manager, not the editor — see {@link DocumentHistoryState}.
- *
- * The formatting buttons do nothing yet; {@link MARK_TOOLS} says why they are
- * on screen anyway.
+ * History comes in as a prop because it is read from the undo manager, not the
+ * editor — see {@link DocumentHistoryState}.
  * @param root0 - Document toolbar props.
- * @param root0.editor - The editor undo and redo act on.
+ * @param root0.editor - The editor whose state drives the toggles and which the tools act on.
  * @param root0.history - Undo / redo availability.
  * @param root0.readOnly - True for a viewer; every control is disabled.
  * @returns The document toolbar element.
@@ -154,39 +176,53 @@ export const DocumentToolbar = React.memo(function DocumentToolbar({
       ))}
       <Separator orientation='vertical' className='mx-1 h-6' />
       {MARK_TOOLS.map((t) => (
-        <ToolButton key={t.id} tool={t} disabled={readOnly} />
+        <ToolButton key={t.id} tool={t} editor={editor} disabled={readOnly} />
+      ))}
+      <Separator orientation='vertical' className='mx-1 h-6' />
+      {BLOCK_TOOLS.map((t) => (
+        <ToolButton key={t.id} tool={t} editor={editor} disabled={readOnly} />
       ))}
     </div>
   );
 });
 
 /**
- * A single formatting button.
+ * A single toolbar toggle.
  *
- * It takes no editor and subscribes to nothing: with the marks switched off
- * there is no state for it to track and no command for it to run. A subscriber
- * that could only ever report `false` would be a claim this button reflects
- * something about the document, and it does not — see {@link MARK_TOOLS}.
+ * Subscribes to just its own active flag rather than reading it during render.
+ * That matters now the document is shared: a co-editor's change arrives as a
+ * transaction with no React render behind it, so a value computed in the render
+ * body would keep showing whatever was true when this component last happened
+ * to re-render.
  * @param root0 - Tool button props.
- * @param root0.tool - The tool definition (id, label, icon).
- * @param root0.disabled - True to render the button inert (viewer).
- * @returns The button element for one formatting tool.
+ * @param root0.tool - The tool definition (label, icon, active predicate, run command).
+ * @param root0.editor - The editor the tool reads from and acts on.
+ * @param root0.disabled - True to render the toggle inert (viewer).
+ * @returns The toggle button element for one document tool.
  */
 const ToolButton = React.memo(function ToolButton({
   tool,
+  editor,
   disabled = false,
 }: {
-  tool: MarkToolDef;
+  tool: ToolDef;
+  editor: Editor;
   disabled?: boolean;
 }): React.JSX.Element {
   const t = useTranslation();
+  const active = useEditorState({
+    editor,
+    selector: ({ editor: e }) => (e ? tool.isActive(e) : false),
+  });
   const Icon = tool.Icon;
   return (
     <Button
-      variant='ghost'
+      variant={active ? 'secondary' : 'ghost'}
       size='icon'
       aria-label={t(tool.labelKey)}
+      aria-pressed={active}
       disabled={disabled}
+      onClick={() => tool.run(editor)}
       data-testid={`doc-tool-${tool.id}`}
       className={cn('h-7 w-7')}
     >

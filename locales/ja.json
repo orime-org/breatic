@@ -942,6 +942,9 @@
         "redo": "やり直す",
         "bold": "太字",
         "italic": "斜体",
+        "bulletList": "箇条書き",
+        "orderedList": "番号付きリスト",
+        "quote": "引用",
         "strike": "取り消し線"
       }
     }

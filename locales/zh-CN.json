@@ -942,6 +942,9 @@
         "redo": "重做",
         "bold": "加粗",
         "italic": "斜体",
+        "bulletList": "无序列表",
+        "orderedList": "有序列表",
+        "quote": "引用",
         "strike": "删除线"
       }
     }

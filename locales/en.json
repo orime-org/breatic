@@ -942,6 +942,9 @@
         "redo": "Redo",
         "bold": "Bold",
         "italic": "Italic",
+        "bulletList": "Bullet list",
+        "orderedList": "Ordered list",
+        "quote": "Quote",
         "strike": "Strikethrough"
       }
     }

@@ -86,8 +86,8 @@ export function useDocumentEditor({
   editable = true,
   hasEverSynced,
 }: UseDocumentEditorOptions): DocumentEditorHandle | null {
-  // Once the real content is known to be in, and only from a client allowed to
-  // write. A read-only client's seed is refused by the server, which would
+  // Once the real content is known to be in, and only from a client whose ROLE
+  // allows writing. A viewer's seed is refused by the server, which would
   // leave it a paragraph ahead of everyone else — the stray blank line this
   // exists to prevent, arriving from the other side. Seeding is idempotent, so
   // a re-run is free.

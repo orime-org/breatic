@@ -395,9 +395,11 @@ describe('useDocumentEditor', () => {
     });
 
     it.each([
-      ['a single paragraph', '<p>the only sentence</p>'],
-      ['several paragraphs', '<p>first</p><p>second</p><p>third</p>'],
-      ['a paragraph with a line break', '<p>before<br>after</p>'],
+      ['a paragraph', '<p>the only sentence</p>'],
+      ['a bullet list', '<ul><li><p>bread</p></li><li><p>eggs</p></li></ul>'],
+      ['a blockquote', '<blockquote><p>quoted</p></blockquote>'],
+      ['a heading', '<h1>Title</h1>'],
+      ['a code block', '<pre><code>const a = 1</code></pre>'],
     ])('can redo after undoing away %s — the whole document', async (_what, html) => {
       // ProseMirror's schema requires the document to hold at least one block,
       // so its idea of "empty" is one empty paragraph. Yjs's is nothing at all.
@@ -409,15 +411,11 @@ describe('useDocumentEditor', () => {
       // cleared the redo stack: the text was unrecoverable and Redo went dead.
       //
       // Seeding the body makes the two agree from the start, so there is
-      // nothing to reconcile.
-      //
-      // The three shapes below are every shape this slice can produce: one
-      // block, several blocks, and a break inside a block. An earlier version
-      // of this list also passed HTML for lists, quotes, headings and code
-      // blocks — none of which the schema registers any more, so ProseMirror
-      // dropped the wrappers, kept the text, and all five rows silently ran the
-      // single-paragraph case. The slice that registers a block type should add
-      // it back here.
+      // nothing to reconcile. Every block type is covered because an earlier
+      // attempt — refusing to delete the body's last child — only held when
+      // that child was a paragraph: an empty blockquote or list violates the
+      // schema and the binding deletes it anyway, and an empty heading is
+      // legal but still leaves ProseMirror a paragraph to write back.
       const { editor } = await mountEditor();
 
       act(() => {

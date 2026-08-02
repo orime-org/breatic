@@ -2,35 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The document editor's extension list — and with it, its ProseMirror schema.
+ * The document editor's extension list.
  *
- * **This slice delivers a collaborative surface, not an editor's feature set.**
- * The body binds to Yjs, carets appear, undo works, everything persists. What
- * users can WRITE into that body is plain text: paragraphs, and a line break.
- * Formatting, block structure and media are a separate body of work that
- * arrives whole in a later slice, together with its toolbar.
+ * **This slice connects the document to a shared Yjs document. It does not
+ * change what a user can write into it.** StarterKit is left as it was — every
+ * heading, list, quote, code block and mark it ships stays exactly as it
+ * behaved before, because the editing feature set is a separate body of work
+ * with its own slice.
  *
- * That is why StarterKit is configured almost entirely off. Every switch below
- * turns off something StarterKit enables BY DEFAULT, and each default carries
- * an input rule with it — `# ` becomes a heading, `- ` a list, `> ` a quote,
- * three backticks a code block. A default nobody chose is still a feature users
- * can reach, and reaching it here has a real consequence: the undo manager
- * protects `paragraph` alone (see `document-undo.ts`), which is complete only
- * while a paragraph is all this document can hold.
- *
- * **What a later slice must do when it turns any of this back on:**
- *
- * 1. Register the node or mark AND its attributes. y-tiptap deletes anything
- *    its schema does not recognise — including an undeclared ATTRIBUTE on a
- *    node it otherwise knows — and commits that deletion as an ordinary local
- *    change, so it syncs to every peer and persists.
- * 2. Release the schema BEFORE shipping the UI that writes it. The client that
- *    destroys content is the one running the older bundle; giving it the schema
- *    first is what closes that window. How long the window is depends on how we
- *    deploy, which is a question that slice has to answer before it starts.
- * 3. Widen the undo manager's protected-node list to cover it.
- *
- * `__tests__/document-extensions.test.ts` holds those lists as a machine check.
+ * Two of StarterKit's defaults ARE switched off, and both for the same reason:
+ * they are safe in a private editor and unsafe in a shared one. Each is
+ * explained where it is switched off. If a third ever joins them, it needs the
+ * same justification — "connecting this document to a shared one broke it" —
+ * and nothing else qualifies.
  */
 
 import type { Extensions } from '@tiptap/core';
@@ -88,36 +72,6 @@ export function buildDocumentExtensions(
 
   const extensions: Extensions = [
     StarterKit.configure({
-      // ── Block types — all of slice 2 onwards ──
-      // Between them these ship the input rules that turn `# `, `- `, `1. `,
-      // `> ` and three backticks into blocks, so leaving any on lets a user
-      // create content this slice has no design for and whose undo is
-      // unprotected. `listItem` has no rule of its own — it is the node the
-      // list rules build with, and a list without it is not a list.
-      heading: false,
-      bulletList: false,
-      orderedList: false,
-      listItem: false,
-      // Keyboard handling for lists that no longer exist. Off with them, rather
-      // than left looking for node types the schema does not have.
-      listKeymap: false,
-      blockquote: false,
-      codeBlock: false,
-      horizontalRule: false,
-
-      // ── Marks — all of slice 2 ──
-      // Bold, italic and strike still have toolbar buttons on screen: the
-      // toolbar keeps its final shape while the capability lands later, and the
-      // buttons do nothing until it does. Registering the marks behind them
-      // would make the capability reachable by keyboard shortcut regardless,
-      // which is the state this whole configuration exists to avoid.
-      bold: false,
-      italic: false,
-      strike: false,
-      underline: false,
-      code: false,
-      link: false,
-
       // Collaboration owns history through the shared Yjs undo manager, which
       // tracks only this client's transactions. Leaving StarterKit's own
       // history in place gives the editor a second, client-blind undo stack:
@@ -126,31 +80,23 @@ export function buildDocumentExtensions(
       // turns the document to an empty string in the per-client undo test.
       undoRedo: false,
       // TrailingNode appends a paragraph whenever the body's last block is not
-      // one, and in a shared document that append is a WRITE.
-      //
-      // **It cannot fire in this slice** — measured, by removing this line and
-      // watching the extension really enter the tree while every test still
-      // passed: a ProseMirror doc always holds at least one block, and a
-      // paragraph is the only block type registered, so "the last block is not
-      // a paragraph" is never true. Nothing observable changes today either
-      // way, so `no-client-side-repair` does not cover it and says so.
-      //
-      // It is off regardless, because the slice that registers the first other
-      // block type would otherwise inherit it switched on — and there it does
-      // real damage: the append broadcasts, it lands on the undo stack of
-      // whoever opened the file, and it fires for a read-only viewer too, since
-      // `setEditable(false)` stops keystrokes rather than a plugin's own
+      // one. Harmless in a private editor; in a shared document that append is
+      // a WRITE. It broadcasts to everyone, it lands on the undo stack of
+      // whoever opened the file, and it fires for a read-only viewer too —
+      // `setEditable(false)` stops keystrokes, not a plugin's own
       // appendTransaction. The server drops a viewer's update without an error,
       // so that client sits permanently one paragraph ahead with nothing to
-      // signal it. It also revives what the seeded body prevents: undo back
-      // past the appended paragraph, click once, and it is re-appended as a
-      // fresh local edit — clearing the redo stack and stranding the text just
-      // undone.
+      // signal it.
       //
-      // What that slice gives up is the convenience of always having a
-      // paragraph to click after a trailing table or image, and it has to build
-      // that back without writing to the document — a rendered affordance that
-      // inserts only when the user actually puts the caret in it.
+      // It also revives what the seeded body prevents: undo back past the
+      // appended paragraph, click once, and it is re-appended as a fresh local
+      // edit — clearing the redo stack and stranding the text just undone.
+      //
+      // What is lost is the convenience of always having a paragraph to click
+      // after a trailing block. Building that back has to happen without
+      // writing to the document — a rendered affordance that inserts only when
+      // the user actually puts the caret in it — and belongs with the editing
+      // slice, not here.
       trailingNode: false,
     }),
   ];

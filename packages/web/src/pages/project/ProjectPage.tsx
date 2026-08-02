@@ -609,11 +609,12 @@ function ProjectWorkspace({
   // Cover it with a full-area `bg-black/80` overlay that
   // (a) matches the LoadingOverlay / Dialog backdrop dim pattern used
   //     elsewhere in the app (single visual vocabulary for "blocked"),
-  // (b) is unmistakable at a glance, which is the entire job — it blocks
-  //     nothing, and nothing else does either. Showing the problem where it is
-  //     and leaving everything else working is the rule (decision 2026-08-02):
-  //     a page that still responds tells the user the fault is not on their
-  //     side, while a dead page tells them only that something broke,
+  // (b) is unmistakable at a glance, which is the entire job: once the user can
+  //     see that something is wrong, the requirement is met and there is
+  //     nothing left to solve. Being opaque it also takes the pointer, so the
+  //     workspace is not clickable while it shows — a side effect of covering
+  //     the screen, not a goal, and no work goes into either blocking input
+  //     more thoroughly or letting it through (user 2026-08-02),
   // (c) surfaces the OS-level "not-allowed" cursor on hover so users
   //     get an instant, language-agnostic affordance that this region is not
   //     going to reach the server right now.
@@ -652,16 +653,21 @@ function ProjectWorkspace({
         }}
       />
       {/*
-        The workspace is NOT disabled programmatically when the connection
-        drops. Showing the problem where it is, and leaving everything else
-        alone, is the rule (decision 2026-08-02): a frontend that still accepts
-        input is itself information — it tells the user the problem is not on
-        their side. Lock the workspace too and all they can tell is that
-        "something is broken", not what.
+        Nothing reaches INTO this element to disable it when the connection
+        drops — no `inert`, no `aria-hidden`, no `disabled`. The first two were
+        tried and removed: `inert` pulls focus out of whatever the user was
+        typing in and kills IME composition mid-word, and neither adds anything
+        the curtain does not already do by being on screen. Showing the problem
+        where it is and reaching into nothing else is the rule (decision
+        2026-08-02).
 
-        The banner and the curtain below say what went wrong. That is the whole
-        job. Edits made while offline are not lost either — the provider
-        re-syncs on every reconnect.
+        The curtain rendered below DOES cover this element, so the workspace is
+        not clickable while it shows. That is the curtain being opaque, not
+        something done to the workspace.
+
+        The banner and the curtain say what went wrong. That is the whole job.
+        Edits made while offline are not lost either — the provider re-syncs on
+        every reconnect.
 
         `data-workspace` is a stable hook for tests to find this element in
         BOTH states: `data-workspace-disabled` is conditional and cannot be

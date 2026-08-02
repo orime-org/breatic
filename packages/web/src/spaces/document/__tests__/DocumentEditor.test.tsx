@@ -91,66 +91,66 @@ describe('DocumentEditor', () => {
     expect(screen.getByTestId('doc-tool-redo')).toBeDisabled();
   });
 
-  it('keeps the formatting buttons on screen', () => {
-    // They do nothing yet — this slice delivers the collaborative surface and
-    // formatting arrives whole in the next one. Keeping them visible is what
-    // lets that slice change behaviour rather than layout, so their presence is
-    // the deliberate part and belongs under a test.
-    render(<DocumentEditor editor={editor} history={history} />);
-    for (const id of ['bold', 'italic', 'strike']) {
-      expect(screen.getByTestId(`doc-tool-${id}`)).toBeInTheDocument();
-    }
-  });
-
-  it('offers no control for a block type this slice does not register', () => {
-    // Headings, lists and quotes are not in the schema at all here, so a button
-    // for one would dispatch a command that does not exist. They arrive with
-    // the marks, the block types and the body stylesheet, together.
-    render(<DocumentEditor editor={editor} history={history} />);
-    for (const id of ['bullet-list', 'ordered-list', 'quote', 'heading']) {
-      expect(screen.queryByTestId(`doc-tool-${id}`)).toBeNull();
-    }
-  });
-
-  it('changes nothing when a formatting button is clicked', async () => {
-    // The product decision is that these buttons stay visible and simply do
-    // not work yet — not that they go grey, which already means "you do not
-    // have permission" and is what a viewer sees.
+  it('adds undo and redo to the toolbar, and changes nothing else about it', () => {
+    // This slice makes the document collaborative, and undo comes with that:
+    // history lives in the shared undo manager, and a document people edit
+    // together without an undo is not shippable. The formatting controls are
+    // the editing feature set — a separate slice — and they are here exactly as
+    // they were before.
     //
-    // This is the assertion that stops a half-connected button from shipping:
-    // wire one of them to `toggleBold()` and it throws, because the marks are
-    // switched off and StarterKit's commands go with them.
-    act(() => {
-      editor.commands.setContent('<p>some text</p>');
-    });
-    await waitFor(() => expect(textOf(fragment)).toContain('some text'));
-    const before = markupOf(fragment);
-
+    // Asserted as the whole set rather than one membership check per button, so
+    // a control quietly added or removed fails instead of slipping through the
+    // gap between two positive assertions.
     render(<DocumentEditor editor={editor} history={history} />);
-    act(() => {
-      editor.commands.setTextSelection({ from: 1, to: 5 });
-      for (const id of ['bold', 'italic', 'strike']) {
-        screen.getByTestId(`doc-tool-${id}`).click();
-      }
-    });
+    const ids = Array.from(
+      document.querySelectorAll('[data-testid^="doc-tool-"]'),
+    ).map((el) => el.getAttribute('data-testid')?.replace('doc-tool-', ''));
 
-    expect(markupOf(fragment)).toBe(before);
+    expect(ids.sort()).toEqual([
+      'bold',
+      'bullet-list',
+      'italic',
+      'ordered-list',
+      'quote',
+      'redo',
+      'strike',
+      'undo',
+    ]);
   });
 
   describe('read-only (viewer)', () => {
     it('disables every control rather than hiding the toolbar', () => {
-      // Undo and redo MUST be disabled: they are real commands, and a toolbar
-      // command is a programmatic dispatch that `setEditable(false)` does not
-      // stop — it would write into the shared document, the server would refuse
-      // it silently, and this viewer would be left looking at a private fork.
-      //
-      // The formatting buttons run nothing either way; they are disabled so a
-      // viewer's toolbar reads as uniformly unavailable, which is the truth
-      // about their role.
+      // Every control, found by the same query the set assertion above uses —
+      // a hard-coded list here would silently stop covering whatever gets added
+      // next, and a viewer is exactly who must not reach a new control first.
       render(<DocumentEditor editor={editor} history={history} readOnly />);
-      for (const id of ['undo', 'redo', 'bold', 'italic', 'strike']) {
-        expect(screen.getByTestId(`doc-tool-${id}`)).toBeDisabled();
+      const controls = Array.from(
+        document.querySelectorAll('[data-testid^="doc-tool-"]'),
+      );
+      expect(controls.length).toBeGreaterThan(0);
+      for (const control of controls) {
+        expect(control).toBeDisabled();
       }
+    });
+
+    it('does not let a viewer change the shared document from the toolbar', async () => {
+      act(() => {
+        editor.commands.setContent('<p>viewer text</p>');
+      });
+      await waitFor(() => expect(textOf(fragment)).toContain('viewer text'));
+      const before = markupOf(fragment);
+
+      render(<DocumentEditor editor={editor} history={history} readOnly />);
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 7 });
+        screen.getByTestId('doc-tool-bold').click();
+      });
+
+      // Making the body non-editable only stops typing; a toolbar command is a
+      // programmatic dispatch and would go straight through it, writing into
+      // the shared document that the server will then refuse — leaving this
+      // viewer looking at a private fork.
+      expect(markupOf(fragment)).toBe(before);
     });
   });
 });

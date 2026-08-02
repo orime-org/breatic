@@ -18,15 +18,42 @@
  * teardown to keep it, is gone along with the problem it existed for.
  */
 
-import {
-  defaultDeleteFilter,
-  defaultProtectedNodes,
-  ySyncPluginKey,
-} from '@tiptap/y-tiptap';
+import { getSchema } from '@tiptap/core';
+import { defaultDeleteFilter, ySyncPluginKey } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
 
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
+import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
+
+/** Computed once; the schema is fixed for the lifetime of the bundle. */
+let protectedNodesCache: Set<string> | null = null;
+
+/**
+ * Every block-level node the document can hold.
+ *
+ * Derived from the schema rather than listed, so a slice that registers a new
+ * block type is protected the day it lands — nobody has to remember to add it
+ * here, and there is no second list to drift out of step with the first.
+ * @returns Block node names, excluding the document root itself.
+ */
+function protectedNodes(): Set<string> {
+  if (protectedNodesCache) return protectedNodesCache;
+  const probe = new Y.Doc();
+  try {
+    const schema = getSchema(
+      buildDocumentExtensions({ fragment: probe.getXmlFragment('probe') }),
+    );
+    protectedNodesCache = new Set(
+      Object.values(schema.nodes)
+        .filter((node) => node.isBlock && node.name !== 'doc')
+        .map((node) => node.name),
+    );
+    return protectedNodesCache;
+  } finally {
+    probe.destroy();
+  }
+}
 
 /**
  * An undo manager that reports every undo and redo, including the ones that
@@ -68,31 +95,32 @@ export interface DocumentUndoManager extends Y.UndoManager {
  * re-litigate here; the name-based lookups in `collab-plugin-keys` are no help
  * against it, and say so.
  *
- * Tracking the origin alone would not stop undo from destroying a peer's work:
- * when
- * two people write into the SAME paragraph, undoing our own insert takes the
- * whole paragraph — their text with it. The binding guards against exactly this
- * with a delete filter, which has to be carried over here because supplying our
- * own manager means the binding never builds one and its defaults never apply.
- * Measured, with the filter as the only difference: Alice writes "hi", Bob
- * appends "there" to the same paragraph, Alice presses undo. Without it the
- * paragraph ends up empty — Bob's text gone, the deletion synced to everyone
- * and absent from his undo stack.
+ * Tracking the origin decides WHICH edits land on our stack. It says nothing
+ * about what gets destroyed when one of them is rolled back — and two people
+ * writing into the same block share a container, so undoing our own insert of
+ * that container takes their text with it, synced to everyone and absent from
+ * their undo stack. yjs guards this with a delete filter, which has to be
+ * supplied here: providing our own manager means the binding never builds one
+ * and its defaults never apply.
  *
- * The filter is upstream's, unmodified. An earlier version of this file added a
- * rule refusing to delete the body's last child, to stop undo emptying the
- * fragment; `seedEmptyBody` in `document-yjs` removes the need by keeping a
- * paragraph there from the start.
+ * The filter itself is upstream's, unmodified. What it is given is not.
+ * `defaultProtectedNodes` holds one name — `paragraph` — because it was written
+ * for an editor whose documents are only paragraphs. Measured, with the set as
+ * the only difference: Alice writes "Plan" in a block, Bob appends
+ * " v2-from-bob", Alice presses undo.
  *
- * **`defaultProtectedNodes` is `Set { 'paragraph' }` — and that is complete
- * here only because a paragraph is all this document can hold.** The next slice
- * to register a block type MUST widen it, or the measured failure above returns
- * one level up: Alice writes a heading, Bob appends to that same heading, Alice
- * presses undo, and the whole heading goes — his text with it, synced to
- * everyone, absent from his undo stack. The upstream default is written for a
- * prompt editor that only ever holds paragraphs; it is not a statement about
- * what is safe in general. `document-extensions.ts` and its test carry the
- * matching reminder.
+ *   paragraph   upstream default → `<paragraph> v2-from-bob</paragraph>`
+ *   heading     upstream default → ``  (everything gone)
+ *   blockquote  upstream default → ``  (everything gone)
+ *   codeBlock   upstream default → ``  (everything gone)
+ *
+ * So the set comes from {@link protectedNodes} — every block type in the
+ * schema, derived rather than listed. Alice's own text still comes out in every
+ * case; widening the set only stops the container going with it.
+ *
+ * An earlier version of this file added a rule refusing to delete the body's
+ * last child, to stop undo emptying the fragment; `seedEmptyBody` in
+ * `document-yjs` removes the need by keeping a paragraph there from the start.
  *
  * `captureTransaction` honours the `addToHistory: false` marker, so
  * machine-driven edits stay off the stack.
@@ -109,7 +137,7 @@ export function createDocumentUndoManager(doc: Y.Doc): DocumentUndoManager {
     () =>
       new Y.UndoManager(body, {
         trackedOrigins: new Set([ySyncPluginKey]),
-        deleteFilter: (item) => defaultDeleteFilter(item, defaultProtectedNodes),
+        deleteFilter: (item) => defaultDeleteFilter(item, protectedNodes()),
         captureTransaction: (tr) => tr.meta.get('addToHistory') !== false,
       }) as DocumentUndoManager,
   );
