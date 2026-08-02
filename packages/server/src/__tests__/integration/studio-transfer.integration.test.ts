@@ -319,6 +319,28 @@ describe("confirmTransfer", () => {
     expect(aheadMs).toBeGreaterThan(getDecisionWindowMs() - 60_000);
   });
 
+  it("refuses to decline a notification that is not a transfer request, leaving it unread", async () => {
+    // The type check runs AFTER the mark-read CAS, and that CAS matches on id +
+    // recipient only — it never looks at the type. Without the transaction,
+    // aiming this endpoint at any other unread notification would mark it read
+    // and only then fail, silently consuming a row it had no business touching.
+    const { memberId } = await seedStudio();
+    const [notif] = await sql<{ id: string }[]>`
+      INSERT INTO notifications (user_id, type, payload)
+      VALUES (${memberId}, 'studio.invite_accepted', '{}'::jsonb)
+      RETURNING id
+    `;
+
+    await expect(
+      studioTransferService.cancelTransfer(notif!.id, memberId),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    const [after] = await sql<{ read_at: Date | null }[]>`
+      SELECT read_at FROM notifications WHERE id = ${notif!.id}
+    `;
+    expect(after!.read_at).toBeNull();
+  });
+
   it("refuses to DECLINE an expired request with Conflict, leaving it unread", async () => {
     // Expiry closes the request outright: past the window there is no decision
     // left to make, not "you may still say no". Declining an expired request

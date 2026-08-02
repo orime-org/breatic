@@ -397,6 +397,27 @@ describe("confirmProjectTransfer", () => {
     expect(aheadMs).toBeGreaterThan(getDecisionWindowMs() - 60_000);
   });
 
+  it("refuses to decline a notification that is not a transfer request, leaving it unread", async () => {
+    // Mirror of the studio transfer's twin test: the mark-read CAS does not
+    // look at the type, so the transaction is what stops a mis-aimed decline
+    // from consuming an unrelated notification.
+    const { recipientId } = await seedProjectTransfer();
+    const [notif] = await sql<{ id: string }[]>`
+      INSERT INTO notifications (user_id, type, payload)
+      VALUES (${recipientId}, 'project.invite_accepted', '{}'::jsonb)
+      RETURNING id
+    `;
+
+    await expect(
+      projectTransferService.cancelProjectTransfer(notif!.id, recipientId),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    const [after] = await sql<{ read_at: Date | null }[]>`
+      SELECT read_at FROM notifications WHERE id = ${notif!.id}
+    `;
+    expect(after!.read_at).toBeNull();
+  });
+
   it("refuses to DECLINE an expired request with Conflict, leaving it unread", async () => {
     // Expiry closes the request outright — see the studio transfer's twin test.
     // Declining past the window fails exactly like confirming, and it fails

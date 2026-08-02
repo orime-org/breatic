@@ -298,6 +298,32 @@ describe("confirmInvite", () => {
 });
 
 describe("declineInvite / revokeInvite", () => {
+  it("refuses to decline an EXPIRED invite (past the window there is no decision left)", async () => {
+    // The repo-level CAS is covered in studio-invitations.integration.test; this
+    // pins the service the route actually calls, so the NotFound the invitee
+    // receives is asserted at the layer that produces their HTTP status.
+    const { invitationId } = await inviteService.createInvite(
+      "svc-team",
+      INVITER,
+      INVITEE_EMAIL,
+      "guest",
+    );
+    await db
+      .update(schema.studioInvitations)
+      .set({ expiresAt: new Date(Date.now() - 60_000) })
+      .where(eq(schema.studioInvitations.id, invitationId));
+
+    await expect(
+      inviteService.declineInvite(invitationId, INVITEE),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    const [row] = await db
+      .select({ status: schema.studioInvitations.status })
+      .from(schema.studioInvitations)
+      .where(eq(schema.studioInvitations.id, invitationId));
+    expect(row?.status).toBe("pending");
+  });
+
   it("decline leaves membership untouched and clears the pending", async () => {
     const { invitationId } = await inviteService.createInvite(
       "svc-team",

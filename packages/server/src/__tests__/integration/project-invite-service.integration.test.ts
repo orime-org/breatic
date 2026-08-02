@@ -413,6 +413,24 @@ describe("confirmInvite", () => {
 });
 
 describe("declineInvite / revokeInvite", () => {
+  it("the decline CAS itself refuses an expired row (repo layer)", async () => {
+    // The service test below covers the error the route returns; this covers
+    // the predicate that produces it, so neither layer can lose the guard
+    // without a red test. Mirror of the studio repo test.
+    const { invitationId } = await inviteService.createInvite(
+      PROJECT,
+      OWNER,
+      INVITEE_EMAIL,
+      "viewer",
+    );
+    await db
+      .update(schema.projectInvitations)
+      .set({ expiresAt: new Date(Date.now() - 60_000) })
+      .where(eq(schema.projectInvitations.id, invitationId));
+
+    expect(await invitesRepo.declineIfPending(invitationId, INVITEE)).toBeNull();
+  });
+
   it("refuses to decline an EXPIRED invite (past the window there is no decision left)", async () => {
     // Expiry closes the invite outright: it is not "you may still say no".
     // The decline CAS carries the same not-expired predicate as the accept CAS,
