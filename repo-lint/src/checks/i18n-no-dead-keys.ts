@@ -86,20 +86,22 @@ function leafKeys(value: unknown, prefix = "", out: string[] = []): string[] {
   return out;
 }
 
-/** A dotted identifier anywhere in a file — `canvas.upload.tooLarge`. */
-const DOTTED_LITERAL = /[a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)+/g;
-
 /**
- * The id in a translation call — `t('cancel')`.
+ * A dotted identifier anywhere in a file — `canvas.upload.tooLarge`.
  *
- * The catalogs allow a flat top-level key, and such an id has no dot for
- * `DOTTED_LITERAL` to anchor on. Widening that pattern to bare words instead
- * would make every English word in the tree count as a use. So dotless keys
- * are read from the call itself, which is exact — `t(…)` is the only
- * translation call form in this tree, and a check that quietly stops covering
- * a shape of key is worth less than one that names the shape it covers.
+ * Every id has a dot to anchor on, and that is a guarantee rather than an
+ * observation: `i18n-keys-namespaced` fails the build on a catalog key that
+ * has none. Without it this pattern would need a companion that reads the id
+ * out of the translation call instead, and there was one — a second matching
+ * path, covering strictly less, kept only for two keys.
+ *
+ * Widening this to bare words is not the alternative it looks like. `cancel`
+ * and `loading` are ordinary words that appear all over the tree as enum
+ * members and state literals (`z.enum(["confirm", "cancel"])`, `phase ===
+ * 'loading'`), so a bare-word pattern would count every one of them as a use
+ * and exempt every short key forever.
  */
-const TRANSLATION_CALL = /\bt\(\s*['"]([\w.-]+)['"]/g;
+const DOTTED_LITERAL = /[a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)+/g;
 
 /**
  * The static head of an interpolated id — the `` `canvas.upload.${x}` `` form.
@@ -122,6 +124,11 @@ const TEMPLATE_PREFIX = /`([a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)*\.)\$\{/g;
  * along with whatever names it. Measured when that scope was set: twelve keys
  * were alive on nothing but a test fixture or a sentence in a spec.
  *
+ * One matching path, not two, and that rests on `i18n-keys-namespaced`: every
+ * id has a dot because that check fails the build on a catalog key without
+ * one. Delete it and this one starts reporting live keys as dead — the shape
+ * it forbids is the shape `DOTTED_LITERAL` cannot see.
+ *
  * Within that scope the matching stays generous, since the two mistakes do not
  * cost the same: a live key called dead ships a raw id to the UI, while a dead
  * key called live only survives another pass.
@@ -130,15 +137,17 @@ const TEMPLATE_PREFIX = /`([a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)*\.)\$\{/g;
  * any other dotted expression, so ordinary property access counts. Measured by
  * fabricating twelve keys named like code — nine survived, among them
  * `user.email`, `canvas.width`, and `Math.max`. A dead key whose name collides
- * with a common expression is therefore invisible here. Narrowing this means
- * matching the translation call instead of the mention, which is a different
- * change with its own trade-offs; what must not happen is reading the scope
- * above as if it closed this too.
+ * with a common expression is therefore invisible here. Narrowing it means
+ * matching the translation call *instead of* the mention — a smaller set, and
+ * the opposite direction from the call-matching that was removed alongside the
+ * dotless keys, which was a second path unioned *onto* this one. Worth not
+ * confusing, since both are described as "matching the call". What must not
+ * happen is reading the scope above as if it closed this too.
  *
  * One honest caveat about the self-exclusion. This check no longer reads its
  * own source, which closes a real mechanism — the tests below pin it — but on
  * this repository it closed nothing observable: every namespace the examples
- * here mention (`canvas.upload`, `cancel`) is independently alive in
+ * here mention (`canvas.upload`, `common.cancel`) is independently alive in
  * application code, so no key\'s verdict changed. The mechanism was worth
  * closing; the evidence for it is the test, not a measured deletion.
  */
@@ -161,10 +170,6 @@ export const i18nNoDeadKeys = {
     )) {
       const text = context.read(file);
       for (const match of text.matchAll(DOTTED_LITERAL)) literals.add(match[0]);
-      for (const match of text.matchAll(TRANSLATION_CALL)) {
-        const id = match[1];
-        if (id !== undefined) literals.add(id);
-      }
       for (const match of text.matchAll(TEMPLATE_PREFIX)) {
         const prefix = match[1];
         if (prefix !== undefined) prefixes.push(prefix);

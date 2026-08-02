@@ -83,35 +83,39 @@ describe("i18n-no-dead-keys", () => {
     expect(findings[0]?.message).toContain("canvas.gone");
   });
 
-  it("keeps a flat top-level key its translation call names", () => {
-    // Regression: the first version only indexed dotted identifiers, so a
-    // dotless key could not be found however often it was used. It deleted
-    // `cancel` and `loading` — both live — and the two tests that caught it
-    // were the only thing between that and shipping raw ids to the UI.
-    expect(
-      i18nNoDeadKeys.run(
-        repo(
-          { cancel: "Cancel", loading: "Loading…" },
-          {
-            "packages/web/src/a.tsx":
-              "<Button>{t('cancel')}</Button><Spinner aria-label={t(\"loading\")} />",
-          },
-        ),
-      ),
-    ).toEqual([]);
-  });
-
-  it("still catches a flat top-level key no call names", () => {
-    // The other half: matching dotless keys must not degrade into "does this
-    // word appear anywhere", which would exempt every short key forever.
+  it("reports a dotless key however often it is used", () => {
+    // This check cannot see a key with no dot: `DOTTED_LITERAL` has nothing to
+    // anchor on, and reading the id out of the call instead was a second,
+    // weaker path kept for exactly two keys. It is gone, and what makes that
+    // safe is `i18n-keys-namespaced` failing the build on such a key upstream.
+    //
+    // So this asserts a defect on purpose — it is where the dependency between
+    // the two checks is written down. Delete the upstream one and this is the
+    // behaviour that comes back: a live key, used twice, reported dead, and a
+    // raw id shipped to the UI. That happened once, to `cancel` and `loading`.
     const findings = i18nNoDeadKeys.run(
       repo(
-        { cancel: "Cancel", next: "Next" },
-        { "packages/web/src/a.tsx": "t('cancel'); params.get('next');" },
+        { cancel: "Cancel" },
+        { "packages/web/src/a.tsx": "<Button>{t('cancel')}</Button>" },
       ),
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0]?.message).toContain("next");
+    expect(findings[0]?.message).toContain("cancel");
+  });
+
+  it("does not let a key's last segment alone count as a use", () => {
+    // Matching must not degrade into "does this word appear anywhere". The
+    // source below contains `next`, which is the key's final segment and an
+    // ordinary word besides — matching on it would exempt every key whose last
+    // segment is a common one, which is most of them.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { nav: { next: "Next" } },
+        { "packages/web/src/a.tsx": "params.get('next');" },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("nav.next");
   });
 
   it("does not let a __tests__ directory keep a key alive", () => {
