@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Retry / backoff primitives shared across every retry site — backend
- * (HTTP transport, storage download, BullMQ job retry) and browser
- * (asset upload) alike.
+ * Retry / backoff primitives for the HTTP transport in this package.
  *
- * These live in `@breatic/shared` rather than `@breatic/core` because the
- * browser needs them too: the upload path jitters its own retries, and
- * `shared` is the only workspace package the frontend may import. They are
- * pure arithmetic with an injectable randomness source, so nothing here
+ * ⚠️ A BYTE-FOR-BYTE DUPLICATE OF THESE TWO FUNCTIONS LIVES IN
+ * `packages/core/src/infra/retry.ts`. Change one and you must change the
+ * other, until #49 deletes core's copy and points everything here. The
+ * duplicate exists because this transport sits in `shared`, and `shared`
+ * cannot import `core` — the dependency runs the other way. core's callers
+ * disappear as the transport takes them over (worker's HTTP loop, then the
+ * storage download), leaving only its BullMQ job-retry strategy, which will
+ * call into this file.
+ *
+ * They are pure arithmetic with an injectable randomness source, so nothing here
  * touches Node APIs.
  *
  * The BullMQ-specific strategy builder stays in `@breatic/core` — queue
