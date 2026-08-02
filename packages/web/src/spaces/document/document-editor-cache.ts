@@ -147,15 +147,6 @@ export function evictDocumentEditor(name: string): void {
   cache.evict(name);
 }
 
-/**
- * Test-only: whether an editor is currently cached for a name.
- * @param name - The canonical document name.
- * @returns True while an editor is cached for that name.
- */
-export function _hasDocumentEditorForTests(name: string): boolean {
-  return cache.has(name);
-}
-
 /** Reset the cache (test helper — not for production use). */
 export function _resetDocumentEditorCacheForTests(): void {
   cache.reset();

@@ -808,8 +808,12 @@ function ProjectWorkspace({
             </div>
           </section>
         </div>
-        {/* Purely a visual signal that something is wrong. It intercepts
-            nothing: blocking input is not what it is for. */}
+        {/* A visual signal that something is wrong — that is the whole job, and
+            once the user can see it the job is done. Being opaque, it does also
+            take the pointer, so the workspace is not clickable while it shows.
+            That is a side effect of covering the screen, not a goal: nothing
+            here works to block input, and nothing here works to let it
+            through either. */}
         {workspaceDisabled ? (
           <div
             className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'

@@ -3,20 +3,25 @@
 
 /**
  * The workspace overlay must appear for every connection state the banner
- * covers — and must not do anything beyond appearing.
+ * covers.
  *
  * `ConnectionBanner` documents the two as a pair ("both must appear / disappear
  * on the same frame, otherwise the staggered timing reads as visual jitter"),
  * but the overlay only ever mounted for `authFailed` while the banner also
- * shows for `disconnected`.
+ * shows for `disconnected`. Appearing together is what these tests pin.
  *
- * What the overlay is FOR: telling the user something is wrong. Not blocking
- * input. Showing the problem where it is and leaving everything else working is
- * the rule (decision 2026-08-02) — a page that still responds tells the user
- * the fault is not on their side, while a page that goes dead tells them only
- * that something broke. An earlier version of this file marked the workspace
- * `inert`, which pulled focus out of the editor and cut off in-flight IME
- * composition: a real cost paid for a goal that was never the point.
+ * What the overlay is FOR: telling the user something is wrong. Once it is on
+ * screen the user knows, and that is the end of the requirement. Being opaque
+ * it does also swallow clicks — a side effect of covering the screen, not a
+ * goal — and no work goes into either blocking input more thoroughly or
+ * letting it through. A state where the user has already been told something is
+ * broken is not a state worth polishing (user 2026-08-02).
+ *
+ * What DOES get work is not reaching into the rest of the app: an earlier
+ * version marked the workspace `inert`, which pulled focus out of the editor
+ * and cut off in-flight IME composition. That is the rule this file still
+ * guards — show the problem where it is, change nothing else (decision
+ * 2026-08-02).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -188,11 +193,14 @@ describe('ProjectPage — the workspace overlay follows the banner', () => {
     ).toBeInTheDocument();
   });
 
-  it('does NOT disable the workspace it covers', async () => {
-    // The curtain is paint. Disabling the workspace as well would take away the
-    // one thing that tells the user where the fault is: a page that still
-    // responds says "not your side". `inert` in particular also pulls focus out
-    // of whatever they were typing in and kills IME composition mid-word.
+  it('does not reach into the workspace to disable it', async () => {
+    // Not the same claim as "the workspace is still usable" — it is not, the
+    // opaque curtain is on top of it. What is pinned here is that nothing
+    // reaches INTO the workspace to disable it: `inert` pulls focus out of
+    // whatever the user was typing in and kills IME composition mid-word, and
+    // `aria-hidden` erases the whole subtree for a screen reader. Both were
+    // tried, both cost something real, and neither adds anything the curtain
+    // does not already do by being on screen.
     //
     // Selected by a data attribute present in BOTH states, so the assertion
     // cannot pass vacuously by matching nothing.

@@ -56,9 +56,9 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
  * them by writing that paragraph back. That write carries the dispatch's own
  * `addToHistory` marker, so yjs reads it as a fresh local edit, clears the redo
  * stack, and syncs the deletion to everyone: the text just undone is gone for
- * good. Seeding removes the disagreement rather than reacting to it, and covers
- * every block type — paragraphs, lists, blockquotes, headings and code blocks
- * all measured restoring in full.
+ * good. Seeding removes the disagreement rather than reacting to it, which is
+ * why it holds for whatever the body contains: the seed is about the body being
+ * non-empty, not about what kind of block is in it.
  *
  * ## Two conditions on calling it
  *
@@ -66,9 +66,15 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
  * loaded yet adds a paragraph the server's content then merges in behind,
  * leaving a stray blank line at the top of everyone's document.
  *
- * **Only from a client allowed to write.** The server drops a read-only
- * client's update without an error, leaving that client permanently one
+ * **Only from a client whose ROLE allows writing.** A viewer must not seed: the
+ * server drops their update without an error, leaving them permanently one
  * paragraph ahead of everyone else.
+ *
+ * Role, and only role. A client the server has quietly degraded to read-only
+ * — a connection refused, a capacity limit — still seeds, because a failed
+ * connection is reported to the user rather than enforced against them
+ * (decision 2026-08-02). That one update is dropped, and the cost is a stray
+ * paragraph in that client's local copy until it reloads.
  *
  * ## Known limitation: this does not converge across clients
  *

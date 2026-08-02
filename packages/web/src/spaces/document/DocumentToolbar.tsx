@@ -186,7 +186,6 @@ const ToolButton = React.memo(function ToolButton({
       variant='ghost'
       size='icon'
       aria-label={t(tool.labelKey)}
-      aria-pressed={false}
       disabled={disabled}
       data-testid={`doc-tool-${tool.id}`}
       className={cn('h-7 w-7')}

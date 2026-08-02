@@ -89,8 +89,11 @@ export function buildDocumentExtensions(
   const extensions: Extensions = [
     StarterKit.configure({
       // ── Block types — all of slice 2 onwards ──
-      // Each of these ships an input rule, so leaving one on lets a user create
-      // content this slice has no design for and whose undo is unprotected.
+      // Between them these ship the input rules that turn `# `, `- `, `1. `,
+      // `> ` and three backticks into blocks, so leaving any on lets a user
+      // create content this slice has no design for and whose undo is
+      // unprotected. `listItem` has no rule of its own — it is the node the
+      // list rules build with, and a list without it is not a list.
       heading: false,
       bulletList: false,
       orderedList: false,
