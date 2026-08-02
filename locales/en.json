@@ -50,9 +50,6 @@
     "payment": {
       "tier_not_found": "Unknown pricing tier: {tier}. Available: {available}",
       "price_not_configured": "Price not configured for tier: {tier}"
-    },
-    "email": {
-      "welcome_subject": "Welcome to Breatic"
     }
   },
   "cancel": "Cancel",
@@ -283,9 +280,6 @@
       }
     }
   },
-  "editor": {
-    "accept": "Accept"
-  },
   "auth": {
     "email": "Email",
     "password": "Password",
@@ -397,9 +391,6 @@
       "stay": "Stay",
       "leave": "Leave anyway"
     },
-    "toolbar": {
-      "uploadFile": "Upload file"
-    },
     "header": {
       "renameFailed": "Couldn't rename the project"
     },
@@ -420,9 +411,6 @@
   },
   "common": {
     "cancel": "Cancel"
-  },
-  "message": {
-    "addedToTimeline": "Added to timeline"
   },
   "members": {
     "popover": {
@@ -454,21 +442,15 @@
       "transferFailed": "Could not send the transfer request. Please try again."
     },
     "stack": {
-      "triggerAria": "Project members ({count})",
-      "removeAria": "Remove {name}"
+      "triggerAria": "Project members ({count})"
     }
   },
   "spaces": {
     "tab": {
-      "new": "New canvas",
-      "drawer": "All canvases",
       "closeAria": "Close space tab"
     },
     "drawer": {
       "title": "All spaces",
-      "new_canvas": "New canvas",
-      "new_document": "New document",
-      "new_timeline": "New timeline",
       "label": "All spaces",
       "description": "{count, plural, one {# space · click to open or use the right menu} other {# spaces · click to open or use the right menu}}",
       "empty": "No spaces yet",
@@ -738,7 +720,6 @@
         "emptyHint": "Projects are where you create on the infinite canvas. Create your first project to get started."
       },
       "collections": {
-        "title": "Collections",
         "new": "New collection",
         "emptyTitle": "No collections yet",
         "emptyHint": "Collections are reusable sets of assets (images / video / audio) shared across projects. Once the backend ships, the collections you create will appear here."
@@ -777,7 +758,6 @@
         "roleAdmin": "Admin",
         "roleGuest": "Guest",
         "remove": "Remove",
-        "cannotInvitePersonal": "Personal studios can not invite members — it is just you.",
         "roleMaintainer": "Maintainer",
         "rowMenu": "Member actions",
         "promoteToMaintainer": "Make maintainer",

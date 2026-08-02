@@ -48,9 +48,6 @@
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
       "price_not_configured": "プラン {tier} の価格が設定されていません"
     },
-    "email": {
-      "welcome_subject": "Breatic へようこそ"
-    },
     "text_tool": {
       "already_running": "別のテキストツールが実行中です。お待ちください。"
     }
@@ -283,9 +280,6 @@
       }
     }
   },
-  "editor": {
-    "accept": "採用"
-  },
   "auth": {
     "email": "メールアドレス",
     "password": "パスワード",
@@ -397,9 +391,6 @@
       "stay": "とどまる",
       "leave": "移動する"
     },
-    "toolbar": {
-      "uploadFile": "ファイルをアップロード"
-    },
     "header": {
       "renameFailed": "Project 名を変更できませんでした"
     },
@@ -420,9 +411,6 @@
   },
   "common": {
     "cancel": "キャンセル"
-  },
-  "message": {
-    "addedToTimeline": "タイムラインに追加しました"
   },
   "members": {
     "popover": {
@@ -454,21 +442,15 @@
       "transferFailed": "委譲リクエストを送信できませんでした。もう一度お試しください。"
     },
     "stack": {
-      "triggerAria": "Project メンバー({count})",
-      "removeAria": "{name} を削除"
+      "triggerAria": "Project メンバー({count})"
     }
   },
   "spaces": {
     "tab": {
-      "new": "新規 Canvas",
-      "drawer": "全 Canvases",
       "closeAria": "Space タブを閉じる"
     },
     "drawer": {
       "title": "すべての Spaces",
-      "new_canvas": "新規 Canvas",
-      "new_document": "新規 Document",
-      "new_timeline": "新規 Timeline",
       "label": "すべての Spaces",
       "description": "{count, plural, other {# 件 · クリックで切替、右側で操作}}",
       "empty": "Spaces はまだありません",
@@ -738,7 +720,6 @@
         "emptyHint": "Project は無限キャンバスで創作する場所です。最初の Project を作成して始めましょう。"
       },
       "collections": {
-        "title": "Collections",
         "new": "Collection を新規作成",
         "emptyTitle": "Collections がまだありません",
         "emptyHint": "Collection は Projects 間で再利用する素材のまとまり(画像 / 動画 / 音声)です。バックエンド機能が公開されると、作成した Collection がここに表示されます。"
@@ -777,7 +758,6 @@
         "roleAdmin": "Admin",
         "roleGuest": "Guest",
         "remove": "削除",
-        "cannotInvitePersonal": "個人 Studios はメンバーを招待できません — あなただけです。",
         "roleMaintainer": "Maintainer",
         "rowMenu": "メンバー操作",
         "promoteToMaintainer": "Maintainer にする",

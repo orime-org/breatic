@@ -37,7 +37,6 @@ const NEW_KEYS_EN: ReadonlyArray<readonly [string, string]> = [
   ['spaces.lockedAria', 'Locked'],
   ['spaces.tab.closeAria', 'Close space tab'],
   ['members.stack.triggerAria', 'Project members ({count})'],
-  ['members.stack.removeAria', 'Remove {name}'],
 ];
 
 /** Action keys that MUST be translated (zh-CN value differs from English). */

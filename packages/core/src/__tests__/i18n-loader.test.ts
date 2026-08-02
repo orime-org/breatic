@@ -19,6 +19,7 @@ import {
   getLocale,
   getAvailableLocales,
   resetLocales,
+  setLocaleMessages,
 } from "@breatic/shared";
 import { loadLocales } from "../i18n/locale-loader.js";
 import { resolve } from "node:path";
@@ -30,6 +31,12 @@ describe("i18n loader", () => {
   });
 
   afterEach(() => {
+    // Reload rather than only resetting the locale: one test injects fake
+    // catalogs, and doing the restore in its own body means a failed
+    // assertion leaves every later test in the file reading the fakes. That
+    // is silent — they fail for a reason that has nothing to do with them.
+    resetLocales();
+    loadLocales(resolve(import.meta.dirname, "../../../../locales"));
     setLocale("en");
   });
 
@@ -54,7 +61,7 @@ describe("i18n loader", () => {
     });
 
     it("should resolve a UI key", () => {
-      expect(t("editor.accept")).toBe("Accept");
+      expect(t("common.cancel")).toBe("Cancel");
     });
 
     it("should resolve a frontend studio key", () => {
@@ -88,11 +95,23 @@ describe("i18n loader", () => {
     });
 
     it("should fall back to English for missing keys", () => {
+      // Injected catalogs, not the shipped ones. The previous version read a
+      // real key and asserted it came back translated — which it did, from
+      // zh-CN's own entry, so the fallback branch never ran. Any key present
+      // in every catalog makes that shape pass without testing anything, and
+      // the catalogs are complete by design, so no real key can drive it.
+      resetLocales();
+      setLocaleMessages("en", {
+        probe: { onlyInEnglish: "English text", inBoth: "English both" },
+      });
+      setLocaleMessages("zh-CN", { probe: { inBoth: "中文 both" } });
       setLocale("zh-CN");
-      // A key that exists in en but may not in zh-CN
-      const result = t("server.email.welcome_subject");
-      expect(result).toBeTruthy();
-      expect(result).not.toBe("server.email.welcome_subject");
+
+      // Control: proves the locale actually switched. Without it the
+      // assertion below passes just as well when zh-CN never took effect,
+      // since English is what en returns either way.
+      expect(t("probe.inBoth")).toBe("中文 both");
+      expect(t("probe.onlyInEnglish")).toBe("English text");
     });
   });
 
