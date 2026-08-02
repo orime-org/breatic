@@ -71,37 +71,65 @@ export interface RetryInput {
   rand?: () => number;
 }
 
+/** Delay-seconds: the first of the two forms RFC 9110 §5.6.7 allows. */
+const DELAY_SECONDS = String.raw`\d+`;
+
 /**
- * IMF-fixdate, the preferred HTTP-date form (RFC 9110 §5.6.7) and the one
- * `Date.prototype.toUTCString` emits: `Thu, 30 Jul 2026 12:00:04 GMT`.
+ * IMF-fixdate, the second form and the one `Date.prototype.toUTCString`
+ * emits: `Thu, 30 Jul 2026 12:00:04 GMT`.
  *
- * The shape is validated before parsing because `Date.parse` is far looser
- * than the spec requires — ECMAScript only mandates ISO 8601 and leaves
- * everything else implementation-defined, so V8 guesses. Measured on Node 24:
- * `Date.parse("-5")` yields 2001-05-01 and `Date.parse("3.5.1")` yields
- * 2001-03-05. Both are past instants, so without this gate a malformed header
- * would clamp to a 0 ms wait — an immediate hammering retry — instead of
- * falling back to our own backoff.
+ * The shape is checked before parsing because `Date.parse` is far looser than
+ * the spec requires — ECMAScript only mandates ISO 8601 and leaves everything
+ * else implementation-defined, so V8 guesses. Measured on Node 24:
+ * `Date.parse("Thu, 30 Jul 2026 12:00:05 UTC")` and the same string with a
+ * lower-case `gmt` are both accepted and land on the instant a legal header
+ * would have named — so without this gate we would honour a wait the server
+ * never legally expressed.
  */
-const IMF_FIXDATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+const IMF_FIXDATE = String.raw`[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT`;
+
+/**
+ * One legal value, optionally sent more than once with the same content.
+ *
+ * Shape-checking and duplicate-collapsing are ONE question, not two, and
+ * splitting them was a real defect: the previous cut split on commas to find
+ * repeats, but IMF-fixdate carries a comma of its own (`Thu, 30 Jul…`), so a
+ * repeated date could never collapse and fell through to the shape check as
+ * one long string, which of course failed. For months only the seconds form
+ * had working duplicate handling, while the comment claimed both did.
+ *
+ * A back-reference rather than a general "some prefix, repeated": the value
+ * alternatives are fixed shapes, so there is nothing for a hostile header to
+ * make expensive. Measured at 5000 copies plus a non-matching tail: under a
+ * millisecond, and pinned by a test.
+ */
+const ONE_VALUE_POSSIBLY_REPEATED = new RegExp(
+  `^(${DELAY_SECONDS}|${IMF_FIXDATE})(?:,\\s*\\1)*$`,
+);
+
+/** The seconds form on its own, to tell which alternative matched. */
+const IS_DELAY_SECONDS = new RegExp(`^${DELAY_SECONDS}$`);
 
 /**
  * Whether a parsed instant still names the day the header claimed.
  *
- * The shape gate accepts "31 Feb" because it only checks digits and a month
- * name; `Date.parse` then rolls it into March instead of rejecting it. Reading
- * the day and month back off the parsed instant catches exactly that.
- * @param raw - The IMF-fixdate string as sent.
+ * The shape gate accepts "31 Feb" because it only checks digit counts and a
+ * month name; `Date.parse` then rolls it into March instead of rejecting it.
+ * Reading the day and month back off the parsed instant catches exactly that.
+ *
+ * Positions are fixed rather than re-matched: callers reach this only with a
+ * string the shape gate has already accepted, so the day sits at 5..7 and the
+ * month at 8..11 — the same layout `toUTCString` emits, which is what makes
+ * the month comparison a plain equality.
+ * @param raw - The IMF-fixdate string as sent, already shape-checked.
  * @param at - What `Date.parse` made of it.
  * @returns True when the parsed instant is the day the string named.
  */
 function datesBackToItself(raw: string, at: number): boolean {
-  const [, day, month] = /^[A-Za-z]{3}, (\d{2}) ([A-Za-z]{3})/.exec(raw) ?? [];
-  if (day === undefined || month === undefined) return false;
   const parsed = new Date(at);
   return (
-    parsed.getUTCDate() === Number(day) &&
-    parsed.toUTCString().slice(8, 11).toLowerCase() === month.toLowerCase()
+    parsed.getUTCDate() === Number(raw.slice(5, 7)) &&
+    parsed.toUTCString().slice(8, 11) === raw.slice(8, 11)
   );
 }
 
@@ -133,20 +161,24 @@ export function parseRetryAfter(
   nowMs: number,
 ): number | null {
   if (raw == null) return null;
-  // A server that sent the header twice arrives here as "5, 5" — `Headers.get`
-  // joins repeats with a comma. Retry-After is a singleton field, so a repeat
-  // is malformed; but rejecting the whole thing meant falling back to
-  // sub-second jitter and hammering the very server that had just asked for
-  // room. When every copy says the same thing the instruction is unambiguous,
-  // so honour it. When they disagree there is no instruction to honour.
-  const parts = raw.split(",").map((p) => p.trim()).filter((p) => p.length > 0);
-  const value = parts.length > 1 && new Set(parts).size === 1 ? parts[0]! : raw.trim();
+  // One question, asked once: is this a legal value, possibly sent more than
+  // once with the same content? A server that sent the field twice arrives
+  // here as a single comma-joined string, because that is what `Headers.get`
+  // does with repeats. Retry-After is a singleton field so a repeat is
+  // malformed — but rejecting it outright dropped us to sub-second jitter
+  // against the very server that had just asked for room. Identical copies
+  // carry an unambiguous instruction; copies that disagree carry none.
+  const matched = ONE_VALUE_POSSIBLY_REPEATED.exec(raw.trim());
+  if (matched === null) return null;
+  const value = matched[1]!;
 
-  if (/^\d+$/.test(value)) {
+  if (IS_DELAY_SECONDS.test(value)) {
     return Number(value) * 1000;
   }
 
-  if (!IMF_FIXDATE.test(value)) return null;
+  // Shape-checked already, yet `Date.parse` can still refuse: the gate accepts
+  // any three-letter month, and only real ones parse. Measured on Node 24:
+  // "Thu, 30 Xyz 2026 12:00:05 GMT" is NaN.
   const at = Date.parse(value);
   if (Number.isNaN(at)) return null;
   // `Date.parse` rolls a calendar-invalid date over rather than rejecting it,
@@ -196,10 +228,16 @@ function scheduleRetry(input: RetryInput): RetryDecision {
 /**
  * Decide whether a failed request may be replayed, and after how long.
  *
- * Total: every input yields a verdict. The ordering is load-bearing and is
- * asserted in the tests — a rate-limited non-replayable submit must still back
- * off and retry, because 429 is the one case where the server has told us
- * nothing happened.
+ * Total: every input yields a verdict. TWO orderings are load-bearing, and
+ * each has a test that goes red when it is moved:
+ *
+ *   - A spent body outranks every status, 429 included. 429 is the only
+ *     status that would otherwise authorise a replay no matter what, so it is
+ *     also the only one that can prove this check runs first.
+ *   - 429 outranks the caller's own declaration, because it is the one case
+ *     where the server has told us nothing happened — so a rate-limited
+ *     non-replayable submit must still back off and retry. Backwards, this
+ *     fails the request outright in the situation that most deserves patience.
  * @param input - Status (or its absence), the caller's declaration, the body
  *   fact, the parsed server wait, and the delivery counter.
  * @returns Replay or not, with the wait when replaying.

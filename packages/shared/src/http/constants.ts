@@ -11,13 +11,18 @@
  * was three). One transport gets one answer, compiled in, and two places
  * cannot disagree about it again.
  *
- * The rule for what belongs here: a figure that has one defensible answer
- * belongs in this file, and a figure that genuinely differs between callers
- * stays a parameter. "How many times may this be replayed" has one answer.
- * "How long may one attempt wait for response headers" does not — a vendor
- * API and an object store differ by an order of magnitude — so it is a
- * parameter. Anything about reading a body is neither: it is not this
- * layer's at all.
+ * The rule for what belongs here: this layer asks the caller for ONE thing —
+ * whether replaying costs anything — and answers everything else for itself,
+ * so every figure it needs is in this file. There are no parameters left for
+ * a figure to become.
+ *
+ * That includes "how long may one delivery wait for response headers", which
+ * this very header used to name as the counter-example — a vendor API and an
+ * object store differ by an order of magnitude, so surely the caller must say.
+ * They must not: every call site that ever set it read it from config or from
+ * a literal, and none of them knew anything this layer does not. Anything
+ * about reading a body is neither a figure nor a parameter here — it is not
+ * this layer's business at all.
  */
 
 /**
@@ -75,14 +80,3 @@ export const MAX_RETRY_AFTER_MS = 60_000;
  * underneath already times a stalled read.
  */
 export const HEADERS_TIMEOUT_MS = 10_000;
-
-/**
- * The largest delay a timer can actually hold.
- *
- * `setTimeout` stores its delay in a signed 32-bit integer and CLAMPS anything
- * larger to one millisecond — with a warning on stderr and nothing else. So a
- * caller granting a 30-day deadline got the exact opposite: an attempt that
- * aborted almost immediately, was classified as a timeout, and was replayed.
- * A value past this bound is refused rather than accepted and inverted.
- */
-export const MAX_TIMER_MS = 2_147_483_647;

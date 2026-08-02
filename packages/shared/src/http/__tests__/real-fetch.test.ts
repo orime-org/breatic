@@ -126,8 +126,19 @@ describe("item 1 — send the request the caller asked for", () => {
     "not-a-url",
     "ftp://files.test/thing",
     "data:text/plain,hello",
-  ])("refuses %s without opening a connection", async (url) => {
-    await expect(httpRequest(url, {}, REPLAYABLE)).rejects.toThrow();
+  ])("refuses %s at the boundary, before anything is delivered", async (url) => {
+    const thrown = await httpRequest(url, {}, REPLAYABLE).catch((e: unknown) => e);
+
+    // "It threw" is not the assertion, and used to be: with the scheme guard
+    // disabled the ftp row still threw — after three futile deliveries and two
+    // backoffs, measured at 1984ms — so the row was green whether the refusal
+    // it names happened or not. What separates the two is WHICH error: ours
+    // names itself and carries no attempt count. The data: row separates
+    // differently again — let through, it resolves 200 without an HTTP round
+    // trip at all, so nothing is thrown for `toThrow` to catch.
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBeInstanceOf(HttpRetryError);
+    expect((thrown as Error).message).toContain("http was given");
   });
 
   it("never lets a URL's own credentials into anything it throws", async () => {
@@ -345,20 +356,71 @@ describe("item 5 — hand the response over, or throw", () => {
 });
 
 describe("item 6 — hold nothing once the call is over", () => {
-  it("does not keep the deadline running once a call has returned", async () => {
-    // The per-delivery deadline is the only thing this layer creates that could
-    // outlive a call. Counting active handles cannot see it — vitest keeps
-    // timers of its own — so the observable form is that a hundred completed
-    // calls do not accumulate anything: if each left its deadline armed, the
-    // count below would climb with them.
-    const stub = await stubServer(Array.from({ length: 100 }, () => ({ kind: "status" as const, status: 200 })));
-    const before = process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
+  /**
+   * How many timers this process is currently holding.
+   *
+   * Counting handles cannot isolate ours — vitest keeps timers of its own —
+   * so every case below asks the only question that survives that noise: after
+   * a batch of completed calls, is the count where it started? A deadline left
+   * armed would show up as the batch size.
+   * @returns The number of active Timeout handles.
+   */
+  const armedTimers = (): number =>
+    process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
 
-    for (let i = 0; i < 100; i++) {
-      await httpRequest(stub.url, {}, REPLAYABLE);
-    }
-    const after = process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
+  it("clears the deadline on the path that returns early", async () => {
+    const stub = await stubServer(
+      Array.from({ length: 100 }, () => ({ kind: "status" as const, status: 200 })),
+    );
+    const before = armedTimers();
 
-    expect(after).toBeLessThanOrEqual(before);
+    for (let i = 0; i < 100; i++) await httpRequest(stub.url, {}, REPLAYABLE);
+
+    expect(armedTimers()).toBeLessThanOrEqual(before);
   }, 30_000);
+
+  it("clears the deadline on the path that goes the long way round", async () => {
+    // A 200 returns from inside the try block, so it is the one path that
+    // proves least — the deadline it leaves would be cleared by the next line
+    // whether or not the cleanup were in a finally. A 404 walks out through
+    // the decision instead, and this is the case that used to be missing:
+    // moving the cleanup onto the success return left every one of these
+    // hundred deadlines armed for its full ten seconds, and the old test
+    // stayed green.
+    const stub = await stubServer(
+      Array.from({ length: 100 }, () => ({ kind: "status" as const, status: 404 })),
+    );
+    const before = armedTimers();
+
+    for (let i = 0; i < 100; i++) await httpRequest(stub.url, {}, REPLAYABLE);
+
+    expect(armedTimers()).toBeLessThanOrEqual(before);
+  }, 30_000);
+
+  it("clears the deadline of every delivery when the call replays and gives up", async () => {
+    // Three deliveries per call, so three deadlines, and the two backoffs in
+    // between are timers of their own. Nothing may outlive the call.
+    const stub = await stubServer(
+      Array.from({ length: 9 }, () => ({ kind: "status" as const, status: 503 })),
+    );
+    const before = armedTimers();
+
+    for (let i = 0; i < 3; i++) await httpRequest(stub.url, {}, REPLAYABLE);
+
+    expect(armedTimers()).toBeLessThanOrEqual(before);
+  }, 60_000);
+
+  it("clears the deadline when the call throws instead of returning", async () => {
+    // The throwing path leaves the loop from a different statement again, and
+    // an exception is exactly the shape that skips cleanup written anywhere
+    // but a finally.
+    const stub = await stubServer(Array.from({ length: 9 }, () => ({ kind: "destroy" as const })));
+    const before = armedTimers();
+
+    for (let i = 0; i < 3; i++) {
+      await httpRequest(stub.url, {}, REPLAYABLE).catch(() => undefined);
+    }
+
+    expect(armedTimers()).toBeLessThanOrEqual(before);
+  }, 60_000);
 });

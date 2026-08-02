@@ -217,12 +217,15 @@ export { newId, deriveId } from "@shared/ids.js";
 // anything aimed outward (cloud storage, vendor APIs, arbitrary URLs) comes
 // through here, on both sides of the wire (decided 2026-08-02).
 //
-// Three symbols, and that is the whole surface. It does six things — send,
+// Two symbols, and that is the whole surface. It does six things — send,
 // judge, wait, cap at three deliveries, hand over or throw, hold nothing — and
 // no seventh, so there is nothing else worth naming here. Everything the loop
 // needs internally (the judgement, its vocabulary, the backoff maths, the
 // sleep) stays inside: an export is a promise to somebody, and nobody outside
-// this package needs those.
+// this package needs those. Not even the options type: it carries one field,
+// so a caller writes `{ replaySafe: true }` and TypeScript's structural
+// typing does the rest — exporting a name nobody spells is surface for
+// nothing.
 //
 // It hands back the platform's own `Response` and holds nothing afterwards.
 // Reading it — how long a read may stall, how large it may be, how to stop

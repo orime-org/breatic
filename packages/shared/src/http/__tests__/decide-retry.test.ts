@@ -14,11 +14,16 @@
  *     AIGC submit without a vendor idempotency key does (a second billed
  *     generation); the same submit WITH one does not.
  *
- * The ordering between those two is load-bearing and is asserted here:
- * a rate-limited non-replayable submit must still back off and retry,
- * because 429 is the one case where the server has told us nothing
- * happened. Getting this backwards fails the request outright in exactly
- * the situation that most deserves patience.
+ * The ordering between those two is load-bearing and is asserted here: a
+ * rate-limited non-replayable submit must still back off and retry, because
+ * 429 is the one case where the server has told us nothing happened. Getting
+ * this backwards fails the request outright in exactly the situation that most
+ * deserves patience.
+ *
+ * A third kind sits above both and is asserted in its own block: whether the
+ * body can physically go out again. No status changes that, so it is answered
+ * first — and 429 is the only status that can prove it, being the one that
+ * would otherwise say yes regardless.
  */
 
 import { describe, it, expect } from "vitest";
@@ -32,14 +37,15 @@ import {
 
 /** Fixed clock for HTTP-date `Retry-After` parsing. */
 const NOW = Date.UTC(2026, 6, 30, 12, 0, 0);
-const now = (): number => NOW;
+
+/** The same instant as an HTTP-date, five seconds out. */
+const inFiveSeconds = new Date(NOW + 5000).toUTCString();
 
 /** Baseline input: a replay-safe first retry, so each case varies one thing. */
 const base = {
   replaySafe: true,
   attempt: 1,
   rand: () => 1, // max jitter → deterministic ceiling
-  now,
 };
 
 describe("decideRetry — protocol semantics the transport owns", () => {
@@ -67,6 +73,18 @@ describe("decideRetry — protocol semantics the transport owns", () => {
     },
   );
 
+  it.each([600, 700, 999])(
+    "refuses %i: there is no status class above 5xx",
+    (status) => {
+      // The upper bound of the server-error range, asserted. `status >= 500`
+      // on its own treats anything above 599 as a retryable server error, and
+      // a raw socket really can answer "HTTP/1.1 600" — measured: fetch
+      // surfaces it as an ordinary response rather than refusing it.
+      const d = decideRetry({ ...base, status, replaySafe: true });
+      expect(d).toEqual({ retry: false });
+    },
+  );
+
   it("refuses when neither a failing status nor a transport error is present", () => {
     const d = decideRetry({ ...base, status: 200 });
     expect(d).toEqual({ retry: false });
@@ -89,31 +107,49 @@ describe("decideRetry — application semantics the caller owns", () => {
     },
   );
 
-  it("retries a network error when replaying is safe", () => {
+  // These two used to be four: the same two calls again under the names
+  // "network error" and "attempt timeout". `RetryInput` carries no term for
+  // WHICH failure — it was removed because every kind was answered the same
+  // way — so the two extra names promised a distinction the input cannot
+  // express and the assertions could not have told apart. The distinction is
+  // exercised where it is real: real-fetch.test.ts drives a silent server and
+  // a destroyed socket against the actual loop.
+  it("retries when no response arrived at all and replaying is safe", () => {
     const d = decideRetry({ ...base });
     expect(d).toMatchObject({ retry: true });
   });
 
-  it("refuses a network error when replaying is not safe", () => {
-    // A dropped connection is the ambiguous case: the request may well
-    // have arrived and be running. Non-replayable means we do not gamble.
+  it("refuses when no response arrived and replaying is not safe", () => {
+    // The ambiguous case: the request may well have arrived and be running.
+    // Non-replayable means we do not gamble.
+    const d = decideRetry({ ...base, replaySafe: false });
+    expect(d).toEqual({ retry: false });
+  });
+});
+
+describe("decideRetry — a spent body outranks every status", () => {
+  it("refuses a 429 when the body cannot be sent again", () => {
+    // The ordering the module docstring calls load-bearing, asserted rather
+    // than asserted-in-a-comment: 429 is the ONE status that authorises a
+    // replay regardless of what the caller declared, so it is the only status
+    // that can prove the body check runs first. Move that check below the
+    // 429 branch and this is the test that goes red.
     const d = decideRetry({
       ...base,
+      status: 429,
       replaySafe: false,
+      bodyReplayable: false,
     });
     expect(d).toEqual({ retry: false });
   });
 
-  it("retries an attempt timeout when replaying is safe", () => {
-    const d = decideRetry({ ...base });
-    expect(d).toMatchObject({ retry: true });
+  it("refuses a 408 when the body cannot be sent again", () => {
+    const d = decideRetry({ ...base, status: 408, bodyReplayable: false });
+    expect(d).toEqual({ retry: false });
   });
 
-  it("refuses an attempt timeout when replaying is not safe", () => {
-    const d = decideRetry({
-      ...base,
-      replaySafe: false,
-    });
+  it("refuses a transport failure when the body cannot be sent again", () => {
+    const d = decideRetry({ ...base, bodyReplayable: false });
     expect(d).toEqual({ retry: false });
   });
 });
@@ -131,9 +167,11 @@ describe("decideRetry — attempt budget", () => {
     expect(d).toEqual({ retry: false });
   });
 
-  it("reports exhaustion rather than the failure kind once the budget is spent", () => {
-    // Even a 429 — normally the most retryable case — must report
-    // exhaustion, so telemetry distinguishes "gave up" from "refused".
+  it("spends the budget even on a 429, the most retryable status there is", () => {
+    // The budget outranks protocol semantics. The comment here used to say
+    // this let telemetry tell "gave up" apart from "refused" — it cannot, and
+    // deliberately so: `RetryDecision` is `{ retry: false }` either way, and
+    // an earlier cut that carried the reason found the loop never read it.
     const d = decideRetry({ ...base, status: 429, attempt: MAX_RETRIES + 1 });
     expect(d).toEqual({ retry: false });
   });
@@ -241,8 +279,12 @@ describe("decideRetry — backoff delay", () => {
     },
   );
 
-  it("ignores Retry-After on a transport error (no response carried one)", () => {
-    const d = decideRetry({ ...base });
+  it("ignores a Retry-After handed in beside an absent status", () => {
+    // No response means no header could have arrived, so a figure passed
+    // alongside that absence is not the server's and must not be believed.
+    // The wait a believed one would produce is far from the backoff, so
+    // deleting the guard shows up here rather than hiding inside jitter.
+    const d = decideRetry({ ...base, retryAfterMs: 55_000 });
     expect(d).toMatchObject({ retry: true, delayMs: BASE_DELAY_MS });
   });
 
@@ -262,5 +304,77 @@ describe("decideRetry — backoff delay", () => {
       expect(d.delayMs).toBeGreaterThanOrEqual(0);
       expect(d.delayMs).toBeLessThanOrEqual(BASE_DELAY_MS);
     }
+  });
+});
+
+describe("parseRetryAfter — the same rule for both forms the header allows", () => {
+  it.each([
+    ["delay-seconds", "5"],
+    ["HTTP-date", inFiveSeconds],
+  ])("reads a single %s value", (_form, raw) => {
+    expect(parseRetryAfter(raw, NOW)).toBe(5000);
+  });
+
+  it.each([
+    ["delay-seconds", "5, 5"],
+    ["HTTP-date", `${inFiveSeconds}, ${inFiveSeconds}`],
+  ])("honours a %s value the server sent twice", (_form, raw) => {
+    // `Headers.get` joins a repeated field with a comma, so a server that
+    // sent Retry-After twice arrives here as one string. Retry-After is a
+    // singleton field and a repeat is malformed — but when every copy says
+    // the same thing the instruction is unambiguous, and rejecting it drops
+    // us to sub-second jitter against the very server that asked for room.
+    //
+    // The date form is why this is one rule and not two: IMF-fixdate carries
+    // a comma of its own ("Thu, 30 Jul…"), so splitting on commas could never
+    // collapse a repeated date, and for months only the seconds form worked.
+    expect(parseRetryAfter(raw, NOW)).toBe(5000);
+  });
+
+  it("reads what a real Headers object produces from a repeated date field", () => {
+    // Not a hand-built string: the platform's own joining, which is the only
+    // way this input reaches the parser in production.
+    const headers = new Headers();
+    headers.append("retry-after", inFiveSeconds);
+    headers.append("retry-after", inFiveSeconds);
+    expect(parseRetryAfter(headers.get("retry-after"), NOW)).toBe(5000);
+  });
+
+  it.each([
+    ["delay-seconds", "5, 7"],
+    ["HTTP-date", `${inFiveSeconds}, ${new Date(NOW + 9000).toUTCString()}`],
+  ])("refuses a repeated %s whose copies disagree", (_form, raw) => {
+    // Two different instructions are no instruction. Falling back to our own
+    // backoff is the honest answer; picking one of them would be a guess.
+    expect(parseRetryAfter(raw, NOW)).toBeNull();
+  });
+
+  it.each([
+    ["a non-GMT zone", "Thu, 30 Jul 2026 12:00:05 UTC"],
+    ["a lower-case zone", "Thu, 30 Jul 2026 12:00:05 gmt"],
+  ])("refuses an HTTP-date with %s", (_why, raw) => {
+    // These are the shape gate's whole job, and they are chosen because
+    // `Date.parse` ACCEPTS both — measured: each yields exactly NOW + 5s. So
+    // deleting the gate turns each of these into a believed 5000, and this
+    // is the assertion that catches it. RFC 9110 §5.6.7 admits one form.
+    expect(parseRetryAfter(raw, NOW)).toBeNull();
+  });
+
+  it("refuses an HTTP-date naming a day that does not exist", () => {
+    // `Date.parse` rolls a calendar-invalid date over rather than rejecting
+    // it: measured, "31 Feb 2027" becomes 3 March 2027 — a wait of seven
+    // months, which then exceeds the ceiling and stops the request outright.
+    // The shape gate cannot see this: the string is shaped correctly.
+    expect(parseRetryAfter("Tue, 31 Feb 2027 12:00:00 GMT", NOW)).toBeNull();
+  });
+
+  it("is not fooled by a value repeated thousands of times", () => {
+    // The repeat rule is matched with a back-reference, so this pins that a
+    // hostile header cannot make it expensive. Measured at 5000 copies plus a
+    // non-matching tail: under a millisecond.
+    const hostile = `${Array.from({ length: 5000 }, () => "5").join(", ")}, x`;
+    const started = performance.now();
+    expect(parseRetryAfter(hostile, NOW)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(100);
   });
 });

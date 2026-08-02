@@ -19,6 +19,12 @@
  *     abort a delivery, so there is one abort source instead of two composed
  *     ones, and nothing to detach afterwards. A caller that no longer wants the
  *     answer stops holding the promise, and what nobody holds is collected.
+ *     Be exact about what that does NOT do: a loop already running finishes on
+ *     its own, so walking away can still cost two more deliveries and both
+ *     backoffs — measured at 2.0s and 4.0s after the caller let go. What
+ *     bounds it is item 4 rather than the caller: three deliveries and it is
+ *     over, which is why an unbounded transport could not have made this
+ *     trade and this one can.
  *   - No injected wait, no label, no timeout argument. The first was a test
  *     seam on a production surface; the others were things this layer can
  *     answer for itself.
@@ -44,7 +50,13 @@ import { redactUrl, UNPARSEABLE_URL } from "@shared/http/redact-url.js";
  * it arrived.
  */
 export class HttpRetryError extends Error {
-  /** How many times the request was delivered before giving up. */
+  /**
+   * How many times the request was handed to `fetch` before giving up.
+   *
+   * Handed to, not delivered. A request `fetch` refuses to build at all — a
+   * GET carrying a body, say — never reaches the network, and those tries are
+   * counted all the same. Measured: three attempts, zero bytes at the server.
+   */
   readonly attempts: number;
 
   /**
@@ -116,7 +128,7 @@ function refuseUndeliverableUrl(url: string, safeUrl: string): void {
  * @param body - The body from the caller's fetch init.
  * @returns True when a replay would send the same bytes again.
  */
-function bodyCanBeResent(body: BodyInit | null | undefined): boolean {
+export function bodyCanBeResent(body: BodyInit | null | undefined): boolean {
   if (body === null || body === undefined) return true;
   // A transferred buffer still passes `instanceof` while holding no bytes at
   // all. Nothing else distinguishes it — it is not walkable-once, it is empty
@@ -126,10 +138,25 @@ function bodyCanBeResent(body: BodyInit | null | undefined): boolean {
   // report 0 and an empty body is perfectly replayable.
   if (body instanceof ArrayBuffer) return !isDetached(body);
   if (ArrayBuffer.isView(body)) return !isDetached(body.buffer);
-  // A source you can only walk once is spent by the first delivery.
-  // `ReadableStream` and async generators both declare themselves this way; a
-  // string, a `Blob`, `FormData`, `URLSearchParams` and plain values do not.
-  return !(typeof body === "object" && Symbol.asyncIterator in body);
+  // A source you can only walk once is spent by the first delivery. Two
+  // questions, because no single one covers both single-use shapes:
+  //
+  //   - An async generator declares itself iterable, and so does a
+  //     `ReadableStream` — but NOT on Safari, which has not shipped async
+  //     iteration on streams (Chrome 124+ and Firefox have). Asking only this
+  //     would call a Safari stream replayable and, once Safari allows a stream
+  //     request body at all, quietly deliver an exhausted one the second time.
+  //   - `getReader` is the method that makes a stream single-use, it is on
+  //     every engine, and it survives crossing a realm the way `instanceof`
+  //     does not.
+  //
+  // A string, a `Blob`, `FormData`, `URLSearchParams` and plain values answer
+  // neither, which is why they keep their retries.
+  if (typeof body !== "object") return true;
+  return !(
+    Symbol.asyncIterator in body ||
+    typeof (body as { getReader?: unknown }).getReader === "function"
+  );
 }
 
 /**
