@@ -14,47 +14,21 @@
  * forever, and being wrong once leaks a credential; the origin and path are
  * what an on-call engineer needs to identify the endpoint, and every vendor
  * we call puts the model in the path.
- */
-
-/**
- * What redaction reports for a string that is not a URL.
  *
- * Named rather than inlined because the transport acts on it: a URL that
- * cannot be parsed cannot be fetched either, so recognising this value is how
- * the request is refused before it costs three deliveries.
+ * It takes a `URL`, not a string, and that is what lets it be this short. It
+ * used to take the raw string, which meant parsing (and failing to parse, and
+ * reporting that failure through a sentinel string the caller compared
+ * against, and then parsing a second time). One parse now happens at the
+ * boundary, and a value that cannot be parsed — or that is not http — never
+ * reaches this function at all, because the boundary refuses it first.
  */
-export const UNPARSEABLE_URL = "<unparseable url>";
 
 /**
  * Reduce a URL to the parts that are safe to log.
- * @param raw - The request URL, possibly carrying credentials.
- * @returns Origin and path, with any query replaced by a marker.
+ * @param parsed - An http or https URL, already parsed by the caller.
+ * @returns Origin and path, with any query or fragment replaced by a marker.
  */
-export function redactUrl(raw: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    // Never echo an unparseable string back: if it is not a URL we cannot
-    // know which part of it was a secret.
-    return UNPARSEABLE_URL;
-  }
-
-  // `origin + pathname` is an http-shaped assumption, and it fails loudly off
-  // that shape: a `data:` URL parses fine, has origin `"null"`, and carries its
-  // whole payload in the pathname — so the redaction that hides `?key=` hands a
-  // `data:` payload straight back. Measured: `data:text/plain,SECRET` used to
-  // come out as `nulltext/plain,SECRET`.
-  //
-  // This is reachable rather than theoretical. The agent's fetch tool takes a
-  // URL from the model; the SSRF guard rejects the non-http scheme; and the
-  // transport then redacts that same URL for any message it composes.
-  // The guard stops the REQUEST — it does not stop the string reaching a log.
-  // The scheme is the only part safe to name, so it is the only part named.
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return `<non-http url: ${parsed.protocol}>`;
-  }
-
+export function redactUrl(parsed: URL): string {
   // Query and fragment are marked separately because they are different
   // things and the log should not claim otherwise: a fragment never reaches
   // the server at all, and reporting `https://host/path#token=x` as
@@ -62,9 +36,8 @@ export function redactUrl(raw: string): string {
   // sent. Both are still dropped — a fragment sits in the same string we are
   // about to hand to a log, so what it holds matters here even though the
   // server never saw it.
-  const base = `${parsed.origin}${parsed.pathname}`;
   const marks =
     (parsed.search !== "" ? "?<redacted>" : "") +
     (parsed.hash !== "" ? "#<redacted>" : "");
-  return `${base}${marks}`;
+  return `${parsed.origin}${parsed.pathname}${marks}`;
 }

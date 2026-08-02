@@ -21,9 +21,13 @@
  *     answer stops holding the promise, and what nobody holds is collected.
  *     Be exact about what that does NOT do: a loop already running finishes on
  *     its own, so walking away can still cost two more deliveries and both
- *     backoffs — measured at 2.0s and 4.0s after the caller let go. What
- *     bounds it is item 4 rather than the caller: three deliveries and it is
- *     over, which is why an unbounded transport could not have made this
+ *     backoffs. Measured at the server, relative to the moment the caller let
+ *     go, four runs against an always-503 server: the second delivery landed
+ *     between 0.3s and 0.9s, the third between 0.4s and 2.6s. No fixed pair of
+ *     figures can be stated, because both waits are drawn uniformly at random
+ *     below a ceiling (1s, then 2s) — only the bound is statable. What bounds
+ *     the whole thing is item 4 rather than the caller: three deliveries and
+ *     it is over, which is why an unbounded transport could not have made this
  *     trade and this one can.
  *   - No injected wait, no label, no timeout argument. The first was a test
  *     seam on a production surface; the others were things this layer can
@@ -39,7 +43,7 @@
 
 import { HEADERS_TIMEOUT_MS } from "@shared/http/constants.js";
 import { decideRetry, parseRetryAfter } from "@shared/http/decide-retry.js";
-import { redactUrl, UNPARSEABLE_URL } from "@shared/http/redact-url.js";
+import { redactUrl } from "@shared/http/redact-url.js";
 
 /**
  * Every delivery failed and none produced a response.
@@ -86,35 +90,52 @@ export interface HttpRequestOptions {
 }
 
 /**
- * Refuse a URL that cannot be delivered, before anything is sent.
+ * Parse the target, or refuse it before anything is sent.
+ *
+ * One parse for the whole call, and the only place that decides whether a
+ * string is a usable target. It used to be two: redaction parsed the string,
+ * swallowed the failure, and reported it by returning a sentinel that this
+ * function compared against — and then parsed the same string again. One fact
+ * ("is this a URL?") travelling between two modules as a string, with the
+ * exception that already carried it thrown away in between.
  *
  * Parseable is not fetchable, and the difference is expensive both ways.
  * Sending an undeliverable string costs three deliveries and two backoffs —
  * and the rejection `fetch` produces quotes the RAW url, so a password or a
  * query key travels out in a message that never passed through redaction and
  * then becomes the `cause` this package tells callers to log.
+ *
+ * None of the three refusals quotes the string. That is the point of refusing
+ * here rather than letting `fetch` do it: whatever is wrong with the value, we
+ * cannot know which part of it was a secret.
  * @param url - The request URL as the caller wrote it.
- * @param safeUrl - The same URL with its credentials removed.
+ * @returns The parsed URL, when it is one this transport can deliver.
  * @throws {Error} When the URL cannot be delivered as given.
  */
-function refuseUndeliverableUrl(url: string, safeUrl: string): void {
-  if (safeUrl === UNPARSEABLE_URL) {
+function acceptableTarget(url: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
     throw new Error("http was given something that is not a URL");
   }
-  const parsed = new URL(url);
   // `fetch` refuses to build a Request from a URL carrying credentials at all,
   // and the TypeError it throws quotes the whole raw url. Measured: the
   // password and a query key both reached the caller through `cause` while the
-  // message beside it was properly redacted.
+  // message beside it was properly redacted. Both halves matter — a bearer
+  // token is usually the username with no password beside it.
   if (parsed.username !== "" || parsed.password !== "") {
     throw new Error("http was given a URL carrying credentials; put them in a header instead");
   }
   // A `data:` URL is actually fetched and returned as a 200, which is not an
   // HTTP round trip at all; every other scheme costs three deliveries to learn
-  // what the string already said.
+  // what the string already said. Refusing here is also what keeps redaction
+  // simple: a non-http URL carries its payload in the pathname, and this is
+  // the gate that stops one ever reaching a redactor built for origin + path.
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(`http was given a ${parsed.protocol} URL; this transport speaks http and https`);
   }
+  return parsed;
 }
 
 /**
@@ -205,11 +226,13 @@ export async function httpRequest(
   init: RequestInit,
   options: HttpRequestOptions,
 ): Promise<Response> {
-  // Redacted once, up front, because everything that names this request uses
-  // it. Some vendors put their API key in the query string, so the raw URL
-  // must not reach a message anyone might write down.
-  const safeUrl = redactUrl(url);
-  refuseUndeliverableUrl(url, safeUrl);
+  // Parsed once and redacted once, up front, because everything that names
+  // this request uses both. Order is load-bearing: the refusal runs first, so
+  // redaction only ever sees an http URL — which is why it can be four lines
+  // with no special cases. Some vendors put their API key in the query
+  // string, so the raw URL must not reach a message anyone might write down.
+  const target = acceptableTarget(url);
+  const safeUrl = redactUrl(target);
   const bodyReplayable = bodyCanBeResent(init.body);
 
   // Unbounded by design: `decideRetry` owns the budget and refuses past

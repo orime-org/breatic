@@ -48,6 +48,8 @@ interface Stub {
   hits: () => number;
   methods: () => string[];
   bodies: () => string[];
+  /** Request headers as received, one record per delivery. */
+  headers: () => Array<Record<string, string>>;
 }
 
 /**
@@ -59,10 +61,16 @@ async function stubServer(replies: Reply[]): Promise<Stub> {
   let hit = 0;
   const methods: string[] = [];
   const bodies: string[] = [];
+  const headers: Array<Record<string, string>> = [];
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const reply = replies[hit] ?? { kind: "status" as const, status: 500 };
     hit += 1;
     methods.push(req.method ?? "");
+    headers.push(
+      Object.fromEntries(
+        Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : (v ?? "")]),
+      ),
+    );
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
     req.on("end", () => {
@@ -86,6 +94,7 @@ async function stubServer(replies: Reply[]): Promise<Stub> {
     hits: (): number => hit,
     methods: (): string[] => methods,
     bodies: (): string[] => bodies,
+    headers: (): Array<Record<string, string>> => headers,
   };
 }
 
@@ -100,6 +109,27 @@ describe("item 1 — send the request the caller asked for", () => {
 
     expect(stub.methods()).toEqual(["POST"]);
     expect(stub.bodies()).toEqual(["payload"]);
+  });
+
+  it("sends the caller's headers, and sends them again on a replay", async () => {
+    // Item 1 says url and init go out unchanged, and headers are the part of
+    // init that carries authorisation — yet nothing used to look at them:
+    // handing fetch only `{ method, body }` and dropping the rest left every
+    // test green. A vendor key silently not sent is a request that fails for
+    // a reason nobody can see from here.
+    const stub = await stubServer([{ kind: "status", status: 503 }, { kind: "status", status: 200 }]);
+
+    await httpRequest(
+      stub.url,
+      { method: "POST", body: "payload", headers: { "x-api-key": "K", "content-type": "text/plain" } },
+      REPLAYABLE,
+    );
+
+    expect(stub.headers()).toHaveLength(2);
+    for (const received of stub.headers()) {
+      expect(received["x-api-key"]).toBe("K");
+      expect(received["content-type"]).toBe("text/plain");
+    }
   });
 
   it("sends the same bytes again on a replay", async () => {
@@ -123,11 +153,17 @@ describe("item 1 — send the request the caller asked for", () => {
   }, 60_000);
 
   it.each([
-    "not-a-url",
-    "ftp://files.test/thing",
-    "data:text/plain,hello",
-  ])("refuses %s at the boundary, before anything is delivered", async (url) => {
-    const thrown = await httpRequest(url, {}, REPLAYABLE).catch((e: unknown) => e);
+    ["a string that is not a URL", (s: string): string => `key=${s}&not-a-url`],
+    ["a scheme this transport does not speak", (s: string): string => `ftp://files.test/${s}`],
+    ["a data URL, which is not an HTTP round trip", (s: string): string => `data:text/plain,${s}`],
+  ])("refuses %s at the boundary, before anything is delivered", async (_label, build) => {
+    // Each input carries a secret, because this case asserts two things at
+    // once and the second used to live in redact-url.test.ts: the refusal
+    // happens, AND it quotes none of what it refused. Redaction can no longer
+    // be the thing that protects these — it never sees them now — so the
+    // property is asserted here, where it actually holds.
+    const secret = ["MY-SECRET", "PAYLOAD"].join("-");
+    const thrown = await httpRequest(build(secret), {}, REPLAYABLE).catch((e: unknown) => e);
 
     // "It threw" is not the assertion, and used to be: with the scheme guard
     // disabled the ftp row still threw — after three futile deliveries and two
@@ -139,22 +175,34 @@ describe("item 1 — send the request the caller asked for", () => {
     expect(thrown).toBeInstanceOf(Error);
     expect(thrown).not.toBeInstanceOf(HttpRetryError);
     expect((thrown as Error).message).toContain("http was given");
-  });
-
-  it("never lets a URL's own credentials into anything it throws", async () => {
-    // `fetch` refuses a URL with credentials and quotes the whole raw url in
-    // the TypeError it throws — password, query key and all. Measured before
-    // the boundary refusal: the message was clean and the cause leaked both.
-    const password = ["hunter2", "SECRET"].join("");
-    const thrown = await httpRequest(
-      `https://user:${password}@api.test/v1?key=QUERYSECRET`,
-      {},
-      REPLAYABLE,
-    ).catch((e: unknown) => e);
 
     const seen = `${(thrown as Error).message} ${String((thrown as Error).cause ?? "")} ${String((thrown as Error).stack ?? "")}`;
-    expect(seen).not.toContain(password);
+    expect(seen).not.toContain(secret);
+  });
+
+  // Both halves of the credentials guard, because it asks two questions and
+  // only one of them used to be exercised. A URL can carry a secret as the
+  // password (`user:secret@`) or as the username on its own (`token@`), and
+  // the second shape is the common one for bearer-style keys. With only the
+  // first covered, deleting the username half left every test green while
+  // `https://TOKEN@host` leaked the token verbatim through the error's cause.
+  it.each([
+    ["a password", (secret: string): string => `https://user:${secret}@api.test/v1?key=QUERYSECRET`],
+    ["a bare username", (secret: string): string => `https://${secret}@api.test/v1?key=QUERYSECRET`],
+  ])("never lets %s in the URL reach anything it throws", async (_shape, build) => {
+    // `fetch` refuses a URL with credentials and quotes the whole raw url in
+    // the TypeError it throws — secret, query key and all. Measured before
+    // the boundary refusal: the message was clean and the cause leaked both.
+    const secret = ["hunter2", "SECRET"].join("");
+    const thrown = await httpRequest(build(secret), {}, REPLAYABLE).catch((e: unknown) => e);
+
+    const seen = `${(thrown as Error).message} ${String((thrown as Error).cause ?? "")} ${String((thrown as Error).stack ?? "")}`;
+    expect(seen).not.toContain(secret);
     expect(seen).not.toContain("QUERYSECRET");
+    // And it must be the boundary refusal that stopped it, not three futile
+    // deliveries: a leak reaches the caller either way, but only one of those
+    // means the guard ran.
+    expect(thrown).not.toBeInstanceOf(HttpRetryError);
   });
 });
 

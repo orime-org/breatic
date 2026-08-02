@@ -360,12 +360,22 @@ describe("parseRetryAfter — the same rule for both forms the header allows", (
     expect(parseRetryAfter(raw, NOW)).toBeNull();
   });
 
-  it("refuses an HTTP-date naming a day that does not exist", () => {
-    // `Date.parse` rolls a calendar-invalid date over rather than rejecting
-    // it: measured, "31 Feb 2027" becomes 3 March 2027 — a wait of seven
-    // months, which then exceeds the ceiling and stops the request outright.
-    // The shape gate cannot see this: the string is shaped correctly.
-    expect(parseRetryAfter("Tue, 31 Feb 2027 12:00:00 GMT", NOW)).toBeNull();
+  it.each([
+    ["a day that does not exist", "Tue, 31 Feb 2027 12:00:00 GMT"],
+    ["a weekday that is not that date's weekday", "Mon, 30 Jul 2026 12:00:05 GMT"],
+    ["a seconds field past 59", "Thu, 30 Jul 2026 12:05:99 GMT"],
+    ["a seconds field of exactly 60", "Thu, 30 Jul 2026 12:05:60 GMT"],
+  ])("refuses an HTTP-date naming %s", (_why, raw) => {
+    // Every one of these is shaped correctly and `Date.parse` accepts every
+    // one — it rolls, ignores or truncates rather than refusing:
+    //
+    //   31 Feb 2027   -> 3 Mar 2027   (rolled: a wait of seven months)
+    //   Mon 30 Jul    -> that Thursday (weekday token ignored entirely)
+    //   12:05:99      -> 12:05:00     (truncated: five minutes, not 99s)
+    //
+    // The last one is the sharpest: the server asked for a wait the layer
+    // then rewrites into a different one, so it is not a wait anybody sent.
+    expect(parseRetryAfter(raw, NOW)).toBeNull();
   });
 
   it("is not fooled by a value repeated thousands of times", () => {

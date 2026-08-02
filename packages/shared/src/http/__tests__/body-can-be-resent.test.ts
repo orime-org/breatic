@@ -62,6 +62,18 @@ describe("bodyCanBeResent — what survives a second delivery", () => {
     expect(bodyCanBeResent(generated() as unknown as BodyInit)).toBe(false);
   });
 
+  it.each([
+    ["an empty ArrayBuffer", (): BodyInit => new ArrayBuffer(0)],
+    ["an empty typed-array view", (): BodyInit => new Uint8Array(0)],
+  ])("replays %s, which is empty but perfectly deliverable", (_label, build) => {
+    // The case that separates the right question from the cheap one. Asking
+    // "is it empty?" instead of "were its bytes taken away?" answers both
+    // these and a transferred buffer with 0 — so it would call a legal empty
+    // body non-replayable and silently cost it every retry. Nothing else in
+    // this file can tell those two apart, which is why the pair below exists.
+    expect(bodyCanBeResent(build())).toBe(true);
+  });
+
   it("refuses a buffer whose bytes have been transferred away", () => {
     // A transferred buffer still passes `instanceof ArrayBuffer` while holding
     // nothing: not single-use, simply empty, so it needs its own question.

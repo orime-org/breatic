@@ -111,26 +111,33 @@ const ONE_VALUE_POSSIBLY_REPEATED = new RegExp(
 const IS_DELAY_SECONDS = new RegExp(`^${DELAY_SECONDS}$`);
 
 /**
- * Whether a parsed instant still names the day the header claimed.
+ * Whether the instant we parsed writes itself back out as the string we read.
  *
- * The shape gate accepts "31 Feb" because it only checks digit counts and a
- * month name; `Date.parse` then rolls it into March instead of rejecting it.
- * Reading the day and month back off the parsed instant catches exactly that.
+ * The whole check, and it is one comparison rather than a field-by-field
+ * inspection ON PURPOSE. IMF-fixdate is exactly the format `toUTCString`
+ * emits, so a legal value must survive the round trip unchanged — which means
+ * one equality covers every field at once, and no field can be forgotten.
  *
- * Positions are fixed rather than re-matched: callers reach this only with a
- * string the shape gate has already accepted, so the day sits at 5..7 and the
- * month at 8..11 — the same layout `toUTCString` emits, which is what makes
- * the month comparison a plain equality.
+ * That matters because `Date.parse` is generous in three different ways, and
+ * an earlier version of this check only caught the first (measured on Node 24):
+ *
+ *   - it ROLLS an impossible day:  "31 Feb 2027"        -> 3 Mar 2027
+ *   - it IGNORES the weekday:      "Mon, 30 Jul 2026"   -> that Thursday
+ *   - it TRUNCATES an out-of-range seconds field: "12:05:99" -> 12:05:00
+ *
+ * The third is the one with teeth: the header names a wait, and we would have
+ * honoured a DIFFERENT wait — five minutes where the string said ninety-nine
+ * seconds — which is precisely the "a figure nobody sent" failure this module
+ * refuses everywhere else.
+ *
+ * A NaN instant needs no separate guard: `new Date(NaN).toUTCString()` is
+ * "Invalid Date", which equals no legal header.
  * @param raw - The IMF-fixdate string as sent, already shape-checked.
  * @param at - What `Date.parse` made of it.
- * @returns True when the parsed instant is the day the string named.
+ * @returns True when re-emitting the parsed instant reproduces `raw` exactly.
  */
 function datesBackToItself(raw: string, at: number): boolean {
-  const parsed = new Date(at);
-  return (
-    parsed.getUTCDate() === Number(raw.slice(5, 7)) &&
-    parsed.toUTCString().slice(8, 11) === raw.slice(8, 11)
-  );
+  return new Date(at).toUTCString() === raw;
 }
 
 /**
@@ -176,11 +183,7 @@ export function parseRetryAfter(
     return Number(value) * 1000;
   }
 
-  // Shape-checked already, yet `Date.parse` can still refuse: the gate accepts
-  // any three-letter month, and only real ones parse. Measured on Node 24:
-  // "Thu, 30 Xyz 2026 12:00:05 GMT" is NaN.
   const at = Date.parse(value);
-  if (Number.isNaN(at)) return null;
   // `Date.parse` rolls a calendar-invalid date over rather than rejecting it,
   // so "Tue, 31 Feb 2027" becomes early March — a wait of weeks, which then
   // exceeds the ceiling and stops the request outright. A date that does not
@@ -228,12 +231,19 @@ function scheduleRetry(input: RetryInput): RetryDecision {
 /**
  * Decide whether a failed request may be replayed, and after how long.
  *
- * Total: every input yields a verdict. TWO orderings are load-bearing, and
+ * Total: every input yields a verdict. THREE orderings are load-bearing, and
  * each has a test that goes red when it is moved:
  *
  *   - A spent body outranks every status, 429 included. 429 is the only
  *     status that would otherwise authorise a replay no matter what, so it is
  *     also the only one that can prove this check runs first.
+ *   - The attempt budget outranks 429, and this is the one that terminates the
+ *     loop. `httpRequest` runs `for (;;)` with no exit of its own — the only
+ *     way out is this function refusing — and 429 is the branch that returns
+ *     "retry" without ever consulting the budget. Measured: move the budget
+ *     check below the 429 branch, point it at a server that answers 429
+ *     forever, and the call is still going after 15 seconds and six
+ *     deliveries. Nothing else in the module can stop it.
  *   - 429 outranks the caller's own declaration, because it is the one case
  *     where the server has told us nothing happened — so a rate-limited
  *     non-replayable submit must still back off and retry. Backwards, this
