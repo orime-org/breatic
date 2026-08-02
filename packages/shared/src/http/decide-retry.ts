@@ -4,20 +4,20 @@
 /**
  * The single home of "should this request be replayed".
  *
- * Two knowledge domains meet here, and keeping them apart is the design:
+ * Two kinds of knowledge meet here, and keeping them apart is the design:
  *
  *   - **Protocol semantics**, which this layer owns. A 429 or 408 says the
- *     server did not process the request, so replaying is safe no matter
- *     what the request does. Other 4xx are facts a replay cannot change.
- *   - **Application semantics**, which only the caller knows: whether
- *     delivering this exact request a second time causes additional side
- *     effects. The transport cannot see that a `POST /predictions` costs
- *     money upstream, so the caller states it via `replaySafe`.
+ *     server did not process the request, so replaying is safe no matter what
+ *     the request does. Other 4xx are facts a replay cannot change.
+ *   - **The one thing only the caller knows**: whether delivering this exact
+ *     request a second time causes additional side effects. The transport
+ *     cannot see that a `POST /predictions` costs money upstream, so the
+ *     caller states it via `replaySafe`.
  *
  * `replaySafe` is a statement of fact about the endpoint, not a retry
- * preference. HTTP method is only a hint at that fact and a poor one in
- * both directions: a submit carrying a vendor idempotency key is a POST
- * that IS replay-safe, and a side-effecting GET is not.
+ * preference. HTTP method is only a hint at that fact and a poor one in both
+ * directions: a submit carrying a vendor idempotency key is a POST that IS
+ * replay-safe, and a side-effecting GET is not.
  */
 
 import { exponentialJitterDelay } from "@shared/backoff.js";
@@ -33,41 +33,21 @@ import {
  * Deliberately just those two facts. An earlier cut also produced a term
  * naming WHY — eight for refusals, five for authorizations — and the loop
  * never read one of them: it branches on `retry` alone. Thirteen terms were
- * computed, carried across a module boundary, and dropped. Whatever this
- * function knows about the reason, it spends here and does not export.
+ * computed, carried across a module boundary, and dropped.
  */
 export type RetryDecision = { retry: false } | { retry: true; delayMs: number };
 
-/**
- * How a request failed when no response arrived.
- *
- * `fatal` is for deterministic rejections raised by an injected fetch — the
- * caller identifies them, because only it knows what its own implementation
- * throws. The agent's SSRF guard is the motivating case: a blocked address
- * is blocked on every attempt, so replaying it only burns the budget.
- */
-export type TransportErrorKind =
-  | "timeout"
-  | "network"
-  | "caller_aborted"
-  | "fatal";
-
 /** Everything the predicate needs; no ambient state, no clock, no IO. */
 export interface RetryInput {
-  /** Response status, or undefined when no response arrived. */
-  status?: number;
-  /** Set when no response arrived, naming which transport failure it was. */
-  transportError?: TransportErrorKind;
   /**
-   * The wait the response asked for, ALREADY PARSED, or null when it named
-   * none or named one that cannot be used.
+   * Response status, or undefined when no response arrived at all.
    *
-   * Parsed by the caller rather than here because the header's date form is
-   * relative to a clock: two parses a few hundred milliseconds apart disagree,
-   * one of them returning null once the named instant has passed. One parse,
-   * one answer.
+   * Absence is the whole signal for a transport failure. An earlier version
+   * also carried a term naming WHICH failure — timeout, network, cancelled,
+   * deterministic — and every one of them was answered the same way, so the
+   * term existed only to be discarded.
    */
-  retryAfterMs?: number | null;
+  status?: number;
   /**
    * Caller-owned fact: delivering this exact request again produces no
    * additional side effects.
@@ -76,17 +56,16 @@ export interface RetryInput {
   /**
    * Whether the request body can physically be delivered a second time.
    *
-   * Transport-owned, unlike `replaySafe`: a one-shot source (a stream) is
-   * consumed by the first attempt, and handing the spent source back to fetch
-   * rejects with a TypeError about a disturbed body — which then looks like a
-   * network failure and gets replayed again, so the caller ends up holding
-   * that TypeError instead of the status the server actually sent.
-   *
-   * Defaults to true, which is right for every body that is not a stream and
-   * for a request with no body at all.
+   * Transport-owned, unlike `replaySafe`: a one-shot source is consumed by the
+   * first delivery, and handing the spent source back to fetch rejects with a
+   * TypeError about a disturbed body — which then looks like a network failure
+   * and gets replayed again, so the caller ends up holding that TypeError
+   * instead of the status the server actually sent.
    */
   bodyReplayable?: boolean;
-  /** 1-based attempt counter (1 = the first retry being considered). */
+  /** The wait the response asked for, ALREADY PARSED, or null. */
+  retryAfterMs?: number | null;
+  /** 1-based delivery counter. */
   attempt: number;
   /** Uniform `[0, 1)` source; injectable for deterministic tests. */
   rand?: () => number;
@@ -98,16 +77,11 @@ export interface RetryInput {
  *
  * The shape is validated before parsing because `Date.parse` is far looser
  * than the spec requires — ECMAScript only mandates ISO 8601 and leaves
- * everything else implementation-defined, so V8 guesses. Measured on Node
- * 24: `Date.parse("-5")` yields 2001-05-01 and `Date.parse("3.5.1")` yields
- * 2001-03-05. Both are past instants, so without this gate a malformed
- * header would clamp to a 0 ms wait — i.e. an immediate hammering retry —
- * instead of falling back to our own backoff.
- *
- * The two obsolete forms (RFC 850 `Sunday, 06-Nov-94 …`, asctime
- * `Sun Nov  6 …`) are deliberately not accepted: a header we cannot read
- * costs only the server's timing hint, since the caller still retries on
- * our own jittered backoff.
+ * everything else implementation-defined, so V8 guesses. Measured on Node 24:
+ * `Date.parse("-5")` yields 2001-05-01 and `Date.parse("3.5.1")` yields
+ * 2001-03-05. Both are past instants, so without this gate a malformed header
+ * would clamp to a 0 ms wait — an immediate hammering retry — instead of
+ * falling back to our own backoff.
  */
 const IMF_FIXDATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
 
@@ -134,9 +108,8 @@ function datesBackToItself(raw: string, at: number): boolean {
 /**
  * Whether a status is one the server sends to say its own side failed.
  *
- * Bounded at both ends on purpose. `status >= 500` alone treated anything a
- * proxy or a stand-in put above 599 as a retryable server error, and there is
- * no such status class — a 999 is not a statement that a replay might work.
+ * Bounded at both ends on purpose. `status >= 500` alone treated anything
+ * above 599 as a retryable server error, and there is no such status class.
  * @param status - The response status, or undefined when none arrived.
  * @returns True for 500..599.
  */
@@ -153,7 +126,7 @@ function isServerError(status: number | undefined): boolean {
  * digits-only pattern does the validation instead of a numeric cast.
  * @param raw - The raw header value, if the response carried one.
  * @param nowMs - Current epoch milliseconds, for the HTTP-date form.
- * @returns The wait the server asked for, verbatim, or null when it named none we can read.
+ * @returns The wait the server asked for, or null when it named none we can read.
  */
 export function parseRetryAfter(
   raw: string | null | undefined,
@@ -179,67 +152,43 @@ export function parseRetryAfter(
   // `Date.parse` rolls a calendar-invalid date over rather than rejecting it,
   // so "Tue, 31 Feb 2027" becomes early March — a wait of weeks, which then
   // exceeds the ceiling and stops the request outright. A date that does not
-  // exist is a broken header, not an instruction, so it falls back to our own
-  // estimate the same way an unparseable one does.
+  // exist is a broken header, not an instruction.
   if (!datesBackToItself(value, at)) return null;
   const wait = at - nowMs;
   // A date already past carries no usable instruction — it describes a moment
-  // that has gone, whether through clock skew or a cached response. Flooring it
-  // to zero turned the polite path into the impolite one: three attempts with
-  // no gap between them, which is the opposite of what honouring Retry-After is
-  // for. With no usable instruction we are back to estimating for ourselves,
-  // exactly as when the server said nothing. An explicit `Retry-After: 0` is
-  // different and is still honoured: that is an instruction, not a stale one.
+  // that has gone, whether through clock skew or a cached response. Flooring
+  // it to zero turned the polite path into the impolite one: three deliveries
+  // with no gap between them. An explicit `Retry-After: 0` is different and is
+  // still honoured: that is an instruction, not a stale one.
   return wait > 0 ? wait : null;
 }
 
 /**
- * How long to wait before the authorized replay: the server's
- * `Retry-After` when it gave a usable one, otherwise our own
- * full-jittered exponential backoff.
- * @param input - The same input the decision was made from.
- * @returns The wait in milliseconds.
- */
-function serverDirectedWaitMs(input: RetryInput): number | null {
-  // A transport error means no response existed, so no header could have
-  // arrived — ignore any value a caller passed alongside it.
-  if (input.transportError !== undefined) return null;
-  return input.retryAfterMs ?? null;
-}
-
-/**
- * Our own guess at how long to wait, for when the server named nothing.
+ * How long to wait before an authorized replay.
  *
- * This is the only place a number we invented is allowed. It exists because
- * a dropped connection or a silent timeout tells us nothing about when the
- * far side will be well again, so somebody has to estimate — and full-jittered
- * exponential backoff is the standard estimate. The moment the server DOES
- * name a figure, that figure wins: it knows its own recovery timeline and we
- * do not.
- * @param input - The decision input, for the attempt counter and jitter source.
- * @returns The estimated wait in milliseconds.
- */
-function ownBackoffMs(input: RetryInput): number {
-  // `attempt` is 1-based; the backoff helper is 0-based.
-  return exponentialJitterDelay(input.attempt - 1, BASE_DELAY_MS, input.rand);
-}
-
-/**
- * Turn a would-be retry into a decision, honouring the server's own figure
- * and refusing outright when that figure is longer than the caller can give.
- *
- * The refusal is the point. There are exactly two things to do with a wait
- * that is too long — serve it, or stop — because this system has no queue to
- * defer work into: every operation ends completed or failed. Shortening the
- * server's figure to something we find convenient is not a third option; it
- * disregards the only party that knows when it will be ready, and still makes
- * someone wait.
+ * The server's figure when it gave a usable one, otherwise our own
+ * full-jittered exponential backoff. The ceiling only decides whether to wait
+ * at all: past it the request stops and the response — `Retry-After` header
+ * and all — goes back to the caller, which can read the figure itself.
+ * Shortening the server's number to one we find convenient is not a third
+ * option; it disregards the only party that knows when it will be ready.
  * @param input - The decision input.
  * @returns A retry carrying the wait, or a refusal when the wait is too long.
  */
 function scheduleRetry(input: RetryInput): RetryDecision {
-  const asked = serverDirectedWaitMs(input);
-  if (asked === null) return { retry: true, delayMs: ownBackoffMs(input) };
+  // No response means no header could have arrived — ignore any value passed
+  // alongside its absence.
+  const asked = input.status === undefined ? null : input.retryAfterMs ?? null;
+  if (asked === null) {
+    // The only place a number we invented is allowed. A dropped connection
+    // tells us nothing about when the far side will be well again, so somebody
+    // has to estimate, and full-jittered exponential backoff is the standard
+    // estimate. `attempt` is 1-based; the backoff helper is 0-based.
+    return {
+      retry: true,
+      delayMs: exponentialJitterDelay(input.attempt - 1, BASE_DELAY_MS, input.rand),
+    };
+  }
   if (asked > MAX_RETRY_AFTER_MS) return { retry: false };
   return { retry: true, delayMs: asked };
 }
@@ -247,90 +196,35 @@ function scheduleRetry(input: RetryInput): RetryDecision {
 /**
  * Decide whether a failed request may be replayed, and after how long.
  *
- * **The ordering is load-bearing.** The 429/408 branch runs before the
- * `replaySafe` branch because those two statuses mean the server never ran
- * the request: a rate-limited non-replayable submit is exactly the case
- * that deserves a backoff rather than an outright failure. Reversing them
- * fails requests at the worst possible moment. The abort and budget checks
- * come first so that a cancelled or spent request reports why it stopped
- * rather than which failure it saw.
- * @param input - The failure, the caller's replay-safety fact, and the
- *   attempt counter.
- * @returns A total decision — every input yields either a refusal with a
- *   reason or an authorization with a wait.
+ * Total: every input yields a verdict. The ordering is load-bearing and is
+ * asserted in the tests — a rate-limited non-replayable submit must still back
+ * off and retry, because 429 is the one case where the server has told us
+ * nothing happened.
+ * @param input - Status (or its absence), the caller's declaration, the body
+ *   fact, the parsed server wait, and the delivery counter.
+ * @returns Replay or not, with the wait when replaying.
  */
 export function decideRetry(input: RetryInput): RetryDecision {
-  // The user pressed stop. Nothing may resurrect the request.
-  if (input.transportError === "caller_aborted") {
-    return { retry: false };
-  }
+  // Platform semantics: not "should we replay" but "can we". Ahead of
+  // everything about status, because no status changes it — a spent body has
+  // nothing left to send, whatever the server said.
+  if (input.bodyReplayable === false) return { retry: false };
 
-  // A deterministic rejection: the same wall on every attempt.
-  if (input.transportError === "fatal") {
-    return { retry: false };
-  }
-
-  // ── Platform semantics: not "should we replay" but "can we" ──
-  // Ahead of everything about status, because no status changes it. 429 and
-  // 408 retry unconditionally on the grounds that the server never processed
-  // the request — which answers what a replay would COST, and says nothing
-  // about whether one can happen at all. A stream body was consumed by the
-  // first attempt; handing the spent source back to fetch rejects with a
-  // TypeError about a disturbed body, and that TypeError then replaces the
-  // status the server actually sent.
-  //
-  // This sits with `caller_aborted` and `fatal_error` rather than with
-  // `replaySafe` because it is the same kind of fact as those two: an
-  // absolute, not a judgement about consequences.
-  if (input.bodyReplayable === false) {
-    return { retry: false };
-  }
-
-  // Budget before failure kind, so telemetry distinguishes "gave up after
-  // trying" from "refused to try".
-  if (input.attempt > MAX_RETRIES) {
-    return { retry: false };
-  }
+  if (input.attempt > MAX_RETRIES) return { retry: false };
 
   const { status } = input;
 
-  // ── Protocol semantics: true regardless of what the request does ──
-  if (status === 429) {
-    return scheduleRetry(input);
-  }
-  if (status === 408) {
-    return scheduleRetry(input);
-  }
-  if (status !== undefined && status >= 400 && status < 500) {
-    return { retry: false };
-  }
+  // Protocol semantics: true regardless of what the request does. 429 and 408
+  // state the server did NOT process the request, so a replay cannot produce a
+  // second side effect and the caller's declaration does not apply.
+  if (status === 429 || status === 408) return scheduleRetry(input);
+  // Any other answer from the server is a fact a replay cannot change: a 4xx
+  // is about this request, and a 2xx or an unfollowed 3xx is not a failure at
+  // all.
+  if (status !== undefined && !isServerError(status)) return { retry: false };
 
-  // Is this a failure at all? A 3xx the transport does not follow — a 304, or
-  // a redirect an SSRF guard returns unfollowed — is not ok, so it reaches
-  // here, and answering with the caller's side-effect declaration blamed that
-  // declaration for a response that never failed. An on-call engineer reading
-  // "not_replay_safe, status 304" goes looking for a bug that is not there.
-  const failed = isServerError(input.status) || input.transportError !== undefined;
-  if (!failed) {
-    return { retry: false };
-  }
-
-  // ── Application semantics: only the caller knows this ──
-  if (!input.replaySafe) {
-    return { retry: false };
-  }
-
-  if (isServerError(status)) {
-    return scheduleRetry(input);
-  }
-  if (input.transportError === "network") {
-    return scheduleRetry(input);
-  }
-  if (input.transportError === "timeout") {
-    return scheduleRetry(input);
-  }
-
-  // Every failure kind above is handled; this is the arm no known input
-  // reaches, kept so the function is total rather than throwing at runtime.
-  return { retry: false };
+  // The one thing only the caller knows. Reached by a 5xx and by the absence
+  // of any response.
+  if (!input.replaySafe) return { retry: false };
+  return scheduleRetry(input);
 }

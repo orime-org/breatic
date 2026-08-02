@@ -62,6 +62,21 @@ export const MAX_RETRY_AFTER_MS = 60_000;
 
 
 /**
+ * How long one delivery may wait FOR RESPONSE HEADERS.
+ *
+ * Fixed rather than asked of the caller. Every call site that ever set this
+ * was setting it from config or from a literal, and none of them knew anything
+ * this layer does not — "how long until a server is not going to answer" is a
+ * property of the network, not of what the caller happens to be fetching.
+ *
+ * Ten seconds is the figure the product owner settled on for waiting on
+ * headers (2026-08-01). The deadline ends when the headers arrive; what
+ * happens while the body is read is not this layer's business, and the client
+ * underneath already times a stalled read.
+ */
+export const HEADERS_TIMEOUT_MS = 10_000;
+
+/**
  * The largest delay a timer can actually hold.
  *
  * `setTimeout` stores its delay in a signed 32-bit integer and CLAMPS anything

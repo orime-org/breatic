@@ -234,4 +234,3 @@ export { newId, deriveId } from "@shared/ids.js";
 // caller holding a 200 has no use for "and it took two tries", while a caller
 // holding a failure has a log line to write.
 export { httpRequest, HttpRetryError } from "@shared/http/request.js";
-export type { HttpRequestOptions } from "@shared/http/request.js";

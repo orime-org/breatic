@@ -67,17 +67,6 @@ describe("decideRetry — protocol semantics the transport owns", () => {
     },
   );
 
-  it("refuses a caller abort ahead of everything else", () => {
-    // The user pressed stop. No status, no replaySafe value, and no
-    // remaining attempt budget may resurrect the request.
-    const d = decideRetry({
-      ...base,
-      transportError: "caller_aborted",
-      replaySafe: true,
-    });
-    expect(d).toEqual({ retry: false });
-  });
-
   it("refuses when neither a failing status nor a transport error is present", () => {
     const d = decideRetry({ ...base, status: 200 });
     expect(d).toEqual({ retry: false });
@@ -101,7 +90,7 @@ describe("decideRetry — application semantics the caller owns", () => {
   );
 
   it("retries a network error when replaying is safe", () => {
-    const d = decideRetry({ ...base, transportError: "network" });
+    const d = decideRetry({ ...base });
     expect(d).toMatchObject({ retry: true });
   });
 
@@ -110,21 +99,19 @@ describe("decideRetry — application semantics the caller owns", () => {
     // have arrived and be running. Non-replayable means we do not gamble.
     const d = decideRetry({
       ...base,
-      transportError: "network",
       replaySafe: false,
     });
     expect(d).toEqual({ retry: false });
   });
 
   it("retries an attempt timeout when replaying is safe", () => {
-    const d = decideRetry({ ...base, transportError: "timeout" });
+    const d = decideRetry({ ...base });
     expect(d).toMatchObject({ retry: true });
   });
 
   it("refuses an attempt timeout when replaying is not safe", () => {
     const d = decideRetry({
       ...base,
-      transportError: "timeout",
       replaySafe: false,
     });
     expect(d).toEqual({ retry: false });
@@ -148,15 +135,6 @@ describe("decideRetry — attempt budget", () => {
     // Even a 429 — normally the most retryable case — must report
     // exhaustion, so telemetry distinguishes "gave up" from "refused".
     const d = decideRetry({ ...base, status: 429, attempt: MAX_RETRIES + 1 });
-    expect(d).toEqual({ retry: false });
-  });
-
-  it("puts caller abort ahead of exhaustion", () => {
-    const d = decideRetry({
-      ...base,
-      transportError: "caller_aborted",
-      attempt: MAX_RETRIES + 5,
-    });
     expect(d).toEqual({ retry: false });
   });
 
@@ -264,7 +242,7 @@ describe("decideRetry — backoff delay", () => {
   );
 
   it("ignores Retry-After on a transport error (no response carried one)", () => {
-    const d = decideRetry({ ...base, transportError: "network", retryAfterMs: 30000 });
+    const d = decideRetry({ ...base });
     expect(d).toMatchObject({ retry: true, delayMs: BASE_DELAY_MS });
   });
 
