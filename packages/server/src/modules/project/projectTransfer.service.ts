@@ -52,11 +52,10 @@ import {
   NotFoundError,
   ValidationError,
 } from "@breatic/core";
+import { getDecisionWindowMs } from "@server/config/limits.js";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 
-/** Days an unconfirmed transfer request stays actionable before it self-voids. */
-const TRANSFER_TTL_DAYS = 7;
 
 /**
  * The current project owner asks another project collaborator to take over as owner.
@@ -68,7 +67,7 @@ const TRANSFER_TTL_DAYS = 7;
  * the project's studio (the studio check blocks transferring the project out of
  * its studio to an outside collaborator, and blocks guests). Drops an actionable
  * `project.transfer_request` notification that expires after
- * {@link TRANSFER_TTL_DAYS} days. No role change here — the swap is deferred
+ * the configured decision window. No role change here — the swap is deferred
  * until the recipient confirms.
  * @param projectId - The project whose owner role is being transferred
  * @param fromUserId - The acting owner initiating the transfer
@@ -126,7 +125,7 @@ export async function requestProjectTransfer(
   }
 
   const expiresAt = new Date(
-    Date.now() + TRANSFER_TTL_DAYS * 24 * 60 * 60 * 1000,
+    Date.now() + getDecisionWindowMs(),
   );
   const profiles = await studioRepo.getPersonalProfilesByCreators([fromUserId]);
   const from = profiles.get(fromUserId);

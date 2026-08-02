@@ -46,11 +46,10 @@ import {
   NotFoundError,
   ValidationError,
 } from "@breatic/core";
+import { getDecisionWindowMs } from "@server/config/limits.js";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 
-/** Days an unconfirmed transfer request stays actionable before it self-voids. */
-const TRANSFER_TTL_DAYS = 7;
 
 /**
  * The current admin asks an existing member to take over as the studio admin.
@@ -58,7 +57,7 @@ const TRANSFER_TTL_DAYS = 7;
  * Resolves the studio by slug, refuses personal studios, and requires the
  * proposed new admin to be a distinct active non-guest member of the studio. Drops an
  * actionable `studio.transfer_request` notification in their inbox that
- * expires after {@link TRANSFER_TTL_DAYS} days. No role change happens here —
+ * expires after the configured decision window. No role change happens here —
  * the swap is deferred until the recipient confirms.
  * @param slug - The studio's URL handle
  * @param fromAdminUserId - The acting admin initiating the transfer
@@ -91,7 +90,7 @@ export async function requestTransfer(
   }
 
   const expiresAt = new Date(
-    Date.now() + TRANSFER_TTL_DAYS * 24 * 60 * 60 * 1000,
+    Date.now() + getDecisionWindowMs(),
   );
   const profiles = await studioRepo.getPersonalProfilesByCreators([
     fromAdminUserId,

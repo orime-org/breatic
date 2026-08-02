@@ -37,7 +37,11 @@ import * as notificationService from "@server/modules/notification/notification.
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { buildStudioInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { getStudioMemberCap } from "@server/config/limits.js";
+import {
+  getStudioMemberCap,
+  getDecisionWindowMs,
+  getDecisionWindowSeconds,
+} from "@server/config/limits.js";
 import { randomBytes } from "node:crypto";
 import { db, env, getRedis } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
@@ -48,8 +52,6 @@ import type { InvitationLandingView } from "@breatic/shared";
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
 type InvitableRole = "maintainer" | "guest";
 
-/** Days a pending invite stays actionable before it self-voids. */
-const INVITE_TTL_DAYS = 7;
 
 /**
  * Invite a registered user into a studio — creates a PENDING invite (it does
@@ -112,7 +114,7 @@ export async function createInvite(
   ]);
   const inviter = profiles.get(inviterUserId);
   const inviterName = inviter?.name ?? "";
-  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
 
   let invitationId = "";
   try {
@@ -329,7 +331,6 @@ export async function revokeInvite(
 }
 
 /** TTL of the email-link token — matches the invite's 7-day window. */
-const INVITE_TOKEN_TTL_SECONDS = INVITE_TTL_DAYS * 24 * 60 * 60;
 
 /**
  * Issue a one-time email-link token for an invite (mirrors the email-verify
@@ -345,7 +346,7 @@ export async function issueInviteToken(invitationId: string): Promise<string> {
     `${env.ENV}:studio-invite:${token}`,
     invitationId,
     "EX",
-    INVITE_TOKEN_TTL_SECONDS,
+    getDecisionWindowSeconds(),
   );
   return token;
 }

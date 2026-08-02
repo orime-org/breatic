@@ -14,6 +14,9 @@ import {
   getStudioMemberCap,
   getProjectCollaboratorCap,
   getCanvasReferencePoolCap,
+  getDecisionWindowDays,
+  getDecisionWindowMs,
+  getDecisionWindowSeconds,
 } from "@server/config/limits.js";
 
 describe("limits config — schema", () => {
@@ -61,5 +64,39 @@ describe("limits config — accessors read config/limits.yaml", () => {
     const cap = getCanvasReferencePoolCap();
     expect(Number.isInteger(cap)).toBe(true);
     expect(cap).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The window a person has to answer a studio invite, a project invite, a
+ * studio transfer, a project transfer, or a role-upgrade request.
+ *
+ * One number for all five, settled 2026-06-08 and re-affirmed 2026-08-02.
+ * Before this it was the literal `7` written into four services separately,
+ * with the fifth flow having no deadline at all.
+ */
+describe("decision window", () => {
+  it("defaults to 7 days when the key is absent", () => {
+    expect(limitsConfigSchema.parse({}).decision_window_days).toBe(7);
+  });
+
+  it("rejects a non-positive window", () => {
+    expect(() => limitsConfigSchema.parse({ decision_window_days: 0 })).toThrow();
+    expect(() => limitsConfigSchema.parse({ decision_window_days: -1 })).toThrow();
+  });
+
+  it("ships 7 in config/limits.yaml", () => {
+    expect(getDecisionWindowDays()).toBe(7);
+  });
+
+  it("offers the same window in the three units its callers need", () => {
+    // Three shapes, one source. The deadline write sites want milliseconds to
+    // add to `Date.now()`; the invite-link Redis keys want seconds; the email
+    // copy wants the plain day count to show a person. Deriving each from the
+    // same config value is what keeps them from drifting — which is the whole
+    // point of the change, so it is asserted rather than assumed.
+    const days = getDecisionWindowDays();
+    expect(getDecisionWindowSeconds()).toBe(days * 24 * 60 * 60);
+    expect(getDecisionWindowMs()).toBe(days * 24 * 60 * 60 * 1000);
   });
 });

@@ -30,7 +30,11 @@ export const limitsConfigSchema = z.object({
   activity_feed_page_max: z.number().int().positive().default(100),
   canvas_reference_pool_cap: z.number().int().positive().default(50),
   node_history_page_size: z.number().int().positive().default(20),
+  decision_window_days: z.number().int().positive().default(7),
 });
+
+/** Hours in a day × minutes × seconds — the day→second factor, written once. */
+const SECONDS_PER_DAY = 24 * 60 * 60;
 
 let _cached: z.infer<typeof limitsConfigSchema> | null = null;
 
@@ -92,4 +96,46 @@ export function getCanvasReferencePoolCap(): number {
  */
 export function getNodeHistoryPageSize(): number {
   return loadConfig().node_history_page_size;
+}
+
+/**
+ * How long someone has to answer something waiting on them, in days.
+ *
+ * One window for all five such flows — studio invite, project invite,
+ * studio transfer, project transfer, role-upgrade request. Use this one
+ * when the number is being SHOWN to a person (an email sentence, a page
+ * that explains why a link stopped working); use the two below when it is
+ * being computed with.
+ *
+ * Not for account-security lifetimes. Password reset, email verification,
+ * sessions and recovery codes are each set against their own threat and
+ * live where they are used.
+ * @returns The decision window in days.
+ */
+export function getDecisionWindowDays(): number {
+  return loadConfig().decision_window_days;
+}
+
+/**
+ * The same window in milliseconds, for `Date.now() + window`.
+ *
+ * The conversion lives here rather than at each deadline write, because it
+ * was written out at four separate call sites before this and that is one
+ * transcription error away from two flows disagreeing.
+ * @returns The decision window in milliseconds.
+ */
+export function getDecisionWindowMs(): number {
+  return getDecisionWindowDays() * SECONDS_PER_DAY * 1000;
+}
+
+/**
+ * The same window in seconds, for Redis key expiry.
+ *
+ * The invite-link tokens live in Redis and must not outlive the invite they
+ * open — a link that still works after the invitation is void would take a
+ * person to a page that refuses them, with no explanation available.
+ * @returns The decision window in seconds.
+ */
+export function getDecisionWindowSeconds(): number {
+  return getDecisionWindowDays() * SECONDS_PER_DAY;
 }

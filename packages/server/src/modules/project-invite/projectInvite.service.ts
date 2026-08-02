@@ -40,7 +40,11 @@ import * as invitesRepo from "@server/modules/project-invite/projectInvitations.
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
-import { getProjectCollaboratorCap } from "@server/config/limits.js";
+import {
+  getProjectCollaboratorCap,
+  getDecisionWindowMs,
+  getDecisionWindowSeconds,
+} from "@server/config/limits.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildProjectInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
@@ -55,8 +59,6 @@ import type {
   ProjectInvitationLandingView,
 } from "@breatic/shared";
 
-/** Days a pending invite stays actionable before it self-voids. */
-const INVITE_TTL_DAYS = 7;
 
 /**
  * Invite a registered user into a project — creates a PENDING invite (it does
@@ -123,7 +125,7 @@ export async function createInvite(
   ]);
   const inviter = profiles.get(inviterUserId);
   const inviterName = inviter?.name ?? "";
-  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
 
   let invitationId = "";
   let token = "";
@@ -369,7 +371,6 @@ export async function listPending(
 }
 
 /** TTL of the email-link token — matches the invite's 7-day window. */
-const INVITE_TOKEN_TTL_SECONDS = INVITE_TTL_DAYS * 24 * 60 * 60;
 
 /**
  * Issue a one-time email-link token for an invite (mirrors the studio-invite
@@ -385,7 +386,7 @@ export async function issueInviteToken(invitationId: string): Promise<string> {
     `${env.ENV}:project-invite:${token}`,
     invitationId,
     "EX",
-    INVITE_TOKEN_TTL_SECONDS,
+    getDecisionWindowSeconds(),
   );
   return token;
 }

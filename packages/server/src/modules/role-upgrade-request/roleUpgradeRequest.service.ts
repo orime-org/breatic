@@ -35,8 +35,14 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
+import { getDecisionWindowMs } from "@server/config/limits.js";
 import { projectMembersRepo } from "@breatic/core";
-import { NotFoundError, ForbiddenError, ValidationError } from "@breatic/core";
+import {
+  NotFoundError,
+  ForbiddenError,
+  ValidationError,
+  ConflictError,
+} from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { NotificationEntity } from "@breatic/shared";
@@ -64,6 +70,7 @@ export async function request(
   return notificationService.createRoleUpgradeRequest({
     ownerUserId: input.ownerUserId,
     projectId: input.projectId,
+    expiresAt: new Date(Date.now() + getDecisionWindowMs()),
     payload: {
       requesterUserId: input.requesterUserId,
       requesterName: requester.name,
@@ -248,6 +255,15 @@ async function loadAndGate(
   if (row.readAt !== null) {
     // Already decided — second click on stale BellMenu state.
     throw new NotFoundError(t("server.error.notFound"));
+  }
+  if (row.expiresAt !== null && row.expiresAt.getTime() <= Date.now()) {
+    // Past the decision window: the request self-voided, and deciding one is
+    // a no-op conflict. Same guard, same error, same wording as both
+    // transfers — the point of one shared window is that the five flows
+    // behave identically at the boundary, not merely that they read one
+    // number. Legacy rows predating the window have a null deadline and are
+    // deliberately left decidable; nothing migrates them.
+    throw new ConflictError(t("server.error.conflict"));
   }
   const payload = row.payload as { requesterUserId?: unknown };
   if (typeof payload.requesterUserId !== "string") {

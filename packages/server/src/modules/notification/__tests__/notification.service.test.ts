@@ -32,6 +32,8 @@ const OWNER = "u-owner";
 const REQUESTER = "u-viewer";
 const PID = "p-1";
 const NID = "n-1";
+/** An arbitrary deadline — this test cares that it is forwarded, not what it is. */
+const DEADLINE = new Date("2026-08-09T00:00:00Z");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -62,12 +64,17 @@ describe("createRoleUpgradeRequest", () => {
         requestedRole: "editor",
         message: "please",
       },
+      expiresAt: DEADLINE,
     });
     expect(out.id).toBe(NID);
     const args = vi.mocked(notificationRepo.create).mock.calls[0]?.[0];
     expect(args?.userId).toBe(OWNER);
     expect(args?.type).toBe("access.role_upgrade_request");
     expect(args?.projectId).toBe(PID);
+    // The deadline has to reach the row, not stop at this function. Role-upgrade
+    // requests had no expiry at all before the five decision flows were put on
+    // one window; forwarding it is the whole of this function's new job.
+    expect(args?.expiresAt).toBe(DEADLINE);
     expect(args?.payload).toMatchObject({
       requesterUserId: REQUESTER,
       requestedRole: "editor",

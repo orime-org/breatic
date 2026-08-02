@@ -79,6 +79,7 @@ export async function createRoleUpgradeRequest(input: {
   ownerUserId: string;
   projectId: string;
   payload: RoleUpgradeRequestPayload;
+  expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
   return notificationRepo.create(
@@ -87,6 +88,7 @@ export async function createRoleUpgradeRequest(input: {
       type: "access.role_upgrade_request",
       payload: input.payload as unknown as Record<string, unknown>,
       projectId: input.projectId,
+      expiresAt: input.expiresAt,
     },
     input.tx,
   );

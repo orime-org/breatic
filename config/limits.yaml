@@ -35,3 +35,26 @@ node_history_page_size: 20
 #   activity_feed_page_max:     hard ceiling a client ?limit is clamped to
 activity_feed_page_default: 50
 activity_feed_page_max: 100
+
+# ── Decision window ────────────────────────────────────
+# How long a person has to answer something that is waiting on them, in
+# days. One number covers all five such flows: being invited to a studio
+# or to a project, being handed a studio or a project, and being asked to
+# approve a role upgrade.
+#
+# It is one number by decision (2026-06-08, re-affirmed 2026-08-02), not by
+# coincidence — before this it was the literal 7 written separately into
+# four services, with the role-upgrade flow having no deadline at all.
+#
+# Everything downstream reads this: the deadline stored on the row, the
+# expiry of the invite link's Redis key, and the sentence in the
+# invitation and transfer emails that tells the recipient how long they
+# have. Changing this number changes all of them together, which is the
+# point — copy that states a duration and enforcement that uses another
+# is the product lying to the person reading it.
+#
+# NOT covered here, deliberately: password reset, email verification,
+# session lifetime and recovery codes. Those are account-security
+# lifetimes, and each is set against its own threat, not against how long
+# someone reasonably takes to answer.
+decision_window_days: 7
