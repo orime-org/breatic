@@ -15,9 +15,9 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { AVATAR_OUTPUT_PX } from '@breatic/shared';
 
 import {
+  AVATAR_OUTPUT_PX,
   AVATAR_OUTPUT_TYPE,
   MAX_AVATAR_INPUT_BYTES,
   MAX_AVATAR_INPUT_EDGE_PX,
@@ -130,9 +130,10 @@ describe('encodeAvatarBlob', () => {
     await expect(encodeAvatarBlob(encode)).rejects.toThrow();
   });
 
-  it('outputs the agreed square in the one stored format', () => {
-    // The number itself lives in shared because the server validates against
-    // the same one; pinning it here is pinning the contract, not a literal.
+  it('outputs a 512 square as PNG', () => {
+    // Both numbers are this module's own — the server reads neither. They are
+    // pinned because `avatar.max_bytes` was sized against this exact pair, so
+    // moving either without moving that cap starts refusing real avatars.
     expect(AVATAR_OUTPUT_PX).toBe(512);
     expect(AVATAR_OUTPUT_TYPE).toBe('image/png');
   });

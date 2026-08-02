@@ -17,9 +17,20 @@
  * renders as a broken image, since browsers decode by declared type.
  */
 
-import { AVATAR_OUTPUT_PX } from '@breatic/shared';
-
 import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
+
+/**
+ * The edge length of the avatar this module produces, in pixels.
+ *
+ * Local to the browser, because nothing else consults it: the server stores
+ * whatever arrives without reading its dimensions, and every place an avatar
+ * is shown is a fixed-size element that crops what it is given.
+ *
+ * Changing it is not free even so — `avatar.max_bytes` in `config/storage.yaml`
+ * is sized against the incompressible worst case AT this resolution, and that
+ * worst case scales with the pixel count.
+ */
+export const AVATAR_OUTPUT_PX = 512;
 
 /**
  * Refuse a picked file above this size without decoding it.

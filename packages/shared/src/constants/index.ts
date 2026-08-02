@@ -34,4 +34,3 @@ export type StorageProvider =
   (typeof StorageProvider)[keyof typeof StorageProvider];
 
 export { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT } from "@shared/constants/ports.js";
-export { AVATAR_OUTPUT_PX } from "@shared/constants/avatar.js";

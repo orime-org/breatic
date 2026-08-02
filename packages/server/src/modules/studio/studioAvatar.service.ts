@@ -19,30 +19,23 @@
 import { randomUUID } from "node:crypto";
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import { readPngSize } from "@server/modules/studio/png-size.js";
 import { AppError, getStorageAdapter, sniffMimeType } from "@breatic/core";
-import { AVATAR_OUTPUT_PX, t } from "@breatic/shared";
+import { t } from "@breatic/shared";
 import type { Studio } from "@breatic/shared";
 
 /**
  * Accepted image types, and the extension each is stored under.
  *
- * PNG only, and that is not a restriction on what a user may pick. The file
- * picker still takes anything the browser can decode; what arrives here is
- * always the crop dialog's canvas re-encode, and that is PNG by definition.
- * So accepting JPEG or WebP would only widen the door for requests that did
- * not come from our own client — and those are exactly the ones the size rule
- * below has to hold, which it can only do for a format whose header this
- * server knows how to read.
+ * This is not a validation step and does not try to be one. A stored object
+ * needs an extension and a `Content-Type` to be served under, and both have to
+ * come from somewhere the client does not control — otherwise a browser is
+ * told to render the bytes as something they are not. Sniffing the signature
+ * is how that is decided; the request header is the client's claim about
+ * content the client also chose, so it takes no part.
  *
- * Keyed on what the SNIFFER reports, never on what the client claims. An
- * ANIMATED png sniffs as `image/apng` and is deliberately absent: `canvas`
- * cannot encode one, so it could only ever arrive from somewhere else, and it
- * is the one shape the size rule cannot hold against. The rule reads a single
- * frame's grid from IHDR, while the frame count has no bound at all — a file
- * comfortably under the byte cap can declare thousands of 512x512 frames, and
- * every viewer decodes all of them. Reading dimensions exists to stop exactly
- * that, so admitting the format that walks past it would defeat the check.
+ * PNG only, because PNG is what the crop dialog's canvas re-encode produces.
+ * Anything else would be an upload that did not come from our own client, and
+ * there is no picture it could be that the client could not have sent as PNG.
  */
 const ACCEPTED_IMAGE_TYPES: Readonly<Record<string, string>> = {
   "image/png": "png",
@@ -85,17 +78,13 @@ export function avatarStorageKey(
 /**
  * Store an uploaded avatar and point the studio at it.
  *
- * The bytes are typed by sniffing their signature; the `Content-Type` header
- * is ignored entirely, since it is the client's claim about content the
- * client also chose. An unrecognised or non-image signature is refused.
- *
- * Dimensions are checked as well as bytes, and the two catch different things.
- * The byte cap bounds what one request can make this process hold; it says
- * nothing about how expensive the result is to LOOK at, because PNG is
- * compressed — a few hundred kilobytes of flat colour can declare tens of
- * thousands of pixels a side, and then every viewer's browser decodes
- * gigabytes for one avatar. Reading the header (not decoding) is what closes
- * that, and it reads the header rather than the picture.
+ * What the bytes contain is the client's business. An avatar is one URL on one
+ * row, shown in a fixed-size element that crops whatever it is given; it is
+ * not a project asset — nothing is billed for it, nothing else consumes it,
+ * and nobody but this studio's own members ever sees it. Only an admin of this
+ * studio can get here at all. So the server takes the picture as sent: the
+ * caller has already bounded its size, and there is nothing further worth
+ * establishing about the pixels inside it.
  *
  * Storage is written BEFORE the database. The reverse order can leave the row
  * pointing at an object that was never written — a broken image for every
@@ -104,8 +93,8 @@ export function avatarStorageKey(
  * @param slug - The studio's URL handle
  * @param bytes - The raw image, already bounded by the caller
  * @returns The updated studio
- * @throws {AppError} 404 no such studio, 415 the bytes are not an accepted
- *   image, 422 the image is not the agreed avatar square
+ * @throws {AppError} 404 no such studio, 415 the bytes are not an image this
+ *   server has an extension and a content type for
  */
 export async function setAvatar(slug: string, bytes: Buffer): Promise<Studio> {
   const studio = await studioRepo.getBySlug(slug);
@@ -115,20 +104,6 @@ export async function setAvatar(slug: string, bytes: Buffer): Promise<Studio> {
   const ext = ACCEPTED_IMAGE_TYPES[mime];
   if (ext === undefined) {
     throw new AppError(415, t("server.studio.avatar_unsupported_type"));
-  }
-
-  // Two different refusals, and they used to share one message. `null` covers
-  // eight ways of not being a PNG we can use — truncated, a lying IHDR length,
-  // a tag that only decodes to IHDR, 16-bit, interlaced, animated, a chunk
-  // chain that runs off the end, a header with no pixels behind it — and none
-  // of them is a size problem. Telling that uploader their image is the wrong
-  // size sends them to re-crop a file that would be refused at any size.
-  const size = readPngSize(bytes);
-  if (size === null) {
-    throw new AppError(415, t("server.studio.avatar_unsupported_type"));
-  }
-  if (size.width !== AVATAR_OUTPUT_PX || size.height !== AVATAR_OUTPUT_PX) {
-    throw new AppError(422, t("server.studio.avatar_unsupported_size"));
   }
 
   const key = avatarStorageKey(

@@ -35,7 +35,6 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { AVATAR_OUTPUT_PX } from "@breatic/shared";
 import {
   initCore,
   getRedis,
@@ -71,15 +70,26 @@ afterAll(async () => {
   await sql?.end({ timeout: 1 });
 });
 
+/** The square the crop dialog produces — the shape a real upload has. */
+const FIXTURE_EDGE_PX = 512;
+
 /**
- * Build a minimal PNG: signature + IHDR, optionally with the `acTL` chunk
- * that makes it an animated PNG.
- * @param animated - include `acTL`, turning it into an APNG.
- * @param edge - square edge to declare in IHDR; defaults to what the crop
- *   dialog produces, so most cases read as "a normal avatar".
+ * Build a minimal PNG: signature, IHDR, one IDAT.
+ *
+ * Only the signature decides anything server-side — it is what picks the
+ * stored extension and content type. The rest is here so the fixture is a
+ * well-formed file rather than eight magic bytes, and the dimensions are a
+ * parameter so a test can send a shape the crop dialog would never produce.
+ * @param animated - include `acTL`, which makes the sniffer report APNG.
+ * @param width - width to declare in IHDR.
+ * @param height - height to declare in IHDR; defaults to a square.
  * @returns the file bytes.
  */
-function pngBytes(animated = false, edge = AVATAR_OUTPUT_PX): Buffer {
+function pngBytes(
+  animated = false,
+  width = FIXTURE_EDGE_PX,
+  height = width,
+): Buffer {
   const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const chunk = (type: string, payload: Buffer): Buffer => {
     const len = Buffer.alloc(4);
@@ -88,8 +98,8 @@ function pngBytes(animated = false, edge = AVATAR_OUTPUT_PX): Buffer {
     return Buffer.concat([len, Buffer.from(type, "ascii"), payload, Buffer.alloc(4)]);
   };
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(edge, 0);
-  ihdr.writeUInt32BE(edge, 4);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8;
   ihdr[9] = 6;
   const parts = [sig, chunk("IHDR", ihdr)];
@@ -211,70 +221,45 @@ describe("POST /studio/:slug/avatar — what gets accepted", () => {
     );
   });
 
-  it("refuses an ANIMATED PNG — one frame's dimensions say nothing about the whole", async () => {
-    // Accepting these used to be right: the whitelist held four formats, the
-    // uploader sent whatever the picker gave them, and an animated PNG *is* a
-    // PNG — refusing it with a message that says PNG is supported would have
-    // contradicted itself.
-    //
-    // Settling on one format removed that premise. The bytes now always come
-    // from our own canvas re-encode, and `canvas.toBlob` cannot produce an
-    // animated PNG at all, so this door only ever opened for requests that did
-    // not come from us. And it is the worst door to leave open: the dimension
-    // check reads one frame's grid, while the frame count stays unbounded, so a
-    // file under the byte cap can still declare thousands of 512x512 frames and
-    // make every viewer decode gigabytes — the exact cost this gate exists to
-    // bound.
-    const admin = await insertUser();
-    const studio = await insertStudio(admin);
-    const cookie = await loginCookie(admin);
-
-    const res = await uploadAvatar(studio.slug, cookie, pngBytes(true));
-
-    expect(res.status).toBe(415);
-    expect(await readAvatar(studio.id)).toBeNull();
-  });
-
-  it("refuses JPEG and WebP — the crop step converts, so these never arrive", async () => {
-    // The picker still takes any image the browser can decode; what reaches
-    // here is always the canvas re-encode, and that is PNG. Accepting other
-    // formats would mean accepting bytes whose dimensions this server cannot
-    // read, which is the one thing the size rule below depends on.
+  it("refuses every type it has no extension for — JPEG, WebP, animated PNG", async () => {
+    // Not a judgement about these formats. The whitelist exists to pick the
+    // extension and content type a stored object is served under, and it holds
+    // one entry because the crop dialog's canvas re-encode produces one format.
+    // A type that is not in it has nothing to be stored as. An animated PNG
+    // belongs in this list rather than in one of its own: the sniffer reports
+    // it as `image/apng`, which is simply another key that is not there.
     const admin = await insertUser();
     const jpegStudio = await insertStudio(admin);
     const webpStudio = await insertStudio(admin);
+    const apngStudio = await insertStudio(admin);
     const cookie = await loginCookie(admin);
 
     expect((await uploadAvatar(jpegStudio.slug, cookie, JPEG_BYTES)).status).toBe(415);
     expect((await uploadAvatar(webpStudio.slug, cookie, WEBP_BYTES)).status).toBe(415);
+    expect((await uploadAvatar(apngStudio.slug, cookie, pngBytes(true))).status).toBe(415);
 
     expect(await readAvatar(jpegStudio.id)).toBeNull();
     expect(await readAvatar(webpStudio.id)).toBeNull();
+    expect(await readAvatar(apngStudio.id)).toBeNull();
   });
 
-  it("refuses a PNG that is not the agreed square", async () => {
+  it("stores a PNG whatever its dimensions — the pixels are the client's business", async () => {
+    // The server used to read IHDR and refuse anything that was not 512
+    // square. It no longer does, and this pins that: an avatar is one URL on
+    // one row, shown in a fixed-size element that crops whatever it is given,
+    // uploadable only by an admin of the studio that will display it. There is
+    // nothing about the pixels for this server to have an opinion on.
+    //
+    // 2000x37 is deliberately nothing the crop dialog could produce — neither
+    // the agreed edge nor even a square.
     const admin = await insertUser();
     const studio = await insertStudio(admin);
     const cookie = await loginCookie(admin);
 
-    const res = await uploadAvatar(studio.slug, cookie, pngBytes(false, 256));
+    const res = await uploadAvatar(studio.slug, cookie, pngBytes(false, 2000, 37));
 
-    expect(res.status).toBe(422);
-    expect(await readAvatar(studio.id)).toBeNull();
-  });
-
-  it("refuses a small PNG that declares enormous dimensions", async () => {
-    // This is what the byte cap cannot catch: a few hundred bytes of header
-    // claiming 25000 square, which every viewer's browser would then try to
-    // decode. Reading IHDR costs 24 bytes and no decompression.
-    const admin = await insertUser();
-    const studio = await insertStudio(admin);
-    const cookie = await loginCookie(admin);
-
-    const res = await uploadAvatar(studio.slug, cookie, pngBytes(false, 25000));
-
-    expect(res.status).toBe(422);
-    expect(await readAvatar(studio.id)).toBeNull();
+    expect(res.status).toBe(200);
+    expect(await readAvatar(studio.id)).toMatch(/\.png$/);
   });
 
   it("decides the type from the BYTES, not the Content-Type header", async () => {

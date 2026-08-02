@@ -7,7 +7,6 @@ export {
   StorageProvider,
   DEFAULT_API_PORT,
   DEFAULT_COLLAB_PORT,
-  AVATAR_OUTPUT_PX,
 } from "@shared/constants/index.js";
 
 export type {

@@ -13,6 +13,19 @@ import { parse } from "yaml";
 import { z } from "zod";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
+/**
+ * Fallback avatar byte cap, used both when `config/storage.yaml` has no
+ * `avatar` section and when that section omits `max_bytes`.
+ *
+ * A named constant because those are two separate `.default()` calls, and
+ * writing the number in both let them disagree: the section-level one said
+ * 1 MiB for a while after the key-level one said 2 MiB, so a deployment
+ * missing the section refused avatars that a deployment with an empty section
+ * accepted. The authoritative value is in the yaml; this is what applies when
+ * it is not.
+ */
+const AVATAR_MAX_BYTES = 2097152;
+
 const storageConfigSchema = z.object({
   download: z
     .object({
@@ -51,11 +64,12 @@ const storageConfigSchema = z.object({
       /**
        * Hard cap on an avatar upload, in bytes. Unlike a project asset, an
        * avatar arrives THROUGH the server (no presigned direct upload), so
-       * this bound is also the bound on what the process buffers.
+       * this bound is also the bound on what the process buffers — and it is
+       * the only thing the server checks about an avatar.
        */
-      max_bytes: z.number().int().positive().default(2097152),
+      max_bytes: z.number().int().positive().default(AVATAR_MAX_BYTES),
     })
-    .default({ max_bytes: 1048576 }),
+    .default({ max_bytes: AVATAR_MAX_BYTES }),
 });
 
 /** Validated storage configuration type. */

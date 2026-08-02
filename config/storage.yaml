@@ -36,9 +36,10 @@ upload:
 
 # Studio avatars. Registered in docs/CONFIGURATION.md.
 avatar:
-  # Hard cap on one avatar upload, in bytes. Avatars do NOT use presigned
-  # direct upload — the bytes come through the server — so this is also the
-  # bound on what the process buffers per request.
+  # Hard cap on one avatar upload, in bytes, and the only thing the server
+  # checks about an avatar. Avatars do NOT use presigned direct upload — the
+  # bytes come through the server — so this is also the bound on what the
+  # process buffers per request.
   #
   # Sized against PNG, which is what the crop dialog produces. PNG is lossless,
   # so the byte count follows the picture rather than a quality setting: flat
