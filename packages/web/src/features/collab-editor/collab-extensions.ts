@@ -77,7 +77,7 @@ export interface CollabExtensionOptions {
 /**
  * Build the collaboration half of an editor's extension list.
  * @param options - The document fragment and the caret wiring.
- * @returns The extensions to spread into the editor's own list, or an empty list when no fragment was given.
+ * @returns The extensions to spread into the editor's own list.
  */
 export function buildCollabExtensions(
   options: CollabExtensionOptions,

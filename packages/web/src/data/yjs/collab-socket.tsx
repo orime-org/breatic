@@ -53,42 +53,43 @@ function toAbsoluteWsUrl(url: string): string {
 // leave project) settle to refcount 0 and the deferred teardown fires.
 
 /**
- * What the server has SETTLED about a document, as opposed to what is true of
- * the connection this instant.
+ * What is currently true of a document, for a component that was not there to
+ * hear it.
  *
- * Each of these is announced once and then never again: the content arrives,
- * or the server refuses this document and leaves the shared socket open. A
- * component that mounts afterwards cannot learn either by listening, because
- * the handshake it would have heard is over and nothing reconnects.
+ * The provider announces these once per event and never repeats them. A
+ * component that mounts afterwards cannot learn them by listening, and one
+ * mounts constantly: a Space tab holds a document open while the body that
+ * renders it is remounted on every tab switch. Kept in component state they
+ * are silently forgotten there — which is how a loading placeholder came to be
+ * shown in front of content already in memory, and how a refused document came
+ * to revert to that same placeholder with no explanation.
  *
- * So they live with the DOCUMENT rather than with a component. The document
- * outlives any one of them — a Space tab holds it open while the body that
- * renders it is remounted on every tab switch — and a fact kept in component
- * state is silently forgotten there. Both of these were: the latch showed a
- * loading placeholder in front of content already in memory, and the refusal
- * reverted to that same placeholder, permanently, with no explanation.
+ * So they live with the DOCUMENT. They die with the provider and the Y.Doc:
+ * what comes back after a real teardown is a fresh document that knows nothing.
  *
- * Kept together deliberately. They are read as a set on every acquire, so a
- * fact added here is picked up by that path automatically — the previous shape,
- * one field with its own getter, is how the second fact came to be missed.
- *
- * Scoped to the entry, so they die with the provider and the Y.Doc: what comes
- * back after a real teardown is a fresh document that has settled nothing.
+ * **These two are NOT the same kind of fact, and the difference matters.**
+ * `hasEverSynced` only ever goes from false to true. `authFailure` moves both
+ * ways: the provider re-authenticates on EVERY socket open (`onOpen` sets
+ * `isAuthenticated = false` and re-sends the token), so a Space that is
+ * restored, a member who is re-added, or an infra blip that passes all produce
+ * a later handshake that succeeds. Treating the refusal as permanent dragged a
+ * recovered document back into "refused" on the next tab switch, with no way
+ * out but a page reload.
  */
 export interface DocFacts {
   /**
-   * Whether the content has arrived at least once. A latch, unlike
+   * Whether the content has arrived at least once — monotonic. Unlike
    * `provider.synced`, which answers "in sync right now" and drops to false on
-   * every routine close — a wifi switch, a laptop waking, a collab redeploy.
+   * every routine close (a wifi switch, a laptop waking, a collab redeploy).
    * Once the content is in, the local Y.Doc holds it and offline edits merge
    * cleanly on reconnect.
    */
   hasEverSynced: boolean;
   /**
-   * The server's reason for refusing this document, or null if it has not.
-   * Refusal is per-document in Hocuspocus: the shared socket stays open and
-   * every sibling document stays healthy, which is why nothing else surfaces
-   * it.
+   * The server's reason for refusing this document, or null if the last
+   * handshake was accepted — NOT monotonic, see above. Refusal is per-document
+   * in Hocuspocus: the shared socket stays open and every sibling document
+   * stays healthy, which is why nothing else surfaces it.
    */
   authFailure: string | null;
 }
@@ -180,6 +181,11 @@ export function acquireDocProvider(
   provider.on('authenticationFailed', (data: { reason?: string } | undefined) => {
     entry.facts.authFailure = data?.reason ?? 'unknown';
   });
+  // The other direction. Without it a refusal is permanent even after the
+  // server has started accepting this document again.
+  provider.on('authenticated', () => {
+    entry.facts.authFailure = null;
+  });
   // A shared-websocketProvider provider does NOT auto-attach (its constructor
   // only auto-attaches when it manages its own socket). Attach explicitly or it
   // never registers / sends its token and hangs in `connecting` forever.
@@ -187,21 +193,21 @@ export function acquireDocProvider(
   return provider;
 }
 
-/** What a document that is not currently held open has settled: nothing. */
-const NO_FACTS: DocFacts = { hasEverSynced: false, authFailure: null };
-
 /**
- * Everything the server has settled about a document.
+ * What is currently true of a document.
  *
  * See {@link DocFacts} for why these belong to the document rather than to
- * whichever component is currently rendering it. Read as a set on every
- * acquire, so a consumer that remounts picks up what it was not there to hear.
+ * whichever component is rendering it, and for which of them can move in both
+ * directions. Read on acquire, so a consumer that remounts picks up what it was
+ * not there to hear.
  * @param name - Document name previously passed to {@link acquireDocProvider}.
- * @returns The settled facts, or all-empty for a document not currently held open.
+ * @returns A snapshot — always a fresh object, so a caller cannot reach back into the registry through it.
  */
 export function readDocFacts(name: string): DocFacts {
   const facts = docEntries.get(name)?.facts;
-  return facts ? { ...facts } : NO_FACTS;
+  return facts
+    ? { ...facts }
+    : { hasEverSynced: false, authFailure: null };
 }
 
 /**

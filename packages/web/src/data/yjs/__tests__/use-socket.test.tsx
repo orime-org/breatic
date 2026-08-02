@@ -269,6 +269,50 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     expect(reopened.result.current.writeAccess).toBe('denied');
   });
 
+  it('lets a later successful handshake clear an earlier refusal', () => {
+    // A refusal is NOT monotonic, unlike "the content has arrived". The Space
+    // is restored, the member is re-added, an infra blip passes — and the next
+    // reconnect authenticates fine. Verified in the library: `onOpen()` sets
+    // `isAuthenticated = false` and re-sends the token on EVERY socket open,
+    // so both outcomes are per-handshake, not per-document-lifetime.
+    //
+    // Treated as permanent, a document that has recovered is dragged back into
+    // "refused" by the first Space-tab switch, with no way out but a full page
+    // reload.
+    const doc = new Y.Doc();
+    const name = 'project-p1/document-recovered';
+    renderHook(() => useSocket({ name, doc }), { wrapper: wrapper('u1') });
+    const body = renderHook(() => useSocket({ name, doc }), {
+      wrapper: wrapper('u1'),
+    });
+
+    act(() =>
+      providerInstances[0]!.emit('authenticationFailed', { reason: 'Forbidden' }),
+    );
+    expect(body.result.current.status).toBe('authFailed');
+
+    // The situation reverses and the socket reconnects.
+    act(() => {
+      providerInstances[0]!.isAuthenticated = true;
+      providerInstances[0]!.authorizedScope = 'read-write';
+      providerInstances[0]!.emit('authenticated', { scope: 'read-write' });
+      providerInstances[0]!.synced = true;
+      providerInstances[0]!.emit('synced');
+    });
+    expect(body.result.current.status).toBe('connected');
+
+    // Switch Space tab away and back.
+    act(() => body.unmount());
+    act(() => vi.runAllTimers());
+    const reopened = renderHook(() => useSocket({ name, doc }), {
+      wrapper: wrapper('u1'),
+    });
+
+    expect(reopened.result.current.status).toBe('connected');
+    expect(reopened.result.current.authFailedReason).toBeNull();
+    expect(reopened.result.current.writeAccess).toBe('granted');
+  });
+
   it('treats a refusal as losing write access, not as unchanged', () => {
     // `writeAccess` is what the editor reads to decide whether typing is
     // pointless. A refusal is the strongest possible form of "your updates go

@@ -112,7 +112,7 @@ export function useDocumentEditor({
           editable,
         })
         : null,
-    // `editableNow` is deliberately NOT a dependency: it is construction-time
+    // `editable` is deliberately NOT a dependency: it is construction-time
     // wiring, and the cache ignores its inputs on a hit. Later changes go
     // through `setEditable` in the effect below, which must not rebuild the
     // editor — that would discard the undo stack and the selection.
