@@ -72,6 +72,7 @@ export interface RoleUpgradeDecisionPayload {
  * @param input.ownerUserId - Project owner who receives the request in their inbox
  * @param input.projectId - Project the upgrade is requested for
  * @param input.payload - Requester, project name, requested role, and message
+ * @param input.expiresAt - When the owner's window to decide runs out
  * @param input.tx - Optional transaction to bundle with the role-bump write
  * @returns The inserted `access.role_upgrade_request` notification
  */
