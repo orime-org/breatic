@@ -29,23 +29,38 @@ const CATALOG = /^locales\/[^/]+\.json$/;
  * once, and the finding was `cancel` and `loading`.
  *
  * A namespace is asked for positively — a top-level value must be an object
- * that is not an array — rather than by rejecting the types seen so far. A
- * rejection list is only as long as what someone thought of; `null` and a
- * number are caught here without being named.
+ * that is not an array — rather than by rejecting types one at a time. The
+ * array is spelled out because `typeof` calls one an object while it is not a
+ * namespace; `null` is spelled out because `typeof` calls it one too.
  *
- * The array is named, because `typeof` calls one an object and it is not a
- * namespace. It is the same defect as the dotless key wearing a different
- * shape: an array yields ids like `tags.0`, which do have a dot but whose
- * first segment is a digit, and the dead-key check anchors on a leading
- * letter. So every key under an array reads as dead, forever, no matter how
- * often it is used — exactly the failure this check exists to prevent, and
- * the one an `Array.isArray` shortcut in the dead-key check would only hide.
+ * WHAT THIS DOES NOT GIVE YOU, stated plainly, because the gap is easy to
+ * read past. This check delivers "every id contains at least one dot". The
+ * dead-key check needs something strictly stronger: that `DOTTED_LITERAL`
+ * matches the id whole, and that pattern requires EVERY segment to begin with
+ * a letter. Having a dot is necessary, not sufficient, and the difference is
+ * not hypothetical — `canvas.nodePlaceholder.3d` is in all five catalogs
+ * today, has two dots, passes this check, and cannot be matched, because the
+ * `3d` segment starts with a digit. It survives only because the one file
+ * reading it builds the id with a template literal, so the interpolated-prefix
+ * path covers it; rewritten as a plain call it would be reported dead.
  *
- * What this check does not do: say anything about a catalog with no keys, or
- * about a non-string leaf deeper than the top level. Both belong to the
- * dead-key check's handling of degenerate input and are tracked separately.
- * Reading this one as covering them is the mistake worth naming, since a
- * check that looks adjacent to a gap is how the gap stays open.
+ * Three more shapes sit in that same gap and this check sees none of them:
+ * an array NESTED under a namespace (top-level values are all it inspects, so
+ * `errors.list.0` passes), a key whose own name contains a dot (`a.b` reads as
+ * two segments and resolves to nothing at runtime), and a top-level namespace
+ * named with the empty string (which puts a dotless id back in play). None
+ * exist in the catalogs today — measured, not assumed — which is why closing
+ * them is tracked as its own task rather than done here.
+ *
+ * The honest summary: this closes the dotless shape, which is the one that
+ * actually bit. It does not certify that every catalog id is matchable, and
+ * the dead-key check's docstring says so where it matters. Reading this as
+ * the full precondition is the mistake worth naming, since a check that looks
+ * adjacent to a gap is how the gap stays open.
+ *
+ * Also outside its scope, for the same reason: a catalog with no keys at all,
+ * and a non-string leaf below the top level. Both belong to the dead-key
+ * check's handling of degenerate input and are tracked separately.
  */
 export const i18nKeysNamespaced = {
   name: "i18n-keys-namespaced",
@@ -65,7 +80,7 @@ export const i18nKeysNamespaced = {
           continue;
         findings.push({
           file: catalog,
-          message: `${key} is a message at the top level, so its id has no dot in it. The dead-key check finds a use by looking for a key's dotted name, and a dotless id cannot be looked for that way — supporting it costs a second, weaker matching path, and losing it means live keys get reported dead. Move it into a namespace: a message shared across the product belongs under \`common\`, one belonging to a feature under that feature's namespace.`,
+          message: `${key} sits at the top level and is not a namespace, so every id under it — the id itself, if it is a message — has no dot. The dead-key check finds a use by looking for a key's dotted name, and a dotless id cannot be looked for that way: supporting it costs a second, weaker matching path, and losing it means live keys get reported dead. A message here belongs in a namespace — \`common\` if the product shares it, the feature's own namespace otherwise. Anything else here (an array, a number, null) is not a catalog shape at all: messages are named, not numbered, so give each one a key.`,
         });
       }
     }

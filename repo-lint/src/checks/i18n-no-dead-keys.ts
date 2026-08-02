@@ -89,11 +89,26 @@ function leafKeys(value: unknown, prefix = "", out: string[] = []): string[] {
 /**
  * A dotted identifier anywhere in a file — `canvas.upload.tooLarge`.
  *
- * Every id has a dot to anchor on, and that is a guarantee rather than an
+ * Every id has a dot to anchor on, and that part is a guarantee rather than an
  * observation: `i18n-keys-namespaced` fails the build on a catalog key that
  * has none. Without it this pattern would need a companion that reads the id
  * out of the translation call instead, and there was one — a second matching
  * path, covering strictly less, kept only for two keys.
+ *
+ * Read that carefully, because it is only half of what this pattern asks. A
+ * dot is necessary; it is not sufficient. Every SEGMENT here must also begin
+ * with a letter, and nothing upstream guarantees that. One catalog key already
+ * fails it: `canvas.nodePlaceholder.3d`, in all five locales. It is alive only
+ * because the one file that reads it builds the id with a template literal, so
+ * `TEMPLATE_PREFIX` covers the whole namespace; rewrite that line as a plain
+ * `t('canvas.nodePlaceholder.3d')` — the form the very next line of that file
+ * uses — and this check reports a live key dead. The removed second path did
+ * match it, since its character class allowed a digit to lead a segment.
+ *
+ * So the removal traded a real, narrow piece of coverage for one matching path
+ * instead of two. That trade is deliberate and the residue is written down
+ * rather than papered over; closing it (align the two shapes, or rename the
+ * key) is tracked as its own task.
  *
  * Widening this to bare words is not the alternative it looks like. `cancel`
  * and `loading` are ordinary words that appear all over the tree as enum
@@ -127,7 +142,10 @@ const TEMPLATE_PREFIX = /`([a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)*\.)\$\{/g;
  * One matching path, not two, and that rests on `i18n-keys-namespaced`: every
  * id has a dot because that check fails the build on a catalog key without
  * one. Delete it and this one starts reporting live keys as dead — the shape
- * it forbids is the shape `DOTTED_LITERAL` cannot see.
+ * it forbids is a shape `DOTTED_LITERAL` cannot see. A shape, not every shape:
+ * the two are not the same set, and where they differ is spelled out on
+ * `DOTTED_LITERAL` below. Nothing enforces that dependency mechanically, so
+ * deleting the upstream check leaves this suite green.
  *
  * Within that scope the matching stays generous, since the two mistakes do not
  * cost the same: a live key called dead ships a raw id to the UI, while a dead
