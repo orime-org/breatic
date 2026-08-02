@@ -6,7 +6,7 @@ import * as React from 'react';
 
 import { toast } from '@web/lib/toast';
 import { docName, getDoc } from '@web/data/yjs/manager';
-import { useCaretUser } from '@web/data/yjs/use-caret-user';
+import { useCaretUser } from '@web/features/collab-editor/use-caret-user';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';

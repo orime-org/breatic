@@ -10,17 +10,20 @@
  * destroy observers around construction and detaching the difference on
  * teardown, but only for a manager the plugin builds itself.
  *
- * This editor supplies its own manager (it has to be readable without a
- * plugin-key lookup), which opts out of that workaround and makes the cleanup
- * ours. Skip it and every editor teardown that leaves the Y.Doc alive strands a
- * dead manager — with its undo and redo stacks, and the deleted content those
- * stacks keep alive through `keepItem` — permanently reachable from a document
- * that now never dies.
+ * Neither of our managers is one the plugin builds, so the cleanup is ours —
+ * for BOTH of them. Skip it and every teardown that leaves the Y.Doc alive
+ * strands a dead manager, with its undo and redo stacks and the deleted content
+ * those stacks keep alive through `keepItem`, permanently reachable from a
+ * document that now never dies.
+ *
+ * Listed together on purpose: the document manager was fixed first and the
+ * canvas one was left with the identical bug for a while.
  */
 
 import { describe, it, expect } from 'vitest';
 import * as Y from 'yjs';
 
+import { createCanvasUndoManager } from '@web/data/yjs/canvas-space';
 import { createDocumentUndoManager } from '@web/spaces/document/document-undo';
 
 /** Reach the doc's observer registry the way y-tiptap's own workaround does. */
@@ -33,21 +36,32 @@ function destroyListenerCount(doc: Y.Doc): number {
   return observers?.get('destroy')?.size ?? 0;
 }
 
-describe('the document undo manager', () => {
-  it('detaches everything it attached to the Y.Doc', () => {
-    const doc = new Y.Doc();
-    const before = destroyListenerCount(doc);
+/** Every undo manager we build. Both have the same leak and the same wrapper. */
+const UNDO_MANAGERS: ReadonlyArray<{
+  name: string;
+  create: (doc: Y.Doc) => { destroy: () => void };
+}> = [
+  { name: 'document', create: createDocumentUndoManager },
+  { name: 'canvas', create: createCanvasUndoManager },
+];
 
-    const manager = createDocumentUndoManager(doc);
-    expect(destroyListenerCount(doc)).toBeGreaterThan(before);
+describe('an undo manager', () => {
+  for (const target of UNDO_MANAGERS) {
+    it(`detaches everything it attached to the Y.Doc: ${target.name}`, () => {
+      const doc = new Y.Doc();
+      const before = destroyListenerCount(doc);
 
-    manager.destroy();
+      const manager = target.create(doc);
+      expect(destroyListenerCount(doc)).toBeGreaterThan(before);
 
-    // The Y.Doc outlives the editor whenever a tab is closed and reopened
-    // before the deferred teardown runs — a re-acquire cancels it — so this is
-    // the difference between a bounded session and one that accumulates a dead
-    // manager per cycle.
-    expect(destroyListenerCount(doc)).toBe(before);
-    doc.destroy();
-  });
+      manager.destroy();
+
+      // The Y.Doc outlives the manager whenever a tab is closed and reopened
+      // before the deferred teardown runs — a re-acquire cancels it — so this
+      // is the difference between a bounded session and one that accumulates a
+      // dead manager per cycle.
+      expect(destroyListenerCount(doc)).toBe(before);
+      doc.destroy();
+    });
+  }
 });

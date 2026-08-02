@@ -662,6 +662,11 @@ function ProjectWorkspace({
         The banner and the curtain below say what went wrong. That is the whole
         job. Edits made while offline are not lost either — the provider
         re-syncs on every reconnect.
+
+        `data-workspace` is a stable hook for tests to find this element in
+        BOTH states: `data-workspace-disabled` is conditional and cannot be
+        selected on when absent, and a class list would pin the assertion to
+        styling.
       */}
       <div
         className='relative flex min-h-0 flex-1 flex-col'

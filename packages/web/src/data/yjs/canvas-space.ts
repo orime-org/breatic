@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import * as Y from 'yjs';
 import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
 
@@ -134,10 +135,18 @@ export const MAX_UNDO_DEPTH = 50;
 export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
-  const undoManager = new Y.UndoManager([nodesMap, edgesMap], {
-    trackedOrigins: new Set([CANVAS_UNDO]),
-    captureTimeout: 0,
-  });
+  // Same wrapper the document manager uses: `Y.UndoManager` leaks a doc
+  // `destroy` listener that its own `destroy()` never removes, and this manager
+  // is evicted while its Y.Doc can still be alive (a Space tab closed and
+  // reopened within one macrotask cancels the deferred provider release).
+  const undoManager = withDestroyListenerCleanup(
+    doc,
+    () =>
+      new Y.UndoManager([nodesMap, edgesMap], {
+        trackedOrigins: new Set([CANVAS_UNDO]),
+        captureTimeout: 0,
+      }),
+  );
   undoManager.on('stack-item-added', () => {
     while (undoManager.undoStack.length > MAX_UNDO_DEPTH) {
       undoManager.undoStack.shift();

@@ -41,7 +41,7 @@ import type * as Y from 'yjs';
 
 import { t } from '@breatic/shared';
 
-import type { CaretUserIdentity } from '@web/data/yjs/use-caret-user';
+import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import { Audio, Video } from '@web/spaces/document/document-media-nodes';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';

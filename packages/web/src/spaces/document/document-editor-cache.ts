@@ -43,7 +43,7 @@ import { Editor } from '@tiptap/react';
 import type * as Y from 'yjs';
 
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import type { CaretUserIdentity } from '@web/data/yjs/use-caret-user';
+import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import {
   createDocumentUndoManager,
@@ -130,7 +130,16 @@ export function getDocumentEditor(
   name: string,
   inputs: DocumentEditorInputs,
 ): DocumentEditorHandle {
-  return cache.get(doc, name, inputs);
+  const handle = cache.get(doc, name, inputs);
+  // On a cache HIT the inputs above are ignored by design — the editor is not
+  // rebuilt, or it would lose the undo stack and the selection. But editability
+  // must still be right from this render, not from an effect that runs after
+  // the first paint: a viewer reopening a document someone editable had open
+  // would otherwise get a `contenteditable` body for a frame.
+  if (!handle.editor.isDestroyed && handle.editor.isEditable !== inputs.editable) {
+    handle.editor.setEditable(inputs.editable);
+  }
+  return handle;
 }
 
 /**

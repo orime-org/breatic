@@ -33,7 +33,7 @@
 import type { Editor } from '@tiptap/react';
 import * as React from 'react';
 
-import type { CaretUserIdentity } from '@web/data/yjs/use-caret-user';
+import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 
 /** The slice of awareness this hook reads. */
 interface FocusAwareness {
@@ -105,6 +105,12 @@ export function useCollabCaretPresence(
     return (): void => {
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('blur', onBlur);
+      // Withdraw the caret. The editor is NOT destroyed when this unmounts —
+      // it is cached per document and survives a Space-tab switch — so the
+      // cursor plugin never gets its own teardown, and everyone else would go
+      // on seeing this client parked where they left off, indefinitely.
+      const presence = awareness as { setLocalStateField?: (k: string, v: unknown) => void };
+      presence.setLocalStateField?.('cursor', null);
     };
   }, [editor, awareness, caretUser]);
 

@@ -40,7 +40,7 @@ import { Collaboration } from '@tiptap/extension-collaboration';
 import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
 import type * as Y from 'yjs';
 
-import type { CaretUserIdentity } from '@web/data/yjs/use-caret-user';
+import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 import { CollabCaretRefresh } from '@web/features/collab-editor/collab-caret-refresh';
 import { CollabUndoSelection } from '@web/features/collab-editor/collab-undo-selection';
 import {

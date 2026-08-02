@@ -17,7 +17,7 @@
 import * as React from 'react';
 import type * as Y from 'yjs';
 
-import type { CaretUserIdentity } from '@web/data/yjs/use-caret-user';
+import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import {
   getDocumentEditor,
