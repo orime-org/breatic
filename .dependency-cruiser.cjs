@@ -1,6 +1,6 @@
 /**
  * dependency-cruiser config — declarative architecture-boundary rules
- * (CI maximal-strictness guard suite, inner ADR 2026-06-01).
+ * (CI maximal-strictness guard suite, ADR 2026-06-01).
  *
  * The single declarative home for the repo's import-boundary rules. The
  * package-level import bans that used to be hand-rolled bash grep guards

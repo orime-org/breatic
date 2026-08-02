@@ -17,7 +17,7 @@
  *   - the old slug stops resolving the moment the new one takes effect
  *
  * @see packages/server/src/modules/studio/studio.service.ts
- * @see inner engineering/specs 2026-07-28 studio settings design, section 4
+ * @see studio settings design (2026-07-28) § 4
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
