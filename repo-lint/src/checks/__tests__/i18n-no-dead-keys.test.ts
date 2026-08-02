@@ -93,10 +93,19 @@ describe("i18n-no-dead-keys", () => {
     // the two checks is written down. Delete the upstream one and this is the
     // behaviour that comes back: a live key, used twice, reported dead, and a
     // raw id shipped to the UI. That happened once, to `cancel` and `loading`.
+    //
+    // `common.ok` is the control, and it is what lets this test fail at all.
+    // Asserting only "the dotless key is reported" stays true when matching is
+    // deleted outright — every key is reported then. It was written that way
+    // first, and a mutation deleting the literal scan left it green while six
+    // other tests in this file went red.
     const findings = i18nNoDeadKeys.run(
       repo(
-        { cancel: "Cancel" },
-        { "packages/web/src/a.tsx": "<Button>{t('cancel')}</Button>" },
+        { cancel: "Cancel", common: { ok: "OK" } },
+        {
+          "packages/web/src/a.tsx":
+            "<Button>{t('cancel')}</Button><Confirm label={t('cancel')} onOk={t('common.ok')} />",
+        },
       ),
     );
     expect(findings).toHaveLength(1);
@@ -108,10 +117,14 @@ describe("i18n-no-dead-keys", () => {
     // source below contains `next`, which is the key's final segment and an
     // ordinary word besides — matching on it would exempt every key whose last
     // segment is a common one, which is most of them.
+    //
+    // `nav.back` is the control, for the same reason as the test above: without
+    // a key that must survive, "the dead key is reported" is also what a check
+    // that reports everything does.
     const findings = i18nNoDeadKeys.run(
       repo(
-        { nav: { next: "Next" } },
-        { "packages/web/src/a.tsx": "params.get('next');" },
+        { nav: { next: "Next", back: "Back" } },
+        { "packages/web/src/a.tsx": "t('nav.back'); params.get('next');" },
       ),
     );
     expect(findings).toHaveLength(1);
