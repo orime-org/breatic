@@ -2,17 +2,38 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The document editor's schema must be COMPLETE from the first release.
+ * This slice delivers a COLLABORATIVE SURFACE, not an editor's feature set.
  *
- * Why this file exists: y-tiptap deletes any node or mark its schema does not
- * recognise, and commits that deletion as an ordinary local change — so it
- * syncs to every peer and persists. A client running an older bundle whose
- * schema lacks (say) `table` therefore destroys every table in the shared
- * document, permanently and silently, with no entry in anyone's undo stack.
+ * The document Space ships in slices. This one is the foundation: a body bound
+ * to Yjs, carets, undo, persistence — everything needed for two people to type
+ * into the same document at once. Formatting, block structure and media are a
+ * separate body of work that arrives whole in later slices.
  *
- * The lists below are deliberately hard-coded rather than imported from the
- * implementation: their whole purpose is to fail when a later slice introduces
- * content the schema forgot to register.
+ * So the editing surface here is PLAIN TEXT, and the lists below pin that down:
+ * paragraphs, text, and a line break. Every block type and every mark is
+ * switched off, including the ones StarterKit enables by default — because a
+ * default nobody chose is still a feature users can reach. Type `# ` today and
+ * StarterKit's input rule turns the line into a heading; that heading belongs
+ * to a slice that has not been designed yet, and it drags real consequences
+ * with it (see the undo note below).
+ *
+ * An earlier version of this file asserted the OPPOSITE — that every node any
+ * future slice might need was already registered. The reasoning was that
+ * y-tiptap deletes nodes its schema does not recognise, so an older client
+ * would destroy newer content. That mechanism is real, but it needs a client
+ * that can PRODUCE the content, and none can here. The right place to handle it
+ * is the slice that first makes a node reachable: register the schema, release
+ * it, and only then ship the UI that writes it.
+ *
+ * Two things a later slice MUST do when it turns any of these back on:
+ *   1. Move the name out of the forbidden list below into an assertion that it
+ *      IS registered — with its ATTRIBUTES, which are dropped by the same
+ *      mechanism as unknown nodes and are the easy half to forget.
+ *   2. Widen the undo manager's protected-node list. It currently protects
+ *      `paragraph` alone (see `document-undo.ts`), which is complete only
+ *      because a paragraph is all this document can hold. Add a heading without
+ *      it and one person's undo deletes what another wrote inside that heading,
+ *      syncs the deletion to everyone, and leaves no entry in their undo stack.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -26,21 +47,28 @@ import { buildDocumentExtensions } from '@web/spaces/document/document-extension
  * A throwaway fragment, for asserting on the schema alone. The collaboration
  * extensions contribute no node or mark, so the schema is the same as
  * production's.
+ * @returns An empty fragment, standing in for a real document body.
  */
 function schemaFragment(): Y.XmlFragment {
   return new Y.Doc().getXmlFragment('content');
 }
 
-/**
- * Every node the document will ever hold, across all delivery slices.
- * UI for most of these lands later; the SCHEMA must exist from slice 1.
- */
-const REQUIRED_NODES: ReadonlyArray<string> = [
-  // Core
+/** The whole editing surface of this slice. Nothing else may be reachable. */
+const ALLOWED_NODES: ReadonlyArray<string> = [
   'doc',
   'paragraph',
   'text',
   'hardBreak',
+];
+
+/**
+ * Block types that must NOT be registered yet, and the slice that owns each.
+ *
+ * StarterKit enables the first seven by default and gives every one of them an
+ * input rule, so leaving any of them on hands users a feature this slice never
+ * designed.
+ */
+const FORBIDDEN_NODES: ReadonlyArray<string> = [
   // Slice 2 — basic editing
   'heading',
   'bulletList',
@@ -49,7 +77,6 @@ const REQUIRED_NODES: ReadonlyArray<string> = [
   'blockquote',
   'codeBlock',
   'horizontalRule',
-  // Slice 2 — task list
   'taskList',
   'taskItem',
   // Slice 4 — tables
@@ -57,14 +84,23 @@ const REQUIRED_NODES: ReadonlyArray<string> = [
   'tableRow',
   'tableCell',
   'tableHeader',
-  // Slice 5 / 6 — inline media
+  // Slice 5 — media
   'image',
   'video',
   'audio',
 ];
 
-/** Every mark the document will ever hold, across all delivery slices. */
-const REQUIRED_MARKS: ReadonlyArray<string> = [
+/**
+ * Marks that must NOT be registered yet.
+ *
+ * Bold, italic and strike are the ones worth spelling out: their toolbar
+ * buttons are still on screen. The buttons are deliberately inert — the UI keeps
+ * its final shape while the capability lands in slice 2 — and a mark registered
+ * behind an inert button would be reachable by keyboard shortcut anyway, which
+ * is exactly the "no entry point but still producible" state this file exists
+ * to prevent.
+ */
+const FORBIDDEN_MARKS: ReadonlyArray<string> = [
   'bold',
   'italic',
   'strike',
@@ -76,52 +112,48 @@ const REQUIRED_MARKS: ReadonlyArray<string> = [
 ];
 
 /**
- * Attributes matter as much as names.
+ * Attributes that must NOT be declared yet.
  *
- * An extension can contribute no node at all and still change the schema —
- * TextAlign only hangs a `textAlign` field on nodes that already exist. And an
- * undeclared attribute is dropped by exactly the mechanism that drops an
- * undeclared node: y-tiptap compares attribute sets, finds one it cannot
- * account for, and strips it in a local transaction that then syncs and
- * persists. Checking node names alone let TextAlign slip through once already.
+ * An extension can contribute no node at all and still change the schema:
+ * TextAlign only hangs a `textAlign` field on nodes that already exist. Absence
+ * of a node name therefore does not prove absence of a capability.
  */
-const REQUIRED_NODE_ATTRS: Readonly<Record<string, ReadonlyArray<string>>> = {
+const FORBIDDEN_NODE_ATTRS: Readonly<Record<string, ReadonlyArray<string>>> = {
   paragraph: ['textAlign'],
-  heading: ['textAlign', 'level'],
-  // `width` and `height` back the drag-to-resize the media slice specifies;
-  // `textAlign` backs its alignment control. Both are attributes on a node
-  // that already exists, which is the failure mode this file exists to catch —
-  // the node survives an older client, the attribute does not.
-  image: ['src', 'alt', 'title', 'width', 'height', 'textAlign'],
-  // Sizing belongs on all three, not just the image. They are the same kind of
-  // thing — block-level media the slice lets the author size — and an author
-  // who resizes a video on a newer bundle would otherwise have it snap back to
-  // default on every older client that touches the document.
-  video: ['src', 'poster', 'title', 'width', 'height', 'textAlign'],
-  audio: ['src', 'title', 'width', 'height', 'textAlign'],
-  tableCell: ['colspan', 'rowspan', 'colwidth'],
-  tableHeader: ['colspan', 'rowspan', 'colwidth'],
-  taskItem: ['checked'],
-  codeBlock: ['language'],
 };
 
-/** Mark attributes, same reasoning as {@link REQUIRED_NODE_ATTRS}. */
-const REQUIRED_MARK_ATTRS: Readonly<Record<string, ReadonlyArray<string>>> = {
-  link: ['href', 'target', 'rel'],
-  highlight: ['color'],
-};
-
-describe('document schema — complete from slice 1 (guards against silent prose destruction)', () => {
-  it('registers every node type the document will ever hold', () => {
+describe('document schema — plain text only in this slice', () => {
+  it('registers nothing beyond a paragraph, its text, and a line break', () => {
     const schema = getSchema(buildDocumentExtensions({ fragment: schemaFragment() }));
-    const missing = REQUIRED_NODES.filter((n) => !(n in schema.nodes));
-    expect(missing).toEqual([]);
+    const unexpected = Object.keys(schema.nodes).filter(
+      (name) => !ALLOWED_NODES.includes(name),
+    );
+    expect(unexpected).toEqual([]);
   });
 
-  it('registers every mark type the document will ever hold', () => {
+  it('keeps every block type of a later slice out of the schema', () => {
     const schema = getSchema(buildDocumentExtensions({ fragment: schemaFragment() }));
-    const missing = REQUIRED_MARKS.filter((m) => !(m in schema.marks));
-    expect(missing).toEqual([]);
+    const present = FORBIDDEN_NODES.filter((name) => name in schema.nodes);
+    expect(present).toEqual([]);
+  });
+
+  it('registers no marks at all', () => {
+    const schema = getSchema(buildDocumentExtensions({ fragment: schemaFragment() }));
+    expect(Object.keys(schema.marks)).toEqual([]);
+    const present = FORBIDDEN_MARKS.filter((name) => name in schema.marks);
+    expect(present).toEqual([]);
+  });
+
+  it('declares no attribute belonging to a later slice', () => {
+    const schema = getSchema(buildDocumentExtensions({ fragment: schemaFragment() }));
+    const present: string[] = [];
+    for (const [nodeName, attrs] of Object.entries(FORBIDDEN_NODE_ATTRS)) {
+      const declared = Object.keys(schema.nodes[nodeName]?.spec.attrs ?? {});
+      for (const attr of attrs) {
+        if (declared.includes(attr)) present.push(`${nodeName}.${attr}`);
+      }
+    }
+    expect(present).toEqual([]);
   });
 
   it('switches off StarterKit history — Collaboration owns undo', () => {
@@ -137,46 +169,5 @@ describe('document schema — complete from slice 1 (guards against silent prose
     expect(
       (starterKit?.options as { undoRedo?: unknown } | undefined)?.undoRedo,
     ).toBe(false);
-  });
-
-  it('registers every attribute the document will ever carry', () => {
-    const schema = getSchema(buildDocumentExtensions({ fragment: schemaFragment() }));
-    const missing: string[] = [];
-    for (const [nodeName, attrs] of Object.entries(REQUIRED_NODE_ATTRS)) {
-      const declared = Object.keys(schema.nodes[nodeName]?.spec.attrs ?? {});
-      for (const attr of attrs) {
-        if (!declared.includes(attr)) missing.push(`${nodeName}.${attr}`);
-      }
-    }
-    for (const [markName, attrs] of Object.entries(REQUIRED_MARK_ATTRS)) {
-      const declared = Object.keys(schema.marks[markName]?.spec.attrs ?? {});
-      for (const attr of attrs) {
-        if (!declared.includes(attr)) missing.push(`${markName}.${attr}`);
-      }
-    }
-    expect(missing).toEqual([]);
-  });
-
-  it('keeps the media nodes as block-level atoms so a slice-1 client can hold them intact', () => {
-    // Both properties are load-bearing and neither is the default. A media node
-    // that is not an ATOM has editable innards, so a caret can land inside it
-    // and a keystroke can produce a shape the schema does not describe. One
-    // that is not BLOCK is an inline node, which changes where it may appear
-    // and how a client that cannot render it treats the surrounding text.
-    // Asserting the names alone would let either flip silently.
-    const schema = getSchema(buildDocumentExtensions({ fragment: schemaFragment() }));
-    for (const kind of ['image', 'video', 'audio']) {
-      const node = schema.nodes[kind];
-      expect(node).toBeDefined();
-      expect(node.isAtom).toBe(true);
-      expect(node.isBlock).toBe(true);
-      expect(node.isInline).toBe(false);
-    }
-    // Video and audio carry a poster/cover URL alongside their source, so the
-    // attributes must exist in slice 1 even though no UI writes them yet —
-    // an unknown ATTRIBUTE is dropped the same way an unknown node is.
-    expect(Object.keys(schema.nodes.video.spec.attrs ?? {})).toContain('src');
-    expect(Object.keys(schema.nodes.video.spec.attrs ?? {})).toContain('poster');
-    expect(Object.keys(schema.nodes.audio.spec.attrs ?? {})).toContain('src');
   });
 });

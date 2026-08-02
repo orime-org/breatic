@@ -82,9 +82,17 @@ export interface DocumentUndoManager extends Y.UndoManager {
  * The filter is upstream's, unmodified. An earlier version of this file added a
  * rule refusing to delete the body's last child, to stop undo emptying the
  * fragment; `seedEmptyBody` in `document-yjs` removes the need by keeping a
- * paragraph there from the start, which also covers the block types the extra
- * rule could not
- * (an empty list or blockquote violates the schema and gets deleted anyway).
+ * paragraph there from the start.
+ *
+ * **`defaultProtectedNodes` is `Set { 'paragraph' }` — and that is complete
+ * here only because a paragraph is all this document can hold.** The next slice
+ * to register a block type MUST widen it, or the measured failure above returns
+ * one level up: Alice writes a heading, Bob appends to that same heading, Alice
+ * presses undo, and the whole heading goes — his text with it, synced to
+ * everyone, absent from his undo stack. The upstream default is written for a
+ * prompt editor that only ever holds paragraphs; it is not a statement about
+ * what is safe in general. `document-extensions.ts` and its test carry the
+ * matching reminder.
  *
  * `captureTransaction` honours the `addToHistory: false` marker, so
  * machine-driven edits stay off the stack.

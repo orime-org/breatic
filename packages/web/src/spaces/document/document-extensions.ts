@@ -4,38 +4,37 @@
 /**
  * The document editor's extension list — and with it, its ProseMirror schema.
  *
- * **The schema ships whole, ahead of the UI that fills it.** Everything the
- * planned slices will put in a document is registered here even where nothing
- * can yet create it. This is not tidiness, it is a data-safety requirement:
- * y-tiptap deletes any node, mark, or ATTRIBUTE its schema does not recognise,
- * and commits that deletion as an ordinary local change — so it syncs to every
- * peer and persists. A client on an older bundle would therefore erase content
- * newer clients had written, silently and with no entry in anyone's undo stack.
+ * **This slice delivers a collaborative surface, not an editor's feature set.**
+ * The body binds to Yjs, carets appear, undo works, everything persists. What
+ * users can WRITE into that body is plain text: paragraphs, and a line break.
+ * Formatting, block structure and media are a separate body of work that
+ * arrives whole in a later slice, together with its toolbar.
  *
- * Consequence for later slices: **adding UI is fine, adding schema is not.** A
- * new node, mark, or attribute has to be introduced here and released before
- * anything can produce it. Attributes are the easy one to miss — extensions
- * like TextAlign contribute no node at all, only a field on existing ones, and
- * an undeclared field is dropped exactly like an undeclared node.
+ * That is why StarterKit is configured almost entirely off. Every switch below
+ * turns off something StarterKit enables BY DEFAULT, and each default carries
+ * an input rule with it — `# ` becomes a heading, `- ` a list, `> ` a quote,
+ * three backticks a code block. A default nobody chose is still a feature users
+ * can reach, and reaching it here has a real consequence: the undo manager
+ * protects `paragraph` alone (see `document-undo.ts`), which is complete only
+ * while a paragraph is all this document can hold.
  *
- * Where this is NOT yet complete: the comment slice's anchoring primitive is
- * still open in the design (a mark was the original plan and was sent back for
- * a decision), so whatever it settles on has to be registered here and released
- * before comments ship.
+ * **What a later slice must do when it turns any of this back on:**
+ *
+ * 1. Register the node or mark AND its attributes. y-tiptap deletes anything
+ *    its schema does not recognise — including an undeclared ATTRIBUTE on a
+ *    node it otherwise knows — and commits that deletion as an ordinary local
+ *    change, so it syncs to every peer and persists.
+ * 2. Release the schema BEFORE shipping the UI that writes it. The client that
+ *    destroys content is the one running the older bundle; giving it the schema
+ *    first is what closes that window. How long the window is depends on how we
+ *    deploy, which is a question that slice has to answer before it starts.
+ * 3. Widen the undo manager's protected-node list to cover it.
+ *
+ * `__tests__/document-extensions.test.ts` holds those lists as a machine check.
  */
 
 import type { Extensions } from '@tiptap/core';
-import { Highlight } from '@tiptap/extension-highlight';
-import { Image } from '@tiptap/extension-image';
 import { Placeholder } from '@tiptap/extension-placeholder';
-import { Table } from '@tiptap/extension-table';
-import { TableCell } from '@tiptap/extension-table-cell';
-import { TableHeader } from '@tiptap/extension-table-header';
-import { TableRow } from '@tiptap/extension-table-row';
-import { TaskItem } from '@tiptap/extension-task-item';
-import { TaskList } from '@tiptap/extension-task-list';
-import { TextAlign } from '@tiptap/extension-text-align';
-import { TextStyle } from '@tiptap/extension-text-style';
 import StarterKit from '@tiptap/starter-kit';
 import type * as Y from 'yjs';
 
@@ -43,7 +42,6 @@ import { t } from '@breatic/shared';
 
 import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
-import { Audio, Video } from '@web/spaces/document/document-media-nodes';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
 /** Inputs that switch on the collaborative layers; all optional. */
@@ -77,10 +75,9 @@ export interface DocumentExtensionOptions {
 /**
  * Build the document editor's extension list.
  *
- * The schema-bearing extensions are unconditional — see the module doc for why
- * they must not vary by slice or by whether collaboration is active. Only the
- * collaborative layers (binding, carets) and the placeholder are conditional,
- * and none of them contributes a node or mark.
+ * Only the collaborative layers (binding, carets) and the placeholder are
+ * conditional, and none of them contributes a node or mark — so the schema is
+ * the same whether or not collaboration is active.
  * @param options - The body fragment plus the collaborative wiring.
  * @returns The full extension list, ready for `useEditor`.
  */
@@ -91,6 +88,33 @@ export function buildDocumentExtensions(
 
   const extensions: Extensions = [
     StarterKit.configure({
+      // ── Block types — all of slice 2 onwards ──
+      // Each of these ships an input rule, so leaving one on lets a user create
+      // content this slice has no design for and whose undo is unprotected.
+      heading: false,
+      bulletList: false,
+      orderedList: false,
+      listItem: false,
+      // Keyboard handling for lists that no longer exist. Off with them, rather
+      // than left looking for node types the schema does not have.
+      listKeymap: false,
+      blockquote: false,
+      codeBlock: false,
+      horizontalRule: false,
+
+      // ── Marks — all of slice 2 ──
+      // Bold, italic and strike still have toolbar buttons on screen: the
+      // toolbar keeps its final shape while the capability lands later, and the
+      // buttons do nothing until it does. Registering the marks behind them
+      // would make the capability reachable by keyboard shortcut regardless,
+      // which is the state this whole configuration exists to avoid.
+      bold: false,
+      italic: false,
+      strike: false,
+      underline: false,
+      code: false,
+      link: false,
+
       // Collaboration owns history through the shared Yjs undo manager, which
       // tracks only this client's transactions. Leaving StarterKit's own
       // history in place gives the editor a second, client-blind undo stack:
@@ -98,54 +122,33 @@ export function buildDocumentExtensions(
       // deletes their paragraph. Verified by mutation — switching this back on
       // turns the document to an empty string in the per-client undo test.
       undoRedo: false,
-      // Off for the same reason, one layer down: TrailingNode appends a
-      // paragraph whenever the last block is not one, and in a shared document
-      // that append is a WRITE. It broadcasts, it lands on the undo stack of
-      // whoever opened the file, and it fires for a read-only viewer too —
-      // `setEditable(false)` stops keystrokes, not a plugin's own
+      // TrailingNode appends a paragraph whenever the body's last block is not
+      // one, and in a shared document that append is a WRITE.
+      //
+      // **It cannot fire in this slice** — measured, by removing this line and
+      // watching the extension really enter the tree while every test still
+      // passed: a ProseMirror doc always holds at least one block, and a
+      // paragraph is the only block type registered, so "the last block is not
+      // a paragraph" is never true. Nothing observable changes today either
+      // way, so `no-client-side-repair` does not cover it and says so.
+      //
+      // It is off regardless, because the slice that registers the first other
+      // block type would otherwise inherit it switched on — and there it does
+      // real damage: the append broadcasts, it lands on the undo stack of
+      // whoever opened the file, and it fires for a read-only viewer too, since
+      // `setEditable(false)` stops keystrokes rather than a plugin's own
       // appendTransaction. The server drops a viewer's update without an error,
       // so that client sits permanently one paragraph ahead with nothing to
-      // signal it.
-      //
-      // It also revives the defect the seeded body exists to prevent: undo back
+      // signal it. It also revives what the seeded body prevents: undo back
       // past the appended paragraph, click once, and it is re-appended as a
       // fresh local edit — clearing the redo stack and stranding the text just
-      // undone. The seed only ever covered an EMPTY body; this fires on a body
-      // that merely ENDS in a heading, a table, an image.
+      // undone.
       //
-      // What is lost is the convenience of always having a paragraph to click
-      // after a trailing table or image. That belongs to the editing slice and
-      // has to be built without writing to the document — a rendered affordance
-      // that inserts only when the user actually puts the caret in it.
+      // What that slice gives up is the convenience of always having a
+      // paragraph to click after a trailing table or image, and it has to build
+      // that back without writing to the document — a rendered affordance that
+      // inserts only when the user actually puts the caret in it.
       trailingNode: false,
-    }),
-    // ── Schema completed here; UI for these lands in later slices ──
-    TaskList,
-    TaskItem.configure({ nested: true }),
-    Table.configure({ resizable: true }),
-    TableRow,
-    TableHeader,
-    TableCell,
-    Image,
-    Video,
-    Audio,
-    Highlight.configure({ multicolor: true }),
-    TextStyle,
-    // Attributes count too, not just node and mark names. TextAlign adds no
-    // node of its own — it hangs a `textAlign` attribute on existing ones — and
-    // y-tiptap strips any attribute the local schema does not declare, by the
-    // same mechanism that drops an unknown node. Ship it now, with the toolbar
-    // control following later, or the release that adds alignment would have
-    // older clients erasing it from every paragraph they touch.
-    //
-    // The media nodes are on the list because the media slice specifies an
-    // alignment control for images, and because all three are block-level: the
-    // capability is the same shape for each, so declaring it once here costs a
-    // single array entry, while omitting it costs a migration. Which of them
-    // gets a toolbar button is a separate, reversible decision — an attribute
-    // nothing writes is inert, an attribute nothing declared is a data loss.
-    TextAlign.configure({
-      types: ['heading', 'paragraph', 'image', 'video', 'audio'],
     }),
   ];
 
