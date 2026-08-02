@@ -52,8 +52,6 @@
       "already_running": "另一個文字工具正在執行,請稍候。"
     }
   },
-  "cancel": "取消",
-  "loading": "載入中...",
   "chat": {
     "composer": {
       "selectMode": {
@@ -410,7 +408,8 @@
     }
   },
   "common": {
-    "cancel": "取消"
+    "cancel": "取消",
+    "loading": "載入中..."
   },
   "members": {
     "popover": {

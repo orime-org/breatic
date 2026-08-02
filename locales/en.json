@@ -52,8 +52,6 @@
       "price_not_configured": "Price not configured for tier: {tier}"
     }
   },
-  "cancel": "Cancel",
-  "loading": "Loading...",
   "chat": {
     "composer": {
       "selectMode": {
@@ -410,7 +408,8 @@
     }
   },
   "common": {
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "loading": "Loading..."
   },
   "members": {
     "popover": {

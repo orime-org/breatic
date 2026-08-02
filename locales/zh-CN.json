@@ -52,8 +52,6 @@
       "price_not_configured": "套餐 {tier} 的价格未配置"
     }
   },
-  "cancel": "取消",
-  "loading": "加载中...",
   "chat": {
     "composer": {
       "selectMode": {
@@ -410,7 +408,8 @@
     }
   },
   "common": {
-    "cancel": "取消"
+    "cancel": "取消",
+    "loading": "加载中..."
   },
   "members": {
     "popover": {

@@ -52,8 +52,6 @@
       "price_not_configured": "{tier} 요금제의 가격이 설정되지 않았습니다"
     }
   },
-  "cancel": "취소",
-  "loading": "불러오는 중...",
   "chat": {
     "composer": {
       "selectMode": {
@@ -410,7 +408,8 @@
     }
   },
   "common": {
-    "cancel": "취소"
+    "cancel": "취소",
+    "loading": "불러오는 중..."
   },
   "members": {
     "popover": {
