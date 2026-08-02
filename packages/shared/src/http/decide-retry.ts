@@ -296,6 +296,22 @@ export function decideRetry(input: RetryInput): RetryDecision {
     return { retry: false, reason: "fatal_error" };
   }
 
+  // ── Platform semantics: not "should we replay" but "can we" ──
+  // Ahead of everything about status, because no status changes it. 429 and
+  // 408 retry unconditionally on the grounds that the server never processed
+  // the request — which answers what a replay would COST, and says nothing
+  // about whether one can happen at all. A stream body was consumed by the
+  // first attempt; handing the spent source back to fetch rejects with a
+  // TypeError about a disturbed body, and that TypeError then replaces the
+  // status the server actually sent.
+  //
+  // This sits with `caller_aborted` and `fatal_error` rather than with
+  // `replaySafe` because it is the same kind of fact as those two: an
+  // absolute, not a judgement about consequences.
+  if (input.bodyReplayable === false) {
+    return { retry: false, reason: "body_not_replayable" };
+  }
+
   // Budget before failure kind, so telemetry distinguishes "gave up after
   // trying" from "refused to try".
   if (input.attempt > MAX_RETRIES) {
@@ -330,14 +346,6 @@ export function decideRetry(input: RetryInput): RetryDecision {
   // ── Application semantics: only the caller knows this ──
   if (!input.replaySafe) {
     return { retry: false, reason: "not_replay_safe" };
-  }
-
-  // ── Platform semantics: the transport's own knowledge ──
-  // Checked after the caller's declaration so the more specific fact wins the
-  // reporting: a caller that already said "do not replay this" gets told that,
-  // rather than being told about a body nobody was going to re-send anyway.
-  if (input.bodyReplayable === false) {
-    return { retry: false, reason: "body_not_replayable" };
   }
 
   if (status !== undefined && status >= 500) {

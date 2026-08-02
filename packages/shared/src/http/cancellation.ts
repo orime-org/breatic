@@ -7,8 +7,10 @@
  * Composed by hand rather than with `AbortSignal.any`, which is not in the
  * browser range this package still has to run in. Doing it here also means the
  * abort reason is ours to choose, so "the deadline fired" and "the person
- * pressed stop" do not arrive looking identical — and telling those apart is
- * what decides whether the request may be replayed.
+ * pressed stop" do not arrive looking identical in a caller's logs. Note that
+ * the REPLAY decision does not read the reason: it reads `expired()`, because
+ * an abort carries whatever value the caller passed to `abort()` and that is
+ * not a dependable discriminator.
  *
  * The teardown is the load-bearing part. Detaching from the caller's signal is
  * what lets the transport hold nothing once an attempt ends: a listener left

@@ -220,6 +220,40 @@ describe("httpRequest — replay authorization comes from the caller", () => {
     expect(out.stopped).toBe("body_not_replayable");
   });
 
+  it.each([429, 408])("does not replay a one-shot body even on a %i", async (status) => {
+    // 429 and 408 retry unconditionally BECAUSE the server states it never
+    // processed the request — so the caller's side-effect declaration stops
+    // applying. But it says nothing about whether the bytes can be sent
+    // again, and they cannot: the stream was consumed by attempt 1. Replaying
+    // hands fetch a spent source, which rejects with a TypeError about a
+    // disturbed body — and the caller ends up holding that instead of the
+    // status the server actually sent.
+    //
+    // Two facts, two different questions. "What would a replay cost" is the
+    // caller's and 429 answers it; "can a replay even happen" is the
+    // platform's and 429 has no opinion about it.
+    const { fetchImpl, calls } = scriptedFetch([
+      new Response("slow down", { status, headers: { "retry-after": "1" } }),
+      res(200),
+    ]);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("payload"));
+        controller.close();
+      },
+    });
+
+    const out = await httpRequest(
+      "https://x.test/upload",
+      { method: "POST", body, duplex: "half" } as RequestInit,
+      opts({ fetchImpl, replaySafe: true }),
+    );
+
+    expect(calls()).toBe(1);
+    expect(out.response.status).toBe(status);
+    expect(out.stopped).toBe("body_not_replayable");
+  });
+
   it("still replays a body that can be delivered again", async () => {
     const { fetchImpl, calls } = scriptedFetch([res(503), res(200)]);
     const out = await httpRequest(
@@ -332,6 +366,29 @@ describe("httpRequest — per-attempt deadline", () => {
     await expect(
       httpRequest("https://x.test/slow", {}, opts({ fetchImpl, timeoutMs: MAX_TIMER_MS + 1 })),
     ).rejects.toThrow(/timeout/i);
+  });
+
+  it.each([
+    "undefined/v1/predictions?key=SECRET",
+    "/v1/predictions?key=SECRET",
+    "vendor.test/v1?key=SECRET",
+  ])("refuses %o without delivering it, and without echoing the key", async (url) => {
+    // The transport learns this while redacting the URL for its own messages,
+    // and then used to send it anyway: three deliveries and two backoffs
+    // against a string that can never resolve. Worse, the rejection `fetch`
+    // produces carries the RAW url, so a key in the query string travelled
+    // out in a message that never passed through redaction.
+    const { fetchImpl, calls } = scriptedFetch([res(200)]);
+    let thrown = "";
+    try {
+      await httpRequest(url, {}, opts({ fetchImpl }));
+    } catch (error) {
+      thrown = (error as Error).message;
+    }
+
+    expect(calls()).toBe(0);
+    expect(thrown).not.toContain("SECRET");
+    expect(thrown).toMatch(/not a URL/i);
   });
 
   it.each([Number.NaN, -1, 0])("rejects the unusable timeout %o", async (timeoutMs) => {

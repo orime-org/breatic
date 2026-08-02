@@ -22,8 +22,12 @@
  *   - It holds nothing after it returns. No listener on the caller's signal,
  *     no reference to the response, no callback. An object nobody holds is
  *     collected on its own, so there is no release protocol to get wrong.
- *     Measured: 200 unread responses leave one listener on the caller's
- *     signal, the same as bare `fetch`; the version this replaces left 200.
+ *     Measured across fourteen exit paths, 500 calls each on one signal: the
+ *     listener count goes 0 -> 0 every time, and no timer survives the call.
+ *     Bare `fetch` holds one listener per request in flight and drops them
+ *     only when the response is collected, so this releases sooner than the
+ *     platform does. The version this replaces left one listener per unread
+ *     response — 200 responses, 200 listeners.
  *   - It carries no application concepts. An earlier cut had the vendor
  *     polling loop in it — which field holds the status, which values are
  *     terminal, how long a generation may take — none of which is HTTP.
@@ -47,7 +51,7 @@ import {
 } from "@shared/http/decide-retry.js";
 import { withDeadline } from "@shared/http/cancellation.js";
 import { MAX_TIMER_MS } from "@shared/http/constants.js";
-import { redactUrl } from "@shared/http/redact-url.js";
+import { redactUrl, UNPARSEABLE_URL } from "@shared/http/redact-url.js";
 import { sleep } from "@shared/sleep.js";
 
 /**
@@ -63,7 +67,10 @@ export interface HttpOutcome {
    * The platform's own response, whatever its status.
    *
    * A non-ok status is not an error here: whether a 404 is a failure is the
-   * caller's business. Only a failure that produced no response at all throws.
+   * caller's business. The call throws when no response was obtained at all,
+   * and also when the caller cancels during a backoff wait — in that second
+   * case an earlier attempt's response exists but the caller has said it no
+   * longer wants it.
    *
    * It is the real thing, not a wrapper. Read it, or do not — the transport
    * has already let go of it either way.
@@ -78,7 +85,13 @@ export interface HttpOutcome {
    * this layer is no longer in the picture.
    */
   response: Response;
-  /** How many times the request was delivered. 1 means no replay happened. */
+  /**
+   * How many attempts were made. 1 means no replay happened.
+   *
+   * Attempts, not deliveries: an attempt that never reached the network —
+   * a fetch implementation that threw before sending, an unresolvable host —
+   * counts here too, because from this layer's side it was a try that failed.
+   */
   attempts: number;
   /** Why the transport stopped, whether or not the result is a failure. */
   stopped: RetryRefusal;
@@ -213,6 +226,15 @@ function refuseUnusableOptions(
   label: string,
   safeUrl: string,
 ): void {
+  // The transport has already learned this from redacting it. Sending it
+  // anyway costs three deliveries and two backoffs against a string that can
+  // never resolve — and the rejection `fetch` produces carries the RAW url,
+  // so a key in the query string travels out in an error message that never
+  // passed through redaction. Refusing here is both cheaper and the only way
+  // that key stays out of the caller's logs.
+  if (safeUrl === UNPARSEABLE_URL) {
+    throw new TransportContractError(`${label} was given something that is not a URL`);
+  }
   if (!usableDuration(options.timeoutMs)) {
     throw new TransportContractError(
       `${label} request to ${safeUrl} asked for a timeout of ${options.timeoutMs}ms, which no timer can hold (expected 1..${MAX_TIMER_MS})`,

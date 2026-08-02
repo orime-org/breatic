@@ -17,6 +17,15 @@
  */
 
 /**
+ * What redaction reports for a string that is not a URL.
+ *
+ * Named rather than inlined because the transport acts on it: a URL that
+ * cannot be parsed cannot be fetched either, so recognising this value is how
+ * the request is refused before it costs three deliveries.
+ */
+export const UNPARSEABLE_URL = "<unparseable url>";
+
+/**
  * Reduce a URL to the parts that are safe to log.
  * @param raw - The request URL, possibly carrying credentials.
  * @returns Origin and path, with any query replaced by a marker.
@@ -28,7 +37,7 @@ export function redactUrl(raw: string): string {
   } catch {
     // Never echo an unparseable string back: if it is not a URL we cannot
     // know which part of it was a secret.
-    return "<unparseable url>";
+    return UNPARSEABLE_URL;
   }
 
   // `origin + pathname` is an http-shaped assumption, and it fails loudly off

@@ -4,8 +4,9 @@
 /**
  * Wait for a duration, optionally cutting the wait short on cancellation.
  *
- * Shared so the retry loop and the poll loop cannot drift into two slightly
- * different timers.
+ * One implementation so that every wait in the system behaves the same way
+ * under cancellation. The retry loop is its caller inside this package; the
+ * browser upload and the worker use it directly.
  *
  * The signal matters most where this is used to space out retries: a user
  * who presses stop 20 ms into an eight-second backoff should not wait out

@@ -13,10 +13,11 @@
  *
  * The rule for what belongs here: a figure that has one defensible answer
  * belongs in this file, and a figure that genuinely differs between callers
- * stays a parameter. "How many times may this be replayed" and "how long may a
- * live connection send nothing" have one answer each. Polling interval and
- * total polling budget do not — they describe how long a vendor takes to
- * generate something, which is the caller's business and not the transport's.
+ * stays a parameter. "How many times may this be replayed" has one answer.
+ * "How long may one attempt wait for response headers" does not — a vendor
+ * API and an object store differ by an order of magnitude — so it is a
+ * parameter. Anything about reading a body is neither: it is not this
+ * layer's at all.
  */
 
 /**
