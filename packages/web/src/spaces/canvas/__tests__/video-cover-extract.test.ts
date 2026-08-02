@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   extractVideoFirstFrame,
   videoCoverFile,
-  videoCoverFileName,
 } from '@web/spaces/canvas/video-cover-extract';
 
 /**
@@ -32,10 +31,7 @@ interface FakeVideo {
 interface FakeCanvas {
   width: number;
   height: number;
-  getContext: (
-    id: string,
-    attrs?: CanvasRenderingContext2DSettings,
-  ) => { drawImage: (...args: unknown[]) => void } | null;
+  getContext: (id: string) => { drawImage: (...args: unknown[]) => void } | null;
   toBlob: (cb: (b: Blob | null) => void, type?: string, q?: number) => void;
 }
 
@@ -129,11 +125,14 @@ describe('extractVideoFirstFrame — first-frame PNG cover off a local video Fil
     // Encoded as PNG per the format convention (#1826 §8: images we produce
     // ourselves are PNG). PNG is lossless, so no quality argument is passed.
     expect(canvas.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/png');
-    // The context KEEPS its alpha channel — no `{ alpha: false }`. That option
-    // shrinks the PNG by ~10%, but a WebM frame can carry a VP8/VP9 alpha
-    // plane, and an opaque context composites those transparent pixels to
-    // solid black (verified in Chromium: [0,0,0,0] → [0,0,0,255]). This
-    // assertion exists to stop that optimisation from being reintroduced.
+    // Asserted with NO second argument at all — `toHaveBeenCalledWith` compares
+    // the whole argument list, so this rejects any context attribute, not just
+    // the one that motivated it. That one is `{ alpha: false }`: it makes the
+    // PNG smaller, but a WebM frame can carry a VP8/VP9 alpha plane, and an
+    // opaque context composites those transparent pixels to solid black
+    // (verified in Chromium: [0,0,0,0] → [0,0,0,255]). If a genuinely useful
+    // attribute ever needs adding here, relax this assertion deliberately —
+    // and keep alpha on.
     expect(canvas.getContext).toHaveBeenCalledWith('2d');
     // Object URL always revoked.
     expect(revoke).toHaveBeenCalledWith('blob:mock-url');
@@ -214,15 +213,17 @@ describe('videoCoverFile — the cover File both upload paths build', () => {
     expect(file.type).toBe('image/png');
     expect(file.name).toBe('clip-cover.png');
   });
-});
 
-describe('videoCoverFileName — cover name derived from the video name', () => {
-  it('swaps the extension for -cover.png', () => {
-    expect(videoCoverFileName('clip.mp4')).toBe('clip-cover.png');
-    expect(videoCoverFileName('a.b.mov')).toBe('a.b-cover.png');
+  // The naming rule is exercised through the public function rather than the
+  // module-private helper: the backend derives the stored key's extension from
+  // this name, so what matters is the name a real cover File ends up carrying.
+  it('swaps the video extension for -cover.png', () => {
+    const blob = new Blob(['x']);
+    expect(videoCoverFile(blob, 'clip.mp4').name).toBe('clip-cover.png');
+    expect(videoCoverFile(blob, 'a.b.mov').name).toBe('a.b-cover.png');
   });
 
-  it('appends -cover.png when there is no extension', () => {
-    expect(videoCoverFileName('movie')).toBe('movie-cover.png');
+  it('appends -cover.png when the video name has no extension', () => {
+    expect(videoCoverFile(new Blob(['x']), 'movie').name).toBe('movie-cover.png');
   });
 });
