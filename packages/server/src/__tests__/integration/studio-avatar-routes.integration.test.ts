@@ -8,13 +8,23 @@
  * boundary — what gets in, what the type is decided from, and what the stored
  * key is built out of. What this pins:
  *   - the type comes from the BYTES; the Content-Type header is ignored
- *   - an animated PNG is refused, however far along its acTL chunk sits
- *   - a non-image is refused even when it claims to be a PNG
+ *   - a signature with no entry in the extension table is refused, whether it
+ *     is another image format or not an image at all
+ *   - dimensions do NOT decide anything; a shape the crop dialog could never
+ *     produce is stored like any other
  *   - the byte cap holds both when Content-Length declares the size and when
  *     it is absent, which is the case a header check alone would miss
  *   - the storage key is built from the studio's row and the server's own
  *     whitelist, never from anything the client sent
- *   - only the admin may upload or remove
+ *   - the object is written to storage before the row points at it
+ *   - upload and removal are both admin-only, against a member who holds the
+ *     rank just below admin as well as against a stranger
+ *
+ * What this deliberately does NOT pin: anything about a PNG's internal
+ * structure. Whether a given animated PNG is refused depends on how far its
+ * `acTL` chunk sits from the front, because that decision now belongs to the
+ * signature sniffer and its scan budget. That is a consequence of the server
+ * not inspecting avatars, not a guarantee it makes.
  *
  * @see packages/server/src/modules/studio/studioAvatar.service.ts
  * @see inner engineering/specs 2026-07-28 studio settings design, section 2
@@ -76,10 +86,15 @@ const FIXTURE_EDGE_PX = 512;
 /**
  * Build a minimal PNG: signature, IHDR, one IDAT.
  *
- * Only the signature decides anything server-side — it is what picks the
- * stored extension and content type. The rest is here so the fixture is a
- * well-formed file rather than eight magic bytes, and the dimensions are a
- * parameter so a test can send a shape the crop dialog would never produce.
+ * The IHDR chunk is load-bearing, not decoration. Measured against the repo's
+ * `file-type`: the 8-byte signature alone sniffs as `application/octet-stream`
+ * and gets a 415; the detector needs a first chunk that declares type IHDR
+ * with a length of exactly 13 before it will say `image/png`. Trimming this
+ * fixture to its signature turns every accepting test in this file red.
+ *
+ * The dimensions inside that chunk are a different matter — nothing reads them
+ * — which is why they are a parameter: a test can send a shape the crop dialog
+ * could never produce and watch it be stored anyway.
  * @param animated - include `acTL`, which makes the sniffer report APNG.
  * @param width - width to declare in IHDR.
  * @param height - height to declare in IHDR; defaults to a square.
@@ -221,13 +236,20 @@ describe("POST /studio/:slug/avatar — what gets accepted", () => {
     );
   });
 
-  it("refuses every type it has no extension for — JPEG, WebP, animated PNG", async () => {
+  it("refuses a signature with no entry in the extension table", async () => {
     // Not a judgement about these formats. The whitelist exists to pick the
     // extension and content type a stored object is served under, and it holds
     // one entry because the crop dialog's canvas re-encode produces one format.
-    // A type that is not in it has nothing to be stored as. An animated PNG
-    // belongs in this list rather than in one of its own: the sniffer reports
-    // it as `image/apng`, which is simply another key that is not there.
+    // A signature that is not in it has nothing to be stored as.
+    //
+    // The APNG case belongs here rather than in one of its own, and note what
+    // it does and does not say. THIS file sniffs as `image/apng` — another key
+    // that is not in the table. It is not a claim about animated PNGs in
+    // general: the sniffer stops looking after a fixed number of chunks, so an
+    // `acTL` far enough from the front is never seen and the file sniffs as
+    // plain PNG. That is what "the server does not inspect avatars" means in
+    // practice, and it is why this assertion is written about a fixture rather
+    // than about a format.
     const admin = await insertUser();
     const jpegStudio = await insertStudio(admin);
     const webpStudio = await insertStudio(admin);
@@ -369,6 +391,7 @@ describe("POST /studio/:slug/avatar — refusals", () => {
     const res = await uploadAvatar(studio.slug, cookie, Buffer.alloc(0));
 
     expect(res.status).toBe(422);
+    expect(await readAvatar(studio.id)).toBeNull();
   });
 
   it("refuses a maintainer — avatar changes are admin-only", async () => {
@@ -414,6 +437,28 @@ describe("DELETE /studio/:slug/avatar", () => {
     });
 
     expect(res.status).toBe(403);
+  });
+
+  it("refuses a maintainer — removal is admin-only, not member-only", async () => {
+    // The stranger case above passes at every rank, so on its own it pins
+    // "some gate exists" rather than "the gate is admin". A maintainer is the
+    // rank directly below admin, which is the one that tells those apart.
+    const admin = await insertUser();
+    const member = await insertUser();
+    const studio = await insertStudio(admin);
+    await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio.id}, ${member}, 'maintainer')`;
+    const adminCookie = await loginCookie(admin);
+    await uploadAvatar(studio.slug, adminCookie, pngBytes());
+    const stored = await readAvatar(studio.id);
+    expect(stored).not.toBeNull();
+
+    const res = await app.request(`/api/v1/studio/${studio.slug}/avatar`, {
+      method: "DELETE",
+      headers: { Cookie: await loginCookie(member) },
+    });
+
+    expect(res.status).toBe(403);
+    expect(await readAvatar(studio.id)).toBe(stored);
   });
 });
 

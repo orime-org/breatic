@@ -12,8 +12,8 @@
  * fail. Changing an avatar is changing one URL.
  *
  * Uploads come THROUGH the server rather than by presigned direct upload, so
- * the byte cap is enforced here (see `readBoundedBody`) rather than at a
- * presign step.
+ * the byte cap is enforced by the route (`readBoundedBody`) rather than at a
+ * presign step. This module receives an already-bounded buffer.
  */
 
 import { randomUUID } from "node:crypto";
@@ -33,9 +33,17 @@ import type { Studio } from "@breatic/shared";
  * is how that is decided; the request header is the client's claim about
  * content the client also chose, so it takes no part.
  *
- * PNG only, because PNG is what the crop dialog's canvas re-encode produces.
- * Anything else would be an upload that did not come from our own client, and
- * there is no picture it could be that the client could not have sent as PNG.
+ * PNG only, because PNG is what the crop dialog's canvas re-encode produces —
+ * `AVATAR_OUTPUT_TYPE` in `packages/web/.../avatar-image.ts` is the other half
+ * of this pair, and changing it there without changing this refuses every
+ * upload. Anything else would be an upload that did not come from our own
+ * client, and there is no picture it could be that the client could not have
+ * sent as PNG.
+ *
+ * A file that is not in this table is refused, which makes the table look like
+ * a validation gate. It is not one, and the difference matters for what gets
+ * added here: an entry is warranted when we have somewhere to store that type,
+ * never when a type "seems safe".
  */
 const ACCEPTED_IMAGE_TYPES: Readonly<Record<string, string>> = {
   "image/png": "png",
@@ -80,11 +88,16 @@ export function avatarStorageKey(
  *
  * What the bytes contain is the client's business. An avatar is one URL on one
  * row, shown in a fixed-size element that crops whatever it is given; it is
- * not a project asset — nothing is billed for it, nothing else consumes it,
- * and nobody but this studio's own members ever sees it. Only an admin of this
- * studio can get here at all. So the server takes the picture as sent: the
- * caller has already bounded its size, and there is nothing further worth
- * establishing about the pixels inside it.
+ * not a project asset — nothing is billed for it and nothing else consumes it.
+ * Only an admin of this studio can get here at all. So the server takes the
+ * picture as sent: the caller has already bounded its size, and there is
+ * nothing further worth establishing about the pixels inside it.
+ *
+ * Note what is NOT part of that reasoning: who can SEE the result. The URL
+ * goes to any authenticated user who reads the studio shell (`GET /:slug` has
+ * no role gate, by decision), and the object itself is served publicly. The
+ * argument rests on who can PUT one there, which is an admin of the one studio
+ * it will appear on.
  *
  * Storage is written BEFORE the database. The reverse order can leave the row
  * pointing at an object that was never written — a broken image for every
@@ -93,8 +106,10 @@ export function avatarStorageKey(
  * @param slug - The studio's URL handle
  * @param bytes - The raw image, already bounded by the caller
  * @returns The updated studio
- * @throws {AppError} 404 no such studio, 415 the bytes are not an image this
- *   server has an extension and a content type for
+ * @throws {AppError} 404 no such studio — over HTTP this is reachable only if
+ *   the studio is soft-deleted between `requireStudioRole`'s lookup and this
+ *   one, since that middleware answers `403` for a slug it cannot resolve;
+ *   415 bytes whose signature is not one this server has an extension for
  */
 export async function setAvatar(slug: string, bytes: Buffer): Promise<Studio> {
   const studio = await studioRepo.getBySlug(slug);
@@ -128,7 +143,8 @@ export async function setAvatar(slug: string, bytes: Buffer): Promise<Studio> {
  * unreferenced from here on.
  * @param slug - The studio's URL handle
  * @returns The updated studio
- * @throws {AppError} 404 no such studio
+ * @throws {AppError} 404 no such studio — as in {@link setAvatar}, reachable
+ *   over HTTP only through a soft-delete racing the role middleware's lookup
  */
 export async function clearAvatar(slug: string): Promise<Studio> {
   const studio = await studioRepo.getBySlug(slug);

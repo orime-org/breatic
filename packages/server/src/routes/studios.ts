@@ -204,13 +204,19 @@ studio.patch(
  *
  * Rate limited — every call permanently adds a storage object that runtime
  * never deletes, so an unthrottled admin could write to storage without bound.
- * The byte cap is the only thing checked about the picture itself. An avatar
- * is one URL on one row, shown cropped into a fixed-size element, and only an
- * admin of the studio that will display it can get here — so what the pixels
- * are is the client's business.
- * @returns `200` with `{ data: Studio }`; `403` not the admin, `404` no such
- *   studio, `413` over the byte cap, `415` an image type this server has no
- *   stored extension for, `422` empty body, `429` rate limited
+ * The picture itself is not inspected. Two things happen to the bytes: they
+ * are bounded, and their signature is read to decide the extension and content
+ * type the stored object is served under. Bytes whose signature is not PNG
+ * have nothing to be stored as and are refused — that is the whitelist holding
+ * one entry, not a judgement about the image. What the pixels are is the
+ * client's business: an avatar is one URL on one row, shown cropped into a
+ * fixed-size element, and only an admin of the studio that displays it can
+ * reach this at all.
+ * @returns `200` with `{ data: Studio }`; `403` not the admin — also when the
+ *   slug matches no studio, since `requireStudioRole` hides existence rather
+ *   than answering `404`; `413` over the byte cap, `415` bytes whose signature
+ *   is not one this server has an extension for, `422` empty body, `429` rate
+ *   limited
  */
 studio.post(
   "/:slug/avatar",
@@ -231,7 +237,9 @@ studio.post(
  *
  * Clears the column only; the stored object is left in place, since runtime
  * never deletes from storage.
- * @returns `200` with `{ data: Studio }`; `403` not the admin, `404` no such studio
+ * @returns `200` with `{ data: Studio }`; `403` not the admin — also when the
+ *   slug matches no studio, since `requireStudioRole` hides existence rather
+ *   than answering `404`
  */
 studio.delete("/:slug/avatar", requireStudioRole("admin"), async (c) => {
   const slug = c.req.param("slug");

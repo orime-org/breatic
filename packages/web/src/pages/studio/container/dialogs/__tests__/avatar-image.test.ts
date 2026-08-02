@@ -130,10 +130,25 @@ describe('encodeAvatarBlob', () => {
     await expect(encodeAvatarBlob(encode)).rejects.toThrow();
   });
 
-  it('outputs a 512 square as PNG', () => {
-    // Both numbers are this module's own — the server reads neither. They are
-    // pinned because `avatar.max_bytes` was sized against this exact pair, so
-    // moving either without moving that cap starts refusing real avatars.
+});
+
+describe('the two output constants', () => {
+  it('pins both, because each breaks something this file cannot see', () => {
+    // Not a behaviour assertion, and the name should not suggest one:
+    // `renderAvatarBlob` is where a 512 square is actually produced, and it
+    // needs a canvas jsdom does not have. What these two lines guard is that
+    // neither number moves silently.
+    //
+    // AVATAR_OUTPUT_PX — `avatar.max_bytes` in config/storage.yaml is sized
+    // against the incompressible worst case AT this resolution, which scales
+    // with the pixel count. Raising this without raising that cap starts
+    // refusing legitimate crops of detailed pictures.
+    //
+    // AVATAR_OUTPUT_TYPE — this one IS a cross-package contract, unlike the
+    // size. The server's accepted-type table holds exactly `image/png`, keyed
+    // on what the uploaded bytes sniff as, so changing this to WebP refuses
+    // every upload with a 415: not for being too large, but for having no
+    // extension to be stored under.
     expect(AVATAR_OUTPUT_PX).toBe(512);
     expect(AVATAR_OUTPUT_TYPE).toBe('image/png');
   });
