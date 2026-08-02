@@ -840,9 +840,12 @@ export const notifications = pgTable(
     }),
     readAt: timestamp("read_at", { withTimezone: true }),
     /**
-     * Actionable-notification TTL (slice 3) — e.g. the 7-day transfer-admin
-     * confirmation window. null = no expiry (informational notices). Expired
-     * actionable rows are filtered out of the unread list / count.
+     * Actionable-notification deadline — the decision window from
+     * `config/limits.yaml`, stamped when the row is created. null means no
+     * deadline: informational notices never carry one, and neither do
+     * actionable rows created before the window covered their flow (nothing
+     * migrates those, so they stay decidable for good). Expired actionable
+     * rows are filtered out of the unread list / count.
      */
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
