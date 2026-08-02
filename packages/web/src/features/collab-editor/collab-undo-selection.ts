@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Fixes undo/redo SELECTION restore for the collaborative prompt editor.
+ * Fixes undo/redo SELECTION restore for every collaborative editor.
+ *
+ * Carried by `buildCollabExtensions`, so the document body and the canvas
+ * prompt both get it; it was written for the prompt, which is the only reason
+ * the reproduction below is described in those terms.
  *
  * Root cause (upstream timing bug, traced 2026-07-14): y-prosemirror /
  * `@tiptap/y-tiptap` store the pre-edit selection in each undo stack item's meta
@@ -35,7 +39,7 @@ import type { EditorState } from '@tiptap/pm/state';
 import {
   Y_SYNC_PLUGIN_KEY_NAME,
   Y_UNDO_PLUGIN_KEY_NAME,
-} from '@web/spaces/canvas/generate/collab-plugin-keys';
+} from '@web/features/collab-editor/collab-plugin-keys';
 
 /** The sync binding's fields this fix touches (structural, library-internal shape). */
 interface SyncBinding {
@@ -138,7 +142,8 @@ const collabUndoSelectionKey = new PluginKey<{ preEditSel: unknown }>(
  * 5 arrived at a four-position document.
  *
  * Guarded by the two undo/redo caret tests in
- * `__tests__/reference-mention-caret.test.tsx` — making this function an
+ * `spaces/canvas/generate/__tests__/reference-mention-caret.test.tsx` (which
+ * stayed with the prompt editor when this module moved) — making this function an
  * identity turns both red.
  * @param sel - The stored relative selection from the undo stack item.
  * @returns The same selection without its absolute-position fields.

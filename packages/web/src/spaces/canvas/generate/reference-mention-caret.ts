@@ -68,7 +68,7 @@ import {
   planWhitespaceInsertions,
   resolveDeletionUnit,
 } from '@web/spaces/canvas/generate/reference-mention-whitespace';
-import { Y_SYNC_PLUGIN_KEY_NAME } from '@web/spaces/canvas/generate/collab-plugin-keys';
+import { Y_SYNC_PLUGIN_KEY_NAME } from '@web/features/collab-editor/collab-plugin-keys';
 import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-mention-local-input';
 
 /**

@@ -516,7 +516,27 @@
         "description": "Timeline viewer plugs in when timeline-space ships; here we show a track snapshot, with clip copy."
       }
     },
-    "lockedAria": "Locked"
+    "lockedAria": "Locked",
+    "document": {
+      "loading": "Loading editor…",
+      "unavailable": {
+        "text": "This document could not be opened. It may have been deleted, or you may no longer have access to it.",
+        "action": "Try again"
+      },
+      "readOnlyNotice": "This document is read-only right now — anything you type will not be saved.",
+      "refusedNotice": "The connection to this document was refused. What you see may be out of date, and changes will not be saved.",
+      "placeholder": "Start writing…",
+      "toolbar": {
+        "undo": "Undo",
+        "redo": "Redo",
+        "bold": "Bold",
+        "italic": "Italic",
+        "bulletList": "Bullet list",
+        "orderedList": "Ordered list",
+        "quote": "Quote",
+        "strike": "Strikethrough"
+      }
+    }
   },
   "menu": {
     "createAria": "Create menu",

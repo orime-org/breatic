@@ -516,7 +516,27 @@
         "description": "Timeline viewer は timeline-space 実装時に接続。ここではトラックのスナップショットを表示します(クリップコピー可)。"
       }
     },
-    "lockedAria": "ロック中"
+    "lockedAria": "ロック中",
+    "document": {
+      "loading": "エディターを読み込み中…",
+      "unavailable": {
+        "text": "このドキュメントを開けませんでした。削除されたか、アクセス権がなくなった可能性があります。",
+        "action": "再試行"
+      },
+      "readOnlyNotice": "このドキュメントは現在読み取り専用です — 入力した内容は保存されません。",
+      "refusedNotice": "このドキュメントへの接続が拒否されました。表示中の内容は最新ではない可能性があり、変更も保存されません。",
+      "placeholder": "書き始めましょう…",
+      "toolbar": {
+        "undo": "元に戻す",
+        "redo": "やり直す",
+        "bold": "太字",
+        "italic": "斜体",
+        "bulletList": "箇条書き",
+        "orderedList": "番号付きリスト",
+        "quote": "引用",
+        "strike": "取り消し線"
+      }
+    }
   },
   "menu": {
     "createAria": "作成メニュー",

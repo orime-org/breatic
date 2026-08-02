@@ -516,7 +516,27 @@
         "description": "Timeline viewer 在 timeline-space 實作時接入;此處展示軌道快照,支援複製片段。"
       }
     },
-    "lockedAria": "已鎖定"
+    "lockedAria": "已鎖定",
+    "document": {
+      "loading": "正在載入編輯器…",
+      "unavailable": {
+        "text": "這個文件開不了。它可能已被刪除，或者你已經沒有存取權限了。",
+        "action": "重試"
+      },
+      "readOnlyNotice": "這個文件現在只能檢視 —— 你輸入的內容不會被儲存。",
+      "refusedNotice": "與這個文件的連線被拒絕了。你看到的內容可能不是最新的，變更也不會被儲存。",
+      "placeholder": "開始寫作…",
+      "toolbar": {
+        "undo": "復原",
+        "redo": "重做",
+        "bold": "粗體",
+        "italic": "斜體",
+        "bulletList": "無序列表",
+        "orderedList": "有序列表",
+        "quote": "引用",
+        "strike": "刪除線"
+      }
+    }
   },
   "menu": {
     "createAria": "建立選單",

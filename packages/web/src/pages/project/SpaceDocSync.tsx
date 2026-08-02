@@ -14,8 +14,23 @@ interface SpaceDocSyncProps {
 }
 
 /**
- * Keep a single canvas Space's Yjs document attached to the shared collab
- * socket for as long as this component is mounted. Renders nothing.
+ * Doc-name builder per Space type. A type absent from this table has no Yjs
+ * document yet, and attaching is skipped for it — adding one later is a single
+ * entry here rather than another branch in the component.
+ *
+ * The doc NAME carries the Space kind, so a canvas and a document Space that
+ * happen to share an id still resolve to two separate documents.
+ */
+const DOC_NAME_BUILDERS: Partial<
+  Record<SpaceType, (projectId: string, spaceId: string) => string>
+> = {
+  canvas: docName.canvasSpace,
+  document: docName.documentSpace,
+};
+
+/**
+ * Keep one Space's Yjs document attached to the shared collab socket for as
+ * long as this component is mounted. Renders nothing.
  *
  * Mounted once per OPEN tab (keyed on the Space id), so the document attaches
  * when the tab opens and detaches when it CLOSES — independent of which tab is
@@ -24,43 +39,34 @@ interface SpaceDocSyncProps {
  * live and re-activating one is instant (no re-handshake). See the
  * shared-WebSocket design (2026-06-18).
  * @param root0 - Attachment props.
- * @param root0.projectId - Project the Space belongs to.
- * @param root0.spaceId - Canvas Space whose document to keep attached.
+ * @param root0.name - Canonical document name to keep attached.
  * @returns Nothing — this component only manages the document attachment.
  */
-function CanvasDocAttach({
-  projectId,
-  spaceId,
-}: {
-  projectId: string;
-  spaceId: string;
-}): null {
-  const name = docName.canvasSpace(projectId, spaceId);
+function SpaceDocAttach({ name }: { name: string }): null {
   const doc = React.useMemo(() => getDoc(name), [name]);
   useSocket({ name, doc });
   return null;
 }
 
 /**
- * Attach an open Space tab's Yjs document to the shared collab socket. Only
- * canvas Spaces have a document binding today; document / timeline Spaces have
- * no Yjs doc yet, so this is a no-op for them (extend when those gain docs).
+ * Attach an open Space tab's Yjs document to the shared collab socket. Canvas
+ * and document Spaces each have their own document; timeline has none yet, so
+ * this is a no-op for it until it gains one.
  *
  * Rendered once per open tab so attach / detach follows tab OPEN / CLOSE, not
  * the active selection (user requirement, 2026-06-18).
  * @param root0 - Attachment props.
  * @param root0.projectId - Project the Space belongs to.
  * @param root0.spaceId - Space whose document to keep attached while its tab is open.
- * @param root0.type - Space type; only `canvas` has a document to attach today.
- * @returns The canvas document attachment, or null for non-canvas Spaces.
+ * @param root0.type - Space type; decides which document name to attach, if any.
+ * @returns The document attachment, or null for Space types without a document.
  */
 export function SpaceDocSync({
   projectId,
   spaceId,
   type,
 }: SpaceDocSyncProps): React.JSX.Element | null {
-  if (type === 'canvas') {
-    return <CanvasDocAttach projectId={projectId} spaceId={spaceId} />;
-  }
-  return null;
+  const buildName = DOC_NAME_BUILDERS[type];
+  if (!buildName) return null;
+  return <SpaceDocAttach name={buildName(projectId, spaceId)} />;
 }

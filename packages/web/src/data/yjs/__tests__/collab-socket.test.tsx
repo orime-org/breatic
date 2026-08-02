@@ -11,6 +11,8 @@ const { wsInstances, providerInstances } = vi.hoisted(() => ({
   providerInstances: [] as Array<{
     destroy: ReturnType<typeof vi.fn>;
     attach: ReturnType<typeof vi.fn>;
+    on: ReturnType<typeof vi.fn>;
+    emit: (event: string) => void;
     config: Record<string, unknown>;
   }>,
 }));
@@ -25,6 +27,14 @@ vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProvider: class {
     destroy = vi.fn();
     attach = vi.fn();
+    // The registry subscribes to `synced` to latch "the content has arrived".
+    listeners: Record<string, Array<() => void>> = {};
+    on = vi.fn((event: string, cb: () => void) => {
+      (this.listeners[event] ??= []).push(cb);
+    });
+    emit(event: string): void {
+      for (const cb of [...(this.listeners[event] ?? [])]) cb();
+    }
     config: Record<string, unknown>;
     constructor(config: Record<string, unknown>) {
       this.config = config;
