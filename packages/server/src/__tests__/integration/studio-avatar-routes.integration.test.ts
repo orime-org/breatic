@@ -27,7 +27,7 @@
  * not inspecting avatars, not a guarantee it makes.
  *
  * @see packages/server/src/modules/studio/studioAvatar.service.ts
- * @see inner engineering/specs 2026-07-28 studio settings design, section 2
+ * @see studio settings design (2026-07-28) § 2
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";

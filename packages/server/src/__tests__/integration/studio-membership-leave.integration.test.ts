@@ -19,7 +19,7 @@
  *     studio they are no longer a member of
  *
  * @see packages/server/src/modules/studio/studioMember.service.ts
- * @see inner engineering/specs 2026-07-28 studio settings design, sections 5 and 9.3
+ * @see studio settings design (2026-07-28) § 5, § 9.3
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";

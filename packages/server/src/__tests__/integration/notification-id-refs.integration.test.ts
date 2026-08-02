@@ -18,7 +18,7 @@
  *     plain text instead of a dead link
  *   - resolution is batched: one page costs a constant number of queries
  *
- * @see inner engineering/specs 2026-07-28 studio settings design, section 6
+ * @see studio settings design (2026-07-28) § 6
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
