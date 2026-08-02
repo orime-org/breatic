@@ -1,7 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Three, not the seven the repo ships — a hardcoded footer would pass a mock
+// that agreed with the shipped value.
+vi.mock("@server/config/limits.js", () => ({ getDecisionWindowDays: () => 3 }));
 
 import {
   buildStudioInvitationMail,
@@ -36,7 +40,6 @@ describe("buildStudioInvitationMail", () => {
     expect(mail.html).toContain("https://app.test/studio-invite?token=abc");
     expect(mail.html).toContain("Open the invitation");
     expect(mail.html.toLowerCase()).toContain("accept or decline");
-    expect(mail.html.toLowerCase()).toContain("invitation expires in 7 days");
   });
 });
 
@@ -60,7 +63,6 @@ describe("buildProjectInvitationMail", () => {
     expect(mail.html).toContain("https://app.test/project-invite?token=xyz");
     expect(mail.html).toContain("Open the invitation");
     expect(mail.html.toLowerCase()).toContain("accept or decline");
-    expect(mail.html.toLowerCase()).toContain("invitation expires in 7 days");
   });
 });
 
@@ -82,7 +84,6 @@ describe("buildStudioTransferMail", () => {
     expect(mail.html).toContain("https://app.test/studio/team-co");
     expect(mail.html).toContain("Open Breatic");
     expect(mail.html.toLowerCase()).toContain("check your notifications");
-    expect(mail.html.toLowerCase()).toContain("transfer request expires in 7 days");
   });
 });
 
@@ -104,7 +105,6 @@ describe("buildProjectTransferMail", () => {
     expect(mail.html).toContain("https://app.test/project/launch-grow-123");
     expect(mail.html).toContain("Open Breatic");
     expect(mail.html.toLowerCase()).toContain("check your notifications");
-    expect(mail.html.toLowerCase()).toContain("transfer request expires in 7 days");
   });
 });
 
@@ -120,5 +120,54 @@ describe("notification mail — link href escaping", () => {
     });
     expect(mail.html).toContain("&quot;onmouseover=&quot;");
     expect(mail.html).not.toContain('"onmouseover="');
+  });
+});
+
+/**
+ * The expiry sentence reads the configured window.
+ *
+ * This sentence is the only place the product tells an invitee how long they
+ * have. It used to be a literal in a module constant, one file away from the
+ * deadline it describes — so a change to the window left the email confidently
+ * stating a number nothing enforced.
+ */
+describe("expiry footer", () => {
+  it("states the configured window, not a baked-in number", () => {
+    // The mock says three days; seven is what the repo ships. An email built
+    // from a hardcoded literal would still say seven here.
+    const mail = buildStudioInvitationMail({
+      inviteeEmail: "invitee@example.com",
+      inviterName: "Ada",
+      studioName: "Studio",
+      role: "guest",
+      inviteLink: "https://example.test/studio-invite?token=t",
+    });
+    expect(mail.html).toContain("expires in 3 days");
+    expect(mail.html).not.toContain("7 days");
+  });
+
+  it("says the same thing on all four emails", () => {
+    // Four builders, one sentence each. They shared two constants before; if a
+    // later edit re-splits them, this catches the pair that drifted.
+    const common = { inviterName: "Ada", initiatorName: "Ada" };
+    const htmls = [
+      buildStudioInvitationMail({
+        inviteeEmail: "a@example.test", inviterName: common.inviterName,
+        studioName: "S", role: "guest", inviteLink: "https://example.test/a",
+      }).html,
+      buildProjectInvitationMail({
+        inviteeEmail: "a@example.test", inviterName: common.inviterName,
+        projectName: "P", role: "viewer", inviteLink: "https://example.test/b",
+      }).html,
+      buildStudioTransferMail({
+        recipientEmail: "a@example.test", initiatorName: common.initiatorName,
+        studioName: "S", studioLink: "https://example.test/c",
+      }).html,
+      buildProjectTransferMail({
+        recipientEmail: "a@example.test", initiatorName: common.initiatorName,
+        projectName: "P", projectLink: "https://example.test/d",
+      }).html,
+    ];
+    for (const html of htmls) expect(html).toContain("expires in 3 days");
   });
 });
