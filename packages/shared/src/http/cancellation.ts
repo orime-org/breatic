@@ -10,7 +10,9 @@
  * pressed stop" do not arrive looking identical in a caller's logs. Note that
  * the REPLAY decision does not read the reason: it reads `expired()`, because
  * an abort carries whatever value the caller passed to `abort()` and that is
- * not a dependable discriminator.
+ * not a dependable discriminator. (An earlier comment here pointed at "the
+ * per-attempt deadline one module away" as a second user of the technique;
+ * that module was the response-body guard, which is gone.)
  *
  * The teardown is the load-bearing part. Detaching from the caller's signal is
  * what lets the transport hold nothing once an attempt ends: a listener left

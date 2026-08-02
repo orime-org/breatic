@@ -27,63 +27,16 @@ import {
   MAX_RETRY_AFTER_MS,
 } from "@shared/http/constants.js";
 
-/** Why a replay was declined. */
-export type RetryRefusal =
-  /** The caller stated that replaying has side effects. */
-  | "not_replay_safe"
-  /**
-   * The request body can only be delivered once, so there is nothing left to
-   * send. Distinct from `not_replay_safe`: that one is the caller's fact
-   * about consequences, this one is the platform's about the bytes. An
-   * on-call engineer needs to tell them apart — the first is a deliberate
-   * declaration, the second means a streamed upload cannot be retried at all.
-   */
-  | "body_not_replayable"
-  /** A 4xx other than 408/429 — a fact, not weather. */
-  | "client_error"
-  /** The caller cancelled (a user pressed stop). */
-  | "caller_aborted"
-  /**
-   * The caller identified this failure as deterministic — a replay would
-   * hit the same wall. An SSRF-blocked address is the motivating case.
-   */
-  | "fatal_error"
-  /** The attempt budget is spent. */
-  | "attempts_exhausted"
-  /** Neither a failing status nor a transport error was present. */
-  | "nothing_to_retry"
-  /**
-   * The server named a wait longer than this caller can accept. Not a
-   * failure of the server's — it answered, and clearly. The wait is simply
-   * longer than the caller has to give, so the request ends here and the
-   * number it asked for travels back with the refusal.
-   */
-  | "retry_after_too_long";
-
-/** Why a replay was authorized. */
-export type RetryTrigger =
-  /** 429 — the server states it did not process us. */
-  | "rate_limited"
-  /** 408 — the server gave up reading the request. */
-  | "request_timeout"
-  | "server_error"
-  | "network_error"
-  | "attempt_timeout";
-
-/** The verdict, carrying the wait only when a replay is authorized. */
-export type RetryDecision =
-  | {
-      retry: false;
-      reason: RetryRefusal;
-      /**
-       * What the server asked us to wait, in milliseconds, when it named a
-       * figure we could not accept. Present only with
-       * `retry_after_too_long`, and present so the caller can say "the
-       * service asked for 20 seconds" rather than a bare failure.
-       */
-      retryAfterMs?: number;
-    }
-  | { retry: true; reason: RetryTrigger; delayMs: number };
+/**
+ * The verdict: replay or not, and how long to wait first.
+ *
+ * Deliberately just those two facts. An earlier cut also produced a term
+ * naming WHY — eight for refusals, five for authorizations — and the loop
+ * never read one of them: it branches on `retry` alone. Thirteen terms were
+ * computed, carried across a module boundary, and dropped. Whatever this
+ * function knows about the reason, it spends here and does not export.
+ */
+export type RetryDecision = { retry: false } | { retry: true; delayMs: number };
 
 /**
  * How a request failed when no response arrived.
@@ -109,10 +62,10 @@ export interface RetryInput {
    * The wait the response asked for, ALREADY PARSED, or null when it named
    * none or named one that cannot be used.
    *
-   * Parsed by the caller rather than here because the guarded handle exposes
-   * the same figure, and the header's date form is relative to a clock: two
-   * parses a few hundred milliseconds apart disagree, one of them returning
-   * null once the named instant has passed. One parse, one answer.
+   * Parsed by the caller rather than here because the header's date form is
+   * relative to a clock: two parses a few hundred milliseconds apart disagree,
+   * one of them returning null once the named instant has passed. One parse,
+   * one answer.
    */
   retryAfterMs?: number | null;
   /**
@@ -159,6 +112,39 @@ export interface RetryInput {
 const IMF_FIXDATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
 
 /**
+ * Whether a parsed instant still names the day the header claimed.
+ *
+ * The shape gate accepts "31 Feb" because it only checks digits and a month
+ * name; `Date.parse` then rolls it into March instead of rejecting it. Reading
+ * the day and month back off the parsed instant catches exactly that.
+ * @param raw - The IMF-fixdate string as sent.
+ * @param at - What `Date.parse` made of it.
+ * @returns True when the parsed instant is the day the string named.
+ */
+function datesBackToItself(raw: string, at: number): boolean {
+  const [, day, month] = /^[A-Za-z]{3}, (\d{2}) ([A-Za-z]{3})/.exec(raw) ?? [];
+  if (day === undefined || month === undefined) return false;
+  const parsed = new Date(at);
+  return (
+    parsed.getUTCDate() === Number(day) &&
+    parsed.toUTCString().slice(8, 11).toLowerCase() === month.toLowerCase()
+  );
+}
+
+/**
+ * Whether a status is one the server sends to say its own side failed.
+ *
+ * Bounded at both ends on purpose. `status >= 500` alone treated anything a
+ * proxy or a stand-in put above 599 as a retryable server error, and there is
+ * no such status class — a 999 is not a statement that a replay might work.
+ * @param status - The response status, or undefined when none arrived.
+ * @returns True for 500..599.
+ */
+function isServerError(status: number | undefined): boolean {
+  return status !== undefined && status >= 500 && status < 600;
+}
+
+/**
  * Parse a `Retry-After` value into the wait it names, in milliseconds.
  *
  * Accepts delay-seconds and IMF-fixdate, rejecting everything else so a
@@ -174,7 +160,14 @@ export function parseRetryAfter(
   nowMs: number,
 ): number | null {
   if (raw == null) return null;
-  const value = raw.trim();
+  // A server that sent the header twice arrives here as "5, 5" — `Headers.get`
+  // joins repeats with a comma. Retry-After is a singleton field, so a repeat
+  // is malformed; but rejecting the whole thing meant falling back to
+  // sub-second jitter and hammering the very server that had just asked for
+  // room. When every copy says the same thing the instruction is unambiguous,
+  // so honour it. When they disagree there is no instruction to honour.
+  const parts = raw.split(",").map((p) => p.trim()).filter((p) => p.length > 0);
+  const value = parts.length > 1 && new Set(parts).size === 1 ? parts[0]! : raw.trim();
 
   if (/^\d+$/.test(value)) {
     return Number(value) * 1000;
@@ -183,6 +176,12 @@ export function parseRetryAfter(
   if (!IMF_FIXDATE.test(value)) return null;
   const at = Date.parse(value);
   if (Number.isNaN(at)) return null;
+  // `Date.parse` rolls a calendar-invalid date over rather than rejecting it,
+  // so "Tue, 31 Feb 2027" becomes early March — a wait of weeks, which then
+  // exceeds the ceiling and stops the request outright. A date that does not
+  // exist is a broken header, not an instruction, so it falls back to our own
+  // estimate the same way an unparseable one does.
+  if (!datesBackToItself(value, at)) return null;
   const wait = at - nowMs;
   // A date already past carries no usable instruction — it describes a moment
   // that has gone, whether through clock skew or a cached response. Flooring it
@@ -236,16 +235,13 @@ function ownBackoffMs(input: RetryInput): number {
  * disregards the only party that knows when it will be ready, and still makes
  * someone wait.
  * @param input - The decision input.
- * @param reason - Why this was going to be retried.
- * @returns A retry carrying the wait, or a refusal carrying what was asked.
+ * @returns A retry carrying the wait, or a refusal when the wait is too long.
  */
-function scheduleRetry(input: RetryInput, reason: RetryTrigger): RetryDecision {
+function scheduleRetry(input: RetryInput): RetryDecision {
   const asked = serverDirectedWaitMs(input);
-  if (asked === null) return { retry: true, reason, delayMs: ownBackoffMs(input) };
-  if (asked > MAX_RETRY_AFTER_MS) {
-    return { retry: false, reason: "retry_after_too_long", retryAfterMs: asked };
-  }
-  return { retry: true, reason, delayMs: asked };
+  if (asked === null) return { retry: true, delayMs: ownBackoffMs(input) };
+  if (asked > MAX_RETRY_AFTER_MS) return { retry: false };
+  return { retry: true, delayMs: asked };
 }
 
 /**
@@ -266,12 +262,12 @@ function scheduleRetry(input: RetryInput, reason: RetryTrigger): RetryDecision {
 export function decideRetry(input: RetryInput): RetryDecision {
   // The user pressed stop. Nothing may resurrect the request.
   if (input.transportError === "caller_aborted") {
-    return { retry: false, reason: "caller_aborted" };
+    return { retry: false };
   }
 
   // A deterministic rejection: the same wall on every attempt.
   if (input.transportError === "fatal") {
-    return { retry: false, reason: "fatal_error" };
+    return { retry: false };
   }
 
   // ── Platform semantics: not "should we replay" but "can we" ──
@@ -287,26 +283,26 @@ export function decideRetry(input: RetryInput): RetryDecision {
   // `replaySafe` because it is the same kind of fact as those two: an
   // absolute, not a judgement about consequences.
   if (input.bodyReplayable === false) {
-    return { retry: false, reason: "body_not_replayable" };
+    return { retry: false };
   }
 
   // Budget before failure kind, so telemetry distinguishes "gave up after
   // trying" from "refused to try".
   if (input.attempt > MAX_RETRIES) {
-    return { retry: false, reason: "attempts_exhausted" };
+    return { retry: false };
   }
 
   const { status } = input;
 
   // ── Protocol semantics: true regardless of what the request does ──
   if (status === 429) {
-    return scheduleRetry(input, "rate_limited");
+    return scheduleRetry(input);
   }
   if (status === 408) {
-    return scheduleRetry(input, "request_timeout");
+    return scheduleRetry(input);
   }
   if (status !== undefined && status >= 400 && status < 500) {
-    return { retry: false, reason: "client_error" };
+    return { retry: false };
   }
 
   // Is this a failure at all? A 3xx the transport does not follow — a 304, or
@@ -314,29 +310,27 @@ export function decideRetry(input: RetryInput): RetryDecision {
   // here, and answering with the caller's side-effect declaration blamed that
   // declaration for a response that never failed. An on-call engineer reading
   // "not_replay_safe, status 304" goes looking for a bug that is not there.
-  const failed =
-    (input.status !== undefined && input.status >= 500) ||
-    input.transportError !== undefined;
+  const failed = isServerError(input.status) || input.transportError !== undefined;
   if (!failed) {
-    return { retry: false, reason: "nothing_to_retry" };
+    return { retry: false };
   }
 
   // ── Application semantics: only the caller knows this ──
   if (!input.replaySafe) {
-    return { retry: false, reason: "not_replay_safe" };
+    return { retry: false };
   }
 
-  if (status !== undefined && status >= 500) {
-    return scheduleRetry(input, "server_error");
+  if (isServerError(status)) {
+    return scheduleRetry(input);
   }
   if (input.transportError === "network") {
-    return scheduleRetry(input, "network_error");
+    return scheduleRetry(input);
   }
   if (input.transportError === "timeout") {
-    return scheduleRetry(input, "attempt_timeout");
+    return scheduleRetry(input);
   }
 
   // Every failure kind above is handled; this is the arm no known input
   // reaches, kept so the function is total rather than throwing at runtime.
-  return { retry: false, reason: "nothing_to_retry" };
+  return { retry: false };
 }

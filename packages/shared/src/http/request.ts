@@ -28,7 +28,7 @@
  */
 
 import { sleep } from "@shared/sleep.js";
-import { withDeadline } from "@shared/http/cancellation.js";
+import { withDeadline, type DeadlineSignal } from "@shared/http/cancellation.js";
 import { MAX_TIMER_MS } from "@shared/http/constants.js";
 import { decideRetry, type TransportErrorKind, parseRetryAfter } from "@shared/http/decide-retry.js";
 import { redactUrl, UNPARSEABLE_URL } from "@shared/http/redact-url.js";
@@ -133,30 +133,70 @@ function usableDuration(ms: number): boolean {
  * repair available here is a silent lie: clamping a 30-day timeout to 24.8
  * days is a number nobody asked for, and the platform's own repair — folding
  * it to one millisecond — inverts the instruction entirely.
+ * @param url - The request URL as the caller wrote it.
  * @param options - The caller's options.
  * @param label - Provider or tool name, for the message.
  * @param safeUrl - The redacted request URL, for the message.
- * @throws {TransportContractError} When an option cannot be honoured.
+ * @throws {TransportContractError} When the URL or an option cannot be honoured.
  */
 function refuseUnusableOptions(
+  url: string,
   options: HttpRequestOptions,
   label: string,
   safeUrl: string,
 ): void {
-  // The transport has already learned this from redacting it. Sending it
-  // anyway costs three deliveries and two backoffs against a string that can
-  // never resolve — and the rejection `fetch` produces carries the RAW url, so
-  // a key in the query string travels out in an error message that never
-  // passed through redaction. Refusing here is both cheaper and the only way
-  // that key stays out of the caller's logs.
+  // Refused here, before anything is sent, for two reasons that compound.
+  // Sending it anyway costs three deliveries and two backoffs against a string
+  // that can never usefully resolve — and the rejection `fetch` produces
+  // carries the RAW url, so a password or a query key travels out in an error
+  // message that never passed through redaction and then becomes the `cause`
+  // this package tells callers to log.
   if (safeUrl === UNPARSEABLE_URL) {
     throw new TransportContractError(`${label} was given something that is not a URL`);
+  }
+  const parsed = new URL(url);
+  // Credentials in the URL: `fetch` refuses to build a Request from one at all,
+  // and the TypeError it throws quotes the whole raw url — userinfo, query and
+  // everything else. Measured: the password and a query key both reached the
+  // caller through `cause` while the message beside it was properly redacted.
+  if (parsed.username !== "" || parsed.password !== "") {
+    throw new TransportContractError(
+      `${label} was given a URL carrying credentials; put them in a header instead`,
+    );
+  }
+  // Parseable is not fetchable. A `data:` URL is actually fetched and returned
+  // as a 200, which is not an HTTP round trip at all; every other scheme costs
+  // three deliveries to learn what the string already said.
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new TransportContractError(
+      `${label} was given a ${parsed.protocol} URL; this transport speaks http and https`,
+    );
+  }
+  if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) {
+    throw new TransportContractError(
+      `${label} was given a signal that is not an AbortSignal`,
+    );
   }
   if (!usableDuration(options.timeoutMs)) {
     throw new TransportContractError(
       `${label} request to ${safeUrl} asked for a timeout of ${options.timeoutMs}ms, which no timer can hold (expected 1..${MAX_TIMER_MS})`,
     );
   }
+}
+
+/**
+ * Whether a buffer has been transferred away, leaving nothing to send.
+ *
+ * `ArrayBuffer.prototype.detached` is ES2024 and this repo targets ES2023, so
+ * the property exists at runtime but not in the type. Asserted narrowly rather
+ * than widening the whole project's lib for one predicate. `byteLength` cannot
+ * substitute: a transferred buffer and a genuinely empty one both report 0, and
+ * an empty body is perfectly replayable.
+ * @param buffer - The buffer behind the body, or the view's buffer.
+ * @returns True when its bytes have been transferred elsewhere.
+ */
+function isDetached(buffer: ArrayBufferLike): boolean {
+  return (buffer as { detached?: boolean }).detached === true;
 }
 
 /**
@@ -178,12 +218,89 @@ function refuseUnusableOptions(
  */
 function bodyCanBeResent(body: BodyInit | null | undefined): boolean {
   if (body === null || body === undefined) return true;
-  if (typeof body === "string") return true;
-  if (body instanceof URLSearchParams) return true;
-  if (body instanceof FormData) return true;
-  if (body instanceof Blob) return true;
-  if (body instanceof ArrayBuffer) return true;
-  return ArrayBuffer.isView(body);
+  // A transferred buffer still passes `instanceof` while holding no bytes at
+  // all. Nothing else distinguishes it — it is not walkable-once, it is empty
+  // — so it needs its own question.
+  if (body instanceof ArrayBuffer) return !isDetached(body);
+  if (ArrayBuffer.isView(body)) return !isDetached(body.buffer);
+  // One rule for everything else: a source you can only walk once is spent by
+  // the first delivery. `ReadableStream` and async generators both declare
+  // themselves with `Symbol.asyncIterator`; a string, a `Blob`, `FormData`,
+  // `URLSearchParams` and plain values do not, and `fetch` re-serialises those
+  // identically on every delivery.
+  //
+  // This was an allow-list of named types until a mutation pass showed all
+  // seven positive branches were dead: the rule below already answered for
+  // every one of them, so deleting them left the suite green. Naming types
+  // also got the answer WRONG for anything unnamed — a plain object, an array
+  // — which fetch handles perfectly well and which lost its retries for it.
+  return !(typeof body === "object" && Symbol.asyncIterator in body);
+}
+
+/**
+ * Whether the caller has stopped this call.
+ *
+ * Read through a function on purpose. Inline, TypeScript narrows `aborted` to
+ * `false` after the guard before the loop and then reports every later check as
+ * a comparison that cannot hold — but the value changes underneath, which is
+ * the entire point of a cancellation signal.
+ * @param signal - The caller's signal, if it supplied one.
+ * @returns True when the caller has aborted.
+ */
+function wasCancelled(signal: AbortSignal | undefined): boolean {
+  return signal?.aborted === true;
+}
+
+/**
+ * A promise that rejects when this delivery's deadline or the caller fires.
+ *
+ * Raced against the fetch rather than merely handed to it. Passing the signal
+ * is a request an implementation is free to ignore, and one that ignores it
+ * left the call pending indefinitely with `timeoutMs` silently unenforced.
+ *
+ * When the fetch settles first this promise is simply dropped: nothing holds
+ * it, nothing holds the composed signal it listens on, so both are collectable
+ * together.
+ * @param deadline - This delivery's composed deadline.
+ * @param label - Provider or tool name, for the message.
+ * @returns A promise that never resolves and rejects on abort.
+ */
+function deadlineReached(deadline: DeadlineSignal, label: string): Promise<never> {
+  return new Promise<never>((_resolve, reject) => {
+    deadline.signal.addEventListener(
+      "abort",
+      () => {
+        const { reason } = deadline.signal;
+        reject(reason instanceof Error ? reason : new Error(`${label} attempt timed out`));
+      },
+      { once: true },
+    );
+  });
+}
+
+/**
+ * Whether a value is a Response, including one from another realm.
+ *
+ * `instanceof` compares against THIS realm's constructor, so a Response built
+ * by undici — already in this repo's tree via jsdom and testcontainers — failed
+ * the check and was reported as a broken implementation. Since a caller-injected
+ * fetch is this layer's whole seam, rejecting the commonest way to supply one
+ * defeats the feature. The shape below is what the loop actually uses, and a
+ * duck-typed stand-in missing any of it is still refused.
+ * @param value - Whatever the fetch implementation resolved with.
+ * @returns True when it can be used, and handed on, as a response.
+ */
+function isResponseLike(value: unknown): value is Response {
+  if (value instanceof Response) return true;
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { status?: unknown; ok?: unknown; headers?: { get?: unknown } };
+  return (
+    typeof candidate.status === "number" &&
+    typeof candidate.ok === "boolean" &&
+    typeof candidate.headers === "object" &&
+    candidate.headers !== null &&
+    typeof candidate.headers.get === "function"
+  );
 }
 
 /**
@@ -257,7 +374,10 @@ export async function httpRequest(
   // it. Some vendors put their API key in the query string, so the raw URL must
   // not reach a message anyone might write down.
   const safeUrl = redactUrl(url);
-  refuseUnusableOptions(options, label, safeUrl);
+  refuseUnusableOptions(url, options, label, safeUrl);
+  // Already stopped before we began. Delivering once anyway spends a request
+  // the caller has explicitly withdrawn.
+  if (options.signal?.aborted === true) throw options.signal.reason;
 
   // Unbounded by design: `decideRetry` owns the budget and refuses past
   // MAX_RETRIES, so the exit is the predicate rather than a second counter that
@@ -276,13 +396,20 @@ export async function httpRequest(
     let failure: unknown = null;
 
     try {
-      const attempted = await doFetch(url, { ...init, signal: deadline.signal });
-      // Checked before anything is recorded about the delivery. A fetch
-      // implementation that hands back something else is OUR bug, not the
-      // network's, and the fields below were being assigned before the first
-      // line that touches the object — so a duck-typed stand-in was replayed
-      // three times and then returned to the caller dressed as a response.
-      if (!(attempted instanceof Response)) {
+      // Raced, not merely signalled. Handing the deadline over as `init.signal`
+      // is a request, and an implementation that drops it — this repo's own
+      // SSRF guard hardcodes its own timeout and discards ours — left the call
+      // hanging forever with the deadline silently unenforced.
+      const attempted = await Promise.race([
+        doFetch(url, { ...init, signal: deadline.signal }),
+        deadlineReached(deadline, label),
+      ]);
+      // Checked before anything is recorded about the delivery. A stand-in that
+      // hands back something else is OUR bug, not the network's, and the fields
+      // below were being assigned before the first line that touches the object
+      // — so a duck-typed stand-in was replayed three times and then returned
+      // to the caller dressed as a response.
+      if (!isResponseLike(attempted)) {
         throw new TransportContractError(
           `${label} fetch implementation for ${safeUrl} did not return a Response`,
         );
@@ -292,6 +419,12 @@ export async function httpRequest(
       status = attempted.status;
       if (attempted.ok) return attempted;
     } catch (error) {
+      // Stopping is not a failed retry. It used to fall through the same gate
+      // as one, so pressing stop on the second delivery reached the caller as
+      // "failed after 2 attempts" — a decision the caller made, reported back
+      // as a network fault with a count attached that means nothing. Rethrown
+      // as-is, whatever value it aborted with; `finally` below still runs.
+      if (wasCancelled(options.signal)) throw options.signal?.reason;
       failure = error;
       transportError = classifyThrown(error, options.signal, deadline.expired(), options.isFatal);
     } finally {
@@ -330,9 +463,21 @@ export async function httpRequest(
     // body would be this layer managing a body, which is the one thing it does
     // not do — and the client underneath already handles an unconsumed
     // response: a small one is buffered and its socket returns to the pool, a
-    // large one costs that socket its reuse. Measured: ten unread 404s used two
-    // connections, not ten. A lost reuse is a cost, not a leak, and it is the
-    // cost of this layer having no opinion about bodies.
-    await doSleep(decision.delayMs, options.signal);
+    // large one costs that socket its reuse. Measured, and the size matters:
+    // ten unread 404s with small bodies used two connections, but past undici's
+    // 64 KiB buffering threshold reuse collapses — thirty unread megabyte
+    // responses used thirty connections. A lost reuse is a cost, not a leak,
+    // and it is the cost of this layer having no opinion about bodies; a caller
+    // discarding large ones should cancel them (`response.body?.cancel()`).
+    try {
+      await doSleep(decision.delayMs, options.signal);
+    } catch (error) {
+      // The same rule as mid-delivery: a stop during the wait is the caller's
+      // decision, handed back with the value it aborted with. Without this the
+      // sleep's own rejection escaped — a fourth throw shape nothing named,
+      // and one that replaced a non-Error abort reason with a generic Error.
+      if (wasCancelled(options.signal)) throw options.signal?.reason;
+      throw error;
+    }
   }
 }

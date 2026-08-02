@@ -48,7 +48,7 @@ export function redactUrl(raw: string): string {
   //
   // This is reachable rather than theoretical. The agent's fetch tool takes a
   // URL from the model; the SSRF guard rejects the non-http scheme; and the
-  // transport then redacts that same URL for the event it emits on the way out.
+  // transport then redacts that same URL for any message it composes.
   // The guard stops the REQUEST — it does not stop the string reaching a log.
   // The scheme is the only part safe to name, so it is the only part named.
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {

@@ -4,14 +4,14 @@
 /**
  * Wait for a duration, optionally cutting the wait short on cancellation.
  *
- * One implementation so that every wait in the system behaves the same way
- * under cancellation. The retry loop is its caller inside this package; the
- * browser upload and the worker use it directly.
+ * Internal to this package: the retry loop is its only caller, and it is not
+ * exported. An earlier version named the browser upload and the worker as
+ * consumers; neither can reach it now, and neither did.
  *
- * The signal matters most where this is used to space out retries: a user
- * who presses stop 20 ms into an eight-second backoff should not wait out
- * the backoff. A bare timer cannot express that, and the retry loop's own
- * cancellation check does not help — it does not run until the sleep ends.
+ * The signal is what makes it worth having over a bare timer. It spaces out
+ * retries, and a caller who presses stop partway into a wait should not have
+ * to sit through the rest of it — the loop's own cancellation check cannot
+ * help, because it does not run until the wait ends.
  * @param ms - Milliseconds to wait.
  * @param signal - Cancellation. When it fires, the wait rejects instead of
  *   resolving, so the caller can stop rather than proceed.

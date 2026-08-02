@@ -17,6 +17,7 @@
  * differently for real than it does against a double.
  */
 
+import { getEventListeners } from "node:events";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -147,8 +148,48 @@ describe("against a real server, with the real fetch", () => {
     expect(thrown).not.toBeInstanceOf(HttpRetryError);
   });
 
+  it("item 1 — enforces the per-delivery deadline against a server that never answers", async () => {
+    // A server that accepts the socket and then says nothing: the one shape a
+    // fetch double cannot reproduce, because a hand-written pending Promise
+    // has no socket behind it.
+    const server = createServer(() => {
+      // Deliberately never responds.
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    running = server;
+    const { port } = server.address() as AddressInfo;
+
+    const started = Date.now();
+    const thrown = await httpRequest(`http://127.0.0.1:${port}/`, {}, {
+      replaySafe: true,
+      timeoutMs: 150,
+    }).catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(Error);
+    // Three deliveries, each cut off at its own deadline, plus two backoffs.
+    expect(Date.now() - started).toBeLessThan(6_000);
+  }, 10_000);
+
+  it("item 5 — a real cancellation mid-flight comes back as the caller's own error", async () => {
+    const server = createServer(() => {
+      // Never responds, so the abort is what ends it.
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    running = server;
+    const { port } = server.address() as AddressInfo;
+
+    const controller = new AbortController();
+    const inFlight = httpRequest(`http://127.0.0.1:${port}/`, {}, {
+      replaySafe: true,
+      timeoutMs: 5_000,
+      signal: controller.signal,
+    });
+    setTimeout(() => controller.abort(new Error("user pressed stop")), 50);
+
+    await expect(inFlight).rejects.toThrow("user pressed stop");
+  }, 10_000);
+
   it("item 6 — holds no listener on the caller's signal after a real round trip", async () => {
-    const { getEventListeners } = await import("node:events");
     const controller = new AbortController();
     const { url } = await stubServer([{ kind: "status", status: 200 }]);
 

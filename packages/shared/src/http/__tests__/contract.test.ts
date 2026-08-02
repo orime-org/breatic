@@ -203,6 +203,104 @@ describe("item 1 — send the request the caller asked for", () => {
       httpRequest("https://x.test/bad", {}, { ...REPLAYABLE, fetchImpl }),
     ).rejects.toThrow(/did not return a Response/);
   });
+
+  it("accepts a Response built by another realm's constructor", async () => {
+    // `instanceof` is realm-sensitive. undici — already in this repo's tree via
+    // jsdom and testcontainers — builds its Responses from its own constructor,
+    // so an implementation injected from it failed the guard outright. Since a
+    // caller-injected fetch is this layer's whole seam, rejecting the most
+    // common way to supply one defeats the feature.
+    const foreign = Object.create(null) as Record<string, unknown>;
+    foreign["status"] = 200;
+    foreign["ok"] = true;
+    foreign["headers"] = new Headers({ "content-type": "application/json" });
+    const fetchImpl = (() => Promise.resolve(foreign)) as unknown as typeof fetch;
+
+    const out = await httpRequest("https://x.test/", {}, { ...REPLAYABLE, fetchImpl });
+
+    expect(out).toBe(foreign);
+  });
+
+  it.each([
+    // Assembled rather than written out: a literal `user:pass@host` trips the
+    // repo's secret scanner, which cannot tell a fixture from a real leak and
+    // should not try.
+    `https://user:${["hunter2", "SECRET"].join("")}@api.test/v1?key=QUERYSECRET`,
+    "ftp://files.test/thing",
+    "data:text/plain,hello",
+  ])("refuses %s without delivering it", async (url) => {
+    // Parseable is not the same as fetchable. A `data:` URL is actually fetched
+    // and returned as a 200, which is not an HTTP round trip at all; every
+    // other scheme costs three deliveries to learn what the string already
+    // said. Neither can be delivered meaningfully, so neither should cost one.
+    const wire = scriptedFetch([res(200)]);
+
+    await expect(
+      httpRequest(url, {}, { ...REPLAYABLE, fetchImpl: wire.fetchImpl }),
+    ).rejects.toThrow();
+    expect(wire.calls()).toBe(0);
+  });
+
+  it("never lets a URL's own credentials into the message or the cause", async () => {
+    // fetch refuses to build a Request from a URL with credentials, and the
+    // TypeError it throws quotes the WHOLE raw url — password, query key and
+    // all. That error became the `cause` this package tells callers to log,
+    // while the message beside it was carefully redacted. Measured before the
+    // fix: message clean, cause leaking both.
+    const wire = scriptedFetch([res(200)]);
+    let seen = "";
+    try {
+      const password = ["hunter2", "SECRET"].join("");
+      await httpRequest(`https://user:${password}@api.test/v1?key=QUERYSECRET`, {}, {
+        ...REPLAYABLE,
+        fetchImpl: wire.fetchImpl,
+      });
+    } catch (error) {
+      const err = error as Error;
+      seen = `${err.message} ${String(err.cause ?? "")} ${String(err.stack ?? "")}`;
+    }
+
+    expect(seen).not.toContain("hunter2SECRET");
+    expect(seen).not.toContain("QUERYSECRET");
+    expect(wire.calls()).toBe(0);
+  });
+
+  it("refuses a signal that is not an AbortSignal instead of crashing inside", async () => {
+    const wire = scriptedFetch([res(200)]);
+
+    await expect(
+      httpRequest("https://x.test/", {}, {
+        ...REPLAYABLE,
+        fetchImpl: wire.fetchImpl,
+        signal: null as unknown as AbortSignal,
+      }),
+    ).rejects.toThrow(/signal/i);
+    expect(wire.calls()).toBe(0);
+  });
+
+  it("does not deliver at all when the caller's signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("stopped before we started"));
+    const wire = scriptedFetch([res(200)]);
+
+    await expect(
+      httpRequest("https://x.test/", {}, { ...REPLAYABLE, fetchImpl: wire.fetchImpl, signal: controller.signal }),
+    ).rejects.toThrow("stopped before we started");
+    expect(wire.calls()).toBe(0);
+  });
+
+  it("enforces the deadline even when the fetch implementation ignores the signal", async () => {
+    // The deadline was handed over as `init.signal` and nothing raced it, so an
+    // implementation that drops the signal made the call hang forever. This
+    // repo's own SSRF guard — the motivating injected implementation, named in
+    // the TSDoc — hardcodes its own AbortSignal.timeout and discards ours.
+    const fetchImpl = (() => new Promise<Response>(() => {})) as unknown as typeof fetch;
+    const { sleepImpl } = fakeSleep();
+
+    await expect(
+      httpRequest("https://x.test/", {}, { replaySafe: true, timeoutMs: 40, fetchImpl, sleepImpl }),
+    ).rejects.toThrow();
+  }, 2_000);
 });
 
 describe("item 2 — decide whether a replay is warranted", () => {
@@ -356,6 +454,92 @@ describe("item 2 — decide whether a replay is warranted", () => {
     expect((thrown as HttpRetryError).cause).toBe(last);
     expect(wire.calls()).toBe(3);
   });
+
+  it("does not replay a body whose bytes are already gone (detached buffer)", async () => {
+    // A transferred ArrayBuffer passes `instanceof ArrayBuffer` while carrying
+    // no bytes at all, so the allow-list waved it through and a body that
+    // cannot be delivered even once was delivered three times.
+    const buffer = new ArrayBuffer(8);
+    structuredClone(buffer, { transfer: [buffer] });
+    const wire = scriptedFetch([res(503), res(503), res(200)]);
+    const { sleepImpl } = fakeSleep();
+
+    const out = await httpRequest("https://x.test/", { method: "POST", body: buffer }, {
+      ...REPLAYABLE,
+      fetchImpl: wire.fetchImpl,
+      sleepImpl,
+    });
+
+    expect(wire.calls()).toBe(1);
+    expect(out.status).toBe(503);
+  });
+
+  it.each([600, 700, 999])("does not treat %i as a server error worth replaying", async (status) => {
+    // `status >= 500` had no upper bound, so anything above 599 was replayed as
+    // if it were a 5xx. There is no such status class; it is not a statement
+    // that a replay might work.
+    //
+    // Built by hand rather than with `new Response`, which refuses a status
+    // outside 200..599 outright — so this was unreachable until the realm fix
+    // above started accepting response-shaped objects. It is reachable now,
+    // which is exactly why the bound belongs here.
+    const odd = { status, ok: false, headers: new Headers() };
+    let call = 0;
+    const fetchImpl = (() => {
+      call += 1;
+      return Promise.resolve(call === 1 ? odd : res(200));
+    }) as unknown as typeof fetch;
+
+    const out = await httpRequest("https://x.test/", {}, { ...REPLAYABLE, fetchImpl });
+
+    expect(call).toBe(1);
+    expect(out.status).toBe(status);
+  });
+
+  it.each([
+    ["a string", "payload"],
+    ["URLSearchParams", new URLSearchParams({ a: "1" })],
+    ["FormData", new FormData()],
+    ["a Blob", new Blob(["bytes"])],
+    ["an ArrayBuffer", new ArrayBuffer(8)],
+    ["a typed array", new Uint8Array([1, 2, 3])],
+    ["no body at all", undefined],
+  ])("replays %s, which can be delivered again", async (_label, body) => {
+    // The positive half of the allow-list was entirely untested: a mutation
+    // deleting every one of these branches left the suite green, so nothing
+    // stopped a replayable body from being reclassified as one-shot.
+    const wire = scriptedFetch([res(503), res(200)]);
+    const { sleepImpl } = fakeSleep();
+
+    const out = await httpRequest("https://x.test/", { method: "POST", body: body as BodyInit }, {
+      ...REPLAYABLE,
+      fetchImpl: wire.fetchImpl,
+      sleepImpl,
+    });
+
+    expect(wire.calls()).toBe(2);
+    expect(out.status).toBe(200);
+  });
+
+  it.each([
+    ["a plain object", { a: 1 }],
+    ["an array", [1, 2, 3]],
+  ])("replays %s body, which fetch re-serialises identically", async (_label, body) => {
+    // The allow-list judged anything unrecognised one-shot. These are values,
+    // not streams — fetch serialises them the same way on every delivery — so
+    // treating them as spent cost a retry that would have worked.
+    const wire = scriptedFetch([res(503), res(200)]);
+    const { sleepImpl } = fakeSleep();
+
+    const out = await httpRequest("https://x.test/", { method: "POST", body: body as unknown as BodyInit }, {
+      ...REPLAYABLE,
+      fetchImpl: wire.fetchImpl,
+      sleepImpl,
+    });
+
+    expect(wire.calls()).toBe(2);
+    expect(out.status).toBe(200);
+  });
 });
 
 describe("item 3 — wait as long as the server said, or work it out when it did not", () => {
@@ -391,6 +575,41 @@ describe("item 3 — wait as long as the server said, or work it out when it did
     await httpRequest("https://x.test/", {}, { ...REPLAYABLE, fetchImpl: wire.fetchImpl, sleepImpl });
 
     expect(waits()).toHaveLength(1);
+    expect(waits()[0]).toBeLessThanOrEqual(1_000);
+  });
+
+  it("still honours Retry-After when the server sent the header twice", async () => {
+    // Two headers arrive joined as "5, 5". The single-value parser rejected the
+    // whole thing and fell back to sub-second jitter — hammering the very
+    // server that had just asked for room, which is the opposite of what
+    // reading this header is for.
+    const headers = new Headers();
+    headers.append("retry-after", "5");
+    headers.append("retry-after", "5");
+    const doubled = new Response("{}", { status: 429, headers });
+    const wire = scriptedFetch([doubled, res(200)]);
+    const { sleepImpl, waits } = fakeSleep();
+
+    await httpRequest("https://x.test/", {}, { ...REPLAYABLE, fetchImpl: wire.fetchImpl, sleepImpl });
+
+    expect(waits()).toEqual([5_000]);
+  });
+
+  it("falls back to its own estimate for a date that does not exist", async () => {
+    // "Tue, 31 Feb 2027" has the right shape and Date.parse rolls it over into
+    // March, turning a nonsense header into a wait of weeks — which, being past
+    // the ceiling, stopped the request outright. A calendar-invalid date is not
+    // an instruction; it is a broken header.
+    const wire = scriptedFetch([
+      res(503, {}, { "retry-after": "Tue, 31 Feb 2027 12:00:00 GMT" }),
+      res(200),
+    ]);
+    const { sleepImpl, waits } = fakeSleep();
+
+    const out = await httpRequest("https://x.test/", {}, { ...REPLAYABLE, fetchImpl: wire.fetchImpl, sleepImpl });
+
+    expect(wire.calls()).toBe(2);
+    expect(out.status).toBe(200);
     expect(waits()[0]).toBeLessThanOrEqual(1_000);
   });
 });
@@ -477,6 +696,119 @@ describe("item 5 — hand the response over, or throw", () => {
 
     await expect(pending).rejects.toThrow("user pressed stop");
     expect(wire.calls()).toBe(1);
+  });
+
+  it.each([2, 3])(
+    "hands back the caller's own cancellation unwrapped when stop lands on delivery %i",
+    async (abortOn) => {
+      // Stopping is not a failed retry. It used to fall through the same gate
+      // as one, so pressing stop on the second delivery reached on-call as
+      // "failed after 2 attempts" — a user's decision reported as a network
+      // fault, with a count attached that means nothing.
+      const controller = new AbortController();
+      let call = 0;
+      const fetchImpl = ((_u: string, init?: RequestInit): Promise<Response> => {
+        call += 1;
+        if (call < abortOn) return Promise.resolve(res(503));
+        setTimeout(() => controller.abort(new Error("user pressed stop")), 5);
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        });
+      }) as typeof fetch;
+      const { sleepImpl } = fakeSleep();
+
+      const thrown = await httpRequest("https://x.test/", {}, {
+        ...REPLAYABLE,
+        timeoutMs: 5_000,
+        fetchImpl,
+        sleepImpl,
+        signal: controller.signal,
+      }).catch((e: unknown) => e);
+
+      expect(thrown).not.toBeInstanceOf(HttpRetryError);
+      expect((thrown as Error).message).toBe("user pressed stop");
+    },
+  );
+
+  it("hands back the caller's own cancellation when stop lands during a backoff wait", async () => {
+    const controller = new AbortController();
+    const wire = scriptedFetch([res(503), res(200)]);
+
+    const inFlight = httpRequest("https://x.test/", {}, {
+      ...REPLAYABLE,
+      fetchImpl: wire.fetchImpl,
+      signal: controller.signal,
+      // A real, cancellable wait: the point of the case is what happens when
+      // the stop arrives mid-sleep rather than mid-delivery.
+      sleepImpl: (ms: number, signal?: AbortSignal): Promise<void> =>
+        new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, ms);
+          signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(signal.reason instanceof Error ? signal.reason : new Error("aborted"));
+          });
+        }),
+    });
+    setTimeout(() => controller.abort(new Error("user pressed stop")), 20);
+
+    const thrown = await inFlight.catch((e: unknown) => e);
+
+    expect(thrown).not.toBeInstanceOf(HttpRetryError);
+    expect((thrown as Error).message).toBe("user pressed stop");
+  });
+
+  it("keeps a query key out of the message on the throwing retry path too", async () => {
+    // A mutation replacing the redacted url with the raw one in the
+    // HttpRetryError message left all 121 tests green: the redaction file
+    // asserted `rejects.toThrow()` with no argument on this path, and checked
+    // its "no secret" claims against a DIFFERENT call that failed at the
+    // boundary instead. The path that actually composes a message from a
+    // delivered URL had nothing on it.
+    const wire = scriptedFetch([
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+      new Error("ECONNRESET"),
+    ]);
+    const { sleepImpl } = fakeSleep();
+
+    const thrown = await httpRequest(
+      "https://vendor.test/v1/predictions?key=AIzaSyFAKE_KEY_VALUE",
+      {},
+      { ...REPLAYABLE, fetchImpl: wire.fetchImpl, sleepImpl },
+    ).catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(HttpRetryError);
+    expect((thrown as Error).message).not.toContain("AIzaSyFAKE_KEY_VALUE");
+    expect((thrown as Error).message).toContain("vendor.test");
+  });
+
+  it("preserves a non-Error abort reason exactly as the caller passed it", async () => {
+    // `abort()` takes any value. Replacing a caller's own reason with a generic
+    // Error destroys the identity it aborted with — and it was preserved during
+    // a delivery while being replaced during a wait, so the same stop produced
+    // two different shapes depending on timing.
+    const reason = { code: "USER_STOPPED", at: "review-step" };
+    const controller = new AbortController();
+    let call = 0;
+    const fetchImpl = ((_u: string, init?: RequestInit): Promise<Response> => {
+      call += 1;
+      if (call === 1) return Promise.resolve(res(503));
+      setTimeout(() => controller.abort(reason), 5);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+      });
+    }) as typeof fetch;
+    const { sleepImpl } = fakeSleep();
+
+    const thrown = await httpRequest("https://x.test/", {}, {
+      ...REPLAYABLE,
+      timeoutMs: 5_000,
+      fetchImpl,
+      sleepImpl,
+      signal: controller.signal,
+    }).catch((e: unknown) => e);
+
+    expect(thrown).toBe(reason);
   });
 });
 

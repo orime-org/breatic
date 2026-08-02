@@ -50,20 +50,20 @@ describe("decideRetry — protocol semantics the transport owns", () => {
     // beats failing.
     const d = decideRetry({ ...base, status: 429, replaySafe: false });
     expect(d.retry).toBe(true);
-    expect(d).toMatchObject({ retry: true, reason: "rate_limited" });
+    expect(d).toMatchObject({ retry: true });
   });
 
   it("retries 408 even when replaying is not safe", () => {
     // 408 = the server gave up reading our request, so it never ran it.
     const d = decideRetry({ ...base, status: 408, replaySafe: false });
-    expect(d).toMatchObject({ retry: true, reason: "request_timeout" });
+    expect(d).toMatchObject({ retry: true });
   });
 
   it.each([400, 401, 403, 404, 409, 422])(
     "refuses %i as a client error even when replaying is safe",
     (status) => {
       const d = decideRetry({ ...base, status, replaySafe: true });
-      expect(d).toEqual({ retry: false, reason: "client_error" });
+      expect(d).toEqual({ retry: false });
     },
   );
 
@@ -75,19 +75,19 @@ describe("decideRetry — protocol semantics the transport owns", () => {
       transportError: "caller_aborted",
       replaySafe: true,
     });
-    expect(d).toEqual({ retry: false, reason: "caller_aborted" });
+    expect(d).toEqual({ retry: false });
   });
 
   it("refuses when neither a failing status nor a transport error is present", () => {
     const d = decideRetry({ ...base, status: 200 });
-    expect(d).toEqual({ retry: false, reason: "nothing_to_retry" });
+    expect(d).toEqual({ retry: false });
   });
 });
 
 describe("decideRetry — application semantics the caller owns", () => {
   it.each([500, 502, 503, 504])("retries %i when replaying is safe", (status) => {
     const d = decideRetry({ ...base, status, replaySafe: true });
-    expect(d).toMatchObject({ retry: true, reason: "server_error" });
+    expect(d).toMatchObject({ retry: true });
   });
 
   it.each([500, 502, 503, 504])(
@@ -96,13 +96,13 @@ describe("decideRetry — application semantics the caller owns", () => {
       // This is the branch that preserves the 2026-07-07 decision: an AIGC
       // submit that failed with a 5xx may already be generating upstream.
       const d = decideRetry({ ...base, status, replaySafe: false });
-      expect(d).toEqual({ retry: false, reason: "not_replay_safe" });
+      expect(d).toEqual({ retry: false });
     },
   );
 
   it("retries a network error when replaying is safe", () => {
     const d = decideRetry({ ...base, transportError: "network" });
-    expect(d).toMatchObject({ retry: true, reason: "network_error" });
+    expect(d).toMatchObject({ retry: true });
   });
 
   it("refuses a network error when replaying is not safe", () => {
@@ -113,12 +113,12 @@ describe("decideRetry — application semantics the caller owns", () => {
       transportError: "network",
       replaySafe: false,
     });
-    expect(d).toEqual({ retry: false, reason: "not_replay_safe" });
+    expect(d).toEqual({ retry: false });
   });
 
   it("retries an attempt timeout when replaying is safe", () => {
     const d = decideRetry({ ...base, transportError: "timeout" });
-    expect(d).toMatchObject({ retry: true, reason: "attempt_timeout" });
+    expect(d).toMatchObject({ retry: true });
   });
 
   it("refuses an attempt timeout when replaying is not safe", () => {
@@ -127,7 +127,7 @@ describe("decideRetry — application semantics the caller owns", () => {
       transportError: "timeout",
       replaySafe: false,
     });
-    expect(d).toEqual({ retry: false, reason: "not_replay_safe" });
+    expect(d).toEqual({ retry: false });
   });
 });
 
@@ -141,14 +141,14 @@ describe("decideRetry — attempt budget", () => {
 
   it("refuses the attempt past MAX_RETRIES", () => {
     const d = decideRetry({ ...base, status: 503, attempt: MAX_RETRIES + 1 });
-    expect(d).toEqual({ retry: false, reason: "attempts_exhausted" });
+    expect(d).toEqual({ retry: false });
   });
 
   it("reports exhaustion rather than the failure kind once the budget is spent", () => {
     // Even a 429 — normally the most retryable case — must report
     // exhaustion, so telemetry distinguishes "gave up" from "refused".
     const d = decideRetry({ ...base, status: 429, attempt: MAX_RETRIES + 1 });
-    expect(d).toEqual({ retry: false, reason: "attempts_exhausted" });
+    expect(d).toEqual({ retry: false });
   });
 
   it("puts caller abort ahead of exhaustion", () => {
@@ -157,7 +157,7 @@ describe("decideRetry — attempt budget", () => {
       transportError: "caller_aborted",
       attempt: MAX_RETRIES + 5,
     });
-    expect(d).toEqual({ retry: false, reason: "caller_aborted" });
+    expect(d).toEqual({ retry: false });
   });
 
   it("fixes the total attempt count at three (first try plus two retries)", () => {
@@ -218,18 +218,17 @@ describe("decideRetry — backoff delay", () => {
     // hands the caller a response whose own `Retry-After` header still says 61,
     // so it can read the figure and decide for itself.
     const d = decideRetry({ ...base, status: 429, retryAfterMs: 61_000 });
-    expect(d).toMatchObject({
-      retry: false,
-      reason: "retry_after_too_long",
-      retryAfterMs: 61_000,
-    });
+    expect(d).toMatchObject({ retry: false });
   });
 
-  it("never clamps: a hostile Retry-After is refused, not quietly shortened", () => {
+  it("never clamps: a hostile Retry-After stops the request, it is not quietly shortened", () => {
     // A day-long wait used to come back as a 10s delay — a number nobody sent.
-    const d = decideRetry({ ...base, status: 429, retryAfterMs: 86400000 });
-    expect(d.retry).toBe(false);
-    expect(d).toMatchObject({ retryAfterMs: 86_400_000 });
+    // Refusing is the whole assertion: a clamp would show up here as
+    // `{ retry: true, delayMs: 60000 }`, which is what this pins against. The
+    // figure the server asked for is not relayed, because it is already in the
+    // response's own Retry-After header, which the caller receives.
+    const d = decideRetry({ ...base, status: 429, retryAfterMs: 86_400_000 });
+    expect(d).toEqual({ retry: false });
   });
 
   it("falls back to its own backoff when the Retry-After date has already passed", () => {
