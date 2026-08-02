@@ -179,9 +179,11 @@ describe('undo in a shared document', () => {
     });
 
     it('and undoing an attribute change still restores the old value', async () => {
-      // The other direction, and the reason this cannot be fixed by refusing
-      // every attribute deletion: when the local edit WAS the attribute change,
-      // undo has to put the old value back.
+      // The other direction: when the local edit WAS the attribute change,
+      // undo has to put the old value back. The filter does get asked about
+      // that item and does refuse it — measured — so the old value comes back
+      // through some other part of yjs's redo path. What that part is, I have
+      // not traced; this test is here so the behaviour is pinned regardless.
       const doc = new Y.Doc();
       const body = documentBodyFragment(doc);
       const undoManager = createDocumentUndoManager(doc);

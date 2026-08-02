@@ -196,11 +196,12 @@ describe('ProjectPage — the workspace overlay follows the banner', () => {
   it('does not reach into the workspace to disable it', async () => {
     // Not the same claim as "the workspace is still usable" — it is not, the
     // opaque curtain is on top of it. What is pinned here is that nothing
-    // reaches INTO the workspace to disable it: `inert` pulls focus out of
-    // whatever the user was typing in and kills IME composition mid-word, and
-    // `aria-hidden` erases the whole subtree for a screen reader. Both were
-    // tried, both cost something real, and neither adds anything the curtain
-    // does not already do by being on screen.
+    // reaches INTO the workspace to disable it: `inert` stops the whole subtree
+    // receiving input, which pulls focus out of whatever the user was typing in
+    // and kills IME composition mid-word, and `aria-hidden` erases the subtree
+    // for a screen reader. The curtain takes the pointer and leaves the
+    // keyboard, so someone already typing carries on; both of these took that
+    // away too, for a requirement the curtain already meets by being visible.
     //
     // Selected by a data attribute present in BOTH states, so the assertion
     // cannot pass vacuously by matching nothing.

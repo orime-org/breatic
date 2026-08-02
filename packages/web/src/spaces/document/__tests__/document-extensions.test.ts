@@ -93,11 +93,16 @@ describe('the document schema', () => {
     // so its children never appear as top-level names and a name-based
     // assertion would pass even with history switched back on.
     //
-    // Compared against stock StarterKit key by key, rather than by looking for
-    // options set to `false`. Configuration is not only switches — narrowing
-    // heading to `{ levels: [1, 2] }` or restricting the link protocols is a
-    // change to what users can write, arrives as an object, and would sail past
-    // a false-only check while this file's docstring claims to gate it.
+    // Every key we differ from stock on, rather than every key set to `false`.
+    // Configuration is not only switches — narrowing heading to
+    // `{ levels: [1, 2] }` or restricting the link protocols changes what users
+    // can write, arrives as an object, and would sail past a false-only check
+    // while this file's docstring claims to gate it.
+    //
+    // In practice stock's options object is EMPTY (`configure({})` stores what
+    // it is given, it does not materialise defaults), so this reduces to "the
+    // keys we passed". That is the assertion either way, and writing it as a
+    // diff keeps it correct if StarterKit ever does start filling them in.
     const starterKit = buildDocumentExtensions({ fragment: schemaFragment() }).find(
       (e) => e.name === 'starterKit',
     );

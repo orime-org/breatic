@@ -30,39 +30,39 @@ import { documentBodyFragment } from '@web/spaces/document/document-yjs';
  * What undo is allowed to delete.
  *
  * Upstream's filter refuses a container that still holds content, which is what
- * keeps a co-editor's text out of my undo. It does not refuse that container's
- * ATTRIBUTES: an attribute is a map entry rather than a child, so it fails
- * `defaultDeleteFilter`'s first test — `item.content instanceof ContentType` —
- * and is always deletable. Before the protected set covered every block type
- * this could not be observed, because the container went too.
+ * keeps a co-editor's text out of my undo. It does not extend that to the
+ * container's ATTRIBUTES: an attribute is a map entry, so it fails the filter's
+ * test for a `ContentType` and stays deletable. While the protected set held
+ * only `paragraph` this could not be observed, because the container went too.
  *
  * Measured with the real binding: Alice writes `<h3>Plan</h3>`, Bob appends
  * into it, Alice undoes. With upstream's filter alone the heading survives as
- * `<heading> BOB</heading>` and renders as an h1 — Alice's `level` went with
+ * `<heading> BOB</heading>` and renders as an h1 — Alice's `level` left with
  * her text, for everyone, and Bob cannot undo it because it is not on his
- * stack. A code block loses its language and stops highlighting; an ordered
- * list loses its start and renumbers from 1.
+ * stack. A code block comes back without its language, an ordered list without
+ * its start.
  *
- * The condition is deliberately the same one upstream uses for the container:
- * protected type, still populated. When nobody else has written into the block
- * the container is deletable, its attributes go with it, and undo is unchanged.
- * And when the local edit WAS an attribute change, undo still restores the old
- * value — yjs replays that as a write, not as a deletion of Alice's item, so
- * this filter never sees it. Both directions are pinned in
- * `undo-protects-collaborator-text`.
+ * So an attribute is kept exactly when its container is: the same question is
+ * put to upstream about the parent, rather than restated here. Restating it was
+ * the first attempt, and it produced two conditions no test could reach —
+ * "protected type" and "still populated" could both be broken with the suite
+ * green, because the only case behind them was one upstream already decides.
+ * Delegating leaves one rule in one place.
+ *
+ * A container with no `_item` is a root type, which undo never deletes.
+ *
+ * Undoing an attribute CHANGE is unaffected: the old value comes back. That is
+ * pinned by test rather than explained here — the mechanism is inside yjs's
+ * redo path and I have not traced it far enough to describe it.
  * @param item - The yjs item undo proposes to delete.
  * @returns True to allow the deletion, false to keep the item.
  */
 function isDeletableByUndo(item: Y.Item): boolean {
   const nodes = protectedNodes();
   if (!defaultDeleteFilter(item, nodes)) return false;
-  const parent: unknown = item.parent;
-  return !(
-    item.parentSub !== null &&
-    parent instanceof Y.XmlElement &&
-    nodes.has(parent.nodeName) &&
-    parent.length > 0
-  );
+  if (item.parentSub === null) return true;
+  const container = (item.parent as { _item?: Y.Item | null } | null)?._item;
+  return container == null || defaultDeleteFilter(container, nodes);
 }
 
 /** Computed once; the schema is fixed for the lifetime of the bundle. */

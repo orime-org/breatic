@@ -94,9 +94,10 @@ describe('DocumentEditor', () => {
   it('adds undo and redo to the toolbar, and changes nothing else about it', () => {
     // This slice makes the document collaborative, and undo comes with that:
     // history lives in the shared undo manager, and a document people edit
-    // together without an undo is not shippable. The formatting controls are
-    // the editing feature set — a separate slice — and they are here exactly as
-    // they were before.
+    // together without an undo is not shippable. The formatting controls
+    // belong to the editing feature set — a separate slice — so WHAT they do
+    // is untouched; three things about HOW changed, and `DocumentToolbar`
+    // lists them (disabled for a viewer, subscribed state, translated labels).
     //
     // Asserted as the whole set rather than one membership check per button, so
     // a control quietly added or removed fails instead of slipping through the

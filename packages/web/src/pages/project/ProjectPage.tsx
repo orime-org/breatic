@@ -588,18 +588,16 @@ function ProjectWorkspace({
     return <LoadingScreen />;
   }
 
-  // Whenever the banner is up, the workspace below it is unusable, and it is
-  // covered for the same reason in both cases: what the user does there cannot
-  // reach the server.
+  // Whenever the banner is up, the workspace is covered, in both cases for the
+  // same reason: what the user does there is not reaching the server right now.
   //
   //   authFailed   - every mutation silently fails; the same expired token
-  //                  goes to the API and to collab.
-  //   disconnected - the product supports no offline editing at all (user,
-  //                  2026-07-29), so keystrokes would land in a local Y.Doc
-  //                  with nowhere to go. Measured before this branch existed:
-  //                  with collab killed, the document editor stayed
-  //                  `contenteditable` and `elementFromPoint` over it returned
-  //                  the editor's own paragraph — nothing above it.
+  //                  goes to the API and to collab. Nothing typed here will be
+  //                  saved, and no reconnect changes that.
+  //   disconnected - the writes queue up locally and go out on reconnect, so
+  //                  nothing is lost — but until then the user is alone with
+  //                  their edits and nobody else can see them, which is worth
+  //                  saying rather than leaving them to discover.
   //
   // Keeping the two conditions identical to the banner's is the point:
   // `ConnectionBanner` states they are a pair that must appear and disappear
