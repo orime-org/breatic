@@ -148,19 +148,19 @@ export async function getStorageAdapter(): Promise<StorageAdapter> {
  * @param opts - the key components (task type / extension)
  * @param opts.taskType - Task type (image, video, audio, tts, etc.)
  * @param opts.ext - File extension the CALLER must dot (".png", or a
- *   compound suffix like "_cover.webp"), or "" for none — appended verbatim.
+ *   compound suffix like "_cover.png"), or "" for none — appended verbatim.
  *   A bare "png" throws: the caller owns the format (#1630).
  * @returns the unique storage key path for the object
  * @throws {Error} If `ext` is non-empty and contains no dot (bare extension).
  */
 export function storageKey(opts: { taskType: string; ext: string }): string {
   // Extension contract (#1630): the caller passes a dotted extension
-  // (".png"), a compound dotted suffix ("_cover.webp"), or "" for none — it
+  // (".png"), a compound dotted suffix ("_cover.png"), or "" for none — it
   // is appended verbatim below. A bare "png" is a caller bug; fail fast
   // here (the single choke point every key flows through — upload / AIGC /
   // cover / local) instead of silently producing a dot-less
   // "..._<uuid>png". `includes('.')` (not startsWith) so compound suffixes
-  // like "_cover.webp" satisfy the contract.
+  // like "_cover.png" satisfy the contract.
   if (opts.ext !== "" && !opts.ext.includes(".")) {
     throw new Error(
       `storageKey: ext must be a dotted extension (e.g. ".png") or "", got "${opts.ext}"`,

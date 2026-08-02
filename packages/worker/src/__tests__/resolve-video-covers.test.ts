@@ -77,11 +77,11 @@ import { resolveVideoCovers } from "@worker/handlers/dispatch.js";
 
 /** The cover the extractor uploads (its `key` / `url` = the JUST-UPLOADED object). */
 const COVER = {
-  url: "https://cdn/image/2026-07-25/uploaded.webp",
-  key: "image/2026-07-25/uploaded.webp",
+  url: "https://cdn/image/2026-07-25/uploaded.png",
+  key: "image/2026-07-25/uploaded.png",
   sha256: "c".repeat(64),
   sizeBytes: 1234,
-  mimeType: "image/webp",
+  mimeType: "image/png",
 };
 
 const CTX = { taskId: "t1", userId: "u1", projectId: "p1" as string | undefined };
@@ -106,20 +106,20 @@ function videoOut(): { url?: string; cover_url?: string } {
 describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)", () => {
   it("register success → pins the REGISTERED canonical (publicUrl of the row's storageKey)", async () => {
     mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-07-25/uploaded.webp" },
+      asset: { storageKey: "image/2026-07-25/uploaded.png" },
       deduped: false,
     });
     const out = videoOut();
 
     await resolveVideoCovers([out], CTX);
 
-    expect(out.cover_url).toBe("https://cdn/image/2026-07-25/uploaded.webp");
-    // Registered with the cover's OWN mime (§8 webp, can't drift) + source/kind.
+    expect(out.cover_url).toBe("https://cdn/image/2026-07-25/uploaded.png");
+    // Registered with the cover's OWN mime (§8 PNG, can't drift) + source/kind.
     expect(mockRegister).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         projectId: "p1",
-        storageKey: "image/2026-07-25/uploaded.webp",
-        mimeType: "image/webp",
+        storageKey: "image/2026-07-25/uploaded.png",
+        mimeType: "image/png",
         kind: "image",
         source: "cover",
         generationTaskId: "t1",
@@ -131,18 +131,24 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     // The content already existed under a DIFFERENT key; register returns that
     // existing row. The just-uploaded cover.key is now a discarded duplicate
     // (orphan) — pinning it would 404 once the offline GC reclaims it.
+    //
+    // The existing row's key is a `.png` to match what this path uploads. Dedup
+    // keys on `(studio_id, content_hash)` alone, so a hit means IDENTICAL BYTES
+    // — the winning row holds PNG bytes. Its key SUFFIX is a separate matter
+    // (it comes from the uploader's filename and is never checked against the
+    // bytes), so `.webp` here would not be impossible, just misleading.
     mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-01-01/existing.webp" },
+      asset: { storageKey: "image/2026-01-01/existing.png" },
       deduped: true,
     });
     const out = videoOut();
 
     await resolveVideoCovers([out], CTX);
 
-    expect(out.cover_url).toBe("https://cdn/image/2026-01-01/existing.webp");
+    expect(out.cover_url).toBe("https://cdn/image/2026-01-01/existing.png");
     // NEVER the just-uploaded (duplicate) key.
     expect(out.cover_url).not.toBe(COVER.url);
-    expect(out.cover_url).not.toBe("https://cdn/image/2026-07-25/uploaded.webp");
+    expect(out.cover_url).not.toBe("https://cdn/image/2026-07-25/uploaded.png");
   });
 
   it("DEDUP hit whose reclaim-queue insert failed still pins the canonical, and LOGS the swallowed sentinel", async () => {
@@ -151,7 +157,7 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     // it here would leave the redundant object silently absent from the offline
     // job's work list — a silent failure the mandate bans.
     mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-01-01/existing.webp" },
+      asset: { storageKey: "image/2026-01-01/existing.png" },
       deduped: true,
       reclaimQueueFailed: true,
     });
@@ -160,7 +166,7 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     await resolveVideoCovers([out], CTX);
 
     // Registration succeeded — the cover still resolves normally.
-    expect(out.cover_url).toBe("https://cdn/image/2026-01-01/existing.webp");
+    expect(out.cover_url).toBe("https://cdn/image/2026-01-01/existing.png");
     expect(mockWarn).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: "t1", key: COVER.key }),
       "asset_reclaim_queue_failed",
@@ -218,7 +224,7 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     // Defense in depth for any future non-cover-specific throw inside the loop
     // (e.g. publicUrl blowing up on a malformed key).
     mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-07-25/uploaded.webp" },
+      asset: { storageKey: "image/2026-07-25/uploaded.png" },
       deduped: false,
     });
     mockPublicUrl.mockImplementation(() => {
@@ -233,11 +239,15 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
 
   it("skips outputs that already have a cover_url or a non-string url", async () => {
     mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-07-25/uploaded.webp" },
+      asset: { storageKey: "image/2026-07-25/uploaded.png" },
       deduped: false,
     });
     const kept: { url?: string; cover_url?: string } = {
       url: "https://cdn/a.mp4",
+      // Deliberately a legacy `.webp`: this branch skips outputs that ALREADY
+      // carry a cover_url, and the skip is a truthiness check on the field
+      // (`dispatch.ts`), so the value is never parsed. Left as webp so the
+      // fixture also stands for a cover produced before the format changed.
       cover_url: "https://cdn/kept.webp",
     };
     const noUrl: { url?: string; cover_url?: string } = { cover_url: undefined };

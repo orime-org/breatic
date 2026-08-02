@@ -105,7 +105,7 @@ import {
 } from '@web/spaces/canvas/canvas-upload';
 import {
   extractVideoFirstFrame,
-  videoCoverFileName,
+  videoCoverFile,
 } from '@web/spaces/canvas/video-cover-extract';
 import { hashFile } from '@web/data/upload/hash';
 import { putFileWithRetry } from '@web/data/upload/upload-retry';
@@ -1969,11 +1969,7 @@ function CanvasSpaceInner({
               toast.warning(t('canvas.upload.videoCodecUnsupported'));
               continue; // no node created
             }
-            const coverFile = new File(
-              [coverBlob],
-              videoCoverFileName(file.name),
-              { type: 'image/webp' },
-            );
+            const coverFile = videoCoverFile(coverBlob, file.name);
             const { nodeId, lease } = createUploadNodeAt('video', position);
             created.push(nodeId);
             trackOperation(

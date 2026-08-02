@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   extractVideoFirstFrame,
-  videoCoverFileName,
+  videoCoverFile,
 } from '@web/spaces/canvas/video-cover-extract';
 
 /**
@@ -90,7 +90,7 @@ function makeCanvas(blob: Blob | null): FakeCanvas {
   return {
     width: 0,
     height: 0,
-    getContext: () => ({ drawImage: vi.fn() }),
+    getContext: vi.fn(() => ({ drawImage: vi.fn() })),
     toBlob: vi.fn((cb: (b: Blob | null) => void) => cb(blob)),
   };
 }
@@ -102,9 +102,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('extractVideoFirstFrame — first-frame WebP cover off a local video File', () => {
-  it('draws the first frame after loadeddata → seek → seeked and resolves a WebP blob', async () => {
-    const cover = new Blob(['cover'], { type: 'image/webp' });
+describe('extractVideoFirstFrame — first-frame PNG cover off a local video File', () => {
+  it('draws the first frame after loadeddata → seek → seeked and resolves a PNG blob', async () => {
+    const cover = new Blob(['cover'], { type: 'image/png' });
     const video = makeVideo();
     const canvas = makeCanvas(cover);
     const { create, revoke } = installDom(video, canvas);
@@ -122,12 +122,18 @@ describe('extractVideoFirstFrame — first-frame WebP cover off a local video Fi
     // The canvas is sized to the frame before drawing.
     expect(canvas.width).toBe(640);
     expect(canvas.height).toBe(360);
-    // Encoded as WebP per the format convention (#1826 §8: images → webp).
-    expect(canvas.toBlob).toHaveBeenCalledWith(
-      expect.any(Function),
-      'image/webp',
-      expect.any(Number),
-    );
+    // Encoded as PNG per the format convention (#1826 §8: images we produce
+    // ourselves are PNG). PNG is lossless, so no quality argument is passed.
+    expect(canvas.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/png');
+    // Asserted with NO second argument at all — `toHaveBeenCalledWith` compares
+    // the whole argument list, so this rejects any context attribute, not just
+    // the one that motivated it. That one is `{ alpha: false }`: it makes the
+    // PNG smaller, but a WebM frame can carry a VP8/VP9 alpha plane, and an
+    // opaque context composites those transparent pixels to solid black
+    // (verified in Chromium: [0,0,0,0] → [0,0,0,255]). If a genuinely useful
+    // attribute ever needs adding here, relax this assertion deliberately —
+    // and keep alpha on.
+    expect(canvas.getContext).toHaveBeenCalledWith('2d');
     // Object URL always revoked.
     expect(revoke).toHaveBeenCalledWith('blob:mock-url');
   });
@@ -198,13 +204,26 @@ describe('extractVideoFirstFrame — first-frame WebP cover off a local video Fi
   });
 });
 
-describe('videoCoverFileName — cover name derived from the video name', () => {
-  it('swaps the extension for -cover.webp', () => {
-    expect(videoCoverFileName('clip.mp4')).toBe('clip-cover.webp');
-    expect(videoCoverFileName('a.b.mov')).toBe('a.b-cover.webp');
+describe('videoCoverFile — the cover File both upload paths build', () => {
+  it('declares PNG and the matching name, whatever the blob claims', () => {
+    // A bogus blob type: `File` never inherits it, so this also documents that
+    // the declaration comes from the module constant and not from the caller.
+    const blob = new Blob(['x'], { type: 'application/octet-stream' });
+    const file = videoCoverFile(blob, 'clip.mp4');
+    expect(file.type).toBe('image/png');
+    expect(file.name).toBe('clip-cover.png');
   });
 
-  it('appends -cover.webp when there is no extension', () => {
-    expect(videoCoverFileName('movie')).toBe('movie-cover.webp');
+  // The naming rule is exercised through the public function rather than the
+  // module-private helper: the backend derives the stored key's extension from
+  // this name, so what matters is the name a real cover File ends up carrying.
+  it('swaps the video extension for -cover.png', () => {
+    const blob = new Blob(['x']);
+    expect(videoCoverFile(blob, 'clip.mp4').name).toBe('clip-cover.png');
+    expect(videoCoverFile(blob, 'a.b.mov').name).toBe('a.b-cover.png');
+  });
+
+  it('appends -cover.png when the video name has no extension', () => {
+    expect(videoCoverFile(new Blob(['x']), 'movie').name).toBe('movie-cover.png');
   });
 });

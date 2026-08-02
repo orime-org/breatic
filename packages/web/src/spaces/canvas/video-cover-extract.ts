@@ -7,11 +7,17 @@
  * A video the user uploads carries no cover, so the VideoNode poster + the
  * reference rail / @ chip have nothing to show and generated-vs-uploaded video
  * diverge on the same `coverUrl` field. This grabs the first frame off a local
- * `<video>` (objectURL → seek to frame 0 → `<canvas>` → WebP blob), mirroring
- * the worker's Sharp cover so both paths feed one `coverUrl`. WebP is the
- * format convention for our-own-produced images (#1826 §8); a browser without
- * canvas WebP export (pre-Safari 17) falls back to PNG per the `toBlob` spec —
- * never JPEG — and the backend authoritatively re-sniffs the bytes regardless.
+ * `<video>` (objectURL → seek to frame 0 → `<canvas>` → PNG blob), mirroring
+ * the worker's Sharp cover so both paths feed one `coverUrl`. PNG is the format
+ * convention for our-own-produced images (#1826 §8) and is the one type the
+ * `toBlob` spec requires every user agent to support, so — unlike WebP — the
+ * encoded format never diverges by browser.
+ *
+ * The type this module declares is not a hint the backend later corrects: on
+ * S3 / OSS it is signed into the presigned PUT (`getUploadUrl`), stored as the
+ * object's Content-Type, and read straight back by `head()` into the asset
+ * ledger row. Only the local adapter sniffs the bytes. That is why the
+ * declaration lives here rather than at each call site.
  *
  * Best-effort by contract: a codec the browser cannot decode (HEVC etc.), a
  * zero-sized frame, or a timeout resolves to `null` — NEVER throws. The caller
@@ -28,14 +34,24 @@ export interface ExtractVideoFirstFrameOptions {
   timeoutMs?: number;
 }
 
-/** Default decode-hang guard: a real first-frame decode is well under this. */
-const DEFAULT_TIMEOUT_MS = 10_000;
+/**
+ * The cover's format for the whole browser side: both the canvas encoder and
+ * the File handed to the upload read it from here, so the encoded bytes and the
+ * declared type cannot drift apart. The filename carries the matching
+ * {@link COVER_EXTENSION}. Nothing mechanically stops a new call site from
+ * building a cover File by hand; what keeps that from happening is that
+ * {@link videoCoverFile} is the only exported way to get one.
+ */
+const COVER_MIME_TYPE = 'image/png';
 
 /**
- * WebP quality for the cover (0..1) — matches the worker's Sharp `_cover.webp`
- * intent: a small, lossy still is fine for a poster / thumbnail.
+ * File extension matching {@link COVER_MIME_TYPE}. Kept in step by the unit
+ * tests, which assert the resulting name and type together.
  */
-const COVER_WEBP_QUALITY = 0.85;
+const COVER_EXTENSION = '.png';
+
+/** Default decode-hang guard: a real first-frame decode is well under this. */
+const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
  * A hair past 0, still inside frame 0 for any real frame rate (< any frame's
@@ -46,7 +62,7 @@ const COVER_WEBP_QUALITY = 0.85;
 const FIRST_FRAME_SEEK_S = 0.0001;
 
 /**
- * Extract the first frame of a local video File as a WebP cover blob, or
+ * Extract the first frame of a local video File as a PNG cover blob, or
  * `null` when the browser cannot decode it (unsupported codec), the frame is
  * empty, or the decode times out. Never throws.
  *
@@ -56,7 +72,7 @@ const FIRST_FRAME_SEEK_S = 0.0001;
  * revoked (success or failure).
  * @param file - The video File to grab the first frame from.
  * @param opts - Optional decode-timeout override.
- * @returns The first-frame WebP blob, or `null` on any failure / timeout.
+ * @returns The first-frame PNG blob, or `null` on any failure / timeout.
  */
 export async function extractVideoFirstFrame(
   file: File,
@@ -101,17 +117,21 @@ export async function extractVideoFirstFrame(
           const canvas = document.createElement('canvas');
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
+          // Keep the alpha channel. Opting out (`{ alpha: false }`) makes the
+          // PNG smaller, but video frames are NOT always opaque: WebM carries a
+          // VP8/VP9 alpha plane, and compositing such a frame onto an opaque
+          // context turns every transparent pixel into solid black — a wrong
+          // cover, not a smaller one. Verified in Chromium against a VP9 file
+          // with a transparent half: those pixels read [0,0,0,0] with alpha on
+          // and [0,0,0,255] with it off.
           const ctx = canvas.getContext('2d');
           if (ctx === null || canvas.width === 0 || canvas.height === 0) {
             finish(null);
             return;
           }
           ctx.drawImage(video, 0, 0);
-          canvas.toBlob(
-            (blob) => finish(blob),
-            'image/webp',
-            COVER_WEBP_QUALITY,
-          );
+          // PNG is lossless — `toBlob`'s quality argument does not apply.
+          canvas.toBlob((blob) => finish(blob), COVER_MIME_TYPE);
         } catch {
           finish(null);
         }
@@ -126,14 +146,41 @@ export async function extractVideoFirstFrame(
 }
 
 /**
- * Derive the cover File name from a video File name: `<base>-cover.webp`. Keeps
- * the cover recognisable next to its video in storage / dedup and gives the
- * `<canvas>` blob a real filename for the presign contract.
+ * Derive the cover File name from a video File name: `<base>-cover.png`.
+ *
+ * Module-private on purpose: {@link videoCoverFile} is the only exported way to
+ * build a cover, so a caller cannot assemble one out of a name and a hand-picked
+ * type. The name itself is what the presign contract carries — the backend takes
+ * the stored key's extension from it — and it keeps the cover readable next to
+ * its video when someone browses storage.
  * @param videoFileName - The source video's File name.
- * @returns The cover's `.webp` filename.
+ * @returns The cover's `.png` filename.
  */
-export function videoCoverFileName(videoFileName: string): string {
+function videoCoverFileName(videoFileName: string): string {
   const dot = videoFileName.lastIndexOf('.');
   const base = dot > 0 ? videoFileName.slice(0, dot) : videoFileName;
-  return `${base}-cover.webp`;
+  return `${base}-cover${COVER_EXTENSION}`;
+}
+
+/**
+ * Wrap an extracted cover blob into the File the upload pipeline expects.
+ *
+ * Both upload entry points (drop-on-canvas and fill-an-empty-node) call this, so
+ * the declared type and the filename come from the same place as the bytes
+ * {@link extractVideoFirstFrame} encodes, and neither can be changed for one
+ * entry point without the other.
+ *
+ * The declared type matters beyond the presign call: on S3 / OSS it is signed
+ * into the upload URL and becomes the stored object's Content-Type, which the
+ * ledger then records as the asset's `mimeType` and feeds to `detectKind` (the
+ * local adapter instead sniffs the bytes). A call site that guessed wrong would
+ * mislabel the asset, not just the request.
+ * @param coverBlob - The first-frame blob from {@link extractVideoFirstFrame}.
+ * @param videoFileName - The source video's File name (drives the cover name).
+ * @returns The cover File, ready to presign and PUT.
+ */
+export function videoCoverFile(coverBlob: Blob, videoFileName: string): File {
+  return new File([coverBlob], videoCoverFileName(videoFileName), {
+    type: COVER_MIME_TYPE,
+  });
 }
