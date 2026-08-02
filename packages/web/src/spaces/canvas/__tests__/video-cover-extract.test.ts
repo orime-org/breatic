@@ -102,9 +102,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('extractVideoFirstFrame — first-frame WebP cover off a local video File', () => {
-  it('draws the first frame after loadeddata → seek → seeked and resolves a WebP blob', async () => {
-    const cover = new Blob(['cover'], { type: 'image/webp' });
+describe('extractVideoFirstFrame — first-frame PNG cover off a local video File', () => {
+  it('draws the first frame after loadeddata → seek → seeked and resolves a PNG blob', async () => {
+    const cover = new Blob(['cover'], { type: 'image/png' });
     const video = makeVideo();
     const canvas = makeCanvas(cover);
     const { create, revoke } = installDom(video, canvas);
@@ -122,12 +122,9 @@ describe('extractVideoFirstFrame — first-frame WebP cover off a local video Fi
     // The canvas is sized to the frame before drawing.
     expect(canvas.width).toBe(640);
     expect(canvas.height).toBe(360);
-    // Encoded as WebP per the format convention (#1826 §8: images → webp).
-    expect(canvas.toBlob).toHaveBeenCalledWith(
-      expect.any(Function),
-      'image/webp',
-      expect.any(Number),
-    );
+    // Encoded as PNG per the format convention (#1826 §8: images we produce
+    // ourselves are PNG). PNG is lossless, so no quality argument is passed.
+    expect(canvas.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/png');
     // Object URL always revoked.
     expect(revoke).toHaveBeenCalledWith('blob:mock-url');
   });
@@ -199,12 +196,12 @@ describe('extractVideoFirstFrame — first-frame WebP cover off a local video Fi
 });
 
 describe('videoCoverFileName — cover name derived from the video name', () => {
-  it('swaps the extension for -cover.webp', () => {
-    expect(videoCoverFileName('clip.mp4')).toBe('clip-cover.webp');
-    expect(videoCoverFileName('a.b.mov')).toBe('a.b-cover.webp');
+  it('swaps the extension for -cover.png', () => {
+    expect(videoCoverFileName('clip.mp4')).toBe('clip-cover.png');
+    expect(videoCoverFileName('a.b.mov')).toBe('a.b-cover.png');
   });
 
-  it('appends -cover.webp when there is no extension', () => {
-    expect(videoCoverFileName('movie')).toBe('movie-cover.webp');
+  it('appends -cover.png when there is no extension', () => {
+    expect(videoCoverFileName('movie')).toBe('movie-cover.png');
   });
 });

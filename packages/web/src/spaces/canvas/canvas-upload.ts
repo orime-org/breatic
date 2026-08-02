@@ -392,7 +392,7 @@ function uploadOneMedia(
  * half is an accepted orphan, not a phantom node-history row). Mirrors
  * `runFocusCrop`'s injected pipeline.
  * @param videoFile - The video File to upload.
- * @param coverFile - The pre-flight-extracted cover File (WebP).
+ * @param coverFile - The pre-flight-extracted cover File (PNG).
  * @param projectId - Owning project (authorizes the presigns).
  * @param deps - Injected shared upload network + atomic result sinks.
  */
@@ -635,7 +635,7 @@ export async function fillNodeFromFile(
       return;
     }
     coverFile = new File([coverBlob], videoCoverFileName(file.name), {
-      type: 'image/webp',
+      type: 'image/png',
     });
   }
   const lease = deps.setHandling(nodeId);

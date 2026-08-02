@@ -353,7 +353,7 @@ export async function resolveVideoCovers(
           continue;
         }
         try {
-          // The mime comes FROM the cover itself (it owns its format, §8 webp)
+          // The mime comes FROM the cover itself (it owns its format, §8 PNG)
           // so it can't drift. Pin the REGISTERED canonical, never cover.key
           // (§0 rule 2): a dedup hit resolves to an existing row and a register
           // failure commits nothing — cover.key would orphan in both.

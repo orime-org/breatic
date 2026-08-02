@@ -77,11 +77,11 @@ import { resolveVideoCovers } from "@worker/handlers/dispatch.js";
 
 /** The cover the extractor uploads (its `key` / `url` = the JUST-UPLOADED object). */
 const COVER = {
-  url: "https://cdn/image/2026-07-25/uploaded.webp",
-  key: "image/2026-07-25/uploaded.webp",
+  url: "https://cdn/image/2026-07-25/uploaded.png",
+  key: "image/2026-07-25/uploaded.png",
   sha256: "c".repeat(64),
   sizeBytes: 1234,
-  mimeType: "image/webp",
+  mimeType: "image/png",
 };
 
 const CTX = { taskId: "t1", userId: "u1", projectId: "p1" as string | undefined };
@@ -106,20 +106,20 @@ function videoOut(): { url?: string; cover_url?: string } {
 describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)", () => {
   it("register success → pins the REGISTERED canonical (publicUrl of the row's storageKey)", async () => {
     mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-07-25/uploaded.webp" },
+      asset: { storageKey: "image/2026-07-25/uploaded.png" },
       deduped: false,
     });
     const out = videoOut();
 
     await resolveVideoCovers([out], CTX);
 
-    expect(out.cover_url).toBe("https://cdn/image/2026-07-25/uploaded.webp");
-    // Registered with the cover's OWN mime (§8 webp, can't drift) + source/kind.
+    expect(out.cover_url).toBe("https://cdn/image/2026-07-25/uploaded.png");
+    // Registered with the cover's OWN mime (§8 PNG, can't drift) + source/kind.
     expect(mockRegister).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         projectId: "p1",
-        storageKey: "image/2026-07-25/uploaded.webp",
-        mimeType: "image/webp",
+        storageKey: "image/2026-07-25/uploaded.png",
+        mimeType: "image/png",
         kind: "image",
         source: "cover",
         generationTaskId: "t1",
@@ -142,7 +142,7 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     expect(out.cover_url).toBe("https://cdn/image/2026-01-01/existing.webp");
     // NEVER the just-uploaded (duplicate) key.
     expect(out.cover_url).not.toBe(COVER.url);
-    expect(out.cover_url).not.toBe("https://cdn/image/2026-07-25/uploaded.webp");
+    expect(out.cover_url).not.toBe("https://cdn/image/2026-07-25/uploaded.png");
   });
 
   it("DEDUP hit whose reclaim-queue insert failed still pins the canonical, and LOGS the swallowed sentinel", async () => {
@@ -218,7 +218,7 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     // Defense in depth for any future non-cover-specific throw inside the loop
     // (e.g. publicUrl blowing up on a malformed key).
     mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-07-25/uploaded.webp" },
+      asset: { storageKey: "image/2026-07-25/uploaded.png" },
       deduped: false,
     });
     mockPublicUrl.mockImplementation(() => {
@@ -233,7 +233,7 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
 
   it("skips outputs that already have a cover_url or a non-string url", async () => {
     mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-07-25/uploaded.webp" },
+      asset: { storageKey: "image/2026-07-25/uploaded.png" },
       deduped: false,
     });
     const kept: { url?: string; cover_url?: string } = {

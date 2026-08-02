@@ -316,7 +316,7 @@ describe('runMediaUpload — config → hash → presign(dedup) → PUT → call
 });
 
 const VIDEO_FILE = new File(['v'], 'clip.mp4', { type: 'video/mp4' });
-const COVER_FILE = new File(['c'], 'clip-cover.webp', { type: 'image/webp' });
+const COVER_FILE = new File(['c'], 'clip-cover.png', { type: 'image/png' });
 
 /**
  * Deps for {@link runVideoUploadWithCover}: config + hash shared, presign +
@@ -342,7 +342,7 @@ function makeVideoCoverDeps(
           }
           : {
             uploadUrl: 'https://put/c',
-            fileUrl: 'https://cdn/clip-cover.webp',
+            fileUrl: 'https://cdn/clip-cover.png',
             key: 'kc',
             kind: 'image',
           },
@@ -355,7 +355,7 @@ function makeVideoCoverDeps(
     // default matches the presign URLs so the happy-path assertions hold.
     onVideoUploaded: vi.fn().mockResolvedValue({
       fileUrl: 'https://cdn/clip.mp4',
-      coverUrl: 'https://cdn/clip-cover.webp',
+      coverUrl: 'https://cdn/clip-cover.png',
     }),
     onCoverUploaded: vi.fn(),
     sleep: () => Promise.resolve(),
@@ -371,7 +371,7 @@ describe('runVideoUploadWithCover — atomic video + cover (#1816)', () => {
 
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
       'https://cdn/clip.mp4',
-      'https://cdn/clip-cover.webp',
+      'https://cdn/clip-cover.png',
     );
     expect(deps.onFailure).not.toHaveBeenCalled();
     // Both ledger reports fire (video WITH nodeId at the caller; cover WITHOUT).
@@ -380,7 +380,7 @@ describe('runVideoUploadWithCover — atomic video + cover (#1816)', () => {
     // URL for the node-history row (①) + activity row (②).
     expect(deps.onVideoUploaded).toHaveBeenCalledExactlyOnceWith(
       { key: 'kv', kind: 'video', fileUrl: 'https://cdn/clip.mp4', hash: HASH },
-      { key: 'kc', kind: 'image', fileUrl: 'https://cdn/clip-cover.webp', hash: HASH },
+      { key: 'kc', kind: 'image', fileUrl: 'https://cdn/clip-cover.png', hash: HASH },
     );
     expect(deps.onCoverUploaded).toHaveBeenCalledOnce();
   });
@@ -460,7 +460,7 @@ describe('runVideoUploadWithCover — atomic video + cover (#1816)', () => {
     const deps = makeVideoCoverDeps({
       onVideoUploaded: vi.fn().mockResolvedValue({
         fileUrl: 'https://cdn/CANON.mp4',
-        coverUrl: 'https://cdn/CANON-cover.webp',
+        coverUrl: 'https://cdn/CANON-cover.png',
       }),
     });
 
@@ -468,11 +468,11 @@ describe('runVideoUploadWithCover — atomic video + cover (#1816)', () => {
 
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
       'https://cdn/CANON.mp4',
-      'https://cdn/CANON-cover.webp',
+      'https://cdn/CANON-cover.png',
     );
     expect(deps.onSuccess).not.toHaveBeenCalledWith(
       'https://cdn/clip.mp4',
-      'https://cdn/clip-cover.webp',
+      'https://cdn/clip-cover.png',
     );
   });
 
@@ -500,7 +500,7 @@ describe('runVideoUploadWithCover — atomic video + cover (#1816)', () => {
     // The cover's presign temp key (from the sub-upload) must NEVER be pinned.
     expect(deps.onSuccess).not.toHaveBeenCalledWith(
       'https://cdn/CANON.mp4',
-      'https://cdn/clip-cover.webp',
+      'https://cdn/clip-cover.png',
     );
   });
 
@@ -596,7 +596,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
         }
         : {
           uploadUrl: 'https://put/c',
-          fileUrl: 'https://cdn/clip-cover.webp',
+          fileUrl: 'https://cdn/clip-cover.png',
           key: 'kc',
           kind: 'image',
         },
@@ -622,31 +622,41 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       presign: vi.fn().mockImplementation(videoCoverPresign),
       extractVideoCover: vi
         .fn()
-        .mockResolvedValue(new Blob(['c'], { type: 'image/webp' })),
+        .mockResolvedValue(new Blob(['c'], { type: 'image/png' })),
       // The reporter returns the REGISTERED canonical(s) — the node pins those,
       // never the presign temp keys (report-then-pin, §0 rule 2). Canonical URLs
       // are deliberately DISTINCT from the presign temp keys so the assertion
       // actually guards the pin source.
       onUploaded: vi.fn().mockResolvedValue({
         fileUrl: 'https://cdn/CANON.mp4',
-        coverUrl: 'https://cdn/CANON-cover.webp',
+        coverUrl: 'https://cdn/CANON-cover.png',
       }),
       onCoverUploaded: vi.fn(),
     });
     await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
     expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
+    // The cover File is declared PNG (§8) at construction — the extracted blob's
+    // own type is NOT what gets used, canvas-upload sets it explicitly. Asserting
+    // the presign contract is what pins that declaration: a regression to another
+    // format here changes the type the backend is asked to store the cover under.
+    expect(deps.presign).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filename: 'clip-cover.png',
+        contentType: 'image/png',
+      }),
+    );
     expect(deps.setContent).toHaveBeenCalledExactlyOnceWith(
       'n1',
       'https://cdn/CANON.mp4',
       LEASE,
-      'https://cdn/CANON-cover.webp',
+      'https://cdn/CANON-cover.png',
     );
     // NEVER the presign temp keys.
     expect(deps.setContent).not.toHaveBeenCalledWith(
       'n1',
       'https://cdn/clip.mp4',
       LEASE,
-      'https://cdn/clip-cover.webp',
+      'https://cdn/clip-cover.png',
     );
     // Video ledger report carries the nodeId AND the cover info (#1824) so the
     // caller can ride the cover ref on the video report; cover report has no
@@ -672,7 +682,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
         ),
       extractVideoCover: vi
         .fn()
-        .mockResolvedValue(new Blob(['c'], { type: 'image/webp' })),
+        .mockResolvedValue(new Blob(['c'], { type: 'image/png' })),
     });
     await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
     expect(deps.setContent).not.toHaveBeenCalled();

@@ -1972,7 +1972,7 @@ function CanvasSpaceInner({
             const coverFile = new File(
               [coverBlob],
               videoCoverFileName(file.name),
-              { type: 'image/webp' },
+              { type: 'image/png' },
             );
             const { nodeId, lease } = createUploadNodeAt('video', position);
             created.push(nodeId);
