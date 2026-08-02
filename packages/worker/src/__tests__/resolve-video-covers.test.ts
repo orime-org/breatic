@@ -131,15 +131,20 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     // The content already existed under a DIFFERENT key; register returns that
     // existing row. The just-uploaded cover.key is now a discarded duplicate
     // (orphan) — pinning it would 404 once the offline GC reclaims it.
+    //
+    // The existing row's key is a `.png` on purpose. Dedup keys on
+    // `(studio_id, content_hash)` alone, so a hit means IDENTICAL BYTES —
+    // a PNG upload can only ever collide with another PNG. A `.webp` here
+    // would describe a row that cannot exist.
     mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-01-01/existing.webp" },
+      asset: { storageKey: "image/2026-01-01/existing.png" },
       deduped: true,
     });
     const out = videoOut();
 
     await resolveVideoCovers([out], CTX);
 
-    expect(out.cover_url).toBe("https://cdn/image/2026-01-01/existing.webp");
+    expect(out.cover_url).toBe("https://cdn/image/2026-01-01/existing.png");
     // NEVER the just-uploaded (duplicate) key.
     expect(out.cover_url).not.toBe(COVER.url);
     expect(out.cover_url).not.toBe("https://cdn/image/2026-07-25/uploaded.png");
@@ -151,7 +156,7 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     // it here would leave the redundant object silently absent from the offline
     // job's work list — a silent failure the mandate bans.
     mockRegister.mockResolvedValue({
-      asset: { storageKey: "image/2026-01-01/existing.webp" },
+      asset: { storageKey: "image/2026-01-01/existing.png" },
       deduped: true,
       reclaimQueueFailed: true,
     });
@@ -160,7 +165,7 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     await resolveVideoCovers([out], CTX);
 
     // Registration succeeded — the cover still resolves normally.
-    expect(out.cover_url).toBe("https://cdn/image/2026-01-01/existing.webp");
+    expect(out.cover_url).toBe("https://cdn/image/2026-01-01/existing.png");
     expect(mockWarn).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: "t1", key: COVER.key }),
       "asset_reclaim_queue_failed",
@@ -238,6 +243,10 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     });
     const kept: { url?: string; cover_url?: string } = {
       url: "https://cdn/a.mp4",
+      // Deliberately a legacy `.webp`: this branch skips outputs that ALREADY
+      // carry a cover_url, so the value is an arbitrary pre-existing URL and is
+      // never a dedup target. Unlike the case above, its format is irrelevant —
+      // keeping it webp proves the skip is format-blind.
       cover_url: "https://cdn/kept.webp",
     };
     const noUrl: { url?: string; cover_url?: string } = { cover_url: undefined };

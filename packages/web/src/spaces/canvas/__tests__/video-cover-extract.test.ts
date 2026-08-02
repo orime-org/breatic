@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   extractVideoFirstFrame,
+  videoCoverFile,
   videoCoverFileName,
 } from '@web/spaces/canvas/video-cover-extract';
 
@@ -31,7 +32,10 @@ interface FakeVideo {
 interface FakeCanvas {
   width: number;
   height: number;
-  getContext: (id: string) => { drawImage: (...args: unknown[]) => void } | null;
+  getContext: (
+    id: string,
+    attrs?: CanvasRenderingContext2DSettings,
+  ) => { drawImage: (...args: unknown[]) => void } | null;
   toBlob: (cb: (b: Blob | null) => void, type?: string, q?: number) => void;
 }
 
@@ -90,7 +94,7 @@ function makeCanvas(blob: Blob | null): FakeCanvas {
   return {
     width: 0,
     height: 0,
-    getContext: () => ({ drawImage: vi.fn() }),
+    getContext: vi.fn(() => ({ drawImage: vi.fn() })),
     toBlob: vi.fn((cb: (b: Blob | null) => void) => cb(blob)),
   };
 }
@@ -125,6 +129,11 @@ describe('extractVideoFirstFrame — first-frame PNG cover off a local video Fil
     // Encoded as PNG per the format convention (#1826 §8: images we produce
     // ourselves are PNG). PNG is lossless, so no quality argument is passed.
     expect(canvas.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/png');
+    // The context opts OUT of alpha: a decoded video frame is fully opaque, so
+    // the alpha channel would store a constant 255 plane. Under the old lossy
+    // WebP that cost ~nothing; under lossless PNG it is a flat size add-on
+    // (the encoder writes RGBA instead of RGB). Dropping it is pixel-identical.
+    expect(canvas.getContext).toHaveBeenCalledWith('2d', { alpha: false });
     // Object URL always revoked.
     expect(revoke).toHaveBeenCalledWith('blob:mock-url');
   });
@@ -192,6 +201,23 @@ describe('extractVideoFirstFrame — first-frame PNG cover off a local video Fil
     video.onerror?.();
 
     await expect(p).resolves.toBe(cover);
+  });
+});
+
+describe('videoCoverFile — the ONE place a cover File is built', () => {
+  it('declares the cover format, so no call site can drift', () => {
+    const blob = new Blob(['x'], { type: 'application/octet-stream' });
+    const file = videoCoverFile(blob, 'clip.mp4');
+    // The File's declared type comes from this module, NOT from the blob —
+    // the blob above deliberately carries a bogus type to prove that.
+    expect(file.type).toBe('image/png');
+    expect(file.name).toBe('clip-cover.png');
+  });
+
+  it('keeps name and mime in step for a video with no extension', () => {
+    const file = videoCoverFile(new Blob(['x']), 'movie');
+    expect(file.name).toBe('movie-cover.png');
+    expect(file.type).toBe('image/png');
   });
 });
 

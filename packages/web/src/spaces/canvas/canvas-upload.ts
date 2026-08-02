@@ -7,7 +7,7 @@ import {
   retryTransient,
   type UploadClientConfig,
 } from '@web/data/upload/upload-retry';
-import { videoCoverFileName } from '@web/spaces/canvas/video-cover-extract';
+import { videoCoverFile } from '@web/spaces/canvas/video-cover-extract';
 
 /**
  * Pure canvas-upload classification + the media upload orchestrator. Classify
@@ -634,9 +634,7 @@ export async function fillNodeFromFile(
       deps.onExtractRejected?.(nodeId);
       return;
     }
-    coverFile = new File([coverBlob], videoCoverFileName(file.name), {
-      type: 'image/png',
-    });
+    coverFile = videoCoverFile(coverBlob, file.name);
   }
   const lease = deps.setHandling(nodeId);
   if (!lease) return;

@@ -8,10 +8,11 @@
  * return the cover's STORAGE IDENTITY (url + key + sha256 + byte size) for the
  * caller (dispatch) to register it (source='cover'). Per the format convention
  * (§8: images we produce ourselves are PNG) the cover is encoded to PNG:
- * ffmpeg grabs the frame, then Sharp encodes PNG (Sharp ships its own codec,
- * so this never depends on how the ffmpeg binary was built). Extraction stays
- * best-effort: any failure path (ffmpeg missing, no output, Sharp error)
- * returns undefined (→ Film icon), never throws.
+ * ffmpeg emits an MJPEG frame, then Sharp encodes PNG (Sharp ships its own PNG
+ * codec, so the cover's format never depends on the ffmpeg binary having been
+ * built with a PNG encoder). Extraction stays best-effort: any failure path
+ * (ffmpeg missing, no output, Sharp error) returns undefined (→ Film icon),
+ * never throws.
  *
  * ffmpeg exec, Sharp, and storage are mocked — no real ffmpeg / codec / storage.
  */
@@ -30,7 +31,13 @@ vi.mock("sharp", () => ({
 }));
 vi.mock("@breatic/core", () => ({
   getStorageAdapter: vi.fn().mockResolvedValue({ upload: mockUpload }),
-  storageKey: () => "video/2026-07-25/1234_cover.png",
+  // Passes `ext` THROUGH instead of returning a constant: the real storageKey
+  // appends it verbatim, so echoing it is what makes the assertions below
+  // sensitive to the suffix the production code actually asks for. A constant
+  // here would make the key assertion a tautology — the suffix could be
+  // changed to anything and this suite would still pass.
+  storageKey: (opts: { taskType: string; ext: string }) =>
+    `${opts.taskType}/2026-07-25/1234${opts.ext}`,
   sha256Hex: (buf: Buffer) => `sha-${buf.length}`,
 }));
 

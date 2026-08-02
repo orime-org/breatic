@@ -7,9 +7,15 @@
  * Uses ffmpeg to read the video URL directly (only downloads the first few MB
  * for the initial frame), then encodes the frame to PNG with Sharp. Per the
  * format convention (#1826 §8) every image we produce ourselves is a PNG, so
- * the cover matches the browser-side extractor byte-for-byte in format. Sharp
- * ships its own codec, so this never depends on how the ffmpeg binary was
- * built. The cover is then uploaded to the same storage as the video.
+ * a generated video's cover lands in the same format as an uploaded video's
+ * (which the browser rasterises client-side) — same container, not the same
+ * bytes: this path goes through a lossy MJPEG intermediate, so the two never
+ * share a content hash and never dedup against each other.
+ *
+ * ffmpeg only has to decode the video and emit an MJPEG frame; Sharp ships its
+ * own PNG codec, so the cover's format never depends on the ffmpeg binary
+ * having been built with a PNG encoder. The cover is then uploaded to the same
+ * storage as the video.
  */
 
 import { execFile } from "node:child_process";
@@ -59,8 +65,8 @@ export async function extractVideoCover(
     }
 
     // Re-encode the frame to PNG (§8 format convention). Sharp bundles its own
-    // codec — no dependency on how ffmpeg was built — so the identity below is
-    // over the PNG bytes that actually get stored.
+    // PNG codec — ffmpeg above only has to emit MJPEG — so the identity below
+    // is over the PNG bytes that actually get stored.
     const png = await sharp(stdout).png().toBuffer();
 
     const key = storageKey({
