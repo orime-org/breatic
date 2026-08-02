@@ -92,7 +92,9 @@ describe("i18n-no-dead-keys", () => {
     // So this asserts a defect on purpose — it is where the dependency between
     // the two checks is written down. Delete the upstream one and this is the
     // behaviour that comes back: a live key, used twice, reported dead, and a
-    // raw id shipped to the UI. That happened once, to `cancel` and `loading`.
+    // raw id shipped to the UI. The record that the shape always needed
+    // handling is a87af417, which introduced the second matching path and the
+    // two tests guarding it together, in one commit.
     //
     // `common.ok` is the control, and it is what lets this test fail at all.
     // Asserting only "the dotless key is reported" stays true when matching is
