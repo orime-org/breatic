@@ -306,10 +306,11 @@ describe("confirmTransfer", () => {
   });
 
   it("stamps the request deadline from the configured decision window", async () => {
-    // The write site moved from a local constant to the shared window
-    // with nothing asserting the result — a getter handing back the wrong unit
-    // would have left this file green. Read from the getter rather than naming
-    // a number, so turning the operator knob does not redden the suite.
+    // The write site moved from a local constant to the shared window with
+    // nothing asserting the result. Read from the getter rather than naming a
+    // number, so turning the operator knob does not redden the suite — which
+    // means this pins that the write site CALLS the getter, not that the
+    // getter's unit is right; limits.test.ts holds that half.
     const { slug, adminId, memberId } = await seedStudio();
     await studioTransferService.requestTransfer(slug, adminId, memberId);
     const [req] = await transferRequestsFor(memberId);

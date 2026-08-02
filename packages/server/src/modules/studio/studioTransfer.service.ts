@@ -255,9 +255,13 @@ export async function confirmTransfer(
  *
  * Past the decision window a decline fails just as a confirm does: expiry
  * closes the request outright rather than leaving "no" available, so both
- * answers stop at the same instant. The mark-read CAS therefore runs inside
- * the transaction — otherwise a too-late decline would leave the request read
- * but undecided, invisible to its owner and impossible to answer.
+ * answers stop at the same instant.
+ *
+ * The mark-read CAS runs inside the transaction because the gates below it
+ * can reject a row the CAS already flipped. The CAS matches on id and
+ * recipient and never looks at the type, so this endpoint aimed at any other
+ * unread notification would mark it read and only then fail the type check —
+ * consuming a row it had no business touching.
  * @param notificationId - The `studio.transfer_request` notification id
  * @param receiverUserId - The recipient declining (owns the notification)
  * @throws {NotFoundError} the notification is missing, already decided, or not

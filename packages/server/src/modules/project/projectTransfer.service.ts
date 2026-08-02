@@ -304,8 +304,9 @@ export async function confirmProjectTransfer(
  * Past the decision window a decline fails just as a confirm does — mirror of
  * the studio transfer, and of the same reasoning: expiry closes the request
  * outright rather than leaving "no" available. The mark-read CAS runs inside
- * the transaction so a too-late decline cannot leave the request read but
- * undecided.
+ * the transaction because the gates below it can reject a row it already
+ * flipped; the CAS never looks at the type, so a mis-aimed decline would
+ * otherwise consume an unrelated notification.
  * @param notificationId - The `project.transfer_request` notification id
  * @param receiverUserId - The recipient declining (owns the notification)
  * @throws {NotFoundError} the notification is missing, already decided, or not

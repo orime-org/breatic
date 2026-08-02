@@ -75,8 +75,8 @@ import type {
  * the notification payload (so the bell can build the same link). The token
  * lives in Redis (not the PG tx) — a tx rollback simply leaves an orphan token
  * that self-expires with the decision window. The
- * `project_invitations_one_pending` partial
- * unique maps a duplicate LIVE pending to a ConflictError.
+ * `project_invitations_one_pending` partial unique maps a duplicate LIVE
+ * pending to a ConflictError.
  * @param projectId - The project the user is being invited into
  * @param inviterUserId - The acting owner (becomes `invitedBy`; name in payload)
  * @param email - The invitee's email; must belong to a registered user
@@ -302,7 +302,8 @@ export async function confirmInvite(
  * already-decided / not-owned invite collapses to NotFound.
  * @param invitationId - The `project_invitations` row id
  * @param receiverUserId - The invitee declining (must own the invite)
- * @throws {NotFoundError} the invite is missing, already decided, or not owned
+ * @throws {NotFoundError} the invite is missing, already decided, past its
+ *   decision window, or not owned by `receiverUserId`
  */
 export async function declineInvite(
   invitationId: string,
@@ -375,8 +376,8 @@ export async function listPending(
  * Issue a one-time email-link token for an invite (mirrors the studio-invite
  * token): a 64-hex random token stored in Redis
  * (`{env}:project-invite:{token}` → invitationId) with the same decision
- * window the invite row carries.
- * The route embeds it in the `/project-invite?token=` link.
+ * window the invite row carries. The route embeds it in the
+ * `/project-invite?token=` link.
  * @param invitationId - The invitation the token resolves to
  * @returns The 64-char hex token to embed in the invite link
  */

@@ -196,10 +196,14 @@ export interface InvitationLandingView {
   /** True when the logged-in user is the invitee (gates the confirm button). */
   isInvitee: boolean;
   /**
-   * The decision window in days, as the server is configured. The expired
-   * copy prints it instead of spelling out a number of its own — a page that
-   * keeps its own copy of the number goes on stating the old one after the
-   * window changes.
+   * The decision window in days, as the server is configured right now.
+   *
+   * The expired card prints this rather than a literal baked into five locale
+   * files. Note what that does and does not buy: the number is read when the
+   * page is rendered while the deadline was stamped when the invite was sent,
+   * so turning the window from seven to three makes an invite that genuinely
+   * had seven days say three. Rows keep the deadline they were stamped with;
+   * only the sentence follows the config.
    */
   windowDays: number;
 }

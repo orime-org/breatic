@@ -295,7 +295,7 @@ export async function createStudioTransferApproved(input: {
  * @param input - Recipient inbox, payload, expiry, and optional transaction
  * @param input.userId - The proposed new owner who receives the request
  * @param input.payload - The initiating owner's id + project id/name/slug
- * @param input.expiresAt - When the request times out (7 days from creation)
+ * @param input.expiresAt - When the recipient's window to decide runs out
  * @param input.tx - Optional transaction to bundle with related writes
  * @returns The inserted `project.transfer_request` notification
  */

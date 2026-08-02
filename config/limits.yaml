@@ -52,8 +52,9 @@ activity_feed_page_max: 100
 # Changing this affects rows written from then on; rows already carrying a
 # deadline keep the one they were stamped with.
 #
-# NOT covered here, deliberately: password reset, email verification,
-# session lifetime and recovery codes. Those are account-security
-# lifetimes, and each is set against its own threat, not against how long
-# someone reasonably takes to answer.
+# NOT covered here, deliberately: password reset, email verification and
+# session lifetime. Those are account-security lifetimes, each set against
+# its own threat rather than against how long someone reasonably takes to
+# answer. (Recovery codes have no lifetime at all — single use, then
+# rotated.)
 decision_window_days: 7

@@ -273,7 +273,8 @@ export async function confirmInvite(
  * already-decided / not-owned invite collapses to NotFound.
  * @param invitationId - The `studio_invitations` row id
  * @param receiverUserId - The invitee declining (must own the invite)
- * @throws {NotFoundError} the invite is missing, already decided, or not owned
+ * @throws {NotFoundError} the invite is missing, already decided, past its
+ *   decision window, or not owned by `receiverUserId`
  */
 export async function declineInvite(
   invitationId: string,
@@ -334,8 +335,7 @@ export async function revokeInvite(
  * Issue a one-time email-link token for an invite (mirrors the email-verify
  * token): a 64-hex random token stored in Redis (`{env}:studio-invite:{token}`
  * → invitationId) with the same decision window the invite row carries. The
- * route embeds it in the
- * `/studio-invite?token=` link.
+ * route embeds it in the `/studio-invite?token=` link.
  * @param invitationId - The invitation the token resolves to
  * @returns The 64-char hex token to embed in the invite link
  */

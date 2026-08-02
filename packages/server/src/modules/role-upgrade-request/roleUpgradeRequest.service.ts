@@ -6,7 +6,9 @@
  *
  * Three operations:
  *   - `request`: viewer creates a `role_upgrade_request` notification
- *     in the owner's inbox.
+ *     in the owner's inbox, carrying the deadline by which the owner must
+ *     answer (the shared decision window in `config/limits.yaml`).
+ *     Past it the request is closed to both answers.
  *   - `approve`: owner decides → service updates `project_members.role`
  *     to 'editor' AND creates a `role_upgrade_approved` notification in
  *     the requester's inbox AND marks the original request as read.
@@ -57,8 +59,10 @@ interface RoleUpgradeRequestInput {
 }
 
 /**
- * Viewer creates a role-upgrade request. Inserts a single
- * notification in the owner's inbox.
+ * Viewer creates a role-upgrade request. Inserts a single notification in the
+ * owner's inbox, stamped with the shared decision window: past that deadline
+ * the request can be neither approved nor rejected, and the inbox queries stop
+ * listing it.
  * @param input - Owner, requester, project, and optional message for the request.
  * @returns the inserted notification (caller can echo the id back to
  *   the requester for client-side optimistic display).
@@ -101,9 +105,8 @@ interface DecisionInput {
  *   no matching row.
  * @throws {ForbiddenError} if the notification doesn't belong to `ownerUserId`.
  * @throws {ConflictError} if the request is past its decision window.
- * @throws {ValidationError} if the notification isn't a
- *   role-upgrade-request type (defense in depth — the route should
- *   already filter by id).
+ * @throws {ValidationError} if the notification isn't a role-upgrade-request
+ *   type, or its requester / project id is malformed.
  */
 export async function approve(input: DecisionInput): Promise<void> {
   let approvedActivity: { projectId: string; targetUserId: string } | null =
@@ -267,10 +270,11 @@ async function loadAndGate(
   if (row.expiresAt !== null && row.expiresAt.getTime() <= Date.now()) {
     // Past the window the request is closed to BOTH answers: approving and
     // rejecting fail alike, because there is no decision left to make. Both
-    // transfers carry this same guard and raise the same error; the two
-    // invites enforce the same instant inside their accept / decline CAS
-    // predicates and surface it as NotFound — a difference in wire shape that
-    // predates the shared window and is not what it set out to unify.
+    // transfers carry this same guard and raise the same error. The two
+    // invites close at the same instant but answer NotFound, because their
+    // guard lives inside the CAS predicate rather than beside it — the
+    // accept path already answered that way, the decline path now matches it,
+    // and unifying the two wire shapes is a separate change.
     // Rows written before this flow had a window carry a null deadline and
     // stay decidable; nothing migrates them.
     throw new ConflictError(t("server.error.conflict"));

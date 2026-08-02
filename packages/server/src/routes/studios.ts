@@ -367,8 +367,8 @@ studio.patch("/:slug/members/:userId", requireStudioRole("admin"), async (c) => 
  * member to take over as admin (step 1 of the two-step handshake). Admin-only;
  * drops an actionable `studio.transfer_request` notification (confirm/cancel,
  * expiring with the decision window) in the recipient's inbox. No role change
- * yet — that lands when the
- * recipient confirms via the notification action endpoint.
+ * yet — that lands when the recipient confirms via the notification action
+ * endpoint.
  * @returns `201` with `{ data: { ok: true } }`; `403` personal / not admin,
  *   `404` recipient not a member, `422` recipient is the acting admin
  */

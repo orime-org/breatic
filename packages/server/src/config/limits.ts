@@ -126,11 +126,13 @@ export function getDecisionWindowDays(): number {
  *
  * The conversion lives here rather than at each deadline write: spelled out
  * at every call site, it is one transcription error away from two flows
- * disagreeing about the same window.
+ * disagreeing about the same window. Derived from the seconds form rather
+ * than from days again, so the day→second factor is applied in exactly one
+ * place.
  * @returns The decision window in milliseconds.
  */
 export function getDecisionWindowMs(): number {
-  return getDecisionWindowDays() * SECONDS_PER_DAY * 1000;
+  return getDecisionWindowSeconds() * 1000;
 }
 
 /**

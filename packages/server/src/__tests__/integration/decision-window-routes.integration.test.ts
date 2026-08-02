@@ -155,14 +155,15 @@ async function seedProject(): Promise<{
  * these tests are here to pin.
  * @param userId - Whose inbox it lands in.
  * @param type - The notification type.
- * @param payload - The type-specific payload.
+ * @param payload - The type-specific payload (flat, as all three actionable
+ *   kinds are).
  * @param projectId - The project scope, for the types that carry one.
  * @returns The new notification's id.
  */
 async function insertExpiredNotification(
   userId: string,
   type: string,
-  payload: Record<string, unknown>,
+  payload: Record<string, string | null>,
   projectId: string | null = null,
 ): Promise<string> {
   const rows = await sql<{ id: string }[]>`

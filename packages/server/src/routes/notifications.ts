@@ -102,7 +102,8 @@ route.post("/read-all", async (c) => {
  * notification (confirm / cancel). Dispatches by the notification's `type`:
  * `studio.transfer_request` routes to the transfer-admin handshake. The
  * caller must own the notification (the service's markRead userId guard);
- * a missing / already-decided / other-user's notification collapses to 404.
+ * a missing / already-decided / other-user's notification collapses to 404,
+ * and one past its decision window answers 409 for confirm and cancel alike.
  */
 route.post("/:id/action", async (c) => {
   const user = c.get("user");

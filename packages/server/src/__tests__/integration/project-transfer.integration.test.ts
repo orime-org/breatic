@@ -387,7 +387,8 @@ describe("confirmProjectTransfer", () => {
   });
 
   it("stamps the request deadline from the configured decision window", async () => {
-    // Mirror of the studio transfer's twin test — same reason, same shape.
+    // Mirror of the studio transfer's twin test: pins that the write site
+    // reads the shared window. The unit itself is held by limits.test.ts.
     const { projectId, ownerId, recipientId } = await seedProjectTransfer();
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
     const [req] = await transferRequestsFor(recipientId);
