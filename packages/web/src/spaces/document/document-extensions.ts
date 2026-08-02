@@ -49,10 +49,16 @@ import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 /** Inputs that switch on the collaborative layers; all optional. */
 export interface DocumentExtensionOptions {
   /**
-   * The document's body fragment. Supplying it binds the editor to Yjs; the
-   * schema is identical either way, so a schema-only caller can omit it.
+   * The document's body fragment — what binds this editor to Yjs.
+   *
+   * Required. It was optional so that a schema-only caller could omit it, but
+   * the only such callers were tests: production always has a fragment. A
+   * shape that exists for tests is a shape nobody maintains, and this one hid a
+   * silent "collaboration not wired up" branch. Tests wanting the schema pass a
+   * throwaway fragment — the collaboration extensions contribute no node or
+   * mark, so the schema is identical either way.
    */
-  fragment?: Y.XmlFragment;
+  fragment: Y.XmlFragment;
   /**
    * Provider whose awareness carries collaborator carets. The caret extension
    * throws on a null provider, so it mounts only once this is present.
@@ -75,11 +81,11 @@ export interface DocumentExtensionOptions {
  * they must not vary by slice or by whether collaboration is active. Only the
  * collaborative layers (binding, carets) and the placeholder are conditional,
  * and none of them contributes a node or mark.
- * @param options - Collaborative bindings and cosmetics; omit for schema-only use.
+ * @param options - The body fragment plus the collaborative wiring.
  * @returns The full extension list, ready for `useEditor`.
  */
 export function buildDocumentExtensions(
-  options: DocumentExtensionOptions = {},
+  options: DocumentExtensionOptions,
 ): Extensions {
   const { fragment, caretProvider, caretUser, undoManager } = options;
 
@@ -151,18 +157,14 @@ export function buildDocumentExtensions(
   // binding. It is not about outliving anything — the manager and the editor
   // share a lifetime, exactly as the binding assumes, because the EDITOR is
   // what survives a tab switch (see `document-editor-cache`).
-  // Skipped entirely without a fragment — that is the schema-only caller, which
-  // wants the node and mark set and no collaboration at all.
-  if (fragment) {
-    extensions.push(
-      ...buildCollabExtensions({
-        fragment,
-        caretProvider,
-        caretUser,
-        undoManager,
-      }),
-    );
-  }
+  extensions.push(
+    ...buildCollabExtensions({
+      fragment,
+      caretProvider,
+      caretUser,
+      undoManager,
+    }),
+  );
 
   // Resolved per render of the placeholder decoration rather than captured as
   // a string, because the editor is built once per document and would

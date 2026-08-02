@@ -32,7 +32,10 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
-import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
+import {
+  _resetDocumentEditorCacheForTests,
+  getDocumentEditor,
+} from '@web/spaces/document/document-editor-cache';
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
@@ -141,5 +144,54 @@ describe('opening a document does not write to it', () => {
     // Anything here is an edit attributed to whoever opened the file, and
     // undoing past it is what clears the redo stack.
     expect(handle.undoManager.undoStack).toHaveLength(0);
+  });
+});
+
+describe('editability is settled before the first paint', () => {
+  // TipTap defaults to editable, and the effect in `useDocumentEditor` that
+  // keeps it in step runs AFTER the first paint — so a viewer would get a
+  // `contenteditable` document for a frame unless it is set at construction.
+  // On a cache HIT the construction inputs are ignored by design, so that path
+  // needs its own correction.
+  //
+  // Asserted against `getDocumentEditor` directly, NOT through the hook: the
+  // hook's effect runs synchronously inside `renderHook`, so a hook-level
+  // assertion reads the value AFTER the correction and passes even with both
+  // fixes removed. (Confirmed — a first version of this did exactly that.)
+  let doc: Y.Doc;
+  let awareness: Awareness;
+
+  beforeEach(() => {
+    doc = new Y.Doc();
+    awareness = new Awareness(doc);
+  });
+  afterEach(() => {
+    _resetDocumentEditorCacheForTests();
+    awareness.destroy();
+    doc.destroy();
+  });
+
+  /**
+   * Resolve the editor the way the hook does, and report editability as built.
+   * @param editable - What the caller asks for.
+   * @returns Whether the resolved editor accepts typing.
+   */
+  function resolve(editable: boolean): boolean {
+    return getDocumentEditor(doc, NAME, {
+      caretProvider: { awareness },
+      caretUser: CARET_USER,
+      editable,
+    }).editor.isEditable;
+  }
+
+  it('a viewer never gets an editable document, not even for a frame', () => {
+    expect(resolve(false)).toBe(false);
+  });
+
+  it('and the same holds when the editor comes from the cache', () => {
+    // Someone editable opened it first; a viewer reopening the same document
+    // gets that same instance back.
+    expect(resolve(true)).toBe(true);
+    expect(resolve(false)).toBe(false);
   });
 });

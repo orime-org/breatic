@@ -18,7 +18,18 @@
 import { describe, it, expect } from 'vitest';
 import { getSchema } from '@tiptap/core';
 
+import * as Y from 'yjs';
+
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+
+/**
+ * A throwaway fragment, for asserting on the schema alone. The collaboration
+ * extensions contribute no node or mark, so the schema is the same as
+ * production's.
+ */
+function schemaFragment(): Y.XmlFragment {
+  return new Y.Doc().getXmlFragment('content');
+}
 
 /**
  * Every node the document will ever hold, across all delivery slices.
@@ -102,13 +113,13 @@ const REQUIRED_MARK_ATTRS: Readonly<Record<string, ReadonlyArray<string>>> = {
 
 describe('document schema — complete from slice 1 (guards against silent prose destruction)', () => {
   it('registers every node type the document will ever hold', () => {
-    const schema = getSchema(buildDocumentExtensions());
+    const schema = getSchema(buildDocumentExtensions({ fragment: schemaFragment() }));
     const missing = REQUIRED_NODES.filter((n) => !(n in schema.nodes));
     expect(missing).toEqual([]);
   });
 
   it('registers every mark type the document will ever hold', () => {
-    const schema = getSchema(buildDocumentExtensions());
+    const schema = getSchema(buildDocumentExtensions({ fragment: schemaFragment() }));
     const missing = REQUIRED_MARKS.filter((m) => !(m in schema.marks));
     expect(missing).toEqual([]);
   });
@@ -119,7 +130,7 @@ describe('document schema — complete from slice 1 (guards against silent prose
     // two histories diverge). Assert the CONFIG rather than the extension-name
     // list: StarterKit is a bundle, so its children never appear as top-level
     // names and a name-based assertion would pass even when history is on.
-    const starterKit = buildDocumentExtensions().find(
+    const starterKit = buildDocumentExtensions({ fragment: schemaFragment() }).find(
       (e) => e.name === 'starterKit',
     );
     expect(starterKit).toBeDefined();
@@ -129,7 +140,7 @@ describe('document schema — complete from slice 1 (guards against silent prose
   });
 
   it('registers every attribute the document will ever carry', () => {
-    const schema = getSchema(buildDocumentExtensions());
+    const schema = getSchema(buildDocumentExtensions({ fragment: schemaFragment() }));
     const missing: string[] = [];
     for (const [nodeName, attrs] of Object.entries(REQUIRED_NODE_ATTRS)) {
       const declared = Object.keys(schema.nodes[nodeName]?.spec.attrs ?? {});
@@ -153,7 +164,7 @@ describe('document schema — complete from slice 1 (guards against silent prose
     // that is not BLOCK is an inline node, which changes where it may appear
     // and how a client that cannot render it treats the surrounding text.
     // Asserting the names alone would let either flip silently.
-    const schema = getSchema(buildDocumentExtensions());
+    const schema = getSchema(buildDocumentExtensions({ fragment: schemaFragment() }));
     for (const kind of ['image', 'video', 'audio']) {
       const node = schema.nodes[kind];
       expect(node).toBeDefined();

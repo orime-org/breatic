@@ -75,12 +75,11 @@ export interface DocumentEditorInputs {
   /** This user's caret identity, published to other clients. */
   caretUser: CaretUserIdentity;
   /**
-   * Whether this client may type, at the moment the editor is built.
+   * Whether this client may type.
    *
-   * Construction-time only, like the rest of this interface — a later change
-   * goes through `setEditable` on the living editor rather than rebuilding it.
-   * It is here because the DEFAULT is editable, so leaving it to the effect
-   * that follows would give a viewer a `contenteditable` document for its
+   * Unlike the rest of this interface it is honoured on a cache HIT too — see
+   * {@link getDocumentEditor}. It cannot wait for the effect that keeps it in
+   * step, because TipTap defaults to editable and that effect runs after the
    * first paint.
    */
   editable: boolean;
@@ -98,11 +97,6 @@ function createDocumentEditor(
 ): DocumentEditorHandle {
   const undoManager = createDocumentUndoManager(doc);
   const editor = new Editor({
-    // Editability is set at CONSTRUCTION, not left to the effect that keeps it
-    // in step afterwards. TipTap defaults to editable, so a viewer's editor
-    // would otherwise be `contenteditable` from its first paint until that
-    // effect runs — a window in which the document is not read-only at all.
-    editable: inputs.editable,
     extensions: buildDocumentExtensions({
       fragment: documentBodyFragment(doc),
       caretProvider: inputs.caretProvider,
@@ -131,11 +125,13 @@ export function getDocumentEditor(
   inputs: DocumentEditorInputs,
 ): DocumentEditorHandle {
   const handle = cache.get(doc, name, inputs);
-  // On a cache HIT the inputs above are ignored by design — the editor is not
-  // rebuilt, or it would lose the undo stack and the selection. But editability
-  // must still be right from this render, not from an effect that runs after
-  // the first paint: a viewer reopening a document someone editable had open
-  // would otherwise get a `contenteditable` body for a frame.
+  // Editability is settled HERE, on the way out, and nowhere else. TipTap
+  // defaults to editable and the effect in `useDocumentEditor` that keeps it in
+  // step runs after the first paint, so a viewer would otherwise get a
+  // `contenteditable` document for a frame. Setting it at construction would
+  // only cover a fresh editor — on a cache HIT the inputs are ignored by
+  // design, because rebuilding would discard the undo stack and the selection.
+  // One correction covering both paths beats two that overlap.
   if (!handle.editor.isDestroyed && handle.editor.isEditable !== inputs.editable) {
     handle.editor.setEditable(inputs.editable);
   }

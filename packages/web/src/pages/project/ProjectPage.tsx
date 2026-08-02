@@ -609,14 +609,14 @@ function ProjectWorkspace({
   // Cover it with a full-area `bg-black/80` overlay that
   // (a) matches the LoadingOverlay / Dialog backdrop dim pattern used
   //     elsewhere in the app (single visual vocabulary for "blocked"),
-  // (b) makes it unmistakable that the area is not accepting input — the
-  //     blocking itself is `inert` on the wrapper plus `writesBlocked` on the
-  //     Space body, not this element, which stopped intercepting clicks when
-  //     `inert` took over (a `preventDefault` on the curtain's mousedown made
-  //     things worse: it pinned focus inside the hidden editor),
+  // (b) is unmistakable at a glance, which is the entire job — it blocks
+  //     nothing, and nothing else does either. Showing the problem where it is
+  //     and leaving everything else working is the rule (decision 2026-08-02):
+  //     a page that still responds tells the user the fault is not on their
+  //     side, while a dead page tells them only that something broke,
   // (c) surfaces the OS-level "not-allowed" cursor on hover so users
-  //     get an instant, language-agnostic affordance that this region
-  //     is intentionally inert.
+  //     get an instant, language-agnostic affordance that this region is not
+  //     going to reach the server right now.
   // Banner itself sits OUTSIDE the wrapper so its "re-login" / "refresh"
   // actions stay clickable.
   const workspaceDisabled =

@@ -92,11 +92,12 @@ export function useDocumentEditor({
   // exists to prevent, arriving from the other side. Seeding is idempotent, so
   // a re-run is free.
   //
-  // `editable` now carries every reason writes cannot land, not just the role:
-  // `DocumentSpace` folds the server's granted scope and the project-wide
-  // connection state into it. A client the server has degraded to read-only
-  // therefore does not seed either — which it must not, since the server would
-  // drop that update and leave it a paragraph ahead of everyone else.
+  // `editable` is the ROLE, and only the role — a refused or read-only
+  // connection is reported to the user rather than enforced against them
+  // (decision 2026-08-02). So a client the server has quietly degraded to
+  // read-only WILL still seed, and the server will drop that one update. It
+  // costs a stray paragraph in that client's local copy until the next reload,
+  // which is a smaller price than a document that mysteriously goes dead.
   React.useEffect(() => {
     if (hasEverSynced && editable) seedEmptyBody(doc);
   }, [doc, hasEverSynced, editable]);
