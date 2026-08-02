@@ -49,9 +49,18 @@ vi.mock("ai", () => ({
 // forced per test. Default 100 keeps every other test (tiny member counts)
 // unaffected; the collaborator-cap tests below lower it.
 const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
+// The decision window comes from the same config file. Pinned here to a value
+// that is deliberately NOT the shipped seven: the invite deadline, the token
+// TTL and the number the landing page prints are all supposed to come from the
+// configured window, and anything that carries its own copy of 7 would pass
+// against a mock that also said 7.
+const decisionWindow = vi.hoisted(() => ({ days: 3 }));
 vi.mock("@server/config/limits.js", () => ({
   getStudioMemberCap: () => capRefs.studio,
   getProjectCollaboratorCap: () => capRefs.project,
+  getDecisionWindowDays: () => decisionWindow.days,
+  getDecisionWindowMs: () => decisionWindow.days * 24 * 60 * 60 * 1000,
+  getDecisionWindowSeconds: () => decisionWindow.days * 24 * 60 * 60,
 }));
 
 import { eq, and, isNull, sql } from "drizzle-orm";
@@ -522,6 +531,9 @@ describe("email-link token (Redis round-trip)", () => {
     expect(landing?.projectName).toBe("Test Project");
     expect(landing?.isInvitee).toBe(true);
     expect(landing?.expired).toBe(false);
+    // The page prints this rather than spelling out a number of its own, so it
+    // has to be the window the server actually enforced.
+    expect(landing?.windowDays).toBe(decisionWindow.days);
 
     const res = await inviteService.respondToInvite(token, "confirm", INVITEE);
     expect(res.projectSlug).toBe("test-project");

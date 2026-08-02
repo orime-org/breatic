@@ -42,6 +42,7 @@ import * as notificationService from "@server/modules/notification/notification.
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import {
   getProjectCollaboratorCap,
+  getDecisionWindowDays,
   getDecisionWindowMs,
   getDecisionWindowSeconds,
 } from "@server/config/limits.js";
@@ -438,6 +439,7 @@ export async function getInviteForLanding(
     role: row.role,
     expired: row.expiresAt.getTime() <= Date.now(),
     isInvitee: row.invitedUserId === viewerUserId,
+    windowDays: getDecisionWindowDays(),
   };
 }
 

@@ -162,7 +162,10 @@ export default function StudioInvitePage(): React.JSX.Element {
         }
       >
         <p className='text-sm text-muted-foreground'>
-          {t('studio.invite.expiredBody', { studio: view?.studioName ?? '' })}
+          {t('studio.invite.expiredBody', {
+            studio: view?.studioName ?? '',
+            days: view?.windowDays ?? 0,
+          })}
         </p>
       </AuthCardShell>
     );

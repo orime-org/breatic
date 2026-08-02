@@ -39,6 +39,7 @@ import { buildStudioInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import {
   getStudioMemberCap,
+  getDecisionWindowDays,
   getDecisionWindowMs,
   getDecisionWindowSeconds,
 } from "@server/config/limits.js";
@@ -397,6 +398,7 @@ export async function getInviteForLanding(
     role: row.role,
     expired: row.expiresAt.getTime() <= Date.now(),
     isInvitee: row.invitedUserId === viewerUserId,
+    windowDays: getDecisionWindowDays(),
   };
 }
 

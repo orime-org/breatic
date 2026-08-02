@@ -60,8 +60,13 @@ export interface ProjectInvitationLandingView {
   projectId: string;
   inviterName: string;
   role: InvitableProjectRole;
-  /** True once past the 7-day window — the page shows an "expired" state. */
+  /** True once past the decision window — the page shows an "expired" state. */
   expired: boolean;
   /** True when the logged-in user is the invitee (gates the confirm button). */
   isInvitee: boolean;
+  /**
+   * How long the invitee had to answer, in days, as the server is configured
+   * — mirror of the studio `InvitationLandingView` field.
+   */
+  windowDays: number;
 }

@@ -165,7 +165,10 @@ export default function ProjectInvitePage(): React.JSX.Element {
         }
       >
         <p className='text-sm text-muted-foreground'>
-          {t('projectInvite.expiredBody', { project: view?.projectName ?? '' })}
+          {t('projectInvite.expiredBody', {
+            project: view?.projectName ?? '',
+            days: view?.windowDays ?? 0,
+          })}
         </p>
       </AuthCardShell>
     );
