@@ -36,8 +36,16 @@ vi.mock("@breatic/core", () => ({
   // sensitive to the suffix the production code actually asks for. A constant
   // here would make the key assertion a tautology — the suffix could be
   // changed to anything and this suite would still pass.
-  storageKey: (opts: { taskType: string; ext: string }) =>
-    `${opts.taskType}/2026-07-25/1234${opts.ext}`,
+  //
+  // The dot check mirrors the real function's contract (it throws on a bare
+  // extension). Without it the mock would be weaker than what it stands in
+  // for, and a suffix that fails in production could pass here.
+  storageKey: (opts: { taskType: string; ext: string }) => {
+    if (opts.ext !== "" && !opts.ext.includes(".")) {
+      throw new Error(`storageKey: ext must be a dotted extension, got "${opts.ext}"`);
+    }
+    return `${opts.taskType}/2026-07-25/1234${opts.ext}`;
+  },
   sha256Hex: (buf: Buffer) => `sha-${buf.length}`,
 }));
 

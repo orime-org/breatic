@@ -132,10 +132,11 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     // existing row. The just-uploaded cover.key is now a discarded duplicate
     // (orphan) — pinning it would 404 once the offline GC reclaims it.
     //
-    // The existing row's key is a `.png` on purpose. Dedup keys on
-    // `(studio_id, content_hash)` alone, so a hit means IDENTICAL BYTES —
-    // a PNG upload can only ever collide with another PNG. A `.webp` here
-    // would describe a row that cannot exist.
+    // The existing row's key is a `.png` to match what this path uploads. Dedup
+    // keys on `(studio_id, content_hash)` alone, so a hit means IDENTICAL BYTES
+    // — the winning row holds PNG bytes. Its key SUFFIX is a separate matter
+    // (it comes from the uploader's filename and is never checked against the
+    // bytes), so `.webp` here would not be impossible, just misleading.
     mockRegister.mockResolvedValue({
       asset: { storageKey: "image/2026-01-01/existing.png" },
       deduped: true,
@@ -244,9 +245,9 @@ describe("resolveVideoCovers — cover canonical pin (#1826 §4.5 / §0 rule 2)"
     const kept: { url?: string; cover_url?: string } = {
       url: "https://cdn/a.mp4",
       // Deliberately a legacy `.webp`: this branch skips outputs that ALREADY
-      // carry a cover_url, so the value is an arbitrary pre-existing URL and is
-      // never a dedup target. Unlike the case above, its format is irrelevant —
-      // keeping it webp proves the skip is format-blind.
+      // carry a cover_url, and the skip is a truthiness check on the field
+      // (`dispatch.ts`), so the value is never parsed. Left as webp so the
+      // fixture also stands for a cover produced before the format changed.
       cover_url: "https://cdn/kept.webp",
     };
     const noUrl: { url?: string; cover_url?: string } = { cover_url: undefined };

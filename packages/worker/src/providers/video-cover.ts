@@ -6,16 +6,19 @@
  *
  * Uses ffmpeg to read the video URL directly (only downloads the first few MB
  * for the initial frame), then encodes the frame to PNG with Sharp. Per the
- * format convention (#1826 §8) every image we produce ourselves is a PNG, so
- * a generated video's cover lands in the same format as an uploaded video's
- * (which the browser rasterises client-side) — same container, not the same
- * bytes: this path goes through a lossy MJPEG intermediate, so the two never
- * share a content hash and never dedup against each other.
+ * format convention (#1826 §8) every image we produce ourselves is a PNG, so a
+ * generated video's cover lands in the same format as an uploaded video's
+ * (which the browser rasterises client-side). Same format, never the same
+ * bytes — the two run different PNG encoders (libvips here, the browser's
+ * there) and this path additionally decodes through a lossy MJPEG frame, so a
+ * cover from one side never dedups against a cover from the other.
  *
- * ffmpeg only has to decode the video and emit an MJPEG frame; Sharp ships its
- * own PNG codec, so the cover's format never depends on the ffmpeg binary
- * having been built with a PNG encoder. The cover is then uploaded to the same
- * storage as the video.
+ * ffmpeg only has to decode the video and emit that MJPEG frame; Sharp brings
+ * the PNG encoder. The cover is then uploaded to the same storage as the video.
+ *
+ * Note the MJPEG step is lossy: the PNG wraps pixels that already carry JPEG
+ * artefacts. It is what the WebP-era code did too, so this is not a regression,
+ * but "PNG" here means the container, not an end-to-end lossless pipeline.
  */
 
 import { execFile } from "node:child_process";

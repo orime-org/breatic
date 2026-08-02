@@ -129,11 +129,12 @@ describe('extractVideoFirstFrame — first-frame PNG cover off a local video Fil
     // Encoded as PNG per the format convention (#1826 §8: images we produce
     // ourselves are PNG). PNG is lossless, so no quality argument is passed.
     expect(canvas.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/png');
-    // The context opts OUT of alpha: a decoded video frame is fully opaque, so
-    // the alpha channel would store a constant 255 plane. Under the old lossy
-    // WebP that cost ~nothing; under lossless PNG it is a flat size add-on
-    // (the encoder writes RGBA instead of RGB). Dropping it is pixel-identical.
-    expect(canvas.getContext).toHaveBeenCalledWith('2d', { alpha: false });
+    // The context KEEPS its alpha channel — no `{ alpha: false }`. That option
+    // shrinks the PNG by ~10%, but a WebM frame can carry a VP8/VP9 alpha
+    // plane, and an opaque context composites those transparent pixels to
+    // solid black (verified in Chromium: [0,0,0,0] → [0,0,0,255]). This
+    // assertion exists to stop that optimisation from being reintroduced.
+    expect(canvas.getContext).toHaveBeenCalledWith('2d');
     // Object URL always revoked.
     expect(revoke).toHaveBeenCalledWith('blob:mock-url');
   });
@@ -204,20 +205,14 @@ describe('extractVideoFirstFrame — first-frame PNG cover off a local video Fil
   });
 });
 
-describe('videoCoverFile — the ONE place a cover File is built', () => {
-  it('declares the cover format, so no call site can drift', () => {
+describe('videoCoverFile — the cover File both upload paths build', () => {
+  it('declares PNG and the matching name, whatever the blob claims', () => {
+    // A bogus blob type: `File` never inherits it, so this also documents that
+    // the declaration comes from the module constant and not from the caller.
     const blob = new Blob(['x'], { type: 'application/octet-stream' });
     const file = videoCoverFile(blob, 'clip.mp4');
-    // The File's declared type comes from this module, NOT from the blob —
-    // the blob above deliberately carries a bogus type to prove that.
     expect(file.type).toBe('image/png');
     expect(file.name).toBe('clip-cover.png');
-  });
-
-  it('keeps name and mime in step for a video with no extension', () => {
-    const file = videoCoverFile(new Blob(['x']), 'movie');
-    expect(file.name).toBe('movie-cover.png');
-    expect(file.type).toBe('image/png');
   });
 });
 

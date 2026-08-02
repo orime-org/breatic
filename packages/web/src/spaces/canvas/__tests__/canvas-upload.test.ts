@@ -635,10 +635,11 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     });
     await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
     expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
-    // The cover File is declared PNG (§8) at construction — the extracted blob's
-    // own type is NOT what gets used, canvas-upload sets it explicitly. Asserting
-    // the presign contract is what pins that declaration: a regression to another
-    // format here changes the type the backend is asked to store the cover under.
+    // The cover File is declared PNG (§8) by `videoCoverFile`, not by the blob
+    // it wraps. Asserting the presign contract is what pins that declaration
+    // from this side: on S3 / OSS the declared type is signed into the upload
+    // URL and becomes the stored object's Content-Type, so a regression here
+    // mislabels the asset itself, not just the request.
     expect(deps.presign).toHaveBeenCalledWith(
       expect.objectContaining({
         filename: 'clip-cover.png',

@@ -11,8 +11,13 @@
  * the worker's Sharp cover so both paths feed one `coverUrl`. PNG is the format
  * convention for our-own-produced images (#1826 §8) and is the one type the
  * `toBlob` spec requires every user agent to support, so — unlike WebP — the
- * encoded format never diverges by browser. The backend authoritatively
- * re-sniffs the bytes regardless.
+ * encoded format never diverges by browser.
+ *
+ * The type this module declares is not a hint the backend later corrects: on
+ * S3 / OSS it is signed into the presigned PUT (`s3.ts` `putObjectUrl`), stored
+ * as the object's Content-Type, and read straight back by `head()` into the
+ * asset ledger row. Only the local adapter sniffs the bytes. That is why the
+ * declaration lives here rather than at each call site.
  *
  * Best-effort by contract: a codec the browser cannot decode (HEVC etc.), a
  * zero-sized frame, or a timeout resolves to `null` — NEVER throws. The caller
@@ -30,14 +35,18 @@ export interface ExtractVideoFirstFrameOptions {
 }
 
 /**
- * The cover's format, declared ONCE for the whole browser side: the canvas
- * encoder, the File handed to the upload, and the derived filename all read
- * from here. Every producer of a cover must go through this module so a call
- * site cannot silently declare a different type than the bytes actually are.
+ * The cover's format for the whole browser side: the canvas encoder, the File
+ * handed to the upload, and the derived filename all read from here, so the
+ * encoded bytes and the declared type cannot drift apart. Nothing mechanically
+ * stops a new call site from building a cover File by hand — the guard is that
+ * every existing one goes through {@link videoCoverFile}.
  */
 const COVER_MIME_TYPE = 'image/png';
 
-/** File extension matching {@link COVER_MIME_TYPE}; the two must stay in step. */
+/**
+ * File extension matching {@link COVER_MIME_TYPE}. Kept in step by the unit
+ * tests, which assert the resulting name and type together.
+ */
 const COVER_EXTENSION = '.png';
 
 /** Default decode-hang guard: a real first-frame decode is well under this. */
@@ -107,11 +116,14 @@ export async function extractVideoFirstFrame(
           const canvas = document.createElement('canvas');
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
-          // `alpha: false` — a decoded video frame is fully opaque, so the
-          // alpha channel would only ever hold a constant 255 plane. Lossless
-          // PNG pays for that plane in full (RGBA instead of RGB), so opting
-          // out is a pixel-identical size win.
-          const ctx = canvas.getContext('2d', { alpha: false });
+          // Keep the alpha channel. Opting out (`{ alpha: false }`) would save
+          // ~10% on the PNG for the common case, but video frames are NOT
+          // always opaque: WebM carries a VP8/VP9 alpha plane, and compositing
+          // such a frame onto an opaque context turns every transparent pixel
+          // into solid black — a wrong cover, not a smaller one. Verified in
+          // Chromium: transparent pixels read [0,0,0,0] with alpha on and
+          // [0,0,0,255] with it off.
+          const ctx = canvas.getContext('2d');
           if (ctx === null || canvas.width === 0 || canvas.height === 0) {
             finish(null);
             return;
@@ -148,13 +160,15 @@ export function videoCoverFileName(videoFileName: string): string {
 /**
  * Wrap an extracted cover blob into the File the upload pipeline expects.
  *
- * This is the ONLY place a cover File gets built, so the declared MIME type and
- * the filename can never disagree with the bytes {@link extractVideoFirstFrame}
- * produced. Both upload entry points (drop-on-canvas and fill-an-empty-node)
- * call it; before it existed each declared the type inline, so a change in one
- * silently left the other behind. The declared type is what the presign
- * contract carries and — on storage backends whose `head()` reports no content
- * type — what the asset ledger records, so it must not be guessed per call site.
+ * Both upload entry points (drop-on-canvas and fill-an-empty-node) call this,
+ * so the declared type and the filename come from the same place as the bytes
+ * {@link extractVideoFirstFrame} encodes. Before it existed each entry point
+ * declared the type inline, and a change to one silently left the other behind.
+ *
+ * The declared type matters beyond the presign call: on S3 / OSS it is signed
+ * into the upload URL and becomes the stored object's Content-Type, which the
+ * ledger then records as the asset's `mimeType` and feeds to `detectKind`. A
+ * call site that guessed wrong would mislabel the asset, not just the request.
  * @param coverBlob - The first-frame blob from {@link extractVideoFirstFrame}.
  * @param videoFileName - The source video's File name (drives the cover name).
  * @returns The cover File, ready to presign and PUT.
