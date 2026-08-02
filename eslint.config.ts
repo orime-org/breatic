@@ -63,14 +63,14 @@ export default tseslint.config(
       // type problem if the underlying type later changes.
       "@typescript-eslint/no-unnecessary-type-assertion": "error",
       // Enforce CLAUDE.md Prohibition #8 "bare catch" (machine-checkable half;
-      // CI maximal-strictness guard suite, inner ADR 2026-06-01). An empty
+      // CI maximal-strictness guard suite, ADR 2026-06-01). An empty
       // catch body silently swallows the error — at 3am the on-call cannot
       // trace the root cause. eslint:recommended already enables no-empty,
       // but stating it explicitly with allowEmptyCatch:false pins the
       // intent against a future preset-default drift. The non-empty
       // *semantic* swallow (a catch that recovers without re-throwing /
       // returning a sentinel / logging) has no reliable text signature and
-      // stays a human-review concern — see the inner ADR.
+      // stays a human-review concern — see that ADR.
       "no-empty": ["error", { allowEmptyCatch: false }],
       // argsIgnorePattern / varsIgnorePattern: `_`-prefixed = intentionally
       // unused. caughtErrors:"all" is the other half of Prohibition #8: a catch that
@@ -171,7 +171,7 @@ export default tseslint.config(
   },
   {
     // Drizzle financial-safety guardrail (CI maximal-strictness guard
-    // suite, inner ADR 2026-06-01). A db.delete() / db.update() without a
+    // suite, ADR 2026-06-01). A db.delete() / db.update() without a
     // .where() clause wipes or mass-mutates the ENTIRE table — catastrophic
     // for the credit / payment financial tables (a forgotten where on a
     // credit update zeroes every user's balance). Drizzle's official plugin
