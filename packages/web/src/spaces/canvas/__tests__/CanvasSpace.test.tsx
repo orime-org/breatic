@@ -1393,39 +1393,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     addNode.mockRestore();
   });
 
-  // A dropped or refused collab connection freezes the workspace: the product
-  // supports no offline editing at all (user, 2026-07-29), so anything typed
-  // then would land in a local Y.Doc with nowhere to go. The project page
-  // covers the workspace with an overlay and marks it `inert`, which stops
-  // every listener bound INSIDE that subtree — but these shortcut handlers are
-  // bound on `document`, outside it, and their only guard was `readOnly`
-  // (the viewer role), which has nothing to do with the connection. So they
-  // kept firing behind the curtain and kept mutating the Yjs doc.
-  it('a frozen workspace ignores the undo shortcut', () => {
-    mockUseCanvasSpace.mockReturnValue(mockSpace());
-    undoSpy.mockClear();
-    render(<CanvasSpace projectId='p' spaceId='s' writesBlocked />);
-
-    document.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }),
-    );
-
-    expect(undoSpy).not.toHaveBeenCalled();
-  });
-
-  it('a frozen workspace ignores paste', () => {
-    mockUseCanvasSpace.mockReturnValue(mockSpace());
-    const addNode = vi
-      .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
-    render(<CanvasSpace projectId='p' spaceId='s' writesBlocked />);
-
-    dispatchPaste('text typed while the connection is down');
-
-    expect(addNode).not.toHaveBeenCalled();
-    addNode.mockRestore();
-  });
-
   it('readOnly canvas ignores paste (no Yjs write)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     const addNode = vi

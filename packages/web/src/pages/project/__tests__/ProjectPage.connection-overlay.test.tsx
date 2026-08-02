@@ -2,20 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The workspace overlay must cover every connection state the banner covers.
+ * The workspace overlay must appear for every connection state the banner
+ * covers — and must not do anything beyond appearing.
  *
- * `ConnectionBanner` documents the two as a pair — "both must appear /
- * disappear on the same frame, otherwise the staggered timing reads as visual
- * jitter" — but the banner shows for `authFailed` AND `disconnected` while the
- * overlay only ever mounted for `authFailed`. A dropped network therefore left
- * the workspace fully interactive behind a warning strip: the document editor
- * still took keystrokes that could no longer reach the server. Verified in a
- * real browser before this test existed (killed collab, typed into the editor,
- * `elementFromPoint` over the editor returned the editor's own paragraph — no
- * overlay above it).
+ * `ConnectionBanner` documents the two as a pair ("both must appear / disappear
+ * on the same frame, otherwise the staggered timing reads as visual jitter"),
+ * but the overlay only ever mounted for `authFailed` while the banner also
+ * shows for `disconnected`.
  *
- * Product rule (user, 2026-07-29): a disconnected client must be prevented from
- * operating at all, using the same overlay the expired-session state uses.
+ * What the overlay is FOR: telling the user something is wrong. Not blocking
+ * input. Showing the problem where it is and leaving everything else working is
+ * the rule (decision 2026-08-02) — a page that still responds tells the user
+ * the fault is not on their side, while a page that goes dead tells them only
+ * that something broke. An earlier version of this file marked the workspace
+ * `inert`, which pulled focus out of the editor and cut off in-flight IME
+ * composition: a real cost paid for a goal that was never the point.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -178,10 +179,8 @@ describe('ProjectPage — the workspace overlay follows the banner', () => {
   });
 
   it('covers the workspace when the connection has dropped', async () => {
-    // The product does not support offline editing (user, 2026-07-29): a
-    // disconnected client keeps its content on screen but must not be able to
-    // operate, and it does so through the same overlay as an expired session
-    // rather than a second mechanism of its own.
+    // Same signal as an expired session, through the same overlay rather than a
+    // second mechanism of its own.
     setup('disconnected');
     await screen.findByTestId('connection-banner');
     expect(
@@ -189,33 +188,19 @@ describe('ProjectPage — the workspace overlay follows the banner', () => {
     ).toBeInTheDocument();
   });
 
-  it('makes the covered workspace inert, so the keyboard is stopped too', async () => {
-    // The curtain is only paint. What actually stops input is `inert` on the
-    // wrapper: without it a caret already inside the document editor when the
-    // connection drops keeps receiving keystrokes — into a local Y.Doc with
-    // nowhere to send them, behind an opaque overlay.
+  it('does NOT disable the workspace it covers', async () => {
+    // The curtain is paint. Disabling the workspace as well would take away the
+    // one thing that tells the user where the fault is: a page that still
+    // responds says "not your side". `inert` in particular also pulls focus out
+    // of whatever they were typing in and kills IME composition mid-word.
     //
-    // This asserts the attribute, not the behaviour, and deliberately so:
-    // jsdom implements no part of inert (it will not even reflect the
-    // attribute back onto the element), so there is nothing here to observe.
-    // The effect is verified in a real browser. What this does hold is the
-    // regression: remove the attribute and the test fails.
+    // Selected by a data attribute present in BOTH states, so the assertion
+    // cannot pass vacuously by matching nothing.
     setup('disconnected');
     await screen.findByTestId('workspace-disabled-overlay');
-    const workspace = document.querySelector('[data-workspace-disabled]');
-    expect(workspace).not.toBeNull();
-    expect(workspace?.hasAttribute('inert')).toBe(true);
-  });
-
-  it('leaves the workspace interactive while the connection is healthy', async () => {
-    // The other half of the same invariant: `inert` must be absent in the
-    // steady state, or the whole project page is dead to input.
-    setup('connected');
-    // Selected by the same data attribute the disabled case uses, present in
-    // both states — a Tailwind class list would pin this test to styling and
-    // pass vacuously the day someone reorders the classes.
     const workspace = document.querySelector('[data-workspace]');
     expect(workspace).not.toBeNull();
     expect(workspace?.hasAttribute('inert')).toBe(false);
+    expect(workspace?.getAttribute('aria-hidden')).toBeNull();
   });
 });

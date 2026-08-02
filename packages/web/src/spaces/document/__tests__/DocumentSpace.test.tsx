@@ -6,6 +6,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
+import { toast } from '@web/lib/toast';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
@@ -45,8 +46,14 @@ vi.mock('@web/data/yjs/use-socket', () => ({
   }),
 }));
 
+vi.mock('@web/lib/toast', () => ({
+  toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
+}));
+
 describe('DocumentSpace', () => {
   beforeEach(() => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.warning).mockClear();
     useCurrentUserStore.setState({
       user: {
         id: 'user-1',
@@ -90,63 +97,58 @@ describe('DocumentSpace', () => {
     ).toBeInTheDocument();
   });
 
-  it('keeps a refused document on screen, read-only, once its content arrived', async () => {
+  it('tells the user a refused document was refused, and keeps it editable', async () => {
     // A Space deleted by a collaborator, or access revoked, while this tab has
     // the document open and synced. The refusal is per-document: the shared
     // socket stays open and the project banner — which watches the project's
     // own document — shows nothing.
     //
-    // Taking the content off screen would be wrong; it is right there and the
-    // user may want to copy it. Leaving it EDITABLE is worse than wrong: every
-    // keystroke goes into a local Y.Doc that will never sync, with no error and
-    // no disconnect, and none of it is there on reload. So: keep it, stop
-    // accepting edits, and say why.
+    // The editor stays editable ON PURPOSE (decision 2026-08-02). A document
+    // that still takes typing while a message says the server refused it tells
+    // the user exactly where the fault is. One that goes dead tells them only
+    // that something broke — and takes away the content they might want to
+    // copy out.
     socketState.hasEverSynced = true;
     socketState.status = 'authFailed';
     socketState.authFailedReason = 'Forbidden';
     socketState.writeAccess = 'denied';
     render(<DocumentSpace projectId='p1' spaceId='doc-revoked' />);
 
-    // The content stays.
     expect(await screen.findByTestId('document-toolbar')).toBeInTheDocument();
     expect(screen.queryByTestId('document-space-unavailable')).toBeNull();
-    // But it cannot be edited, and the user is told.
     await waitFor(() =>
       expect(
         document.querySelector('.ProseMirror')?.getAttribute('contenteditable'),
-      ).toBe('false'),
+      ).toBe('true'),
     );
-    expect(screen.getByTestId('document-space-refused-notice')).toBeInTheDocument();
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
   });
 
-  it('goes read-only, and says so, when the server refuses writes', async () => {
-    // The server authenticates a connection read-only when the user is a
-    // viewer OR when they are over the document's connection cap. In the
-    // second case the UI believes this member may edit: it renders a live
-    // editor, a working toolbar and a caret, while the server discards every
-    // update it sends — no error, no disconnect. The document is written and
-    // lost, and on reload none of it is there.
+  it('says so when the server grants only read-only, without enforcing it', async () => {
+    // The server authenticates a connection read-only for a viewer, for a
+    // member over the document's connection cap, and for a refused document
+    // alike — the wire carries no cause. Whatever the reason, the client says
+    // what it knows and leaves the editor alone.
     socketState.writeAccess = 'denied';
     render(<DocumentSpace projectId='p1' spaceId='doc-capped' />);
     await screen.findByTestId('document-toolbar');
 
-    expect(screen.getByTestId('document-space-readonly-notice')).toBeInTheDocument();
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled());
     await waitFor(() =>
       expect(
         document.querySelector('.ProseMirror')?.getAttribute('contenteditable'),
-      ).toBe('false'),
+      ).toBe('true'),
     );
   });
 
   it('does not nag a viewer about being read-only — they already know', async () => {
-    // A viewer's read-only is their role, shown by the UI everywhere else. The
-    // notice exists for the case the UI is WRONG about, so showing it to a
-    // viewer would be noise on every document they ever open.
+    // A viewer's read-only is their role, shown by the UI everywhere else, so
+    // announcing it would be noise on every document they ever open.
     socketState.writeAccess = 'denied';
     render(<DocumentSpace projectId='p1' spaceId='doc-viewer' readOnly />);
     await screen.findByTestId('document-toolbar');
 
-    expect(screen.queryByTestId('document-space-readonly-notice')).toBeNull();
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 
   it('shows the content again immediately after a Space-tab switch', async () => {

@@ -652,35 +652,19 @@ function ProjectWorkspace({
         }}
       />
       {/*
-        `inert` rather than a hand-rolled block. The overlay below stops
-        POINTER input; it cannot stop the keyboard, and a caret already inside
-        the document editor when the connection drops stays there — every
-        keystroke after that reaches the editor and the local Y.Doc, behind an
-        opaque curtain, with nowhere to send it. `preventDefault` on the
-        curtain's mousedown made that worse: clicking it could not even move
-        focus out.
+        The workspace is NOT disabled programmatically when the connection
+        drops. Showing the problem where it is, and leaving everything else
+        alone, is the rule (decision 2026-08-02): a frontend that still accepts
+        input is itself information — it tells the user the problem is not on
+        their side. Lock the workspace too and all they can tell is that
+        "something is broken", not what.
 
-        `inert` is the platform's own answer for the subtree: no pointer
-        events, no keyboard events, focus pulled out and unable to return, and
-        `aria-hidden` semantics implicitly. The explicit `aria-hidden` it
-        replaces was in fact being IGNORED by Chrome, which refuses it on an
-        ancestor of the focused element and logs a warning — precisely the case
-        here.
-
-        What `inert` does NOT cover, and no DOM attribute could: listeners bound
-        OUTSIDE this subtree. The canvas binds its undo / paste / duplicate /
-        group shortcuts on `document`, and overlays portal out to `body`; both
-        keep firing behind the curtain. Those are gated by passing
-        `writesBlocked` down to the Space body, which folds it into the same
-        check as the viewer role. Neither half is sufficient alone.
-
-        Note for anyone reading the tests: jsdom does not implement inert (it
-        does not even reflect the attribute back), so the unit tests can only
-        pin that it is set. The behaviour itself is browser-verified.
+        The banner and the curtain below say what went wrong. That is the whole
+        job. Edits made while offline are not lost either — the provider
+        re-syncs on every reconnect.
       */}
       <div
         className='relative flex min-h-0 flex-1 flex-col'
-        inert={workspaceDisabled || undefined}
         data-workspace=''
         data-workspace-disabled={workspaceDisabled || undefined}
       >
@@ -754,12 +738,6 @@ function ProjectWorkspace({
                   spaceId={activeSpace.id}
                   type={activeSpace.type}
                   readOnly={isViewer}
-                  // `inert` on the wrapper stops every listener bound INSIDE
-                  // it, which is not all of them: a Space body may bind
-                  // shortcuts on `document` and overlays may portal out to
-                  // `body`, and both keep firing behind the curtain. Bodies
-                  // gate their own mutations on this.
-                  writesBlocked={workspaceDisabled}
                 />
               ) : (
                 <div
@@ -825,12 +803,8 @@ function ProjectWorkspace({
             </div>
           </section>
         </div>
-        {/*
-          Purely the visual curtain now. Input is stopped by `inert` on the
-          wrapper above, which covers the keyboard as well — the
-          `preventDefault` handlers this used to carry blocked only pointer
-          events and are gone.
-        */}
+        {/* Purely a visual signal that something is wrong. It intercepts
+            nothing: blocking input is not what it is for. */}
         {workspaceDisabled ? (
           <div
             className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'

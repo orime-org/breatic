@@ -19,18 +19,6 @@ export interface SpaceBodyProps {
    * editable when omitted.
    */
   readOnly?: boolean;
-  /**
-   * The collab connection cannot carry a mutation right now — it dropped, or
-   * this document was refused. Space bodies must gate the same writes they gate
-   * on `readOnly`: the product supports no offline editing at all (user,
-   * 2026-07-29), so anything changed now goes into a local Y.Doc with nowhere
-   * to send it.
-   *
-   * Separate from `readOnly` because the two have different causes and deserve
-   * different explanations to the user, even though every mutating entry point
-   * treats them identically.
-   */
-  writesBlocked?: boolean;
 }
 
 export interface SpaceDefinition {
