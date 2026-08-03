@@ -262,60 +262,18 @@ export function useProjectMeta(
 }
 
 /**
- * Open a Space tab for the given user. No-op if the tab is already
- * open. Always appends at the end of `openTabIds` so the most recently
- * opened tab is rightmost — matches user expectation that "new things
- * appear on the right".
- *
- * Q6 first-write snapshot: when this is the very first interaction
- * for `userId` on the project (no `openTabIds` Y.Array yet), seed the
- * array with ALL currently-visible Space ids before appending the
- * requested one. Without the snapshot, the user's first click /
- * create would set `openTabIds = [thatOneId]` — and the
- * `readMetaState` `!userMap`-fallback (`openTabIds: [spaces[0].id]`)
- * would no longer fire, so every Space EXCEPT the one just opened
- * would silently disappear from the tab bar (`Y.Map.forEach` order
- * is not insertion order, so even the "first" tab is unstable).
- * @param projectId - Project whose meta document holds the per-user tabs.
- * @param userId - User whose tab bar to open the Space in.
- * @param spaceId - Space to open as a tab.
- */
-export function openSpaceTab(
-  projectId: string,
-  userId: string,
-  spaceId: string,
-): void {
-  const doc = getDoc(docName.projectMeta(projectId));
-  doc.transact(() => {
-    const userMap = ensureUserMap(doc, userId);
-    const openTabIds = userMap.get(OPEN_TAB_IDS_KEY) as
-      | Y.Array<string>
-      | undefined;
-    if (!openTabIds) {
-      // First-write snapshot — see docstring (Q6).
-      const arr = new Y.Array<string>();
-      userMap.set(OPEN_TAB_IDS_KEY, arr);
-      const allSpaceIds = Array.from(
-        doc.getMap<Y.Map<unknown>>(SPACES_KEY).keys(),
-      );
-      const initial = allSpaceIds.includes(spaceId)
-        ? allSpaceIds
-        : [...allSpaceIds, spaceId];
-      arr.push(initial);
-      return;
-    }
-    const existing = openTabIds.toArray();
-    if (!existing.includes(spaceId)) openTabIds.push([spaceId]);
-  });
-}
-
-/**
  * Plan the per-user tab reconcile after the project's spaces change. Returns
  * which open-tab ids have VANISHED (deleted locally or by a collaborator — no
  * longer in `liveSpaceIds`) and, when the active space is among the vanished,
  * which still-live open tab to activate instead: the first remaining open tab,
- * or null for the empty state. Pure — the caller applies the result via
- * {@link closeSpaceTab} / `setActiveSpace`. `reactivateTo === undefined`
+ * or null for the empty state.
+ *
+ * Only `reactivateTo` still has a consumer. Pruning the vanished ids is the
+ * server's job now — deleting a Space clears it from everyone's list in the
+ * same broadcast — and a client could not do it anyway, since it does not
+ * write this document. Which tab is ACTIVE is local window state, never
+ * shared, so nobody else can put it right for us; that is the half that
+ * stays here. Pure — the caller applies the result. `reactivateTo === undefined`
  * means the active space is still live, so leave it alone (no-op).
  * @param openTabIds - This user's open-tab space ids.
  * @param liveSpaceIds - The set of space ids that still exist in the project.
@@ -333,85 +291,6 @@ export function planVanishedSpaceReconcile(
       ? (openTabIds.find((id) => liveSpaceIds.has(id)) ?? null)
       : undefined;
   return { tabsToClose, reactivateTo };
-}
-
-/**
- * Close a Space tab for the given user. No-op if the tab is not open.
- * Does NOT delete the Space — the Space stays in `spaces`; the user's
- * tab bar just stops showing it. To fully delete a Space, call the
- * server `DELETE /spaces/:id` endpoint.
- * @param projectId - Project whose meta document holds the per-user tabs.
- * @param userId - User whose tab bar to close the Space in.
- * @param spaceId - Space tab to close.
- */
-export function closeSpaceTab(
-  projectId: string,
-  userId: string,
-  spaceId: string,
-): void {
-  const doc = getDoc(docName.projectMeta(projectId));
-  doc.transact(() => {
-    const userMap = ensureUserMap(doc, userId);
-    const arr = userMap.get(OPEN_TAB_IDS_KEY) as Y.Array<string> | undefined;
-    if (!arr) return;
-    for (let i = arr.length - 1; i >= 0; i--) {
-      if (arr.get(i) === spaceId) arr.delete(i, 1);
-    }
-  });
-}
-
-/**
- * Legacy direct-write helper, kept for tests and demo scaffolding only.
- * Production code creates Spaces via
- * `sendSpaceRpc({ type: 'space:create', ... })`; a direct client write
- * here is rejected by `beforeHandleMessage` in collab in connected sessions.
- * @param projectId - Project whose meta document to write the Space into.
- * @param space - The Space record to append.
- * @internal
- */
-export function appendSpace(projectId: string, space: ProjectSpace): void {
-  const doc = getDoc(docName.projectMeta(projectId));
-  const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
-  doc.transact(() => {
-    const entry = new Y.Map<unknown>();
-    entry.set('id', space.id);
-    entry.set('name', space.name);
-    entry.set('type', space.type);
-    if (space.locked) entry.set('locked', true);
-    spacesMap.set(space.id, entry);
-  });
-}
-
-/**
- * Legacy direct-write helper, kept for tests and demo scaffolding only.
- * Production code deletes Spaces via
- * `sendSpaceRpc({ type: 'space:delete', ... })`.
- * @param projectId - Project whose meta document to remove the Space from.
- * @param spaceId - Id of the Space to remove.
- * @internal
- */
-export function removeSpace(projectId: string, spaceId: string): void {
-  const doc = getDoc(docName.projectMeta(projectId));
-  const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
-  doc.transact(() => {
-    if (spacesMap.has(spaceId)) spacesMap.delete(spaceId);
-  });
-}
-
-/**
- * Get-or-create the `perUser[userId]` Y.Map subtree for a user.
- * @param doc - The project meta Y.Doc.
- * @param userId - User whose per-user subtree to return.
- * @returns The user's per-user Y.Map, created if it did not exist.
- */
-function ensureUserMap(doc: Y.Doc, userId: string): Y.Map<unknown> {
-  const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
-  let userMap = perUser.get(userId);
-  if (!userMap) {
-    userMap = new Y.Map<unknown>();
-    perUser.set(userId, userMap);
-  }
-  return userMap;
 }
 
 /**

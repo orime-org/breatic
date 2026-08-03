@@ -5,7 +5,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import * as Y from 'yjs';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
-import { appendSpace, removeSpace } from '@web/data/yjs/project-meta';
+import {
+  seedSpaceEntry,
+  removeSpaceEntry,
+} from '@web/data/yjs/__tests__/meta-doc-fixtures';
 
 /**
  * Regression pins for the P0 cross-side Yjs root-type mismatch that
@@ -23,7 +26,7 @@ import { appendSpace, removeSpace } from '@web/data/yjs/project-meta';
  *
  * These tests lock in:
  *   - `spaces` root is a Y.Map keyed by spaceId
- *   - `appendSpace` / `removeSpace` operate via Map API
+ *   - the fixtures write and delete via the Map API
  *   - reading the same root with `getMap` after writing returns the
  *     entry (the Array-shape regression would surface as `has(id)`
  *     returning false because the entry went into a sibling root)
@@ -35,8 +38,8 @@ describe('meta.spaces — Y.Map root type (P0 regression pin)', () => {
     _resetForTests();
   });
 
-  it('appendSpace stores the entry as Y.Map[spaceId]', () => {
-    appendSpace(PID, { id: 'sp-1', name: 'Main', type: 'canvas' });
+  it('seeding an entry stores it as Y.Map[spaceId]', () => {
+    seedSpaceEntry(PID, { id: 'sp-1', name: 'Main', type: 'canvas' });
     const doc = getDoc(docName.projectMeta(PID));
     // Authoritative cross-side check: Map root, key=spaceId.
     const spacesMap = doc.getMap<Y.Map<unknown>>('spaces');
@@ -48,10 +51,10 @@ describe('meta.spaces — Y.Map root type (P0 regression pin)', () => {
     expect(entry?.get('type')).toBe('canvas');
   });
 
-  it('removeSpace deletes the entry by spaceId', () => {
-    appendSpace(PID, { id: 'sp-1', name: 'Main', type: 'canvas' });
-    appendSpace(PID, { id: 'sp-2', name: 'Reel', type: 'timeline' });
-    removeSpace(PID, 'sp-1');
+  it('removing an entry deletes it by spaceId', () => {
+    seedSpaceEntry(PID, { id: 'sp-1', name: 'Main', type: 'canvas' });
+    seedSpaceEntry(PID, { id: 'sp-2', name: 'Reel', type: 'timeline' });
+    removeSpaceEntry(PID, 'sp-1');
     const spacesMap = getDoc(docName.projectMeta(PID)).getMap<Y.Map<unknown>>(
       'spaces',
     );
@@ -65,7 +68,7 @@ describe('meta.spaces — Y.Map root type (P0 regression pin)', () => {
     // the client: the previous client code called getArray FIRST, so
     // the root was registered as an Array, and later collab Map
     // writes synced into a sibling root the observer never watched.
-    appendSpace(PID, { id: 'sp-1', name: 'Main', type: 'canvas' });
+    seedSpaceEntry(PID, { id: 'sp-1', name: 'Main', type: 'canvas' });
     const doc = getDoc(docName.projectMeta(PID));
     expect(() => doc.getArray<Y.Map<unknown>>('spaces' as never)).toThrow();
   });
