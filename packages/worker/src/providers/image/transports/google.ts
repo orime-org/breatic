@@ -19,6 +19,7 @@
  */
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
+import { httpRequest } from "@breatic/shared";
 
 /** Part types used in the Google API request body. */
 interface FilePart {
@@ -140,14 +141,14 @@ export async function generate(
 ): Promise<{ url: string; model: string; cost: number }> {
   const body = buildRequestBody(prompt, params);
 
-  const response = await fetch(
+  const response = await httpRequest(
     `${resolved.baseUrl}/models/${resolved.modelId}:generateContent?key=${resolved.apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
     },
+    { replaySafe: false, timeoutMs: resolved.timeout * 1000 },
   );
 
   if (!response.ok) {

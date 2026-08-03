@@ -12,6 +12,7 @@
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
+import { httpRequest } from "@breatic/shared";
 
 /**
  * Generate speech via Fish Audio official TTS API.
@@ -47,12 +48,15 @@ export async function generate(
     "Content-Type": "application/json",
   };
 
-  const resp = await fetch(`${resolved.baseUrl}/v1/tts`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(resolved.timeout * 1000),
-  });
+  const resp = await httpRequest(
+    `${resolved.baseUrl}/v1/tts`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    },
+    { replaySafe: false, timeoutMs: resolved.timeout * 1000 },
+  );
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");

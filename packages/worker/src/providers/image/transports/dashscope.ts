@@ -27,6 +27,7 @@ import {
   pollUntilDone,
   extractNested,
 } from "@worker/providers/http.js";
+import { httpRequest } from "@breatic/shared";
 
 /**
  * Build DashScope image generation request body.
@@ -131,12 +132,15 @@ export async function generate(
    */
   const submit = async (): Promise<string> => {
     const submitUrl = `${resolved.baseUrl}/services/aigc/text2image/image-synthesis`;
-    const response = await fetch(submitUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
-    });
+    const response = await httpRequest(
+      submitUrl,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      },
+      { replaySafe: false, timeoutMs: resolved.timeout * 1000 },
+    );
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");

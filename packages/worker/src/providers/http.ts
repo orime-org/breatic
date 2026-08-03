@@ -2,32 +2,31 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Shared HTTP utilities for AIGC provider transports.
+ * The vendor-facing shape around the shared HTTP transport.
  *
- * Provides retry with exponential backoff, generic polling,
- * nested JSON extraction, and WaveSpeed billing lookup.
+ * Delivering a request — retrying it, backing off, honouring `Retry-After` —
+ * belongs to `@breatic/shared` and is no longer done here. What remains is
+ * everything particular to talking to an AIGC vendor: reading the JSON,
+ * wording the failure so the vendor's own message survives, polling a task to
+ * a terminal status, and asking WaveSpeed what a prediction cost.
  */
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
 import { getWorkerConfig } from "@breatic/core";
-import { exponentialJitterDelay } from "@breatic/core";
+import { httpRequest } from "@breatic/shared";
 
 /**
  * Lazy-loaded HTTP config values, pulled from the worker config on each call.
- * @returns The retry / poll / billing timing values used by the helpers below
+ * @returns The poll / billing timing values used by the helpers below
  */
 function httpConfig(): {
-  maxRetries: number;
-  retryBaseDelay: number;
   defaultPollInterval: number;
   defaultMaxWait: number;
   billingTimeout: number;
 } {
   const cfg = getWorkerConfig();
   return {
-    maxRetries: cfg.http_max_retries,
-    retryBaseDelay: cfg.http_retry_base_delay,
     defaultPollInterval: cfg.poll_interval,
     defaultMaxWait: cfg.poll_max_wait,
     billingTimeout: cfg.billing_timeout,
@@ -70,40 +69,47 @@ export function extractNested(
 }
 
 /**
- * Make an HTTP request with exponential backoff retry on 429.
- * @param url - Request URL
- * @param options - Fetch options (method, headers, body)
- * @param provider - Provider name for logging
- * @returns Parsed JSON response
- * @throws {Error} if retries exhausted
+ * Ask a vendor for JSON, retried by the shared transport.
+ *
+ * The name still fits: from a caller's side this retries exactly as it always
+ * did — what changed is who does it. Every declaration below is a statement
+ * about the vendor, not a preference:
+ *
+ *   - `replaySafe: false` for all of them. A submit spends the vendor's money
+ *     a second time, and the read-only endpoints did not retry a 5xx before
+ *     either, so declaring the endpoint safe would be both a change in
+ *     behaviour and, for the submits, a false statement. A 429 or 408 is
+ *     retried regardless — the server has said it did not process the request.
+ *   - Whatever `signal` sits on `options` is ignored by the transport, which
+ *     supplies its own deadline. That is why the deadline arrives as a figure.
+ * @param url - Request URL.
+ * @param options - Fetch options (method, headers, body). Any `signal` here is
+ *   discarded in favour of `timeoutMs`.
+ * @param provider - Provider name, used to word the failure.
+ * @param timeoutMs - How long ONE delivery may take. Omitted leaves the
+ *   transport's own default in place.
+ * @returns Parsed JSON response.
+ * @throws {Error} On any non-ok status, carrying the vendor's response body —
+ *   it is the only diagnostic these calls produce.
+ * @throws {HttpRetryError} When replays happened and none produced a response.
  */
 export async function requestWithRetry(
   url: string,
   options: RequestInit,
   provider = "unknown",
+  timeoutMs?: number,
 ): Promise<Record<string, unknown>> {
-  let lastError: Error | null = null;
+  const response = await httpRequest(url, options, {
+    replaySafe: false,
+    ...(timeoutMs !== undefined && { timeoutMs }),
+  });
 
-  for (let attempt = 0; attempt <= httpConfig().maxRetries; attempt++) {
-    const response = await fetch(url, options);
-
-    if (response.ok) {
-      return (await response.json()) as Record<string, unknown>;
-    }
-
-    if (response.status === 429 && attempt < httpConfig().maxRetries) {
-      const delay = exponentialJitterDelay(attempt, httpConfig().retryBaseDelay);
-      logger.warn({ provider, url, attempt: attempt + 1, delay }, "rate_limited_retry");
-      await sleep(delay);
-      lastError = new Error(`${provider} 429 Too Many Requests`);
-      continue;
-    }
-
-    const body = await response.text().catch(() => "");
-    throw new Error(`${provider} HTTP ${response.status}: ${body}`);
+  if (response.ok) {
+    return (await response.json()) as Record<string, unknown>;
   }
 
-  throw lastError ?? new Error(`${provider} request failed after retries`);
+  const body = await response.text().catch(() => "");
+  throw new Error(`${provider} HTTP ${response.status}: ${body}`);
 }
 
 /** Options for {@link pollUntilDone}. */
@@ -178,12 +184,15 @@ export async function pollUntilDone(
  */
 export async function queryBilling(resolved: ResolvedModel, taskId: string): Promise<number> {
   try {
-    const resp = await fetch(`${resolved.baseUrl}/billings/search`, {
-      method: "POST",
-      headers: bearerHeaders(resolved.apiKey),
-      body: JSON.stringify({ prediction_uuids: [taskId] }),
-      signal: AbortSignal.timeout(httpConfig().billingTimeout),
-    });
+    const resp = await httpRequest(
+      `${resolved.baseUrl}/billings/search`,
+      {
+        method: "POST",
+        headers: bearerHeaders(resolved.apiKey),
+        body: JSON.stringify({ prediction_uuids: [taskId] }),
+      },
+      { replaySafe: false, timeoutMs: httpConfig().billingTimeout },
+    );
 
     if (!resp.ok) return 0;
     const data = (await resp.json()) as { data?: Array<{ price?: number }> };

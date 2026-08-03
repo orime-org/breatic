@@ -149,9 +149,9 @@ export async function generate(
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
       "klingai",
+      resolved.timeout * 1000,
     );
 
     const taskId = extractNested(data, ["data", "task_id"]) as string | undefined;
