@@ -193,11 +193,18 @@ let broadcastStatelessMock: ReturnType<typeof vi.fn>;
 /** Per-test overrides for the fake direct connection to the meta doc. */
 interface MetaConnectionBehaviour {
   /**
-   * Runs while the connection is being opened — the window the design
-   * says every stale pre-check re-opens in (§4). Whatever it does to the
-   * doc lands after the read-only checks and before the write.
+   * Runs while the connection is being opened, i.e. before ANY read. Use it
+   * for operations that read and write in a single transact, where "the doc
+   * changed under us" and "it was already like that" are the same thing.
    */
   onOpen?: () => void;
+  /**
+   * Runs between the read-only checks and the write — the window §4 says
+   * every pre-check re-opens. Only operations that split those into two
+   * transacts (delete, restore) can observe it; for the others it never
+   * fires, because they have no such gap.
+   */
+  betweenCheckAndWrite?: () => void;
   /** Replaces the default `disconnect`, e.g. to make the finally throw. */
   disconnect?: () => Promise<void>;
 }
@@ -211,8 +218,11 @@ function makeHocuspocus(behaviour: MetaConnectionBehaviour = {}): Hocuspocus {
   return {
     openDirectConnection: vi.fn(async () => {
       behaviour.onOpen?.();
+      let transacts = 0;
       return {
         transact: async (fn: (doc: Y.Doc) => void) => {
+          transacts += 1;
+          if (transacts === 2) behaviour.betweenCheckAndWrite?.();
           fn(metaDoc);
         },
         disconnect: behaviour.disconnect ?? disconnectMock,
@@ -337,7 +347,9 @@ beforeEach(() => {
   softDeleteByNameMock.mockReset();
   softDeleteByNameMock.mockResolvedValue(true);
   restoreByNameMock.mockReset();
-  restoreByNameMock.mockResolvedValue(undefined);
+  // Mirrors `softDeleteByName`: true means THIS call is the one that changed
+  // the row, which is how a handler knows what it owes an undo for.
+  restoreByNameMock.mockResolvedValue(true);
   seedInitialStateMock.mockReset();
   seedInitialStateMock.mockResolvedValue(true);
   countLiveSpaceDocsMock.mockReset();
@@ -530,7 +542,7 @@ describe("re-reading the target fails — the content rows are rolled back", () 
       locked: false,
     });
     const hocuspocus = makeHocuspocus({
-      onOpen: () => {
+      betweenCheckAndWrite: () => {
         // A collaborator deleted it in the window the checks opened.
         metaDoc.getMap("spaces").delete(SID);
         armBroadcastMarker();
@@ -570,7 +582,7 @@ describe("re-reading the target fails — the content rows are rolled back", () 
       name === spaceContentDocName(PID, SID, "canvas"),
     );
     const hocuspocus = makeHocuspocus({
-      onOpen: () => {
+      betweenCheckAndWrite: () => {
         metaDoc.getMap("spaces").delete(SID);
         armBroadcastMarker();
       },
@@ -599,7 +611,7 @@ describe("re-reading the target fails — the content rows are rolled back", () 
   it("space:restore soft-deletes the content rows again when the Space is already back by the time it writes", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
     const hocuspocus = makeHocuspocus({
-      onOpen: () => {
+      betweenCheckAndWrite: () => {
         // Another owner restored it in the window the checks opened.
         seedSpace(SID, {
           type: "canvas",
@@ -642,7 +654,7 @@ describe("the rollback itself fails", () => {
       new Error("ECONNREFUSED connecting to yjs_documents host"),
     );
     const hocuspocus = makeHocuspocus({
-      onOpen: () => {
+      betweenCheckAndWrite: () => {
         metaDoc.getMap("spaces").delete(SID);
         armBroadcastMarker();
       },

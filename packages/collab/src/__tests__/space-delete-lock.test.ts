@@ -27,6 +27,12 @@ const { getCollabRedisMock } = vi.hoisted(() => ({
 vi.mock("@breatic/core", () => ({
   getCollabRedis: getCollabRedisMock,
   env: { ENV: "test" },
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
 }));
 
 import {
