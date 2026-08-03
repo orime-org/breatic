@@ -70,6 +70,14 @@ export interface ProjectSpace {
   name: string;
   type: SpaceType;
   locked?: boolean;
+  /**
+   * The token this machine sent when it asked for this Space, echoed back
+   * on the entry. Present only on Spaces created through `space:create`,
+   * and only meaningful to the machine that generated it — that is how it
+   * recognises the Space it asked for, since the server mints the id and
+   * the requester never knew it in advance.
+   */
+  claimToken?: string;
 }
 
 /** Live user record stored in `meta.users[userId]`. */
@@ -413,6 +421,7 @@ function readSpaces(doc: Y.Doc): ReadonlyArray<ProjectSpace> {
       name: String(m.get('name') ?? ''),
       type: (m.get('type') as SpaceType) ?? 'canvas',
       locked: Boolean(m.get('locked') ?? false),
+      claimToken: (m.get('claimToken') as string | undefined) ?? undefined,
     });
   });
   return out;
