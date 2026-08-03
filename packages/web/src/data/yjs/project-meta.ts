@@ -262,11 +262,9 @@ export function useProjectMeta(
 }
 
 /**
- * Plan the per-user tab reconcile after the project's spaces change. Returns
- * which open-tab ids have VANISHED (deleted locally or by a collaborator — no
- * longer in `liveSpaceIds`) and, when the active space is among the vanished,
- * which still-live open tab to activate instead: the first remaining open tab,
- * or null for the empty state.
+ * Which tab to activate after the project's spaces change, when the active
+ * one has VANISHED (deleted locally or by a collaborator — no longer in
+ * `liveSpaceIds`).
  *
  * ## It answers one question: has the active Space disappeared?
  *
@@ -281,29 +279,27 @@ export function useProjectMeta(
  * already falls back to the first open tab, and the tab strip highlights the
  * id that fallback returns, so both the body and the highlight follow.
  *
- * Only `reactivateTo` still has a consumer. Pruning the vanished ids is the
- * server's job now — deleting a Space clears it from everyone's list in the
- * same broadcast — and a client could not do it anyway, since it does not
+ * It used to also return the vanished ids for the caller to close. That is
+ * the server's job now — deleting a Space clears it from everyone's list in
+ * the same broadcast — and a client could not do it anyway, since it does not
  * write this document. Which tab is ACTIVE is local window state, never
  * shared, so nobody else can put it right for us; that is the half that
- * stays here. Pure — the caller applies the result. `reactivateTo === undefined`
- * means the active space is still live, so leave it alone (no-op).
+ * stays here. Pure — the caller applies the result.
  * @param openTabIds - This user's open-tab space ids.
  * @param liveSpaceIds - The set of space ids that still exist in the project.
  * @param activeSpaceId - This user's active space id (or null).
- * @returns The tab ids to close and the next active id (undefined = no change).
+ * @returns The id to activate, `null` for the empty state, or `undefined` when
+ *   the active space is still live and nothing should move.
  */
-export function planVanishedSpaceReconcile(
+export function nextActiveAfterVanish(
   openTabIds: ReadonlyArray<string>,
   liveSpaceIds: ReadonlySet<string>,
   activeSpaceId: string | null,
-): { tabsToClose: string[]; reactivateTo: string | null | undefined } {
-  const tabsToClose = openTabIds.filter((id) => !liveSpaceIds.has(id));
-  const reactivateTo =
-    activeSpaceId !== null && !liveSpaceIds.has(activeSpaceId)
-      ? (openTabIds.find((id) => liveSpaceIds.has(id)) ?? null)
-      : undefined;
-  return { tabsToClose, reactivateTo };
+): string | null | undefined {
+  if (activeSpaceId === null || liveSpaceIds.has(activeSpaceId)) {
+    return undefined;
+  }
+  return openTabIds.find((id) => liveSpaceIds.has(id)) ?? null;
 }
 
 /**
@@ -380,9 +376,10 @@ function readMetaState(
     // user can act on. The previous `[spaces[0].id]` shape collapsed
     // the bar to one tab and the chosen tab was unstable across
     // Y.Map.forEach iteration order, so creating a new Space made
-    // the original Space silently disappear (Q6). The `openSpaceTab`
-    // snapshot persists this state to the perUser subtree the moment
-    // the user clicks anything.
+    // the original Space silently disappear (Q6). This is a read-time
+    // default only; the server writes the same set into `perUser` the
+    // first time the user opens or closes anything (`ensureOpenTabList`
+    // in collab's space-rpc), so the two agree from then on.
     return { spaces, openTabIds: spaces.map((s) => s.id), users };
   }
   const openTabIdsArr = userMap.get(OPEN_TAB_IDS_KEY) as

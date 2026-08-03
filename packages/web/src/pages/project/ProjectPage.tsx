@@ -21,7 +21,7 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { evictDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import {
-  planVanishedSpaceReconcile,
+  nextActiveAfterVanish,
   useProjectMeta,
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
@@ -272,20 +272,9 @@ function ProjectWorkspace({
   React.useEffect(() => {
     if (!userId) return;
     const liveIds = new Set(spaces.map((s) => s.id));
-    // Pruning the vanished ids is the server's job now — the delete RPC
-    // clears the Space from everyone's list in the same broadcast, and
-    // restore sweeps again as a backstop. A client cannot do it anyway:
-    // it does not write this doc.
-    //
-    // Re-activating stays here. Which tab is active is local window
-    // state, never shared, so nobody else can fix it for us.
-    const { reactivateTo } = planVanishedSpaceReconcile(
-      openTabIds,
-      liveIds,
-      activeSpaceId,
-    );
-    if (reactivateTo !== undefined) {
-      setActiveSpaceId(reactivateTo);
+    const next = nextActiveAfterVanish(openTabIds, liveIds, activeSpaceId);
+    if (next !== undefined) {
+      setActiveSpaceId(next);
     }
   }, [userId, openTabIds, spaces, activeSpaceId]);
 
@@ -521,7 +510,7 @@ function ProjectWorkspace({
     // once the tab has actually left it: the in-memory state this tab
     // accumulated (canvas undo manager, document editor with its undo stack
     // and selection) is discarded by the effect that watches openTabIds, and
-    // moving off it is planned by `planVanishedSpaceReconcile`.
+    // moving off it is planned by `nextActiveAfterVanish`.
     //
     // That split matters now that this is a round trip. Anything done here
     // happens whether or not the request succeeds, and a close CAN fail —
@@ -541,12 +530,11 @@ function ProjectWorkspace({
     });
   };
 
-
   /**
-   * Create a Space - client-side uuid id (ADR B1.1) + `space:create`
-   * RPC. The collab process applies the write under the system user;
-   * the effect above auto-opens the new tab and dismisses the overlay
-   * when the doc broadcast lands.
+   * Create a Space - `space:create` RPC carrying a claim token this machine
+   * generates. The server mints the id and writes the entry under the system
+   * user; the effect above recognises the token in the broadcast, opens the
+   * new tab and dismisses the overlay.
    * @param type - The Space template type to instantiate.
    * @param name - The display name for the new Space.
    */
