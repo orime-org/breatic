@@ -368,7 +368,24 @@ export function createAuthHook({
           );
         }
       }
-      connectionConfig.readOnly = role === "viewer" || atCapacity;
+      // The meta doc is read-only for EVERY client, whatever their role.
+      // It is the project's directory, and changing any of it has rules
+      // attached — a role to check, a content row to create, a ledger
+      // entry, "you cannot delete the last Space". Rules a client can
+      // choose not to run are not rules, so every change goes through an
+      // RPC (`space:*` / `tab:*` on the stateless channel, which read-only
+      // does not touch) and the client's own connection cannot write.
+      //
+      // This replaces a hand-written gate that parsed each frame to see
+      // which field it touched. Recognising a write meant enumerating the
+      // framework's internal message types, and the gate failed open on
+      // every type it missed — it never ran on a real frame in its whole
+      // life. Read-only is enforced by the framework at each write site.
+      //
+      // Content docs are unaffected: a canvas or a document body is the
+      // user's own work, it has no rules to enforce, and role decides.
+      connectionConfig.readOnly =
+        parsed.kind === "meta" || role === "viewer" || atCapacity;
 
       // NOTE: this connection is registered in the cross-instance registry
       // by the `connected` lifecycle hook (see hocuspocus.ts), NOT here.
