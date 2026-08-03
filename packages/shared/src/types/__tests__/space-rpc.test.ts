@@ -9,17 +9,9 @@ import {
 } from "../space-rpc.js";
 
 describe("SpaceRpcRequestSchema — discriminated union", () => {
-  it("parses a well-formed space:create request", () => {
-    const req = SpaceRpcRequestSchema.parse({
-      id: "req-1",
-      type: "space:create",
-      payload: { spaceId: "sp-1", type: "canvas", name: "Main" },
-    });
-    expect(req.type).toBe("space:create");
-    if (req.type === "space:create") {
-      expect(req.payload.spaceId).toBe("sp-1");
-    }
-  });
+  // The happy-path space:create case moved to the "server-minted ids and
+  // the claim token" block below — the payload changed shape, so asserting
+  // the old one here would only re-test what that block already covers.
 
   it("parses space:delete / lock / restore", () => {
     SpaceRpcRequestSchema.parse({
