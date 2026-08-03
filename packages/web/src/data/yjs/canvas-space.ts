@@ -9,6 +9,7 @@ import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { seedEmptyBody } from '@web/data/yjs/text-body';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
 import { toNodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -88,6 +89,18 @@ interface CanvasSpaceState {
 
 const NODES_KEY = 'nodesMap';
 const EDGES_KEY = 'edgesMap';
+/**
+ * Top-level map holding each text node's body, keyed by node id (#1774).
+ *
+ * The body sits here rather than under the node because the canvas observer is
+ * deep: a keystroke inside the node subtree recomputes every node on the board.
+ * Being a sibling of the node map instead means typing never reaches it.
+ *
+ * Nothing may subscribe to this map deeply — that would put the recompute right
+ * back. A shallow subscription (keys appearing and being replaced) is required,
+ * and a single body is subscribed to individually by whoever renders it.
+ */
+export const TEXT_BODIES_KEY = 'textBodies';
 
 /**
  * Tracked transaction origin for canvas undo. Every frontend structural /
@@ -135,6 +148,12 @@ export const MAX_UNDO_DEPTH = 50;
 export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
+  // Text bodies are in scope too (#1774). They used to ride along for free by
+  // living under the node; now that they are a sibling map, leaving them out
+  // would mean deleting a text node and pressing undo brings back the node
+  // without a word of what was written in it. Typing does not enter the stack
+  // regardless, because it carries an origin this manager does not track.
+  const textBodiesMap = doc.getMap<Y.XmlFragment>(TEXT_BODIES_KEY);
   // Same wrapper the document manager uses: `Y.UndoManager` leaks a doc
   // `destroy` listener that its own `destroy()` never removes, and this manager
   // is evicted while its Y.Doc can still be alive (a Space tab closed and
@@ -142,7 +161,7 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
   const undoManager = withDestroyListenerCleanup(
     doc,
     () =>
-      new Y.UndoManager([nodesMap, edgesMap], {
+      new Y.UndoManager([nodesMap, edgesMap, textBodiesMap], {
         trackedOrigins: new Set([CANVAS_UNDO]),
         captureTimeout: 0,
       }),
@@ -435,6 +454,20 @@ export function addNode(
     map.set('position', node.position);
     map.set('data', buildDataMap(node.data));
     nodesMap.set(node.id, map);
+    // A text node is born with its body (#1774). Seeding it here, inside the
+    // same transaction and under the same origin, is what makes it part of the
+    // user's act of creating the node: undoing the creation takes the body with
+    // it, so nothing is orphaned. Creating it later, on demand, is a
+    // whole-container race — two clients would each make one and the loser's
+    // writing would vanish along with their container.
+    if (node.type === 'text') {
+      const body = new Y.XmlFragment();
+      doc.getMap<Y.XmlFragment>(TEXT_BODIES_KEY).set(node.id, body);
+      // Non-empty from birth: the editor's schema wants at least one block, and
+      // a body that disagrees loses the redo stack the first time an undo
+      // empties it.
+      seedEmptyBody(body);
+    }
   }, CANVAS_UNDO);
 }
 
@@ -485,6 +518,7 @@ export function removeNode(
       releaseGroupMembers(nodesMap, nodeId);
     }
     nodesMap.delete(nodeId);
+    doc.getMap<Y.XmlFragment>(TEXT_BODIES_KEY).delete(nodeId);
   }, CANVAS_UNDO);
 }
 
@@ -888,6 +922,64 @@ export function setNodeMode(
     data.set('model', model);
     data.set('params', params);
   }, CANVAS_UNDO);
+}
+
+/**
+ * Read a text node's body, without creating one (#1774).
+ *
+ * Absent means the node predates this feature or is the tail of an undo, not
+ * that it is empty: an empty body still holds one block. Callers that need to
+ * write have to repair first, through {@link reseedTextBody}.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the node.
+ * @param nodeId - Id of the text node whose body to read.
+ * @returns The node's body, or `null` when it has none.
+ */
+export function getTextBody(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): Y.XmlFragment | null {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  return doc.getMap<Y.XmlFragment>(TEXT_BODIES_KEY).get(nodeId) ?? null;
+}
+
+/**
+ * Give a text node a body when it has none, and hand it back.
+ *
+ * Repair, not lazy creation. Every text node is born with a body; a node
+ * without one is either older than this feature or the tail of an undo, and
+ * without repair it can never be written in again — the shared editor requires
+ * a fragment and refuses to bind to nothing.
+ *
+ * The origin is deliberately NOT the one the canvas undo manager tracks. A
+ * repair is the system fixing itself, not something the user did, and putting
+ * it on their undo stack means one press of undo deletes the paragraph they
+ * just typed into the repaired node — measured, not reasoned about.
+ *
+ * Idempotent: a node that already has a body gets that body back untouched, so
+ * a second caller cannot wipe what the first one wrote.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the node.
+ * @param nodeId - Id of the text node to repair.
+ * @returns The node's body, or `null` when the node itself is gone.
+ */
+export function reseedTextBody(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): Y.XmlFragment | null {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  if (!doc.getMap<Y.Map<unknown>>(NODES_KEY).has(nodeId)) return null;
+  const bodies = doc.getMap<Y.XmlFragment>(TEXT_BODIES_KEY);
+  const existing = bodies.get(nodeId);
+  if (existing) return existing;
+  const body = new Y.XmlFragment();
+  doc.transact(() => {
+    bodies.set(nodeId, body);
+    seedEmptyBody(body);
+  }, CONTENT_WRITE);
+  return body;
 }
 
 /**
@@ -1586,6 +1678,7 @@ export function removeElements(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
+  const textBodies = doc.getMap<Y.XmlFragment>(TEXT_BODIES_KEY);
   doc.transact(() => {
     nodeIds.forEach((id) => {
       const node = nodesMap.get(id);
@@ -1593,6 +1686,10 @@ export function removeElements(
         releaseGroupMembers(nodesMap, id);
       }
       nodesMap.delete(id);
+      // The body goes with the node (#1774). This is the exit the Delete key
+      // takes, so missing it here would leak a body on the main deletion path
+      // while `removeNode` looked correct.
+      textBodies.delete(id);
     });
     edgeIds.forEach((id) => edgesMap.delete(id));
   }, CANVAS_UNDO);
