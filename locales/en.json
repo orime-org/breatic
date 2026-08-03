@@ -1393,47 +1393,7 @@
       "myStudiosEmpty": "No team Studios yet",
       "joinedEmpty": "You haven't joined any Studio yet",
       "openNav": "Open navigation"
-    },
-    "invite": {
-      "loadingTitle": "Opening your invitation…",
-      "loadingBody": "One moment while we load the invite.",
-      "title": "You've been invited",
-      "body": "{inviter} invited you to join {studio} as {role, select, maintainer {a Maintainer} guest {a Guest} other {a Guest}}.",
-      "confirm": "Accept & join",
-      "decline": "Decline",
-      "invalidTitle": "This invitation is no longer valid",
-      "invalidBody": "The link may have expired or already been used. Ask the studio admin to send a new invite.",
-      "expiredTitle": "This invitation has expired",
-      "expiredBody": "Your invite to {studio} is past its 7-day window. Ask the studio admin to send a new one.",
-      "notInviteeTitle": "This invitation isn't for this account",
-      "notInviteeBody": "You're signed in as a different user. Sign in with the account this invite was sent to.",
-      "declinedTitle": "Invitation declined",
-      "declinedBody": "You declined the invite to {studio}. You can ask the admin to invite you again later.",
-      "joinedToast": "You've joined the studio.",
-      "actionFailed": "Could not complete that. Please try again.",
-      "backToStudio": "Back to Studio",
-      "signIn": "Sign in"
     }
-  },
-  "projectInvite": {
-    "loadingTitle": "Opening your invitation…",
-    "loadingBody": "One moment while we load the invite.",
-    "title": "You've been invited",
-    "body": "{inviter} invited you to join {project} as {role, select, editor {an editor} viewer {a viewer} other {a member}}.",
-    "confirm": "Accept & join",
-    "decline": "Decline",
-    "invalidTitle": "This invitation is no longer valid",
-    "invalidBody": "The link may have expired or already been used. Ask the Project owner to send a new invite.",
-    "expiredTitle": "This invitation has expired",
-    "expiredBody": "Your invite to {project} is past its 7-day window. Ask the Project owner to send a new one.",
-    "notInviteeTitle": "This invitation isn't for this account",
-    "notInviteeBody": "You're signed in as a different user. Sign in with the account this invite was sent to.",
-    "declinedTitle": "Invitation declined",
-    "declinedBody": "You declined the invite to {project}. You can ask the owner to invite you again later.",
-    "joinedToast": "You've joined the project.",
-    "actionFailed": "Could not complete that. Please try again.",
-    "backToStudio": "Back to Studio",
-    "signIn": "Sign in"
   },
   "chrome": {
     "tooltip": {
@@ -1513,8 +1473,8 @@
   "decision": {
     "loadingTitle": "Opening this request…",
     "loadingBody": "One moment while we look it up.",
-    "title": "{kind, select, studio_invite {You've been invited to a studio} project_invite {You've been invited to a project} role_upgrade {Someone asked for a bigger role} project_transfer {A project is being handed to you} studio_transfer {A studio is being handed to you} other {Something needs your answer}}",
-    "body": "{kind, select, studio_invite {{actor} invited you to join {entity}.} project_invite {{actor} invited you to work on {entity}.} role_upgrade {{actor} asked to become {role} on {entity}.} project_transfer {{actor} wants to make you the owner of {entity}.} studio_transfer {{actor} wants to make you the admin of {entity}.} other {{actor} is waiting on your answer about {entity}.}}",
+    "title": "{kind, select, studio_invite {You've been invited to a Studio} project_invite {You've been invited to a Project} role_upgrade {Someone asked for a bigger role} project_transfer {A Project is being handed to you} studio_transfer {A Studio is being handed to you} other {Something needs your answer}}",
+    "body": "{kind, select, studio_invite {{actor} invited you to join {entity} as {role, select, maintainer {a Maintainer} guest {a Guest} other {a Member}}.} project_invite {{actor} invited you to work on {entity} as {role, select, editor {an Editor} viewer {a Viewer} other {a Member}}.} role_upgrade {{actor} asked to become {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}} on {entity}.} project_transfer {{actor} wants to make you the Owner of {entity}.} studio_transfer {{actor} wants to make you the Admin of {entity}.} other {{actor} is waiting on your answer about {entity}.}}",
     "reason": "They said: {message}",
     "confirm": "{kind, select, role_upgrade {Approve} other {Accept}}",
     "decline": "{kind, select, role_upgrade {Decline} other {Decline}}",
@@ -1536,7 +1496,7 @@
     "notYoursTitle": "This one is not yours to answer",
     "notYoursBody": "It was sent to somebody else. Sign in as them to answer it.",
     "goThere": "Go there",
-    "backHome": "Back to your studio",
+    "backHome": "Back to your Studio",
     "actionFailed": "That did not go through. Please try again."
   }
 }

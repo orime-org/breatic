@@ -168,7 +168,22 @@ export default function DecisionLandingPage(): React.JSX.Element {
         title={card.title}
         footer={<AuthLink to='/studio'>{t('decision.backHome')}</AuthLink>}
       >
-        <p className='text-sm text-muted-foreground'>{card.body}</p>
+        <div className='flex flex-col gap-4'>
+          <p className='text-sm text-muted-foreground'>{card.body}</p>
+          {/* Deliberately no date: an exact instant reads as a promise the
+              reaper does not keep. How long the window WAS is the part that
+              answers "why can't I answer this". */}
+          {view.state === 'expired' && (
+            <p className='text-xs text-muted-foreground'>
+              {t('decision.windowNote', { days: view.windowDays })}
+            </p>
+          )}
+          {view.destination !== null && (
+            <div>
+              <AuthLink to={view.destination}>{t('decision.goThere')}</AuthLink>
+            </div>
+          )}
+        </div>
       </AuthCardShell>
     );
   }

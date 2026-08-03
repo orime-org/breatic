@@ -27,9 +27,12 @@ export type DecisionKind =
  * (accepted/approved, declined/rejected, revoked/cancelled), so the server
  * collapses them here: the page renders a state, not a status column.
  *
- * `gone` and `invalid` are deliberately separate. A request whose project was
- * deleted is soft-deleted with it, and telling that person "invalid link" is
- * wrong — the link was fine, the thing it pointed at is not there any more.
+ * There is no `invalid` member, and that is the point. A token nobody issued
+ * resolves to nothing at all, which the endpoint answers with a 404 — it never
+ * becomes a state, because there is no request to have one. Every state here
+ * belongs to a request that genuinely exists, including `gone`: that one was
+ * soft-deleted with its project, and telling its holder "invalid link" would
+ * be wrong twice over.
  */
 export type DecisionState =
   | "answerable"
@@ -38,15 +41,16 @@ export type DecisionState =
   | "expired"
   | "revoked"
   | "already_member"
-  | "gone"
-  | "invalid";
+  | "gone";
 
 /**
  * Everything the landing page needs, for any of the five kinds.
  *
  * Carries no ids and no slugs: this is what an unanswered request looks like to
  * someone who has not decided yet, and the URL it was reached through is meant
- * to reveal nothing about which studio or project is involved.
+ * to reveal nothing about which studio or project is involved. `destination`
+ * is the one exception, and it is filled only for somebody who is already a
+ * member of what it names.
  */
 export interface DecisionView {
   kind: DecisionKind;
@@ -65,6 +69,16 @@ export interface DecisionView {
   isRecipient: boolean;
   /** How long the answering window is, in days, as currently configured. */
   windowDays: number;
+  /**
+   * Where to go instead of answering, for the one dead end that has somewhere
+   * to send you: the recipient is already in, so the invitation has nothing
+   * left to offer but the thing itself is right there.
+   *
+   * Null everywhere else, and null for anyone who is not the recipient — this
+   * is the only field that names an entity, and only somebody who demonstrably
+   * already has access to it ever receives it.
+   */
+  destination: string | null;
 }
 
 /** Which way the recipient answered. */

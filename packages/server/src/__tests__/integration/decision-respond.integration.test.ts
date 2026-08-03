@@ -32,7 +32,12 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore } from "@breatic/core";
+import {
+  initCore,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+} from "@breatic/core";
 
 initCore(process.env);
 
@@ -310,6 +315,9 @@ describe("declining settles the request and goes nowhere", () => {
 });
 
 describe("the gate in front of the write", () => {
+  // §5.1: three codes, not one. Collapsing them back to 404 is exactly the
+  // "four situations, one sentence" the landing page exists to undo, and a
+  // bare `rejects.toThrow()` would not notice it happening.
   it("answering twice is refused by the row, not by the entrance", async () => {
     const s = await seedScene();
     const outsider = await insertOutsider("twice");
@@ -326,7 +334,7 @@ describe("the gate in front of the write", () => {
     // Same token, same person, second time: the status now says it is done.
     await expect(
       decisionService.respond(token, outsider, "confirm"),
-    ).rejects.toThrow();
+    ).rejects.toThrow(ConflictError);
   });
 
   it("somebody who is not the recipient cannot answer", async () => {
@@ -346,7 +354,7 @@ describe("the gate in front of the write", () => {
         s.memberId,
         "confirm",
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(ForbiddenError);
     expect(await statusOf("studio_invitations", id)).toBe("pending");
   });
 
@@ -370,13 +378,13 @@ describe("the gate in front of the write", () => {
         outsider,
         "confirm",
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(ConflictError);
   });
 
   it("a token nobody issued cannot be answered", async () => {
     const s = await seedScene();
     await expect(
       decisionService.respond("f".repeat(64), s.memberId, "confirm"),
-    ).rejects.toThrow();
+    ).rejects.toThrow(NotFoundError);
   });
 });
