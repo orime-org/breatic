@@ -86,14 +86,30 @@ describe('SpaceDocSync — attach lifecycle follows OPEN tabs, not the active ta
     ]);
   });
 
-  it('does NOT attach for non-canvas tabs (document / timeline have no Yjs doc yet)', () => {
+  it('attaches for document tabs too — timeline still has no Yjs doc', () => {
     render(
       tree([
         { id: 'd', type: 'document' },
         { id: 't', type: 'timeline' },
       ]),
     );
-    expect(providerInstances).toHaveLength(0);
+    expect(providerInstances).toHaveLength(1);
+    expect(providerInstances[0].config.name).toBe('project-p1/document-d');
+  });
+
+  it('gives a canvas and a document tab their own separate documents', () => {
+    render(
+      tree([
+        { id: 's', type: 'canvas' },
+        { id: 's', type: 'document' },
+      ]),
+    );
+    // Same space id, different kinds — the doc NAME carries the kind, so the
+    // two must never collide on one Y.Doc.
+    expect(providerInstances.map((p) => p.config.name).sort()).toEqual([
+      'project-p1/canvas-s',
+      'project-p1/document-s',
+    ]);
   });
 
   it('switching the active tab does NOT detach any open tab (open list unchanged)', () => {

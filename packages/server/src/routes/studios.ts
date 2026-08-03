@@ -204,9 +204,19 @@ studio.patch(
  *
  * Rate limited — every call permanently adds a storage object that runtime
  * never deletes, so an unthrottled admin could write to storage without bound.
- * @returns `200` with `{ data: Studio }`; `403` not the admin, `404` no such
- *   studio, `413` over the byte cap, `415` not an accepted image,
- *   `422` empty body, `429` rate limited
+ * The picture itself is not inspected. Two things happen to the bytes: they
+ * are bounded, and their signature is read to decide the extension and content
+ * type the stored object is served under. Bytes whose signature is not PNG
+ * have nothing to be stored as and are refused — that is the whitelist holding
+ * one entry, not a judgement about the image. What the pixels are is the
+ * client's business: an avatar is one URL on one row, shown cropped into a
+ * fixed-size element, and only an admin of the studio that displays it can
+ * reach this at all.
+ * @returns `200` with `{ data: Studio }`; `403` not the admin — also when the
+ *   slug matches no studio, since `requireStudioRole` hides existence rather
+ *   than answering `404`; `413` over the byte cap, `415` bytes whose signature
+ *   is not one this server has an extension for, `422` empty body, `429` rate
+ *   limited
  */
 studio.post(
   "/:slug/avatar",
@@ -227,7 +237,9 @@ studio.post(
  *
  * Clears the column only; the stored object is left in place, since runtime
  * never deletes from storage.
- * @returns `200` with `{ data: Studio }`; `403` not the admin, `404` no such studio
+ * @returns `200` with `{ data: Studio }`; `403` not the admin — also when the
+ *   slug matches no studio, since `requireStudioRole` hides existence rather
+ *   than answering `404`
  */
 studio.delete("/:slug/avatar", requireStudioRole("admin"), async (c) => {
   const slug = c.req.param("slug");
@@ -354,8 +366,9 @@ studio.patch("/:slug/members/:userId", requireStudioRole("admin"), async (c) => 
  * `POST /api/v1/studio/:slug/transfer-admin` — the admin asks an existing
  * member to take over as admin (step 1 of the two-step handshake). Admin-only;
  * drops an actionable `studio.transfer_request` notification (confirm/cancel,
- * 7-day TTL) in the recipient's inbox. No role change yet — that lands when the
- * recipient confirms via the notification action endpoint.
+ * expiring with the decision window) in the recipient's inbox. No role change
+ * yet — that lands when the recipient confirms via the notification action
+ * endpoint.
  * @returns `201` with `{ data: { ok: true } }`; `403` personal / not admin,
  *   `404` recipient not a member, `422` recipient is the acting admin
  */

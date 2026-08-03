@@ -49,6 +49,7 @@ loader:`packages/server/src/config/limits.ts`。
 | `activity_feed_page_max` | 100 | 活动流分页:客户端 `?limit` 被裁剪到的硬上限 |
 | `canvas_reference_pool_cap` | 50 | 单画布节点参考池上限(参考边 + 聚焦图合计,#1782);经 `GET /canvas/limits` 下发,前端加入时 gate(池在 Yjs,server 不 gate 协作写);区别于按模型的 `images.max_items` 执行 payload 上限(#1735)。聚焦图另受前端硬顶 `MAX_FOCUS_ENTRIES`(200,`web data/focus-images.ts`)约束——旋钮调高于 200 时聚焦图仍在 200 处被拒(带 toast) |
 | `node_history_page_size` | 20 | 节点历史找回面板每页请求的行数(无限滚动,#1619);经 `GET /canvas/limits` 下发,前端取(未加载前退化用 server 默认 20) |
+| `decision_window_days` | 7 | 等人答复的五件事共用的答复期限(天):studio 邀请 · project 邀请 · studio 转让 · project 转让 · 角色升级请求。**同一个数管四处**——落库的 `expires_at`、邮件链接令牌的 Redis TTL、邀请/转让邮件正文里的那句话、邀请落地页过期卡片里的天数,全部读它,任何一处都不许再写自己的数字。改这个值只影响此后新建的行,老行按当初盖的截止时间走 |
 
 ## 4. `config/collab.yaml` — Hocuspocus 协作服务
 
@@ -98,11 +99,11 @@ loader:`packages/core/src/config/storage.ts`。
 | `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(下限, 文件大小 / 该速率)|
 | `upload.presign_expires_seconds` | 300 | 云存储(S3 / 阿里云 OSS)预签名 PUT 地址的有效期(秒)。这是存储服务商自己的 PUT 窗口,跟下发记录表无关 —— 后者不设上传时限;本地存储没有预签名地址,该项不生效 |
 
-`avatar.*`:studio 头像。头像**不走预签名直传**,字节经服务器进来,所以这个上限同时也是单次请求在进程里缓冲的上限。前端裁剪成 512×512 WebP 后约 30–60 KB。
+`avatar.*`:studio 头像。头像**不走预签名直传**,字节经服务器进来,所以这个上限同时也是单次请求在进程里缓冲的上限。头像是挂在 studio 行上的一条 URL、不是资产,**服务端不读图像内容**(不看尺寸、不看内部结构);但它仍会按字节签名认一次类型来决定存成什么扩展名和 content-type,**签名不是 PNG 的会被 415 拒掉**——所以这个字节上限是"对图片唯一的度量",不是"唯一的拒绝理由"。前端裁剪成 512×512 PNG。PNG 无损、没有质量旋钮,字节数跟画面内容走:纯色几 KB,噪点照片几乎压不动 —— 实测单帧 512×512 RGBA 最坏 1,049,473 字节(像素和 alpha 全随机),所以上限按 2 MiB 定,给最坏情况留两倍。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `avatar.max_bytes` | 1048576(1 MiB)| 单次头像上传字节上限;超限返 413 |
+| `avatar.max_bytes` | 2097152(2 MiB)| 单次头像上传字节上限;超限返 413。按 PNG 最坏情况定,见上方说明 |
 
 ## 7. `config/agent.yaml` — LLM 韧性(节选)
 

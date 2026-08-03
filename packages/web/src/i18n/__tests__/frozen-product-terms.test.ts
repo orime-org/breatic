@@ -55,7 +55,6 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
   // Entity + space-type nouns — Title Case English.
   ['studio.container.tabs.projects', 'Projects'],
   ['studio.container.tabs.collections', 'Collections'],
-  ['studio.container.collections.title', 'Collections'],
   ['studio.container.dialog.studioLabel', 'Studio'],
   ['spaces.kind.canvas', 'Canvas'],
   ['spaces.kind.document', 'Document'],
@@ -68,12 +67,42 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
   ['auth.onboarding.slugLabel', 'Slug'],
 ];
 
-/** Zero-consumer dead keys removed as part of #1336 (decision A). */
+/**
+ * Dead keys removed, asserted absent so re-adding one is a failing test.
+ *
+ * Rows leaving the freeze lists above have to land here, or the guarantee
+ * quietly disappears with them: the blanket denylist deliberately cannot cover
+ * these collision-prone nouns (see the comment on COLLISION_FROZEN), so if such
+ * a key comes back with a translated noun and a real reader, the dead-key check
+ * is satisfied, the collision guard is gone, and nothing fails.
+ *
+ * Reviving a key means deleting its row here first. Nothing else announces
+ * that: put the key back in the catalogs and five tests fail, one per locale,
+ * naming a file the person editing locales was not looking at. That is the
+ * intended friction — a key comes back only on purpose — but it is friction
+ * nobody warns you about, so it is written down in both places that could
+ * send you here: this docstring and the dead-key check's finding message.
+ *
+ * First batch removed as part of #1336 (decision A); the rest on 2026-08-01,
+ * when the dead-key check stopped counting a test fixture as a reader.
+ */
 const REMOVED_DEAD_KEYS: readonly string[] = [
   'studio.container.projects.title',
   'spaces.tab.kind_canvas',
   'spaces.tab.kind_document',
   'spaces.tab.kind_timeline',
+  'spaces.tab.new',
+  'spaces.tab.drawer',
+  'spaces.drawer.new_canvas',
+  'spaces.drawer.new_document',
+  'spaces.drawer.new_timeline',
+  'studio.container.collections.title',
+  'studio.container.members.cannotInvitePersonal',
+  'members.stack.removeAria',
+  'project.toolbar.uploadFile',
+  'message.addedToTimeline',
+  'server.email.welcome_subject',
+  'editor.accept',
 ];
 
 /**
@@ -148,13 +177,8 @@ describe('frozen product terms (#1336)', () => {
   const COLLISION_FROZEN: ReadonlyArray<
     readonly [key: string, term: string, forbidden: readonly string[]]
   > = [
-    ['spaces.drawer.new_canvas', 'Canvas', CANVAS_FORMS],
     ['spaces.readonly.canvas.title', 'Canvas', CANVAS_FORMS],
-    ['spaces.tab.new', 'Canvas', CANVAS_FORMS],
-    ['spaces.tab.drawer', 'Canvas', CANVAS_FORMS],
-    ['spaces.drawer.new_document', 'Document', DOCUMENT_FORMS],
     ['spaces.readonly.document.title', 'Document', DOCUMENT_FORMS],
-    ['spaces.drawer.new_timeline', 'Timeline', TIMELINE_FORMS],
     ['spaces.readonly.timeline.title', 'Timeline', TIMELINE_FORMS],
     ['spaces.readonly.timeline.description', 'Timeline', TIMELINE_FORMS],
     ['chrome.tooltip.newSpace', 'Space', SPACE_FORMS],
@@ -257,13 +281,14 @@ describe('frozen product terms (#1336)', () => {
   /**
    * Lowercase-English "studio" that names the Studio entity (not the ICU
    * {studio} placeholder, not a /studio/ URL) is capitalized to the frozen
-   * brand term. These four server / dialog strings carried a bare lowercase
-   * "studio"; after the freeze they must read "Studio".
+   * brand term. These server / dialog strings carried a bare lowercase
+   * "studio"; after the freeze they must read "Studio". A fourth entry,
+   * studio.container.members.cannotInvitePersonal, went with its key on
+   * 2026-08-01 — nothing read it.
    */
   const LOWERCASE_STUDIO_KEYS: readonly string[] = [
     'server.studio.team_limit_reached',
     'server.studio.cannot_modify_personal',
-    'studio.container.members.cannotInvitePersonal',
     'studio.container.dialog.createStudioError',
   ];
 

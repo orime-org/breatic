@@ -36,7 +36,7 @@
       "cannot_change_admin_role": "Admin 역할은 이전을 통해서만 변경할 수 있습니다.",
       "member_limit_reached": "이 Studio는 멤버 수 한도에 도달했습니다.",
       "leave_last_admin": "이 Studio를 나가기 전에 먼저 Admin을 이전하세요.",
-      "avatar_unsupported_type": "지원하지 않는 이미지 형식입니다. PNG, JPEG 또는 WebP를 사용해 주세요."
+      "avatar_unsupported_type": "이 파일은 이미지로 읽을 수 없습니다. 다른 사진을 사용해 보세요."
     },
     "project": {
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
@@ -50,13 +50,8 @@
     "payment": {
       "tier_not_found": "알 수 없는 요금제: {tier}. 사용 가능: {available}",
       "price_not_configured": "{tier} 요금제의 가격이 설정되지 않았습니다"
-    },
-    "email": {
-      "welcome_subject": "Breatic에 오신 것을 환영합니다"
     }
   },
-  "cancel": "취소",
-  "loading": "불러오는 중...",
   "chat": {
     "composer": {
       "selectMode": {
@@ -283,9 +278,6 @@
       }
     }
   },
-  "editor": {
-    "accept": "적용"
-  },
   "auth": {
     "email": "이메일",
     "password": "비밀번호",
@@ -397,9 +389,6 @@
       "stay": "머무르기",
       "leave": "나가기"
     },
-    "toolbar": {
-      "uploadFile": "파일 업로드"
-    },
     "header": {
       "renameFailed": "Project 이름을 변경하지 못했습니다"
     },
@@ -419,10 +408,8 @@
     }
   },
   "common": {
-    "cancel": "취소"
-  },
-  "message": {
-    "addedToTimeline": "타임라인에 추가했습니다"
+    "cancel": "취소",
+    "loading": "불러오는 중..."
   },
   "members": {
     "popover": {
@@ -454,21 +441,15 @@
       "transferFailed": "이전 요청을 보내지 못했습니다. 다시 시도하세요."
     },
     "stack": {
-      "triggerAria": "Project 멤버({count})",
-      "removeAria": "{name} 제거"
+      "triggerAria": "Project 멤버({count})"
     }
   },
   "spaces": {
     "tab": {
-      "new": "새 Canvas",
-      "drawer": "모든 Canvases",
       "closeAria": "Space 탭 닫기"
     },
     "drawer": {
       "title": "모든 Spaces",
-      "new_canvas": "새 Canvas",
-      "new_document": "새 Document",
-      "new_timeline": "새 Timeline",
       "label": "모든 Spaces",
       "description": "{count, plural, one {# Space · 클릭하여 열거나 우측 메뉴 사용} other {# Space · 클릭하여 열거나 우측 메뉴 사용}}",
       "empty": "아직 Spaces가 없습니다",
@@ -535,7 +516,27 @@
         "description": "Timeline 뷰어는 timeline-space 출시 시 연결됩니다. 여기서는 트랙 스냅샷을 클립 복사와 함께 표시합니다."
       }
     },
-    "lockedAria": "잠김"
+    "lockedAria": "잠김",
+    "document": {
+      "loading": "편집기를 불러오는 중…",
+      "unavailable": {
+        "text": "이 문서를 열 수 없습니다. 삭제되었거나 더 이상 접근 권한이 없을 수 있습니다.",
+        "action": "다시 시도"
+      },
+      "readOnlyNotice": "이 문서는 지금 읽기 전용입니다 — 입력한 내용은 저장되지 않습니다.",
+      "refusedNotice": "이 문서에 대한 연결이 거부되었습니다. 보고 있는 내용이 최신이 아닐 수 있으며 변경 사항도 저장되지 않습니다.",
+      "placeholder": "작성을 시작하세요…",
+      "toolbar": {
+        "undo": "실행 취소",
+        "redo": "다시 실행",
+        "bold": "굵게",
+        "italic": "기울임꼴",
+        "bulletList": "글머리 기호 목록",
+        "orderedList": "번호 매기기 목록",
+        "quote": "인용",
+        "strike": "취소선"
+      }
+    }
   },
   "menu": {
     "createAria": "만들기 메뉴",
@@ -738,7 +739,6 @@
         "emptyHint": "Project는 무한 캔버스에서 창작하는 공간입니다. 첫 Project를 만들어 시작하세요."
       },
       "collections": {
-        "title": "Collections",
         "new": "새 Collection",
         "emptyTitle": "아직 에셋 모음이 없습니다",
         "emptyHint": "에셋 모음은 Projects 간에 재사용하는 소재 모음(이미지 / 동영상 / 오디오)입니다. 백엔드 기능이 출시되면 만든 에셋 모음이 여기에 표시됩니다."
@@ -777,7 +777,6 @@
         "roleAdmin": "Admin",
         "roleGuest": "Guest",
         "remove": "삭제",
-        "cannotInvitePersonal": "개인 Studios는 멤버를 초대할 수 없습니다 — 당신뿐입니다.",
         "roleMaintainer": "Maintainer",
         "rowMenu": "멤버 작업",
         "promoteToMaintainer": "Maintainer로 지정",
@@ -912,7 +911,7 @@
       "invalidTitle": "더 이상 유효하지 않은 초대입니다",
       "invalidBody": "링크가 만료되었거나 이미 사용되었을 수 있습니다. Studio Admin에게 새 초대를 요청하세요.",
       "expiredTitle": "초대가 만료되었습니다",
-      "expiredBody": "{studio} 초대가 7일 유효 기간을 지났습니다. Studio Admin에게 재발송을 요청하세요.",
+      "expiredBody": "{studio} 초대가 {days}일 유효 기간을 지났습니다. Studio Admin에게 재발송을 요청하세요.",
       "notInviteeTitle": "이 초대는 현재 계정용이 아닙니다",
       "notInviteeBody": "다른 사용자로 로그인되어 있습니다. 이 초대가 발송된 계정으로 로그인하세요.",
       "declinedTitle": "초대를 거절했습니다",
@@ -933,7 +932,7 @@
     "invalidTitle": "더 이상 유효하지 않은 초대입니다",
     "invalidBody": "링크가 만료되었거나 이미 사용되었을 수 있습니다. Project Owner에게 새 초대를 요청하세요.",
     "expiredTitle": "초대가 만료되었습니다",
-    "expiredBody": "{project} 초대가 7일 유효 기간을 지났습니다. Project Owner에게 재발송을 요청하세요.",
+    "expiredBody": "{project} 초대가 {days}일 유효 기간을 지났습니다. Project Owner에게 재발송을 요청하세요.",
     "notInviteeTitle": "이 초대는 현재 계정용이 아닙니다",
     "notInviteeBody": "다른 사용자로 로그인되어 있습니다. 이 초대가 발송된 계정으로 로그인하세요.",
     "declinedTitle": "초대를 거절했습니다",

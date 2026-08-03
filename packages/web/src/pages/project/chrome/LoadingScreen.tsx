@@ -37,7 +37,7 @@ export function LoadingScreen(): React.JSX.Element {
     >
       <div className='flex flex-col items-center gap-3'>
         <Loader2 className='h-6 w-6 animate-spin' aria-hidden />
-        <span className='text-sm'>{t('loading')}</span>
+        <span className='text-sm'>{t('common.loading')}</span>
       </div>
     </div>
   );

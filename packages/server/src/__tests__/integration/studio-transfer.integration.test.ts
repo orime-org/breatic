@@ -28,6 +28,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
+import type * as LimitsModule from "@server/config/limits.js";
 
 // Mock `ai` BEFORE importing @breatic/core — the core barrel pulls
 // agent/llm → the `ai` SDK → @opentelemetry/api, whose ESM build breaks
@@ -42,6 +43,20 @@ vi.mock("ai", () => ({
   }),
   stepCountIs: (_n: number) => () => false,
   tool: (config: Record<string, unknown>) => config,
+}));
+
+// The decision window is mocked to a value the repo does not ship, so a write
+// site that went back to spelling out its own seven days cannot pass. Reading
+// the real getter here would only prove the test and the code agree with each
+// other — measured: with the assertions reading getDecisionWindowMs(), putting
+// `7 * 24 * 60 * 60 * 1000` back into the service left every test in this file
+// green. The other getters keep their real behaviour.
+const decisionWindow = vi.hoisted(() => ({ days: 3 }));
+vi.mock("@server/config/limits.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof LimitsModule>()),
+  getDecisionWindowDays: () => decisionWindow.days,
+  getDecisionWindowMs: () => decisionWindow.days * 24 * 60 * 60 * 1000,
+  getDecisionWindowSeconds: () => decisionWindow.days * 24 * 60 * 60,
 }));
 
 import postgres from "postgres";
@@ -155,7 +170,7 @@ async function countByType(userId: string, type: string): Promise<number> {
   return rows[0]!.c;
 }
 
-/** Force a notification's expiry into the past (simulate the 7-day timeout). */
+/** Force a notification's expiry into the past (simulate the window running out). */
 async function expireNotification(id: string): Promise<void> {
   await sql`UPDATE notifications SET expires_at = now() - interval '1 hour' WHERE id = ${id}`;
 }
@@ -194,6 +209,21 @@ async function seedStudio(): Promise<Seeded> {
 }
 
 describe("requestTransfer", () => {
+  it("stamps the request deadline from the configured decision window", async () => {
+    // The write site moved from a local constant to the shared window with
+    // nothing asserting the result. Read from the getter rather than naming a
+    // number, so turning the operator knob does not redden the suite — which
+    // means this pins that the write site CALLS the getter, not that the
+    // getter's unit is right; limits.test.ts holds that half.
+    const { slug, adminId, memberId } = await seedStudio();
+    await studioTransferService.requestTransfer(slug, adminId, memberId);
+    const [req] = await transferRequestsFor(memberId);
+
+    const aheadMs = req!.expires_at!.getTime() - Date.now();
+    const windowMs = decisionWindow.days * 24 * 60 * 60 * 1000;
+    expect(aheadMs).toBeLessThanOrEqual(windowMs);
+    expect(aheadMs).toBeGreaterThan(windowMs - 60_000);
+  });
   it("lands an actionable transfer-request notification with the actor identity + a future expiry", async () => {
     const { studioId, slug, adminId, memberId, adminName } = await seedStudio();
 
@@ -304,6 +334,9 @@ describe("confirmTransfer", () => {
     expect(await activeAdminCount(studioId)).toBe(1);
   });
 
+
+
+
   it("applies the transfer exactly once under two concurrent confirms", async () => {
     const { studioId, slug, adminId, memberId } = await seedStudio();
     await studioTransferService.requestTransfer(slug, adminId, memberId);
@@ -351,7 +384,7 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
   });
 
   it("rejects confirm when the studio changed hands after the request (the initiator is no longer admin)", async () => {
-    // A request names its initiator in a payload written up to seven days
+    // A request names its initiator in a payload written a whole window
     // ago. If the studio has since moved to somebody else, confirming that
     // stale request would demote whoever holds the role now — and promote the
     // long-since-demoted initiator back up to maintainer on the way past.
@@ -416,6 +449,49 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
 });
 
 describe("cancelTransfer", () => {
+  it("a refused decline leaves no trace — the mark-read rolls back with it", async () => {
+    // The type check runs AFTER the mark-read CAS, and that CAS matches on id +
+    // recipient only — it never looks at the type. Without the transaction,
+    // aiming this endpoint at any other unread notification would mark it read
+    // and only then fail, silently consuming a row it had no business touching.
+    const { memberId } = await seedStudio();
+    const [notif] = await sql<{ id: string }[]>`
+      INSERT INTO notifications (user_id, type, payload)
+      VALUES (${memberId}, 'studio.invite_accepted', '{}'::jsonb)
+      RETURNING id
+    `;
+
+    await expect(
+      studioTransferService.cancelTransfer(notif!.id, memberId),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    const [after] = await sql<{ read_at: Date | null }[]>`
+      SELECT read_at FROM notifications WHERE id = ${notif!.id}
+    `;
+    expect(after!.read_at).toBeNull();
+  });
+  it("refuses to DECLINE an expired request with Conflict, leaving it unread", async () => {
+    // Expiry closes the request outright: past the window there is no decision
+    // left to make, not "you may still say no". Declining an expired request
+    // must fail exactly like confirming one — and it must fail WHOLE, so the
+    // mark-read that serializes the decision cannot survive the rejection and
+    // leave a request that is neither decidable nor visible.
+    const { studioId, slug, adminId, memberId } = await seedStudio();
+    await studioTransferService.requestTransfer(slug, adminId, memberId);
+    const [req] = await transferRequestsFor(memberId);
+    await expireNotification(req!.id);
+
+    await expect(
+      studioTransferService.cancelTransfer(req!.id, memberId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    const [after] = await sql<{ read_at: Date | null }[]>`
+      SELECT read_at FROM notifications WHERE id = ${req!.id}
+    `;
+    expect(after!.read_at).toBeNull();
+    // Roles never move on a decline, expired or not.
+    expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("admin");
+  });
   it("marks the request read and changes no roles", async () => {
     const { studioId, slug, adminId, memberId } = await seedStudio();
     await studioTransferService.requestTransfer(slug, adminId, memberId);

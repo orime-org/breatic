@@ -48,6 +48,7 @@ function makeView(
     role: 'editor',
     expired: false,
     isInvitee: true,
+    windowDays: 7,
     ...o,
   };
 }
@@ -158,6 +159,18 @@ describe('ProjectInvitePage', () => {
     expect(
       screen.queryByRole('button', { name: 'Accept & join' }),
     ).toBeNull();
+  });
+
+  it('takes the day count in the expired copy from the server, not a literal', async () => {
+    // Deliberately NOT the shipped seven — see the studio page's twin test:
+    // copy that spells out 7 would pass against a fixture that also says 7.
+    vi.mocked(projectInvitationsApi.getInvitation).mockResolvedValueOnce(
+      makeView({ expired: true, windowDays: 3 }),
+    );
+    setup();
+    expect(
+      await screen.findByText(/past its 3-day window/i),
+    ).toBeInTheDocument();
   });
 
   it('shows the not-for-this-account card when the viewer is not the invitee', async () => {

@@ -36,7 +36,7 @@
       "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。",
       "member_limit_reached": "該 Studio 已達到成員數上限。",
       "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
-      "avatar_unsupported_type": "該檔案不是支援的圖片格式。請使用 PNG、JPEG 或 WebP。"
+      "avatar_unsupported_type": "這個檔案無法作為圖片讀取，請換一張試試。"
     },
     "project": {
       "email_not_registered": "該信箱尚未註冊。",
@@ -48,15 +48,10 @@
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
       "price_not_configured": "方案 {tier} 的價格未設定"
     },
-    "email": {
-      "welcome_subject": "歡迎加入 Breatic"
-    },
     "text_tool": {
       "already_running": "另一個文字工具正在執行,請稍候。"
     }
   },
-  "cancel": "取消",
-  "loading": "載入中...",
   "chat": {
     "composer": {
       "selectMode": {
@@ -283,9 +278,6 @@
       }
     }
   },
-  "editor": {
-    "accept": "接受"
-  },
   "auth": {
     "email": "電子郵件",
     "password": "密碼",
@@ -397,9 +389,6 @@
       "stay": "留下",
       "leave": "仍然離開"
     },
-    "toolbar": {
-      "uploadFile": "上傳文件"
-    },
     "header": {
       "renameFailed": "重新命名 Project 失敗"
     },
@@ -419,10 +408,8 @@
     }
   },
   "common": {
-    "cancel": "取消"
-  },
-  "message": {
-    "addedToTimeline": "已加入時間軸"
+    "cancel": "取消",
+    "loading": "載入中..."
   },
   "members": {
     "popover": {
@@ -454,21 +441,15 @@
       "transferFailed": "轉讓請求傳送失敗,請重試。"
     },
     "stack": {
-      "triggerAria": "Project 成員（{count}）",
-      "removeAria": "移除 {name}"
+      "triggerAria": "Project 成員（{count}）"
     }
   },
   "spaces": {
     "tab": {
-      "new": "新增 Canvas",
-      "drawer": "所有 Canvases",
       "closeAria": "關閉 Space 標籤頁"
     },
     "drawer": {
       "title": "所有 Spaces",
-      "new_canvas": "新增 Canvas",
-      "new_document": "新增 Document",
-      "new_timeline": "新增 Timeline",
       "label": "所有 Spaces",
       "description": "{count, plural, other {# 個 · 點擊切換或使用右側操作}}",
       "empty": "尚無 Spaces",
@@ -535,7 +516,27 @@
         "description": "Timeline viewer 在 timeline-space 實作時接入;此處展示軌道快照,支援複製片段。"
       }
     },
-    "lockedAria": "已鎖定"
+    "lockedAria": "已鎖定",
+    "document": {
+      "loading": "正在載入編輯器…",
+      "unavailable": {
+        "text": "這個文件開不了。它可能已被刪除，或者你已經沒有存取權限了。",
+        "action": "重試"
+      },
+      "readOnlyNotice": "這個文件現在只能檢視 —— 你輸入的內容不會被儲存。",
+      "refusedNotice": "與這個文件的連線被拒絕了。你看到的內容可能不是最新的，變更也不會被儲存。",
+      "placeholder": "開始寫作…",
+      "toolbar": {
+        "undo": "復原",
+        "redo": "重做",
+        "bold": "粗體",
+        "italic": "斜體",
+        "bulletList": "無序列表",
+        "orderedList": "有序列表",
+        "quote": "引用",
+        "strike": "刪除線"
+      }
+    }
   },
   "menu": {
     "createAria": "建立選單",
@@ -738,7 +739,6 @@
         "emptyHint": "Project 是你在無限畫布上創作的地方。建立第一個 Project,開始你的創作。"
       },
       "collections": {
-        "title": "Collections",
         "new": "新增 Collection",
         "emptyTitle": "還沒有 Collections",
         "emptyHint": "Collection 是跨 Projects 複用的素材集合(圖 / 影片 / 音訊)。後端能力上線後,這裡會列出你建立的 Collection。"
@@ -777,7 +777,6 @@
         "roleAdmin": "Admin",
         "roleGuest": "Guest",
         "remove": "移除",
-        "cannotInvitePersonal": "個人 Studios 無法邀請成員 —— 只有你自己。",
         "roleMaintainer": "Maintainer",
         "rowMenu": "成員操作",
         "promoteToMaintainer": "設為 Maintainer",
@@ -912,7 +911,7 @@
       "invalidTitle": "邀請已失效",
       "invalidBody": "連結可能已過期或被使用過。請讓 Studio Admin 重新傳送邀請。",
       "expiredTitle": "邀請已過期",
-      "expiredBody": "你對 {studio} 的邀請已超過 7 天有效期。請讓 Studio Admin 重新傳送。",
+      "expiredBody": "你對 {studio} 的邀請已超過 {days} 天有效期。請讓 Studio Admin 重新傳送。",
       "notInviteeTitle": "此邀請不屬於目前帳號",
       "notInviteeBody": "你目前登入的是另一個帳號。請用收到此邀請的帳號登入。",
       "declinedTitle": "已拒絕邀請",
@@ -933,7 +932,7 @@
     "invalidTitle": "邀請已失效",
     "invalidBody": "連結可能已過期或被使用過。請讓 Project Owner 重新傳送邀請。",
     "expiredTitle": "邀請已過期",
-    "expiredBody": "你對 {project} 的邀請已超過 7 天有效期。請讓 Project Owner 重新傳送。",
+    "expiredBody": "你對 {project} 的邀請已超過 {days} 天有效期。請讓 Project Owner 重新傳送。",
     "notInviteeTitle": "此邀請不屬於目前帳號",
     "notInviteeBody": "你目前登入的是另一個帳號。請用收到此邀請的帳號登入。",
     "declinedTitle": "已拒絕邀請",

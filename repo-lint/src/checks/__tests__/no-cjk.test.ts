@@ -86,12 +86,41 @@ describe("no-cjk", () => {
   });
 
   it("skips locale catalogs, tests, vendor and the lockfile", () => {
+    // Each exempt path exercises one half of the test rule on its own: the
+    // directory without the suffix, and the suffix without the directory.
+    // Fixtures matching both halves at once pin neither, which is how an
+    // earlier version of the i18n check shipped an exclusion nobody could
+    // break in a test.
     const context = withAllowlisted({
       "locales/zh-CN.json": '{"a":"中文"}',
-      "packages/core/src/__tests__/a.test.ts": 'const a = "中文";',
+      "packages/core/src/__tests__/fixtures.ts": 'const a = "中文";',
       "packages/core/src/b.test.ts": 'const a = "中文";',
       "packages/web/src/components/ui/x.tsx": 'const a = "中文";',
       "pnpm-lock.yaml": "# 中文",
+      "packages/core/src/ok.ts": "// fine\n",
+    });
+    expect(noCjk.run(context)).toEqual([]);
+  });
+
+  it("bans CJK in every TypeScript extension it scans", () => {
+    // The positive half, and it has to come first: an exemption test asserting
+    // [] passes for two different reasons — the file was exempt, or it was
+    // never scanned. Without this, narrowing SCANNED would make the two
+    // patterns agree by dropping .mts/.cts entirely and no test would notice.
+    const context = withAllowlisted({
+      "packages/core/src/a.mts": 'const a = "中文";',
+      "packages/core/src/b.cts": 'const a = "中文";',
+    });
+    expect(noCjk.run(context)).toHaveLength(2);
+  });
+
+  it("skips a test file on every TypeScript extension it scans", () => {
+    // The exemption half. Paired with the test above, [] here can only mean
+    // the test rule matched: the extensions are known to be scanned. The two
+    // patterns disagreed about which extensions exist until 2026-08-01.
+    const context = withAllowlisted({
+      "packages/core/src/a.test.mts": 'const a = "中文";',
+      "packages/core/src/b.spec.cts": 'const a = "中文";',
       "packages/core/src/ok.ts": "// fine\n",
     });
     expect(noCjk.run(context)).toEqual([]);

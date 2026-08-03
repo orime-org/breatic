@@ -30,13 +30,21 @@ describe('SpaceKindPicker', () => {
     );
   });
 
-  it('disables document + timeline and shows the "not available" badge on them', () => {
+  it('offers canvas and document, and marks only timeline unavailable', () => {
     render(<SpaceKindPicker value='canvas' onChange={() => {}} />);
-    expect(screen.getByRole('radio', { name: /Document/ })).toBeDisabled();
-    expect(screen.getByRole('radio', { name: /Timeline/ })).toBeDisabled();
     expect(screen.getByRole('radio', { name: /Canvas/ })).not.toBeDisabled();
-    // The badge appears once per unavailable card (document + timeline).
-    expect(screen.getAllByText('Not available')).toHaveLength(2);
+    expect(screen.getByRole('radio', { name: /Document/ })).not.toBeDisabled();
+    expect(screen.getByRole('radio', { name: /Timeline/ })).toBeDisabled();
+    // The badge appears once per unavailable card — timeline alone now.
+    expect(screen.getAllByText('Not available')).toHaveLength(1);
+  });
+
+  it('reports a click on the document card', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<SpaceKindPicker value='canvas' onChange={onChange} />);
+    await user.click(screen.getByRole('radio', { name: /Document/ }));
+    expect(onChange).toHaveBeenCalledWith('document');
   });
 
   it('reports a click on the available canvas card', async () => {
@@ -51,7 +59,7 @@ describe('SpaceKindPicker', () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
     render(<SpaceKindPicker value='canvas' onChange={onChange} />);
-    await user.click(screen.getByRole('radio', { name: /Document/ }));
+    await user.click(screen.getByRole('radio', { name: /Timeline/ }));
     expect(onChange).not.toHaveBeenCalled();
   });
 

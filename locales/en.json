@@ -36,7 +36,7 @@
       "cannot_change_admin_role": "The admin role can only be changed by transferring it.",
       "member_limit_reached": "This studio has reached its member limit.",
       "leave_last_admin": "Transfer the admin role before leaving this Studio.",
-      "avatar_unsupported_type": "That file is not a supported image. Use PNG, JPEG or WebP."
+      "avatar_unsupported_type": "That file could not be read as an image. Try a different picture."
     },
     "project": {
       "email_not_registered": "No account is registered with that email.",
@@ -50,13 +50,8 @@
     "payment": {
       "tier_not_found": "Unknown pricing tier: {tier}. Available: {available}",
       "price_not_configured": "Price not configured for tier: {tier}"
-    },
-    "email": {
-      "welcome_subject": "Welcome to Breatic"
     }
   },
-  "cancel": "Cancel",
-  "loading": "Loading...",
   "chat": {
     "composer": {
       "selectMode": {
@@ -283,9 +278,6 @@
       }
     }
   },
-  "editor": {
-    "accept": "Accept"
-  },
   "auth": {
     "email": "Email",
     "password": "Password",
@@ -397,9 +389,6 @@
       "stay": "Stay",
       "leave": "Leave anyway"
     },
-    "toolbar": {
-      "uploadFile": "Upload file"
-    },
     "header": {
       "renameFailed": "Couldn't rename the project"
     },
@@ -419,10 +408,8 @@
     }
   },
   "common": {
-    "cancel": "Cancel"
-  },
-  "message": {
-    "addedToTimeline": "Added to timeline"
+    "cancel": "Cancel",
+    "loading": "Loading..."
   },
   "members": {
     "popover": {
@@ -454,21 +441,15 @@
       "transferFailed": "Could not send the transfer request. Please try again."
     },
     "stack": {
-      "triggerAria": "Project members ({count})",
-      "removeAria": "Remove {name}"
+      "triggerAria": "Project members ({count})"
     }
   },
   "spaces": {
     "tab": {
-      "new": "New canvas",
-      "drawer": "All canvases",
       "closeAria": "Close space tab"
     },
     "drawer": {
       "title": "All spaces",
-      "new_canvas": "New canvas",
-      "new_document": "New document",
-      "new_timeline": "New timeline",
       "label": "All spaces",
       "description": "{count, plural, one {# space · click to open or use the right menu} other {# spaces · click to open or use the right menu}}",
       "empty": "No spaces yet",
@@ -535,7 +516,27 @@
         "description": "Timeline viewer plugs in when timeline-space ships; here we show a track snapshot, with clip copy."
       }
     },
-    "lockedAria": "Locked"
+    "lockedAria": "Locked",
+    "document": {
+      "loading": "Loading editor…",
+      "unavailable": {
+        "text": "This document could not be opened. It may have been deleted, or you may no longer have access to it.",
+        "action": "Try again"
+      },
+      "readOnlyNotice": "This document is read-only right now — anything you type will not be saved.",
+      "refusedNotice": "The connection to this document was refused. What you see may be out of date, and changes will not be saved.",
+      "placeholder": "Start writing…",
+      "toolbar": {
+        "undo": "Undo",
+        "redo": "Redo",
+        "bold": "Bold",
+        "italic": "Italic",
+        "bulletList": "Bullet list",
+        "orderedList": "Ordered list",
+        "quote": "Quote",
+        "strike": "Strikethrough"
+      }
+    }
   },
   "menu": {
     "createAria": "Create menu",
@@ -738,7 +739,6 @@
         "emptyHint": "Projects are where you create on the infinite canvas. Create your first project to get started."
       },
       "collections": {
-        "title": "Collections",
         "new": "New collection",
         "emptyTitle": "No collections yet",
         "emptyHint": "Collections are reusable sets of assets (images / video / audio) shared across projects. Once the backend ships, the collections you create will appear here."
@@ -777,7 +777,6 @@
         "roleAdmin": "Admin",
         "roleGuest": "Guest",
         "remove": "Remove",
-        "cannotInvitePersonal": "Personal studios can not invite members — it is just you.",
         "roleMaintainer": "Maintainer",
         "rowMenu": "Member actions",
         "promoteToMaintainer": "Make maintainer",
@@ -912,7 +911,7 @@
       "invalidTitle": "This invitation is no longer valid",
       "invalidBody": "The link may have expired or already been used. Ask the studio admin to send a new invite.",
       "expiredTitle": "This invitation has expired",
-      "expiredBody": "Your invite to {studio} is past its 7-day window. Ask the studio admin to send a new one.",
+      "expiredBody": "Your invite to {studio} is past its {days}-day window. Ask the studio admin to send a new one.",
       "notInviteeTitle": "This invitation isn't for this account",
       "notInviteeBody": "You're signed in as a different user. Sign in with the account this invite was sent to.",
       "declinedTitle": "Invitation declined",
@@ -933,7 +932,7 @@
     "invalidTitle": "This invitation is no longer valid",
     "invalidBody": "The link may have expired or already been used. Ask the Project owner to send a new invite.",
     "expiredTitle": "This invitation has expired",
-    "expiredBody": "Your invite to {project} is past its 7-day window. Ask the Project owner to send a new one.",
+    "expiredBody": "Your invite to {project} is past its {days}-day window. Ask the Project owner to send a new one.",
     "notInviteeTitle": "This invitation isn't for this account",
     "notInviteeBody": "You're signed in as a different user. Sign in with the account this invite was sent to.",
     "declinedTitle": "Invitation declined",

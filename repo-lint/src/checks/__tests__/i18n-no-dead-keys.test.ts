@@ -83,48 +83,286 @@ describe("i18n-no-dead-keys", () => {
     expect(findings[0]?.message).toContain("canvas.gone");
   });
 
-  it("keeps a flat top-level key its translation call names", () => {
-    // Regression: the first version only indexed dotted identifiers, so a
-    // dotless key could not be found however often it was used. It deleted
-    // `cancel` and `loading` — both live — and the two tests that caught it
-    // were the only thing between that and shipping raw ids to the UI.
+  it("reports a dotless key however often it is used", () => {
+    // This check cannot see a key with no dot: `DOTTED_LITERAL` has nothing to
+    // anchor on, and reading the id out of the call instead was a second,
+    // weaker path kept for exactly two keys. It is gone, and what makes that
+    // safe is `i18n-keys-namespaced` failing the build on such a key upstream.
+    //
+    // So this asserts a defect on purpose — it is where the dependency between
+    // the two checks is written down. Delete the upstream one and this is the
+    // behaviour that comes back: a live key, used twice, reported dead, and a
+    // raw id shipped to the UI. The record that the shape always needed
+    // handling is a87af417, which introduced the second matching path and the
+    // two tests guarding it together, in one commit.
+    //
+    // `common.ok` is the control, and it is what lets this test fail at all.
+    // Asserting only "the dotless key is reported" stays true when matching is
+    // deleted outright — every key is reported then. It was written that way
+    // first, and a mutation deleting the literal scan left it green while six
+    // other tests in this file went red.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { cancel: "Cancel", common: { ok: "OK" } },
+        {
+          "packages/web/src/a.tsx":
+            "<Button>{t('cancel')}</Button><Confirm label={t('cancel')} onOk={t('common.ok')} />",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("cancel");
+  });
+
+  it("does not let a key's last segment alone count as a use", () => {
+    // Matching must not degrade into "does this word appear anywhere". The
+    // source below contains `next`, which is the key's final segment and an
+    // ordinary word besides — matching on it would exempt every key whose last
+    // segment is a common one, which is most of them.
+    //
+    // `nav.back` is the control, for the same reason as the test above: without
+    // a key that must survive, "the dead key is reported" is also what a check
+    // that reports everything does.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { nav: { next: "Next", back: "Back" } },
+        { "packages/web/src/a.tsx": "t('nav.back'); params.get('next');" },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("nav.next");
+  });
+
+  it("does not let a __tests__ directory keep a key alive", () => {
+    // Pins one half of the exclusion on its own. The path below is NOT named
+    // *.test.ts, so a version that dropped the directory half would report
+    // nothing here — which is exactly the mutation an earlier round of tests
+    // let through, because every fixture path happened to match both halves.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { spaces: { drawer: { newCanvas: "New canvas" } } },
+        {
+          "packages/web/src/i18n/__tests__/fixtures.ts":
+            "export const rows = ['spaces.drawer.newCanvas'];",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("spaces.drawer.newCanvas");
+  });
+
+  it("does not let a .test file outside __tests__ keep a key alive", () => {
+    // The other half, pinned the same way: a path that matches the suffix and
+    // not the directory.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { spaces: { drawer: { newCanvas: "New canvas" } } },
+        {
+          "packages/web/src/spaces.test.ts": "t('spaces.drawer.newCanvas')",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+  });
+
+  it("keeps a key that only test scaffolding names, and that is deliberate", () => {
+    // The naming convention does not reach a helper kept beside the code it
+    // serves, so this one stays in the scan and its mention counts. A content
+    // sniff for the vitest import was tried and reverted: it dropped a shipped
+    // component over a comment mentioning the phrase, reporting 37 live keys
+    // for deletion, and still missed core's db/test-support.ts. The residual
+    // here is the cheap direction — a dead key survives a sweep. The fix, if
+    // it ever bites, is to move the helper into __tests__.
     expect(
       i18nNoDeadKeys.run(
         repo(
-          { cancel: "Cancel", loading: "Loading…" },
+          { members: { stack: { removeAria: "Remove {name}" } } },
           {
-            "packages/web/src/a.tsx":
-              "<Button>{t('cancel')}</Button><Spinner aria-label={t(\"loading\")} />",
+            "packages/web/src/test-utils/a11y.ts":
+              "export const K = 'members.stack.removeAria';",
+            "packages/web/src/app.tsx": "export const App = () => null;",
           },
         ),
       ),
     ).toEqual([]);
   });
 
-  it("still catches a flat top-level key no call names", () => {
-    // The other half: matching dotless keys must not degrade into "does this
-    // word appear anywhere", which would exempt every short key forever.
+  it("does not let a .test.mts file keep a key alive", () => {
+    // Widening the scan to every TypeScript extension opened a seam: the
+    // shared TEST_FILE only knew .ts/.tsx, so a test file with the newer
+    // extension read as application code. Both patterns now cover the same
+    // extensions, and this pins that they agree.
     const findings = i18nNoDeadKeys.run(
       repo(
-        { cancel: "Cancel", next: "Next" },
-        { "packages/web/src/a.tsx": "t('cancel'); params.get('next');" },
+        { spaces: { drawer: { newCanvas: "New canvas" } } },
+        {
+          "packages/web/src/thing.test.mts":
+            "const rows = ['spaces.drawer.newCanvas'];",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
       ),
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0]?.message).toContain("next");
+    expect(findings[0]?.message).toContain("spaces.drawer.newCanvas");
   });
 
-  it("counts a mention outside the frontend, quotes or not", () => {
-    // The scan is deliberately generous: calling a live key dead deletes real
-    // UI text, while calling a dead key live only postpones a cleanup.
+  it("scans a package source that is not under src's default extension set", () => {
+    // Pins the extension half: a .mts module under src is application code.
+    // The repo has .mts files today (all at package root), so the shape is
+    // live even though none sits under src yet.
+    expect(
+      i18nNoDeadKeys.run(
+        repo(
+          { canvas: { ready: "Ready" } },
+          { "packages/web/src/boot.mts": "t('canvas.ready')" },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not scan this check's own source", () => {
+    // repo-lint keeps its source at <root>/src, one level above the shape the
+    // pattern matches, so it falls out on depth. This is the case that
+    // matters in practice — the check must not read its own worked examples.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { canvas: { ready: "Ready" } },
+        {
+          "repo-lint/src/checks/example.ts": "// e.g. t('canvas.ready')",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("canvas.ready");
+  });
+
+  it("does not scan a package-shaped tree outside packages/", () => {
+    // Pins the `packages/` word itself, which depth alone does not enforce:
+    // a workspace laid out the same way somewhere else is still out of scope.
+    // Deliberate, and the risky direction — if such a workspace ever ships
+    // code that reads the catalogs, widen the pattern rather than exempting
+    // its keys, because being invisible here means being reported dead.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { canvas: { ready: "Ready" } },
+        {
+          "tools/console/src/app.ts": "t('canvas.ready')",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("canvas.ready");
+  });
+
+  it("does not let a test fixture keep a key alive", () => {
+    // A test that names a key nobody reads is not evidence the key is used —
+    // it is a second dead thing, and counting it means the sweep can never
+    // reach either. Measured on the real catalogs: 12 keys were held up by
+    // nothing but test fixtures.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { spaces: { drawer: { newCanvas: "New canvas" } } },
+        {
+          "packages/web/src/i18n/__tests__/frozen-product-terms.test.ts":
+            "['spaces.drawer.newCanvas', 'Canvas']",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("spaces.drawer.newCanvas");
+  });
+
+  it("does not let a spec document keep a key alive", () => {
+    // Prose naming a key is documentation of the key, not a reader of it. If
+    // the key goes, that sentence should go with it — which cannot happen
+    // while the sentence is what protects the key.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { project: { toolbar: { uploadFile: "Upload" } } },
+        {
+          "packages/web/CLAUDE.md": "例:上传文件的 project.toolbar.uploadFile",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("project.toolbar.uploadFile");
+  });
+
+  it("does not let this check's own source keep a key alive", () => {
+    // The worst case, because it is silent and total: this file's docstring
+    // uses `canvas.upload` as its worked example, so scanning itself made
+    // every key in that namespace permanently unreportable — the guard
+    // issuing itself a pass over exactly the namespace it teaches with.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { canvas: { upload: { tooLarge: "Too large" } } },
+        {
+          "repo-lint/src/checks/i18n-no-dead-keys.ts":
+            "// e.g. t(`canvas.upload.${rejection}`) keeps every key under it",
+          "packages/web/src/app.tsx": "export const App = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("canvas.upload.tooLarge");
+  });
+
+  it("tells the reader both edits a deletion takes", () => {
+    // The message is the only place a person meets this check, and following
+    // it half way leaves five failing tests in a file they were not editing.
+    // Pinned because prose drifts from behaviour silently — three rounds of
+    // review on this check found exactly that, twice in this same docstring.
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { canvas: { gone: "Gone" } },
+        { "packages/web/src/app.tsx": "export const App = () => null;" },
+      ),
+    );
+    expect(findings[0]?.message).toContain("REMOVED_DEAD_KEYS");
+    expect(findings[0]?.message).toContain("APPLICATION_SOURCE");
+  });
+
+  it("counts any mention inside an application source, quoted or not", () => {
+    // Within the scanned scope the matching stays generous — a bare dotted
+    // literal is enough, no call shape required — because calling a live key
+    // dead deletes real UI text while calling a dead key live only postpones
+    // a cleanup.
     expect(
       i18nNoDeadKeys.run(
         repo(
           { server: { mail: { subject: "Welcome" } } },
-          { "config/mail.yaml": "template: server.mail.subject" },
+          {
+            "packages/server/src/mail.ts":
+              "// the subject comes from server.mail.subject",
+          },
         ),
       ),
     ).toEqual([]);
+  });
+
+  it("does not count a config file, because nothing outside TypeScript reads a key", () => {
+    // Verified when the scope was set: no tracked non-TS, non-Markdown file
+    // names a catalog key. If one ever does, this check reports the key and
+    // widening the scope is the fix — there is no per-key exemption list, so
+    // the answer is always "make the scan see the reader", never "make this
+    // one key special".
+    const findings = i18nNoDeadKeys.run(
+      repo(
+        { server: { mail: { subject: "Welcome" } } },
+        {
+          "config/mail.yaml": "template: server.mail.subject",
+          "packages/server/src/mail.ts": "export const send = () => null;",
+        },
+      ),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("server.mail.subject");
   });
 
   it("reads the English catalog only, so a stale translation cannot hide a death", () => {

@@ -37,7 +37,12 @@ import * as notificationService from "@server/modules/notification/notification.
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { buildStudioInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { getStudioMemberCap } from "@server/config/limits.js";
+import {
+  getStudioMemberCap,
+  getDecisionWindowDays,
+  getDecisionWindowMs,
+  getDecisionWindowSeconds,
+} from "@server/config/limits.js";
 import { randomBytes } from "node:crypto";
 import { db, env, getRedis } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
@@ -47,9 +52,6 @@ import type { InvitationLandingView } from "@breatic/shared";
 
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
 type InvitableRole = "maintainer" | "guest";
-
-/** Days a pending invite stays actionable before it self-voids. */
-const INVITE_TTL_DAYS = 7;
 
 /**
  * Invite a registered user into a studio — creates a PENDING invite (it does
@@ -112,7 +114,7 @@ export async function createInvite(
   ]);
   const inviter = profiles.get(inviterUserId);
   const inviterName = inviter?.name ?? "";
-  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
 
   let invitationId = "";
   try {
@@ -271,7 +273,8 @@ export async function confirmInvite(
  * already-decided / not-owned invite collapses to NotFound.
  * @param invitationId - The `studio_invitations` row id
  * @param receiverUserId - The invitee declining (must own the invite)
- * @throws {NotFoundError} the invite is missing, already decided, or not owned
+ * @throws {NotFoundError} the invite is missing, already decided, past its
+ *   decision window, or not owned by `receiverUserId`
  */
 export async function declineInvite(
   invitationId: string,
@@ -328,14 +331,11 @@ export async function revokeInvite(
   });
 }
 
-/** TTL of the email-link token — matches the invite's 7-day window. */
-const INVITE_TOKEN_TTL_SECONDS = INVITE_TTL_DAYS * 24 * 60 * 60;
-
 /**
  * Issue a one-time email-link token for an invite (mirrors the email-verify
  * token): a 64-hex random token stored in Redis (`{env}:studio-invite:{token}`
- * → invitationId) with the invite's 7-day TTL. The route embeds it in the
- * `/studio-invite?token=` link.
+ * → invitationId) with the same decision window the invite row carries. The
+ * route embeds it in the `/studio-invite?token=` link.
  * @param invitationId - The invitation the token resolves to
  * @returns The 64-char hex token to embed in the invite link
  */
@@ -345,7 +345,7 @@ export async function issueInviteToken(invitationId: string): Promise<string> {
     `${env.ENV}:studio-invite:${token}`,
     invitationId,
     "EX",
-    INVITE_TOKEN_TTL_SECONDS,
+    getDecisionWindowSeconds(),
   );
   return token;
 }
@@ -396,6 +396,7 @@ export async function getInviteForLanding(
     role: row.role,
     expired: row.expiresAt.getTime() <= Date.now(),
     isInvitee: row.invitedUserId === viewerUserId,
+    windowDays: getDecisionWindowDays(),
   };
 }
 

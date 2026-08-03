@@ -72,6 +72,7 @@ export interface RoleUpgradeDecisionPayload {
  * @param input.ownerUserId - Project owner who receives the request in their inbox
  * @param input.projectId - Project the upgrade is requested for
  * @param input.payload - Requester, project name, requested role, and message
+ * @param input.expiresAt - When the owner's window to decide runs out
  * @param input.tx - Optional transaction to bundle with the role-bump write
  * @returns The inserted `access.role_upgrade_request` notification
  */
@@ -79,6 +80,7 @@ export async function createRoleUpgradeRequest(input: {
   ownerUserId: string;
   projectId: string;
   payload: RoleUpgradeRequestPayload;
+  expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
   return notificationRepo.create(
@@ -87,6 +89,7 @@ export async function createRoleUpgradeRequest(input: {
       type: "access.role_upgrade_request",
       payload: input.payload as unknown as Record<string, unknown>,
       projectId: input.projectId,
+      expiresAt: input.expiresAt,
     },
     input.tx,
   );
@@ -241,7 +244,7 @@ export interface StudioInviteAcceptedPayload {
  * @param input - Recipient inbox, payload, expiry, and optional transaction
  * @param input.userId - The proposed new admin who receives the request
  * @param input.payload - The initiating admin's user id, studio id, and studio name
- * @param input.expiresAt - When the request times out (7 days from creation)
+ * @param input.expiresAt - When the recipient's window to decide runs out
  * @param input.tx - Optional transaction to bundle with related writes
  * @returns The inserted `studio.transfer_request` notification
  */
@@ -292,7 +295,7 @@ export async function createStudioTransferApproved(input: {
  * @param input - Recipient inbox, payload, expiry, and optional transaction
  * @param input.userId - The proposed new owner who receives the request
  * @param input.payload - The initiating owner's id + project id/name/slug
- * @param input.expiresAt - When the request times out (7 days from creation)
+ * @param input.expiresAt - When the recipient's window to decide runs out
  * @param input.tx - Optional transaction to bundle with related writes
  * @returns The inserted `project.transfer_request` notification
  */

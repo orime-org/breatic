@@ -32,9 +32,9 @@ import {
   isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
 import { docName, getDoc } from '@web/data/yjs/manager';
+import { useCaretUser } from '@web/features/collab-editor/use-caret-user';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
-import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { canExecuteGenerate } from '@web/spaces/canvas/generate/generate-guards';
@@ -59,7 +59,6 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
-import { useCurrentUserStore } from '@web/stores/current-user';
 
 interface GeneratePanelContainerProps {
   /** Live canvas node views (target + reference sources). */
@@ -153,19 +152,9 @@ function GeneratePanelBody({
     name: canvasDocName,
     doc: canvasDoc,
   });
-  const currentUser = useCurrentUserStore((s) => s.user);
-  const caretUser = React.useMemo(() => {
-    if (!currentUser) return null;
-    const hue = userPaletteHue(currentUser.id);
-    return {
-      name: currentUser.name || currentUser.email,
-      // The wire carries a concrete hex (y-prosemirror validates user.color
-      // as 6-digit hex — anything else warns on every caret update) + the
-      // hue breatic receivers actually render from (viewer-theme adaptive).
-      color: resolvePaletteHex(hue),
-      hue,
-    };
-  }, [currentUser]);
+  // Shared with the document editor so one person keeps the same caret name
+  // and colour wherever their cursor shows up.
+  const caretUser = useCaretUser();
 
   const { data: catalog } = useQuery({
     queryKey: ['models'],

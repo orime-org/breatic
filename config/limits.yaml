@@ -35,3 +35,26 @@ node_history_page_size: 20
 #   activity_feed_page_max:     hard ceiling a client ?limit is clamped to
 activity_feed_page_default: 50
 activity_feed_page_max: 100
+
+# ── Decision window ────────────────────────────────────
+# How long a person has to answer something that is waiting on them, in
+# days. One number covers all five such flows: being invited to a studio
+# or to a project, being handed a studio or a project, and being asked to
+# approve a role upgrade. Past it a request is closed to BOTH answers —
+# neither accepting nor declining is possible any more.
+#
+# Four things read it, and they must not disagree: the deadline stored on
+# the row, the expiry of the invite link's Redis key, the sentence in the
+# invitation and transfer emails, and the day count on the invite landing
+# page. Copy that states one duration while enforcement uses another is
+# the product lying to the person reading it.
+#
+# Changing this affects rows written from then on; rows already carrying a
+# deadline keep the one they were stamped with.
+#
+# NOT covered here, deliberately: password reset, email verification and
+# session lifetime. Those are account-security lifetimes, each set against
+# its own threat rather than against how long someone reasonably takes to
+# answer. (Recovery codes have no lifetime at all — single use, then
+# rotated.)
+decision_window_days: 7

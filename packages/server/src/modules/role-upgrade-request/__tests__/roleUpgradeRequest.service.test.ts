@@ -45,7 +45,9 @@ vi.mock("@breatic/core", () => {
   class NotFoundError extends Error {}
   class ForbiddenError extends Error {}
   class ValidationError extends Error {}
+  class ConflictError extends Error {}
   return {
+    ConflictError,
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
         cb({ marker: "fake-tx" }),
@@ -59,6 +61,16 @@ vi.mock("@breatic/core", () => {
     ValidationError,
   };
 });
+// Deliberately NOT seven. The service is supposed to read the shared window
+// rather than carry its own copy of the number, and an implementation that
+// hardcodes 7 would pass against a mock that also says 7. Hoisted so the
+// factory and the assertions below share one source — writing the number
+// twice is the very hazard this window exists to remove.
+const decisionWindow = vi.hoisted(() => ({ days: 3 }));
+vi.mock("@server/config/limits.js", () => ({
+  getDecisionWindowMs: vi.fn(() => decisionWindow.days * 24 * 60 * 60 * 1000),
+}));
+
 vi.mock("../../notification/notification.repo.js", () => ({
   create: vi.fn(),
   findById: vi.fn(),
@@ -88,6 +100,7 @@ import {
   NotFoundError,
   ForbiddenError,
   ValidationError,
+  ConflictError,
 } from "@breatic/core";
 
 const OWNER = "u-owner";
@@ -112,6 +125,7 @@ function fakeRequest(overrides: Partial<{
   type: string;
   projectId: string | null;
   readAt: Date | null;
+  expiresAt: Date | null;
   payload: Record<string, unknown>;
 }> = {}) {
   return {
@@ -121,7 +135,7 @@ function fakeRequest(overrides: Partial<{
     payload: overrides.payload ?? { requesterUserId: VIEWER },
     projectId: overrides.projectId === undefined ? PID : overrides.projectId,
     readAt: overrides.readAt ?? null,
-    expiresAt: null,
+    expiresAt: overrides.expiresAt ?? null,
     deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -355,5 +369,124 @@ describe("reject", () => {
         projectSlug: "demo-slug",
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+});
+
+/**
+ * The decision window, which this flow did not have until now.
+ *
+ * The other four decision flows (both invites, both transfers) each write a
+ * deadline and each refuse a decision made after it. This one wrote nothing
+ * and refused nothing, so a request sat in an owner's inbox forever. Bringing
+ * it into the shared window is both halves — writing the deadline is what
+ * makes it exist, refusing past it is what makes it real. A deadline the
+ * system announces and then ignores is worse than none: it would call the
+ * request void while still granting editor on it.
+ */
+describe("decision window", () => {
+  it("stamps a deadline on the request it creates", async () => {
+    vi.mocked(
+      studioService.getPersonalStudioProfilesByUserIds,
+    ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
+    vi.mocked(notificationService.createRoleUpgradeRequest).mockResolvedValueOnce(
+      fakeRequest(),
+    );
+
+    const before = Date.now();
+    await roleUpgradeRequestService.request({
+      ownerUserId: OWNER,
+      requesterUserId: VIEWER,
+      projectId: PID,
+      projectName: "Demo",
+      projectSlug: "demo-slug",
+      message: "Need to edit",
+    });
+
+    const arg = vi.mocked(notificationService.createRoleUpgradeRequest).mock
+      .calls[0]?.[0] as { expiresAt?: Date };
+    expect(arg.expiresAt).toBeInstanceOf(Date);
+    // The window the mocked config reports — three days, not seven. Bounded
+    // rather than pinned to the millisecond so a slow machine does not fail it.
+    const window = decisionWindow.days * 24 * 60 * 60 * 1000;
+    expect(arg.expiresAt!.getTime()).toBeGreaterThanOrEqual(before + window - 5_000);
+    expect(arg.expiresAt!.getTime()).toBeLessThanOrEqual(Date.now() + window + 5_000);
+  });
+
+  it("refuses to approve a request whose deadline has passed", async () => {
+    // Every other dependency is mocked to SUCCEED, so the expired deadline is
+    // the only thing left that can make this fail. Without that, the test
+    // passes for the wrong reason: an unmocked `updateRole` returns undefined,
+    // the service reads that as "member is gone" and throws NotFound — green
+    // on a code path that never looked at the deadline. (Measured: it did.)
+    vi.mocked(projectMembersRepo.updateRole).mockResolvedValue(true);
+    vi.mocked(notificationRepo.markRead).mockResolvedValue(true);
+    vi.mocked(notificationService.createRoleUpgradeApproved).mockResolvedValue(
+      fakeRequest({ type: "access.role_upgrade_approved" }),
+    );
+    vi.mocked(notificationRepo.findById).mockResolvedValueOnce(
+      fakeRequest({ expiresAt: new Date(Date.now() - 1000) }),
+    );
+
+    await expect(
+      roleUpgradeRequestService.approve({
+        notificationId: NID,
+        ownerUserId: OWNER,
+        projectName: "Demo",
+        projectSlug: "demo-slug",
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    expect(projectMembersRepo.updateRole).not.toHaveBeenCalled();
+  });
+
+  it("refuses to reject a request whose deadline has passed", async () => {
+    // Refused for the same reason as approving one: the request is gone, so
+    // there is nothing left to answer. Letting it through would also mark the
+    // row read, quietly turning "expired" into "declined" in the requester's
+    // history.
+    vi.mocked(notificationRepo.markRead).mockResolvedValue(true);
+    vi.mocked(notificationService.createRoleUpgradeRejected).mockResolvedValue(
+      fakeRequest({ type: "access.role_upgrade_rejected" }),
+    );
+    vi.mocked(notificationRepo.findById).mockResolvedValueOnce(
+      fakeRequest({ expiresAt: new Date(Date.now() - 1000) }),
+    );
+
+    await expect(
+      roleUpgradeRequestService.reject({
+        notificationId: NID,
+        ownerUserId: OWNER,
+        projectName: "Demo",
+        projectSlug: "demo-slug",
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    expect(notificationRepo.markRead).not.toHaveBeenCalled();
+  });
+
+  it("still allows a decision while the deadline is in the future", async () => {
+    // The guard must not swallow live requests. A half-written expiry check
+    // fails by refusing everything, and no existing test would catch that —
+    // none of them set expiresAt at all.
+    vi.mocked(notificationRepo.findById).mockResolvedValueOnce(
+      fakeRequest({ expiresAt: new Date(Date.now() + 60_000) }),
+    );
+    vi.mocked(projectMembersRepo.updateRole).mockResolvedValueOnce(true);
+    vi.mocked(
+      studioService.getPersonalStudioProfilesByUserIds,
+    ).mockResolvedValueOnce(new Map([[OWNER, OWNER_PROFILE]]));
+    vi.mocked(notificationService.createRoleUpgradeApproved).mockResolvedValueOnce(
+      fakeRequest({ type: "access.role_upgrade_approved" }),
+    );
+    vi.mocked(notificationRepo.markRead).mockResolvedValueOnce(true);
+
+    await roleUpgradeRequestService.approve({
+      notificationId: NID,
+      ownerUserId: OWNER,
+      projectName: "Demo",
+      projectSlug: "demo-slug",
+    });
+
+    expect(projectMembersRepo.updateRole).toHaveBeenCalled();
   });
 });

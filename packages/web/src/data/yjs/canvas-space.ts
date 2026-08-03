@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import * as Y from 'yjs';
 import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
 
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
-import { docName, getDoc, onDocDestroyed } from '@web/data/yjs/manager';
+import { docName, getDoc } from '@web/data/yjs/manager';
+import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
 import { toNodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -133,10 +135,18 @@ export const MAX_UNDO_DEPTH = 50;
 export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
-  const undoManager = new Y.UndoManager([nodesMap, edgesMap], {
-    trackedOrigins: new Set([CANVAS_UNDO]),
-    captureTimeout: 0,
-  });
+  // Same wrapper the document manager uses: `Y.UndoManager` leaks a doc
+  // `destroy` listener that its own `destroy()` never removes, and this manager
+  // is evicted while its Y.Doc can still be alive (a Space tab closed and
+  // reopened within one macrotask cancels the deferred provider release).
+  const undoManager = withDestroyListenerCleanup(
+    doc,
+    () =>
+      new Y.UndoManager([nodesMap, edgesMap], {
+        trackedOrigins: new Set([CANVAS_UNDO]),
+        captureTimeout: 0,
+      }),
+  );
   undoManager.on('stack-item-added', () => {
     while (undoManager.undoStack.length > MAX_UNDO_DEPTH) {
       undoManager.undoStack.shift();
@@ -147,16 +157,13 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
 
 /**
  * Process-wide cache of canvas undo managers, keyed by canvas-space document
- * name. The undo stack lives only in the manager instance's memory (it is NOT
- * persisted in the Y.Doc), so to survive a tab switch — which remounts the
- * `SpaceOutlet` via `key={activeSpace.id}` and thus remounts `useCanvasSpace` —
- * the manager must outlive the component. Binding it to the space DOC (same
- * lifetime as `getDoc`'s cached Y.Doc) rather than the React component is the
- * fix: switching tabs re-fetches the same manager with its stack intact;
- * closing a tab evicts it ({@link evictCanvasUndoManager}) so a reopened space
- * starts with a clean, empty history.
+ * name — so a stack survives the tab switch that remounts `useCanvasSpace`.
+ * The caching itself (stale-binding heal, eviction on doc destroy) is shared
+ * with the other Space types; see {@link createDocScopedCache}.
  */
-const undoManagers = new Map<string, Y.UndoManager>();
+const canvasUndoCache = createDocScopedCache(createCanvasUndoManager, (manager) =>
+  manager.destroy(),
+);
 
 /**
  * Get-or-create the cached canvas undo manager for a space document. The first
@@ -168,19 +175,7 @@ const undoManagers = new Map<string, Y.UndoManager>();
  * @returns The cached (or newly created) undo manager for that space doc.
  */
 export function getCanvasUndoManager(doc: Y.Doc, name: string): Y.UndoManager {
-  let manager = undoManagers.get(name);
-  // Heal a stale binding: if the cached manager was created for a different
-  // (now-recreated) doc instance, it observes a dead doc. Rebind to the live
-  // one. Guards against a future `destroyDoc` caller that forgets to evict.
-  if (manager && manager.doc !== doc) {
-    manager.destroy();
-    manager = undefined;
-  }
-  if (!manager) {
-    manager = createCanvasUndoManager(doc);
-    undoManagers.set(name, manager);
-  }
-  return manager;
+  return canvasUndoCache.get(doc, name, undefined);
 }
 
 /**
@@ -193,10 +188,7 @@ export function getCanvasUndoManager(doc: Y.Doc, name: string): Y.UndoManager {
  * @param name - The canonical canvas-space document name to evict.
  */
 export function evictCanvasUndoManager(name: string): void {
-  const manager = undoManagers.get(name);
-  if (!manager) return;
-  manager.destroy();
-  undoManagers.delete(name);
+  canvasUndoCache.evict(name);
 }
 
 /**
@@ -207,17 +199,8 @@ export function evictCanvasUndoManager(name: string): void {
  * @returns True while a manager is cached for that name.
  */
 export function _hasCanvasUndoManagerForTests(name: string): boolean {
-  return undoManagers.has(name);
+  return canvasUndoCache.has(name);
 }
-
-// Evict a space's undo manager whenever its Y.Doc is destroyed (#1786). The doc
-// lives in `manager.ts`'s cache and is destroyed when its last provider releases
-// (space-tab close OR project exit); without this the undo manager would keep
-// pinning the destroyed doc's node/edge content, relocating the very leak the
-// doc eviction fixes. `evictCanvasUndoManager` is a no-op for non-canvas names
-// (e.g. the project meta doc), so subscribing to ALL destroys is safe. Idempotent
-// with the explicit tab-close / space-delete evictions (a second call no-ops).
-onDocDestroyed(evictCanvasUndoManager);
 
 /**
  * Evict undo managers for open tabs whose space no longer exists. A space
@@ -249,8 +232,7 @@ export function evictUndoForVanishedSpaces(
 
 /** Reset the undo-manager cache (test helper — not for production use). */
 export function _resetCanvasUndoCacheForTests(): void {
-  undoManagers.forEach((m) => m.destroy());
-  undoManagers.clear();
+  canvasUndoCache.reset();
 }
 
 /**

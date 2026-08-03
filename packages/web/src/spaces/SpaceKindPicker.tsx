@@ -32,10 +32,10 @@ interface TypeCardMeta {
     | 'spaces.kind.documentSub'
     | 'spaces.kind.timelineSub';
   /**
-   * V1 only ships `canvas`; document + timeline are visually present but
-   * disabled with a "not available" label per decision D (2026-05-21).
-   * They are still plumbed end-to-end on the backend (B.2) so enabling
-   * them later is a one-line `available: true` flip with no data change.
+   * Whether the type can be picked. Canvas and document ship; timeline is
+   * visually present but disabled with a "not available" label, so the product
+   * direction stays legible (decision D, 2026-05-21). It is already plumbed
+   * end-to-end on the backend, so enabling it is this flag plus its editor.
    */
   available: boolean;
 }
@@ -53,7 +53,7 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
     icon: FileText,
     titleKey: 'spaces.kind.document',
     subtitleKey: 'spaces.kind.documentSub',
-    available: false,
+    available: true,
   },
   {
     type: 'timeline',

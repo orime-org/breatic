@@ -45,7 +45,7 @@ export default function StudioRecentPage(): React.JSX.Element {
     <div className='flex h-full items-center justify-center'>
       <Loader2
         className='h-5 w-5 animate-spin text-muted-foreground'
-        aria-label={t('loading')}
+        aria-label={t('common.loading')}
       />
     </div>
   ) : recentQuery.isError ? (

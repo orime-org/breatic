@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as Y from 'yjs';
-import { projectMetaDocName, canvasSpaceDocName } from '@breatic/shared';
+import {
+  projectMetaDocName,
+  canvasSpaceDocName,
+  documentSpaceDocName,
+} from '@breatic/shared';
 
 /**
  * Process-wide cache of Y.Doc instances keyed by document name.
@@ -10,6 +14,7 @@ import { projectMetaDocName, canvasSpaceDocName } from '@breatic/shared';
  * Document naming convention (v10 multi-doc):
  *   - `project-{projectId}/meta`         — project metadata + spaces list
  *   - `project-{projectId}/canvas-{spaceId}` — one doc per canvas space
+ *   - `project-{projectId}/document-{spaceId}` — one doc per document space
  *
  * Yjs requires the SAME Y.Doc instance for a given name across all
  * consumers in a tab — otherwise edits go to parallel docs and never
@@ -80,6 +85,7 @@ export function destroyDoc(name: string): void {
 export const docName = {
   projectMeta: projectMetaDocName,
   canvasSpace: canvasSpaceDocName,
+  documentSpace: documentSpaceDocName,
 };
 
 /**
