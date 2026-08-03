@@ -910,12 +910,14 @@ export function setNodeMode(
  * A node's nested `data` map, or `null` when the node is gone or malformed.
  *
  * Every fragment hanging off a node (the text body, the generation prompt) has
- * to walk this path first, so it lives in one place.
+ * to walk this path first, so it lives in one place. Exported for the data
+ * layer's own use — subscribing to a body needs the map itself, not a snapshot
+ * of what is in it — and not meant to travel above `data/yjs/`.
  * @param doc - The canvas-space document.
  * @param nodeId - Id of the node to look up.
  * @returns The node's data map, or `null`.
  */
-function nodeDataMap(doc: Y.Doc, nodeId: string): Y.Map<unknown> | null {
+export function nodeDataMap(doc: Y.Doc, nodeId: string): Y.Map<unknown> | null {
   const node = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId);
   if (!node) return null;
   const data = node.get('data');
