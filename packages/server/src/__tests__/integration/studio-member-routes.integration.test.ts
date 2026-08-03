@@ -235,22 +235,23 @@ describe("studio member routes — requireStudioRole('admin') gate (real PG + Re
     expect(inviteRes.status).toBe(201);
     expect(await studioMembersRepo.getRole(studio.id, invitee.id)).toBeNull();
 
-    // The invitee has an actionable studio.invite_request bell notification.
-    const notifs = await sql<{ id: string; type: string }[]>`
-      SELECT id, type FROM notifications WHERE user_id = ${invitee.id}
+    // The invitee's bell entry points at the invite; it does not hold it. The
+    // token it carries is the same one the email carries.
+    const notifs = await sql<{ id: string; type: string; payload: { shareToken?: string } }[]>`
+      SELECT id, type, payload FROM notifications WHERE user_id = ${invitee.id}
     `;
     const invite = notifs.find((n) => n.type === "studio.invite_request");
     expect(invite).toBeDefined();
+    const token = invite!.payload.shareToken;
+    expect(typeof token).toBe("string");
 
-    // Confirming it through the notification action endpoint promotes them.
-    const confirmRes = await app.request(
-      `/api/v1/users/me/notifications/${invite!.id}/action`,
-      {
-        method: "POST",
-        headers: { ...JSON_HEADERS, Cookie: await loginCookie(invitee.id) },
-        body: JSON.stringify({ action: "confirm" }),
-      },
-    );
+    // Answering goes through the one decision endpoint — the bell has no
+    // confirm of its own to be out of step with.
+    const confirmRes = await app.request("/api/v1/decisions/respond", {
+      method: "POST",
+      headers: { ...JSON_HEADERS, Cookie: await loginCookie(invitee.id) },
+      body: JSON.stringify({ token, action: "confirm" }),
+    });
     expect(confirmRes.status).toBe(200);
     expect(await studioMembersRepo.getRole(studio.id, invitee.id)).toBe("maintainer");
   });

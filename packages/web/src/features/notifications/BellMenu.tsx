@@ -56,9 +56,11 @@ function timeAgoLabel(createdAt: string): string {
 }
 
 /**
- * Reads the one-time landing-page token from a `project.invite_request` payload.
- * The project bell row links out to `/project-invite?token=` rather than
- * confirming inline; the token rides in the notification payload.
+ * Reads the token naming the request a bell row stands for.
+ *
+ * A row never holds the request — it points at one, and this is the pointer.
+ * Absent means there is nothing to point at, which is why the row without one
+ * is drawn without an answer affordance rather than with a dead button.
  * @param payload - The notification's opaque payload.
  * @returns the token string, or null if absent / malformed.
  */
@@ -68,34 +70,23 @@ function shareTokenOf(payload: Record<string, unknown>): string | null {
 
 /**
  * Bell notification menu — the per-user inbox shared by the project chrome and
- * the studio chrome. Surfaces every notification type:
- *   - access.role_upgrade_request   → owner inbox; inline approve / reject
- *   - access.role_upgrade_approved  → viewer (now editor) inbox; read-on-click
- *   - access.role_upgrade_rejected  → viewer inbox; read-on-click
- *   - studio.transfer_request       → proposed admin inbox; inline confirm /
- *                                     cancel + a TTL countdown (slice 3)
- *   - studio.transfer_approved      → old-admin inbox; read-on-click (slice 3)
- *   - studio.invite_request         → invitee inbox; inline confirm / cancel +
- *                                     a TTL countdown (slice 3)
- *   - studio.invite_accepted        → inviting-admin inbox; read-on-click
- *   - project.invite_request        → invitee inbox; links OUT to the
- *                                     `/project-invite?token=` landing page +
- *                                     a TTL countdown (#1337)
- *   - project.invite_accepted       → inviting-owner inbox; read-on-click
+ * the studio chrome.
  *
- * The unread count drives the red-dot badge. Clicking a row opens the
- * row-specific affordance: upgrade-request rows show inline approve / reject,
- * studio transfer / studio invite rows show inline confirm / cancel, the
- * project invite row navigates to the landing page (the divergence from studio:
- * project confirm/decline happen there, not inline), the rest mark-read.
+ * Rows come in two kinds. Five of them stand for a request somebody is waiting
+ * on an answer to — the two invites, the two transfers, the role upgrade — and
+ * each carries a token to the page they are all answered on. The rest are news
+ * (`*_accepted`, `*_approved`, `*_rejected`) and mark themselves read.
+ *
+ * Deciding used to happen HERE, differently per flow: the studio invite and
+ * both transfers confirmed inline through a bell-specific endpoint, while the
+ * project invite alone linked out. That divergence is what this component no
+ * longer has — every waiting row points at the same page, and a row is only
+ * drawn as answerable when it has a token to point WITH.
  *
  * The React Query refetch is triggered both on popover open and a 30s
  * background interval (the collab stateless invalidate broadcast lands in a
  * later phase). The inbox query key (`['notifications', 'unread']`) is
  * page-agnostic, so this single component serves every chrome.
- *
- * Spec: access-permission design (2026-05-28) § 7; studio member management
- * (slice 3).
  * @returns the notifications bell trigger with its unread badge and inbox popover.
  */
 export function BellMenu(): React.JSX.Element {
@@ -201,10 +192,7 @@ export function BellMenu(): React.JSX.Element {
                 <NotificationItem
                   notification={n}
                   resolved={resolved}
-                  onOpenDecision={() => {
-                    // All five flows are answered on the same page now.
-                    const token = shareTokenOf(n.payload);
-                    if (token === null) return;
+                  onOpenDecision={(token) => {
                     setOpen(false);
                     navigate(`/decision?token=${token}`);
                   }}
@@ -223,16 +211,14 @@ interface NotificationItemProps {
   notification: Notification;
   /** Current identities for the ids this notification carries. */
   resolved: NotificationResolved;
-  onOpenDecision: () => void;
+  onOpenDecision: (token: string) => void;
   onMarkRead: () => void;
 }
 
 /**
- * One inbox row — avatar glyph, headline/subtitle, age, and a type-specific
- * affordance: inline approve/reject for role-upgrade requests, inline
- * confirm/cancel + a TTL countdown for studio transfer / studio invite requests,
- * an open-invite link (to the `/project-invite` landing page) for project
- * invites, or a mark-read action for the informational rows.
+ * One inbox row — avatar glyph, headline/subtitle, age, and one of two
+ * affordances: a row somebody is waiting on gets a countdown and a button to
+ * the landing page it is answered on; everything else gets mark-read.
  * @param root0 - Notification item props.
  * @param root0.notification - Notification rendered by this row.
  * @param root0.resolved - Current identities for the ids it carries.
@@ -267,9 +253,13 @@ function NotificationItem({
   // Everything with a deadline shows its countdown. The role upgrade was left
   // out while it had no deadline to show; it has one now, and it was the only
   // time-boxed row in the list hiding that fact from the person deciding it.
-  // One question now: is somebody waiting on an answer here?
+  // Two questions, and the second one is not a formality: a row of a waiting
+  // KIND whose payload has no token has nowhere to send anybody, and drawing
+  // the button anyway is how you get an affordance that silently does nothing.
+  const token = shareTokenOf(notification.payload);
   const isDecidable =
-    isUpgradeRequest || isInviteRequest || isTransferRequest;
+    (isUpgradeRequest || isInviteRequest || isTransferRequest) &&
+    token !== null;
 
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
@@ -305,7 +295,7 @@ function NotificationItem({
           <Button
             size='sm'
             className='h-7 px-3 text-xs'
-            onClick={onOpenDecision}
+            onClick={() => onOpenDecision(token)}
             data-testid={`bell-open-decision-${notification.id}`}
           >
             {t('notifications.openDecision')}

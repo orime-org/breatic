@@ -11,8 +11,8 @@ import { BellMenu } from '@web/features/notifications/BellMenu';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useCurrentUserStore } from '@web/stores';
 
-// The project invite bell row navigates to the `/project-invite` landing page
-// instead of confirming inline; spy on react-router's navigate to assert it.
+// Every waiting row navigates to the shared landing page instead of deciding
+// in place; spy on react-router's navigate to assert where it sends you.
 const navigateMock = vi.fn();
 vi.mock('react-router-dom', async () => {
   const actual =
@@ -36,7 +36,6 @@ vi.mock('@web/data/api/notifications', () => ({
     count: vi.fn(),
     markRead: vi.fn(),
     markAllRead: vi.fn(),
-    respondAction: vi.fn(),
   },
   EMPTY_RESOLVED: { users: {}, studios: {}, projects: {} },
 }));
@@ -214,19 +213,6 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     });
   });
 
-  it('a row whose payload carries no token does not navigate anywhere', async () => {
-    vi.mocked(notificationsApi.list).mockResolvedValue({
-      items: [fakeNotification('n-1', 'studio.invite_request', { invitationId: 'i-1' })],
-      resolved: EMPTY_RESOLVED,
-    });
-    const user = userEvent.setup();
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId('bell-open-decision-n-1'));
-
-    expect(navigateMock).not.toHaveBeenCalled();
-  });
-
   it('informational rows still mark read rather than offering an answer', async () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification('n-9', 'studio.transfer_approved', { studioId: N1 })],
@@ -238,5 +224,28 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
 
     expect(await screen.findByTestId('bell-mark-read-n-9')).toBeInTheDocument();
     expect(screen.queryByTestId('bell-open-decision-n-9')).toBeNull();
+  });
+
+  it('a waiting row with no token to point at offers no answer button', async () => {
+    // Rows filed before the token existed are of a waiting KIND but carry no
+    // pointer. Keying the button on the type alone draws one that goes
+    // nowhere — no navigation, no message, nothing.
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [
+        fakeNotification('n-10', 'studio.invite_request', {
+          invitationId: 'i-3',
+          studioId: N1,
+          inviterUserId: 'u-other',
+          role: 'guest',
+        }),
+      ],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    expect(await screen.findByTestId('bell-mark-read-n-10')).toBeInTheDocument();
+    expect(screen.queryByTestId('bell-open-decision-n-10')).toBeNull();
   });
 });
