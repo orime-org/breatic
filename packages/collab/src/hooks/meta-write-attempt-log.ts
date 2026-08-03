@@ -55,7 +55,11 @@ const SYSTEM_USER_ID = "system";
  *   the document-name prefix that multiplexing puts in front of every
  *   message. Reading past that prefix is not optional; skipping it makes
  *   the message type read back as the name's byte length.
- * @param context - Connection context; `system` is collab's own writer.
+ * @param context - Connection context, as Hocuspocus carries it.
+ * @param context.user - The authenticated user, when the connection has one.
+ * @param context.user.id - User id; `system` marks collab's own writers,
+ *   which reach the document through a direct connection rather than a
+ *   socket and so are not clients at all.
  * @returns True when a client is trying to write the meta doc.
  */
 export function isMetaWriteAttempt(
