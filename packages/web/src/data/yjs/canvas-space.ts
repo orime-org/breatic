@@ -9,7 +9,11 @@ import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { bodyToPlainText, newSeededBody } from '@web/data/yjs/text-body';
+import {
+  bodyFromText,
+  bodyToPlainText,
+  newSeededBody,
+} from '@web/data/yjs/text-body';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
 import { toNodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -398,6 +402,11 @@ function buildDataMap(
   let focusSeeded = false;
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue;
+    // A text node's words go into its shared body below, never into a plain
+    // field. Every creation path that arrives with text — a paste, a copied
+    // node, a dropped file — hands it over as `content`, because that is what
+    // fits through a clipboard; this is where it stops being a plain string.
+    if (key === 'content' && type === 'text') continue;
     if (key === 'focusImages' && Array.isArray(value)) {
       // Seed the CRDT sequence from a provided wire value AS-IS (no
       // sanitizing — readers sanitize; a fixture / forged value must be
@@ -423,7 +432,10 @@ function buildDataMap(
   // Non-empty from birth: the editor's schema wants at least one block, and a
   // body that disagrees loses the redo stack the first time an undo empties it
   // (`document-yjs.ts` states the same invariant for document bodies).
-  if (type === 'text') map.set('body', newSeededBody());
+  if (type === 'text') {
+    const text = typeof data.content === 'string' ? data.content : '';
+    map.set('body', text ? bodyFromText(text) : newSeededBody());
+  }
   return map;
 }
 

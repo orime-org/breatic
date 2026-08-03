@@ -74,6 +74,7 @@ import {
   type CanvasEdge,
   type CanvasNodeView,
   readCanvasGraph,
+  readTextBodies,
 } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
@@ -2351,7 +2352,7 @@ function CanvasSpaceInner({
      */
     const onCopy = (event: ClipboardEvent): void => {
       if (readOnly || isEditableTarget(document.activeElement)) return;
-      const clipboardNodes = captureClipboard(
+      const clipboardNodes = captureClipboardWithText(
         flowNodesRef.current
           .filter((node) => node.selected)
           .map((node) => node.id),
@@ -2517,7 +2518,7 @@ function CanvasSpaceInner({
   // captureClipboard). Used by the copy paths (Cmd+C / menu copy).
   const collectSelectedClipboard = React.useCallback(
     (): ClipboardNode[] =>
-      captureClipboard(
+      captureClipboardWithText(
         flowNodesRef.current
           .filter((node) => node.selected)
           .map((node) => node.id),
@@ -2530,7 +2531,7 @@ function CanvasSpaceInner({
   // menu's copy.
   const nodeMenuClipboard = React.useCallback(
     (): ClipboardNode[] =>
-      captureClipboard([nodeMenu.nodeId], flowNodesRef.current),
+      captureClipboardWithText([nodeMenu.nodeId], flowNodesRef.current),
     [nodeMenu.nodeId],
   );
 
@@ -2558,7 +2559,7 @@ function CanvasSpaceInner({
     (targetIds: ReadonlyArray<string>): void => {
       if (readOnly || targetIds.length === 0) return;
       const nodes = flowNodesRef.current;
-      const payload = captureClipboard(targetIds, nodes);
+      const payload = captureClipboardWithText(targetIds, nodes);
       if (payload.length === 0) return;
       const ext = externalParentAbs(payload, nodes);
       const clones = cloneForPaste(
@@ -2987,6 +2988,28 @@ function CanvasSpaceInner({
       fillUpload(nodeId, file, fileToNodeSpec(file).nodeType);
     },
     [readOnly, projectId, spaceId, t, fillUpload],
+  );
+
+  // Capture with the bodies filled in. A clipboard entry is plain data and a
+  // shared body cannot travel in one, so the text is read out of the document
+  // at copy time and the paste writes it into the new node's own body. Read
+  // here rather than from a subscription: this runs on a keystroke, and the
+  // value that gets copied should be what the document says right now.
+  const captureClipboardWithText = React.useCallback(
+    (
+      targetIds: ReadonlyArray<string>,
+      allNodes: Parameters<typeof captureClipboard>[1],
+    ): ReturnType<typeof captureClipboard> =>
+      captureClipboard(
+        targetIds,
+        allNodes,
+        readTextBodies(
+          projectId,
+          spaceId,
+          allNodes.filter((n) => n.type === 'text').map((n) => n.id),
+        ),
+      ),
+    [projectId, spaceId],
   );
 
   const actions = React.useMemo<CanvasActions>(

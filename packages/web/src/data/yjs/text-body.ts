@@ -114,6 +114,23 @@ export function writePlainTextIntoBody(body: Y.XmlFragment, text: string): void 
 }
 
 /**
+ * Build a fresh body holding some text.
+ *
+ * The write-only counterpart of {@link writePlainTextIntoBody}, for a body that
+ * does not exist yet. Every path that creates a text node with something
+ * already in it goes through here — a paste, a copied node, a dropped file —
+ * so the text lands in the shared body rather than in a plain field nobody
+ * reads any more.
+ * @param text - The plain text the new body should hold.
+ * @returns A fragment holding one block per line.
+ */
+export function bodyFromText(text: string): Y.XmlFragment {
+  const body = new Y.XmlFragment();
+  body.insert(0, blocksFor(text));
+  return body;
+}
+
+/**
  * Build a fresh body holding the one block the invariant requires.
  *
  * Returns a new fragment rather than seeding an existing one, because both

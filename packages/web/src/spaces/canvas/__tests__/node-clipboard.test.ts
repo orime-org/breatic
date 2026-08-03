@@ -129,7 +129,9 @@ describe('node-clipboard', () => {
       { id: 'm', type: 'text', parentId: 'g', position: { x: 20, y: 30 }, data: { content: 'hi' } },
     ];
     // member is captured alone (group not selected) → abs = group(100,100)+rel(20,30).
-    expect(captureClipboard(['m'], nodes)).toEqual([
+    // A text node's words live in a shared body now, so they reach the
+    // clipboard through this map rather than off the node's data (#1774).
+    expect(captureClipboard(['m'], nodes, new Map([['m', 'hi']]))).toEqual([
       { type: 'text', position: { x: 120, y: 130 }, content: 'hi', id: 'm', parentId: 'g' },
     ]);
   });
@@ -147,7 +149,7 @@ describe('node-clipboard', () => {
     ];
     // Selecting the group AND a member must not emit the member twice; the
     // group's name is carried (R2-B — a duplicated group keeps its name).
-    const out = captureClipboard(['g', 'm1'], nodes);
+    const out = captureClipboard(['g', 'm1'], nodes, new Map([['m1', 'a']]));
     expect(out).toEqual([
       {
         type: 'group',
