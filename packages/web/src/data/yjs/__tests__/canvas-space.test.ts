@@ -29,7 +29,6 @@ import {
   clearNodeStyleImage,
   readCanvasGraph,
   readNodeLeaseGen,
-  setNodeContent,
   setNodeHandling,
   completeNodeHandling,
   failNodeHandling,
@@ -233,29 +232,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(readNodes(doc())[0].data).toMatchObject({ locked: false });
   });
 
-  it('setNodeContent (plain writer — text inline edit) writes content + flips handling → idle', () => {
-    addNode(PID, SID, sampleFields('image', { state: 'handling' }));
-    setNodeContent(PID, SID, 'n1', 'https://cdn/photo.png');
-    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
-      'data',
-    ) as Y.Map<unknown>;
-    expect(data.get('content')).toBe('https://cdn/photo.png');
-    expect(data.get('state')).toBe('idle');
-    expect(data.get('errorMessage')).toBeUndefined();
-  });
-
-  it('setNodeContent clears any prior errorMessage', () => {
-    addNode(
-      PID,
-      SID,
-      sampleFields('image', { state: 'idle', errorMessage: 'old fail' }),
-    );
-    setNodeContent(PID, SID, 'n1', 'https://cdn/photo.png');
-    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
-      'data',
-    ) as Y.Map<unknown>;
-    expect(data.get('errorMessage')).toBeUndefined();
-  });
 
   it('failNodeHandling writes errorMessage + idle so deriveStatus shows error (upload fail)', () => {
     addNode(PID, SID, sampleFields('image'));
@@ -799,13 +775,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
   });
 
   describe('undo tracking — content / error writes excluded (spec §5, #8)', () => {
-    it('setNodeContent does NOT push an undo entry (else undo strands the node in handling)', () => {
-      const undo = createCanvasUndoManager(doc());
-      addNode(PID, SID, sampleFields('image', { state: 'handling' }, { id: 'img1' }));
-      const depth = undo.undoStack.length;
-      setNodeContent(PID, SID, 'img1', 'https://cdn/x.png');
-      expect(undo.undoStack.length).toBe(depth);
-    });
 
     it('failNodeHandling does NOT push an undo entry', () => {
       const undo = createCanvasUndoManager(doc());

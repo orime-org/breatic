@@ -106,8 +106,10 @@ interface ContentNodeViewBase extends NodeViewCommon {
 
 export interface TextNodeView extends ContentNodeViewBase {
   kind: 'text';
-  /** Text body (empty string when the node has no content yet). */
-  content: string;
+  // No body here, on purpose (#1774). The text is a shared fragment on the
+  // node, and keeping it out of this projection is what makes a keystroke
+  // change nothing the canvas compares — so zero nodes re-render while
+  // somebody types. Whoever displays it subscribes through `useTextBody`.
 }
 
 export interface ImageNodeView extends ContentNodeViewBase {
@@ -255,7 +257,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   };
   switch (type) {
     case 'text':
-      return { kind: 'text', content: data.content ?? '', ...contentCommon };
+      return { kind: 'text', ...contentCommon };
     case 'image':
       return { kind: 'image', content: data.content, ...contentCommon };
     case 'audio':

@@ -9,6 +9,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type * as React from 'react';
+import type * as Y from 'yjs';
 
 // Mock the Yjs binding so the component test never opens a real WebSocket
 // (useCanvasSpace → useSocket → HocuspocusProvider). The write helpers
@@ -24,6 +25,26 @@ vi.mock('@web/data/yjs/canvas-space', async (importOriginal) => {
 // the app-level TooltipProvider (App.tsx mounts it; these 38 bare renders
 // don't), and tooltip behavior is pinned precisely in GenerateToolbar.test —
 // not this file's concern.
+// The canvas acquires the space document's shared provider so every editor on
+// the board publishes carets through one awareness. Mocked so a component test
+// never opens a real WebSocket; a null provider is the genuine pre-connect
+// state, in which the caret extension simply does not mount.
+vi.mock('@web/data/yjs/use-socket', () => ({
+  useSocket: vi.fn(
+    (): {
+      provider: null;
+      synced: boolean;
+      status: 'connecting';
+      authFailedReason: null;
+    } => ({
+      provider: null,
+      synced: false,
+      status: 'connecting',
+      authFailedReason: null,
+    }),
+  ),
+}));
+
 vi.mock('@web/components/ui/tooltip', () => ({
   Tooltip: ({ children }: { children?: React.ReactNode }) => children,
   TooltipTrigger: ({ children }: { children?: React.ReactNode }) => children,
@@ -40,6 +61,10 @@ import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { assetsApi } from '@web/data/api';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { useSocket } from '@web/data/yjs/use-socket';
+import { docName, _resetForTests } from '@web/data/yjs/manager';
+import { writePlainTextIntoBody } from '@web/data/yjs/text-body';
+import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
@@ -159,6 +184,20 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
   });
 
+  // Every collaborative editor on the board — the text nodes, the generation
+  // prompt — publishes its caret through the provider resolved here. It has to
+  // be the SPACE document's: carets sent into any other awareness reach nobody
+  // on this canvas, and the failure is silent, because a caret that never
+  // arrives looks exactly like a collaborator who is not typing.
+  it('resolves the caret channel from the space document, not some other doc', () => {
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const names = vi
+      .mocked(useSocket)
+      .mock.calls.map((call) => call[0]?.name);
+    expect(names).toContain(docName.canvasSpace('p', 's'));
+  });
+
   it('shows the empty-state hint when there are no nodes', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace());
     render(<CanvasSpace projectId='p' spaceId='s' />);
@@ -205,6 +244,98 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     render(<CanvasSpace projectId='p' spaceId='s' />);
     expect(screen.getByTestId('image-node')).toBeInTheDocument();
     expect(screen.queryByTestId('canvas-empty')).not.toBeInTheDocument();
+  });
+
+  // Keyboard entry into a text node (#1774, acceptance item 9). ReactFlow's
+  // node wrapper is the tab stop, so Enter has to be caught there — a handler
+  // on anything the node body renders would never see the press, because the
+  // event's target IS the wrapper and events travel outwards. That is exactly
+  // the kind of wiring a test rendering the body alone would bless while it
+  // was dead in a browser, so this one mounts the real canvas.
+  it('opens a text node editor when Enter is pressed on the focused node', async () => {
+    _resetForTests();
+    addNode('p', 's', {
+      id: 'n1',
+      type: 'text',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'N',
+        createdAt: 1,
+        createdBy: 'u',
+        locked: false,
+        operationLocks: [],
+        state: 'idle',
+        attachments: [],
+      },
+    });
+    writePlainTextIntoBody(
+      getTextBody('p', 's', 'n1') as Y.XmlFragment,
+      'already written',
+    );
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'text',
+            position: { x: 0, y: 0 },
+            data: { kind: 'text', status: 'idle', name: 'N' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+
+    const shell = document.querySelector('.react-flow__node');
+    expect(shell).not.toBeNull();
+    expect(document.querySelector('.ProseMirror')).toBeNull();
+
+    fireEvent.keyDown(shell as HTMLElement, { key: 'Enter' });
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+  });
+
+  // The empty case, which is the one that matters most: a brand-new text node
+  // renders a placeholder rather than a body, and an entry point that hung off
+  // the body would be missing from exactly the nodes with nothing in them yet.
+  it('opens the editor on Enter for an empty text node too', async () => {
+    _resetForTests();
+    addNode('p', 's', {
+      id: 'n1',
+      type: 'text',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'N',
+        createdAt: 1,
+        createdBy: 'u',
+        locked: false,
+        operationLocks: [],
+        state: 'idle',
+        attachments: [],
+      },
+    });
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'text',
+            position: { x: 0, y: 0 },
+            data: { kind: 'text', status: 'idle', name: 'N' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
+
+    fireEvent.keyDown(document.querySelector('.react-flow__node') as HTMLElement, {
+      key: 'Enter',
+    });
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
   });
 
   // Viewer drag backstop (#1377). A read-only viewer must not be able to drag
@@ -279,7 +410,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'src-text',
             type: 'text',
             position: { x: 600, y: 0 },
-            data: { kind: 'text', content: 'hello', status: 'idle' },
+            data: { kind: 'text', status: 'idle' },
           },
           {
             id: 'src-image',
@@ -333,7 +464,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'src-text',
             type: 'text',
             position: { x: 600, y: 0 },
-            data: { kind: 'text', content: 'hello', status: 'idle' },
+            data: { kind: 'text', status: 'idle' },
           },
           {
             id: 'src-image',
@@ -573,7 +704,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'src-text',
             type: 'text',
             position: { x: 600, y: 0 },
-            data: { kind: 'text', content: 'hello', status: 'idle' },
+            data: { kind: 'text', status: 'idle' },
           },
           {
             id: 'src-image',

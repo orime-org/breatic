@@ -111,9 +111,23 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
     expect(deriveReferences('me', nodes, edges)).toEqual([]);
   });
 
+  it('reads a text source with no body entry as empty, not as a non-text source', () => {
+    const nodes: CanvasNodeView[] = [
+      node('txt', { kind: 'text', name: 'Notes', status: 'idle' }),
+      node('me', { kind: 'image', name: 'Target', status: 'idle' }),
+    ];
+    const edges: CanvasEdge[] = [edge('txt->me', 'txt', 'me')];
+
+    // An empty string and `undefined` mean different things downstream: the
+    // serializer substitutes a chip's text, and the execute gate treats "@ a
+    // non-empty text node" as a valid prompt on its own.
+    const refs = deriveReferences('me', nodes, edges, new Map());
+    expect(refs[0].textContent).toBe('');
+  });
+
   it('leaves thumbnail undefined for a source node with no visual payload (text)', () => {
     const nodes: CanvasNodeView[] = [
-      node('txt', { kind: 'text', name: 'Notes', status: 'idle', content: 'some words' }),
+      node('txt', { kind: 'text', name: 'Notes', status: 'idle' }),
       node('me', { kind: 'image', name: 'Target', status: 'idle' }),
     ];
     const edges: CanvasEdge[] = [edge('txt->me', 'txt', 'me')];
@@ -125,10 +139,13 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
 
   // Text-chip serialization + hover (spec §9.1): a text reference carries its
   // source node's live text body so the prompt serializer can substitute the
-  // chip with the content and the rail hover can preview it.
+  // chip with the content and the rail hover can preview it. Since #1774 the
+  // body is a shared fragment the node view does not carry, so it arrives as
+  // a separate map — a text source with no entry reads as empty rather than
+  // as "not a text node".
   it('carries the text body for a text source (textContent), nothing for other kinds', () => {
     const nodes: CanvasNodeView[] = [
-      node('txt', { kind: 'text', name: 'Notes', status: 'idle', content: 'some words' }),
+      node('txt', { kind: 'text', name: 'Notes', status: 'idle' }),
       node('img1', { kind: 'image', name: 'Pic', status: 'idle', content: 'x.png' }),
       node('me', { kind: 'image', name: 'Target', status: 'idle' }),
     ];
@@ -137,7 +154,12 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
       edge('img1->me', 'img1', 'me', 2000),
     ];
 
-    const refs = deriveReferences('me', nodes, edges);
+    const refs = deriveReferences(
+      'me',
+      nodes,
+      edges,
+      new Map([['txt', 'some words']]),
+    );
     expect(refs[0].textContent).toBe('some words');
     expect(refs[1].textContent).toBeUndefined();
   });

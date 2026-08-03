@@ -45,7 +45,10 @@ import { toast } from 'sonner';
 
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { useSocket } from '@web/data/yjs/use-socket';
-import { docName } from '@web/data/yjs/manager';
+import {
+  CanvasContext,
+  type CanvasContextValue,
+} from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
 import { useCanvasStore } from '@web/stores';
 
@@ -55,6 +58,13 @@ import { useCanvasStore } from '@web/stores';
  * @returns The render result.
  */
 function mountContainer(): ReturnType<typeof render> {
+  const canvas: CanvasContextValue = {
+    projectId: 'p',
+    spaceId: 's',
+    readOnly: false,
+    caretProvider: null,
+    caretUser: { name: 'Tester', color: '#123456', hue: '210' },
+  };
   return render(
     <QueryClientProvider
       client={
@@ -71,17 +81,19 @@ function mountContainer(): ReturnType<typeof render> {
         ]}
         edges={[]}
       >
-        <GeneratePanelContainer
-          projectId='p'
-          spaceId='s'
-          nodes={[
-            {
-              id: 'target',
-              data: { kind: 'image', status: 'idle' },
-            },
-          ]}
-          edges={[]}
-        />
+        <CanvasContext.Provider value={canvas}>
+          <GeneratePanelContainer
+            projectId='p'
+            spaceId='s'
+            nodes={[
+              {
+                id: 'target',
+                data: { kind: 'image', status: 'idle' },
+              },
+            ]}
+            edges={[]}
+          />
+        </CanvasContext.Provider>
       </ReactFlow>
     </QueryClientProvider>,
   );
@@ -119,10 +131,17 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
   });
 
   // Collaborator carets (batch-2 item 14): the prompt fragment lives in the
-  // CANVAS-SPACE doc, so the caret awareness channel must be that exact
-  // doc's shared provider — acquiring any other doc name would publish carets
-  // into the wrong awareness (or open a second socket).
-  it('acquires the canvas-space doc provider for the caret awareness channel', async () => {
+  // CANVAS-SPACE doc, so carets have to be published through that exact doc's
+  // shared provider — into any other awareness and nobody on this board sees
+  // them.
+  //
+  // The container used to acquire that provider itself. It no longer does
+  // (#1774): the canvas resolves it once and hands it to every editor on the
+  // board, because two acquisitions leave two answers in the codebase to
+  // "whose caret is this" and they drift. What is checked here is that the
+  // second one has not grown back; WHICH document the canvas acquires is
+  // checked where that now happens, in `CanvasSpace.test`.
+  it('does not acquire a provider of its own', async () => {
     const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
       image: [],
       video: [],
@@ -137,10 +156,9 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       useCanvasStore.getState().openGeneratePanel('target');
     });
     await waitFor(() => {
-      expect(vi.mocked(useSocket)).toHaveBeenCalled();
+      expect(useCanvasStore.getState().panelHostId).toBe('target');
     });
-    const call = vi.mocked(useSocket).mock.calls.at(-1)?.[0];
-    expect(call?.name).toBe(docName.canvasSpace('p', 's'));
+    expect(vi.mocked(useSocket)).not.toHaveBeenCalled();
     listSpy.mockRestore();
   });
 

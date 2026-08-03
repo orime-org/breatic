@@ -227,12 +227,15 @@ export function selectModeModels(
  * @param input.edges - Current canvas edges (incoming = references).
  * @param input.models - Catalog image models.
  * @param input.atMentionedSourceIds - Source node ids `@`-picked in the prompt; only these feed the i2i execute payload (design B — no `@` = no source image). Absent = none picked.
+ * @param input.textById - Body text per referenced text node (#1774).
  * @returns The derived view-model.
  */
 export function buildGeneratePanelViewModel(input: {
   nodeId: string;
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
   edges: ReadonlyArray<CanvasEdge>;
+  /** Body text per referenced text node (#1774) — see `deriveReferences`. */
+  textById?: ReadonlyMap<string, string>;
   models: ModelEntry[];
   atMentionedSourceIds?: ReadonlySet<string>;
 }): GeneratePanelViewModel {
@@ -249,7 +252,7 @@ export function buildGeneratePanelViewModel(input: {
   const current = models.find((m) => m.name === model);
   const params = current ? resolveParamsForModel(current, content?.params ?? {}) : {};
 
-  const references = deriveReferences(nodeId, nodes, edges);
+  const references = deriveReferences(nodeId, nodes, edges, input.textById);
   const byId = new Map(nodes.map((n) => [n.id, n]));
   // t2i generates from scratch and ignores source images (design §2.5): the
   // rail still renders (greyed in the panel) but contributes NO reference URLs

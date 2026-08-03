@@ -18,6 +18,7 @@ import {
   isNodeLocked,
   nodeExists,
   readCanvasGraph,
+  readTextBodies,
   readNodeLeaseGen,
   removeEdge,
   removeNodeFocusImage,
@@ -31,9 +32,8 @@ import {
   assetUrlSurvives,
   isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
-import { docName, getDoc } from '@web/data/yjs/manager';
-import { useCaretUser } from '@web/features/collab-editor/use-caret-user';
-import { useSocket } from '@web/data/yjs/use-socket';
+import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
+import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
@@ -139,22 +139,12 @@ function GeneratePanelBody({
   const startStylePick = useCanvasStore((s) => s.startStylePick);
 
   // Collaborator carets (batch-2 item 14): the prompt fragment lives in the
-  // canvas-space doc, so its provider's AWARENESS is the caret channel.
-  // useSocket ref-counts the shared provider (SpaceDocSync already holds a
-  // ref while the tab is open, so this acquire is a cheap share, never a
-  // second socket). Identity = display name + deterministic palette color.
-  const canvasDocName = docName.canvasSpace(projectId, spaceId);
-  const canvasDoc = React.useMemo(
-    () => getDoc(canvasDocName),
-    [canvasDocName],
-  );
-  const { provider: caretProvider } = useSocket({
-    name: canvasDocName,
-    doc: canvasDoc,
-  });
-  // Shared with the document editor so one person keeps the same caret name
-  // and colour wherever their cursor shows up.
-  const caretUser = useCaretUser();
+  // canvas-space doc, so its provider's AWARENESS is the caret channel. The
+  // canvas resolves that provider once and hands it down, so every editor on
+  // the board publishes through the same one — a second acquire here would
+  // work (useSocket reference-counts the shared provider) but would leave two
+  // answers in the codebase to "whose caret is this".
+  const { caretProvider, caretUser } = useCanvasContext();
 
   const { data: catalog } = useQuery({
     queryKey: ['models'],
@@ -220,9 +210,19 @@ function GeneratePanelBody({
   // freshVm() at click time — a render closure goes stale the moment a
   // collaborator edits the node, so building a task / param write off it would
   // submit deleted references or clobber a concurrent edit.
+  // A referenced text node's body is a shared fragment the node view does not
+  // carry (#1774), so the panel follows the ones it can reference. Without
+  // this the rail shows blank previews and — worse — an execute sends whatever
+  // the node said when the panel opened, spending credits on stale text.
+  const textNodeIds = React.useMemo(
+    () => nodes.filter((n) => n.data.kind === 'text').map((n) => n.id),
+    [nodes],
+  );
+  const textById = useTextBodies(projectId, spaceId, textNodeIds);
   const vm: GeneratePanelViewModel = React.useMemo(
-    () => buildGeneratePanelViewModel({ nodeId, nodes, edges, models }),
-    [nodeId, nodes, edges, models],
+    () =>
+      buildGeneratePanelViewModel({ nodeId, nodes, edges, models, textById }),
+    [nodeId, nodes, edges, models, textById],
   );
   // Stable model-list identity for the memo'd pickers: the vm rebuilds on
   // EVERY canvas graph mutation (nodes/edges deps), and its freshly-filtered
@@ -279,6 +279,13 @@ function GeneratePanelBody({
         edges: graph.edges,
         models,
         atMentionedSourceIds,
+        // Read straight from the document, not from the subscription above:
+        // this runs at click time, and a render-old value is what gets billed.
+        textById: readTextBodies(
+          projectId,
+          spaceId,
+          graph.nodes.filter((n) => n.data.kind === 'text').map((n) => n.id),
+        ),
       });
     },
     [projectId, spaceId, nodeId, models],

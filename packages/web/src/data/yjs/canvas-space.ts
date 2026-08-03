@@ -9,7 +9,7 @@ import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import { newSeededBody } from '@web/data/yjs/text-body';
+import { bodyToPlainText, newSeededBody } from '@web/data/yjs/text-body';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
 import { toNodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -946,6 +946,32 @@ export function getTextBody(
 }
 
 /**
+ * Read several text nodes' bodies as plain text, right now.
+ *
+ * For the execute path, which must send what the nodes say at the moment the
+ * button is pressed. A subscription's React state is a render behind — fine
+ * for showing text, not for what gets spent on: submitting the previous value
+ * bills the user for generating from words a collaborator has already
+ * replaced.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the nodes.
+ * @param nodeIds - Ids of the text nodes to read.
+ * @returns Node id to body text, for the ids that have a body.
+ */
+export function readTextBodies(
+  projectId: string,
+  spaceId: string,
+  nodeIds: ReadonlyArray<string>,
+): ReadonlyMap<string, string> {
+  const out = new Map<string, string>();
+  for (const id of nodeIds) {
+    const body = getTextBody(projectId, spaceId, id);
+    if (body) out.set(id, bodyToPlainText(body));
+  }
+  return out;
+}
+
+/**
  * Give a text node a body when it has none, and hand it back.
  *
  * Repair, not lazy creation. Every text node is born with a body; a node
@@ -1076,40 +1102,11 @@ export function isNodeLocked(
 }
 
 /**
- * Write a node's content + mark it idle — the "content arrived" transition
- * (frontend-owned upload completion). Sets `content`, flips `state` to `'idle'`
- * and clears any prior `errorMessage`, all in one transaction so collaborators
- * see the node go from handling → content in a single update.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node to fill.
- * @param content - The node's content (an asset URL, or text body).
- */
-export function setNodeContent(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  content: string,
-): void {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
-  doc.transact(() => {
-    data.set('content', content);
-    data.set('state', 'idle');
-    data.delete('errorMessage');
-  }, CONTENT_WRITE);
-}
-
-/**
  * Restore a past node result — the history-recovery write-back (#1619).
  * Re-points the node's content (and, for video, its cover poster) at an
  * already-existing history result, WITHOUT touching the lease machinery.
  *
- * Deliberately different from {@link setNodeContent} / {@link completeNodeHandling}:
+ * Deliberately different from {@link completeNodeHandling}:
  * - Writes `content`; for a video (which carries a separate cover poster)
  *   writes `coverUrl` (`null` clears it so no stale poster survives). Pass
  *   `undefined` to leave `coverUrl` untouched — image / audio never carry a

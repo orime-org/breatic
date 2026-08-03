@@ -59,7 +59,6 @@ import {
   resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
-  setNodeContent,
   setNodeHandling,
   completeNodeHandling,
   failNodeHandling,
@@ -163,6 +162,13 @@ import {
   resolveReleaseElement,
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
+import {
+  CanvasContext,
+  type CanvasContextValue,
+} from '@web/spaces/canvas/canvas-context';
+import { useCaretUser } from '@web/features/collab-editor/use-caret-user';
+import { useSocket } from '@web/data/yjs/use-socket';
+import { docName, getDoc } from '@web/data/yjs/manager';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
@@ -2991,13 +2997,6 @@ function CanvasSpaceInner({
         if (readOnly) return;
         removeEdge(projectId, spaceId, edgeId);
       },
-      setNodeContent: (nodeId: string, content: string): void => {
-        if (readOnly) return;
-        // The RHS is the imported data-layer writer; the action key only shadows
-        // the name (object keys aren't in the body's scope — no recursion). Binds
-        // the text body's inline-edit commit to this project/space (#1470).
-        setNodeContent(projectId, spaceId, nodeId, content);
-      },
       commitGroupResize: (groupId, rect): void => {
         if (readOnly) return;
         // Bug 11: a resize that grows over a loose (top-level) node whose CENTER
@@ -3669,9 +3668,35 @@ function absoluteNodePosition(
  * @returns The provider-wrapped canvas surface.
  */
 export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
+  // Resolved once, here, and handed to every collaborative editor on the board
+  // — the text nodes and the generation prompt. `useSocket` reference-counts
+  // the shared provider the space's tab already holds, so this opens no second
+  // connection; what it buys is a single answer to "whose caret is this",
+  // instead of one per editor that could drift apart.
+  const canvasDocName = docName.canvasSpace(props.projectId, props.spaceId);
+  const canvasDoc = React.useMemo(() => getDoc(canvasDocName), [canvasDocName]);
+  const { provider: caretProvider } = useSocket({
+    name: canvasDocName,
+    doc: canvasDoc,
+  });
+  // Shared with every other editor, so one person keeps the same caret name and
+  // colour wherever their cursor turns up.
+  const caretUser = useCaretUser();
+  const canvas = React.useMemo<CanvasContextValue>(
+    () => ({
+      projectId: props.projectId,
+      spaceId: props.spaceId,
+      readOnly: props.readOnly ?? false,
+      caretProvider,
+      caretUser,
+    }),
+    [props.projectId, props.spaceId, props.readOnly, caretProvider, caretUser],
+  );
   return (
-    <ReactFlowProvider>
-      <CanvasSpaceInner {...props} />
-    </ReactFlowProvider>
+    <CanvasContext.Provider value={canvas}>
+      <ReactFlowProvider>
+        <CanvasSpaceInner {...props} />
+      </ReactFlowProvider>
+    </CanvasContext.Provider>
   );
 }
