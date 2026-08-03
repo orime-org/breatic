@@ -114,48 +114,37 @@ export function writePlainTextIntoBody(body: Y.XmlFragment, text: string): void 
 }
 
 /**
- * Build a fresh body holding some text.
+ * Build a fresh body holding some text — the only way a body is ever created.
  *
  * The write-only counterpart of {@link writePlainTextIntoBody}, for a body that
- * does not exist yet. Every path that creates a text node with something
- * already in it goes through here — a paste, a copied node, a dropped file —
- * so the text lands in the shared body rather than in a plain field nobody
- * reads any more.
- * @param text - The plain text the new body should hold.
- * @returns A fragment holding one block per line.
- */
-export function bodyFromText(text: string): Y.XmlFragment {
-  const body = new Y.XmlFragment();
-  body.insert(0, blocksFor(text));
-  return body;
-}
-
-/**
- * Build a fresh body holding the one block the invariant requires.
+ * does not exist yet. Every path that creates one goes through here: a paste, a
+ * copied node, a dropped file, a node born empty, and the repair of a node that
+ * lost its body. There is deliberately no separate "make me an empty one" —
+ * the empty string yields one empty block, which IS the invariant a body has to
+ * satisfy, so a second function would be this one with `''` written out longhand
+ * and would drift the day the shape of an empty block changes.
  *
- * Returns a new fragment rather than seeding an existing one, because both
- * callers (a node being born, a node being repaired) are creating one. That
- * distinction matters twice over:
- *
- * - It writes without reading. A fragment that has not been attached to a
- *   document yet cannot be read from — Yjs answers such reads with a warning
- *   and preliminary content it cannot see — and a node's data map is populated
- *   before it is attached, so a `length > 0` guard there would be both noisy
- *   and meaningless.
- * - Whether a body already exists is the caller's question, and both callers
- *   already answer it by looking at the node's `body` key. Answering it again
- *   in here would be a second, weaker guard on the same fact.
+ * It writes without reading, and that matters: a fragment that has not been
+ * attached to a document yet cannot be read from — Yjs answers such reads with a
+ * warning and preliminary content it cannot see — and a node's data map is
+ * populated before it is attached. Whether a body already exists is the caller's
+ * question, and both callers already answer it by looking at the node's `body`
+ * key; answering it again in here would be a second, weaker guard on the same
+ * fact.
  *
  * Not to be confused with the document Space's `seedEmptyBody`
  * (`spaces/document/document-yjs.ts`), which repairs an already-attached body
  * and carries its own origin. Its comment is worth reading: a local emptiness
  * check cannot converge across clients, and the fix is to seed from the one
- * writer that runs exactly once. For a text node that writer is node creation,
- * which is exactly where this is called.
- * @returns A fragment holding a single empty block.
+ * writer that runs exactly once. For a text node that writer is node creation.
+ * @param text - The plain text the new body should hold. The empty string gives
+ *   the single empty block a body must never be without: the editor's schema
+ *   wants at least one, and a body that disagrees loses the redo stack the first
+ *   time an undo empties it.
+ * @returns A fragment holding one block per line.
  */
-export function newSeededBody(): Y.XmlFragment {
+export function bodyFromText(text: string): Y.XmlFragment {
   const body = new Y.XmlFragment();
-  body.insert(0, [new Y.XmlElement(BLOCK)]);
+  body.insert(0, blocksFor(text));
   return body;
 }

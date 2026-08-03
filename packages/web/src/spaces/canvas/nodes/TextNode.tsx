@@ -76,26 +76,29 @@ export const TextNode = React.memo(function TextNode({
   }, [text, editing]);
 
   /**
-   * Leave edit mode.
+   * Leave edit mode, saying where focus should end up.
    *
    * The text is already in the document, so there is nothing to commit and
-   * nothing to discard. Focus is the part that needs saying, and it depends on
-   * why we are leaving.
+   * nothing to discard. Focus is the only part that differs between the exits,
+   * so that — not the key or event that triggered them — is what this asks
+   * for. Naming the trigger instead would leave the third exit (a lock or a
+   * task landing mid-edit) picking between two labels, neither of which is
+   * what happened to it.
    *
-   * Escape: the element the caret was in is about to be unmounted, and a
-   * browser left to itself drops focus on the document body — a keyboard user
-   * presses Escape and loses their place on the board entirely. Returning it
-   * to the node wrapper puts them back where they started, which is also where
-   * Enter reopens the editor.
+   * `return-focus`: the element the caret was in is about to be unmounted, and
+   * a browser left to itself drops focus on the document body — press Escape
+   * and you lose your place on the board entirely. Handing it back to the node
+   * wrapper puts you where you started, which is also where Enter reopens the
+   * editor.
    *
-   * Focus leaving on its own: the user has already put it somewhere, and
-   * pulling it back to this node would take it off whatever they just clicked.
-   * @param reason - Which exit this is.
+   * `keep-focus`: focus has already gone where the user put it, and pulling it
+   * back to this node would take it off whatever they just clicked.
+   * @param focus - Where focus should be when this returns.
    */
   const leaveEdit = React.useCallback(
-    (reason: 'escape' | 'blur'): void => {
+    (focus: 'return-focus' | 'keep-focus'): void => {
       closeEditor();
-      if (reason === 'blur' || !nodeId) return;
+      if (focus === 'keep-focus' || !nodeId) return;
       const shell = document.querySelector(
         `.react-flow__node[data-id="${nodeId}"]`,
       );
@@ -104,13 +107,41 @@ export const TextNode = React.memo(function TextNode({
     [closeEditor, nodeId],
   );
 
+  // Whether this node can be written in, worked out ONCE and read by both the
+  // way in and the way back out. Two hand-written conditions drift, and these
+  // had: entry asked the shared gate — which knows only `locked` and
+  // `handling` — while the exit closed on any status other than `idle`, so a
+  // node showing an upload error let somebody open an editor and shut it again
+  // in the same breath.
+  //
+  // Idle is required on top of the gate because the renderer says so: the
+  // content slot shows a skeleton while a task writes and the error message
+  // when one failed, so an editor opened in either state would be state with
+  // nothing on screen. The gate stays the source of the *reason* — it is what
+  // produces the toast — and this adds the one condition the gate has no
+  // vocabulary for.
+  //
+  // Memoized because a blocked verdict is a fresh object on every call, and an
+  // unstable one here would re-run the effect below on every render of every
+  // text node.
+  const editBlock = React.useMemo(
+    () =>
+      evaluateNodeGate(
+        { locked: Boolean(locked), handling: data.status === 'handling' },
+        'editContent',
+      ),
+    [locked, data.status],
+  );
+  const canEdit = editBlock === null && data.status === 'idle';
+
   /**
    * Open the editor on this node's body, unless something says no.
    *
-   * Three gates, and they are not interchangeable. A viewer may not write at
-   * all. A locked node is frozen by its owner, and a node a task is writing
-   * would have that task's result overwritten — both of those tell the user
-   * why, because a double-click that silently does nothing reads as a bug.
+   * A viewer may not write at all. A locked node is frozen by its owner, and a
+   * node a task is writing would have that task's result overwritten — both of
+   * those say why, because a double-click that silently does nothing reads as
+   * a bug. A failed node is the one refusal with nothing to say: it is already
+   * showing the user its error where the body would be.
    *
    * A node with no body is repaired here rather than at render: repair is a
    * write, so it happens when somebody actually intends to write, and never
@@ -118,28 +149,28 @@ export const TextNode = React.memo(function TextNode({
    */
   const startEdit = React.useCallback((): void => {
     if (readOnly || !nodeId) return;
-    const block = evaluateNodeGate(
-      { locked: Boolean(locked), handling: data.status === 'handling' },
-      'editContent',
-    );
-    if (block) {
-      warnNodeGate(t(block.toastKey));
+    if (editBlock) {
+      warnNodeGate(t(editBlock.toastKey));
       return;
     }
+    if (!canEdit) return;
     const fragment =
       getTextBody(projectId, spaceId, nodeId) ??
       reseedTextBody(projectId, spaceId, nodeId);
     if (fragment) openEditor(fragment);
-  }, [readOnly, nodeId, locked, data.status, t, projectId, spaceId, openEditor]);
+  }, [readOnly, nodeId, editBlock, canEdit, t, projectId, spaceId, openEditor]);
 
   // A lock or a task can land WHILE somebody is writing. Close the editor when
   // it does — but what is already written stays: it reached the document as it
   // was typed, and throwing it away now would take a collaborator's words with
   // it. That is a real behaviour change from the commit-on-blur era, where the
   // uncommitted draft was simply dropped.
+  //
+  // Focus goes back to the node: the caret is inside an element about to be
+  // unmounted, and nobody chose to leave — the node was taken away from them.
   React.useEffect(() => {
-    if (editing && (locked || data.status !== 'idle')) leaveEdit('escape');
-  }, [editing, locked, data.status, leaveEdit]);
+    if (editing && !canEdit) leaveEdit('return-focus');
+  }, [editing, canEdit, leaveEdit]);
 
   // Keyboard entry, and it cannot be a handler on anything rendered here.
   //
@@ -182,9 +213,11 @@ export const TextNode = React.memo(function TextNode({
     };
     shell.addEventListener('keydown', onShellKeyDown);
     return () => shell.removeEventListener('keydown', onShellKeyDown);
-    // Re-run on the display/edit swap: with an editor open, Enter belongs to
-    // the text.
-  }, [nodeId, editing]);
+    // Attached for the node's whole life, editing or not. What keeps Enter a
+    // newline while the editor is open is the target check above and nothing
+    // else — an Enter typed in the editor bubbles out to the wrapper, but its
+    // target is the editor, so it is let through untouched.
+  }, [nodeId]);
 
   const hasContent = text.length > 0;
 

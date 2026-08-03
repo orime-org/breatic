@@ -12,7 +12,6 @@ import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import {
   bodyFromText,
   bodyToPlainText,
-  newSeededBody,
   writePlainTextIntoBody,
 } from '@web/data/yjs/text-body';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
@@ -435,7 +434,7 @@ function buildDataMap(
   // (`document-yjs.ts` states the same invariant for document bodies).
   if (type === 'text') {
     const text = typeof data.content === 'string' ? data.content : '';
-    map.set('body', text ? bodyFromText(text) : newSeededBody());
+    map.set('body', bodyFromText(text));
   }
   return map;
 }
@@ -1012,7 +1011,7 @@ export function reseedTextBody(
   if (!data) return null;
   const existing = data.get('body');
   if (existing instanceof Y.XmlFragment) return existing;
-  const body = newSeededBody();
+  const body = bodyFromText('');
   doc.transact(() => data.set('body', body), CONTENT_WRITE);
   return body;
 }

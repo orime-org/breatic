@@ -11,10 +11,12 @@
  * here — the node itself, and the generation panel for each `@` reference it
  * carries.
  *
- * One module, two shapes of the same subscription, on purpose. Giving the panel
- * its own path would put a second answer to "what does this node say" in the
- * codebase, and the two would drift the first time one of the layers below
- * changed.
+ * One module, three shapes of the same subscription, on purpose: one node's
+ * text, several nodes' text, and the live fragment an open editor binds to.
+ * Giving any of them its own path would put a second answer to "what does this
+ * node say" in the codebase, and they would drift the first time one of the
+ * layers below changed. All three sit on {@link observeBodyFragment}, which is
+ * the single place that knows the `body` key can be replaced.
  */
 
 import * as React from 'react';
@@ -51,6 +53,11 @@ function observeBodyFragment(
   }
 
   let current: Y.XmlFragment | null = null;
+  // Whether anything has been published yet. Without it the first call is
+  // silent for a node that has NO body — null would equal the starting value
+  // and be taken for "nothing changed" — so a subscriber would be told nothing
+  // at all in exactly the case it most needs to hear about.
+  let published = false;
   /**
    * Publish whatever body the node holds right now, if it changed.
    *
@@ -61,7 +68,8 @@ function observeBodyFragment(
   const rebind = (): void => {
     const next = data.get('body');
     const body = next instanceof Y.XmlFragment ? next : null;
-    if (body === current) return;
+    if (published && body === current) return;
+    published = true;
     current = body;
     publish(body);
   };
@@ -201,7 +209,10 @@ export function useEditedTextBody(
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space holding the nodes.
  * @param nodeIds - Ids of the text nodes to follow.
- * @returns Node id to body text, for the ids that have a body.
+ * @returns Node id to body text, one entry per subscribed id. A node with no
+ *   body reads as the empty string rather than being absent: to a reader an
+ *   unwritten node and a repaired-but-empty one look the same, and a missing
+ *   entry would make the two indistinguishable from "not a text node".
  */
 export function useTextBodies(
   projectId: string,

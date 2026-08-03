@@ -113,12 +113,13 @@ interface TextNodeEditorProps {
    * reader to trust that none of them stop first, and a wrapper cannot see
    * focus leave at all.
    *
-   * The reason is passed on because the two differ in exactly one way that
-   * matters — where focus should end up. Escape is a request to go back to the
-   * node; a blur means focus has already gone somewhere the user chose, and
-   * moving it again would yank it out from under them.
+   * What is passed on is where focus should end up, not which event happened:
+   * that is the only thing the exits differ in, and it is the only thing the
+   * node above can act on. Escape is a request to go back to the node; a blur
+   * means focus has already gone somewhere the user chose, and moving it again
+   * would yank it out from under them.
    */
-  onLeave: (reason: 'escape' | 'blur') => void;
+  onLeave: (focus: 'return-focus' | 'keep-focus') => void;
 }
 
 /**
@@ -129,7 +130,7 @@ interface TextNodeEditorProps {
  * @param props.caretUser - This user's caret identity.
  * @param props.placeholder - Text shown while the body is empty.
  * @param props.editable - Whether this user may write.
- * @param props.onLeave - Leave the editor, with the reason.
+ * @param props.onLeave - Leave the editor, saying where focus should end up.
  * @returns The editor element.
  */
 export function TextNodeEditor({
@@ -174,7 +175,7 @@ export function TextNodeEditor({
         },
         handleKeyDown: (_view, event): boolean => {
           if (event.key !== 'Escape') return false;
-          onLeave('escape');
+          onLeave('return-focus');
           // Claimed, so nothing further up treats the same press as its own.
           return true;
         },
@@ -187,7 +188,7 @@ export function TextNodeEditor({
         // Focus moving to something inside the editor is not leaving either.
         const next = event.relatedTarget;
         if (next instanceof Node && instance.view.dom.contains(next)) return;
-        onLeave('blur');
+        onLeave('keep-focus');
       },
       immediatelyRender: false,
     },
