@@ -56,11 +56,22 @@ export interface RetryInput {
   /**
    * Whether the request body can physically be delivered a second time.
    *
-   * Transport-owned, unlike `replaySafe`: a one-shot source is consumed by the
-   * first delivery, and handing the spent source back to fetch rejects with a
-   * TypeError about a disturbed body — which then looks like a network failure
-   * and gets replayed again, so the caller ends up holding that TypeError
-   * instead of the status the server actually sent.
+   * Transport-owned, unlike `replaySafe`: a one-shot source is spent by the
+   * first delivery, and what a second one does with the husk depends on the
+   * shape — measured on Node 24, both against a server recording what arrived:
+   *
+   *   - A `ReadableStream` rejects with a TypeError about a disturbed body,
+   *     which then looks like a network failure and gets replayed again, so the
+   *     caller ends up holding that TypeError instead of the status the server
+   *     actually sent.
+   *   - An async generator does something worse and quieter: it delivers an
+   *     EMPTY body, no error anywhere, and the server answered 200 to a request
+   *     that had lost its payload.
+   *
+   * The second is why this is a guard and not a nicety. A failure that reaches
+   * the caller as the wrong exception is bad; a replay that silently submits
+   * nothing at all, and gets accepted, is the kind of thing nobody finds until
+   * the data is missing.
    */
   bodyReplayable?: boolean;
   /** The wait the response asked for, ALREADY PARSED, or null. */

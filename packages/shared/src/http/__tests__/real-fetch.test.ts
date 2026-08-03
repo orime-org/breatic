@@ -139,23 +139,31 @@ describe("item 1 — send the request the caller asked for", () => {
     }
   });
 
-  it("lets an https URL through the boundary", async () => {
+  it("lets an https URL through the boundary and out onto the network", async () => {
     // Nothing in this suite ever sent one, so the layer could be made to
     // refuse https entirely — a one-word change — and all 118 tests stayed
     // green. https is the scheme every real caller uses.
     //
-    // The request is expected to fail: there is no server on that port. What
-    // this asserts is WHERE it failed — anything but our own boundary refusal
-    // means https got past the guard, which is the whole point. Narrowing the
-    // guard to http-only makes the message start with "http was given".
+    // The request is expected to fail, and WHICH failure is the assertion:
+    // "connection refused" is the network answering, so the URL got past our
+    // guard and was really dialled. Narrowing the guard to http-only makes the
+    // message start with "http was given" instead.
+    //
+    // The port is chosen with care. This used to dial port 1, described in this
+    // comment as "no server on that port" — measured, that is wrong: 1 is on
+    // the blocked-port list, so fetch refuses with `bad port` WITHOUT dialling
+    // anything, and the test could not tell a working transport from one that
+    // never reached the network. A high unbound port really is refused by the
+    // OS, which is the fact this needs.
     const thrown = await httpRequest(
-      "https://127.0.0.1:1/nothing-listens-here",
+      "https://127.0.0.1:45999/nothing-listens-here",
       {},
       { replaySafe: false },
     ).catch((e: unknown) => e);
 
     expect(thrown).toBeInstanceOf(Error);
     expect((thrown as Error).message).not.toContain("http was given");
+    expect(String((thrown as Error).cause ?? "")).toContain("ECONNREFUSED");
   }, 30_000);
 
   it("replaces a signal the caller put in init, and delivers anyway", async () => {
@@ -304,6 +312,26 @@ describe("item 2 — decide whether a replay is warranted", () => {
     expect(out.status).toBe(200);
   }, 20_000);
 
+  it("replays a delivery that ran out of time", async () => {
+    // The most ordinary retry there is — one delivery stalls, the next one
+    // works — and nothing covered it. Hoisting the deadline out of the loop, so
+    // that a timed-out delivery can never be followed by another, left all 127
+    // tests green: the call it broke ended in HttpRetryError with the server
+    // having seen one request instead of two.
+    //
+    // What makes this case its own: every other replay here starts from a
+    // response or a dead socket, and this one starts from our own abort. The
+    // controller is built inside the loop for exactly this reason — an
+    // AbortSignal fires once and stays fired, so one shared across deliveries
+    // kills every later one before it leaves the ground.
+    const stub = await stubServer([{ kind: "silent" }, { kind: "status", status: 200 }]);
+
+    const out = await httpRequest(stub.url, {}, { replaySafe: true, timeoutMs: 400 });
+
+    expect(out.status).toBe(200);
+    expect(stub.hits()).toBe(2);
+  }, 30_000);
+
   it("does not replay when the caller says a second delivery has side effects", async () => {
     const stub = await stubServer([{ kind: "status", status: 503 }, { kind: "status", status: 200 }]);
 
@@ -391,15 +419,20 @@ describe("how long one delivery may take", () => {
     ["zero", 0],
     ["negative", -1],
     ["past what a timer can hold", 2_147_483_648],
-    ["a fraction", 1.5],
+    ["a figure under one millisecond", 0.5],
   ])("refuses a deadline of %s instead of turning it into 1ms", async (_label, timeoutMs) => {
-    // A timer silently rewrites anything outside its range to ONE MILLISECOND.
-    // Measured against a healthy server that answers in 50ms: every one of
-    // these ended in three aborted deliveries and no response, while 30_000
-    // and nine hours both returned 200. So a caller computing its deadline —
-    // which is what this layer asks callers to do, and `size / rate` yields
-    // Infinity the moment a rate is zero — gets the exact opposite of what it
-    // asked for, on a server that was working fine.
+    // A timer rewrites a delay it cannot hold to ONE MILLISECOND, with a
+    // warning on stderr and nothing else. Measured on Node 24 against a healthy
+    // server answering in 50ms: Infinity, NaN, zero, -1 and 2_147_483_648 each
+    // ended in three aborted deliveries and no response, while 30_000 and nine
+    // hours both returned 200. So a caller computing its own deadline — which
+    // is what this layer asks callers to do, and `size / rate` yields Infinity
+    // the moment a rate is zero — gets the exact opposite of what it asked for,
+    // on a server that was working fine.
+    //
+    // 0.5 is here for a different reason: it truncates to zero, which the timer
+    // then treats as the same unusable case. Fractions at or above one are NOT
+    // in this list and must not be — see the case below.
     //
     // Refusing here rather than at the timer is the same rule the URL guard
     // follows: something unusable arrived, so say so before spending three
@@ -414,6 +447,38 @@ describe("how long one delivery may take", () => {
     expect(thrown).not.toBeInstanceOf(HttpRetryError);
     expect((thrown as Error).message).toContain("http was given");
     expect(stub.hits()).toBe(0);
+  }, 30_000);
+
+  it("accepts a deadline carrying a fraction, and honours it", async () => {
+    // Computing a deadline is what this layer asks callers to do, and the
+    // arithmetic that does it — bytes over a rate, times a thousand — produces
+    // fractions constantly. A timer truncates them and works: measured on Node
+    // 24, 1500.75 fired at 1500ms and 300000.5 at 300011ms, both perfectly
+    // usable. Only values it cannot hold at all become 1ms.
+    //
+    // This case exists because the guard above once read `Number.isInteger` and
+    // refused every fraction, on a stated reason — "a timer rewrites all of
+    // these to 1ms" — that had been measured for the other values and merely
+    // assumed for this one. A caller sizing a deadline off a file would have
+    // been refused outright.
+    const stub = await stubServer([{ kind: "silent" }]);
+    const started = Date.now();
+
+    const thrown = await httpRequest(
+      stub.url,
+      {},
+      { replaySafe: false, timeoutMs: 400.75 },
+    ).catch((e: unknown) => e);
+    const elapsed = Date.now() - started;
+
+    // It reached the network and ran out of time there, rather than being
+    // turned away at the boundary.
+    expect((thrown as Error).message).toContain("timed out");
+    expect(stub.hits()).toBe(1);
+    // Truncated to 400ms, not rewritten to 1ms: comfortably past a millisecond
+    // and nowhere near the 300s default.
+    expect(elapsed).toBeGreaterThanOrEqual(300);
+    expect(elapsed).toBeLessThan(3_000);
   }, 30_000);
 
   it("keeps a query key out of the timeout message", async () => {
@@ -472,6 +537,66 @@ describe("item 3 — wait as long as the server said", () => {
     // Two seconds is well past the sub-second jitter the first replay would
     // otherwise use, so this cannot pass without the header being read.
     expect(elapsed).toBeGreaterThanOrEqual(1_900);
+  }, 20_000);
+
+  it("serves the wait a 503 asked for, not only a 429", async () => {
+    // The header is honoured by whether a figure arrived, never by which status
+    // carried it — and only 429 was ever tested. Narrowing the code to 429 and
+    // 408 left every test green, while a 503 asking for three seconds was
+    // replayed after 274ms.
+    const stub = await stubServer([
+      { kind: "status", status: 503, headers: { "retry-after": "2" } },
+      { kind: "status", status: 200 },
+    ]);
+
+    const started = Date.now();
+    const out = await httpRequest(stub.url, {}, REPLAYABLE);
+
+    expect(out.status).toBe(200);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(1_900);
+  }, 20_000);
+
+  it("serves a wait named as a date, measured against the clock", async () => {
+    // The date form is the difference between an instant and now, so the loop
+    // hands the parser the current time. Replacing that argument with zero left
+    // every test green: the header then reads as 56 years out, trips the
+    // ceiling, and the request stops after a single delivery. The unit tests
+    // for the parser could not catch it — they pass their own clock in.
+    const at = new Date(Date.now() + 3_000);
+    at.setMilliseconds(0);
+    const stub = await stubServer([
+      { kind: "status", status: 503, headers: { "retry-after": at.toUTCString() } },
+      { kind: "status", status: 200 },
+    ]);
+
+    const started = Date.now();
+    const out = await httpRequest(stub.url, {}, REPLAYABLE);
+    const elapsed = Date.now() - started;
+
+    expect(out.status).toBe(200);
+    expect(stub.hits()).toBe(2);
+    // The header names an instant to the second, so the wait lands between two
+    // and three seconds — either way past the sub-second jitter of a first
+    // replay, which is what this has to be told apart from.
+    expect(elapsed).toBeGreaterThanOrEqual(1_500);
+  }, 20_000);
+
+  it("reads a header the server padded with spaces", async () => {
+    // Measured: the parser eats the space after the colon and keeps the one
+    // before the line ending, so a value sent as "  2  " arrives as "2  ".
+    // Without the trim it matches no legal form at all, the server's figure is
+    // discarded, and the polite path quietly becomes sub-second jitter — with
+    // every test still green.
+    const stub = await stubServer([
+      { kind: "status", status: 503, headers: { "retry-after": "  2  " } },
+      { kind: "status", status: 200 },
+    ]);
+
+    const started = Date.now();
+    const out = await httpRequest(stub.url, {}, REPLAYABLE);
+
+    expect(out.status).toBe(200);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(1_900);
   }, 20_000);
 
   it("stops rather than serving a wait past the ceiling, handing the response back", async () => {

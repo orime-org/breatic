@@ -242,21 +242,29 @@ function wait(ms: number): Promise<void> {
 /**
  * The deadline to use, or a refusal if the caller named an impossible one.
  *
- * A timer accepts a positive 32-bit integer and quietly rewrites everything
- * else to one millisecond, so passing the caller's figure straight through
- * turns "wait as long as this needs" into "abort immediately" — measured, on a
- * server that was answering fine. Refused here for the same reason an
- * undeliverable URL is: something unusable arrived, and spending three
- * deliveries to discover that helps nobody.
+ * A timer holds a delay in a signed 32-bit integer and quietly rewrites
+ * anything it cannot hold to ONE MILLISECOND, so passing such a figure straight
+ * through turns "wait as long as this needs" into "abort immediately" —
+ * measured, on a server that was answering fine. Refused here for the same
+ * reason an undeliverable URL is: something unusable arrived, and spending
+ * three deliveries to discover that helps nobody.
+ *
+ * The range is the whole test, and a fraction inside it passes. Measured on
+ * Node 24: a timer given 1500.75 fires at 1500ms and one given 300000.5 at
+ * 300011ms — it truncates and carries on. This guard briefly demanded a whole
+ * number, on the strength of a measurement taken for Infinity and NaN and then
+ * assumed to cover fractions too, which refused every deadline a caller
+ * computed as `bytes / rate * 1000`. Truncation is why the floor is 1 rather
+ * than 0: 0.5 truncates to zero, and zero is one of the values a timer rewrites.
  * @param asked - The caller's `timeoutMs`, if it gave one.
  * @returns The deadline in milliseconds.
  * @throws {Error} When the figure cannot be held by a timer.
  */
 function usableDeadline(asked: number | undefined): number {
   const deadlineMs = asked ?? DEFAULT_TIMEOUT_MS;
-  if (!Number.isInteger(deadlineMs) || deadlineMs < 1 || deadlineMs > MAX_TIMER_MS) {
+  if (!Number.isFinite(deadlineMs) || deadlineMs < 1 || deadlineMs > MAX_TIMER_MS) {
     throw new Error(
-      `http was given a timeout of ${deadlineMs}; it must be a whole number of milliseconds between 1 and ${MAX_TIMER_MS}`,
+      `http was given a timeout of ${deadlineMs}; it must be between 1 and ${MAX_TIMER_MS} milliseconds`,
     );
   }
   return deadlineMs;
@@ -279,7 +287,9 @@ function usableDeadline(asked: number | undefined): number {
  * @param options - What only the caller can know: whether a replay costs
  *   anything, and optionally how long this delivery may take.
  * @returns The final response, exactly as `fetch` produced it.
- * @throws {HttpRetryError} When replays happened and none produced a response.
+ * @throws {HttpRetryError} When replays happened and the LAST of them produced
+ *   no response. Not "none of them" — an earlier delivery may well have brought
+ *   one back, and {@link HttpRetryError} says why that one is not the answer.
  * @throws {Error} The original failure, unwrapped, when the first delivery
  *   failed and no replay followed; or a refusal when the URL cannot be sent.
  */

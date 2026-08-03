@@ -88,11 +88,20 @@ export const MAX_RETRY_AFTER_MS = 60_000;
  *   - waiting for a response:      rejected at 301.4s, HeadersTimeoutError
  *   - sending a body it never reads: rejected at 301.4s, same error
  *
- * So the platform already bounds both stretches at 300s, and taking the same
- * figure changes NOTHING on the backend — which is the point: no request that
- * works today stops working. (The comment this replaced said both stretches
- * "hang indefinitely", citing a probe stopped at 90 seconds. The probe was
- * real; the conclusion was drawn 211 seconds too early.)
+ * So each of those stretches is already bounded at 300s by the platform, and
+ * taking the same figure leaves the backend where it was rather than tightening
+ * it. (The comment this replaced said both stretches "hang indefinitely",
+ * citing a probe stopped at 90 seconds. The probe was real; the conclusion was
+ * drawn 211 seconds too early.)
+ *
+ * What was NOT measured, stated plainly because a previous version of this
+ * comment claimed more than it had: both figures come from a delivery that
+ * spent all its time in ONE of the two stretches. A delivery that spends 200s
+ * sending and then 200s waiting was never tried, so whether the platform would
+ * allow 400s in total is unknown — and if it would, our timer is the one that
+ * ends it. That gap is narrow in practice, because the callers with long
+ * deliveries are precisely the ones that pass their own figure and never see
+ * this default at all.
  *
  * Where the default does buy something is a browser, whose fetch has no
  * timeout of any kind. And what buys something everywhere is the caller's own
@@ -116,6 +125,11 @@ export const DEFAULT_TIMEOUT_MS = 300_000;
  * get the same treatment. Measured against a healthy server answering in 50ms:
  * every one of those turned into three aborted deliveries and no response,
  * while 30_000 and nine hours both returned 200.
+ *
+ * A FRACTION is not one of these, and saying otherwise cost a real capability.
+ * Measured on Node 24: 1500.75 fires at 1500ms and 300000.5 at 300011ms — the
+ * delay is truncated, not rejected, and no warning is printed. Only 0.5 and
+ * friends behave like zero, because that is what they truncate to.
  *
  * That matters because this layer ASKS callers to compute their own deadline,
  * and `size / rate` produces Infinity the moment a rate is misconfigured to
