@@ -73,10 +73,24 @@ export const TextNode = React.memo(function TextNode({
   }, [text, editing]);
 
   /**
-   * Leave edit mode. The text is already in the document — there is nothing to
-   * commit, and nothing to discard.
+   * Leave edit mode, handing focus back to the node.
+   *
+   * The text is already in the document, so there is nothing to commit and
+   * nothing to discard. Focus is the part that needs saying: the element the
+   * caret was in is about to be unmounted, and a browser left to itself drops
+   * focus on the document body — a keyboard user presses Escape and loses
+   * their place on the board entirely. Returning it to the node wrapper puts
+   * them back where they started, which is also where Enter would reopen the
+   * editor.
    */
-  const stopEdit = React.useCallback((): void => setEditedBody(null), []);
+  const stopEdit = React.useCallback((): void => {
+    setEditedBody(null);
+    if (!nodeId) return;
+    const shell = document.querySelector(
+      `.react-flow__node[data-id="${nodeId}"]`,
+    );
+    if (shell instanceof HTMLElement) shell.focus();
+  }, [nodeId]);
 
   /**
    * Open the editor on this node's body, unless something says no.

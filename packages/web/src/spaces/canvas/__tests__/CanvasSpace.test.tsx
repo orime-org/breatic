@@ -296,6 +296,61 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
   });
 
+  // Leaving has to hand focus back. The element the caret sat in is unmounted
+  // on the way out, and a browser left to itself drops focus on the document
+  // body — press Escape and a keyboard user has lost their place on the board,
+  // with nothing to Tab from. Caught in a real browser: jsdom's focus after an
+  // unmount does not reproduce it faithfully, so this asserts the node is
+  // focused rather than trusting the absence of a failure.
+  it('returns focus to the node when the editor closes', async () => {
+    _resetForTests();
+    addNode('p', 's', {
+      id: 'n1',
+      type: 'text',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'N',
+        createdAt: 1,
+        createdBy: 'u',
+        locked: false,
+        operationLocks: [],
+        state: 'idle',
+        attachments: [],
+      },
+    });
+    writePlainTextIntoBody(
+      getTextBody('p', 's', 'n1') as Y.XmlFragment,
+      'written',
+    );
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'text',
+            position: { x: 0, y: 0 },
+            data: { kind: 'text', status: 'idle', name: 'N' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const shell = document.querySelector('.react-flow__node') as HTMLElement;
+
+    fireEvent.keyDown(shell, { key: 'Enter' });
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+
+    fireEvent.keyDown(document.querySelector('.ProseMirror') as HTMLElement, {
+      key: 'Escape',
+    });
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).toBeNull(),
+    );
+    expect(document.activeElement).toBe(shell);
+  });
+
   // The empty case, which is the one that matters most: a brand-new text node
   // renders a placeholder rather than a body, and an entry point that hung off
   // the body would be missing from exactly the nodes with nothing in them yet.
