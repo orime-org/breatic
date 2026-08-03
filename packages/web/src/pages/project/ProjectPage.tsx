@@ -251,18 +251,24 @@ function ProjectWorkspace({
     );
   }, [projectId, openTabIds, spaces]);
 
-  // Keep the active tab pointing at something this user actually has open.
-  // Two things break that, and both arrive as a change to the list rather
-  // than as a click: the Space was deleted (by us or a collaborator, through
-  // `space:delete`), or the tab was closed (through `tab:close`). Without
-  // this the active id can name a Space that is gone or a tab that is no
-  // longer open — the body renders the `?? openTabs[0]` fallback while no tab
-  // is highlighted, because activeSpaceId still points at the old one.
+  // Move off a Space that has VANISHED — deleted by us or by a collaborator.
+  // Delete goes through the `space:delete` RPC, never through `onCloseTab`, so
+  // without this the active id keeps naming a Space that no longer exists.
   //
-  // Driving it from the list is also what makes a failed close correct: a
-  // request that fails never changes the list, so this never runs and nothing
-  // moves. Per-user + runs on every client, so the person who deleted AND
-  // everyone else each converge their own state.
+  // Closing a tab is NOT handled here, and must not be: an active id that is
+  // still live but absent from `openTabIds` also describes a Space that is
+  // being opened this instant, whose `tab:open` broadcast has not landed yet.
+  // Reacting to that shape sends the user back to the first tab every time
+  // they pick a Space. Closing needs nothing anyway — `openTabs` drops the id,
+  // `resolveEffectiveActiveSpace` falls back to the first open tab, and line
+  // ~805 hands that fallback's id to the tab strip, so body and highlight move
+  // together. `activeSpaceId` stays pointing at the closed Space until
+  // something else changes it, which is harmless: it only matters again if the
+  // user reopens that same Space, and landing back on it is what they asked
+  // for.
+  //
+  // Per-user + runs on every client, so the person who deleted AND everyone
+  // else each converge their own state.
   React.useEffect(() => {
     if (!userId) return;
     const liveIds = new Set(spaces.map((s) => s.id));

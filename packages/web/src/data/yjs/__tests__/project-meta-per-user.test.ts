@@ -60,34 +60,27 @@ describe('planVanishedSpaceReconcile — per-user reconcile when spaces vanish',
     expect(out.reactivateTo).toBeUndefined();
   });
 
-  // A tab stops being the right thing to show for two reasons, not one: the
-  // Space was deleted, or the tab was closed. Both mean the same thing — the
-  // active id no longer names a tab this user has open — so both belong to
-  // this one rule. Closing used to move the active tab from inside the close
-  // handler instead, the moment the request went out, which put it on the
-  // wrong side of the line: a close that FAILS leaves the tab on screen but
-  // had already switched the view away from it (design §6.6.2: on failure
-  // "nothing moves"). Driving it from the list is what makes the failure
-  // path correct, because a failed close never changes the list.
+  // This function answers ONE question: has the active Space disappeared from
+  // the project? It must not also try to answer "is the active id in my tab
+  // list", because those two look identical in the data and mean opposite
+  // things. An id that is live but absent from `openTabIds` is either a tab
+  // that was just closed — where the effective-active fallback already moves
+  // the view, `resolveEffectiveActiveSpace` — or a Space that is being opened
+  // right now, whose `tab:open` broadcast has not landed yet. Reactivating on
+  // that shape breaks the second case: the user picks a Space and gets thrown
+  // back to the first tab. Verified in a real browser on 2026-08-03.
 
-  it('active tab closed while the Space still exists → reactivate the first remaining open tab', () => {
-    // The broadcast has removed 'a' from this user's list; the Space itself
-    // is untouched and still in the project.
+  it('an active id that is live but not in the list is left alone (it is being opened)', () => {
     const out = planVanishedSpaceReconcile(
       ['b', 'c'],
       new Set(['a', 'b', 'c']),
       'a',
     );
-    expect(out.reactivateTo).toBe('b');
+    expect(out.reactivateTo).toBeUndefined();
   });
 
-  it('the only open tab was closed → reactivate to null (empty state)', () => {
+  it('the same holds when the list is empty — a first tab on its way in', () => {
     const out = planVanishedSpaceReconcile([], new Set(['a']), 'a');
-    expect(out.reactivateTo).toBeNull();
-  });
-
-  it('closing a NON-active tab leaves the active one alone', () => {
-    const out = planVanishedSpaceReconcile(['a'], new Set(['a', 'b']), 'a');
     expect(out.reactivateTo).toBeUndefined();
   });
 
