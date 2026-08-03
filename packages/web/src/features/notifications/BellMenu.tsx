@@ -115,13 +115,6 @@ export function BellMenu(): React.JSX.Element {
   const resolved = inboxQuery.data?.resolved ?? EMPTY_RESOLVED;
   const count = notifications.length;
 
-  /**
-   * Decide a role-upgrade request from its bell entry.
-   *
-   * The entry points at the request row; without that pointer there is nothing
-   * to decide, and the bell says so rather than firing a call that answers 404.
-   */
-
   const markReadMutation = useMutation({
     mutationFn: (id: string) => notificationsApi.markRead(id),
     onSuccess: async () => {
@@ -130,12 +123,6 @@ export function BellMenu(): React.JSX.Element {
       });
     },
   });
-
-  // Confirm / cancel an INLINE-actionable notification (studio transfer request
-  // or studio invite request). The studios list is also invalidated so the
-  // rail's "My / Joined studios" split reflects the new admin role immediately
-  // after a transfer confirm. (Project invites confirm on the landing page, not
-  // here, so they don't go through this mutation.)
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
