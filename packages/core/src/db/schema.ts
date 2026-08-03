@@ -906,10 +906,19 @@ export const studioInvitations = pgTable(
     }),
     /** Invite times out after this; expired pendings self-void in queries. */
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /**
+     * Names this request in the `/decision?token=` link. Minted when the
+     * request is filed and never rotated, so the LINK stays valid for as long
+     * as the row exists — what expires is the request, not the URL. Shared by
+     * all three channels that can reach the request: the email, the bell entry
+     * and (for a project invite) the owner's copyable share link.
+     */
+    shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
+    uniqueIndex("studio_invitations_share_token_key").on(table.shareToken),
     index("studio_invitations_studio_id_idx").on(
       table.studioId,
       table.deletedAt,
@@ -972,10 +981,19 @@ export const projectInvitations = pgTable(
     }),
     /** Invite times out after this; expired pendings self-void in queries. */
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /**
+     * Names this request in the `/decision?token=` link. Minted when the
+     * request is filed and never rotated, so the LINK stays valid for as long
+     * as the row exists — what expires is the request, not the URL. Shared by
+     * all three channels that can reach the request: the email, the bell entry
+     * and (for a project invite) the owner's copyable share link.
+     */
+    shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
+    uniqueIndex("project_invitations_share_token_key").on(table.shareToken),
     index("project_invitations_project_id_idx").on(
       table.projectId,
       table.deletedAt,
@@ -1050,10 +1068,19 @@ export const roleUpgradeRequests = pgTable(
     }),
     /** Request times out after this; the decision path refuses expired rows. */
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /**
+     * Names this request in the `/decision?token=` link. Minted when the
+     * request is filed and never rotated, so the LINK stays valid for as long
+     * as the row exists — what expires is the request, not the URL. Shared by
+     * all three channels that can reach the request: the email, the bell entry
+     * and (for a project invite) the owner's copyable share link.
+     */
+    shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
+    uniqueIndex("role_upgrade_requests_share_token_key").on(table.shareToken),
     index("role_upgrade_requests_project_id_idx").on(
       table.projectId,
       table.deletedAt,
@@ -1090,10 +1117,19 @@ export const projectTransfers = pgTable(
     }),
     /** Offer times out after this; the decision path refuses expired rows. */
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /**
+     * Names this request in the `/decision?token=` link. Minted when the
+     * request is filed and never rotated, so the LINK stays valid for as long
+     * as the row exists — what expires is the request, not the URL. Shared by
+     * all three channels that can reach the request: the email, the bell entry
+     * and (for a project invite) the owner's copyable share link.
+     */
+    shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
+    uniqueIndex("project_transfers_share_token_key").on(table.shareToken),
     index("project_transfers_project_id_idx").on(
       table.projectId,
       table.deletedAt,
@@ -1128,10 +1164,19 @@ export const studioTransfers = pgTable(
     }),
     /** Offer times out after this; the decision path refuses expired rows. */
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /**
+     * Names this request in the `/decision?token=` link. Minted when the
+     * request is filed and never rotated, so the LINK stays valid for as long
+     * as the row exists — what expires is the request, not the URL. Shared by
+     * all three channels that can reach the request: the email, the bell entry
+     * and (for a project invite) the owner's copyable share link.
+     */
+    shareToken: varchar("share_token", { length: 64 }).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
+    uniqueIndex("studio_transfers_share_token_key").on(table.shareToken),
     index("studio_transfers_studio_id_idx").on(table.studioId, table.deletedAt),
     index("studio_transfers_to_user_id_idx").on(table.toUserId),
     // One LIVE pending transfer per STUDIO (not per recipient) is enforced by a
