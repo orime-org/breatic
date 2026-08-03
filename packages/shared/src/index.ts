@@ -17,6 +17,14 @@ export type {
 } from "@shared/constants/index.js";
 
 export type {
+  DecisionKind,
+  DecisionState,
+  DecisionView,
+  DecisionAction,
+  DecisionResult,
+} from "@shared/types/decision.js";
+
+export type {
   UserEntity,
   ConversationEntity,
   MessageData,
