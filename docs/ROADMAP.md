@@ -68,6 +68,7 @@
 - [ ] 积分购买页面：Stripe Checkout 跳转 + 余额显示 + 购买历史
 - [ ] 项目管理：创建/删除/重命名项目、项目列表、缩略图
 - [x] **Studio 设置(#10, 2026-07-29)**:头像(前端裁剪成 512×512 PNG,后端零图片处理)· 改名 · 改 slug(旧 slug 立即释放、无跳转,确认框写明四条后果)· 简介 · 成员自助退出(名下 project 转给 admin)。配套:全站头像统一成一个组件(形状随 `studios.type` 定圆/方)· 通知跳转改存 ID 读时反查 · `slug` 收进不翻译产品术语表。**Studio 删除仍未接线**(#26 单独做)
+- [x] **等答复的请求统一到一个落地页(#25, 2026-08-03)**:五个流(studio 邀请 · project 邀请 · studio 转让 · project 转让 · 角色升级)各有一条 `share_token`,邮件 / 铃铛 / 发起人可复制的链接三条通道带同一个 token 到同一个 `/decision?token=`,一套 `GET /decisions/:token` + `POST /decisions/respond` 答五种请求。**「链接失效」这一句话原本压着四件事**(已答过 / 超时 / 被撤回 / token 是假的),现在各说各的,另加「关联内容已删」和「你已经在里面了」。token 是路牌不是钥匙 —— 闸门是登录 + 收件人校验,链接本身永不失效,过期的是请求。配套:两个互为镜像的旧落地页与其 API 删净;铃铛不再内联决策、只指路,没有 token 就不画按钮;角色升级补上它一直缺的邮件通路。**「你已经在里面了」的判据是角色不是行** —— 看的是收件人当前角色有没有到邀请要给的那一级,否则光是打开过那个 project(会当场把人物化成 viewer)就会让一条待答的 editor 邀请永久卡死
 - [ ] 节点交互（canvas-native，PR-C 起）：
   - text 富文本：✅ TipTap 富文本编辑器（左侧全屏面板，绑定 `data.prompt` Y.XmlFragment）
   - canvas-native mini-tools：image.crop / image.adjust / image.remove-bg / video tools / audio tools 逐条接入（前端 `new/` 分支开发中）
