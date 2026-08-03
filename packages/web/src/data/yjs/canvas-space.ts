@@ -13,6 +13,7 @@ import {
   bodyFromText,
   bodyToPlainText,
   newSeededBody,
+  writePlainTextIntoBody,
 } from '@web/data/yjs/text-body';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
 import { toNodeView } from '@web/spaces/canvas/types/node-view';
@@ -960,11 +961,9 @@ export function getTextBody(
 /**
  * Read several text nodes' bodies as plain text, right now.
  *
- * For the execute path, which must send what the nodes say at the moment the
- * button is pressed. A subscription's React state is a render behind — fine
- * for showing text, not for what gets spent on: submitting the previous value
- * bills the user for generating from words a collaborator has already
- * replaced.
+ * For the copy path, which runs on a keystroke and must put on the clipboard
+ * what the nodes say at that moment. A subscription's React state is a render
+ * behind, and there is no React render between the keypress and the write.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space holding the nodes.
  * @param nodeIds - Ids of the text nodes to read.
@@ -1251,6 +1250,39 @@ export function setNodeHandling(
 }
 
 /**
+ * Land a finished handling's content on a node, in the field its type reads.
+ *
+ * A text node's words live in its shared body, never in `data.content`: the
+ * node view deliberately does not carry the body (#1774), so words written to
+ * the plain field would be stored, synced, and never shown — the node would
+ * come back from a dropped `.txt` looking empty. Every other modality's
+ * content IS a plain field (an asset URL), so the split is by type, once,
+ * here. Same rule as node creation, which drops `content` for a text node and
+ * seeds the body instead.
+ *
+ * A missing body is created rather than skipped. Losing the words of a file
+ * the user just dropped is the worse failure, and the node is by definition
+ * not being edited right now — this runs under a lease, and a node a task is
+ * writing cannot be opened for editing.
+ * @param data - The node's data map, already verified to be one.
+ * @param type - The node's modality, read from its `type` field.
+ * @param content - What the handling produced: an asset URL, or extracted text.
+ */
+function landHandlingContent(
+  data: Y.Map<unknown>,
+  type: unknown,
+  content: string,
+): void {
+  if (type !== 'text') {
+    data.set('content', content);
+    return;
+  }
+  const body = data.get('body');
+  if (body instanceof Y.XmlFragment) writePlainTextIntoBody(body, content);
+  else data.set('body', bodyFromText(content));
+}
+
+/**
  * Complete a leased handling with its result content — the upload-done
  * write-back (#1580 #7). Verifies the caller still OWNS the live lease
  * (all three token fields match `handlingBy`) before writing; a superseded
@@ -1289,7 +1321,7 @@ export function completeNodeHandling(
   if (!(data instanceof Y.Map)) return false;
   if (!ownsLease(data, lease)) return false;
   doc.transact(() => {
-    data.set('content', content);
+    landHandlingContent(data, node.get('type'), content);
     if (coverUrl !== undefined) data.set('coverUrl', coverUrl);
     data.set('state', 'idle');
     data.delete('handlingBy');
