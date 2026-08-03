@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import type * as Y from 'yjs';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { getTextBody, reseedTextBody } from '@web/data/yjs/canvas-space';
-import { useTextBody } from '@web/data/yjs/use-text-body';
+import { useEditedTextBody, useTextBody } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
@@ -56,10 +55,14 @@ export const TextNode = React.memo(function TextNode({
   const { projectId, spaceId, readOnly, caretProvider, caretUser } =
     useCanvasContext();
   const text = useTextBody(projectId, spaceId, nodeId ?? '');
-  // The open editor IS the fragment it is bound to. Holding a separate
-  // "editing" boolean would let the two disagree, and the disagreeing state is
-  // an editor bound to nothing.
-  const [editedBody, setEditedBody] = React.useState<Y.XmlFragment | null>(null);
+  // The open editor IS the fragment it is bound to, and that fragment is
+  // followed rather than snapshotted — see the hook for why a snapshot goes
+  // silent when a concurrent repair replaces the node's body.
+  const {
+    body: editedBody,
+    open: openEditor,
+    close: closeEditor,
+  } = useEditedTextBody(projectId, spaceId, nodeId ?? '');
   const editing = editedBody !== null;
   const displayRef = React.useRef<HTMLDivElement>(null);
 
@@ -73,24 +76,33 @@ export const TextNode = React.memo(function TextNode({
   }, [text, editing]);
 
   /**
-   * Leave edit mode, handing focus back to the node.
+   * Leave edit mode.
    *
    * The text is already in the document, so there is nothing to commit and
-   * nothing to discard. Focus is the part that needs saying: the element the
-   * caret was in is about to be unmounted, and a browser left to itself drops
-   * focus on the document body — a keyboard user presses Escape and loses
-   * their place on the board entirely. Returning it to the node wrapper puts
-   * them back where they started, which is also where Enter would reopen the
-   * editor.
+   * nothing to discard. Focus is the part that needs saying, and it depends on
+   * why we are leaving.
+   *
+   * Escape: the element the caret was in is about to be unmounted, and a
+   * browser left to itself drops focus on the document body — a keyboard user
+   * presses Escape and loses their place on the board entirely. Returning it
+   * to the node wrapper puts them back where they started, which is also where
+   * Enter reopens the editor.
+   *
+   * Focus leaving on its own: the user has already put it somewhere, and
+   * pulling it back to this node would take it off whatever they just clicked.
+   * @param reason - Which exit this is.
    */
-  const stopEdit = React.useCallback((): void => {
-    setEditedBody(null);
-    if (!nodeId) return;
-    const shell = document.querySelector(
-      `.react-flow__node[data-id="${nodeId}"]`,
-    );
-    if (shell instanceof HTMLElement) shell.focus();
-  }, [nodeId]);
+  const leaveEdit = React.useCallback(
+    (reason: 'escape' | 'blur'): void => {
+      closeEditor();
+      if (reason === 'blur' || !nodeId) return;
+      const shell = document.querySelector(
+        `.react-flow__node[data-id="${nodeId}"]`,
+      );
+      if (shell instanceof HTMLElement) shell.focus();
+    },
+    [closeEditor, nodeId],
+  );
 
   /**
    * Open the editor on this node's body, unless something says no.
@@ -117,8 +129,8 @@ export const TextNode = React.memo(function TextNode({
     const fragment =
       getTextBody(projectId, spaceId, nodeId) ??
       reseedTextBody(projectId, spaceId, nodeId);
-    if (fragment) setEditedBody(fragment);
-  }, [readOnly, nodeId, locked, data.status, t, projectId, spaceId]);
+    if (fragment) openEditor(fragment);
+  }, [readOnly, nodeId, locked, data.status, t, projectId, spaceId, openEditor]);
 
   // A lock or a task can land WHILE somebody is writing. Close the editor when
   // it does — but what is already written stays: it reached the document as it
@@ -126,8 +138,8 @@ export const TextNode = React.memo(function TextNode({
   // it. That is a real behaviour change from the commit-on-blur era, where the
   // uncommitted draft was simply dropped.
   React.useEffect(() => {
-    if (editing && (locked || data.status !== 'idle')) stopEdit();
-  }, [editing, locked, data.status, stopEdit]);
+    if (editing && (locked || data.status !== 'idle')) leaveEdit('escape');
+  }, [editing, locked, data.status, leaveEdit]);
 
   // Keyboard entry, and it cannot be a handler on anything rendered here.
   //
@@ -210,7 +222,7 @@ export const TextNode = React.memo(function TextNode({
                   caretUser={caretUser}
                   placeholder={t('canvas.textNode.editorPlaceholder')}
                   editable={!readOnly}
-                  onEscape={stopEdit}
+                  onLeave={leaveEdit}
                 />
               </ScrollArea>
             ) : (

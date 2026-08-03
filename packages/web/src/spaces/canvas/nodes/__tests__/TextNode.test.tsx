@@ -19,7 +19,8 @@
  * Enter lives on ReactFlow's node wrapper — nothing this file renders — for
  * reasons spelled out at the listener itself. Dispatching a keydown at the
  * body would pass against a handler that can never fire in a browser, so the
- * keyboard cases live in `flow-node-types.test`, which renders a real wrapper.
+ * keyboard cases live in `CanvasSpace.test`, the one place that mounts a real
+ * ReactFlow and so has a real wrapper to press keys on.
  *
  * The visual invariants below are inherited from the contenteditable era and
  * assert against the editor's real element rather than a class substring —
@@ -28,7 +29,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
 import type { CanvasNodeFields } from '@breatic/shared';
@@ -275,6 +276,51 @@ describe('TextNode', () => {
     });
 
 
+    it('opens from the placeholder by keyboard, not only by double-click', () => {
+      // Clicking an empty node lands focus on the placeholder button, not on
+      // the node wrapper — so the wrapper's Enter listener never sees the
+      // press, and without a keyboard path here the commonest sequence on a
+      // brand new node (click it, press Enter, write) does nothing at all.
+      // A keyboard activation reaches the button as a click with no pointer
+      // behind it, which is what `detail: 0` means.
+      seedNode();
+      renderNode();
+      fireEvent.click(screen.getByTestId('node-placeholder'), { detail: 0 });
+      expect(editor()).not.toBeNull();
+    });
+
+    it('does not open on a plain click of the placeholder — that selects', () => {
+      seedNode();
+      renderNode();
+      fireEvent.click(screen.getByTestId('node-placeholder'), { detail: 1 });
+      expect(editor()).toBeNull();
+    });
+
+    it('puts the caret in the editor, so the first keystroke lands in it', async () => {
+      // Without this the editor mounts unfocused: the caret stays wherever it
+      // was, typing goes nowhere, and Backspace reaches the canvas and deletes
+      // the node instead of a character.
+      seedNode('already here');
+      renderNode();
+      enterByDoubleClick();
+      // Asynchronous by design: the editor is built in an effect and takes
+      // focus from a timeout of its own, so asserting synchronously would be
+      // asking before it ever had the chance.
+      await waitFor(() => {
+        expect(document.activeElement).toBe(editor());
+      });
+    });
+
+    it('announces itself as a multi-line text box, as the element it replaced did', () => {
+      // A `contenteditable` div has no implicit role, so without these a
+      // screen reader offers a group of text where a person is meant to write.
+      seedNode('x');
+      renderNode();
+      enterByDoubleClick();
+      expect(editor()?.getAttribute('role')).toBe('textbox');
+      expect(editor()?.getAttribute('aria-multiline')).toBe('true');
+    });
+
     it('repairs a missing body before binding, never binding to nothing', () => {
       // The shared layer requires a fragment and refuses to bind to nothing,
       // so a node that has none has to be repaired first, at the moment
@@ -339,6 +385,52 @@ describe('TextNode', () => {
       expect(editor()).toBeNull();
     });
 
+    it('closes when focus goes somewhere else on the page', () => {
+      // Clicking away is how most people leave an inline editor, and an editor
+      // that never closes leaves a contenteditable on the node — which is what
+      // makes ReactFlow swallow Delete, so the node cannot be removed either.
+      seedNode('x');
+      renderNode();
+      enterByDoubleClick();
+      expect(editor()).not.toBeNull();
+
+      const elsewhere = document.createElement('button');
+      document.body.appendChild(elsewhere);
+      fireEvent.blur(editor() as HTMLElement, { relatedTarget: elsewhere });
+
+      expect(editor()).toBeNull();
+      elsewhere.remove();
+    });
+
+    it('stays open when focus moves inside the editor itself', () => {
+      seedNode('x');
+      renderNode();
+      enterByDoubleClick();
+      const el = editor() as HTMLElement;
+      const inside = document.createElement('button');
+      el.appendChild(inside);
+
+      fireEvent.blur(el, { relatedTarget: inside });
+
+      expect(editor()).not.toBeNull();
+    });
+
+    it('leaves focus where the user put it when they click away', () => {
+      // The Escape path deliberately pulls focus back to the node. Doing that
+      // here would take it off whatever they just clicked.
+      seedNode('x');
+      renderNode();
+      enterByDoubleClick();
+      const elsewhere = document.createElement('button');
+      document.body.appendChild(elsewhere);
+      elsewhere.focus();
+
+      fireEvent.blur(editor() as HTMLElement, { relatedTarget: elsewhere });
+
+      expect(document.activeElement).toBe(elsewhere);
+      elsewhere.remove();
+    });
+
     it('closes when the node is locked mid-edit, and keeps what was written', () => {
       seedNode('typed so far');
       const { rerender } = renderNode();
@@ -351,6 +443,48 @@ describe('TextNode', () => {
       // Live sync means the text is already in the document. There is nothing
       // to discard, and discarding would delete a collaborator's words too.
       expect(bodyToPlainText(body())).toBe('typed so far');
+    });
+
+    it('rebinds to the winner when a concurrent repair replaces the body', () => {
+      // Two people opening the same body-less node each repair it, and one of
+      // the two fragments loses. The loser's editor would go on accepting
+      // keystrokes into an object no longer in the document: caret blinking,
+      // words appearing, none of it reaching anybody or surviving a reload.
+      seedNode();
+      stripBody();
+      renderNode();
+      fireEvent.doubleClick(screen.getByTestId('node-placeholder'));
+      expect(editor()).not.toBeNull();
+
+      const winner = new Y.XmlFragment();
+      winner.insert(0, [new Y.XmlElement('paragraph')]);
+      act(() => {
+        const data = getDoc(docName.canvasSpace(PID, SID))
+          .getMap<Y.Map<unknown>>('nodesMap')
+          .get(NODE)
+          ?.get('data') as Y.Map<unknown>;
+        data.set('body', winner);
+      });
+
+      // Still editing, and now bound to the fragment that actually won: text
+      // written into it shows up in the editor.
+      expect(editor()).not.toBeNull();
+      act(() => {
+        writePlainTextIntoBody(body(), 'from the winner');
+      });
+      expect(editor()?.textContent).toContain('from the winner');
+    });
+
+    it('closes when the body disappears entirely rather than binding to a ghost', () => {
+      seedNode('x');
+      renderNode();
+      enterByDoubleClick();
+      expect(editor()).not.toBeNull();
+
+      act(() => {
+        stripBody();
+      });
+      expect(editor()).toBeNull();
     });
 
     it('closes when a task starts writing the node mid-edit', () => {

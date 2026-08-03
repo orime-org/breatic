@@ -105,12 +105,20 @@ interface TextNodeEditorProps {
    */
   editable: boolean;
   /**
-   * Leave the editor. Handled in here rather than on a wrapper, because
-   * Escape belongs to the thing being escaped from: a keydown handler on a
-   * plain wrapping element only fires for events that bubble out of the
-   * editor, and asks the reader to trust that none of them stop first.
+   * Leave the editor, and why.
+   *
+   * Both exits are handled in here rather than on a wrapper, because both
+   * belong to the thing being left: a keydown handler on a plain wrapping
+   * element only fires for events that bubble out of the editor and asks the
+   * reader to trust that none of them stop first, and a wrapper cannot see
+   * focus leave at all.
+   *
+   * The reason is passed on because the two differ in exactly one way that
+   * matters — where focus should end up. Escape is a request to go back to the
+   * node; a blur means focus has already gone somewhere the user chose, and
+   * moving it again would yank it out from under them.
    */
-  onEscape: () => void;
+  onLeave: (reason: 'escape' | 'blur') => void;
 }
 
 /**
@@ -121,7 +129,7 @@ interface TextNodeEditorProps {
  * @param props.caretUser - This user's caret identity.
  * @param props.placeholder - Text shown while the body is empty.
  * @param props.editable - Whether this user may write.
- * @param props.onEscape - Leave the editor.
+ * @param props.onLeave - Leave the editor, with the reason.
  * @returns The editor element.
  */
 export function TextNodeEditor({
@@ -130,7 +138,7 @@ export function TextNodeEditor({
   caretUser,
   placeholder,
   editable,
-  onEscape,
+  onLeave,
 }: TextNodeEditorProps): React.JSX.Element {
   const editor = useEditor(
     {
@@ -141,16 +149,45 @@ export function TextNodeEditor({
         placeholder,
       }),
       editable,
+      // Take the caret on mount. Nothing else will: this editor is not the
+      // page's initial focus, and it appears in place of the element the
+      // opening double-click was dispatched to — so without this, opening a
+      // node hands back an editor nobody is typing into, and the next
+      // keystroke goes to the canvas instead (Backspace there deletes the
+      // node). At the end rather than the start, because a node is reopened to
+      // keep writing far more often than to correct its first word.
+      autofocus: 'end',
       // The editable element carries the body's test id, so display and edit
       // states are addressed the same way.
+      //
+      // The two ARIA attributes are not decoration and not new: the element
+      // this replaced declared them, and a `contenteditable` div has no
+      // implicit role to fall back on. Without them a screen reader announces
+      // a group of text rather than a multi-line text box somebody is expected
+      // to type into.
       editorProps: {
-        attributes: { class: EDITOR_CLASS, 'data-testid': 'text-node-body' },
+        attributes: {
+          class: EDITOR_CLASS,
+          'data-testid': 'text-node-body',
+          role: 'textbox',
+          'aria-multiline': 'true',
+        },
         handleKeyDown: (_view, event): boolean => {
           if (event.key !== 'Escape') return false;
-          onEscape();
+          onLeave('escape');
           // Claimed, so nothing further up treats the same press as its own.
           return true;
         },
+      },
+      onBlur: ({ editor: instance, event }): void => {
+        // Switching windows or tabs is not leaving the node: the whole
+        // document loses focus, and coming back should find the caret where it
+        // was rather than a node that closed itself while nobody was looking.
+        if (!document.hasFocus()) return;
+        // Focus moving to something inside the editor is not leaving either.
+        const next = event.relatedTarget;
+        if (next instanceof Node && instance.view.dom.contains(next)) return;
+        onLeave('blur');
       },
       immediatelyRender: false,
     },
@@ -158,7 +195,7 @@ export function TextNodeEditor({
     // re-synced, so a locale switch while a node is open would otherwise leave
     // the old language behind until it was reopened. `caretProvider` flips
     // from null to a provider once, on the socket's first connect.
-    [fragment, placeholder, caretProvider, caretUser, editable, onEscape],
+    [fragment, placeholder, caretProvider, caretUser, editable, onLeave],
   );
   // Publish this window's focus and dim collaborators who have left theirs.
   // The other half of the caret story: without it this client publishes into a

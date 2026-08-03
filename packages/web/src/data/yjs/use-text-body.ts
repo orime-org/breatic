@@ -25,18 +25,60 @@ import { nodeDataMap } from '@web/data/yjs/canvas-space';
 import { bodyToPlainText } from '@web/data/yjs/text-body';
 
 /**
+ * Follow which fragment a node's `body` key holds, right now.
+ *
+ * The key can be REPLACED, and that is not a detail: a node with no body gets
+ * repaired, and when two clients repair at once the loser's key is overwritten
+ * with the winner's fragment. Whoever stays bound to the old object is bound
+ * to something no longer in the document — a reader goes silent, and an open
+ * editor swallows every further keystroke. Both consumers below need the
+ * current fragment, so following the key lives here, once.
+ * @param doc - The canvas-space document.
+ * @param nodeId - Id of the node whose body to follow.
+ * @param publish - Called with the current fragment (or null when the node has
+ *   none), immediately and on every replacement.
+ * @returns A function that removes the observer.
+ */
+function observeBodyFragment(
+  doc: Y.Doc,
+  nodeId: string,
+  publish: (body: Y.XmlFragment | null) => void,
+): () => void {
+  const data = nodeDataMap(doc, nodeId);
+  if (!data) {
+    publish(null);
+    return () => undefined;
+  }
+
+  let current: Y.XmlFragment | null = null;
+  /**
+   * Publish whatever body the node holds right now, if it changed.
+   *
+   * Runs on every change to the node's data, not just the `body` key —
+   * filtering the event would be a second place that has to stay correct, and
+   * the check below is a reference comparison.
+   */
+  const rebind = (): void => {
+    const next = data.get('body');
+    const body = next instanceof Y.XmlFragment ? next : null;
+    if (body === current) return;
+    current = body;
+    publish(body);
+  };
+
+  data.observe(rebind);
+  rebind();
+  return () => data.unobserve(rebind);
+}
+
+/**
  * Follow one node's body, reporting its text on every change.
  *
- * Two observers, because one cannot cover both things that change:
- *
- * - `observeDeep` on the fragment. A collaborator typing inside a paragraph
- *   changes something nested, and a shallow observer would never fire — the
- *   text would freeze the moment somebody else edited an existing line.
- * - A shallow observer on the node's data, watching the `body` key itself get
- *   replaced. A node with no body gets repaired, and when two clients repair at
- *   once the loser's key is overwritten with the winner's fragment. Whoever
- *   stays bound to the old object is bound to something no longer in the
- *   document, and goes silent forever.
+ * Two observers, because one cannot cover both things that change: which
+ * fragment the node holds ({@link observeBodyFragment}), and what is inside
+ * it. The inner one has to be `observeDeep` — a collaborator typing inside a
+ * paragraph changes something nested, and a shallow observer would never fire,
+ * so the text would freeze the moment somebody else edited an existing line.
  * @param doc - The canvas-space document.
  * @param nodeId - Id of the node whose body to follow.
  * @param publish - Called with the body's text, immediately and on each change.
@@ -47,39 +89,20 @@ function observeTextBody(
   nodeId: string,
   publish: (text: string) => void,
 ): () => void {
-  const data = nodeDataMap(doc, nodeId);
-  if (!data) {
-    publish('');
-    return () => undefined;
-  }
-
   let bound: Y.XmlFragment | null = null;
   /**
    * Report the bound body's current text.
    * @returns Nothing.
    */
   const report = (): void => publish(bound ? bodyToPlainText(bound) : '');
-  /**
-   * Point the deep observer at whatever body the node holds right now.
-   *
-   * Runs on every change to the node's data, not just the `body` key —
-   * filtering the event would be a second place that has to stay correct, and
-   * the check below is a reference comparison.
-   */
-  const rebind = (): void => {
-    const next = data.get('body');
-    const body = next instanceof Y.XmlFragment ? next : null;
-    if (body === bound) return;
+  const off = observeBodyFragment(doc, nodeId, (body) => {
     bound?.unobserveDeep(report);
     bound = body;
     bound?.observeDeep(report);
     report();
-  };
-
-  data.observe(rebind);
-  rebind();
+  });
   return () => {
-    data.unobserve(rebind);
+    off();
     bound?.unobserveDeep(report);
   };
 }
@@ -111,6 +134,61 @@ export function useTextBody(
   );
 
   return text;
+}
+
+/** The body an open editor is bound to, and the two ways it changes. */
+export interface EditedTextBody {
+  /** The fragment to bind, or null when no editor is open. */
+  body: Y.XmlFragment | null;
+  /** Open an editor on this fragment. */
+  open: (body: Y.XmlFragment) => void;
+  /** Close the editor. */
+  close: () => void;
+}
+
+/**
+ * Hold the body an open editor is bound to, following it if it is replaced.
+ *
+ * The open editor IS the fragment it is bound to — there is no separate
+ * "editing" flag, because the two could disagree and the disagreeing state is
+ * an editor bound to nothing.
+ *
+ * Binding the fragment read at the moment editing started is not enough. A
+ * concurrent repair replaces the `body` key, and the client that loses is left
+ * holding a fragment that is no longer in the document: the caret still
+ * blinks, the words still appear, and not one of them reaches anybody else or
+ * survives a reload. So while an editor is open this follows the key and hands
+ * back whatever the node holds now; a replacement rebinds the editor, and a
+ * body that disappears entirely closes it rather than leaving it bound to a
+ * ghost.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the node.
+ * @param nodeId - Id of the text node being edited.
+ * @returns The bound body plus the two transitions.
+ */
+export function useEditedTextBody(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): EditedTextBody {
+  const name = docName.canvasSpace(projectId, spaceId);
+  const doc = React.useMemo(() => getDoc(name), [name]);
+  const [body, setBody] = React.useState<Y.XmlFragment | null>(null);
+  const editing = body !== null;
+
+  React.useEffect(() => {
+    if (!editing) return undefined;
+    // Publishes the current fragment synchronously on subscribe, so the
+    // fragment editing just opened on is confirmed against the document rather
+    // than trusted — an id that no longer has a body closes the editor here.
+    return observeBodyFragment(doc, nodeId, setBody);
+  }, [editing, doc, nodeId]);
+
+  return {
+    body,
+    open: setBody,
+    close: React.useCallback(() => setBody(null), []),
+  };
 }
 
 /**
