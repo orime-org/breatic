@@ -41,7 +41,11 @@ import * as notificationService from "@server/modules/notification/notification.
 import * as studioService from "@server/modules/studio/studio.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as requestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
+import { buildRoleUpgradeRequestMail } from "@server/utils/notification-mail.js";
+import { decisionLink } from "@server/utils/decision-link.js";
+import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import { deferredRequestExpiry } from "@server/config/limits.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import {
@@ -61,6 +65,8 @@ interface RoleUpgradeRequestInput {
   projectId: string;
   projectName: string;
   message?: string | null;
+  /** The request's HTTP Origin, for building the link the email carries. */
+  origin?: string;
 }
 
 /** A filed request and the bell entry announcing it. */
@@ -89,7 +95,7 @@ export async function request(
   const expiresAt = deferredRequestExpiry();
   try {
     const filedRequest = await db.transaction<
-      FiledRequest | { refusal: "not_found" }
+      (FiledRequest & { shareToken: string }) | { refusal: "not_found" }
     >(async (tx) => {
       // Locks the project for the length of this transaction and refuses if it
       // is already gone. Without it the row commits after the delete cascade
@@ -132,10 +138,38 @@ export async function request(
         tx,
       });
       await requestsRepo.attachNotification(requestId, notification.id, tx);
-      return { requestId, notification };
+      return { requestId, notification, shareToken: filed.shareToken };
     });
     if ("refusal" in filedRequest) throw refusalError(filedRequest.refusal);
-    return filedRequest;
+
+    // Best-effort email — the bell entry above is the always-delivered path.
+    // Without this the owner has to be in the app that week to learn a decision
+    // is waiting, and the request just times out unanswered.
+    if (input.origin !== undefined && input.origin !== "") {
+      const origin = input.origin;
+      await sendBestEffortMail(
+        async () => {
+          // Resolve the recipient INSIDE the best-effort boundary: a DB read
+          // blip must not fail this request, which already committed.
+          const owner = await userRepo.getUserById(input.ownerUserId);
+          if (!owner) return null;
+          return buildRoleUpgradeRequestMail({
+            ownerEmail: owner.email,
+            requesterName: requester.name,
+            projectName: input.projectName,
+            requestedRole: "editor",
+            message: input.message ?? null,
+            decisionLink: decisionLink(origin, filedRequest.shareToken),
+          });
+        },
+        { userId: input.ownerUserId, subject: "role_upgrade_request" },
+      );
+    }
+
+    return {
+      requestId: filedRequest.requestId,
+      notification: filedRequest.notification,
+    };
   } catch (err) {
     if (isUniqueViolation(err)) {
       throw new ConflictError(t("server.error.conflict"));

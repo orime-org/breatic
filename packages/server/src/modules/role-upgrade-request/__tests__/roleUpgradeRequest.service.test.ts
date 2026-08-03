@@ -101,12 +101,24 @@ vi.mock("../../project/project.repo.js", () => ({
 vi.mock("@server/config/limits.js", () => ({
   deferredRequestExpiry: (): Date => new Date("2026-08-08T00:00:00.000Z"),
 }));
+// The owner's address for the best-effort email, and the transport itself. The
+// mail is the half of this flow that nothing else observes: the bell entry is
+// visible in the payload assertions, a mail that is never sent is visible
+// nowhere.
+vi.mock("@server/modules/auth/user.repo.js", () => ({
+  getUserById: vi.fn(),
+}));
+vi.mock("@server/infra/mailer.js", () => ({
+  sendMail: vi.fn(async () => ({ ok: true })),
+}));
 
 import * as notificationRepo from "../../notification/notification.repo.js";
 import * as notificationService from "../../notification/notification.service.js";
 import * as studioService from "../../studio/studio.service.js";
 import * as projectRepo from "../../project/project.repo.js";
 import * as requestsRepo from "../roleUpgradeRequests.repo.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
+import { sendMail } from "@server/infra/mailer.js";
 import { projectMembersRepo } from "@breatic/core";
 import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
@@ -128,6 +140,10 @@ beforeEach(() => {
     studioService.getPersonalStudioProfilesByUserIds,
   ).mockResolvedValue(new Map());
   vi.mocked(projectRepo.lockLiveProject).mockResolvedValue(true);
+  vi.mocked(userRepo.getUserById).mockResolvedValue({
+    id: OWNER,
+    email: "olivia@example.com",
+  } as Awaited<ReturnType<typeof userRepo.getUserById>>);
   vi.mocked(projectMembersRepo.getRole).mockImplementation(
     async (_projectId: string, userId: string) =>
       userId === OWNER ? "owner" : "viewer",
@@ -221,6 +237,67 @@ describe("request", () => {
         message: "Need to edit",
       }),
     );
+  });
+
+  it("emails the owner a link to the same request", async () => {
+    // The bell entry only reaches an owner who opens the app. This flow is the
+    // one of the five that had no email at all, and a builder with no caller
+    // looks exactly like a builder with one — so the assertion is on the
+    // transport, not on the template.
+    vi.mocked(
+      studioService.getPersonalStudioProfilesByUserIds,
+    ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
+    vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
+      id: RID,
+      shareToken: "t".repeat(64),
+      retiredNotificationIds: [],
+    });
+    vi.mocked(
+      notificationService.createRoleUpgradeRequest,
+    ).mockResolvedValueOnce(fakeNotification());
+
+    await roleUpgradeRequestService.request({
+      ownerUserId: OWNER,
+      requesterUserId: VIEWER,
+      projectId: PID,
+      projectName: "Demo",
+      message: "Need to edit",
+      origin: "https://app.test",
+    });
+
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    const mail = vi.mocked(sendMail).mock.calls[0]?.[0];
+    expect(mail?.to).toBe("olivia@example.com");
+    // The same token the bell row carries — one request, one link.
+    expect(mail?.html).toContain(
+      `https://app.test/decision?token=${"t".repeat(64)}`,
+    );
+    // The reason is the whole basis for the answer, so it travels with it.
+    expect(mail?.html).toContain("Need to edit");
+  });
+
+  it("skips the email when the caller had no Origin to build a link from", async () => {
+    vi.mocked(
+      studioService.getPersonalStudioProfilesByUserIds,
+    ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
+    vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
+      id: RID,
+      shareToken: "t".repeat(64),
+      retiredNotificationIds: [],
+    });
+    vi.mocked(
+      notificationService.createRoleUpgradeRequest,
+    ).mockResolvedValueOnce(fakeNotification());
+
+    await roleUpgradeRequestService.request({
+      ownerUserId: OWNER,
+      requesterUserId: VIEWER,
+      projectId: PID,
+      projectName: "Demo",
+    });
+
+    // A link to nowhere is worse than no email; the bell entry still landed.
+    expect(sendMail).not.toHaveBeenCalled();
   });
 
   it("links the bell entry back to the request", async () => {

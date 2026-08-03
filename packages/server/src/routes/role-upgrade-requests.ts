@@ -78,12 +78,15 @@ projectRoleUpgradeRequests.post(
       throw new NotFoundError("project has no active owner");
     }
 
+    // The service sends the best-effort email itself (it needs the owner + the
+    // request's token); the route only forwards the Origin for the link.
     const filed = await roleUpgradeRequestService.request({
       ownerUserId,
       requesterUserId: user.id,
       projectId,
       projectName: project.name,
       message: body.message ?? null,
+      origin: c.req.header("Origin") ?? "",
     });
 
     return c.json(
