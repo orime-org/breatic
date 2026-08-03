@@ -33,6 +33,8 @@
  * Returns a `SpaceRpcResponse` whose `id` echoes the request id so
  * the client can demultiplex concurrent in-flight RPCs.
  */
+import { randomUUID } from "node:crypto";
+
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 
@@ -246,12 +248,21 @@ async function restoreSpaceContentRows(
 
 /**
  * Create a new Space entry in `meta.spaces`. Caller role ≥ editor.
- * Returns `CONFLICT` if the spaceId already exists.
+ *
+ * **The id is minted here**, not supplied by the caller. When clients
+ * chose it, one could re-submit the id of a Space that had been deleted:
+ * the "is this id taken" check reads `meta.spaces`, and a deleted Space
+ * is no longer in it, so the check passed and the entry came back.
+ *
+ * The caller sends `claimToken` instead. It rides on the entry and comes
+ * back in the broadcast, which is how the machine that asked recognises
+ * the Space it asked for now that it does not know the id. Stored and
+ * echoed verbatim; never parsed.
  * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc the Space is added to.
  * @param caller - Authenticated caller's userId + role, gating the operation.
- * @param req - The `space:create` request carrying the new spaceId, type, and name.
- * @returns A success response echoing the created Space, or a `FORBIDDEN` / `CONFLICT` error.
+ * @param req - The `space:create` request carrying the Space type, name, and claim token.
+ * @returns A success response carrying the minted Space, or a `FORBIDDEN` / `CONFLICT` error.
  */
 async function handleCreate(
   ctx: SpaceRpcContext,
@@ -262,7 +273,8 @@ async function handleCreate(
   if (!requireAtLeast(caller.role, "editor")) {
     return err(req.id, "FORBIDDEN", `Role ${caller.role} cannot create Space`);
   }
-  const { spaceId, type, name } = req.payload;
+  const { type, name, claimToken } = req.payload;
+  const spaceId = randomUUID();
   // Seed the new Space's content doc BEFORE making it visible in meta — a
   // Space must never be visible before its content doc exists (the same
   // invariant lazy-seed + duplicate uphold). Idempotent (ON CONFLICT DO
@@ -279,6 +291,9 @@ async function handleCreate(
     let conflict = false;
     await conn.transact((doc: Y.Doc) => {
       const spaces = doc.getMap("spaces");
+      // Unreachable by any input now that the id is minted here — it would
+      // take a uuid v4 collision. Kept because it costs one line and the
+      // alternative is silently overwriting somebody's Space.
       if (spaces.has(spaceId)) {
         conflict = true;
         return;
@@ -290,6 +305,7 @@ async function handleCreate(
         order: spaces.size,
         createdAt: Date.now(),
         createdBy: caller.userId,
+        claimToken,
       });
     });
     if (conflict) {

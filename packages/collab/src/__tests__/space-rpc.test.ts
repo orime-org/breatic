@@ -153,6 +153,14 @@ beforeEach(() => {
   activityConsumeRestoreMock.mockResolvedValue(true);
 });
 
+/**
+ * A well-formed uuid v4, standing in for the token a client generates per
+ * click. The server stores it on the entry and echoes it in the broadcast;
+ * the machine that sent it recognises the Space it asked for that way,
+ * since it no longer chooses the id.
+ */
+const TOKEN = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+
 describe("handleSpaceRpc — role validation", () => {
   it("space:create refuses viewer role", async () => {
     const res = await handleSpaceRpc(
@@ -162,7 +170,7 @@ describe("handleSpaceRpc — role validation", () => {
       {
         id: "r1",
         type: "space:create",
-        payload: { spaceId: SID, type: "canvas", name: "Main" },
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
       },
     );
     expect(res.ok).toBe(false);
@@ -207,7 +215,7 @@ describe("handleSpaceRpc — role validation", () => {
 });
 
 describe("handleSpaceRpc — happy paths write PG activity rows", () => {
-  it("space:create writes meta.spaces + inserts a space:created activity row + broadcasts the signal", async () => {
+  it("space:create mints the id, writes meta.spaces + inserts a space:created activity row + broadcasts the signal", async () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
@@ -215,20 +223,23 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       {
         id: "r1",
         type: "space:create",
-        payload: { spaceId: SID, type: "canvas", name: "Main" },
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
       },
     );
     expect(res.ok).toBe(true);
-    expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(true);
+    // The caller learns the id from the reply — it did not choose one.
+    const newId = res.ok ? res.result?.spaceId : undefined;
+    expect(newId).toBeTruthy();
+    expect(fakeMetaDoc.doc.getMap("spaces").has(newId!)).toBe(true);
     expect(seedInitialStateMock).toHaveBeenCalledWith(
-      spaceContentDocName(PID, SID, "canvas"),
+      spaceContentDocName(PID, newId!, "canvas"),
       expect.any(Uint8Array),
     );
     expect(activityInsertMock).toHaveBeenCalledWith({
       projectId: PID,
       actorUserId: "u-1",
       type: "space:created",
-      spaceId: SID,
+      spaceId: newId,
       payload: { spaceName: "Main" },
     });
     // Live signal so connected members refetch the feed.
@@ -237,8 +248,10 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
     );
   });
 
-  it("space:create returns CONFLICT when spaceId already exists (no activity row)", async () => {
-    seedSpace(SID, {});
+  it("space:create puts the caller's claim token on the entry", async () => {
+    // How the requesting machine recognises the Space it asked for once
+    // the entry is broadcast: it no longer knows the id, so it watches for
+    // the token it generated. Only that machine has it.
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
@@ -246,12 +259,42 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       {
         id: "r1",
         type: "space:create",
-        payload: { spaceId: SID, type: "canvas", name: "Duplicate" },
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
       },
     );
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.code).toBe("CONFLICT");
-    expect(activityInsertMock).not.toHaveBeenCalled();
+    const newId = res.ok ? res.result?.spaceId : undefined;
+    const entry = fakeMetaDoc.doc
+      .getMap("spaces")
+      .get(newId!) as Y.Map<unknown>;
+    expect(entry.get("claimToken")).toBe(TOKEN);
+  });
+
+  it("space:create mints a different id on every call", async () => {
+    // The old CONFLICT-on-duplicate case is gone with the client-chosen
+    // id: nobody can submit an id at all, so the only way to collide is a
+    // uuid v4 collision. The handler still refuses to overwrite an
+    // existing entry — that guard costs one line and protects data — but
+    // it is not reachable by any input, so what is pinned here is the
+    // property that actually holds: two creates never land on one id.
+    const mk = async (name: string): Promise<string | undefined> => {
+      const res = await handleSpaceRpc(
+        { hocuspocus: makeHocuspocus() },
+        PID,
+        { userId: "u-1", role: "editor" },
+        {
+          id: "r",
+          type: "space:create",
+          payload: { type: "canvas", name, claimToken: TOKEN },
+        },
+      );
+      return res.ok ? res.result?.spaceId : undefined;
+    };
+    const first = await mk("One");
+    const second = await mk("Two");
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+    expect(first).not.toBe(second);
+    expect(fakeMetaDoc.doc.getMap("spaces").size).toBe(2);
   });
 
   it("activity insert failure does NOT fail the RPC (best-effort audit - the Yjs mutation already applied)", async () => {
@@ -263,11 +306,12 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       {
         id: "r1",
         type: "space:create",
-        payload: { spaceId: SID, type: "canvas", name: "Main" },
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
       },
     );
     expect(res.ok).toBe(true);
-    expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(true);
+    const newId = res.ok ? res.result?.spaceId : undefined;
+    expect(fakeMetaDoc.doc.getMap("spaces").has(newId!)).toBe(true);
   });
 
   it("space:delete removes the meta entry + inserts space:deleted with the snapshot payload + soft-deletes content rows", async () => {
