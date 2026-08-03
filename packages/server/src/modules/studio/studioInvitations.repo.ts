@@ -28,6 +28,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { db, studioInvitations, studios, users } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { PendingInvitationSummary, StudioRole } from "@breatic/shared";
+import { mintShareToken } from "@server/utils/share-token.js";
 
 /** Roles an invite may grant — admin is granted via transfer, never invite. */
 type InvitableRole = "maintainer" | "guest";
@@ -81,6 +82,7 @@ export async function createPending(input: {
       role: input.role,
       invitedBy: input.invitedBy,
       status: "pending",
+      shareToken: mintShareToken(),
       expiresAt: input.expiresAt,
     })
     .returning({ id: studioInvitations.id });

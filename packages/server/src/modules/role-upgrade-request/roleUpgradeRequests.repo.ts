@@ -31,6 +31,7 @@
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, roleUpgradeRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import { mintShareToken } from "@server/utils/share-token.js";
 
 /** Where a request sits in its lifecycle. */
 export type RoleUpgradeStatus =
@@ -150,6 +151,7 @@ export async function createPending(input: {
         requestedRole: input.requestedRole,
         message: input.message ?? null,
         status: "pending",
+        shareToken: mintShareToken(),
         expiresAt: input.expiresAt,
       })
       .returning({ id: roleUpgradeRequests.id });

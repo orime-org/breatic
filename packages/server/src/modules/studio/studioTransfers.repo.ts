@@ -36,6 +36,7 @@
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, studioTransfers } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import { mintShareToken } from "@server/utils/share-token.js";
 
 /** Where a transfer sits in its lifecycle. */
 export type StudioTransferStatus =
@@ -155,6 +156,7 @@ export async function createPending(input: {
         fromUserId: input.fromUserId,
         toUserId: input.toUserId,
         status: "pending",
+        shareToken: mintShareToken(),
         expiresAt: input.expiresAt,
       })
       .returning({ id: studioTransfers.id });

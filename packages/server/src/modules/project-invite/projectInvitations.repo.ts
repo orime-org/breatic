@@ -33,6 +33,7 @@ import type {
   InvitableProjectRole,
   PendingProjectInvitationSummary,
 } from "@breatic/shared";
+import { mintShareToken } from "@server/utils/share-token.js";
 
 /**
  * The membership-relevant fields of a just-accepted invite, returned by
@@ -83,6 +84,7 @@ export async function createPending(input: {
       role: input.role,
       invitedBy: input.invitedBy,
       status: "pending",
+      shareToken: mintShareToken(),
       expiresAt: input.expiresAt,
     })
     .returning({ id: projectInvitations.id });
