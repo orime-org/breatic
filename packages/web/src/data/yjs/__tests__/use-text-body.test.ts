@@ -21,7 +21,7 @@
  *   no longer in the document. Without this layer they never see another word.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import * as Y from 'yjs';
 import type { CanvasNodeFields } from '@breatic/shared';
@@ -29,7 +29,7 @@ import type { CanvasNodeFields } from '@breatic/shared';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { addNode, getTextBody, reseedTextBody } from '@web/data/yjs/canvas-space';
 import { useTextBody, useTextBodies } from '@web/data/yjs/use-text-body';
-import { newSeededBody, writePlainTextIntoBody } from '@web/data/yjs/text-body';
+import { writePlainTextIntoBody } from '@web/data/yjs/text-body';
 
 const PID = 'p1';
 const SID = 's1';
@@ -74,6 +74,37 @@ function dataMap(nodeId: string): Y.Map<unknown> {
 }
 
 /**
+ * Yjs's observer lists, which nothing public exposes.
+ *
+ * Reaching for these is deliberate. The only way to tell a clean teardown from
+ * a leak is to look at the observers; every outward-facing signal (what the
+ * hook returns, whether a later change is reflected) is frozen by React the
+ * moment the component unmounts, and so reports success either way.
+ */
+interface ObserverLists {
+  _eH: { l: ReadonlyArray<unknown> };
+  _dEH: { l: ReadonlyArray<unknown> };
+}
+
+/**
+ * How many shallow observers are attached.
+ * @param target - The shared type to inspect.
+ * @returns The observer count.
+ */
+function observerCount(target: unknown): number {
+  return (target as ObserverLists)._eH.l.length;
+}
+
+/**
+ * How many deep observers are attached.
+ * @param target - The shared type to inspect.
+ * @returns The deep-observer count.
+ */
+function deepObserverCount(target: unknown): number {
+  return (target as ObserverLists)._dEH.l.length;
+}
+
+/**
  * Render the hook for a node.
  * @param nodeId - The node whose body to subscribe to.
  * @returns The render result.
@@ -105,6 +136,21 @@ describe('useTextBody (#1774 section 9.1)', () => {
 
   it('returns the empty string for a node that does not exist', () => {
     expect(subscribe('nope').result.current).toBe('');
+  });
+
+  it('publishes on subscribe even for a node with no body at all', () => {
+    // The first publish used to be skipped in exactly this case: a missing
+    // body matched the starting value and read as "nothing changed", so a
+    // subscriber was told nothing at all in the one case it most needs told.
+    // Visible from outside through the multi-node hook, where a body-less node
+    // went from having no entry to having an empty one.
+    addNode(PID, SID, textNode('a'));
+    dataMap('a').delete('body');
+
+    const { result } = renderHook(() => useTextBodies(PID, SID, ['a']));
+
+    expect(result.current.has('a')).toBe(true);
+    expect(result.current.get('a')).toBe('');
   });
 
   it('updates when a collaborator types inside an existing paragraph', () => {
@@ -154,18 +200,30 @@ describe('useTextBody (#1774 section 9.1)', () => {
     expect(result.current).toBe('written after repair');
   });
 
-  it('stops updating after unmount, both layers', () => {
+  it('detaches both observers on unmount', () => {
+    // Asserted on the observers themselves, not on what the hook returns.
+    // After `unmount()` React never renders the hook again, so `result.current`
+    // is frozen whatever the observers do — an assertion on it passes just as
+    // happily with the cleanup deleted. A leaked deep observer is not
+    // cosmetic: every text node the user scrolls past would leave one attached
+    // to the module-cached document, each re-reading the whole body on every
+    // keystroke by anybody.
     addNode(PID, SID, textNode('n1'));
     const body = getTextBody(PID, SID, 'n1') as Y.XmlFragment;
+    const data = dataMap('n1');
+    const unobserve = vi.spyOn(data, 'unobserve');
+    const unobserveDeep = vi.spyOn(body, 'unobserveDeep');
 
-    const { result, unmount } = subscribe('n1');
+    const { unmount } = subscribe('n1');
+    expect(observerCount(data)).toBeGreaterThan(0);
+    expect(deepObserverCount(body)).toBeGreaterThan(0);
+
     unmount();
 
-    act(() => {
-      writePlainTextIntoBody(body, 'written after unmount');
-      dataMap('n1').set('body', newSeededBody());
-    });
-    expect(result.current).toBe('');
+    expect(unobserve).toHaveBeenCalled();
+    expect(unobserveDeep).toHaveBeenCalled();
+    expect(observerCount(data)).toBe(0);
+    expect(deepObserverCount(body)).toBe(0);
   });
 
   it('switches to the other node when the id changes', () => {
@@ -242,14 +300,22 @@ describe('useTextBody (#1774 section 9.1)', () => {
       expect(result.current.get('a')).toBe('still live');
     });
 
-    it('stops updating after unmount', () => {
+    it('detaches every subscription on unmount', () => {
+      // Same reason as the single-node case: after unmount the returned map is
+      // frozen, so only the observers themselves can tell a clean teardown
+      // from a leak.
       addNode(PID, SID, textNode('a'));
-      const { result, unmount } = renderHook(() => useTextBodies(PID, SID, ['a']));
+      addNode(PID, SID, textNode('b'));
+      const { unmount } = renderHook(() => useTextBodies(PID, SID, ['a', 'b']));
+      expect(observerCount(dataMap('a'))).toBeGreaterThan(0);
+      expect(observerCount(dataMap('b'))).toBeGreaterThan(0);
+
       unmount();
-      act(() => {
-        writePlainTextIntoBody(getTextBody(PID, SID, 'a') as Y.XmlFragment, 'after unmount');
-      });
-      expect(result.current.get('a')).toBe('');
+
+      expect(observerCount(dataMap('a'))).toBe(0);
+      expect(observerCount(dataMap('b'))).toBe(0);
+      expect(deepObserverCount(getTextBody(PID, SID, 'a') as Y.XmlFragment)).toBe(0);
+      expect(deepObserverCount(getTextBody(PID, SID, 'b') as Y.XmlFragment)).toBe(0);
     });
   });
 });

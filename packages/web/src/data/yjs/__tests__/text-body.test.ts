@@ -24,8 +24,8 @@ import { describe, it, expect, vi } from 'vitest';
 import * as Y from 'yjs';
 
 import {
+  bodyFromText,
   bodyToPlainText,
-  newSeededBody,
   writePlainTextIntoBody,
 } from '@web/data/yjs/text-body';
 
@@ -91,14 +91,14 @@ describe('text body conversion (#1774 section 9.2)', () => {
     });
   });
 
-  describe('a freshly built body', () => {
+  describe('a freshly built empty body: bodyFromText with no text', () => {
     it('holds one empty block once it is attached to a document', () => {
       // Built detached and attached afterwards, which is the order node
       // creation uses: the data map is populated before the node goes into the
       // document. Yjs calls that preliminary content, and content that failed
       // to survive attachment would leave every new text node with a body the
       // editor's schema rejects.
-      const body = newSeededBody();
+      const body = bodyFromText('');
       const data = new Y.Doc().getMap<unknown>('data');
       data.set('body', body);
 
@@ -109,7 +109,7 @@ describe('text body conversion (#1774 section 9.2)', () => {
     });
 
     it('cannot be read from before it is attached, which is why it never guards on a read', () => {
-      const body = newSeededBody();
+      const body = bodyFromText('');
       // The two disagree: `length` answers from the preliminary array while
       // `get` goes through the integrated item list, which does not exist yet.
       // Anything that decided "is this body already seeded?" by reading a
@@ -123,7 +123,7 @@ describe('text body conversion (#1774 section 9.2)', () => {
     it('writes without reading, so building one emits no Yjs warning', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-      newSeededBody();
+      bodyFromText('');
       expect(warn).not.toHaveBeenCalled();
       expect(error).not.toHaveBeenCalled();
       warn.mockRestore();

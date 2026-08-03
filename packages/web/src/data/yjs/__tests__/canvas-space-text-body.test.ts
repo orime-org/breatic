@@ -32,6 +32,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as Y from 'yjs';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import type { CanvasNodeFields, NodeType } from '@breatic/shared';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
@@ -206,14 +207,26 @@ describe('text node bodies in the canvas document (#1774)', () => {
     });
 
     it('keeps typing out of the canvas undo stack', () => {
+      // Written with the origin REAL typing carries. The editor's binding
+      // writes back inside `doc.transact(..., ySyncPluginKey)` (y-tiptap's
+      // `_prosemirrorChanged`), and that is the origin the canvas undo manager
+      // has to keep ignoring — asserting with a bare write instead would prove
+      // only that an origin nobody uses is untracked, and would stay green if
+      // somebody added the editor's origin to `trackedOrigins`. One Cmd+Z on
+      // the canvas would then delete a paragraph, possibly a collaborator's.
       const undoManager = createCanvasUndoManager(doc());
       runCanvasUndoBatch(PID, SID, () => {
         addNode(PID, SID, sampleFields('text'));
       });
       const before = undoManager.undoStack.length;
 
-      writePlainTextIntoBody(getTextBody(PID, SID, 'n1') as Y.XmlFragment, 'typed by hand');
+      const body = getTextBody(PID, SID, 'n1') as Y.XmlFragment;
+      doc().transact(() => {
+        writePlainTextIntoBody(body, 'typed by hand');
+      }, ySyncPluginKey);
+
       expect(undoManager.undoStack.length).toBe(before);
+      expect(bodyToPlainText(body)).toBe('typed by hand');
     });
   });
 

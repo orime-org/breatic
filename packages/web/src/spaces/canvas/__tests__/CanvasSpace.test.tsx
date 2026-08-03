@@ -351,6 +351,67 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(document.activeElement).toBe(shell);
   });
 
+  // The other half of that distinction, and it belongs here for the same
+  // reason: the difference between the two exits is whether the node shell gets
+  // focus, and only a real ReactFlow renders a shell to get it. Asserted in the
+  // bare component test, both branches take focus nowhere and the assertion
+  // passes whether the distinction exists or not.
+  it('leaves focus alone when the editor closes because focus went elsewhere', async () => {
+    _resetForTests();
+    addNode('p', 's', {
+      id: 'n1',
+      type: 'text',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'N',
+        createdAt: 1,
+        createdBy: 'u',
+        locked: false,
+        operationLocks: [],
+        state: 'idle',
+        attachments: [],
+      },
+    });
+    writePlainTextIntoBody(
+      getTextBody('p', 's', 'n1') as Y.XmlFragment,
+      'written',
+    );
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'text',
+            position: { x: 0, y: 0 },
+            data: { kind: 'text', status: 'idle', name: 'N' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const shell = document.querySelector('.react-flow__node') as HTMLElement;
+
+    fireEvent.keyDown(shell, { key: 'Enter' });
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+
+    // Somewhere else on the page the user clicked into.
+    const elsewhere = document.createElement('button');
+    document.body.appendChild(elsewhere);
+    elsewhere.focus();
+    fireEvent.blur(document.querySelector('.ProseMirror') as HTMLElement, {
+      relatedTarget: elsewhere,
+    });
+
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).toBeNull(),
+    );
+    expect(document.activeElement).toBe(elsewhere);
+    expect(document.activeElement).not.toBe(shell);
+    elsewhere.remove();
+  });
+
   // The empty case, which is the one that matters most: a brand-new text node
   // renders a placeholder rather than a body, and an entry point that hung off
   // the body would be missing from exactly the nodes with nothing in them yet.

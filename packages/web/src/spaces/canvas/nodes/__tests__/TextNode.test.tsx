@@ -415,21 +415,30 @@ describe('TextNode', () => {
       expect(editor()).not.toBeNull();
     });
 
-    it('leaves focus where the user put it when they click away', () => {
-      // The Escape path deliberately pulls focus back to the node. Doing that
-      // here would take it off whatever they just clicked.
+    it('stays open when the whole window loses focus', () => {
+      // Switching windows or tabs is not leaving the node — come back and the
+      // caret should still be where it was, not a node that closed itself
+      // while nobody was looking. `relatedTarget` cannot tell this apart from
+      // a click on something unfocusable, so the check is whether the document
+      // still has focus at all.
       seedNode('x');
       renderNode();
       enterByDoubleClick();
-      const elsewhere = document.createElement('button');
-      document.body.appendChild(elsewhere);
-      elsewhere.focus();
+      const hasFocus = vi
+        .spyOn(document, 'hasFocus')
+        .mockReturnValue(false);
 
-      fireEvent.blur(editor() as HTMLElement, { relatedTarget: elsewhere });
+      fireEvent.blur(editor() as HTMLElement, { relatedTarget: null });
 
-      expect(document.activeElement).toBe(elsewhere);
-      elsewhere.remove();
+      expect(editor()).not.toBeNull();
+      hasFocus.mockRestore();
     });
+
+    // Where focus ENDS UP after either exit is asserted in CanvasSpace.test,
+    // the one place that mounts a real ReactFlow: the node shell it hands
+    // focus back to is ReactFlow's own element, and nothing rendered here
+    // emits it. Asserted from this file, both exits move focus nowhere and the
+    // assertion would pass whether the distinction existed or not.
 
     it('closes when the node is locked mid-edit, and keeps what was written', () => {
       seedNode('typed so far');
@@ -485,6 +494,28 @@ describe('TextNode', () => {
         stripBody();
       });
       expect(editor()).toBeNull();
+    });
+
+    it('closes when the node fails mid-edit, and does not spring back when it recovers', () => {
+      // Asserted across the recovery, because that is the only place the bug
+      // shows. While the status is `error` the renderer gives the content slot
+      // to the error message, so the editor is off screen either way and a
+      // check there proves nothing — the same shape of empty test this round
+      // is fixing elsewhere. If edit state was never cleared it is still set
+      // when the node goes back to idle, and the editor reappears over
+      // whatever just arrived, without anybody asking for it.
+      seedNode('typed so far');
+      const { rerender } = renderNode();
+      enterByDoubleClick();
+      expect(editor()).not.toBeNull();
+
+      rerender(tree({ view: { status: 'error', errorMessage: 'upload failed' } }));
+      expect(editor()).toBeNull();
+
+      rerender(tree({ view: { status: 'idle' } }));
+
+      expect(editor()).toBeNull();
+      expect(screen.getByTestId('text-node-body')).toHaveTextContent('typed so far');
     });
 
     it('closes when a task starts writing the node mid-edit', () => {
