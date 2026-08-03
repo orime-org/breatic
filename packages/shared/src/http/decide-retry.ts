@@ -78,13 +78,19 @@ const DELAY_SECONDS = String.raw`\d+`;
  * IMF-fixdate, the second form and the one `Date.prototype.toUTCString`
  * emits: `Thu, 30 Jul 2026 12:00:04 GMT`.
  *
- * The shape is checked before parsing because `Date.parse` is far looser than
- * the spec requires — ECMAScript only mandates ISO 8601 and leaves everything
- * else implementation-defined, so V8 guesses. Measured on Node 24:
- * `Date.parse("Thu, 30 Jul 2026 12:00:05 UTC")` and the same string with a
- * lower-case `gmt` are both accepted and land on the instant a legal header
- * would have named — so without this gate we would honour a wait the server
- * never legally expressed.
+ * What this shape is FOR: it defines the unit that may be repeated, so the
+ * back-reference below can recognise the same value sent twice. That is its
+ * whole job here.
+ *
+ * It is deliberately NOT the thing that rejects a malformed date, and an
+ * earlier version of this comment claimed otherwise. Measured: loosen this to
+ * `[A-Za-z]{3}, [^,]+`, or drop the shape check entirely, and every one of the
+ * twenty inputs the tests cover still parses to the same answer — including
+ * `…12:00:05 UTC` and a lower-case `gmt`, which `Date.parse` accepts. What
+ * refuses those is `datesBackToItself`: `toUTCString` always re-emits `GMT`,
+ * so neither string survives the round trip. Keeping the strict form here
+ * costs nothing and states the format honestly, but it is not load-bearing
+ * for validity — writing that it was sent me looking in the wrong place.
  */
 const IMF_FIXDATE = String.raw`[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT`;
 

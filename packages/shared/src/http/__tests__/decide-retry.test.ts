@@ -353,10 +353,16 @@ describe("parseRetryAfter — the same rule for both forms the header allows", (
     ["a non-GMT zone", "Thu, 30 Jul 2026 12:00:05 UTC"],
     ["a lower-case zone", "Thu, 30 Jul 2026 12:00:05 gmt"],
   ])("refuses an HTTP-date with %s", (_why, raw) => {
-    // These are the shape gate's whole job, and they are chosen because
-    // `Date.parse` ACCEPTS both — measured: each yields exactly NOW + 5s. So
-    // deleting the gate turns each of these into a believed 5000, and this
-    // is the assertion that catches it. RFC 9110 §5.6.7 admits one form.
+    // Both are accepted by `Date.parse` — measured, each yields exactly
+    // NOW + 5s — and both must still be refused, because RFC 9110 §5.6.7
+    // admits one form and a wait we invented from an illegal string is a wait
+    // nobody sent.
+    //
+    // What refuses them is the round trip in `datesBackToItself`, not the
+    // shape regex: `toUTCString` always re-emits `GMT`, so neither string can
+    // equal what it parsed to. This comment used to credit the shape gate,
+    // which is why it is worth naming — loosening that regex leaves this test
+    // green, and someone chasing the wrong line would have found nothing.
     expect(parseRetryAfter(raw, NOW)).toBeNull();
   });
 
