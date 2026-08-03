@@ -11,17 +11,18 @@
  * was three). One transport gets one answer, compiled in, and two places
  * cannot disagree about it again.
  *
- * The rule for what belongs here: this layer asks the caller for ONE thing —
- * whether replaying costs anything — and answers everything else for itself,
- * so every figure it needs is in this file. There are no parameters left for
- * a figure to become.
+ * The rule for what belongs here: a figure this layer can answer for itself
+ * stays here, and a figure only the caller can know is a parameter.
  *
- * That includes how long one delivery may take. Every call site that ever set
- * it read it from config or from a literal, and none of them knew anything
- * this layer does not — which is exactly why it belongs here: writing the same
- * timeout at every call site is the duplication this layer exists to remove.
- * Anything about reading a body is neither a figure nor a parameter here — it
- * is not this layer's business at all.
+ * "How many times may this be replayed" is the first kind. "How long may one
+ * delivery take" is the second, and getting that wrong cost several days:
+ * every call site sets it from something this layer cannot see — the model in
+ * a vendor call, the size of the file being uploaded — so a fixed figure here
+ * can only be this layer overruling the caller. What lives here is the
+ * DEFAULT, for callers with no opinion.
+ *
+ * Anything about reading a response body is neither a figure nor a parameter
+ * here — it is not this layer's business at all.
  */
 
 /**
@@ -71,40 +72,30 @@ export const MAX_RETRY_AFTER_MS = 60_000;
 
 
 /**
- * How long ONE delivery may take in total — sending the request included.
+ * The deadline for one delivery when the caller names none.
  *
- * Named for what it does: the only lever here is an abort signal, and aborting
- * ends the whole operation, upload and wait alike. One figure, both phases.
+ * A DEFAULT, not a rule. How long a call may take is the caller's knowledge,
+ * never this layer's: a vendor's timeout is set per model, an upload's is
+ * computed from the file size, an internal endpoint should answer in a second.
+ * This layer cannot derive any of that and must not try — it takes
+ * `timeoutMs` and honours it. This figure only covers the callers that have no
+ * opinion.
  *
- * 300 seconds is the platform's own answer — the HTTP client underneath
- * applies exactly this figure to waiting for a response and to the gap between
- * body chunks. Taking the same number means no request that works today stops
- * working.
+ * Why a default has to exist at all: two stretches of a request can hang with
+ * nobody watching — sending the body, and waiting for the answer. Connecting
+ * is the operating system's; reading the response body is the caller's by an
+ * earlier decision. Measured with no bound of our own, both hang indefinitely:
+ * a fetch was still pending after 90 seconds against a server that accepted
+ * the socket and then went quiet.
  *
- * It replaced ten seconds, which was ours rather than anyone's, and which cut
- * an 8 MiB upload off mid-transfer three times without it ever completing
- * once — measured against a healthy server on an ordinary uplink.
+ * Why 300 seconds: it is the platform's own answer, applied by the HTTP client
+ * underneath both to waiting for a response and to the gap between body
+ * chunks. Anyone who does not think about this gets what they already had.
  *
- * SETTLED 2026-08-03, and settled means settled. The reasoning, in full, so
- * that nobody has to reopen it:
- *
- *   - Two stretches of a request can hang with nobody watching: sending the
- *     body, and waiting for the answer. (Connecting is the operating system's;
- *     reading the body is the caller's by an earlier decision.) Measured with
- *     no bound of our own, both hang indefinitely — a fetch was still pending
- *     after 90 seconds against a server that accepted the socket and went
- *     quiet.
- *   - Those two stretches want different answers. "How long should sending
- *     take" is size divided by bandwidth and has no single answer; "how long
- *     until a silent server counts as dead" does.
- *   - One abort signal is all this API offers, in Node and in a browser alike,
- *     and it ends the whole operation. So one figure has to cover both, and
- *     the only defensible one is the platform's.
- *
- * There is no test driving a real delivery to this deadline: three of them
- * would be a fifteen-minute suite, and faking the clock to avoid that broke
- * the real socket underneath (measured: the request never left). What guards
- * the figure instead is real-fetch.test.ts's upload case, which takes ~16
- * seconds of real time and fails the moment this is shortened past it.
+ * SETTLED 2026-08-03. The figure it replaced was ten seconds, which was ours
+ * rather than anyone's, and which cut an 8 MiB upload off mid-transfer three
+ * times without it ever completing once — measured against a healthy server on
+ * an ordinary uplink. That is the shape of the mistake to avoid repeating:
+ * inventing a number on the caller's behalf.
  */
-export const DELIVERY_TIMEOUT_MS = 300_000;
+export const DEFAULT_TIMEOUT_MS = 300_000;

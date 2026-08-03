@@ -25,6 +25,7 @@ import type { AddressInfo } from "node:net";
 import { describe, it, expect, afterEach } from "vitest";
 
 import { httpRequest, HttpRetryError } from "@shared/http/request.js";
+import { DEFAULT_TIMEOUT_MS } from "@shared/http/constants.js";
 
 /** How each request to the stub server should be answered, in order. */
 type Reply =
@@ -38,6 +39,12 @@ afterEach(async () => {
   if (running !== null) {
     const server = running;
     running = null;
+    // Force the sockets shut before closing. One case deliberately leaves a
+    // request in flight — it is asserting that the default deadline does NOT
+    // end it early — and `close` alone waits for that connection, which means
+    // waiting out the whole default. Nothing else is affected: by the time a
+    // finished test gets here, its connections are already gone.
+    server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
@@ -319,6 +326,48 @@ describe("item 2 — decide whether a replay is warranted", () => {
     expect(stub.hits()).toBe(1);
     expect(out.status).toBe(503);
   });
+});
+
+describe("how long one delivery may take", () => {
+  it("uses the deadline the caller gave", async () => {
+    // The caller knows things this layer cannot: that this vendor is slow,
+    // that this file is 2 GB. Measured against a server that accepts the
+    // socket and answers nothing, a 500ms deadline must end the call in well
+    // under the default.
+    const stub = await stubServer([{ kind: "silent" }]);
+    const started = Date.now();
+
+    const thrown = await httpRequest(
+      stub.url,
+      {},
+      { replaySafe: false, timeoutMs: 500 },
+    ).catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(stub.hits()).toBe(1);
+  }, 30_000);
+
+  it("falls back to the default when the caller gives none", async () => {
+    // The guard against the default being quietly shortened: a call with no
+    // deadline of its own is still in flight after a second and a half.
+    // Anything short enough to end here would be this layer deciding for the
+    // caller again.
+    expect(DEFAULT_TIMEOUT_MS).toBe(300_000);
+
+    const stub = await stubServer([{ kind: "silent" }]);
+    let settled = false;
+    void httpRequest(stub.url, {}, { replaySafe: false })
+      .catch(() => undefined)
+      .then(() => {
+        settled = true;
+      });
+
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+
+    expect(settled).toBe(false);
+    expect(stub.hits()).toBe(1);
+  }, 30_000);
 });
 
 describe("item 3 — wait as long as the server said", () => {

@@ -4,11 +4,18 @@
 /**
  * One HTTP request, replayed when a replay is warranted.
  *
- * The whole of it: the caller says where to connect and what to send, plus the
- * one fact this layer cannot work out for itself — whether sending the same
- * request twice costs anything. Everything after that is this layer's own
- * business. Network trouble is handled here. If it cannot be handled, the
- * caller is told what went wrong. If it can, the caller gets the response.
+ * The whole of it: the caller says where to connect, what to send, and the two
+ * things this layer cannot work out for itself — whether sending the same
+ * request twice costs anything, and how long one delivery may take. Everything
+ * after that is this layer's own business. Network trouble is handled here. If
+ * it cannot be handled, the caller is told what went wrong. If it can, the
+ * caller gets the response.
+ *
+ * The test for what is a parameter and what is not: could this layer work it
+ * out from a url and some bytes? Replay cost, no — only the caller knows the
+ * endpoint bills. Timeout, no — it comes from the model being called or the
+ * size of the file being sent. Retry count and backoff, yes, so they are
+ * compiled in.
  *
  * Every other knob is gone, and each removal took a pile of machinery with it:
  *
@@ -29,9 +36,8 @@
  *     the whole thing is item 4 rather than the caller: three deliveries and
  *     it is over, which is why an unbounded transport could not have made this
  *     trade and this one can.
- *   - No injected wait, no label, no timeout argument. The first was a test
- *     seam on a production surface; the others were things this layer can
- *     answer for itself.
+ *   - No injected wait and no label. The first was a test seam on a production
+ *     surface; the second was something this layer can answer for itself.
  *
  * It does not read the body — how long, how big and how to stop are the
  * caller's, and the client underneath already times a stalled read (measured:
@@ -41,7 +47,7 @@
  * the answer, and a caller that wants to branch reads the status it has.
  */
 
-import { DELIVERY_TIMEOUT_MS } from "@shared/http/constants.js";
+import { DEFAULT_TIMEOUT_MS } from "@shared/http/constants.js";
 import { decideRetry, parseRetryAfter } from "@shared/http/decide-retry.js";
 import { redactUrl } from "@shared/http/redact-url.js";
 
@@ -85,7 +91,7 @@ export class HttpRetryError extends Error {
   }
 }
 
-/** The one thing the caller must state and this layer cannot work out. */
+/** What only the caller can know, and this layer must therefore be told. */
 export interface HttpRequestOptions {
   /**
    * Delivering this exact request again produces no additional side effects.
@@ -96,6 +102,22 @@ export interface HttpRequestOptions {
    * inverts its meaning and pays for it twice.
    */
   replaySafe: boolean;
+
+  /**
+   * How long ONE delivery may take, in milliseconds. Defaults to
+   * {@link DEFAULT_TIMEOUT_MS}.
+   *
+   * The caller's, because only the caller can work it out: a vendor timeout
+   * comes from the model being called, an upload's from the size of the file.
+   * This layer sees a url, some bytes and no context, so any figure it chose
+   * would be overruling somebody who knows better. It was briefly not a
+   * parameter, and the fixed figure that replaced it made a 2 GB upload
+   * impossible rather than slow.
+   *
+   * It bounds the whole delivery, sending included, because the only lever
+   * this API offers is an abort signal and aborting ends the whole operation.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -250,6 +272,8 @@ export async function httpRequest(
   const target = acceptableTarget(url);
   const safeUrl = redactUrl(target);
   const bodyReplayable = bodyCanBeResent(init.body);
+  // The caller's figure when it gave one; ours only when it did not.
+  const deadlineMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   // Unbounded by design: `decideRetry` owns the budget and refuses past
   // MAX_RETRIES, so the exit is the predicate rather than a second counter
@@ -263,7 +287,7 @@ export async function httpRequest(
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(new Error(`http request to ${safeUrl} timed out`)),
-      DELIVERY_TIMEOUT_MS,
+      deadlineMs,
     );
     let response: Response | null = null;
     let failure: unknown = null;
