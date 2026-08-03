@@ -124,28 +124,28 @@ describe("every request table carries a share token", () => {
 describe("a token names at most one request", () => {
   it("the same token cannot be inserted twice into one table", async () => {
     const tag = `st-dup-${Date.now()}`;
-    const [{ id: inviterId }] = await sql<{ id: string }[]>`
+    const [inviterIdRow] = await sql<{ id: string }[]>`
       INSERT INTO users (email, email_verified)
       VALUES (${`${tag}-a@example.com`}, true) RETURNING id
     `;
-    const [{ id: firstInvitee }] = await sql<{ id: string }[]>`
+    const [firstInviteeRow] = await sql<{ id: string }[]>`
       INSERT INTO users (email, email_verified)
       VALUES (${`${tag}-b@example.com`}, true) RETURNING id
     `;
-    const [{ id: secondInvitee }] = await sql<{ id: string }[]>`
+    const [secondInviteeRow] = await sql<{ id: string }[]>`
       INSERT INTO users (email, email_verified)
       VALUES (${`${tag}-c@example.com`}, true) RETURNING id
     `;
-    const [{ id: studioId }] = await sql<{ id: string }[]>`
+    const [studioIdRow] = await sql<{ id: string }[]>`
       INSERT INTO studios (created_by_user_id, slug, type, name)
-      VALUES (${inviterId}, ${`${tag}-studio`}, 'team', ${tag}) RETURNING id
+      VALUES (${inviterIdRow!.id}, ${`${tag}-studio`}, 'team', ${tag}) RETURNING id
     `;
 
     const token = "a".repeat(64);
     await sql`
       INSERT INTO studio_invitations
         (studio_id, invited_user_id, role, invited_by, status, expires_at, share_token)
-      VALUES (${studioId}, ${firstInvitee}, 'guest', ${inviterId}, 'pending',
+      VALUES (${studioIdRow!.id}, ${firstInviteeRow!.id}, 'guest', ${inviterIdRow!.id}, 'pending',
               now() + interval '7 days', ${token})
     `;
 
@@ -153,7 +153,7 @@ describe("a token names at most one request", () => {
       sql`
         INSERT INTO studio_invitations
           (studio_id, invited_user_id, role, invited_by, status, expires_at, share_token)
-        VALUES (${studioId}, ${secondInvitee}, 'guest', ${inviterId}, 'pending',
+        VALUES (${studioIdRow!.id}, ${secondInviteeRow!.id}, 'guest', ${inviterIdRow!.id}, 'pending',
                 now() + interval '7 days', ${token})
       `,
     ).rejects.toThrow(/duplicate key|unique/i);

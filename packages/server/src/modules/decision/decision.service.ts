@@ -32,7 +32,20 @@ import {
   projectMembersRepo,
 } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
-import type { DecisionKind, DecisionState, DecisionView } from "@breatic/shared";
+import type {
+  DecisionAction,
+  DecisionKind,
+  DecisionResult,
+  DecisionState,
+  DecisionView,
+} from "@breatic/shared";
+import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
+import { t } from "@breatic/shared";
+import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
+import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
+import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
+import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
+import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as decisionRepo from "@server/modules/decision/decision.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
@@ -308,4 +321,130 @@ async function isAlreadyIn(
       ? await studioMembersRepo.getRole(container.id, userId)
       : await projectMembersRepo.getRole(container.id, userId);
   return role !== null;
+}
+
+/**
+ * The five flows' own settle functions, behind one shape.
+ *
+ * Each already knows how to do its own write — adding a member, swapping an
+ * owner, rewriting a role — and each already re-checks its own preconditions
+ * inside its transaction. Nothing is reimplemented here; this only picks.
+ * @param kind - Which flow.
+ * @param requestId - The request row.
+ * @param deciderUserId - Whoever is answering.
+ * @param action - Which way.
+ * @returns Nothing; the flow's own service performs the write.
+ * @throws {NotFoundError | ForbiddenError | ConflictError} whatever the
+ *   underlying flow throws when it refuses.
+ */
+async function settle(
+  kind: DecisionKind,
+  requestId: string,
+  deciderUserId: string,
+  action: DecisionAction,
+): Promise<void> {
+  const confirming = action === "confirm";
+  switch (kind) {
+    case "studio_invite":
+      await (confirming
+        ? studioInviteService.confirmInvite(requestId, deciderUserId)
+        : studioInviteService.declineInvite(requestId, deciderUserId));
+      return;
+    case "project_invite":
+      await (confirming
+        ? projectInviteService.confirmInvite(requestId, deciderUserId)
+        : projectInviteService.declineInvite(requestId, deciderUserId));
+      return;
+    case "role_upgrade":
+      await (confirming
+        ? roleUpgradeService.approve({ requestId, ownerUserId: deciderUserId })
+        : roleUpgradeService.reject({ requestId, ownerUserId: deciderUserId }));
+      return;
+    case "project_transfer":
+      await (confirming
+        ? projectTransferService.confirmProjectTransfer(requestId, deciderUserId)
+        : projectTransferService.declineProjectTransfer(requestId, deciderUserId));
+      return;
+    case "studio_transfer":
+      await (confirming
+        ? studioTransferService.confirmTransfer(requestId, deciderUserId)
+        : studioTransferService.declineTransfer(requestId, deciderUserId));
+      return;
+  }
+}
+
+/**
+ * Where to send someone who just accepted.
+ *
+ * The paths follow the existing URL spec rather than anything invented here: a
+ * project is `/project/{slug}-{id}` and a studio is `/studio/{slug}`. Declining
+ * returns null — you stay on the page that tells you what you just did.
+ * @param container - Which studio or project was accepted into.
+ * @returns The path, or null when the container cannot be named any more.
+ */
+async function redirectFor(
+  container: RequestDetail["container"],
+): Promise<string | null> {
+  if (container.kind === "studio") {
+    const found = await studioRepo.getIdentitiesByStudioIds([container.id]);
+    const slug = found.get(container.id)?.slug;
+    return slug === undefined ? null : `/studio/${slug}`;
+  }
+  const found = await projectRepo.getIdentitiesByProjectIds([container.id]);
+  const slug = found.get(container.id)?.slug;
+  return slug === undefined ? null : `/project/${slug}-${container.id}`;
+}
+
+/**
+ * Answers a request through its share token.
+ *
+ * The gate is here and the write is not: whether this request can still be
+ * answered, and whether this person is the one being asked, used to be five
+ * separate implementations. What happens on a yes stays with the flow that
+ * owns it, including its own transactional re-check — this refusing early is a
+ * courtesy to the caller, not the thing keeping the data honest.
+ * @param token - The token from the decision link.
+ * @param viewerUserId - Who is answering.
+ * @param action - Confirm or decline.
+ * @returns The state it settled into, and where to go next.
+ * @throws {NotFoundError} when no request answers to that token.
+ * @throws {ForbiddenError} when the viewer is not the one being asked.
+ * @throws {ConflictError} when the request is no longer answerable.
+ */
+export async function respond(
+  token: string,
+  viewerUserId: string,
+  action: DecisionAction,
+): Promise<DecisionResult> {
+  const found = await decisionRepo.resolveByToken(token);
+  if (!found) throw new NotFoundError(t("server.error.not_found"));
+
+  const detail = await readDetail(found.kind, found.id);
+  if (!detail) throw new NotFoundError(t("server.error.not_found"));
+
+  if (detail.recipientUserId !== viewerUserId) {
+    throw new ForbiddenError(t("server.error.forbidden"));
+  }
+
+  const recipientAlreadyIn = await isAlreadyIn(
+    detail.container,
+    detail.recipientUserId,
+  );
+  const state = decideState({
+    kind: found.kind,
+    status: found.status,
+    deleted: found.deleted,
+    expiresAt: found.expiresAt,
+    recipientAlreadyIn,
+  });
+  if (state !== "answerable") {
+    throw new ConflictError(t("server.error.conflict"));
+  }
+
+  await settle(found.kind, found.id, viewerUserId, action);
+
+  return {
+    state: action === "confirm" ? "accepted" : "declined",
+    redirectTo: action === "confirm" ? await redirectFor(detail.container) : null,
+  };
 }
