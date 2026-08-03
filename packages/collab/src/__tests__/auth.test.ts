@@ -510,7 +510,7 @@ describe("createAuthHook", () => {
     // connection (hocuspocus-server messageYjsUpdate / syncStep2 handlers).
     // The prior bug returned `{ connection: { readOnly } }`, which only
     // populated `context` — a value Hocuspocus never reads — so viewers
-    // could drag canvas nodes + tamper meta.projectMeta via raw Yjs.
+    // could drag canvas nodes around via raw Yjs.
     expect(connectionConfig.readOnly).toBe(true);
   });
 

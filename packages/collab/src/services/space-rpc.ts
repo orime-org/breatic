@@ -12,10 +12,11 @@
  * Each handler:
  *
  *   1. Validates the caller's role.
- *   2. Opens a privileged DirectConnection to the project's meta doc
- *      with `context.user.id = 'system'` so `beforeHandleMessage`
- *      lets the write through (the client-facing gate refuses
- *      anything coming from a real user id).
+ *   2. Opens a DirectConnection to the project's meta doc. A direct
+ *      connection is not a client connection: it never carries the
+ *      read-only flag that every client's connection to this doc does,
+ *      which is what makes these handlers the only writers. The
+ *      `context.user.id = 'system'` marker rides along for logging.
  *   3. Performs the meta-doc mutation (set / delete a `spaces` entry)
  *      in a single Y transaction, then appends the matching
  *      `project_activities` PG row + broadcasts the `activity:new`

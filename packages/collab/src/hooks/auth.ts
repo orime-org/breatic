@@ -89,7 +89,7 @@ function readCookie(header: string | undefined, name: string): string | null {
 /**
  * Resolved user context returned to Hocuspocus. The return value is
  * merged into the connection `context` (read downstream via
- * `context.user` by onStateless / beforeHandleMessage / awareness).
+ * `context.user` by onStateless / awareness).
  *
  * Read-only is NOT carried here: it is applied by mutating the passed-in
  * `connectionConfig.readOnly` (see the hook body), because Hocuspocus
@@ -318,12 +318,11 @@ export function createAuthHook({
       // only, and Hocuspocus never reads `context` for read-only
       // enforcement. Returning `{ connection: { readOnly } }` (the prior
       // bug) left every viewer connection writable — viewers could drag
-      // canvas nodes and tamper meta.projectMeta (name / description)
-      // directly via raw Yjs, bypassing the stateless-RPC + requireRole
-      // server path entirely.
-      // A connection is read-only when EITHER the viewer role forbids
-      // writes OR the document is already at its connection cap — in the
-      // latter case we degrade the extra connection to read-only rather
+      // canvas nodes around, bypassing the server path entirely.
+      // A connection is read-only when the viewer role forbids writes,
+      // OR the document is already at its connection cap, OR it is the
+      // meta doc (no client writes that one, see below) — in the cap
+      // case we degrade the extra connection to read-only rather
       // than rejecting it (mirrors Figma / Google Docs "the file is full
       // → you can view but not edit").
       //
