@@ -18,7 +18,6 @@ import {
   isNodeLocked,
   nodeExists,
   readCanvasGraph,
-  readTextBodies,
   readNodeLeaseGen,
   removeEdge,
   removeNodeFocusImage,
@@ -211,9 +210,11 @@ function GeneratePanelBody({
   // collaborator edits the node, so building a task / param write off it would
   // submit deleted references or clobber a concurrent edit.
   // A referenced text node's body is a shared fragment the node view does not
-  // carry (#1774), so the panel follows the ones it can reference. Without
-  // this the rail shows blank previews and — worse — an execute sends whatever
-  // the node said when the panel opened, spending credits on stale text.
+  // carry (#1774), so the panel follows the ones it can reference. This
+  // subscription is the only source of what a text reference says: the rail's
+  // previews read it, and the editor's reference pool — which is what the
+  // prompt serializer substitutes a text chip with at execute time — is built
+  // from it. Without it every text chip would serialize to nothing.
   const textNodeIds = React.useMemo(
     () => nodes.filter((n) => n.data.kind === 'text').map((n) => n.id),
     [nodes],
@@ -279,13 +280,12 @@ function GeneratePanelBody({
         edges: graph.edges,
         models,
         atMentionedSourceIds,
-        // Read straight from the document, not from the subscription above:
-        // this runs at click time, and a render-old value is what gets billed.
-        textById: readTextBodies(
-          projectId,
-          spaceId,
-          graph.nodes.filter((n) => n.data.kind === 'text').map((n) => n.id),
-        ),
+        // No `textById` on purpose. What a text reference SAYS never travels
+        // through here: the prompt string is serialized by the editor from its
+        // own reference pool, and this call site reads only the model, the
+        // params, the node status and the reference URLs. Filling it in would
+        // read every text body on the board on every click for a field nobody
+        // downstream looks at.
       });
     },
     [projectId, spaceId, nodeId, models],
