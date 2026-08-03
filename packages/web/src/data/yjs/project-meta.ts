@@ -16,7 +16,7 @@ import { useCurrentUserStore } from '@web/stores/current-user';
  *
  * Y.Doc structure:
  *
- *   spaces:  Y.Map<spaceId, Y.Map<{ id, name, type, locked? }>>  shared (all members)
+ *   spaces:  Y.Map<spaceId, Y.Map<{ id, name, type, locked?, claimToken? }>>
  *   perUser: Y.Map<userId, Y.Map<{ openTabIds: Y.Array<string> }>>  per-user tab bar
  *
  * The ACTIVE tab is deliberately NOT in this doc (user 2026-07-11): it is
@@ -35,20 +35,27 @@ import { useCurrentUserStore } from '@web/stores/current-user';
  *   - Hocuspocus persists the Y.Doc to PG, so per-user keys persist by
  *     default — a user logging in on a new machine receives the full
  *     Y.Doc on sync and restores their open tabs in one round trip.
- *   - Yjs CRDT semantics scope writes by Y.Map key (userId); a malicious
- *     client trying to write another user's key is rejected by the
- *     Hocuspocus `beforeHandleMessage` extension (collab F.2 hook).
+ *   - Which tabs someone had open survives a machine change, because
+ *     Hocuspocus persists the Y.Doc to PG and the whole doc arrives on
+ *     sync. Going through the server does not change that — the value
+ *     still ends up in the same place, just written by the backend.
  *
- * Write boundaries:
- *   - Shared `spaces` writes (create / delete / lock / rename) round-trip
- *     through the collab process as stateless RPCs on the live meta-doc
- *     WebSocket (`sendSpaceRpc` → collab `services/space-rpc.ts`, per ADR
- *     2026-05-23 yjs-collab-only-write-authz): collab authorizes the role,
- *     applies the privileged Yjs write + audit entry, and Yjs broadcasts
- *     the change. The client does NOT write `spaces` directly.
- *   - Per-user writes (`openSpaceTab` / `closeSpaceTab`) write the
- *     client's OWN `perUser[userId]` subtree directly; the Hocuspocus
- *     extension ensures the user can't write another user's subtree.
+ * Write boundaries — the client writes NOTHING in this document.
+ *
+ * Every change goes through a stateless RPC on the live meta-doc
+ * WebSocket (`sendSpaceRpc` → collab `services/space-rpc.ts`): the Space
+ * lifecycle as `space:*`, and each person's own tab bar as `tab:open` /
+ * `tab:close`. Collab checks the role, makes the privileged write, and
+ * Yjs broadcasts it back. The client's connection to this doc is
+ * read-only at the framework level, so a direct write does not fail
+ * loudly — it simply never lands.
+ *
+ * The tab bar used to be the one exception, written straight into
+ * `perUser[userId]`. That exception is why the server needed a gate that
+ * could tell which field an incoming frame touched, and a gate that has
+ * to enumerate the framework's internal message types fails open on the
+ * ones it misses. Removing the exception let the rule become flat and
+ * the gate disappear (task #27).
  */
 
 const SPACES_KEY = 'spaces';

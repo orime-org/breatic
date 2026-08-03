@@ -63,16 +63,20 @@ import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
  *     active tab and remounted B's running space body. Opening a project
  *     defaults to the first open tab.
  *
- * Collab-only write flow (ADR 2026-05-23 yjs-collab-only-write-authz):
- *   - Create / delete / lock / restore + projectMessages clear all go
- *     through `sendSpaceRpc` (stateless RPC over the live Hocuspocus
- *     connection on the meta doc). Collab authorizes the caller's role,
- *     performs the privileged Yjs write, and broadcasts back. Server
+ * Collab-only write flow:
+ *   - Create / delete / lock / rename / restore, and each person's own
+ *     tab bar, all go through `sendSpaceRpc` (stateless RPC over the live
+ *     Hocuspocus connection on the meta doc). Collab checks the caller's
+ *     role, makes the privileged Yjs write, and broadcasts back. Server
  *     REST routes + Redis pub/sub are gone.
- *   - The client does NOT write `meta.spaces` / `meta.projectMessages`
- *     directly - `beforeHandleMessage` would reject it. A global
- *     loading overlay covers the 50-200ms round trip; a 10-second
- *     timeout guards against a wedged collab.
+ *   - The client writes NOTHING in the meta doc. Its connection to that
+ *     doc is read-only at the framework level, so a direct write does not
+ *     fail loudly — it simply never lands. A global loading overlay
+ *     covers the 50-200ms round trip; a 10-second timeout guards against
+ *     a wedged collab.
+ *   - Creating a Space returns an id the client did not choose, so the
+ *     machine that asked recognises it by the claim token it sent, which
+ *     comes back on the entry.
  */
 const SPACE_OP_TIMEOUT_MS = 10_000;
 
