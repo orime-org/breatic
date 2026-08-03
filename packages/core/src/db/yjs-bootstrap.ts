@@ -69,6 +69,19 @@ export interface SpaceEntryInit {
   createdAt: number;
   /** Creator's userId (UUID). */
   createdBy: string;
+  /**
+   * The token the requesting client sent with `space:create`, echoed back
+   * on the entry so that client — and only that client — recognises the
+   * Space it asked for when the entry is broadcast.
+   *
+   * Absent for the first Space of a project: the server seeds that one on
+   * its own and nobody is waiting on it. Absent means the key is not
+   * written at all, not written as `undefined` — this entry lives in a
+   * permanently shared document and travels into the delete snapshot.
+   *
+   * Stored and echoed verbatim; never parsed, never used for a decision.
+   */
+  claimToken?: string;
 }
 
 /**
@@ -96,6 +109,9 @@ export function writeSpaceEntry(
   entry.set("locked", false);
   entry.set("createdAt", init.createdAt);
   entry.set("createdBy", init.createdBy);
+  if (init.claimToken !== undefined) {
+    entry.set("claimToken", init.claimToken);
+  }
   spaces.set(init.spaceId, entry);
 }
 
