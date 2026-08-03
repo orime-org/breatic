@@ -20,10 +20,14 @@
  * holds at least one block, so even the empty string produces one paragraph.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as Y from 'yjs';
 
-import { bodyToPlainText, writePlainTextIntoBody } from '@web/data/yjs/text-body';
+import {
+  bodyToPlainText,
+  newSeededBody,
+  writePlainTextIntoBody,
+} from '@web/data/yjs/text-body';
 
 /**
  * Build a detached fragment holding `text`, the way every plain-text write
@@ -84,6 +88,46 @@ describe('text body conversion (#1774 section 9.2)', () => {
       const blank = bodyFrom('a\n\nb').get(1) as Y.XmlElement;
       expect(blank.nodeName).toBe('paragraph');
       expect(blank.length).toBe(0);
+    });
+  });
+
+  describe('a freshly built body', () => {
+    it('holds one empty block once it is attached to a document', () => {
+      // Built detached and attached afterwards, which is the order node
+      // creation uses: the data map is populated before the node goes into the
+      // document. Yjs calls that preliminary content, and content that failed
+      // to survive attachment would leave every new text node with a body the
+      // editor's schema rejects.
+      const body = newSeededBody();
+      const data = new Y.Doc().getMap<unknown>('data');
+      data.set('body', body);
+
+      const attached = data.get('body') as Y.XmlFragment;
+      expect(attached.length).toBe(1);
+      expect((attached.get(0) as Y.XmlElement).nodeName).toBe('paragraph');
+      expect(bodyToPlainText(attached)).toBe('');
+    });
+
+    it('cannot be read from before it is attached, which is why it never guards on a read', () => {
+      const body = newSeededBody();
+      // The two disagree: `length` answers from the preliminary array while
+      // `get` goes through the integrated item list, which does not exist yet.
+      // Anything that decided "is this body already seeded?" by reading a
+      // detached fragment would be deciding on this. Hence the builder writes
+      // and never reads, and the callers answer that question by looking at the
+      // node's `body` key instead.
+      expect(body.length).toBe(1);
+      expect(body.get(0)).toBeUndefined();
+    });
+
+    it('writes without reading, so building one emits no Yjs warning', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      newSeededBody();
+      expect(warn).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
+      warn.mockRestore();
+      error.mockRestore();
     });
   });
 

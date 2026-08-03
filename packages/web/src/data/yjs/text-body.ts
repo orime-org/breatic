@@ -114,13 +114,31 @@ export function writePlainTextIntoBody(body: Y.XmlFragment, text: string): void 
 }
 
 /**
- * Seed an empty body with the one block the invariant requires.
+ * Build a fresh body holding the one block the invariant requires.
  *
- * Used at node birth and when repairing a node that has no body. Idempotent, so
- * a body that already holds content is left exactly as it is.
- * @param body - The body fragment to seed.
+ * Returns a new fragment rather than seeding an existing one, because both
+ * callers (a node being born, a node being repaired) are creating one. That
+ * distinction matters twice over:
+ *
+ * - It writes without reading. A fragment that has not been attached to a
+ *   document yet cannot be read from — Yjs answers such reads with a warning
+ *   and preliminary content it cannot see — and a node's data map is populated
+ *   before it is attached, so a `length > 0` guard there would be both noisy
+ *   and meaningless.
+ * - Whether a body already exists is the caller's question, and both callers
+ *   already answer it by looking at the node's `body` key. Answering it again
+ *   in here would be a second, weaker guard on the same fact.
+ *
+ * Not to be confused with the document Space's `seedEmptyBody`
+ * (`spaces/document/document-yjs.ts`), which repairs an already-attached body
+ * and carries its own origin. Its comment is worth reading: a local emptiness
+ * check cannot converge across clients, and the fix is to seed from the one
+ * writer that runs exactly once. For a text node that writer is node creation,
+ * which is exactly where this is called.
+ * @returns A fragment holding a single empty block.
  */
-export function seedEmptyBody(body: Y.XmlFragment): void {
-  if (body.length > 0) return;
+export function newSeededBody(): Y.XmlFragment {
+  const body = new Y.XmlFragment();
   body.insert(0, [new Y.XmlElement(BLOCK)]);
+  return body;
 }
