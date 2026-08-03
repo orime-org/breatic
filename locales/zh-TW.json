@@ -1490,7 +1490,7 @@
     "goneTitle": "相關內容已不存在",
     "goneBody": "這個請求所關聯的內容已被刪除。",
     "alreadyMemberTitle": "你已經在裡面了",
-    "alreadyMemberBody": "在這份邀請等待期間，有人已經把你加進去了。",
+    "alreadyMemberBody": "這份邀請要給你的權限，你已經有了。",
     "invalidTitle": "這個連結無效",
     "invalidBody": "請確認你從郵件裡複製了完整的連結。",
     "notYoursTitle": "這件事不該由你答覆",

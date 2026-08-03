@@ -1490,7 +1490,7 @@
     "goneTitle": "対象はすでに存在しません",
     "goneBody": "このリクエストの対象は削除されました。",
     "alreadyMemberTitle": "すでに参加しています",
-    "alreadyMemberBody": "この招待を待っている間に、誰かがあなたを追加しました。",
+    "alreadyMemberBody": "この招待で得られる権限は、すでにお持ちです。",
     "invalidTitle": "このリンクは無効です",
     "invalidBody": "メールのリンクを最後までコピーしたか確認してください。",
     "notYoursTitle": "これはあなたが回答するものではありません",

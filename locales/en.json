@@ -1490,7 +1490,7 @@
     "goneTitle": "This is no longer here",
     "goneBody": "What this request was about has been deleted.",
     "alreadyMemberTitle": "You are already in",
-    "alreadyMemberBody": "Somebody added you while this invitation was waiting.",
+    "alreadyMemberBody": "You already have what this invitation offered.",
     "invalidTitle": "This link is not valid",
     "invalidBody": "Check that you copied the whole link from your email.",
     "notYoursTitle": "This one is not yours to answer",

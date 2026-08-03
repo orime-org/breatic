@@ -1490,7 +1490,7 @@
     "goneTitle": "대상이 더 이상 없습니다",
     "goneBody": "이 요청의 대상이 삭제되었습니다.",
     "alreadyMemberTitle": "이미 참여 중입니다",
-    "alreadyMemberBody": "이 초대를 기다리는 동안 누군가 회원님을 추가했습니다.",
+    "alreadyMemberBody": "이 초대가 주려던 권한을 이미 가지고 있습니다.",
     "invalidTitle": "유효하지 않은 링크입니다",
     "invalidBody": "메일에서 링크 전체를 복사했는지 확인해 주세요.",
     "notYoursTitle": "회원님이 답변할 요청이 아닙니다",

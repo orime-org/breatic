@@ -1490,7 +1490,7 @@
     "goneTitle": "相关内容已不存在",
     "goneBody": "这个请求所关联的内容已被删除。",
     "alreadyMemberTitle": "你已经在里面了",
-    "alreadyMemberBody": "在这份邀请等待期间，有人已经把你加进去了。",
+    "alreadyMemberBody": "这份邀请要给你的权限，你已经有了。",
     "invalidTitle": "这个链接无效",
     "invalidBody": "请确认你从邮件里复制了完整的链接。",
     "notYoursTitle": "这件事不该由你答复",
