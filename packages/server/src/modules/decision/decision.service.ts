@@ -14,7 +14,10 @@
  * The view carries no ids and no slugs. It is what an unanswered request looks
  * like to someone who has not decided yet, reached through a URL that reveals
  * nothing about which studio or project is involved — putting an id back in
- * would undo the reason the token exists.
+ * would undo the reason the token exists. `destination` is the sole exception
+ * and stays inside the rule: it is filled only for a recipient who is already
+ * a member, so the only person it ever names the entity to is one who can
+ * already open it.
  *
  * Names are resolved at read time, never stored. A studio can be renamed and a
  * personal studio's name IS its owner's display name, so a copy taken when the
@@ -31,7 +34,7 @@ import type {
   DecisionView,
 } from "@breatic/shared";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { t, ROLE_RANK, STUDIO_ROLE_RANK } from "@breatic/shared";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
 import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
@@ -113,7 +116,7 @@ export async function viewByToken(
   const [containerName, actorName, recipientAlreadyIn] = await Promise.all([
     readContainerName(detail.container),
     readDisplayName(detail.actorUserId),
-    isAlreadyIn(detail.container, detail.recipientUserId),
+    alreadyHasOffer(detail.container, detail.recipientUserId, detail.role),
   ]);
 
   const state = decideState({
@@ -123,6 +126,8 @@ export async function viewByToken(
     expiresAt: found.expiresAt,
     recipientAlreadyIn,
   });
+
+  const isRecipient = detail.recipientUserId === viewerUserId;
 
   return {
     kind: found.kind,
@@ -134,8 +139,14 @@ export async function viewByToken(
     // Only the answerable card counts down; every other state either has no
     // meaningful date or would print one that reads as a lie.
     expiresAt: state === "answerable" ? found.expiresAt.toISOString() : null,
-    isRecipient: detail.recipientUserId === viewerUserId,
+    isRecipient,
     windowDays: getDeferredRequestTtlDays(),
+    // The one state with somewhere to send you, and only to the person whose
+    // own membership is what put it in that state.
+    destination:
+      state === "already_member" && isRecipient
+        ? await redirectFor(detail.container)
+        : null,
   };
 }
 
@@ -171,21 +182,42 @@ async function readDisplayName(userId: string): Promise<string> {
 }
 
 /**
- * Whether the person being asked already belongs to the container.
+ * Whether an invitation has anything left to give its recipient.
+ *
+ * Holding a row is not the question — holding AT LEAST what is on offer is.
+ * Opening a `studio`-visible project from the studio list materializes a
+ * baseline `viewer` row (`project.service.ts:loadForViewer`), so a recipient who
+ * merely looked at the project before answering would otherwise have their
+ * pending EDITOR invite ruled moot: they never got what was offered, they
+ * cannot answer, and re-inviting is refused as already-a-member. Accepting
+ * upserts the row (`projectInvite.service.ts:251`), so a lower-ranked member
+ * answering yes is exactly the upgrade the invite was for.
  * @param container - Which studio or project.
  * @param userId - The recipient.
- * @returns True when they already have a live membership.
+ * @param offeredRole - The role the invite would grant.
+ * @returns True when their current role already matches or outranks the offer.
  */
-async function isAlreadyIn(
+async function alreadyHasOffer(
   container: RequestDetail["container"],
   userId: string,
+  offeredRole: string | null,
 ): Promise<boolean> {
   if (userId === "") return false;
-  const role =
+  const held =
     container.kind === "studio"
       ? await studioMembersRepo.getRole(container.id, userId)
       : await projectMembersRepo.getRole(container.id, userId);
-  return role !== null;
+  if (held === null) return false;
+  // An invite with no role on it offers plain membership, which any row covers.
+  if (offeredRole === null) return true;
+  const ranks: Record<string, number | undefined> =
+    container.kind === "studio" ? STUDIO_ROLE_RANK : ROLE_RANK;
+  const heldRank = ranks[held];
+  const offeredRank = ranks[offeredRole];
+  // An unrecognized role on either side is not something to reason about; treat
+  // the row as covering it rather than inventing an order.
+  if (heldRank === undefined || offeredRank === undefined) return true;
+  return heldRank >= offeredRank;
 }
 
 /**
@@ -291,9 +323,10 @@ export async function respond(
     throw new ForbiddenError(t("server.error.forbidden"));
   }
 
-  const recipientAlreadyIn = await isAlreadyIn(
+  const recipientAlreadyIn = await alreadyHasOffer(
     detail.container,
     detail.recipientUserId,
+    detail.role,
   );
   const state = decideState({
     kind: found.kind,

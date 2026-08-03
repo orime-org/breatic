@@ -69,15 +69,15 @@ export type {
   StudioInvitationStatus,
   PendingInvitationSummary,
   StudioMembersView,
-  InvitationLandingView,
   PersonalStudioRef,
 } from "@shared/types/studio.js";
+
+export { STUDIO_ROLE_RANK } from "@shared/types/studio.js";
 
 export type {
   InvitableProjectRole,
   ProjectInvitationStatus,
   PendingProjectInvitationSummary,
-  ProjectInvitationLandingView,
 } from "@shared/types/project-invite.js";
 
 export type { SpaceType, Space } from "@shared/types/space.js";

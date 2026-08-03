@@ -75,12 +75,10 @@ export type {
   StudioInvitationStatus,
   PendingInvitationSummary,
   StudioMembersView,
-  InvitationLandingView,
   PersonalStudioRef,
   InvitableProjectRole,
   ProjectInvitationStatus,
   PendingProjectInvitationSummary,
-  ProjectInvitationLandingView,
   SpaceType,
   Space,
   MembersChangedEvent,
@@ -92,6 +90,7 @@ export type {
 
 export {
   ROLE_RANK,
+  STUDIO_ROLE_RANK,
   HANDLING_TIMEOUT_MS,
   membersChangedChannel,
   activityNewChannel,

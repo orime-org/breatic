@@ -352,6 +352,94 @@ describe("the view tells the four dead ends apart", () => {
 });
 
 describe("already-a-member applies to invites only", () => {
+  it("an invite that would still raise the recipient stays answerable", async () => {
+    const s = await seedScene();
+    // The reachable path this guards: a studio member opens a `studio`-visible
+    // project from the studio list, which materializes a baseline `viewer` row
+    // (`project.service.ts:loadForViewer`). Reading "already a member" off the
+    // mere existence of a row would then kill a pending EDITOR invite — the
+    // recipient never got what the invite offered, and could not ask again.
+    const { id } = await projectInvitationsRepo.createPending({
+      projectId: s.projectId,
+      invitedUserId: s.memberId,
+      role: "editor",
+      invitedBy: s.ownerId,
+      expiresAt: IN_A_WEEK(),
+    });
+    const token = await tokenOf("project_invitations", id);
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role)
+      VALUES (${s.projectId}, ${s.memberId}, 'viewer')
+    `;
+    const view = await decisionService.viewByToken(token, s.memberId);
+    expect(view!.state).toBe("answerable");
+  });
+
+  it("an invite to somebody who already holds that role says so", async () => {
+    const s = await seedScene();
+    const { id } = await projectInvitationsRepo.createPending({
+      projectId: s.projectId,
+      invitedUserId: s.memberId,
+      role: "viewer",
+      invitedBy: s.ownerId,
+      expiresAt: IN_A_WEEK(),
+    });
+    const token = await tokenOf("project_invitations", id);
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role)
+      VALUES (${s.projectId}, ${s.memberId}, 'editor')
+    `;
+    // Outranks what was offered, so the invite really is moot.
+    const view = await decisionService.viewByToken(token, s.memberId);
+    expect(view!.state).toBe("already_member");
+  });
+
+  it("points the recipient at the thing they are already in", async () => {
+    const s = await seedScene();
+    const { id } = await studioInvitationsRepo.createPending({
+      studioId: s.studioId,
+      invitedUserId: s.memberId,
+      role: "guest",
+      invitedBy: s.ownerId,
+      expiresAt: IN_A_WEEK(),
+    });
+    const token = await tokenOf("studio_invitations", id);
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role, added_by)
+      VALUES (${s.studioId}, ${s.memberId}, 'guest', ${s.ownerId})
+    `;
+    const [studio] = await sql<{ slug: string }[]>`
+      SELECT slug FROM studios WHERE id = ${s.studioId}
+    `;
+
+    const mine = await decisionService.viewByToken(token, s.memberId);
+    expect(mine!.state).toBe("already_member");
+    expect(mine!.destination).toBe(`/studio/${studio!.slug}`);
+
+    // The one field that names the entity, and only to somebody whose own
+    // membership is what put this request in that state.
+    const theirs = await decisionService.viewByToken(token, s.ownerId);
+    expect(theirs!.state).toBe("already_member");
+    expect(theirs!.destination).toBeNull();
+  });
+
+  it("never names the entity on a state that is still answerable", async () => {
+    const s = await seedScene();
+    const { id } = await studioInvitationsRepo.createPending({
+      studioId: s.studioId,
+      invitedUserId: s.memberId,
+      role: "guest",
+      invitedBy: s.ownerId,
+      expiresAt: IN_A_WEEK(),
+    });
+    const view = await decisionService.viewByToken(
+      await tokenOf("studio_invitations", id),
+      s.memberId,
+    );
+    expect(view!.state).toBe("answerable");
+    expect(view!.destination).toBeNull();
+  });
+
   it("an invite to somebody already in says so instead of offering buttons", async () => {
     const s = await seedScene();
     const { id: id } = await studioInvitationsRepo.createPending({
