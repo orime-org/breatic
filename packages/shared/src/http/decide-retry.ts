@@ -125,10 +125,12 @@ const IS_DELAY_SECONDS = new RegExp(`^${DELAY_SECONDS}$`);
  *   - it IGNORES the weekday:      "Mon, 30 Jul 2026"   -> that Thursday
  *   - it TRUNCATES an out-of-range seconds field: "12:05:99" -> 12:05:00
  *
- * The third is the one with teeth: the header names a wait, and we would have
- * honoured a DIFFERENT wait — five minutes where the string said ninety-nine
- * seconds — which is precisely the "a figure nobody sent" failure this module
- * refuses everywhere else.
+ * The third is the one with teeth. This header form names an INSTANT, not a
+ * duration, and the wait is the distance from now to it — so reading
+ * "12:05:99" as 12:05:00 does not shorten a wait by 99 seconds, it points at a
+ * different moment than the one the server wrote, and the wait we then serve
+ * is a figure nobody sent. That is the failure this module refuses everywhere
+ * else.
  *
  * A NaN instant needs no separate guard: `new Date(NaN).toUTCString()` is
  * "Invalid Date", which equals no legal header.
@@ -238,12 +240,12 @@ function scheduleRetry(input: RetryInput): RetryDecision {
  *     status that would otherwise authorise a replay no matter what, so it is
  *     also the only one that can prove this check runs first.
  *   - The attempt budget outranks 429, and this is the one that terminates the
- *     loop. `httpRequest` runs `for (;;)` with no exit of its own — the only
- *     way out is this function refusing — and 429 is the branch that returns
- *     "retry" without ever consulting the budget. Measured: move the budget
- *     check below the 429 branch, point it at a server that answers 429
- *     forever, and the call is still going after 15 seconds and six
- *     deliveries. Nothing else in the module can stop it.
+ *     loop. A success leaves through its own return, but a request that keeps
+ *     failing has exactly one way out: this function refusing. 429 is the
+ *     branch that says "retry" without ever consulting the budget, so if the
+ *     budget is checked after it, a server that answers 429 forever is never
+ *     given up on. Measured: move the check below the 429 branch and the call
+ *     is still going after 15 seconds and six deliveries.
  *   - 429 outranks the caller's own declaration, because it is the one case
  *     where the server has told us nothing happened — so a rate-limited
  *     non-replayable submit must still back off and retry. Backwards, this

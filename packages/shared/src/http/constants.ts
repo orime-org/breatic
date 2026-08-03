@@ -16,13 +16,12 @@
  * so every figure it needs is in this file. There are no parameters left for
  * a figure to become.
  *
- * That includes "how long may one delivery wait for response headers", which
- * this very header used to name as the counter-example — a vendor API and an
- * object store differ by an order of magnitude, so surely the caller must say.
- * They must not: every call site that ever set it read it from config or from
- * a literal, and none of them knew anything this layer does not. Anything
- * about reading a body is neither a figure nor a parameter here — it is not
- * this layer's business at all.
+ * That includes how long one delivery may take. Every call site that ever set
+ * it read it from config or from a literal, and none of them knew anything
+ * this layer does not — which is exactly why it belongs here: writing the same
+ * timeout at every call site is the duplication this layer exists to remove.
+ * Anything about reading a body is neither a figure nor a parameter here — it
+ * is not this layer's business at all.
  */
 
 /**
@@ -33,9 +32,14 @@ export const MAX_RETRIES = 2;
 
 /**
  * Base for the full-jittered exponential ceiling: `BASE_DELAY_MS * 2 **
- * (attempt - 1)`. A rate-limited response that carries `Retry-After` uses
- * the server's number instead; this base only governs the cases where the
- * server told us nothing (5xx, dropped connection, attempt timeout).
+ * (attempt - 1)`.
+ *
+ * It governs exactly one situation: the server named no wait we could read.
+ * That is not the same as "not a 429" — ANY response carrying a usable
+ * `Retry-After` is honoured, a 503 as readily as a 429, because the code asks
+ * whether a figure arrived and not which status carried it. What is left for
+ * this base is a dropped connection, a delivery that hit its deadline, and any
+ * response whose header was absent or unreadable.
  */
 export const BASE_DELAY_MS = 1000;
 
@@ -67,16 +71,40 @@ export const MAX_RETRY_AFTER_MS = 60_000;
 
 
 /**
- * How long one delivery may wait FOR RESPONSE HEADERS.
+ * How long ONE delivery may take in total — sending the request included.
  *
- * Fixed rather than asked of the caller. Every call site that ever set this
- * was setting it from config or from a literal, and none of them knew anything
- * this layer does not — "how long until a server is not going to answer" is a
- * property of the network, not of what the caller happens to be fetching.
+ * Named for what it does: the only lever here is an abort signal, and aborting
+ * ends the whole operation, upload and wait alike. One figure, both phases.
  *
- * Ten seconds is the figure the product owner settled on for waiting on
- * headers (2026-08-01). The deadline ends when the headers arrive; what
- * happens while the body is read is not this layer's business, and the client
- * underneath already times a stalled read.
+ * 300 seconds is the platform's own answer — the HTTP client underneath
+ * applies exactly this figure to waiting for a response and to the gap between
+ * body chunks. Taking the same number means no request that works today stops
+ * working.
+ *
+ * It replaced ten seconds, which was ours rather than anyone's, and which cut
+ * an 8 MiB upload off mid-transfer three times without it ever completing
+ * once — measured against a healthy server on an ordinary uplink.
+ *
+ * SETTLED 2026-08-03, and settled means settled. The reasoning, in full, so
+ * that nobody has to reopen it:
+ *
+ *   - Two stretches of a request can hang with nobody watching: sending the
+ *     body, and waiting for the answer. (Connecting is the operating system's;
+ *     reading the body is the caller's by an earlier decision.) Measured with
+ *     no bound of our own, both hang indefinitely — a fetch was still pending
+ *     after 90 seconds against a server that accepted the socket and went
+ *     quiet.
+ *   - Those two stretches want different answers. "How long should sending
+ *     take" is size divided by bandwidth and has no single answer; "how long
+ *     until a silent server counts as dead" does.
+ *   - One abort signal is all this API offers, in Node and in a browser alike,
+ *     and it ends the whole operation. So one figure has to cover both, and
+ *     the only defensible one is the platform's.
+ *
+ * There is no test driving a real delivery to this deadline: three of them
+ * would be a fifteen-minute suite, and faking the clock to avoid that broke
+ * the real socket underneath (measured: the request never left). What guards
+ * the figure instead is real-fetch.test.ts's upload case, which takes ~16
+ * seconds of real time and fails the moment this is shortened past it.
  */
-export const HEADERS_TIMEOUT_MS = 10_000;
+export const DELIVERY_TIMEOUT_MS = 300_000;

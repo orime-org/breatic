@@ -140,17 +140,42 @@ describe("item 1 — send the request the caller asked for", () => {
     expect(stub.bodies()).toEqual(["payload", "payload"]);
   });
 
-  it("ends a delivery the server never answers, rather than waiting forever", async () => {
-    // A server that accepts the socket and then says nothing — the one shape a
-    // hand-written pending promise cannot reproduce, because it has no socket
-    // behind it. Three deliveries, each cut off at its own deadline.
-    const stub = await stubServer([{ kind: "silent" }, { kind: "silent" }, { kind: "silent" }]);
+  it("carries an upload that takes longer than a person would wait", async () => {
+    // The case the old ten-second figure made impossible rather than slow: a
+    // healthy server reading an ordinary upload at an ordinary rate. Measured
+    // under the old value: three deliveries, none of them ever completing.
+    // Nothing here is stalled — every chunk arrives — so nothing may cut it
+    // off.
+    const payload = new Uint8Array(4 * 1024 * 1024);
+    let received = 0;
+    const server = createServer((req, res) => {
+      req.on("data", (c: Buffer) => {
+        received += c.length;
+        req.pause();
+        setTimeout(() => req.resume(), 250); // throttle: ~16s for the whole body
+      });
+      req.on("end", () => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end("{}");
+      });
+      req.on("error", () => undefined);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    running = server;
+    const { port } = server.address() as AddressInfo;
 
-    const thrown = await httpRequest(stub.url, {}, REPLAYABLE).catch((e: unknown) => e);
+    const started = Date.now();
+    const out = await httpRequest(
+      `http://127.0.0.1:${port}/`,
+      { method: "POST", body: payload },
+      REPLAYABLE,
+    );
 
-    expect(thrown).toBeInstanceOf(HttpRetryError);
-    expect(stub.hits()).toBe(3);
-  }, 60_000);
+    expect(out.status).toBe(200);
+    expect(received).toBe(payload.byteLength);
+    // The assertion that pins the defect: it took longer than the old figure.
+    expect(Date.now() - started).toBeGreaterThan(10_000);
+  }, 120_000);
 
   it.each([
     ["a string that is not a URL", (s: string): string => `key=${s}&not-a-url`],
@@ -180,15 +205,16 @@ describe("item 1 — send the request the caller asked for", () => {
     expect(seen).not.toContain(secret);
   });
 
-  // Both halves of the credentials guard, because it asks two questions and
-  // only one of them used to be exercised. A URL can carry a secret as the
-  // password (`user:secret@`) or as the username on its own (`token@`), and
-  // the second shape is the common one for bearer-style keys. With only the
-  // first covered, deleting the username half left every test green while
-  // `https://TOKEN@host` leaked the token verbatim through the error's cause.
+  // Three shapes, because the guard asks two questions and each needs an input
+  // that only IT answers. The first two rows both have a non-empty username,
+  // so between them the password half never once decided anything — deleting
+  // it left the suite green. The third row is the one that decides it:
+  // `https://:secret@host` parses to an empty username and a password, and
+  // fetching it leaks the password and the query key into `cause`.
   it.each([
-    ["a password", (secret: string): string => `https://user:${secret}@api.test/v1?key=QUERYSECRET`],
-    ["a bare username", (secret: string): string => `https://${secret}@api.test/v1?key=QUERYSECRET`],
+    ["a password beside a username", (s: string): string => `https://user:${s}@api.test/v1?key=QUERYSECRET`],
+    ["a bare username", (s: string): string => `https://${s}@api.test/v1?key=QUERYSECRET`],
+    ["a password with no username", (s: string): string => `https://:${s}@api.test/v1?key=QUERYSECRET`],
   ])("never lets %s in the URL reach anything it throws", async (_shape, build) => {
     // `fetch` refuses a URL with credentials and quotes the whole raw url in
     // the TypeError it throws — secret, query key and all. Measured before
@@ -367,12 +393,27 @@ describe("item 5 — hand the response over, or throw", () => {
     await new Promise<void>((resolve) => running?.close(() => resolve()));
     running = null;
 
+    // Catch what the platform throws for this exact call, so the assertion can
+    // be identity rather than resemblance. "It is an Error and not a
+    // HttpRetryError" was the old pair, and wrapping the failure in a fresh
+    // Error satisfied both — the test named the property and could not see it
+    // broken.
+    const fromPlatform = await fetch(url, { method: "POST" }).catch((e: unknown) => e);
+
     const thrown = await httpRequest(url, { method: "POST" }, { replaySafe: false }).catch(
       (e: unknown) => e,
     );
 
     expect(thrown).toBeInstanceOf(Error);
     expect(thrown).not.toBeInstanceOf(HttpRetryError);
+    // Untouched means untouched: same constructor, same message, same cause.
+    // Compared by content, not identity — two calls produce two objects. A
+    // wrapper fails all three: its message would name this layer, and its
+    // cause would BE the platform error rather than matching the platform's
+    // own cause.
+    expect((thrown as Error).constructor).toBe((fromPlatform as Error).constructor);
+    expect((thrown as Error).message).toBe((fromPlatform as Error).message);
+    expect(String((thrown as Error).cause)).toBe(String((fromPlatform as Error).cause));
   });
 
   it("throws a count-carrying error when replays happened and nothing came back", async () => {

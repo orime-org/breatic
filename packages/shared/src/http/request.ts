@@ -41,12 +41,21 @@
  * the answer, and a caller that wants to branch reads the status it has.
  */
 
-import { HEADERS_TIMEOUT_MS } from "@shared/http/constants.js";
+import { DELIVERY_TIMEOUT_MS } from "@shared/http/constants.js";
 import { decideRetry, parseRetryAfter } from "@shared/http/decide-retry.js";
 import { redactUrl } from "@shared/http/redact-url.js";
 
 /**
- * Every delivery failed and none produced a response.
+ * The LAST delivery produced no response, and replays had happened.
+ *
+ * Say "the last" rather than "none of them", because an earlier delivery may
+ * well have brought a response back: a 503 followed by two dropped connections
+ * ends here, and the 503 is gone. That is deliberate — the last delivery is
+ * the most recent thing known about the far side, and a server that answered a
+ * moment ago and now refuses the connection is better described as unreachable
+ * than as "returning 503". It also matches what retrying clients do when their
+ * budget runs out: urllib3 raises rather than handing back an earlier
+ * response.
  *
  * Thrown only when a replay actually happened. A failure on the very first
  * delivery carries no count worth reporting — "attempts: 1" states that the
@@ -99,15 +108,22 @@ export interface HttpRequestOptions {
  * ("is this a URL?") travelling between two modules as a string, with the
  * exception that already carried it thrown away in between.
  *
- * Parseable is not fetchable, and the difference is expensive both ways.
- * Sending an undeliverable string costs three deliveries and two backoffs —
- * and the rejection `fetch` produces quotes the RAW url, so a password or a
- * query key travels out in a message that never passed through redaction and
- * then becomes the `cause` this package tells callers to log.
+ * Parseable is not fetchable, and each of the three refusals below earns its
+ * place differently — measured on Node 24, one url per case, each carrying a
+ * secret:
  *
- * None of the three refusals quotes the string. That is the point of refusing
- * here rather than letting `fetch` do it: whatever is wrong with the value, we
- * cannot know which part of it was a secret.
+ *   - Not a URL: `fetch` rejects with "Failed to parse URL from …" and the
+ *     whole string is in the message.
+ *   - Credentials in the url: `fetch` refuses to build the request at all and
+ *     quotes the entire raw url, password and query key included.
+ *   - A scheme this transport does not speak: no leak — "unknown scheme" and
+ *     nothing else — but `ftp` and friends cost three deliveries and two
+ *     backoffs to learn what the string already said, and `data:` is worse
+ *     than that: it RESOLVES, 200, with no HTTP round trip at all.
+ *
+ * So the first two are about secrets and the third is about cost, and neither
+ * reason covers both. None of the refusals quotes the string it refused —
+ * whatever is wrong with a value, we cannot know which part of it was secret.
  * @param url - The request URL as the caller wrote it.
  * @returns The parsed URL, when it is one this transport can deliver.
  * @throws {Error} When the URL cannot be delivered as given.
@@ -247,7 +263,7 @@ export async function httpRequest(
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(new Error(`http request to ${safeUrl} timed out`)),
-      HEADERS_TIMEOUT_MS,
+      DELIVERY_TIMEOUT_MS,
     );
     let response: Response | null = null;
     let failure: unknown = null;
