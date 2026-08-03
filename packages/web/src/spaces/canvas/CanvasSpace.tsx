@@ -1007,6 +1007,28 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, undo, redo]);
 
+  // Capture with the bodies filled in. A clipboard entry is plain data and a
+  // shared body cannot travel in one, so the text is read out of the document
+  // at copy time and the paste writes it into the new node's own body. Read
+  // here rather than from a subscription: this runs on a keystroke, and the
+  // value that gets copied should be what the document says right now.
+  const captureClipboardWithText = React.useCallback(
+    (
+      targetIds: ReadonlyArray<string>,
+      allNodes: Parameters<typeof captureClipboard>[1],
+    ): ReturnType<typeof captureClipboard> =>
+      captureClipboard(
+        targetIds,
+        allNodes,
+        readTextBodies(
+          projectId,
+          spaceId,
+          allNodes.filter((n) => n.type === 'text').map((n) => n.id),
+        ),
+      ),
+    [projectId, spaceId],
+  );
+
   const { createNodeAt, createUploadNodeAt, pasteTextAt, pasteNodesAt } =
     useNodeCreation(projectId, spaceId);
 
@@ -2367,7 +2389,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('copy', onCopy);
     return () => document.removeEventListener('copy', onCopy);
-  }, [readOnly]);
+  }, [readOnly, captureClipboardWithText]);
 
   // ---- Grouping (selection → group / ungroup) ----
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
@@ -2524,7 +2546,7 @@ function CanvasSpaceInner({
           .map((node) => node.id),
         flowNodesRef.current,
       ),
-    [],
+    [captureClipboardWithText],
   );
 
   // The clipboard-portable form of the right-clicked node. Used by the node
@@ -2532,7 +2554,7 @@ function CanvasSpaceInner({
   const nodeMenuClipboard = React.useCallback(
     (): ClipboardNode[] =>
       captureClipboardWithText([nodeMenu.nodeId], flowNodesRef.current),
-    [nodeMenu.nodeId],
+    [nodeMenu.nodeId, captureClipboardWithText],
   );
 
   // Copy writes to the SYSTEM clipboard (same target as Cmd+C) so it round-trips
@@ -2577,7 +2599,7 @@ function CanvasSpaceInner({
       });
       setSelectAfterCreate(clones.map((clone) => clone.id));
     },
-    [readOnly, projectId, spaceId, userId],
+    [readOnly, projectId, spaceId, userId, captureClipboardWithText],
   );
 
   const copySelection = React.useCallback((): void => {
@@ -2990,27 +3012,6 @@ function CanvasSpaceInner({
     [readOnly, projectId, spaceId, t, fillUpload],
   );
 
-  // Capture with the bodies filled in. A clipboard entry is plain data and a
-  // shared body cannot travel in one, so the text is read out of the document
-  // at copy time and the paste writes it into the new node's own body. Read
-  // here rather than from a subscription: this runs on a keystroke, and the
-  // value that gets copied should be what the document says right now.
-  const captureClipboardWithText = React.useCallback(
-    (
-      targetIds: ReadonlyArray<string>,
-      allNodes: Parameters<typeof captureClipboard>[1],
-    ): ReturnType<typeof captureClipboard> =>
-      captureClipboard(
-        targetIds,
-        allNodes,
-        readTextBodies(
-          projectId,
-          spaceId,
-          allNodes.filter((n) => n.type === 'text').map((n) => n.id),
-        ),
-      ),
-    [projectId, spaceId],
-  );
 
   const actions = React.useMemo<CanvasActions>(
     () => ({
