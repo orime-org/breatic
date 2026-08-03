@@ -74,7 +74,7 @@ loader:`packages/core/src/config/worker.ts`。
 | `job_attempts` | 3 | 任务失败重试次数 |
 | `job_backoff_delay_ms` | 2000 | 重试退避基延时(full-jitter,自定义 backoffStrategy)|
 | `lock_duration_ms` | 600000(10 分钟) | 任务锁时长 |
-| `http_max_retries` / `http_retry_base_delay` | 3 / 2000 | provider HTTP 重试(full-jitter)|
+| `http_max_retries` / `http_retry_base_delay` | 3 / 2000 | provider HTTP 重试(full-jitter)。**次数含义是「首次之后再重 3 次」= 四次投递**;接入 [共享 HTTP 传输层](./ARCHITECTURE.md#shared-http-transport) 后删除 |
 | `poll_interval` | 3000 | 队列轮询间隔 |
 
 ## 6. `config/storage.yaml` — 存储下载重试 + 浏览器上传
@@ -85,18 +85,18 @@ loader:`packages/core/src/config/storage.ts`。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `download.max_attempts` | 3 | 下载总尝试次数(含首次)|
-| `download.retry_base_delay_ms` | 500 | 退避基延时(× 尝试次数,再 full-jitter)|
+| `download.max_attempts` | 3 | 下载总尝试次数(含首次)。**接入共享传输层后删除** |
+| `download.retry_base_delay_ms` | 500 | 退避基延时(× 尝试次数,再 full-jitter)。**接入共享传输层后删除** |
 
 `upload.*`:浏览器上传旋钮(#1609 资产层片2)。前端经 `GET /assets/upload-config`(会话缓存)取;上传上限在 `/assets/presign` 权威校验(413),前端选文件时预检只为体验。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `upload.max_upload_bytes` | 2147483648(2 GiB)| 上传硬上限(字节);超限 presign 返 413,前端选文件当场拒 |
-| `upload.client_max_attempts` | 3 | 浏览器 presign + PUT 各自总尝试次数(含首次,仅瞬时错误)|
-| `upload.client_retry_base_delay_ms` | 1000 | 浏览器重试退避基延时(full-jitter)|
-| `upload.client_request_timeout_ms` | 30000 | 浏览器 API 请求单次超时;也是 PUT 停滞守卫的下限 |
-| `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(下限, 文件大小 / 该速率)|
+| `upload.client_max_attempts` | 3 | 浏览器 presign + PUT 各自总尝试次数(含首次,仅瞬时错误)。**接入共享传输层后删除** |
+| `upload.client_retry_base_delay_ms` | 1000 | 浏览器重试退避基延时(full-jitter)。**接入共享传输层后删除** |
+| `upload.client_request_timeout_ms` | 30000 | 浏览器 API 请求单次超时;也是 PUT 停滞守卫的下限。**接入后保留** —— 它是算给传输层的单次投递超时用的 |
+| `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(下限, 文件大小 / 该速率)。**接入后保留**,同上 |
 | `upload.presign_expires_seconds` | 300 | 云存储(S3 / 阿里云 OSS)预签名 PUT 地址的有效期(秒)。这是存储服务商自己的 PUT 窗口,跟下发记录表无关 —— 后者不设上传时限;本地存储没有预签名地址,该项不生效 |
 
 `avatar.*`:studio 头像。头像**不走预签名直传**,字节经服务器进来,所以这个上限同时也是单次请求在进程里缓冲的上限。头像是挂在 studio 行上的一条 URL、不是资产,**服务端不读图像内容**(不看尺寸、不看内部结构);但它仍会按字节签名认一次类型来决定存成什么扩展名和 content-type,**签名不是 PNG 的会被 415 拒掉**——所以这个字节上限是"对图片唯一的度量",不是"唯一的拒绝理由"。前端裁剪成 512×512 PNG。PNG 无损、没有质量旋钮,字节数跟画面内容走:纯色几 KB,噪点照片几乎压不动 —— 实测单帧 512×512 RGBA 最坏 1,049,473 字节(像素和 alpha 全随机),所以上限按 2 MiB 定,给最坏情况留两倍。

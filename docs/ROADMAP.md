@@ -159,6 +159,22 @@
 
 这里记单 commit 不修但已经定位/部分定位的 dev 体验和 runtime 韧性问题。每条都对应一个独立 PR，开启时需要完整 DD + 复现验证。
 
+### 共享 HTTP 传输层 —— 调用点接入（五批，各一个 PR）
+
+**传输层本身已合并（#386）**，在 `packages/shared/src/http/`，前后端共用，打**外部**的请求（云存储 / vendor API / 任意网址）走它，打我们自己后端的继续走 web 的 axios 单例。规范见 [`packages/shared/CLAUDE.md`](../packages/shared/CLAUDE.md)，架构位置见 [`ARCHITECTURE.md`](./ARCHITECTURE.md#shared-http-transport)。
+
+**现在零个调用点接入**，五批分别是：
+
+| 批 | 接什么 | 附带 |
+|---|---|---|
+| 1 | worker 的 19 个 vendor 调用 | 轮询也一起收编 |
+| 2 | 素材下载 + 存储适配器 | 重试日志出口穿过适配器（现在重试悄无声息）|
+| 3 | 浏览器上传重试 | 它按文件大小算超时，正是这一层要求调用方自己算的那种 |
+| 4 | agent 的联网工具 | 这两个工具现在**零重试**，一次网络抖动就是一次工具失败，也是整条线的起因 |
+| 5 | 加守卫封住裸 `fetch` + 同步文档 | 收尾时把 `packages/core/src/infra/retry.ts` 改用 `packages/shared/src/backoff.ts`，消掉同名同义的两份退避 |
+
+**给碰到外部 HTTP 的人**：新写的外部请求直接用 `httpRequest`，别再自己写重试循环 —— 这条线的起因正是同一个判据在三处写了三遍、给出三个不同答案。
+
 ### dev:collab 长跑 connection drift —— 治根 PR
 
 **触发现象**：dev:collab 单进程跑 ≥ 几小时后，`onAuthenticate` 在 postgres-js 连接池里拿到 stale connection（Postgres 默认 30 min 关 idle conn，client 不感知），所有新 WS 握手都报 `authenticationFailed`，前端 banner `登录已失效` 永远不消。重启 collab 立即恢复。`docs/DEPLOY.md` 已加 dev runbook 教 user 出现就 restart。
