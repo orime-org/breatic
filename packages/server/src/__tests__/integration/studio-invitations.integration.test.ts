@@ -175,7 +175,7 @@ describe("createPending + listPendingByStudio", () => {
 
 describe("acceptIfPending (CAS)", () => {
   it("accepts a live pending and returns its membership fields", async () => {
-    const id = await invitesRepo.createPending({
+    const { id: id } = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
       role: "maintainer",
@@ -196,7 +196,7 @@ describe("acceptIfPending (CAS)", () => {
   });
 
   it("returns null on a second accept (already decided)", async () => {
-    const id = await invitesRepo.createPending({
+    const { id: id } = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
       role: "guest",
@@ -209,7 +209,7 @@ describe("acceptIfPending (CAS)", () => {
   });
 
   it("under concurrency, exactly one of two simultaneous accepts wins", async () => {
-    const id = await invitesRepo.createPending({
+    const { id: id } = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
       role: "guest",
@@ -226,7 +226,7 @@ describe("acceptIfPending (CAS)", () => {
   });
 
   it("refuses to accept on behalf of another user (invited_user_id guard)", async () => {
-    const id = await invitesRepo.createPending({
+    const { id: id } = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
       role: "guest",
@@ -240,7 +240,7 @@ describe("acceptIfPending (CAS)", () => {
   });
 
   it("returns null when accepting an EXPIRED pending (self-void)", async () => {
-    const id = await invitesRepo.createPending({
+    const { id: id } = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
       role: "guest",
@@ -256,7 +256,7 @@ describe("acceptIfPending (CAS)", () => {
 
 describe("declineIfPending / revokeIfPending", () => {
   it("declines a live pending (own invite); membership untouched; leaves list", async () => {
-    const id = await invitesRepo.createPending({
+    const { id: id } = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
       role: "guest",
@@ -271,7 +271,7 @@ describe("declineIfPending / revokeIfPending", () => {
   });
 
   it("refuses decline on behalf of another user", async () => {
-    const id = await invitesRepo.createPending({
+    const { id: id } = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
       role: "guest",
@@ -283,7 +283,7 @@ describe("declineIfPending / revokeIfPending", () => {
   });
 
   it("revokes a live pending in the admin's own studio", async () => {
-    const id = await invitesRepo.createPending({
+    const { id: id } = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
       role: "guest",
@@ -298,7 +298,7 @@ describe("declineIfPending / revokeIfPending", () => {
   });
 
   it("refuses to revoke an invite belonging to a different studio (studio_id guard)", async () => {
-    const id = await invitesRepo.createPending({
+    const { id: id } = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
       role: "guest",
@@ -313,7 +313,7 @@ describe("declineIfPending / revokeIfPending", () => {
 
 describe("re-invite after a terminal outcome", () => {
   it("allows a fresh pending after the previous one was declined", async () => {
-    const first = await invitesRepo.createPending({
+    const { id: first } = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
       role: "guest",
@@ -323,7 +323,7 @@ describe("re-invite after a terminal outcome", () => {
     await invitesRepo.declineIfPending(first, INVITEE);
 
     // Partial unique only blocks a LIVE pending, so a re-invite succeeds.
-    const second = await invitesRepo.createPending({
+    const { id: second } = await invitesRepo.createPending({
       studioId: TEAM_STUDIO,
       invitedUserId: INVITEE,
       role: "maintainer",

@@ -191,7 +191,7 @@ describe("request", () => {
     ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
     vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
       id: RID,
-      retiredNotificationIds: [],
+      shareToken: "t".repeat(64), retiredNotificationIds: [],
     });
     vi.mocked(
       notificationService.createRoleUpgradeRequest,
@@ -228,7 +228,7 @@ describe("request", () => {
     // and it outlives its own subject.
     vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
       id: RID,
-      retiredNotificationIds: [],
+      shareToken: "t".repeat(64), retiredNotificationIds: [],
     });
     vi.mocked(
       notificationService.createRoleUpgradeRequest,

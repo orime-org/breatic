@@ -38,6 +38,7 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as transfersRepo from "@server/modules/studio/studioTransfers.repo.js";
 import { buildStudioTransferMail } from "@server/utils/notification-mail.js";
+import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import { db } from "@breatic/core";
 import {
@@ -102,8 +103,10 @@ export async function requestTransfer(
     fromAdminUserId,
   ]);
   const from = profiles.get(fromAdminUserId);
+  // Bound out here because the mail is built after the transaction closes.
+  let shareToken = "";
   try {
-    await db.transaction(async (tx) => {
+    shareToken = await db.transaction(async (tx) => {
       const filed = await transfersRepo.createPending({
         studioId: studio.id,
         fromUserId: fromAdminUserId,
@@ -134,6 +137,8 @@ export async function requestTransfer(
           tx,
         });
       await transfersRepo.attachNotification(transferId, notification.id, tx);
+      // The mail is sent outside this transaction, so the token has to travel.
+      return filed.shareToken;
     });
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -157,7 +162,7 @@ export async function requestTransfer(
           recipientEmail: recipient.email,
           initiatorName: from?.name ?? "",
           studioName: studio.name,
-          studioLink: `${origin}/studio/${slug}`,
+          decisionLink: decisionLink(origin, shareToken),
         });
       },
       { userId: toUserId, subject: "studio_transfer" },

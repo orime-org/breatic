@@ -139,8 +139,8 @@ export interface StudioTransferMailInput {
   recipientEmail: string;
   initiatorName: string;
   studioName: string;
-  /** Link back into the app, e.g. `https://breatic.ai/studio/<slug>`. */
-  studioLink: string;
+  /** Opens the shared landing page for this transfer. */
+  decisionLink: string;
 }
 
 /**
@@ -156,9 +156,9 @@ export function buildStudioTransferMail(
     to: input.recipientEmail,
     subject: `${BRAND} - ${input.initiatorName} wants to transfer ${input.studioName} to you`,
     leadHtml: `<strong>${escapeHtml(input.initiatorName)}</strong> wants to make you the admin of the studio <strong>${escapeHtml(input.studioName)}</strong>.`,
-    linkHref: input.studioLink,
-    linkLabel: `Open ${BRAND}`,
-    linkTrailing: " and check your notifications to accept or decline.",
+    linkHref: input.decisionLink,
+    linkLabel: "Review this transfer",
+    linkTrailing: " to accept or decline.",
     footer: TRANSFER_FOOTER,
   });
 }
@@ -168,8 +168,8 @@ export interface ProjectTransferMailInput {
   recipientEmail: string;
   initiatorName: string;
   projectName: string;
-  /** Link back into the app, e.g. `https://breatic.ai/project/<slug>-<id>`. */
-  projectLink: string;
+  /** Opens the shared landing page for this transfer. */
+  decisionLink: string;
 }
 
 /**
@@ -185,9 +185,48 @@ export function buildProjectTransferMail(
     to: input.recipientEmail,
     subject: `${BRAND} - ${input.initiatorName} wants to transfer ${input.projectName} to you`,
     leadHtml: `<strong>${escapeHtml(input.initiatorName)}</strong> wants to make you the owner of the project <strong>${escapeHtml(input.projectName)}</strong>.`,
-    linkHref: input.projectLink,
-    linkLabel: `Open ${BRAND}`,
-    linkTrailing: " and check your notifications to accept or decline.",
+    linkHref: input.decisionLink,
+    linkLabel: "Review this transfer",
+    linkTrailing: " to accept or decline.",
+    footer: TRANSFER_FOOTER,
+  });
+}
+
+/** Fields for the role-upgrade request email, sent to the project's owner. */
+export interface RoleUpgradeRequestMailInput {
+  ownerEmail: string;
+  requesterName: string;
+  projectName: string;
+  requestedRole: string;
+  /** The requester's own words; null when they gave none. */
+  message: string | null;
+  decisionLink: string;
+}
+
+/**
+ * Builds the email telling a project's owner that somebody wants a bigger role.
+ *
+ * This flow had no email at all until now — it existed only as a bell entry, so
+ * an owner who was not in the app that week never learned there was a decision
+ * waiting. The reason the requester typed is included because it is the whole
+ * basis for the answer.
+ * @param input - Recipient, names, requested role, reason and link.
+ * @returns The mail options to send.
+ */
+export function buildRoleUpgradeRequestMail(
+  input: RoleUpgradeRequestMailInput,
+): SendMailOptions {
+  const reason =
+    input.message === null || input.message.trim() === ""
+      ? ""
+      : ` They said: <em>${escapeHtml(input.message)}</em>`;
+  return renderNotificationMail({
+    to: input.ownerEmail,
+    subject: `${BRAND} - ${input.requesterName} asked for a bigger role on ${input.projectName}`,
+    leadHtml: `<strong>${escapeHtml(input.requesterName)}</strong> asked to become <strong>${escapeHtml(input.requestedRole)}</strong> on <strong>${escapeHtml(input.projectName)}</strong>.${reason}`,
+    linkHref: input.decisionLink,
+    linkLabel: "Review this request",
+    linkTrailing: " to approve or decline.",
     footer: TRANSFER_FOOTER,
   });
 }

@@ -121,14 +121,14 @@ describe("every flow mints a share token when the request is filed", () => {
   it("all five repos produce a 64-hex token, and no two are alike", async () => {
     const scene = await seedScene();
 
-    const studioInviteId = await studioInvitationsRepo.createPending({
+    const { id: studioInviteId } = await studioInvitationsRepo.createPending({
       studioId: scene.studioId,
       invitedUserId: scene.memberId,
       role: "guest",
       invitedBy: scene.ownerId,
       expiresAt: IN_A_WEEK(),
     });
-    const projectInviteId = await projectInvitationsRepo.createPending({
+    const { id: projectInviteId } = await projectInvitationsRepo.createPending({
       projectId: scene.projectId,
       invitedUserId: scene.memberId,
       role: "viewer",
@@ -174,14 +174,14 @@ describe("every flow mints a share token when the request is filed", () => {
     const first = await seedScene();
     const second = await seedScene();
 
-    const a = await studioInvitationsRepo.createPending({
+    const { id: a } = await studioInvitationsRepo.createPending({
       studioId: first.studioId,
       invitedUserId: first.memberId,
       role: "guest",
       invitedBy: first.ownerId,
       expiresAt: IN_A_WEEK(),
     });
-    const b = await studioInvitationsRepo.createPending({
+    const { id: b } = await studioInvitationsRepo.createPending({
       studioId: second.studioId,
       invitedUserId: second.memberId,
       role: "guest",

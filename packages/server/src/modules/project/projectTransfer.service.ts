@@ -46,6 +46,7 @@ import * as transfersRepo from "@server/modules/project/projectTransfers.repo.js
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { buildProjectTransferMail } from "@server/utils/notification-mail.js";
+import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import { db, projectMembersRepo } from "@breatic/core";
 import {
@@ -137,8 +138,10 @@ export async function requestProjectTransfer(
   const expiresAt = deferredRequestExpiry();
   const profiles = await studioRepo.getPersonalProfilesByCreators([fromUserId]);
   const from = profiles.get(fromUserId);
+  // Bound out here because the mail is built after the transaction closes.
+  let shareToken = "";
   try {
-    const filedOffer = await db.transaction<Refused | { done: true }>(async (tx) => {
+    const filedOffer = await db.transaction<Refused | { done: true; shareToken: string }>(async (tx) => {
       // Locks the project for the length of this transaction and refuses if it
       // is already gone — see `lockLiveProject` for what commits without it.
       if (!(await projectRepo.lockLiveProject(projectId, tx))) {
@@ -174,9 +177,11 @@ export async function requestProjectTransfer(
           tx,
         });
       await transfersRepo.attachNotification(transferId, notification.id, tx);
-      return { done: true as const };
+      // Carried out of the transaction because the mail is sent outside it.
+      return { done: true as const, shareToken: filed.shareToken };
     });
     if (isRefused(filedOffer)) throw refusalError(filedOffer.refusal);
+    shareToken = filedOffer.shareToken;
   } catch (err) {
     if (isUniqueViolation(err)) {
       throw new ConflictError(t("server.error.conflict"));
@@ -199,7 +204,7 @@ export async function requestProjectTransfer(
           recipientEmail: recipient.email,
           initiatorName: from?.name ?? "",
           projectName: project.name,
-          projectLink: `${origin}/project/${project.slug}-${projectId}`,
+          decisionLink: decisionLink(origin, shareToken),
         });
       },
       { userId: toUserId, subject: "project_transfer" },

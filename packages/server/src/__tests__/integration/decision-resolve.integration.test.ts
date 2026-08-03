@@ -125,14 +125,14 @@ describe("a token resolves to exactly one request, whichever flow it is", () => 
   it("resolves all five kinds, each to its own kind and row", async () => {
     const scene = await seedScene();
 
-    const studioInviteId = await studioInvitationsRepo.createPending({
+    const { id: studioInviteId } = await studioInvitationsRepo.createPending({
       studioId: scene.studioId,
       invitedUserId: scene.memberId,
       role: "guest",
       invitedBy: scene.ownerId,
       expiresAt: IN_A_WEEK(),
     });
-    const projectInviteId = await projectInvitationsRepo.createPending({
+    const { id: projectInviteId } = await projectInvitationsRepo.createPending({
       projectId: scene.projectId,
       invitedUserId: scene.memberId,
       role: "viewer",
@@ -186,7 +186,7 @@ describe("a token resolves to exactly one request, whichever flow it is", () => 
 
   it("a soft-deleted request still resolves, and says so", async () => {
     const scene = await seedScene();
-    const inviteId = await projectInvitationsRepo.createPending({
+    const { id: inviteId } = await projectInvitationsRepo.createPending({
       projectId: scene.projectId,
       invitedUserId: scene.memberId,
       role: "viewer",

@@ -104,6 +104,8 @@ export async function expireStalePending(
 /** A freshly filed request, and the bell entries its reap left to take down. */
 export interface CreatedRoleUpgradeRequest {
   id: string;
+  /** The token that names this request in a decision link. */
+  shareToken: string;
   /** Entries of timed-out rows the insert reaped; the caller retires them. */
   retiredNotificationIds: string[];
 }
@@ -154,14 +156,14 @@ export async function createPending(input: {
         shareToken: mintShareToken(),
         expiresAt: input.expiresAt,
       })
-      .returning({ id: roleUpgradeRequests.id });
+      .returning({ id: roleUpgradeRequests.id, shareToken: roleUpgradeRequests.shareToken });
     const row = rows[0];
     if (!row) {
       throw new Error(
         "roleUpgradeRequestsRepo.createPending: insert returned no row",
       );
     }
-    return { id: row.id, retiredNotificationIds };
+    return { id: row.id, shareToken: row.shareToken, retiredNotificationIds };
   };
   return input.tx ? run(input.tx) : db.transaction(run);
 }
@@ -264,7 +266,7 @@ export async function settleIfPending(
         isNull(roleUpgradeRequests.deletedAt),
       ),
     )
-    .returning({ id: roleUpgradeRequests.id });
+    .returning({ id: roleUpgradeRequests.id, shareToken: roleUpgradeRequests.shareToken });
   return rows.length > 0;
 }
 

@@ -147,7 +147,7 @@ async function tokenOf(table: string, id: string): Promise<string> {
 describe("the view names the right thing, in every flow", () => {
   it("a studio invite shows the studio, the inviter and the offered role", async () => {
     const s = await seedScene();
-    const id = await studioInvitationsRepo.createPending({
+    const { id: id } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: s.memberId,
       role: "guest",
@@ -170,7 +170,7 @@ describe("the view names the right thing, in every flow", () => {
 
   it("a project invite shows the project", async () => {
     const s = await seedScene();
-    const id = await projectInvitationsRepo.createPending({
+    const { id: id } = await projectInvitationsRepo.createPending({
       projectId: s.projectId,
       invitedUserId: s.memberId,
       role: "viewer",
@@ -242,7 +242,7 @@ describe("the view names the right thing, in every flow", () => {
 
   it("carries no ids and no slugs at all", async () => {
     const s = await seedScene();
-    const id = await studioInvitationsRepo.createPending({
+    const { id: id } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: s.memberId,
       role: "guest",
@@ -269,7 +269,7 @@ describe("the view tells the four dead ends apart", () => {
 
   it("an answered request says which way it was answered", async () => {
     const s = await seedScene();
-    const id = await studioInvitationsRepo.createPending({
+    const { id: id } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: s.memberId,
       role: "guest",
@@ -287,7 +287,7 @@ describe("the view tells the four dead ends apart", () => {
 
   it("a withdrawn request says withdrawn, in either vocabulary", async () => {
     const s = await seedScene();
-    const inviteId = await studioInvitationsRepo.createPending({
+    const { id: inviteId } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: s.memberId,
       role: "guest",
@@ -313,7 +313,7 @@ describe("the view tells the four dead ends apart", () => {
 
   it("timed out counts as expired whether or not the reaper has been by", async () => {
     const s = await seedScene();
-    const id = await studioInvitationsRepo.createPending({
+    const { id: id } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: s.memberId,
       role: "guest",
@@ -335,7 +335,7 @@ describe("the view tells the four dead ends apart", () => {
 
   it("a request that went away with its project reads gone, not invalid", async () => {
     const s = await seedScene();
-    const id = await projectInvitationsRepo.createPending({
+    const { id: id } = await projectInvitationsRepo.createPending({
       projectId: s.projectId,
       invitedUserId: s.memberId,
       role: "viewer",
@@ -354,7 +354,7 @@ describe("the view tells the four dead ends apart", () => {
 describe("already-a-member applies to invites only", () => {
   it("an invite to somebody already in says so instead of offering buttons", async () => {
     const s = await seedScene();
-    const id = await studioInvitationsRepo.createPending({
+    const { id: id } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: s.memberId,
       role: "guest",
@@ -395,7 +395,7 @@ describe("already-a-member applies to invites only", () => {
 describe("someone else's link", () => {
   it("shows the request but marks the viewer as not the recipient", async () => {
     const s = await seedScene();
-    const id = await studioInvitationsRepo.createPending({
+    const { id: id } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: s.memberId,
       role: "guest",

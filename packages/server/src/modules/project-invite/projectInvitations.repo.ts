@@ -67,6 +67,12 @@ export interface AcceptedProjectInvite {
  * @returns The new invitation's id
  * @throws {Error} if the insert returns no row (should never happen)
  */
+/** A freshly filed request: its id, and the token that names it in a link. */
+export interface CreatedRequest {
+  id: string;
+  shareToken: string;
+}
+
 export async function createPending(input: {
   projectId: string;
   invitedUserId: string;
@@ -74,7 +80,7 @@ export async function createPending(input: {
   invitedBy: string;
   expiresAt: Date;
   tx?: DbTx;
-}): Promise<string> {
+}): Promise<CreatedRequest> {
   const handle = input.tx ?? db;
   const rows = await handle
     .insert(projectInvitations)
@@ -87,14 +93,14 @@ export async function createPending(input: {
       shareToken: mintShareToken(),
       expiresAt: input.expiresAt,
     })
-    .returning({ id: projectInvitations.id });
+    .returning({ id: projectInvitations.id, shareToken: projectInvitations.shareToken });
   const row = rows[0];
   if (!row) {
     throw new Error(
       "projectInvitationsRepo.createPending: insert returned no row",
     );
   }
-  return row.id;
+  return { id: row.id, shareToken: row.shareToken };
 }
 
 /**

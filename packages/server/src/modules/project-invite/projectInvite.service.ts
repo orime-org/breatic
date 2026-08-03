@@ -145,14 +145,14 @@ export async function createInvite(
       if (!(await projectRepo.lockLiveProject(projectId, tx))) {
         throw new NotFoundError(t("server.error.not_found"));
       }
-      invitationId = await invitesRepo.createPending({
+      ({ id: invitationId } = await invitesRepo.createPending({
         projectId,
         invitedUserId: invitee.id,
         role,
         invitedBy: inviterUserId,
         expiresAt,
         tx,
-      });
+      }));
       // The shared landing-page token. Redis write, outside the PG tx semantics
       // (a rollback leaves an orphan token that self-expires); the token rides
       // in the bell payload so all three channels resolve to the same invite.

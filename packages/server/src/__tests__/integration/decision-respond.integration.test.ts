@@ -179,7 +179,7 @@ describe("accepting lands the flow's own write, and says where to go", () => {
   it("a studio invite: the invitee joins, and is sent to the studio", async () => {
     const s = await seedScene();
     const outsider = await insertOutsider("si");
-    const id = await studioInvitationsRepo.createPending({
+    const { id: id } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: outsider,
       role: "guest",
@@ -210,7 +210,7 @@ describe("accepting lands the flow's own write, and says where to go", () => {
       INSERT INTO studio_members (studio_id, user_id, role, added_by)
       VALUES (${s.studioId}, ${outsider}, 'maintainer', ${s.ownerId})
     `;
-    const id = await projectInvitationsRepo.createPending({
+    const { id: id } = await projectInvitationsRepo.createPending({
       projectId: s.projectId,
       invitedUserId: outsider,
       role: "viewer",
@@ -289,7 +289,7 @@ describe("declining settles the request and goes nowhere", () => {
   it("leaves the recipient on the page, with the request declined", async () => {
     const s = await seedScene();
     const outsider = await insertOutsider("dec");
-    const id = await studioInvitationsRepo.createPending({
+    const { id: id } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: outsider,
       role: "guest",
@@ -313,7 +313,7 @@ describe("the gate in front of the write", () => {
   it("answering twice is refused by the row, not by the entrance", async () => {
     const s = await seedScene();
     const outsider = await insertOutsider("twice");
-    const id = await studioInvitationsRepo.createPending({
+    const { id: id } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: outsider,
       role: "guest",
@@ -332,7 +332,7 @@ describe("the gate in front of the write", () => {
   it("somebody who is not the recipient cannot answer", async () => {
     const s = await seedScene();
     const outsider = await insertOutsider("wrong");
-    const id = await studioInvitationsRepo.createPending({
+    const { id: id } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: outsider,
       role: "guest",
@@ -353,7 +353,7 @@ describe("the gate in front of the write", () => {
   it("a timed-out request cannot be answered", async () => {
     const s = await seedScene();
     const outsider = await insertOutsider("late");
-    const id = await studioInvitationsRepo.createPending({
+    const { id: id } = await studioInvitationsRepo.createPending({
       studioId: s.studioId,
       invitedUserId: outsider,
       role: "guest",

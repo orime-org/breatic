@@ -65,6 +65,12 @@ export interface AcceptedInvite {
  * @returns The new invitation's id
  * @throws {Error} if the insert returns no row (should never happen)
  */
+/** A freshly filed request: its id, and the token that names it in a link. */
+export interface CreatedRequest {
+  id: string;
+  shareToken: string;
+}
+
 export async function createPending(input: {
   studioId: string;
   invitedUserId: string;
@@ -72,7 +78,7 @@ export async function createPending(input: {
   invitedBy: string;
   expiresAt: Date;
   tx?: DbTx;
-}): Promise<string> {
+}): Promise<CreatedRequest> {
   const handle = input.tx ?? db;
   const rows = await handle
     .insert(studioInvitations)
@@ -85,12 +91,12 @@ export async function createPending(input: {
       shareToken: mintShareToken(),
       expiresAt: input.expiresAt,
     })
-    .returning({ id: studioInvitations.id });
+    .returning({ id: studioInvitations.id, shareToken: studioInvitations.shareToken });
   const row = rows[0];
   if (!row) {
     throw new Error("studioInvitationsRepo.createPending: insert returned no row");
   }
-  return row.id;
+  return { id: row.id, shareToken: row.shareToken };
 }
 
 /**

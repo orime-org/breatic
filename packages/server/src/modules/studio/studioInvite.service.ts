@@ -124,14 +124,14 @@ export async function createInvite(
       // trip it and reject the re-invite with a spurious "already invited"
       // (#1769). Same transaction → freeing the slot and taking it are atomic.
       await invitesRepo.expireStalePending(studio.id, invitee.id, tx);
-      invitationId = await invitesRepo.createPending({
+      ({ id: invitationId } = await invitesRepo.createPending({
         studioId: studio.id,
         invitedUserId: invitee.id,
         role,
         invitedBy: inviterUserId,
         expiresAt,
         tx,
-      });
+      }));
       const notif = await notificationService.createStudioInviteRequest({
         userId: invitee.id,
         payload: {

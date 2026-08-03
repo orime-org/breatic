@@ -112,6 +112,8 @@ export async function expireStalePending(
 /** A freshly filed transfer, and the bell entries its reap left to take down. */
 export interface CreatedProjectTransfer {
   id: string;
+  /** The token that names this request in a decision link. */
+  shareToken: string;
   /** Entries of timed-out rows the insert reaped; the caller retires them. */
   retiredNotificationIds: string[];
 }
@@ -159,14 +161,14 @@ export async function createPending(input: {
         shareToken: mintShareToken(),
         expiresAt: input.expiresAt,
       })
-      .returning({ id: projectTransfers.id });
+      .returning({ id: projectTransfers.id, shareToken: projectTransfers.shareToken });
     const row = rows[0];
     if (!row) {
       throw new Error(
         "projectTransfersRepo.createPending: insert returned no row",
       );
     }
-    return { id: row.id, retiredNotificationIds };
+    return { id: row.id, shareToken: row.shareToken, retiredNotificationIds };
   };
   return input.tx ? run(input.tx) : db.transaction(run);
 }
@@ -263,7 +265,7 @@ export async function settleIfPending(
         isNull(projectTransfers.deletedAt),
       ),
     )
-    .returning({ id: projectTransfers.id });
+    .returning({ id: projectTransfers.id, shareToken: projectTransfers.shareToken });
   return rows.length > 0;
 }
 
