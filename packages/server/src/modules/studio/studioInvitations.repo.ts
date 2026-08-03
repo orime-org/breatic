@@ -47,6 +47,12 @@ export interface AcceptedInvite {
   notificationId: string | null;
 }
 
+/** A freshly filed request: its id, and the token that names it in a link. */
+export interface CreatedRequest {
+  id: string;
+  shareToken: string;
+}
+
 /**
  * Insert a fresh pending invitation; returns the new row id (the caller puts it
  * in the bell-notification payload, then links it back via
@@ -62,15 +68,9 @@ export interface AcceptedInvite {
  * @param input.invitedBy - The inviting admin's user id
  * @param input.expiresAt - When the invite times out (matches the notification TTL)
  * @param input.tx - Optional drizzle transaction handle
- * @returns The new invitation's id
+ * @returns The new invitation's id and its share token
  * @throws {Error} if the insert returns no row (should never happen)
  */
-/** A freshly filed request: its id, and the token that names it in a link. */
-export interface CreatedRequest {
-  id: string;
-  shareToken: string;
-}
-
 export async function createPending(input: {
   studioId: string;
   invitedUserId: string;

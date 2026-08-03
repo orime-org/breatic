@@ -44,19 +44,17 @@ import { getProjectCollaboratorCap } from "@server/config/limits.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildProjectInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { randomBytes } from "node:crypto";
-import { db, env, getRedis } from "@breatic/core";
+import { db } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { projectMembersRepo } from "@breatic/core";
 import { type ProjectRole, t } from "@breatic/shared";
+import { decisionLink } from "@server/utils/decision-link.js";
 import type {
   InvitableProjectRole,
   PendingProjectInvitationSummary,
-  ProjectInvitationLandingView,
 } from "@breatic/shared";
 import {
   deferredRequestExpiry,
-  deferredRequestTtlSeconds,
 } from "@server/config/limits.js";
 
 /**
@@ -96,7 +94,7 @@ export async function createInvite(
   origin?: string,
 ): Promise<{
   invitationId: string;
-  token: string;
+  shareToken: string;
   inviteeUserId: string;
   inviteeEmail: string;
   projectName: string;
@@ -129,7 +127,6 @@ export async function createInvite(
   let invitationId = "";
   // The bell row builds its link from this, same as the email.
   let shareToken = "";
-  let token = "";
   try {
     await db.transaction(async (tx) => {
       // Reap any expired-but-still-'pending' invite for this (project, invitee)
@@ -155,10 +152,6 @@ export async function createInvite(
         expiresAt,
         tx,
       }));
-      // The shared landing-page token. Redis write, outside the PG tx semantics
-      // (a rollback leaves an orphan token that self-expires); the token rides
-      // in the bell payload so all three channels resolve to the same invite.
-      token = await issueInviteToken(invitationId);
       const notif = await notificationService.createProjectInviteRequest({
         userId: invitee.id,
         projectId,
@@ -196,7 +189,7 @@ export async function createInvite(
           inviterName,
           projectName: project.name,
           role,
-          inviteLink: `${origin}/project-invite?token=${token}`,
+          inviteLink: decisionLink(origin, shareToken),
         }),
       { userId: inviterUserId, subject: "project_invite" },
     );
@@ -204,7 +197,7 @@ export async function createInvite(
 
   return {
     invitationId,
-    token,
+    shareToken,
     inviteeUserId: invitee.id,
     inviteeEmail: email,
     projectName: project.name,
@@ -380,102 +373,7 @@ export async function listPending(
   return invitesRepo.listPendingByProject(projectId);
 }
 
-/**
- * Issue a one-time email-link token for an invite (mirrors the studio-invite
- * token): a 64-hex random token stored in Redis
- * (`{env}:project-invite:{token}` → invitationId) with the same TTL as the
- * invitation row it unlocks, so the link cannot outlive the invite. The route
- * embeds it in the `/project-invite?token=` link.
- * @param invitationId - The invitation the token resolves to
- * @returns The 64-char hex token to embed in the invite link
- */
-export async function issueInviteToken(invitationId: string): Promise<string> {
-  const token = randomBytes(32).toString("hex");
-  await getRedis().set(
-    `${env.ENV}:project-invite:${token}`,
-    invitationId,
-    "EX",
-    deferredRequestTtlSeconds(),
-  );
-  return token;
-}
 
-/**
- * Resolve an email-link token to its invitation id WITHOUT consuming it — the
- * landing page reads the invite summary first; the token is deleted only once
- * the invitee acts (via {@link consumeInviteToken}).
- * @param token - The one-time token from the invite link
- * @returns The invitation id, or null if the token is missing / expired
- */
-export async function peekInviteToken(token: string): Promise<string | null> {
-  return getRedis().get(`${env.ENV}:project-invite:${token}`);
-}
 
-/**
- * Consume (delete) an email-link token after the invitee has acted on it, so
- * the link is single-use.
- * @param token - The one-time token to delete
- */
-export async function consumeInviteToken(token: string): Promise<void> {
-  await getRedis().del(`${env.ENV}:project-invite:${token}`);
-}
 
-/**
- * Resolve an email-link token to the landing-page view (without consuming it).
- *
- * The `/project-invite` page renders this before the invitee acts: project +
- * inviter names, granted role, an `expired` flag, and `isInvitee` (true only
- * when the logged-in user is the invitee — gates the confirm button). No
- * invitation / invitee id leaks out.
- * @param token - The one-time token from the invite link
- * @param viewerUserId - The logged-in user (sets `isInvitee`)
- * @returns The landing view, or null if the token / invite is gone
- */
-export async function getInviteForLanding(
-  token: string,
-  viewerUserId: string,
-): Promise<ProjectInvitationLandingView | null> {
-  const invitationId = await peekInviteToken(token);
-  if (!invitationId) return null;
-  const row = await invitesRepo.findLandingById(invitationId);
-  if (!row) return null;
-  return {
-    projectName: row.projectName,
-    projectSlug: row.projectSlug,
-    projectId: row.projectId,
-    inviterName: row.inviterName,
-    role: row.role,
-    expired: row.expiresAt.getTime() <= Date.now(),
-    isInvitee: row.invitedUserId === viewerUserId,
-  };
-}
 
-/**
- * Respond to an invite from the email-link page — confirm or decline, then
- * consume the one-time token (single-use). The `userId` flows into the same CAS
- * guard as the bell path, so only the invitee can confirm/decline their own
- * invite. Returns the project id + slug so the page can redirect on confirm.
- * @param token - The one-time token from the invite link
- * @param action - 'confirm' (accept + become a member) or 'decline'
- * @param userId - The logged-in user acting (must be the invitee)
- * @returns `{ projectId, projectSlug }` for the post-confirm redirect
- * @throws {NotFoundError} token / invite missing, already decided, expired, or
- *   not owned by `userId`
- */
-export async function respondToInvite(
-  token: string,
-  action: "confirm" | "decline",
-  userId: string,
-): Promise<{ projectId: string; projectSlug: string }> {
-  const invitationId = await peekInviteToken(token);
-  if (!invitationId) throw new NotFoundError(t("server.error.not_found"));
-  const landing = await invitesRepo.findLandingById(invitationId);
-  if (!landing) throw new NotFoundError(t("server.error.not_found"));
-  if (action === "confirm") {
-    await confirmInvite(invitationId, userId);
-  } else {
-    await declineInvite(invitationId, userId);
-  }
-  await consumeInviteToken(token);
-  return { projectId: landing.projectId, projectSlug: landing.projectSlug };
-}

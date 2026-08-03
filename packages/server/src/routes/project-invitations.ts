@@ -17,8 +17,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { NotFoundError } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { decisionLink } from "@server/utils/decision-link.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRole, getProjectId } from "@server/middleware/role.js";
@@ -26,11 +25,6 @@ import type { AuthRoleVariables } from "@server/middleware/role.js";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
 
 /** Respond body — confirm (accept) or decline the invite, by its link token. */
-const respondSchema = z.object({
-  token: z.string().min(1),
-  action: z.enum(["confirm", "decline"]),
-});
-
 /** Create-invite body — a registered email + the granted role (never owner). */
 const inviteCreateSchema = z.object({
   email: z.string().email(),
@@ -41,40 +35,7 @@ const route = new Hono<{ Variables: AuthVariables }>();
 
 route.use(requireAuth);
 
-/**
- * `GET /api/v1/project-invitations/:token` — the landing-page view for an
- * invite link (project + inviter names, role, `expired`, `isInvitee`). Does NOT
- * consume the token (the invitee reads it before acting).
- * @returns `200` with `{ data: ProjectInvitationLandingView }`; `404` when the
- *   token / invite is gone (expired link or already decided)
- */
-route.get("/:token", async (c) => {
-  const user = c.get("user");
-  const token = c.req.param("token");
-  const data = await projectInviteService.getInviteForLanding(token, user.id);
-  if (!data) {
-    throw new NotFoundError(t("server.error.not_found"));
-  }
-  return c.json({ data });
-});
 
-/**
- * `POST /api/v1/project-invitations/respond` — confirm or decline an invite
- * from the email link; consumes the one-time token. Returns the project id +
- * slug for the post-confirm redirect.
- * @returns `200` with `{ data: { projectId, projectSlug } }`; `404` token /
- *   invite gone, already decided, expired, or the caller is not the invitee
- */
-route.post("/respond", zValidator("json", respondSchema), async (c) => {
-  const user = c.get("user");
-  const { token, action } = c.req.valid("json");
-  const data = await projectInviteService.respondToInvite(
-    token,
-    action,
-    user.id,
-  );
-  return c.json({ data });
-});
 
 // ── Per-project endpoints (owner CRUD) ──────────────────────────────
 //
@@ -118,7 +79,7 @@ projectInvites.post(
       body.role,
       origin,
     );
-    const inviteLink = `${origin}/project-invite?token=${invite.token}`;
+    const inviteLink = decisionLink(origin, invite.shareToken);
     return c.json({ data: { inviteLink } }, 201);
   },
 );
@@ -152,5 +113,4 @@ projectInvites.delete(
   },
 );
 
-export { route as projectInvitationsRoute };
 export { projectInvites as projectInvitesRoute };

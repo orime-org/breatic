@@ -23,6 +23,7 @@ import {
   roleUpgradeRequests,
   projectTransfers,
   studioTransfers,
+  projectMembersRepo,
 } from "@breatic/core";
 import type { DecisionKind } from "@breatic/shared";
 
@@ -92,4 +93,138 @@ export async function resolveByToken(
   }
 
   return null;
+}
+
+/**
+ * The parts of a request that differ by flow, once the flow-specific column
+ * names are behind us.
+ */
+export interface RequestDetail {
+  /** The studio or project being decided about. */
+  container: { kind: "studio" | "project"; id: string };
+  /** Who set it in motion. */
+  actorUserId: string;
+  /** Who is being asked. */
+  recipientUserId: string;
+  role: string | null;
+  message: string | null;
+}
+
+/**
+ * Reads the flow-specific half of a request.
+ *
+ * Each flow names its columns differently — `invitedUserId` here, `toUserId`
+ * there, `requesterUserId` in the third — so this is the one place that has to
+ * know five shapes. Everything after it works on {@link RequestDetail}.
+ * @param kind - Which flow the request belongs to.
+ * @param id - The request row's id.
+ * @returns Its detail, or null when the row vanished between two queries.
+ */
+export async function readDetail(
+  kind: DecisionKind,
+  id: string,
+): Promise<RequestDetail | null> {
+  switch (kind) {
+    case "studio_invite": {
+      const [row] = await db
+        .select({
+          studioId: studioInvitations.studioId,
+          invitedBy: studioInvitations.invitedBy,
+          invitedUserId: studioInvitations.invitedUserId,
+          role: studioInvitations.role,
+        })
+        .from(studioInvitations)
+        .where(eq(studioInvitations.id, id))
+        .limit(1);
+      if (!row) return null;
+      return {
+        container: { kind: "studio", id: row.studioId },
+        actorUserId: row.invitedBy,
+        recipientUserId: row.invitedUserId,
+        role: row.role,
+        message: null,
+      };
+    }
+    case "project_invite": {
+      const [row] = await db
+        .select({
+          projectId: projectInvitations.projectId,
+          invitedBy: projectInvitations.invitedBy,
+          invitedUserId: projectInvitations.invitedUserId,
+          role: projectInvitations.role,
+        })
+        .from(projectInvitations)
+        .where(eq(projectInvitations.id, id))
+        .limit(1);
+      if (!row) return null;
+      return {
+        container: { kind: "project", id: row.projectId },
+        actorUserId: row.invitedBy,
+        recipientUserId: row.invitedUserId,
+        role: row.role,
+        message: null,
+      };
+    }
+    case "role_upgrade": {
+      const [row] = await db
+        .select({
+          projectId: roleUpgradeRequests.projectId,
+          requesterUserId: roleUpgradeRequests.requesterUserId,
+          requestedRole: roleUpgradeRequests.requestedRole,
+          message: roleUpgradeRequests.message,
+        })
+        .from(roleUpgradeRequests)
+        .where(eq(roleUpgradeRequests.id, id))
+        .limit(1);
+      if (!row) return null;
+      // The requester is the ACTOR; the person being asked is the project's
+      // owner, resolved below rather than stored on the request.
+      const ownerId = await projectMembersRepo.getOwner(row.projectId);
+      return {
+        container: { kind: "project", id: row.projectId },
+        actorUserId: row.requesterUserId,
+        recipientUserId: ownerId ?? "",
+        role: row.requestedRole,
+        message: row.message,
+      };
+    }
+    case "project_transfer": {
+      const [row] = await db
+        .select({
+          projectId: projectTransfers.projectId,
+          fromUserId: projectTransfers.fromUserId,
+          toUserId: projectTransfers.toUserId,
+        })
+        .from(projectTransfers)
+        .where(eq(projectTransfers.id, id))
+        .limit(1);
+      if (!row) return null;
+      return {
+        container: { kind: "project", id: row.projectId },
+        actorUserId: row.fromUserId,
+        recipientUserId: row.toUserId,
+        role: null,
+        message: null,
+      };
+    }
+    case "studio_transfer": {
+      const [row] = await db
+        .select({
+          studioId: studioTransfers.studioId,
+          fromUserId: studioTransfers.fromUserId,
+          toUserId: studioTransfers.toUserId,
+        })
+        .from(studioTransfers)
+        .where(eq(studioTransfers.id, id))
+        .limit(1);
+      if (!row) return null;
+      return {
+        container: { kind: "studio", id: row.studioId },
+        actorUserId: row.fromUserId,
+        recipientUserId: row.toUserId,
+        role: null,
+        message: null,
+      };
+    }
+  }
 }

@@ -21,16 +21,7 @@
  * request was filed would eventually describe someone else.
  */
 
-import { eq } from "drizzle-orm";
-import {
-  db,
-  studioInvitations,
-  projectInvitations,
-  roleUpgradeRequests,
-  projectTransfers,
-  studioTransfers,
-  projectMembersRepo,
-} from "@breatic/core";
+import { projectMembersRepo } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import type {
   DecisionAction,
@@ -47,24 +38,11 @@ import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUp
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as decisionRepo from "@server/modules/decision/decision.repo.js";
+import type { RequestDetail } from "@server/modules/decision/decision.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { getDeferredRequestTtlDays } from "@server/config/limits.js";
 
-/**
- * The parts of a request that differ by flow, once the flow-specific column
- * names are behind us.
- */
-interface RequestDetail {
-  /** The studio or project being decided about. */
-  container: { kind: "studio" | "project"; id: string };
-  /** Who set it in motion. */
-  actorUserId: string;
-  /** Who is being asked. */
-  recipientUserId: string;
-  role: string | null;
-  message: string | null;
-}
 
 /** Terminal status words meaning the recipient said yes. */
 const ACCEPTED = new Set(["accepted", "approved"]);
@@ -76,124 +54,6 @@ const WITHDRAWN = new Set(["revoked", "cancelled"]);
 /** The two flows where the recipient is, by definition, not a member yet. */
 const INVITE_KINDS = new Set<DecisionKind>(["studio_invite", "project_invite"]);
 
-/**
- * Reads the flow-specific half of a request.
- *
- * Each flow names its columns differently — `invitedUserId` here, `toUserId`
- * there, `requesterUserId` in the third — so this is the one place that has to
- * know five shapes. Everything after it works on {@link RequestDetail}.
- * @param kind - Which flow the request belongs to.
- * @param id - The request row's id.
- * @returns Its detail, or null when the row vanished between two queries.
- */
-async function readDetail(
-  kind: DecisionKind,
-  id: string,
-): Promise<RequestDetail | null> {
-  switch (kind) {
-    case "studio_invite": {
-      const [row] = await db
-        .select({
-          studioId: studioInvitations.studioId,
-          invitedBy: studioInvitations.invitedBy,
-          invitedUserId: studioInvitations.invitedUserId,
-          role: studioInvitations.role,
-        })
-        .from(studioInvitations)
-        .where(eq(studioInvitations.id, id))
-        .limit(1);
-      if (!row) return null;
-      return {
-        container: { kind: "studio", id: row.studioId },
-        actorUserId: row.invitedBy,
-        recipientUserId: row.invitedUserId,
-        role: row.role,
-        message: null,
-      };
-    }
-    case "project_invite": {
-      const [row] = await db
-        .select({
-          projectId: projectInvitations.projectId,
-          invitedBy: projectInvitations.invitedBy,
-          invitedUserId: projectInvitations.invitedUserId,
-          role: projectInvitations.role,
-        })
-        .from(projectInvitations)
-        .where(eq(projectInvitations.id, id))
-        .limit(1);
-      if (!row) return null;
-      return {
-        container: { kind: "project", id: row.projectId },
-        actorUserId: row.invitedBy,
-        recipientUserId: row.invitedUserId,
-        role: row.role,
-        message: null,
-      };
-    }
-    case "role_upgrade": {
-      const [row] = await db
-        .select({
-          projectId: roleUpgradeRequests.projectId,
-          requesterUserId: roleUpgradeRequests.requesterUserId,
-          requestedRole: roleUpgradeRequests.requestedRole,
-          message: roleUpgradeRequests.message,
-        })
-        .from(roleUpgradeRequests)
-        .where(eq(roleUpgradeRequests.id, id))
-        .limit(1);
-      if (!row) return null;
-      // The requester is the ACTOR; the person being asked is the project's
-      // owner, resolved below rather than stored on the request.
-      const ownerId = await projectMembersRepo.getOwner(row.projectId);
-      return {
-        container: { kind: "project", id: row.projectId },
-        actorUserId: row.requesterUserId,
-        recipientUserId: ownerId ?? "",
-        role: row.requestedRole,
-        message: row.message,
-      };
-    }
-    case "project_transfer": {
-      const [row] = await db
-        .select({
-          projectId: projectTransfers.projectId,
-          fromUserId: projectTransfers.fromUserId,
-          toUserId: projectTransfers.toUserId,
-        })
-        .from(projectTransfers)
-        .where(eq(projectTransfers.id, id))
-        .limit(1);
-      if (!row) return null;
-      return {
-        container: { kind: "project", id: row.projectId },
-        actorUserId: row.fromUserId,
-        recipientUserId: row.toUserId,
-        role: null,
-        message: null,
-      };
-    }
-    case "studio_transfer": {
-      const [row] = await db
-        .select({
-          studioId: studioTransfers.studioId,
-          fromUserId: studioTransfers.fromUserId,
-          toUserId: studioTransfers.toUserId,
-        })
-        .from(studioTransfers)
-        .where(eq(studioTransfers.id, id))
-        .limit(1);
-      if (!row) return null;
-      return {
-        container: { kind: "studio", id: row.studioId },
-        actorUserId: row.fromUserId,
-        recipientUserId: row.toUserId,
-        role: null,
-        message: null,
-      };
-    }
-  }
-}
 
 /**
  * Decides which of the four dead ends, or none of them, this request is in.
@@ -203,8 +63,13 @@ async function readDetail(
  * Already-a-member comes next and ONLY for invites: the other three flows
  * require the recipient to be a member already, so asking "are you in?" there
  * would leave them permanently unanswerable.
- * @param input - The resolved request, its detail, and whether the recipient
- *   already belongs to the container.
+ * @param input - What is known about the request.
+ * @param input.kind - Which flow it belongs to.
+ * @param input.status - Its own table's status word.
+ * @param input.deleted - Whether the row was soft-deleted with its container.
+ * @param input.expiresAt - When the answering window closes.
+ * @param input.recipientAlreadyIn - Whether the recipient already belongs to
+ *   the container; only meaningful for the two invite flows.
  * @returns The state the landing page should render.
  */
 function decideState(input: {
@@ -242,7 +107,7 @@ export async function viewByToken(
   const found = await decisionRepo.resolveByToken(token);
   if (!found) return null;
 
-  const detail = await readDetail(found.kind, found.id);
+  const detail = await decisionRepo.readDetail(found.kind, found.id);
   if (!detail) return null;
 
   const [containerName, actorName, recipientAlreadyIn] = await Promise.all([
@@ -419,7 +284,7 @@ export async function respond(
   const found = await decisionRepo.resolveByToken(token);
   if (!found) throw new NotFoundError(t("server.error.not_found"));
 
-  const detail = await readDetail(found.kind, found.id);
+  const detail = await decisionRepo.readDetail(found.kind, found.id);
   if (!detail) throw new NotFoundError(t("server.error.not_found"));
 
   if (detail.recipientUserId !== viewerUserId) {
