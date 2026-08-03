@@ -1513,8 +1513,8 @@
   "decision": {
     "loadingTitle": "正在打开这个请求…",
     "loadingBody": "稍等，正在查找。",
-    "title": "{kind, select, studio_invite {有人邀请你加入一个 studio} project_invite {有人邀请你加入一个项目} role_upgrade {有人申请更高的角色} project_transfer {有人要把一个项目交给你} studio_transfer {有人要把一个 studio 交给你} other {有件事等你答复}}",
-    "body": "{kind, select, studio_invite {{actor} 邀请你加入 {entity}。} project_invite {{actor} 邀请你参与 {entity}。} role_upgrade {{actor} 申请在 {entity} 中成为 {role}。} project_transfer {{actor} 想把 {entity} 的所有权交给你。} studio_transfer {{actor} 想让你成为 {entity} 的管理员。} other {{actor} 在等你对 {entity} 的答复。}}",
+    "title": "{kind, select, studio_invite {有人邀请你加入一个 Studio} project_invite {有人邀请你加入一个 Project} role_upgrade {有人申请更高的角色} project_transfer {有人要把一个 Project 交给你} studio_transfer {有人要把一个 Studio 交给你} other {有件事等你答复}}",
+    "body": "{kind, select, studio_invite {{actor} 邀请你加入 {entity}。} project_invite {{actor} 邀请你参与 {entity}。} role_upgrade {{actor} 申请在 {entity} 中成为 {role}。} project_transfer {{actor} 想把 {entity} 的所有权交给你。} studio_transfer {{actor} 想让你成为 {entity} 的 Admin。} other {{actor} 在等你对 {entity} 的答复。}}",
     "reason": "他的说明：{message}",
     "confirm": "{kind, select, role_upgrade {批准} other {接受}}",
     "decline": "{kind, select, role_upgrade {拒绝} other {拒绝}}",
@@ -1536,7 +1536,7 @@
     "notYoursTitle": "这件事不该由你答复",
     "notYoursBody": "它是发给别人的。用那个账号登录才能答复。",
     "goThere": "去看看",
-    "backHome": "回到你的 studio",
+    "backHome": "回到你的 Studio",
     "actionFailed": "操作没有成功，请再试一次。"
   }
 }

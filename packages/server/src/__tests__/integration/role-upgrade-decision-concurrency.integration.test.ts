@@ -140,8 +140,8 @@ async function insertRoleUpgradeRequest(
   // The request is a row of its own now; the notification only announces it.
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO role_upgrade_requests
-      (project_id, requester_user_id, requested_role, status, notification_id, expires_at)
-    VALUES (${projectId}, ${requesterId}, 'editor', 'pending', ${notice!.id}, ${expiresAt})
+      (project_id, requester_user_id, requested_role, status, notification_id, expires_at, share_token)
+      VALUES (${projectId}, ${requesterId}, 'editor', 'pending', ${notice!.id}, ${expiresAt}, replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''))
     RETURNING id
   `;
   return row!.id;

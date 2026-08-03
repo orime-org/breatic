@@ -144,16 +144,16 @@ describe("one live pending per key, and a terminal status frees it", () => {
     const second = await insertUser();
 
     await sql`
-      INSERT INTO project_transfers (project_id, from_user_id, to_user_id, status, expires_at)
-      VALUES (${projectId}, ${owner}, ${first}, 'pending', now() + interval '7 days')
+      INSERT INTO project_transfers (project_id, from_user_id, to_user_id, status, expires_at, share_token)
+      VALUES (${projectId}, ${owner}, ${first}, 'pending', now() + interval '7 days', replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''))
     `;
 
     // Same project, a different recipient: the grain is the CONTAINER, so this
     // must be refused even though no (project, recipient) pair repeats.
     await expect(
       sql`
-        INSERT INTO project_transfers (project_id, from_user_id, to_user_id, status, expires_at)
-        VALUES (${projectId}, ${owner}, ${second}, 'pending', now() + interval '7 days')
+        INSERT INTO project_transfers (project_id, from_user_id, to_user_id, status, expires_at, share_token)
+      VALUES (${projectId}, ${owner}, ${second}, 'pending', now() + interval '7 days', replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''))
       `,
     ).rejects.toThrow(/project_transfers_one_pending/);
   });
@@ -164,8 +164,8 @@ describe("one live pending per key, and a terminal status frees it", () => {
     const second = await insertUser();
 
     await sql`
-      INSERT INTO project_transfers (project_id, from_user_id, to_user_id, status, expires_at)
-      VALUES (${projectId}, ${owner}, ${first}, 'pending', now() - interval '1 day')
+      INSERT INTO project_transfers (project_id, from_user_id, to_user_id, status, expires_at, share_token)
+      VALUES (${projectId}, ${owner}, ${first}, 'pending', now() - interval '1 day', replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''))
     `;
     // What the create-path reaper does: a timed-out pending is flipped to
     // 'expired', which leaves the index predicate.
@@ -175,8 +175,8 @@ describe("one live pending per key, and a terminal status frees it", () => {
     `;
 
     await sql`
-      INSERT INTO project_transfers (project_id, from_user_id, to_user_id, status, expires_at)
-      VALUES (${projectId}, ${owner}, ${second}, 'pending', now() + interval '7 days')
+      INSERT INTO project_transfers (project_id, from_user_id, to_user_id, status, expires_at, share_token)
+      VALUES (${projectId}, ${owner}, ${second}, 'pending', now() + interval '7 days', replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''))
     `;
 
     const rows = await sql<{ status: string; c: number }[]>`
@@ -197,8 +197,8 @@ describe("one live pending per key, and a terminal status frees it", () => {
     for (const viewer of [viewerA, viewerB]) {
       await sql`
         INSERT INTO role_upgrade_requests
-          (project_id, requester_user_id, requested_role, status, expires_at)
-        VALUES (${projectId}, ${viewer}, 'editor', 'pending', now() + interval '7 days')
+          (project_id, requester_user_id, requested_role, status, expires_at, share_token)
+      VALUES (${projectId}, ${viewer}, 'editor', 'pending', now() + interval '7 days', replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''))
       `;
     }
 
@@ -206,8 +206,8 @@ describe("one live pending per key, and a terminal status frees it", () => {
     await expect(
       sql`
         INSERT INTO role_upgrade_requests
-          (project_id, requester_user_id, requested_role, status, expires_at)
-        VALUES (${projectId}, ${viewerA}, 'editor', 'pending', now() + interval '7 days')
+          (project_id, requester_user_id, requested_role, status, expires_at, share_token)
+      VALUES (${projectId}, ${viewerA}, 'editor', 'pending', now() + interval '7 days', replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''))
       `,
     ).rejects.toThrow(/role_upgrade_requests_one_pending/);
   });
