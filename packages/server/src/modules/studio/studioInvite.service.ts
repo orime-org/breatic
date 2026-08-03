@@ -116,6 +116,8 @@ export async function createInvite(
   const expiresAt = deferredRequestExpiry();
 
   let invitationId = "";
+  // The bell row builds its link from this, same as the email.
+  let shareToken = "";
   try {
     await db.transaction(async (tx) => {
       // Reap any expired-but-still-'pending' invite for this (studio, invitee)
@@ -124,7 +126,7 @@ export async function createInvite(
       // trip it and reject the re-invite with a spurious "already invited"
       // (#1769). Same transaction → freeing the slot and taking it are atomic.
       await invitesRepo.expireStalePending(studio.id, invitee.id, tx);
-      ({ id: invitationId } = await invitesRepo.createPending({
+      ({ id: invitationId, shareToken } = await invitesRepo.createPending({
         studioId: studio.id,
         invitedUserId: invitee.id,
         role,
@@ -141,6 +143,7 @@ export async function createInvite(
           inviterUserId,
           inviterName,
           role,
+          shareToken,
         },
         expiresAt,
         tx,

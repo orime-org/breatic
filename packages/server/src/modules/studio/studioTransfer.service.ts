@@ -132,6 +132,7 @@ export async function requestTransfer(
             studioId: studio.id,
             studioName: studio.name,
             transferId,
+          shareToken: filed.shareToken,
           },
           expiresAt,
           tx,

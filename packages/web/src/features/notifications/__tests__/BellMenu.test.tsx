@@ -9,7 +9,6 @@ import { MemoryRouter } from 'react-router-dom';
 
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { TooltipProvider } from '@web/components/ui/tooltip';
-import { ApiException } from '@web/data/api/types';
 import { useCurrentUserStore } from '@web/stores';
 
 // The project invite bell row navigates to the `/project-invite` landing page
@@ -30,9 +29,6 @@ const SELF = {
 
 const PID = '11111111-1111-4111-8111-111111111111';
 const N1 = '22222222-2222-4222-8222-222222222222';
-const N2 = '33333333-3333-4333-8333-333333333333';
-// The request row a bell entry points at — what the decision endpoint takes.
-const REQ1 = '44444444-4444-4444-8444-444444444444';
 
 vi.mock('@web/data/api/notifications', () => ({
   notificationsApi: {
@@ -65,8 +61,6 @@ vi.mock('@web/lib/toast', () => ({
 }));
 
 import { notificationsApi , EMPTY_RESOLVED } from '@web/data/api/notifications';
-import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
-import { toast } from '@web/lib/toast';
 
 function setup() {
   const qc = new QueryClient({
@@ -91,6 +85,7 @@ type NotifType =
   | 'access.role_upgrade_approved'
   | 'access.role_upgrade_rejected'
   | 'studio.transfer_request'
+  | 'project.transfer_request'
   | 'studio.transfer_approved'
   | 'studio.invite_request'
   | 'studio.invite_accepted'
@@ -157,465 +152,91 @@ describe('BellMenu — auth gate (boot-race, #1261)', () => {
   });
 });
 
-describe('BellMenu — 4 notification types render', () => {
-  it('renders one row per notification with the right headline + action affordance', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(N1, 'access.role_upgrade_request', {
-        projectName: 'Q1 Sprint',
-        message: 'Need editor for review',
-      }),
-      fakeNotification(N2, 'studio.invite_accepted', {
-        studioName: 'Acme',
-        inviteeName: 'Alex',
-      }),
-    ], resolved: EMPTY_RESOLVED });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
+describe('BellMenu — every waiting request is a link, not a decision', () => {
+  // The bell used to decide four of the five flows inline and navigate for the
+  // fifth. It now does one thing for all five: say a decision is waiting and
+  // take you to the page where it is made. These tests pin that uniformity —
+  // one row shape, one button, one destination.
+  const WAITING: Array<{ type: NotifType; payload: Record<string, unknown> }> = [
+    {
+      type: 'access.role_upgrade_request',
+      payload: { requestId: 'r-1', requesterUserId: 'u-other', shareToken: 'a'.repeat(64) },
+    },
+    {
+      type: 'studio.invite_request',
+      payload: { invitationId: 'i-1', studioId: N1, inviterUserId: 'u-other', role: 'guest', shareToken: 'b'.repeat(64) },
+    },
+    {
+      type: 'project.invite_request',
+      payload: { invitationId: 'i-2', projectId: PID, inviterUserId: 'u-other', role: 'viewer', shareToken: 'c'.repeat(64) },
+    },
+    {
+      type: 'studio.transfer_request',
+      payload: { transferId: 't-1', studioId: N1, fromUserId: 'u-other', shareToken: 'd'.repeat(64) },
+    },
+    {
+      type: 'project.transfer_request',
+      payload: { transferId: 't-2', projectId: PID, fromUserId: 'u-other', shareToken: 'e'.repeat(64) },
+    },
+  ];
 
-    expect(
-      await screen.findByTestId(`bell-notification-${N1}`),
-    ).toBeInTheDocument();
-    // Upgrade-request rows expose approve / reject buttons.
-    expect(screen.getByTestId(`bell-approve-${N1}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`bell-reject-${N1}`)).toBeInTheDocument();
-    // Non-decision rows expose a mark-read affordance.
-    expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
-  });
-
-  it('badge dot appears when unread count > 0', async () => {
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(N1, 'access.role_upgrade_approved', {
-        projectName: 'Demo',
-      }),
-    ], resolved: EMPTY_RESOLVED });
-    setup();
-    await waitFor(() => {
-      expect(screen.getByTestId('bell-unread-dot')).toBeInTheDocument();
-    });
-  });
-
-  it('renders the headline in full — never single-line `truncate` (it clipped the actor-first copy with an ellipsis)', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(N1, 'access.role_upgrade_rejected', {
-        deciderUserId: 'u-decider',
-        deciderName: 'bangbang',
-        projectId: 'p-canvas',
-        projectName: 'canvas',
-      }),
-    ], resolved: EMPTY_RESOLVED });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    const headline = await screen.findByTestId(
-      `bell-notification-headline-${N1}`,
-    );
-    // `truncate` = overflow-hidden + nowrap + ellipsis → clips the longer
-    // actor-first sentence to one line. The headline must wrap to show it whole.
-    expect(headline.className).not.toMatch(/\btruncate\b/);
-  });
-});
-
-describe('BellMenu — approve / reject mutations on upgrade-request rows', () => {
-  it('clicking approve calls roleUpgradeRequestsApi.decide(approved)', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(N1, 'access.role_upgrade_request', {
-        projectName: 'Demo',
-        requestId: REQ1,
-      }),
-    ], resolved: EMPTY_RESOLVED });
-    vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({ ok: true });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-approve-${N1}`));
-
-    // Keyed on the REQUEST row, not the bell entry: the entry only announces
-    // it, and the decision endpoint answers 404 for an entry id.
-    await waitFor(() => {
-      expect(roleUpgradeRequestsApi.decide).toHaveBeenCalledWith(REQ1, {
-        decision: 'approved',
-      });
-    });
-    expect(toast.success).toHaveBeenCalled();
-  });
-
-  it('clicking reject calls decide(rejected) + success toast', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(N1, 'access.role_upgrade_request', {
-        projectName: 'Demo',
-        requestId: REQ1,
-      }),
-    ], resolved: EMPTY_RESOLVED });
-    vi.mocked(roleUpgradeRequestsApi.decide).mockResolvedValueOnce({ ok: true });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-reject-${N1}`));
-
-    await waitFor(() => {
-      expect(roleUpgradeRequestsApi.decide).toHaveBeenCalledWith(REQ1, {
-        decision: 'rejected',
-      });
-    });
-    expect(toast.success).toHaveBeenCalled();
-  });
-
-  it('toasts error when decide rejects', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(N1, 'access.role_upgrade_request', {
-        projectName: 'Demo',
-        requestId: REQ1,
-      }),
-    ], resolved: EMPTY_RESOLVED });
-    vi.mocked(roleUpgradeRequestsApi.decide).mockRejectedValueOnce(
-      new ApiException({
-        status: 409,
-        code: 'CONFLICT',
-        message: 'Already reviewed',
-      }),
-    );
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-approve-${N1}`));
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('Already reviewed');
-    });
-  });
-
-  it('refuses to decide an entry that points at no request', async () => {
-    // Nothing to decide, so the bell says so rather than firing a call that
-    // answers 404 with a message about a request the user never saw.
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({
-      items: [
-        fakeNotification(N1, 'access.role_upgrade_request', {
-          projectName: 'Demo',
-        }),
-      ],
+  it.each(WAITING)('$type shows one answer button and no inline decision', async ({ type, payload }) => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-1', type, payload)],
       resolved: EMPTY_RESOLVED,
     });
+    const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-approve-${N1}`));
 
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalled();
+    expect(await screen.findByTestId('bell-open-decision-n-1')).toBeInTheDocument();
+    // The four inline affordances are gone for every flow, not just some.
+    expect(screen.queryByTestId('bell-approve-n-1')).toBeNull();
+    expect(screen.queryByTestId('bell-reject-n-1')).toBeNull();
+    expect(screen.queryByTestId('bell-confirm-n-1')).toBeNull();
+    expect(screen.queryByTestId('bell-cancel-n-1')).toBeNull();
+  });
+
+  it.each(WAITING)('$type navigates to the shared landing page with its token', async ({ type, payload }) => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-1', type, payload)],
+      resolved: EMPTY_RESOLVED,
     });
-    expect(roleUpgradeRequestsApi.decide).not.toHaveBeenCalled();
-  });
-});
-
-describe('BellMenu — mark-read affordance on non-decision rows', () => {
-  it('clicking mark-read calls notificationsApi.markRead(id)', async () => {
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(N2, 'studio.invite_accepted', {
-        studioName: 'Demo',
-        inviteeName: 'Alex',
-      }),
-    ], resolved: EMPTY_RESOLVED });
-    vi.mocked(notificationsApi.markRead).mockResolvedValueOnce({ ok: true });
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-mark-read-${N2}`));
-
-    await waitFor(() => {
-      expect(notificationsApi.markRead).toHaveBeenCalledWith(N2);
-    });
-  });
-});
-
-describe('BellMenu — studio notification types (slice 3)', () => {
-  it('renders transfer_request with confirm/cancel + a TTL countdown', async () => {
-    const user = userEvent.setup();
-    const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(
-        N1,
-        'studio.transfer_request',
-        {
-          studioName: 'Acme',
-          fromUserId: 'u-admin',
-          fromName: 'Alex',
-          studioId: 's1',
-        },
-        { expiresAt },
-      ),
-    ], resolved: EMPTY_RESOLVED });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-
-    expect(
-      await screen.findByTestId(`bell-notification-headline-${N1}`),
-    ).toHaveTextContent(/Alex.*asked you to take over Acme/);
-    expect(screen.getByTestId(`bell-confirm-${N1}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`bell-cancel-${N1}`)).toBeInTheDocument();
-    // The TTL countdown replaces the "x ago" label for actionable transfers.
-    expect(screen.getByText(/expires in 3d/i)).toBeInTheDocument();
-  });
-
-  it('confirm calls respondAction(id, confirm) + success toast', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(
-        N1,
-        'studio.transfer_request',
-        { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
-        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-      ),
-    ], resolved: EMPTY_RESOLVED });
-    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-confirm-${N1}`));
-
-    await waitFor(() => {
-      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'confirm');
-    });
-    // A transfer confirm makes the recipient the admin — the admin toast.
-    expect(toast.success).toHaveBeenCalledWith('You are now the studio admin.');
-  });
-
-  it('cancel calls respondAction(id, cancel)', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(
-        N1,
-        'studio.transfer_request',
-        { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
-        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-      ),
-    ], resolved: EMPTY_RESOLVED });
-    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-cancel-${N1}`));
-
-    await waitFor(() => {
-      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'cancel');
-    });
-  });
-
-  it('toasts the server error when respondAction rejects', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(
-        N1,
-        'studio.transfer_request',
-        { studioName: 'Acme', fromUserId: 'u-admin', studioId: 's1' },
-        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-      ),
-    ], resolved: EMPTY_RESOLVED });
-    vi.mocked(notificationsApi.respondAction).mockRejectedValueOnce(
-      new ApiException({ status: 409, code: 'CONFLICT', message: 'Request expired' }),
-    );
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-confirm-${N1}`));
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('Request expired');
-    });
-  });
-
-  it('renders transfer_approved as a read-on-click row', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(N2, 'studio.transfer_approved', {
-        studioId: 's1',
-        studioName: 'Acme',
-        accepterUserId: 'u-dee',
-        accepterName: 'Dee',
-      }),
-    ], resolved: EMPTY_RESOLVED });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-
-    expect(
-      await screen.findByTestId(`bell-notification-headline-${N2}`),
-    ).toHaveTextContent(/Dee.*accepted your admin transfer for Acme/);
-    expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
-  });
-});
-
-describe('BellMenu — studio invite-confirm handshake', () => {
-  it('renders invite_request with confirm/cancel + role subtitle + TTL countdown', async () => {
-    const user = userEvent.setup();
-    const expiresAt = new Date(
-      Date.now() + 3 * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(
-        N1,
-        'studio.invite_request',
-        {
-          invitationId: 'inv-1',
-          studioId: 's1',
-          studioName: 'Acme',
-          inviterName: 'Alex',
-          role: 'maintainer',
-        },
-        { expiresAt },
-      ),
-    ], resolved: EMPTY_RESOLVED });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-
-    expect(
-      await screen.findByTestId(`bell-notification-headline-${N1}`),
-    ).toHaveTextContent('Alex invited you to join Acme');
-    // Subtitle reuses the granted-role label (invitedAsMaintainer).
-    expect(screen.getByText(/Joined as a Maintainer/i)).toBeInTheDocument();
-    // Actionable like the transfer handshake: confirm / cancel + a countdown.
-    expect(screen.getByTestId(`bell-confirm-${N1}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`bell-cancel-${N1}`)).toBeInTheDocument();
-    expect(screen.getByText(/expires in 3d/i)).toBeInTheDocument();
-  });
-
-  it('confirm calls respondAction(id, confirm) + success toast', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(
-        N1,
-        'studio.invite_request',
-        { invitationId: 'inv-1', studioName: 'Acme', role: 'guest' },
-        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-      ),
-    ], resolved: EMPTY_RESOLVED });
-    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-confirm-${N1}`));
-
-    await waitFor(() => {
-      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'confirm');
-    });
-    // An invite confirm joins as a member — the join toast, NOT the admin one.
-    expect(toast.success).toHaveBeenCalledWith('You\'ve joined the studio.');
-  });
-
-  it('cancel calls respondAction(id, cancel)', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(
-        N1,
-        'studio.invite_request',
-        { invitationId: 'inv-1', studioName: 'Acme', role: 'guest' },
-        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-      ),
-    ], resolved: EMPTY_RESOLVED });
-    vi.mocked(notificationsApi.respondAction).mockResolvedValueOnce({ ok: true });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-cancel-${N1}`));
-
-    await waitFor(() => {
-      expect(notificationsApi.respondAction).toHaveBeenCalledWith(N1, 'cancel');
-    });
-  });
-
-  it('renders invite_accepted as a read-on-click row', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(N2, 'studio.invite_accepted', {
-        studioName: 'Acme',
-        inviteeName: 'Dee',
-      }),
-    ], resolved: EMPTY_RESOLVED });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-
-    expect(
-      await screen.findByTestId(`bell-notification-headline-${N2}`),
-    ).toHaveTextContent('Dee accepted your invite to Acme');
-    expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
-  });
-});
-
-describe('BellMenu — project invite navigates to the landing page (#1337)', () => {
-  it('renders project.invite_request as a clickable row (no inline confirm/cancel) + role subtitle + TTL countdown', async () => {
-    const user = userEvent.setup();
-    const expiresAt = new Date(
-      Date.now() + 3 * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(
-        N1,
-        'project.invite_request',
-        {
-          invitationId: 'inv-1',
-          projectId: 'p1',
-          projectName: 'Q1 Sprint',
-          inviterName: 'Alex',
-          role: 'editor',
-          token: 'tok-abc',
-        },
-        { expiresAt },
-      ),
-    ], resolved: EMPTY_RESOLVED });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-
-    expect(
-      await screen.findByTestId(`bell-notification-headline-${N1}`),
-    ).toHaveTextContent('Alex invited you to join Q1 Sprint');
-    // Subtitle reuses the granted-role label (invitedAsEditor).
-    expect(screen.getByText(/Joined as an editor/i)).toBeInTheDocument();
-    // The TTL countdown still shows for the live invite.
-    expect(screen.getByText(/expires in 3d/i)).toBeInTheDocument();
-    // Diverges from studio: the row links OUT to the landing page, so there is
-    // NO inline confirm/cancel (confirm/decline happen on `/project-invite`).
-    expect(screen.queryByTestId(`bell-confirm-${N1}`)).toBeNull();
-    expect(screen.queryByTestId(`bell-cancel-${N1}`)).toBeNull();
-    // It exposes a single open-invite affordance instead.
-    expect(screen.getByTestId(`bell-open-invite-${N1}`)).toBeInTheDocument();
-  });
-
-  it('clicking the row navigates to /project-invite?token=… and closes the popover', async () => {
-    const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(
-        N1,
-        'project.invite_request',
-        {
-          invitationId: 'inv-1',
-          projectName: 'Q1 Sprint',
-          role: 'viewer',
-          token: 'tok-xyz',
-        },
-        { expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
-      ),
-    ], resolved: EMPTY_RESOLVED });
-    setup();
-    await user.click(screen.getByTestId('bell-trigger'));
-    await user.click(await screen.findByTestId(`bell-open-invite-${N1}`));
+    await user.click(await screen.findByTestId('bell-open-decision-n-1'));
 
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith(
-        '/project-invite?token=tok-xyz',
+        `/decision?token=${String(payload['shareToken'])}`,
       );
     });
-    // It must NOT route through the inline confirm/cancel endpoint.
-    expect(notificationsApi.respondAction).not.toHaveBeenCalled();
   });
 
-  it('renders project.invite_accepted as a read-on-click row', async () => {
+  it('a row whose payload carries no token does not navigate anywhere', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-1', 'studio.invite_request', { invitationId: 'i-1' })],
+      resolved: EMPTY_RESOLVED,
+    });
     const user = userEvent.setup();
-    vi.mocked(notificationsApi.list).mockResolvedValueOnce({ items: [
-      fakeNotification(N2, 'project.invite_accepted', {
-        projectName: 'Q1 Sprint',
-        inviteeName: 'Dee',
-      }),
-    ], resolved: EMPTY_RESOLVED });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await user.click(await screen.findByTestId('bell-open-decision-n-1'));
+
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('informational rows still mark read rather than offering an answer', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-9', 'studio.transfer_approved', { studioId: N1 })],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
 
-    expect(
-      await screen.findByTestId(`bell-notification-headline-${N2}`),
-    ).toHaveTextContent('Dee accepted your invite to Q1 Sprint');
-    expect(screen.getByTestId(`bell-mark-read-${N2}`)).toBeInTheDocument();
+    expect(await screen.findByTestId('bell-mark-read-n-9')).toBeInTheDocument();
+    expect(screen.queryByTestId('bell-open-decision-n-9')).toBeNull();
   });
 });

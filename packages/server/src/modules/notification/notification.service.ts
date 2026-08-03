@@ -34,6 +34,12 @@ export type { NotificationEntity };
  * in the owner's inbox.
  */
 export interface RoleUpgradeRequestPayload {
+  /**
+   * The token that names this request in `/decision?token=`. The bell row
+   * builds its link from it, the same way the email does — all channels
+   * resolve to one request.
+   */
+  shareToken: string;
   requesterUserId: string;
   /**
    * The `role_upgrade_requests` row this entry announces.
@@ -171,6 +177,12 @@ export async function createRoleUpgradeRejected(input: {
  * have changed, but the id is stable).
  */
 export interface StudioTransferRequestPayload {
+  /**
+   * The token that names this request in `/decision?token=`. The bell row
+   * builds its link from it, the same way the email does — all channels
+   * resolve to one request.
+   */
+  shareToken: string;
   fromUserId: string;
   /** Initiating admin's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   fromName: string;
@@ -207,6 +219,12 @@ export interface StudioTransferApprovedPayload {
  * the confirm step can swap roles without re-resolving the project.
  */
 export interface ProjectTransferRequestPayload {
+  /**
+   * The token that names this request in `/decision?token=`. The bell row
+   * builds its link from it, the same way the email does — all channels
+   * resolve to one request.
+   */
+  shareToken: string;
   fromUserId: string;
   /** Initiating owner's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   fromName: string;
@@ -244,6 +262,12 @@ export interface ProjectTransferApprovedPayload {
  * rest is for rendering the bell entry.
  */
 export interface StudioInviteRequestPayload {
+  /**
+   * The token that names this request in `/decision?token=`. The bell row
+   * builds its link from it, the same way the email does — all channels
+   * resolve to one request.
+   */
+  shareToken: string;
   invitationId: string;
   studioId: string;
   /** The inviting admin — resolved to their current `@handle` at read time. */
@@ -453,8 +477,12 @@ export interface ProjectInviteRequestPayload {
   /** Inviting owner's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   inviterName: string;
   role: "editor" | "viewer";
-  /** One-time email-link token; the bell row navigates to `?token=` with it. */
-  token: string;
+  /**
+   * The token that names this request in `/decision?token=`. Renamed from
+   * `token` when the four other flows gained one: it is the request's name in
+   * every channel, not an email detail.
+   */
+  shareToken: string;
 }
 
 /**

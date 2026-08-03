@@ -172,6 +172,7 @@ export async function requestProjectTransfer(
             projectId,
             projectName: project.name,
             transferId,
+          shareToken: filed.shareToken,
           },
           expiresAt,
           tx,

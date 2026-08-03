@@ -121,6 +121,7 @@ export async function request(
         expiresAt,
         payload: {
           requestId,
+          shareToken: filed.shareToken,
           requesterUserId: input.requesterUserId,
           requesterName: requester.name,
           projectId: input.projectId,

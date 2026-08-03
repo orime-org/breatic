@@ -1112,7 +1112,8 @@
     "inviteDecline": "Decline",
     "inviteConfirmedToast": "You've joined the studio.",
     "inviteDeclinedToast": "Invitation declined.",
-    "viewProjectInvite": "View invite"
+    "viewProjectInvite": "View invite",
+    "openDecision": "Answer"
   },
   "connection": {
     "banner": {
@@ -1508,5 +1509,34 @@
       "monthsAgo": "{count, plural, one {# month ago} other {# months ago}}",
       "isoDate": "{date}"
     }
+  },
+  "decision": {
+    "loadingTitle": "Opening this request…",
+    "loadingBody": "One moment while we look it up.",
+    "title": "{kind, select, studio_invite {You've been invited to a studio} project_invite {You've been invited to a project} role_upgrade {Someone asked for a bigger role} project_transfer {A project is being handed to you} studio_transfer {A studio is being handed to you} other {Something needs your answer}}",
+    "body": "{kind, select, studio_invite {{actor} invited you to join {entity}.} project_invite {{actor} invited you to work on {entity}.} role_upgrade {{actor} asked to become {role} on {entity}.} project_transfer {{actor} wants to make you the owner of {entity}.} studio_transfer {{actor} wants to make you the admin of {entity}.} other {{actor} is waiting on your answer about {entity}.}}",
+    "reason": "They said: {message}",
+    "confirm": "{kind, select, role_upgrade {Approve} other {Accept}}",
+    "decline": "{kind, select, role_upgrade {Decline} other {Decline}}",
+    "windowNote": "Requests can be answered within {days, plural, one {# day} other {# days}}.",
+    "acceptedTitle": "You already accepted this",
+    "acceptedBody": "There is nothing left to do here.",
+    "declinedTitle": "You already declined this",
+    "declinedBody": "There is nothing left to do here.",
+    "expiredTitle": "This request has ended",
+    "expiredBody": "It can no longer be answered.",
+    "revokedTitle": "This was withdrawn",
+    "revokedBody": "The person who sent it took it back.",
+    "goneTitle": "This is no longer here",
+    "goneBody": "What this request was about has been deleted.",
+    "alreadyMemberTitle": "You are already in",
+    "alreadyMemberBody": "Somebody added you while this invitation was waiting.",
+    "invalidTitle": "This link is not valid",
+    "invalidBody": "Check that you copied the whole link from your email.",
+    "notYoursTitle": "This one is not yours to answer",
+    "notYoursBody": "It was sent to somebody else. Sign in as them to answer it.",
+    "goThere": "Go there",
+    "backHome": "Back to your studio",
+    "actionFailed": "That did not go through. Please try again."
   }
 }

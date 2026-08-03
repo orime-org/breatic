@@ -1112,7 +1112,8 @@
     "inviteDecline": "拒絕",
     "inviteConfirmedToast": "你已加入該 Studio。",
     "inviteDeclinedToast": "已拒絕邀請。",
-    "viewProjectInvite": "查看邀請"
+    "viewProjectInvite": "查看邀請",
+    "openDecision": "去答覆"
   },
   "connection": {
     "banner": {
@@ -1508,5 +1509,34 @@
       "monthsAgo": "{count, plural, other {# 月前}}",
       "isoDate": "{date}"
     }
+  },
+  "decision": {
+    "loadingTitle": "正在打开这个请求…",
+    "loadingBody": "稍等，正在查找。",
+    "title": "{kind, select, studio_invite {有人邀请你加入一个 studio} project_invite {有人邀请你加入一个项目} role_upgrade {有人申请更高的角色} project_transfer {有人要把一个项目交给你} studio_transfer {有人要把一个 studio 交给你} other {有件事等你答复}}",
+    "body": "{kind, select, studio_invite {{actor} 邀请你加入 {entity}。} project_invite {{actor} 邀请你参与 {entity}。} role_upgrade {{actor} 申请在 {entity} 中成为 {role}。} project_transfer {{actor} 想把 {entity} 的所有权交给你。} studio_transfer {{actor} 想让你成为 {entity} 的管理员。} other {{actor} 在等你对 {entity} 的答复。}}",
+    "reason": "他的说明：{message}",
+    "confirm": "{kind, select, role_upgrade {批准} other {接受}}",
+    "decline": "{kind, select, role_upgrade {拒绝} other {拒绝}}",
+    "windowNote": "请求可在 {days} 天内答复。",
+    "acceptedTitle": "你已经接受过了",
+    "acceptedBody": "这里没有别的事要做了。",
+    "declinedTitle": "你已经拒绝过了",
+    "declinedBody": "这里没有别的事要做了。",
+    "expiredTitle": "这个请求已经结束",
+    "expiredBody": "它不能再被答复了。",
+    "revokedTitle": "这个请求已被撤回",
+    "revokedBody": "发起人把它收回去了。",
+    "goneTitle": "相关内容已不存在",
+    "goneBody": "这个请求所关联的内容已被删除。",
+    "alreadyMemberTitle": "你已经在里面了",
+    "alreadyMemberBody": "在这份邀请等待期间，有人已经把你加进去了。",
+    "invalidTitle": "这个链接无效",
+    "invalidBody": "请确认你从邮件里复制了完整的链接。",
+    "notYoursTitle": "这件事不该由你答复",
+    "notYoursBody": "它是发给别人的。用那个账号登录才能答复。",
+    "goThere": "去看看",
+    "backHome": "回到你的 studio",
+    "actionFailed": "操作没有成功，请再试一次。"
   }
 }

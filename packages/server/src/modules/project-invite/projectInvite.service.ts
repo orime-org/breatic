@@ -127,6 +127,8 @@ export async function createInvite(
   const expiresAt = deferredRequestExpiry();
 
   let invitationId = "";
+  // The bell row builds its link from this, same as the email.
+  let shareToken = "";
   let token = "";
   try {
     await db.transaction(async (tx) => {
@@ -145,7 +147,7 @@ export async function createInvite(
       if (!(await projectRepo.lockLiveProject(projectId, tx))) {
         throw new NotFoundError(t("server.error.not_found"));
       }
-      ({ id: invitationId } = await invitesRepo.createPending({
+      ({ id: invitationId, shareToken } = await invitesRepo.createPending({
         projectId,
         invitedUserId: invitee.id,
         role,
@@ -167,7 +169,7 @@ export async function createInvite(
           inviterUserId,
           inviterName,
           role,
-          token,
+          shareToken,
         },
         expiresAt,
         tx,

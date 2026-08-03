@@ -63,6 +63,7 @@ describe("createRoleUpgradeRequest", () => {
         projectId: PID,
         projectName: "Demo",
         requestedRole: "editor",
+      shareToken: "t".repeat(64),
         message: "please",
       },
     });
@@ -77,6 +78,7 @@ describe("createRoleUpgradeRequest", () => {
     expect(args?.payload).toMatchObject({
       requesterUserId: REQUESTER,
       requestedRole: "editor",
+      shareToken: "t".repeat(64),
     });
   });
 });

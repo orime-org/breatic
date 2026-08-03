@@ -6,10 +6,9 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 import ProtectedRoute from '@web/app/ProtectedRoute';
 import StudioLayout from '@web/pages/studio/shell/StudioLayout';
 import StudioRecentPage from '@web/pages/studio/StudioRecentPage';
-import StudioInvitePage from '@web/pages/studio/StudioInvitePage';
 import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
 import ProjectPage from '@web/pages/project/ProjectPage';
-import ProjectInvitePage from '@web/pages/project/ProjectInvitePage';
+import DecisionLandingPage from '@web/pages/decision/DecisionLandingPage';
 import NoAccessPage from '@web/pages/project/access/NoAccessPage';
 import LoginPage from '@web/pages/auth/LoginPage';
 import RegisterPage from '@web/pages/auth/RegisterPage';
@@ -100,33 +99,17 @@ const baseRoutes: RouteObject[] = [
     ),
   },
   {
-    // Studio invitation landing — `/studio-invite?token=xxx`, the OPTIONAL
-    // email-link path of the invite-confirm handshake (the always-delivered
-    // path is the bell notification). Wrapped in ProtectedRoute because both
-    // backend endpoints (`GET /studio-invitations/:token`, `POST
-    // /studio-invitations/respond`) are auth-only; an unauthenticated click
-    // bounces to /login and returns here after sign-in. The page peeks the
-    // invite then confirms/declines — it does NOT auto-accept.
-    path: '/studio-invite',
+    // The one landing page every waiting request is answered on —
+    // `/decision?token=xxx`. It replaced `/studio-invite` and
+    // `/project-invite`, which were the same page twice and only ever served
+    // two of the five flows; the other three had no link you could answer from
+    // at all. ProtectedRoute because both endpoints are auth-only: the token
+    // names a request, it does not stand in for an identity, so an
+    // unauthenticated click bounces to /login and returns here after sign-in.
+    path: '/decision',
     element: (
       <ProtectedRoute>
-        <StudioInvitePage />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    // Project invitation landing — `/project-invite?token=xxx`, the OPTIONAL
-    // email-link path of the project invite-confirm handshake (the always-
-    // delivered path is the bell notification). The direct mirror of
-    // `/studio-invite`. Wrapped in ProtectedRoute because both backend
-    // endpoints (`GET /project-invitations/:token`, `POST
-    // /project-invitations/respond`) are auth-only; an unauthenticated click
-    // bounces to /login and returns here after sign-in. The page peeks the
-    // invite then confirms/declines — it does NOT auto-accept.
-    path: '/project-invite',
-    element: (
-      <ProtectedRoute>
-        <ProjectInvitePage />
+        <DecisionLandingPage />
       </ProtectedRoute>
     ),
   },

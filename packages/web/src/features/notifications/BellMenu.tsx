@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell } from 'lucide-react';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from '@web/lib/toast';
 import { expiresInLabel } from '@web/lib/expires-in';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
@@ -25,13 +24,10 @@ import {
   notificationsApi,
   type Notification,
   type NotificationType,
-  type NotificationAction,
 } from '@web/data/api/notifications';
 import { notificationHeadline } from '@web/features/notifications/notification-headline';
 import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { NotificationResolved } from '@web/data/api/notifications';
-import { roleUpgradeRequestsApi } from '@web/data/api/role-upgrade-requests';
-import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores';
 
@@ -60,78 +56,14 @@ function timeAgoLabel(createdAt: string): string {
 }
 
 /**
- * The inline confirm/cancel handshake an actionable notification type drives.
- * Studio transfer + studio invite confirm INLINE in the bell; the project invite
- * does NOT (it links out to the `/project-invite` landing page), so it is not a
- * kind here.
- */
-type ActionKind = 'transfer' | 'projectTransfer' | 'studioInvite';
-
-/**
- * Maps an inline-actionable notification type to its handshake kind, so the
- * confirm/cancel mutation can pick the matching success toast (the single
- * respondAction endpoint serves both inline kinds).
- * @param type - The inline-actionable notification type.
- * @returns the handshake kind for that type (`transfer` as the safe default).
- */
-function actionKindFor(type: NotificationType): ActionKind {
-  if (type === 'studio.invite_request') return 'studioInvite';
-  if (type === 'project.transfer_request') return 'projectTransfer';
-  return 'transfer';
-}
-
-/**
- * Picks the success-toast i18n key for a confirmed/cancelled inline handshake. A
- * studio invitee joins a studio and a transfer recipient becomes the studio
- * admin — each gets its own copy. (The project invite confirms on the landing
- * page, not here, so it has no toast in this menu.)
- * @param kind - The inline handshake kind being acted on.
- * @param action - `confirm` to accept, `cancel` to decline.
- * @returns the i18n key for the matching success toast.
- */
-function toastKeyFor(kind: ActionKind, action: NotificationAction): string {
-  if (kind === 'studioInvite') {
-    return action === 'confirm'
-      ? 'notifications.inviteConfirmedToast'
-      : 'notifications.inviteDeclinedToast';
-  }
-  if (kind === 'projectTransfer') {
-    return action === 'confirm'
-      ? 'notifications.projectTransferConfirmedToast'
-      : 'notifications.projectTransferCancelledToast';
-  }
-  return action === 'confirm'
-    ? 'notifications.transferConfirmedToast'
-    : 'notifications.transferCancelledToast';
-}
-
-/**
  * Reads the one-time landing-page token from a `project.invite_request` payload.
  * The project bell row links out to `/project-invite?token=` rather than
  * confirming inline; the token rides in the notification payload.
  * @param payload - The notification's opaque payload.
  * @returns the token string, or null if absent / malformed.
  */
-function projectInviteTokenOf(payload: Record<string, unknown>): string | null {
-  return typeof payload.token === 'string' ? payload.token : null;
-}
-
-/**
- * Reads the id of the row an actionable bell entry stands for.
- *
- * These entries never hold the state they display — the request or offer is a
- * row of its own, and the entry only points at it. Acting on the entry's own id
- * answers 404, which is why the pointer is read here rather than assumed.
- * @param payload - The notification's opaque payload.
- * @param key - Which pointer to read (`requestId` / `transferId`).
- * @returns the row id, or null if absent / malformed.
- */
-function rowIdOf(
-  payload: Record<string, unknown>,
-  key: string,
-): string | null {
-  const value = payload[key];
-  return typeof value === 'string' ? value : null;
+function shareTokenOf(payload: Record<string, unknown>): string | null {
+  return typeof payload.shareToken === 'string' ? payload.shareToken : null;
 }
 
 /**
@@ -192,48 +124,12 @@ export function BellMenu(): React.JSX.Element {
   const resolved = inboxQuery.data?.resolved ?? EMPTY_RESOLVED;
   const count = notifications.length;
 
-  const decideMutation = useMutation({
-    mutationFn: (input: {
-      requestId: string;
-      decision: 'approved' | 'rejected';
-    }) =>
-      roleUpgradeRequestsApi.decide(input.requestId, {
-        decision: input.decision,
-      }),
-    onSuccess: async (_data, vars) => {
-      await queryClient.invalidateQueries({
-        queryKey: ['notifications', 'unread'],
-      });
-      toast.success(
-        vars.decision === 'approved'
-          ? t('notifications.approvedToast')
-          : t('notifications.rejectedToast'),
-      );
-    },
-    onError: (err) => {
-      const msg =
-        err instanceof ApiException ? err.message : t('notifications.decideFailed');
-      toast.error(msg);
-    },
-  });
-
   /**
    * Decide a role-upgrade request from its bell entry.
    *
    * The entry points at the request row; without that pointer there is nothing
    * to decide, and the bell says so rather than firing a call that answers 404.
    */
-  const decide = React.useCallback(
-    (n: Notification, decision: 'approved' | 'rejected'): void => {
-      const requestId = rowIdOf(n.payload, 'requestId');
-      if (requestId === null) {
-        toast.error(t('notifications.decideFailed'));
-        return;
-      }
-      decideMutation.mutate({ requestId, decision });
-    },
-    [decideMutation, t],
-  );
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => notificationsApi.markRead(id),
@@ -249,31 +145,6 @@ export function BellMenu(): React.JSX.Element {
   // rail's "My / Joined studios" split reflects the new admin role immediately
   // after a transfer confirm. (Project invites confirm on the landing page, not
   // here, so they don't go through this mutation.)
-  const actionMutation = useMutation({
-    mutationFn: (input: {
-      id: string;
-      action: NotificationAction;
-      kind: ActionKind;
-    }) => notificationsApi.respondAction(input.id, input.action),
-    onSuccess: async (_data, vars) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['notifications', 'unread'] }),
-        queryClient.invalidateQueries({ queryKey: ['studios', 'user'] }),
-      ]);
-      // The same respondAction endpoint serves both inline handshakes; the toast
-      // must match the notification kind (a studio invitee joins a studio, a
-      // transfer recipient becomes admin).
-      const toastKey = toastKeyFor(vars.kind, vars.action);
-      toast.success(t(toastKey));
-    },
-    onError: (err) => {
-      const msg =
-        err instanceof ApiException
-          ? err.message
-          : t('notifications.actionFailed');
-      toast.error(msg);
-    },
-  });
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -330,37 +201,12 @@ export function BellMenu(): React.JSX.Element {
                 <NotificationItem
                   notification={n}
                   resolved={resolved}
-                  decidePending={
-                    (decideMutation.isPending &&
-                      decideMutation.variables?.requestId ===
-                        rowIdOf(n.payload, 'requestId')) ||
-                    (actionMutation.isPending &&
-                      actionMutation.variables?.id === n.id)
-                  }
-                  onApprove={() => decide(n, 'approved')}
-                  onReject={() => decide(n, 'rejected')}
-                  onConfirm={() =>
-                    actionMutation.mutate({
-                      id: n.id,
-                      action: 'confirm',
-                      kind: actionKindFor(n.type),
-                    })
-                  }
-                  onCancel={() =>
-                    actionMutation.mutate({
-                      id: n.id,
-                      action: 'cancel',
-                      kind: actionKindFor(n.type),
-                    })
-                  }
-                  onOpenInvite={() => {
-                    // Project invites confirm on the landing page, not inline:
-                    // navigate to `/project-invite?token=` (the same link the
-                    // copy URL + email use) and close the popover.
-                    const token = projectInviteTokenOf(n.payload);
+                  onOpenDecision={() => {
+                    // All five flows are answered on the same page now.
+                    const token = shareTokenOf(n.payload);
                     if (token === null) return;
                     setOpen(false);
-                    navigate(`/project-invite?token=${token}`);
+                    navigate(`/decision?token=${token}`);
                   }}
                   onMarkRead={() => markReadMutation.mutate(n.id)}
                 />
@@ -377,12 +223,7 @@ interface NotificationItemProps {
   notification: Notification;
   /** Current identities for the ids this notification carries. */
   resolved: NotificationResolved;
-  decidePending: boolean;
-  onApprove: () => void;
-  onReject: () => void;
-  onConfirm: () => void;
-  onCancel: () => void;
-  onOpenInvite: () => void;
+  onOpenDecision: () => void;
   onMarkRead: () => void;
 }
 
@@ -395,24 +236,14 @@ interface NotificationItemProps {
  * @param root0 - Notification item props.
  * @param root0.notification - Notification rendered by this row.
  * @param root0.resolved - Current identities for the ids it carries.
- * @param root0.decidePending - Whether a decision/action for this row is in flight (disables buttons).
- * @param root0.onApprove - Called when the owner approves a role-upgrade request.
- * @param root0.onReject - Called when the owner rejects a role-upgrade request.
- * @param root0.onConfirm - Called when the recipient confirms (accepts) a studio transfer / invite request.
- * @param root0.onCancel - Called when the recipient cancels (declines) a studio transfer / invite request.
- * @param root0.onOpenInvite - Called when the invitee opens a project invite (navigates to the landing page).
+ * @param root0.onOpenDecision - Opens the shared landing page for this request.
  * @param root0.onMarkRead - Called when an informational notification is marked read.
  * @returns the notification row with its type-specific actions.
  */
 function NotificationItem({
   notification,
   resolved,
-  decidePending,
-  onApprove,
-  onReject,
-  onConfirm,
-  onCancel,
-  onOpenInvite,
+  onOpenDecision,
   onMarkRead,
 }: NotificationItemProps): React.JSX.Element {
   const t = useTranslation();
@@ -436,8 +267,9 @@ function NotificationItem({
   // Everything with a deadline shows its countdown. The role upgrade was left
   // out while it had no deadline to show; it has one now, and it was the only
   // time-boxed row in the list hiding that fact from the person deciding it.
-  const isActionable =
-    isTransferRequest || isStudioInviteRequest || isUpgradeRequest;
+  // One question now: is somebody waiting on an answer here?
+  const isDecidable =
+    isUpgradeRequest || isInviteRequest || isTransferRequest;
 
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
@@ -463,66 +295,20 @@ function NotificationItem({
       </div>
       <div className='flex items-center justify-between gap-2 pl-11'>
         <span className='text-2xs text-muted-foreground'>
-          {(isActionable || isProjectInviteRequest) && notification.expiresAt
+          {isDecidable && notification.expiresAt
             ? expiresInLabel(notification.expiresAt, t)
             : timeAgoLabel(notification.createdAt)}
         </span>
-        {isUpgradeRequest ? (
-          <div className='flex items-center gap-2'>
-            <Button
-              variant='outline'
-              size='sm'
-              className='h-7 px-3 text-xs'
-              disabled={decidePending}
-              onClick={onReject}
-              data-testid={`bell-reject-${notification.id}`}
-            >
-              {t('notifications.reject')}
-            </Button>
-            <Button
-              size='sm'
-              className='h-7 px-3 text-xs'
-              disabled={decidePending}
-              onClick={onApprove}
-              data-testid={`bell-approve-${notification.id}`}
-            >
-              {t('notifications.approve')}
-            </Button>
-          </div>
-        ) : isActionable ? (
-          <div className='flex items-center gap-2'>
-            <Button
-              variant='outline'
-              size='sm'
-              className='h-7 px-3 text-xs'
-              disabled={decidePending}
-              onClick={onCancel}
-              data-testid={`bell-cancel-${notification.id}`}
-            >
-              {isInviteRequest
-                ? t('notifications.inviteDecline')
-                : t('notifications.transferDecline')}
-            </Button>
-            <Button
-              size='sm'
-              className='h-7 px-3 text-xs'
-              disabled={decidePending}
-              onClick={onConfirm}
-              data-testid={`bell-confirm-${notification.id}`}
-            >
-              {isInviteRequest
-                ? t('notifications.inviteAccept')
-                : t('notifications.transferAccept')}
-            </Button>
-          </div>
-        ) : isProjectInviteRequest ? (
+        {isDecidable ? (
+          // Every waiting request is answered on the shared landing page now.
+          // The bell says one is waiting; it does not decide it.
           <Button
             size='sm'
             className='h-7 px-3 text-xs'
-            onClick={onOpenInvite}
-            data-testid={`bell-open-invite-${notification.id}`}
+            onClick={onOpenDecision}
+            data-testid={`bell-open-decision-${notification.id}`}
           >
-            {t('notifications.viewProjectInvite')}
+            {t('notifications.openDecision')}
           </Button>
         ) : (
           <Button
