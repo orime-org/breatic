@@ -28,7 +28,7 @@ import type { CanvasNodeFields } from '@breatic/shared';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { addNode, getTextBody, reseedTextBody } from '@web/data/yjs/canvas-space';
-import { useTextBody } from '@web/data/yjs/use-text-body';
+import { useTextBody, useTextBodies } from '@web/data/yjs/use-text-body';
 import { newSeededBody, writePlainTextIntoBody } from '@web/data/yjs/text-body';
 
 const PID = 'p1';
@@ -181,5 +181,75 @@ describe('useTextBody (#1774 section 9.1)', () => {
 
     rerender({ id: 'b' });
     expect(result.current).toBe('from b');
+  });
+
+  describe('several bodies at once, for the generation panel', () => {
+    it('returns each subscribed node\'s text', () => {
+      addNode(PID, SID, textNode('a'));
+      addNode(PID, SID, textNode('b'));
+      writePlainTextIntoBody(getTextBody(PID, SID, 'a') as Y.XmlFragment, 'from a');
+      writePlainTextIntoBody(getTextBody(PID, SID, 'b') as Y.XmlFragment, 'from b');
+
+      const { result } = renderHook(() => useTextBodies(PID, SID, ['a', 'b']));
+      expect(result.current.get('a')).toBe('from a');
+      expect(result.current.get('b')).toBe('from b');
+    });
+
+    it('updates when any of them changes', () => {
+      addNode(PID, SID, textNode('a'));
+      addNode(PID, SID, textNode('b'));
+
+      const { result } = renderHook(() => useTextBodies(PID, SID, ['a', 'b']));
+      act(() => {
+        writePlainTextIntoBody(getTextBody(PID, SID, 'b') as Y.XmlFragment, 'edited');
+      });
+      expect(result.current.get('b')).toBe('edited');
+    });
+
+    it('follows the set as references come and go', () => {
+      addNode(PID, SID, textNode('a'));
+      addNode(PID, SID, textNode('b'));
+      writePlainTextIntoBody(getTextBody(PID, SID, 'a') as Y.XmlFragment, 'from a');
+      writePlainTextIntoBody(getTextBody(PID, SID, 'b') as Y.XmlFragment, 'from b');
+
+      const { result, rerender } = renderHook(
+        ({ ids }) => useTextBodies(PID, SID, ids),
+        { initialProps: { ids: ['a'] as ReadonlyArray<string> } },
+      );
+      expect(result.current.get('b')).toBeUndefined();
+
+      rerender({ ids: ['a', 'b'] });
+      expect(result.current.get('b')).toBe('from b');
+    });
+
+    it('keeps its subscriptions across a re-render with an equal but fresh array', () => {
+      // The caller rebuilds this array from the edge list on every render. If
+      // an equal array counted as a change, every observer would be dropped and
+      // re-attached between two keystrokes.
+      addNode(PID, SID, textNode('a'));
+      const { result, rerender } = renderHook(
+        ({ ids }) => useTextBodies(PID, SID, ids),
+        { initialProps: { ids: ['a'] as ReadonlyArray<string> } },
+      );
+      const first = result.current;
+
+      rerender({ ids: ['a'] });
+      expect(result.current).toBe(first);
+
+      act(() => {
+        writePlainTextIntoBody(getTextBody(PID, SID, 'a') as Y.XmlFragment, 'still live');
+      });
+      expect(result.current.get('a')).toBe('still live');
+    });
+
+    it('stops updating after unmount', () => {
+      addNode(PID, SID, textNode('a'));
+      const { result, unmount } = renderHook(() => useTextBodies(PID, SID, ['a']));
+      unmount();
+      act(() => {
+        writePlainTextIntoBody(getTextBody(PID, SID, 'a') as Y.XmlFragment, 'after unmount');
+      });
+      expect(result.current.get('a')).toBe('');
+    });
   });
 });
