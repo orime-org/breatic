@@ -62,7 +62,7 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 import { assetsApi } from '@web/data/api';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useSocket } from '@web/data/yjs/use-socket';
-import { docName, _resetForTests } from '@web/data/yjs/manager';
+import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { writePlainTextIntoBody } from '@web/data/yjs/text-body';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 
@@ -349,6 +349,62 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       expect(document.querySelector('.ProseMirror')).toBeNull(),
     );
     expect(document.activeElement).toBe(shell);
+  });
+
+  // A failed node has no body and no placeholder on screen — the error branch
+  // owns the content slot — so the ONLY way a person reaches the entry point at
+  // all is Enter on the node wrapper, which exists only here. What the entry
+  // guard actually prevents is a write: without it, opening a body-less failed
+  // node repairs it, putting a body into the shared document for a node nobody
+  // can write in. Asserted on the document, because the screen looks the same
+  // either way.
+  it('does not repair a failed node when Enter is pressed on it', async () => {
+    _resetForTests();
+    addNode('p', 's', {
+      id: 'n1',
+      type: 'text',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'N',
+        createdAt: 1,
+        createdBy: 'u',
+        locked: false,
+        operationLocks: [],
+        state: 'idle',
+        attachments: [],
+      },
+    });
+    // The state an older node is in: no body at all, so a repair would show.
+    (
+      getDoc(docName.canvasSpace('p', 's'))
+        .getMap<Y.Map<unknown>>('nodesMap')
+        .get('n1')
+        ?.get('data') as Y.Map<unknown>
+    ).delete('body');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'text',
+            position: { x: 0, y: 0 },
+            data: {
+              kind: 'text',
+              status: 'error',
+              name: 'N',
+              errorMessage: 'Extraction failed',
+            },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const shell = document.querySelector('.react-flow__node') as HTMLElement;
+
+    fireEvent.keyDown(shell, { key: 'Enter' });
+
+    expect(getTextBody('p', 's', 'n1')).toBeNull();
+    expect(document.querySelector('.ProseMirror')).toBeNull();
   });
 
   // The other half of that distinction, and it belongs here for the same

@@ -110,9 +110,12 @@ export const TextNode = React.memo(function TextNode({
   // Whether this node can be written in, worked out ONCE and read by both the
   // way in and the way back out. Two hand-written conditions drift, and these
   // had: entry asked the shared gate — which knows only `locked` and
-  // `handling` — while the exit closed on any status other than `idle`, so a
-  // node showing an upload error let somebody open an editor and shut it again
-  // in the same breath.
+  // `handling` — while the exit closed on any status other than `idle`. On a
+  // failed node they disagreed, so opening one repaired a missing body (a real
+  // write into the shared document) and set edit state, both of which the exit
+  // undid on the same tick. None of it was visible: the renderer gives a failed
+  // node's content slot to the error message, so no editor is mounted there
+  // either way. The write is what actually went away.
   //
   // Idle is required on top of the gate because the renderer says so: the
   // content slot shows a skeleton while a task writes and the error message
@@ -121,9 +124,10 @@ export const TextNode = React.memo(function TextNode({
   // produces the toast — and this adds the one condition the gate has no
   // vocabulary for.
   //
-  // Memoized because a blocked verdict is a fresh object on every call, and an
-  // unstable one here would re-run the effect below on every render of every
-  // text node.
+  // Memoized for the ordinary reason: a blocked verdict is a fresh object on
+  // every call, `startEdit` closes over it, and `startEdit` is handed to child
+  // components. No effect reads this — they read the `canEdit` boolean below —
+  // so the memo is about prop stability, not about re-running anything.
   const editBlock = React.useMemo(
     () =>
       evaluateNodeGate(
@@ -263,7 +267,12 @@ export const TextNode = React.memo(function TextNode({
                 ref={displayRef}
                 data-testid='text-node-body'
                 onDoubleClick={startEdit}
-                className='max-h-144 min-h-48 overflow-hidden whitespace-pre-wrap break-words p-3 text-justify text-sm outline-none'
+                // `break-spaces`, not `pre-wrap`: ProseMirror sets that on its own
+                // editable element, and the two differ on whether a run of spaces at
+                // a line end takes up room. Measured — every other box metric matches
+                // exactly, so this was the last thing that could make the same words
+                // wrap differently in the two states.
+                className='max-h-144 min-h-48 overflow-hidden whitespace-break-spaces break-words p-3 text-justify text-sm outline-none'
               >
                 {text}
               </div>
