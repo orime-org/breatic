@@ -6,7 +6,7 @@ import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
-import { type SpaceRpcResponse } from '@breatic/shared';
+import { newId, type SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@web/data/api';
 import { useProjectMembers } from '@web/data/use-project-members';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
@@ -402,9 +402,13 @@ function ProjectWorkspace({
       // Opening the tab is its own round trip: the token says WHICH
       // Space to open, and opening it is a change to shared state that
       // only the server may write.
+      //
+      // It reports as an OPEN failure, not a create failure. The create
+      // already succeeded — the entry is in the list and on screen — so
+      // saying it failed would send the user off to make a second Space.
       void callRpc(
         { type: 'tab:open', payload: { spaceId: mine.id } },
-        'project.space.error.create',
+        'project.space.error.openTab',
       ).catch(() => {
         // callRpc already surfaced a toast; the Space itself exists, so
         // there is nothing to roll back and nothing more to say.
@@ -553,7 +557,10 @@ function ProjectWorkspace({
     setSpaceOpInProgress('creating');
     // The server mints the id, so this machine has nothing to watch for
     // except the token it is about to send. Only this machine has it.
-    const claimToken = crypto.randomUUID();
+    // `newId` and not `crypto.randomUUID`: same v4 shape, but it is the
+    // generator the rest of the app uses, and it works outside a secure
+    // context where `crypto.randomUUID` is undefined.
+    const claimToken = newId();
     // Pin the token BEFORE the RPC await - Yjs sync from collab can race
     // ahead of the RPC ack (collab broadcasts the meta-doc mutation as
     // soon as space-rpc transact runs, which often beats the

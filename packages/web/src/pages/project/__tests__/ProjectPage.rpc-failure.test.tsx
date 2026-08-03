@@ -22,6 +22,8 @@ import {
   render as rtlRender,
   screen,
   waitFor,
+  act,
+  fireEvent,
   type RenderOptions,
 } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -47,6 +49,25 @@ vi.mock('@web/lib/toast', () => ({
  */
 const fakeProvider = { on: (): void => {}, off: (): void => {} } as never;
 
+/**
+ * The live spaces list, mutable so a case can land the broadcast that a
+ * create is waiting for. Re-rendering is triggered separately through the
+ * zustand store the page already subscribes to.
+ */
+const meta: {
+  spaces: Array<{
+    id: string;
+    name: string;
+    type: 'document';
+    claimToken?: string;
+  }>;
+} = {
+  spaces: [
+    { id: SPACE_A, name: 'Space A', type: 'document' },
+    { id: SPACE_B, name: 'Space B', type: 'document' },
+  ],
+};
+
 vi.mock('@web/data/yjs/project-meta', async () => {
   const actual = await vi.importActual<
     typeof import('@web/data/yjs/project-meta')
@@ -56,10 +77,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     useProjectMeta: (): ReturnType<
       typeof import('@web/data/yjs/project-meta').useProjectMeta
     > => ({
-      spaces: [
-        { id: SPACE_A, name: 'Space A', type: 'document' },
-        { id: SPACE_B, name: 'Space B', type: 'document' },
-      ],
+      spaces: meta.spaces,
       openTabIds: [SPACE_A, SPACE_B],
       users: new Map(),
       onlineUserIds: new Set<string>(),
@@ -171,7 +189,11 @@ function setup(): void {
 describe('ProjectPage — a failed Space RPC always says so', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useUIStore.setState({ chatPanelCollapsed: true });
+    meta.spaces = [
+      { id: SPACE_A, name: 'Space A', type: 'document' },
+      { id: SPACE_B, name: 'Space B', type: 'document' },
+    ];
+    useUIStore.setState({ chatPanelCollapsed: true, spaceOpInProgress: null });
     useCurrentUserStore.setState({
       user: {
         id: 'u-me',
@@ -224,6 +246,55 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('a create that lands but whose tab:open fails names the RIGHT operation', async () => {
+    // Two separate round trips: the Space is created and broadcast, then its
+    // tab is opened. If the second one fails the Space still exists and is
+    // already in the list, so telling the user the CREATE failed sends them
+    // off to make a second one.
+    let capturedToken: string | undefined;
+    sendSpaceRpcMock.mockImplementation(
+      async (_provider: unknown, req: { type: string; payload: Record<string, unknown> }) => {
+        if (req.type === 'space:create') {
+          capturedToken = req.payload.claimToken as string;
+          // The broadcast lands: the entry shows up carrying our token.
+          meta.spaces = [
+            ...meta.spaces,
+            {
+              id: '44444444-4444-4444-8444-444444444444',
+              name: 'Fresh',
+              type: 'document',
+              claimToken: capturedToken,
+            },
+          ];
+          return { id: 'r1', ok: true, data: {} };
+        }
+        throw new Error('Space RPC timeout for type=tab:open (id=x, 10000ms)');
+      },
+    );
+    setup();
+
+    (await screen.findByTestId('new-space-button')).click();
+    (await screen.findByRole('radio', { name: /Document/ })).click();
+    fireEvent.change(await screen.findByLabelText('Name'), {
+      target: { value: 'Fresh' },
+    });
+    (await screen.findByRole('button', { name: 'Create' })).click();
+
+    // The create resolved and mutated `meta.spaces`; nudge a re-render so the
+    // claim effect sees the new entry and fires its tab:open.
+    await waitFor(() => expect(capturedToken).toBeDefined());
+    act(() => {
+      useUIStore.setState({ chatPanelCollapsed: false });
+    });
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledTimes(1);
+    });
+    expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toBe(
+      'Failed to open the tab',
+    );
   });
 
   it('a request that succeeds says nothing', async () => {
