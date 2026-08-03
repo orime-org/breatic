@@ -399,6 +399,9 @@
       },
       "error": {
         "create": "Failed to create space",
+        "openTab": "Failed to open the tab",
+        "closeTab": "Failed to close the tab",
+        "unreachable": "No answer from the server — check your connection and try again",
         "notSynced": "Project is still syncing — try again in a moment"
       },
       "loading": {

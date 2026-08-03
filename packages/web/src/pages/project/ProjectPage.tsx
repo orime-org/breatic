@@ -251,16 +251,18 @@ function ProjectWorkspace({
     );
   }, [projectId, openTabIds, spaces]);
 
-  // Reconcile this user's per-user tab state when spaces vanish (deleted
-  // locally or by a collaborator). Delete goes through the `space:delete` RPC,
-  // NOT `onCloseTab`, so without this the active space could be a now-deleted
-  // id: the canvas renders the `?? openTabs[0]` fallback but no tab is
-  // highlighted (activeSpaceId still points at the gone space). This prunes the
-  // vanished tab ids and, if the active one vanished, activates the first
-  // still-visible tab (or the empty state when none remain). Per-user + runs on
-  // every client, so the deleter AND collaborators each converge their own
-  // state. Local Yjs writes apply even on a viewer's read-only connection
-  // (they just don't persist), so the UI stays consistent for everyone.
+  // Keep the active tab pointing at something this user actually has open.
+  // Two things break that, and both arrive as a change to the list rather
+  // than as a click: the Space was deleted (by us or a collaborator, through
+  // `space:delete`), or the tab was closed (through `tab:close`). Without
+  // this the active id can name a Space that is gone or a tab that is no
+  // longer open — the body renders the `?? openTabs[0]` fallback while no tab
+  // is highlighted, because activeSpaceId still points at the old one.
+  //
+  // Driving it from the list is also what makes a failed close correct: a
+  // request that fails never changes the list, so this never runs and nothing
+  // moves. Per-user + runs on every client, so the person who deleted AND
+  // everyone else each converge their own state.
   React.useEffect(() => {
     if (!userId) return;
     const liveIds = new Set(spaces.map((s) => s.id));
@@ -319,8 +321,12 @@ function ProjectWorkspace({
 
   /**
    * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
-   * connection. Throws if the provider isn't mounted yet (the UI gates
-   * actions behind `synced`) or the server reports a non-ok response.
+   * connection. Always throws on failure, and always shows a toast first —
+   * every caller relies on that, ending in an empty `.catch()` because the
+   * user has already been told. There are three ways to fail and all three
+   * go through here: the provider is not mounted yet (the UI gates actions
+   * behind `synced`), the request never came back (`sendSpaceRpc` rejects on
+   * its 10s timeout, or the transport throws), or the server answered no.
    */
   const callRpc = React.useCallback(
     async (
@@ -337,7 +343,22 @@ function ProjectWorkspace({
         toast.error(t(errorToastKey), { description: msg });
         throw new Error(msg);
       }
-      const res = await sendSpaceRpc(provider, req);
+      let res: SpaceRpcResponse;
+      try {
+        res = await sendSpaceRpc(provider, req);
+      } catch (err) {
+        // A rejection means the request never got an answer — the 10s
+        // timeout, or the socket refusing to carry it. Without this the
+        // rejection travelled straight out of the await, past both toasts
+        // below, into a caller's empty catch: with the network down a user
+        // could close a tab and never hear anything back (real-browser
+        // smoke, 2026-08-03). The thrown message is a developer string, so
+        // the user gets a written one instead.
+        toast.error(t(errorToastKey), {
+          description: t('project.space.error.unreachable'),
+        });
+        throw err;
+      }
       if (!res.ok) {
         toast.error(t(errorToastKey), { description: res.error.message });
         throw new Error(res.error.message);
@@ -485,28 +506,29 @@ function ProjectWorkspace({
       toast.warning(t('canvas.close.operationInProgress'));
       return;
     }
-    // Ask the server to close it, and stop there. The in-memory state
-    // this tab accumulated (canvas undo manager, document editor with its
-    // undo stack and selection) is discarded by the effect that watches
-    // openTabIds, once the tab has actually left the list.
+    // Ask the server to close it, and stop there — literally nothing else
+    // happens here. Both of the follow-ups are driven by the list instead,
+    // once the tab has actually left it: the in-memory state this tab
+    // accumulated (canvas undo manager, document editor with its undo stack
+    // and selection) is discarded by the effect that watches openTabIds, and
+    // moving off it is planned by `planVanishedSpaceReconcile`.
     //
-    // The order matters now that this is a round trip. Discarding here
-    // would mean a failed request leaves the tab on screen with its undo
-    // history already destroyed — the user closes a tab, sees an error,
-    // clicks back into it, and their history is gone. Waiting for the
-    // broadcast makes "the tab left" and "its state was discarded" the
-    // same event.
+    // That split matters now that this is a round trip. Anything done here
+    // happens whether or not the request succeeds, and a close CAN fail —
+    // offline, or a server that says no. Discarding here would leave a failed
+    // close showing a tab whose undo history is already gone; switching the
+    // active tab here would leave the tab on screen while the view has moved
+    // off it, which is what a real-browser smoke caught. Waiting for the
+    // broadcast makes "the tab left", "its state was discarded" and "we moved
+    // off it" the same event, and a failed close is simply an event that
+    // never arrives.
     void callRpc(
       { type: 'tab:close', payload: { spaceId: id } },
       'project.space.error.closeTab',
     ).catch(() => {
-      // callRpc already surfaced a toast; nothing was discarded, so the
-      // tab and everything in it stay exactly as they were.
+      // callRpc already surfaced a toast; nothing was discarded and nothing
+      // moved, so the tab and everything in it stay exactly as they were.
     });
-    if (id === activeSpace?.id) {
-      const next = openTabs.find((s) => s.id !== id);
-      setActiveSpaceId(next?.id ?? null);
-    }
   };
 
 

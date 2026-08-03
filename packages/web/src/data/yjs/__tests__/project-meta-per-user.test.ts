@@ -60,6 +60,37 @@ describe('planVanishedSpaceReconcile — per-user reconcile when spaces vanish',
     expect(out.reactivateTo).toBeUndefined();
   });
 
+  // A tab stops being the right thing to show for two reasons, not one: the
+  // Space was deleted, or the tab was closed. Both mean the same thing — the
+  // active id no longer names a tab this user has open — so both belong to
+  // this one rule. Closing used to move the active tab from inside the close
+  // handler instead, the moment the request went out, which put it on the
+  // wrong side of the line: a close that FAILS leaves the tab on screen but
+  // had already switched the view away from it (design §6.6.2: on failure
+  // "nothing moves"). Driving it from the list is what makes the failure
+  // path correct, because a failed close never changes the list.
+
+  it('active tab closed while the Space still exists → reactivate the first remaining open tab', () => {
+    // The broadcast has removed 'a' from this user's list; the Space itself
+    // is untouched and still in the project.
+    const out = planVanishedSpaceReconcile(
+      ['b', 'c'],
+      new Set(['a', 'b', 'c']),
+      'a',
+    );
+    expect(out.reactivateTo).toBe('b');
+  });
+
+  it('the only open tab was closed → reactivate to null (empty state)', () => {
+    const out = planVanishedSpaceReconcile([], new Set(['a']), 'a');
+    expect(out.reactivateTo).toBeNull();
+  });
+
+  it('closing a NON-active tab leaves the active one alone', () => {
+    const out = planVanishedSpaceReconcile(['a'], new Set(['a', 'b']), 'a');
+    expect(out.reactivateTo).toBeUndefined();
+  });
+
   it('null active + a vanished tab → prune it, no reactivation', () => {
     const out = planVanishedSpaceReconcile(['a', 'b'], new Set(['a']), null);
     expect(out.tabsToClose).toEqual(['b']);

@@ -262,11 +262,19 @@ export function useProjectMeta(
 }
 
 /**
- * Plan the per-user tab reconcile after the project's spaces change. Returns
- * which open-tab ids have VANISHED (deleted locally or by a collaborator — no
- * longer in `liveSpaceIds`) and, when the active space is among the vanished,
- * which still-live open tab to activate instead: the first remaining open tab,
- * or null for the empty state.
+ * Plan the per-user tab reconcile after this user's tab list or the project's
+ * spaces change. Returns which open-tab ids have VANISHED (no longer in
+ * `liveSpaceIds`) and, when the active tab is no longer one this user has
+ * open, which tab to activate instead: the first open tab whose Space still
+ * exists, or null for the empty state.
+ *
+ * The active id stops naming something showable for two reasons, and they are
+ * one rule, not two: the Space was deleted (gone from `liveSpaceIds`), or the
+ * tab was closed (gone from `openTabIds`). Both are read off the list, so both
+ * land here — and that is what makes a FAILED close behave: the close is a
+ * round trip now, and a request that fails never changes the list, so nothing
+ * moves (design §6.6.2). Deciding at click time instead would switch the view
+ * away from a tab that is still on screen.
  *
  * Only `reactivateTo` still has a consumer. Pruning the vanished ids is the
  * server's job now — deleting a Space clears it from everyone's list in the
@@ -274,7 +282,7 @@ export function useProjectMeta(
  * write this document. Which tab is ACTIVE is local window state, never
  * shared, so nobody else can put it right for us; that is the half that
  * stays here. Pure — the caller applies the result. `reactivateTo === undefined`
- * means the active space is still live, so leave it alone (no-op).
+ * means the active tab is still open and live, so leave it alone (no-op).
  * @param openTabIds - This user's open-tab space ids.
  * @param liveSpaceIds - The set of space ids that still exist in the project.
  * @param activeSpaceId - This user's active space id (or null).
@@ -286,8 +294,12 @@ export function planVanishedSpaceReconcile(
   activeSpaceId: string | null,
 ): { tabsToClose: string[]; reactivateTo: string | null | undefined } {
   const tabsToClose = openTabIds.filter((id) => !liveSpaceIds.has(id));
+  const activeIsShowable =
+    activeSpaceId !== null &&
+    openTabIds.includes(activeSpaceId) &&
+    liveSpaceIds.has(activeSpaceId);
   const reactivateTo =
-    activeSpaceId !== null && !liveSpaceIds.has(activeSpaceId)
+    activeSpaceId !== null && !activeIsShowable
       ? (openTabIds.find((id) => liveSpaceIds.has(id)) ?? null)
       : undefined;
   return { tabsToClose, reactivateTo };
