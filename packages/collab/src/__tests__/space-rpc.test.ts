@@ -82,7 +82,10 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-import { handleSpaceRpc } from "../services/space-rpc.js";
+import {
+  handleSpaceRpc,
+  type SpaceRpcCaller,
+} from "../services/space-rpc.js";
 import { spaceContentDocName, ACTIVITY_NEW_SIGNAL } from "@breatic/shared";
 
 const PID = "11111111-1111-4111-8111-111111111111";
@@ -661,5 +664,156 @@ describe("handleSpaceRpc — restore sources from the PG activity row", () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("NOT_FOUND");
     expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(false);
+  });
+});
+
+// ── Task #27: the open-tab list moves behind RPCs ────────────────────────
+//
+// It was the one part of the meta doc a client wrote directly, and that
+// single exception is why the write gate had to understand which field an
+// incoming frame touched. With it behind an RPC the rule is flat — a client
+// never writes that doc — and the connection is simply read-only.
+//
+// The seeding rule below is not new behaviour invented here: it is the
+// existing client-side rule, moved. Getting it wrong server-side is worse
+// than getting it wrong in a browser tab, because the result is persisted
+// and every machine on the account sees it.
+
+/**
+ * Read a user's open-tab list out of the fake meta doc.
+ * @param userId - Whose list to read.
+ * @returns The ids in the list, or null when the user has no list at all.
+ */
+function readTabs(userId: string): string[] | null {
+  const perUser = fakeMetaDoc.doc.getMap("perUser");
+  const userMap = perUser.get(userId) as Y.Map<unknown> | undefined;
+  if (!userMap) return null;
+  const arr = userMap.get("openTabIds") as Y.Array<string> | undefined;
+  return arr ? arr.toArray() : null;
+}
+
+/** Give a user a perUser record that has no openTabIds list. */
+function seedRecordWithoutList(userId: string): void {
+  fakeMetaDoc.doc.getMap("perUser").set(userId, new Y.Map<unknown>());
+}
+
+describe("handleSpaceRpc — tab:open / tab:close", () => {
+  const A = "sp-a";
+  const B = "sp-b";
+  const C = "sp-c";
+  // Typed as the handler's own caller shape so the viewer case below is
+  // not narrowed to "editor" by the default argument.
+  const editor: SpaceRpcCaller = { userId: "u-1", role: "editor" };
+
+  beforeEach(() => {
+    seedSpace(A, { type: "canvas", name: "A", order: 0 });
+    seedSpace(B, { type: "canvas", name: "B", order: 1 });
+    seedSpace(C, { type: "canvas", name: "C", order: 2 });
+  });
+
+  const open = (spaceId: string, caller = editor) =>
+    handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, caller, {
+      id: "r",
+      type: "tab:open",
+      payload: { spaceId },
+    });
+
+  const close = (spaceId: string, caller = editor) =>
+    handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, caller, {
+      id: "r",
+      type: "tab:close",
+      payload: { spaceId },
+    });
+
+  it("refuses to open a tab for a Space that does not exist", async () => {
+    const res = await open("sp-missing");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("NOT_FOUND");
+    expect(readTabs("u-1")).toBeNull();
+  });
+
+  it("seeds the list with every existing Space on a user's first open", async () => {
+    // No record yet means the tab bar shows ALL Spaces. Writing just the
+    // one that was clicked would silently drop the others — and it is
+    // persisted now, so all of that user's machines lose them and a
+    // reload does not bring them back. This bug was fixed once already in
+    // the client; the rule moves with the code.
+    expect(readTabs("u-1")).toBeNull();
+    const res = await open(B);
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-1")).toEqual([A, B, C]);
+  });
+
+  it("seeds on a first CLOSE too, then removes the one closed", async () => {
+    // Closing without ever opening is a real path: the tab bar is showing
+    // every Space, and the user closes one of them. Seeding first is what
+    // makes "close one" mean "keep the other two" instead of "keep none".
+    const res = await close(A);
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-1")).toEqual([B, C]);
+  });
+
+  it("seeds when the record exists but has no list", async () => {
+    // A shape that exists in production today: the old client-side close
+    // created the record and then returned without making a list. The
+    // gate is the LIST, not the record — gating on the record would skip
+    // seeding for exactly these users and leave their tab bar empty.
+    seedRecordWithoutList("u-1");
+    const res = await open(B);
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-1")).toEqual([A, B, C]);
+  });
+
+  it("opening an already-open tab changes nothing", async () => {
+    await open(B);
+    const before = readTabs("u-1");
+    let updates = 0;
+    const count = (): void => {
+      updates += 1;
+    };
+    fakeMetaDoc.doc.on("update", count);
+    const res = await open(B);
+    fakeMetaDoc.doc.off("update", count);
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-1")).toEqual(before);
+    expect(updates).toBe(0);
+  });
+
+  it("closing a tab that is not open changes nothing", async () => {
+    await open(B); // seeds [A, B, C]
+    await close(A); // -> [B, C]
+    const before = readTabs("u-1");
+    const res = await close(A);
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-1")).toEqual(before);
+  });
+
+  it("writes no activity row for either operation", async () => {
+    // Which tabs someone has open is their own window state, not a
+    // project event. This is the line between the tab RPCs and the five
+    // Space operations.
+    await open(B);
+    await close(B);
+    expect(activityInsertMock).not.toHaveBeenCalled();
+    expect(activityInsertIgnoreMock).not.toHaveBeenCalled();
+  });
+
+  it("lets a viewer manage their own tabs", async () => {
+    // A viewer cannot change the project, but their tab bar is theirs.
+    // Their connection is read-only, which is exactly why this has to go
+    // through an RPC — before this change their tab state was silently
+    // dropped by the server and never survived a reload.
+    const res = await open(B, { userId: "u-viewer", role: "viewer" });
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-viewer")).toEqual([A, B, C]);
+  });
+
+  it("writes to the caller's own record, never another user's", async () => {
+    await open(B, { userId: "u-1", role: "editor" });
+    await open(C, { userId: "u-2", role: "editor" });
+    expect(readTabs("u-1")).toEqual([A, B, C]);
+    expect(readTabs("u-2")).toEqual([A, B, C]);
+    // Two separate records, each seeded on its own first write.
+    expect(fakeMetaDoc.doc.getMap("perUser").size).toBe(2);
   });
 });

@@ -733,6 +733,153 @@ async function runRestore(
   return ok(req.id);
 }
 
+// ── Tab RPCs ────────────────────────────────────────────────────────
+//
+// Which Spaces a person has open used to be the one thing a client wrote
+// into the meta doc directly. That single exception is why the write gate
+// had to work out which field an incoming frame touched — and a gate that
+// must enumerate the framework's message types to do that fails open on
+// the ones it misses. With tabs behind an RPC the rule is flat: a client
+// never writes that doc, and its connection is simply read-only.
+//
+// Nothing here writes an activity row. Which tabs someone has open is
+// their own window state, not a project event.
+
+/** Key of the per-user open-tab list inside a `perUser` record. */
+const OPEN_TAB_IDS_KEY = "openTabIds";
+
+/**
+ * Get the caller's open-tab list, creating it — seeded with every Space
+ * that currently exists — when they do not have one.
+ *
+ * **The gate is the LIST, not the record.** Three states exist and the
+ * middle one is easy to miss:
+ *
+ * | state | what the tab bar shows |
+ * | --- | --- |
+ * | no record at all | every Space |
+ * | a record with no list | nothing |
+ * | a record with an empty list | nothing |
+ *
+ * A user with no record sees every Space, so the first write has to
+ * preserve that: writing only the Space just clicked would drop the rest
+ * from their bar. And a record without a list exists in production — the
+ * old client-side close created the record, then returned without making
+ * a list — so gating on the record would skip seeding for exactly those
+ * users and leave them with an empty bar for good.
+ *
+ * Seeding happens once. After that the list is authoritative, including
+ * when it is empty (the user closed everything, which is their choice).
+ * @param doc - The project meta doc, inside a transaction.
+ * @param userId - Caller's userId, taken from the authenticated connection.
+ * @param spaces - The `spaces` map, used as the seed when there is no list.
+ * @returns The caller's open-tab list, ready to mutate.
+ */
+function ensureOpenTabList(
+  doc: Y.Doc,
+  userId: string,
+  spaces: Y.Map<unknown>,
+): Y.Array<string> {
+  const perUser = doc.getMap<Y.Map<unknown>>("perUser");
+  let userMap = perUser.get(userId);
+  if (!userMap) {
+    userMap = new Y.Map<unknown>();
+    perUser.set(userId, userMap);
+  }
+  const existing = userMap.get(OPEN_TAB_IDS_KEY) as
+    | Y.Array<string>
+    | undefined;
+  if (existing) return existing;
+  const list = new Y.Array<string>();
+  userMap.set(OPEN_TAB_IDS_KEY, list);
+  list.push(Array.from(spaces.keys()));
+  return list;
+}
+
+/**
+ * Open a Space in the caller's own tab bar. Any role that can reach the
+ * project may do this — a viewer's tab bar is still theirs.
+ * @param ctx - Collab context providing the Hocuspocus server.
+ * @param projectId - Project whose meta doc holds the tab lists.
+ * @param caller - Authenticated caller; the userId comes from here, never from the request.
+ * @param req - The `tab:open` request carrying the Space to open.
+ * @returns Success, or `NOT_FOUND` when that Space does not exist.
+ */
+async function handleTabOpen(
+  ctx: SpaceRpcContext,
+  projectId: string,
+  caller: SpaceRpcCaller,
+  req: Extract<SpaceRpcRequest, { type: "tab:open" }>,
+): Promise<SpaceRpcResponse> {
+  const { spaceId } = req.payload;
+  const conn = await ctx.hocuspocus.openDirectConnection(
+    projectMetaDocName(projectId),
+    { context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE } },
+  );
+  try {
+    let missing = false;
+    await conn.transact((doc: Y.Doc) => {
+      const spaces = doc.getMap("spaces");
+      if (!spaces.has(spaceId)) {
+        missing = true;
+        return;
+      }
+      const list = ensureOpenTabList(doc, caller.userId, spaces);
+      // Already open: touch nothing. Re-adding would broadcast a change
+      // that changes nothing to everyone on the account.
+      if (!list.toArray().includes(spaceId)) list.push([spaceId]);
+    });
+    if (missing) {
+      return err(req.id, "NOT_FOUND", `Space ${spaceId} does not exist`);
+    }
+    return ok(req.id);
+  } finally {
+    await conn.disconnect();
+  }
+}
+
+/**
+ * Close a Space in the caller's own tab bar.
+ *
+ * Closing a Space that is not open succeeds without touching anything —
+ * the caller's intent is already satisfied. The Space itself is never
+ * checked: a tab pointing at a Space that has since been deleted is
+ * exactly the case where closing has to keep working.
+ * @param ctx - Collab context providing the Hocuspocus server.
+ * @param projectId - Project whose meta doc holds the tab lists.
+ * @param caller - Authenticated caller; the userId comes from here, never from the request.
+ * @param req - The `tab:close` request carrying the Space to close.
+ * @returns Success.
+ */
+async function handleTabClose(
+  ctx: SpaceRpcContext,
+  projectId: string,
+  caller: SpaceRpcCaller,
+  req: Extract<SpaceRpcRequest, { type: "tab:close" }>,
+): Promise<SpaceRpcResponse> {
+  const { spaceId } = req.payload;
+  const conn = await ctx.hocuspocus.openDirectConnection(
+    projectMetaDocName(projectId),
+    { context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE } },
+  );
+  try {
+    await conn.transact((doc: Y.Doc) => {
+      const spaces = doc.getMap("spaces");
+      // Seeding first is what makes "close one" mean "keep the others"
+      // for a user who has never opened anything: their bar is showing
+      // every Space, and without the seed the result would be a list
+      // holding nothing at all.
+      const list = ensureOpenTabList(doc, caller.userId, spaces);
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (list.get(i) === spaceId) list.delete(i, 1);
+      }
+    });
+    return ok(req.id);
+  } finally {
+    await conn.disconnect();
+  }
+}
+
 // ── Dispatcher ──────────────────────────────────────────────────────
 
 /**
@@ -763,6 +910,10 @@ export async function handleSpaceRpc(
         return await handleRename(ctx, projectId, caller, request);
       case "space:restore":
         return await handleRestore(ctx, projectId, caller, request);
+      case "tab:open":
+        return await handleTabOpen(ctx, projectId, caller, request);
+      case "tab:close":
+        return await handleTabClose(ctx, projectId, caller, request);
     }
   } catch (e) {
     logger.error(
