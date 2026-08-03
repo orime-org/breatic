@@ -81,16 +81,23 @@ export const MAX_RETRY_AFTER_MS = 60_000;
  * `timeoutMs` and honours it. This figure only covers the callers that have no
  * opinion.
  *
- * Why a default has to exist at all: two stretches of a request can hang with
- * nobody watching — sending the body, and waiting for the answer. Connecting
- * is the operating system's; reading the response body is the caller's by an
- * earlier decision. Measured with no bound of our own, both hang indefinitely:
- * a fetch was still pending after 90 seconds against a server that accepted
- * the socket and then went quiet.
+ * Why 300 seconds, and be precise about what it buys, because an earlier
+ * version of this comment was not. Measured on Node 24, no deadline of our
+ * own, a server that accepts the socket and then does nothing:
  *
- * Why 300 seconds: it is the platform's own answer, applied by the HTTP client
- * underneath both to waiting for a response and to the gap between body
- * chunks. Anyone who does not think about this gets what they already had.
+ *   - waiting for a response:      rejected at 301.4s, HeadersTimeoutError
+ *   - sending a body it never reads: rejected at 301.4s, same error
+ *
+ * So the platform already bounds both stretches at 300s, and taking the same
+ * figure changes NOTHING on the backend — which is the point: no request that
+ * works today stops working. (The comment this replaced said both stretches
+ * "hang indefinitely", citing a probe stopped at 90 seconds. The probe was
+ * real; the conclusion was drawn 211 seconds too early.)
+ *
+ * Where the default does buy something is a browser, whose fetch has no
+ * timeout of any kind. And what buys something everywhere is the caller's own
+ * figure, which is usually far shorter than 300s and is the only one that can
+ * be right for a particular call.
  *
  * SETTLED 2026-08-03. The figure it replaced was ten seconds, which was ours
  * rather than anyone's, and which cut an 8 MiB upload off mid-transfer three
@@ -99,3 +106,24 @@ export const MAX_RETRY_AFTER_MS = 60_000;
  * inventing a number on the caller's behalf.
  */
 export const DEFAULT_TIMEOUT_MS = 300_000;
+
+/**
+ * The largest deadline a timer can actually hold.
+ *
+ * `setTimeout` stores its delay in a signed 32-bit integer and does not refuse
+ * anything outside that range — it silently rewrites it to ONE MILLISECOND,
+ * with a warning on stderr and nothing else. Infinity, NaN, zero and negatives
+ * get the same treatment. Measured against a healthy server answering in 50ms:
+ * every one of those turned into three aborted deliveries and no response,
+ * while 30_000 and nine hours both returned 200.
+ *
+ * That matters because this layer ASKS callers to compute their own deadline,
+ * and `size / rate` produces Infinity the moment a rate is misconfigured to
+ * zero. So an out-of-range figure is refused at the boundary rather than
+ * inverted into its opposite.
+ *
+ * (This constant existed before, was deleted when the timeout stopped being a
+ * parameter, and comes back with it. Deleting it then was right — nothing
+ * could reach it — and so is restoring it now.)
+ */
+export const MAX_TIMER_MS = 2_147_483_647;

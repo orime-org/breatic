@@ -47,7 +47,7 @@
  * the answer, and a caller that wants to branch reads the status it has.
  */
 
-import { DEFAULT_TIMEOUT_MS } from "@shared/http/constants.js";
+import { DEFAULT_TIMEOUT_MS, MAX_TIMER_MS } from "@shared/http/constants.js";
 import { decideRetry, parseRetryAfter } from "@shared/http/decide-retry.js";
 import { redactUrl } from "@shared/http/redact-url.js";
 
@@ -240,6 +240,29 @@ function wait(ms: number): Promise<void> {
 }
 
 /**
+ * The deadline to use, or a refusal if the caller named an impossible one.
+ *
+ * A timer accepts a positive 32-bit integer and quietly rewrites everything
+ * else to one millisecond, so passing the caller's figure straight through
+ * turns "wait as long as this needs" into "abort immediately" — measured, on a
+ * server that was answering fine. Refused here for the same reason an
+ * undeliverable URL is: something unusable arrived, and spending three
+ * deliveries to discover that helps nobody.
+ * @param asked - The caller's `timeoutMs`, if it gave one.
+ * @returns The deadline in milliseconds.
+ * @throws {Error} When the figure cannot be held by a timer.
+ */
+function usableDeadline(asked: number | undefined): number {
+  const deadlineMs = asked ?? DEFAULT_TIMEOUT_MS;
+  if (!Number.isInteger(deadlineMs) || deadlineMs < 1 || deadlineMs > MAX_TIMER_MS) {
+    throw new Error(
+      `http was given a timeout of ${deadlineMs}; it must be a whole number of milliseconds between 1 and ${MAX_TIMER_MS}`,
+    );
+  }
+  return deadlineMs;
+}
+
+/**
  * Perform an HTTP request, replaying it when — and only when — the caller's
  * declared replay-safety and the failure together allow it.
  *
@@ -253,7 +276,8 @@ function wait(ms: number): Promise<void> {
  * @param url - Absolute http or https URL.
  * @param init - Standard fetch init (method, headers, body). Any `signal` on
  *   it is replaced by this call's own deadline.
- * @param options - The one fact only the caller knows.
+ * @param options - What only the caller can know: whether a replay costs
+ *   anything, and optionally how long this delivery may take.
  * @returns The final response, exactly as `fetch` produced it.
  * @throws {HttpRetryError} When replays happened and none produced a response.
  * @throws {Error} The original failure, unwrapped, when the first delivery
@@ -273,7 +297,7 @@ export async function httpRequest(
   const safeUrl = redactUrl(target);
   const bodyReplayable = bodyCanBeResent(init.body);
   // The caller's figure when it gave one; ours only when it did not.
-  const deadlineMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const deadlineMs = usableDeadline(options.timeoutMs);
 
   // Unbounded by design: `decideRetry` owns the budget and refuses past
   // MAX_RETRIES, so the exit is the predicate rather than a second counter

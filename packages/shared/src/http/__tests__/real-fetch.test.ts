@@ -105,7 +105,7 @@ async function stubServer(replies: Reply[]): Promise<Stub> {
   };
 }
 
-/** The whole options object: one fact, and nothing else to say. */
+/** The common case: replaying is free, and the default deadline will do. */
 const REPLAYABLE = { replaySafe: true } as const;
 
 describe("item 1 — send the request the caller asked for", () => {
@@ -138,6 +138,43 @@ describe("item 1 — send the request the caller asked for", () => {
       expect(received["content-type"]).toBe("text/plain");
     }
   });
+
+  it("lets an https URL through the boundary", async () => {
+    // Nothing in this suite ever sent one, so the layer could be made to
+    // refuse https entirely — a one-word change — and all 118 tests stayed
+    // green. https is the scheme every real caller uses.
+    //
+    // The request is expected to fail: there is no server on that port. What
+    // this asserts is WHERE it failed — anything but our own boundary refusal
+    // means https got past the guard, which is the whole point. Narrowing the
+    // guard to http-only makes the message start with "http was given".
+    const thrown = await httpRequest(
+      "https://127.0.0.1:1/nothing-listens-here",
+      {},
+      { replaySafe: false },
+    ).catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).not.toContain("http was given");
+  }, 30_000);
+
+  it("replaces a signal the caller put in init, and delivers anyway", async () => {
+    // The docstring promises init's own signal is replaced by this call's
+    // deadline. Reversing the spread — letting the caller's signal win — kept
+    // every test green, because no test ever passed one. An already-aborted
+    // signal is the sharpest version: if it survived, nothing would be
+    // delivered at all.
+    const stub = await stubServer([{ kind: "status", status: 200 }]);
+
+    const out = await httpRequest(
+      stub.url,
+      { signal: AbortSignal.abort() },
+      { replaySafe: true },
+    );
+
+    expect(out.status).toBe(200);
+    expect(stub.hits()).toBe(1);
+  }, 30_000);
 
   it("sends the same bytes again on a replay", async () => {
     const stub = await stubServer([{ kind: "status", status: 503 }, { kind: "status", status: 200 }]);
@@ -348,6 +385,56 @@ describe("how long one delivery may take", () => {
     expect(stub.hits()).toBe(1);
   }, 30_000);
 
+  it.each([
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["NaN", Number.NaN],
+    ["zero", 0],
+    ["negative", -1],
+    ["past what a timer can hold", 2_147_483_648],
+    ["a fraction", 1.5],
+  ])("refuses a deadline of %s instead of turning it into 1ms", async (_label, timeoutMs) => {
+    // A timer silently rewrites anything outside its range to ONE MILLISECOND.
+    // Measured against a healthy server that answers in 50ms: every one of
+    // these ended in three aborted deliveries and no response, while 30_000
+    // and nine hours both returned 200. So a caller computing its deadline —
+    // which is what this layer asks callers to do, and `size / rate` yields
+    // Infinity the moment a rate is zero — gets the exact opposite of what it
+    // asked for, on a server that was working fine.
+    //
+    // Refusing here rather than at the timer is the same rule the URL guard
+    // follows: something unusable arrived, so say so before spending three
+    // deliveries proving it.
+    const stub = await stubServer([{ kind: "status", status: 200 }]);
+
+    const thrown = await httpRequest(stub.url, {}, { replaySafe: true, timeoutMs }).catch(
+      (e: unknown) => e,
+    );
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBeInstanceOf(HttpRetryError);
+    expect((thrown as Error).message).toContain("http was given");
+    expect(stub.hits()).toBe(0);
+  }, 30_000);
+
+  it("keeps a query key out of the timeout message", async () => {
+    // The timeout message is composed here, so it is one of the two places a
+    // raw url could reach a log — and the only one no test looked at. Swapping
+    // the redacted url for the raw one in that one line left the suite green
+    // while handing the caller a live API key through the error's cause.
+    const stub = await stubServer([{ kind: "silent" }]);
+    const secret = ["AIzaSy", "REAL-LOOKING-KEY"].join("");
+
+    const thrown = await httpRequest(
+      `${stub.url}v1/models?key=${secret}`,
+      {},
+      { replaySafe: false, timeoutMs: 500 },
+    ).catch((e: unknown) => e);
+
+    const seen = `${(thrown as Error).message} ${String((thrown as Error).cause ?? "")} ${String((thrown as Error).stack ?? "")}`;
+    expect(seen).not.toContain(secret);
+    expect(seen).toContain("timed out");
+  }, 30_000);
+
   it("falls back to the default when the caller gives none", async () => {
     // The guard against the default being quietly shortened: a call with no
     // deadline of its own is still in flight after a second and a half.
@@ -523,8 +610,9 @@ describe("item 6 — hold nothing once the call is over", () => {
     // whether or not the cleanup were in a finally. A 404 walks out through
     // the decision instead, and this is the case that used to be missing:
     // moving the cleanup onto the success return left every one of these
-    // hundred deadlines armed for its full ten seconds, and the old test
-    // stayed green.
+    // hundred deadlines armed for its full duration, and the old test stayed
+    // green. (The figure was ten seconds when this was written; the deadline
+    // is the caller's now, defaulting to 300s, which only makes it worse.)
     const stub = await stubServer(
       Array.from({ length: 100 }, () => ({ kind: "status" as const, status: 404 })),
     );
