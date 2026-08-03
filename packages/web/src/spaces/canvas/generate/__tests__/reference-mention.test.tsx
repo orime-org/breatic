@@ -363,11 +363,7 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
         imageRefsDisabled: () => hideImages,
       });
       return (
-        (s.items?.({
-          query: '',
-          editor: undefined as unknown as Editor,
-          signal: new AbortController().signal,
-        }) ??
+        (s.items?.({ query: '', editor: undefined as unknown as Editor }) ??
           []) as ReferenceRailItem[]
       )
         .map((r) => r.sourceNodeId)

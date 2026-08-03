@@ -80,7 +80,7 @@ export interface StudioInvitationMailInput {
   inviterName: string;
   studioName: string;
   role: string;
-  /** Full landing link, e.g. `https://breatic.ai/studio-invite?token=<token>`. */
+  /** Full landing link, e.g. `https://breatic.ai/decision?token=<token>`. */
   inviteLink: string;
 }
 
@@ -110,7 +110,7 @@ export interface ProjectInvitationMailInput {
   inviterName: string;
   projectName: string;
   role: string;
-  /** Full landing link, e.g. `https://breatic.ai/project-invite?token=<token>`. */
+  /** Full landing link, e.g. `https://breatic.ai/decision?token=<token>`. */
   inviteLink: string;
 }
 

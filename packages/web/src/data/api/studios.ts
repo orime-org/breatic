@@ -15,7 +15,6 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 // a studio differ in what changes hands, not in what the offer looks like.
 import type { LiveTransfer } from '@web/data/api/projects';
 import type {
-  InvitationLandingView,
   ProjectSummary,
   RecentItem,
   Studio,
@@ -301,32 +300,5 @@ export const studiosApi = {
    */
   leave(slug: string): Promise<{ ok: true }> {
     return apiDelete<{ ok: true }>(`/studio/${slug}/membership`);
-  },
-  /**
-   * `GET /api/v1/studio-invitations/:token` — the landing-page view for an email
-   * invite link (studio + inviter names, role, `expired`, `isInvitee`).
-   * Auth-only. Rejects with `404` when the token / invite is gone.
-   * @param token the one-time token from the invite link.
-   * @returns the invitation landing view.
-   */
-  getInvitation(token: string): Promise<InvitationLandingView> {
-    return apiGet<InvitationLandingView>(`/studio-invitations/${token}`);
-  },
-  /**
-   * `POST /api/v1/studio-invitations/respond` — confirm or decline an invite
-   * from the email link; consumes the one-time token. Returns the studio slug
-   * for the post-confirm redirect.
-   * @param token the one-time token from the invite link.
-   * @param action `confirm` to accept (and join), `decline` to refuse.
-   * @returns the studio slug to redirect to on confirm.
-   */
-  respondInvitation(
-    token: string,
-    action: 'confirm' | 'decline',
-  ): Promise<{ studioSlug: string }> {
-    return apiPost<
-      { studioSlug: string },
-      { token: string; action: 'confirm' | 'decline' }
-    >('/studio-invitations/respond', { token, action });
   },
 };

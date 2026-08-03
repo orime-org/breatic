@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Project invitation email-link routes — the `/project-invite` landing page
- * uses these to show an invite and confirm/decline it (invite-confirm
- * handshake, 2026-06-18, #1337). The direct mirror of `studio-invitations.ts`.
+ * The owner's side of a project invitation — create one, list what is pending,
+ * revoke it.
  *
- * Both auth-only: the invitee must be logged in. The one-time token resolves
- * the invite; the CAS guard inside the service ties confirm/decline to the
- * invitee, so a forwarded link cannot be acted on by someone else.
+ * Answering an invitation is not here. It used to be: this file also served a
+ * `/project-invite` landing page with its own read and respond endpoints, the
+ * mirror of a second pair on the studio side. Both pairs are gone — a request
+ * is answered at `/decisions`, whichever of the five kinds it is.
  *
- * Mounted at `/api/v1/project-invitations`. Translation layer only
- * (prohibition #1): map the request to a `projectInviteService` call.
+ * Mounted at `/api/v1/projects/:pid/invitations`, owner-only. Translation layer
+ * only (prohibition #1): map the request to a `projectInviteService` call.
  */
 
 import { Hono } from "hono";
@@ -19,28 +19,15 @@ import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { requireAuth } from "@server/middleware/auth.js";
-import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRole, getProjectId } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
 
-/** Respond body — confirm (accept) or decline the invite, by its link token. */
 /** Create-invite body — a registered email + the granted role (never owner). */
 const inviteCreateSchema = z.object({
   email: z.string().email(),
   role: z.enum(["editor", "viewer"]),
 });
-
-const route = new Hono<{ Variables: AuthVariables }>();
-
-route.use(requireAuth);
-
-
-
-// ── Per-project endpoints (owner CRUD) ──────────────────────────────
-//
-// Mounted at `/api/v1/projects/:pid/invitations`. Owner-only, via the
-// `requireRole('owner')` middleware on `:pid`.
 
 const projectInvites = new Hono<{ Variables: AuthRoleVariables }>();
 
@@ -52,11 +39,11 @@ projectInvites.use(requireAuth);
  * bell notification, and (best-effort) sends an email link. The invitee becomes
  * a member only on confirm (invite-confirm handshake).
  *
- * Returns the `/project-invite?token=` URL so the owner can copy it directly:
- * the project invite funnels all three channels (this copyable URL, the bell,
- * the email) through the same landing page (the divergence from studio's inline
- * bell confirm). `createInvite` mints the shared token; the route reuses it for
- * both the email link and the returned URL.
+ * Returns the `/decision?token=` URL so the owner can copy it directly. All
+ * three channels that can reach this invite — the copyable URL, the bell row
+ * and the email — carry the same token to the same landing page.
+ * `createInvite` mints it; the route reuses it for both the email link and the
+ * returned URL.
  * @returns `201` with `{ data: { inviteLink } }`; `404` unregistered email,
  *   `403` caller not owner, `409` already has access or already invited
  */

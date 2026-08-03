@@ -219,7 +219,7 @@ describe("createInvite", () => {
     // bell, email) funnel through the SAME landing page, so the token is minted
     // inside createInvite — returned to the caller (the route surfaces it as the
     // copyable URL + the email link) AND embedded in the notification payload
-    // (so the bell can build the same `/project-invite?token=` link).
+    // (so the bell can build the same `/decision?token=` link).
     const result = await inviteService.createInvite(
       PROJECT,
       OWNER,

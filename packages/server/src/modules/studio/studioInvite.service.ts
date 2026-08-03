@@ -65,7 +65,7 @@ type InvitableRole = "maintainer" | "guest";
  * @param email - The invitee's email; must belong to a registered user
  * @param role - The granted studio role (maintainer | guest; never admin)
  * @param origin - Request Origin; when set, the best-effort invite email is sent
- *   here (the `/studio-invite?token=` link is built from it). Omit to skip it.
+ *   here (the `/decision?token=` link is built from it). Omit to skip it.
  * @returns The new invitation id, the invitee's id + email, and the studio /
  *   inviter names + role
  * @throws {NotFoundError} studio not found, or no user with that email

@@ -67,7 +67,7 @@ import {
  * `project_members` row (owner / editor / viewer). Mints the one-time email-link
  * token here — the project invite diverges from studio in that ALL three channels
  * (the owner's copyable URL, the bell, the email) funnel through the SAME
- * `/project-invite?token=` landing page, so the token is shared: it is returned
+ * `/decision?token=` landing page, so the token is shared: it is returned
  * to the caller (route surfaces the copyable URL) AND embedded in
  * the notification payload (so the bell can build the same link). The token
  * lives in Redis (not the PG tx) — a tx rollback simply leaves an orphan token

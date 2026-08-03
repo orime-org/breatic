@@ -24,7 +24,7 @@ describe("buildStudioInvitationMail", () => {
       inviterName: "Alice <b>",
       studioName: "Team & Co",
       role: "maintainer",
-      inviteLink: "https://app.test/studio-invite?token=abc",
+      inviteLink: "https://app.test/decision?token=abc",
     });
     expect(mail.to).toBe("invitee@example.com");
     expect(mail.subject).toContain("Team & Co");
@@ -34,7 +34,7 @@ describe("buildStudioInvitationMail", () => {
     expect(mail.html).not.toContain("Alice <b>");
     expect(mail.html).toContain("join the studio");
     expect(mail.html).toContain("maintainer");
-    expect(mail.html).toContain("https://app.test/studio-invite?token=abc");
+    expect(mail.html).toContain("https://app.test/decision?token=abc");
     expect(mail.html).toContain("Open the invitation");
     expect(mail.html.toLowerCase()).toContain("accept or decline");
     expect(mail.html.toLowerCase()).toContain("invitation expires in 7 days");
@@ -48,7 +48,7 @@ describe("buildProjectInvitationMail", () => {
       inviterName: "Bob <i>",
       projectName: "Launch & Grow",
       role: "editor",
-      inviteLink: "https://app.test/project-invite?token=xyz",
+      inviteLink: "https://app.test/decision?token=xyz",
     });
     expect(mail.to).toBe("invitee@example.com");
     expect(mail.subject).toContain("Launch & Grow");
@@ -58,7 +58,7 @@ describe("buildProjectInvitationMail", () => {
     expect(mail.html).not.toContain("Bob <i>");
     expect(mail.html).toContain("collaborate on the project");
     expect(mail.html).toContain("editor");
-    expect(mail.html).toContain("https://app.test/project-invite?token=xyz");
+    expect(mail.html).toContain("https://app.test/decision?token=xyz");
     expect(mail.html).toContain("Open the invitation");
     expect(mail.html.toLowerCase()).toContain("accept or decline");
     expect(mail.html.toLowerCase()).toContain("invitation expires in 7 days");
