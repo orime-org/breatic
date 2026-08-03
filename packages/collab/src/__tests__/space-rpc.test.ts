@@ -817,3 +817,116 @@ describe("handleSpaceRpc — tab:open / tab:close", () => {
     expect(fakeMetaDoc.doc.getMap("perUser").size).toBe(2);
   });
 });
+
+describe("handleSpaceRpc — a deleted Space leaves everyone's tab bar", () => {
+  const A = "sp-a";
+  const B = "sp-b";
+  const editor: SpaceRpcCaller = { userId: "u-1", role: "editor" };
+
+  beforeEach(() => {
+    seedSpace(A, { type: "canvas", name: "A", order: 0 });
+    seedSpace(B, { type: "canvas", name: "B", order: 1 });
+  });
+
+  const openFor = (userId: string, spaceId: string) =>
+    handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId, role: "editor" },
+      { id: "r", type: "tab:open", payload: { spaceId } },
+    );
+
+  it("clears the deleted Space from every user's list, in the same broadcast", async () => {
+    // Nobody's client can clean this up any more: clients do not write
+    // the meta doc. Leaving it to each client would also mean the tab
+    // only disappears for the people who happen to be online.
+    await openFor("u-1", A);
+    await openFor("u-2", A);
+    await openFor("u-3", A);
+    expect(readTabs("u-1")).toContain(A);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      editor,
+      { id: "r", type: "space:delete", payload: { spaceId: A } },
+    );
+
+    expect(res.ok).toBe(true);
+    expect(fakeMetaDoc.doc.getMap("spaces").has(A)).toBe(false);
+    for (const u of ["u-1", "u-2", "u-3"]) {
+      expect(readTabs(u), u).not.toContain(A);
+      // The other Space is untouched — this clears one entry, not the list.
+      expect(readTabs(u), u).toContain(B);
+    }
+  });
+
+  it("leaves users who never had that tab open alone", async () => {
+    await openFor("u-1", A);
+    const before = readTabs("u-1");
+    // u-2 has no record at all; deleting must not conjure one for them.
+    await handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, editor, {
+      id: "r",
+      type: "space:delete",
+      payload: { spaceId: B },
+    });
+    expect(readTabs("u-2")).toBeNull();
+    expect(before).not.toBeNull();
+  });
+
+  it("does not manufacture a list for someone who has a record but no list", async () => {
+    // "No list" means the tab bar shows every Space. Giving that user an
+    // empty list while sweeping would flip them to showing nothing — the
+    // sweep would empty a tab bar it was only supposed to remove one
+    // entry from. They have no list to clean, so they are left alone.
+    seedRecordWithoutList("u-2");
+    await handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, editor, {
+      id: "r",
+      type: "space:delete",
+      payload: { spaceId: A },
+    });
+    expect(readTabs("u-2")).toBeNull();
+  });
+
+  it("restore clears stale tab entries as a backstop", async () => {
+    // The cross-instance window: a tab:open can land after delete's sweep
+    // on another instance, leaving an entry pointing at a Space that is
+    // gone. Nobody sees it — the tab bar drops ids it cannot resolve — but
+    // when the Space comes back the id resolves again and the tab appears
+    // out of nowhere, which contradicts "restore does not restore tabs".
+    await openFor("u-1", A);
+    await handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, editor, {
+      id: "r1",
+      type: "space:delete",
+      payload: { spaceId: A },
+    });
+    // Feed restore the snapshot the delete just wrote, so this exercises
+    // the real path rather than a stub that always says "nothing to
+    // restore".
+    const deleteRow = activityInsertMock.mock.calls.find(
+      (c) => (c[0] as { type: string }).type === "space:deleted",
+    );
+    expect(deleteRow).toBeDefined();
+    activityLatestUnrestoredMock.mockResolvedValue({
+      id: "act-1",
+      payload: (deleteRow![0] as { payload: unknown }).payload,
+    });
+
+    // Simulate the straggler that the sweep missed.
+    const userMap = fakeMetaDoc.doc
+      .getMap("perUser")
+      .get("u-1") as Y.Map<unknown>;
+    (userMap.get("openTabIds") as Y.Array<string>).push([A]);
+    expect(readTabs("u-1")).toContain(A);
+
+    await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "owner-1", role: "owner" },
+      { id: "r2", type: "space:restore", payload: { spaceId: A } },
+    );
+
+    expect(fakeMetaDoc.doc.getMap("spaces").has(A)).toBe(true);
+    expect(readTabs("u-1")).not.toContain(A);
+  });
+});

@@ -420,6 +420,7 @@ async function runDelete(
       snapshot = snapshotMap(entry);
       deletedName = entry.get("name") as string | undefined;
       spaces.delete(spaceId);
+      clearSpaceFromAllTabs(doc, spaceId);
     });
   } finally {
     await conn.disconnect();
@@ -696,6 +697,14 @@ async function runRestore(
         entry.set(k, v);
       }
       spaces.set(spaceId, entry);
+      // Backstop for the cross-instance window: a tab:open can land after
+      // another instance's delete sweep, leaving an entry pointing at a
+      // Space that is gone. Nobody sees it — the tab bar drops ids it
+      // cannot resolve — until the Space comes back, at which point the id
+      // resolves again and a tab appears out of nowhere. Sweeping here is
+      // what makes "restore does not restore tabs" true rather than
+      // approximately true.
+      clearSpaceFromAllTabs(doc, spaceId);
     });
   } finally {
     await conn.disconnect();
@@ -747,6 +756,32 @@ async function runRestore(
 
 /** Key of the per-user open-tab list inside a `perUser` record. */
 const OPEN_TAB_IDS_KEY = "openTabIds";
+
+/**
+ * Drop one Space from every user's open-tab list.
+ *
+ * Called when a Space stops existing (delete) and again when one comes
+ * back (restore, as a backstop for the cross-instance window). Clients
+ * cannot do this themselves any more — they do not write this doc — and
+ * leaving it to them would also mean the tab only disappears for whoever
+ * happens to be online.
+ *
+ * Users with no list are skipped rather than given an empty one: a
+ * missing list means "show every Space", and manufacturing one here
+ * would silently empty their tab bar.
+ * @param doc - The project meta doc, inside a transaction.
+ * @param spaceId - The Space to drop from every list.
+ */
+function clearSpaceFromAllTabs(doc: Y.Doc, spaceId: string): void {
+  const perUser = doc.getMap<Y.Map<unknown>>("perUser");
+  perUser.forEach((userMap) => {
+    const list = userMap.get(OPEN_TAB_IDS_KEY) as Y.Array<string> | undefined;
+    if (!list) return;
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      if (list.get(i) === spaceId) list.delete(i, 1);
+    }
+  });
+}
 
 /**
  * Get the caller's open-tab list, creating it — seeded with every Space
