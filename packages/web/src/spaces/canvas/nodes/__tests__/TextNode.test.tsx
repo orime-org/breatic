@@ -362,7 +362,6 @@ describe('TextNode', () => {
       for (const cls of [
         'min-h-48',
         'p-3',
-        'whitespace-pre-wrap',
         'break-words',
         'text-justify',
         'text-sm',
@@ -371,6 +370,24 @@ describe('TextNode', () => {
       ]) {
         expect(el.className).toContain(cls);
       }
+      // And no whitespace class: TipTap's own `.ProseMirror` rule sets
+      // `white-space: break-spaces` unlayered, so a Tailwind one here can
+      // never apply — the round-4 review found an inert `pre-wrap` reading as
+      // a contradiction with the display state's declared value.
+      expect(el.className).not.toMatch(/whitespace-/);
+    });
+
+    // Wrapping parity with the display state (acceptance item 10). The editor
+    // computes `break-spaces` from TipTap's own stylesheet; the display body
+    // has no such patron and must DECLARE the same value itself — this line is
+    // the one that keeps identical words wrapping identically across the two
+    // states, and it was the one line nothing asserted.
+    it('display body declares the whitespace value the editor computes', () => {
+      seedNode('x');
+      renderNode();
+      expect(
+        screen.getByTestId('text-node-body').className,
+      ).toContain('whitespace-break-spaces');
     });
   });
 

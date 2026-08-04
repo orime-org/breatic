@@ -45,9 +45,17 @@ import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-us
  * global `box-sizing: border-box` makes the minimum include the padding, so one
  * element is 192px tall exactly like the display body; splitting them across
  * two elements would add a padding's worth of height on entering edit mode.
+ *
+ * Deliberately NO whitespace class. TipTap's own injected `.ProseMirror` rule
+ * sets `white-space: break-spaces` on this element, and being unlayered it
+ * beats anything Tailwind's layered utilities say — a whitespace class here is
+ * inert, and an inert one that names a different value than the display state
+ * reads as a contradiction that isn't there. The display body declares
+ * `whitespace-break-spaces` to MATCH what the editor computes; that pairing is
+ * what keeps the same words wrapping identically in the two states.
  */
 const EDITOR_CLASS =
-  'min-h-48 whitespace-pre-wrap break-words p-3 text-justify text-sm outline-none cursor-text focus:bg-accent/30';
+  'min-h-48 break-words p-3 text-justify text-sm outline-none cursor-text focus:bg-accent/30';
 
 /**
  * Build the text node editor's extension list.
