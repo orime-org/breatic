@@ -14,10 +14,11 @@
  *
  *   - deleted first, because a request that went away with its project is gone
  *     no matter what its status column still says;
- *   - already-a-member second, and ONLY for the two invite flows — the other
- *     three require the recipient to be a member already, so testing "are you
- *     in?" would leave them permanently unanswerable;
- *   - then the terminal statuses, then expiry, then answerable.
+ *   - then the terminal statuses, then the two expiry checks;
+ *   - already-a-member LAST, and ONLY for the two invite flows — it can only
+ *     downgrade a request that would otherwise be answerable, and the other
+ *     three flows require the recipient to be a member already, so testing
+ *     "are you in?" there would leave them permanently unanswerable.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -477,6 +478,37 @@ describe("already-a-member applies to invites only", () => {
       s.memberId,
     );
     expect(view!.state).toBe("answerable");
+  });
+});
+
+describe("the window the card states is the request's own", () => {
+  it("an old request keeps its own window after the knob changes", async () => {
+    // The knob (`deferred_request_ttl_days`) can be turned; the window a
+    // request HAD is a fact about its row. Reading the knob at view time made
+    // every historical expired card change its story with the config — the
+    // old spec accepted that drift on the premise that the expired card was
+    // nearly unreachable, and this PR's permanent token made it fully reachable.
+    const s = await seedScene();
+    const { id } = await studioInvitationsRepo.createPending({
+      studioId: s.studioId,
+      invitedUserId: s.memberId,
+      role: "guest",
+      invitedBy: s.ownerId,
+      expiresAt: IN_A_WEEK(),
+    });
+    const token = await tokenOf("studio_invitations", id);
+    // A request filed under a 9-day knob, now past its deadline.
+    await sql`
+      UPDATE studio_invitations
+      SET created_at = now() - interval '10 days',
+          expires_at = now() - interval '1 day'
+      WHERE id = ${id}
+    `;
+
+    const view = await decisionService.viewByToken(token, s.memberId);
+    expect(view!.state).toBe("expired");
+    // 9, from the row — not 7, from today's yaml.
+    expect(view!.windowDays).toBe(9);
   });
 });
 

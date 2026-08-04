@@ -35,6 +35,8 @@ export interface ResolvedRequest {
   status: string;
   /** Whether the row was soft-deleted, normally along with its container. */
   deleted: boolean;
+  /** When the request was filed — with `expiresAt`, it derives the window. */
+  createdAt: Date;
   /** When the answering window closes. */
   expiresAt: Date;
 }
@@ -74,6 +76,7 @@ export async function resolveByToken(
         id: source.table.id,
         status: source.table.status,
         deletedAt: source.table.deletedAt,
+        createdAt: source.table.createdAt,
         expiresAt: source.table.expiresAt,
       })
       .from(source.table)
@@ -88,6 +91,7 @@ export async function resolveByToken(
       id: row.id,
       status: row.status,
       deleted: row.deletedAt !== null,
+      createdAt: row.createdAt,
       expiresAt: row.expiresAt,
     };
   }

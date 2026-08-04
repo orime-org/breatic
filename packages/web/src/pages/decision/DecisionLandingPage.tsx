@@ -95,6 +95,12 @@ export default function DecisionLandingPage(): React.JSX.Element {
             ? err.message
             : t('decision.actionFailed'),
         );
+        // A refusal is the server saying the view went stale while the page
+        // sat open — the deadline passed, somebody else answered. Follow it:
+        // without this the card keeps live buttons under a countdown that
+        // says "expired", and every click repeats the same refusal.
+        const fresh = await decisionsApi.view(token).catch(() => null);
+        if (fresh !== null) setView(fresh);
       } finally {
         setSubmitting(false);
       }

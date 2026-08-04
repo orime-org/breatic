@@ -67,7 +67,10 @@ export interface DecisionView {
   expiresAt: string | null;
   /** Whether the signed-in viewer is the person being asked. */
   isRecipient: boolean;
-  /** How long the answering window is, in days, as currently configured. */
+  /**
+   * How long this request's answering window is, in days — derived from the
+   * row itself, so it stays true after ops turn the configured default.
+   */
   windowDays: number;
   /**
    * Where to go instead of answering, for the one dead end that has somewhere

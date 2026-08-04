@@ -93,6 +93,10 @@ function setup(initial = `/decision?token=${TOKEN}`): {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks does NOT drain mockResolvedValueOnce queues — a test that
+  // queues more responses than it consumes would poison its neighbours.
+  vi.mocked(decisionsApi.view).mockReset();
+  vi.mocked(decisionsApi.respond).mockReset();
 });
 
 describe('every kind gets its own words', () => {
@@ -259,6 +263,25 @@ describe('answering', () => {
       });
     });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['studios', 'user'] });
+  });
+
+  it('a refused answer converges the card to what the server now says', async () => {
+    // The page's view can go stale while it sits open — the deadline passes,
+    // somebody else answers. A refusal is the server saying so; the card must
+    // follow it instead of keeping live buttons under an 'expired' label.
+    const user = userEvent.setup();
+    vi.mocked(decisionsApi.view)
+      .mockResolvedValueOnce(makeView())
+      .mockResolvedValueOnce(makeView({ state: 'expired' }));
+    vi.mocked(decisionsApi.respond).mockRejectedValueOnce(
+      new ApiException({ status: 409, code: 'CONFLICT', message: 'Too late' }),
+    );
+    setup();
+    await user.click(await screen.findByRole('button', { name: 'Accept' }));
+
+    expect(await screen.findByText(/request has ended/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+    expect(toast.error).toHaveBeenCalledWith('Too late');
   });
 
   it('a rejected answer toasts the server and leaves the buttons up', async () => {

@@ -44,7 +44,6 @@ import * as decisionRepo from "@server/modules/decision/decision.repo.js";
 import type { RequestDetail } from "@server/modules/decision/decision.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { getDeferredRequestTtlDays } from "@server/config/limits.js";
 
 
 /** Terminal status words meaning the recipient said yes. */
@@ -53,6 +52,22 @@ const ACCEPTED = new Set(["accepted", "approved"]);
 const DECLINED = new Set(["declined", "rejected"]);
 /** Terminal status words meaning the initiator took it back. */
 const WITHDRAWN = new Set(["revoked", "cancelled"]);
+
+/**
+ * The answering window this request actually had, in whole days.
+ *
+ * Derived from the row (`expires_at - created_at`) rather than read from the
+ * yaml knob at view time: the knob can be turned, and a request's window is a
+ * fact about its row — reading today's config made every historical expired
+ * card change its story with the ops setting.
+ * @param createdAt - When the request was filed.
+ * @param expiresAt - When its window closes.
+ * @returns The window length in days, at least 1.
+ */
+function windowDaysOf(createdAt: Date, expiresAt: Date): number {
+  const DAY_MS = 24 * 3600 * 1000;
+  return Math.max(1, Math.round((expiresAt.getTime() - createdAt.getTime()) / DAY_MS));
+}
 
 /** The two flows where the recipient is, by definition, not a member yet. */
 const INVITE_KINDS = new Set<DecisionKind>(["studio_invite", "project_invite"]);
@@ -148,7 +163,7 @@ export async function viewByToken(
     // meaningful date or would print one that reads as a lie.
     expiresAt: state === "answerable" ? found.expiresAt.toISOString() : null,
     isRecipient,
-    windowDays: getDeferredRequestTtlDays(),
+    windowDays: windowDaysOf(found.createdAt, found.expiresAt),
     // The one state with somewhere to send you, and only to the person whose
     // own membership is what put it in that state.
     destination:
