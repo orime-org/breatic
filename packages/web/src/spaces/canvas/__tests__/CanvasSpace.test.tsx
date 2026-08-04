@@ -162,6 +162,13 @@ function dispatchPaste(text: string): void {
 describe('CanvasSpace (ReactFlow mount)', () => {
   beforeEach(() => {
     mockUseCanvasSpace.mockReset();
+    // Back to the factory default (provider: null) — mockReset falls through
+    // to the implementation given to vi.fn (verified against @vitest/spy
+    // 3.0.0: calls resolve `implementation || state.getOriginal()`). Without
+    // this, the caret-wire test's mockReturnValue leaked its provider — whose
+    // Y.Doc later tests destroy via _resetForTests — into every test after
+    // it, making the file order-dependent (round-5).
+    vi.mocked(useSocket).mockReset();
     undoSpy = vi.fn();
     redoSpy = vi.fn();
     useCanvasStore.setState({

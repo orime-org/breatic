@@ -275,6 +275,24 @@ describe('TextNode', () => {
       expect(editor()).not.toBeNull();
     });
 
+    it('shows the localized hint in an empty editor, not blankness', () => {
+      // Acceptance item 8, pinned the way the document editor pins its own
+      // (placeholder-follows-locale.test): the Placeholder extension writes
+      // the hint into `data-placeholder` on the empty paragraph. Nothing else
+      // asserted this end of the wire (round-5) — the extension could be
+      // dropped, or the i18n key misspelled (which would surface the raw key
+      // here), with every test still green.
+      seedNode();
+      renderNode();
+      fireEvent.doubleClick(screen.getByTestId('node-placeholder'));
+      const hint =
+        editor()
+          ?.querySelector('[data-placeholder]')
+          ?.getAttribute('data-placeholder') ?? '';
+      expect(hint).not.toBe('');
+      expect(hint).not.toContain('editorPlaceholder');
+    });
+
 
     it('opens from the placeholder by keyboard, not only by double-click', () => {
       // Clicking an empty node lands focus on the placeholder button, not on
