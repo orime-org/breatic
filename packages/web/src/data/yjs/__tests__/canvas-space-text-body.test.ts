@@ -128,6 +128,26 @@ describe('text node bodies in the canvas document (#1774)', () => {
       expect(hasBody('img')).toBe(false);
       expect(getTextBody(PID, SID, 'img')).toBeNull();
     });
+
+    // Every creation path that ARRIVES with words — paste, a copied node,
+    // duplicate, a dropped file — hands them over as a plain `content` string,
+    // and this is the one place they become a body. Empty seeding alone cannot
+    // pin that: with the handover line broken all four paths lose their words
+    // while every empty-birth assertion stays green (round-4, proved by
+    // mutation — `const text = ''` passed the full suite).
+    it('seeds the body from an arriving `content` string and drops the plain field', () => {
+      const fields = sampleFields('text');
+      addNode(PID, SID, {
+        ...fields,
+        data: { ...fields.data, content: 'hello\nworld' },
+      });
+      const body = getTextBody(PID, SID, 'n1');
+      expect(bodyToPlainText(body as Y.XmlFragment)).toBe('hello\nworld');
+      // The plain field must not survive into the document: nothing reads it
+      // any more, so a straggler would only sit there looking like a second
+      // answer to what the node says.
+      expect(dataMap('n1')?.has('content')).toBe(false);
+    });
   });
 
   describe('the body stays out of the node view', () => {

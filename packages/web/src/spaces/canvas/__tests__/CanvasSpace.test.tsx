@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Awareness } from 'y-protocols/awareness';
 import type * as React from 'react';
 import type * as Y from 'yjs';
 
@@ -196,6 +197,73 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .mocked(useSocket)
       .mock.calls.map((call) => call[0]?.name);
     expect(names).toContain(docName.canvasSpace('p', 's'));
+  });
+
+  // The other half of the channel (#1774 round-4): resolving the right
+  // provider proves nothing if it never REACHES an editor. This walks the
+  // whole wire — useSocket's provider → canvas context → TextNode → editor
+  // extensions — and asserts at the far end: opening a text node publishes
+  // the local identity into the space awareness, which is what a collaborator
+  // actually receives. Sever the wire anywhere (the context handing out null
+  // was the mutation that survived every other test) and this goes red.
+  it('hands the resolved caret channel to a text node editor', async () => {
+    _resetForTests();
+    addNode('p', 's', {
+      id: 'n1',
+      type: 'text',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'N',
+        createdAt: 1,
+        createdBy: 'u',
+        locked: false,
+        operationLocks: [],
+        state: 'idle',
+        attachments: [],
+      },
+    });
+    writePlainTextIntoBody(
+      getTextBody('p', 's', 'n1') as Y.XmlFragment,
+      'already written',
+    );
+    const awareness = new Awareness(getDoc(docName.canvasSpace('p', 's')));
+    vi.mocked(useSocket).mockReturnValue({
+      provider: { awareness } as unknown as NonNullable<
+        ReturnType<typeof useSocket>['provider']
+      >,
+      synced: true,
+      contentLoaded: true,
+      status: 'connected',
+      authFailedReason: null,
+      writeAccess: 'granted',
+    } as ReturnType<typeof useSocket>);
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n1',
+            type: 'text',
+            position: { x: 0, y: 0 },
+            data: { kind: 'text', status: 'idle', name: 'N' },
+          },
+        ],
+      }),
+    );
+    render(<CanvasSpace projectId='p' spaceId='s' />);
+    const shell = document.querySelector('.react-flow__node');
+    fireEvent.keyDown(shell as HTMLElement, { key: 'Enter' });
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+    // What a collaborator receives: the caret extension publishes the local
+    // user into the shared awareness. The identity fields come from the
+    // current-user store seeded in beforeEach.
+    await waitFor(() => {
+      const local = awareness.getLocalState() as {
+        user?: { name?: string };
+      } | null;
+      expect(local?.user?.name).toBe('Ada');
+    });
   });
 
   it('shows the empty-state hint when there are no nodes', () => {

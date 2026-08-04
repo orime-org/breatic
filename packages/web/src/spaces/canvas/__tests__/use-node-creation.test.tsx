@@ -3,13 +3,19 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
+import type * as Y from 'yjs';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
+import { _resetForTests } from '@web/data/yjs/manager';
+import { bodyToPlainText } from '@web/data/yjs/text-body';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 
 describe('useNodeCreation', () => {
   beforeEach(() => {
+    // The paste case below writes into a REAL canvas document, and documents
+    // are cached per name across every test file in this process.
+    _resetForTests();
     useCurrentUserStore.getState().setUser({
       id: 'u-9',
       name: 'Ada',
@@ -39,10 +45,13 @@ describe('useNodeCreation', () => {
     addNode.mockRestore();
   });
 
-  it('pasteTextAt writes a text node carrying the pasted text and returns its id', () => {
-    const addNode = vi
-      .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+  it('pasteTextAt writes a text node whose BODY carries the pasted text', () => {
+    // Call-through spy, deliberately: the pasted words travel as a plain
+    // `content` string but LAND in the node's shared body — `addNode` drops
+    // the plain field on the way. A mocked `addNode` can therefore only ever
+    // see the field that gets thrown away, and a test asserting it stays
+    // green with the handover broken (round-4, proved by mutation).
+    const addNode = vi.spyOn(canvasSpace, 'addNode');
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
     const id = result.current.pasteTextAt('hello world', { x: 5, y: 6 });
@@ -53,8 +62,12 @@ describe('useNodeCreation', () => {
     expect(node.type).toBe('text');
     // Centred on the point (top-left = point − empty-node half-size).
     expect(node.position).toEqual({ x: 5 - 144, y: 6 - 96 });
-    expect(node.data.content).toBe('hello world');
     expect(node.data.createdBy).toBe('u-9');
+    // What the user pasted is what the DOCUMENT says — read back through the
+    // body, the only place the words live.
+    const body = canvasSpace.getTextBody('p1', 's1', id);
+    expect(body).not.toBeNull();
+    expect(bodyToPlainText(body as Y.XmlFragment)).toBe('hello world');
     addNode.mockRestore();
   });
 
