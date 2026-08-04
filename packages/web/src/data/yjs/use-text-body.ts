@@ -80,6 +80,24 @@ function observeBodyFragment(
 }
 
 /**
+ * Read a node's body as plain text, right now.
+ *
+ * The synchronous half of the subscription hooks below: their state is
+ * INITIALIZED with this, because a state that starts empty and waits for the
+ * subscription effect commits one wrong frame first — a filled node mounting
+ * as the empty-state placeholder in a collapsed box, and handing fitView the
+ * collapsed height (the round-5 flash). Reading during render is safe: this
+ * writes nothing.
+ * @param doc - The canvas-space document.
+ * @param nodeId - Id of the node whose body to read.
+ * @returns The body's current text; the empty string when the node has none.
+ */
+function currentBodyText(doc: Y.Doc, nodeId: string): string {
+  const body = nodeDataMap(doc, nodeId)?.get('body');
+  return body instanceof Y.XmlFragment ? bodyToPlainText(body) : '';
+}
+
+/**
  * Follow one node's body, reporting its text on every change.
  *
  * Two observers, because one cannot cover both things that change: which
@@ -134,7 +152,12 @@ export function useTextBody(
 ): string {
   const name = docName.canvasSpace(projectId, spaceId);
   const doc = React.useMemo(() => getDoc(name), [name]);
-  const [text, setText] = React.useState('');
+  // Initialized synchronously so the FIRST commit already shows the text —
+  // an initializer only runs on mount, but that is the commit that paints,
+  // and node components remount per node id (ReactFlow keys them), so the
+  // mount is the case that matters. The subscription effect re-publishes
+  // synchronously on attach, covering any change between the two.
+  const [text, setText] = React.useState(() => currentBodyText(doc, nodeId));
 
   React.useEffect(
     () => observeTextBody(doc, nodeId, setText),
@@ -221,8 +244,13 @@ export function useTextBodies(
 ): ReadonlyMap<string, string> {
   const name = docName.canvasSpace(projectId, spaceId);
   const doc = React.useMemo(() => getDoc(name), [name]);
+  // Seeded synchronously for the same first-paint reason as `useTextBody`:
+  // the rail and chip previews render from this map, and an empty first
+  // frame reads as "the reference says nothing". Ids added AFTER mount get
+  // their text when the effect re-subscribes — one commit later, the
+  // pre-existing behaviour for a changing set.
   const [texts, setTexts] = React.useState<ReadonlyMap<string, string>>(
-    () => new Map(),
+    () => new Map(nodeIds.map((id) => [id, currentBodyText(doc, id)])),
   );
   // Serialized rather than compared by reference: the caller derives these
   // from the edge list on every render, so a fresh array with identical

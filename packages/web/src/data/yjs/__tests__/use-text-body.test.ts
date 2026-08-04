@@ -118,12 +118,20 @@ describe('useTextBody (#1774 section 9.1)', () => {
     _resetForTests();
   });
 
-  it('returns the body as plain text on first render', () => {
+  it('returns the body as plain text on the FIRST render, not one effect later', () => {
     addNode(PID, SID, textNode('n1'));
     writePlainTextIntoBody(getTextBody(PID, SID, 'n1') as Y.XmlFragment, 'already written');
 
-    const { result } = subscribe('n1');
-    expect(result.current).toBe('already written');
+    // Every rendered value in order — `result.current` after renderHook is
+    // post-effect and cannot see the first commit. An empty first value is
+    // the round-5 flash: a filled node mounts as the 192px empty-state
+    // placeholder for one paint (and hands fitView a collapsed height)
+    // before the subscription effect catches up.
+    const seen: string[] = [];
+    renderHook(() => {
+      seen.push(useTextBody(PID, SID, 'n1'));
+    });
+    expect(seen[0]).toBe('already written');
   });
 
   it('returns the empty string for a node whose body was never seeded', () => {
@@ -251,6 +259,20 @@ describe('useTextBody (#1774 section 9.1)', () => {
       const { result } = renderHook(() => useTextBodies(PID, SID, ['a', 'b']));
       expect(result.current.get('a')).toBe('from a');
       expect(result.current.get('b')).toBe('from b');
+    });
+
+    it('holds each text from the FIRST render, not one effect later', () => {
+      // Same first-paint contract as the single-body hook: the panel's rail
+      // and chip previews render from this map, and an empty first frame
+      // reads as "the reference says nothing" for one paint.
+      addNode(PID, SID, textNode('a'));
+      writePlainTextIntoBody(getTextBody(PID, SID, 'a') as Y.XmlFragment, 'from a');
+
+      const seen: Array<ReadonlyMap<string, string>> = [];
+      renderHook(() => {
+        seen.push(useTextBodies(PID, SID, ['a']));
+      });
+      expect(seen[0].get('a')).toBe('from a');
     });
 
     it('updates when any of them changes', () => {
