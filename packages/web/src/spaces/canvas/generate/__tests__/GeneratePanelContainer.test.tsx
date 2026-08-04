@@ -41,9 +41,20 @@ vi.mock('@web/data/yjs/use-socket', () => ({
   ),
 }));
 
+// WHICH bodies the panel subscribes to is behaviour (#1774 round-4): only the
+// text nodes its references can reach — never the whole board, where every
+// keystroke by anyone anywhere would rebuild this panel's view model. The spy
+// wraps the real hook so the subscription set itself is observable.
+vi.mock('@web/data/yjs/use-text-body', async (importActual) => {
+  const actual =
+    await importActual<typeof import('@web/data/yjs/use-text-body')>();
+  return { ...actual, useTextBodies: vi.fn(actual.useTextBodies) };
+});
+
 import { toast } from 'sonner';
 
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
+import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useSocket } from '@web/data/yjs/use-socket';
 import {
   CanvasContext,
@@ -52,12 +63,18 @@ import {
 import { modelsApi } from '@web/data/api';
 import { useCanvasStore } from '@web/stores';
 
+type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
+
 /**
  * Mounts the container under a fresh QueryClient (no retries — the failure
  * path resolves in one round trip).
+ * @param graph - Optional canvas graph override; defaults to a lone target.
  * @returns The render result.
  */
-function mountContainer(): ReturnType<typeof render> {
+function mountContainer(graph?: {
+  nodes?: ContainerProps['nodes'];
+  edges?: ContainerProps['edges'];
+}): ReturnType<typeof render> {
   const canvas: CanvasContextValue = {
     projectId: 'p',
     spaceId: 's',
@@ -85,13 +102,15 @@ function mountContainer(): ReturnType<typeof render> {
           <GeneratePanelContainer
             projectId='p'
             spaceId='s'
-            nodes={[
-              {
-                id: 'target',
-                data: { kind: 'image', status: 'idle' },
-              },
-            ]}
-            edges={[]}
+            nodes={
+              graph?.nodes ?? [
+                {
+                  id: 'target',
+                  data: { kind: 'image', status: 'idle' },
+                },
+              ]
+            }
+            edges={graph?.edges ?? []}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -344,6 +363,58 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     await waitFor(() =>
       expect(useCanvasStore.getState().pickSession).toBeNull(),
     );
+    listSpy.mockRestore();
+  });
+});
+
+// The subscription SET is the behaviour here (#1774 round-4): the panel's only
+// consumers of body text — the reference rail and the chip serializer — read
+// exclusively the text nodes wired into the target, so following anything more
+// means a keystroke in an unrelated note rebuilds this panel's view model.
+describe('GeneratePanelContainer — body subscription set', () => {
+  beforeEach(() => {
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  it('follows the text nodes wired into the target, not every text node on the board', async () => {
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
+      image: [],
+      video: [],
+      audio: [],
+      tts: [],
+      three_d: [],
+      understand: [],
+      total: 0,
+    });
+    mountContainer({
+      nodes: [
+        { id: 'target', data: { kind: 'image', status: 'idle' } },
+        { id: 'wired-a', data: { kind: 'text', status: 'idle' } },
+        { id: 'wired-b', data: { kind: 'text', status: 'idle' } },
+        { id: 'stray', data: { kind: 'text', status: 'idle' } },
+        { id: 'other', data: { kind: 'image', status: 'idle' } },
+      ],
+      edges: [
+        { id: 'e1', source: 'wired-a', target: 'target' },
+        // A second edge from the same source must not subscribe it twice.
+        { id: 'e1b', source: 'wired-a', target: 'target' },
+        { id: 'e2', source: 'wired-b', target: 'target' },
+        // Wired into a DIFFERENT node — not this panel's business.
+        { id: 'e3', source: 'stray', target: 'other' },
+      ],
+    });
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target');
+    });
+    await waitFor(() => {
+      expect(vi.mocked(useTextBodies)).toHaveBeenCalled();
+    });
+    const ids = vi.mocked(useTextBodies).mock.lastCall?.[2];
+    expect(ids).toEqual(['wired-a', 'wired-b']);
     listSpy.mockRestore();
   });
 });
