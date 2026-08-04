@@ -71,27 +71,42 @@ export function extractNested(
 /**
  * Ask a vendor for JSON, retried by the shared transport.
  *
- * The name still fits: from a caller's side this retries exactly as it always
- * did — what changed is who does it. Every declaration below is a statement
- * about the vendor, not a preference:
+ * The name still fits — a caller still gets a retried request — but the
+ * figures moved with the machinery, and four of them are different. Stated
+ * exactly, because "it retries as it always did" was written here first and
+ * is false on every one of these:
  *
- *   - `replaySafe: false` for all of them. A submit spends the vendor's money
- *     a second time, and the read-only endpoints did not retry a 5xx before
- *     either, so declaring the endpoint safe would be both a change in
- *     behaviour and, for the submits, a false statement. A 429 or 408 is
- *     retried regardless — the server has said it did not process the request.
- *   - Whatever `signal` sits on `options` is ignored by the transport, which
- *     supplies its own deadline. That is why the deadline arrives as a figure.
+ *   - Deliveries: 4 before (`attempt <= http_max_retries`, and that config
+ *     value is 3), 3 now (`MAX_RETRIES = 2`, compiled into the transport).
+ *   - Backoff base: 2000ms before (`http_retry_base_delay`), 1000ms now
+ *     (`BASE_DELAY_MS`). The jitter formula itself is unchanged.
+ *   - 408 was an ordinary failure and threw at once; it is now retried
+ *     alongside 429, both being statements that the server did not process
+ *     the request.
+ *   - `Retry-After` was ignored entirely. It is now honoured, and a value
+ *     above 60s stops the call rather than being shortened to something we
+ *     find convenient.
+ *
+ * Those first two are the deliberate collapse of two config knobs that had
+ * drifted into meaning different things; see `packages/shared/CLAUDE.md`.
+ *
+ * `replaySafe: false` for every call, which is a statement about the vendor
+ * rather than a preference: a submit spends money a second time, and the
+ * read-only endpoints did not retry a 5xx before either, so declaring them
+ * safe would change behaviour as well as misstate the endpoint.
  * @param url - Request URL.
  * @param options - Fetch options (method, headers, body). Any `signal` here is
- *   discarded in favour of `timeoutMs`.
+ *   discarded — the transport supplies its own deadline from `timeoutMs`.
  * @param provider - Provider name, used to word the failure.
  * @param timeoutMs - How long ONE delivery may take. Omitted leaves the
  *   transport's own default in place.
  * @returns Parsed JSON response.
  * @throws {Error} On any non-ok status, carrying the vendor's response body —
  *   it is the only diagnostic these calls produce.
- * @throws {HttpRetryError} When replays happened and none produced a response.
+ * @throws {Error} The transport's `HttpRetryError` when replays happened and
+ *   the LAST of them produced no response. Not "none of them": an earlier
+ *   delivery may well have brought one back, which is why that type says so
+ *   in its own words rather than in this one's.
  */
 export async function requestWithRetry(
   url: string,
