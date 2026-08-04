@@ -73,7 +73,6 @@ export interface RoleUpgradeDecisionPayload {
   projectId: string;
   projectName: string;
   newRole?: "editor";
-  reason?: string | null;
 }
 
 // ── Constructors ────────────────────────────────────────────────────
@@ -148,7 +147,7 @@ export async function createRoleUpgradeApproved(input: {
  * @param input - Requester inbox, project scope, payload, and optional transaction
  * @param input.requesterUserId - Viewer who receives the rejection in their inbox
  * @param input.projectId - Project the upgrade was rejected for
- * @param input.payload - Project name and optional rejection reason
+ * @param input.payload - Project name and decider identity
  * @param input.tx - Optional transaction to bundle with related writes
  * @returns The inserted `access.role_upgrade_rejected` notification
  */

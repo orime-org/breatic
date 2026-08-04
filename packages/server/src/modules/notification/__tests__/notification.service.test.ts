@@ -134,7 +134,6 @@ describe("createRoleUpgradeApproved / Rejected", () => {
         deciderName: "Olivia",
         projectId: PID,
         projectName: "Demo",
-        reason: "Too many editors",
       },
     });
     const args = vi.mocked(notificationRepo.create).mock.calls[0]?.[0];

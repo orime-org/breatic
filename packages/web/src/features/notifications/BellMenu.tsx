@@ -342,7 +342,7 @@ const PROJECT_ROLE_KEY: Record<string, string> = {
 
 /**
  * Extracts the optional subtitle for a notification: the request message
- * (upgrade request), the rejection reason (upgrade rejected), the granted role
+ * (upgrade request), the granted role
  * (studio member invited), or the transfer-handshake hint (transfer request).
  * @param n - Notification whose payload is inspected for subtitle text.
  * @param t - Translation function for the localized subtitle.
@@ -356,10 +356,6 @@ function subtitleFor(
   if (n.type === 'access.role_upgrade_request') {
     const msg = typeof p.message === 'string' ? p.message : null;
     return msg && msg.length > 0 ? msg : null;
-  }
-  if (n.type === 'access.role_upgrade_rejected') {
-    const reason = typeof p.reason === 'string' ? p.reason : null;
-    return reason && reason.length > 0 ? reason : null;
   }
   if (n.type === 'studio.invite_request') {
     const roleKey = typeof p.role === 'string' ? STUDIO_ROLE_KEY[p.role] : null;

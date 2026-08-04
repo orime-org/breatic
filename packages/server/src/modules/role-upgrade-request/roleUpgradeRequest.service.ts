@@ -286,16 +286,13 @@ export async function approve(input: DecisionInput): Promise<void> {
  * The premise is re-checked here too, even though there is no write to guard.
  * Rejecting a request whose subject already became an editor would announce a
  * refusal of something that has already happened.
- * @param input - Request id, deciding owner, and the optional reason shown to
- *   the requester.
+ * @param input - Request id and the deciding owner.
  * @throws {NotFoundError} when there is no such request.
  * @throws {ConflictError} when it was already handled, has timed out, or its
  *   premise no longer holds.
  * @throws {ForbiddenError} when the caller is not the project's current owner.
  */
-export async function reject(
-  input: DecisionInput & { reason?: string | null },
-): Promise<void> {
+export async function reject(input: DecisionInput): Promise<void> {
   // Resolved before the transaction opens — see `approve` for why.
   const decider = await resolveActorProfile(input.ownerUserId);
   const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
@@ -325,7 +322,6 @@ export async function reject(
         deciderName: decider.name,
         projectId: req.projectId,
         projectName: project?.name ?? "",
-        reason: input.reason ?? null,
       },
       tx,
     });

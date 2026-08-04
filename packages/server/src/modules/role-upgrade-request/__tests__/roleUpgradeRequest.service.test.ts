@@ -553,7 +553,6 @@ describe("reject", () => {
     await roleUpgradeRequestService.reject({
       requestId: RID,
       ownerUserId: OWNER,
-      reason: "not yet",
     });
 
     expect(requestsRepo.settleIfPending).toHaveBeenCalledWith(
@@ -571,7 +570,7 @@ describe("reject", () => {
     ).toHaveBeenCalledWith(
       expect.objectContaining({
         requesterUserId: VIEWER,
-        payload: expect.objectContaining({ reason: "not yet" }),
+        payload: expect.objectContaining({ deciderUserId: OWNER }),
       }),
     );
   });
