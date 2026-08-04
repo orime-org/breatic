@@ -836,7 +836,7 @@ describe("handleSpaceRpc — a deleted Space leaves everyone's tab bar", () => {
       { id: "r", type: "tab:open", payload: { spaceId } },
     );
 
-  it("clears the deleted Space from every user's list, in the same broadcast", async () => {
+  it("clears the deleted Space from every user's list", async () => {
     // Nobody's client can clean this up any more: clients do not write
     // the meta doc. Leaving it to each client would also mean the tab
     // only disappears for the people who happen to be online.

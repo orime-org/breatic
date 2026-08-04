@@ -341,12 +341,13 @@ async function undoContentRows(
 /**
  * Run a cleanup that must never change the answer the caller already has.
  *
- * `finally` blocks throw here for real reasons — a store failure poisons the
- * document, so `disconnect()` fails too, and releasing the cross-instance
- * lock fails whenever Redis is unreachable. A throw inside `finally`
+ * `finally` blocks throw here for real reasons — a store failure poisons
+ * the document, so `disconnect()` fails too. A throw inside `finally`
  * REPLACES the function's return value, which turns an operation that
  * already broadcast successfully into an internal error carrying the
- * database's own words. So every cleanup goes through here (§6).
+ * database's own words. So every cleanup in THIS file goes through here
+ * (§6); the cross-instance lock guards its own release inside
+ * space-delete-lock.ts, at the site where that failure happens.
  * @param label - What is being cleaned up, for the log line.
  * @param logCtx - Extra fields for the log line.
  * @param run - The cleanup itself.
@@ -504,6 +505,16 @@ async function handleCreate(
   // invariant lazy-seed + duplicate uphold). Idempotent (ON CONFLICT DO
   // NOTHING); the doc name follows the Space type. Remember whether THIS
   // call inserted it: only then is there anything to undo later.
+  //
+  // The connection opens BEFORE the seed on purpose: an open failure then
+  // happens with zero side effects anywhere. Seeding first would leave an
+  // orphaned live content row when the open rejects — a ghost that
+  // inflates the authoritative Space count the delete floor reads, letting
+  // a project's last visible Space be deleted.
+  const docName = projectMetaDocName(projectId);
+  const conn = await ctx.hocuspocus.openDirectConnection(docName, {
+    context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
+  });
   let seeded = false;
   try {
     seeded = await yjsDocumentsRepo.seedInitialState(
@@ -515,12 +526,13 @@ async function handleCreate(
       { err: seedError, projectId, spaceId, callerId: caller.userId },
       "space_rpc_create_seed_failed",
     );
+    await safeCleanup(
+      "disconnect",
+      { projectId, spaceId, callerId: caller.userId, during: "create" },
+      () => conn.disconnect(),
+    );
     return err(req.id, "INTERNAL", "Could not prepare the new Space");
   }
-  const docName = projectMetaDocName(projectId);
-  const conn = await ctx.hocuspocus.openDirectConnection(docName, {
-    context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
-  });
   const seededKinds: TouchedKinds = seeded ? [type] : [];
   const logCtx = {
     projectId,
@@ -795,11 +807,14 @@ async function handleLock(
       mark();
       entry.set("locked", locked);
     });
-    if (outcome === "failed-before-broadcast") {
-      return err(req.id, "INTERNAL", "Could not update the Space");
-    }
+    // The guard's answer first: it READ the world, and what it saw is true
+    // whether or not the store then failed. Same precedence as create /
+    // delete / restore.
     if (notFound) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
+    }
+    if (outcome === "failed-before-broadcast") {
+      return err(req.id, "INTERNAL", "Could not update the Space");
     }
     await recordSpaceActivity(ctx, projectId, {
       actorUserId: caller.userId,
@@ -872,9 +887,10 @@ async function handleRename(
       mark();
       entry.set("name", name);
     });
-    if (outcome === "failed-before-broadcast") {
-      return err(req.id, "INTERNAL", "Could not rename the Space");
-    }
+    // Guards first — they read the world, and their answers hold whether or
+    // not the store then failed (same precedence as create / delete /
+    // restore). The same-name no-op stays an idempotent success per §6.5:
+    // the user's goal state already holds and nothing needed writing.
     if (notFound) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
     }
@@ -885,14 +901,18 @@ async function handleRename(
         `Space ${spaceId} is locked; unlock before renaming`,
       );
     }
-    if (!noop) {
-      await recordSpaceActivity(ctx, projectId, {
-        actorUserId: caller.userId,
-        type: "space:renamed",
-        spaceId,
-        payload: { spaceName: name, oldSpaceName: oldName },
-      });
+    if (noop) {
+      return ok(req.id);
     }
+    if (outcome === "failed-before-broadcast") {
+      return err(req.id, "INTERNAL", "Could not rename the Space");
+    }
+    await recordSpaceActivity(ctx, projectId, {
+      actorUserId: caller.userId,
+      type: "space:renamed",
+      spaceId,
+      payload: { spaceName: name, oldSpaceName: oldName },
+    });
     return ok(req.id);
   } finally {
     await safeCleanup("disconnect", logCtx, () => conn.disconnect());
@@ -1252,11 +1272,13 @@ async function handleTabOpen(
         list.push([spaceId]);
       }
     });
-    if (outcome === "failed-before-broadcast") {
-      return err(req.id, "INTERNAL", "Could not open the tab");
-    }
+    // Guard first, same precedence as every other handler: a Space the
+    // guard saw missing is missing, whatever the store did afterwards.
     if (missing) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} does not exist`);
+    }
+    if (outcome === "failed-before-broadcast") {
+      return err(req.id, "INTERNAL", "Could not open the tab");
     }
     return ok(req.id);
   } finally {

@@ -478,13 +478,19 @@ function ProjectWorkspace({
     if (!userId) return; // pre-auth no-op (per-user UI state needs userId)
     // Which tab is ACTIVE is local window state and stays local — two
     // machines on one account each keep their own. Which tabs are OPEN
-    // is shared and persisted, so it goes to the server.
-    void callRpc(
-      { type: 'tab:open', payload: { spaceId: id } },
-      'project.space.error.openTab',
-    ).catch(() => {
-      // callRpc already surfaced a toast.
-    });
+    // is shared and persisted, so ONLY opening one more rides the wire
+    // (§6.6.2): a click on a tab that is already open is a pure switch,
+    // and a switch is instant and local. Sending the redundant open made
+    // every switch raise "failed to open the tab" whenever collab was
+    // unreachable, for an action that needed nothing from it.
+    if (!openTabIds.includes(id)) {
+      void callRpc(
+        { type: 'tab:open', payload: { spaceId: id } },
+        'project.space.error.openTab',
+      ).catch(() => {
+        // callRpc already surfaced a toast.
+      });
+    }
     setActiveSpaceId(id);
   };
 

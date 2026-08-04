@@ -1121,5 +1121,114 @@ describe("one operation, one broadcast", () => {
 
     expect(res.ok).toBe(true);
     expect(metaBroadcastMock).toHaveBeenCalledTimes(1);
+    // The one update really carried BOTH halves — a delete that removed the
+    // entry but skipped the sweep (or vice versa) would also count one.
+    expect(metaDoc.getMap("spaces").has(SID)).toBe(false);
+    for (const user of ["u-1", "u-2"]) {
+      const userMap = metaDoc.getMap<Y.Map<unknown>>("perUser").get(user);
+      const list = userMap?.get("openTabIds") as Y.Array<string>;
+      expect(list.toArray()).toEqual([OTHER_SID]);
+    }
+  });
+});
+
+describe("opening the meta connection fails — nothing has been done yet", () => {
+  // The connection open used to sit BETWEEN seeding the content row and the
+  // try that owns every undo path: an open failure orphaned the seeded row,
+  // and the ghost inflated the authoritative Space count the delete floor
+  // reads. Opening first removes the window instead of compensating for it.
+  it("space:create has not seeded anything when openDirectConnection rejects", async () => {
+    const hocuspocus = {
+      openDirectConnection: vi.fn(async () => {
+        throw new Error('relation "yjs_documents" is unreachable');
+      }),
+      documents: new Map(),
+    } as unknown as Hocuspocus;
+
+    const res = await handleSpaceRpc(
+      { hocuspocus },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      {
+        id: "r1",
+        type: "space:create",
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
+      },
+    );
+
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expectNoDatabaseWording(res.error.message);
+    // The load-bearing half: no content row exists for an id nobody
+    // will ever see, so the delete floor's count stays truthful.
+    expect(seedInitialStateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("a guard's answer outranks a store failure it did not cause", () => {
+  // When the callback wrote nothing because a guard fired, the guard READ
+  // the world and its answer is true regardless of what the store did
+  // afterwards. create / delete / restore already answer the semantic code;
+  // these pin the same precedence for the handlers that used to answer
+  // INTERNAL while knowing better.
+  it("space:lock answers NOT_FOUND, not INTERNAL, when the Space is gone and the store fails", async () => {
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:lock", payload: { spaceId: SID, locked: true } },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("NOT_FOUND");
+  });
+
+  it("space:rename answers NOT_FOUND when the Space is gone and the store fails", async () => {
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "X" } },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("NOT_FOUND");
+  });
+
+  it("space:rename answers FORBIDDEN when the Space is locked and the store fails", async () => {
+    seedSpace(SID, { type: "canvas", name: "Foo", order: 0, locked: true });
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "X" } },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("FORBIDDEN");
+  });
+
+  it("space:rename to the same name stays an idempotent success when the store fails (§6.5)", async () => {
+    seedSpace(SID, { type: "canvas", name: "Foo", order: 0, locked: false });
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "Foo" } },
+    );
+    expect(res.ok).toBe(true);
+    expect(activityInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("tab:open answers NOT_FOUND when the Space does not exist and the store fails", async () => {
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "viewer" },
+      { id: "r1", type: "tab:open", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("NOT_FOUND");
   });
 });

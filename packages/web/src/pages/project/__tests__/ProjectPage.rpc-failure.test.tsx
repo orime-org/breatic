@@ -297,6 +297,25 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     );
   });
 
+  it('switching to an already-open tab sends NO RPC at all (§6.6.2)', async () => {
+    // Which tab is active is local window state; the design says a pure
+    // switch never rides the wire — only opening one MORE tab or closing
+    // one does. Firing tab:open on every click meant that with collab
+    // unreachable, a switch that visibly succeeded raised "failed to open
+    // the tab" ten seconds later, on every switch.
+    sendSpaceRpcMock.mockResolvedValue({ id: 'r1', ok: true, data: {} });
+    setup();
+
+    const tabB = await screen.findByTestId(`space-tab-${SPACE_B}`);
+    tabB.click();
+
+    await waitFor(() => {
+      expect(tabB.getAttribute('aria-selected')).toBe('true');
+    });
+    expect(sendSpaceRpcMock).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it('a request that succeeds says nothing', async () => {
     sendSpaceRpcMock.mockResolvedValue({ id: 'r1', ok: true, data: {} });
     setup();
