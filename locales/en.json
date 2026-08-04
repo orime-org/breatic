@@ -1063,17 +1063,12 @@
       "editor": "Edit",
       "viewer": "View"
     },
-    "reject": "Reject",
-    "approve": "Approve",
     "request": {
       "audio": "Wants to join for voice-over and BGM",
       "project": "Wants to reference your prompt style for their project"
     },
     "loading": "Loading…",
     "markRead": "Mark read",
-    "approvedToast": "Upgrade approved.",
-    "rejectedToast": "Request rejected.",
-    "decideFailed": "Could not process the decision. Please try again.",
     "headline": {
       "roleUpgradeRequest": "{actor} requested editor access on {project}",
       "roleUpgradeApproved": "{actor} approved your editor access on {project}",
@@ -1088,13 +1083,6 @@
       "projectInviteAccepted": "{actor} accepted your invite to {project}"
     },
     "actorFallback": "Someone",
-    "actionFailed": "Could not complete the action. Please try again.",
-    "transferConfirmedToast": "You are now the studio admin.",
-    "transferCancelledToast": "Transfer declined.",
-    "projectTransferConfirmedToast": "You are now the project owner.",
-    "projectTransferCancelledToast": "Transfer declined.",
-    "transferAccept": "Accept",
-    "transferDecline": "Decline",
     "subtitle": {
       "invitedAsMaintainer": "Joined as a Maintainer",
       "invitedAsGuest": "Joined as a Guest",
@@ -1108,11 +1096,6 @@
       "hours": "expires in {count}h",
       "days": "expires in {count}d"
     },
-    "inviteAccept": "Accept",
-    "inviteDecline": "Decline",
-    "inviteConfirmedToast": "You've joined the studio.",
-    "inviteDeclinedToast": "Invitation declined.",
-    "viewProjectInvite": "View invite",
     "openDecision": "Answer"
   },
   "connection": {

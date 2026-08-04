@@ -1063,17 +1063,12 @@
       "editor": "编辑",
       "viewer": "查看"
     },
-    "reject": "拒绝",
-    "approve": "批准",
     "request": {
       "audio": "想加入做配音和 BGM 部分",
       "project": "想参考你的 prompt 风格做我自己的 Project"
     },
     "loading": "加载中…",
     "markRead": "标为已读",
-    "approvedToast": "已通过升级申请。",
-    "rejectedToast": "已拒绝升级申请。",
-    "decideFailed": "处理失败,请重试。",
     "headline": {
       "roleUpgradeRequest": "{actor} 申请 {project} 的 Editor 权限",
       "roleUpgradeApproved": "{actor} 通过了你在 {project} 的 Editor 权限",
@@ -1088,13 +1083,6 @@
       "projectInviteAccepted": "{actor} 接受了你对 {project} 的邀请"
     },
     "actorFallback": "某人",
-    "actionFailed": "无法完成操作，请重试。",
-    "transferConfirmedToast": "你现在是该 Studio 的 Admin 了。",
-    "transferCancelledToast": "已拒绝转让。",
-    "projectTransferConfirmedToast": "你现在是该 Project 的 Owner 了。",
-    "projectTransferCancelledToast": "已拒绝转让。",
-    "transferAccept": "接受",
-    "transferDecline": "拒绝",
     "subtitle": {
       "invitedAsMaintainer": "以 Maintainer 身份加入",
       "invitedAsGuest": "以 Guest 身份加入",
@@ -1108,11 +1096,6 @@
       "hours": "{count} 小时后过期",
       "days": "{count} 天后过期"
     },
-    "inviteAccept": "接受",
-    "inviteDecline": "拒绝",
-    "inviteConfirmedToast": "你已加入该 Studio。",
-    "inviteDeclinedToast": "已拒绝邀请。",
-    "viewProjectInvite": "查看邀请",
     "openDecision": "去答复"
   },
   "connection": {

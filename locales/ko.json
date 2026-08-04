@@ -1063,17 +1063,12 @@
       "editor": "편집",
       "viewer": "보기"
     },
-    "reject": "거절",
-    "approve": "승인",
     "request": {
       "audio": "보이스오버와 BGM 작업에 참여하고 싶어 합니다",
       "project": "자신의 Project에 프롬프트 스타일을 참고하고 싶어 합니다"
     },
     "loading": "불러오는 중…",
     "markRead": "읽음으로 표시",
-    "approvedToast": "업그레이드를 승인했습니다.",
-    "rejectedToast": "요청을 거절했습니다.",
-    "decideFailed": "결정을 처리하지 못했습니다. 다시 시도해 주세요.",
     "headline": {
       "roleUpgradeRequest": "{actor}님이 {project}의 Editor 액세스를 요청했습니다",
       "roleUpgradeApproved": "{actor}님이 {project}의 Editor 액세스를 승인했습니다",
@@ -1088,13 +1083,6 @@
       "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다"
     },
     "actorFallback": "누군가",
-    "actionFailed": "작업을 완료할 수 없습니다. 다시 시도해 주세요.",
-    "transferConfirmedToast": "이제 Studio Admin입니다.",
-    "transferCancelledToast": "이전을 거절했습니다.",
-    "projectTransferConfirmedToast": "이제 Project Owner입니다.",
-    "projectTransferCancelledToast": "이전을 거절했습니다.",
-    "transferAccept": "수락",
-    "transferDecline": "거절",
     "subtitle": {
       "invitedAsMaintainer": "Maintainer로 참여",
       "invitedAsGuest": "Guest로 참여",
@@ -1108,12 +1096,7 @@
       "hours": "{count}시간 후 만료",
       "days": "{count}일 후 만료"
     },
-    "inviteAccept": "수락",
-    "inviteDecline": "거절",
-    "inviteConfirmedToast": "Studio에 참여했습니다.",
-    "inviteDeclinedToast": "초대를 거절했습니다.",
-    "viewProjectInvite": "초대 보기",
-    "openDecision": "Answer"
+    "openDecision": "답변하기"
   },
   "connection": {
     "banner": {

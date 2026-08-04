@@ -1063,17 +1063,12 @@
       "editor": "編集",
       "viewer": "閲覧"
     },
-    "reject": "却下",
-    "approve": "承認",
     "request": {
       "audio": "ボイスオーバーと BGM 部分に参加したい",
       "project": "あなたの prompt スタイルを自分の Project で参考にしたい"
     },
     "loading": "読み込み中…",
     "markRead": "既読にする",
-    "approvedToast": "アップグレードを承認しました。",
-    "rejectedToast": "リクエストを拒否しました。",
-    "decideFailed": "処理に失敗しました。再試行してください。",
     "headline": {
       "roleUpgradeRequest": "{actor} さんが {project} の Editor 権限をリクエストしました",
       "roleUpgradeApproved": "{actor} さんが {project} の Editor 権限を承認しました",
@@ -1088,13 +1083,6 @@
       "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました"
     },
     "actorFallback": "誰か",
-    "actionFailed": "操作を完了できませんでした。もう一度お試しください。",
-    "transferConfirmedToast": "あなたが Studio の Admin になりました。",
-    "transferCancelledToast": "委譲を辞退しました。",
-    "projectTransferConfirmedToast": "あなたが Project の Owner になりました。",
-    "projectTransferCancelledToast": "委譲を辞退しました。",
-    "transferAccept": "承認",
-    "transferDecline": "辞退",
     "subtitle": {
       "invitedAsMaintainer": "Maintainer として参加",
       "invitedAsGuest": "Guest として参加",
@@ -1108,12 +1096,7 @@
       "hours": "あと{count}時間で期限切れ",
       "days": "あと{count}日で期限切れ"
     },
-    "inviteAccept": "承認",
-    "inviteDecline": "辞退",
-    "inviteConfirmedToast": "Studio に参加しました。",
-    "inviteDeclinedToast": "招待を辞退しました。",
-    "viewProjectInvite": "招待を表示",
-    "openDecision": "Answer"
+    "openDecision": "回答する"
   },
   "connection": {
     "banner": {
