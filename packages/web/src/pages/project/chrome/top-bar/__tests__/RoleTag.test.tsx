@@ -24,7 +24,6 @@ vi.mock('@web/data/api/role-upgrade-requests', () => ({
   roleUpgradeRequestsApi: {
     submit: vi.fn(),
     mine: vi.fn(),
-    decide: vi.fn(),
     cancel: vi.fn(),
   },
 }));

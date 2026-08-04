@@ -126,8 +126,8 @@ projectRoleUpgradeRequests.get("/mine", requireRole("viewer"), async (c) => {
 // kinds it is, and this router keeps only what belongs to the REQUESTER —
 // taking their own request back.
 
-const decisionRoute = new Hono<{ Variables: AuthVariables }>();
-decisionRoute.use(requireAuth);
+const withdrawRoute = new Hono<{ Variables: AuthVariables }>();
+withdrawRoute.use(requireAuth);
 
 /**
  * The request id, validated as a uuid before it reaches a uuid comparison.
@@ -148,7 +148,7 @@ const requestParamSchema = z.object({ requestId: z.string().uuid() });
  * matching the caller against the row's `requester_user_id`; a request that is
  * not theirs, or not live, answers 404 either way.
  */
-decisionRoute.delete(
+withdrawRoute.delete(
   "/:requestId",
   zValidator("param", requestParamSchema),
   async (c) => {
@@ -159,4 +159,4 @@ decisionRoute.delete(
 );
 
 export { projectRoleUpgradeRequests as projectRoleUpgradeRequestsRoute };
-export { decisionRoute as roleUpgradeRequestDecisionRoute };
+export { withdrawRoute as roleUpgradeRequestWithdrawRoute };

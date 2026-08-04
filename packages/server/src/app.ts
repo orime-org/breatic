@@ -38,7 +38,7 @@ import { projectInvitesRoute } from "@server/routes/project-invitations.js";
 import { notificationsRoute } from "@server/routes/notifications.js";
 import {
   projectRoleUpgradeRequestsRoute,
-  roleUpgradeRequestDecisionRoute,
+  roleUpgradeRequestWithdrawRoute,
 } from "@server/routes/role-upgrade-requests.js";
 
 /**
@@ -79,7 +79,7 @@ export function createApp(): Hono {
   );
   app.route(
     "/api/v1/role-upgrade-requests",
-    roleUpgradeRequestDecisionRoute,
+    roleUpgradeRequestWithdrawRoute,
   );
   // Spaces route removed 2026-05-23 (ADR yjs-collab-only-write-authz):
   // Space lifecycle (create / delete / lock / restore) now routes via
