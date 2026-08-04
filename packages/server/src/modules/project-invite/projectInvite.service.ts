@@ -55,6 +55,7 @@ import type {
 } from "@breatic/shared";
 import {
   deferredRequestExpiry,
+  getDeferredRequestTtlDays,
 } from "@server/config/limits.js";
 
 /**
@@ -190,6 +191,7 @@ export async function createInvite(
           projectName: project.name,
           role,
           inviteLink: decisionLink(origin, shareToken),
+          windowDays: getDeferredRequestTtlDays(),
         }),
       { userId: inviterUserId, subject: "project_invite" },
     );

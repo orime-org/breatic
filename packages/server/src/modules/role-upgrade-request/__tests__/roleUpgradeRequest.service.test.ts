@@ -100,6 +100,7 @@ vi.mock("../../project/project.repo.js", () => ({
 // exact assertion rather than an approximate one.
 vi.mock("@server/config/limits.js", () => ({
   deferredRequestExpiry: (): Date => new Date("2026-08-08T00:00:00.000Z"),
+  getDeferredRequestTtlDays: (): number => 7,
 }));
 // The owner's address for the best-effort email, and the transport itself. The
 // mail is the half of this flow that nothing else observes: the bell entry is

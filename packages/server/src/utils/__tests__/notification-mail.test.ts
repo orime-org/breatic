@@ -25,6 +25,7 @@ describe("buildStudioInvitationMail", () => {
       studioName: "Team & Co",
       role: "maintainer",
       inviteLink: "https://app.test/decision?token=abc",
+      windowDays: 7,
     });
     expect(mail.to).toBe("invitee@example.com");
     expect(mail.subject).toContain("Team & Co");
@@ -49,6 +50,7 @@ describe("buildProjectInvitationMail", () => {
       projectName: "Launch & Grow",
       role: "editor",
       inviteLink: "https://app.test/decision?token=xyz",
+      windowDays: 7,
     });
     expect(mail.to).toBe("invitee@example.com");
     expect(mail.subject).toContain("Launch & Grow");
@@ -72,6 +74,7 @@ describe("buildStudioTransferMail", () => {
       initiatorName: "Alice <b>",
       studioName: "Team & Co",
       decisionLink: "https://app.test/studio/team-co",
+      windowDays: 7,
     });
     expect(mail.to).toBe("new-admin@example.com");
     expect(mail.subject).toContain("Team & Co");
@@ -94,6 +97,7 @@ describe("buildProjectTransferMail", () => {
       initiatorName: "Bob <i>",
       projectName: "Launch & Grow",
       decisionLink: "https://app.test/project/launch-grow-123",
+      windowDays: 7,
     });
     expect(mail.to).toBe("new-owner@example.com");
     expect(mail.subject).toContain("Launch & Grow");
@@ -118,6 +122,7 @@ describe("notification mail — link href escaping", () => {
       initiatorName: "X",
       studioName: "S",
       decisionLink: 'https://app.test/s"onmouseover="alert(1)',
+      windowDays: 7,
     });
     expect(mail.html).toContain("&quot;onmouseover=&quot;");
     expect(mail.html).not.toContain('"onmouseover="');
@@ -141,6 +146,7 @@ describe("every decision email points at the shared landing page", () => {
       initiatorName: "Alice",
       studioName: "Team & Co",
       decisionLink: LINK,
+      windowDays: 7,
     });
     expect(mail.html).toContain(LINK);
     // The old link was `/studio/{slug}`, which leaked the slug and could not
@@ -154,6 +160,7 @@ describe("every decision email points at the shared landing page", () => {
       initiatorName: "Alice",
       projectName: "Rocket",
       decisionLink: LINK,
+      windowDays: 7,
     });
     expect(mail.html).toContain(LINK);
     expect(mail.html).not.toMatch(/\/project\/[a-z]/i);
@@ -167,6 +174,7 @@ describe("every decision email points at the shared landing page", () => {
       requestedRole: "editor",
       message: "I keep needing to fix typos",
       decisionLink: LINK,
+      windowDays: 7,
     });
     expect(mail.to).toBe("owner@example.com");
     expect(mail.subject).toContain("Rocket & Co");
@@ -184,7 +192,57 @@ describe("every decision email points at the shared landing page", () => {
       requestedRole: "editor",
       message: null,
       decisionLink: LINK,
+      windowDays: 7,
     });
     expect(mail.html).toContain(LINK);
+  });
+});
+
+describe("the expiry footer follows the yaml knob", () => {
+  // `deferred_request_ttl_days` is a knob; every email that states the window
+  // takes it from the caller. A hardcoded 7 here contradicted the landing
+  // card the moment ops turned the knob.
+  it("all five builders say the window they were given", () => {
+    const nine = [
+      buildStudioInvitationMail({
+        inviteeEmail: "a@example.com", inviterName: "A", studioName: "S",
+        role: "guest", inviteLink: "https://app.test/decision?token=t",
+        windowDays: 9,
+      }),
+      buildProjectInvitationMail({
+        inviteeEmail: "a@example.com", inviterName: "A", projectName: "P",
+        role: "viewer", inviteLink: "https://app.test/decision?token=t",
+        windowDays: 9,
+      }),
+      buildStudioTransferMail({
+        recipientEmail: "a@example.com", initiatorName: "A", studioName: "S",
+        decisionLink: "https://app.test/decision?token=t", windowDays: 9,
+      }),
+      buildProjectTransferMail({
+        recipientEmail: "a@example.com", initiatorName: "A", projectName: "P",
+        decisionLink: "https://app.test/decision?token=t", windowDays: 9,
+      }),
+      buildRoleUpgradeRequestMail({
+        ownerEmail: "a@example.com", requesterName: "A", projectName: "P",
+        requestedRole: "editor", message: null,
+        decisionLink: "https://app.test/decision?token=t", windowDays: 9,
+      }),
+    ];
+    for (const mail of nine) {
+      expect(mail.html.toLowerCase()).toContain("expires in 9 days");
+      expect(mail.html.toLowerCase()).not.toContain("7 days");
+    }
+  });
+
+  it("a role upgrade is not called a transfer", () => {
+    const mail = buildRoleUpgradeRequestMail({
+      ownerEmail: "a@example.com", requesterName: "A", projectName: "P",
+      requestedRole: "editor", message: null,
+      decisionLink: "https://app.test/decision?token=t", windowDays: 7,
+    });
+    // The footer used to be shared with the two transfer mails, so the owner
+    // of a project read "This transfer request expires..." about a role ask.
+    expect(mail.html.toLowerCase()).not.toContain("transfer");
+    expect(mail.html.toLowerCase()).toContain("request expires in 7 days");
   });
 });

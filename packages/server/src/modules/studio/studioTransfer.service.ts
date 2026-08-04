@@ -50,7 +50,10 @@ import {
 import type { DbTx } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import { deferredRequestExpiry } from "@server/config/limits.js";
+import {
+  deferredRequestExpiry,
+  getDeferredRequestTtlDays,
+} from "@server/config/limits.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import {
   isRefused,
@@ -164,6 +167,7 @@ export async function requestTransfer(
           initiatorName: from?.name ?? "",
           studioName: studio.name,
           decisionLink: decisionLink(origin, shareToken),
+          windowDays: getDeferredRequestTtlDays(),
         });
       },
       { userId: toUserId, subject: "studio_transfer" },

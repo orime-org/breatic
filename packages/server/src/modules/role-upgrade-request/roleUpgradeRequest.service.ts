@@ -46,7 +46,10 @@ import { recordProjectActivity } from "@server/modules/activity/projectActivity.
 import { buildRoleUpgradeRequestMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { deferredRequestExpiry } from "@server/config/limits.js";
+import {
+  deferredRequestExpiry,
+  getDeferredRequestTtlDays,
+} from "@server/config/limits.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import {
   isRefused,
@@ -160,6 +163,7 @@ export async function request(
             requestedRole: "editor",
             message: input.message ?? null,
             decisionLink: decisionLink(origin, filedRequest.shareToken),
+            windowDays: getDeferredRequestTtlDays(),
           });
         },
         { userId: input.ownerUserId, subject: "role_upgrade_request" },

@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Role-upgrade request route tests — POST submission gate + PATCH decision flow.
+ * Role-upgrade request route tests — the POST submission gate.
+ *
+ * The owner's decide route used to be tested here too; deciding now happens at
+ * `/decisions` for all five flows, and the single-entrance integration suite
+ * pins the old PATCH as unrouted.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -106,53 +110,3 @@ describe("POST /projects/:pid/role-upgrade-requests", () => {
   });
 });
 
-describe("PATCH /role-upgrade-requests/:requestId/decision", () => {
-
-  it("approves the request when decision=approved", async () => {
-    const app = createApp();
-    const res = await app.request(
-      `/api/v1/role-upgrade-requests/${NID}/decision`,
-      {
-        method: "PATCH",
-        headers: AUTH,
-        body: JSON.stringify({ decision: "approved" }),
-      },
-    );
-    expect(res.status).toBe(200);
-    expect(mocks.roleUpgradeRequestService.approve).toHaveBeenCalled();
-    expect(mocks.roleUpgradeRequestService.reject).not.toHaveBeenCalled();
-  });
-
-  it("rejects the request when decision=rejected", async () => {
-    const app = createApp();
-    const res = await app.request(
-      `/api/v1/role-upgrade-requests/${NID}/decision`,
-      {
-        method: "PATCH",
-        headers: AUTH,
-        body: JSON.stringify({ decision: "rejected", reason: "No room" }),
-      },
-    );
-    expect(res.status).toBe(200);
-    expect(mocks.roleUpgradeRequestService.reject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        requestId: NID,
-        reason: "No room",
-      }),
-    );
-    expect(mocks.roleUpgradeRequestService.approve).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 on invalid decision value", async () => {
-    const app = createApp();
-    const res = await app.request(
-      `/api/v1/role-upgrade-requests/${NID}/decision`,
-      {
-        method: "PATCH",
-        headers: AUTH,
-        body: JSON.stringify({ decision: "maybe" }),
-      },
-    );
-    expect(res.status).toBe(400);
-  });
-});
