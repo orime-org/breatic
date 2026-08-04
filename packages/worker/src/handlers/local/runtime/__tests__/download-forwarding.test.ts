@@ -5,10 +5,12 @@
  * What `downloadToTempDir` tells the shared transport.
  *
  * This helper feeds every local ffmpeg handler its input asset, and until
- * this migration it called `fetch` bare: one delivery, no retry. A CDN
- * hiccup on a URL from our own storage killed the user's video job
- * outright, and they had to start over. Declaring the download replay-safe
- * is what buys the retry — it is a pure GET, so replaying it costs nothing.
+ * this migration it called `fetch` bare: one delivery, no retry of its own.
+ * A blip was not fatal even then — BullMQ re-runs the whole job three times
+ * and the canvas stays quiet until the last attempt — but recovering meant
+ * re-running everything, re-transcode included, and only within BullMQ's
+ * ~12s jittered window. Declaring the download replay-safe moves the retry
+ * to where the failure is: a pure GET, so replaying it costs nothing.
  *
  * Behavioural rather than structural because no reading of the call site
  * can show what actually reaches the transport, and `replaySafe` is the one

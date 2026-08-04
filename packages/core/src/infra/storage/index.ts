@@ -267,9 +267,13 @@ async function downloadOnce(
  * `replaySafe: true` in `downloadOnce`: 5xx and 429 as before, and — new
  * here — a dropped connection, which the loop this replaced could never
  * retry because `fetch`'s connection errors are not the sentinel it keyed
- * on. Permanent failures (4xx, truncation, zero-byte) still throw at once;
- * they are thrown after a 200, so no retry policy could have caught them
- * anyway.
+ * on.
+ *
+ * Permanent failures still throw at once, for two different reasons. A 4xx
+ * throws from the `!response.ok` branch: the transport already declined to
+ * replay it, a 4xx being a fact about the request that a replay cannot
+ * change. Truncation and zero-byte are thrown after a 200, where no retry
+ * policy could reach them at all.
  * @param sourceUrl - The remote URL to download (120s per delivery).
  * @returns The full downloaded bytes plus the resolved content type.
  * @throws {Error} On a permanent failure, or when no delivery produced a

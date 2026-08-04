@@ -39,9 +39,15 @@ export async function downloadToTempDir(
   options: { suffix?: string } = {},
 ): Promise<string> {
   // replaySafe, because a download is a pure GET: replaying it costs
-  // nothing and changes nothing. That declaration is the whole point of
-  // routing this through the transport — a CDN hiccup used to end the
-  // user's video job here, with no retry of any kind.
+  // nothing and changes nothing.
+  //
+  // What that buys, stated precisely — a blip here was never fatal. A throw
+  // propagates to dispatch.ts, which rethrows so BullMQ re-runs the whole
+  // job (attempts: 3), and the canvas only shows a failure on the terminal
+  // attempt, so the user saw nothing. What changes is the granularity: the
+  // download is now re-delivered in place, instead of costing a whole job
+  // re-run — re-download plus re-transcode — and instead of being confined
+  // to BullMQ's ~12s jittered window, past which the job really did die.
   //
   // No deadline: there was never a bound on the total, and a video's
   // download time follows its size. The transport's default bounds the
