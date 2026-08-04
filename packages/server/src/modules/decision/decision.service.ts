@@ -113,10 +113,15 @@ export async function viewByToken(
   const detail = await decisionRepo.readDetail(found.kind, found.id);
   if (!detail) return null;
 
+  // The membership question only exists for the two invite flows — the other
+  // three REQUIRE a member (a transfer's recipient, the upgrade's owner), so
+  // asking would burn a DB roundtrip on an answer nothing reads.
   const [containerName, actorName, recipientAlreadyIn] = await Promise.all([
     readContainerName(detail.container),
     readDisplayName(detail.actorUserId),
-    alreadyHasOffer(detail.container, detail.recipientUserId, detail.role),
+    INVITE_KINDS.has(found.kind)
+      ? alreadyHasOffer(detail.container, detail.recipientUserId, detail.role)
+      : Promise.resolve(false),
   ]);
 
   const state = decideState({
@@ -323,11 +328,10 @@ export async function respond(
     throw new ForbiddenError(t("server.error.forbidden"));
   }
 
-  const recipientAlreadyIn = await alreadyHasOffer(
-    detail.container,
-    detail.recipientUserId,
-    detail.role,
-  );
+  // Same as the view: only the invite flows have a membership question to ask.
+  const recipientAlreadyIn = INVITE_KINDS.has(found.kind)
+    ? await alreadyHasOffer(detail.container, detail.recipientUserId, detail.role)
+    : false;
   const state = decideState({
     kind: found.kind,
     status: found.status,
