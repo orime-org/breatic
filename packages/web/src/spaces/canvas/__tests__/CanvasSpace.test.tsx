@@ -64,7 +64,7 @@ import { assetsApi } from '@web/data/api';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
-import { writePlainTextIntoBody } from '@web/data/yjs/text-body';
+import { bodyToPlainText, writePlainTextIntoBody } from '@web/data/yjs/text-body';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
@@ -271,6 +271,30 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       } | null;
       expect(local?.user?.name).toBe('Ada');
     });
+
+    // The OTHER half of item 2, and the half the assertion above cannot see:
+    // "their caret dims when they switch away". The name arrives from the
+    // caret extension itself, so it stays green even with the presence hook
+    // deleted (round-6, proved by mutation). The focus flag is the presence
+    // hook's own output, and nothing else publishes it.
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    await waitFor(() => {
+      const local = awareness.getLocalState() as {
+        user?: { focused?: boolean };
+      } | null;
+      expect(local?.user?.focused).toBe(false);
+    });
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => {
+      const local = awareness.getLocalState() as {
+        user?: { focused?: boolean };
+      } | null;
+      expect(local?.user?.focused).toBe(true);
+    });
   });
 
   it('shows the empty-state hint when there are no nodes', () => {
@@ -319,6 +343,101 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     render(<CanvasSpace projectId='p' spaceId='s' />);
     expect(screen.getByTestId('image-node')).toBeInTheDocument();
     expect(screen.queryByTestId('canvas-empty')).not.toBeInTheDocument();
+  });
+
+  // Copy and duplicate carry a text node's words (#1774, acceptance item 5).
+  // Both go through ONE wiring point in this component: the capture is handed
+  // the bodies read out of the document. Nothing tested that link — pulling it
+  // out left all 2942 tests green while Cmd+C, the menu, and Cmd/Ctrl+D all
+  // emitted blank cards (round-6, proved by mutation). The clipboard payload
+  // is the far end of the wire, so that is what these read.
+  //
+  // The pure capture function is unit-tested with a hand-fed map elsewhere;
+  // what is checked here is that the canvas actually feeds it one.
+  describe('a text node keeps its words through copy and duplicate', () => {
+    /**
+     * Seeds one written text node, mounts the canvas with it selected.
+     * @returns The node id.
+     */
+    const mountWithWrittenNode = (): string => {
+      _resetForTests();
+      addNode('p', 's', {
+        id: 'n1',
+        type: 'text',
+        position: { x: 0, y: 0 },
+        data: {
+          name: 'N',
+          createdAt: 1,
+          createdBy: 'u',
+          locked: false,
+          operationLocks: [],
+          state: 'idle',
+          attachments: [],
+        },
+      });
+      writePlainTextIntoBody(
+        getTextBody('p', 's', 'n1') as Y.XmlFragment,
+        'notes worth keeping',
+      );
+      mockUseCanvasSpace.mockReturnValue(
+        mockSpace({
+          nodes: [
+            {
+              id: 'n1',
+              type: 'text',
+              position: { x: 0, y: 0 },
+              data: { kind: 'text', status: 'idle', name: 'N' },
+            },
+          ],
+        }),
+      );
+      render(<CanvasSpace projectId='p' spaceId='s' />);
+      // Selection is LOCAL state, not a Yjs field — the mirror deliberately
+      // does not carry it (`toFlowNode` sets no `selected`), so putting it in
+      // the mocked space would never reach the copy path. Mark it where the
+      // canvas actually reads it: its ReactFlow mirror.
+      act(() => {
+        useCanvasGraphStore
+          .getState()
+          .setFlowNodes((prev) =>
+            prev.map((n) => (n.id === 'n1' ? { ...n, selected: true } : n)),
+          );
+      });
+      return 'n1';
+    };
+
+    it('puts the words on the clipboard, not a blank card', () => {
+      mountWithWrittenNode();
+      let written = '';
+      const event = new Event('copy', { bubbles: true }) as Event & {
+        clipboardData: { setData: (type: string, data: string) => void };
+      };
+      Object.defineProperty(event, 'clipboardData', {
+        value: {
+          setData: (_type: string, data: string) => {
+            written = data;
+          },
+        },
+      });
+      act(() => {
+        document.dispatchEvent(event);
+      });
+      expect(written).toContain('notes worth keeping');
+    });
+
+    it('gives the duplicate its own copy of the words', async () => {
+      mountWithWrittenNode();
+      dispatchKeyDown('d', { meta: true });
+      // The clone is a second text node in the document, carrying the same
+      // words in a body of its own.
+      const doc = getDoc(docName.canvasSpace('p', 's'));
+      const ids = [...doc.getMap<Y.Map<unknown>>('nodesMap').keys()];
+      await waitFor(() => expect(ids.length).toBeGreaterThan(1));
+      const cloneId = ids.find((id) => id !== 'n1') as string;
+      expect(
+        bodyToPlainText(getTextBody('p', 's', cloneId) as Y.XmlFragment),
+      ).toBe('notes worth keeping');
+    });
   });
 
   // Keyboard entry into a text node (#1774, acceptance item 9). ReactFlow's
