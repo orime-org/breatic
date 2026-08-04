@@ -48,6 +48,7 @@ import {
   type GeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
 import {
+  deriveReferences,
   focusIdOfRefId,
   focusToRailItem,
   type ReferenceRailItem,
@@ -216,21 +217,23 @@ function GeneratePanelBody({
   // prompt serializer substitutes a text chip with at execute time — is built
   // from it. Without it every text chip would serialize to nothing.
   //
-  // "The ones it can reference" is literal: the text nodes an incoming edge
-  // wires into THIS node, which is the set `deriveReferences` fills text for.
+  // "The ones it can reference" is literal, BY CONSTRUCTION: the ids are read
+  // off `deriveReferences` itself — the only consumer of the map this feeds —
+  // so the two sets cannot drift (a first cut re-derived the set by hand and
+  // promptly missed that function's focus-namespace guards, round-5).
   // Following every text node on the board instead would attach observers to
   // all of them and rebuild this view model on every keystroke anyone types
   // anywhere — the exact whole-board cost freshVm below refuses to pay.
-  const textNodeIds = React.useMemo(() => {
-    const byId = new Map(nodes.map((n) => [n.id, n]));
-    const wired = new Set<string>();
-    for (const edge of edges) {
-      if (edge.target !== nodeId) continue;
-      const source = byId.get(edge.source);
-      if (source?.data.kind === 'text') wired.add(source.id);
-    }
-    return [...wired];
-  }, [nodes, edges, nodeId]);
+  const textNodeIds = React.useMemo(
+    () => [
+      ...new Set(
+        deriveReferences(nodeId, nodes, edges)
+          .filter((row) => row.sourceNodeType === 'text')
+          .map((row) => row.sourceNodeId),
+      ),
+    ],
+    [nodeId, nodes, edges],
+  );
   const textById = useTextBodies(projectId, spaceId, textNodeIds);
   const vm: GeneratePanelViewModel = React.useMemo(
     () =>

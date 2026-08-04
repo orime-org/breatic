@@ -149,6 +149,15 @@ export function TextNodeEditor({
   editable,
   onLeave,
 }: TextNodeEditorProps): React.JSX.Element {
+  // Read through a ref so the callback's IDENTITY never matters (round-5).
+  // The handlers below live inside useEditor, whose dependency list rebuilds
+  // the whole editor — and while somebody is typing, the parent re-renders on
+  // every keystroke, so an inline-arrow `onLeave` in that list would tear the
+  // editor down per key, yanking the caret and dropping IME composition. A
+  // ref makes that impossible instead of documenting it as a rule callers
+  // have to know.
+  const onLeaveRef = React.useRef(onLeave);
+  onLeaveRef.current = onLeave;
   const editor = useEditor(
     {
       extensions: buildTextNodeExtensions({
@@ -183,7 +192,7 @@ export function TextNodeEditor({
         },
         handleKeyDown: (_view, event): boolean => {
           if (event.key !== 'Escape') return false;
-          onLeave('return-focus');
+          onLeaveRef.current('return-focus');
           // Claimed, so nothing further up treats the same press as its own.
           return true;
         },
@@ -196,7 +205,7 @@ export function TextNodeEditor({
         // Focus moving to something inside the editor is not leaving either.
         const next = event.relatedTarget;
         if (next instanceof Node && instance.view.dom.contains(next)) return;
-        onLeave('keep-focus');
+        onLeaveRef.current('keep-focus');
       },
       immediatelyRender: false,
     },
@@ -204,7 +213,7 @@ export function TextNodeEditor({
     // re-synced, so a locale switch while a node is open would otherwise leave
     // the old language behind until it was reopened. `caretProvider` flips
     // from null to a provider once, on the socket's first connect.
-    [fragment, placeholder, caretProvider, caretUser, editable, onLeave],
+    [fragment, placeholder, caretProvider, caretUser, editable],
   );
   // Publish this window's focus and dim collaborators who have left theirs.
   // The other half of the caret story: without it this client publishes into a
