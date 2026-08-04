@@ -232,11 +232,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ReturnType<typeof useSocket>['provider']
       >,
       synced: true,
-      contentLoaded: true,
+      hasEverSynced: true,
       status: 'connected',
-      authFailedReason: null,
       writeAccess: 'granted',
-    } as ReturnType<typeof useSocket>);
+      authFailedReason: null,
+    });
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
