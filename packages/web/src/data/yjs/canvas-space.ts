@@ -993,13 +993,20 @@ export function readTextBodies(
  * overwrite. Same absence check, different write; if the shape of a seeded
  * body ever changes, change both.
  *
- * Repair, not lazy creation. Every text node is born with a body; a node
- * without one is either older than this feature or the tail of an undo, and
- * without repair it can never be written in again — the shared editor requires
- * a fragment and refuses to bind to nothing. A pre-#1774 node's words lived in
- * a plain `data.content` field; those are deliberately NOT carried into the
- * repaired body (decided 2026-08-04: pre-launch, no shipped document holds
- * one), so the seat is seeded empty.
+ * Repair, not lazy creation. Every text node is born with a body inside the
+ * creating transaction, so **the only node that can lack one is older than
+ * this feature** — measured, not assumed: undoing a node's creation removes
+ * the node entirely and redo brings body and all back, so an undo never
+ * leaves a live node bodyless (an earlier version of this comment claimed it
+ * did). Without repair such a node could never be written in again: the
+ * shared editor requires a fragment and refuses to bind to nothing.
+ *
+ * The seat is seeded EMPTY on purpose. A pre-#1774 node's words lived in a
+ * plain `data.content` field and are deliberately dropped: before launch,
+ * every node old enough to have one is test residue, so opening it to a clean
+ * blank page IS the intended behaviour rather than a loss. Ruled 2026-08-04;
+ * the same ruling says a defect reachable ONLY through such a node is not
+ * worth fixing, which is why no concurrency guard sits on this write.
  *
  * The origin is deliberately NOT the one the canvas undo manager tracks. A
  * repair is the system fixing itself, not something the user did, and putting
