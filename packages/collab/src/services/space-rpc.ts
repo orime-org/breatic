@@ -4,32 +4,31 @@
 /**
  * Collab-side handlers for client-initiated Space lifecycle RPCs.
  *
- * Per ADR 2026-05-23-yjs-collab-only-write-authz:
+ * Authorization (ADR 2026-05-23-yjs-collab-only-write-authz + task #27):
  *
  *   - create / delete / lock / unlock / rename - caller role ≥ editor
  *   - restore                                   - caller role = owner
+ *   - tab:open / tab:close                      - any role that can reach
+ *     the project, viewers included: each caller manages only their OWN
+ *     tab bar, and the userId comes from the connection, never the request.
  *
- * Each handler:
+ * Every operation follows §6 of the 2026-08-02 step-order design:
  *
- *   1. Validates the caller's role.
- *   2. Opens a DirectConnection to the project's meta doc. A direct
- *      connection is not a client connection: it never carries the
- *      read-only flag that every client's connection to this doc does,
- *      which is what makes these handlers the only writers. The
- *      `context.user.id = 'system'` marker rides along for logging.
- *   3. Performs the meta-doc mutation (set / delete a `spaces` entry)
- *      in a single Y transaction, then appends the matching
- *      `project_activities` PG row + broadcasts the `activity:new`
- *      stateless signal (best-effort - the Yjs mutation is already
- *      applied, so an activity failure logs instead of failing the RPC;
- *      ADR 2026-07-04 project-activity-feed).
- *   4. For delete: also soft-deletes the canvas-{spaceId} row in PG so
- *      stale tabs cannot resurrect the data via Hocuspocus persistence
- *      (per `auth.ts` space-exists check - meta.spaces is the source of
- *      truth for "exists right now", `yjs_documents.deletedAt` is the
- *      defense-in-depth backstop).
- *   5. For restore: reverses both - sets the entry back and clears the
- *      `deletedAt` column on the canvas row.
+ *   1. Validate the caller's role, then run every remaining check —
+ *      read-only, changing nothing.
+ *   2. Move the content rows (the PG rows holding the user's actual
+ *      writing) — delete soft-deletes them, restore un-deletes them,
+ *      create seeds the new one — BEFORE anything becomes visible.
+ *   3. Publish the meta-doc change through {@link publishMetaChange},
+ *      over a DirectConnection (never read-only; the `system` user marker
+ *      rides along for logging). Publishing IS the broadcast, and the
+ *      broadcast is the commit boundary: a failure before it undoes
+ *      exactly the content rows this call changed and answers a
+ *      controlled error; a failure after it logs one complete line and
+ *      still answers success, because every client already applied it.
+ *   4. Append the matching `project_activities` PG row + broadcast the
+ *      `activity:new` signal (best-effort — a failure here logs what a
+ *      repair needs and never fails the RPC).
  *
  * Returns a `SpaceRpcResponse` whose `id` echoes the request id so
  * the client can demultiplex concurrent in-flight RPCs.
@@ -219,56 +218,85 @@ const SPACE_CONTENT_KINDS: readonly Exclude<DocKind, "meta">[] = [
 type TouchedKinds = readonly Exclude<DocKind, "meta">[];
 
 /**
- * Soft-delete a Space's content-doc `yjs_documents` row via the shared core
- * repo. Soft-deletes EVERY kind variant of the (projectId, spaceId) content
- * doc (idempotent no-op for the ones that don't exist), so the real row is
+ * What moving a Space's content rows left behind: the kinds THIS call
+ * changed, and the first failure if any kind's write rejected.
+ *
+ * Both fields survive a partial failure on purpose. The three UPDATEs run
+ * concurrently, so when one rejects the other two may already be
+ * committed — a report that dies with the failure (what `Promise.all`
+ * gives) would leave the caller undoing nothing while rows sit changed.
+ */
+interface ContentRowsOutcome {
+  touched: TouchedKinds;
+  failure: unknown;
+}
+
+/**
+ * Run one content-row write per kind variant and keep BOTH halves of the
+ * answer: what changed, and what failed.
+ * @param write - The per-kind repo write; resolves true when it changed the row.
+ * @returns The kinds that changed + the first rejection (null when none).
+ */
+async function moveContentRows(
+  write: (kind: Exclude<DocKind, "meta">) => Promise<boolean>,
+): Promise<ContentRowsOutcome> {
+  const settled = await Promise.allSettled(
+    SPACE_CONTENT_KINDS.map(async (kind) => ({
+      kind,
+      changed: await write(kind),
+    })),
+  );
+  const touched: Exclude<DocKind, "meta">[] = [];
+  let failure: unknown = null;
+  for (const result of settled) {
+    if (result.status === "fulfilled") {
+      if (result.value.changed) touched.push(result.value.kind);
+    } else if (failure === null) {
+      failure = result.reason;
+    }
+  }
+  return { touched, failure };
+}
+
+/**
+ * Soft-delete a Space's content-doc `yjs_documents` rows via the shared core
+ * repo. Covers EVERY kind variant of the (projectId, spaceId) content doc
+ * (idempotent no-op for the ones that don't exist), so the real row is
  * always covered regardless of the meta `type` field — the authoritative
  * `countLiveSpaceDocs` therefore always decrements (a ghost row left live by
  * a corrupted type could otherwise inflate the count past the >=1 floor).
- *
- * Reports which variants THIS call changed, so a later failure can put back
- * exactly those and nothing else. Undoing all three would resurrect a row
- * that some other delete had already soft-deleted.
  * @param projectId - Project the content doc belongs to.
  * @param spaceId - Space whose content-doc row is marked deleted.
- * @returns The kinds this call actually soft-deleted.
+ * @returns The kinds this call soft-deleted + the first failure, if any.
  */
 async function softDeleteSpaceContentRows(
   projectId: string,
   spaceId: string,
-): Promise<TouchedKinds> {
-  const results = await Promise.all(
-    SPACE_CONTENT_KINDS.map(async (kind) => ({
-      kind,
-      changed: await yjsDocumentsRepo.softDeleteByName(
-        spaceContentDocName(projectId, spaceId, kind),
-      ),
-    })),
+): Promise<ContentRowsOutcome> {
+  return moveContentRows((kind) =>
+    yjsDocumentsRepo.softDeleteByName(
+      spaceContentDocName(projectId, spaceId, kind),
+    ),
   );
-  return results.filter((r) => r.changed).map((r) => r.kind);
 }
 
 /**
- * Restore (clear deleted_at on) a Space's content-doc row, mirroring
+ * Restore (clear deleted_at on) a Space's content-doc rows, mirroring
  * {@link softDeleteSpaceContentRows} — every kind variant, so a delete /
  * restore cycle round-trips the real row regardless of the meta `type`.
  * @param projectId - Project the content doc belongs to.
  * @param spaceId - Space whose content-doc row has its `deleted_at` cleared.
- * @returns The kinds this call actually restored.
+ * @returns The kinds this call restored + the first failure, if any.
  */
 async function restoreSpaceContentRows(
   projectId: string,
   spaceId: string,
-): Promise<TouchedKinds> {
-  const results = await Promise.all(
-    SPACE_CONTENT_KINDS.map(async (kind) => ({
-      kind,
-      changed: await yjsDocumentsRepo.restoreByName(
-        spaceContentDocName(projectId, spaceId, kind),
-      ),
-    })),
+): Promise<ContentRowsOutcome> {
+  return moveContentRows((kind) =>
+    yjsDocumentsRepo.restoreByName(
+      spaceContentDocName(projectId, spaceId, kind),
+    ),
   );
-  return results.filter((r) => r.changed).map((r) => r.kind);
 }
 
 /**
@@ -335,6 +363,111 @@ async function safeCleanup(
   }
 }
 
+/** The direct-connection surface the publish/read helpers need. */
+interface MetaDirectConnection {
+  transact: (fn: (doc: Y.Doc) => void) => Promise<unknown>;
+}
+
+/**
+ * How the one transact that publishes an operation's change ended.
+ *
+ * - `published`: the callback wrote, so every client has applied the
+ *   change — even when the store rejected afterwards (§3.2: the callback
+ *   runs synchronously and the broadcast leaves inside it). The caller
+ *   must carry on to its success answer.
+ * - `no-op`: the callback returned without writing and nothing failed —
+ *   one of its guards said stop, and the caller's own flags say which.
+ * - `failed-before-broadcast`: the transact rejected before the callback
+ *   wrote anything. Nothing went out; the caller undoes its earlier
+ *   steps and answers a controlled error.
+ */
+type PublishOutcome = "published" | "no-op" | "failed-before-broadcast";
+
+/**
+ * Publish an operation's meta-doc change — the commit boundary of §6, as
+ * ONE implementation every operation goes through rather than a
+ * convention each handler re-earns.
+ *
+ * Two invariants live here and nowhere else:
+ *
+ * 1. **Everything the callback writes leaves as one update.** The
+ *    library's `transact` runs the callback bare — each Y.js mutation
+ *    inside it would otherwise be its own transaction and its own
+ *    broadcast frame, so "remove the entry and sweep every tab in the
+ *    same broadcast" (§6.2 step 5) would silently be several. The
+ *    `doc.transact` wrapper is what makes "same broadcast" literal.
+ * 2. **The boundary flag cannot be forgotten.** The callback receives
+ *    `mark` and must call it immediately before its first write; a
+ *    rejection is then classifiable as before or after the broadcast.
+ *    Handlers that skip `mark` and write anyway would misreport — which
+ *    is why the flag rides through this wrapper instead of being a local
+ *    variable seven functions each remember to declare.
+ * @param conn - Direct connection to the project's meta doc.
+ * @param logCtx - Fields for the line written when either side fails.
+ * @param write - The publishing callback; calls `mark()` right before its
+ *   first write, then writes. Guards that decide not to write simply
+ *   return without marking.
+ * @returns See {@link PublishOutcome}.
+ */
+async function publishMetaChange(
+  conn: MetaDirectConnection,
+  logCtx: Record<string, unknown>,
+  write: (doc: Y.Doc, mark: () => void) => void,
+): Promise<PublishOutcome> {
+  let wrote = false;
+  /**
+   * Records that the very next statement writes — from here on, the
+   * change must be treated as broadcast.
+   */
+  const mark = (): void => {
+    wrote = true;
+  };
+  try {
+    await conn.transact((doc: Y.Doc) => {
+      doc.transact(() => write(doc, mark));
+    });
+  } catch (transactError) {
+    if (!wrote) {
+      logger.error(
+        { err: transactError, ...logCtx },
+        "space_rpc_failed_before_broadcast",
+      );
+      return "failed-before-broadcast";
+    }
+    // Past the line: saying it failed would be a lie every client can see
+    // through, and there is nothing left to undo. One complete line.
+    logger.error(
+      { err: transactError, ...logCtx },
+      "space_rpc_not_persisted_after_broadcast",
+    );
+  }
+  return wrote ? "published" : "no-op";
+}
+
+/**
+ * Run a read-only transact against the meta doc, absorbing the rejection
+ * a poisoned document produces (§8.1: one store failure makes every later
+ * transact on that doc reject). Nothing has gone out when a pure read
+ * fails, so the caller answers a controlled error and stops.
+ * @param conn - Direct connection to the project's meta doc.
+ * @param logCtx - Fields for the line written when the read fails.
+ * @param read - The read; must not write.
+ * @returns True when the read ran, false when the transact rejected.
+ */
+async function readMetaState(
+  conn: MetaDirectConnection,
+  logCtx: Record<string, unknown>,
+  read: (doc: Y.Doc) => void,
+): Promise<boolean> {
+  try {
+    await conn.transact((doc: Y.Doc) => read(doc));
+    return true;
+  } catch (readError) {
+    logger.error({ err: readError, ...logCtx }, "space_rpc_precheck_failed");
+    return false;
+  }
+}
+
 // ── Handlers ────────────────────────────────────────────────────────
 
 /**
@@ -389,59 +522,39 @@ async function handleCreate(
     context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
   });
   const seededKinds: TouchedKinds = seeded ? [type] : [];
+  const logCtx = {
+    projectId,
+    spaceId,
+    callerId: caller.userId,
+    during: "create",
+  };
   try {
     let conflict = false;
-    // Set inside the callback, immediately before the write that publishes
-    // it. Reading it after an `await` that threw is how this tells "nothing
-    // went out" from "everyone already has it" (§6).
-    let broadcast = false;
-    try {
-      await conn.transact((doc: Y.Doc) => {
-        const spaces = doc.getMap("spaces");
-        // Unreachable by any input now that the id is minted here — it would
-        // take a uuid v4 collision. Kept because it costs one line and the
-        // alternative is silently overwriting somebody's Space.
-        if (spaces.has(spaceId)) {
-          conflict = true;
-          return;
-        }
-        broadcast = true;
-        writeSpaceEntry(spaces, {
-          spaceId,
-          type,
-          name,
-          order: spaces.size,
-          createdAt: Date.now(),
-          createdBy: caller.userId,
-          claimToken,
-        });
-      });
-    } catch (transactError) {
-      if (!broadcast) {
-        logger.error(
-          { err: transactError, projectId, spaceId, callerId: caller.userId },
-          "space_rpc_create_failed_before_broadcast",
-        );
-        await undoContentRows("soft-delete", projectId, spaceId, seededKinds, {
-          callerId: caller.userId,
-          during: "create",
-        });
-        return err(req.id, "INTERNAL", "Could not create the Space");
+    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
+      const spaces = doc.getMap("spaces");
+      // Unreachable by any input now that the id is minted here — it would
+      // take a uuid v4 collision. Kept because it costs one line and the
+      // alternative is silently overwriting somebody's Space.
+      if (spaces.has(spaceId)) {
+        conflict = true;
+        return;
       }
-      // Past the line: every client has applied this entry already. Saying
-      // it failed would be a lie they can see through, and there is nothing
-      // left to undo. One complete line, then carry on to the answer.
-      logger.error(
-        { err: transactError, projectId, spaceId, callerId: caller.userId },
-        "space_rpc_create_not_persisted_after_broadcast",
-      );
-    }
-    if (conflict) {
-      await undoContentRows("soft-delete", projectId, spaceId, seededKinds, {
-        callerId: caller.userId,
-        during: "create",
+      mark();
+      writeSpaceEntry(spaces, {
+        spaceId,
+        type,
+        name,
+        order: spaces.size,
+        createdAt: Date.now(),
+        createdBy: caller.userId,
+        claimToken,
       });
-      return err(req.id, "CONFLICT", `Space ${spaceId} already exists`);
+    });
+    if (outcome === "failed-before-broadcast" || conflict) {
+      await undoContentRows("soft-delete", projectId, spaceId, seededKinds, logCtx);
+      return conflict
+        ? err(req.id, "CONFLICT", `Space ${spaceId} already exists`)
+        : err(req.id, "INTERNAL", "Could not create the Space");
     }
     await recordSpaceActivity(ctx, projectId, {
       actorUserId: caller.userId,
@@ -451,11 +564,7 @@ async function handleCreate(
     });
     return ok(req.id, { spaceId, type, name });
   } finally {
-    await safeCleanup(
-      "disconnect",
-      { projectId, spaceId, callerId: caller.userId, during: "create" },
-      () => conn.disconnect(),
-    );
+    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
   }
 }
 
@@ -479,21 +588,20 @@ async function handleDelete(
     return err(req.id, "FORBIDDEN", `Role ${caller.role} cannot delete Space`);
   }
   const { spaceId } = req.payload;
-  // Held onto so a failure AFTER the critical section cannot erase it. Once
-  // runDelete has answered, that answer is what happened — the broadcast is
-  // either out or it is not, and nothing the lock wrapper does on its way
-  // out changes that (§6).
-  let answered: SpaceRpcResponse | undefined;
   try {
     // Serialize deletes for THIS project across every collab instance. The
     // "keep >=1 Space" guard is a read-modify-write; without cross-instance
     // mutual exclusion two collaborators on different instances can each
     // pass it against their own not-yet-synced in-memory doc and race the
     // project to zero Spaces (see the DD 2026-07-01).
-    return await withSpaceDeleteLock(projectId, async () => {
-      answered = await runDelete(ctx, projectId, caller, req, spaceId);
-      return answered;
-    });
+    //
+    // Once the critical section has answered, that answer is what
+    // happened. The lock guards its own release (space-delete-lock.ts
+    // swallows + logs a failing eval), so the only rejection that can
+    // reach here after acquisition is one thrown by runDelete itself.
+    return await withSpaceDeleteLock(projectId, () =>
+      runDelete(ctx, projectId, caller, req, spaceId),
+    );
   } catch (e) {
     if (e instanceof SpaceDeleteLockBusyError) {
       return err(
@@ -502,13 +610,6 @@ async function handleDelete(
         "Another delete is in progress for this project; please retry",
       );
     }
-    if (answered) {
-      logger.error(
-        { err: e, projectId, spaceId, callerId: caller.userId },
-        "space_rpc_delete_lock_wrapper_failed_after_answer",
-      );
-      return answered;
-    }
     throw e; // unexpected — let the dispatcher log + return INTERNAL
   }
 }
@@ -516,11 +617,13 @@ async function handleDelete(
 /**
  * The `space:delete` critical section, run under the per-project lock.
  *
- * Reads the AUTHORITATIVE live-Space count from PG (strongly consistent
- * across instances, unlike the eventually-consistent in-memory
- * `meta.spaces` CRDT), refuses if deleting would leave zero, removes the
- * meta entry + pushes the `space-deleted` audit, then soft-deletes the
- * TYPE-correct content-doc PG row so the count decrements.
+ * §6.2's order: checks first (entry exists + the AUTHORITATIVE PG
+ * live-Space count stays above zero — strongly consistent across
+ * instances, unlike the eventually-consistent in-memory CRDT), then the
+ * content rows are soft-deleted, then the meta entry is removed and every
+ * tab list swept in one broadcast, then the audit row. A failure before
+ * the broadcast restores exactly the content rows this call soft-deleted;
+ * a failure after it logs and still answers success.
  * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc the Space is removed from.
  * @param caller - Authenticated caller's userId + role (audit actor).
@@ -548,7 +651,7 @@ async function runDelete(
     // ── Every check first, and they change nothing ──────────────────
     let notFound = false;
     let isLast = false;
-    await conn.transact((doc: Y.Doc) => {
+    const checked = await readMetaState(conn, logCtx, (doc: Y.Doc) => {
       const spaces = doc.getMap("spaces");
       if (!(spaces.get(spaceId) instanceof Y.Map)) {
         notFound = true;
@@ -563,6 +666,9 @@ async function runDelete(
       // or the cross-instance protection is defeated.
       if (liveCount <= 1) isLast = true;
     });
+    if (!checked) {
+      return err(req.id, "INTERNAL", "Could not delete the Space");
+    }
     if (notFound) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
     }
@@ -576,55 +682,58 @@ async function runDelete(
 
     // ── Content rows, BEFORE the broadcast ──────────────────────────
     // Nothing is visible to anyone yet, so a failure here is still a
-    // "nothing happened": undo and answer with a controlled error. Covers
-    // every kind variant so a corrupted meta `type` cannot leave a ghost
-    // row inflating the authoritative count.
-    let softDeleted: TouchedKinds = [];
-    try {
-      softDeleted = await softDeleteSpaceContentRows(projectId, spaceId);
-    } catch (contentError) {
-      logger.error({ err: contentError, ...logCtx }, "space_rpc_delete_content_rows_failed");
+    // "nothing happened": undo what DID land and answer with a controlled
+    // error. Covers every kind variant so a corrupted meta `type` cannot
+    // leave a ghost row inflating the authoritative count.
+    const softDeleted = await softDeleteSpaceContentRows(projectId, spaceId);
+    if (softDeleted.failure !== null) {
+      logger.error(
+        { err: softDeleted.failure, ...logCtx },
+        "space_rpc_delete_content_rows_failed",
+      );
+      await undoContentRows(
+        "restore",
+        projectId,
+        spaceId,
+        softDeleted.touched,
+        logCtx,
+      );
       return err(req.id, "INTERNAL", "Could not delete the Space");
     }
 
     // ── The broadcast ───────────────────────────────────────────────
     let vanished = false;
-    let broadcast = false;
     let snapshot: Record<string, unknown> | null = null;
     let deletedName: string | undefined;
-    try {
-      await conn.transact((doc: Y.Doc) => {
-        const spaces = doc.getMap("spaces");
-        const entry = spaces.get(spaceId);
-        // Only "is the entry still there" is re-checked here. The count is
-        // NOT: the soft-delete above just decremented it, so re-reading it
-        // would refuse every delete in a two-Space project. The lock taken
-        // in handleDelete is what makes skipping it safe — no concurrent
-        // delete can change the count inside this window.
-        if (!(entry instanceof Y.Map)) {
-          vanished = true;
-          return;
-        }
-        snapshot = snapshotMap(entry);
-        deletedName = entry.get("name") as string | undefined;
-        broadcast = true;
-        spaces.delete(spaceId);
-        clearSpaceFromAllTabs(doc, spaceId);
-      });
-    } catch (transactError) {
-      if (!broadcast) {
-        logger.error({ err: transactError, ...logCtx }, "space_rpc_delete_failed_before_broadcast");
-        await undoContentRows("restore", projectId, spaceId, softDeleted, logCtx);
-        return err(req.id, "INTERNAL", "Could not delete the Space");
+    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
+      const spaces = doc.getMap("spaces");
+      const entry = spaces.get(spaceId);
+      // Only "is the entry still there" is re-checked here. The count is
+      // NOT: the soft-delete above just decremented it, so re-reading it
+      // would refuse every delete in a two-Space project. The lock taken
+      // in handleDelete is what makes skipping it safe — no concurrent
+      // delete can change the count inside this window.
+      if (!(entry instanceof Y.Map)) {
+        vanished = true;
+        return;
       }
-      logger.error(
-        { err: transactError, ...logCtx },
-        "space_rpc_delete_not_persisted_after_broadcast",
+      snapshot = snapshotMap(entry);
+      deletedName = entry.get("name") as string | undefined;
+      mark();
+      spaces.delete(spaceId);
+      clearSpaceFromAllTabs(doc, spaceId);
+    });
+    if (outcome === "failed-before-broadcast" || vanished) {
+      await undoContentRows(
+        "restore",
+        projectId,
+        spaceId,
+        softDeleted.touched,
+        logCtx,
       );
-    }
-    if (vanished) {
-      await undoContentRows("restore", projectId, spaceId, softDeleted, logCtx);
-      return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
+      return vanished
+        ? err(req.id, "NOT_FOUND", `Space ${spaceId} not found`)
+        : err(req.id, "INTERNAL", "Could not delete the Space");
     }
 
     // ── Audit, allowed to fail ──────────────────────────────────────
@@ -671,19 +780,24 @@ async function handleLock(
   const conn = await ctx.hocuspocus.openDirectConnection(docName, {
     context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
   });
+  const logCtx = { projectId, spaceId, callerId: caller.userId, during: "lock" };
   try {
     let notFound = false;
     let spaceName: string | undefined;
-    await conn.transact((doc: Y.Doc) => {
+    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       const entry = spaces.get(spaceId);
       if (!(entry instanceof Y.Map)) {
         notFound = true;
         return;
       }
-      entry.set("locked", locked);
       spaceName = entry.get("name") as string | undefined;
+      mark();
+      entry.set("locked", locked);
     });
+    if (outcome === "failed-before-broadcast") {
+      return err(req.id, "INTERNAL", "Could not update the Space");
+    }
     if (notFound) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
     }
@@ -695,11 +809,7 @@ async function handleLock(
     });
     return ok(req.id);
   } finally {
-    await safeCleanup(
-      "disconnect",
-      { projectId, callerId: caller.userId, type: req.type },
-      () => conn.disconnect(),
-    );
+    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
   }
 }
 
@@ -727,12 +837,18 @@ async function handleRename(
   const conn = await ctx.hocuspocus.openDirectConnection(docName, {
     context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
   });
+  const logCtx = {
+    projectId,
+    spaceId,
+    callerId: caller.userId,
+    during: "rename",
+  };
   try {
     let notFound = false;
     let locked = false;
     let noop = false;
     let oldName = "";
-    await conn.transact((doc: Y.Doc) => {
+    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       const entry = spaces.get(spaceId);
       if (!(entry instanceof Y.Map)) {
@@ -752,9 +868,13 @@ async function handleRename(
         noop = true;
         return;
       }
-      entry.set("name", name);
       oldName = oldSpaceName;
+      mark();
+      entry.set("name", name);
     });
+    if (outcome === "failed-before-broadcast") {
+      return err(req.id, "INTERNAL", "Could not rename the Space");
+    }
     if (notFound) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
     }
@@ -775,11 +895,7 @@ async function handleRename(
     }
     return ok(req.id);
   } finally {
-    await safeCleanup(
-      "disconnect",
-      { projectId, callerId: caller.userId, type: req.type },
-      () => conn.disconnect(),
-    );
+    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
   }
 }
 
@@ -790,20 +906,23 @@ async function handleRename(
  * meta DIRECTORY entry is rebuilt from the spaceSnapshot carried by the
  * latest unconsumed `space:deleted` activity row. Caller role = owner.
  *
- * Step order is load-bearing:
+ * Step order is §6.3's, and it is load-bearing:
  *   1. PG: read the latest unconsumed space:deleted activity row.
- *   2. Meta transact: rebuild the directory entry (refuse CONFLICT if
- *      the space already exists - also the guard that makes a retry
- *      after a partial failure safe).
- *   3. Content rows un-delete (separate yjs PG database - cannot share
- *      a business-DB transaction; unconditional + idempotent).
- *   4. Business-DB transaction: mark the deleted row consumed + append
+ *   2. Meta read: refuse CONFLICT if the space already exists.
+ *   3. Content rows un-delete, BEFORE anything is visible — a Space must
+ *      never be visible without its content. A failure here re-deletes
+ *      exactly the rows this call brought back and reports a controlled
+ *      error; nobody saw anything.
+ *   4. Meta transact: rebuild the directory entry + sweep stale tab
+ *      records, one broadcast. The "already back" re-check here is the
+ *      guard that makes a retry after a partial failure safe.
+ *   5. Business-DB transaction: mark the deleted row consumed + append
  *      the space:restored activity row.
- * A crash between 2 and 4 leaves the space alive with the deleted row
- * unconsumed - harmless: a retry is refused by the step-2 guard, and
+ * A crash between 4 and 5 leaves the space alive with the deleted row
+ * unconsumed - harmless: a retry is refused by the step-4 guard, and
  * the next delete/restore cycle targets its own newer deleted row.
- * Never reorder 4 before 2: consuming the snapshot before the rebuild
- * makes a step-2 failure unretryable.
+ * Never reorder 5 before 4: consuming the snapshot before the rebuild
+ * makes a step-4 failure unretryable.
  * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc the Space is restored into.
  * @param caller - Authenticated caller's userId + role; only `owner` may restore.
@@ -895,70 +1014,71 @@ async function runRestore(
   try {
     // ── Check first, changing nothing ───────────────────────────────
     let alreadyPresent = false;
-    await conn.transact((doc: Y.Doc) => {
+    const checked = await readMetaState(conn, logCtx, (doc: Y.Doc) => {
       if (doc.getMap("spaces").has(spaceId)) alreadyPresent = true;
     });
+    if (!checked) {
+      return err(req.id, "INTERNAL", "Could not restore the Space");
+    }
     if (alreadyPresent) {
       return err(req.id, "CONFLICT", `Space ${spaceId} is not deleted`);
     }
 
     // ── Content rows, BEFORE the broadcast ──────────────────────────
     // A Space must never be visible without its content, so the rows come
-    // back first; nobody has seen anything yet if this fails.
-    let restored: TouchedKinds = [];
-    try {
-      restored = await restoreSpaceContentRows(projectId, spaceId);
-    } catch (contentError) {
+    // back first; nobody has seen anything yet if this fails — put back
+    // what DID come back, and stop.
+    const restored = await restoreSpaceContentRows(projectId, spaceId);
+    if (restored.failure !== null) {
       logger.error(
-        { err: contentError, ...logCtx },
+        { err: restored.failure, ...logCtx },
         "space_rpc_restore_content_rows_failed",
+      );
+      await undoContentRows(
+        "soft-delete",
+        projectId,
+        spaceId,
+        restored.touched,
+        logCtx,
       );
       return err(req.id, "INTERNAL", "Could not restore the Space");
     }
 
     // ── The broadcast ───────────────────────────────────────────────
     let raced = false;
-    let broadcast = false;
-    try {
-      await conn.transact((doc: Y.Doc) => {
-        const spaces = doc.getMap("spaces");
-        // Someone else restored it while the content rows were coming back.
-        if (spaces.has(spaceId)) {
-          raced = true;
-          return;
-        }
-        const entry = new Y.Map<unknown>();
-        for (const [k, v] of Object.entries(snapshotRecord)) {
-          entry.set(k, v);
-        }
-        broadcast = true;
-        spaces.set(spaceId, entry);
-        // Backstop for the cross-instance window: a tab:open can land after
-        // another instance's delete sweep, leaving an entry pointing at a
-        // Space that is gone. Nobody sees it — the tab bar drops ids it
-        // cannot resolve — until the Space comes back, at which point the id
-        // resolves again and a tab appears out of nowhere. Sweeping here is
-        // what makes "restore does not restore tabs" true rather than
-        // approximately true.
-        clearSpaceFromAllTabs(doc, spaceId);
-      });
-    } catch (transactError) {
-      if (!broadcast) {
-        logger.error(
-          { err: transactError, ...logCtx },
-          "space_rpc_restore_failed_before_broadcast",
-        );
-        await undoContentRows("soft-delete", projectId, spaceId, restored, logCtx);
-        return err(req.id, "INTERNAL", "Could not restore the Space");
+    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
+      const spaces = doc.getMap("spaces");
+      // Someone else restored it while the content rows were coming back.
+      if (spaces.has(spaceId)) {
+        raced = true;
+        return;
       }
-      logger.error(
-        { err: transactError, ...logCtx },
-        "space_rpc_restore_not_persisted_after_broadcast",
+      const entry = new Y.Map<unknown>();
+      for (const [k, v] of Object.entries(snapshotRecord)) {
+        entry.set(k, v);
+      }
+      mark();
+      spaces.set(spaceId, entry);
+      // Backstop for the cross-instance window: a tab:open can land after
+      // another instance's delete sweep, leaving an entry pointing at a
+      // Space that is gone. Nobody sees it — the tab bar drops ids it
+      // cannot resolve — until the Space comes back, at which point the id
+      // resolves again and a tab appears out of nowhere. Sweeping here is
+      // what makes "restore does not restore tabs" true rather than
+      // approximately true.
+      clearSpaceFromAllTabs(doc, spaceId);
+    });
+    if (outcome === "failed-before-broadcast" || raced) {
+      await undoContentRows(
+        "soft-delete",
+        projectId,
+        spaceId,
+        restored.touched,
+        logCtx,
       );
-    }
-    if (raced) {
-      await undoContentRows("soft-delete", projectId, spaceId, restored, logCtx);
-      return err(req.id, "CONFLICT", `Space ${spaceId} is not deleted`);
+      return raced
+        ? err(req.id, "CONFLICT", `Space ${spaceId} is not deleted`)
+        : err(req.id, "INTERNAL", "Could not restore the Space");
     }
 
     // ── Audit, allowed to fail ──────────────────────────────────────
@@ -1061,16 +1181,21 @@ function clearSpaceFromAllTabs(doc: Y.Doc, spaceId: string): void {
  * @param doc - The project meta doc, inside a transaction.
  * @param userId - Caller's userId, taken from the authenticated connection.
  * @param spaces - The `spaces` map, used as the seed when there is no list.
+ * @param mark - The publish boundary marker; called before this function's
+ *   first write. Seeding writes even when the operation that asked turns
+ *   out to be a no-op, so the marking cannot be left to the caller.
  * @returns The caller's open-tab list, ready to mutate.
  */
 function ensureOpenTabList(
   doc: Y.Doc,
   userId: string,
   spaces: Y.Map<unknown>,
+  mark: () => void,
 ): Y.Array<string> {
   const perUser = doc.getMap<Y.Map<unknown>>("perUser");
   let userMap = perUser.get(userId);
   if (!userMap) {
+    mark();
     userMap = new Y.Map<unknown>();
     perUser.set(userId, userMap);
   }
@@ -1078,6 +1203,7 @@ function ensureOpenTabList(
     | Y.Array<string>
     | undefined;
   if (existing) return existing;
+  mark();
   const list = new Y.Array<string>();
   userMap.set(OPEN_TAB_IDS_KEY, list);
   list.push(Array.from(spaces.keys()));
@@ -1104,29 +1230,37 @@ async function handleTabOpen(
     projectMetaDocName(projectId),
     { context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE } },
   );
+  const logCtx = {
+    projectId,
+    spaceId,
+    callerId: caller.userId,
+    during: "tab:open",
+  };
   try {
     let missing = false;
-    await conn.transact((doc: Y.Doc) => {
+    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       if (!spaces.has(spaceId)) {
         missing = true;
         return;
       }
-      const list = ensureOpenTabList(doc, caller.userId, spaces);
+      const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
       // Already open: touch nothing. Re-adding would broadcast a change
       // that changes nothing to everyone on the account.
-      if (!list.toArray().includes(spaceId)) list.push([spaceId]);
+      if (!list.toArray().includes(spaceId)) {
+        mark();
+        list.push([spaceId]);
+      }
     });
+    if (outcome === "failed-before-broadcast") {
+      return err(req.id, "INTERNAL", "Could not open the tab");
+    }
     if (missing) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} does not exist`);
     }
     return ok(req.id);
   } finally {
-    await safeCleanup(
-      "disconnect",
-      { projectId, callerId: caller.userId, type: req.type },
-      () => conn.disconnect(),
-    );
+    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
   }
 }
 
@@ -1154,25 +1288,33 @@ async function handleTabClose(
     projectMetaDocName(projectId),
     { context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE } },
   );
+  const logCtx = {
+    projectId,
+    spaceId,
+    callerId: caller.userId,
+    during: "tab:close",
+  };
   try {
-    await conn.transact((doc: Y.Doc) => {
+    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       // Seeding first is what makes "close one" mean "keep the others"
       // for a user who has never opened anything: their bar is showing
       // every Space, and without the seed the result would be a list
       // holding nothing at all.
-      const list = ensureOpenTabList(doc, caller.userId, spaces);
+      const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
       for (let i = list.length - 1; i >= 0; i--) {
-        if (list.get(i) === spaceId) list.delete(i, 1);
+        if (list.get(i) === spaceId) {
+          mark();
+          list.delete(i, 1);
+        }
       }
     });
+    if (outcome === "failed-before-broadcast") {
+      return err(req.id, "INTERNAL", "Could not close the tab");
+    }
     return ok(req.id);
   } finally {
-    await safeCleanup(
-      "disconnect",
-      { projectId, callerId: caller.userId, type: req.type },
-      () => conn.disconnect(),
-    );
+    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
   }
 }
 
@@ -1212,14 +1354,14 @@ export async function handleSpaceRpc(
         return await handleTabClose(ctx, projectId, caller, request);
     }
   } catch (e) {
+    // Last resort for programmer errors only — every anticipated failure is
+    // handled inside its handler with a controlled message. What a raw
+    // error carries (database wording, connection strings) is for the log,
+    // never for the client: the reply's message goes straight into a toast.
     logger.error(
       { err: e, projectId, callerId: caller.userId, type: request.type },
       "space_rpc_internal_error",
     );
-    return err(
-      request.id,
-      "INTERNAL",
-      e instanceof Error ? e.message : "Unknown error",
-    );
+    return err(request.id, "INTERNAL", "Unexpected server error");
   }
 }

@@ -205,6 +205,12 @@ interface MetaConnectionBehaviour {
    * fires, because they have no such gap.
    */
   betweenCheckAndWrite?: () => void;
+  /**
+   * When set, every `transact` rejects AFTER running its callback — the
+   * real library's shape (§3.2): the callback runs synchronously, the
+   * broadcast leaves inside it, and only then does the awaited store fail.
+   */
+  storeFails?: boolean;
   /** Replaces the default `disconnect`, e.g. to make the finally throw. */
   disconnect?: () => Promise<void>;
 }
@@ -224,6 +230,11 @@ function makeHocuspocus(behaviour: MetaConnectionBehaviour = {}): Hocuspocus {
           transacts += 1;
           if (transacts === 2) behaviour.betweenCheckAndWrite?.();
           fn(metaDoc);
+          if (behaviour.storeFails) {
+            throw new Error(
+              'error persisting document: relation "yjs_documents" is unreachable',
+            );
+          }
         },
         disconnect: behaviour.disconnect ?? disconnectMock,
       };
@@ -308,18 +319,6 @@ function loggedSpaceAndActor(spaceId: string, actorUserId: string): boolean {
     (ctx) =>
       ctx["spaceId"] === spaceId && Object.values(ctx).includes(actorUserId),
   );
-}
-
-/**
- * A fenced lock release that cannot reach Redis. Shaped like the real
- * one — `space-delete-lock.ts:143-145` AWAITS `redis.eval(...)` inside a
- * `finally`, and an awaited rejection there replaces whatever the
- * critical section returned just as surely as a bare throw would.
- * @returns Never resolves.
- * @throws {Error} Always.
- */
-async function failingLockRelease(): Promise<never> {
-  throw new Error("ECONNREFUSED releasing space-delete lock");
 }
 
 /**
@@ -818,36 +817,10 @@ describe("finishing steps cannot change the answer already decided", () => {
     expectNoDatabaseWording(res.error.message);
   });
 
-  it("space:delete keeps its success when releasing the lock throws", async () => {
-    seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
-    seedSpace(OTHER_SID, {
-      type: "canvas",
-      name: "Second",
-      order: 1,
-      locked: false,
-    });
-    withSpaceDeleteLockMock.mockImplementation(
-      async (_projectId: string, fn: () => Promise<unknown>) => {
-        try {
-          return await fn();
-        } finally {
-          await failingLockRelease();
-        }
-      },
-    );
-
-    const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus() },
-      PID,
-      { userId: ACTOR, role: "editor" },
-      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
-    );
-
-    expect(res.ok).toBe(true);
-    // The delete really happened — the release failing must not undo it.
-    expect(metaDoc.getMap("spaces").has(SID)).toBe(false);
-    expect(loggedContexts().some((ctx) => ctx["projectId"] === PID)).toBe(true);
-  });
+  // The release throwing lives in the LOCK, and so does the protection: the
+  // real `withSpaceDeleteLock` swallows + logs a failing release
+  // (space-delete-lock.test.ts pins that against the real module). A
+  // mock-level re-enactment here would only ever test the mock.
 });
 
 describe("space:rename re-checks all three conditions at the moment it writes", () => {
@@ -964,5 +937,189 @@ describe("space:rename re-checks all three conditions at the moment it writes", 
       spaceId: SID,
       payload: { spaceName: "Bar", oldSpaceName: "Mid" },
     });
+  });
+});
+
+describe("a store failure after the broadcast — the four handlers without content rows", () => {
+  // §6's preamble is a shared convention for all seven operations, not a
+  // perk of the three that move content rows: once the callback has written,
+  // every client has applied the change, so a store rejection afterwards is
+  // logged and the caller is still told the truth — it happened.
+  beforeEach(() => {
+    seedSpace(SID, { type: "canvas", name: "Foo", order: 0, locked: false });
+  });
+
+  it("space:rename still answers success and writes its activity row", async () => {
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "Bar" } },
+    );
+    expect(res.ok).toBe(true);
+    const entry = metaDoc.getMap("spaces").get(SID) as Y.Map<unknown>;
+    expect(entry.get("name")).toBe("Bar");
+    expect(activityInsertMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("space:lock still answers success and writes its activity row", async () => {
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:lock", payload: { spaceId: SID, locked: true } },
+    );
+    expect(res.ok).toBe(true);
+    const entry = metaDoc.getMap("spaces").get(SID) as Y.Map<unknown>;
+    expect(entry.get("locked")).toBe(true);
+    expect(activityInsertMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("tab:open still answers success once the seed-or-insert has gone out", async () => {
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "viewer" },
+      { id: "r1", type: "tab:open", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(true);
+  });
+
+  it("tab:close still answers success once the removal has gone out", async () => {
+    const userMap = new Y.Map<unknown>();
+    const list = new Y.Array<string>();
+    metaDoc.getMap("perUser").set(ACTOR, userMap);
+    userMap.set("openTabIds", list);
+    list.push([SID, OTHER_SID]);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "viewer" },
+      { id: "r1", type: "tab:close", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(true);
+    expect(list.toArray()).toEqual([OTHER_SID]);
+  });
+
+  it("space:delete's read-only pre-check rejecting is a controlled error, not a raw one", async () => {
+    // storeFails poisons EVERY transact, including the first, read-only one.
+    // Nothing has gone out at that point, so this lands on the strict side
+    // of the boundary: controlled error, no content rows touched.
+    seedSpace(OTHER_SID, { type: "canvas", name: "B", order: 1, locked: false });
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INTERNAL");
+    expectNoDatabaseWording(res.error.message);
+    expect(softDeleteByNameMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("a partial content-row failure undoes exactly what succeeded", () => {
+  // Promise.all discards every fulfilled result the moment one rejects —
+  // the two UPDATEs that won are already committed, but the caller would
+  // see an empty "touched" list and undo nothing. The report has to
+  // survive the failure.
+  it("space:delete puts back the kinds whose soft-delete won", async () => {
+    seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
+    seedSpace(OTHER_SID, { type: "canvas", name: "B", order: 1, locked: false });
+    softDeleteByNameMock.mockImplementation(async (name: string) => {
+      if (name.includes("/document-")) {
+        throw new Error('relation "yjs_documents" is unreachable');
+      }
+      return true;
+    });
+    armBroadcastMarker();
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INTERNAL");
+    expectNoDatabaseWording(res.error.message);
+    // The entry never left; nothing was published.
+    expect(metaDoc.getMap("spaces").has(SID)).toBe(true);
+    expect(metaBroadcastMock).not.toHaveBeenCalled();
+    // The two variants that DID get soft-deleted come back — and only those.
+    const undone = restoreByNameMock.mock.calls.map((c) => c[0] as string);
+    expect(undone.sort()).toEqual(
+      [
+        spaceContentDocName(PID, SID, "canvas"),
+        spaceContentDocName(PID, SID, "timeline"),
+      ].sort(),
+    );
+  });
+
+  it("space:restore re-deletes the kinds whose un-delete won", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    restoreByNameMock.mockImplementation(async (name: string) => {
+      if (name.includes("/document-")) {
+        throw new Error('relation "yjs_documents" is unreachable');
+      }
+      return true;
+    });
+    armBroadcastMarker();
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: ACTOR, role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INTERNAL");
+    expectNoDatabaseWording(res.error.message);
+    expect(metaDoc.getMap("spaces").has(SID)).toBe(false);
+    expect(metaBroadcastMock).not.toHaveBeenCalled();
+    const undone = softDeleteByNameMock.mock.calls.map((c) => c[0] as string);
+    expect(undone.sort()).toEqual(
+      [
+        spaceContentDocName(PID, SID, "canvas"),
+        spaceContentDocName(PID, SID, "timeline"),
+      ].sort(),
+    );
+  });
+});
+
+describe("one operation, one broadcast", () => {
+  // §6.2 step 5: removing the entry and sweeping everyone's tabs happen
+  // "in the same broadcast". Yjs only merges writes that share a
+  // transaction — without doc.transact around the callback, every list
+  // touched is its own update frame, and a client can observe the entry
+  // gone while some tabs still point at it.
+  it("space:delete removes the entry and sweeps every tab list in a single update", async () => {
+    seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
+    seedSpace(OTHER_SID, { type: "canvas", name: "B", order: 1, locked: false });
+    for (const user of ["u-1", "u-2"]) {
+      const userMap = new Y.Map<unknown>();
+      const list = new Y.Array<string>();
+      metaDoc.getMap("perUser").set(user, userMap);
+      userMap.set("openTabIds", list);
+      list.push([SID, OTHER_SID]);
+    }
+    armBroadcastMarker();
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+
+    expect(res.ok).toBe(true);
+    expect(metaBroadcastMock).toHaveBeenCalledTimes(1);
   });
 });

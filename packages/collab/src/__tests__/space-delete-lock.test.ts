@@ -151,6 +151,24 @@ describe("withSpaceDeleteLock", () => {
     expect([...redis.store.values()][0]).toBe("another-instance-token");
   });
 
+  it("a failing release does not replace the critical section's answer", async () => {
+    // The release is an awaited `redis.eval` inside a `finally`, and a
+    // rejection there would REPLACE whatever fn returned — turning a delete
+    // that already broadcast into an internal error carrying Redis's own
+    // words. The lock swallows it: the TTL makes an unreleased lock cost a
+    // short wait, not correctness.
+    const redis = makeFakeRedis();
+    redis.eval.mockRejectedValue(
+      new Error("ECONNREFUSED releasing space-delete lock"),
+    );
+    getCollabRedisMock.mockReturnValue(redis);
+
+    const answer = await withSpaceDeleteLock(PID, async () => "the-answer");
+
+    expect(answer).toBe("the-answer");
+    expect(redis.eval).toHaveBeenCalledTimes(1);
+  });
+
   it("scopes the lock key per project so different projects don't collide", async () => {
     const redis = makeFakeRedis();
     getCollabRedisMock.mockReturnValue(redis);
