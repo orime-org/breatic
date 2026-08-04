@@ -23,6 +23,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { toast } from '@web/lib/toast';
+import { expiresInLabel } from '@web/lib/expires-in';
 import type { DecisionAction, DecisionView } from '@breatic/shared';
 import { decisionsApi } from '@web/data/api/decisions';
 import { ApiException } from '@web/data/api/types';
@@ -126,8 +127,26 @@ export default function DecisionLandingPage(): React.JSX.Element {
     );
   }
 
-  // Everything below is a request that WAS found; which card it gets is the
-  // state the server worked out, not something this component re-derives.
+  // Everything below is a request that WAS found. Who is looking is decided
+  // BEFORE what state it is in: every card past this point speaks to the
+  // recipient in the second person, and each of those sentences is false when
+  // said to anyone else — the sender opening their own copied link after the
+  // answer landed must not read "You already accepted this".
+  if (!view.isRecipient) {
+    return (
+      <AuthCardShell
+        title={t('decision.notYoursTitle')}
+        footer={<AuthLink to='/login'>{t('auth.login.title')}</AuthLink>}
+      >
+        <p className='text-sm text-muted-foreground'>
+          {t('decision.notYoursBody')}
+        </p>
+      </AuthCardShell>
+    );
+  }
+
+  // Which card the recipient gets is the state the server worked out, not
+  // something this component re-derives.
   const vars = {
     kind: view.kind,
     actor: view.actorName,
@@ -188,17 +207,6 @@ export default function DecisionLandingPage(): React.JSX.Element {
     );
   }
 
-  if (!view.isRecipient) {
-    return (
-      <AuthCardShell
-        title={t('decision.notYoursTitle')}
-        footer={<AuthLink to='/login'>{t('decision.notYoursBody')}</AuthLink>}
-      >
-        <p className='text-sm text-muted-foreground'>{t('decision.body', vars)}</p>
-      </AuthCardShell>
-    );
-  }
-
   return (
     <AuthCardShell title={t('decision.title', vars)}>
       <div className='flex flex-col gap-4'>
@@ -208,9 +216,14 @@ export default function DecisionLandingPage(): React.JSX.Element {
             {t('decision.reason', { message: view.message })}
           </p>
         )}
-        <p className='text-xs text-muted-foreground'>
-          {t('decision.windowNote', { days: view.windowDays })}
-        </p>
+        {/* The bell's own formatter, so the two surfaces can never disagree
+            about how long is left on the same request. The static "within N
+            days" line lives on the expired card, where it answers WHY. */}
+        {view.expiresAt !== null && (
+          <p className='text-xs text-muted-foreground'>
+            {expiresInLabel(view.expiresAt, t)}
+          </p>
+        )}
         <div className='flex gap-2'>
           <Button onClick={onConfirm} disabled={submitting}>
             {t('decision.confirm', vars)}

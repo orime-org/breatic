@@ -284,7 +284,7 @@ describe('answering', () => {
 });
 
 describe('the person who is not being asked', () => {
-  it('is told so, and gets no buttons', async () => {
+  it('is told so, and gets no buttons and no request details', async () => {
     vi.mocked(decisionsApi.view).mockResolvedValueOnce(
       makeView({ isRecipient: false }),
     );
@@ -292,6 +292,47 @@ describe('the person who is not being asked', () => {
     expect(await screen.findByText(/not yours to answer/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Decline' })).toBeNull();
+    // The body sentence is written to the recipient ("Ana invited YOU...").
+    // Said to anyone else it is false, so this card carries no details at all.
+    expect(screen.queryByText(/invited you to join/i)).toBeNull();
+  });
+
+  it.each([
+    ['accepted', /already accepted/i],
+    ['declined', /already declined/i],
+    ['expired', /request has ended/i],
+  ] as const)(
+    'sees the not-yours card on a %s request, not a false statement about themselves',
+    async (state, falseClaim) => {
+      // The sender opening their own copied link after the recipient answered
+      // used to read "You already accepted this" — a statement about the
+      // viewer that is true only of somebody else.
+      vi.mocked(decisionsApi.view).mockResolvedValueOnce(
+        makeView({ state, isRecipient: false }),
+      );
+      setup();
+      expect(
+        await screen.findByText(/not yours to answer/i),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(falseClaim)).toBeNull();
+    },
+  );
+});
+
+describe('the clock on an answerable card', () => {
+  it('is the same countdown the bell shows, not a static policy line', async () => {
+    const threeDays = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(
+      makeView({ expiresAt: threeDays }),
+    );
+    setup();
+    await screen.findByRole('button', { name: 'Accept' });
+    // One formatter with the bell (`expiresInLabel`), so the two surfaces can
+    // never disagree about how long is left on the same request.
+    expect(screen.getByText(/expires in 3d/i)).toBeInTheDocument();
+    // "Within 7 days" belongs on the expired card, where it answers WHY the
+    // request cannot be answered any more; here it contradicted the bell.
+    expect(screen.queryByText(/within 7 days/i)).toBeNull();
   });
 });
 
