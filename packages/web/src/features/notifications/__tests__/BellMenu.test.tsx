@@ -40,13 +40,6 @@ vi.mock('@web/data/api/notifications', () => ({
   EMPTY_RESOLVED: { users: {}, studios: {}, projects: {} },
 }));
 
-vi.mock('@web/data/api/role-upgrade-requests', () => ({
-  roleUpgradeRequestsApi: {
-    submit: vi.fn(),
-    decide: vi.fn(),
-  },
-}));
-
 // Assert on the app's toast wrapper (the public API), not sonner directly:
 // the wrapper adds the de-dup id INSIDE, so its public methods still take just
 // the message (spying sonner would see the extra id arg).

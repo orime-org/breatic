@@ -10,15 +10,17 @@
  *       GET   `/mine` — their own live request, for the button that turns into
  *               "requested · cancel"
  *   - `/api/v1/role-upgrade-requests/:requestId`
- *       PATCH `/decision` — the owner approves or rejects
  *       DELETE — the requester withdraws
+ *
+ * The owner's approve/reject is deliberately NOT here: a request is answered
+ * at `/decisions`, whichever of the five kinds it is.
  *
  * The handle is the REQUEST id. It used to be the notification id, because the
  * request had no row of its own — it only existed as an entry in somebody's
  * bell. That is what this work undid: the request is now a row with a status,
  * a deadline and a uniqueness rule, and the bell entry merely announces it.
  *
- * Authorisation is not decided here. Both write routes are project-agnostic on
+ * Authorisation is not decided here. The withdraw route is project-agnostic on
  * purpose: the request id alone does not say which project it belongs to, so
  * checking anything at this layer would mean reading the row twice and acting
  * on the first read. The service reads it once, under a row lock, and every
@@ -117,15 +119,15 @@ projectRoleUpgradeRequests.get("/mine", requireRole("viewer"), async (c) => {
   });
 });
 
-// ── Per-request endpoints (decide, or withdraw) ────────────────────
+// ── Per-request endpoints (withdraw) ───────────────────────────────
+//
+// Deciding is NOT here. The owner used to approve/reject through a PATCH on
+// this router; a request is answered at `/decisions`, whichever of the five
+// kinds it is, and this router keeps only what belongs to the REQUESTER —
+// taking their own request back.
 
 const decisionRoute = new Hono<{ Variables: AuthVariables }>();
 decisionRoute.use(requireAuth);
-
-const decisionBodySchema = z.object({
-  decision: z.enum(["approved", "rejected"]),
-  reason: z.string().trim().max(500).optional(),
-});
 
 /**
  * The request id, validated as a uuid before it reaches a uuid comparison.
@@ -137,37 +139,6 @@ const decisionBodySchema = z.object({
  * same reason.
  */
 const requestParamSchema = z.object({ requestId: z.string().uuid() });
-
-/**
- * `PATCH /api/v1/role-upgrade-requests/:requestId/decision` — the owner
- * approves or rejects.
- *
- * Body: `{ decision: "approved" | "rejected"; reason?: string }`.
- */
-decisionRoute.patch(
-  "/:requestId/decision",
-  zValidator("param", requestParamSchema),
-  zValidator("json", decisionBodySchema),
-  async (c) => {
-    const user = c.get("user");
-    const requestId = c.req.param("requestId");
-    const body = c.req.valid("json");
-
-    if (body.decision === "approved") {
-      await roleUpgradeRequestService.approve({
-        requestId,
-        ownerUserId: user.id,
-      });
-    } else {
-      await roleUpgradeRequestService.reject({
-        requestId,
-        ownerUserId: user.id,
-        reason: body.reason ?? null,
-      });
-    }
-    return c.json({ data: { ok: true } });
-  },
-);
 
 /**
  * `DELETE /api/v1/role-upgrade-requests/:requestId` — the requester withdraws

@@ -1,16 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPost } from '@web/data/api/request';
 import type { Notification } from '@web/data/api/notifications';
 
 export interface SubmitRoleUpgradeBody {
   message?: string;
-}
-
-export interface DecideRoleUpgradeBody {
-  decision: 'approved' | 'rejected';
-  reason?: string;
 }
 
 /** What a viewer gets back after asking: the request, and the bell entry. */
@@ -58,26 +53,6 @@ export const roleUpgradeRequestsApi = {
   mine(projectId: string): Promise<LiveRoleUpgradeRequest | null> {
     return apiGet<LiveRoleUpgradeRequest | null>(
       `/projects/${projectId}/role-upgrade-requests/mine`,
-    );
-  },
-
-  /**
-   * The owner approves or rejects a request.
-   *
-   * Keyed on the REQUEST id, not the notification's. The request owns a row
-   * with a status, a deadline and a uniqueness rule; the bell entry only
-   * announces it, and the id for it rides in that entry's payload.
-   * @param requestId - The `role_upgrade_requests` row being decided.
-   * @param body - The decision and an optional reason.
-   * @returns An acknowledgement once the decision is recorded.
-   */
-  decide(
-    requestId: string,
-    body: DecideRoleUpgradeBody,
-  ): Promise<{ ok: true }> {
-    return apiPatch<{ ok: true }, DecideRoleUpgradeBody>(
-      `/role-upgrade-requests/${requestId}/decision`,
-      body,
     );
   },
 
