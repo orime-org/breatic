@@ -63,9 +63,12 @@ const INVITE_KINDS = new Set<DecisionKind>(["studio_invite", "project_invite"]);
  *
  * Order is load-bearing. Deleted wins over everything, because a request that
  * went away with its project is gone whatever its status column still says.
- * Already-a-member comes next and ONLY for invites: the other three flows
- * require the recipient to be a member already, so asking "are you in?" there
- * would leave them permanently unanswerable.
+ * Then the terminal statuses, then the two expiry checks; already-a-member
+ * comes LAST, so it can only ever downgrade a request that would otherwise be
+ * answerable — an accepted or expired invite reports its own state, not the
+ * membership. And it applies ONLY to invites: the other three flows require
+ * the recipient to be a member already, so asking "are you in?" there would
+ * leave them permanently unanswerable.
  * @param input - What is known about the request.
  * @param input.kind - Which flow it belongs to.
  * @param input.status - Its own table's status word.

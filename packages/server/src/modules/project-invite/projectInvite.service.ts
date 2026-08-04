@@ -23,9 +23,10 @@
  *     upsert the membership, mark the bell notification read, and notify the
  *     inviting owner via `project.invite_accepted`.
  *   - `declineInvite`: the invitee declines (membership untouched).
- *   - `respondToInvite`: the email-link path — peek token → confirm/decline →
- *     consume token.
  *   - `revokeInvite`: the owner cancels a pending invite in their project.
+ *
+ * Confirm/decline are reached through the decision service (`/decisions`),
+ * never through a route of this module's own.
  *
  * Authorization (route layer enforces gates):
  *   - createInvite / revokeInvite: caller is the project owner
@@ -70,10 +71,11 @@ import {
  * (the owner's copyable URL, the bell, the email) funnel through the SAME
  * `/decision?token=` landing page, so the token is shared: it is returned
  * to the caller (route surfaces the copyable URL) AND embedded in
- * the notification payload (so the bell can build the same link). The token
- * lives in Redis (not the PG tx) — a tx rollback simply leaves an orphan token
- * that self-expires in 7 days. The `project_invitations_one_pending` partial
- * unique maps a duplicate LIVE pending to a ConflictError.
+ * the notification payload (so the bell can build the same link). The token is
+ * a NOT NULL column written by the same insert, so a rollback takes row and
+ * token together — there is nothing to orphan. The
+ * `project_invitations_one_pending` partial unique maps a duplicate LIVE
+ * pending to a ConflictError.
  * @param projectId - The project the user is being invited into
  * @param inviterUserId - The acting owner (becomes `invitedBy`; name in payload)
  * @param email - The invitee's email; must belong to a registered user

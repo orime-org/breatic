@@ -11,11 +11,10 @@ import {
   buildRoleUpgradeRequestMail,
 } from "@server/utils/notification-mail.js";
 
-// These four builders replace the former per-module builders (studio-invite,
-// project-invite, studio-transfer, project-transfer). This is a pure refactor:
-// each builder's output (subject / lead / link / footer / escaping) must match
-// the pre-refactor behavior verbatim. Subjects are plain text (email headers)
-// so raw names are fine there; bodies are HTML so every user field is escaped.
+// One builder per flow, five flows. Subjects are plain text (email headers)
+// so raw names are fine there; bodies are HTML so every user field is escaped,
+// and every footer states the answering window it was given rather than a
+// number of its own.
 
 describe("buildStudioInvitationMail", () => {
   it("targets the invitee, names the studio + role, and escapes body fields", () => {

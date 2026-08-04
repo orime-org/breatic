@@ -227,15 +227,10 @@ function NotificationItem({
   const isTransferRequest =
     notification.type === 'studio.transfer_request' ||
     notification.type === 'project.transfer_request';
-  // Studio invites confirm INLINE here; the project invite does NOT — it links
-  // out to the `/project-invite` landing page (the divergence from studio).
   const isStudioInviteRequest =
     notification.type === 'studio.invite_request';
   const isProjectInviteRequest =
     notification.type === 'project.invite_request';
-  // The two inline handshakes (studio transfer + studio invite) render the same
-  // confirm/cancel controls; the backend dispatches on the notification type.
-  // The TTL countdown also shows for the project invite (still time-boxed).
   const isInviteRequest = isStudioInviteRequest || isProjectInviteRequest;
   // Everything with a deadline shows its countdown. The role upgrade was left
   // out while it had no deadline to show; it has one now, and it was the only

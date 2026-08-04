@@ -16,8 +16,6 @@ const PID = '11111111-1111-4111-8111-111111111111';
 
 vi.mock('@web/data/api/project-invitations', () => ({
   projectInvitationsApi: {
-    getInvitation: vi.fn(),
-    respondInvitation: vi.fn(),
     inviteMember: vi.fn(),
   },
 }));

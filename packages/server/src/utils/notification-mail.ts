@@ -4,7 +4,7 @@
 /**
  * Notification email templates (studio / project invitations + transfers).
  *
- * These four builders are best-effort NOTIFICATION emails: the bell
+ * These builders are best-effort NOTIFICATION emails: the bell
  * notification is the always-delivered path, the email is an optional
  * enhancement that only fires when an SMTP backend is configured. They share a
  * single HTML shell + a single HTML escaper here (previously copied across four
@@ -162,7 +162,8 @@ export interface StudioTransferMailInput {
 
 /**
  * Build the studio transfer-admin email — the recipient accepts / declines from
- * their bell notifications (there is no token landing page for a transfer).
+ * their bell notifications, and its link opens the same `/decision?token=`
+ * landing page every waiting request is answered on.
  * @param input - Recipient email, initiator + studio names, and the app link.
  * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
  */
@@ -193,7 +194,8 @@ export interface ProjectTransferMailInput {
 
 /**
  * Build the project transfer-owner email — the recipient accepts / declines from
- * their bell notifications (there is no token landing page for a transfer).
+ * their bell notifications, and its link opens the same `/decision?token=`
+ * landing page every waiting request is answered on.
  * @param input - Recipient email, initiator + project names, and the app link.
  * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
  */

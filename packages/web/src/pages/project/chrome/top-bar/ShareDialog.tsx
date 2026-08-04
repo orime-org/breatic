@@ -42,13 +42,13 @@ const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * 2026-06-18, #1337). The owner types a registered user's email + picks a role
  * (`editor` / `viewer`); clicking Invite asks the server to create a PENDING
  * project invite, which drops an actionable bell notification in the invitee's
- * inbox (and best-effort an email link to the `/project-invite` landing page).
+ * inbox (and best-effort an email link to the `/decision` landing page).
  * The invitee becomes a member only after they confirm — no immediate access.
  *
  * On success the server returns the `/decision?token=` URL, which the
  * dialog reveals in a read-only field with a copy button: this is the third
  * delivery channel (alongside the bell + email) and all three funnel through the
- * same confirm landing page (the divergence from studio's inline bell confirm).
+ * same landing page every waiting request is answered on.
  *
  * Invite address is email-only: usernames are mutable and can't serve as a
  * stable invite identifier, and only already-registered users can be invited.
