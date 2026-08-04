@@ -30,6 +30,19 @@
  * the moment that thing goes missing. So the list below is a fact about the
  * code BEFORE the migration, and it is only correct to edit it when a call
  * site is genuinely added or removed.
+ *
+ * WHAT A SOURCE CHECK CANNOT DO is follow the value. Whether
+ * `requestWithRetry` actually hands its fourth argument to the transport is
+ * invisible to any reading of the call sites — severing that pipe inside
+ * http.ts leaves every file's text intact. That stretch is pinned
+ * behaviourally in `request-with-retry-forwarding.test.ts`.
+ *
+ * Comments are stripped before parsing, quote-aware, because a commented-out
+ * old call would otherwise be read as a live one and could stand in for a
+ * deleted deadline — measured before the stripping existed. The stripper
+ * knows strings but not regex literals; these files contain none, and if one
+ * carrying `//` ever appears, the failure direction is a false RED (the
+ * stripper eats live code, the sequence comes up short), never a silent pass.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -76,12 +89,18 @@ const DEADLINES_BEFORE: ReadonlyArray<readonly [string, readonly string[]]> = [
 ];
 
 /**
- * Transport sources that issue no HTTP and therefore hold no deadline.
+ * Transport sources whose network traffic does not pass through this
+ * transport layer, and which therefore hold no deadline for this guard.
+ *
+ * litellm DOES issue vendor HTTP — through the AI SDK's model wrapper
+ * (`generateTextRetry`), whose retries and timeouts are governed at the
+ * model-call layer, never through `fetch` or `httpRequest` in this tree.
+ * An earlier version of this label said "issues no HTTP", which was false.
  *
  * Named rather than skipped silently, so the completeness check below stays
  * total: a new transport is either in the list above or in this one.
  */
-const ISSUES_NO_HTTP: readonly string[] = ["understand/transports/litellm.ts"];
+const OUTSIDE_THIS_TRANSPORT: readonly string[] = ["understand/transports/litellm.ts"];
 
 /**
  * Every transport source file, tests excluded.
@@ -94,17 +113,75 @@ const ISSUES_NO_HTTP: readonly string[] = ["understand/transports/litellm.ts"];
 function transportSources(): string[] {
   const found: string[] = [];
   const walk = (dir: string): void => {
+    // Anywhere at or below a transports/ directory counts. The first version
+    // asked `dir.endsWith("transports")`, which walked INTO subdirectories
+    // and then dropped their files — a helper file in transports/foo/ was
+    // invisible to all three tests. Measured.
+    const inTransports = `${dir}/`.includes("/transports/") || dir.endsWith("transports");
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
         if (entry.name !== "__tests__") walk(full);
-      } else if (entry.name.endsWith(".ts") && dir.endsWith("transports")) {
+      } else if (entry.name.endsWith(".ts") && inTransports) {
         found.push(full.slice(PROVIDERS_DIR.length + 1));
       }
     }
   };
   walk(PROVIDERS_DIR);
   return found.sort();
+}
+
+/**
+ * Blank out comments while keeping every line and column in place.
+ *
+ * Quote-aware for all three string forms, so `https://` inside a url never
+ * opens a comment. Comment bytes become spaces rather than being removed,
+ * which keeps reported line numbers true. Regex literals are not understood;
+ * see the file docstring for why that fails red rather than silent.
+ * @param source - The whole file.
+ * @returns The file with comment bytes blanked.
+ */
+function stripComments(source: string): string {
+  const chars = [...source];
+  let quote: string | null = null;
+  let i = 0;
+  while (i < chars.length) {
+    const c = chars[i]!;
+    if (quote !== null) {
+      if (c === "\\") i += 2;
+      else {
+        if (c === quote) quote = null;
+        i++;
+      }
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      quote = c;
+      i++;
+      continue;
+    }
+    if (c === "/" && chars[i + 1] === "/") {
+      while (i < chars.length && chars[i] !== "\n") {
+        chars[i] = " ";
+        i++;
+      }
+      continue;
+    }
+    if (c === "/" && chars[i + 1] === "*") {
+      while (i < chars.length && !(chars[i] === "*" && chars[i + 1] === "/")) {
+        if (chars[i] !== "\n") chars[i] = " ";
+        i++;
+      }
+      if (i < chars.length) {
+        chars[i] = " ";
+        chars[i + 1] = " ";
+        i += 2;
+      }
+      continue;
+    }
+    i++;
+  }
+  return chars.join("");
 }
 
 /**
@@ -185,7 +262,7 @@ describe("shared-transport migration — every deadline survives the move", () =
     // The transport discards a caller's signal, so one left in place is not a
     // stylistic leftover — it is a deadline that silently stopped applying.
     const offenders = [...transportSources(), "http.ts"].flatMap((rel) =>
-      readFileSync(join(PROVIDERS_DIR, rel), "utf8")
+      stripComments(readFileSync(join(PROVIDERS_DIR, rel), "utf8"))
         .split("\n")
         .map((text, i) => ({ n: i + 1, text }))
         .filter((l) => l.text.includes("AbortSignal.timeout"))
@@ -199,7 +276,7 @@ describe("shared-transport migration — every deadline survives the move", () =
     // Per file and in order, so neither a dropped deadline nor a rewritten one
     // can hide. This is the assertion the previous version could not make for
     // the eleven positional-argument files, because they never reached it.
-    const actual = deadlinesIn(readFileSync(join(PROVIDERS_DIR, rel), "utf8"));
+    const actual = deadlinesIn(stripComments(readFileSync(join(PROVIDERS_DIR, rel), "utf8")));
     expect(actual).toEqual([...expected]);
   });
 
@@ -209,7 +286,7 @@ describe("shared-transport migration — every deadline survives the move", () =
     // as approval.
     const listed = new Set([
       ...DEADLINES_BEFORE.map(([rel]) => rel),
-      ...ISSUES_NO_HTTP,
+      ...OUTSIDE_THIS_TRANSPORT,
     ]);
     const unaccounted = transportSources().filter((rel) => !listed.has(rel));
 

@@ -103,6 +103,11 @@ export function extractNested(
  * @returns Parsed JSON response.
  * @throws {Error} On any non-ok status, carrying the vendor's response body —
  *   it is the only diagnostic these calls produce.
+ * @throws {Error} The transport's failure, unwrapped, when the first delivery
+ *   produces no response and no replay follows. With `replaySafe: false` that
+ *   is the COMMON failure shape here: a per-model deadline expiring arrives
+ *   as the transport's bare timeout Error, a refused connection as fetch's
+ *   TypeError — neither wrapped in anything.
  * @throws {Error} The transport's `HttpRetryError` when replays happened and
  *   the LAST of them produced no response. Not "none of them": an earlier
  *   delivery may well have brought one back, which is why that type says so
