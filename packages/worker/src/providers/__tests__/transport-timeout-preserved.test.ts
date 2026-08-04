@@ -37,12 +37,14 @@
  * http.ts leaves every file's text intact. That stretch is pinned
  * behaviourally in `request-with-retry-forwarding.test.ts`.
  *
- * Comments are stripped before parsing, quote-aware, because a commented-out
- * old call would otherwise be read as a live one and could stand in for a
- * deleted deadline — measured before the stripping existed. The stripper
- * knows strings but not regex literals; these files contain none, and if one
- * carrying `//` ever appears, the failure direction is a false RED (the
- * stripper eats live code, the sequence comes up short), never a silent pass.
+ * Comments AND string contents are blanked before parsing, quote-aware,
+ * because both are places where the text of a call can appear without being
+ * one: a commented-out old call, or a string constant quoting the call
+ * shape, could each stand in for a deleted live deadline — measured, both,
+ * before the blanking existed. The blanker knows strings but not regex
+ * literals; these files contain none, and if one carrying `//` ever
+ * appears, the failure direction is a false RED (the blanker eats live
+ * code, the sequence comes up short), never a silent pass.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -132,25 +134,38 @@ function transportSources(): string[] {
 }
 
 /**
- * Blank out comments while keeping every line and column in place.
+ * Blank out comments AND string contents, keeping every line and column.
  *
- * Quote-aware for all three string forms, so `https://` inside a url never
- * opens a comment. Comment bytes become spaces rather than being removed,
- * which keeps reported line numbers true. Regex literals are not understood;
- * see the file docstring for why that fails red rather than silent.
+ * Both are places where the text of a call can appear without being one.
+ * Comments were the first hole found (a commented-out old call standing in
+ * for a deleted deadline); string literals are the sibling hole, found one
+ * round later — a string constant containing
+ * `timeoutMs: resolved.timeout * 1000` satisfied the per-file expectation
+ * while the live deadline was gone. Measured, both. String DELIMITERS stay,
+ * so the argument-splitter still sees where strings begin and end; only
+ * their contents become spaces. Blanked bytes become spaces rather than
+ * being removed, which keeps reported line numbers true. Regex literals are
+ * not understood; see the file docstring for why that fails red rather than
+ * silent.
  * @param source - The whole file.
- * @returns The file with comment bytes blanked.
+ * @returns The file with comment and string-content bytes blanked.
  */
-function stripComments(source: string): string {
+function blankCommentsAndStrings(source: string): string {
   const chars = [...source];
   let quote: string | null = null;
   let i = 0;
   while (i < chars.length) {
     const c = chars[i]!;
     if (quote !== null) {
-      if (c === "\\") i += 2;
-      else {
-        if (c === quote) quote = null;
+      if (c === "\\") {
+        chars[i] = " ";
+        if (i + 1 < chars.length && chars[i + 1] !== "\n") chars[i + 1] = " ";
+        i += 2;
+      } else if (c === quote) {
+        quote = null;
+        i++;
+      } else {
+        if (c !== "\n") chars[i] = " ";
         i++;
       }
       continue;
@@ -262,7 +277,7 @@ describe("shared-transport migration — every deadline survives the move", () =
     // The transport discards a caller's signal, so one left in place is not a
     // stylistic leftover — it is a deadline that silently stopped applying.
     const offenders = [...transportSources(), "http.ts"].flatMap((rel) =>
-      stripComments(readFileSync(join(PROVIDERS_DIR, rel), "utf8"))
+      blankCommentsAndStrings(readFileSync(join(PROVIDERS_DIR, rel), "utf8"))
         .split("\n")
         .map((text, i) => ({ n: i + 1, text }))
         .filter((l) => l.text.includes("AbortSignal.timeout"))
@@ -276,7 +291,7 @@ describe("shared-transport migration — every deadline survives the move", () =
     // Per file and in order, so neither a dropped deadline nor a rewritten one
     // can hide. This is the assertion the previous version could not make for
     // the eleven positional-argument files, because they never reached it.
-    const actual = deadlinesIn(stripComments(readFileSync(join(PROVIDERS_DIR, rel), "utf8")));
+    const actual = deadlinesIn(blankCommentsAndStrings(readFileSync(join(PROVIDERS_DIR, rel), "utf8")));
     expect(actual).toEqual([...expected]);
   });
 
