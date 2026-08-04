@@ -84,9 +84,9 @@ export async function generate(
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
       "fal",
+      resolved.timeout * 1000,
     );
 
     const requestId = submitData.request_id as string | undefined;

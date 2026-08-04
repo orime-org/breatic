@@ -174,7 +174,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | 为什么在 `shared` 不在 `core` | 浏览器上传要用,所以必须浏览器安全(零 `node:*`)|
 | 调用方要声明 | `replaySafe`(重发这个请求会不会产生第二次副作用,只有调用方知道)· `timeoutMs`(可选,默认 300 秒;一个有限数,1 到 2147483647 毫秒之间,小数照收)|
 | 写死不给配 | 最多三次投递 + 退避基数 —— 这两个这一层自己答得出来。原先 worker 和浏览器各配一份,已漂移成两种含义(`http_max_retries: 3` 是四次投递,`client_max_attempts: 3` 是三次)|
-| 接入进度 | **传输层已合并(#386),调用点一个都还没接**。分五批走,每批一个 PR:19 个 vendor 调用 · 素材下载与存储适配器 · 浏览器上传 · agent 联网工具 · 最后加守卫封住裸 `fetch`。一批出问题不牵连别批,这正是它跟前一版(一次做完 7456 行,PR #371,已关)的区别 |
+| 接入进度 | **第 1 批已接:worker 的全部直连 HTTP vendor 调用(20 个 transport、43 处)走 `httpRequest`**(litellm 经 AI SDK 模型封装发 vendor 请求、不在其列),每处原有超时原样搬进 `timeoutMs`,守卫测试按迁移前清单逐文件钉死(`packages/worker/src/providers/__tests__/transport-timeout-preserved.test.ts`)。剩余批次每批一个 PR:素材下载与存储适配器 · 浏览器上传 · agent 联网工具 · 最后加守卫封住裸 `fetch`。一批出问题不牵连别批,这正是它跟前一版(一次做完 7456 行,PR #371,已关)的区别 |
 | 已知重复,待接入完成后清 | `packages/core/src/infra/retry.ts` 的 `fullJitter` / `exponentialJitterDelay` 跟 `packages/shared/src/backoff.ts` 同名同义,core 那份还多一个 `jitterBackoffStrategy`(BullMQ 用)。接入收尾时 core 改用 shared 那份 |
 
 ### Run

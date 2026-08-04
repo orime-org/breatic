@@ -20,6 +20,7 @@
 
 import type { ResolvedModel } from "@worker/providers/shared.js";
 import { bearerHeaders } from "@worker/providers/http.js";
+import { httpRequest } from "@breatic/shared";
 
 /**
  * Build BytePlus images/generations request body.
@@ -96,14 +97,14 @@ export async function generate(
 ): Promise<{ url: string; model: string; cost: number }> {
   const body = buildRequestBody(prompt, resolved, params);
 
-  const response = await fetch(
+  const response = await httpRequest(
     `${resolved.baseUrl}/images/generations`,
     {
       method: "POST",
       headers: bearerHeaders(resolved.apiKey),
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
     },
+    { replaySafe: false, timeoutMs: resolved.timeout * 1000 },
   );
 
   if (!response.ok) {

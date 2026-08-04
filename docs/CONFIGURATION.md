@@ -74,7 +74,7 @@ loader:`packages/core/src/config/worker.ts`。
 | `job_attempts` | 3 | 任务失败重试次数 |
 | `job_backoff_delay_ms` | 2000 | 重试退避基延时(full-jitter,自定义 backoffStrategy)|
 | `lock_duration_ms` | 600000(10 分钟) | 任务锁时长 |
-| `http_max_retries` / `http_retry_base_delay` | 3 / 2000 | provider HTTP 重试(full-jitter)。**次数含义是「首次之后再重 3 次」= 四次投递**;接入 [共享 HTTP 传输层](./ARCHITECTURE.md#shared-http-transport) 后删除 |
+| `http_max_retries` / `http_retry_base_delay` | 3 / 2000 | **已无消费方**:provider HTTP 自接入 [共享 HTTP 传输层](./ARCHITECTURE.md#shared-http-transport)(第 1 批)起,重试次数与退避基数由传输层写死(3 次投递 / 1000ms 基数),这两项已无业务消费方(core 的 zod schema 仍解析它们);条目留到守卫收尾批随 sweep 一并删除 |
 | `poll_interval` | 3000 | 队列轮询间隔 |
 
 ## 6. `config/storage.yaml` — 存储下载重试 + 浏览器上传

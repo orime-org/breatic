@@ -13,6 +13,7 @@
 import type { ResolvedModel } from "@worker/providers/shared.js";
 import { bearerHeaders } from "@worker/providers/http.js";
 import { logger } from "@breatic/core";
+import { httpRequest } from "@breatic/shared";
 
 /**
  * Generate music via MiniMax official API.
@@ -45,12 +46,15 @@ export async function generate(
   }
   body.audio_setting = { format: "mp3", sample_rate: 44100, bitrate: 128000 };
 
-  const resp = await fetch(`${resolved.baseUrl}/v1/music_generation`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(resolved.timeout * 1000),
-  });
+  const resp = await httpRequest(
+    `${resolved.baseUrl}/v1/music_generation`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    },
+    { replaySafe: false, timeoutMs: resolved.timeout * 1000 },
+  );
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");

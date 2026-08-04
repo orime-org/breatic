@@ -15,8 +15,9 @@ import type { ResolvedModel } from "@worker/providers/shared.js";
  * Tier B: DashScope has no client-side idempotency field, so the submit body
  * must NOT carry any client id — only the returned id is persisted.
  *
- * DashScope submits via raw `fetch` (not `requestWithRetry`), so the global
- * fetch is stubbed; polling still goes through the shared `pollUntilDone`.
+ * DashScope submits through the shared transport rather than
+ * `requestWithRetry`, and the transport calls the global `fetch` — so that is
+ * what is stubbed here; polling still goes through the shared `pollUntilDone`.
  */
 const pollUntilDoneMock = vi.fn();
 
@@ -61,10 +62,15 @@ describe("dashscope image transport resume (#1628 ⑦)", () => {
     fetchMock.mockReset();
     pollUntilDoneMock.mockReset();
     pollUntilDoneMock.mockResolvedValue(SUCCEEDED_RESULT);
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({ output: { task_id: "ds-777" } }),
-    });
+    // A real `Response`, built fresh per call: a body can only be read once,
+    // and the transport hands back the very object `fetch` produced.
+    fetchMock.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ output: { task_id: "ds-777" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
   });
 
   afterAll(() => {
