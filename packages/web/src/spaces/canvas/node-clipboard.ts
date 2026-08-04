@@ -114,12 +114,16 @@ export interface CaptureNode {
  *   the paste writes it into the new node's own body. Without this a copied
  *   text node arrives empty, which is what it used to do for a while and what
  *   nobody would notice until they pasted their notes and got a blank card.
+ *   REQUIRED, deliberately: it used to default to an empty map, which made
+ *   exactly that blank-card regression a silent one — a caller that forgot to
+ *   thread the text compiled clean and copied nothing. A caller that genuinely
+ *   has no text passes an empty map and says so at the call site.
  * @returns The clipboard payload (Groups first, then their members, then loose nodes).
  */
 export function captureClipboard(
   targetIds: ReadonlyArray<string>,
   allNodes: ReadonlyArray<CaptureNode>,
-  textById: ReadonlyMap<string, string> = new Map(),
+  textById: ReadonlyMap<string, string>,
 ): ClipboardNode[] {
   const byId = new Map(allNodes.map((node) => [node.id, node]));
   /**

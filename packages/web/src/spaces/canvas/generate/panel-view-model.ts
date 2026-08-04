@@ -234,8 +234,12 @@ export function buildGeneratePanelViewModel(input: {
   nodeId: string;
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
   edges: ReadonlyArray<CanvasEdge>;
-  /** Body text per referenced text node (#1774) — see `deriveReferences`. */
-  textById?: ReadonlyMap<string, string>;
+  /**
+   * Body text per referenced text node (#1774) — see `deriveReferences`.
+   * Required for the same reason it is there: optional, a caller that forgot
+   * it got blank text for every reference and no signal at all.
+   */
+  textById: ReadonlyMap<string, string>;
   models: ModelEntry[];
   atMentionedSourceIds?: ReadonlySet<string>;
 }): GeneratePanelViewModel {

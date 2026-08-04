@@ -7,6 +7,9 @@ import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 
+/** No body text for this case — the parameter is required so omitting it cannot be an accident. */
+const NO_TEXT: ReadonlyMap<string, string> = new Map();
+
 /**
  * Builds a render-ready {@link CanvasNodeView} fixture for reference tests.
  * @param id - Node id.
@@ -44,7 +47,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
     ];
     const edges: CanvasEdge[] = [edge('img1->me', 'img1', 'me')];
 
-    expect(deriveReferences('me', nodes, edges)).toEqual([
+    expect(deriveReferences('me', nodes, edges, NO_TEXT)).toEqual([
       {
         refId: 'img1->me',
         sourceNodeId: 'img1',
@@ -63,7 +66,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
     // me -> other is outgoing from me; other has no incoming to me.
     const edges: CanvasEdge[] = [edge('me->other', 'me', 'other')];
 
-    expect(deriveReferences('me', nodes, edges)).toEqual([]);
+    expect(deriveReferences('me', nodes, edges, NO_TEXT)).toEqual([]);
   });
 
   it('derives every incoming edge, preserving edge order', () => {
@@ -74,7 +77,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
     ];
     const edges: CanvasEdge[] = [edge('a->me', 'a', 'me'), edge('b->me', 'b', 'me')];
 
-    const refs = deriveReferences('me', nodes, edges);
+    const refs = deriveReferences('me', nodes, edges, NO_TEXT);
     expect(refs.map((r) => r.sourceNodeId)).toEqual(['a', 'b']);
     // Video thumbnail is the cover frame (never the raw asset URL — #1821).
     expect(refs[1]).toEqual({
@@ -97,7 +100,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
     ];
     const edges: CanvasEdge[] = [edge('v->me', 'v', 'me')];
 
-    const refs = deriveReferences('me', nodes, edges);
+    const refs = deriveReferences('me', nodes, edges, NO_TEXT);
     expect(refs[0].sourceNodeType).toBe('video');
     expect(refs[0].thumbnail).toBeUndefined();
   });
@@ -108,7 +111,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
     ];
     const edges: CanvasEdge[] = [edge('ghost->me', 'ghost', 'me')];
 
-    expect(deriveReferences('me', nodes, edges)).toEqual([]);
+    expect(deriveReferences('me', nodes, edges, NO_TEXT)).toEqual([]);
   });
 
   it('reads a text source with no body entry as empty, not as a non-text source', () => {
@@ -132,7 +135,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
     ];
     const edges: CanvasEdge[] = [edge('txt->me', 'txt', 'me')];
 
-    const refs = deriveReferences('me', nodes, edges);
+    const refs = deriveReferences('me', nodes, edges, NO_TEXT);
     expect(refs[0].sourceNodeType).toBe('text');
     expect(refs[0].thumbnail).toBeUndefined();
   });
@@ -184,7 +187,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
         edge('a->me', 'a', 'me', 1000),
         edge('b->me', 'b', 'me', 2000),
       ];
-      expect(deriveReferences('me', nodes, edges).map((r) => r.sourceNodeId)).toEqual([
+      expect(deriveReferences('me', nodes, edges, NO_TEXT).map((r) => r.sourceNodeId)).toEqual([
         'a',
         'b',
         'c',
@@ -197,7 +200,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
         edge('a->me', 'a', 'me'),
         edge('b->me', 'b', 'me'),
       ];
-      expect(deriveReferences('me', nodes, edges).map((r) => r.sourceNodeId)).toEqual([
+      expect(deriveReferences('me', nodes, edges, NO_TEXT).map((r) => r.sourceNodeId)).toEqual([
         'a',
         'b',
         'c',
@@ -218,8 +221,8 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
         edge('a->me', 'a', 'me'),
         edge('b->me', 'b', 'me'),
       ];
-      const fromScrambled = deriveReferences('me', nodes, scrambled).map((r) => r.refId);
-      const fromReversed = deriveReferences('me', nodes, reversed).map((r) => r.refId);
+      const fromScrambled = deriveReferences('me', nodes, scrambled, NO_TEXT).map((r) => r.refId);
+      const fromReversed = deriveReferences('me', nodes, reversed, NO_TEXT).map((r) => r.refId);
       expect(fromScrambled).toEqual(fromReversed);
       expect(fromScrambled).toEqual(['a->me', 'b->me']);
     });
@@ -229,7 +232,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
         edge('c->me', 'c', 'me', 500),
         edge('b->me', 'b', 'me', 500),
       ];
-      expect(deriveReferences('me', nodes, edges).map((r) => r.refId)).toEqual([
+      expect(deriveReferences('me', nodes, edges, NO_TEXT).map((r) => r.refId)).toEqual([
         'b->me',
         'c->me',
       ]);
@@ -240,7 +243,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
         edge('c->me', 'c', 'me', 3000),
         edge('a->me', 'a', 'me', 1000),
       ];
-      deriveReferences('me', nodes, edges);
+      deriveReferences('me', nodes, edges, NO_TEXT);
       expect(edges.map((e) => e.id)).toEqual(['c->me', 'a->me']);
     });
   });
@@ -256,7 +259,7 @@ describe('deriveReferences — reference rail derived from incoming edges (conne
     ];
     const edges: CanvasEdge[] = [edge('img1->me', 'img1', 'me')];
 
-    expect(deriveReferences('me', before, edges)[0].sourceNodeName).toBe('Old');
-    expect(deriveReferences('me', after, edges)[0].sourceNodeName).toBe('Renamed');
+    expect(deriveReferences('me', before, edges, NO_TEXT)[0].sourceNodeName).toBe('Old');
+    expect(deriveReferences('me', after, edges, NO_TEXT)[0].sourceNodeName).toBe('Renamed');
   });
 });

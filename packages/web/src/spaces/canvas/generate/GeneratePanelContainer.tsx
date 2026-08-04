@@ -60,6 +60,13 @@ import {
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
 
+/**
+ * For the two derivations below that deliberately want no body text. Shared and
+ * frozen so neither allocates a map per call, and so "no text here" reads as
+ * one decision rather than two look-alike literals.
+ */
+const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
+
 interface GeneratePanelContainerProps {
   /** Live canvas node views (target + reference sources). */
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
@@ -227,7 +234,12 @@ function GeneratePanelBody({
   const textNodeIds = React.useMemo(
     () => [
       ...new Set(
-        deriveReferences(nodeId, nodes, edges)
+        // Empty map on purpose: this call wants the ROWS (which sources, of
+        // what type), and what they say is the very thing being subscribed to
+        // below. Passing it is impossible here and unnecessary — but it has to
+        // be said out loud, because the parameter is required precisely so
+        // that omitting it can never be an accident.
+        deriveReferences(nodeId, nodes, edges, EMPTY_TEXT)
           .filter((row) => row.sourceNodeType === 'text')
           .map((row) => row.sourceNodeId),
       ),
@@ -295,12 +307,14 @@ function GeneratePanelBody({
         edges: graph.edges,
         models,
         atMentionedSourceIds,
-        // No `textById` on purpose. What a text reference SAYS never travels
-        // through here: the prompt string is serialized by the editor from its
-        // own reference pool, and this call site reads only the model, the
-        // params, the node status and the reference URLs. Filling it in would
-        // read every text body on the board on every click for a field nobody
-        // downstream looks at.
+        // Empty on purpose. What a text reference SAYS never travels through
+        // here: the prompt string is serialized by the editor from its own
+        // reference pool, and this call site reads only the model, the params,
+        // the node status and the reference URLs. Filling it in would read
+        // every text body on the board on every click for a field nobody
+        // downstream looks at. Stated rather than omitted — the parameter is
+        // required so that leaving it out can never be an oversight.
+        textById: EMPTY_TEXT,
       });
     },
     [projectId, spaceId, nodeId, models],

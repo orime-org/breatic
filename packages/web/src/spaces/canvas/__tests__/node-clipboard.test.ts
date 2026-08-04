@@ -16,6 +16,9 @@ import {
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 
+/** No body text for this case — the parameter is required so omitting it cannot be an accident. */
+const NO_TEXT: ReadonlyMap<string, string> = new Map();
+
 describe('node-clipboard', () => {
   it('serializeNodes + parseClipboardNodes round-trip through the marker', () => {
     const nodes: ClipboardNode[] = [
@@ -59,6 +62,7 @@ describe('node-clipboard', () => {
     const out = captureClipboard(
       ['n'],
       [{ id: 'n', type: 'image', position: { x: 5, y: 6 }, data: { name: 'Hero', content: 'a.png' } }],
+      NO_TEXT,
     );
     expect(out).toEqual([
       { type: 'image', position: { x: 5, y: 6 }, name: 'Hero', content: 'a.png', id: 'n' },
@@ -78,6 +82,7 @@ describe('node-clipboard', () => {
           data: { name: 'Clip', content: 'clip.mp4', coverUrl: 'clip-cover.jpg' },
         },
       ],
+      NO_TEXT,
     );
     expect(out).toEqual([
       {
@@ -118,6 +123,7 @@ describe('node-clipboard', () => {
           data: {},
         },
       ],
+      NO_TEXT,
     );
     expect(out[0].width).toBe(300);
     expect(out[0].height).toBe(200);
@@ -169,6 +175,7 @@ describe('node-clipboard', () => {
     const out = captureClipboard(
       ['a'],
       [{ id: 'a', type: 'annotation', position: { x: 0, y: 0 }, data: {} }],
+      NO_TEXT,
     );
     expect(out).toEqual([]);
   });
