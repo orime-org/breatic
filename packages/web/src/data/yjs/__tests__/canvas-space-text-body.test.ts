@@ -44,7 +44,7 @@ import {
   removeNode,
   runCanvasUndoBatch,
   getTextBody,
-  reseedTextBody,
+  ensureTextBody,
 } from '@web/data/yjs/canvas-space';
 import { bodyToPlainText, writePlainTextIntoBody } from '@web/data/yjs/text-body';
 
@@ -247,7 +247,7 @@ describe('text node bodies in the canvas document (#1774)', () => {
 
     it('repairs to one empty block', () => {
       nodeWithoutBody();
-      const body = reseedTextBody(PID, SID, 'n1');
+      const body = ensureTextBody(PID, SID, 'n1');
       expect(body).not.toBeNull();
       expect(body?.length).toBe(1);
       expect(getTextBody(PID, SID, 'n1')).not.toBeNull();
@@ -255,21 +255,21 @@ describe('text node bodies in the canvas document (#1774)', () => {
 
     it('is idempotent, so a second caller does not wipe the first ones writing', () => {
       nodeWithoutBody();
-      const first = reseedTextBody(PID, SID, 'n1') as Y.XmlFragment;
+      const first = ensureTextBody(PID, SID, 'n1') as Y.XmlFragment;
       writePlainTextIntoBody(first, 'written after the repair');
-      const second = reseedTextBody(PID, SID, 'n1');
+      const second = ensureTextBody(PID, SID, 'n1');
       expect(bodyToPlainText(second as Y.XmlFragment)).toBe('written after the repair');
     });
 
     it('returns null for a node that does not exist', () => {
-      expect(reseedTextBody(PID, SID, 'nope')).toBeNull();
+      expect(ensureTextBody(PID, SID, 'nope')).toBeNull();
     });
 
     it('does not put the repair in the user undo stack: one undo must not delete what they just typed', () => {
       nodeWithoutBody();
       const undoManager = createCanvasUndoManager(doc());
 
-      const body = reseedTextBody(PID, SID, 'n1') as Y.XmlFragment;
+      const body = ensureTextBody(PID, SID, 'n1') as Y.XmlFragment;
       writePlainTextIntoBody(body, 'the sentence the user just wrote');
 
       undoManager.undo();

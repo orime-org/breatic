@@ -941,7 +941,7 @@ export function nodeDataMap(doc: Y.Doc, nodeId: string): Y.Map<unknown> | null {
  *
  * Absent means the node predates this feature or is the tail of an undo, not
  * that it is empty: an empty body still holds one block. Callers that need to
- * write have to repair first, through {@link reseedTextBody}.
+ * write have to repair first, through {@link ensureTextBody}.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space holding the node.
  * @param nodeId - Id of the text node whose body to read.
@@ -982,12 +982,20 @@ export function readTextBodies(
 }
 
 /**
- * Give a text node a body when it has none, and hand it back.
+ * Hand back a text node's body, repairing an empty seat on the way.
+ *
+ * This is the one question a writer asks — "give me the body I can bind to" —
+ * so the existence check lives in here and nowhere else. A caller that reads
+ * first and repairs second re-implements these first lines and the two copies
+ * drift; that pairing existed once and is exactly what this signature retired.
  *
  * Repair, not lazy creation. Every text node is born with a body; a node
  * without one is either older than this feature or the tail of an undo, and
  * without repair it can never be written in again — the shared editor requires
- * a fragment and refuses to bind to nothing.
+ * a fragment and refuses to bind to nothing. A pre-#1774 node's words lived in
+ * a plain `data.content` field; those are deliberately NOT carried into the
+ * repaired body (decided 2026-08-04: pre-launch, no shipped document holds
+ * one), so the seat is seeded empty.
  *
  * The origin is deliberately NOT the one the canvas undo manager tracks. A
  * repair is the system fixing itself, not something the user did, and putting
@@ -1001,7 +1009,7 @@ export function readTextBodies(
  * @param nodeId - Id of the text node to repair.
  * @returns The node's body, or `null` when the node itself is gone.
  */
-export function reseedTextBody(
+export function ensureTextBody(
   projectId: string,
   spaceId: string,
   nodeId: string,

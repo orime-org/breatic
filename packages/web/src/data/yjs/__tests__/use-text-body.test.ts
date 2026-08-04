@@ -27,7 +27,7 @@ import * as Y from 'yjs';
 import type { CanvasNodeFields } from '@breatic/shared';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
-import { addNode, getTextBody, reseedTextBody } from '@web/data/yjs/canvas-space';
+import { addNode, getTextBody, ensureTextBody } from '@web/data/yjs/canvas-space';
 import { useTextBody, useTextBodies } from '@web/data/yjs/use-text-body';
 import { writePlainTextIntoBody } from '@web/data/yjs/text-body';
 
@@ -191,7 +191,7 @@ describe('useTextBody (#1774 section 9.1)', () => {
     // for the winner's fragment. Staying bound to the old one means never
     // seeing another word.
     act(() => {
-      reseedTextBody(PID, SID, 'n1');
+      ensureTextBody(PID, SID, 'n1');
     });
     act(() => {
       writePlainTextIntoBody(getTextBody(PID, SID, 'n1') as Y.XmlFragment, 'written after repair');

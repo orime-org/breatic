@@ -4,7 +4,7 @@
 import * as React from 'react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { getTextBody, reseedTextBody } from '@web/data/yjs/canvas-space';
+import { ensureTextBody } from '@web/data/yjs/canvas-space';
 import { useEditedTextBody, useTextBody } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
@@ -158,9 +158,7 @@ export const TextNode = React.memo(function TextNode({
       return;
     }
     if (!canEdit) return;
-    const fragment =
-      getTextBody(projectId, spaceId, nodeId) ??
-      reseedTextBody(projectId, spaceId, nodeId);
+    const fragment = ensureTextBody(projectId, spaceId, nodeId);
     if (fragment) openEditor(fragment);
   }, [readOnly, nodeId, editBlock, canEdit, t, projectId, spaceId, openEditor]);
 

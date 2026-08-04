@@ -121,7 +121,7 @@ function observeTextBody(
  * A node with no body reads as the empty string rather than throwing or
  * signalling absence: to a reader an unwritten node and a repaired-but-empty
  * one look the same. Writers ask a different question, and repair through
- * `reseedTextBody` before they bind an editor.
+ * `ensureTextBody` before they bind an editor.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space holding the node.
  * @param nodeId - Id of the text node whose body to follow.
