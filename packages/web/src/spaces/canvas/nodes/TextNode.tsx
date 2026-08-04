@@ -15,7 +15,28 @@ import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFr
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
-import { TextNodeEditor } from '@web/spaces/canvas/nodes/TextNodeEditor';
+import {
+  TEXT_BODY_BOX,
+  TEXT_BODY_MAX_HEIGHT,
+  TextNodeEditor,
+} from '@web/spaces/canvas/nodes/TextNodeEditor';
+
+/**
+ * The ReactFlow wrapper element for a node id, or null when it is not mounted.
+ *
+ * Written once because two places need it — handing focus back on the way out
+ * of the editor, and attaching the Enter listener — and it encodes how
+ * ReactFlow stamps its wrappers. Two copies of that coupling would be free to
+ * drift the day the selector or the id escaping has to change.
+ * @param nodeId - The node whose wrapper to find.
+ * @returns The wrapper element, or null.
+ */
+function nodeShell(nodeId: string): HTMLElement | null {
+  const shell = document.querySelector(
+    `.react-flow__node[data-id="${nodeId}"]`,
+  );
+  return shell instanceof HTMLElement ? shell : null;
+}
 
 interface TextNodeProps {
   data: TextNodeView;
@@ -99,10 +120,7 @@ export const TextNode = React.memo(function TextNode({
     (focus: 'return-focus' | 'keep-focus'): void => {
       closeEditor();
       if (focus === 'keep-focus' || !nodeId) return;
-      const shell = document.querySelector(
-        `.react-flow__node[data-id="${nodeId}"]`,
-      );
-      if (shell instanceof HTMLElement) shell.focus();
+      nodeShell(nodeId)?.focus();
     },
     [closeEditor, nodeId],
   );
@@ -210,10 +228,8 @@ export const TextNode = React.memo(function TextNode({
     // never attach to exactly the nodes most in need of a way in. ReactFlow
     // stamps `data-id` on the wrapper it makes focusable, so this is the same
     // element either way.
-    const shell = document.querySelector(
-      `.react-flow__node[data-id="${nodeId}"]`,
-    );
-    if (!(shell instanceof HTMLElement)) return undefined;
+    const shell = nodeShell(nodeId);
+    if (!shell) return undefined;
     /**
      * Open the editor when Enter is pressed on the node itself.
      * @param event - The native keyboard event from the node wrapper.
@@ -260,7 +276,7 @@ export const TextNode = React.memo(function TextNode({
               // node) sit on the ScrollArea root — ReactFlow checks ancestors.
               // The height cap moves to the Radix viewport, the element that
               // actually scrolls.
-              <ScrollArea className='nowheel nodrag' viewportClassName='max-h-144'>
+              <ScrollArea className='nowheel nodrag' viewportClassName={TEXT_BODY_MAX_HEIGHT}>
                 <TextNodeEditor
                   fragment={editedBody}
                   caretProvider={caretProvider}
@@ -275,12 +291,13 @@ export const TextNode = React.memo(function TextNode({
                 ref={displayRef}
                 data-testid='text-node-body'
                 onDoubleClick={startEdit}
-                // `break-spaces`, not `pre-wrap`: ProseMirror sets that on its own
-                // editable element, and the two differ on whether a run of spaces at
-                // a line end takes up room. Measured — every other box metric matches
-                // exactly, so this was the last thing that could make the same words
-                // wrap differently in the two states.
-                className='max-h-144 min-h-48 overflow-hidden whitespace-break-spaces break-words p-3 text-justify text-sm outline-none'
+                // Box metrics come from the editor's own constant, so the two
+                // states cannot drift apart. What is added here is display-only:
+                // the height cap with clipping (the editor scrolls instead), and
+                // `break-spaces` — ProseMirror sets that on its editable element
+                // and the two differ on whether a run of spaces at a line end
+                // takes up room, so this declares the value the editor computes.
+                className={`${TEXT_BODY_MAX_HEIGHT} ${TEXT_BODY_BOX} overflow-hidden whitespace-break-spaces`}
               >
                 {text}
               </div>

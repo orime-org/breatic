@@ -43,6 +43,7 @@ import {
 } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { TextNode } from '@web/spaces/canvas/nodes/TextNode';
+import { TEXT_BODY_BOX } from '@web/spaces/canvas/nodes/TextNodeEditor';
 import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
 
 vi.mock('sonner', () => ({
@@ -280,8 +281,7 @@ describe('TextNode', () => {
       // (placeholder-follows-locale.test): the Placeholder extension writes
       // the hint into `data-placeholder` on the empty paragraph. Nothing else
       // asserted this end of the wire (round-5) — the extension could be
-      // dropped, or the i18n key misspelled (which would surface the raw key
-      // here), with every test still green.
+      // dropped, or the i18n key misspelled, with every test still green.
       seedNode();
       renderNode();
       fireEvent.doubleClick(screen.getByTestId('node-placeholder'));
@@ -289,8 +289,13 @@ describe('TextNode', () => {
         editor()
           ?.querySelector('[data-placeholder]')
           ?.getAttribute('data-placeholder') ?? '';
+      // Empty catches a dropped extension. The dot catches ANY misspelled key:
+      // a lookup miss returns the key itself, and every key is dotted while no
+      // hint in any locale is. Naming the leaf instead (the first cut) only
+      // caught misspellings that kept it — a truncated key sailed through
+      // while the raw key showed up in the editor (round-6).
       expect(hint).not.toBe('');
-      expect(hint).not.toContain('editorPlaceholder');
+      expect(hint).not.toContain('.');
     });
 
 
@@ -406,6 +411,26 @@ describe('TextNode', () => {
       expect(
         screen.getByTestId('text-node-body').className,
       ).toContain('whitespace-break-spaces');
+    });
+
+    // The rest of item 10 rests on the two states measuring the same, and the
+    // metrics used to be hand-copied between two files: changing the padding
+    // on one typechecked, passed the suite, and broke the promise silently
+    // (round-6). They now come from one constant, and this holds BOTH states
+    // to it — so the day somebody edits the constant, both move together, and
+    // the day somebody re-inlines a literal, this goes red.
+    it('both states carry the shared box metrics, from one source', () => {
+      seedNode('x');
+      renderNode();
+      const display = screen.getByTestId('text-node-body');
+      for (const cls of TEXT_BODY_BOX.split(' ')) {
+        expect(display.className).toContain(cls);
+      }
+      enterByDoubleClick();
+      const editing = editor() as HTMLElement;
+      for (const cls of TEXT_BODY_BOX.split(' ')) {
+        expect(editing.className).toContain(cls);
+      }
     });
   });
 

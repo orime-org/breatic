@@ -31,31 +31,45 @@ import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-c
 import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 
 /**
- * Classes for the editable element itself.
+ * The box metrics the two states of a text node's body MUST share.
+ *
+ * Exported and consumed by the display body as well, because "the same words
+ * wrap the same way whether or not you are editing" is a promise nothing else
+ * enforces: it used to be two hand-kept class strings in two files, and
+ * changing the padding on one of them typechecked, passed the suite, and
+ * silently broke the promise (round-6). One string, one place to change.
  *
  * All of them belong on the element the caret lives in, not on a wrapper. The
  * minimum height on a wrapper becomes dead space that does not take a click;
  * `outline-none` on a wrapper leaves the browser drawing its own ring on the
- * focused element, against the node frame's one-hairline rule; `focus:` only
- * ever matches the element that actually receives focus; and a contenteditable
- * has no cursor of its own, so without `cursor-text` it inherits the canvas
- * grab hand (user bug 2026-07-04).
- *
- * Both the minimum height and the padding sit here together on purpose. The
- * global `box-sizing: border-box` makes the minimum include the padding, so one
- * element is 192px tall exactly like the display body; splitting them across
+ * focused element, against the node frame's one-hairline rule; and the global
+ * `box-sizing: border-box` makes the minimum include the padding, so one
+ * element is 192px tall exactly like the display body — splitting them across
  * two elements would add a padding's worth of height on entering edit mode.
  *
  * Deliberately NO whitespace class. TipTap's own injected `.ProseMirror` rule
- * sets `white-space: break-spaces` on this element, and being unlayered it
- * beats anything Tailwind's layered utilities say — a whitespace class here is
- * inert, and an inert one that names a different value than the display state
- * reads as a contradiction that isn't there. The display body declares
- * `whitespace-break-spaces` to MATCH what the editor computes; that pairing is
- * what keeps the same words wrapping identically in the two states.
+ * sets `white-space: break-spaces` on the editable element, and being unlayered
+ * it beats anything Tailwind's layered utilities say — a whitespace class here
+ * would be inert on the editor while real on the display, which is the one way
+ * these two could still disagree. The display body declares
+ * `whitespace-break-spaces` itself, to MATCH what the editor computes.
  */
-const EDITOR_CLASS =
-  'min-h-48 break-words p-3 text-justify text-sm outline-none cursor-text focus:bg-accent/30';
+export const TEXT_BODY_BOX =
+  'min-h-48 break-words p-3 text-justify text-sm outline-none';
+
+/**
+ * The height the body is allowed to reach before it scrolls (edit) or clips
+ * (display). Shared for the same reason as {@link TEXT_BODY_BOX}.
+ */
+export const TEXT_BODY_MAX_HEIGHT = 'max-h-144';
+
+/**
+ * The shared box plus what only the editable state wants: a contenteditable has
+ * no cursor of its own, so without `cursor-text` it inherits the canvas grab
+ * hand (user bug 2026-07-04), and `focus:` only ever matches the element that
+ * actually receives focus.
+ */
+const EDITOR_CLASS = `${TEXT_BODY_BOX} cursor-text focus:bg-accent/30`;
 
 /**
  * Build the text node editor's extension list.
