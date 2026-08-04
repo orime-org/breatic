@@ -136,7 +136,7 @@ export default function DecisionLandingPage(): React.JSX.Element {
     return (
       <AuthCardShell
         title={t('decision.notYoursTitle')}
-        footer={<AuthLink to='/login'>{t('auth.login.title')}</AuthLink>}
+        footer={<AuthLink to='/studio'>{t('decision.backHome')}</AuthLink>}
       >
         <p className='text-sm text-muted-foreground'>
           {t('decision.notYoursBody')}

@@ -1477,7 +1477,7 @@
     "invalidTitle": "このリンクは無効です",
     "invalidBody": "メールのリンクを最後までコピーしたか確認してください。",
     "notYoursTitle": "これはあなたが回答するものではありません",
-    "notYoursBody": "別の人宛てです。そのアカウントでサインインすると回答できます。",
+    "notYoursBody": "このリンクは別の人に送られたものです。",
     "goThere": "開く",
     "backHome": "自分の Studio に戻る",
     "actionFailed": "実行できませんでした。もう一度お試しください。"

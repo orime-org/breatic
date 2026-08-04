@@ -1477,7 +1477,7 @@
     "invalidTitle": "유효하지 않은 링크입니다",
     "invalidBody": "메일에서 링크 전체를 복사했는지 확인해 주세요.",
     "notYoursTitle": "회원님이 답변할 요청이 아닙니다",
-    "notYoursBody": "다른 사람에게 보낸 요청입니다. 그 계정으로 로그인하면 답변할 수 있습니다.",
+    "notYoursBody": "이 링크는 다른 사람에게 보낸 것입니다.",
     "goThere": "보러 가기",
     "backHome": "내 Studio로 돌아가기",
     "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요."

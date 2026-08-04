@@ -73,7 +73,13 @@ export default function ProtectedRoute({
   }
 
   if (!user) {
-    return <Navigate to='/login' replace state={{ from: location.pathname }} />;
+    // The login page navigates to `?next=` after sign-in. The search string
+    // matters as much as the path: the decision links from every notification
+    // email live behind this guard as `/decision?token=...`, and dropping the
+    // token would strand the recipient on /studio with no way back to the
+    // thing they clicked. (The old `state.from` had no consumer at all.)
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?next=${next}`} replace />;
   }
 
   if (requirePersonalStudio && user.personalStudio === null) {

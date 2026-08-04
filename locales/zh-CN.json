@@ -1477,7 +1477,7 @@
     "invalidTitle": "这个链接无效",
     "invalidBody": "请确认你从邮件里复制了完整的链接。",
     "notYoursTitle": "这件事不该由你答复",
-    "notYoursBody": "它是发给别人的。用那个账号登录才能答复。",
+    "notYoursBody": "这个链接是发给别人的。",
     "goThere": "去看看",
     "backHome": "回到你的 Studio",
     "actionFailed": "操作没有成功，请再试一次。"

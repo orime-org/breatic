@@ -1477,7 +1477,7 @@
     "invalidTitle": "這個連結無效",
     "invalidBody": "請確認你從郵件裡複製了完整的連結。",
     "notYoursTitle": "這件事不該由你答覆",
-    "notYoursBody": "它是發給別人的。用那個帳號登入才能答覆。",
+    "notYoursBody": "這個連結是發給別人的。",
     "goThere": "去看看",
     "backHome": "回到你的 Studio",
     "actionFailed": "操作沒有成功，請再試一次。"
