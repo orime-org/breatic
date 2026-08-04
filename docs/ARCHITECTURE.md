@@ -108,6 +108,31 @@ Tools 取并集:Agent 声明的 tools ∪ Skill 声明的 tools,始终排除 spa
 4. **Skill(显式)** → 指定 skillName → AI SDK Agent 执行
 5. **Skill(自动选)** → 按 category 合并 Skills → LLM 选
 
+### 一个 AIGC 任务的执行顺序,和「不归路」
+
+`worker/src/handlers/dispatch.ts` 里一个任务从投递到结束的顺序。**碰 worker 任何一步之前先定位「我在第几步」—— 同一个失败在第 3 步和第 5 步的后果完全相反**:
+
+| 步 | 做什么 | 这一步失败会怎样 |
+|---|---|---|
+| 1 | BullMQ 投递(第 N 次尝试) | — |
+| 2 | 重入守卫读任务行:`billed_at` 已设 → 上次已完成并扣过费,原样返回;`provider_result_url` 已设而 `billed_at` 未设 → 上次调过厂商但没走到扣费,标失败不再重试 | — |
+| 3 | 调厂商,或跑本地 ffmpeg handler(`downloadToTempDir` 下载输入素材在此) | **抛异常 → BullMQ 重跑整个任务**(次数取 `job_attempts`,默认 3) |
+| 4 | **写下「厂商已返回」这个事实 —— 这行是「不归路」** | — |
+| 5 | 转存到永久存储(`downloadValidated` 下载厂商产出在此) | **标失败 + 正常返回不抛异常 → BullMQ 不重跑**,且不扣用户积分 |
+| 6 | 标完成 + 锁定计费(`billed_at` 上 CAS,只有第一个到达者赢) | — |
+| 7 | 扣用户积分 | 只记错误日志,不回滚不失败 —— 用户有权拿到结果 |
+
+**第 4 步之后为什么一律不许抛异常**:厂商那边已经算完并向我们收过钱了,重跑会在第 3 步**再调一次厂商 = 我们再付一次**。所以第 5 步用 `return` 而不是 `throw`,专门掐死重试。
+
+**两笔钱是两回事,别混**(混过一次,写出了「转存失败 → 积分已扣」这种与代码直接矛盾的话):
+
+| 哪笔 | 谁付给谁 | 第几步花掉 | 怎么判断花没花 |
+|---|---|---|---|
+| 厂商成本 | 我们付给厂商 | 第 3 步,第 4 步把这个事实落库 | 看 `tasks.provider_result_url` |
+| 用户积分 | 用户付给我们 | 第 7 步 | **只看 `tasks.billed_at`**,CAS 保证至多一次 |
+
+判定题:**这次失败落在第 4 步的哪一边?** 之前 → 厂商没收钱,重跑是安全的;之后 → 厂商已收钱,不能重跑,也不向用户收费。
+
 ### Mini-Tool (two modes)
 
 | | AIGC (image/video/audio) | Text |
@@ -174,7 +199,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | 为什么在 `shared` 不在 `core` | 浏览器上传要用,所以必须浏览器安全(零 `node:*`)|
 | 调用方要声明 | `replaySafe`(重发这个请求会不会产生第二次副作用,只有调用方知道)· `timeoutMs`(可选,默认 300 秒;一个有限数,1 到 2147483647 毫秒之间,小数照收)|
 | 写死不给配 | 最多三次投递 + 退避基数 —— 这两个这一层自己答得出来。原先 worker 和浏览器各配一份,已漂移成两种含义(`http_max_retries: 3` 是四次投递,`client_max_attempts: 3` 是三次)|
-| 接入进度 | **第 1 批已接:worker 的全部直连 HTTP vendor 调用(20 个 transport、43 处)走 `httpRequest`**(litellm 经 AI SDK 模型封装发 vendor 请求、不在其列),每处原有超时原样搬进 `timeoutMs`,守卫测试按迁移前清单逐文件钉死(`packages/worker/src/providers/__tests__/transport-timeout-preserved.test.ts`)。剩余批次每批一个 PR:素材下载与存储适配器 · 浏览器上传 · agent 联网工具 · 最后加守卫封住裸 `fetch`。一批出问题不牵连别批,这正是它跟前一版(一次做完 7456 行,PR #371,已关)的区别 |
+| 接入进度 | **第 1 批已接:worker 的全部直连 HTTP vendor 调用(20 个 transport、43 处)走 `httpRequest`**(litellm 经 AI SDK 模型封装发 vendor 请求、不在其列),每处原有超时原样搬进 `timeoutMs`,守卫测试按迁移前清单逐文件钉死(`packages/worker/src/providers/__tests__/transport-timeout-preserved.test.ts`)。**第 2 批已接:素材下载两条路**——worker 的 `downloadToTempDir`(此前裸 `fetch`、自身零重试 —— 抖动靠 BullMQ 整个任务重跑兜住(次数取 worker 配置的 `job_attempts`,默认 3),代价是连转码一起重来、且只在约 12 秒的退避窗口内)与 core 的 `downloadValidated`(此前自建重试循环、认不出连接级断连);两处均声明 `replaySafe: true`(纯幂等 GET),`downloadValidated` 的 120 秒作为单次投递超时原样保留,内容完整性守卫(截断 / 空体 / 编码豁免)留在原地。剩余批次每批一个 PR:浏览器上传 · agent 联网工具 · 最后加守卫封住裸 `fetch`。一批出问题不牵连别批,这正是它跟前一版(一次做完 7456 行,PR #371,已关)的区别 |
 | 已知重复,待接入完成后清 | `packages/core/src/infra/retry.ts` 的 `fullJitter` / `exponentialJitterDelay` 跟 `packages/shared/src/backoff.ts` 同名同义,core 那份还多一个 `jitterBackoffStrategy`(BullMQ 用)。接入收尾时 core 改用 shared 那份 |
 
 ### Run
