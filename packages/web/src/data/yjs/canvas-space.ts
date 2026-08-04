@@ -984,10 +984,14 @@ export function readTextBodies(
 /**
  * Hand back a text node's body, repairing an empty seat on the way.
  *
- * This is the one question a writer asks — "give me the body I can bind to" —
- * so the existence check lives in here and nowhere else. A caller that reads
- * first and repairs second re-implements these first lines and the two copies
- * drift; that pairing existed once and is exactly what this signature retired.
+ * This is the question an EDITOR asks — "give me the body I can bind to" —
+ * and every editor-binding caller comes through here rather than pairing a
+ * read with a repair of its own (that pairing existed once, drifted, and is
+ * what this signature retired). One other place also handles a missing body:
+ * {@link landHandlingContent}, which lands a task's words and seeds directly
+ * WITH them — a single write, where routing through here would seed empty and
+ * overwrite. Same absence check, different write; if the shape of a seeded
+ * body ever changes, change both.
  *
  * Repair, not lazy creation. Every text node is born with a body; a node
  * without one is either older than this feature or the tail of an undo, and
@@ -1270,7 +1274,11 @@ export function setNodeHandling(
  * A missing body is created rather than skipped. Losing the words of a file
  * the user just dropped is the worse failure, and the node is by definition
  * not being edited right now — this runs under a lease, and a node a task is
- * writing cannot be opened for editing.
+ * writing cannot be opened for editing. The seed here is deliberately NOT
+ * routed through {@link ensureTextBody}: that path seeds an empty body for an
+ * editor to bind, while this one already holds the words and lands them in a
+ * single write. Same absence check, different write; if the shape of a seeded
+ * body ever changes, change both.
  * @param data - The node's data map, already verified to be one.
  * @param type - The node's modality, read from its `type` field.
  * @param content - What the handling produced: an asset URL, or extracted text.

@@ -471,6 +471,24 @@ describe('TextNode', () => {
       expect(bodyToPlainText(body())).toBe('typed so far');
     });
 
+    it('closes when the user is downgraded to viewer mid-edit', () => {
+      // The third way a node stops being writable while somebody is inside it
+      // (round-5): an admin revokes the editor role, the live role query flips
+      // `readOnly`, and the person typing is now a viewer. Left open, the
+      // editor keeps publishing their caret into shared awareness — a viewer
+      // visibly "editing" — and it is one condition drifting from the other
+      // two exits that lets it happen.
+      seedNode('typed so far');
+      const { rerender } = renderNode();
+      enterByDoubleClick();
+      expect(editor()).not.toBeNull();
+
+      rerender(tree({ canvas: { readOnly: true } }));
+
+      expect(editor()).toBeNull();
+      expect(bodyToPlainText(body())).toBe('typed so far');
+    });
+
     it('rebinds to the winner when a concurrent repair replaces the body', () => {
       // Two people opening the same body-less node each repair it, and one of
       // the two fragments loses. The loser's editor would go on accepting

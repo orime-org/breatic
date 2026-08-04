@@ -136,7 +136,13 @@ export const TextNode = React.memo(function TextNode({
       ),
     [locked, data.status],
   );
-  const canEdit = editBlock === null && data.status === 'idle';
+  // `readOnly` is a third writability premise, IN the condition for the same
+  // reason as the other two (round-5): the role is a live query, so an
+  // editor→viewer downgrade can land mid-edit exactly like a lock or a task —
+  // and when the first cut left it out, the exit below never closed on a
+  // downgrade, leaving a viewer's ghost editor publishing their caret into
+  // shared awareness.
+  const canEdit = !readOnly && editBlock === null && data.status === 'idle';
 
   /**
    * Open the editor on this node's body, unless something says no.
@@ -152,6 +158,10 @@ export const TextNode = React.memo(function TextNode({
    * for a viewer.
    */
   const startEdit = React.useCallback((): void => {
+    // Not the writability gate — `canEdit` below already covers `readOnly`.
+    // This return is toast POLICY: a viewer double-clicking a locked node
+    // should not be told "unlock it to edit" when unlocking would not let
+    // them edit either, so their refusal stays silent and comes first.
     if (readOnly || !nodeId) return;
     if (editBlock) {
       warnNodeGate(t(editBlock.toastKey));
