@@ -6,8 +6,9 @@
  *
  * This helper feeds every local ffmpeg handler its input asset, and until
  * this migration it called `fetch` bare: one delivery, no retry of its own.
- * A blip was not fatal even then — BullMQ re-runs the whole job three times
- * and the canvas stays quiet until the last attempt — but recovering meant
+ * A blip was not fatal even then — BullMQ re-runs the whole job (three
+ * attempts by default, from the worker config's `job_attempts`) and the
+ * canvas stays quiet until the last attempt — but recovering meant
  * re-running everything, re-transcode included, and only within BullMQ's
  * ~12s jittered window. Declaring the download replay-safe moves the retry
  * to where the failure is: a pure GET, so replaying it costs nothing.

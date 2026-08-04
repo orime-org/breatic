@@ -163,15 +163,15 @@
 
 **传输层本身已合并（#386）**，在 `packages/shared/src/http/`，前后端共用，打**外部**的请求（云存储 / vendor API / 任意网址）走它，打我们自己后端的继续走 web 的 axios 单例。规范见 [`packages/shared/CLAUDE.md`](../packages/shared/CLAUDE.md)，架构位置见 [`ARCHITECTURE.md`](./ARCHITECTURE.md#shared-http-transport)。
 
-**现在零个调用点接入**，五批分别是：
+五批分别是：
 
-| 批 | 接什么 | 附带 |
-|---|---|---|
-| 1 | worker 的 19 个 vendor 调用 | 轮询也一起收编 |
-| 2 | 素材下载 + 存储适配器 | 重试日志出口穿过适配器（现在重试悄无声息）|
-| 3 | 浏览器上传重试 | 它按文件大小算超时，正是这一层要求调用方自己算的那种 |
-| 4 | agent 的联网工具 | 这两个工具现在**零重试**，一次网络抖动就是一次工具失败，也是整条线的起因 |
-| 5 | 加守卫封住裸 `fetch` + 同步文档 | 收尾时把 `packages/core/src/infra/retry.ts` 改用 `packages/shared/src/backoff.ts`，消掉同名同义的两份退避 |
+| 批 | 接什么 | 状态 | 附带 |
+|---|---|---|---|
+| 1 | worker 的 vendor 调用：20 个 transport、43 处调用点 | 已接入（#388）| 轮询也一起收编 |
+| 2 | 素材下载两条路：`downloadToTempDir` + `downloadValidated` | 已接入（#389）| 原计划「让重试日志出口穿过适配器」已不适用 —— 适配器里的重试循环整个删了，没有出口可穿；重试的可观测性归传输层统一做，未开始 |
+| 3 | 浏览器上传重试 | 未开始 | 它按文件大小算超时，正是这一层要求调用方自己算的那种 |
+| 4 | agent 的联网工具 | 未开始 | 这两个工具现在**零重试**，一次网络抖动就是一次工具失败，也是整条线的起因 |
+| 5 | 加守卫封住裸 `fetch` + 同步文档 | 未开始 | 收尾时把 `packages/core/src/infra/retry.ts` 改用 `packages/shared/src/backoff.ts`，消掉同名同义的两份退避；两批已失效的配置键（`http_max_retries` / `http_retry_base_delay` / `download.*`）随本批 sweep 删 |
 
 **给碰到外部 HTTP 的人**：新写的外部请求直接用 `httpRequest`，别再自己写重试循环 —— 这条线的起因正是同一个判据在三处写了三遍、给出三个不同答案。
 

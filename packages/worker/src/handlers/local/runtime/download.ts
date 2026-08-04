@@ -43,8 +43,9 @@ export async function downloadToTempDir(
   //
   // What that buys, stated precisely — a blip here was never fatal. A throw
   // propagates to dispatch.ts, which rethrows so BullMQ re-runs the whole
-  // job (attempts: 3), and the canvas only shows a failure on the terminal
-  // attempt, so the user saw nothing. What changes is the granularity: the
+  // job (`defaultJobOpts` passes the worker config's `job_attempts`, 3 by
+  // default), and the canvas only shows a failure on the terminal attempt,
+  // so the user saw nothing. What changes is the granularity: the
   // download is now re-delivered in place, instead of costing a whole job
   // re-run — re-download plus re-transcode — and instead of being confined
   // to BullMQ's ~12s jittered window, past which the job really did die.
