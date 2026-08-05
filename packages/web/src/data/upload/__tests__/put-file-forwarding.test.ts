@@ -104,6 +104,24 @@ describe('putFileWithRetry hands the PUT to the shared transport', () => {
     ).rejects.toMatchObject({ status: 403 });
   });
 
+  it('lets the transport’s own failure through untouched', async () => {
+    // The third exit, and the one with nothing else guarding it. When no
+    // delivery produced a response the transport throws — HttpRetryError once
+    // it has replayed, the original failure when it has not — and this
+    // function must not catch it. Swallowing it, or rewriting it as an
+    // UploadHttpError, would turn "the network never answered" into something
+    // the caller reads as an HTTP outcome. The other two exits are pinned by
+    // their own tests; without this one a future catch here passes the suite.
+    const transportFailure = new Error('http request to https://store.test failed after 3 attempts');
+    httpRequestMock.mockImplementation(async () => {
+      throw transportFailure;
+    });
+
+    await expect(
+      putFileWithRetry('https://store.test/key?sig=abc', bigFile(), CFG),
+    ).rejects.toBe(transportFailure);
+  });
+
   it('makes exactly one call — retrying is the transport’s job now', async () => {
     // The old loop retried 5xx itself. If that machinery is still in place a
     // transport-level failure would produce more than one call here.
