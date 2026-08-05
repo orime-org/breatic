@@ -171,9 +171,9 @@ export async function createRoleUpgradeRejected(input: {
 /**
  * Studio transfer-request payload — an admin asks the user to take over as
  * admin. Stored on the `studio.transfer_request` notification, which points at
- * the request rather than holding it (expires after a TTL). `studioId` rides along so the
- * confirm step can swap roles without re-resolving the studio (the slug may
- * have changed, but the id is stable).
+ * the request rather than holding it, and expires after a TTL. `studioId`
+ * rides along so the confirm step can swap roles without re-resolving the
+ * studio (the slug may have changed, but the id is stable).
  */
 export interface StudioTransferRequestPayload {
   /**
@@ -190,9 +190,9 @@ export interface StudioTransferRequestPayload {
   /**
    * The `studio_transfers` row this entry announces.
    *
-   * The offer's source of truth is that row, not this entry — the bell's
-   * confirm / decline buttons act on the id carried here, exactly as the
-   * invite entries carry their `invitationId`.
+   * The offer's source of truth is that row, not this entry. The recipient
+   * answers through the token above, so this id serves the other side: the
+   * sender withdrawing their own offer, which is addressed by row id.
    */
   transferId: string;
 }
@@ -214,9 +214,9 @@ export interface StudioTransferApprovedPayload {
 /**
  * Project transfer-request payload — a project owner asks a studio member to
  * take over as owner (#1611). Stored on the `project.transfer_request`
- * notification, which points at the request rather than holding it (expires
- * after a TTL). `projectId` rides along so
- * the confirm step can swap roles without re-resolving the project.
+ * notification, which points at the request rather than holding it, and
+ * expires after a TTL. `projectId` rides along so the confirm step can swap
+ * roles without re-resolving the project.
  */
 export interface ProjectTransferRequestPayload {
   /**
@@ -233,9 +233,9 @@ export interface ProjectTransferRequestPayload {
   /**
    * The `project_transfers` row this entry announces.
    *
-   * The offer's source of truth is that row, not this entry — the bell's
-   * confirm / decline buttons act on the id carried here, exactly as the
-   * invite entries carry their `invitationId`.
+   * The offer's source of truth is that row, not this entry. The recipient
+   * answers through the token above, so this id serves the other side: the
+   * sender withdrawing their own offer, which is addressed by row id.
    */
   transferId: string;
 }
@@ -256,10 +256,10 @@ export interface ProjectTransferApprovedPayload {
 
 /**
  * Studio invite-request payload — an admin invites a registered user to join a
- * studio. Stored on the `studio.invite_request` notification in the
- * invitee's inbox (confirm/decline; expires after a TTL). `invitationId` is the
- * `studio_invitations` row the confirm step CAS-accepts (source of truth); the
- * rest is for rendering the bell entry.
+ * studio. Stored on the `studio.invite_request` notification in the invitee's
+ * inbox, which points at the invite rather than holding it, and expires after
+ * a TTL. `invitationId` is the `studio_invitations` row the confirm step
+ * CAS-accepts (source of truth); the rest is for rendering the bell entry.
  */
 export interface StudioInviteRequestPayload {
   /**

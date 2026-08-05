@@ -98,8 +98,9 @@ export interface StudioInvitationMailInput {
 }
 
 /**
- * Build the studio invitation email — the invitee opens the link and lands on a
- * confirm/decline page (NOT auto-accept), mirroring the bell action.
+ * Build the studio invitation email — the invitee opens the link and lands on
+ * the decision page, where they answer (NOT auto-accept). The bell row leads
+ * to that same page, so both entrances end in one place.
  * @param input - Invitee email, inviter + studio names, role, and the landing link.
  * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
  */
@@ -131,7 +132,8 @@ export interface ProjectInvitationMailInput {
 
 /**
  * Build the project invitation email — the invitee opens the link and lands on
- * a confirm/decline page (NOT auto-accept), mirroring the bell action.
+ * the decision page, where they answer (NOT auto-accept). The bell row leads
+ * to that same page, so both entrances end in one place.
  * @param input - Invitee email, inviter + project names, role, and the landing link.
  * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
  */

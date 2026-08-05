@@ -341,9 +341,10 @@ const PROJECT_ROLE_KEY: Record<string, string> = {
 };
 
 /**
- * Extracts the optional subtitle for a notification: the request message
- * (upgrade request), the granted role
- * (studio member invited), or the transfer-handshake hint (transfer request).
+ * Extracts the optional subtitle for a notification: the message the requester
+ * typed (role upgrade), the role being offered (either invite), or a fixed
+ * hint (studio transfer). Everything else — the project transfer included —
+ * has no second line.
  * @param n - Notification whose payload is inspected for subtitle text.
  * @param t - Translation function for the localized subtitle.
  * @returns the subtitle text, or `null` when none applies.

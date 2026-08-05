@@ -8,11 +8,11 @@ import { apiGet, apiPatch, apiPost } from '@web/data/api/request';
  * (`notification.repo.ts`). The `access.*` types are project access-permission
  * (spec 2026-05-28 § 7); the `studio.*` types are studio member / transfer /
  * invite notifications; the `project.*` types are the project invite-confirm
- * handshake (#1337). `studio.transfer_request` and `studio.invite_request` are
- * the inline-actionable types (confirm / cancel + a TTL). `project.invite_request`
- * is actionable too, but it diverges from studio: the bell row LINKS OUT to the
- * `/decision?token=` landing page (its payload carries that token) rather
- * than confirming inline. The rest are informational (read-on-click).
+ * handshake (#1337) plus the project transfer. Five of them wait for an
+ * answer — the two invites, the two transfers, and the role upgrade — and all
+ * five behave identically: the row carries a TTL and LINKS OUT to the
+ * `/decision?token=` landing page named by the token in its payload. Nothing
+ * is answered inside the bell. The rest are informational (read-on-click).
  */
 export type NotificationType =
   | 'access.role_upgrade_request'

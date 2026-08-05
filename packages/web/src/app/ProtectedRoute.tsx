@@ -35,9 +35,9 @@ const CHOOSE_SLUG_PATH = '/choose-slug';
  *
  *   - `bootstrapped && !user` — the boot ping completed and confirmed
  *     no valid session (401 / missing cookie / network error). Bounce
- *     to `/login`, preserving the originally-requested path in router
- *     state so the login page can return the user there after a
- *     successful sign-in.
+ *     to `/login?next=`, carrying the whole requested destination —
+ *     path AND search — so the login page can return the user to it
+ *     after a successful sign-in.
  *
  *   - `bootstrapped && user && personalStudio === null` — authenticated
  *     but onboarding is incomplete (the account exists, but the slug

@@ -138,8 +138,9 @@ export async function expireStalePending(
 
 /**
  * Link the bell notification to an invite (set right after the notification is
- * created, in the same transaction) so accept / decline / revoke can mark it
- * read and the bell entry disappears even when acted on via the email link.
+ * created, in the same transaction) so settling the invite can mark it read —
+ * whether the invitee answered on the decision page or the inviter revoked it.
+ * Nothing is answered inside the bell, so without this the row would linger.
  * @param id - Invitation id
  * @param notificationId - The `studio.invite_request` notification id
  * @param tx - Optional drizzle transaction handle

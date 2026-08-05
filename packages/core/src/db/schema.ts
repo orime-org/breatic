@@ -823,16 +823,16 @@ export const notifications = pgTable(
      * - 'access.role_upgrade_rejected' - owner rejected viewer's request
      * - 'studio.transfer_request' - admin asks the user to take admin (TTL)
      * - 'studio.transfer_approved' - user accepted; old admin is notified
-     * - 'studio.invite_request' - admin invites the user to a studio (TTL; confirm/decline)
+     * - 'studio.invite_request' - admin invites the user to a studio (TTL; answered on the decision page)
      * - 'studio.invite_accepted' - invitee accepted; the inviting admin is notified
-     * - 'project.invite_request' - owner invites the user to a project (TTL; confirm/decline)
+     * - 'project.invite_request' - owner invites the user to a project (TTL; answered on the decision page)
      * - 'project.invite_accepted' - invitee accepted; the inviting owner is notified
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**
      * Type-specific payload. Examples:
      * - role_upgrade_request: { requesterUserId, projectName, requestedRole, message? }
-     * - role_upgrade_approved/rejected: { projectName, newRole?, reason? }
+     * - role_upgrade_approved/rejected: { projectName, newRole? }
      */
     payload: jsonb("payload").notNull(),
     projectId: uuid("project_id").references(() => projects.id, {
@@ -896,10 +896,12 @@ export const studioInvitations = pgTable(
     /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'expired' | 'revoked'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
-     * The bell notification that surfaces this invite, so confirm / decline /
-     * revoke can mark it read in the same transaction — the bell entry then
-     * disappears even when the invite was acted on via the email link. Null
-     * when no notification was created, and `set null` if the notice is GC'd.
+     * The bell notification that surfaces this invite, so settling it can mark
+     * that row read in the same transaction — whether the recipient answered
+     * on the decision page or the sender revoked the invite. Nothing is
+     * answered in the bell itself any more, so without this the row would
+     * linger after the fact. Null when no notification was created, and
+     * `set null` if the notice is GC'd.
      */
     notificationId: uuid("notification_id").references(() => notifications.id, {
       onDelete: "set null",
@@ -971,10 +973,12 @@ export const projectInvitations = pgTable(
     /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'expired' | 'revoked'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
-     * The bell notification that surfaces this invite, so confirm / decline /
-     * revoke can mark it read in the same transaction — the bell entry then
-     * disappears even when the invite was acted on via the email link. Null
-     * when no notification was created, and `set null` if the notice is GC'd.
+     * The bell notification that surfaces this invite, so settling it can mark
+     * that row read in the same transaction — whether the recipient answered
+     * on the decision page or the sender revoked the invite. Nothing is
+     * answered in the bell itself any more, so without this the row would
+     * linger after the fact. Null when no notification was created, and
+     * `set null` if the notice is GC'd.
      */
     notificationId: uuid("notification_id").references(() => notifications.id, {
       onDelete: "set null",
