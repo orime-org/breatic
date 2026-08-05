@@ -5,6 +5,7 @@ import * as React from 'react';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import * as Y from 'yjs';
 import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
+import { canGenerate } from '@breatic/shared';
 
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -373,21 +374,29 @@ export function useCanvasSpace(
  * Each defined field becomes a Y.Map entry (plain values — strings,
  * numbers, booleans, plain arrays / objects — matching how the backend
  * reads `operationLocks` via `Array.isArray` and `handlingBy` as a plain
- * object). Undefined fields are omitted. ONE exception to the plain-values
- * convention: `focusImages` is a `Y.Array` CRDT sequence (concurrent-add
- * safe, see {@link addNodeFocusImage}) — this builder seeds it (from a
- * provided wire value, else empty — the eager seed below), and the two
- * focus writers maintain it (the backend never reads the field, and
- * `toJSON()` serializes both encodings identically).
+ * object). Undefined fields are omitted.
  *
- * A text node gets a SECOND exception: `body`, the shared fragment its editor
- * binds to (#1774). Seeded here for the same reason `focusImages` is — a
- * container created on demand is a whole-container race, and the loser's
- * writing disappears with their container. Being born inside the creating
- * transaction also ties it to the user's act of creating the node, so undoing
- * the creation takes the body along instead of orphaning it.
+ * Three keys are exceptions to the plain-values convention, and all three are
+ * seeded here rather than on demand. A container created on demand is a
+ * whole-container race: two clients that both find it missing each mint their
+ * own, map-level last-write-wins keeps one, and the loser's content disappears
+ * with their container. Born inside the creating transaction the container is
+ * a single replicated creation event, every edit inside it commutes, and
+ * undoing the creation takes the container along instead of orphaning it.
+ *
+ * `focusImages` — a `Y.Array` CRDT sequence on EVERY node (concurrent-add
+ * safe, see {@link addNodeFocusImage}), seeded from a provided wire value else
+ * empty; the two focus writers maintain it (the backend never reads the field,
+ * and `toJSON()` serializes both encodings identically).
+ *
+ * `body` — a text node's shared fragment, what its editor binds to (#1774).
+ * Seeded non-empty, because the editor's schema wants at least one block.
+ *
+ * `prompt` — the Generate prompt fragment, on the modalities that offer
+ * Generate (#1880). Seeded empty; {@link getPromptFragment} only reads.
  * @param data - The plain wire data fields to write.
- * @param type - The node's modality, which decides whether a body is seeded.
+ * @param type - The node's modality, which decides which containers are
+ *   seeded: `body` for text, `prompt` for generate-capable modalities.
  * @returns A Y.Map populated with the defined data fields.
  */
 function buildDataMap(
@@ -436,6 +445,12 @@ function buildDataMap(
     const text = typeof data.content === 'string' ? data.content : '';
     map.set('body', bodyFromText(text));
   }
+  // #1880. Replayed against the old lazy-create code through the public API,
+  // the merge kept one client's line and the other's vanished outright — the
+  // race the header describes, observed rather than reasoned about. Only the
+  // modalities that offer Generate get one; on a group or a sticky it would be
+  // a container nothing ever reads.
+  if (canGenerate(type)) map.set('prompt', new Y.XmlFragment());
   return map;
 }
 
@@ -1038,18 +1053,25 @@ export function ensureTextBody(
 }
 
 /**
- * Get (or lazily create) the Y.XmlFragment backing a content node's Generate
- * prompt. The collaborative prompt editor (TipTap + Collaboration) binds to
- * this fragment so collaborators see keystrokes live. Created empty on first
- * open with the content-write origin so the init does NOT enter the canvas undo
- * stack (prompt edits carry the y-sync origin and are excluded too). Returns
- * null when the node or its data map is missing.
+ * Read the Y.XmlFragment backing a content node's Generate prompt. The
+ * collaborative prompt editor (TipTap + Collaboration) binds to this fragment
+ * so collaborators see keystrokes live.
+ *
+ * A pure read, and that is the point (#1880): this used to create the fragment
+ * when it found none, so two people opening the same node's panel at once each
+ * minted one under the same key and map-level last-write-wins dropped one WITH
+ * everything typed into it. The fragment is now born with the node, so by the
+ * time anyone can open a panel it is already there and shared.
+ *
+ * Returns null for a node that is missing, or for one older than #1880 — those
+ * predate the seeding and are deliberately not repaired (pre-launch legacy data
+ * is not served). The panel renders without a prompt editor in that case.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node whose prompt fragment to get / create.
- * @returns The prompt Y.XmlFragment, or null when the node is missing.
+ * @param nodeId - Id of the node whose prompt fragment to read.
+ * @returns The prompt Y.XmlFragment, or null when there is none.
  */
-export function getOrCreatePromptFragment(
+export function getPromptFragment(
   projectId: string,
   spaceId: string,
   nodeId: string,
@@ -1058,10 +1080,7 @@ export function getOrCreatePromptFragment(
   const data = nodeDataMap(doc, nodeId);
   if (!data) return null;
   const existing = data.get('prompt');
-  if (existing instanceof Y.XmlFragment) return existing;
-  const fragment = new Y.XmlFragment();
-  doc.transact(() => data.set('prompt', fragment), CONTENT_WRITE);
-  return fragment;
+  return existing instanceof Y.XmlFragment ? existing : null;
 }
 
 /**

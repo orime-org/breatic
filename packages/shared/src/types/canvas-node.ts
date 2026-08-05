@@ -34,6 +34,19 @@ export type NodeType =
   | 'group';
 
 /**
+ * The modalities that offer Generate. Today that is image alone; text is
+ * planned but not built. Two places must agree on this — the canvas gates the
+ * Generate menu item on it, and node creation seeds a prompt container only
+ * for nodes that can use one — so it lives here, the one package both of them
+ * sit above.
+ * @param type - The node's modality.
+ * @returns True when a node of this modality offers Generate.
+ */
+export function canGenerate(type: NodeType): boolean {
+  return type === 'image';
+}
+
+/**
  * Identifies the user who triggered the current handling AND the driver
  * responsible for advancing the node out of `handling`.
  *

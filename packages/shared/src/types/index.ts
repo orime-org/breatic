@@ -25,7 +25,10 @@ export type {
   SkillMeta,
 } from "@shared/types/entities.js";
 
-export { HANDLING_TIMEOUT_MS } from "@shared/types/canvas-node.js";
+export {
+  HANDLING_TIMEOUT_MS,
+  canGenerate,
+} from "@shared/types/canvas-node.js";
 export type {
   NodeState,
   NodeType,

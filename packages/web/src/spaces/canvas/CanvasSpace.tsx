@@ -26,7 +26,7 @@ import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { toast } from '@web/lib/toast';
-import { newId } from '@breatic/shared';
+import { canGenerate, newId } from '@breatic/shared';
 
 import { assetsApi, canvasApi } from '@web/data/api';
 import {
@@ -3569,7 +3569,8 @@ function CanvasSpaceInner({
             const genNode = nodes.find((n) => n.id === nodeMenu.nodeId);
             return !nodeMenu.isGroup &&
               !readOnly &&
-              genNode?.type === 'image'
+              genNode?.type !== undefined &&
+              canGenerate(genNode.type)
               ? () => {
                 // Open + assert in one gesture: the machine's fresh-binding
                 // assert covers id CHANGES, but a same-host reopen (store id
