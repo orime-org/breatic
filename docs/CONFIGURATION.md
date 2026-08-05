@@ -93,9 +93,9 @@ loader:`packages/core/src/config/storage.ts`。
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `upload.max_upload_bytes` | 2147483648(2 GiB)| 上传硬上限(字节);超限 presign 返 413,前端选文件当场拒 |
-| `upload.client_max_attempts` | 3 | 浏览器 presign + PUT 各自总尝试次数(含首次,仅瞬时错误)。**接入共享传输层后删除** |
-| `upload.client_retry_base_delay_ms` | 1000 | 浏览器重试退避基延时(full-jitter)。**接入共享传输层后删除** |
-| `upload.client_request_timeout_ms` | 30000 | 浏览器 API 请求单次超时;也是 PUT 停滞守卫的下限。**接入后保留** —— 它是算给传输层的单次投递超时用的 |
+| `upload.client_max_attempts` | 3 | 浏览器 **presign** 的总尝试次数(含首次,仅瞬时错误)。PUT 已接入共享传输层、不读它 |
+| `upload.client_retry_base_delay_ms` | 1000 | 浏览器 **presign** 重试的退避基延时(full-jitter)。PUT 已接入共享传输层、不读它 |
+| `upload.client_request_timeout_ms` | 30000 | PUT 停滞守卫的下限,算出来的值作为传输层的单次投递超时。**名字有误导**:它不管 presign 的超时,那个在 axios 客户端里 |
 | `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(下限, 文件大小 / 该速率)。**接入后保留**,同上 |
 | `upload.presign_expires_seconds` | 300 | 云存储(S3 / 阿里云 OSS)预签名 PUT 地址的有效期(秒)。这是存储服务商自己的 PUT 窗口,跟下发记录表无关 —— 后者不设上传时限;本地存储没有预签名地址,该项不生效 |
 

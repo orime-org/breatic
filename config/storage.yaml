@@ -17,13 +17,15 @@ upload:
   # (413). Also protects local-storage mode, which buffers the whole
   # file in server memory. Default 2 GiB.
   max_upload_bytes: 2147483648
-  # Browser-side attempts for presign + PUT, including the first
-  # (matches worker job_attempts=3). Transient errors only.
+  # Browser-side attempts for PRESIGN, including the first (matches worker
+  # job_attempts=3). Transient errors only. The PUT no longer reads this:
+  # it goes through the shared HTTP transport, which compiles its own.
   client_max_attempts: 3
   # Base backoff (ms) between browser retry attempts, full-jittered.
   client_retry_base_delay_ms: 1000
-  # Per-attempt timeout (ms) for browser API requests (presign/config).
-  # Also the floor for the PUT stall guard below.
+  # Floor for the PUT stall guard below. Despite the name it does NOT time
+  # presign: that goes through axios, whose timeout is set in
+  # packages/web/src/data/api/request.ts.
   client_request_timeout_ms: 30000
   # PUT stall guard: per-attempt timeout = max(request timeout,
   # size / this rate). A dead connection aborts + retries instead of
