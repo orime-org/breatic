@@ -18,7 +18,7 @@
 
 import { eq, and, isNull, isNotNull, or, desc, inArray } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
-import { db, projectActivitiesRepo } from "@breatic/core";
+import { db, projectActivitiesRepo, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
@@ -295,12 +295,7 @@ export async function createProject(
     .returning();
   const project = inserted[0]!;
 
-  await tx.insert(projectMembers).values({
-    projectId: project.id,
-    userId: creatorUserId,
-    role: "owner",
-    addedBy: null,
-  });
+  await projectMembersRepo.insertOwner(project.id, creatorUserId, tx);
 
   return toEntity(project);
 }
@@ -399,12 +394,7 @@ export async function duplicateProject(
       .returning();
     const newProject = inserted[0]!;
 
-    await tx.insert(projectMembers).values({
-      projectId: newProject.id,
-      userId: creatorUserId,
-      role: "owner",
-      addedBy: null,
-    });
+    await projectMembersRepo.insertOwner(newProject.id, creatorUserId, tx);
 
     // The Yjs document store is a SEPARATE database now, so the doc copy
     // can't ride this business tx. Enqueue a lifecycle command in the
@@ -559,15 +549,7 @@ export async function deleteProject(id: string): Promise<void> {
     // buttons standing over rows that now answer 404.
     await notificationRepo.retireByProject(id, tx);
 
-    await tx
-      .update(projectMembers)
-      .set({ deletedAt: now })
-      .where(
-        and(
-          eq(projectMembers.projectId, id),
-          isNull(projectMembers.deletedAt),
-        ),
-      );
+    await projectMembersRepo.softDeleteAllInProject(id, now, tx);
 
     // The Yjs document store is a SEPARATE database now, so its cascade
     // can't ride this business tx. Enqueue a lifecycle command in the
