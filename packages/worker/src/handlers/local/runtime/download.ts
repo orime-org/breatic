@@ -20,7 +20,7 @@ import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { join, extname } from "node:path";
 
-import { newId } from "@breatic/shared";
+import { newId, httpRequest } from "@breatic/shared";
 
 /**
  * Download a URL into a job temp dir. Returns the downloaded path.
@@ -30,13 +30,30 @@ import { newId } from "@breatic/shared";
  * @param options.suffix - File extension override (e.g. `".mp4"`).
  *   When absent, derived from the URL path; falls back to `.bin`.
  * @returns Absolute path to the downloaded file
+ * @throws {Error} On a non-ok status or an empty body; or the transport's
+ *   own failure when no delivery produced a response.
  */
 export async function downloadToTempDir(
   url: string,
   tempDir: string,
   options: { suffix?: string } = {},
 ): Promise<string> {
-  const response = await fetch(url);
+  // replaySafe, because a download is a pure GET: replaying it costs
+  // nothing and changes nothing.
+  //
+  // What that buys, stated precisely — a blip here was never fatal. A throw
+  // propagates to dispatch.ts, which rethrows so BullMQ re-runs the whole
+  // job (`defaultJobOpts` passes the worker config's `job_attempts`, 3 by
+  // default), and the canvas only shows a failure on the terminal attempt,
+  // so the user saw nothing. What changes is the granularity: the
+  // download is now re-delivered in place, instead of costing a whole job
+  // re-run — re-download plus re-transcode — and instead of being confined
+  // to BullMQ's ~12s jittered window, past which the job really did die.
+  //
+  // No deadline: there was never a bound on the total, and a video's
+  // download time follows its size. The transport's default bounds the
+  // wait for headers; the platform's inactivity timer bounds the stream.
+  const response = await httpRequest(url, {}, { replaySafe: true });
   if (!response.ok) {
     throw new Error(`Download failed: ${url} → HTTP ${response.status}`);
   }

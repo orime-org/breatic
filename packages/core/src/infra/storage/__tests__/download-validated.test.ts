@@ -8,6 +8,15 @@
  * a silently-truncated or empty download must NOT be hashed / stored /
  * billed as a complete asset — it must throw so the worker's Stage-2
  * persist-failure path runs (markFailed + no charge).
+ *
+ * Scope, since it narrowed: these are the CONTENT checks — is this a
+ * complete asset. Delivery (retrying, backing off, honouring Retry-After)
+ * belongs to the shared transport and is tested there; what this file still
+ * says about it is only that no loop remains here. Three tests used to pass
+ * a `maxAttempts` / `retryBackoffMs` knob that no longer exists, kept
+ * passing after it was deleted, and spent four seconds of real backoff
+ * proving somebody else's policy — see download-validated-forwarding.test.ts
+ * for what is now asserted about the handover.
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -91,14 +100,19 @@ describe("downloadValidated", () => {
     );
   });
 
-  it("throws on a non-OK HTTP status (maxAttempts=1 → no retry)", async () => {
+  it("throws on a non-OK HTTP status, naming the code", async () => {
+    // 403 rather than 500 on purpose: the claim here is about the message
+    // carrying the status, and a 5xx would drag the transport's retry
+    // policy in — three deliveries and two real backoffs to assert a
+    // string. That policy has its own tests; this one measured 2.1s while
+    // it did.
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => fakeResponse(Buffer.from("err"), {}, false, 500)),
+      vi.fn(async () => fakeResponse(Buffer.from("err"), {}, false, 403)),
     );
-    await expect(
-      downloadValidated("https://cdn/boom", { maxAttempts: 1 }),
-    ).rejects.toThrow(/HTTP 500/);
+    await expect(downloadValidated("https://cdn/boom")).rejects.toThrow(
+      /HTTP 403/,
+    );
   });
 
   it("passes when content-length header is absent (only bytes known)", async () => {
@@ -131,45 +145,20 @@ describe("downloadValidated", () => {
     expect(res.buffer.length).toBe(body.length);
   });
 
-  it("retries a transient 5xx then succeeds (#E)", async () => {
-    const body = Buffer.from("eventually ok");
-    const responses = [
-      fakeResponse(Buffer.from("x"), {}, false, 503),
-      fakeResponse(Buffer.from("x"), {}, false, 429),
-      fakeResponse(body, {
-        "content-length": String(body.length),
-        "content-type": "image/png",
-      }),
-    ];
-    let i = 0;
-    const fetchFn = vi.fn(async () => responses[i++]!);
-    vi.stubGlobal("fetch", fetchFn);
-    const res = await downloadValidated("https://cdn/flaky.png", {
-      maxAttempts: 3,
-      retryBackoffMs: 0,
-    });
-    expect(res.buffer.length).toBe(body.length);
-    expect(fetchFn).toHaveBeenCalledTimes(3);
-  });
-
-  it("throws after exhausting retries on a persistent 5xx", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => fakeResponse(Buffer.from("x"), {}, false, 503)),
-    );
-    await expect(
-      downloadValidated("https://cdn/down", { maxAttempts: 2, retryBackoffMs: 0 }),
-    ).rejects.toThrow(/HTTP 503/);
-  });
-
-  it("does NOT retry a permanent 4xx", async () => {
+  it("does not run a retry loop of its own — a 4xx is one delivery", async () => {
+    // Retrying moved to the shared transport, which has its own tests for
+    // the policy. What belongs here is that this function no longer loops:
+    // a 4xx is a fact about the request, so exactly one delivery goes out.
+    // (5xx and 429 DO get replayed, by the transport, which is why they are
+    // not asserted here — that would be testing somebody else's code with a
+    // real backoff wait.)
     const fetchFn = vi.fn(async () =>
       fakeResponse(Buffer.from("nope"), {}, false, 404),
     );
     vi.stubGlobal("fetch", fetchFn);
-    await expect(
-      downloadValidated("https://cdn/gone", { maxAttempts: 3, retryBackoffMs: 0 }),
-    ).rejects.toThrow(/HTTP 404/);
+    await expect(downloadValidated("https://cdn/gone")).rejects.toThrow(
+      /HTTP 404/,
+    );
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 });

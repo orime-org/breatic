@@ -20,7 +20,7 @@ import {
   resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
-  getOrCreatePromptFragment,
+  getPromptFragment,
   isNodeLocked,
   nodeExists,
   setNodeStyleImage,
@@ -29,7 +29,6 @@ import {
   clearNodeStyleImage,
   readCanvasGraph,
   readNodeLeaseGen,
-  setNodeContent,
   setNodeHandling,
   completeNodeHandling,
   failNodeHandling,
@@ -41,7 +40,12 @@ import {
   setNodeParams,
   setNodeParent,
   setNodePosition,
+  getTextBody,
 } from '@web/data/yjs/canvas-space';
+import {
+  bodyToPlainText,
+  writePlainTextIntoBody,
+} from '@web/data/yjs/text-body';
 
 /**
  * Builds a complete wire `CanvasNodeFields` fixture.
@@ -122,6 +126,11 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
           // Eager-seeded at birth (concurrent-first-crop safety) — the
           // wire carries an empty array, inert for every reader.
           focusImages: [],
+          // Seeded at birth too (#1880): an empty prompt container, so two
+          // people opening the panel share one instead of each minting theirs.
+          // The view carries its serialized form; the editor binds to the live
+          // fragment through getPromptFragment, not through this projection.
+          prompt: '',
         },
       },
     ]);
@@ -174,6 +183,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       errorMessage: undefined,
       locked: false,
       focusImages: [],
+      prompt: '',
     });
   });
 
@@ -233,29 +243,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(readNodes(doc())[0].data).toMatchObject({ locked: false });
   });
 
-  it('setNodeContent (plain writer — text inline edit) writes content + flips handling → idle', () => {
-    addNode(PID, SID, sampleFields('image', { state: 'handling' }));
-    setNodeContent(PID, SID, 'n1', 'https://cdn/photo.png');
-    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
-      'data',
-    ) as Y.Map<unknown>;
-    expect(data.get('content')).toBe('https://cdn/photo.png');
-    expect(data.get('state')).toBe('idle');
-    expect(data.get('errorMessage')).toBeUndefined();
-  });
-
-  it('setNodeContent clears any prior errorMessage', () => {
-    addNode(
-      PID,
-      SID,
-      sampleFields('image', { state: 'idle', errorMessage: 'old fail' }),
-    );
-    setNodeContent(PID, SID, 'n1', 'https://cdn/photo.png');
-    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
-      'data',
-    ) as Y.Map<unknown>;
-    expect(data.get('errorMessage')).toBeUndefined();
-  });
 
   it('failNodeHandling writes errorMessage + idle so deriveStatus shows error (upload fail)', () => {
     addNode(PID, SID, sampleFields('image'));
@@ -749,9 +736,9 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(removeNodeFocusImage(PID, SID, 'ghost-node', 'f1')).toBe(false);
   });
 
-  it('getOrCreatePromptFragment creates + persists a Y.XmlFragment on the node prompt', () => {
+  it('getPromptFragment reads the fragment the node was born with', () => {
     addNode(PID, SID, sampleFields('image'));
-    const frag = getOrCreatePromptFragment(PID, SID, 'n1');
+    const frag = getPromptFragment(PID, SID, 'n1');
     expect(frag).toBeInstanceOf(Y.XmlFragment);
     const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
@@ -759,15 +746,15 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(data.get('prompt')).toBe(frag);
   });
 
-  it('getOrCreatePromptFragment returns the same fragment on repeat calls (idempotent)', () => {
+  it('getPromptFragment returns the same fragment on repeat calls', () => {
     addNode(PID, SID, sampleFields('image'));
-    expect(getOrCreatePromptFragment(PID, SID, 'n1')).toBe(
-      getOrCreatePromptFragment(PID, SID, 'n1'),
+    expect(getPromptFragment(PID, SID, 'n1')).toBe(
+      getPromptFragment(PID, SID, 'n1'),
     );
   });
 
-  it('getOrCreatePromptFragment returns null for a missing node', () => {
-    expect(getOrCreatePromptFragment(PID, SID, 'ghost')).toBeNull();
+  it('getPromptFragment returns null for a missing node', () => {
+    expect(getPromptFragment(PID, SID, 'ghost')).toBeNull();
   });
 
   it('readNodeLeaseGen returns 0 for a node with no leaseGen and the stored value otherwise', () => {
@@ -799,13 +786,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
   });
 
   describe('undo tracking — content / error writes excluded (spec §5, #8)', () => {
-    it('setNodeContent does NOT push an undo entry (else undo strands the node in handling)', () => {
-      const undo = createCanvasUndoManager(doc());
-      addNode(PID, SID, sampleFields('image', { state: 'handling' }, { id: 'img1' }));
-      const depth = undo.undoStack.length;
-      setNodeContent(PID, SID, 'img1', 'https://cdn/x.png');
-      expect(undo.undoStack.length).toBe(depth);
-    });
 
     it('failNodeHandling does NOT push an undo entry', () => {
       const undo = createCanvasUndoManager(doc());
@@ -1118,6 +1098,55 @@ describe('unified gen lease (#1580 #7)', () => {
     ) as Y.Map<unknown>;
     expect(data.get('content')).toBe('https://cdn/photo.png');
     expect(data.has('coverUrl')).toBe(false);
+  });
+
+  it('completeNodeHandling lands a text node\'s words in its body, never in data.content', () => {
+    // Dropping a .txt on the canvas ends here, and a text node's words live in
+    // the shared body. Writing them to the plain field would store and sync
+    // them into a field the node view does not carry (#1774) — the node would
+    // come back from the drop looking empty.
+    addNode(PID, SID, sampleFields('text'));
+    const lease = setNodeHandling(PID, SID, 'n1', 'user-x');
+    const landed = completeNodeHandling(PID, SID, 'n1', 'line one\nline two', lease!);
+
+    expect(landed).toBe(true);
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.has('content')).toBe(false);
+    expect(bodyToPlainText(data.get('body') as Y.XmlFragment)).toBe(
+      'line one\nline two',
+    );
+    expect(data.get('state')).toBe('idle');
+  });
+
+  it('completeNodeHandling replaces a text body rather than appending to it', () => {
+    addNode(PID, SID, sampleFields('text'));
+    writePlainTextIntoBody(
+      getTextBody(PID, SID, 'n1') as Y.XmlFragment,
+      'what was there before',
+    );
+    const lease = setNodeHandling(PID, SID, 'n1', 'user-x');
+    completeNodeHandling(PID, SID, 'n1', 'the dropped file', lease!);
+
+    expect(bodyToPlainText(getTextBody(PID, SID, 'n1') as Y.XmlFragment)).toBe(
+      'the dropped file',
+    );
+  });
+
+  it('completeNodeHandling creates a body for a text node that has none', () => {
+    // An older node, or one whose repair has not run. Losing the words of the
+    // file the user just dropped is the worse failure.
+    addNode(PID, SID, sampleFields('text'));
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    data.delete('body');
+
+    const lease = setNodeHandling(PID, SID, 'n1', 'user-x');
+    completeNodeHandling(PID, SID, 'n1', 'rescued', lease!);
+
+    expect(bodyToPlainText(data.get('body') as Y.XmlFragment)).toBe('rescued');
   });
 
   it('completeNodeHandling with a superseded token is a no-op returning false (owner CAS)', () => {

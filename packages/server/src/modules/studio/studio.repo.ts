@@ -387,10 +387,16 @@ export async function updateStudio(
  * Load a studio by its id (active only) — used where the caller already holds
  * a studio id (e.g. a project's `studioId`) and needs the studio's `type`.
  * @param id - Studio UUID
+ * @param tx - Enclosing transaction, when the caller is inside one; a read
+ *   issued from inside a transaction without it reaches for a second pooled
+ *   connection while the first is still held
  * @returns The studio, or `null` if missing / soft-deleted
  */
-export async function getById(id: string): Promise<Studio | null> {
-  const rows = await db
+export async function getById(
+  id: string,
+  tx?: DbTx,
+): Promise<Studio | null> {
+  const rows = await (tx ?? db)
     .select()
     .from(studios)
     .where(and(eq(studios.id, id), isNull(studios.deletedAt)))

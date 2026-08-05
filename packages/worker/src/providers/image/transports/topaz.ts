@@ -17,6 +17,7 @@ import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
 import { requestWithRetry, pollUntilDone, extractNested } from "@worker/providers/http.js";
 import { logger } from "@breatic/core";
+import { httpRequest } from "@breatic/shared";
 
 /**
  * Build Topaz authentication headers.
@@ -80,12 +81,15 @@ async function estimateCost(
   const formData = buildFormData(params, sourceUrl);
 
   try {
-    const response = await fetch(estimateUrl, {
-      method: "POST",
-      headers,
-      body: formData,
-      signal: AbortSignal.timeout(30_000),
-    });
+    const response = await httpRequest(
+      estimateUrl,
+      {
+        method: "POST",
+        headers,
+        body: formData,
+      },
+      { replaySafe: false, timeoutMs: 30_000 },
+    );
 
     if (!response.ok) return 0;
 
@@ -121,9 +125,9 @@ async function generateSync(
       method: "POST",
       headers,
       body: formData,
-      signal: AbortSignal.timeout(resolved.timeout * 1000),
     },
     "topaz",
+    resolved.timeout * 1000,
   );
 
   const outputUrl = (resp.output_url ?? resp.url) as string | undefined;
@@ -178,9 +182,9 @@ async function generateAsyncPoll(
         method: "POST",
         headers,
         body: formData,
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
       "topaz",
+      resolved.timeout * 1000,
     );
 
     const processId = data.process_id as string | undefined;

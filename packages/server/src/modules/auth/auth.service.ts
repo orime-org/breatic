@@ -371,7 +371,7 @@ export async function resetPasswordWithRecoveryCode(
 
 // ── Email verification ───────────────────────────────────────────
 
-const EMAIL_VERIFY_TTL = 24 * 3600; // 24 hours
+const EMAIL_VERIFY_TTL = 24 * 3600; // request-ttl:allow — how long a verification link lives, not a deferred decision anyone answers
 
 /**
  * Generate a one-time email-verification token (PR-a task 9).

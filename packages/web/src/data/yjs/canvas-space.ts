@@ -5,10 +5,16 @@ import * as React from 'react';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import * as Y from 'yjs';
 import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
+import { canGenerate } from '@breatic/shared';
 
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import {
+  bodyFromText,
+  bodyToPlainText,
+  writePlainTextIntoBody,
+} from '@web/data/yjs/text-body';
 import type { NodeKind, NodeView } from '@web/spaces/canvas/types/node-view';
 import { toNodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -368,16 +374,35 @@ export function useCanvasSpace(
  * Each defined field becomes a Y.Map entry (plain values — strings,
  * numbers, booleans, plain arrays / objects — matching how the backend
  * reads `operationLocks` via `Array.isArray` and `handlingBy` as a plain
- * object). Undefined fields are omitted. ONE exception to the plain-values
- * convention: `focusImages` is a `Y.Array` CRDT sequence (concurrent-add
- * safe, see {@link addNodeFocusImage}) — this builder seeds it (from a
- * provided wire value, else empty — the eager seed below), and the two
- * focus writers maintain it (the backend never reads the field, and
- * `toJSON()` serializes both encodings identically).
+ * object). Undefined fields are omitted.
+ *
+ * Three keys are exceptions to the plain-values convention, and all three are
+ * seeded here rather than on demand. A container created on demand is a
+ * whole-container race: two clients that both find it missing each mint their
+ * own, map-level last-write-wins keeps one, and the loser's content disappears
+ * with their container. Born inside the creating transaction the container is
+ * a single replicated creation event, every edit inside it commutes, and
+ * undoing the creation takes the container along instead of orphaning it.
+ *
+ * `focusImages` — a `Y.Array` CRDT sequence on EVERY node (concurrent-add
+ * safe, see {@link addNodeFocusImage}), seeded from a provided wire value else
+ * empty; the two focus writers maintain it (the backend never reads the field,
+ * and `toJSON()` serializes both encodings identically).
+ *
+ * `body` — a text node's shared fragment, what its editor binds to (#1774).
+ * Seeded non-empty, because the editor's schema wants at least one block.
+ *
+ * `prompt` — the Generate prompt fragment, on the modalities that offer
+ * Generate (#1880). Seeded empty; {@link getPromptFragment} only reads.
  * @param data - The plain wire data fields to write.
+ * @param type - The node's modality, which decides which containers are
+ *   seeded: `body` for text, `prompt` for generate-capable modalities.
  * @returns A Y.Map populated with the defined data fields.
  */
-function buildDataMap(data: CanvasNodeFields['data']): Y.Map<unknown> {
+function buildDataMap(
+  data: CanvasNodeFields['data'],
+  type: NodeType,
+): Y.Map<unknown> {
   const map = new Y.Map<unknown>();
   // Tracked with a local flag, NOT `map.has()` — reads on a not-yet
   // integrated Y.Map do not see preliminary content, so `has` would
@@ -386,6 +411,11 @@ function buildDataMap(data: CanvasNodeFields['data']): Y.Map<unknown> {
   let focusSeeded = false;
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue;
+    // A text node's words go into its shared body below, never into a plain
+    // field. Every creation path that arrives with text — a paste, a copied
+    // node, a dropped file — hands it over as `content`, because that is what
+    // fits through a clipboard; this is where it stops being a plain string.
+    if (key === 'content' && type === 'text') continue;
     if (key === 'focusImages' && Array.isArray(value)) {
       // Seed the CRDT sequence from a provided wire value AS-IS (no
       // sanitizing — readers sanitize; a fixture / forged value must be
@@ -408,6 +438,19 @@ function buildDataMap(data: CanvasNodeFields['data']): Y.Map<unknown> {
   // non-array wire value under the key is overwritten by the empty
   // container — shape sanitation at birth.
   if (!focusSeeded) map.set('focusImages', new Y.Array<unknown>());
+  // Non-empty from birth: the editor's schema wants at least one block, and a
+  // body that disagrees loses the redo stack the first time an undo empties it
+  // (`document-yjs.ts` states the same invariant for document bodies).
+  if (type === 'text') {
+    const text = typeof data.content === 'string' ? data.content : '';
+    map.set('body', bodyFromText(text));
+  }
+  // #1880. Replayed against the old lazy-create code through the public API,
+  // the merge kept one client's line and the other's vanished outright — the
+  // race the header describes, observed rather than reasoned about. Only the
+  // modalities that offer Generate get one; on a group or a sticky it would be
+  // a container nothing ever reads.
+  if (canGenerate(type)) map.set('prompt', new Y.XmlFragment());
   return map;
 }
 
@@ -433,7 +476,7 @@ export function addNode(
     // (alongside position), only when set so top-level nodes carry no key.
     if (node.parentId !== undefined) map.set('parentId', node.parentId);
     map.set('position', node.position);
-    map.set('data', buildDataMap(node.data));
+    map.set('data', buildDataMap(node.data, node.type));
     nodesMap.set(node.id, map);
   }, CANVAS_UNDO);
 }
@@ -891,33 +934,153 @@ export function setNodeMode(
 }
 
 /**
- * Get (or lazily create) the Y.XmlFragment backing a content node's Generate
- * prompt. The collaborative prompt editor (TipTap + Collaboration) binds to
- * this fragment so collaborators see keystrokes live. Created empty on first
- * open with the content-write origin so the init does NOT enter the canvas undo
- * stack (prompt edits carry the y-sync origin and are excluded too). Returns
- * null when the node or its data map is missing.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node whose prompt fragment to get / create.
- * @returns The prompt Y.XmlFragment, or null when the node is missing.
+ * A node's nested `data` map, or `null` when the node is gone or malformed.
+ *
+ * Every fragment hanging off a node (the text body, the generation prompt) has
+ * to walk this path first, so it lives in one place. Exported for the data
+ * layer's own use — subscribing to a body needs the map itself, not a snapshot
+ * of what is in it — and not meant to travel above `data/yjs/`.
+ * @param doc - The canvas-space document.
+ * @param nodeId - Id of the node to look up.
+ * @returns The node's data map, or `null`.
  */
-export function getOrCreatePromptFragment(
+export function nodeDataMap(doc: Y.Doc, nodeId: string): Y.Map<unknown> | null {
+  const node = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId);
+  if (!node) return null;
+  const data = node.get('data');
+  return data instanceof Y.Map ? data : null;
+}
+
+/**
+ * Read a text node's body, without creating one (#1774).
+ *
+ * Absent means the node predates this feature, not that it is empty: an empty
+ * body still holds one block, and every node born since carries one from
+ * inside its creating transaction (an undo removes such a node whole rather
+ * than stripping its body — probed). Callers that need to write have to
+ * repair first, through {@link ensureTextBody}.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the node.
+ * @param nodeId - Id of the text node whose body to read.
+ * @returns The node's body, or `null` when it has none.
+ */
+export function getTextBody(
   projectId: string,
   spaceId: string,
   nodeId: string,
 ): Y.XmlFragment | null {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return null;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return null;
-  const existing = data.get('prompt');
+  const body = nodeDataMap(doc, nodeId)?.get('body');
+  return body instanceof Y.XmlFragment ? body : null;
+}
+
+/**
+ * Read several text nodes' bodies as plain text, right now.
+ *
+ * For the copy path, which runs on a keystroke and must put on the clipboard
+ * what the nodes say at that moment. A subscription's React state is a render
+ * behind, and there is no React render between the keypress and the write.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the nodes.
+ * @param nodeIds - Ids of the text nodes to read.
+ * @returns Node id to body text, for the ids that have a body.
+ */
+export function readTextBodies(
+  projectId: string,
+  spaceId: string,
+  nodeIds: ReadonlyArray<string>,
+): ReadonlyMap<string, string> {
+  const out = new Map<string, string>();
+  for (const id of nodeIds) {
+    const body = getTextBody(projectId, spaceId, id);
+    if (body) out.set(id, bodyToPlainText(body));
+  }
+  return out;
+}
+
+/**
+ * Hand back a text node's body, repairing an empty seat on the way.
+ *
+ * This is the question an EDITOR asks — "give me the body I can bind to" —
+ * and every editor-binding caller comes through here rather than pairing a
+ * read with a repair of its own (that pairing existed once, drifted, and is
+ * what this signature retired). One other place also handles a missing body:
+ * {@link landHandlingContent}, which lands a task's words and seeds directly
+ * WITH them — a single write, where routing through here would seed empty and
+ * overwrite. Same absence check, different write; if the shape of a seeded
+ * body ever changes, change both.
+ *
+ * Repair, not lazy creation. Every text node is born with a body inside the
+ * creating transaction, so **the only node that can lack one is older than
+ * this feature** — measured, not assumed: undoing a node's creation removes
+ * the node entirely and redo brings body and all back, so an undo never
+ * leaves a live node bodyless (an earlier version of this comment claimed it
+ * did). Without repair such a node could never be written in again: the
+ * shared editor requires a fragment and refuses to bind to nothing.
+ *
+ * The seat is seeded EMPTY on purpose. A pre-#1774 node's words lived in a
+ * plain `data.content` field and are deliberately dropped: before launch,
+ * every node old enough to have one is test residue, so opening it to a clean
+ * blank page IS the intended behaviour rather than a loss. Ruled 2026-08-04;
+ * the same ruling says a defect reachable ONLY through such a node is not
+ * worth fixing, which is why no concurrency guard sits on this write.
+ *
+ * The origin is deliberately NOT the one the canvas undo manager tracks. A
+ * repair is the system fixing itself, not something the user did, and putting
+ * it on their undo stack means one press of undo deletes the paragraph they
+ * just typed into the repaired node — measured, not reasoned about.
+ *
+ * Idempotent: a node that already has a body gets that body back untouched, so
+ * a second caller cannot wipe what the first one wrote.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the node.
+ * @param nodeId - Id of the text node to repair.
+ * @returns The node's body, or `null` when the node itself is gone.
+ */
+export function ensureTextBody(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): Y.XmlFragment | null {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const data = nodeDataMap(doc, nodeId);
+  if (!data) return null;
+  const existing = data.get('body');
   if (existing instanceof Y.XmlFragment) return existing;
-  const fragment = new Y.XmlFragment();
-  doc.transact(() => data.set('prompt', fragment), CONTENT_WRITE);
-  return fragment;
+  const body = bodyFromText('');
+  doc.transact(() => data.set('body', body), CONTENT_WRITE);
+  return body;
+}
+
+/**
+ * Read the Y.XmlFragment backing a content node's Generate prompt. The
+ * collaborative prompt editor (TipTap + Collaboration) binds to this fragment
+ * so collaborators see keystrokes live.
+ *
+ * A pure read, and that is the point (#1880): this used to create the fragment
+ * when it found none, so two people opening the same node's panel at once each
+ * minted one under the same key and map-level last-write-wins dropped one WITH
+ * everything typed into it. The fragment is now born with the node, so by the
+ * time anyone can open a panel it is already there and shared.
+ *
+ * Returns null for a node that is missing, or for one older than #1880 — those
+ * predate the seeding and are deliberately not repaired (pre-launch legacy data
+ * is not served). The panel renders without a prompt editor in that case.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node whose prompt fragment to read.
+ * @returns The prompt Y.XmlFragment, or null when there is none.
+ */
+export function getPromptFragment(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): Y.XmlFragment | null {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const data = nodeDataMap(doc, nodeId);
+  if (!data) return null;
+  const existing = data.get('prompt');
+  return existing instanceof Y.XmlFragment ? existing : null;
 }
 
 /**
@@ -989,40 +1152,11 @@ export function isNodeLocked(
 }
 
 /**
- * Write a node's content + mark it idle — the "content arrived" transition
- * (frontend-owned upload completion). Sets `content`, flips `state` to `'idle'`
- * and clears any prior `errorMessage`, all in one transaction so collaborators
- * see the node go from handling → content in a single update.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node to fill.
- * @param content - The node's content (an asset URL, or text body).
- */
-export function setNodeContent(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  content: string,
-): void {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
-  doc.transact(() => {
-    data.set('content', content);
-    data.set('state', 'idle');
-    data.delete('errorMessage');
-  }, CONTENT_WRITE);
-}
-
-/**
  * Restore a past node result — the history-recovery write-back (#1619).
  * Re-points the node's content (and, for video, its cover poster) at an
  * already-existing history result, WITHOUT touching the lease machinery.
  *
- * Deliberately different from {@link setNodeContent} / {@link completeNodeHandling}:
+ * Deliberately different from {@link completeNodeHandling}:
  * - Writes `content`; for a video (which carries a separate cover poster)
  *   writes `coverUrl` (`null` clears it so no stale poster survives). Pass
  *   `undefined` to leave `coverUrl` untouched — image / audio never carry a
@@ -1155,6 +1289,43 @@ export function setNodeHandling(
 }
 
 /**
+ * Land a finished handling's content on a node, in the field its type reads.
+ *
+ * A text node's words live in its shared body, never in `data.content`: the
+ * node view deliberately does not carry the body (#1774), so words written to
+ * the plain field would be stored, synced, and never shown — the node would
+ * come back from a dropped `.txt` looking empty. Every other modality's
+ * content IS a plain field (an asset URL), so the split is by type, once,
+ * here. Same rule as node creation, which drops `content` for a text node and
+ * seeds the body instead.
+ *
+ * A missing body is created rather than skipped. Losing the words of a file
+ * the user just dropped is the worse failure, and the node is by definition
+ * not being edited right now — this runs under a lease, and a node a task is
+ * writing cannot be opened for editing. The seed here is deliberately NOT
+ * routed through {@link ensureTextBody}: that path seeds an empty body for an
+ * editor to bind, while this one already holds the words and lands them in a
+ * single write. Same absence check, different write; if the shape of a seeded
+ * body ever changes, change both.
+ * @param data - The node's data map, already verified to be one.
+ * @param type - The node's modality, read from its `type` field.
+ * @param content - What the handling produced: an asset URL, or extracted text.
+ */
+function landHandlingContent(
+  data: Y.Map<unknown>,
+  type: unknown,
+  content: string,
+): void {
+  if (type !== 'text') {
+    data.set('content', content);
+    return;
+  }
+  const body = data.get('body');
+  if (body instanceof Y.XmlFragment) writePlainTextIntoBody(body, content);
+  else data.set('body', bodyFromText(content));
+}
+
+/**
  * Complete a leased handling with its result content — the upload-done
  * write-back (#1580 #7). Verifies the caller still OWNS the live lease
  * (all three token fields match `handlingBy`) before writing; a superseded
@@ -1193,7 +1364,7 @@ export function completeNodeHandling(
   if (!(data instanceof Y.Map)) return false;
   if (!ownsLease(data, lease)) return false;
   doc.transact(() => {
-    data.set('content', content);
+    landHandlingContent(data, node.get('type'), content);
     if (coverUrl !== undefined) data.set('coverUrl', coverUrl);
     data.set('state', 'idle');
     data.delete('handlingBy');
@@ -1353,7 +1524,7 @@ export function createGroup(
     map.set('type', group.type);
     if (group.parentId !== undefined) map.set('parentId', group.parentId);
     map.set('position', group.position);
-    map.set('data', buildDataMap(group.data));
+    map.set('data', buildDataMap(group.data, group.type));
     nodesMap.set(group.id, map);
     for (const member of members) {
       const node = nodesMap.get(member.id);

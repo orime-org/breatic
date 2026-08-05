@@ -22,6 +22,7 @@ import {
   getDecisionWindowDays,
   getDecisionWindowMs,
   getDecisionWindowSeconds,
+  MS_PER_DAY,
 } from "@server/config/limits.js";
 
 describe("limits config — schema", () => {
@@ -162,5 +163,14 @@ describe("decision window", () => {
     const days = getDecisionWindowDays();
     expect(getDecisionWindowSeconds()).toBe(days * 24 * 60 * 60);
     expect(getDecisionWindowMs()).toBe(days * 24 * 60 * 60 * 1000);
+  });
+
+  it("exports a day as a unit, which is not the window and does not move", () => {
+    // The landing page divides `expires_at - created_at` by this to say how
+    // long a request had. That is a question about a row, so it must not
+    // follow the knob: turning the window to 3 leaves a day 24 hours long.
+    // Written out rather than derived: deriving it from the same call the
+    // implementation makes would pass no matter what that call returned.
+    expect(MS_PER_DAY).toBe(86_400_000);
   });
 });

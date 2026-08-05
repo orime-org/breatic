@@ -14,7 +14,10 @@ interface NodePlaceholderProps {
    * single line, replacing the default two-line hint.
    */
   hint?: string;
-  /** Double-click handler for the call-to-action (upload a file / write). */
+  /**
+   * Fires the call-to-action (upload a file / write): double-click, or Enter /
+   * Space while the button has focus.
+   */
   onActivate?: () => void;
 }
 
@@ -22,13 +25,23 @@ interface NodePlaceholderProps {
  * Empty-state body shown when a content node has no `content` / `url` yet. Two
  * lines: the modality's primary double-click action (upload / write), then a
  * shared, dimmer hint pointing at the right-click menu (generate & more). Both
- * lines are i18n keys. A single click selects the node; only a **double**-click
- * fires `onActivate` (matching the "Double-click to…" copy). An explicit `hint`
+ * lines are i18n keys. A single click selects the node; a **double**-click, or
+ * Enter / Space on the focused button, fires `onActivate`. An explicit `hint`
  * (e.g. an in-progress status) overrides both lines with one line.
+ *
+ * The keyboard half is not a bonus feature — this is a `<button>`, so it is
+ * focusable and clicking an empty node lands focus here
+ * rather than on the node wrapper. Without a keyboard path the most common
+ * sequence there (click the node, press Enter to start) would do nothing at
+ * all, and the node most in need of a way in is exactly the empty one. The
+ * browser turns a keyboard activation into a click with no pointer behind it,
+ * which is what `detail === 0` means; a real click keeps its count and still
+ * only selects the node.
  * @param root0 - Node placeholder props.
  * @param root0.modality - Node modality, selecting the icon and the primary-line copy.
  * @param root0.hint - Optional single-line override (status text).
- * @param root0.onActivate - Called on double-click to upload a file / enter edit.
+ * @param root0.onActivate - Called on double-click, or on Enter / Space while
+ *   the button has focus, to upload a file / enter edit.
  * @returns The empty-state call-to-action button.
  */
 export function NodePlaceholder({
@@ -42,6 +55,9 @@ export function NodePlaceholder({
     <button
       type='button'
       onDoubleClick={onActivate}
+      onClick={(event) => {
+        if (event.detail === 0) onActivate?.();
+      }}
       data-testid='node-placeholder'
       data-modality={modality}
       className='flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground hover:text-foreground'

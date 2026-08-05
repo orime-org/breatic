@@ -16,8 +16,9 @@ import type { ResolvedModel } from "@worker/providers/shared.js";
  * must NOT carry any client id — only the returned id is persisted.
  *
  * Only the async endpoint path (`modelId` ending in `/async`) is resumable.
- * The cost-estimate call uses raw `fetch`, stubbed here to fail (cost 0) so
- * it never leaves the process.
+ * The cost-estimate call goes through the shared transport, which calls the
+ * global `fetch` — stubbed here to fail (cost 0) so it never leaves the
+ * process.
  */
 const requestWithRetryMock = vi.fn();
 const pollUntilDoneMock = vi.fn();
@@ -33,7 +34,8 @@ vi.mock("@worker/providers/http.js", async (importOriginal) => {
 
 import { generate } from "@worker/providers/image/transports/topaz.js";
 
-// estimateCost() uses raw fetch; a non-ok response short-circuits it to cost 0.
+// estimateCost() reaches the network through the shared transport; a non-ok
+// response short-circuits it to cost 0.
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
@@ -63,7 +65,11 @@ describe("topaz image transport resume (#1628 ⑦)", () => {
     pollUntilDoneMock.mockReset();
     fetchMock.mockReset();
     pollUntilDoneMock.mockResolvedValue(COMPLETED_RESULT);
-    fetchMock.mockResolvedValue({ ok: false });
+    // A real `Response`, not an `{ ok }` stand-in. The transport reads the
+    // status and the `Retry-After` header before deciding anything, which a
+    // one-field object cannot answer — and 500 with `replaySafe: false` is
+    // not replayed, so this stays one delivery.
+    fetchMock.mockImplementation(async () => new Response(null, { status: 500 }));
   });
 
   afterAll(() => {

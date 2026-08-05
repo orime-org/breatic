@@ -49,7 +49,7 @@ loader:`packages/server/src/config/limits.ts`。
 | `activity_feed_page_max` | 100 | 活动流分页:客户端 `?limit` 被裁剪到的硬上限 |
 | `canvas_reference_pool_cap` | 50 | 单画布节点参考池上限(参考边 + 聚焦图合计,#1782);经 `GET /canvas/limits` 下发,前端加入时 gate(池在 Yjs,server 不 gate 协作写);区别于按模型的 `images.max_items` 执行 payload 上限(#1735)。聚焦图另受前端硬顶 `MAX_FOCUS_ENTRIES`(200,`web data/focus-images.ts`)约束——旋钮调高于 200 时聚焦图仍在 200 处被拒(带 toast) |
 | `node_history_page_size` | 20 | 节点历史找回面板每页请求的行数(无限滚动,#1619);经 `GET /canvas/limits` 下发,前端取(未加载前退化用 server 默认 20) |
-| `decision_window_days` | 7 | 等人答复的五件事共用的答复期限(天):studio 邀请 · project 邀请 · studio 转让 · project 转让 · 角色升级请求。**同一个数管四处**——落库的 `expires_at`、邮件链接令牌的 Redis TTL、邀请/转让邮件正文里的那句话、邀请落地页过期卡片里的天数,全部读它,任何一处都不许再写自己的数字。改这个值只影响此后新建的行,老行按当初盖的截止时间走 |
+| `decision_window_days` | 7 | 等人答复的五件事共用的答复期限(天):studio 邀请 · project 邀请 · studio 转让 · project 转让 · 角色升级请求。**同一个数管四处**——落库的 `expires_at`、邮件正文里的那句话、决策落地页过期卡里的天数、以及任何需要「多久」而不是「到几时」的地方,全部读它,任何一处都不许再写自己的数字。代码经 `getDecisionWindowDays()` / `getDecisionWindowMs()` / `getDecisionWindowSeconds()` 读,ESLint 规则 `breatic/no-hardcoded-request-ttl` 禁止调用点自己把天数算出来(作用域 `packages/server/src/modules/**`,测试豁免;判的是算出来的**值**是不是整天数,所以换个写法绕不过去,正当的例外同行标 `request-ttl:allow` 加理由)。改这个值只影响此后新建的行,老行按当初盖的截止时间走 |
 
 ## 4. `config/collab.yaml` — Hocuspocus 协作服务
 
@@ -74,29 +74,29 @@ loader:`packages/core/src/config/worker.ts`。
 | `job_attempts` | 3 | 任务失败重试次数 |
 | `job_backoff_delay_ms` | 2000 | 重试退避基延时(full-jitter,自定义 backoffStrategy)|
 | `lock_duration_ms` | 600000(10 分钟) | 任务锁时长 |
-| `http_max_retries` / `http_retry_base_delay` | 3 / 2000 | provider HTTP 重试(full-jitter)|
+| `http_max_retries` / `http_retry_base_delay` | 3 / 2000 | **已失效,调它不起作用** —— provider HTTP 重试改由[共享 HTTP 传输层](./ARCHITECTURE.md#shared-http-transport)按固定策略执行,不读这两个键。待删 |
 | `poll_interval` | 3000 | 队列轮询间隔 |
 
 ## 6. `config/storage.yaml` — 存储下载重试 + 浏览器上传
 
 loader:`packages/core/src/config/storage.ts`。
 
-`download.*`:`downloadValidated` 转存 provider 结果时,对瞬时失败(5xx / 429)的重试参数;退避加 full-jitter(#1625)。
+`download.*`:**已失效,调它不起作用** —— 转存 provider 结果的下载重试改由[共享 HTTP 传输层](./ARCHITECTURE.md#shared-http-transport)按固定策略执行,不读这两个键。待删。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `download.max_attempts` | 3 | 下载总尝试次数(含首次)|
-| `download.retry_base_delay_ms` | 500 | 退避基延时(× 尝试次数,再 full-jitter)|
+| `download.max_attempts` | 3 | 已失效,见上 |
+| `download.retry_base_delay_ms` | 500 | 已失效,见上 |
 
 `upload.*`:浏览器上传旋钮(#1609 资产层片2)。前端经 `GET /assets/upload-config`(会话缓存)取;上传上限在 `/assets/presign` 权威校验(413),前端选文件时预检只为体验。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `upload.max_upload_bytes` | 2147483648(2 GiB)| 上传硬上限(字节);超限 presign 返 413,前端选文件当场拒 |
-| `upload.client_max_attempts` | 3 | 浏览器 presign + PUT 各自总尝试次数(含首次,仅瞬时错误)|
-| `upload.client_retry_base_delay_ms` | 1000 | 浏览器重试退避基延时(full-jitter)|
-| `upload.client_request_timeout_ms` | 30000 | 浏览器 API 请求单次超时;也是 PUT 停滞守卫的下限 |
-| `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(下限, 文件大小 / 该速率)|
+| `upload.client_max_attempts` | 3 | 浏览器 **presign** 的总尝试次数(含首次,仅瞬时错误)。PUT 已接入共享传输层、不读它 |
+| `upload.client_retry_base_delay_ms` | 1000 | 浏览器 **presign** 重试的退避基延时(full-jitter)。PUT 已接入共享传输层、不读它 |
+| `upload.client_request_timeout_ms` | 30000 | PUT 停滞守卫的下限,算出来的值作为传输层的单次投递超时。**名字有误导**:它不管 presign 的超时,那个在 axios 客户端里 |
+| `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(上一行的下限, 文件大小 / 该速率),算出来的值作为传输层的单次投递超时。**它和上一行都有上界约束**:算出来的超时必须落在定时器能表达的范围内(2147483647 毫秒),传输层遇到超范围的值是拒收、不是夹紧。所以这两项跟 `max_upload_bytes` 一起在启动时校验,填得太低会启动失败,报错里带着当前上限下最低能填多少(2 GiB 上限时是 1001) |
 | `upload.presign_expires_seconds` | 300 | 云存储(S3 / 阿里云 OSS)预签名 PUT 地址的有效期(秒)。这是存储服务商自己的 PUT 窗口,跟下发记录表无关 —— 后者不设上传时限;本地存储没有预签名地址,该项不生效 |
 
 `avatar.*`:studio 头像。头像**不走预签名直传**,字节经服务器进来,所以这个上限同时也是单次请求在进程里缓冲的上限。头像是挂在 studio 行上的一条 URL、不是资产,**服务端不读图像内容**(不看尺寸、不看内部结构);但它仍会按字节签名认一次类型来决定存成什么扩展名和 content-type,**签名不是 PNG 的会被 415 拒掉**——所以这个字节上限是"对图片唯一的度量",不是"唯一的拒绝理由"。前端裁剪成 512×512 PNG。PNG 无损、没有质量旋钮,字节数跟画面内容走:纯色几 KB,噪点照片几乎压不动 —— 实测单帧 512×512 RGBA 最坏 1,049,473 字节(像素和 alpha 全随机),所以上限按 2 MiB 定,给最坏情况留两倍。

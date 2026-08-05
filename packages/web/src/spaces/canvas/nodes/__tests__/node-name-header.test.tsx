@@ -27,7 +27,7 @@ const CONTENT_NODES: ReadonlyArray<{
   {
     name: 'TextNode',
     Comp: TextNode as ComponentType<{ data: NodeView }>,
-    data: { kind: 'text', content: '', status: 'idle' },
+    data: { kind: 'text', status: 'idle' },
     label: 'Text',
   },
   {

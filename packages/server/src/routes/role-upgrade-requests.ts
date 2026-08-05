@@ -2,25 +2,29 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Role-upgrade request routes — viewer asks owner for editor rights.
+ * Role-upgrade request routes — a viewer asks the owner for editor rights.
  *
  * Two mount points:
  *   - `/api/v1/projects/:pid/role-upgrade-requests`
- *       POST    — viewer submits a request (caller must be 'viewer' on
- *                 the project; service inserts a notification in
- *                 the owner's inbox).
- *   - `/api/v1/role-upgrade-requests/:notificationId/decision`
- *       PATCH   — owner decides (approve/reject); service atomically
- *                 bumps the requester's role (approve only), creates
- *                 the decision notification, and marks the request
- *                 read on the owner's side.
+ *       POST  — the viewer files a request
+ *       GET   `/mine` — their own live request, for the button that turns into
+ *               "requested · cancel"
+ *   - `/api/v1/role-upgrade-requests/:requestId`
+ *       DELETE — the requester withdraws
  *
- * The notification id (not a separate request id) is the handle for
- * decisions because the request itself lives in the notifications
- * table (see spec § 7) — there's no separate "role_upgrade_requests"
- * relation.
+ * The owner's approve/reject is deliberately NOT here: a request is answered
+ * at `/decisions`, whichever of the five kinds it is.
  *
- * Spec: access-permission design (2026-05-28) § 6.3.
+ * The handle is the REQUEST id. It used to be the notification id, because the
+ * request had no row of its own — it only existed as an entry in somebody's
+ * bell. That is what this work undid: the request is now a row with a status,
+ * a deadline and a uniqueness rule, and the bell entry merely announces it.
+ *
+ * Authorisation is not decided here. The withdraw route is project-agnostic on
+ * purpose: the request id alone does not say which project it belongs to, so
+ * checking anything at this layer would mean reading the row twice and acting
+ * on the first read. The service reads it once, under a row lock, and every
+ * gate is applied against that one read.
  */
 
 import { Hono } from "hono";
@@ -34,14 +38,10 @@ import {
   roleUpgradeRequestService,
   projectService,
   projectMembersService,
-  notificationService,
 } from "@server/modules";
-import {
-  ForbiddenError,
-  NotFoundError,
-} from "@breatic/core";
+import { ForbiddenError, NotFoundError } from "@breatic/core";
 
-// ── Per-project endpoint (viewer-only POST) ────────────────────────
+// ── Per-project endpoints (the requester's side) ───────────────────
 
 const projectRoleUpgradeRequests = new Hono<{
   Variables: AuthRoleVariables;
@@ -53,12 +53,11 @@ const requestBodySchema = z.object({
 });
 
 /**
- * `POST /api/v1/projects/:pid/role-upgrade-requests` — viewer asks
- * owner for editor access.
+ * `POST /api/v1/projects/:pid/role-upgrade-requests` — a viewer asks the owner
+ * for editor access.
  *
- * Gate: caller must currently be `viewer` on the project. `editor` and
- * `owner` callers get 403 (they don't need to upgrade — editors are
- * already at the highest non-owner role).
+ * Gate: the caller must currently be `viewer` on the project. `editor` and
+ * `owner` callers get 403 — they have nothing to upgrade to.
  */
 projectRoleUpgradeRequests.post(
   "/",
@@ -81,101 +80,85 @@ projectRoleUpgradeRequests.post(
       throw new NotFoundError("project has no active owner");
     }
 
-    const notification = await roleUpgradeRequestService.request({
+    // The service sends the best-effort email itself (it needs the owner + the
+    // request's token); the route only forwards the Origin for the link.
+    const filed = await roleUpgradeRequestService.request({
       ownerUserId,
       requesterUserId: user.id,
       projectId,
       projectName: project.name,
-      projectSlug: project.slug,
       message: body.message ?? null,
+      origin: c.req.header("Origin") ?? "",
     });
 
-    return c.json({ data: notification }, 201);
+    // Just the id of the thing that was created. The bell entry the service
+    // also wrote belongs to the OWNER, and its payload carries the token that
+    // answers this request — which the requester can neither use nor should
+    // hold. Returning the whole entry handed it over by shape rather than by
+    // intent; nothing in the client ever read it.
+    return c.json({ data: { requestId: filed.requestId } }, 201);
   },
 );
 
-// ── Decision endpoint (owner-only) ─────────────────────────────────
-
-const decisionRoute = new Hono<{ Variables: AuthVariables }>();
-decisionRoute.use(requireAuth);
-
-const decisionBodySchema = z.object({
-  decision: z.enum(["approved", "rejected"]),
-  reason: z.string().trim().max(500).optional(),
+/**
+ * `GET /api/v1/projects/:pid/role-upgrade-requests/mine` — the caller's own
+ * live request on this project, or null.
+ *
+ * Open to any project member rather than to viewers only: a request that was
+ * just approved leaves its filer an editor, and an editor asking "do I still
+ * have one outstanding" deserves the honest answer (none) rather than a 403.
+ */
+projectRoleUpgradeRequests.get("/mine", requireRole("viewer"), async (c) => {
+  const user = c.get("user");
+  const live = await roleUpgradeRequestService.findLive(
+    getProjectId(c),
+    user.id,
+  );
+  return c.json({
+    data: live
+      ? { id: live.id, expiresAt: live.expiresAt.toISOString() }
+      : null,
+  });
 });
 
+// ── Per-request endpoints (withdraw) ───────────────────────────────
+//
+// Deciding is NOT here. The owner used to approve/reject through a PATCH on
+// this router; a request is answered at `/decisions`, whichever of the five
+// kinds it is, and this router keeps only what belongs to the REQUESTER —
+// taking their own request back.
+
+const withdrawRoute = new Hono<{ Variables: AuthVariables }>();
+withdrawRoute.use(requireAuth);
+
 /**
- * `PATCH /api/v1/role-upgrade-requests/:notificationId/decision`
+ * The request id, validated as a uuid before it reaches a uuid comparison.
  *
- * Owner approves or rejects a pending request. Authorization happens
- * inside the service via `loadAndGate` (the notification's `userId`
- * must equal the caller — the route stays project-agnostic because
- * the notification id is globally unique).
- *
- * Either decision answers `409` once the request is past its decision window:
- * expiry closes it to both answers.
- *
- * Body: { decision: "approved" | "rejected"; reason?: string }
+ * Without this the param goes straight into `WHERE id = $1` against a uuid
+ * column, and Postgres rejects the whole statement for anything that is not a
+ * uuid (SQLSTATE 22P02) — a user-supplied string turning into an unclassified
+ * 500. The same guard already exists on the studio slug-check route for the
+ * same reason.
  */
-decisionRoute.patch(
-  "/:notificationId/decision",
-  zValidator("json", decisionBodySchema),
+const requestParamSchema = z.object({ requestId: z.string().uuid() });
+
+/**
+ * `DELETE /api/v1/role-upgrade-requests/:requestId` — the requester withdraws
+ * their own request.
+ *
+ * Only the person who filed it may withdraw it, which the service enforces by
+ * matching the caller against the row's `requester_user_id`; a request that is
+ * not theirs, or not live, answers 404 either way.
+ */
+withdrawRoute.delete(
+  "/:requestId",
+  zValidator("param", requestParamSchema),
   async (c) => {
     const user = c.get("user");
-    const notificationId = c.req.param("notificationId");
-    const body = c.req.valid("json");
-
-    // Look up the project name + slug for the decision notification's
-    // payload so the requester's BellMenu can render the headline + the
-    // `/project/{slug}-{id}` link without a join.
-    const project = await loadProjectForNotification(notificationId, user.id);
-
-    if (body.decision === "approved") {
-      await roleUpgradeRequestService.approve({
-        notificationId,
-        ownerUserId: user.id,
-        projectName: project.name,
-        projectSlug: project.slug,
-      });
-    } else {
-      await roleUpgradeRequestService.reject({
-        notificationId,
-        ownerUserId: user.id,
-        projectName: project.name,
-        projectSlug: project.slug,
-        reason: body.reason ?? null,
-      });
-    }
+    await roleUpgradeRequestService.cancel(c.req.param("requestId"), user.id);
     return c.json({ data: { ok: true } });
   },
 );
 
-/**
- * Fetch the project name + URL slug from the notification's `projectId` so the
- * decision notification's payload can carry them (the requester's bell renders
- * the headline + the `/project/{slug}-{id}` link without a join). The
- * service-layer gate guarantees the caller owns the source notification, so this
- * helper trusts the projectId at face value (any drift surfaces as a NotFound on
- * the projectService side).
- * @param notificationId - The source role-upgrade notification whose `projectId` is resolved.
- * @param ownerUserId - The project owner making the decision, used to authorize the project lookup.
- * @returns The project's display name + URL slug.
- * @throws {NotFoundError} when the notification is missing or has no associated project.
- */
-async function loadProjectForNotification(
-  notificationId: string,
-  ownerUserId: string,
-): Promise<{ name: string; slug: string }> {
-  const row = await notificationService.getById(notificationId);
-  if (!row) {
-    throw new NotFoundError("notification not found");
-  }
-  if (row.projectId === null) {
-    throw new NotFoundError("notification has no project");
-  }
-  const project = await projectService.get(row.projectId, ownerUserId);
-  return { name: project.name, slug: project.slug };
-}
-
 export { projectRoleUpgradeRequests as projectRoleUpgradeRequestsRoute };
-export { decisionRoute as roleUpgradeRequestDecisionRoute };
+export { withdrawRoute as roleUpgradeRequestWithdrawRoute };

@@ -33,15 +33,12 @@ import { activitiesRoute } from "@server/routes/activities.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
 import { studiosRoute, studioRoute } from "@server/routes/studios.js";
-import { studioInvitationsRoute } from "@server/routes/studio-invitations.js";
-import {
-  projectInvitationsRoute,
-  projectInvitesRoute,
-} from "@server/routes/project-invitations.js";
+import { decisionsRoute } from "@server/routes/decisions.js";
+import { projectInvitesRoute } from "@server/routes/project-invitations.js";
 import { notificationsRoute } from "@server/routes/notifications.js";
 import {
   projectRoleUpgradeRequestsRoute,
-  roleUpgradeRequestDecisionRoute,
+  roleUpgradeRequestWithdrawRoute,
 } from "@server/routes/role-upgrade-requests.js";
 
 /**
@@ -75,7 +72,6 @@ export function createApp(): Hono {
   app.route("/api/v1/projects", projectsRoute);
   app.route("/api/v1/projects/:pid/members", membersRoute);
   app.route("/api/v1/projects/:pid/invitations", projectInvitesRoute);
-  app.route("/api/v1/project-invitations", projectInvitationsRoute);
   app.route("/api/v1/users/me/notifications", notificationsRoute);
   app.route(
     "/api/v1/projects/:pid/role-upgrade-requests",
@@ -83,14 +79,13 @@ export function createApp(): Hono {
   );
   app.route(
     "/api/v1/role-upgrade-requests",
-    roleUpgradeRequestDecisionRoute,
+    roleUpgradeRequestWithdrawRoute,
   );
   // Spaces route removed 2026-05-23 (ADR yjs-collab-only-write-authz):
   // Space lifecycle (create / delete / lock / restore) now routes via
   // collab stateless RPC; the server no longer owns the write path.
   app.route("/api/v1/users", usersRoute);
-  // Mounted before "/api/v1/studio" so the more specific prefix matches first.
-  app.route("/api/v1/studio-invitations", studioInvitationsRoute);
+  app.route("/api/v1/decisions", decisionsRoute);
   app.route("/api/v1/studios", studiosRoute);
   app.route("/api/v1/studio", studioRoute);
   app.route("/api/v1/skills", skillsRoute);

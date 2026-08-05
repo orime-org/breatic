@@ -128,6 +128,9 @@
       "web": "双击嵌入网址",
       "rightClickHint": "右键可生成等更多"
     },
+    "textNode": {
+      "editorPlaceholder": "开始写作"
+    },
     "contextMenu": {
       "paste": "粘贴",
       "copy": "复制",
@@ -378,8 +381,15 @@
       "sending": "发送中…",
       "toast": {
         "sent": "申请已发送 — Project Owner 会在通知中看到。",
-        "failed": "申请发送失败,请重试。"
-      }
+        "failed": "申请发送失败,请重试。",
+        "withdrawn": "申请已撤回。",
+        "withdrawFailed": "撤回失败，请重试。"
+      },
+      "pendingAriaLabel": "已申请 Editor 权限",
+      "pendingTitle": "申请已发出",
+      "pendingDescription": "Owner 还没有答复。想改天再问或换个说法，可以先撤回。",
+      "withdraw": "撤回",
+      "withdrawing": "撤回中…"
     }
   },
   "project": {
@@ -441,7 +451,12 @@
       "transferSend": "发送请求",
       "transferNoCandidates": "暂无合适的成员。请先添加一位同属本 Studio 的 Editor 或 Viewer。",
       "transferSuccess": "已向 {name} 发送转让请求。",
-      "transferFailed": "转让请求发送失败,请重试。"
+      "transferFailed": "转让请求发送失败,请重试。",
+      "transferPending": "等待 {name} 接受。",
+      "transferWithdraw": "撤回",
+      "transferWithdrawn": "转让申请已撤回。",
+      "transferWithdrawFailed": "撤回转让申请失败。",
+      "transferPendingUnnamed": "等待接收人接受。"
     },
     "stack": {
       "triggerAria": "Project 成员（{count}）"
@@ -600,13 +615,8 @@
   "notifications": {
     "title": "通知",
     "empty": "没有待处理通知",
-    "reject": "拒绝",
-    "approve": "批准",
     "loading": "加载中…",
     "markRead": "标为已读",
-    "approvedToast": "已通过升级申请。",
-    "rejectedToast": "已拒绝升级申请。",
-    "decideFailed": "处理失败,请重试。",
     "headline": {
       "roleUpgradeRequest": "{actor} 申请 {project} 的 Editor 权限",
       "roleUpgradeApproved": "{actor} 通过了你在 {project} 的 Editor 权限",
@@ -621,13 +631,6 @@
       "projectInviteAccepted": "{actor} 接受了你对 {project} 的邀请"
     },
     "actorFallback": "某人",
-    "actionFailed": "无法完成操作，请重试。",
-    "transferConfirmedToast": "你现在是该 Studio 的 Admin 了。",
-    "transferCancelledToast": "已拒绝转让。",
-    "projectTransferConfirmedToast": "你现在是该 Project 的 Owner 了。",
-    "projectTransferCancelledToast": "已拒绝转让。",
-    "transferAccept": "接受",
-    "transferDecline": "拒绝",
     "subtitle": {
       "invitedAsMaintainer": "以 Maintainer 身份加入",
       "invitedAsGuest": "以 Guest 身份加入",
@@ -641,11 +644,7 @@
       "hours": "{count} 小时后过期",
       "days": "{count} 天后过期"
     },
-    "inviteAccept": "接受",
-    "inviteDecline": "拒绝",
-    "inviteConfirmedToast": "你已加入该 Studio。",
-    "inviteDeclinedToast": "已拒绝邀请。",
-    "viewProjectInvite": "查看邀请"
+    "openDecision": "去答复"
   },
   "connection": {
     "banner": {
@@ -826,7 +825,7 @@
         "bioCount": "{count}/{max}",
         "slugHelper": "这个 Studio 网址的一部分。只能用小写字母、数字和连字符。",
         "avatarUpload": "上传图片",
-        "avatarHint": "方形图片效果最好。支持 PNG、JPEG、WebP，最大 20 MB。",
+        "avatarHint": "方形图片效果最好。支持常见图片格式，最大 20 MB。",
         "avatarRemove": "移除",
         "avatarRemoveTitle": "要移除这张头像吗？",
         "avatarRemoveBody": "这个 Studio 会回到显示首字母。你随时可以再上传新图片。",
@@ -857,7 +856,12 @@
         "leaveBody": "之后想回来需要重新收到邀请。",
         "leaveLosesProjects": "你会失去这个 Studio 里所有 Project 的访问权限。",
         "leaveHandsOver": "你在这里拥有的 Project 会转交给这个 Studio 的 Admin。",
-        "leaveDone": "已退出该 Studio"
+        "leaveDone": "已退出该 Studio",
+        "transferPending": "等待 {name} 接受。",
+        "transferWithdraw": "撤回",
+        "transferWithdrawn": "转让申请已撤回。",
+        "transferWithdrawFailed": "撤回转让申请失败。",
+        "transferPendingUnnamed": "等待接收人接受。"
       },
       "dialog": {
         "newProjectTitle": "新建 Project",
@@ -903,47 +907,7 @@
       "myStudiosEmpty": "还没有团队 Studio",
       "joinedEmpty": "还没加入任何 Studio",
       "openNav": "打开导航"
-    },
-    "invite": {
-      "loadingTitle": "正在打开邀请…",
-      "loadingBody": "稍等，正在加载邀请。",
-      "title": "你收到一份邀请",
-      "body": "{inviter} 邀请你以{role, select, maintainer {Maintainer} guest {Guest} other {Guest}}身份加入 {studio}。",
-      "confirm": "接受并加入",
-      "decline": "拒绝",
-      "invalidTitle": "邀请已失效",
-      "invalidBody": "链接可能已过期或被使用过。请让 Studio Admin 重新发送邀请。",
-      "expiredTitle": "邀请已过期",
-      "expiredBody": "你对 {studio} 的邀请已超过 {days} 天有效期。请让 Studio Admin 重新发送。",
-      "notInviteeTitle": "此邀请不属于当前账号",
-      "notInviteeBody": "你当前登录的是另一个账号。请用收到此邀请的账号登录。",
-      "declinedTitle": "已拒绝邀请",
-      "declinedBody": "你拒绝了对 {studio} 的邀请。之后可以让 Admin 重新邀请你。",
-      "joinedToast": "你已加入该 Studio。",
-      "actionFailed": "操作未能完成，请重试。",
-      "backToStudio": "返回 Studio",
-      "signIn": "登录"
     }
-  },
-  "projectInvite": {
-    "loadingTitle": "正在打开邀请…",
-    "loadingBody": "稍等，正在加载邀请。",
-    "title": "你收到一份邀请",
-    "body": "{inviter} 邀请你以{role, select, editor {Editor} viewer {Viewer} other {Member}}身份加入 {project}。",
-    "confirm": "接受并加入",
-    "decline": "拒绝",
-    "invalidTitle": "邀请已失效",
-    "invalidBody": "链接可能已过期或被使用过。请让 Project Owner 重新发送邀请。",
-    "expiredTitle": "邀请已过期",
-    "expiredBody": "你对 {project} 的邀请已超过 {days} 天有效期。请让 Project Owner 重新发送。",
-    "notInviteeTitle": "此邀请不属于当前账号",
-    "notInviteeBody": "你当前登录的是另一个账号。请用收到此邀请的账号登录。",
-    "declinedTitle": "已拒绝邀请",
-    "declinedBody": "你拒绝了对 {project} 的邀请。之后可以让 Owner 重新邀请你。",
-    "joinedToast": "你已加入该 Project。",
-    "actionFailed": "操作未能完成，请重试。",
-    "backToStudio": "返回 Studio",
-    "signIn": "登录"
   },
   "chrome": {
     "tooltip": {
@@ -1019,5 +983,37 @@
       "monthsAgo": "{count, plural, other {# 月前}}",
       "isoDate": "{date}"
     }
+  },
+  "decision": {
+    "loadingTitle": "正在打开这个请求…",
+    "loadingBody": "稍等，正在查找。",
+    "title": "{kind, select, studio_invite {有人邀请你加入一个 Studio} project_invite {有人邀请你加入一个 Project} role_upgrade {有人申请更高的角色} project_transfer {有人要把一个 Project 交给你} studio_transfer {有人要把一个 Studio 交给你} other {有件事等你答复}}",
+    "body": "{kind, select, studio_invite {{actor} 邀请你以{role, select, maintainer {Maintainer} guest {Guest} other {Member}}身份加入 {entity}。} project_invite {{actor} 邀请你以{role, select, editor {Editor} viewer {Viewer} other {Member}}身份参与 {entity}。} role_upgrade {{actor} 申请在 {entity} 中成为 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}。} project_transfer {{actor} 想把 {entity} 的所有权交给你。} studio_transfer {{actor} 想让你成为 {entity} 的 Admin。} other {{actor} 在等你对 {entity} 的答复。}}",
+    "reason": "附言：{message}",
+    "confirm": "{kind, select, role_upgrade {批准} other {接受}}",
+    "decline": "{kind, select, role_upgrade {拒绝} other {拒绝}}",
+    "windowNote": "这个请求当时可在 {days} 天内答复。",
+    "acceptedTitle": "你已经接受过了",
+    "acceptedBody": "这里没有别的事要做了。",
+    "declinedTitle": "你已经拒绝过了",
+    "declinedBody": "这里没有别的事要做了。",
+    "expiredTitle": "这个请求已经结束",
+    "expiredBody": "它不能再被答复了。",
+    "revokedTitle": "这个请求已被撤回",
+    "revokedBody": "发起人把它收回去了。",
+    "goneTitle": "相关内容已不存在",
+    "goneBody": "这个请求所关联的内容已被删除。",
+    "alreadyMemberTitle": "你已经在里面了",
+    "alreadyMemberBody": "这份邀请要给你的权限，你已经有了。",
+    "invalidTitle": "这个链接无效",
+    "invalidBody": "请确认你从邮件里复制了完整的链接。",
+    "unreachableTitle": "没能读到这个请求",
+    "unreachableBody": "中途出了点问题。链接是好的，再试一次。",
+    "retry": "重试",
+    "notYoursTitle": "这件事不该由你答复",
+    "notYoursBody": "这个链接是发给别人的。",
+    "goThere": "去看看",
+    "backHome": "回到你的 Studio",
+    "actionFailed": "操作没有成功，请再试一次。"
   }
 }

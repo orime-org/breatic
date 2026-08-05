@@ -70,6 +70,7 @@
 - [ ] 积分购买页面：Stripe Checkout 跳转 + 余额显示 + 购买历史
 - [ ] 项目管理：创建/删除/重命名项目、项目列表、缩略图
 - [x] **Studio 设置(#10, 2026-07-29)**:头像(前端裁剪成 512×512 PNG;后端不读图像内容,只判字节大小 + 按签名认类型决定存成什么,然后原样存 —— 头像是纯 URL、不是资产)· 改名 · 改 slug(旧 slug 立即释放、无跳转,确认框写明四条后果)· 简介 · 成员自助退出(名下 project 转给 admin)。配套:全站头像统一成一个组件(形状随 `studios.type` 定圆/方)· 通知跳转改存 ID 读时反查 · `slug` 收进不翻译产品术语表。**Studio 删除仍未接线**(#26 单独做)
+- [x] **等答复的请求统一到一个落地页(#25, 2026-08-03)**:五个流(studio 邀请 · project 邀请 · studio 转让 · project 转让 · 角色升级)各有一条 `share_token`,邮件 / 铃铛 / 发起人可复制的链接三条通道带同一个 token 到同一个 `/decision?token=`,一套 `GET /decisions/:token` + `POST /decisions/respond` 答五种请求。**「链接失效」这一句话原本压着四件事**(已答过 / 超时 / 被撤回 / token 是假的),现在各说各的,另加「关联内容已删」和「你已经在里面了」。token 是路牌不是钥匙 —— 闸门是登录 + 收件人校验,链接本身永不失效,过期的是请求。配套:两个互为镜像的旧落地页与其 API 删净;铃铛不再内联决策、只指路,没有 token 就不画按钮;角色升级补上它一直缺的邮件通路。**「你已经在里面了」的判据是角色不是行** —— 看的是收件人当前角色有没有到邀请要给的那一级,否则光是打开过那个 project(会当场把人物化成 viewer)就会让一条待答的 editor 邀请永久卡死
 - [x] **Document Space 协作地基(PR #382, 2026-08-02)**:document Space 接上共享 Yjs 文档,多人同时编辑同一份文稿;撤销 / 重做走共享的 undo 管理器。**这个切片治的根因是「撤销会销毁协作者的文字」** —— 两个人写进同一个块就共享一个容器,撤销我插入那个容器的动作会把他的字一起带走、同步给所有人,而且不在他的撤销栈里、谁都拿不回来。以「受保护节点集」为唯一变量实测:段落里对方的字能留下,标题 / 引用块 / 代码块**全部清空**。修法两层:① 受保护节点集**从 schema 推导**(上游默认只保护 `paragraph`,那是为「文档里只有段落」的编辑器写的),以后新增块类型自动拿到保护;② 容器活下来时它的**属性**也活下来(属性在 Yjs 里是 map 条目,上游过滤器不保护它 → 活下来的标题会丢层级、渲染成 h1)。变异验证过:两处任改一处都有测试变红。**编辑功能集不在本切片**:工具栏除新增撤销 / 重做外,其余按钮做什么一个字没动;StarterKit 只改两个开关(关掉它自带的第二套撤销栈 · 关掉尾随空段落 —— 在共享文档里那是一次写入),并有测试断言我们的 schema 与原版逐节点逐属性完全相同。顺带:断线和会话过期改用同一块遮罩告知(此前只覆盖后者),且不往编辑区里伸手(`inert` / `aria-hidden` 会打断正在输入的中文)
 - [ ] 节点交互（canvas-native，PR-C 起）：
   - text 富文本：✅ TipTap 富文本编辑器（左侧全屏面板，绑定 `data.prompt` Y.XmlFragment）
@@ -99,6 +100,8 @@
 - [x] **风格参考图（#1664 切 3）**：生成面板「风格」槽位落地——点「风格」进画布选择模式（同参考 pick 交互，仅非空 image 节点可选）选**一张**风格图，选中即**拷贝其资产 URL** 存节点 `data.styleImageUrl`（副本语义、与上游节点零关系，源删除/重生成不影响）+ 自动退出 pick；缩略图占据「风格」按钮位 + 角标 ✕ 清除、点缩略图重选替换。**能力门非模式门**：按钮/发送 gate 在当前模型是否声明 `style_images` param（config 决定，前端零硬编码）——支持 = seedream-5.0-lite · nano-banana-pro · nano-banana-pro-edit（i2i 也可用）· midjourney-v7（→`sref`）；nano-banana-2 无（Google Flash 档无风格类，官方文档核实）。执行发 `params.style_images`（单元素列表，t2i/i2i 都发）。**机制调研定案（5 agent 一手文档）**：业界风格参考全部 one-shot（风格图与生成同一次 API 调用条件化），无独立转绘步。**Worker 治根**：BytePlus 官方字段 = `image`（`image_urls` 官方零出现——修掉静默丢图的潜伏 bug）；nano-banana/seedream 合并式 remap（内容图在前、风格图在后 + 序号化 prompt 脚手架,取代覆盖式 rename 的 clobber 雷）；wavespeed prompt-only fallback strip + `logger.warn` 不静默丢。真机 smoke：t2i+风格 / i2i+风格（双通道 payload）/ 能力门负例 / ✕ 清除重选 全过、真图风格影响可见
 - [x] **聚焦（Focus）工具（#1782 聚焦切片）**：生成面板「聚焦」占位落地——点「聚焦」进画布选择模式（仅非空 image 节点可选），点图在其上拉**裁剪框**（拖画/整框拖动/八柄 resize + 7 比例预设 16:9…9:16 + 取消/确认），确认即前端按**原图天然分辨率**裁剪 → presign 直传成**独立新资产** → 存节点 `data.focusImages`（副本语义、与源节点零关系，删源/改名不影响；名字 = 创建时快照）。**连续模式手动退出**（同图可框多张、可跨图；Esc 两段 = 先清框再退出）。聚焦图进参考列表（裁剪角标区分节点参考）+ 进 `@` 池（`focus:<id>` 命名空间复用全部 mention 管线：suggestion/chip/级联/t2i 置灰），**必须被 `@` 才进 payload**（与节点参考同规则）。**池级总上限**：节点参考 + 聚焦图合计 50/节点（`config/limits.yaml` 旋钮 → `GET /canvas/limits` 下发，前端三站点 gate：拖连/pick 点选/聚焦确认，超限 toast.warning）。上传中 rail 显 pending 占位（本地态不入 Yjs），失败 toast 无残留。真机 smoke：真裁剪真上传真生成（1024×1024 结果落节点）+ 删源存活 + ✕ 级联清 chip 全过。**收尾批次（#337）**：标记（Mark）占位裁撤（2026-07-17 拍板 C，其意图已被聚焦覆盖）+ 统一三模式 pick Esc（聚焦三剥 / 参考·风格一段退）+ 取消回选图态 + 裁剪角标三处前缀化 + 控制条跟随节点可出屏 + 工具栏 tooltip（继承 App 级 100ms provider）+ chip 2px 圆角
 - [x] **摄像机（Camera）控件 + 生成面板打磨 + 统一 toast（#1788/#1793/#1794，PR #341/#342/#343）**：生成面板新增「摄像机」参数 picker——按当前模型是否声明镜头能力（`camera`/`lens`/`focal_length`/`aperture` ParamDescriptor）门控显隐（view-model `cameraSupported`，前端零硬编码），4 段 chip popover（相机/镜头/焦距/光圈）→ 注入 JSON prompt `technical` 块（后端 worker 早已 pop 注入，本次只补前端编辑 UI + 门控）。**参数持久化**：相机参数进节点 Yjs、独立于模型永久保留（切模型不丢未声明参数，只声明相机的模型读取）。**三批 review 收敛**：cap 对齐（glyph 统一 `h-14` 盒）· popover 跟随节点随画布动（`use-follow-canvas-viewport`，MutationObserver 观察 viewport transform → rAF throttle）· 6px 圆角 · 焦距灰色对齐相机 glyph · 去转盘 wheel 只留 chevron · SVG glyph → `currentColor` theme-aware（对齐 ModelIcon，修掉静态深灰 hex 只暗色对的潜伏 bug，CI `breatic/no-raw-design-values` 咬）。**t2i 参考语义**：t2i 下参考可用但只文本节点可 pick（image 源 dimmed 不可选，`referenceKindAllowedInMode` 单一真相源），i2i→t2i 不误杀已选参考。**统一 toast 单一入口（#1793，PR #342）**：新建 `@web/lib/toast.ts` wrapper——只暴露带类型方法（error/warning/success/info）+ 内容去重（`id=type:message`，同内容快速重复刷新不堆空条，`opts.id` 可覆盖留固定 id 场景）；20 源文件 sweep 走 wrapper（含 `node-gate-toast.ts`），`breatic/single-toast-entry` CI 强制、合并原「toast 必带类型」ESLint 规则。**拖动锁定节点 toast（#1794，PR #343，A.1）**：锁定节点/组 `draggable:false` 静默拦 → 画布层拖动手势探测（pointerdown 命中 frozen 集合 + 移动超阈值 ~4px）弹 `canvas.gate.locked` 一次，单击无位移不弹（区分选中 vs 拖动）；不碰已跑稳的 `draggable` 移动门
+- [x] **文本节点正文改成协作编辑（#1774，PR #390）**：正文原本是 `data.content` 一个纯字符串，两人同时在一个节点里打字后写覆盖先写 = **丢字**。改成 `data.body`（`Y.XmlFragment`，建节点时就种下）+ TipTap 的 `Collaboration`，**字符级合并**、互不覆盖；远端光标经 `CollaborationCaret` 显示对方名字，`useCollabCaretPresence` 另发 `focused` 标记让失焦的光标变暗。**打字不引起别的节点重渲**：视图投影（`toNodeView`）**刻意不含 `body`**，正文订阅（`use-text-body.ts`）只在真需要正文的地方（节点自身 + 复制 / 副本 / 生成面板参考列表）按 id 单独订阅。进编辑态三个入口（双击 / 选中按 Enter / 空节点占位符按空格）统一走 `startEdit`，它一处判全部前提（节点锁 · handling · viewer 只读 · 引用拾取会话进行中）。**类型在 `@breatic/shared` 只有注释没有字段**——shared 零 yjs 依赖（浏览器安全 + 单入口 bundle），活的协作对象不是 wire 数据，同 `prompt` 的处理；`content` 对 text 就此退役（不写也不读）。**七轮 Gate-2 对抗**（后两轮是突破轮数上限加跑的）咬出 12 条行为洞，其中 6 条是**变异测试**逼出来的——剪断线路后测试照绿：复制 / Cmd+D 出空卡、光标在场信号零覆盖、正文表参数可省、盒模型手抄两份、提示文案守卫只抓半类错、等待条件读的是等待前的快照。真机 smoke：双客户端同节点并发打字不丢字 + 远端光标带名字且失焦变暗 + 拾取会话中键盘进不了编辑态、退出后恢复；rAF 逐帧采样 1109 帧，有字节点零次首帧闪空态。**比这个功能老的节点正文不迁移**（pre-launch 老数据不服务），打开得到干净空白起点；`annotation` 便签正文仍是纯字符串、有同样问题，单独排期
+- [x] **图片节点的提示词容器改成建节点时就有（#1880，PR #392）**：承接上一条同一套解法的第三次应用。生成面板里那段提示词存在 `data.prompt`（`Y.XmlFragment`），**原本是等谁第一次打开面板才现场创建** —— 两人同时打开同一个节点，各自建一个往同一个键上放，后写覆盖先写，**被盖掉那人写的提示词连同容器一起消失**。拿改动前的代码走真实公开接口跑两客户端离线分叉再合并，实证复现：只剩后写那句、先写的整段没了。改成 `buildDataMap` 建节点时就种下（跟裁剪图容器、文本正文并列，那段注释描述的就是这条竞态、只是当时只应用到裁剪图），`getOrCreatePromptFragment` 改名 `getPromptFragment` 变成**纯读**。**给谁种由 `shared` 的 `canGenerate(type)` 决定** —— 这条规则原本只写死在画布右键菜单一处，建节点这边再抄一份就是同一规则两处各写，等做文字节点生成（#1778）时必漏一处；`data` 层不能 import `spaces` 层，两处的共同下游只有 `shared`。**老节点一个字兼容代码都不写**（pre-launch 老数据不服务），它们的面板照常打开、只是不渲染提示词输入框。真机双标签页各打一句，合并结果两句都在。**两轮 Gate-2 对抗**：第一轮因为一个视角接口报错整个没跑成、而「零发现」跟「零执行」长得一模一样，那轮作废重跑；补跑 17 条攻击存活 1 条（`buildDataMap` 函数头还把种下的容器列成穷举的两项、而这次改动让它成了三项 —— 按只读契约建立的心智模型是错的，正是当初惰性创建那个竞态的来源），修完复攻 15 条零存活
 - [ ] 多实例负载均衡验证：Redis extension 跨实例同步测试
 
 ### AI 能力
@@ -158,6 +161,22 @@
 ## 待跟进（已识别但不在当前 PR scope）
 
 这里记单 commit 不修但已经定位/部分定位的 dev 体验和 runtime 韧性问题。每条都对应一个独立 PR，开启时需要完整 DD + 复现验证。
+
+### 共享 HTTP 传输层 —— 调用点接入（五批，各一个 PR）
+
+**传输层本身已合并（#386）**，在 `packages/shared/src/http/`，前后端共用，打**外部**的请求（云存储 / vendor API / 任意网址）走它，打我们自己后端的继续走 web 的 axios 单例。规范见 [`packages/shared/CLAUDE.md`](../packages/shared/CLAUDE.md)，架构位置见 [`ARCHITECTURE.md`](./ARCHITECTURE.md#shared-http-transport)。
+
+五批分别是：
+
+| 批 | 接什么 | 状态 | 附带 |
+|---|---|---|---|
+| 1 | worker 的 vendor 调用：20 个 transport、43 处调用点 | 已接入（#388）| 轮询也一起收编 |
+| 2 | 素材下载两条路：`downloadToTempDir` + `downloadValidated` | 已接入（#389）| 原计划「让重试日志出口穿过适配器」已不适用 —— 适配器里的重试循环整个删了，没有出口可穿；重试的可观测性归传输层统一做，未开始 |
+| 3 | 浏览器上传的 PUT（**只这半边**，预签名打自己后端、留在 axios）| 已接入（#395）| 按文件大小算的停滞守卫进 `timeoutMs`，正是这一层要求调用方自己算的那种。顺带删掉 `assetsApi.putFile` 这个已无调用方的裸 `fetch`。**同批补了一道配置守卫**：这一层拒收定时器接不住的截止时间（而不是夹紧），而旧路径把同样的数交给浏览器的 `AbortSignal.timeout` 是收的，所以速率旋钮调得够低时，接近上限的上传从「能传」变成「零字节失败」。判为运维配置问题而不是代码要去兼容的事，`storageConfigSchema` 改为在加载时按 `max_upload_bytes` 判这对旋钮、报错带最低可填值，server 入口改为启动时解析（原本懒加载，第一个碰到它的请求才炸）|
+| 4 | agent 的联网工具 | 未开始 | 这两个工具现在**零重试**，一次网络抖动就是一次工具失败，也是整条线的起因 |
+| 5 | 加守卫封住裸 `fetch` + 同步文档 | 未开始 | 收尾时把 `packages/core/src/infra/retry.ts` 改用 `packages/shared/src/backoff.ts`，消掉同名同义的两份退避；两批已失效的配置键（`http_max_retries` / `http_retry_base_delay` / `download.*`）随本批 sweep 删 |
+
+**给碰到外部 HTTP 的人**：新写的外部请求直接用 `httpRequest`，别再自己写重试循环 —— 这条线的起因正是同一个判据在三处写了三遍、给出三个不同答案。
 
 ### dev:collab 长跑 connection drift —— 治根 PR
 

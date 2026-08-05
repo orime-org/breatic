@@ -86,9 +86,9 @@ export async function generate(
         method: "POST",
         headers,
         body: JSON.stringify(apiParams),
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
       "wavespeed",
+      resolved.timeout * 1000,
     );
 
     // Check for immediate result

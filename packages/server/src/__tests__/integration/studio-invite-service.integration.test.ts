@@ -42,6 +42,7 @@ vi.mock("ai", () => ({
 // Member caps come from config/limits.yaml; mock them so a small cap can be
 // forced per test. Default 100 keeps every other test (tiny member counts)
 // unaffected; the member-cap tests below lower it.
+
 const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
 // The decision window comes from the same config file. Pinned here to a value
 // that is deliberately NOT the shipped seven: the invite deadline, the token
@@ -58,7 +59,7 @@ vi.mock("@server/config/limits.js", () => ({
 }));
 
 import { eq, and, inArray, isNull, sql } from "drizzle-orm";
-import { initCore, schema, createTestDb, getRedis, env } from "@breatic/core";
+import { initCore, schema, createTestDb } from "@breatic/core";
 import { NotFoundError, ConflictError, ForbiddenError } from "@breatic/core";
 
 initCore(process.env);
@@ -392,28 +393,15 @@ describe("member cap (config/limits.yaml)", () => {
   });
 });
 
-describe("email-link landing view", () => {
-  it("hands the page the configured decision window, not a number of its own", async () => {
-    const { invitationId } = await inviteService.createInvite(
-      "svc-team",
-      INVITER,
-      INVITEE_EMAIL,
-      "guest",
-    );
-    const token = await inviteService.issueInviteToken(invitationId);
-
-    const landing = await inviteService.getInviteForLanding(token, INVITEE);
-    expect(landing?.isInvitee).toBe(true);
-    // The page prints this rather than spelling out a number of its own, so it
-    // has to be the window the server actually enforced.
-    expect(landing?.windowDays).toBe(decisionWindow.days);
-  });
-
-  it("stamps the row deadline and the token TTL from the same window", async () => {
-    // The two things the window actually enforces. Both were changed from a
-    // local constant to a config read with nothing asserting the result: a
-    // getter returning the wrong unit — or zero — would have left every test
-    // in this file green.
+describe("the deadline the window actually enforces", () => {
+  it("stamps the row deadline from the configured window, not a number of its own", async () => {
+    // The landing page reads this row to say how long the invitee had. A getter
+    // returning the wrong unit — or zero — would leave every other test in this
+    // file green, so the deadline is measured rather than assumed.
+    //
+    // The Redis token half of this test went with the mechanism: a link no
+    // longer carries a one-time token that expires on its own, it carries the
+    // request's permanent share token and the ROW is what expires.
     const { invitationId } = await inviteService.createInvite(
       "svc-team",
       INVITER,
@@ -429,11 +417,5 @@ describe("email-link landing view", () => {
     const aheadMs = row!.expiresAt.getTime() - Date.now();
     expect(aheadMs).toBeLessThanOrEqual(windowMs);
     expect(aheadMs).toBeGreaterThan(windowMs - 60_000);
-
-    const token = await inviteService.issueInviteToken(invitationId);
-    const ttl = await getRedis().ttl(`${env.ENV}:studio-invite:${token}`);
-    const windowSeconds = decisionWindow.days * 24 * 60 * 60;
-    expect(ttl).toBeLessThanOrEqual(windowSeconds);
-    expect(ttl).toBeGreaterThan(windowSeconds - 60);
   });
 });

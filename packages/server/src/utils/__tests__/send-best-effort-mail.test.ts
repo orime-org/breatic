@@ -48,7 +48,7 @@ describe("sendBestEffortMail", () => {
   });
 
   it("swallows a PREPARE failure too — a throwing factory (token mint / recipient read blip) must not fail the request", async () => {
-    // Regression guard: the factory does the pre-send fetch (issueInviteToken /
+    // Regression guard: the factory does the pre-send fetch (recipient read /
     // getUserById). Its failure must be swallowed just like a send failure —
     // the invite/transfer + bell already committed. (This is the exact hole the
     // adversarial pass caught: the fetch used to sit OUTSIDE the swallow.)

@@ -126,9 +126,9 @@ export async function generate(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(resolved.timeout * 1000),
       },
       "google",
+      resolved.timeout * 1000,
     );
 
     const operationName = data.name as string | undefined;

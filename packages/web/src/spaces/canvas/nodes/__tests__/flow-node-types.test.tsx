@@ -5,10 +5,19 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ReactFlowProvider, type NodeProps } from '@xyflow/react';
 
+import type * as Y from 'yjs';
+
+import { _resetForTests } from '@web/data/yjs/manager';
+import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
+import { writePlainTextIntoBody } from '@web/data/yjs/text-body';
 import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
+import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { NODE_KIND_LIST } from '@web/spaces/canvas/nodes/registry';
 import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
+
+const PID = 'p1';
+const SID = 's1';
 
 describe('FLOW_NODE_TYPES', () => {
   it('exposes a ReactFlow component for every node kind', () => {
@@ -31,13 +40,12 @@ describe('FLOW_NODE_TYPES', () => {
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
       kind: 'text',
-      content: 'x',
       status: 'idle',
       name: 'Old',
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined, activateNodeUpload: () => undefined, setNodeContent: () => undefined, commitGroupResize: () => undefined, retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}>
+        <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined, retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -49,39 +57,54 @@ describe('FLOW_NODE_TYPES', () => {
     expect(renameNode).toHaveBeenCalledWith('n1', 'Renamed');
   });
 
-  // Critical path (collaborative text edit → Yjs write): the flow wrapper is the
-  // only layer that knows the node id, so it must bind the text body's inline-edit
-  // commit to setNodeContent(thisNodeId, text). Without this wire the body's
-  // onChange is undefined, what the user types is never persisted, and it is
-  // discarded on blur — the reported #1470 "text content disappears" bug.
-  it('binds the text body inline-edit commit to the node id via CanvasActions (#1470)', () => {
-    const setNodeContent = vi.fn();
+  // Critical path (collaborative text edit): the flow wrapper is the only layer
+  // that knows ReactFlow's node id, and a text node needs it to find its own
+  // body among all the bodies on the board. This used to be proved through the
+  // inline-edit commit, which no longer exists — the editor writes to the
+  // shared fragment directly — so it is proved where the id now travels: the
+  // node renders ITS body and not a neighbour's.
+  it('gives a text node the id it needs to find its own body', () => {
+    _resetForTests();
+    for (const [id, text] of [
+      ['n1', 'belongs to n1'],
+      ['n2', 'belongs to n2'],
+    ] as ReadonlyArray<readonly [string, string]>) {
+      addNode(PID, SID, {
+        id,
+        type: 'text',
+        position: { x: 0, y: 0 },
+        data: {
+          name: 'N',
+          createdAt: 1,
+          createdBy: 'u',
+          locked: false,
+          operationLocks: [],
+          state: 'idle',
+          attachments: [],
+        },
+      });
+      writePlainTextIntoBody(getTextBody(PID, SID, id) as Y.XmlFragment, text);
+    }
+
     const Text = FLOW_NODE_TYPES.text;
-    const data: TextNodeView = {
-      kind: 'text',
-      content: 'A',
-      status: 'idle',
-      name: 'N',
-    };
+    const data: TextNodeView = { kind: 'text', status: 'idle', name: 'N' };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent, commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+        <CanvasContext.Provider
+          value={{
+            projectId: PID,
+            spaceId: SID,
+            readOnly: false,
+            caretProvider: null,
+            caretUser: null,
+          }}
         >
-          <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
-        </CanvasActionsContext.Provider>
+          <Text {...({ id: 'n2', data, selected: false } as unknown as NodeProps)} />
+        </CanvasContext.Provider>
       </ReactFlowProvider>,
     );
-    fireEvent.doubleClick(screen.getByTestId('text-node-body'));
-    // Entering edit mode remounts the body inside a ScrollArea (#1773) —
-    // re-query instead of holding the pre-click element.
-    const body = screen.getByTestId('text-node-body');
-    body.innerText = 'A edited';
-    fireEvent.blur(body);
-    // The node id must reach the canvas write (jsdom innerText is layout-flaky,
-    // so we assert the binding — call + node id — not the exact text).
-    expect(setNodeContent).toHaveBeenCalled();
-    expect(setNodeContent.mock.calls[0]?.[0]).toBe('n1');
+
+    expect(screen.getByTestId('text-node-body')).toHaveTextContent('belongs to n2');
   });
 
   // Both connection handles must paint ABOVE the node body, else the one
@@ -93,14 +116,13 @@ describe('FLOW_NODE_TYPES', () => {
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
       kind: 'text',
-      content: 'hello',
       status: 'idle',
       name: 'N',
     };
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -135,14 +157,13 @@ describe('FLOW_NODE_TYPES', () => {
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
       kind: 'text',
-      content: 'hello',
       status: 'idle',
       name: 'N',
     };
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Text
             {...({
@@ -178,7 +199,7 @@ describe('FLOW_NODE_TYPES', () => {
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -195,7 +216,7 @@ describe('FLOW_NODE_TYPES', () => {
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -214,7 +235,7 @@ describe('FLOW_NODE_TYPES', () => {
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
@@ -230,13 +251,12 @@ describe('FLOW_NODE_TYPES', () => {
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
       kind: 'text',
-      content: 'x',
       status: 'idle',
       name: 'Old',
     };
     render(
       <ReactFlowProvider>
-        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}>
+        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}>
           <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
@@ -255,7 +275,7 @@ describe('FLOW_NODE_TYPES', () => {
     render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
-          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload, setNodeContent: vi.fn(), commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
+          value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), activateNodeUpload, commitGroupResize: vi.fn(), retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}
         >
           <Image
             {...({
