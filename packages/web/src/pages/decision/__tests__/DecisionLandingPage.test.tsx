@@ -217,6 +217,28 @@ describe('the dead ends each say their own thing', () => {
     expect(screen.getByText(/link is not valid/i)).toBeInTheDocument();
     expect(decisionsApi.view).not.toHaveBeenCalled();
   });
+
+  it('a read that failed is not the same as a link that is wrong', async () => {
+    // A 500, a restart, a dropped connection. The request is untouched and
+    // still answerable, but the page said the link was not valid and told
+    // them to re-copy it from the email — advice that cannot help, for a
+    // problem they do not have. The one thing that can help is asking again.
+    const user = userEvent.setup();
+    vi.mocked(decisionsApi.view)
+      .mockRejectedValueOnce(
+        new ApiException({ status: 500, code: 'INTERNAL', message: 'boom' }),
+      )
+      .mockResolvedValueOnce(makeView());
+    setup();
+
+    expect(await screen.findByText(/could not load/i)).toBeInTheDocument();
+    expect(screen.queryByText(/link is not valid/i)).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(
+      await screen.findByRole('button', { name: 'Accept' }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe('answering', () => {

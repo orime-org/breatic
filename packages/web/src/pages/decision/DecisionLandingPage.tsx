@@ -31,8 +31,16 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 
-/** What the page is doing, as opposed to what the request is in. */
-type Phase = 'loading' | 'ready' | 'invalid';
+/**
+ * What the page is doing, as opposed to what the request is in.
+ *
+ * `invalid` and `unreachable` are the two ways a read ends without a view, and
+ * conflating them is the mistake this page exists to stop making: only a token
+ * the server has never issued is a bad link. A 500 or a dropped connection
+ * leaves a live, answerable request on the other end, so telling that reader
+ * to re-copy the link sends them after a problem they do not have.
+ */
+type Phase = 'loading' | 'ready' | 'invalid' | 'unreachable';
 
 /**
  * The landing page for any of the five waiting-for-an-answer flows.
@@ -50,10 +58,12 @@ export default function DecisionLandingPage(): React.JSX.Element {
   );
   const [view, setView] = React.useState<DecisionView | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [attempt, setAttempt] = React.useState(0);
 
   React.useEffect(() => {
     if (token === null) return;
     let alive = true;
+    setPhase('loading');
     void decisionsApi
       .view(token)
       .then((found) => {
@@ -61,14 +71,20 @@ export default function DecisionLandingPage(): React.JSX.Element {
         setView(found);
         setPhase('ready');
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (!alive) return;
-        setPhase('invalid');
+        // 404 is the server saying no request answers to this token — the one
+        // case that really is a bad link. Anything else happened to the read,
+        // not to the request.
+        const missing = err instanceof ApiException && err.status === 404;
+        setPhase(missing ? 'invalid' : 'unreachable');
       });
     return () => {
       alive = false;
     };
-  }, [token]);
+  }, [token, attempt]);
+
+  const onRetry = React.useCallback((): void => setAttempt((n) => n + 1), []);
 
   const answer = React.useCallback(
     async (action: DecisionAction): Promise<void> => {
@@ -117,6 +133,25 @@ export default function DecisionLandingPage(): React.JSX.Element {
         <div className='flex items-center gap-2 text-muted-foreground'>
           <Loader2 className='size-4 animate-spin' aria-hidden />
           <span className='text-sm'>{t('decision.loadingBody')}</span>
+        </div>
+      </AuthCardShell>
+    );
+  }
+
+  // Nothing automatic here on purpose: no reconnect loop, no backoff, no
+  // separate wording per status code. The read failed, the link is fine, and
+  // asking again is the whole remedy.
+  if (phase === 'unreachable') {
+    return (
+      <AuthCardShell
+        title={t('decision.unreachableTitle')}
+        footer={<AuthLink to='/studio'>{t('decision.backHome')}</AuthLink>}
+      >
+        <div className='flex flex-col items-start gap-4'>
+          <p className='text-sm text-muted-foreground'>
+            {t('decision.unreachableBody')}
+          </p>
+          <Button onClick={onRetry}>{t('decision.retry')}</Button>
         </div>
       </AuthCardShell>
     );
