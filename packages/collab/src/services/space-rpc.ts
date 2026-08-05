@@ -379,15 +379,18 @@ interface MetaDirectConnection {
 /**
  * The live meta doc behind an open direct connection.
  *
- * **Every read-only pre-check goes through here, never through
- * `transact`.** `transact` runs its callback and then stores the document
- * unconditionally (`hocuspocus-server.esm.js:2097-2112`) — even for a
- * callback that only reads. A check routed through it therefore comes
- * back with two unrelated answers: what it saw, and whether the database
- * is healthy. Every caller then has to decide which one wins, and that
- * decision was written three different ways across nine call sites, two
- * of them backwards. A Yjs read needs no transaction and touches no
- * storage, so there is only ever one answer and nothing to order.
+ * **The checks an operation runs BEFORE it writes go through here, never
+ * through `transact`.** (The checks a callback re-runs at the moment it
+ * writes are a different thing and stay inside the write — see §4 on why
+ * they have to be re-run at all.) `transact` runs its callback and then
+ * stores the document unconditionally
+ * (`hocuspocus-server.esm.js:2097-2112`) — even for a callback that only
+ * reads. A check routed through it therefore comes back with two
+ * unrelated answers: what it saw, and whether the database is healthy.
+ * Every caller then has to decide which one wins, and that decision was
+ * written three different ways across nine call sites, two of them
+ * backwards. A Yjs read needs no transaction and touches no storage, so
+ * there is only ever one answer and nothing to order.
  * @param conn - Direct connection opened for this operation.
  * @returns The live meta doc.
  * @throws {Error} When the connection has already been disconnected.
@@ -409,17 +412,26 @@ function metaDocOf(conn: MetaDirectConnection): Y.Doc {
  *   refusal (the entry vanished) or a success (nothing needed writing,
  *   §6.5's same-name rename). **This case exists so the precedence lives
  *   here instead of being re-derived by each handler.**
- * - `published`: the callback wrote, so every client has applied the
- *   change — even when the store rejected afterwards (§3.2: the callback
- *   runs synchronously and the broadcast leaves inside it). The caller
- *   carries on to its success answer.
+ *   `broadcast` says whether anything reached the clients before the
+ *   guard settled. It is NOT always false: `ensureOpenTabList` seeds a
+ *   missing tab list — a write — and the very next line can find nothing
+ *   to remove and settle on an idempotent success. A caller that undoes
+ *   earlier steps must key that undo on this flag, never on the kind.
+ * - `published`: no guard reached an answer, so the callback ran to the
+ *   end. In every operation today that means it wrote, and the change is
+ *   out on every client — even when the store rejected afterwards (§3.2:
+ *   the callback runs synchronously and the broadcast leaves inside it).
+ *   A callback that neither wrote nor decided would land here too, but
+ *   none can: each of the seven either returns a verdict or marks and
+ *   writes, so there is no third path to name. The caller carries on to
+ *   its success answer.
  * - `failed-before-broadcast`: the transact rejected, no guard had
  *   decided anything, and the callback had written nothing. Nothing went
  *   out; the caller undoes its earlier steps and answers a controlled
  *   error.
  */
 type PublishOutcome =
-  | { kind: "decided"; response: SpaceRpcResponse }
+  | { kind: "decided"; response: SpaceRpcResponse; broadcast: boolean }
   | { kind: "published" }
   | { kind: "failed-before-broadcast" };
 
@@ -428,7 +440,7 @@ type PublishOutcome =
  * ONE implementation every operation goes through rather than a
  * convention each handler re-earns.
  *
- * Two invariants live here and nowhere else:
+ * Three invariants live here and nowhere else:
  *
  * 1. **Everything the callback writes leaves as one update.** The
  *    library's `transact` runs the callback bare — each Y.js mutation
@@ -446,7 +458,11 @@ type PublishOutcome =
  *    callback returns its answer instead of setting a flag the caller
  *    then has to consult in the right order, so `decided` and
  *    `failed-before-broadcast` are mutually exclusive by construction.
- *    Spelled out per handler, this ordering was got wrong twice.
+ *    Spelled out per handler, this ordering was got wrong twice. The
+ *    outcome also reports whether anything reached the clients, so
+ *    "settling on a verdict" and "having written nothing" stay separate
+ *    facts — a callback can do both, and a caller that undoes earlier
+ *    steps must not infer one from the other.
  * @param conn - Direct connection to the project's meta doc.
  * @param logCtx - Fields for the line written when either side fails.
  * @param write - The publishing callback. Calls `mark()` right before its
@@ -503,28 +519,39 @@ async function publishMetaChange(
   }
   return decided === undefined
     ? { kind: "published" }
-    : { kind: "decided", response: decided };
+    : { kind: "decided", response: decided, broadcast: wrote };
 }
 
 /**
- * The answer a publish outcome forces, or `null` when the change went out
- * and the handler should carry on to its own success path.
+ * What a publish outcome obliges the handler to do: which answer to send,
+ * and whether anything it did earlier still has to be undone.
  *
- * Handlers call this instead of comparing the outcome themselves, so no
- * handler chooses an order between a guard's verdict and a store failure.
+ * Both come from what actually happened inside the callback, so no
+ * handler decides either for itself. The undo flag matters because
+ * "a guard settled this" and "nothing reached the clients" are separate
+ * facts — `ensureOpenTabList` can seed a list (a write, so a broadcast)
+ * and the next line can still settle on an idempotent success. A handler
+ * that inferred "nothing went out" from "a guard settled it" would undo
+ * work every client has already seen.
  * @param outcome - What {@link publishMetaChange} returned.
  * @param internal - Builds the controlled error for a failure that
  *   happened before anything went out. Called only in that case, so the
  *   message stays specific to the operation.
- * @returns The response to send, or null to continue.
+ * @returns `response` is what to send, or null to carry on to the
+ *   handler's own success path; `undo` is true only when nothing reached
+ *   any client.
  */
-function publishVerdict(
+function settlePublish(
   outcome: PublishOutcome,
   internal: () => SpaceRpcResponse,
-): SpaceRpcResponse | null {
-  if (outcome.kind === "decided") return outcome.response;
-  if (outcome.kind === "failed-before-broadcast") return internal();
-  return null;
+): { response: SpaceRpcResponse | null; undo: boolean } {
+  if (outcome.kind === "decided") {
+    return { response: outcome.response, undo: !outcome.broadcast };
+  }
+  if (outcome.kind === "failed-before-broadcast") {
+    return { response: internal(), undo: true };
+  }
+  return { response: null, undo: false };
 }
 
 // ── Handlers ────────────────────────────────────────────────────────
@@ -618,12 +645,14 @@ async function handleCreate(
         claimToken,
       });
     });
-    const verdict = publishVerdict(outcome, () =>
+    const settled = settlePublish(outcome, () =>
       err(req.id, "INTERNAL", "Could not create the Space"),
     );
-    if (verdict) {
-      await undoContentRows("soft-delete", projectId, spaceId, seededKinds, logCtx);
-      return verdict;
+    if (settled.response) {
+      if (settled.undo) {
+        await undoContentRows("soft-delete", projectId, spaceId, seededKinds, logCtx);
+      }
+      return settled.response;
     }
     await recordSpaceActivity(ctx, projectId, {
       actorUserId: caller.userId,
@@ -783,18 +812,20 @@ async function runDelete(
       live.delete(spaceId);
       clearSpaceFromAllTabs(doc, spaceId);
     });
-    const verdict = publishVerdict(outcome, () =>
+    const settled = settlePublish(outcome, () =>
       err(req.id, "INTERNAL", "Could not delete the Space"),
     );
-    if (verdict) {
-      await undoContentRows(
-        "restore",
-        projectId,
-        spaceId,
-        softDeleted.touched,
-        logCtx,
-      );
-      return verdict;
+    if (settled.response) {
+      if (settled.undo) {
+        await undoContentRows(
+          "restore",
+          projectId,
+          spaceId,
+          softDeleted.touched,
+          logCtx,
+        );
+      }
+      return settled.response;
     }
 
     // ── Audit, allowed to fail ──────────────────────────────────────
@@ -854,10 +885,10 @@ async function handleLock(
       mark();
       entry.set("locked", locked);
     });
-    const verdict = publishVerdict(outcome, () =>
+    const settled = settlePublish(outcome, () =>
       err(req.id, "INTERNAL", "Could not update the Space"),
     );
-    if (verdict) return verdict;
+    if (settled.response) return settled.response;
     await recordSpaceActivity(ctx, projectId, {
       actorUserId: caller.userId,
       type: locked ? "space:locked" : "space:unlocked",
@@ -929,10 +960,10 @@ async function handleRename(
       mark();
       entry.set("name", name);
     });
-    const verdict = publishVerdict(outcome, () =>
+    const settled = settlePublish(outcome, () =>
       err(req.id, "INTERNAL", "Could not rename the Space"),
     );
-    if (verdict) return verdict;
+    if (settled.response) return settled.response;
     await recordSpaceActivity(ctx, projectId, {
       actorUserId: caller.userId,
       type: "space:renamed",
@@ -1107,18 +1138,20 @@ async function runRestore(
       // approximately true.
       clearSpaceFromAllTabs(doc, spaceId);
     });
-    const verdict = publishVerdict(outcome, () =>
+    const settled = settlePublish(outcome, () =>
       err(req.id, "INTERNAL", "Could not restore the Space"),
     );
-    if (verdict) {
-      await undoContentRows(
-        "soft-delete",
-        projectId,
-        spaceId,
-        restored.touched,
-        logCtx,
-      );
-      return verdict;
+    if (settled.response) {
+      if (settled.undo) {
+        await undoContentRows(
+          "soft-delete",
+          projectId,
+          spaceId,
+          restored.touched,
+          logCtx,
+        );
+      }
+      return settled.response;
     }
 
     // ── Audit, allowed to fail ──────────────────────────────────────
@@ -1315,10 +1348,10 @@ async function handleTabOpen(
       mark();
       list.push([spaceId]);
     });
-    const verdict = publishVerdict(outcome, () =>
+    const settled = settlePublish(outcome, () =>
       err(req.id, "INTERNAL", "Could not open the tab"),
     );
-    if (verdict) return verdict;
+    if (settled.response) return settled.response;
     return ok(req.id);
   } finally {
     await safeCleanup("disconnect", logCtx, () => conn.disconnect());
@@ -1379,15 +1412,20 @@ async function handleTabClose(
           removed = true;
         }
       }
-      // Gone since the check above — the same account on another machine
-      // closed it first. Nothing left to write, so this is a success, the
-      // same shape §6.5 gives a rename to the name a Space already has.
+      // Nothing matched. NOT a race with the check above: there is no
+      // await between it and this callback, so no remote update can land
+      // in between. The reachable case is the seeding one — a caller with
+      // no list closing a tab whose Space left the directory before the
+      // request arrived, so the freshly seeded list never held that id.
+      // Nothing left to write, so this is a success, the same shape §6.5
+      // gives a rename to the name a Space already has. The seed itself
+      // may well have written; `settlePublish` keeps those two apart.
       if (!removed) return ok(req.id);
     });
-    const verdict = publishVerdict(outcome, () =>
+    const settled = settlePublish(outcome, () =>
       err(req.id, "INTERNAL", "Could not close the tab"),
     );
-    if (verdict) return verdict;
+    if (settled.response) return settled.response;
     return ok(req.id);
   } finally {
     await safeCleanup("disconnect", logCtx, () => conn.disconnect());

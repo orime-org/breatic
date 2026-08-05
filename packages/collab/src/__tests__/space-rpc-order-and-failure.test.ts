@@ -220,6 +220,14 @@ interface MetaConnectionBehaviour {
    * broadcast leaves inside it, and only then does the awaited store fail.
    */
   storeFails?: boolean;
+  /**
+   * When set, `transact` rejects WITHOUT running its callback — the real
+   * library's other failure shape: it throws on a closed connection
+   * before touching the document (`hocuspocus-server.esm.js:2098-2101`).
+   * This is the one path to `failed-before-broadcast` for the operations
+   * whose callbacks always either write or return a verdict.
+   */
+  transactRejectsBeforeCallback?: boolean;
   /** Replaces the default `disconnect`, e.g. to make the finally throw. */
   disconnect?: () => Promise<void>;
 }
@@ -244,6 +252,9 @@ function makeHocuspocus(behaviour: MetaConnectionBehaviour = {}): Hocuspocus {
           transacts += 1;
           transactCalls += 1;
           if (transacts === 1) behaviour.beforeFirstTransact?.();
+          if (behaviour.transactRejectsBeforeCallback) {
+            throw new Error("direct connection closed");
+          }
           fn(metaDoc);
           if (behaviour.storeFails) {
             throw new Error(
@@ -1371,29 +1382,103 @@ describe("a refused pre-check is a pure read — a broken store cannot reach it"
     expect(transactCalls).toBe(0);
   });
 
-  it("tab:close stays a success when another machine closes it in the write window and the store fails", async () => {
-    seedTabList(ACTOR, [SID, OTHER_SID]);
+  it("tab:close settles on success from the seed itself when the Space is already gone", async () => {
+    // The only way `removed` can end up false: a user with no tab list
+    // closes a tab whose Space left the directory between their click and
+    // this call. `ensureOpenTabList` seeds from `spaces`, which no longer
+    // holds that id, so the removal loop matches nothing.
+    //
+    // Reaching it means the seed WROTE — the caller's bar goes from the
+    // implicit "every Space" to an explicit list — so this is a verdict
+    // reached AFTER a broadcast, the combination `settlePublish` exists to
+    // keep separate from "nothing went out".
+    metaDoc.getMap("perUser").set(ACTOR, new Y.Map<unknown>());
     const res = await handleSpaceRpc(
-      {
-        hocuspocus: makeHocuspocus({
-          storeFails: true,
-          beforeFirstTransact: () => {
-            // The same account on a second machine got there first.
-            const userMap = metaDoc
-              .getMap<Y.Map<unknown>>("perUser")
-              .get(ACTOR);
-            const list = userMap?.get("openTabIds") as Y.Array<string>;
-            list.delete(list.toArray().indexOf(SID), 1);
-          },
-        }),
-      },
+      { hocuspocus: makeHocuspocus() },
       PID,
       { userId: ACTOR, role: "viewer" },
-      { id: "r1", type: "tab:close", payload: { spaceId: SID } },
+      { id: "r1", type: "tab:close", payload: { spaceId: "gone-space-id" } },
     );
-    // The re-check inside the write decided there was nothing to write.
-    // That verdict READ the world, so it outranks the store failure — the
-    // same shape §6.5 already gives rename's same-name case.
     expect(res.ok).toBe(true);
+    const list = (
+      metaDoc.getMap<Y.Map<unknown>>("perUser").get(ACTOR) as Y.Map<unknown>
+    ).get("openTabIds") as Y.Array<string>;
+    expect(list.toArray().sort()).toEqual([OTHER_SID, SID].sort());
+  });
+
+  it("a verdict reached after the seed logs the broadcast, not the guard", async () => {
+    // Which line gets logged is keyed on whether anything was written, NOT
+    // on whether a guard settled it — the two are independent and this is
+    // the one path where they disagree. Getting it backwards would report
+    // an update that every client already applied as one that never left.
+    metaDoc.getMap("perUser").set(ACTOR, new Y.Map<unknown>());
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "viewer" },
+      { id: "r1", type: "tab:close", payload: { spaceId: "gone-space-id" } },
+    );
+    expect(res.ok).toBe(true);
+    const messages = [...loggerErrorMock.mock.calls].map((c) => c[1]);
+    expect(messages).toContain("space_rpc_not_persisted_after_broadcast");
+    expect(messages).not.toContain("space_rpc_store_failed_after_guard_decided");
+  });
+
+  it("space:delete undoes its content rows when the transact rejects without ever running the callback", async () => {
+    // The one shape that still reaches `failed-before-broadcast` for an
+    // operation whose callback always writes or decides: the library
+    // throws on a closed connection BEFORE touching the document
+    // (`hocuspocus-server.esm.js:2098-2101`). Nothing was read, nothing
+    // decided, nothing written — so the soft-deleted rows have to come
+    // back, or the project keeps rows for a Space that still exists.
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ transactRejectsBeforeCallback: true }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INTERNAL");
+    expectNoDatabaseWording(res.error.message);
+    for (const kind of CONTENT_KINDS) {
+      expect(restoreByNameMock).toHaveBeenCalledWith(
+        spaceContentDocName(PID, SID, kind),
+      );
+    }
+  });
+
+  it("space:restore re-deletes its content rows when the transact rejects without running the callback", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    metaDoc.getMap("spaces").delete(SID);
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ transactRejectsBeforeCallback: true }) },
+      PID,
+      { userId: ACTOR, role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INTERNAL");
+    expect(softDeleteByNameMock).toHaveBeenCalledWith(
+      spaceContentDocName(PID, SID, "canvas"),
+    );
+  });
+
+  it("space:rename's same-name verdict survives a store failure without undoing anything", async () => {
+    // rename is the other operation whose write-phase re-check can settle
+    // without writing. Nothing was seeded here, so this is the mirror of
+    // the tab:close seed case: a verdict with NO broadcast behind it.
+    seedSpace(SID, { type: "canvas", name: "Foo", order: 0, locked: false });
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "Foo" } },
+    );
+    expect(res.ok).toBe(true);
+    const messages = [...loggerErrorMock.mock.calls].map((c) => c[1]);
+    expect(messages).toContain("space_rpc_store_failed_after_guard_decided");
+    expect(messages).not.toContain("space_rpc_not_persisted_after_broadcast");
   });
 });
