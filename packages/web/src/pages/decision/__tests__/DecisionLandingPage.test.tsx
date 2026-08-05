@@ -355,6 +355,24 @@ describe('the person who is not being asked', () => {
       expect(screen.queryByText(falseClaim)).toBeNull();
     },
   );
+
+  it('still gets the gone card, because a deleted container has no recipient', async () => {
+    // `gone` is the one state where "are you the recipient" has no answer to
+    // give: the container it was about is deleted, and for a role upgrade the
+    // recipient IS the project's current owner — unresolvable the moment the
+    // project dies, which lands the real owner here with isRecipient false.
+    //
+    // Telling them "this link was sent to somebody else" is false about the
+    // one person it was sent to. The gone card makes no claim about the
+    // viewer at all, so it is the truthful answer for anyone holding the link.
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(
+      makeView({ state: 'gone', isRecipient: false }),
+    );
+    setup();
+    expect(await screen.findByText(/no longer here/i)).toBeInTheDocument();
+    expect(screen.queryByText(/not yours to answer/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+  });
 });
 
 describe('the clock on an answerable card', () => {

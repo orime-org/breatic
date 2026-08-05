@@ -133,11 +133,32 @@ export default function DecisionLandingPage(): React.JSX.Element {
     );
   }
 
-  // Everything below is a request that WAS found. Who is looking is decided
-  // BEFORE what state it is in: every card past this point speaks to the
-  // recipient in the second person, and each of those sentences is false when
-  // said to anyone else — the sender opening their own copied link after the
-  // answer landed must not read "You already accepted this".
+  // `gone` outranks the audience check, and only `gone`. Every other card
+  // past this point either speaks to the recipient in the second person
+  // ("You already accepted this") or is about a request that still exists and
+  // still belongs to somebody — for those, "this link was sent to somebody
+  // else" is the true thing to say.
+  //
+  // A deleted container has no recipient to be. The role upgrade resolves its
+  // recipient through the project's current owner, so deleting the project
+  // makes even the person who WAS asked stop matching, and the audience check
+  // would tell them the link is somebody else's — false about the one person
+  // it was sent to. This card claims nothing about the viewer, so it is the
+  // honest answer to anyone holding the link.
+  if (view.state === 'gone') {
+    return (
+      <AuthCardShell
+        title={t('decision.goneTitle')}
+        footer={<AuthLink to='/studio'>{t('decision.backHome')}</AuthLink>}
+      >
+        <p className='text-sm text-muted-foreground'>{t('decision.goneBody')}</p>
+      </AuthCardShell>
+    );
+  }
+
+  // Everything below is a request that WAS found and still has a container.
+  // Who is looking is decided BEFORE what state it is in, for the reason
+  // above.
   if (!view.isRecipient) {
     return (
       <AuthCardShell

@@ -342,11 +342,9 @@ export async function respond(
   const detail = await decisionRepo.readDetail(found.kind, found.id);
   if (!detail) throw new NotFoundError(t("server.error.not_found"));
 
-  if (detail.recipientUserId !== viewerUserId) {
-    throw new ForbiddenError(t("server.error.forbidden"));
-  }
-
-  // Same as the view: only the invite flows have a membership question to ask.
+  // Membership is asked about the request's OWN recipient, not the caller, so
+  // it can be resolved before we know who is calling. Only the invite flows
+  // have the question at all.
   const recipientAlreadyIn = INVITE_KINDS.has(found.kind)
     ? await alreadyHasOffer(detail.container, detail.recipientUserId, detail.role)
     : false;
@@ -357,6 +355,21 @@ export async function respond(
     expiresAt: found.expiresAt,
     recipientAlreadyIn,
   });
+
+  // A deleted container closes the request for everybody, so it answers before
+  // we ask who is calling — and it must, because the role upgrade's recipient
+  // is the project's CURRENT owner, unresolvable once the project is deleted.
+  // Checking the recipient first would answer the person who actually was
+  // asked with "you are not the recipient", which is false. The landing page
+  // puts its `gone` card ahead of the audience check for the same reason.
+  if (state === "gone") {
+    throw new ConflictError(t("server.error.conflict"));
+  }
+
+  if (detail.recipientUserId !== viewerUserId) {
+    throw new ForbiddenError(t("server.error.forbidden"));
+  }
+
   if (state !== "answerable") {
     throw new ConflictError(t("server.error.conflict"));
   }

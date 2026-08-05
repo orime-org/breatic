@@ -1459,7 +1459,7 @@
     "title": "{kind, select, studio_invite {Studio に招待されています} project_invite {Project に招待されています} role_upgrade {権限の変更を求められています} project_transfer {Project を引き継ぐよう求められています} studio_transfer {Studio を引き継ぐよう求められています} other {回答が必要です}}",
     "body": "{kind, select, studio_invite {{actor} さんが {entity} に {role, select, maintainer {Maintainer} guest {Guest} other {Member}} として招待しています。} project_invite {{actor} さんが {entity} に {role, select, editor {Editor} viewer {Viewer} other {Member}} として招待しています。} role_upgrade {{actor} さんが {entity} で {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}} になることを申請しています。} project_transfer {{actor} さんが {entity} の Owner をあなたに引き継ごうとしています。} studio_transfer {{actor} さんが {entity} の Admin をあなたに引き継ごうとしています。} other {{actor} さんが {entity} についてあなたの回答を待っています。}}",
     "reason": "コメント：{message}",
-    "confirm": "{kind, select, role_upgrade {承認} other {参加する}}",
+    "confirm": "{kind, select, role_upgrade {承認} other {承諾する}}",
     "decline": "{kind, select, role_upgrade {却下} other {辞退する}}",
     "windowNote": "このリクエストは {days} 日以内に回答できました。",
     "acceptedTitle": "すでに承諾済みです",

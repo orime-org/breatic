@@ -257,6 +257,35 @@ describe("accepting lands the flow's own write, and says where to go", () => {
     expect(rows[0]!.role).toBe("editor");
   });
 
+  it("a request whose container is gone refuses everyone the same way", async () => {
+    // Deleting a project soft-deletes its member rows, and the role upgrade's
+    // recipient IS the project's current owner — looked up, not stored. So the
+    // real owner stops resolving as the recipient the moment the project dies.
+    //
+    // The recipient check must not be what answers them: "you are not the
+    // recipient" is false about the one person who was asked. A container that
+    // is gone closes the request for everybody, which is a conflict, not a
+    // permission problem.
+    const s = await seedScene();
+    const { id } = await roleUpgradeRequestsRepo.createPending({
+      projectId: s.projectId,
+      requesterUserId: s.memberId,
+      requestedRole: "editor",
+      expiresAt: IN_A_WEEK(),
+    });
+    const token = await tokenOf("role_upgrade_requests", id);
+    await sql`
+      UPDATE project_members SET deleted_at = now() WHERE project_id = ${s.projectId}
+    `;
+    await sql`
+      UPDATE role_upgrade_requests SET deleted_at = now() WHERE id = ${id}
+    `;
+
+    await expect(
+      decisionService.respond(token, s.ownerId, "confirm"),
+    ).rejects.toThrow(ConflictError);
+  });
+
   it("both transfers hand ownership over", async () => {
     const s = await seedScene();
     const { id: pt } = await projectTransfersRepo.createPending({
