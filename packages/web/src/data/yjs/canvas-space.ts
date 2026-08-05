@@ -374,21 +374,29 @@ export function useCanvasSpace(
  * Each defined field becomes a Y.Map entry (plain values — strings,
  * numbers, booleans, plain arrays / objects — matching how the backend
  * reads `operationLocks` via `Array.isArray` and `handlingBy` as a plain
- * object). Undefined fields are omitted. ONE exception to the plain-values
- * convention: `focusImages` is a `Y.Array` CRDT sequence (concurrent-add
- * safe, see {@link addNodeFocusImage}) — this builder seeds it (from a
- * provided wire value, else empty — the eager seed below), and the two
- * focus writers maintain it (the backend never reads the field, and
- * `toJSON()` serializes both encodings identically).
+ * object). Undefined fields are omitted.
  *
- * A text node gets a SECOND exception: `body`, the shared fragment its editor
- * binds to (#1774). Seeded here for the same reason `focusImages` is — a
- * container created on demand is a whole-container race, and the loser's
- * writing disappears with their container. Being born inside the creating
- * transaction also ties it to the user's act of creating the node, so undoing
- * the creation takes the body along instead of orphaning it.
+ * Three keys are exceptions to the plain-values convention, and all three are
+ * seeded here rather than on demand. A container created on demand is a
+ * whole-container race: two clients that both find it missing each mint their
+ * own, map-level last-write-wins keeps one, and the loser's content disappears
+ * with their container. Born inside the creating transaction the container is
+ * a single replicated creation event, every edit inside it commutes, and
+ * undoing the creation takes the container along instead of orphaning it.
+ *
+ * `focusImages` — a `Y.Array` CRDT sequence on EVERY node (concurrent-add
+ * safe, see {@link addNodeFocusImage}), seeded from a provided wire value else
+ * empty; the two focus writers maintain it (the backend never reads the field,
+ * and `toJSON()` serializes both encodings identically).
+ *
+ * `body` — a text node's shared fragment, what its editor binds to (#1774).
+ * Seeded non-empty, because the editor's schema wants at least one block.
+ *
+ * `prompt` — the Generate prompt fragment, on the modalities that offer
+ * Generate (#1880). Seeded empty; {@link getPromptFragment} only reads.
  * @param data - The plain wire data fields to write.
- * @param type - The node's modality, which decides whether a body is seeded.
+ * @param type - The node's modality, which decides which containers are
+ *   seeded: `body` for text, `prompt` for generate-capable modalities.
  * @returns A Y.Map populated with the defined data fields.
  */
 function buildDataMap(
@@ -437,13 +445,11 @@ function buildDataMap(
     const text = typeof data.content === 'string' ? data.content : '';
     map.set('body', bodyFromText(text));
   }
-  // Born with the node for the same reason as the crops container above
-  // (#1880): created on the first panel open, two people opening the same
-  // node at once each minted their own fragment under this key and map-level
-  // last-write-wins dropped one WITH everything typed into it. Replayed
-  // against the old code the loser's line vanished outright. Seeded only for
-  // the modalities that offer Generate — an inert key on a group or a sticky
-  // would be a container nothing ever reads.
+  // #1880. Replayed against the old lazy-create code through the public API,
+  // the merge kept one client's line and the other's vanished outright — the
+  // race the header describes, observed rather than reasoned about. Only the
+  // modalities that offer Generate get one; on a group or a sticky it would be
+  // a container nothing ever reads.
   if (canGenerate(type)) map.set('prompt', new Y.XmlFragment());
   return map;
 }
