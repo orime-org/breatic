@@ -8,11 +8,11 @@ import { apiGet, apiPatch, apiPost } from '@web/data/api/request';
  * (`notification.repo.ts`). The `access.*` types are project access-permission
  * (spec 2026-05-28 § 7); the `studio.*` types are studio member / transfer /
  * invite notifications; the `project.*` types are the project invite-confirm
- * handshake (#1337). `studio.transfer_request` and `studio.invite_request` are
- * the inline-actionable types (confirm / cancel + a TTL). `project.invite_request`
- * is actionable too, but it diverges from studio: the bell row LINKS OUT to the
- * `/project-invite?token=` landing page (its payload carries that `token`) rather
- * than confirming inline. The rest are informational (read-on-click).
+ * handshake (#1337) plus the project transfer. Five of them wait for an
+ * answer — the two invites, the two transfers, and the role upgrade — and all
+ * five behave identically: the row carries a TTL and LINKS OUT to the
+ * `/decision?token=` landing page named by the token in its payload. Nothing
+ * is answered inside the bell. The rest are informational (read-on-click).
  */
 export type NotificationType =
   | 'access.role_upgrade_request'
@@ -26,9 +26,6 @@ export type NotificationType =
   | 'project.invite_accepted'
   | 'project.transfer_request'
   | 'project.transfer_approved';
-
-/** Action on an actionable notification (e.g. a studio transfer request). */
-export type NotificationAction = 'confirm' | 'cancel';
 
 export interface Notification {
   id: string;
@@ -131,26 +128,6 @@ export const notificationsApi = {
     return apiPost<{ count: number }, undefined>(
       '/users/me/notifications/read-all',
       undefined,
-    );
-  },
-
-  /**
-   * Act on an actionable notification (`confirm` / `cancel`). For a
-   * `studio.transfer_request` this routes to the transfer-admin handshake
-   * (confirm = accept admin, cancel = decline). The server gates on the
-   * caller owning the notification; a missing / already-decided / expired
-   * request collapses to a `404` / `409` `ApiException`.
-   * @param id - The actionable notification to respond to.
-   * @param action - `confirm` to accept, `cancel` to decline.
-   * @returns An acknowledgement once the action is recorded.
-   */
-  respondAction(
-    id: string,
-    action: NotificationAction,
-  ): Promise<{ ok: true }> {
-    return apiPost<{ ok: true }, { action: NotificationAction }>(
-      `/users/me/notifications/${id}/action`,
-      { action },
     );
   },
 };

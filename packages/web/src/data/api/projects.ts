@@ -29,6 +29,22 @@ export interface ProjectDetail extends ProjectSummary {
   deletedAt: string | null;
 }
 
+/**
+ * An outstanding ownership offer on a container.
+ *
+ * "Live" means pending AND not past its deadline. The two are different
+ * questions: the uniqueness index deliberately ignores the deadline, so an
+ * offer that died on day eight is still `pending` — showing it would put a
+ * withdraw button on something already over.
+ */
+export interface LiveTransfer {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  /** ISO instant; the offer stops being answerable after it. */
+  expiresAt: string;
+}
+
 export const projectsApi = {
   get(id: string) {
     return apiGet<ProjectDetail>(`/projects/${id}`);
@@ -82,5 +98,32 @@ export const projectsApi = {
       `/projects/${id}/transfer-owner`,
       { toUserId },
     );
+  },
+
+  /**
+   * `GET /api/v1/projects/:id/transfer` — the project's outstanding ownership
+   * offer, or null. Owner-only; it is the owner's own "pending · withdraw"
+   * surface.
+   * @param id the bare project uuid.
+   * @returns the live offer, or null when there is none.
+   */
+  liveTransfer(id: string): Promise<LiveTransfer | null> {
+    return apiGet<LiveTransfer | null>(`/projects/${id}/transfer`);
+  },
+
+  /**
+   * `DELETE /api/v1/projects/:id/transfer/:transferId` — the CURRENT owner
+   * withdraws an outstanding offer, freeing the project's slot at once.
+   *
+   * Withdrawal belongs to whoever owns the project now, not to whoever sent the
+   * offer: after a transfer the former owner is gone, and a second unanswered
+   * offer would block ownership for a week with the only key held by someone
+   * who has left.
+   * @param id the bare project uuid.
+   * @param transferId the offer being withdrawn.
+   * @returns once the offer is withdrawn.
+   */
+  withdrawTransfer(id: string, transferId: string): Promise<{ ok: true }> {
+    return apiDelete<{ ok: true }>(`/projects/${id}/transfer/${transferId}`);
   },
 };

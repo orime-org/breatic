@@ -33,6 +33,7 @@ import type {
   InvitableProjectRole,
   PendingProjectInvitationSummary,
 } from "@breatic/shared";
+import { mintShareToken } from "@server/utils/share-token.js";
 
 /**
  * The membership-relevant fields of a just-accepted invite, returned by
@@ -46,6 +47,12 @@ export interface AcceptedProjectInvite {
   invitedBy: string;
   /** The bell notification to mark read (null when none was attached). */
   notificationId: string | null;
+}
+
+/** A freshly filed request: its id, and the token that names it in a link. */
+export interface CreatedRequest {
+  id: string;
+  shareToken: string;
 }
 
 /**
@@ -63,7 +70,7 @@ export interface AcceptedProjectInvite {
  * @param input.invitedBy - The inviting owner's user id
  * @param input.expiresAt - When the invite times out (matches the notification TTL)
  * @param input.tx - Optional drizzle transaction handle
- * @returns The new invitation's id
+ * @returns The new invitation's id and its share token
  * @throws {Error} if the insert returns no row (should never happen)
  */
 export async function createPending(input: {
@@ -73,7 +80,7 @@ export async function createPending(input: {
   invitedBy: string;
   expiresAt: Date;
   tx?: DbTx;
-}): Promise<string> {
+}): Promise<CreatedRequest> {
   const handle = input.tx ?? db;
   const rows = await handle
     .insert(projectInvitations)
@@ -83,16 +90,17 @@ export async function createPending(input: {
       role: input.role,
       invitedBy: input.invitedBy,
       status: "pending",
+      shareToken: mintShareToken(),
       expiresAt: input.expiresAt,
     })
-    .returning({ id: projectInvitations.id });
+    .returning({ id: projectInvitations.id, shareToken: projectInvitations.shareToken });
   const row = rows[0];
   if (!row) {
     throw new Error(
       "projectInvitationsRepo.createPending: insert returned no row",
     );
   }
-  return row.id;
+  return { id: row.id, shareToken: row.shareToken };
 }
 
 /**
@@ -134,8 +142,9 @@ export async function expireStalePending(
 
 /**
  * Link the bell notification to an invite (set right after the notification is
- * created, in the same transaction) so accept / decline / revoke can mark it
- * read and the bell entry disappears even when acted on via the email link.
+ * created, in the same transaction) so settling the invite can mark it read —
+ * whether the invitee answered on the decision page or the inviter revoked it.
+ * Nothing is answered inside the bell, so without this the row would linger.
  * @param id - Invitation id
  * @param notificationId - The `project.invite_request` notification id
  * @param tx - Optional drizzle transaction handle

@@ -37,18 +37,15 @@ import * as notificationService from "@server/modules/notification/notification.
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { buildStudioInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import {
-  getStudioMemberCap,
-  getDecisionWindowDays,
-  getDecisionWindowMs,
-  getDecisionWindowSeconds,
-} from "@server/config/limits.js";
-import { randomBytes } from "node:crypto";
-import { db, env, getRedis } from "@breatic/core";
+import { getStudioMemberCap } from "@server/config/limits.js";
+import { db } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import type { InvitationLandingView } from "@breatic/shared";
+import { decisionLink } from "@server/utils/decision-link.js";
+import {
+  getDecisionWindowMs,
+} from "@server/config/limits.js";
 
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
 type InvitableRole = "maintainer" | "guest";
@@ -68,7 +65,7 @@ type InvitableRole = "maintainer" | "guest";
  * @param email - The invitee's email; must belong to a registered user
  * @param role - The granted studio role (maintainer | guest; never admin)
  * @param origin - Request Origin; when set, the best-effort invite email is sent
- *   here (the `/studio-invite?token=` link is built from it). Omit to skip it.
+ *   here (the `/decision?token=` link is built from it). Omit to skip it.
  * @returns The new invitation id, the invitee's id + email, and the studio /
  *   inviter names + role
  * @throws {NotFoundError} studio not found, or no user with that email
@@ -117,6 +114,8 @@ export async function createInvite(
   const expiresAt = new Date(Date.now() + getDecisionWindowMs());
 
   let invitationId = "";
+  // The bell row builds its link from this, same as the email.
+  let shareToken = "";
   try {
     await db.transaction(async (tx) => {
       // Reap any expired-but-still-'pending' invite for this (studio, invitee)
@@ -125,14 +124,14 @@ export async function createInvite(
       // trip it and reject the re-invite with a spurious "already invited"
       // (#1769). Same transaction → freeing the slot and taking it are atomic.
       await invitesRepo.expireStalePending(studio.id, invitee.id, tx);
-      invitationId = await invitesRepo.createPending({
+      ({ id: invitationId, shareToken } = await invitesRepo.createPending({
         studioId: studio.id,
         invitedUserId: invitee.id,
         role,
         invitedBy: inviterUserId,
         expiresAt,
         tx,
-      });
+      }));
       const notif = await notificationService.createStudioInviteRequest({
         userId: invitee.id,
         payload: {
@@ -142,6 +141,7 @@ export async function createInvite(
           inviterUserId,
           inviterName,
           role,
+          shareToken,
         },
         expiresAt,
         tx,
@@ -160,16 +160,12 @@ export async function createInvite(
   // passed an origin. A send failure must NOT fail the request.
   if (origin) {
     await sendBestEffortMail(async () => {
-      // Mint the email-link token INSIDE the best-effort boundary — a Redis blip
-      // minting it must not fail this request (the invite + bell already committed;
-      // the token is only for the optional email, the bell confirms via invitationId).
-      const token = await issueInviteToken(invitationId);
       return buildStudioInvitationMail({
         inviteeEmail: email,
         inviterName,
         studioName: studio.name,
         role,
-        inviteLink: `${origin}/studio-invite?token=${token}`,
+        inviteLink: decisionLink(origin, shareToken),
       });
     }, { userId: inviterUserId, subject: "studio_invite" });
   }
@@ -273,8 +269,7 @@ export async function confirmInvite(
  * already-decided / not-owned invite collapses to NotFound.
  * @param invitationId - The `studio_invitations` row id
  * @param receiverUserId - The invitee declining (must own the invite)
- * @throws {NotFoundError} the invite is missing, already decided, past its
- *   decision window, or not owned by `receiverUserId`
+ * @throws {NotFoundError} the invite is missing, already decided, or not owned
  */
 export async function declineInvite(
   invitationId: string,
@@ -331,101 +326,7 @@ export async function revokeInvite(
   });
 }
 
-/**
- * Issue a one-time email-link token for an invite (mirrors the email-verify
- * token): a 64-hex random token stored in Redis (`{env}:studio-invite:{token}`
- * → invitationId) with the same decision window the invite row carries. The
- * route embeds it in the `/studio-invite?token=` link.
- * @param invitationId - The invitation the token resolves to
- * @returns The 64-char hex token to embed in the invite link
- */
-export async function issueInviteToken(invitationId: string): Promise<string> {
-  const token = randomBytes(32).toString("hex");
-  await getRedis().set(
-    `${env.ENV}:studio-invite:${token}`,
-    invitationId,
-    "EX",
-    getDecisionWindowSeconds(),
-  );
-  return token;
-}
 
-/**
- * Resolve an email-link token to its invitation id WITHOUT consuming it — the
- * landing page reads the invite summary first; the token is deleted only once
- * the invitee acts (via {@link consumeInviteToken}).
- * @param token - The one-time token from the invite link
- * @returns The invitation id, or null if the token is missing / expired
- */
-export async function peekInviteToken(token: string): Promise<string | null> {
-  return getRedis().get(`${env.ENV}:studio-invite:${token}`);
-}
 
-/**
- * Consume (delete) an email-link token after the invitee has acted on it, so
- * the link is single-use.
- * @param token - The one-time token to delete
- */
-export async function consumeInviteToken(token: string): Promise<void> {
-  await getRedis().del(`${env.ENV}:studio-invite:${token}`);
-}
 
-/**
- * Resolve an email-link token to the landing-page view (without consuming it).
- *
- * The `/studio-invite` page renders this before the invitee acts: studio +
- * inviter names, granted role, an `expired` flag, and `isInvitee` (true only
- * when the logged-in user is the invitee — gates the confirm button). No
- * invitation / invitee id leaks out.
- * @param token - The one-time token from the invite link
- * @param viewerUserId - The logged-in user (sets `isInvitee`)
- * @returns The landing view, or null if the token / invite is gone
- */
-export async function getInviteForLanding(
-  token: string,
-  viewerUserId: string,
-): Promise<InvitationLandingView | null> {
-  const invitationId = await peekInviteToken(token);
-  if (!invitationId) return null;
-  const row = await invitesRepo.findLandingById(invitationId);
-  if (!row) return null;
-  return {
-    studioName: row.studioName,
-    studioSlug: row.studioSlug,
-    inviterName: row.inviterName,
-    role: row.role,
-    expired: row.expiresAt.getTime() <= Date.now(),
-    isInvitee: row.invitedUserId === viewerUserId,
-    windowDays: getDecisionWindowDays(),
-  };
-}
 
-/**
- * Respond to an invite from the email-link page — confirm or decline, then
- * consume the one-time token (single-use). The `userId` flows into the same CAS
- * guard as the bell path, so only the invitee can confirm/decline their own
- * invite. Returns the studio slug so the page can redirect on confirm.
- * @param token - The one-time token from the invite link
- * @param action - 'confirm' (accept + become a member) or 'decline'
- * @param userId - The logged-in user acting (must be the invitee)
- * @returns `{ studioSlug }` for the post-confirm redirect
- * @throws {NotFoundError} token / invite missing, already decided, expired, or
- *   not owned by `userId`
- */
-export async function respondToInvite(
-  token: string,
-  action: "confirm" | "decline",
-  userId: string,
-): Promise<{ studioSlug: string }> {
-  const invitationId = await peekInviteToken(token);
-  if (!invitationId) throw new NotFoundError(t("server.error.not_found"));
-  const landing = await invitesRepo.findLandingById(invitationId);
-  if (!landing) throw new NotFoundError(t("server.error.not_found"));
-  if (action === "confirm") {
-    await confirmInvite(invitationId, userId);
-  } else {
-    await declineInvite(invitationId, userId);
-  }
-  await consumeInviteToken(token);
-  return { studioSlug: landing.studioSlug };
-}

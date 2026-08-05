@@ -16,8 +16,6 @@ const PID = '11111111-1111-4111-8111-111111111111';
 
 vi.mock('@web/data/api/project-invitations', () => ({
   projectInvitationsApi: {
-    getInvitation: vi.fn(),
-    respondInvitation: vi.fn(),
     inviteMember: vi.fn(),
   },
 }));
@@ -72,7 +70,7 @@ describe('ShareDialog — invite by email flow', () => {
   it('sends a valid email + role=viewer (default) to the new invitations endpoint', async () => {
     const user = userEvent.setup();
     vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce({
-      inviteLink: 'https://app.example/project-invite?token=tok-1',
+      inviteLink: 'https://app.example/decision?token=tok-1',
     });
     setup();
     await user.type(
@@ -92,7 +90,7 @@ describe('ShareDialog — invite by email flow', () => {
 
   it('reveals a copyable invite URL after a successful invite', async () => {
     const user = userEvent.setup();
-    const inviteLink = 'https://app.example/project-invite?token=tok-42';
+    const inviteLink = 'https://app.example/decision?token=tok-42';
     vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce({
       inviteLink,
     });
@@ -135,7 +133,7 @@ describe('ShareDialog — invite by email flow', () => {
 
   it('clears the stale invite link when the dialog is reopened', async () => {
     const user = userEvent.setup();
-    const inviteLink = 'https://app.example/project-invite?token=tok-stale';
+    const inviteLink = 'https://app.example/decision?token=tok-stale';
     vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce({
       inviteLink,
     });

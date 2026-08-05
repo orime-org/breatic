@@ -34,7 +34,21 @@ export type { NotificationEntity };
  * in the owner's inbox.
  */
 export interface RoleUpgradeRequestPayload {
+  /**
+   * The token that names this request in `/decision?token=`. The bell row
+   * builds its link from it, the same way the email does — all channels
+   * resolve to one request.
+   */
+  shareToken: string;
   requesterUserId: string;
+  /**
+   * The `role_upgrade_requests` row this entry announces.
+   *
+   * The request's source of truth is that row, not this entry — the bell's
+   * approve / reject buttons act on the id carried here, exactly as the invite
+   * and transfer entries carry theirs.
+   */
+  requestId: string;
   /** The project the request is about — resolved to its current name at read time. */
   projectId: string;
   /** Requester's personal-studio display name — shown actor-first in the bell. */
@@ -59,7 +73,6 @@ export interface RoleUpgradeDecisionPayload {
   projectId: string;
   projectName: string;
   newRole?: "editor";
-  reason?: string | null;
 }
 
 // ── Constructors ────────────────────────────────────────────────────
@@ -68,11 +81,17 @@ export interface RoleUpgradeDecisionPayload {
  * Create a notification for the owner that a viewer wants editor
  * access. Returns the inserted row so the caller can return its id
  * to the requester (or surface it in the broadcast).
+ *
+ * `expiresAt` is required and must be the same instant the request row
+ * carries. The bell's unread list and its badge both read a null `expires_at`
+ * as "never expires", so an entry created without one outlives the request it
+ * announces: on day eight the request is dead but the row still sits unread,
+ * still counted, with buttons that now answer 409.
  * @param input - Owner inbox, project scope, payload, and optional transaction
  * @param input.ownerUserId - Project owner who receives the request in their inbox
  * @param input.projectId - Project the upgrade is requested for
  * @param input.payload - Requester, project name, requested role, and message
- * @param input.expiresAt - When the owner's window to decide runs out
+ * @param input.expiresAt - Same instant as the request row's `expires_at`
  * @param input.tx - Optional transaction to bundle with the role-bump write
  * @returns The inserted `access.role_upgrade_request` notification
  */
@@ -128,7 +147,7 @@ export async function createRoleUpgradeApproved(input: {
  * @param input - Requester inbox, project scope, payload, and optional transaction
  * @param input.requesterUserId - Viewer who receives the rejection in their inbox
  * @param input.projectId - Project the upgrade was rejected for
- * @param input.payload - Project name and optional rejection reason
+ * @param input.payload - Project name and decider identity
  * @param input.tx - Optional transaction to bundle with related writes
  * @returns The inserted `access.role_upgrade_rejected` notification
  */
@@ -151,17 +170,31 @@ export async function createRoleUpgradeRejected(input: {
 
 /**
  * Studio transfer-request payload — an admin asks the user to take over as
- * admin. Stored on the actionable `studio.transfer_request` notification
- * (confirm/cancel; expires after a TTL). `studioId` rides along so the
- * confirm step can swap roles without re-resolving the studio (the slug may
- * have changed, but the id is stable).
+ * admin. Stored on the `studio.transfer_request` notification, which points at
+ * the request rather than holding it, and expires after a TTL. `studioId`
+ * rides along so the confirm step can swap roles without re-resolving the
+ * studio (the slug may have changed, but the id is stable).
  */
 export interface StudioTransferRequestPayload {
+  /**
+   * The token that names this request in `/decision?token=`. The bell row
+   * builds its link from it, the same way the email does — all channels
+   * resolve to one request.
+   */
+  shareToken: string;
   fromUserId: string;
   /** Initiating admin's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   fromName: string;
   studioId: string;
   studioName: string;
+  /**
+   * The `studio_transfers` row this entry announces.
+   *
+   * The offer's source of truth is that row, not this entry. The recipient
+   * answers through the token above, so this id serves the other side: the
+   * sender withdrawing their own offer, which is addressed by row id.
+   */
+  transferId: string;
 }
 
 /**
@@ -180,16 +213,31 @@ export interface StudioTransferApprovedPayload {
 
 /**
  * Project transfer-request payload — a project owner asks a studio member to
- * take over as owner (#1611). Stored on the actionable `project.transfer_request`
- * notification (confirm/cancel; expires after a TTL). `projectId` rides along so
- * the confirm step can swap roles without re-resolving the project.
+ * take over as owner (#1611). Stored on the `project.transfer_request`
+ * notification, which points at the request rather than holding it, and
+ * expires after a TTL. `projectId` rides along so the confirm step can swap
+ * roles without re-resolving the project.
  */
 export interface ProjectTransferRequestPayload {
+  /**
+   * The token that names this request in `/decision?token=`. The bell row
+   * builds its link from it, the same way the email does — all channels
+   * resolve to one request.
+   */
+  shareToken: string;
   fromUserId: string;
   /** Initiating owner's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   fromName: string;
   projectId: string;
   projectName: string;
+  /**
+   * The `project_transfers` row this entry announces.
+   *
+   * The offer's source of truth is that row, not this entry. The recipient
+   * answers through the token above, so this id serves the other side: the
+   * sender withdrawing their own offer, which is addressed by row id.
+   */
+  transferId: string;
 }
 
 /**
@@ -208,12 +256,18 @@ export interface ProjectTransferApprovedPayload {
 
 /**
  * Studio invite-request payload — an admin invites a registered user to join a
- * studio. Stored on the actionable `studio.invite_request` notification in the
- * invitee's inbox (confirm/decline; expires after a TTL). `invitationId` is the
- * `studio_invitations` row the confirm step CAS-accepts (source of truth); the
- * rest is for rendering the bell entry.
+ * studio. Stored on the `studio.invite_request` notification in the invitee's
+ * inbox, which points at the invite rather than holding it, and expires after
+ * a TTL. `invitationId` is the `studio_invitations` row the confirm step
+ * CAS-accepts (source of truth); the rest is for rendering the bell entry.
  */
 export interface StudioInviteRequestPayload {
+  /**
+   * The token that names this request in `/decision?token=`. The bell row
+   * builds its link from it, the same way the email does — all channels
+   * resolve to one request.
+   */
+  shareToken: string;
   invitationId: string;
   studioId: string;
   /** The inviting admin — resolved to their current `@handle` at read time. */
@@ -240,11 +294,11 @@ export interface StudioInviteAcceptedPayload {
 
 /**
  * Notify a user that an admin wants to transfer studio admin to them
- * (slice 3) — actionable (confirm/cancel), expires after the given TTL.
+ * (slice 3) — points at the request, expires after the given TTL.
  * @param input - Recipient inbox, payload, expiry, and optional transaction
  * @param input.userId - The proposed new admin who receives the request
  * @param input.payload - The initiating admin's user id, studio id, and studio name
- * @param input.expiresAt - When the recipient's window to decide runs out
+ * @param input.expiresAt - When the request times out (the configured window from creation)
  * @param input.tx - Optional transaction to bundle with related writes
  * @returns The inserted `studio.transfer_request` notification
  */
@@ -291,11 +345,11 @@ export async function createStudioTransferApproved(input: {
 
 /**
  * Notify a user that a project owner wants to transfer project ownership to
- * them (#1611) — actionable (confirm/cancel), expires after the given TTL.
+ * them (#1611) — points at the request, expires after the given TTL.
  * @param input - Recipient inbox, payload, expiry, and optional transaction
  * @param input.userId - The proposed new owner who receives the request
  * @param input.payload - The initiating owner's id + project id/name/slug
- * @param input.expiresAt - When the recipient's window to decide runs out
+ * @param input.expiresAt - When the request times out (the configured window from creation)
  * @param input.tx - Optional transaction to bundle with related writes
  * @returns The inserted `project.transfer_request` notification
  */
@@ -310,6 +364,11 @@ export async function createProjectTransferRequest(input: {
       userId: input.userId,
       type: "project.transfer_request",
       payload: input.payload as unknown as Record<string, unknown>,
+      // The entry IS about a project, and the column is what says so. The
+      // role-upgrade entries have always set it; these two did not, which left
+      // them invisible to anything that reasons about a project's notifications
+      // — the delete cascade among them.
+      projectId: input.payload.projectId,
       expiresAt: input.expiresAt,
     },
     input.tx,
@@ -335,6 +394,11 @@ export async function createProjectTransferApproved(input: {
       userId: input.userId,
       type: "project.transfer_approved",
       payload: input.payload as unknown as Record<string, unknown>,
+      // The entry IS about a project, and the column is what says so. The
+      // role-upgrade entries have always set it; these two did not, which left
+      // them invisible to anything that reasons about a project's notifications
+      // — the delete cascade among them.
+      projectId: input.payload.projectId,
     },
     input.tx,
   );
@@ -342,7 +406,7 @@ export async function createProjectTransferApproved(input: {
 
 /**
  * Notify a user that an admin invited them to join a studio (invite-confirm
- * handshake, 2026-06-14) — actionable (confirm/cancel), expires after the given
+ * handshake, 2026-06-14) — points at the request, expires after the given
  * TTL. The invite's source of truth is the `studio_invitations` row whose id
  * rides in the payload; this notice is just the bell entry point.
  * @param input - Invitee inbox, payload, expiry, and optional transaction
@@ -396,13 +460,12 @@ export async function createStudioInviteAccepted(input: {
 /**
  * Project invite-request payload — an owner invites a registered user to join a
  * project (invite-confirm handshake, 2026-06-18, #1337). Stored on the
- * actionable `project.invite_request` notification in the invitee's inbox.
+ * `project.invite_request` notification in the invitee's inbox.
  * `invitationId` is the `project_invitations` row the confirm step CAS-accepts
- * (source of truth). Unlike studio (which confirms inline in the bell), the
- * project bell row links OUT to the `/project-invite?token=` landing page, so
- * the one-time `token` rides in the payload too — the same token returned to the
- * inviting owner and embedded in the email, so all three channels resolve to one
- * invite. The rest is for rendering the bell entry.
+ * (source of truth). The bell row links OUT to `/decision?token=`, as every
+ * waiting row does, so the `shareToken` rides in the payload too — the same
+ * token returned to the inviting owner and embedded in the email, so all three
+ * channels resolve to one invite. The rest is for rendering the bell entry.
  */
 export interface ProjectInviteRequestPayload {
   invitationId: string;
@@ -413,8 +476,12 @@ export interface ProjectInviteRequestPayload {
   /** Inviting owner's personal-studio name + slug (`@handle`) — shown actor-first + linked. */
   inviterName: string;
   role: "editor" | "viewer";
-  /** One-time email-link token; the bell row navigates to `?token=` with it. */
-  token: string;
+  /**
+   * The token that names this request in `/decision?token=`. Renamed from
+   * `token` when the four other flows gained one: it is the request's name in
+   * every channel, not an email detail.
+   */
+  shareToken: string;
 }
 
 /**
@@ -433,7 +500,7 @@ export interface ProjectInviteAcceptedPayload {
 
 /**
  * Notify a user that an owner invited them to join a project (invite-confirm
- * handshake, 2026-06-18, #1337) — actionable (confirm/cancel), expires after the
+ * handshake, 2026-06-18, #1337) — points at the request, expires after the
  * given TTL. The invite's source of truth is the `project_invitations` row whose
  * id rides in the payload; this notice is just the bell entry point.
  * @param input - Invitee inbox, project scope, payload, expiry, and optional transaction

@@ -14,15 +14,9 @@ import type { MiddlewareHandler } from "hono";
 import { ForbiddenError } from "@breatic/core";
 import { studioAuthService } from "@breatic/domain";
 import { studioService } from "@server/modules";
-import { t } from "@breatic/shared";
+import { t, STUDIO_ROLE_RANK } from "@breatic/shared";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import type { StudioRole } from "@breatic/shared";
-
-const STUDIO_ROLE_RANK: Record<StudioRole, number> = {
-  admin: 3,
-  maintainer: 2,
-  guest: 1,
-};
 
 /**
  * `requireStudioRole(min)` — gate a studio route (param `:slug`) on the caller

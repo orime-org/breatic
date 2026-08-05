@@ -48,6 +48,7 @@ vi.mock("ai", () => ({
 // Member caps come from config/limits.yaml; mock them so a small cap can be
 // forced per test. Default 100 keeps every other test (tiny member counts)
 // unaffected; the collaborator-cap tests below lower it.
+
 const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
 // The decision window comes from the same config file. Pinned here to a value
 // that is deliberately NOT the shipped seven: the invite deadline, the token
@@ -69,8 +70,6 @@ import {
   schema,
   createTestDb,
   projectMembersRepo,
-  getRedis,
-  env,
 } from "@breatic/core";
 import { NotFoundError, ConflictError } from "@breatic/core";
 
@@ -225,7 +224,7 @@ describe("createInvite", () => {
     // bell, email) funnel through the SAME landing page, so the token is minted
     // inside createInvite — returned to the caller (the route surfaces it as the
     // copyable URL + the email link) AND embedded in the notification payload
-    // (so the bell can build the same `/project-invite?token=` link).
+    // (so the bell can build the same `/decision?token=` link).
     const result = await inviteService.createInvite(
       PROJECT,
       OWNER,
@@ -233,11 +232,8 @@ describe("createInvite", () => {
       "viewer",
     );
 
-    // The returned token resolves to this invitation (peek does not consume it).
-    expect(result.token).toMatch(/^[0-9a-f]{64}$/);
-    expect(await inviteService.peekInviteToken(result.token)).toBe(
-      result.invitationId,
-    );
+    // The token the owner's copyable link is built from.
+    expect(result.shareToken).toMatch(/^[0-9a-f]{64}$/);
 
     // The bell payload carries the SAME token.
     const notices = await db
@@ -245,7 +241,7 @@ describe("createInvite", () => {
       .from(schema.notifications)
       .where(eq(schema.notifications.userId, INVITEE));
     const payload = notices[0]?.payload as Record<string, unknown>;
-    expect(payload.token).toBe(result.token);
+    expect(payload.shareToken).toBe(result.shareToken);
     // …and the inviter's identity (name + @handle) for the actor-first bell row
     // ("[Owner] invited you to [Test Project]", the name clickable to the studio).
     expect(payload).toMatchObject({ inviterName: "Owner" });
@@ -558,78 +554,6 @@ describe("re-invite lifecycle (#1769)", () => {
     );
     expect(again.invitationId).toBeTruthy();
     expect(await invitesRepo.listPendingByProject(PROJECT)).toHaveLength(1);
-  });
-});
-
-describe("email-link token (Redis round-trip)", () => {
-  it("stamps the row deadline and the token TTL from the same window", async () => {
-    // The two things the window actually enforces. Both were changed from a
-    // local constant to a config read with nothing asserting the result: a
-    // getter returning the wrong unit — or zero — would have left every test
-    // in this file green.
-    const { invitationId, token } = await inviteService.createInvite(
-      PROJECT,
-      OWNER,
-      INVITEE_EMAIL,
-      "editor",
-    );
-    const windowMs = decisionWindow.days * 24 * 60 * 60 * 1000;
-
-    const [row] = await db
-      .select({ expiresAt: schema.projectInvitations.expiresAt })
-      .from(schema.projectInvitations)
-      .where(eq(schema.projectInvitations.id, invitationId));
-    const aheadMs = row!.expiresAt.getTime() - Date.now();
-    expect(aheadMs).toBeLessThanOrEqual(windowMs);
-    expect(aheadMs).toBeGreaterThan(windowMs - 60_000);
-
-    const ttl = await getRedis().ttl(`${env.ENV}:project-invite:${token}`);
-    const windowSeconds = decisionWindow.days * 24 * 60 * 60;
-    expect(ttl).toBeLessThanOrEqual(windowSeconds);
-    expect(ttl).toBeGreaterThan(windowSeconds - 60);
-  });
-
-  it("respondToInvite confirm: peek → confirm → consume (single-use)", async () => {
-    const { invitationId } = await inviteService.createInvite(
-      PROJECT,
-      OWNER,
-      INVITEE_EMAIL,
-      "editor",
-    );
-    const token = await inviteService.issueInviteToken(invitationId);
-
-    const landing = await inviteService.getInviteForLanding(token, INVITEE);
-    expect(landing).not.toBeNull();
-    expect(landing?.projectName).toBe("Test Project");
-    expect(landing?.isInvitee).toBe(true);
-    expect(landing?.expired).toBe(false);
-    // The page prints this rather than spelling out a number of its own, so it
-    // has to be the window the server actually enforced.
-    expect(landing?.windowDays).toBe(decisionWindow.days);
-
-    const res = await inviteService.respondToInvite(token, "confirm", INVITEE);
-    expect(res.projectSlug).toBe("test-project");
-    expect(res.projectId).toBe(PROJECT);
-    expect(await projectMembersRepo.getRole(PROJECT, INVITEE)).toBe("editor");
-
-    // Token is consumed — a second respond no longer resolves.
-    expect(await getRedis().get(`${env.ENV}:project-invite:${token}`)).toBeNull();
-    await expect(
-      inviteService.respondToInvite(token, "confirm", INVITEE),
-    ).rejects.toBeInstanceOf(NotFoundError);
-  });
-
-  it("landing view hides the confirm button for a non-invitee (isInvitee false)", async () => {
-    const { invitationId } = await inviteService.createInvite(
-      PROJECT,
-      OWNER,
-      INVITEE_EMAIL,
-      "viewer",
-    );
-    const token = await inviteService.issueInviteToken(invitationId);
-
-    const landing = await inviteService.getInviteForLanding(token, STRANGER);
-    expect(landing?.isInvitee).toBe(false);
   });
 });
 

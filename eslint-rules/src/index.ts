@@ -6,6 +6,7 @@ import { noCollabAuthPrimitives } from "#rules/rules/no-collab-auth-primitives";
 import { noCorsWildcardCredentials } from "#rules/rules/no-cors-wildcard-credentials";
 import { noDeployedHost } from "#rules/rules/no-deployed-host";
 import { noDrizzleTypeLeak } from "#rules/rules/no-drizzle-type-leak";
+import { noHardcodedRequestTtl } from "#rules/rules/no-hardcoded-request-ttl";
 import { noInlineScrollbar } from "#rules/rules/no-inline-scrollbar";
 import { noIoredisOutsideCore } from "#rules/rules/no-ioredis-outside-core";
 import { noLibraryEnvAccess } from "#rules/rules/no-library-env-access";
@@ -48,6 +49,7 @@ export const breaticPlugin = {
     "no-cors-wildcard-credentials": noCorsWildcardCredentials,
     "no-deployed-host": noDeployedHost,
     "no-drizzle-type-leak": noDrizzleTypeLeak,
+    "no-hardcoded-request-ttl": noHardcodedRequestTtl,
     "no-inline-scrollbar": noInlineScrollbar,
     "no-ioredis-outside-core": noIoredisOutsideCore,
     "no-library-env-access": noLibraryEnvAccess,

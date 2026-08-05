@@ -7,6 +7,7 @@ export {
   StorageProvider,
   DEFAULT_API_PORT,
   DEFAULT_COLLAB_PORT,
+  AVATAR_OUTPUT_PX,
 } from "@shared/constants/index.js";
 
 export type {
@@ -14,6 +15,14 @@ export type {
   TaskStatus as TaskStatusType,
   StorageProvider as StorageProviderType,
 } from "@shared/constants/index.js";
+
+export type {
+  DecisionKind,
+  DecisionState,
+  DecisionView,
+  DecisionAction,
+  DecisionResult,
+} from "@shared/types/decision.js";
 
 export type {
   UserEntity,
@@ -66,12 +75,10 @@ export type {
   StudioInvitationStatus,
   PendingInvitationSummary,
   StudioMembersView,
-  InvitationLandingView,
   PersonalStudioRef,
   InvitableProjectRole,
   ProjectInvitationStatus,
   PendingProjectInvitationSummary,
-  ProjectInvitationLandingView,
   SpaceType,
   Space,
   MembersChangedEvent,
@@ -83,6 +90,7 @@ export type {
 
 export {
   ROLE_RANK,
+  STUDIO_ROLE_RANK,
   HANDLING_TIMEOUT_MS,
   canGenerate,
   membersChangedChannel,

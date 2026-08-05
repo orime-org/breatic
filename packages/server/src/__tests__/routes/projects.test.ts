@@ -31,16 +31,35 @@ import { mocks } from "../helpers/mock-core.js";
 
 const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
 
+// A real uuid: the role middleware validates the shape before it puts the
+// param into a uuid comparison, so a placeholder id is refused up front.
+const PROJ_UUID = "11111111-1111-4111-8111-111111111111";
+
 describe("Projects routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.projectService.assertAccess.mockResolvedValue(undefined);
   });
 
+  describe("project id validation (middleware, not per-route)", () => {
+    it("refuses a malformed project id with 403, not a 500", async () => {
+      // The role middleware puts this param into a uuid comparison, so a
+      // non-uuid would make Postgres reject the statement and surface as an
+      // unclassified 500. Checked in the middleware rather than per route:
+      // every project route is behind it, and a per-route validator is one
+      // more thing each new route has to remember.
+      const res = await createApp().request(
+        "/api/v1/projects/not-a-uuid",
+        { method: "DELETE", headers: AUTH },
+      );
+      expect(res.status).toBe(403);
+    });
+  });
+
   describe("POST /projects — create", () => {
     it("creates a project and returns 201", async () => {
       mocks.projectService.create.mockResolvedValue({
-        id: "proj-1", userId: "user-1", name: "My Project",
+        id: PROJ_UUID, userId: "user-1", name: "My Project",
       });
 
       const app = createApp();
@@ -56,7 +75,7 @@ describe("Projects routes", () => {
 
       expect(res.status).toBe(201);
       const body = await res.json() as { data: { id: string } };
-      expect(body.data.id).toBe("proj-1");
+      expect(body.data.id).toBe(PROJ_UUID);
       // The route extracts studioId from the body and passes it to create as
       // the 2nd arg — the create gate authorizes the caller's role on it.
       expect(mocks.projectService.create.mock.calls[0]?.[1]).toBe(
@@ -81,22 +100,22 @@ describe("Projects routes", () => {
       mocks.projectService.deleteProject.mockResolvedValue(undefined);
 
       const app = createApp();
-      const res = await app.request("/api/v1/projects/proj-1", {
+      const res = await app.request(`/api/v1/projects/${PROJ_UUID}`, {
         method: "DELETE",
         headers: AUTH,
       });
 
       expect(res.status).toBe(200);
-      expect(mocks.projectService.deleteProject).toHaveBeenCalledWith("proj-1", "user-1");
+      expect(mocks.projectService.deleteProject).toHaveBeenCalledWith(PROJ_UUID, "user-1");
     });
   });
 
   describe("PATCH /projects/:id — partial update (DD #152)", () => {
     it("PATCH updates project name (returns {data: ProjectEntity})", async () => {
-      mocks.projectService.update.mockResolvedValue({ id: "proj-1", name: "New Name" });
+      mocks.projectService.update.mockResolvedValue({ id: PROJ_UUID, name: "New Name" });
 
       const app = createApp();
-      const res = await app.request("/api/v1/projects/proj-1", {
+      const res = await app.request(`/api/v1/projects/${PROJ_UUID}`, {
         method: "PATCH",
         headers: AUTH,
         body: JSON.stringify({ name: "New Name" }),
@@ -109,7 +128,7 @@ describe("Projects routes", () => {
 
     it("PUT method is no longer accepted (DD #152 — REST semantic align with members.patch)", async () => {
       const app = createApp();
-      const res = await app.request("/api/v1/projects/proj-1", {
+      const res = await app.request(`/api/v1/projects/${PROJ_UUID}`, {
         method: "PUT",
         headers: AUTH,
         body: JSON.stringify({ name: "Should Not Work" }),

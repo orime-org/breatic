@@ -67,6 +67,19 @@ export interface Studio {
 export type StudioRole = "admin" | "maintainer" | "guest";
 
 /**
+ * Numeric rank for `>=` comparisons, mirroring `ROLE_RANK` for project roles.
+ *
+ * Higher = more privileged. Used both by the studio-role gate and by the
+ * decision layer, which has to ask whether an invitation would still raise the
+ * person it was sent to.
+ */
+export const STUDIO_ROLE_RANK: Record<StudioRole, number> = {
+  guest: 1,
+  maintainer: 2,
+  admin: 3,
+};
+
+/**
  * One row of the `studio_members` table — who has what studio-level role.
  *
  * `addedBy` is `null` for the creator's own admin row (no inviter); it
@@ -180,30 +193,3 @@ export interface StudioMembersView {
   pendingInvitations: PendingInvitationSummary[];
 }
 
-/**
- * Studio invitation landing view — what the email-link page (`/studio-invite`)
- * shows before the invitee acts. No invitation id / invitee id is exposed; the
- * server resolves those from the one-time token. Invite-confirm handshake,
- * 2026-06-14.
- */
-export interface InvitationLandingView {
-  studioName: string;
-  studioSlug: string;
-  inviterName: string;
-  role: StudioRole;
-  /** True once past the decision window — the page shows an "expired" state. */
-  expired: boolean;
-  /** True when the logged-in user is the invitee (gates the confirm button). */
-  isInvitee: boolean;
-  /**
-   * The decision window in days, as the server is configured right now.
-   *
-   * The expired card prints this rather than a literal baked into five locale
-   * files. Note what that does and does not buy: the number is read when the
-   * page is rendered while the deadline was stamped when the invite was sent,
-   * so turning the window from seven to three makes an invite that genuinely
-   * had seven days say three. Rows keep the deadline they were stamped with;
-   * only the sentence follows the config.
-   */
-  windowDays: number;
-}

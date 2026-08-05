@@ -5,14 +5,20 @@
  * Integration test: the HTTP status a person's client actually receives when
  * they answer a request whose decision window has closed.
  *
- * The services are covered elsewhere; this pins the wire. Both decision
- * endpoints gained a 409 in this change, and neither had a route-level test —
- * a later refactor could drop the guard from the dispatch path and every
- * service test would stay green.
+ * The services are covered elsewhere; this pins the wire. There is one pair of
+ * decision endpoints now, and neither had a route-level test of expiry — a
+ * later refactor could drop the guard from the dispatch path and every service
+ * test would stay green.
  *
- * Both directions are asserted for each endpoint, because expiry closes a
- * request to BOTH answers: a late "yes" and a late "no" must fail alike, and
- * neither may leave a side effect behind.
+ * Both directions are asserted for each flow, because expiry closes a request
+ * to BOTH answers: a late "yes" and a late "no" must fail alike, and neither
+ * may leave a side effect behind.
+ *
+ * The two endpoints this file used to drive — `POST /notifications/:id/action`
+ * and `PATCH /role-upgrade-requests/:id/decision` — were the second and third
+ * doors into a decision, and are gone. What they were guarding moved here,
+ * onto the one entrance, where a single assertion covers all five flows
+ * instead of one per door.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -146,108 +152,91 @@ async function seedProject(): Promise<{
   return { projectId, ownerId, viewerId };
 }
 
-/**
- * Insert an actionable notification whose deadline has already passed.
- *
- * `projectId` goes in the COLUMN, not only the payload: the role-upgrade
- * decision route resolves the project from `notifications.project_id` before it
- * ever reaches the service, and a null there is a 404 that would mask the 409
- * these tests are here to pin.
- * @param userId - Whose inbox it lands in.
- * @param type - The notification type.
- * @param payload - The type-specific payload; flat for the kinds seeded here.
- * @param projectId - The project scope, for the types that carry one.
- * @returns The new notification's id.
- */
-async function insertExpiredNotification(
-  userId: string,
-  type: string,
-  payload: Record<string, string | null>,
-  projectId: string | null = null,
-): Promise<string> {
-  const rows = await sql<{ id: string }[]>`
-    INSERT INTO notifications (user_id, type, payload, project_id, expires_at)
-    VALUES (
-      ${userId}, ${type}, ${sql.json(payload)}, ${projectId},
-      now() - interval '1 hour'
-    )
-    RETURNING id
-  `;
-  return rows[0]!.id;
-}
-
-/**
- * Read a notification's `read_at`.
- * @param id - The notification id.
- * @returns The timestamp, or null when still unread.
- */
-async function readAt(id: string): Promise<Date | null> {
-  const rows = await sql<{ read_at: Date | null }[]>`
-    SELECT read_at FROM notifications WHERE id = ${id}
-  `;
-  return rows[0]?.read_at ?? null;
-}
-
 const JSON_HEADERS = { "Content-Type": "application/json" } as const;
 
-describe("POST /users/me/notifications/:id/action — expired studio transfer", () => {
-  it("409s on confirm and leaves the request unread", async () => {
+/**
+ * File a request that is already past its deadline, and hand back its token.
+ * @param table - Which request table to write.
+ * @param columns - The flow-specific columns.
+ * @returns The share token naming the expired request.
+ */
+async function expiredRequest(
+  table: "studio_transfers" | "role_upgrade_requests",
+  columns: Record<string, string>,
+): Promise<string> {
+  const token = crypto.randomBytes(32).toString("hex");
+  const names = Object.keys(columns);
+  const values = Object.values(columns);
+  await sql.unsafe(
+    `INSERT INTO ${table} (${names.join(", ")}, status, share_token, expires_at)
+     VALUES (${names.map((_, i) => `$${i + 1}`).join(", ")}, 'pending', $${names.length + 1}, now() - interval '1 hour')`,
+    [...values, token],
+  );
+  return token;
+}
+
+/**
+ * Answer a request through the one endpoint that answers requests.
+ * @param token - The request's share token.
+ * @param userId - Who is answering.
+ * @param action - Which answer.
+ * @returns The HTTP response.
+ */
+async function respond(
+  token: string,
+  userId: string,
+  action: "confirm" | "decline",
+): Promise<Response> {
+  return app.request("/api/v1/decisions/respond", {
+    method: "POST",
+    headers: { ...JSON_HEADERS, Cookie: await loginCookie(userId) },
+    body: JSON.stringify({ token, action }),
+  });
+}
+
+describe("answering an expired studio transfer", () => {
+  it("409s on confirm, and hands nothing over", async () => {
     const { studioId, adminId, memberId } = await seedStudio();
-    const id = await insertExpiredNotification(memberId, "studio.transfer_request", {
-      fromUserId: adminId,
-      fromName: "Admin",
-      studioId,
-      studioName: "Decision Window Routes",
+    const token = await expiredRequest("studio_transfers", {
+      studio_id: studioId,
+      from_user_id: adminId,
+      to_user_id: memberId,
     });
 
-    const res = await app.request(`/api/v1/users/me/notifications/${id}/action`, {
-      method: "POST",
-      headers: { ...JSON_HEADERS, Cookie: await loginCookie(memberId) },
-      body: JSON.stringify({ action: "confirm" }),
-    });
+    const res = await respond(token, memberId, "confirm");
 
     expect(res.status).toBe(409);
-    expect(await readAt(id)).toBeNull();
+    const rows = await sql<{ role: string }[]>`
+      SELECT role FROM studio_members
+      WHERE studio_id = ${studioId} AND user_id = ${adminId} AND deleted_at IS NULL
+    `;
+    expect(rows[0]?.role).toBe("admin");
   });
 
-  it("409s on cancel too — a late no fails like a late yes", async () => {
+  it("409s on decline too — a late no fails like a late yes", async () => {
     const { studioId, adminId, memberId } = await seedStudio();
-    const id = await insertExpiredNotification(memberId, "studio.transfer_request", {
-      fromUserId: adminId,
-      fromName: "Admin",
-      studioId,
-      studioName: "Decision Window Routes",
+    const token = await expiredRequest("studio_transfers", {
+      studio_id: studioId,
+      from_user_id: adminId,
+      to_user_id: memberId,
     });
 
-    const res = await app.request(`/api/v1/users/me/notifications/${id}/action`, {
-      method: "POST",
-      headers: { ...JSON_HEADERS, Cookie: await loginCookie(memberId) },
-      body: JSON.stringify({ action: "cancel" }),
-    });
+    const res = await respond(token, memberId, "decline");
 
     expect(res.status).toBe(409);
-    // The mark-read that serializes the decision rolled back with it.
-    expect(await readAt(id)).toBeNull();
   });
 });
 
-describe("PATCH /role-upgrade-requests/:id/decision — expired request", () => {
+describe("answering an expired role-upgrade request", () => {
   it("409s on approve and does not move the requester's role", async () => {
     const { projectId, ownerId, viewerId } = await seedProject();
-    const id = await insertExpiredNotification(ownerId, "access.role_upgrade_request", {
-      requesterUserId: viewerId,
-      requesterName: "Viewer",
-      projectId,
-      projectName: "Demo",
-      requestedRole: "editor",
-      message: null,
-    }, projectId);
-
-    const res = await app.request(`/api/v1/role-upgrade-requests/${id}/decision`, {
-      method: "PATCH",
-      headers: { ...JSON_HEADERS, Cookie: await loginCookie(ownerId) },
-      body: JSON.stringify({ decision: "approved" }),
+    const token = await expiredRequest("role_upgrade_requests", {
+      project_id: projectId,
+      requester_user_id: viewerId,
+      requested_role: "editor",
     });
+
+    const res = await respond(token, ownerId, "confirm");
 
     expect(res.status).toBe(409);
     const rows = await sql<{ role: string }[]>`
@@ -255,27 +244,18 @@ describe("PATCH /role-upgrade-requests/:id/decision — expired request", () => 
       WHERE project_id = ${projectId} AND user_id = ${viewerId} AND deleted_at IS NULL
     `;
     expect(rows[0]?.role).toBe("viewer");
-    expect(await readAt(id)).toBeNull();
   });
 
   it("409s on reject too — expiry leaves no answer available", async () => {
     const { projectId, ownerId, viewerId } = await seedProject();
-    const id = await insertExpiredNotification(ownerId, "access.role_upgrade_request", {
-      requesterUserId: viewerId,
-      requesterName: "Viewer",
-      projectId,
-      projectName: "Demo",
-      requestedRole: "editor",
-      message: null,
-    }, projectId);
-
-    const res = await app.request(`/api/v1/role-upgrade-requests/${id}/decision`, {
-      method: "PATCH",
-      headers: { ...JSON_HEADERS, Cookie: await loginCookie(ownerId) },
-      body: JSON.stringify({ decision: "rejected", reason: "too late" }),
+    const token = await expiredRequest("role_upgrade_requests", {
+      project_id: projectId,
+      requester_user_id: viewerId,
+      requested_role: "editor",
     });
 
+    const res = await respond(token, ownerId, "decline");
+
     expect(res.status).toBe(409);
-    expect(await readAt(id)).toBeNull();
   });
 });

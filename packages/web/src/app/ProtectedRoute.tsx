@@ -35,9 +35,9 @@ const CHOOSE_SLUG_PATH = '/choose-slug';
  *
  *   - `bootstrapped && !user` — the boot ping completed and confirmed
  *     no valid session (401 / missing cookie / network error). Bounce
- *     to `/login`, preserving the originally-requested path in router
- *     state so the login page can return the user there after a
- *     successful sign-in.
+ *     to `/login?next=`, carrying the whole requested destination —
+ *     path AND search — so the login page can return the user to it
+ *     after a successful sign-in.
  *
  *   - `bootstrapped && user && personalStudio === null` — authenticated
  *     but onboarding is incomplete (the account exists, but the slug
@@ -73,7 +73,13 @@ export default function ProtectedRoute({
   }
 
   if (!user) {
-    return <Navigate to='/login' replace state={{ from: location.pathname }} />;
+    // The login page navigates to `?next=` after sign-in. The search string
+    // matters as much as the path: the decision links from every notification
+    // email live behind this guard as `/decision?token=...`, and dropping the
+    // token would strand the recipient on /studio with no way back to the
+    // thing they clicked. (The old `state.from` had no consumer at all.)
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?next=${next}`} replace />;
   }
 
   if (requirePersonalStudio && user.personalStudio === null) {

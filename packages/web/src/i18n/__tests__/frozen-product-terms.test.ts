@@ -84,9 +84,15 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
  * send you here: this docstring and the dead-key check's finding message.
  *
  * First batch removed as part of #1336 (decision A); the rest on 2026-08-01,
- * when the dead-key check stopped counting a test fixture as a reader.
+ * when the dead-key check stopped counting a test fixture as a reader; the
+ * four `notifications.*` ones on 2026-08-05, when the bell stopped settling
+ * decisions and its role hints and per-kind request lines lost their reader.
  */
 const REMOVED_DEAD_KEYS: readonly string[] = [
+  'notifications.roleHint.editor',
+  'notifications.roleHint.viewer',
+  'notifications.request.audio',
+  'notifications.request.project',
   'studio.container.projects.title',
   'spaces.tab.kind_canvas',
   'spaces.tab.kind_document',
@@ -220,7 +226,7 @@ describe('frozen product terms (#1336)', () => {
    */
   const EDITOR_COLLISION = ['エディタ', 'エディター', '에디터'];
   const VIEWER_COLLISION = ['뷰어'];
-  // projectInvite.body's `other {Member}` fallback is the PROJECT member role
+  // `decision.body`'s `other {a member}` fallback is the PROJECT member role
   // (unrelated to the studio creator/member → maintainer/guest rename); its
   // 成员 / メンバー / 멤버 forms double as the generic "member count" word, so this
   // one stays a per-key freeze here.
@@ -232,10 +238,12 @@ describe('frozen product terms (#1336)', () => {
   > = [
     // Bell "invited as …" subtitles.
     ['notifications.subtitle.invitedAsEditor', 'Editor', EDITOR_COLLISION],
-    // Invite-confirm ICU bodies (raw message asserts the frozen branch literal).
-    ['projectInvite.body', 'Editor', EDITOR_COLLISION],
-    ['projectInvite.body', 'Viewer', VIEWER_COLLISION],
-    ['projectInvite.body', 'Member', MEMBER_COLLISION],
+    // The decision landing page's one ICU body carries the role vocabulary for
+    // all five flows now, so the freeze that guarded the two deleted invite
+    // pages moves onto it (raw message asserts the frozen branch literal).
+    ['decision.body', 'Editor', EDITOR_COLLISION],
+    ['decision.body', 'Viewer', VIEWER_COLLISION],
+    ['decision.body', 'Member', MEMBER_COLLISION],
   ];
 
   describe('role-collision keys frozen per-key in every non-English locale', () => {
@@ -261,10 +269,10 @@ describe('frozen product terms (#1336)', () => {
   const ROLE_SENTENCE_FROZEN: ReadonlyArray<readonly [key: string, term: string]> = [
     ['notifications.subtitle.invitedAsMaintainer', 'Maintainer'],
     ['studio.container.members.promoteToMaintainer', 'Maintainer'],
-    ['studio.invite.body', 'Maintainer'],
+    ['decision.body', 'Maintainer'],
     ['notifications.subtitle.invitedAsGuest', 'Guest'],
     ['studio.container.members.demoteToGuest', 'Guest'],
-    ['studio.invite.body', 'Guest'],
+    ['decision.body', 'Guest'],
   ];
 
   describe('renamed maintainer/guest role sentences keep English in every non-English locale', () => {
