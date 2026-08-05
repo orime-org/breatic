@@ -101,7 +101,14 @@ const BLOCKED_HOSTNAMES: ReadonlySet<string> = new Set([
 /** Maximum redirect hops followed by {@link safeFetch}. */
 const MAX_REDIRECTS = 5;
 
-/** Default hop timeout in milliseconds. */
+/**
+ * Default per-DELIVERY deadline in milliseconds.
+ *
+ * Not per hop: the transport may deliver a hop up to three times and gives
+ * each of them this full figure, so a hop's own worst case is a multiple of
+ * it. The name stays short; the unit is stated here because this is where a
+ * reader learns what the number means.
+ */
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 /**
@@ -181,7 +188,8 @@ export interface SafeFetchOptions {
  *
  * The caller receives a native `Response` on success.
  * @param url - The initial URL to fetch
- * @param opts - Optional headers and hop timeout
+ * @param opts - Optional headers, and the deadline for ONE DELIVERY (not
+ *   for a hop: a hop is up to three deliveries, each given the full figure)
  * @returns A `Response` from the final (non-redirect) hop
  * @throws {SsrfError} if any hop resolves to a non-public IP or matches
  *   a blocked hostname

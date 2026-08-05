@@ -160,8 +160,12 @@ describe("safeFetch refuses what it always refused", () => {
   it("asks DNS for EVERY record, which is what makes the check above possible", async () => {
     // Separate from the case above, and asserted on the ARGUMENT rather than
     // on the outcome, because the mock hands back its array whatever it is
-    // asked — so the case above passes with `{ all: true }` deleted. Measured:
-    // dropping it left all 32 tests green.
+    // asked — so the case above passes with `{ all: true }` deleted. Measured
+    // before this case existed: deleting the option left every test in this
+    // directory green. Stated without a count on purpose — a total goes stale
+    // the moment anyone adds a test, which is how the header's "5 of the 8"
+    // went wrong. What holds today is the sharper statement: delete the
+    // option and THIS case is the one that turns red.
     //
     // The option is load-bearing in production. Without it `lookup(host)`
     // resolves to a single `{ address, family }` object, `for (const {
@@ -211,7 +215,7 @@ describe("safeFetch hands the request to the shared transport", () => {
     dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
   });
 
-  it("declares the hop replay-safe and passes the hop deadline as a deadline", async () => {
+  it("declares the hop replay-safe and passes the delivery deadline as a deadline", async () => {
     await safeFetch("https://public.example/page");
 
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
@@ -224,7 +228,7 @@ describe("safeFetch hands the request to the shared transport", () => {
     });
   });
 
-  it("passes the caller's hop deadline through when given one", async () => {
+  it("passes the caller's delivery deadline through when given one", async () => {
     await safeFetch("https://public.example/page", { timeoutMs: 5_000 });
 
     expect(httpRequestMock.mock.calls[0]![2]).toStrictEqual({
