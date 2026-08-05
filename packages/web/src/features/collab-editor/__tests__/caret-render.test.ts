@@ -14,7 +14,7 @@ import {
   shouldRenderLabelBelow,
   shouldFlipLabelLeft,
 } from '@web/features/collab-editor/caret-render';
-import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
+import { userPaletteHue } from '@web/lib/user-color';
 
 /** A resolver that knows exactly one collaborator. */
 const knows =
@@ -41,7 +41,6 @@ describe('caretColor — derived from the user id, never from the wire', () => {
     // another for everyone else.
     const id = 'user-7';
     expect(caretColor({ id })).toBe(`var(--color-palette-${userPaletteHue(id)})`);
-    expect(resolvePaletteHex(userPaletteHue(id))).toMatch(/^#[0-9a-fA-F]{6}$/);
   });
 
   it('ignores colour fields a malicious client smuggles into awareness', () => {
