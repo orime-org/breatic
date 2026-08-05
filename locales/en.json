@@ -1461,7 +1461,7 @@
     "reason": "They said: {message}",
     "confirm": "{kind, select, role_upgrade {Approve} other {Accept}}",
     "decline": "{kind, select, role_upgrade {Decline} other {Decline}}",
-    "windowNote": "Requests can be answered within {days, plural, one {# day} other {# days}}.",
+    "windowNote": "This request could be answered within {days, plural, one {# day} other {# days}}.",
     "acceptedTitle": "You already accepted this",
     "acceptedBody": "There is nothing left to do here.",
     "declinedTitle": "You already declined this",

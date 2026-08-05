@@ -1461,7 +1461,7 @@
     "reason": "남긴 말: {message}",
     "confirm": "{kind, select, role_upgrade {승인} other {수락}}",
     "decline": "{kind, select, role_upgrade {거절} other {거절}}",
-    "windowNote": "이 요청은 {days}일 이내에 답변할 수 있습니다.",
+    "windowNote": "이 요청은 {days}일 이내에 답변할 수 있었습니다.",
     "acceptedTitle": "이미 수락했습니다",
     "acceptedBody": "여기서 더 할 일은 없습니다.",
     "declinedTitle": "이미 거절했습니다",

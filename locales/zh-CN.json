@@ -1461,7 +1461,7 @@
     "reason": "附言：{message}",
     "confirm": "{kind, select, role_upgrade {批准} other {接受}}",
     "decline": "{kind, select, role_upgrade {拒绝} other {拒绝}}",
-    "windowNote": "请求可在 {days} 天内答复。",
+    "windowNote": "这个请求当时可在 {days} 天内答复。",
     "acceptedTitle": "你已经接受过了",
     "acceptedBody": "这里没有别的事要做了。",
     "declinedTitle": "你已经拒绝过了",

@@ -1461,7 +1461,7 @@
     "reason": "コメント：{message}",
     "confirm": "{kind, select, role_upgrade {承認} other {参加する}}",
     "decline": "{kind, select, role_upgrade {却下} other {辞退する}}",
-    "windowNote": "このリクエストは {days} 日以内に回答できます。",
+    "windowNote": "このリクエストは {days} 日以内に回答できました。",
     "acceptedTitle": "すでに承諾済みです",
     "acceptedBody": "ここで行うことはもうありません。",
     "declinedTitle": "すでに辞退済みです",
