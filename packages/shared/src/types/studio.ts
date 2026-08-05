@@ -13,15 +13,24 @@
 export type StudioType = "personal" | "team";
 
 /**
- * Minimal personal-studio reference returned by the auth endpoints
- * (`/auth/me`, `/auth/setup-studio`). The frontend derives the user's
- * display name from `name` and links to `/studio/{slug}`. `null` on
- * `/auth/me` is the onboarding gate signal — the user has registered but
- * not yet picked a slug (email-registration rewrite, 2026-06-06).
+ * Minimal personal-studio reference returned by EVERY auth endpoint
+ * (`/auth/register`, `/auth/login`, `/auth/me`, `/auth/setup-studio`).
+ * The frontend derives the user's display name from `name`, their avatar
+ * from `avatarUrl`, and links to `/studio/{slug}`. A `null` ref is the
+ * onboarding gate signal — the user has registered but not yet picked a
+ * slug (email-registration rewrite, 2026-06-06).
+ *
+ * `avatarUrl` rides here rather than on the user because a person's
+ * avatar IS their personal studio's avatar (the pointer model of #1808,
+ * which moved it off `users`). INV-3 of that change — no `avatarUrl` on
+ * the auth user object — still holds and is asserted in the auth route
+ * tests; #1882 added the field inside this ref, not beside it.
  */
 export interface PersonalStudioRef {
   name: string;
   slug: string;
+  /** The user's avatar, or null when they have not uploaded one. */
+  avatarUrl: string | null;
 }
 
 /** Studio entity (personal or team). */
