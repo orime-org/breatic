@@ -190,6 +190,14 @@ let metaDoc: Y.Doc;
 let disconnectMock: ReturnType<typeof vi.fn>;
 let broadcastStatelessMock: ReturnType<typeof vi.fn>;
 
+/**
+ * How many times `transact` ran in the current test, across every direct
+ * connection. A refused pre-check must leave this at zero: `transact`
+ * always attempts a store, so a check that goes through it can be
+ * defeated by a database problem that has nothing to do with the check.
+ */
+let transactCalls = 0;
+
 /** Per-test overrides for the fake direct connection to the meta doc. */
 interface MetaConnectionBehaviour {
   /**
@@ -205,6 +213,13 @@ interface MetaConnectionBehaviour {
    * fires, because they have no such gap.
    */
   betweenCheckAndWrite?: () => void;
+  /**
+   * Runs immediately before the FIRST `transact`. A pre-check that reads
+   * `conn.document` directly has already run by then, so this is the
+   * window §4 describes for every handler whose checks live outside the
+   * write — the doc can change in it, and the write has to re-check.
+   */
+  beforeFirstTransact?: () => void;
   /**
    * When set, every `transact` rejects AFTER running its callback — the
    * real library's shape (§3.2): the callback runs synchronously, the
@@ -226,8 +241,15 @@ function makeHocuspocus(behaviour: MetaConnectionBehaviour = {}): Hocuspocus {
       behaviour.onOpen?.();
       let transacts = 0;
       return {
+        // The real `DirectConnection` exposes the live Y.Doc as a public
+        // field (`DirectConnection.d.ts`), and `Document extends Doc`
+        // (`Document.d.ts:6`). Reading it is pure memory: no store hook,
+        // so no way for a database problem to swallow a check's answer.
+        document: metaDoc,
         transact: async (fn: (doc: Y.Doc) => void) => {
           transacts += 1;
+          transactCalls += 1;
+          if (transacts === 1) behaviour.beforeFirstTransact?.();
           if (transacts === 2) behaviour.betweenCheckAndWrite?.();
           fn(metaDoc);
           if (behaviour.storeFails) {
@@ -342,6 +364,7 @@ beforeEach(() => {
   });
   disconnectMock = vi.fn(async () => {});
   broadcastStatelessMock = vi.fn();
+  transactCalls = 0;
 
   softDeleteByNameMock.mockReset();
   softDeleteByNameMock.mockResolvedValue(true);
@@ -1230,5 +1253,156 @@ describe("a guard's answer outranks a store failure it did not cause", () => {
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.error.code).toBe("NOT_FOUND");
+  });
+});
+
+/**
+ * Give `userId` an explicit tab list, i.e. the "has a record, has a list"
+ * state. Needed to reach `tab:close`'s nothing-to-remove branch: with no
+ * record at all the seed runs first and puts every Space in the list, so
+ * there would always be something to remove.
+ * @param userId - Whose tab bar to seed.
+ * @param ids - The Space ids the list starts with.
+ */
+function seedTabList(userId: string, ids: readonly string[]): void {
+  const userMap = new Y.Map<unknown>();
+  const list = new Y.Array<string>();
+  metaDoc.getMap("perUser").set(userId, userMap);
+  userMap.set("openTabIds", list);
+  list.push([...ids]);
+}
+
+describe("a refused pre-check is a pure read — a broken store cannot reach it", () => {
+  // The library's `transact` runs the callback and then stores the doc
+  // unconditionally (`hocuspocus-server.esm.js:2097-2112`), so a check that
+  // goes through it hands back two answers: what it saw, and whether the
+  // database is healthy. Those are unrelated, and every handler had to
+  // hand-write which one wins. Reading `conn.document` directly removes the
+  // second answer, so there is nothing left to order. See §6 opening.
+  beforeEach(() => {
+    seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
+    seedSpace(OTHER_SID, {
+      type: "canvas",
+      name: "Second",
+      order: 1,
+      locked: false,
+    });
+  });
+
+  it("space:delete still says NOT_FOUND for a Space that is gone, with the store failing", async () => {
+    metaDoc.getMap("spaces").delete(SID);
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    // Telling the user to retry sends them after something that can never
+    // succeed: the Space really is gone, and it will still be gone after
+    // the database recovers.
+    expect(res.error.code).toBe("NOT_FOUND");
+  });
+
+  it("space:delete still says CONFLICT for the last Space, with the store failing", async () => {
+    countLiveSpaceDocsMock.mockResolvedValue(1);
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("CONFLICT");
+  });
+
+  it("space:restore still says CONFLICT for a Space that is already back, with the store failing", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("CONFLICT");
+  });
+
+  it("tab:close stays an idempotent success for a tab that was not open, with the store failing", async () => {
+    seedTabList(ACTOR, [OTHER_SID]);
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      PID,
+      { userId: ACTOR, role: "viewer" },
+      { id: "r1", type: "tab:close", payload: { spaceId: SID } },
+    );
+    // §6.6: closing a tab that is not open is a success. Nothing needed
+    // writing, so nothing about the store can change that answer.
+    expect(res.ok).toBe(true);
+  });
+
+  it("space:delete's refusal costs zero transacts", async () => {
+    metaDoc.getMap("spaces").delete(SID);
+    await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+    // Pins HOW, not just what: re-ordering two branches would satisfy the
+    // assertions above while leaving the check inside `transact`, where the
+    // next handler added can be defeated the same way.
+    expect(transactCalls).toBe(0);
+  });
+
+  it("space:restore's refusal costs zero transacts", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: ACTOR, role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+    expect(transactCalls).toBe(0);
+  });
+
+  it("tab:close costs zero transacts when there is nothing to close", async () => {
+    seedTabList(ACTOR, [OTHER_SID]);
+    await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: ACTOR, role: "viewer" },
+      { id: "r1", type: "tab:close", payload: { spaceId: SID } },
+    );
+    expect(transactCalls).toBe(0);
+  });
+
+  it("tab:close stays a success when another machine closes it in the write window and the store fails", async () => {
+    seedTabList(ACTOR, [SID, OTHER_SID]);
+    const res = await handleSpaceRpc(
+      {
+        hocuspocus: makeHocuspocus({
+          storeFails: true,
+          beforeFirstTransact: () => {
+            // The same account on a second machine got there first.
+            const userMap = metaDoc
+              .getMap<Y.Map<unknown>>("perUser")
+              .get(ACTOR);
+            const list = userMap?.get("openTabIds") as Y.Array<string>;
+            list.delete(list.toArray().indexOf(SID), 1);
+          },
+        }),
+      },
+      PID,
+      { userId: ACTOR, role: "viewer" },
+      { id: "r1", type: "tab:close", payload: { spaceId: SID } },
+    );
+    // The re-check inside the write decided there was nothing to write.
+    // That verdict READ the world, so it outranks the store failure — the
+    // same shape §6.5 already gives rename's same-name case.
+    expect(res.ok).toBe(true);
   });
 });
