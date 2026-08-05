@@ -593,6 +593,39 @@ export async function softDeleteAllInStudioForUser(
 }
 
 /**
+ * Soft-delete every active member row of one project — the membership half of
+ * the project-delete cascade.
+ *
+ * The stamp is passed in rather than read from the database, because this is
+ * one statement of a cascade that marks a dozen tables and they all carry the
+ * same instant. Rows already soft-deleted keep the date they were given: the
+ * `deleted_at IS NULL` filter is what makes "when did this person lose access"
+ * answerable months later, instead of being rewritten to the day the project
+ * went away.
+ * @param projectId - The project whose membership is being cleared
+ * @param deletedAt - The cascade's timestamp, shared by every table it marks
+ * @param tx - The project-delete transaction to join
+ * @returns The number of rows soft-deleted
+ */
+export async function softDeleteAllInProject(
+  projectId: string,
+  deletedAt: Date,
+  tx: DbTx,
+): Promise<number> {
+  const rows = await tx
+    .update(projectMembers)
+    .set({ deletedAt })
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        isNull(projectMembers.deletedAt),
+      ),
+    )
+    .returning({ projectId: projectMembers.projectId });
+  return rows.length;
+}
+
+/**
  * List the projects a user actively OWNS within one studio, **holding a row
  * lock on each** — read BEFORE the leave/kick soft-deletes them, so the caller
  * knows which projects to hand to the admin.
