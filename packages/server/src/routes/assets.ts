@@ -65,9 +65,14 @@ function detectKind(contentType: string): "image" | "video" | "audio" | "documen
 /**
  * `GET /assets/upload-config` — browser upload knobs from
  * `config/storage.yaml` (`upload:` section). The frontend fetches this
- * once per session and caches it: upload size cap (pre-checked on file
- * selection; authoritatively enforced by /presign) + retry attempts /
- * backoff base for presign + PUT.
+ * once per session and caches it: the upload size cap (pre-checked on file
+ * selection; authoritatively enforced by /presign), the retry attempts and
+ * backoff base for **presign**, and the floor and rate that size the PUT's
+ * stall guard.
+ *
+ * The PUT's retry count is deliberately absent. It used to share the presign
+ * figure; the browser PUT now goes through the shared HTTP transport, which
+ * owns how many times it is delivered, so no knob here can move it.
  */
 assets.get("/upload-config", requireAuth, (c) => {
   const { upload } = getStorageConfig();

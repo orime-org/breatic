@@ -17,17 +17,25 @@ upload:
   # (413). Also protects local-storage mode, which buffers the whole
   # file in server memory. Default 2 GiB.
   max_upload_bytes: 2147483648
-  # Browser-side attempts for presign + PUT, including the first
-  # (matches worker job_attempts=3). Transient errors only.
+  # Browser-side attempts for PRESIGN, including the first (matches worker
+  # job_attempts=3). Transient errors only. The PUT no longer reads this:
+  # it goes through the shared HTTP transport, which compiles its own.
   client_max_attempts: 3
-  # Base backoff (ms) between browser retry attempts, full-jittered.
+  # Base backoff (ms) between browser PRESIGN retry attempts, full-jittered.
+  # The PUT's backoff lives in the shared HTTP transport.
   client_retry_base_delay_ms: 1000
-  # Per-attempt timeout (ms) for browser API requests (presign/config).
-  # Also the floor for the PUT stall guard below.
+  # Floor for the PUT stall guard below. Despite the name it does NOT time
+  # presign: that goes through axios, whose timeout is set in
+  # packages/web/src/data/api/request.ts.
   client_request_timeout_ms: 30000
   # PUT stall guard: per-attempt timeout = max(request timeout,
   # size / this rate). A dead connection aborts + retries instead of
   # hanging forever, while a legitimately slow big upload never trips it.
+  # Bounded from below against max_upload_bytes: the figure has to stay
+  # inside what a timer can hold, and the transport refuses an out-of-range
+  # deadline rather than clamping it. Too low a rate here is refused at
+  # startup with the lowest usable value in the message — at the shipped cap
+  # that floor is 1001.
   client_put_min_bytes_per_sec: 65536
   # Presigned PUT URL expiry (seconds) for cloud storage (S3/OSS). This is the
   # provider's own PUT window — unrelated to the upload-grant ledger, which has

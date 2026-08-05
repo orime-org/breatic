@@ -171,7 +171,7 @@
 |---|---|---|---|
 | 1 | worker 的 vendor 调用：20 个 transport、43 处调用点 | 已接入（#388）| 轮询也一起收编 |
 | 2 | 素材下载两条路：`downloadToTempDir` + `downloadValidated` | 已接入（#389）| 原计划「让重试日志出口穿过适配器」已不适用 —— 适配器里的重试循环整个删了，没有出口可穿；重试的可观测性归传输层统一做，未开始 |
-| 3 | 浏览器上传重试 | 未开始 | 它按文件大小算超时，正是这一层要求调用方自己算的那种 |
+| 3 | 浏览器上传的 PUT（**只这半边**，预签名打自己后端、留在 axios）| 已接入 | 按文件大小算的停滞守卫进 `timeoutMs`，正是这一层要求调用方自己算的那种。顺带删掉 `assetsApi.putFile` 这个已无调用方的裸 `fetch` |
 | 4 | agent 的联网工具 | 未开始 | 这两个工具现在**零重试**，一次网络抖动就是一次工具失败，也是整条线的起因 |
 | 5 | 加守卫封住裸 `fetch` + 同步文档 | 未开始 | 收尾时把 `packages/core/src/infra/retry.ts` 改用 `packages/shared/src/backoff.ts`，消掉同名同义的两份退避；两批已失效的配置键（`http_max_retries` / `http_retry_base_delay` / `download.*`）随本批 sweep 删 |
 

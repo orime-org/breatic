@@ -93,10 +93,10 @@ loader:`packages/core/src/config/storage.ts`。
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `upload.max_upload_bytes` | 2147483648(2 GiB)| 上传硬上限(字节);超限 presign 返 413,前端选文件当场拒 |
-| `upload.client_max_attempts` | 3 | 浏览器 presign + PUT 各自总尝试次数(含首次,仅瞬时错误)。**接入共享传输层后删除** |
-| `upload.client_retry_base_delay_ms` | 1000 | 浏览器重试退避基延时(full-jitter)。**接入共享传输层后删除** |
-| `upload.client_request_timeout_ms` | 30000 | 浏览器 API 请求单次超时;也是 PUT 停滞守卫的下限。**接入后保留** —— 它是算给传输层的单次投递超时用的 |
-| `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(下限, 文件大小 / 该速率)。**接入后保留**,同上 |
+| `upload.client_max_attempts` | 3 | 浏览器 **presign** 的总尝试次数(含首次,仅瞬时错误)。PUT 已接入共享传输层、不读它 |
+| `upload.client_retry_base_delay_ms` | 1000 | 浏览器 **presign** 重试的退避基延时(full-jitter)。PUT 已接入共享传输层、不读它 |
+| `upload.client_request_timeout_ms` | 30000 | PUT 停滞守卫的下限,算出来的值作为传输层的单次投递超时。**名字有误导**:它不管 presign 的超时,那个在 axios 客户端里 |
+| `upload.client_put_min_bytes_per_sec` | 65536 | PUT 停滞守卫速率:单次超时 = max(上一行的下限, 文件大小 / 该速率),算出来的值作为传输层的单次投递超时。**它和上一行都有上界约束**:算出来的超时必须落在定时器能表达的范围内(2147483647 毫秒),传输层遇到超范围的值是拒收、不是夹紧。所以这两项跟 `max_upload_bytes` 一起在启动时校验,填得太低会启动失败,报错里带着当前上限下最低能填多少(2 GiB 上限时是 1001) |
 | `upload.presign_expires_seconds` | 300 | 云存储(S3 / 阿里云 OSS)预签名 PUT 地址的有效期(秒)。这是存储服务商自己的 PUT 窗口,跟下发记录表无关 —— 后者不设上传时限;本地存储没有预签名地址,该项不生效 |
 
 `avatar.*`:studio 头像。头像**不走预签名直传**,字节经服务器进来,所以这个上限同时也是单次请求在进程里缓冲的上限。头像是挂在 studio 行上的一条 URL、不是资产,**服务端不读图像内容**(不看尺寸、不看内部结构);但它仍会按字节签名认一次类型来决定存成什么扩展名和 content-type,**签名不是 PNG 的会被 415 拒掉**——所以这个字节上限是"对图片唯一的度量",不是"唯一的拒绝理由"。前端裁剪成 512×512 PNG。PNG 无损、没有质量旋钮,字节数跟画面内容走:纯色几 KB,噪点照片几乎压不动 —— 实测单帧 512×512 RGBA 最坏 1,049,473 字节(像素和 alpha 全随机),所以上限按 2 MiB 定,给最坏情况留两倍。

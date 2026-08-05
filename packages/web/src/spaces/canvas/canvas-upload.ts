@@ -209,8 +209,9 @@ export interface MediaUploadDeps {
  * Upload a media file (#1609 orchestration): fetch the knobs → hash the
  * bytes (Web Worker, any size) → presign with size + hash — a dedup hit
  * skips the upload entirely and reuses the existing URL (B.2) — else PUT
- * with retries, then report the public URL. presign gets the same
- * 3-attempt transient-retry treatment as the PUT. Never throws — both
+ * with retries, then report the public URL. The two halves retry under
+ * different rules: presign through `retryTransient` on the knobs above, the
+ * PUT inside the shared HTTP transport on its own compiled-in policy. Never throws — both
  * outcomes route through `onSuccess` / `onFailure` so the caller can
  * write them to Yjs (`completeNodeHandling` / `failNodeHandling`).
  *
@@ -381,7 +382,7 @@ function uploadOneMedia(
 /**
  * Upload a video and its extracted cover ATOMICALLY (#1816): the two run
  * concurrently, EACH with its own transient retry ({@link runMediaUpload} →
- * presign + PUT, 3 attempts apiece). The node is written only when BOTH
+ * presign and PUT, each retried under its own rules). The node is written only when BOTH
  * FINALLY succeed. If either FINALLY fails (after its own retries are
  * exhausted), the whole thing aborts with no write — a video never lands
  * without its cover and a cover never lands without its video; the failed node
