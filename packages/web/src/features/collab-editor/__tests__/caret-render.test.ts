@@ -12,7 +12,7 @@ import {
   safeCaretColor,
   shouldRenderLabelBelow,
   shouldFlipLabelLeft,
-} from '@web/spaces/canvas/generate/caret-render';
+} from '@web/features/collab-editor/caret-render';
 
 // Awareness payloads are UNTRUSTED wire data from other clients (CRITICAL
 // PATH — Yjs collab). The renderer must never inline a free-form remote
@@ -160,7 +160,7 @@ describe('shouldFlipLabelLeft — right-edge clip → flip left (B4)', () => {
 });
 
 describe('collaboration caret CSS contract (index.css)', () => {
-  const css = readFileSync(resolve(__dirname, '../../../../index.css'), 'utf8');
+  const css = readFileSync(resolve(__dirname, '../../../index.css'), 'utf8');
 
   // A remote caret at the document start renders as a DIRECT child of the block
   // editor (before the <p>); an inline box before a block takes its own line,
@@ -170,5 +170,76 @@ describe('collaboration caret CSS contract (index.css)', () => {
     expect(css).toMatch(
       /\.ProseMirror\s*>\s*\.collaboration-carets__caret\s*\{[^}]*position:\s*absolute[^}]*\}/,
     );
+  });
+});
+
+describe('the label flip is actually wired to a scroll viewport', () => {
+  // The two decision functions above are pure and well covered. What is not
+  // covered by them is the LOOKUP that feeds them: the caret finds its clipping
+  // container with `closest('[data-radix-scroll-area-viewport]')`, and a missed
+  // lookup returns early in silence. Re-scope that selector to a test id, a
+  // class, or `.ProseMirror` and every editor loses both flips with nothing to
+  // show for it — which is exactly what the previous selector was doing.
+
+  /** Place a caret inside a container and give both a fixed geometry. */
+  function mount(opts: {
+    inViewport: boolean;
+    caretTop: number;
+    caretLeft: number;
+  }): { caret: HTMLElement; label: HTMLElement } {
+    const container = document.createElement('div');
+    if (opts.inViewport) container.setAttribute('data-radix-scroll-area-viewport', '');
+    document.body.appendChild(container);
+
+    const caret = renderCollabCaret({ name: 'Them', hue: 'blue' });
+    container.appendChild(caret);
+    const label = caret.querySelector('.collaboration-carets__label') as HTMLElement;
+
+    container.getBoundingClientRect = (): DOMRect =>
+      ({ top: 100, left: 0, right: 500, bottom: 900 }) as DOMRect;
+    Object.defineProperty(container, 'clientWidth', { value: 500, configurable: true });
+    Object.defineProperty(container, 'clientLeft', { value: 0, configurable: true });
+    caret.getBoundingClientRect = (): DOMRect =>
+      ({ top: opts.caretTop, left: opts.caretLeft }) as DOMRect;
+    label.getBoundingClientRect = (): DOMRect => ({ width: 80 }) as DOMRect;
+    return { caret, label };
+  }
+
+  /** Run whatever the caret scheduled for the next frame. */
+  const nextFrame = (): Promise<void> =>
+    new Promise((resolve) => requestAnimationFrame(() => resolve()));
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('flips the label below for a caret on the first line', async () => {
+    // Caret 5px under the viewport top: inside the 20px threshold.
+    const { label } = mount({ inViewport: true, caretTop: 105, caretLeft: 10 });
+    await nextFrame();
+    expect(label.classList.contains('collaboration-carets__label--below')).toBe(true);
+  });
+
+  it('leaves the label above once the caret clears the first line', async () => {
+    const { label } = mount({ inViewport: true, caretTop: 400, caretLeft: 10 });
+    await nextFrame();
+    expect(label.classList.contains('collaboration-carets__label--below')).toBe(false);
+  });
+
+  it('flips the label left near the viewport right edge', async () => {
+    // An 80px label anchored at x=460 would end at 540, past the 500px content
+    // right — and past it by more than the 8px threshold.
+    const { label } = mount({ inViewport: true, caretTop: 400, caretLeft: 460 });
+    await nextFrame();
+    expect(label.classList.contains('collaboration-carets__label--flip-left')).toBe(true);
+  });
+
+  it('does nothing, and does not throw, outside a scroll viewport', async () => {
+    // A caret in an editor that does not scroll inside a ScrollArea. The flip
+    // is meaningless there, and the lookup missing must not be an error.
+    const { label } = mount({ inViewport: false, caretTop: 105, caretLeft: 460 });
+    await nextFrame();
+    expect(label.classList.contains('collaboration-carets__label--below')).toBe(false);
+    expect(label.classList.contains('collaboration-carets__label--flip-left')).toBe(false);
   });
 });

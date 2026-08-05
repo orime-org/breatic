@@ -92,6 +92,7 @@ export {
   ROLE_RANK,
   STUDIO_ROLE_RANK,
   HANDLING_TIMEOUT_MS,
+  canGenerate,
   membersChangedChannel,
   activityNewChannel,
   allProjectChannelsPattern,
@@ -219,3 +220,28 @@ export {
 export type { AdjustValue } from "@shared/adjust-value.js";
 
 export { newId, deriveId } from "@shared/ids.js";
+
+// The one HTTP transport with retries — backend services and browser alike.
+// Anything aimed at OUR OWN backend keeps using the browser's axios singleton;
+// anything aimed outward (cloud storage, vendor APIs, arbitrary URLs) comes
+// through here, on both sides of the wire (decided 2026-08-02).
+//
+// Two symbols, and that is the whole surface. It does six things — send,
+// judge, wait, cap at three deliveries, hand over or throw, hold nothing — and
+// no seventh, so there is nothing else worth naming here. Everything the loop
+// needs internally (the judgement, its vocabulary, the backoff maths, the
+// sleep) stays inside: an export is a promise to somebody, and nobody outside
+// this package needs those. Not even the options type: a caller writes the
+// object inline and TypeScript's structural typing does the rest, so
+// exporting a name nobody spells is surface for nothing.
+//
+// It hands back the platform's own `Response` and holds nothing afterwards.
+// Reading it — how long a read may stall, how large it may be, how to stop
+// one — belongs to the caller: the HTTP client underneath already times a
+// stalled read, and a second timer on top would be a duplicate with worse
+// information (decided 2026-08-02).
+//
+// The delivery count rides with the failure and never with the response: a
+// caller holding a 200 has no use for "and it took two tries", while a caller
+// holding a failure has a log line to write.
+export { httpRequest, HttpRetryError } from "@shared/http/request.js";

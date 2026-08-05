@@ -51,8 +51,7 @@ import type { DbTx } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import {
-  deferredRequestExpiry,
-  getDeferredRequestTtlDays,
+  getDecisionWindowMs,
 } from "@server/config/limits.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import {
@@ -101,7 +100,7 @@ export async function requestTransfer(
     throw new ValidationError(t("server.error.validation"));
   }
 
-  const expiresAt = deferredRequestExpiry();
+  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
   const profiles = await studioRepo.getPersonalProfilesByCreators([
     fromAdminUserId,
   ]);
@@ -167,7 +166,6 @@ export async function requestTransfer(
           initiatorName: from?.name ?? "",
           studioName: studio.name,
           decisionLink: decisionLink(origin, shareToken),
-          windowDays: getDeferredRequestTtlDays(),
         });
       },
       { userId: toUserId, subject: "studio_transfer" },

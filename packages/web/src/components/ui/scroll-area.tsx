@@ -258,7 +258,7 @@ const ScrollBar = React.forwardRef<
       )}
     >
       {/* Hover response is opacity-only (40% → 60%): the sanctioned hover
-          pattern (inner ADR 2026-05-21) AND the #1773 mandate that hover
+          pattern (ADR 2026-05-21) AND the #1773 mandate that hover
           changes color, never shape. An ACTIVE DRAG keeps the hover color
           via the rail's data-dragging stamp (user 2026-07-15) — during a
           captured drag the pointer routinely strays off the thumb, and

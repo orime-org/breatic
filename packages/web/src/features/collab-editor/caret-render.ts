@@ -156,7 +156,14 @@ export function shouldFlipLabelLeft(
 function scheduleLabelFlip(caret: HTMLElement, label: HTMLElement): void {
   if (typeof requestAnimationFrame !== 'function') return;
   requestAnimationFrame(() => {
-    const container = caret.closest('[data-testid="generate-prompt-editor"]');
+    // The nearest scroll viewport — the element that actually clips, and the
+    // one whose edges the label must stay inside. Found by Radix's viewport
+    // attribute rather than by any one editor's test id, so every editor that
+    // scrolls inside a `ScrollArea` gets the flip: the canvas prompt and the
+    // document body alike. Keying it to a single editor's test id silently
+    // disabled the flip everywhere else — the lookup missed and the function
+    // returned early, leaving first-line labels clipped.
+    const container = caret.closest('[data-radix-scroll-area-viewport]');
     if (!container) return;
     const caretRect = caret.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
@@ -197,8 +204,8 @@ export function renderCollabCaret(user: CaretUser, clientId?: number): HTMLEleme
   // NOTE: this build-time branch only covers NEWLY built widgets. A PARKED
   // caret's widget is keyed by clientId and prosemirror-view reuses its DOM on
   // key equality WITHOUT re-invoking this builder, so a focused flip alone
-  // never reaches here — the awareness listener in PromptEditor toggles the
-  // class on the existing DOM via the data-client-id stamped below
+  // never reaches here — the awareness listener in `use-collab-caret-presence`
+  // toggles the class on the existing DOM via the data-client-id stamped below
   // (adversarial round: both flip directions were dead without it).
   if (user.focused === false) {
     caret.classList.add('collaboration-carets__caret--blurred');

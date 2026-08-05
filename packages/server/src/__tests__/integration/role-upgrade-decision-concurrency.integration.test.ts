@@ -46,6 +46,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
 import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
+import { getDecisionWindowMs } from "@server/config/limits.js";
 
 // integration-setup.ts injects the container URLs into process.env but cannot
 // call initCore itself (importing the core barrel pulls the `ai` SDK → otel).
@@ -184,6 +185,38 @@ async function memberRole(
   `;
   return rows[0]?.role ?? null;
 }
+
+describe("role-upgrade request deadline", () => {
+  it("writes the configured decision window onto the row in Postgres", async () => {
+    // The one flow whose deadline never reached a real database in a test: the
+    // unit tests mock the notification service away, and the concurrency tests
+    // above insert their request row by hand (with no expiry at all). So the
+    // line that stamps it — the whole point of bringing this flow into the
+    // window — went unexercised end to end.
+    const ownerId = await insertUser("deadline-owner");
+    const requesterId = await insertUser("deadline-viewer");
+    const studioId = await insertStudio(ownerId, "deadline");
+    const projectId = await insertProject(studioId, ownerId, "deadline");
+    await insertMember(projectId, ownerId, "owner", null);
+    await insertMember(projectId, requesterId, "viewer", ownerId);
+
+    const notification = await roleUpgradeService.request({
+      ownerUserId: ownerId,
+      requesterUserId: requesterId,
+      projectId,
+      projectName: "Deadline Demo",
+      message: null,
+    });
+
+    const [row] = await sql<{ expires_at: Date | null }[]>`
+      SELECT expires_at FROM notifications WHERE id = ${notification.notification.id}
+    `;
+    expect(row!.expires_at).not.toBeNull();
+    const aheadMs = row!.expires_at!.getTime() - Date.now();
+    expect(aheadMs).toBeLessThanOrEqual(getDecisionWindowMs());
+    expect(aheadMs).toBeGreaterThan(getDecisionWindowMs() - 60_000);
+  });
+});
 
 describe("role-upgrade decision is once-only under concurrency", () => {
   it("two concurrent approves decide the request exactly once", async () => {

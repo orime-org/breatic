@@ -2,15 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Member-capacity limit configuration loader.
+ * Business limits configuration loader.
  *
- * Loads soft business caps from `config/limits.yaml`: how many active
- * members a studio may have, and how many people may be EXPLICITLY
- * invited to a project (any role). Auto-materialized baseline viewers
- * (open baseline — studio members who just opened the project) are
- * EXEMPT and never counted toward the project cap, so it never blocks
- * viewing access. Concurrency is bounded separately by collab's
- * `max_connections_per_document` (config/collab.yaml).
+ * Loads the operator-tunable numbers from `config/limits.yaml`:
+ *
+ *   - soft capacity caps — how many active members a studio may have, and how
+ *     many people may be EXPLICITLY invited to a project (any role).
+ *     Auto-materialized baseline viewers (open baseline — studio members who
+ *     just opened the project) are EXEMPT and never counted toward the project
+ *     cap, so it never blocks viewing access. Concurrency is bounded
+ *     separately by collab's `max_connections_per_document`
+ *     (config/collab.yaml).
+ *   - page sizes for the activity feed and the node-history panel.
+ *   - the decision window — how long someone has to answer an invitation, a
+ *     transfer, or a role-upgrade request.
  *
  * Mirrors the `pricing.ts` / `text-tools.ts` business-config loaders:
  * a yaml file under `config/` validated by a Zod schema and memoized.
@@ -30,15 +35,18 @@ export const limitsConfigSchema = z.object({
   activity_feed_page_max: z.number().int().positive().default(100),
   canvas_reference_pool_cap: z.number().int().positive().default(50),
   node_history_page_size: z.number().int().positive().default(20),
-  deferred_request_ttl_days: z.number().int().positive().default(7),
+  decision_window_days: z.number().int().positive().default(7),
 });
+
+/** Hours per day × minutes per hour × seconds per minute — written once. */
+const SECONDS_PER_DAY = 24 * 60 * 60;
 
 let _cached: z.infer<typeof limitsConfigSchema> | null = null;
 
 /**
- * Load and cache the member-capacity limits from `config/limits.yaml`.
+ * Load and cache the business limits from `config/limits.yaml`.
  * @returns The validated limits config (memoized after the first read).
- * @throws {z.ZodError} if a cap is malformed (non-positive / non-integer).
+ * @throws {z.ZodError} if a value is malformed (non-positive / non-integer).
  */
 function loadConfig(): z.infer<typeof limitsConfigSchema> {
   if (_cached) return _cached;
@@ -96,43 +104,54 @@ export function getNodeHistoryPageSize(): number {
 }
 
 /**
- * How many days a deferred-decision request stays live (#28) — one TTL for
- * all five: studio invite, project invite, studio transfer, project transfer,
- * role upgrade. Prefer {@link deferredRequestExpiry}; reach for the raw number
- * only where a duration, not an instant, is what the caller needs.
- * @returns The request TTL in days.
- */
-export function getDeferredRequestTtlDays(): number {
-  return loadConfig().deferred_request_ttl_days;
-}
-
-/**
- * A day in milliseconds, spelled once for everyone who needs the unit.
+ * A day in milliseconds, for readers converting a span back into days.
  *
- * This module is where "how long is a day" already lived, so it is where the
- * number belongs — including for readers who are not stamping a TTL at all
- * but converting a span back into days.
+ * Not a window and not a TTL — the unit itself. The landing page divides
+ * `expires_at - created_at` by it to say how long a request had, which is a
+ * question about a row rather than about today's configuration.
  */
-export const DAY_MS = 24 * 60 * 60 * 1000;
+export const MS_PER_DAY = SECONDS_PER_DAY * 1000;
 
 /**
- * The single place a request TTL becomes an instant: `now + TTL`. Every create
- * path stamps BOTH the request row and its bell notification from one call, so
- * the two projections of "is this still live" can never disagree.
- * @returns The moment the request being created will expire.
+ * How long someone has to answer something waiting on them, in days.
+ *
+ * One window for all five such flows — studio invite, project invite,
+ * studio transfer, project transfer, role-upgrade request. Use this one
+ * when the number is being SHOWN to a person (an email sentence, a page
+ * that explains why a link stopped working); use `getDecisionWindowMs` or
+ * `getDecisionWindowSeconds` when it is being computed with.
+ *
+ * Not for account-security lifetimes. Password reset, email verification,
+ * sessions and recovery codes are each set against their own threat and
+ * live where they are used.
+ * @returns The decision window in days.
  */
-export function deferredRequestExpiry(): Date {
-  return new Date(Date.now() + getDeferredRequestTtlDays() * DAY_MS);
+export function getDecisionWindowDays(): number {
+  return loadConfig().decision_window_days;
 }
 
 /**
- * The same TTL as a second count, for callers that need the duration rather
- * than the instant — a cache header, a `set … EX`, anything that takes "how
- * long" instead of "until when". `no-hardcoded-request-ttl` names this
- * function as the way out, which is the whole reason it exists: without it,
- * the only escape from the rule would be to write the day out by hand.
- * @returns The request TTL in seconds.
+ * The same window in milliseconds, for `Date.now() + window`.
+ *
+ * The conversion lives here rather than at each deadline write: spelled out
+ * at every call site, it is one transcription error away from two flows
+ * disagreeing about the same window. Derived from the seconds form rather
+ * than from days again, so the day→second factor is applied in exactly one
+ * place.
+ * @returns The decision window in milliseconds.
  */
-export function deferredRequestTtlSeconds(): number {
-  return getDeferredRequestTtlDays() * 24 * 60 * 60;
+export function getDecisionWindowMs(): number {
+  return getDecisionWindowSeconds() * 1000;
+}
+
+/**
+ * The same window in seconds, for callers that need the duration rather than
+ * the instant — anything that takes "how long" instead of "until when".
+ * `no-hardcoded-request-ttl` names this function as the way out, which is part
+ * of why it exists: without it the only escape from the rule would be to write
+ * a day out by hand.
+ * @returns The decision window in seconds.
+ */
+export function getDecisionWindowSeconds(): number {
+  return getDecisionWindowDays() * SECONDS_PER_DAY;
 }

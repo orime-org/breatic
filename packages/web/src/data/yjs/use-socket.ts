@@ -7,6 +7,7 @@ import type * as Y from 'yjs';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import {
   acquireDocProvider,
+  readDocFacts,
   releaseDocProvider,
   useCollabSocketContext,
 } from '@web/data/yjs/collab-socket';
@@ -35,13 +36,65 @@ export type ConnectionStatus =
   | 'authFailed'
   | 'disconnected';
 
+/**
+ * Whether the SERVER has granted this connection permission to write.
+ *
+ * Distinct from the role the UI already knows about. A connection is
+ * authenticated read-only either because the user is a viewer or because they
+ * are over the document's connection cap — and in the second case a member the
+ * UI believes may edit cannot. The server answers this on the wire at
+ * authentication time; anything it refuses afterwards is discarded silently,
+ * with no error and no disconnect, so this is the only warning a client gets.
+ *
+ *   unknown — not yet authenticated for this document
+ *   granted — may write
+ *   denied  — authenticated read-only; every update sent will be dropped
+ */
+export type WriteAccess = 'unknown' | 'granted' | 'denied';
+
+/**
+ * Read a provider's already-settled write access.
+ *
+ * Needed alongside the `authenticated` listener because the provider registry
+ * is shared: a document another component acquired first may already have
+ * authenticated, and it will not re-emit the event for a late subscriber.
+ * @param provider - The document's provider.
+ * @returns What the server granted, or `unknown` if it has not answered yet.
+ */
+function readWriteAccess(provider: HocuspocusProvider): WriteAccess {
+  if (!provider.isAuthenticated) return 'unknown';
+  return provider.authorizedScope === 'readonly' ? 'denied' : 'granted';
+}
+
 interface SocketState {
   /** The active provider (null until first connect). */
   provider: HocuspocusProvider | null;
-  /** True once the provider has synced with the server at least once. */
+  /**
+   * Whether the provider is in sync RIGHT NOW — not a latch. Cleared on every
+   * close (a wifi switch, a laptop waking, a collab redeploy) and set again
+   * once the reconnect re-syncs.
+   */
   synced: boolean;
+  /**
+   * Whether this document's content has arrived at least once — the latch
+   * {@link synced} is not.
+   *
+   * Read this to decide whether the document may be shown or edited: once the
+   * content is in, the local Y.Doc holds it and offline edits merge cleanly on
+   * reconnect, so a dropped socket is no reason to take it off screen.
+   *
+   * Survives this component being unmounted and remounted, because it is kept
+   * with the document in the provider registry rather than here. That is what a
+   * Space-tab switch does, and the content is plainly still there across one.
+   */
+  hasEverSynced: boolean;
   /** High-level connection lifecycle for banner UI. */
   status: ConnectionStatus;
+  /**
+   * Whether the server granted this connection permission to write. See
+   * {@link WriteAccess} — `denied` means updates are being dropped in silence.
+   */
+  writeAccess: WriteAccess;
   /**
    * If `status === 'authFailed'`, the server-provided reason string
    * (e.g. `"Forbidden"`). Used by future ErrorState code to discriminate
@@ -74,11 +127,37 @@ interface SocketState {
 export function useSocket({ name, doc }: UseSocketOptions): SocketState {
   const { ready, url } = useCollabSocketContext();
   const [synced, setSynced] = React.useState(false);
+  // Mirrored into React state so a change re-renders, but OWNED by the
+  // registry. This initial value is a plain `false` — the registry is read in
+  // the effect below, which is what carries the latch across a remount, since
+  // neither a sync nor a refusal is ever announced twice and a component that
+  // mounts afterwards can only be told.
+  //
+  // So the first render after a remount does briefly compute "not yet synced",
+  // and a caller that gates its content on this flag renders a placeholder for
+  // it. Measured in a browser, sampling every frame across three tab-switch
+  // round trips: 235 frames, zero showing the placeholder, and a synchronous
+  // read right after the click found none either. Discrete events run the
+  // remount, the effect and the follow-up render inside one task, so the
+  // browser never gets to paint that first pass.
+  const [hasEverSynced, setHasEverSynced] = React.useState(false);
   const [status, setStatus] = React.useState<ConnectionStatus>('connecting');
+  const [writeAccess, setWriteAccess] =
+    React.useState<WriteAccess>('unknown');
   const [authFailedReason, setAuthFailedReason] = React.useState<
     string | null
   >(null);
-  const providerRef = React.useRef<HocuspocusProvider | null>(null);
+  // State, not a ref: this is a value the caller RENDERS from — the caret layer
+  // an editor mounts, for one — so its arrival has to re-render subscribers. As
+  // a ref it did not, and nothing else in the cold-acquire path did either: all
+  // three setState calls below write the value they already hold, so React
+  // bails out and the provider lands invisibly. Consumers then saw it only when
+  // some unrelated render happened to read the ref — the first `synced` event a
+  // network round-trip later, or a keystroke — which reads as "the editor takes
+  // a moment to appear" online and never appears at all offline.
+  const [provider, setProvider] = React.useState<HocuspocusProvider | null>(
+    null,
+  );
 
   React.useEffect(() => {
     // Gated: the shared socket may not be dialed until userId resolves. Acquire
@@ -87,13 +166,15 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
     if (!ready) {
       setStatus('connecting');
       setSynced(false);
+      setHasEverSynced(false);
+      setWriteAccess('unknown');
       setAuthFailedReason(null);
-      providerRef.current = null;
+      setProvider(null);
       return;
     }
 
     const provider = acquireDocProvider(name, doc, url);
-    providerRef.current = provider;
+    setProvider(provider);
 
     // Initialise from the provider's CURRENT state — acquiring an already-synced
     // shared provider won't re-emit `synced`.
@@ -104,14 +185,39 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       setSynced(false);
       setStatus('connecting');
     }
-    setAuthFailedReason(null);
+    // Everything already settled comes from the registry, which has been
+    // watching this document since it was first acquired — including while this
+    // component did not exist. These are the lines that survive a Space-tab
+    // switch: neither a sync nor a refusal is ever announced twice, so a
+    // component that mounts afterwards can only be told, never hear it.
+    const facts = readDocFacts(name);
+    setHasEverSynced(facts.hasEverSynced);
+    if (facts.authFailure !== null) {
+      setStatus('authFailed');
+      setAuthFailedReason(facts.authFailure);
+      setWriteAccess('denied');
+    } else {
+      setAuthFailedReason(null);
+      // Read from the provider rather than the facts: unlike a refusal, the
+      // granted scope can change across reconnects, so the live value wins.
+      setWriteAccess(readWriteAccess(provider));
+    }
 
     /**
      * First sync landed → steady-state happy.
      */
     const onSynced = (): void => {
       setSynced(true);
+      setHasEverSynced(true);
       setStatus('connected');
+    };
+    /**
+     * Authentication succeeded; the payload carries what we may do with the
+     * document. Hocuspocus sends `"readonly"` or `"read-write"`.
+     * @param data - Authentication payload carrying the granted scope.
+     */
+    const onAuthenticated = (data: { scope?: string } | undefined): void => {
+      setWriteAccess(data?.scope === 'readonly' ? 'denied' : 'granted');
     };
     /**
      * Server rejected token / membership → surface a sticky auth banner.
@@ -121,6 +227,11 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       const reason = data?.reason ?? 'unknown';
       setStatus('authFailed');
       setAuthFailedReason(reason);
+      // A refusal is the strongest form of "your updates go nowhere". Leaving
+      // this at whatever it was — `granted`, for a document that authenticated
+      // fine until the Space was deleted — hands the user a live editor over a
+      // dead connection.
+      setWriteAccess('denied');
       // Always report — an auth rejection is a genuine failure (the
       // stuck-banner bug). console for dev, Sentry for prod oncall.
       reportCollabFailure({ kind: 'auth', docName: name, reason });
@@ -144,6 +255,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
     };
 
     provider.on('synced', onSynced);
+    provider.on('authenticated', onAuthenticated);
     provider.on('authenticationFailed', onAuthFailed);
     provider.on('close', onClose);
 
@@ -151,20 +263,29 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       // Remove our listeners BEFORE releasing — so the deferred teardown's
       // destroy() close never reaches this hook (no false disconnect report).
       provider.off('synced', onSynced);
+      provider.off('authenticated', onAuthenticated);
       provider.off('authenticationFailed', onAuthFailed);
       provider.off('close', onClose);
-      providerRef.current = null;
+      setProvider(null);
       releaseDocProvider(name);
       setSynced(false);
+      // Not a reset of the latch itself — that lives in the registry and is
+      // untouched here. This only clears the local mirror for the case where
+      // the effect re-runs for a DIFFERENT document; the branch above then
+      // reads the new document's latch.
+      setHasEverSynced(false);
       setStatus('connecting');
+      setWriteAccess('unknown');
       setAuthFailedReason(null);
     };
   }, [ready, name, doc, url]);
 
   return {
-    provider: providerRef.current,
+    provider,
     synced,
+    hasEverSynced,
     status,
+    writeAccess,
     authFailedReason,
   };
 }

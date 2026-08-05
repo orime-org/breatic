@@ -32,6 +32,7 @@ const OWNER = "u-owner";
 const REQUESTER = "u-viewer";
 const PID = "p-1";
 const NID = "n-1";
+/** An arbitrary deadline — this test cares that it is forwarded, not what it is. */
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,7 +64,7 @@ describe("createRoleUpgradeRequest", () => {
         projectId: PID,
         projectName: "Demo",
         requestedRole: "editor",
-      shareToken: "t".repeat(64),
+        shareToken: "t".repeat(64),
         message: "please",
       },
     });

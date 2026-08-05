@@ -3,23 +3,17 @@
     "error": {
       "not_found": "리소스를 찾을 수 없습니다",
       "forbidden": "접근이 거부되었습니다",
-      "unauthorized": "인증 정보가 유효하지 않거나 만료되었습니다",
       "conflict": "리소스 충돌",
       "validation": "입력값이 유효하지 않습니다",
       "upload_too_large": "파일이 업로드 크기 제한을 초과했습니다.",
       "insufficient_credits": "크레딧이 부족합니다: 필요 {required}, 보유 {available}",
       "rate_limited": "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요",
-      "internal": "내부 서버 오류",
-      "stripe_not_configured": "결제 시스템이 구성되지 않았습니다",
-      "storage_not_configured": "스토리지 시스템이 구성되지 않았습니다",
-      "field_required": "최소 한 개의 필드를 입력해야 합니다"
+      "internal": "내부 서버 오류"
     },
     "auth": {
       "invalid_credentials": "이메일 또는 비밀번호가 올바르지 않습니다",
       "email_taken": "이미 등록된 이메일입니다",
-      "no_password": "이 계정은 소셜 로그인을 사용합니다",
       "token_expired": "세션이 만료되었습니다. 다시 로그인해 주세요",
-      "register_success": "계정이 성공적으로 생성되었습니다",
       "logout_success": "로그아웃되었습니다",
       "not_authenticated": "인증되지 않았습니다",
       "google_oauth_unconfigured": "이 서버에서는 Google 로그인을 사용할 수 없습니다",
@@ -42,8 +36,7 @@
       "cannot_change_admin_role": "Admin 역할은 이전을 통해서만 변경할 수 있습니다.",
       "member_limit_reached": "이 Studio는 멤버 수 한도에 도달했습니다.",
       "leave_last_admin": "이 Studio를 나가기 전에 먼저 Admin을 이전하세요.",
-      "avatar_unsupported_type": "지원하지 않는 이미지 형식입니다.",
-      "avatar_unsupported_size": "해당 이미지는 아바타 크기로 유효하지 않습니다."
+      "avatar_unsupported_type": "이 파일은 이미지로 읽을 수 없습니다. 다른 사진을 사용해 보세요."
     },
     "project": {
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
@@ -55,87 +48,12 @@
       "already_running": "다른 텍스트 도구가 이미 실행 중입니다. 잠시 기다려 주세요."
     },
     "payment": {
-      "checkout_created": "결제 세션이 생성되었습니다",
-      "credits_granted": "{amount} 크레딧이 계정에 추가되었습니다",
-      "payment_completed": "결제가 완료되었습니다",
-      "payment_failed": "결제에 실패했습니다",
       "tier_not_found": "알 수 없는 요금제: {tier}. 사용 가능: {available}",
       "price_not_configured": "{tier} 요금제의 가격이 설정되지 않았습니다"
-    },
-    "credits": {
-      "deducted": "차감된 크레딧: {amount}",
-      "added": "추가된 크레딧: {amount}",
-      "balance": "현재 잔액: {balance}"
-    },
-    "task": {
-      "created": "작업이 생성되었습니다",
-      "running": "작업이 실행 중입니다",
-      "completed": "작업이 완료되었습니다",
-      "failed": "작업 실패: {error}",
-      "not_your_task": "이 작업에 대한 접근 권한이 없습니다"
-    },
-    "email": {
-      "verify_subject": "이메일을 확인하세요 — Breatic",
-      "verify_body": "아래 링크를 클릭하여 이메일 주소를 확인하세요:\n\n{link}\n\n이 링크는 24시간 후에 만료됩니다.\n",
-      "reset_subject": "비밀번호를 재설정하세요 — Breatic",
-      "reset_body": "아래 링크를 클릭하여 비밀번호를 재설정하세요:\n\n{link}\n\n이 링크는 1시간 후에 만료됩니다.\n\n요청하지 않으셨다면 이 이메일을 무시하셔도 됩니다.\n",
-      "welcome_subject": "Breatic에 오신 것을 환영합니다",
-      "welcome_body": "Breatic에 오신 것을 환영합니다, {name}님! AI로 멋진 콘텐츠를 만들어 보세요."
-    },
-    "models": {
-      "image": {
-        "nano-banana-pro": "최고 화질, 최대 4K 해상도",
-        "nano-banana-2": "빠르고 다재다능, 웹 검색 지원",
-        "nano-banana": "클래식, 화질과 속도의 균형",
-        "seedream-5.0-lite": "사실적 표현, 아시아 미학에 강함",
-        "midjourney-v7": "예술적이고 높은 스타일성",
-        "z-image-turbo": "초고속, 합리적인 비용",
-        "qwen-image": "다양한 스타일의 중국 화풍"
-      },
-      "video": {
-        "kling-o3-pro": "최고 화질, 복잡한 카메라 무빙",
-        "wan-2.6": "애니메이션 스타일, 참조 이미지 지원",
-        "seedance-2.0": "춤·인체 모션 전문",
-        "veo-3.1": "영화 같은 화질, 필름 수준"
-      },
-      "audio": {
-        "minimax-music-02": "올라운드 최고, 보컬 지원",
-        "elevenlabs-sfx-v2": "효과음, 루프 모드"
-      },
-      "tts": {
-        "elevenlabs-v3": "가장 자연스러움, 52가지 음성",
-        "gemini-tts": "다중 화자 대화"
-      }
     }
   },
-  "cancel": "취소",
-  "loading": "불러오는 중...",
-  "next": "다음",
-  "agent": {
-    "placeholder": "만들고 싶은 것을 설명해 주세요...",
-    "thinking": "생각 중...",
-    "tool_running": "{tool} 사용 중...",
-    "plan_ready": "플랜 완성 — 확인 후 생성",
-    "confirm_plan": "확인 후 생성",
-    "new_chat": "새 채팅"
-  },
   "chat": {
-    "modelSelect": {
-      "selectAModel": "모델 선택",
-      "quality": "품질",
-      "aspectRatio": "화면 비율",
-      "ariaLabel": "모델 선택"
-    },
     "composer": {
-      "focusEditor": "에디터에 포커스",
-      "mentionUpstream": "상위 노드 참조",
-      "upstreamResource": "상위 리소스",
-      "removeUpstream": "상위 참조 제거",
-      "upload": "업로드",
-      "uploadFiles": "파일 업로드",
-      "attachment": "첨부 파일",
-      "removeUpload": "업로드 제거",
-      "addToInput": "입력란에 추가",
       "selectMode": {
         "label": "선택 모드 — 캔버스에서 노드를 클릭하여 참조를 추가하세요",
         "title": "선택 모드"
@@ -148,13 +66,6 @@
         "title": "스킬 선택"
       },
       "send": "전송"
-    },
-    "panel": {
-      "newConversation": "새 대화",
-      "history": "기록"
-    },
-    "recognizedPick": {
-      "fallback": "인식 결과"
     },
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
@@ -183,27 +94,6 @@
     }
   },
   "canvas": {
-    "new_project": "새 Project",
-    "generating": "생성 중...",
-    "completed": "완료",
-    "failed": "생성 실패",
-    "generating_by": "{user} 님이 생성 중",
-    "parameter_mode": "파라미터 모드",
-    "intelligent_mode": "지능형 모드",
-    "resize": "크기 조절",
-    "ratio169": "16:9",
-    "ratio916": "9:16",
-    "ratio11": "1:1",
-    "youtube": "YouTube 광고",
-    "tiktok": "TikTok, YouTube Shorts",
-    "instagram": "Instagram, Facebook 게시물",
-    "toolbar": {
-      "openMinimap": "미니맵 열기",
-      "closeMinimap": "미니맵 닫기",
-      "undoTooltip": "실행 취소 (Ctrl+Z)",
-      "redoTooltip": "다시 실행 (Shift+Ctrl+Z)",
-      "fitToView": "화면에 맞추기"
-    },
     "group": {
       "group": "그룹화",
       "ungroup": "그룹 해제",
@@ -219,63 +109,11 @@
       "backgroundPink": "분홍",
       "backgroundTeal": "청록"
     },
-    "comment": {
-      "composerPlaceholder": "댓글을 입력하세요...",
-      "replyPlaceholder": "토론에 답글 달기...",
-      "send": "댓글 보내기",
-      "timeJustNow": "방금 전",
-      "timeMinutesAgo": "{count}분 전",
-      "timeHoursAgo": "{count}시간 전",
-      "timeEarlier": "이전"
-    },
     "handle": {
-      "agentNodes": "에이전트 노드",
       "nodeText": "텍스트",
       "nodeImage": "이미지",
       "nodeVideo": "동영상",
-      "nodeAudio": "오디오",
-      "subtitleText": "텍스트 콘텐츠 불러오기/생성",
-      "subtitleImage": "이미지 불러오기/생성",
-      "subtitleVideo": "동영상 클립 불러오기/생성",
-      "subtitleAudio": "오디오 콘텐츠 불러오기/생성"
-    },
-    "node": {
-      "processing": "처리 중...",
-      "image": {
-        "loading": "이미지 불러오는 중...",
-        "uploadFailed": "이미지 업로드 실패"
-      },
-      "video": {
-        "loading": "동영상 불러오는 중...",
-        "uploadFailed": "동영상 업로드 실패"
-      },
-      "audio": {
-        "uploadFailed": "오디오 업로드 실패",
-        "recordingUploadFailed": "녹음 업로드 실패"
-      }
-    },
-    "upstream": {
-      "text": "텍스트",
-      "file": "파일"
-    },
-    "rightPanel": {
-      "collapse": "패널 접기",
-      "share": "공유",
-      "background": "배경",
-      "pageSummary": "페이지 요약"
-    },
-    "overlay": {
-      "input": "입력"
-    },
-    "pickMode": {
-      "clickHereOrPress": "여기를 클릭하거나",
-      "toExit": "을(를) 눌러 종료"
-    },
-    "textToolbar": {
-      "paragraph": "단락",
-      "orderedList": "번호 매기기 목록",
-      "unorderedList": "글머리 기호 목록",
-      "bold": "굵게"
+      "nodeAudio": "오디오"
     },
     "emptyState": {
       "title": "캔버스가 비어 있습니다",
@@ -290,12 +128,14 @@
       "web": "더블클릭하여 URL 삽입",
       "rightClickHint": "우클릭으로 생성 등"
     },
+    "textNode": {
+      "editorPlaceholder": "내용을 입력하세요"
+    },
     "contextMenu": {
       "paste": "붙여넣기",
       "copy": "복사",
       "duplicate": "복제",
       "rename": "이름 변경",
-      "delete": "삭제",
       "deleteNode": "노드 삭제",
       "deleteGroup": "그룹 삭제",
       "deleteSelection": "선택 항목 삭제",
@@ -386,9 +226,6 @@
     "minimap": {
       "label": "캔버스 미니맵"
     },
-    "activity": {
-      "reportFailed": "업로드를 Project 활동에 기록하지 못했습니다"
-    },
     "connection": {
       "rejected": "{source}은(는) {target}에 연결할 수 없습니다",
       "kindText": "텍스트",
@@ -444,30 +281,12 @@
       }
     }
   },
-  "editor": {
-    "label": "에디터",
-    "accept": "적용",
-    "reject": "거절",
-    "polish": "다듬기",
-    "expand": "확장",
-    "summarize": "요약",
-    "translate": "번역",
-    "rewrite": "다시 쓰기",
-    "continue_writing": "이어 쓰기",
-    "generate": "생성",
-    "character": "캐릭터",
-    "storyboard": "스토리보드",
-    "script": "스크립트",
-    "comingSoon": "에디터는 곧 제공됩니다"
-  },
   "auth": {
     "email": "이메일",
     "password": "비밀번호",
-    "name": "이름",
     "or": "또는",
     "invalidEmail": "유효한 이메일 주소를 입력해 주세요.",
     "passwordTooShort": "비밀번호는 8자 이상이어야 합니다.",
-    "nameRequired": "이름을 입력해 주세요.",
     "passwordShow": "비밀번호 표시",
     "passwordHide": "비밀번호 숨기기",
     "login": {
@@ -573,40 +392,6 @@
       "withdrawing": "취소하는 중…"
     }
   },
-  "workspace": {
-    "label": "워크스페이스",
-    "copy_success": "Project 복사에 성공했습니다",
-    "copy_failed": "Project 복사에 실패했습니다",
-    "delete_success": "Project 삭제에 성공했습니다",
-    "project_name_required": "Project 이름은 필수입니다",
-    "rename_success": "Project 이름 변경에 성공했습니다",
-    "create_failed": "Project 생성에 실패했습니다",
-    "copy_project": "Project 복사",
-    "rename_project": "Project 이름 변경",
-    "delete_project": "Project 삭제",
-    "btn_confirm": "확인",
-    "btn_cancel": "취소",
-    "rename_project_title": "Project 이름 변경",
-    "rename_project_placeholder": "새 Project 이름을 입력하세요",
-    "delete_project_content_title": "Project 삭제",
-    "delete_project_content_description": "이 작업은 되돌릴 수 없습니다.",
-    "recent_projects": "최근 Projects",
-    "create_new_project": "새 Project 만들기",
-    "no_more_data": "더 이상 Projects가 없습니다",
-    "create_project_title": "새 Project 만들기",
-    "create_project_placeholder": "새 Project의 이름을 입력하세요",
-    "use_case": "사용 사례",
-    "use_case_description": "사용 사례 설명",
-    "home_tooltip": "홈으로 이동",
-    "create_user_case_title": "사용 사례 만들기",
-    "create_user_case_description": "이 사용 사례를 기반으로 새 Project가 생성됩니다.",
-    "create_user_case_placeholder": "새 Project 이름을 입력하세요",
-    "not_logged_in": {
-      "title": "로그인하지 않음",
-      "description": "로그인하여 모든 제품 기능을 사용해 보세요",
-      "login_button": "지금 로그인"
-    }
-  },
   "project": {
     "leaveGuard": {
       "title": "작업 중인데 나가시겠어요?",
@@ -614,229 +399,33 @@
       "stay": "머무르기",
       "leave": "나가기"
     },
-    "toolbar": {
-      "copy": "복사",
-      "delete": "삭제",
-      "cannotDeleteWhileExecuting": "실행 중에는 삭제할 수 없습니다",
-      "uploadFile": "파일 업로드",
-      "uploading": "업로드 중...",
-      "pleaseInputTexts": "텍스트를 입력하세요",
-      "pleaseInputUrl": "URL을 입력하세요",
-      "inputUrl": "URL 입력",
-      "unsupportedFileFormat": "지원되지 않는 파일 형식: .{extension}",
-      "fileParseFailed": "파일 분석에 실패했습니다. 파일 형식을 확인하세요",
-      "clickToSelectImageFile": "이미지 파일을 선택하려면 클릭하세요",
-      "clickToSelectAudioFile": "오디오 파일을 선택하려면 클릭하세요",
-      "clickToSelectVideoFile": "동영상 파일을 선택하려면 클릭하세요",
-      "orDropFileHere": "또는 여기에 파일을 끌어다 놓으세요",
-      "credits": "크레딧",
-      "startRecording": "녹음 시작",
-      "exitRecording": "녹음 종료",
-      "clickToStartRecord": "클릭하여 녹음 시작",
-      "clickStopButtonToFinish": "정지 버튼을 클릭하여 녹음을 완료하세요",
-      "recordingNotReady": "녹음 기능이 준비되지 않았습니다. 잠시 후 다시 시도하세요",
-      "cannotAccessMicrophone": "마이크에 접근할 수 없습니다. 권한 설정을 확인하세요",
-      "uploadFailedUrlIncorrect": "업로드에 실패했습니다. URL이 올바르지 않습니다.",
-      "uploadFailed": "업로드에 실패했습니다.",
-      "audioFormatsSupported": "URL에서 지원되는 오디오 형식",
-      "audioFormatsMustBe": "은(는) MP3, OGG, WAV, WEBM이어야 합니다",
-      "loadingAudio": "오디오를 불러오는 중...",
-      "textNode": "텍스트",
-      "imageNode": "이미지",
-      "wrapUngroup": "그룹화 / 그룹 해제",
-      "group": "그룹화",
-      "ungroup": "그룹 해제",
-      "layout": "레이아웃",
-      "layoutGrid": "그리드 레이아웃",
-      "layoutHorizontal": "가로 레이아웃",
-      "backgroundColor": "배경색",
-      "expand": "펼치기",
-      "collapse": "접기"
-    },
-    "resultsCard": {
-      "clickToSelectResults": "클릭하여 결과를 선택하세요",
-      "resultsSelected": "개 결과 선택됨",
-      "resultSelected": "개 결과 선택됨",
-      "selectResultsToTransfer": "다음 노드로 전달할 결과를 선택하세요"
-    },
-    "panel": {
-      "resultsSelected": "개 결과 선택됨",
-      "runHistory": "실행 기록",
-      "assets": "에셋",
-      "generatedResults": "생성된 결과",
-      "exportedResults": "내보낸 결과",
-      "all": "전체",
-      "texts": "텍스트",
-      "images": "이미지",
-      "audios": "오디오",
-      "videos": "동영상",
-      "generatedAt": "생성 시각",
-      "uploadedAt": "업로드 시각",
-      "exportedAt": "내보낸 시각",
-      "today": "오늘",
-      "yesterday": "어제",
-      "upload": "업로드",
-      "videoEditor": "동영상 편집기",
-      "generated": "생성됨",
-      "selected": "선택됨",
-      "loading": "불러오는 중...",
-      "noMore": "더 이상 없습니다...",
-      "pullToRefresh": "당겨서 새로고침",
-      "releaseToRefresh": "놓아서 새로고침"
-    },
-    "canvas": {
-      "noRunsYet": "아직 실행 기록이 없습니다",
-      "noRunsDescBefore": "이 노드를 실행할 때마다 결과가 여기에 표시됩니다 — 입력, 출력 및 ",
-      "noRunsCreditUsage": "크레딧 사용량",
-      "noRunsDescAfter": "."
-    },
-    "form": {
-      "selectAModel": "모델 선택",
-      "aspectRatio": "화면 비율",
-      "duration": "길이",
-      "resolution": "해상도",
-      "selectLanguage": "언어 선택",
-      "selectAVoice": "음성 선택",
-      "fillModel": "필 모델",
-      "musicDescription": "음악 설명",
-      "musicDescriptionPlaceholder": "곡조, 장르, 멜로디 및 관련 음악 요소. (10~2000자 필요)",
-      "splittingRules": "분할 규칙*",
-      "splittingRulesPlaceholder": "입력 텍스트를 분할하는 방법을 설명하세요 (선택 사항)",
-      "processingRules": "처리 규칙*",
-      "processingRulesPlaceholder": "다듬기 규칙과 스타일을 설명하세요 (선택 사항)."
-    },
-    "videoEditor": {
-      "noExportResultsYet": "아직 내보낸 결과가 없습니다",
-      "startToEdit": "편집 시작",
-      "videos": "동영상",
-      "audios": "오디오",
-      "images": "이미지",
-      "texts": "텍스트",
-      "deleteWarning": "이 편집기 노드는 현재 사용 중이어서 삭제할 수 없습니다. 먼저 편집 페이지를 닫아 주세요.",
-      "close": "닫기"
-    },
-    "emptyState": {
-      "noResultsYet": "아직 생성된 결과가 없습니다.",
-      "clickThe": "",
-      "buttonToBringIdeasToLife": " 버튼을 클릭하여 아이디어를 실현해 보세요!"
-    },
     "header": {
-      "autosavedAt": "자동 저장 시각",
-      "monitor": "모니터",
-      "darkMode": "다크 모드",
-      "lightMode": "라이트 모드",
-      "importWorkflow": "워크플로 가져오기",
-      "exportWorkflow": "워크플로 내보내기",
-      "exportWithResources": "리소스 포함하여 내보내기",
-      "exportWithoutResources": "리소스 없이 내보내기",
-      "discord": "Discord",
-      "backToWorkspace": "워크스페이스로 돌아가기",
-      "workflowExportedWithResourcesSuccessfully": "리소스를 포함한 워크플로를 성공적으로 내보냈습니다",
-      "failedToExportWorkflowWithResources": "리소스를 포함한 워크플로 내보내기에 실패했습니다",
-      "exportWithoutResourcesNotImplemented": "리소스 없이 내보내기 기능은 아직 구현되지 않았습니다",
-      "exportSuccessful": "내보내기 성공",
-      "exportFailed": "내보내기 실패!",
-      "importSuccessful": "가져오기 성공",
-      "importFailed": "가져오기 실패!",
-      "renameFailed": "Project 이름을 변경하지 못했습니다",
-      "importing": "가져오는 중...",
-      "exporting": "내보내는 중...",
-      "english": "English",
-      "simplifiedChinese": "간체 중국어",
-      "traditionalChinese": "번체 중국어",
-      "japanese": "일본어"
-    },
-    "modal": {
-      "confirm": "확인",
-      "cancel": "취소"
+      "renameFailed": "Project 이름을 변경하지 못했습니다"
     },
     "space": {
       "timeout": {
         "create": "Space 생성 시간이 초과되었습니다",
-        "retry": "페이지를 새로고침한 후 다시 시도하세요",
-        "delete": "Space 삭제 시간이 초과되었습니다"
+        "retry": "페이지를 새로고침한 후 다시 시도하세요"
       },
       "error": {
         "create": "Space 생성에 실패했습니다",
         "notSynced": "Project를 아직 동기화 중입니다 — 잠시 후 다시 시도하세요"
       },
       "loading": {
-        "create": "Space를 생성하는 중…",
-        "delete": "Space를 삭제하는 중…"
+        "create": "Space를 생성하는 중…"
       },
       "noActive": "열려 있는 Spaces가 없습니다 — 드로어에서 열거나 + 를 클릭하여 새로 만드세요."
     }
   },
   "common": {
-    "confirm": "확인",
     "cancel": "취소",
-    "save": "저장",
-    "delete": "삭제",
-    "close": "닫기",
-    "export": "내보내기",
-    "import": "가져오기",
-    "undo": "실행 취소",
-    "redo": "다시 실행",
-    "previous": "이전",
-    "next": "다음",
-    "appTitle": "동영상 편집기",
-    "backToWorkbench": "워크벤치로 돌아가기",
-    "syncData": "데이터 동기화",
-    "copy": "복사",
-    "download": "다운로드",
-    "mention": "멘션",
-    "fullscreen": "전체 화면",
-    "edit": "편집"
-  },
-  "message": {
-    "projectSaved": "Project를 저장했습니다",
-    "saveProjectFailed": "Project 저장에 실패했습니다",
-    "projectLoaded": "Project를 불러왔습니다",
-    "loadProjectFailed": "Project 불러오기에 실패했습니다",
-    "mockDataLoaded": "목 데이터를 불러왔습니다",
-    "loadMockDataFailed": "목 데이터 불러오기에 실패했습니다",
-    "noContentToExport": "내보낼 콘텐츠가 없습니다",
-    "exportImageFailed": "이미지 내보내기에 실패했습니다",
-    "exportVideoFailed": "동영상 내보내기에 실패했습니다",
-    "unknownError": "알 수 없는 오류",
-    "mediaDeleted": "미디어를 삭제했습니다",
-    "addedToTimeline": "타임라인에 추가했습니다",
-    "clipCopied": "클립을 복사했습니다",
-    "movePlayheadToSplit": "분할하려면 재생 헤드를 클립 안으로 이동하세요",
-    "clipSplit": "클립을 분할했습니다",
-    "clipDeleted": "클립을 삭제했습니다",
-    "autoSaving": "자동 저장 중...",
-    "autoSaveSuccess": "자동 저장에 성공했습니다",
-    "autoSaveFailed": "자동 저장에 실패했습니다",
-    "saving": "저장 중...",
-    "saveSuccess": "저장에 성공했습니다",
-    "saveFailed": "저장에 실패했습니다"
+    "loading": "불러오는 중..."
   },
   "members": {
     "popover": {
       "title": "Project 멤버",
       "manage": "공동 작업자 관리",
-      "remove": "제거",
-      "removeSuccess": "멤버를 제거했습니다.",
-      "removeFailed": "멤버를 제거하지 못했습니다. 다시 시도해 주세요.",
-      "self_label": "(나)",
       "isMe": "(나)"
-    },
-    "panel": {
-      "title": "멤버 관리",
-      "subtitle": "Project 멤버와 역할을 관리합니다",
-      "invite_section": "공동 작업자 초대",
-      "invite_placeholder": "이메일 또는 사용자 ID",
-      "invite_button": "초대",
-      "list_count": "멤버 ({count})",
-      "list_note": "Owner는 Project Creator에게 영구적으로 고정됩니다",
-      "confirm_remove": "이 공동 작업자를 제거하시겠습니까?",
-      "done": "완료"
-    },
-    "role": {
-      "owner": "Owner",
-      "edit": "Editor",
-      "view": "Viewer"
     },
     "modal": {
       "title": "공동 작업자",
@@ -867,32 +456,15 @@
       "transferPendingUnnamed": "수락을 기다리는 중입니다."
     },
     "stack": {
-      "triggerAria": "Project 멤버({count})",
-      "removeAria": "{name} 제거"
+      "triggerAria": "Project 멤버({count})"
     }
   },
   "spaces": {
     "tab": {
-      "new": "새 Canvas",
-      "drawer": "모든 Canvases",
-      "close": "탭 닫기",
-      "rename": "이름 변경",
-      "duplicate": "복제",
-      "delete": "삭제",
-      "lock": "잠금",
-      "unlock": "잠금 해제",
       "closeAria": "Space 탭 닫기"
     },
     "drawer": {
       "title": "모든 Spaces",
-      "count": "개",
-      "tag_open": "열림",
-      "tag_active": "활성",
-      "nodes_count": "노드 {count}개",
-      "confirm_delete": "이 Space를 삭제하시겠습니까?",
-      "new_canvas": "새 Canvas",
-      "new_document": "새 Document",
-      "new_timeline": "새 Timeline",
       "label": "모든 Spaces",
       "description": "{count, plural, one {# Space · 클릭하여 열거나 우측 메뉴 사용} other {# Space · 클릭하여 열거나 우측 메뉴 사용}}",
       "empty": "아직 Spaces가 없습니다",
@@ -916,19 +488,6 @@
         "deleteFail": "삭제에 실패했습니다"
       }
     },
-    "new_dialog": {
-      "title": "새 Space",
-      "subtitle": "종류를 선택하고 이름을 입력하세요.",
-      "name_label": "이름",
-      "name_placeholder": "예: Scene v3",
-      "create": "만들기",
-      "cancel": "취소",
-      "placeholder_kind_unsupported": "{kind} Spaces는 아직 V1에서 지원되지 않습니다."
-    },
-    "placeholder": {
-      "title": "곧 출시",
-      "description": "{kind} Space 유형은 향후 릴리스에서 제공될 예정입니다."
-    },
     "kind": {
       "canvas": "Canvas",
       "canvasSub": "무한 캔버스 + 노드",
@@ -947,8 +506,7 @@
       "namePlaceholder": "예: Cyberpunk Concept",
       "nameRemaining": "{count, plural, one {# 글자 남음} other {# 글자 남음}}",
       "cancel": "취소",
-      "submit": "만들기",
-      "submitting": "만드는 중…"
+      "submit": "만들기"
     },
     "rename": {
       "inputAriaLabel": "Space 이름 변경",
@@ -960,7 +518,6 @@
     "readonly": {
       "label": "읽기 전용",
       "description": "이 Space는 탭 바에서 열려 있지 않습니다. 읽기 전용 미리보기에서는 화면 이동/확대·축소와 콘텐츠 복사가 가능하지만 편집은 할 수 없습니다.",
-      "close": "읽기 전용 미리보기 닫기",
       "canvas": {
         "title": "읽기 전용 Canvas",
         "description": "실제 ReactFlow 뷰어는 canvas-space 완성 시 연결됩니다. 여기서는 노드와 엣지의 읽기 전용 스냅샷을 확대·축소 및 복사와 함께 표시합니다."
@@ -974,24 +531,26 @@
         "description": "Timeline 뷰어는 timeline-space 출시 시 연결됩니다. 여기서는 트랙 스냅샷을 클립 복사와 함께 표시합니다."
       }
     },
-    "lockedAria": "잠김"
-  },
-  "image": {
-    "flipVertical": "상하 반전",
-    "flipHorizontal": "좌우 반전",
-    "rotateLeft": "왼쪽으로 회전",
-    "rotateRight": "오른쪽으로 회전",
-    "zoomOut": "축소",
-    "zoomIn": "확대",
-    "closePreview": "미리보기 닫기"
-  },
-  "document": {
-    "editorComingSoon": "텍스트 에디터 출시 예정",
-    "imageDialog": {
-      "insertImage": "이미지 삽입",
-      "upload": "업로드",
-      "embedUrl": "URL 삽입",
-      "dropOrBrowse": "여기에 이미지를 드롭하거나 클릭하여 찾아보기"
+    "lockedAria": "잠김",
+    "document": {
+      "loading": "편집기를 불러오는 중…",
+      "unavailable": {
+        "text": "이 문서를 열 수 없습니다. 삭제되었거나 더 이상 접근 권한이 없을 수 있습니다.",
+        "action": "다시 시도"
+      },
+      "readOnlyNotice": "이 문서는 지금 읽기 전용입니다 — 입력한 내용은 저장되지 않습니다.",
+      "refusedNotice": "이 문서에 대한 연결이 거부되었습니다. 보고 있는 내용이 최신이 아닐 수 있으며 변경 사항도 저장되지 않습니다.",
+      "placeholder": "작성을 시작하세요…",
+      "toolbar": {
+        "undo": "실행 취소",
+        "redo": "다시 실행",
+        "bold": "굵게",
+        "italic": "기울임꼴",
+        "bulletList": "글머리 기호 목록",
+        "orderedList": "번호 매기기 목록",
+        "quote": "인용",
+        "strike": "취소선"
+      }
     }
   },
   "menu": {
@@ -1014,16 +573,10 @@
     "zoomIn": "확대",
     "fit": "맞춤",
     "fitAria": "뷰포트에 맞춤",
-    "expand": "전체 화면",
     "snap": {
       "on": "격자에 맞추기 사용",
       "off": "격자에 맞추기 해제",
       "label": "격자에 맞추기"
-    },
-    "guides": {
-      "on": "정렬 가이드 사용",
-      "off": "정렬 가이드 해제",
-      "label": "정렬 가이드"
     },
     "minimap": {
       "show": "미니맵 표시",
@@ -1059,14 +612,6 @@
   "notifications": {
     "title": "알림",
     "empty": "대기 중인 알림이 없습니다",
-    "roleHint": {
-      "editor": "편집",
-      "viewer": "보기"
-    },
-    "request": {
-      "audio": "보이스오버와 BGM 작업에 참여하고 싶어 합니다",
-      "project": "자신의 Project에 프롬프트 스타일을 참고하고 싶어 합니다"
-    },
     "loading": "불러오는 중…",
     "markRead": "읽음으로 표시",
     "headline": {
@@ -1137,14 +682,8 @@
     },
     "topBar": {
       "home": "Studio 홈",
-      "recent": "최근",
-      "search": "검색",
-      "notifications": "알림",
       "account": "계정",
       "signOut": "로그아웃"
-    },
-    "createProject": {
-      "failed": "Project 생성에 실패했습니다: {reason}"
     },
     "container": {
       "shell": {
@@ -1189,7 +728,6 @@
       },
       "card": {
         "assetCount": "에셋 {count}개",
-        "fromStudio": "{studio}에서",
         "more": "더보기",
         "createdAt": "{time}에 생성"
       },
@@ -1200,7 +738,6 @@
         "emptyHint": "Project는 무한 캔버스에서 창작하는 공간입니다. 첫 Project를 만들어 시작하세요."
       },
       "collections": {
-        "title": "Collections",
         "new": "새 Collection",
         "emptyTitle": "아직 에셋 모음이 없습니다",
         "emptyHint": "에셋 모음은 Projects 간에 재사용하는 소재 모음(이미지 / 동영상 / 오디오)입니다. 백엔드 기능이 출시되면 만든 에셋 모음이 여기에 표시됩니다."
@@ -1234,13 +771,11 @@
       "members": {
         "invite": "멤버 초대",
         "colName": "이름",
-        "colEmail": "이메일",
         "colRole": "역할",
         "colJoined": "가입일",
         "roleAdmin": "Admin",
         "roleGuest": "Guest",
         "remove": "삭제",
-        "cannotInvitePersonal": "개인 Studios는 멤버를 초대할 수 없습니다 — 당신뿐입니다.",
         "roleMaintainer": "Maintainer",
         "rowMenu": "멤버 작업",
         "promoteToMaintainer": "Maintainer로 지정",
@@ -1271,7 +806,6 @@
         "name": "이름",
         "slug": "Slug",
         "description": "설명",
-        "avatar": "아바타",
         "dangerTitle": "위험 영역",
         "transfer": "Studio 양도",
         "delete": "Studio 삭제",
@@ -1338,9 +872,6 @@
         "slugHelperProject": "Project 주소의 일부로, 브라우저 주소창에 표시됩니다. 소문자, 숫자, 하이픈(-)만 사용할 수 있습니다.",
         "slugHelperCollection": "Collection 주소의 일부로, 브라우저 주소창에 표시됩니다. 소문자, 숫자, 하이픈(-)만 사용할 수 있습니다.",
         "descriptionLabel": "설명(선택)",
-        "typeLabel": "유형",
-        "typePersonal": "개인",
-        "typeTeam": "팀",
         "create": "만들기",
         "cancel": "취소",
         "slugFormat": "소문자, 숫자, 하이픈만 사용할 수 있습니다.",
@@ -1353,9 +884,6 @@
         "visibilityLabel": "공개 범위",
         "visibilityStudioOption": "Studio 내 공개 — 모든 멤버",
         "visibilityPrivateOption": "비공개 — 초대만"
-      },
-      "empty": {
-        "newCard": "+ 새로 만들기"
       },
       "toolbar": {
         "sortLabel": "정렬",

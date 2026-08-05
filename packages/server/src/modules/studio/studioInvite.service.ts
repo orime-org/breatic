@@ -44,8 +44,7 @@ import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { decisionLink } from "@server/utils/decision-link.js";
 import {
-  deferredRequestExpiry,
-  getDeferredRequestTtlDays,
+  getDecisionWindowMs,
 } from "@server/config/limits.js";
 
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
@@ -112,7 +111,7 @@ export async function createInvite(
   ]);
   const inviter = profiles.get(inviterUserId);
   const inviterName = inviter?.name ?? "";
-  const expiresAt = deferredRequestExpiry();
+  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
 
   let invitationId = "";
   // The bell row builds its link from this, same as the email.
@@ -167,7 +166,6 @@ export async function createInvite(
         studioName: studio.name,
         role,
         inviteLink: decisionLink(origin, shareToken),
-        windowDays: getDeferredRequestTtlDays(),
       });
     }, { userId: inviterUserId, subject: "studio_invite" });
   }

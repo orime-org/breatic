@@ -41,20 +41,47 @@ vi.mock('@web/data/yjs/use-socket', () => ({
   ),
 }));
 
+// WHICH bodies the panel subscribes to is behaviour (#1774 round-4): only the
+// text nodes its references can reach — never the whole board, where every
+// keystroke by anyone anywhere would rebuild this panel's view model. The spy
+// wraps the real hook so the subscription set itself is observable.
+vi.mock('@web/data/yjs/use-text-body', async (importActual) => {
+  const actual =
+    await importActual<typeof import('@web/data/yjs/use-text-body')>();
+  return { ...actual, useTextBodies: vi.fn(actual.useTextBodies) };
+});
+
 import { toast } from 'sonner';
 
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
+import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useSocket } from '@web/data/yjs/use-socket';
-import { docName } from '@web/data/yjs/manager';
+import {
+  CanvasContext,
+  type CanvasContextValue,
+} from '@web/spaces/canvas/canvas-context';
 import { modelsApi } from '@web/data/api';
 import { useCanvasStore } from '@web/stores';
+
+type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
 
 /**
  * Mounts the container under a fresh QueryClient (no retries — the failure
  * path resolves in one round trip).
+ * @param graph - Optional canvas graph override; defaults to a lone target.
  * @returns The render result.
  */
-function mountContainer(): ReturnType<typeof render> {
+function mountContainer(graph?: {
+  nodes?: ContainerProps['nodes'];
+  edges?: ContainerProps['edges'];
+}): ReturnType<typeof render> {
+  const canvas: CanvasContextValue = {
+    projectId: 'p',
+    spaceId: 's',
+    readOnly: false,
+    caretProvider: null,
+    caretUser: { name: 'Tester', color: '#123456', hue: '210' },
+  };
   return render(
     <QueryClientProvider
       client={
@@ -71,17 +98,21 @@ function mountContainer(): ReturnType<typeof render> {
         ]}
         edges={[]}
       >
-        <GeneratePanelContainer
-          projectId='p'
-          spaceId='s'
-          nodes={[
-            {
-              id: 'target',
-              data: { kind: 'image', status: 'idle' },
-            },
-          ]}
-          edges={[]}
-        />
+        <CanvasContext.Provider value={canvas}>
+          <GeneratePanelContainer
+            projectId='p'
+            spaceId='s'
+            nodes={
+              graph?.nodes ?? [
+                {
+                  id: 'target',
+                  data: { kind: 'image', status: 'idle' },
+                },
+              ]
+            }
+            edges={graph?.edges ?? []}
+          />
+        </CanvasContext.Provider>
       </ReactFlow>
     </QueryClientProvider>,
   );
@@ -119,10 +150,17 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
   });
 
   // Collaborator carets (batch-2 item 14): the prompt fragment lives in the
-  // CANVAS-SPACE doc, so the caret awareness channel must be that exact
-  // doc's shared provider — acquiring any other doc name would publish carets
-  // into the wrong awareness (or open a second socket).
-  it('acquires the canvas-space doc provider for the caret awareness channel', async () => {
+  // CANVAS-SPACE doc, so carets have to be published through that exact doc's
+  // shared provider — into any other awareness and nobody on this board sees
+  // them.
+  //
+  // The container used to acquire that provider itself. It no longer does
+  // (#1774): the canvas resolves it once and hands it to every editor on the
+  // board, because two acquisitions leave two answers in the codebase to
+  // "whose caret is this" and they drift. What is checked here is that the
+  // second one has not grown back; WHICH document the canvas acquires is
+  // checked where that now happens, in `CanvasSpace.test`.
+  it('does not acquire a provider of its own', async () => {
     const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
       image: [],
       video: [],
@@ -137,10 +175,9 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       useCanvasStore.getState().openGeneratePanel('target');
     });
     await waitFor(() => {
-      expect(vi.mocked(useSocket)).toHaveBeenCalled();
+      expect(useCanvasStore.getState().panelHostId).toBe('target');
     });
-    const call = vi.mocked(useSocket).mock.calls.at(-1)?.[0];
-    expect(call?.name).toBe(docName.canvasSpace('p', 's'));
+    expect(vi.mocked(useSocket)).not.toHaveBeenCalled();
     listSpy.mockRestore();
   });
 
@@ -326,6 +363,58 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     await waitFor(() =>
       expect(useCanvasStore.getState().pickSession).toBeNull(),
     );
+    listSpy.mockRestore();
+  });
+});
+
+// The subscription SET is the behaviour here (#1774 round-4): the panel's only
+// consumers of body text — the reference rail and the chip serializer — read
+// exclusively the text nodes wired into the target, so following anything more
+// means a keystroke in an unrelated note rebuilds this panel's view model.
+describe('GeneratePanelContainer — body subscription set', () => {
+  beforeEach(() => {
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  it('follows the text nodes wired into the target, not every text node on the board', async () => {
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
+      image: [],
+      video: [],
+      audio: [],
+      tts: [],
+      three_d: [],
+      understand: [],
+      total: 0,
+    });
+    mountContainer({
+      nodes: [
+        { id: 'target', data: { kind: 'image', status: 'idle' } },
+        { id: 'wired-a', data: { kind: 'text', status: 'idle' } },
+        { id: 'wired-b', data: { kind: 'text', status: 'idle' } },
+        { id: 'stray', data: { kind: 'text', status: 'idle' } },
+        { id: 'other', data: { kind: 'image', status: 'idle' } },
+      ],
+      edges: [
+        { id: 'e1', source: 'wired-a', target: 'target' },
+        // A second edge from the same source must not subscribe it twice.
+        { id: 'e1b', source: 'wired-a', target: 'target' },
+        { id: 'e2', source: 'wired-b', target: 'target' },
+        // Wired into a DIFFERENT node — not this panel's business.
+        { id: 'e3', source: 'stray', target: 'other' },
+      ],
+    });
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target');
+    });
+    await waitFor(() => {
+      expect(vi.mocked(useTextBodies)).toHaveBeenCalled();
+    });
+    const ids = vi.mocked(useTextBodies).mock.lastCall?.[2];
+    expect(ids).toEqual(['wired-a', 'wired-b']);
     listSpy.mockRestore();
   });
 });

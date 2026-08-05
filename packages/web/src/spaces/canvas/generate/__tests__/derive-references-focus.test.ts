@@ -16,6 +16,9 @@ import {
   focusToRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
 
+/** No body text for this case — the parameter is required so omitting it cannot be an accident. */
+const NO_TEXT: ReadonlyMap<string, string> = new Map();
+
 const CROP = {
   id: 'f1',
   url: 'https://cdn/crop.png',
@@ -56,7 +59,7 @@ describe('focus: namespace squatting (round-9)', () => {
       },
     ] as never[];
     const edges = [{ id: 'focus:f1->gen', source: 'focus:f1', target: 'gen' }];
-    expect(deriveReferences('gen', nodes, edges)).toEqual([]);
+    expect(deriveReferences('gen', nodes, edges, NO_TEXT)).toEqual([]);
   });
 
   it('referencePoolCount does not let the squatter edge occupy a cap slot', async () => {
@@ -82,7 +85,7 @@ describe('focus: namespace squatting (round-9)', () => {
       },
     ] as never[];
     const edges = [{ id: 'focus:f1', source: 'src-1', target: 'gen' }];
-    expect(deriveReferences('gen', nodes, edges)).toEqual([]);
+    expect(deriveReferences('gen', nodes, edges, NO_TEXT)).toEqual([]);
   });
 
   it('referencePoolCount does not let a forged focus:-id edge occupy a cap slot (round-12)', async () => {

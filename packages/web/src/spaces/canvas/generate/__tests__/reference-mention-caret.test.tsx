@@ -13,10 +13,10 @@ import * as Y from 'yjs';
 import {
   Y_SYNC_PLUGIN_KEY_NAME,
   Y_UNDO_PLUGIN_KEY_NAME,
-} from '@web/spaces/canvas/generate/collab-plugin-keys';
+} from '@web/features/collab-editor/collab-plugin-keys';
 
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
-import { CollabUndoSelection } from '@web/spaces/canvas/generate/collab-undo-selection';
+import { CollabUndoSelection } from '@web/features/collab-editor/collab-undo-selection';
 import { referenceMentionCaretKey } from '@web/spaces/canvas/generate/reference-mention-caret';
 import {
   isStoppable,

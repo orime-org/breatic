@@ -39,12 +39,15 @@ function fields(
 }
 
 describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
-  it('maps text content + derives idle status', () => {
+  // The body stays OUT of the projection (#1774). That absence is what makes a
+  // keystroke change nothing the canvas mirror compares, so zero nodes
+  // re-render while somebody types; project it here and that guarantee is gone
+  // board-wide. Anything displaying the text subscribes through `useTextBody`.
+  it('projects a text node without its body, whatever the wire data carries', () => {
     const v = toNodeView(fields('text', { content: 'hello' }));
     expect(v).toEqual({
       kind: 'text',
       name: 'N',
-      content: 'hello',
       status: 'idle',
       errorMessage: undefined,
       locked: false,
@@ -56,9 +59,10 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     expect(v).toMatchObject({ kind: 'image', name: 'My Pic' });
   });
 
-  it('defaults missing text content to an empty string', () => {
+  it('leaves no body field behind on a text node', () => {
     const v = toNodeView(fields('text', {}));
-    expect(v).toMatchObject({ kind: 'text', content: '' });
+    expect(v).not.toHaveProperty('content');
+    expect(v).not.toHaveProperty('body');
   });
 
   it('maps the image content URL', () => {

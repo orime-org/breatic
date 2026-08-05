@@ -26,7 +26,7 @@ import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { toast } from '@web/lib/toast';
-import { newId } from '@breatic/shared';
+import { canGenerate, newId } from '@breatic/shared';
 
 import { assetsApi, canvasApi } from '@web/data/api';
 import {
@@ -59,7 +59,6 @@ import {
   resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
-  setNodeContent,
   setNodeHandling,
   completeNodeHandling,
   failNodeHandling,
@@ -75,6 +74,7 @@ import {
   type CanvasEdge,
   type CanvasNodeView,
   readCanvasGraph,
+  readTextBodies,
 } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
@@ -105,7 +105,7 @@ import {
 } from '@web/spaces/canvas/canvas-upload';
 import {
   extractVideoFirstFrame,
-  videoCoverFileName,
+  videoCoverFile,
 } from '@web/spaces/canvas/video-cover-extract';
 import { hashFile } from '@web/data/upload/hash';
 import { putFileWithRetry } from '@web/data/upload/upload-retry';
@@ -163,6 +163,13 @@ import {
   resolveReleaseElement,
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
+import {
+  CanvasContext,
+  type CanvasContextValue,
+} from '@web/spaces/canvas/canvas-context';
+import { useCaretUser } from '@web/features/collab-editor/use-caret-user';
+import { useSocket } from '@web/data/yjs/use-socket';
+import { docName, getDoc } from '@web/data/yjs/manager';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
@@ -999,6 +1006,28 @@ function CanvasSpaceInner({
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, undo, redo]);
+
+  // Capture with the bodies filled in. A clipboard entry is plain data and a
+  // shared body cannot travel in one, so the text is read out of the document
+  // at copy time and the paste writes it into the new node's own body. Read
+  // here rather than from a subscription: this runs on a keystroke, and the
+  // value that gets copied should be what the document says right now.
+  const captureClipboardWithText = React.useCallback(
+    (
+      targetIds: ReadonlyArray<string>,
+      allNodes: Parameters<typeof captureClipboard>[1],
+    ): ReturnType<typeof captureClipboard> =>
+      captureClipboard(
+        targetIds,
+        allNodes,
+        readTextBodies(
+          projectId,
+          spaceId,
+          allNodes.filter((n) => n.type === 'text').map((n) => n.id),
+        ),
+      ),
+    [projectId, spaceId],
+  );
 
   const { createNodeAt, createUploadNodeAt, pasteTextAt, pasteNodesAt } =
     useNodeCreation(projectId, spaceId);
@@ -1969,11 +1998,7 @@ function CanvasSpaceInner({
               toast.warning(t('canvas.upload.videoCodecUnsupported'));
               continue; // no node created
             }
-            const coverFile = new File(
-              [coverBlob],
-              videoCoverFileName(file.name),
-              { type: 'image/webp' },
-            );
+            const coverFile = videoCoverFile(coverBlob, file.name);
             const { nodeId, lease } = createUploadNodeAt('video', position);
             created.push(nodeId);
             trackOperation(
@@ -2349,7 +2374,7 @@ function CanvasSpaceInner({
      */
     const onCopy = (event: ClipboardEvent): void => {
       if (readOnly || isEditableTarget(document.activeElement)) return;
-      const clipboardNodes = captureClipboard(
+      const clipboardNodes = captureClipboardWithText(
         flowNodesRef.current
           .filter((node) => node.selected)
           .map((node) => node.id),
@@ -2364,7 +2389,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('copy', onCopy);
     return () => document.removeEventListener('copy', onCopy);
-  }, [readOnly]);
+  }, [readOnly, captureClipboardWithText]);
 
   // ---- Grouping (selection → group / ungroup) ----
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
@@ -2515,21 +2540,21 @@ function CanvasSpaceInner({
   // captureClipboard). Used by the copy paths (Cmd+C / menu copy).
   const collectSelectedClipboard = React.useCallback(
     (): ClipboardNode[] =>
-      captureClipboard(
+      captureClipboardWithText(
         flowNodesRef.current
           .filter((node) => node.selected)
           .map((node) => node.id),
         flowNodesRef.current,
       ),
-    [],
+    [captureClipboardWithText],
   );
 
   // The clipboard-portable form of the right-clicked node. Used by the node
   // menu's copy.
   const nodeMenuClipboard = React.useCallback(
     (): ClipboardNode[] =>
-      captureClipboard([nodeMenu.nodeId], flowNodesRef.current),
-    [nodeMenu.nodeId],
+      captureClipboardWithText([nodeMenu.nodeId], flowNodesRef.current),
+    [nodeMenu.nodeId, captureClipboardWithText],
   );
 
   // Copy writes to the SYSTEM clipboard (same target as Cmd+C) so it round-trips
@@ -2556,7 +2581,7 @@ function CanvasSpaceInner({
     (targetIds: ReadonlyArray<string>): void => {
       if (readOnly || targetIds.length === 0) return;
       const nodes = flowNodesRef.current;
-      const payload = captureClipboard(targetIds, nodes);
+      const payload = captureClipboardWithText(targetIds, nodes);
       if (payload.length === 0) return;
       const ext = externalParentAbs(payload, nodes);
       const clones = cloneForPaste(
@@ -2574,7 +2599,7 @@ function CanvasSpaceInner({
       });
       setSelectAfterCreate(clones.map((clone) => clone.id));
     },
-    [readOnly, projectId, spaceId, userId],
+    [readOnly, projectId, spaceId, userId, captureClipboardWithText],
   );
 
   const copySelection = React.useCallback((): void => {
@@ -2987,6 +3012,7 @@ function CanvasSpaceInner({
     [readOnly, projectId, spaceId, t, fillUpload],
   );
 
+
   const actions = React.useMemo<CanvasActions>(
     () => ({
       renameNode: (nodeId: string, name: string): void =>
@@ -2994,13 +3020,6 @@ function CanvasSpaceInner({
       deleteEdge: (edgeId: string): void => {
         if (readOnly) return;
         removeEdge(projectId, spaceId, edgeId);
-      },
-      setNodeContent: (nodeId: string, content: string): void => {
-        if (readOnly) return;
-        // The RHS is the imported data-layer writer; the action key only shadows
-        // the name (object keys aren't in the body's scope — no recursion). Binds
-        // the text body's inline-edit commit to this project/space (#1470).
-        setNodeContent(projectId, spaceId, nodeId, content);
       },
       commitGroupResize: (groupId, rect): void => {
         if (readOnly) return;
@@ -3550,7 +3569,8 @@ function CanvasSpaceInner({
             const genNode = nodes.find((n) => n.id === nodeMenu.nodeId);
             return !nodeMenu.isGroup &&
               !readOnly &&
-              genNode?.type === 'image'
+              genNode?.type !== undefined &&
+              canGenerate(genNode.type)
               ? () => {
                 // Open + assert in one gesture: the machine's fresh-binding
                 // assert covers id CHANGES, but a same-host reopen (store id
@@ -3673,9 +3693,35 @@ function absoluteNodePosition(
  * @returns The provider-wrapped canvas surface.
  */
 export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
+  // Resolved once, here, and handed to every collaborative editor on the board
+  // — the text nodes and the generation prompt. `useSocket` reference-counts
+  // the shared provider the space's tab already holds, so this opens no second
+  // connection; what it buys is a single answer to "whose caret is this",
+  // instead of one per editor that could drift apart.
+  const canvasDocName = docName.canvasSpace(props.projectId, props.spaceId);
+  const canvasDoc = React.useMemo(() => getDoc(canvasDocName), [canvasDocName]);
+  const { provider: caretProvider } = useSocket({
+    name: canvasDocName,
+    doc: canvasDoc,
+  });
+  // Shared with every other editor, so one person keeps the same caret name and
+  // colour wherever their cursor turns up.
+  const caretUser = useCaretUser();
+  const canvas = React.useMemo<CanvasContextValue>(
+    () => ({
+      projectId: props.projectId,
+      spaceId: props.spaceId,
+      readOnly: props.readOnly ?? false,
+      caretProvider,
+      caretUser,
+    }),
+    [props.projectId, props.spaceId, props.readOnly, caretProvider, caretUser],
+  );
   return (
-    <ReactFlowProvider>
-      <CanvasSpaceInner {...props} />
-    </ReactFlowProvider>
+    <CanvasContext.Provider value={canvas}>
+      <ReactFlowProvider>
+        <CanvasSpaceInner {...props} />
+      </ReactFlowProvider>
+    </CanvasContext.Provider>
   );
 }

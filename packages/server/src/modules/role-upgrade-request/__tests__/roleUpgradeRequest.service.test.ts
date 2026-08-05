@@ -99,8 +99,9 @@ vi.mock("../../project/project.repo.js", () => ({
 // file away from the YAML loader and makes "both carry the SAME instant" an
 // exact assertion rather than an approximate one.
 vi.mock("@server/config/limits.js", () => ({
-  deferredRequestExpiry: (): Date => new Date("2026-08-08T00:00:00.000Z"),
-  getDeferredRequestTtlDays: (): number => 7,
+  getDecisionWindowMs: (): number => 7 * 24 * 60 * 60 * 1000,
+  getDecisionWindowDays: (): number => 7,
+  getDecisionWindowSeconds: (): number => 7 * 24 * 60 * 60,
 }));
 // The owner's address for the best-effort email, and the transport itself. The
 // mail is the half of this flow that nothing else observes: the bell entry is
@@ -214,6 +215,7 @@ describe("request", () => {
       notificationService.createRoleUpgradeRequest,
     ).mockResolvedValueOnce(fakeNotification());
 
+    const before = Date.now();
     const out = await roleUpgradeRequestService.request({
       ownerUserId: OWNER,
       requesterUserId: VIEWER,
@@ -227,9 +229,14 @@ describe("request", () => {
     const announced = vi.mocked(notificationService.createRoleUpgradeRequest)
       .mock.calls[0]?.[0];
     // Two projections of one fact: a viewer must never see them disagree about
-    // when the request dies.
-    expect(filed?.expiresAt).toEqual(new Date("2026-08-08T00:00:00.000Z"));
+    // when the request dies. Asserted as identity rather than against a fixed
+    // instant — pinning a date would only be testing what the mock returns,
+    // while THIS is the property the two writes have to share.
     expect(announced?.expiresAt).toEqual(filed?.expiresAt);
+    // And it is the configured window out, not some other number.
+    const aheadMs = filed!.expiresAt.getTime() - before;
+    expect(aheadMs).toBeLessThanOrEqual(7 * 24 * 60 * 60 * 1000);
+    expect(aheadMs).toBeGreaterThan(7 * 24 * 60 * 60 * 1000 - 60_000);
     expect(announced?.payload).toEqual(
       expect.objectContaining({
         requesterUserId: VIEWER,
@@ -670,3 +677,25 @@ describe("cancel", () => {
     expect(notificationRepo.retire).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The decision window, which this flow did not have until now.
+ *
+ * The other four decision flows (both invites, both transfers) each write a
+ * deadline and each refuse a decision made after it. This one wrote nothing
+ * and refused nothing, so a request sat in an owner's inbox forever. Bringing
+ * it into the shared window is both halves — writing the deadline is what
+ * makes it exist, refusing past it is what makes it real. A deadline the
+ * system announces and then ignores is worse than none: it would call the
+ * request void while still granting editor on it.
+ */
+// The "decision window" block that used to sit here came from the branch that
+// configured the window; it drove `request()` with a `projectSlug` this flow no
+// longer takes and asserted through a `fakeRequest` helper for the old return
+// shape. Every property it checked is covered by tests that survived the
+// merge: the shared deadline by "files the row and the bell entry with one
+// shared deadline", the timed-out settle by "settles a timed-out request
+// instead of leaving it pending forever", and refusing to answer past the
+// deadline by decision-respond's "a timed-out request cannot be answered" —
+// which now guards all five flows through the one gate rather than this one.
+

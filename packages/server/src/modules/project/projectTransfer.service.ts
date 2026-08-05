@@ -59,8 +59,7 @@ import type { DbTx } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import {
-  deferredRequestExpiry,
-  getDeferredRequestTtlDays,
+  getDecisionWindowMs,
 } from "@server/config/limits.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import {
@@ -138,7 +137,7 @@ export async function requestProjectTransfer(
     throw new ValidationError(t("server.error.validation"));
   }
 
-  const expiresAt = deferredRequestExpiry();
+  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
   const profiles = await studioRepo.getPersonalProfilesByCreators([fromUserId]);
   const from = profiles.get(fromUserId);
   // Bound out here because the mail is built after the transaction closes.
@@ -209,7 +208,6 @@ export async function requestProjectTransfer(
           initiatorName: from?.name ?? "",
           projectName: project.name,
           decisionLink: decisionLink(origin, shareToken),
-          windowDays: getDeferredRequestTtlDays(),
         });
       },
       { userId: toUserId, subject: "project_transfer" },

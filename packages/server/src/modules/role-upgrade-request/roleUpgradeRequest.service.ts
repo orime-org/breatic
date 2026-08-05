@@ -47,8 +47,7 @@ import { buildRoleUpgradeRequestMail } from "@server/utils/notification-mail.js"
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import {
-  deferredRequestExpiry,
-  getDeferredRequestTtlDays,
+  getDecisionWindowMs,
 } from "@server/config/limits.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import {
@@ -95,7 +94,7 @@ export async function request(
   input: RoleUpgradeRequestInput,
 ): Promise<FiledRequest> {
   const requester = await resolveActorProfile(input.requesterUserId);
-  const expiresAt = deferredRequestExpiry();
+  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
   try {
     const filedRequest = await db.transaction<
       (FiledRequest & { shareToken: string }) | { refusal: "not_found" }
@@ -163,7 +162,6 @@ export async function request(
             requestedRole: "editor",
             message: input.message ?? null,
             decisionLink: decisionLink(origin, filedRequest.shareToken),
-            windowDays: getDeferredRequestTtlDays(),
           });
         },
         { userId: input.ownerUserId, subject: "role_upgrade_request" },

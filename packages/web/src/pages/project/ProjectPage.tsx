@@ -19,6 +19,7 @@ import {
   evictUndoForVanishedSpaces,
 } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
+import { evictDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import {
   closeSpaceTab,
   openSpaceTab,
@@ -399,11 +400,22 @@ function ProjectWorkspace({
       return;
     }
     closeSpaceTab(projectId, userId, id);
-    // Closing a tab clears that space's undo / redo history: evict its cached
-    // undo manager so reopening the space starts empty (no-op for non-canvas
-    // spaces, which have no manager). The space's Y.Doc stays cached for an
-    // instant reopen — only the undo stack is discarded.
+    // Closing a tab discards the in-memory state that tab accumulated, so
+    // reopening the space starts clean: the canvas drops its undo manager, and
+    // the document drops its whole editor (which owns its undo stack and its
+    // selection — kept across tab SWITCHES, neither meant to survive a close;
+    // the scroll position is not among them, see `document-editor-cache`).
+    // Each Space type keeps its own cache and
+    // evicting an unknown name is a no-op, so both are called without checking
+    // which type this tab was.
+    //
+    // The Y.Doc goes too, though not from here: `SpaceDocSync` unmounts with
+    // the tab and releases the last reference, and the registry's deferred
+    // teardown destroys the provider and then the document. So a reopen
+    // re-dials and re-syncs from the server, and shows the loading placeholder
+    // while it does — nothing about this tab is kept warm.
     evictCanvasUndoManager(docName.canvasSpace(projectId, id));
+    evictDocumentEditor(docName.documentSpace(projectId, id));
     if (id === activeSpace?.id) {
       const next = openTabs.find((s) => s.id !== id);
       setActiveSpaceId(next?.id ?? null);
@@ -576,21 +588,38 @@ function ProjectWorkspace({
     return <LoadingScreen />;
   }
 
-  // When the WS auth has failed, the workspace below the banner is
-  // unusable - any mutation (create space, send chat, edit node) will
-  // silently fail because the same expired token is sent to the API +
-  // collab. Cover it with a full-area `bg-black/80` overlay that
+  // Whenever the banner is up, the workspace is covered, in both cases for the
+  // same reason: what the user does there is not reaching the server right now.
+  //
+  //   authFailed   - every mutation silently fails; the same expired token
+  //                  goes to the API and to collab. Nothing typed here will be
+  //                  saved, and no reconnect changes that.
+  //   disconnected - the writes queue up locally and go out on reconnect, so
+  //                  nothing is lost — but until then the user is alone with
+  //                  their edits and nobody else can see them, which is worth
+  //                  saying rather than leaving them to discover.
+  //
+  // Keeping the two conditions identical to the banner's is the point:
+  // `ConnectionBanner` states they are a pair that must appear and disappear
+  // on the same frame. They were not, and only the banner half showed on a
+  // dropped connection.
+  //
+  // Cover it with a full-area `bg-black/80` overlay that
   // (a) matches the LoadingOverlay / Dialog backdrop dim pattern used
   //     elsewhere in the app (single visual vocabulary for "blocked"),
-  // (b) intercepts clicks via `onClick` + `preventDefault` so users
-  //     can't trigger half-broken flows like "creating Space..." that
-  //     never resolves (2026-05-26 user smoke report),
+  // (b) is unmistakable at a glance, which is the entire job: once the user can
+  //     see that something is wrong, the requirement is met and there is
+  //     nothing left to solve. Being opaque it also takes the pointer, so the
+  //     workspace is not clickable while it shows — a side effect of covering
+  //     the screen, not a goal, and no work goes into either blocking input
+  //     more thoroughly or letting it through (user 2026-08-02),
   // (c) surfaces the OS-level "not-allowed" cursor on hover so users
-  //     get an instant, language-agnostic affordance that this region
-  //     is intentionally inert.
+  //     get an instant, language-agnostic affordance that this region is not
+  //     going to reach the server right now.
   // Banner itself sits OUTSIDE the wrapper so its "re-login" / "refresh"
   // actions stay clickable.
-  const workspaceDisabled = connectionStatus === 'authFailed';
+  const workspaceDisabled =
+    connectionStatus === 'authFailed' || connectionStatus === 'disconnected';
 
   return (
     <div className='flex h-screen w-screen flex-col bg-background text-foreground'>
@@ -621,9 +650,35 @@ function ProjectWorkspace({
           );
         }}
       />
+      {/*
+        Nothing reaches INTO this element to disable it when the connection
+        drops — no `inert`, no `aria-hidden`, no `disabled`. The first two were
+        tried and removed: `inert` stops the whole subtree receiving input,
+        which pulls focus out of whatever the user was typing in and kills IME
+        composition mid-word. The curtain takes the pointer but not the
+        keyboard, so someone already typing can carry on — and telling the user
+        something is wrong is the whole requirement, which the curtain meets by
+        being on screen. Showing the problem where it is and reaching into
+        nothing else is the rule (decision 2026-08-02).
+
+        The curtain rendered below DOES cover this element, so the workspace is
+        not clickable while it shows. That is the curtain being opaque, not
+        something done to the workspace.
+
+        A dropped connection loses nothing: the provider re-syncs on every
+        reconnect, so edits made offline arrive when it comes back. A REFUSED
+        one is different — the server drops those updates and there is no
+        reconnect that fixes it — which is why the banner tells the user rather
+        than leaving them to find out.
+
+        `data-workspace` is a stable hook for tests to find this element in
+        BOTH states: `data-workspace-disabled` is conditional and cannot be
+        selected on when absent, and a class list would pin the assertion to
+        styling.
+      */}
       <div
         className='relative flex min-h-0 flex-1 flex-col'
-        aria-hidden={workspaceDisabled || undefined}
+        data-workspace=''
         data-workspace-disabled={workspaceDisabled || undefined}
       >
         <TopBar
@@ -761,12 +816,15 @@ function ProjectWorkspace({
             </div>
           </section>
         </div>
+        {/* A visual signal that something is wrong — that is the whole job, and
+            once the user can see it the job is done. Being opaque, it does also
+            take the pointer, so the workspace is not clickable while it shows.
+            That is a side effect of covering the screen, not a goal: nothing
+            here works to block input, and nothing here works to let it
+            through either. */}
         {workspaceDisabled ? (
           <div
             className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
-            onClick={(e) => e.preventDefault()}
-            onMouseDown={(e) => e.preventDefault()}
-            aria-hidden
             data-testid='workspace-disabled-overlay'
           />
         ) : null}

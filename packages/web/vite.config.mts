@@ -59,12 +59,9 @@ export default defineConfig(({ command, mode }) => {
             authToken: sentryAuthToken,
             release: { name: env.VITE_APP_VERSION, inject: true },
             telemetry: false,
-            sourcemaps: {
-              ignore: ['**/antd-*.js', '**/antd-*.js.map', '**/*ant-design*.js', '**/*ant-design*.js.map'],
-            },
             errorHandler: (err: Error) => {
               const msg = err.message || '';
-              if (msg.includes('original location') || msg.includes('antd') || msg.includes('@ant-design')) {
+              if (msg.includes('original location')) {
                 return;
               }
               console.warn('[sentry-vite-plugin]', err);
@@ -93,9 +90,10 @@ export default defineConfig(({ command, mode }) => {
         '@locales': path.resolve(__dirname, '../../locales'),
       },
     },
-    optimizeDeps: {
-      exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
-    },
+    // No optimizeDeps.exclude: the only entry here was @ffmpeg/ffmpeg and
+    // @ffmpeg/util, and neither is a dependency of this package nor imported
+    // anywhere under src — excluding them from pre-bundling asked Vite to make
+    // an exception for something it never sees.
     worker: {
       format: 'es', // ES module type
     },
@@ -110,15 +108,18 @@ export default defineConfig(({ command, mode }) => {
         input: path.resolve(__dirname, 'src/index.html'),
         onwarn(warning, defaultHandler) {
           // Silence Rollup's "Can't resolve original location of error"
-          // sourcemap noise from third-party packages.
-          // NOTE: the `antd` conditions below are dead — antd was removed from
-          // this app (no dependency, no import remains). Left untouched rather
-          // than cleaned up as drive-by scope; see task #1833.
+          // sourcemap noise from third-party packages. Measured 2026-07-31:
+          // a full build emits zero such warnings, most likely because
+          // `sourcemapIgnoreList` below already tells Rollup to stop chasing
+          // third-party maps. The filter stays anyway — unlike the `antd`
+          // conditions removed alongside it, this one is not about a package
+          // we deleted; any dependency can start emitting these after an
+          // upgrade, and a filter that costs one string compare is cheaper
+          // than rediscovering why the build output got noisy.
           const msg = String(warning.message || '');
-          if (msg.includes('sourcemap') && (msg.includes('original location') || msg.includes('antd'))) {
+          if (msg.includes('sourcemap') && msg.includes('original location')) {
             return;
           }
-          if (msg.includes('antd') && msg.includes('sourcemap')) return;
           defaultHandler(warning);
         },
         output: {
@@ -129,36 +130,29 @@ export default defineConfig(({ command, mode }) => {
           // resolve third-party source maps (the "Can't resolve original
           // location" warnings above).
           sourcemapIgnoreList: (sourcePath: string) => sourcePath.includes('node_modules'),
+          // Every branch here is checked against a real build: a branch that
+          // never fires produces no chunk, and the nine that did nothing were
+          // removed on 2026-07-31 (antd, lottie-web, video.js, wavesurfer,
+          // react-moveable, swiper, i18next, dompurify, ali-oss — none of them
+          // reach the bundle, verified against the `sources` list in the
+          // emitted sourcemaps, which names every module that got in).
+          //
+          // Before adding a branch, confirm the package actually lands in the
+          // bundle; before trusting one, confirm its chunk is still emitted.
+          // A stale branch is invisible — it costs nothing at build time and
+          // reads as if the package were still split out.
           manualChunks(id) {
             if (!id.includes('node_modules')) return;
             if (id.includes('react-dom') || id.includes('react/') || id.includes('react-router') || id.includes('scheduler')) {
               return 'react-vendor';
             }
-            if (id.includes('antd') || id.includes('@ant-design')) {
-              return 'antd';
-            }
             if (id.includes('@xyflow')) {
               return 'xyflow';
             }
-            if (id.includes('lottie-web')) return 'lottie';
-            if (id.includes('video.js') || id.includes('videojs')) return 'videojs';
-            if (id.includes('wavesurfer')) return 'wavesurfer';
+            // mammoth is in the bundle but deliberately NOT split out: in its
+            // own chunk its internal deps blow up with `createBodyReader is
+            // undefined`.
             if (id.includes('xlsx') || id.includes('xlsx/')) return 'xlsx';
-            // mammoth is deliberately NOT split out: in its own chunk its
-            // internal deps blow up with `createBodyReader is undefined`.
-            if (id.includes('react-moveable')) return 'moveable';
-            if (id.includes('swiper')) return 'swiper';
-            // @dnd-kit is deliberately NOT split out either: it reaches for
-            // React.useLayoutEffect and breaks in a separate chunk.
-            if (id.includes('i18next') || id.includes('react-i18next')) return 'i18n';
-            if (id.includes('dompurify')) return 'dompurify';
-            // The Aliyun OSS SDK is ~1.5MB, so it gets its own chunk rather
-            // than riding along in a shared one.
-            // NOTE: dead today — `ali-oss` is a dependency but nothing under
-            // packages/web/src imports it, so this branch never fires and the
-            // chunk is never produced. Same situation as the antd branches
-            // above; both are catalogued in task #1833.
-            if (id.includes('ali-oss')) return 'ali-oss';
           },
         },
       },

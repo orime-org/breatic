@@ -15,9 +15,9 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { AVATAR_OUTPUT_PX } from '@breatic/shared';
 
 import {
+  AVATAR_OUTPUT_PX,
   AVATAR_OUTPUT_TYPE,
   MAX_AVATAR_INPUT_BYTES,
   MAX_AVATAR_INPUT_EDGE_PX,
@@ -100,28 +100,16 @@ describe('encodeAvatarBlob', () => {
   }
 
   it('asks for PNG once and ships what came back', async () => {
+    // The `calls` assertion is doing two jobs: PNG came back, and nothing was
+    // asked for twice. There is no fallback to test because PNG is what
+    // `toBlob` falls back TO when it cannot honour a type — so it is the one
+    // request that cannot come back as something else, and a second encode
+    // would only be a slower way to get the same bytes.
     const { encode, calls } = encoderProducing({ 'image/png': 'image/png' });
 
     const blob = await encodeAvatarBlob(encode);
 
     expect(blob.type).toBe('image/png');
-    expect(calls).toEqual(['image/png']);
-  });
-
-  it('never asks for a second format', async () => {
-    // PNG is what `toBlob` falls back to when it cannot honour a type, so it
-    // is the one request that cannot come back as something else. There is
-    // nothing for a fallback to catch, and a second encode would only be a
-    // slower way to get the same bytes. Every other type stubbed to null, so
-    // a retry would surface as a throw rather than pass unnoticed.
-    const { encode, calls } = encoderProducing({
-      'image/png': 'image/png',
-      'image/webp': null,
-      'image/jpeg': null,
-    });
-
-    await encodeAvatarBlob(encode);
-
     expect(calls).toEqual(['image/png']);
   });
 
@@ -142,9 +130,25 @@ describe('encodeAvatarBlob', () => {
     await expect(encodeAvatarBlob(encode)).rejects.toThrow();
   });
 
-  it('outputs the agreed square in the one stored format', () => {
-    // The number itself lives in shared because the server validates against
-    // the same one; pinning it here is pinning the contract, not a literal.
+});
+
+describe('the two output constants', () => {
+  it('pins both, because each breaks something this file cannot see', () => {
+    // Not a behaviour assertion, and the name should not suggest one:
+    // `renderAvatarBlob` is where a 512 square is actually produced, and it
+    // needs a canvas jsdom does not have. What these two lines guard is that
+    // neither number moves silently.
+    //
+    // AVATAR_OUTPUT_PX — `avatar.max_bytes` in config/storage.yaml is sized
+    // against the incompressible worst case AT this resolution, which scales
+    // with the pixel count. Raising this without raising that cap starts
+    // refusing legitimate crops of detailed pictures.
+    //
+    // AVATAR_OUTPUT_TYPE — this one IS a cross-package contract, unlike the
+    // size. The server's accepted-type table holds exactly `image/png`, keyed
+    // on what the uploaded bytes sniff as, so changing this to WebP refuses
+    // every upload with a 415: not for being too large, but for having no
+    // extension to be stored under.
     expect(AVATAR_OUTPUT_PX).toBe(512);
     expect(AVATAR_OUTPUT_TYPE).toBe('image/png');
   });

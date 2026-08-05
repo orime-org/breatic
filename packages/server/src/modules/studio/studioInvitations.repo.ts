@@ -205,7 +205,11 @@ export async function acceptIfPending(
  * Decline CAS — flip a LIVE pending invite owned by `invitedUserId` to
  * `declined`; the studio membership is untouched. Returns the attached
  * notification id (to mark read) or null when nothing matched (already decided
- * / not owned).
+ * / not owned / past the decision window).
+ *
+ * The not-expired predicate is the same one the accept CAS carries: expiry
+ * closes the invite outright, so both answers stop at the same instant rather
+ * than leaving "no" available after "yes" has lapsed.
  * @param id - Invitation id
  * @param invitedUserId - The declining user (must own the invite)
  * @param tx - Optional drizzle transaction handle
@@ -226,6 +230,7 @@ export async function declineIfPending(
         eq(studioInvitations.invitedUserId, invitedUserId),
         eq(studioInvitations.status, "pending"),
         isNull(studioInvitations.deletedAt),
+        gt(studioInvitations.expiresAt, sql`now()`),
       ),
     )
     .returning({ notificationId: studioInvitations.notificationId });

@@ -123,10 +123,10 @@ export function createApp(): Hono {
       try {
         const data = await readFile(real);
         const ext = real.split(".").pop() ?? "";
-        // webp is here because it is what the product itself produces — the
-        // avatar cropper encodes to it, and image generation outputs it. Left
-        // out, the browser is told octet-stream and downloads the file rather
-        // than rendering it.
+        // webp is here because image generation outputs it. Left out, the
+        // browser is told octet-stream and downloads the file rather than
+        // rendering it. (The avatar cropper used to encode webp too; it has
+        // encoded png since #31.)
         const mimeTypes: Record<string, string> = {
           png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
           webp: "image/webp",

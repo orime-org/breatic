@@ -12,37 +12,41 @@
  * fail. Changing an avatar is changing one URL.
  *
  * Uploads come THROUGH the server rather than by presigned direct upload, so
- * the byte cap is enforced here (see `readBoundedBody`) rather than at a
- * presign step.
+ * the byte cap is enforced by the route (`readBoundedBody`) rather than at a
+ * presign step. This module receives an already-bounded buffer.
  */
 
 import { randomUUID } from "node:crypto";
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import { readPngSize } from "@server/modules/studio/png-size.js";
 import { AppError, getStorageAdapter, sniffMimeType } from "@breatic/core";
-import { AVATAR_OUTPUT_PX, t } from "@breatic/shared";
+import { t } from "@breatic/shared";
 import type { Studio } from "@breatic/shared";
 
 /**
  * Accepted image types, and the extension each is stored under.
  *
- * PNG only, and that is not a restriction on what a user may pick. The file
- * picker still takes anything the browser can decode; what arrives here is
- * always the crop dialog's canvas re-encode, and that is PNG by definition.
- * So accepting JPEG or WebP would only widen the door for requests that did
- * not come from our own client — and those are exactly the ones the size rule
- * below has to hold, which it can only do for a format whose header this
- * server knows how to read.
+ * This is not a validation step and does not try to be one. A stored object
+ * needs an extension and a `Content-Type` to be served under, and both have to
+ * come from somewhere the client does not control — otherwise a browser is
+ * told to render the bytes as something they are not. Sniffing the signature
+ * is how that is decided; the request header is the client's claim about
+ * content the client also chose, so it takes no part.
  *
- * Keyed on what the SNIFFER reports, never on what the client claims.
- * `image/apng` is what an animated PNG sniffs as (measured, not assumed);
- * both forms store as `.png`, because an APNG *is* a PNG file — the animation
- * lives in extra chunks a still decoder ignores.
+ * PNG only, because PNG is what the crop dialog's canvas re-encode produces —
+ * `AVATAR_OUTPUT_TYPE` in `packages/web/.../avatar-image.ts` is the other half
+ * of this pair, and changing it there without changing this refuses every
+ * upload. Anything else would be an upload that did not come from our own
+ * client, and there is no picture it could be that the client could not have
+ * sent as PNG.
+ *
+ * A file that is not in this table is refused, which makes the table look like
+ * a validation gate. It is not one, and the difference matters for what gets
+ * added here: an entry is warranted when we have somewhere to store that type,
+ * never when a type "seems safe".
  */
 const ACCEPTED_IMAGE_TYPES: Readonly<Record<string, string>> = {
   "image/png": "png",
-  "image/apng": "png",
 };
 
 /**
@@ -82,17 +86,18 @@ export function avatarStorageKey(
 /**
  * Store an uploaded avatar and point the studio at it.
  *
- * The bytes are typed by sniffing their signature; the `Content-Type` header
- * is ignored entirely, since it is the client's claim about content the
- * client also chose. An unrecognised or non-image signature is refused.
+ * What the bytes contain is the client's business. An avatar is one URL on one
+ * row, shown in a fixed-size element that crops whatever it is given; it is
+ * not a project asset — nothing is billed for it and nothing else consumes it.
+ * Only an admin of this studio can get here at all. So the server takes the
+ * picture as sent: the caller has already bounded its size, and there is
+ * nothing further worth establishing about the pixels inside it.
  *
- * Dimensions are checked as well as bytes, and the two catch different things.
- * The byte cap bounds what one request can make this process hold; it says
- * nothing about how expensive the result is to LOOK at, because PNG is
- * compressed — a few hundred kilobytes of flat colour can declare tens of
- * thousands of pixels a side, and then every viewer's browser decodes
- * gigabytes for one avatar. Reading the header (not decoding) is what closes
- * that, and it costs 24 bytes of attention.
+ * Note what is NOT part of that reasoning: who can SEE the result. The URL
+ * goes to any authenticated user who reads the studio shell (`GET /:slug` has
+ * no role gate, by decision), and the object itself is served publicly. The
+ * argument rests on who can PUT one there, which is an admin of the one studio
+ * it will appear on.
  *
  * Storage is written BEFORE the database. The reverse order can leave the row
  * pointing at an object that was never written — a broken image for every
@@ -101,8 +106,10 @@ export function avatarStorageKey(
  * @param slug - The studio's URL handle
  * @param bytes - The raw image, already bounded by the caller
  * @returns The updated studio
- * @throws {AppError} 404 no such studio, 415 the bytes are not an accepted
- *   image, 422 the image is not the agreed avatar square
+ * @throws {AppError} 404 no such studio — over HTTP this is reachable only if
+ *   the studio is soft-deleted between `requireStudioRole`'s lookup and this
+ *   one, since that middleware answers `403` for a slug it cannot resolve;
+ *   415 bytes whose signature is not one this server has an extension for
  */
 export async function setAvatar(slug: string, bytes: Buffer): Promise<Studio> {
   const studio = await studioRepo.getBySlug(slug);
@@ -112,15 +119,6 @@ export async function setAvatar(slug: string, bytes: Buffer): Promise<Studio> {
   const ext = ACCEPTED_IMAGE_TYPES[mime];
   if (ext === undefined) {
     throw new AppError(415, t("server.studio.avatar_unsupported_type"));
-  }
-
-  const size = readPngSize(bytes);
-  if (
-    size === null ||
-    size.width !== AVATAR_OUTPUT_PX ||
-    size.height !== AVATAR_OUTPUT_PX
-  ) {
-    throw new AppError(422, t("server.studio.avatar_unsupported_size"));
   }
 
   const key = avatarStorageKey(
@@ -145,7 +143,8 @@ export async function setAvatar(slug: string, bytes: Buffer): Promise<Studio> {
  * unreferenced from here on.
  * @param slug - The studio's URL handle
  * @returns The updated studio
- * @throws {AppError} 404 no such studio
+ * @throws {AppError} 404 no such studio — as in {@link setAvatar}, reachable
+ *   over HTTP only through a soft-delete racing the role middleware's lookup
  */
 export async function clearAvatar(slug: string): Promise<Studio> {
   const studio = await studioRepo.getBySlug(slug);

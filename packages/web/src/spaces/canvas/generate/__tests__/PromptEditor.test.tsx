@@ -29,7 +29,7 @@ import * as Y from 'yjs';
 import {
   renderCollabCaret,
   renderCollabSelection,
-} from '@web/spaces/canvas/generate/caret-render';
+} from '@web/features/collab-editor/caret-render';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -358,7 +358,7 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     );
   });
 
-  it('keeps the dim after a local transaction rebuilds the caret from a stale thunk (resurrection race)', async () => {
+  it('a local structural edit hides the parked remote caret, and it comes back still dimmed', async () => {
     const { awareness, editorEl } = await mountWithAwareness(true);
     const doc = awareness.doc;
     const fragment = doc.getXmlFragment('prompt');
@@ -390,44 +390,38 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     await waitFor(() =>
       expect(editorEl.querySelector('.collaboration-carets__caret')).not.toBeNull(),
     );
-    // Reaching the STALE-thunk branch needs precise staging (adversarial R3 —
-    // a Y-origin doc.transact recreates decorations from CURRENT awareness and
-    // can never exercise it, which made the first version of this test pass
-    // even with the fix deleted):
-    // 1. park the batched yCursor refresh with fake timers, so the flip's
-    //    fresh decorations never land;
-    // 2. flip focused=false — the awareness handler dims the existing DOM;
-    // 3. dispatch a PM-SIDE structural transaction (split forces the widget's
-    //    parent desc to rebuild; plain insertText reuses the widget DOM) —
-    //    the widget rebuilds from the PRE-FLIP thunk (focused=true), and only
-    //    the transaction resync re-dims it: this assertion goes RED without
-    //    editor.on('transaction', applyDim);
-    // 4. release the batched refresh — key-equality DOM reuse must not
-    //    resurrect the pre-flip class either.
-    vi.useFakeTimers();
-    try {
-      pushRemote(false);
-      const blurred = (): boolean | undefined =>
-        editorEl
-          .querySelector('.collaboration-carets__caret')
-          ?.classList.contains('collaboration-carets__caret--blurred');
-      expect(blurred()).toBe(true); // awareness-handler path
-      const editor = (
-        editorEl.querySelector('.ProseMirror') as unknown as {
-          editor: { view: { dispatch: (tr: unknown) => void; state: { tr: { split: (pos: number) => unknown } } } };
-        }
-      ).editor;
-      act(() => {
-        editor.view.dispatch(editor.view.state.tr.split(2));
-      });
-      expect(blurred()).toBe(true); // stale-thunk rebuild, re-dimmed by the resync
-      act(() => {
-        vi.runOnlyPendingTimers(); // batched yCursor refresh (DOM reuse path)
-      });
-      expect(blurred()).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
+    // 1. The peer goes away. The awareness handler dims the EXISTING caret DOM
+    //    (prosemirror-view reuses a widget whose key is unchanged without
+    //    re-invoking its builder, so nothing else would dim it).
+    pushRemote(false);
+    const caretEl = (): Element | null =>
+      editorEl.querySelector('.collaboration-carets__caret');
+    const blurred = (): boolean | undefined =>
+      caretEl()?.classList.contains('collaboration-carets__caret--blurred');
+    await waitFor(() => expect(blurred()).toBe(true));
+
+    // 2. A local STRUCTURAL edit. Since @tiptap/y-tiptap 3.0.7 the cursor plugin
+    //    drops every remote decoration on one, because the ProseMirror document
+    //    leads the Yjs mapping and a parked position would render in the wrong
+    //    place. Upstream then waits for the collaborator to republish — which an
+    //    idle peer never does, since its deep-equal heartbeats fire 'update' and
+    //    not 'change'. Left alone, pressing Enter makes every collaborator's
+    //    caret vanish until they happen to move.
+    const editor = (
+      editorEl.querySelector('.ProseMirror') as unknown as {
+        editor: { view: { dispatch: (tr: unknown) => void; state: { tr: { split: (pos: number) => unknown } } } };
+      }
+    ).editor;
+    act(() => {
+      editor.view.dispatch(editor.view.state.tr.split(2));
+    });
+
+    // 3. The peer does NOTHING. The caret must come back anyway, and come back
+    //    dimmed — the collaborator is still away. Real timers throughout: the
+    //    point is that the recovery happens on its own, not that a parked timer
+    //    can be released by hand.
+    await waitFor(() => expect(caretEl()).not.toBeNull(), { timeout: 2000 });
+    expect(blurred()).toBe(true);
   });
 
   it('renders a remote client caret with the remote user name and color', async () => {

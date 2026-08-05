@@ -17,9 +17,20 @@
  * renders as a broken image, since browsers decode by declared type.
  */
 
-import { AVATAR_OUTPUT_PX } from '@breatic/shared';
-
 import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
+
+/**
+ * The edge length of the avatar this module produces, in pixels.
+ *
+ * Local to the browser, because nothing else consults it: the server stores
+ * whatever arrives without reading its dimensions, and every place an avatar
+ * is shown is a fixed-size element that crops what it is given.
+ *
+ * Changing it is not free even so — `avatar.max_bytes` in `config/storage.yaml`
+ * is sized against the incompressible worst case AT this resolution, and that
+ * worst case scales with the pixel count.
+ */
+export const AVATAR_OUTPUT_PX = 512;
 
 /**
  * Refuse a picked file above this size without decoding it.
@@ -58,17 +69,21 @@ export const MAX_AVATAR_INPUT_EDGE_PX = 8000;
  * unlike a lossy target, this needs no "check what actually came out" step.
  *
  * The cost is size, and it cannot be tuned away from here: a browser's PNG
- * encoder takes no parameters. Measured in Chrome at this size, a photograph
- * is ~550 KB and random pixels — the incompressible worst case — are ~880 KB,
+ * encoder takes no parameters. A photograph at this size measures ~550 KB,
  * against ~41 KB for the same picture as WebP. Getting PNG smaller means
  * palette quantisation or a better DEFLATE search, neither of which
  * `canvas.toBlob` offers; it would take a WASM encoder here or re-encoding on
  * the server, and the second contradicts this pipeline's "server does no image
  * processing" shape.
  *
- * Those two numbers are what `avatar.max_bytes` (1 MiB) is sized against, and
- * they are a function of {@link AVATAR_OUTPUT_PX}. Change the output size and
- * that cap has to move with it — 1024² would put the worst case near 3.5 MB.
+ * The incompressible worst case is 1,049,473 bytes, measured by deflating the
+ * scanlines of a 512² RGBA frame whose pixels AND alpha are random — the point
+ * where deflate has nothing to remove. Random pixels over an opaque alpha
+ * channel stop at ~900 KB, which is the more intuitive number and the wrong one
+ * to size a cap against: a picture with soft edges has a varying alpha channel
+ * and is a legitimate thing to upload. `avatar.max_bytes` (2 MiB) is sized
+ * against the first figure, and it is a function of {@link AVATAR_OUTPUT_PX} —
+ * change the output size and that cap has to move with it.
  */
 export const AVATAR_OUTPUT_TYPE = 'image/png';
 

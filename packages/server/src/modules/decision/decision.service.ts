@@ -44,7 +44,7 @@ import * as decisionRepo from "@server/modules/decision/decision.repo.js";
 import type { RequestDetail } from "@server/modules/decision/decision.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { DAY_MS } from "@server/config/limits.js";
+import { MS_PER_DAY } from "@server/config/limits.js";
 
 
 /** Terminal status words meaning the recipient said yes. */
@@ -66,7 +66,7 @@ const WITHDRAWN = new Set(["revoked", "cancelled"]);
  * @returns The window length in days, at least 1.
  */
 function windowDaysOf(createdAt: Date, expiresAt: Date): number {
-  return Math.max(1, Math.round((expiresAt.getTime() - createdAt.getTime()) / DAY_MS));
+  return Math.max(1, Math.round((expiresAt.getTime() - createdAt.getTime()) / MS_PER_DAY));
 }
 
 /** The two flows where the recipient is, by definition, not a member yet. */

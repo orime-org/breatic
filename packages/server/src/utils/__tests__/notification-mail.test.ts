@@ -1,7 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Three, not the seven the repo ships — a hardcoded footer would pass a mock
+// that agreed with the shipped value. Mutable so the one-day case (the only
+// place the singular "day" is produced) can be exercised too.
+const decisionWindow = vi.hoisted(() => ({ days: 3 }));
+vi.mock("@server/config/limits.js", () => ({
+  getDecisionWindowDays: () => decisionWindow.days,
+}));
 
 import {
   buildStudioInvitationMail,
@@ -24,7 +32,6 @@ describe("buildStudioInvitationMail", () => {
       studioName: "Team & Co",
       role: "maintainer",
       inviteLink: "https://app.test/decision?token=abc",
-      windowDays: 7,
     });
     expect(mail.to).toBe("invitee@example.com");
     expect(mail.subject).toContain("Team & Co");
@@ -37,7 +44,6 @@ describe("buildStudioInvitationMail", () => {
     expect(mail.html).toContain("https://app.test/decision?token=abc");
     expect(mail.html).toContain("Open the invitation");
     expect(mail.html.toLowerCase()).toContain("accept or decline");
-    expect(mail.html.toLowerCase()).toContain("invitation expires in 7 days");
   });
 });
 
@@ -49,7 +55,6 @@ describe("buildProjectInvitationMail", () => {
       projectName: "Launch & Grow",
       role: "editor",
       inviteLink: "https://app.test/decision?token=xyz",
-      windowDays: 7,
     });
     expect(mail.to).toBe("invitee@example.com");
     expect(mail.subject).toContain("Launch & Grow");
@@ -62,7 +67,6 @@ describe("buildProjectInvitationMail", () => {
     expect(mail.html).toContain("https://app.test/decision?token=xyz");
     expect(mail.html).toContain("Open the invitation");
     expect(mail.html.toLowerCase()).toContain("accept or decline");
-    expect(mail.html.toLowerCase()).toContain("invitation expires in 7 days");
   });
 });
 
@@ -73,7 +77,6 @@ describe("buildStudioTransferMail", () => {
       initiatorName: "Alice <b>",
       studioName: "Team & Co",
       decisionLink: "https://app.test/studio/team-co",
-      windowDays: 7,
     });
     expect(mail.to).toBe("new-admin@example.com");
     expect(mail.subject).toContain("Team & Co");
@@ -85,7 +88,7 @@ describe("buildStudioTransferMail", () => {
     expect(mail.html).toContain("https://app.test/studio/team-co");
     expect(mail.html).toContain("Review this transfer");
     expect(mail.html.toLowerCase()).toContain("to accept or decline");
-    expect(mail.html.toLowerCase()).toContain("transfer request expires in 7 days");
+    expect(mail.html.toLowerCase()).toContain("this transfer request expires in 3 days");
   });
 });
 
@@ -96,7 +99,6 @@ describe("buildProjectTransferMail", () => {
       initiatorName: "Bob <i>",
       projectName: "Launch & Grow",
       decisionLink: "https://app.test/project/launch-grow-123",
-      windowDays: 7,
     });
     expect(mail.to).toBe("new-owner@example.com");
     expect(mail.subject).toContain("Launch & Grow");
@@ -108,7 +110,7 @@ describe("buildProjectTransferMail", () => {
     expect(mail.html).toContain("https://app.test/project/launch-grow-123");
     expect(mail.html).toContain("Review this transfer");
     expect(mail.html.toLowerCase()).toContain("to accept or decline");
-    expect(mail.html.toLowerCase()).toContain("transfer request expires in 7 days");
+    expect(mail.html.toLowerCase()).toContain("this transfer request expires in 3 days");
   });
 });
 
@@ -121,7 +123,6 @@ describe("notification mail — link href escaping", () => {
       initiatorName: "X",
       studioName: "S",
       decisionLink: 'https://app.test/s"onmouseover="alert(1)',
-      windowDays: 7,
     });
     expect(mail.html).toContain("&quot;onmouseover=&quot;");
     expect(mail.html).not.toContain('"onmouseover="');
@@ -145,7 +146,6 @@ describe("every decision email points at the shared landing page", () => {
       initiatorName: "Alice",
       studioName: "Team & Co",
       decisionLink: LINK,
-      windowDays: 7,
     });
     expect(mail.html).toContain(LINK);
     // The old link was `/studio/{slug}`, which leaked the slug and could not
@@ -159,7 +159,6 @@ describe("every decision email points at the shared landing page", () => {
       initiatorName: "Alice",
       projectName: "Rocket",
       decisionLink: LINK,
-      windowDays: 7,
     });
     expect(mail.html).toContain(LINK);
     expect(mail.html).not.toMatch(/\/project\/[a-z]/i);
@@ -173,7 +172,6 @@ describe("every decision email points at the shared landing page", () => {
       requestedRole: "editor",
       message: "I keep needing to fix typos",
       decisionLink: LINK,
-      windowDays: 7,
     });
     expect(mail.to).toBe("owner@example.com");
     expect(mail.subject).toContain("Rocket & Co");
@@ -191,44 +189,42 @@ describe("every decision email points at the shared landing page", () => {
       requestedRole: "editor",
       message: null,
       decisionLink: LINK,
-      windowDays: 7,
     });
     expect(mail.html).toContain(LINK);
   });
 });
 
 describe("the expiry footer follows the yaml knob", () => {
-  // `deferred_request_ttl_days` is a knob; every email that states the window
-  // takes it from the caller. A hardcoded 7 here contradicted the landing
-  // card the moment ops turned the knob.
-  it("all five builders say the window they were given", () => {
-    const nine = [
+  // `decision_window_days` is a knob, and every email that states the window
+  // reads it. A hardcoded 7 here contradicted the landing card the moment ops
+  // turned the knob — so the mock says three, and a builder carrying its own
+  // number fails against it.
+  it("all five builders say the configured window, not one of their own", () => {
+    const all = [
       buildStudioInvitationMail({
         inviteeEmail: "a@example.com", inviterName: "A", studioName: "S",
         role: "guest", inviteLink: "https://app.test/decision?token=t",
-        windowDays: 9,
       }),
       buildProjectInvitationMail({
         inviteeEmail: "a@example.com", inviterName: "A", projectName: "P",
         role: "viewer", inviteLink: "https://app.test/decision?token=t",
-        windowDays: 9,
       }),
       buildStudioTransferMail({
         recipientEmail: "a@example.com", initiatorName: "A", studioName: "S",
-        decisionLink: "https://app.test/decision?token=t", windowDays: 9,
+        decisionLink: "https://app.test/decision?token=t",
       }),
       buildProjectTransferMail({
         recipientEmail: "a@example.com", initiatorName: "A", projectName: "P",
-        decisionLink: "https://app.test/decision?token=t", windowDays: 9,
+        decisionLink: "https://app.test/decision?token=t",
       }),
       buildRoleUpgradeRequestMail({
         ownerEmail: "a@example.com", requesterName: "A", projectName: "P",
         requestedRole: "editor", message: null,
-        decisionLink: "https://app.test/decision?token=t", windowDays: 9,
+        decisionLink: "https://app.test/decision?token=t",
       }),
     ];
-    for (const mail of nine) {
-      expect(mail.html.toLowerCase()).toContain("expires in 9 days");
+    for (const mail of all) {
+      expect(mail.html.toLowerCase()).toContain("expires in 3 days");
       expect(mail.html.toLowerCase()).not.toContain("7 days");
     }
   });
@@ -237,11 +233,11 @@ describe("the expiry footer follows the yaml knob", () => {
     const mail = buildRoleUpgradeRequestMail({
       ownerEmail: "a@example.com", requesterName: "A", projectName: "P",
       requestedRole: "editor", message: null,
-      decisionLink: "https://app.test/decision?token=t", windowDays: 7,
+      decisionLink: "https://app.test/decision?token=t",
     });
     // The footer used to be shared with the two transfer mails, so the owner
     // of a project read "This transfer request expires..." about a role ask.
     expect(mail.html.toLowerCase()).not.toContain("transfer");
-    expect(mail.html.toLowerCase()).toContain("request expires in 7 days");
+    expect(mail.html.toLowerCase()).toContain("request expires in 3 days");
   });
 });

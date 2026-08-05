@@ -94,6 +94,15 @@ export function makeReferenceSuggestion(input: {
     // never opened the picker. null lets `@` trigger after any character
     // (Notion / Feishu behaviour).
     allowedPrefixes: null,
+    // The plugin's own resolver. Its RESULT is not what the popup renders —
+    // every show path calls `computeItems` itself (see `showFor`), because the
+    // rows the plugin hands back arrive a microtask late and an empty list
+    // arrives first. Keeping it wired anyway is deliberate on two counts: the
+    // plugin drives its `loading` state and its abort handling off this call,
+    // and it is the one public seam through which the filtering rules
+    // (connection compatibility, t2i excluding images) can be tested. Both
+    // paths run the same function, so there is no second source of truth to
+    // drift — only the same cheap filter run twice.
     items: ({ query }): ReferenceRailItem[] => computeItems(query),
     command: ({ editor, range, props }): void => {
       // No trailing space (user 2026-07-10): the gap between adjacent chips
@@ -142,25 +151,21 @@ export function makeReferenceSuggestion(input: {
        */
       let dismissed = false;
       /**
-       * Whether the popup was OPEN (visible, not dismissed) at the instant onExit
-       * ran. `@tiptap/suggestion` re-fires start (onExit → onStart) when a peer edit
-       * both moves the `@` range and changes the query, so a REMOTE restart would
-       * otherwise flicker away a picker this user is actively using. onExit records
-       * this, and a remote-driven onStart restores an open picker instead of
-       * hiding it. Consumed (reset) on the next onStart.
-       */
-      let wasOpenBeforeExit = false;
-
-      /**
        * Updates the popup's list CONTENT only — never its visibility. The pick
        * command is read live from {@link latestProps} (bound to the current `@`
        * range). Split from visibility so a remote change can refresh content while
        * leaving a dismissed / visible popup's shown-state untouched.
-       * @param items - The rows to display.
+       *
+       * Takes a QUERY, not a row array, and resolves the rows itself. That is
+       * deliberate: `@tiptap/suggestion` resolves items through an async
+       * pipeline and hands the callbacks an EMPTY `props.items` until it
+       * settles, so a call site free to pass its own array can quietly feed the
+       * popup the wrong source. Accepting only a query makes that impossible.
+       * @param query - The text typed after `@`.
        */
-      const updateContent = (items: ReferenceRailItem[]): void => {
+      const updateContent = (query: string): void => {
         component?.updateProps({
-          items,
+          items: computeItems(query),
           command: (item: ReferenceRailItem) => latestProps?.command(item),
           emptyLabel: input.emptyLabel,
         });
@@ -173,10 +178,11 @@ export function makeReferenceSuggestion(input: {
        * / refocus / edit always may, and a remote content change may too but only
        * for a NON-dismissed popup (never resurrecting a dismissed one). The
        * dismissed / remote gating lives at the call sites, not here.
-       * @param items - The rows the popup would show.
+       * Takes a QUERY for the same reason {@link updateContent} does.
+       * @param query - The text typed after `@`.
        */
-      const showFor = (items: ReferenceRailItem[]): void => {
-        if (el) el.style.display = items.length > 0 ? '' : 'none';
+      const showFor = (query: string): void => {
+        if (el) el.style.display = computeItems(query).length > 0 ? '' : 'none';
       };
 
       /**
@@ -201,9 +207,8 @@ export function makeReferenceSuggestion(input: {
           | undefined;
         if (st?.active !== true || !editor.state.selection.empty) return;
         dismissed = false;
-        const items = computeItems(st.query ?? '');
-        updateContent(items);
-        showFor(items);
+        updateContent(st.query ?? '');
+        showFor(st.query ?? '');
       };
 
       /**
@@ -256,9 +261,15 @@ export function makeReferenceSuggestion(input: {
       return {
         onStart: (props: SuggestionProps<ReferenceRailItem>): void => {
           latestProps = props;
+          // Seeded from the live pool, NOT from `props.items`. @tiptap/suggestion
+          // resolves items through an async pipeline (so a remote resolver can be
+          // awaited and aborted): every callback is handed `initialItems ?? []`
+          // first — and we configure no `initialItems`, so that is always EMPTY —
+          // with the real rows arriving on a later onUpdate. `computeItems` is
+          // the single source for every path here; see {@link showFor}.
           component = new ReactRenderer(ReferenceMentionList, {
             props: {
-              items: props.items,
+              items: computeItems(props.query),
               command: (item: ReferenceRailItem) => latestProps?.command(item),
               emptyLabel: input.emptyLabel,
             },
@@ -289,9 +300,8 @@ export function makeReferenceSuggestion(input: {
               // display would latch it hidden forever. A user-dismissed popup
               // stays hidden.
               if (el && !dismissed && latestProps) {
-                const items = computeItems(latestProps.query);
-                updateContent(items);
-                showFor(items);
+                updateContent(latestProps.query);
+                showFor(latestProps.query);
               }
             };
           }
@@ -360,22 +370,26 @@ export function makeReferenceSuggestion(input: {
             reshowIfActiveHidden(props.editor);
           };
           props.editor.view.dom.addEventListener('click', onEditorClick);
-          // Decide the initial visibility. A LOCAL start (the user typed `@`)
-          // shows (I3: hidden when nothing matches). A start driven by anything
-          // ELSE also reaches onStart — @tiptap/suggestion re-fires start when an
-          // edit both MOVES the range and CHANGES the query (moved && changed →
-          // onExit → onStart), and that edit can be a remote peer's OR a local
-          // machine-derived cascade. Such a non-keystroke start must NOT pop a
-          // picker this user never opened (residual 1), but must ALSO NOT flicker
-          // away one the user was actively using (round-2 adversarial): restore it
-          // iff it was open right before the restart. A genuine local keystroke
-          // (the user typing `@`) always shows.
-          const localStart = isLocalUserInput(props.editor);
-          const keepOpen = localStart || wasOpenBeforeExit;
-          wasOpenBeforeExit = false; // consume the one-shot restart signal
+          // Decide the initial visibility. A LOCAL start — the user typed `@` —
+          // shows (I3: hidden when nothing matches). Anything else reaching
+          // onStart must NOT pop a picker this user never opened (residual 1):
+          // a remote peer's edit, or a local machine-derived cascade, can put an
+          // `@` in range without any intent behind it.
+          //
+          // There used to be a second way to keep it open, for the case where
+          // @tiptap/suggestion re-fired start (onExit → onStart in one update)
+          // on an edit that both moved the range and changed the query — that
+          // restart would otherwise flicker away a picker in active use. 3.29
+          // rewrote view.update() into a three-way choice (started / stopped /
+          // updated), so a moved-and-changed edit now yields `updated` alone and
+          // that restart cannot happen. Measured against the real plugin: typing,
+          // a remote insert before the `@`, and a whole-paragraph setContent all
+          // produce update-only sequences; the only EXIT observed (typing a
+          // space) is terminal, with no START behind it.
+          const keepOpen = isLocalUserInput(props.editor);
           dismissed = !keepOpen;
           if (keepOpen) {
-            showFor(props.items);
+            showFor(props.query);
           } else {
             el.style.display = 'none';
           }
@@ -383,8 +397,7 @@ export function makeReferenceSuggestion(input: {
         },
         onUpdate: (props: SuggestionProps<ReferenceRailItem>): void => {
           latestProps = props;
-          // props.items is already computed by the plugin (items() → computeItems
-          // with the live mode). ALWAYS refresh the list content so a visible
+          // ALWAYS refresh the list content so a visible
           // popup stays current. But change VISIBILITY only on a genuine LOCAL
           // KEYSTROKE: a remote peer's edit — OR a machine-derived local dispatch
           // (the edge-driven cascade-clear deleting a chip before the `@`) —
@@ -393,17 +406,17 @@ export function makeReferenceSuggestion(input: {
           // the round-4 hole was that the old "not remote" test let the local
           // cascade through). A local keystroke is also the user re-engaging, so
           // it clears any dismissal.
-          updateContent(props.items);
+          updateContent(props.query);
           if (isLocalUserInput(props.editor)) {
             // Local keystroke = the user re-engaging → clear any dismissal and
             // apply the normal I3 visibility (empty → hidden, else shown).
             dismissed = false;
-            showFor(props.items);
+            showFor(props.query);
           } else if (!dismissed) {
             // Non-keystroke content change to a VISIBLE (non-dismissed) popup →
             // keep I3 (a peer emptying the pool still hides it) but NEVER re-open
             // a popup the user dismissed (residual 1).
-            showFor(props.items);
+            showFor(props.query);
           }
           place(props.clientRect);
         },
@@ -412,21 +425,6 @@ export function makeReferenceSuggestion(input: {
           return component?.ref?.onKeyDown(props.event) ?? false;
         },
         onExit: (props: SuggestionProps<ReferenceRailItem>): void => {
-          // Capture the pre-teardown open state so an IMMEDIATE remote restart
-          // (onExit → onStart, fired synchronously in the SAME view.update when a
-          // peer edit both moves the range and changes the query) can restore an
-          // actively-open picker (round-2 adversarial). Read before dismissed is
-          // reset below. Scope it to that SYNCHRONOUS restart only: clear it on
-          // the next microtask so a GENUINE terminal exit (space / delete / pick /
-          // cursor-leave) does not leave it armed for a LATER, unrelated remote
-          // `@` onStart — which would wrongly pop a picker the user never opened,
-          // re-introducing residual 1 (round-3 adversarial). The synchronous
-          // restart's onStart reads + consumes it before this microtask runs.
-          wasOpenBeforeExit =
-            !!el && el.style.display !== 'none' && !dismissed;
-          queueMicrotask(() => {
-            wasOpenBeforeExit = false;
-          });
           stopAutoUpdate?.();
           stopAutoUpdate = null;
           if (onOutsidePointerDown) {

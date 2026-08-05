@@ -29,11 +29,6 @@ interface InnerNodeProps {
    */
   onActivate?: () => void;
   /**
-   * Commit inline-edited text content, pre-bound to this node's id (text nodes).
-   * Without it the text body's edit is never persisted — discarded on blur.
-   */
-  onChange?: (next: string) => void;
-  /**
    * Retry a failed upload from its session-stashed File, pre-bound to this
    * node's id (#1609 P4). Present only while a stash exists — its absence
    * hides the error-state Retry button.
@@ -71,7 +66,6 @@ function makeFlowNode(
     const {
       renameNode,
       activateNodeUpload,
-      setNodeContent,
       commitGroupResize,
       retryNodeUpload,
       hasUploadRetryFile,
@@ -96,14 +90,6 @@ function makeFlowNode(
         activateNodeUpload(props.id, kind);
       }
     }, [activateNodeUpload, props.id, data.kind]);
-    // Text body commits its inline edit through here — the wrapper is the only
-    // layer that knows the node id, so it binds the content write to it (mirrors
-    // onRename). Without this the body's onChange is undefined and the edit is
-    // lost on blur (#1470).
-    const onChange = React.useCallback(
-      (content: string): void => setNodeContent(props.id, content),
-      [setNodeContent, props.id],
-    );
     // Error-state Retry (#1609 P4): bound only while the session still
     // stashes this node's failed File — no stash (refresh / success /
     // non-upload error) leaves the prop undefined and no button renders.
@@ -172,7 +158,6 @@ function makeFlowNode(
               locked={data.locked}
               onRename={onRename}
               onActivate={onActivate}
-              onChange={onChange}
               {...(canRetryUpload && { onRetryUpload })}
             />
             {/* Connection handles are for content nodes only — a Group is a

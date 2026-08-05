@@ -17,24 +17,23 @@
  */
 
 import type { SendMailOptions } from "@server/infra/mailer.js";
+import { getDecisionWindowDays } from "@server/config/limits.js";
 
 const BRAND = "Breatic";
-
 /**
- * The footer naming what expires and when.
+ * Build the closing line of an invitation, transfer or request email.
  *
- * The window is a yaml knob (`deferred_request_ttl_days`), so every builder
- * takes it from its caller rather than hardcoding a number that stops being
- * true the moment ops turn the knob. The landing page arrives at the same
- * figure from the other direction, off the row itself, so a card written
- * years later still states the window that request actually had.
- * @param noun - What the email is about, as the recipient would call it.
- * @param windowDays - How long the answering window is, in days.
- * @returns The footer sentence.
+ * The duration is read rather than written: this sentence and the deadline
+ * stored on the row are the same fact told to two audiences, and a sentence
+ * the recipient has no way to check is the worst place to keep a second copy
+ * of a number.
+ * @param subject - What expires, as it opens the sentence ("This invitation").
+ * @returns The footer sentence, with the configured window in it.
  */
-function expiryFooter(noun: string, windowDays: number): string {
-  const days = windowDays === 1 ? "1 day" : `${windowDays} days`;
-  return `This ${noun} expires in ${days}. If you didn't expect it, you can ignore this email.`;
+function expiryFooter(subject: string): string {
+  const days = getDecisionWindowDays();
+  const unit = days === 1 ? "day" : "days";
+  return `${subject} expires in ${days} ${unit}. If you didn't expect it, you can ignore this email.`;
 }
 
 /**
@@ -95,8 +94,6 @@ export interface StudioInvitationMailInput {
   role: string;
   /** Full landing link, e.g. `https://breatic.ai/decision?token=<token>`. */
   inviteLink: string;
-  /** How long the answering window is, in days — the yaml knob's value. */
-  windowDays: number;
 }
 
 /**
@@ -116,7 +113,7 @@ export function buildStudioInvitationMail(
     linkHref: input.inviteLink,
     linkLabel: "Open the invitation",
     linkTrailing: " to accept or decline.",
-    footer: expiryFooter("invitation", input.windowDays),
+    footer: expiryFooter("This invitation"),
   });
 }
 
@@ -128,8 +125,6 @@ export interface ProjectInvitationMailInput {
   role: string;
   /** Full landing link, e.g. `https://breatic.ai/decision?token=<token>`. */
   inviteLink: string;
-  /** How long the answering window is, in days — the yaml knob's value. */
-  windowDays: number;
 }
 
 /**
@@ -149,7 +144,7 @@ export function buildProjectInvitationMail(
     linkHref: input.inviteLink,
     linkLabel: "Open the invitation",
     linkTrailing: " to accept or decline.",
-    footer: expiryFooter("invitation", input.windowDays),
+    footer: expiryFooter("This invitation"),
   });
 }
 
@@ -160,8 +155,6 @@ export interface StudioTransferMailInput {
   studioName: string;
   /** Opens the shared landing page for this transfer. */
   decisionLink: string;
-  /** How long the answering window is, in days — the yaml knob's value. */
-  windowDays: number;
 }
 
 /**
@@ -181,7 +174,7 @@ export function buildStudioTransferMail(
     linkHref: input.decisionLink,
     linkLabel: "Review this transfer",
     linkTrailing: " to accept or decline.",
-    footer: expiryFooter("transfer request", input.windowDays),
+    footer: expiryFooter("This transfer request"),
   });
 }
 
@@ -192,8 +185,6 @@ export interface ProjectTransferMailInput {
   projectName: string;
   /** Opens the shared landing page for this transfer. */
   decisionLink: string;
-  /** How long the answering window is, in days — the yaml knob's value. */
-  windowDays: number;
 }
 
 /**
@@ -213,7 +204,7 @@ export function buildProjectTransferMail(
     linkHref: input.decisionLink,
     linkLabel: "Review this transfer",
     linkTrailing: " to accept or decline.",
-    footer: expiryFooter("transfer request", input.windowDays),
+    footer: expiryFooter("This transfer request"),
   });
 }
 
@@ -226,8 +217,6 @@ export interface RoleUpgradeRequestMailInput {
   /** The requester's own words; null when they gave none. */
   message: string | null;
   decisionLink: string;
-  /** How long the answering window is, in days — the yaml knob's value. */
-  windowDays: number;
 }
 
 /**
@@ -254,6 +243,8 @@ export function buildRoleUpgradeRequestMail(
     linkHref: input.decisionLink,
     linkLabel: "Review this request",
     linkTrailing: " to approve or decline.",
-    footer: expiryFooter("request", input.windowDays),
+    // Not "transfer request": nothing is changing hands, somebody is asking
+    // for a bigger role on something that stays where it is.
+    footer: expiryFooter("This request"),
   });
 }

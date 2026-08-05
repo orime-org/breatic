@@ -42,15 +42,20 @@ vi.mock("ai", () => ({
 // Member caps come from config/limits.yaml; mock them so a small cap can be
 // forced per test. Default 100 keeps every other test (tiny member counts)
 // unaffected; the member-cap tests below lower it.
-import type * as LimitsModule from "@server/config/limits.js";
 
 const capRefs = vi.hoisted(() => ({ studio: 100, project: 100 }));
-vi.mock("@server/config/limits.js", async (importOriginal) => ({
-  // Spread the real module: only the caps are being forced here, and
-  // listing exports by hand breaks the moment the config grows one.
-  ...(await importOriginal<typeof LimitsModule>()),
+// The decision window comes from the same config file. Pinned here to a value
+// that is deliberately NOT the shipped seven: the invite deadline, the token
+// TTL and the number the landing page prints are all supposed to come from the
+// configured window, and anything that carries its own copy of 7 would pass
+// against a mock that also said 7.
+const decisionWindow = vi.hoisted(() => ({ days: 3 }));
+vi.mock("@server/config/limits.js", () => ({
   getStudioMemberCap: () => capRefs.studio,
   getProjectCollaboratorCap: () => capRefs.project,
+  getDecisionWindowDays: () => decisionWindow.days,
+  getDecisionWindowMs: () => decisionWindow.days * 24 * 60 * 60 * 1000,
+  getDecisionWindowSeconds: () => decisionWindow.days * 24 * 60 * 60,
 }));
 
 import { eq, and, inArray, isNull, sql } from "drizzle-orm";
@@ -294,6 +299,32 @@ describe("confirmInvite", () => {
 });
 
 describe("declineInvite / revokeInvite", () => {
+  it("refuses to decline an EXPIRED invite (past the window there is no decision left)", async () => {
+    // The repo-level CAS is covered in studio-invitations.integration.test; this
+    // pins the service the route actually calls, so the NotFound the invitee
+    // receives is asserted at the layer that produces their HTTP status.
+    const { invitationId } = await inviteService.createInvite(
+      "svc-team",
+      INVITER,
+      INVITEE_EMAIL,
+      "guest",
+    );
+    await db
+      .update(schema.studioInvitations)
+      .set({ expiresAt: new Date(Date.now() - 60_000) })
+      .where(eq(schema.studioInvitations.id, invitationId));
+
+    await expect(
+      inviteService.declineInvite(invitationId, INVITEE),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    const [row] = await db
+      .select({ status: schema.studioInvitations.status })
+      .from(schema.studioInvitations)
+      .where(eq(schema.studioInvitations.id, invitationId));
+    expect(row?.status).toBe("pending");
+  });
+
   it("decline leaves membership untouched and clears the pending", async () => {
     const { invitationId } = await inviteService.createInvite(
       "svc-team",
@@ -359,5 +390,32 @@ describe("member cap (config/limits.yaml)", () => {
       "guest",
     );
     expect(res.invitationId).toBeTruthy();
+  });
+});
+
+describe("the deadline the window actually enforces", () => {
+  it("stamps the row deadline from the configured window, not a number of its own", async () => {
+    // The landing page reads this row to say how long the invitee had. A getter
+    // returning the wrong unit — or zero — would leave every other test in this
+    // file green, so the deadline is measured rather than assumed.
+    //
+    // The Redis token half of this test went with the mechanism: a link no
+    // longer carries a one-time token that expires on its own, it carries the
+    // request's permanent share token and the ROW is what expires.
+    const { invitationId } = await inviteService.createInvite(
+      "svc-team",
+      INVITER,
+      INVITEE_EMAIL,
+      "guest",
+    );
+    const windowMs = decisionWindow.days * 24 * 60 * 60 * 1000;
+
+    const [row] = await db
+      .select({ expiresAt: schema.studioInvitations.expiresAt })
+      .from(schema.studioInvitations)
+      .where(eq(schema.studioInvitations.id, invitationId));
+    const aheadMs = row!.expiresAt.getTime() - Date.now();
+    expect(aheadMs).toBeLessThanOrEqual(windowMs);
+    expect(aheadMs).toBeGreaterThan(windowMs - 60_000);
   });
 });

@@ -28,6 +28,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
+import type * as LimitsModule from "@server/config/limits.js";
 
 // Mock `ai` BEFORE importing @breatic/core — the core barrel pulls
 // agent/llm → the `ai` SDK → @opentelemetry/api, whose ESM build breaks
@@ -42,6 +43,20 @@ vi.mock("ai", () => ({
   }),
   stepCountIs: (_n: number) => () => false,
   tool: (config: Record<string, unknown>) => config,
+}));
+
+// The decision window is mocked to a value the repo does not ship, so a write
+// site that went back to spelling out its own seven days cannot pass. Reading
+// the real getter here would only prove the test and the code agree with each
+// other — measured: with the assertions reading getDecisionWindowMs(), putting
+// `7 * 24 * 60 * 60 * 1000` back into the service left every test in this file
+// green. The other getters keep their real behaviour.
+const decisionWindow = vi.hoisted(() => ({ days: 3 }));
+vi.mock("@server/config/limits.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof LimitsModule>()),
+  getDecisionWindowDays: () => decisionWindow.days,
+  getDecisionWindowMs: () => decisionWindow.days * 24 * 60 * 60 * 1000,
+  getDecisionWindowSeconds: () => decisionWindow.days * 24 * 60 * 60,
 }));
 
 import postgres from "postgres";
@@ -207,6 +222,21 @@ async function seedStudio(): Promise<Seeded> {
 }
 
 describe("requestTransfer", () => {
+  it("stamps the request deadline from the configured decision window", async () => {
+    // The write site moved from a local constant to the shared window with
+    // nothing asserting the result. Read from the getter rather than naming a
+    // number, so turning the operator knob does not redden the suite — which
+    // means this pins that the write site CALLS the getter, not that the
+    // getter's unit is right; limits.test.ts holds that half.
+    const { slug, adminId, memberId } = await seedStudio();
+    await studioTransferService.requestTransfer(slug, adminId, memberId);
+    const [req] = await transferRequestsFor(memberId);
+
+    const aheadMs = req!.expires_at!.getTime() - Date.now();
+    const windowMs = decisionWindow.days * 24 * 60 * 60 * 1000;
+    expect(aheadMs).toBeLessThanOrEqual(windowMs);
+    expect(aheadMs).toBeGreaterThan(windowMs - 60_000);
+  });
   it("lands an actionable transfer-request notification with the actor identity + a future expiry", async () => {
     const { studioId, slug, adminId, memberId, adminName } = await seedStudio();
 
@@ -317,6 +347,9 @@ describe("confirmTransfer", () => {
     expect(await activeAdminCount(studioId)).toBe(1);
   });
 
+
+
+
   it("applies the transfer exactly once under two concurrent confirms", async () => {
     const { studioId, slug, adminId, memberId } = await seedStudio();
     await studioTransferService.requestTransfer(slug, adminId, memberId);
@@ -364,7 +397,7 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
   });
 
   it("rejects confirm when the studio changed hands after the request (the initiator is no longer admin)", async () => {
-    // A request names its initiator in a payload written up to seven days
+    // A request names its initiator in a payload written a whole window
     // ago. If the studio has since moved to somebody else, confirming that
     // stale request would demote whoever holds the role now — and promote the
     // long-since-demoted initiator back up to maintainer on the way past.

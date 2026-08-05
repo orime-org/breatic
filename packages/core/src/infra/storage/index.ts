@@ -12,11 +12,9 @@
 
 import { createHash } from "node:crypto";
 
-import { newId } from "@breatic/shared";
+import { newId, httpRequest } from "@breatic/shared";
 
 import { env } from "@core/config/env.js";
-import { getStorageConfig } from "@core/config/storage.js";
-import { fullJitter } from "@core/infra/retry.js";
 
 /** Metadata returned by StorageAdapter.head() after a client upload. */
 export interface ObjectHead {
@@ -148,19 +146,19 @@ export async function getStorageAdapter(): Promise<StorageAdapter> {
  * @param opts - the key components (task type / extension)
  * @param opts.taskType - Task type (image, video, audio, tts, etc.)
  * @param opts.ext - File extension the CALLER must dot (".png", or a
- *   compound suffix like "_cover.webp"), or "" for none — appended verbatim.
+ *   compound suffix like "_cover.png"), or "" for none — appended verbatim.
  *   A bare "png" throws: the caller owns the format (#1630).
  * @returns the unique storage key path for the object
  * @throws {Error} If `ext` is non-empty and contains no dot (bare extension).
  */
 export function storageKey(opts: { taskType: string; ext: string }): string {
   // Extension contract (#1630): the caller passes a dotted extension
-  // (".png"), a compound dotted suffix ("_cover.webp"), or "" for none — it
+  // (".png"), a compound dotted suffix ("_cover.png"), or "" for none — it
   // is appended verbatim below. A bare "png" is a caller bug; fail fast
   // here (the single choke point every key flows through — upload / AIGC /
   // cover / local) instead of silently producing a dot-less
   // "..._<uuid>png". `includes('.')` (not startsWith) so compound suffixes
-  // like "_cover.webp" satisfy the contract.
+  // like "_cover.png" satisfy the contract.
   if (opts.ext !== "" && !opts.ext.includes(".")) {
     throw new Error(
       `storageKey: ext must be a dotted extension (e.g. ".png") or "", got "${opts.ext}"`,
@@ -198,37 +196,42 @@ export function sha256Hex(data: Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
-/** A download failure worth retrying (server 5xx / 429 — self-healing). */
-class TransientDownloadError extends Error {}
-
 /**
- * One download attempt with transfer-stream completeness guards.
- * @param sourceUrl - The remote URL to download (120s timeout).
+ * Fetch the bytes, then check the transfer actually completed.
+ *
+ * Retrying is the transport's, declared by `replaySafe: true` — a download
+ * is a pure GET, so a replay costs nothing and changes nothing. That
+ * declaration also buys something the loop this replaced never had: a
+ * dropped connection is retried. The old loop only recognised its own
+ * `TransientDownloadError` (5xx / 429), and `fetch`'s connection errors are
+ * not that, so exactly the failure most worth retrying went straight out.
+ *
+ * What stays here is the part that is about the CONTENT rather than the
+ * transfer: whether these bytes are a complete asset.
+ * @param sourceUrl - The remote URL to download (120s per delivery).
  * @returns The full downloaded bytes plus the resolved content type.
- * @throws {TransientDownloadError} On HTTP 5xx / 429 (retryable).
- * @throws {Error} On HTTP 4xx, a content-length mismatch (truncation), or
- *   a zero-byte body (permanent — not retried).
+ * @throws {Error} On a non-ok status, a content-length mismatch
+ *   (truncation), or a zero-byte body; or the transport's own failure when
+ *   no delivery produced a response.
  */
 async function downloadOnce(
   sourceUrl: string,
 ): Promise<{ buffer: Buffer; contentType: string }> {
-  const response = await fetch(sourceUrl, {
-    signal: AbortSignal.timeout(120_000),
-    // Request an uncompressed transfer so content-length equals the bytes
-    // we receive and the completeness check below actually validates the
-    // wire (adversarial #B round-3: undici does NOT throw on a truncated
-    // gzip/br stream — it silently returns the partial decoded bytes; an
-    // identity transfer restores real truncation detection). If a server
-    // ignores this and still encodes, the isEncoded fallback skips the
-    // length check to avoid a false "truncated" on a complete body.
-    headers: { "accept-encoding": "identity" },
-  });
+  const response = await httpRequest(
+    sourceUrl,
+    {
+      // Request an uncompressed transfer so content-length equals the bytes
+      // we receive and the completeness check below actually validates the
+      // wire (adversarial #B round-3: undici does NOT throw on a truncated
+      // gzip/br stream — it silently returns the partial decoded bytes; an
+      // identity transfer restores real truncation detection). If a server
+      // ignores this and still encodes, the isEncoded fallback skips the
+      // length check to avoid a false "truncated" on a complete body.
+      headers: { "accept-encoding": "identity" },
+    },
+    { replaySafe: true, timeoutMs: 120_000 },
+  );
   if (!response.ok) {
-    if (response.status >= 500 || response.status === 429) {
-      throw new TransientDownloadError(
-        `Download ${sourceUrl}: HTTP ${response.status}`,
-      );
-    }
     throw new Error(`Failed to download ${sourceUrl}: HTTP ${response.status}`);
   }
   const contentType =
@@ -260,39 +263,24 @@ async function downloadOnce(
  * zero-byte): it throws so the worker's Stage-2 persist path fails the
  * task (markFailed + no charge) instead of storing wrong content.
  *
- * Server-side transient failures (HTTP 5xx / 429, common self-healing CDN
- * blips) are retried up to `maxAttempts` with linear backoff — the
- * re-fetch is idempotent (re-download → re-upload under a fresh key), and
- * job-level retry is fenced off after the provider call, so this is the
- * correct resilience layer (adversarial #E). Permanent failures (HTTP 4xx,
- * truncation, zero-byte) throw immediately without retry.
- * @param sourceUrl - The remote URL to download (120s timeout per attempt).
- * @param opts - Retry tuning (defaults from config/storage.yaml; jittered).
- * @param opts.maxAttempts - Total attempts including the first.
- * @param opts.retryBackoffMs - Base backoff (× attempt, then full-jittered).
+ * Transient failures are the transport's business now, declared through
+ * `replaySafe: true` in `downloadOnce`: 5xx and 429 as before, and — new
+ * here — a dropped connection, which the loop this replaced could never
+ * retry because `fetch`'s connection errors are not the sentinel it keyed
+ * on.
+ *
+ * Permanent failures still throw at once, for two different reasons. A 4xx
+ * throws from the `!response.ok` branch: the transport already declined to
+ * replay it, a 4xx being a fact about the request that a replay cannot
+ * change. Truncation and zero-byte are thrown after a 200, where no retry
+ * policy could reach them at all.
+ * @param sourceUrl - The remote URL to download (120s per delivery).
  * @returns The full downloaded bytes plus the resolved content type.
- * @throws {Error} On a permanent failure, or after exhausting retries.
+ * @throws {Error} On a permanent failure, or when no delivery produced a
+ *   response.
  */
 export async function downloadValidated(
   sourceUrl: string,
-  opts?: { maxAttempts?: number; retryBackoffMs?: number },
 ): Promise<{ buffer: Buffer; contentType: string }> {
-  const cfg = getStorageConfig().download;
-  const maxAttempts = opts?.maxAttempts ?? cfg.max_attempts;
-  const backoffMs = opts?.retryBackoffMs ?? cfg.retry_base_delay_ms;
-  let attempt = 0;
-  for (;;) {
-    attempt += 1;
-    try {
-      return await downloadOnce(sourceUrl);
-    } catch (err) {
-      const retryable = err instanceof TransientDownloadError;
-      if (!retryable || attempt >= maxAttempts) throw err;
-      // Full-jittered linear backoff (ceiling = backoffMs * attempt) so
-      // correlated CDN blips do not re-fetch in synchronized waves (#1625).
-      await new Promise((resolve) =>
-        setTimeout(resolve, fullJitter(backoffMs * attempt)),
-      );
-    }
-  }
+  return downloadOnce(sourceUrl);
 }

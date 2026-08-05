@@ -134,7 +134,7 @@ export async function listUnreadByUser(
         isNull(notifications.readAt),
         isNull(notifications.deletedAt),
         // Hide actionable notifications that have timed out (e.g. an
-        // unconfirmed transfer-admin past its 7-day window).
+        // unconfirmed transfer-admin past its decision window).
         or(
           isNull(notifications.expiresAt),
           gt(notifications.expiresAt, sql`now()`),

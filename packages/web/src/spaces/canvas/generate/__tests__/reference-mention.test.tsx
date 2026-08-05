@@ -269,8 +269,13 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
   });
 
   it('hides the popup on start with zero items and shows it once items arrive', () => {
+    // Visibility follows what the LIVE POOL matches, not what the plugin hands
+    // us: @tiptap/suggestion fires onStart (and the first onUpdate of every
+    // change) with an empty `props.items` and resolves the real rows on a later
+    // onUpdate, so every show path computes from `getPool` itself.
+    let pool: ReferenceRailItem[] = [];
     const suggestion = makeReferenceSuggestion({
-      getPool: () => [],
+      getPool: () => pool,
       emptyLabel: 'No references',
       imageRefsDisabled: () => false,
       isLocalUserInput: () => true, // manual driving models a local `@` keystroke
@@ -287,8 +292,10 @@ describe('makeReferenceSuggestion — popup hidden when no items match', () => {
       ) as HTMLElement;
       expect(el).toBeDefined();
       expect(el.style.display).toBe('none'); // zero matches → hidden
-      handlers.onUpdate?.(props([row], editor));
+      pool = [row];
+      handlers.onUpdate?.(props([], editor));
       expect(el.style.display).toBe(''); // a match arrived → shown
+      pool = [];
       handlers.onUpdate?.(props([], editor));
       expect(el.style.display).toBe('none'); // narrowed back to zero → hidden
     } finally {
@@ -363,8 +370,15 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
         imageRefsDisabled: () => hideImages,
       });
       return (
-        (s.items?.({ query: '', editor: undefined as unknown as Editor }) ??
-          []) as ReferenceRailItem[]
+        (s.items?.({
+          query: '',
+          editor: undefined as unknown as Editor,
+          // The suggestion plugin now hands `items()` an AbortSignal so an
+          // async resolver can bail when the query moves on. Ours resolves
+          // synchronously from the live pool and ignores it — the signal is
+          // here only because the call signature requires one.
+          signal: new AbortController().signal,
+        }) ?? []) as ReferenceRailItem[]
       )
         .map((r) => r.sourceNodeId)
         .sort();
@@ -514,10 +528,10 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     }
   });
 
-  it('residual 1 (restart path): a REMOTE-triggered onStart does not pop a popup the user never opened', () => {
-    // @tiptap/suggestion re-fires start (not just update) when a peer edit both
-    // MOVES the `@` range and CHANGES the query (moved && changed). That restart
-    // must not resurrect / open the popup — only a LOCAL start shows.
+  it('residual 1: a NON-LOCAL onStart does not pop a popup the user never opened', () => {
+    // onStart can be reached without any local intent behind it — a peer's edit
+    // or a machine-derived cascade can put an `@` in range. Only a LOCAL start
+    // shows the picker.
     let remote = false;
     const suggestion = makeReferenceSuggestion({
       getPool: () => [textRow],
@@ -629,83 +643,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     }
   });
 
-  it('a remote restart RESTORES an actively-open picker instead of flickering it away', () => {
-    let remote = false;
-    const suggestion = makeReferenceSuggestion({
-      getPool: () => [textRow],
-      emptyLabel: 'No references',
-      imageRefsDisabled: () => false,
-      // `remote` models whether the edit was a remote peer's; the popup's
-      // visibility hook is now the POSITIVE "was it a local user keystroke",
-      // so inject its negation (a remote edit is not a local keystroke).
-      isLocalUserInput: () => !remote,
-    });
-    const render = suggestion.render;
-    if (!render) throw new Error('render missing');
-    const handlers = render();
-    const editor = makeEditor();
-    const before = new Set(Array.from(document.body.children));
-    try {
-      handlers.onStart?.(props([textRow], editor)); // local open → visible
-      expect(
-        (
-          Array.from(document.body.children).find(
-            (c) => !before.has(c),
-          ) as HTMLElement
-        ).style.display,
-      ).toBe('');
-      // A remote moved&&changed restart: onExit (captures the open state) → a
-      // remote-driven onStart. The picker the user was using must be RESTORED,
-      // not hidden.
-      remote = true;
-      handlers.onExit?.(props([textRow], editor));
-      const before2 = new Set(Array.from(document.body.children));
-      handlers.onStart?.(props([textRow], editor));
-      const el2 = Array.from(document.body.children).find(
-        (c) => !before2.has(c),
-      ) as HTMLElement;
-      expect(el2.style.display).toBe(''); // restored (not flickered away)
-    } finally {
-      handlers.onExit?.(props([], editor));
-      editor.destroy();
-    }
-  });
-
-  it('a GENUINE exit does not arm a later remote onStart (wasOpenBeforeExit is microtask-scoped)', async () => {
-    let remote = false;
-    const suggestion = makeReferenceSuggestion({
-      getPool: () => [textRow],
-      emptyLabel: 'No references',
-      imageRefsDisabled: () => false,
-      // `remote` models whether the edit was a remote peer's; the popup's
-      // visibility hook is now the POSITIVE "was it a local user keystroke",
-      // so inject its negation (a remote edit is not a local keystroke).
-      isLocalUserInput: () => !remote,
-    });
-    const render = suggestion.render;
-    if (!render) throw new Error('render missing');
-    const handlers = render();
-    const editor = makeEditor();
-    try {
-      handlers.onStart?.(props([textRow], editor)); // local open, visible
-      // A GENUINE terminal exit (space / delete / pick), NOT an immediate restart.
-      handlers.onExit?.(props([textRow], editor));
-      await Promise.resolve(); // flush the microtask that clears the open flag
-      // A LATER, unrelated remote `@` insertion must NOT restore/pop a picker the
-      // user never opened (the stale-flag hole round 3 found).
-      remote = true;
-      const before = new Set(Array.from(document.body.children));
-      handlers.onStart?.(props([textRow], editor));
-      const el = Array.from(document.body.children).find(
-        (c) => !before.has(c),
-      ) as HTMLElement;
-      expect(el.style.display).toBe('none'); // hidden — flag was not left armed
-    } finally {
-      handlers.onExit?.(props([], editor));
-      editor.destroy();
-    }
-  });
-
   // The visibility discriminator is now a POSITIVE per-transaction "was the last
   // doc change a local user keystroke", not the old reverse-inference "not
   // remote" — which the round-4 adversarial pass broke: a LOCAL machine-derived
@@ -718,7 +655,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
    * @param doc - The backing Y.Doc.
    * @returns The editor.
    */
-  function makeCollabEditor(doc: Y.Doc): Editor {
+  function makeCollabEditor(doc: Y.Doc, pool: ReferenceRailItem[] = []): Editor {
     return new Editor({
       // Mounted view: tests that place a caret inside an @ match make the
       // editor's OWN suggestion plugin fire its async onStart, which reads
@@ -732,13 +669,60 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
         Collaboration.configure({ fragment: doc.getXmlFragment('prompt') }),
         ReferenceMention.configure({
           suggestion: makeReferenceSuggestion({
-            getPool: () => [],
+            getPool: () => pool,
             emptyLabel: 'No references',
           }),
         }),
       ],
     });
   }
+
+  it('typing `@` shows the picker in the SAME tick, driven by the real plugin (not hand-built props)', async () => {
+    // Every other visibility test in this file calls the render handlers by
+    // hand with props it built itself, so `props.items` and `computeItems()`
+    // are identical by construction and one whole class of bug is invisible.
+    // The real @tiptap/suggestion 3.29 resolves items through an ASYNC
+    // pipeline: onStart fires immediately carrying `initialItems ?? []` — and
+    // we configure no initialItems, so it is ALWAYS empty — then awaits
+    // `items()` and delivers the rows on a later onUpdate. A show path that
+    // trusted props.items would therefore hide the picker the user just
+    // opened. Driving the real plugin is the only way to exercise that.
+    /**
+     * Types `@` on a fresh collab editor wired to `pool` and reports the popup
+     * visibility observed in that SAME tick (no awaits, no timers).
+     * @param pool - The reference pool the suggestion reads through its getter.
+     * @returns The popup's display value, or 'no popup' when none was mounted.
+     */
+    const displayAfterTypingAt = async (
+      pool: ReferenceRailItem[],
+    ): Promise<string> => {
+      const editor = makeCollabEditor(new Y.Doc(), pool);
+      const before = new Set(Array.from(document.body.children));
+      try {
+        editor.commands.insertContent('@');
+        const el = Array.from(document.body.children).find(
+          (c) => !before.has(c),
+        ) as HTMLElement | undefined;
+        if (!el) return 'no popup';
+        const display = el.style.display;
+        // Let the plugin's own async resolution settle before teardown so its
+        // onUpdate does not race destroy().
+        await new Promise((r) => setTimeout(r, 10));
+        return display === '' ? 'shown' : display;
+      } finally {
+        editor.destroy();
+      }
+    };
+    // A matching row in the LIVE pool → shown in the very tick onStart ran.
+    // (Reading props.items instead would report 'none' here: the plugin has
+    // not resolved items() yet at that point.)
+    expect(await displayAfterTypingAt([textRow])).toBe('shown');
+    // Nothing in the pool → hidden, so plain `@` typing is never interrupted
+    // by an empty box (I3). Same code path, opposite outcome — together these
+    // pin visibility to the live pool rather than to whatever the plugin
+    // happened to pass in.
+    expect(await displayAfterTypingAt([])).toBe('none');
+  });
 
   it('flags a local keystroke true and a remote peer apply false', () => {
     const docA = new Y.Doc();
@@ -946,7 +930,6 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
     const handlers = render();
-    const before = new Set(Array.from(document.body.children));
     try {
       editorB.commands.insertContent('@');
       Y.applyUpdate(docA, Y.encodeStateAsUpdate(docB));
@@ -956,6 +939,11 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
           TextSelection.create(editorA.state.doc, 2),
         ),
       );
+      // Snapshot the body AFTER the editors' own suggestion sessions mounted
+      // their popups. @tiptap/suggestion mounts synchronously on the `@`, so a
+      // snapshot taken earlier would make "the first new child of body" one of
+      // THEIRS rather than the one the handlers under test are about to create.
+      const before = new Set(Array.from(document.body.children));
       handlers.onStart?.(props([textRow], editorA));
       const el = Array.from(document.body.children).find(
         (c) => !before.has(c),
@@ -987,11 +975,14 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
     const handlers = render();
-    const before = new Set(Array.from(document.body.children));
     try {
       // An @ in the doc makes the editor's suggestion plugin ACTIVE with the
       // caret in range → SuggestionPluginKey.getState(...).active is true.
       editor.commands.insertContent('@');
+      // Snapshot after the editor's OWN suggestion mounted its popup, so the
+      // element found below is the one these handlers create (see the repro
+      // test above for why the plugin's own popup is already in the body).
+      const before = new Set(Array.from(document.body.children));
       handlers.onStart?.(props([textRow], editor));
       const el = Array.from(document.body.children).find(
         (c) => !before.has(c),
@@ -1023,13 +1014,18 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
     const render = suggestion.render;
     if (!render) throw new Error('render missing');
     const handlers = render();
-    const before = new Set(Array.from(document.body.children));
     try {
       editor.commands.insertContent('@');
+      // Snapshot after the editor's own suggestion mounted its popup (see the
+      // repro test above) — without this the element found below is the
+      // plugin's own, which is hidden anyway, so every assertion here would
+      // pass without ever exercising the handlers under test.
+      const before = new Set(Array.from(document.body.children));
       handlers.onStart?.(props([textRow], editor));
       const el = Array.from(document.body.children).find(
         (c) => !before.has(c),
       ) as HTMLElement;
+      expect(el.style.display).toBe(''); // local open → visible before dismissal
       document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
       expect(el.style.display).toBe('none');
       // A MACHINE-derived selection move (dispatchMachineEdit tags it) is NOT the

@@ -3,6 +3,8 @@
 import type { Check } from "#repo-lint/check";
 import { eofNewline } from "#repo-lint/checks/eof-newline";
 import { eslintRulesEnabled } from "#repo-lint/checks/eslint-rules-enabled";
+import { i18nKeysNamespaced } from "#repo-lint/checks/i18n-keys-namespaced";
+import { i18nNoDeadKeys } from "#repo-lint/checks/i18n-no-dead-keys";
 import { lintCoverage } from "#repo-lint/checks/lint-coverage";
 import { migrationStyle } from "#repo-lint/checks/migration-style";
 import { noAuthBypassResidue } from "#repo-lint/checks/no-auth-bypass-residue";
@@ -16,6 +18,7 @@ import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product
 import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
 import { noUnresolvedAliasInDist } from "#repo-lint/checks/no-unresolved-alias-in-dist";
 import { serviceEntriesPresent } from "#repo-lint/checks/service-entries-present";
+import { sharedDepsInCatalog } from "#repo-lint/checks/shared-deps-in-catalog";
 import { storageKeyPrefixHtml } from "#repo-lint/checks/storage-key-prefix-html";
 import { tokenValues } from "#repo-lint/checks/token-values";
 
@@ -29,6 +32,8 @@ import { tokenValues } from "#repo-lint/checks/token-values";
 export const CHECKS: readonly Check[] = [
   eofNewline,
   eslintRulesEnabled,
+  i18nKeysNamespaced,
+  i18nNoDeadKeys,
   lintCoverage,
   migrationStyle,
   noAuthBypassResidue,
@@ -42,6 +47,7 @@ export const CHECKS: readonly Check[] = [
   noTrojanSource,
   noUnresolvedAliasInDist,
   serviceEntriesPresent,
+  sharedDepsInCatalog,
   storageKeyPrefixHtml,
   tokenValues,
 ];
