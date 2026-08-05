@@ -22,24 +22,37 @@
  *      resolve to unicast IPs in unusual network setups.
  *   4. Follows redirects manually, re-checking DNS for every hop. A
  *      redirect from a public host to `http://10.0.0.1/` is rejected.
- *   5. Caps hop count, and gives each hop a deadline.
+ *   5. Caps hop count, and gives each DELIVERY a deadline. Not each hop —
+ *      the transport may deliver a hop up to three times, and each of those
+ *      gets the full figure, so a hop's own worst case is a multiple of it.
  *
  * The request itself goes through the shared HTTP transport, which may
- * deliver one hop up to three times. That is deliberate — a dropped
- * connection used to fail the tool outright — and it widens one thing
- * worth stating plainly: the DNS check above runs once per HOP, not
- * once per delivery, so a single check now covers up to three
- * connections instead of one.
+ * deliver one hop up to three times. That is deliberate: a dropped
+ * connection used to fail the tool outright. The DNS check above runs
+ * once per HOP, not once per delivery — what that costs is the next
+ * paragraph, and it is more than a count of connections.
  *
  * DNS rebinding is partially mitigated by re-resolving per hop; a
  * determined attacker with a short-TTL DNS record and precise timing
  * could still race the check against the actual connect, but this
  * would require the target server's TCP stack to re-query DNS, which
- * it does not within a single fetch call. The retries widen that
- * existing race from one connection to three rather than opening a new
- * kind of hole. We accept this narrow residual risk in favor of
- * keeping TLS SNI / `Host` headers working correctly with the original
- * hostname.
+ * it does not within a single fetch call.
+ *
+ * State the retries' effect on that race precisely, because counting
+ * connections understates it. Each delivery resolves the hostname
+ * again, and none of those re-resolutions is checked. Worse, the far
+ * side chooses WHEN they happen: a `Retry-After` on a 429 is honoured
+ * up to 60 seconds, and 429 takes the protocol branch that does not
+ * consult `replaySafe` at all. So a host that answers "come back in
+ * 59 seconds" schedules an unchecked re-resolution 59 seconds after
+ * the check that cleared it — turning a race measured in milliseconds
+ * into a window the target itself sets. The precise timing the
+ * paragraph above asks of an attacker is no longer needed.
+ *
+ * That is accepted here rather than fixed here: the guard is the one
+ * rigid gate, and hardening it is tracked separately. It is written
+ * down so the next person meets a measured statement rather than a
+ * comforting one.
  */
 
 import { lookup as dnsLookup } from "node:dns/promises";
@@ -180,9 +193,15 @@ export interface SafeFetchOptions {
  *   its failure reached the caller as itself.
  * @throws {Error} the transport's own refusals, which are about the request
  *   rather than about where it points and so are not `SsrfError`: a URL
- *   carrying credentials, or a `timeoutMs` no timer can hold. A first
- *   delivery that fails without being replayed also arrives unwrapped, which
- *   for a connection-level failure means a `TypeError`.
+ *   carrying credentials, or a `timeoutMs` no timer can hold. Both are raised
+ *   before any delivery.
+ *
+ *   Not listed, because it cannot arrive HERE: the transport also rethrows a
+ *   first failure unwrapped when no replay follows, but this call site sends
+ *   no body and declares `replaySafe`, so a delivery that produced no
+ *   response always earns one. Every connection-level failure therefore
+ *   leaves as `HttpRetryError`. Documenting the unwrapped shape would send a
+ *   caller looking for something this path never produces.
  */
 export async function safeFetch(
   url: string,

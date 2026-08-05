@@ -79,16 +79,27 @@ describe("a network blip is retried rather than failing the hop", () => {
   });
 
   it("checks DNS once per hop, not once per delivery", async () => {
-    // The guard runs in this module, above the transport, so a replay does
-    // not re-resolve. Pinned so the widening is a decision on the record
-    // rather than a surprise: one check now covers up to three connections.
+    // Both halves of that sentence need measuring, so this runs TWO hops with
+    // a blip inside the first: three deliveries, two hops, and the assertion
+    // is that DNS was asked twice. A single-hop version would have proved
+    // only "not once per delivery" — one check is one check whether the
+    // resolve sits inside the redirect loop or above it — and the per-hop
+    // half is the load-bearing one, since it is what stops a public host
+    // redirecting into the private range.
+    //
+    // The widening this pins is on the record deliberately: one check now
+    // covers up to three connections rather than one.
     fetchMock
       .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { location: "https://public.example/next" } }),
+      )
       .mockResolvedValueOnce(new Response("ok", { status: 200 }));
 
-    await safeFetch("https://public.example/page");
+    const res = await safeFetch("https://public.example/page");
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(dnsLookupMock).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(dnsLookupMock).toHaveBeenCalledTimes(2);
   }, 15_000);
 });

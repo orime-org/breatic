@@ -10,19 +10,26 @@
  *
  * How much they characterise was MEASURED, by putting the pre-move module
  * back (`git show origin/main:…safe-fetch.ts`) and running this file against
- * it: 5 of the 8 refusals pass unchanged on both versions — the scheme check,
+ * it: 5 of the 9 refusals pass unchanged on both versions — the scheme check,
  * the IP-range check, the hostname denylist, a name resolving to a private
  * address, and one bad record among several. Those five are genuine
  * cross-version characterisation: they refuse before any request is made, so
  * neither version reaches a request layer.
  *
- * The other three CANNOT run against the pre-move module, and saying
- * otherwise would overstate what this file proves. `re-checks every hop`,
- * `stops after the redirect budget` and `hands back a 3xx with no Location`
- * all need a response to come back, and the pre-move module gets its response
- * from the global `fetch` — which this very file stubs to throw. Against the
- * old code they fail with "a real fetch escaped". They pin the behaviour
- * going forward; they do not testify that it is unchanged.
+ * The other FOUR cannot run against the pre-move module, and saying otherwise
+ * would overstate what this file proves. `asks DNS for EVERY record`,
+ * `re-checks every hop`, `stops after the redirect budget` and `hands back a
+ * 3xx with no Location` all need a response to come back, and the pre-move
+ * module gets its response from the global `fetch` — which this very file
+ * stubs to throw. Against the old code they fail with "a real fetch escaped".
+ * They pin the behaviour going forward; they do not testify that it is
+ * unchanged.
+ *
+ * That count is worth a sentence of its own, because the first version of
+ * this paragraph said "5 of the 8" and "the other three": the same commit
+ * that wrote it added a ninth case to the block below without re-measuring.
+ * A measured number goes stale the moment the thing it counts changes, so
+ * adding a case here means running the pre-move check again.
  *
  * Two things about the handoff cannot be read off the call site, which is why
  * they are asserted behaviourally:
@@ -30,10 +37,12 @@
  *   - `replaySafe: true` is what buys the retry this batch exists for. With
  *     `false` the transport replays 429 and 408 only, so the network blip that
  *     names this batch would still fail the tool on the first try.
- *   - The per-hop deadline must arrive as `timeoutMs`. It used to ride in as
+ *   - The deadline must arrive as `timeoutMs`. It used to ride in as
  *     `init.signal`, and the transport replaces the caller's signal — left
- *     there it becomes a no-op and every hop silently gets the transport's
- *     300s default instead of the 30s this module intends.
+ *     there it becomes a no-op and every delivery silently gets the
+ *     transport's 300s default instead of the 30s this module intends. Note
+ *     the unit: `timeoutMs` bounds one DELIVERY, and a hop is up to three of
+ *     them, so the 30s no longer bounds a hop the way it did before the move.
  *
  * `redirect: "manual"` is asserted for a different reason: manual redirects
  * are why this module exists. Following them itself is what lets it re-check
@@ -72,8 +81,13 @@ vi.stubGlobal("fetch", () => {
 
 import { safeFetch, SsrfError } from "@domain/agent/tools/safe-fetch.js";
 
-/** The deadline this module applies to one hop when the caller names none. */
-const DEFAULT_HOP_TIMEOUT_MS = 30_000;
+/**
+ * The deadline this module applies to one DELIVERY when the caller names none.
+ *
+ * Not one hop: the transport gives each of a hop's up-to-three deliveries the
+ * full figure, so a hop's own worst case is a multiple of this.
+ */
+const DEFAULT_DELIVERY_TIMEOUT_MS = 30_000;
 
 /** A 2xx with no redirect, i.e. the hop loop's exit. */
 const okResponse = (): Response => new Response("hello", { status: 200 });
@@ -174,7 +188,9 @@ describe("safeFetch refuses what it always refused", () => {
     httpRequestMock.mockImplementation(async () => redirectTo("https://public.example/next"));
 
     await expect(safeFetch("https://public.example/")).rejects.toBeInstanceOf(SsrfError);
-    // Six deliveries: the initial hop plus the five the budget allows.
+    // Six HOPS: the initial one plus the five the budget allows. Each is one
+    // call here because the transport is mocked; in production each hop is
+    // up to three deliveries.
     expect(httpRequestMock).toHaveBeenCalledTimes(6);
   });
 
@@ -204,7 +220,7 @@ describe("safeFetch hands the request to the shared transport", () => {
     // timeoutMs swaps 30s for the transport's 300s default.
     expect(httpRequestMock.mock.calls[0]![2]).toStrictEqual({
       replaySafe: true,
-      timeoutMs: DEFAULT_HOP_TIMEOUT_MS,
+      timeoutMs: DEFAULT_DELIVERY_TIMEOUT_MS,
     });
   });
 
