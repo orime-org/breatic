@@ -103,6 +103,10 @@ function makeHocuspocus(): Hocuspocus {
   return {
     openDirectConnection: vi.fn(async () => {
       return {
+        // The real `DirectConnection` exposes the live Y.Doc as a public
+        // field; read-only pre-checks use it so they never ask the store
+        // for anything.
+        document: fakeMetaDoc.doc,
         transact: async (fn: (doc: Y.Doc) => void) => {
           fn(fakeMetaDoc.doc);
         },

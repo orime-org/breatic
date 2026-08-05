@@ -207,17 +207,11 @@ interface MetaConnectionBehaviour {
    */
   onOpen?: () => void;
   /**
-   * Runs between the read-only checks and the write — the window §4 says
-   * every pre-check re-opens. Only operations that split those into two
-   * transacts (delete, restore) can observe it; for the others it never
-   * fires, because they have no such gap.
-   */
-  betweenCheckAndWrite?: () => void;
-  /**
-   * Runs immediately before the FIRST `transact`. A pre-check that reads
-   * `conn.document` directly has already run by then, so this is the
-   * window §4 describes for every handler whose checks live outside the
-   * write — the doc can change in it, and the write has to re-check.
+   * Runs immediately before the FIRST `transact` — the window §4 says
+   * every pre-check re-opens. Pre-checks read `conn.document` directly
+   * and have already run by then, so this is where "the doc changed
+   * under us" belongs for every handler whose checks live outside the
+   * write, and the write's re-check is what has to catch it.
    */
   beforeFirstTransact?: () => void;
   /**
@@ -250,7 +244,6 @@ function makeHocuspocus(behaviour: MetaConnectionBehaviour = {}): Hocuspocus {
           transacts += 1;
           transactCalls += 1;
           if (transacts === 1) behaviour.beforeFirstTransact?.();
-          if (transacts === 2) behaviour.betweenCheckAndWrite?.();
           fn(metaDoc);
           if (behaviour.storeFails) {
             throw new Error(
@@ -564,7 +557,7 @@ describe("re-reading the target fails — the content rows are rolled back", () 
       locked: false,
     });
     const hocuspocus = makeHocuspocus({
-      betweenCheckAndWrite: () => {
+      beforeFirstTransact: () => {
         // A collaborator deleted it in the window the checks opened.
         metaDoc.getMap("spaces").delete(SID);
         armBroadcastMarker();
@@ -604,7 +597,7 @@ describe("re-reading the target fails — the content rows are rolled back", () 
       name === spaceContentDocName(PID, SID, "canvas"),
     );
     const hocuspocus = makeHocuspocus({
-      betweenCheckAndWrite: () => {
+      beforeFirstTransact: () => {
         metaDoc.getMap("spaces").delete(SID);
         armBroadcastMarker();
       },
@@ -633,7 +626,7 @@ describe("re-reading the target fails — the content rows are rolled back", () 
   it("space:restore soft-deletes the content rows again when the Space is already back by the time it writes", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
     const hocuspocus = makeHocuspocus({
-      betweenCheckAndWrite: () => {
+      beforeFirstTransact: () => {
         // Another owner restored it in the window the checks opened.
         seedSpace(SID, {
           type: "canvas",
@@ -676,7 +669,7 @@ describe("the rollback itself fails", () => {
       new Error("ECONNREFUSED connecting to yjs_documents host"),
     );
     const hocuspocus = makeHocuspocus({
-      betweenCheckAndWrite: () => {
+      beforeFirstTransact: () => {
         metaDoc.getMap("spaces").delete(SID);
         armBroadcastMarker();
       },
@@ -1025,10 +1018,10 @@ describe("a store failure after the broadcast — the four handlers without cont
     expect(list.toArray()).toEqual([OTHER_SID]);
   });
 
-  it("space:delete's read-only pre-check rejecting is a controlled error, not a raw one", async () => {
-    // storeFails poisons EVERY transact, including the first, read-only one.
-    // Nothing has gone out at that point, so this lands on the strict side
-    // of the boundary: controlled error, no content rows touched.
+  it("space:delete answers success and keeps the rows deleted when the store fails after the broadcast", async () => {
+    // Every check passed, so the removal went out to every client. §1: past
+    // the boundary the answer is success and nothing is undone — putting
+    // the content rows back would leave rows for a Space nobody can see.
     seedSpace(OTHER_SID, { type: "canvas", name: "B", order: 1, locked: false });
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus({ storeFails: true }) },
@@ -1036,11 +1029,9 @@ describe("a store failure after the broadcast — the four handlers without cont
       { userId: ACTOR, role: "editor" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
     );
-    expect(res.ok).toBe(false);
-    if (res.ok) return;
-    expect(res.error.code).toBe("INTERNAL");
-    expectNoDatabaseWording(res.error.message);
-    expect(softDeleteByNameMock).not.toHaveBeenCalled();
+    expect(res.ok).toBe(true);
+    expect(softDeleteByNameMock).toHaveBeenCalled();
+    expect(restoreByNameMock).not.toHaveBeenCalled();
   });
 });
 

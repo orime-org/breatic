@@ -366,23 +366,62 @@ async function safeCleanup(
 
 /** The direct-connection surface the publish/read helpers need. */
 interface MetaDirectConnection {
+  /**
+   * The live meta doc. `DirectConnection` exposes it as a public field
+   * and `Document extends Doc`, so a pre-check can read it with no
+   * transact and therefore no store attempt. Null only after
+   * `disconnect()`.
+   */
+  document: Y.Doc | null;
   transact: (fn: (doc: Y.Doc) => void) => Promise<unknown>;
+}
+
+/**
+ * The live meta doc behind an open direct connection.
+ *
+ * **Every read-only pre-check goes through here, never through
+ * `transact`.** `transact` runs its callback and then stores the document
+ * unconditionally (`hocuspocus-server.esm.js:2097-2112`) — even for a
+ * callback that only reads. A check routed through it therefore comes
+ * back with two unrelated answers: what it saw, and whether the database
+ * is healthy. Every caller then has to decide which one wins, and that
+ * decision was written three different ways across nine call sites, two
+ * of them backwards. A Yjs read needs no transaction and touches no
+ * storage, so there is only ever one answer and nothing to order.
+ * @param conn - Direct connection opened for this operation.
+ * @returns The live meta doc.
+ * @throws {Error} When the connection has already been disconnected.
+ */
+function metaDocOf(conn: MetaDirectConnection): Y.Doc {
+  if (conn.document === null) {
+    throw new Error("meta direct connection is already closed");
+  }
+  return conn.document;
 }
 
 /**
  * How the one transact that publishes an operation's change ended.
  *
+ * - `decided`: a guard inside the callback reached an answer by READING
+ *   the world, and that answer is what the caller must send. It holds
+ *   whether or not the store then failed — the guard did not cause that
+ *   failure and its reading is unaffected by it. The answer can be a
+ *   refusal (the entry vanished) or a success (nothing needed writing,
+ *   §6.5's same-name rename). **This case exists so the precedence lives
+ *   here instead of being re-derived by each handler.**
  * - `published`: the callback wrote, so every client has applied the
  *   change — even when the store rejected afterwards (§3.2: the callback
  *   runs synchronously and the broadcast leaves inside it). The caller
- *   must carry on to its success answer.
- * - `no-op`: the callback returned without writing and nothing failed —
- *   one of its guards said stop, and the caller's own flags say which.
- * - `failed-before-broadcast`: the transact rejected before the callback
- *   wrote anything. Nothing went out; the caller undoes its earlier
- *   steps and answers a controlled error.
+ *   carries on to its success answer.
+ * - `failed-before-broadcast`: the transact rejected, no guard had
+ *   decided anything, and the callback had written nothing. Nothing went
+ *   out; the caller undoes its earlier steps and answers a controlled
+ *   error.
  */
-type PublishOutcome = "published" | "no-op" | "failed-before-broadcast";
+type PublishOutcome =
+  | { kind: "decided"; response: SpaceRpcResponse }
+  | { kind: "published" }
+  | { kind: "failed-before-broadcast" };
 
 /**
  * Publish an operation's meta-doc change — the commit boundary of §6, as
@@ -403,19 +442,26 @@ type PublishOutcome = "published" | "no-op" | "failed-before-broadcast";
  *    Handlers that skip `mark` and write anyway would misreport — which
  *    is why the flag rides through this wrapper instead of being a local
  *    variable seven functions each remember to declare.
+ * 3. **A guard's answer outranks a store failure it did not cause.** The
+ *    callback returns its answer instead of setting a flag the caller
+ *    then has to consult in the right order, so `decided` and
+ *    `failed-before-broadcast` are mutually exclusive by construction.
+ *    Spelled out per handler, this ordering was got wrong twice.
  * @param conn - Direct connection to the project's meta doc.
  * @param logCtx - Fields for the line written when either side fails.
- * @param write - The publishing callback; calls `mark()` right before its
- *   first write, then writes. Guards that decide not to write simply
- *   return without marking.
+ * @param write - The publishing callback. Calls `mark()` right before its
+ *   first write, then writes. A guard that decides the operation's answer
+ *   without writing returns that answer — a refusal or an idempotent
+ *   success — and it becomes the outcome.
  * @returns See {@link PublishOutcome}.
  */
 async function publishMetaChange(
   conn: MetaDirectConnection,
   logCtx: Record<string, unknown>,
-  write: (doc: Y.Doc, mark: () => void) => void,
+  write: (doc: Y.Doc, mark: () => void) => SpaceRpcResponse | void,
 ): Promise<PublishOutcome> {
   let wrote = false;
+  let decided: SpaceRpcResponse | undefined;
   /**
    * Records that the very next statement writes — from here on, the
    * change must be treated as broadcast.
@@ -425,48 +471,60 @@ async function publishMetaChange(
   };
   try {
     await conn.transact((doc: Y.Doc) => {
-      doc.transact(() => write(doc, mark));
+      doc.transact(() => {
+        decided = write(doc, mark) ?? undefined;
+      });
     });
   } catch (transactError) {
-    if (!wrote) {
+    // `wrote` decides which line gets logged, `decided` decides the answer.
+    // They are independent: a callback can seed the tab list (a write, so
+    // a broadcast) and still end on a verdict that needs no further write.
+    if (wrote) {
+      // Past the line: saying it failed would be a lie every client can
+      // see through, and there is nothing left to undo. One complete line.
+      logger.error(
+        { err: transactError, ...logCtx },
+        "space_rpc_not_persisted_after_broadcast",
+      );
+    } else if (decided !== undefined) {
+      // The guard read the world and reached its answer; the store was
+      // never asked to carry anything for it.
+      logger.error(
+        { err: transactError, ...logCtx },
+        "space_rpc_store_failed_after_guard_decided",
+      );
+    } else {
       logger.error(
         { err: transactError, ...logCtx },
         "space_rpc_failed_before_broadcast",
       );
-      return "failed-before-broadcast";
+      return { kind: "failed-before-broadcast" };
     }
-    // Past the line: saying it failed would be a lie every client can see
-    // through, and there is nothing left to undo. One complete line.
-    logger.error(
-      { err: transactError, ...logCtx },
-      "space_rpc_not_persisted_after_broadcast",
-    );
   }
-  return wrote ? "published" : "no-op";
+  return decided === undefined
+    ? { kind: "published" }
+    : { kind: "decided", response: decided };
 }
 
 /**
- * Run a read-only transact against the meta doc, absorbing the rejection
- * a poisoned document produces (§8.1: one store failure makes every later
- * transact on that doc reject). Nothing has gone out when a pure read
- * fails, so the caller answers a controlled error and stops.
- * @param conn - Direct connection to the project's meta doc.
- * @param logCtx - Fields for the line written when the read fails.
- * @param read - The read; must not write.
- * @returns True when the read ran, false when the transact rejected.
+ * The answer a publish outcome forces, or `null` when the change went out
+ * and the handler should carry on to its own success path.
+ *
+ * Handlers call this instead of comparing the outcome themselves, so no
+ * handler chooses an order between a guard's verdict and a store failure.
+ * @param outcome - What {@link publishMetaChange} returned.
+ * @param internal - Builds the controlled error for a failure that
+ *   happened before anything went out. Called only in that case, so the
+ *   message stays specific to the operation.
+ * @returns The response to send, or null to continue.
  */
-async function readMetaState(
-  conn: MetaDirectConnection,
-  logCtx: Record<string, unknown>,
-  read: (doc: Y.Doc) => void,
-): Promise<boolean> {
-  try {
-    await conn.transact((doc: Y.Doc) => read(doc));
-    return true;
-  } catch (readError) {
-    logger.error({ err: readError, ...logCtx }, "space_rpc_precheck_failed");
-    return false;
-  }
+function publishVerdict(
+  outcome: PublishOutcome,
+  internal: () => SpaceRpcResponse,
+): SpaceRpcResponse | null {
+  if (outcome.kind === "decided") return outcome.response;
+  if (outcome.kind === "failed-before-broadcast") return internal();
+  return null;
 }
 
 // ── Handlers ────────────────────────────────────────────────────────
@@ -541,15 +599,13 @@ async function handleCreate(
     during: "create",
   };
   try {
-    let conflict = false;
     const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       // Unreachable by any input now that the id is minted here — it would
       // take a uuid v4 collision. Kept because it costs one line and the
       // alternative is silently overwriting somebody's Space.
       if (spaces.has(spaceId)) {
-        conflict = true;
-        return;
+        return err(req.id, "CONFLICT", `Space ${spaceId} already exists`);
       }
       mark();
       writeSpaceEntry(spaces, {
@@ -562,11 +618,12 @@ async function handleCreate(
         claimToken,
       });
     });
-    if (outcome === "failed-before-broadcast" || conflict) {
+    const verdict = publishVerdict(outcome, () =>
+      err(req.id, "INTERNAL", "Could not create the Space"),
+    );
+    if (verdict) {
       await undoContentRows("soft-delete", projectId, spaceId, seededKinds, logCtx);
-      return conflict
-        ? err(req.id, "CONFLICT", `Space ${spaceId} already exists`)
-        : err(req.id, "INTERNAL", "Could not create the Space");
+      return verdict;
     }
     await recordSpaceActivity(ctx, projectId, {
       actorUserId: caller.userId,
@@ -661,30 +718,23 @@ async function runDelete(
   const logCtx = { projectId, spaceId, callerId: caller.userId, during: "delete" };
   try {
     // ── Every check first, and they change nothing ──────────────────
-    let notFound = false;
-    let isLast = false;
-    const checked = await readMetaState(conn, logCtx, (doc: Y.Doc) => {
-      const spaces = doc.getMap("spaces");
-      if (!(spaces.get(spaceId) instanceof Y.Map)) {
-        notFound = true;
-        return;
-      }
-      // Refuse to delete the last remaining Space. `liveCount` is the PG
-      // authority (read under the lock above), so this holds even when two
-      // instances delete near-simultaneously: the lock serializes them and
-      // each reads the count left by the previous holder's soft-delete.
-      // INVARIANT: any future RPC that can REDUCE a project's live Space
-      // count must run under withSpaceDeleteLock + this PG-count guard too,
-      // or the cross-instance protection is defeated.
-      if (liveCount <= 1) isLast = true;
-    });
-    if (!checked) {
-      return err(req.id, "INTERNAL", "Could not delete the Space");
-    }
-    if (notFound) {
+    // Read the doc directly (see `metaDocOf`): these checks touch no
+    // storage, so nothing about the database's health can reach their
+    // answers. A user whose Space a collaborator already deleted is told
+    // exactly that, and is not sent off to retry something that can never
+    // succeed.
+    const spaces = metaDocOf(conn).getMap("spaces");
+    if (!(spaces.get(spaceId) instanceof Y.Map)) {
       return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
     }
-    if (isLast) {
+    // Refuse to delete the last remaining Space. `liveCount` is the PG
+    // authority (read under the lock above), so this holds even when two
+    // instances delete near-simultaneously: the lock serializes them and
+    // each reads the count left by the previous holder's soft-delete.
+    // INVARIANT: any future RPC that can REDUCE a project's live Space
+    // count must run under withSpaceDeleteLock + this PG-count guard too,
+    // or the cross-instance protection is defeated.
+    if (liveCount <= 1) {
       return err(
         req.id,
         "CONFLICT",
@@ -714,28 +764,29 @@ async function runDelete(
     }
 
     // ── The broadcast ───────────────────────────────────────────────
-    let vanished = false;
     let snapshot: Record<string, unknown> | null = null;
     let deletedName: string | undefined;
     const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
-      const spaces = doc.getMap("spaces");
-      const entry = spaces.get(spaceId);
+      const live = doc.getMap("spaces");
+      const entry = live.get(spaceId);
       // Only "is the entry still there" is re-checked here. The count is
       // NOT: the soft-delete above just decremented it, so re-reading it
       // would refuse every delete in a two-Space project. The lock taken
       // in handleDelete is what makes skipping it safe — no concurrent
       // delete can change the count inside this window.
       if (!(entry instanceof Y.Map)) {
-        vanished = true;
-        return;
+        return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
       }
       snapshot = snapshotMap(entry);
       deletedName = entry.get("name") as string | undefined;
       mark();
-      spaces.delete(spaceId);
+      live.delete(spaceId);
       clearSpaceFromAllTabs(doc, spaceId);
     });
-    if (outcome === "failed-before-broadcast" || vanished) {
+    const verdict = publishVerdict(outcome, () =>
+      err(req.id, "INTERNAL", "Could not delete the Space"),
+    );
+    if (verdict) {
       await undoContentRows(
         "restore",
         projectId,
@@ -743,9 +794,7 @@ async function runDelete(
         softDeleted.touched,
         logCtx,
       );
-      return vanished
-        ? err(req.id, "NOT_FOUND", `Space ${spaceId} not found`)
-        : err(req.id, "INTERNAL", "Could not delete the Space");
+      return verdict;
     }
 
     // ── Audit, allowed to fail ──────────────────────────────────────
@@ -794,28 +843,21 @@ async function handleLock(
   });
   const logCtx = { projectId, spaceId, callerId: caller.userId, during: "lock" };
   try {
-    let notFound = false;
     let spaceName: string | undefined;
     const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       const entry = spaces.get(spaceId);
       if (!(entry instanceof Y.Map)) {
-        notFound = true;
-        return;
+        return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
       }
       spaceName = entry.get("name") as string | undefined;
       mark();
       entry.set("locked", locked);
     });
-    // The guard's answer first: it READ the world, and what it saw is true
-    // whether or not the store then failed. Same precedence as create /
-    // delete / restore.
-    if (notFound) {
-      return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
-    }
-    if (outcome === "failed-before-broadcast") {
-      return err(req.id, "INTERNAL", "Could not update the Space");
-    }
+    const verdict = publishVerdict(outcome, () =>
+      err(req.id, "INTERNAL", "Could not update the Space"),
+    );
+    if (verdict) return verdict;
     await recordSpaceActivity(ctx, projectId, {
       actorUserId: caller.userId,
       type: locked ? "space:locked" : "space:unlocked",
@@ -859,54 +901,38 @@ async function handleRename(
     during: "rename",
   };
   try {
-    let notFound = false;
-    let locked = false;
-    let noop = false;
     let oldName = "";
     const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       const entry = spaces.get(spaceId);
       if (!(entry instanceof Y.Map)) {
-        notFound = true;
-        return;
+        return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
       }
       if (entry.get("locked") === true) {
-        locked = true;
-        return;
+        return err(
+          req.id,
+          "FORBIDDEN",
+          `Space ${spaceId} is locked; unlock before renaming`,
+        );
       }
       const previousName = entry.get("name");
       const oldSpaceName =
         typeof previousName === "string" ? previousName : "";
       if (oldSpaceName === name) {
-        // Idempotent no-op - skip the audit entry so a rename to the
-        // same name doesn't produce a phantom "X renamed Foo to Foo".
-        noop = true;
-        return;
+        // Idempotent success per §6.5: the goal state already holds, so
+        // nothing needed writing. Returning it here rather than through a
+        // flag is what keeps it ahead of a store failure — the same rule
+        // that governs the refusals above, in one place.
+        return ok(req.id);
       }
       oldName = oldSpaceName;
       mark();
       entry.set("name", name);
     });
-    // Guards first — they read the world, and their answers hold whether or
-    // not the store then failed (same precedence as create / delete /
-    // restore). The same-name no-op stays an idempotent success per §6.5:
-    // the user's goal state already holds and nothing needed writing.
-    if (notFound) {
-      return err(req.id, "NOT_FOUND", `Space ${spaceId} not found`);
-    }
-    if (locked) {
-      return err(
-        req.id,
-        "FORBIDDEN",
-        `Space ${spaceId} is locked; unlock before renaming`,
-      );
-    }
-    if (noop) {
-      return ok(req.id);
-    }
-    if (outcome === "failed-before-broadcast") {
-      return err(req.id, "INTERNAL", "Could not rename the Space");
-    }
+    const verdict = publishVerdict(outcome, () =>
+      err(req.id, "INTERNAL", "Could not rename the Space"),
+    );
+    if (verdict) return verdict;
     await recordSpaceActivity(ctx, projectId, {
       actorUserId: caller.userId,
       type: "space:renamed",
@@ -1033,14 +1059,9 @@ async function runRestore(
   };
   try {
     // ── Check first, changing nothing ───────────────────────────────
-    let alreadyPresent = false;
-    const checked = await readMetaState(conn, logCtx, (doc: Y.Doc) => {
-      if (doc.getMap("spaces").has(spaceId)) alreadyPresent = true;
-    });
-    if (!checked) {
-      return err(req.id, "INTERNAL", "Could not restore the Space");
-    }
-    if (alreadyPresent) {
+    // Direct read, no transact (see `metaDocOf`): a Space that is already
+    // back is already back, whatever the database is doing.
+    if (metaDocOf(conn).getMap("spaces").has(spaceId)) {
       return err(req.id, "CONFLICT", `Space ${spaceId} is not deleted`);
     }
 
@@ -1065,13 +1086,11 @@ async function runRestore(
     }
 
     // ── The broadcast ───────────────────────────────────────────────
-    let raced = false;
     const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       // Someone else restored it while the content rows were coming back.
       if (spaces.has(spaceId)) {
-        raced = true;
-        return;
+        return err(req.id, "CONFLICT", `Space ${spaceId} is not deleted`);
       }
       const entry = new Y.Map<unknown>();
       for (const [k, v] of Object.entries(snapshotRecord)) {
@@ -1088,7 +1107,10 @@ async function runRestore(
       // approximately true.
       clearSpaceFromAllTabs(doc, spaceId);
     });
-    if (outcome === "failed-before-broadcast" || raced) {
+    const verdict = publishVerdict(outcome, () =>
+      err(req.id, "INTERNAL", "Could not restore the Space"),
+    );
+    if (verdict) {
       await undoContentRows(
         "soft-delete",
         projectId,
@@ -1096,9 +1118,7 @@ async function runRestore(
         restored.touched,
         logCtx,
       );
-      return raced
-        ? err(req.id, "CONFLICT", `Space ${spaceId} is not deleted`)
-        : err(req.id, "INTERNAL", "Could not restore the Space");
+      return verdict;
     }
 
     // ── Audit, allowed to fail ──────────────────────────────────────
@@ -1147,6 +1167,9 @@ async function runRestore(
 // Nothing here writes an activity row. Which tabs someone has open is
 // their own window state, not a project event.
 
+/** Top-level meta key holding one record per user. */
+const PER_USER_KEY = "perUser";
+
 /** Key of the per-user open-tab list inside a `perUser` record. */
 const OPEN_TAB_IDS_KEY = "openTabIds";
 
@@ -1166,7 +1189,7 @@ const OPEN_TAB_IDS_KEY = "openTabIds";
  * @param spaceId - The Space to drop from every list.
  */
 function clearSpaceFromAllTabs(doc: Y.Doc, spaceId: string): void {
-  const perUser = doc.getMap<Y.Map<unknown>>("perUser");
+  const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
   perUser.forEach((userMap) => {
     const list = userMap.get(OPEN_TAB_IDS_KEY) as Y.Array<string> | undefined;
     if (!list) return;
@@ -1174,6 +1197,26 @@ function clearSpaceFromAllTabs(doc: Y.Doc, spaceId: string): void {
       if (list.get(i) === spaceId) list.delete(i, 1);
     }
   });
+}
+
+/**
+ * The caller's open-tab list as it stands, without creating anything.
+ *
+ * Returns null for both states {@link ensureOpenTabList} has to seed — no
+ * record at all, and a record carrying no list. Seeding is a write, so a
+ * pre-check cannot settle those two; it can only settle the case where a
+ * list already exists and says the tab is not open.
+ * @param doc - The project meta doc.
+ * @param userId - Caller's userId, taken from the authenticated connection.
+ * @returns The existing list, or null when there is none yet.
+ */
+function existingOpenTabList(
+  doc: Y.Doc,
+  userId: string,
+): Y.Array<string> | null {
+  const userMap = doc.getMap<Y.Map<unknown>>(PER_USER_KEY).get(userId);
+  const list = userMap?.get(OPEN_TAB_IDS_KEY);
+  return list instanceof Y.Array ? (list as Y.Array<string>) : null;
 }
 
 /**
@@ -1212,7 +1255,7 @@ function ensureOpenTabList(
   spaces: Y.Map<unknown>,
   mark: () => void,
 ): Y.Array<string> {
-  const perUser = doc.getMap<Y.Map<unknown>>("perUser");
+  const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
   let userMap = perUser.get(userId);
   if (!userMap) {
     mark();
@@ -1257,29 +1300,25 @@ async function handleTabOpen(
     during: "tab:open",
   };
   try {
-    let missing = false;
     const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       if (!spaces.has(spaceId)) {
-        missing = true;
-        return;
+        return err(req.id, "NOT_FOUND", `Space ${spaceId} does not exist`);
       }
       const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
       // Already open: touch nothing. Re-adding would broadcast a change
-      // that changes nothing to everyone on the account.
-      if (!list.toArray().includes(spaceId)) {
-        mark();
-        list.push([spaceId]);
+      // that changes nothing to everyone on the account. §6.6 makes this
+      // an idempotent success, so it is a verdict like any other.
+      if (list.toArray().includes(spaceId)) {
+        return ok(req.id);
       }
+      mark();
+      list.push([spaceId]);
     });
-    // Guard first, same precedence as every other handler: a Space the
-    // guard saw missing is missing, whatever the store did afterwards.
-    if (missing) {
-      return err(req.id, "NOT_FOUND", `Space ${spaceId} does not exist`);
-    }
-    if (outcome === "failed-before-broadcast") {
-      return err(req.id, "INTERNAL", "Could not open the tab");
-    }
+    const verdict = publishVerdict(outcome, () =>
+      err(req.id, "INTERNAL", "Could not open the tab"),
+    );
+    if (verdict) return verdict;
     return ok(req.id);
   } finally {
     await safeCleanup("disconnect", logCtx, () => conn.disconnect());
@@ -1317,6 +1356,14 @@ async function handleTabClose(
     during: "tab:close",
   };
   try {
+    // Direct read (see `metaDocOf`): a tab that is not open needs nothing
+    // written, so no database problem can turn that into an error. Only
+    // the two states §6.6.1 seeds fall through, because seeding IS a
+    // write and has to go through the publish path.
+    const existing = existingOpenTabList(metaDocOf(conn), caller.userId);
+    if (existing !== null && !existing.toArray().includes(spaceId)) {
+      return ok(req.id);
+    }
     const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
       // Seeding first is what makes "close one" mean "keep the others"
@@ -1324,16 +1371,23 @@ async function handleTabClose(
       // every Space, and without the seed the result would be a list
       // holding nothing at all.
       const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
+      let removed = false;
       for (let i = list.length - 1; i >= 0; i--) {
         if (list.get(i) === spaceId) {
           mark();
           list.delete(i, 1);
+          removed = true;
         }
       }
+      // Gone since the check above — the same account on another machine
+      // closed it first. Nothing left to write, so this is a success, the
+      // same shape §6.5 gives a rename to the name a Space already has.
+      if (!removed) return ok(req.id);
     });
-    if (outcome === "failed-before-broadcast") {
-      return err(req.id, "INTERNAL", "Could not close the tab");
-    }
+    const verdict = publishVerdict(outcome, () =>
+      err(req.id, "INTERNAL", "Could not close the tab"),
+    );
+    if (verdict) return verdict;
     return ok(req.id);
   } finally {
     await safeCleanup("disconnect", logCtx, () => conn.disconnect());
