@@ -7,82 +7,123 @@ import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
 import {
+  caretColor,
   renderCollabCaret,
   renderCollabSelection,
-  safeCaretColor,
   shouldRenderLabelBelow,
   shouldFlipLabelLeft,
 } from '@web/features/collab-editor/caret-render';
+import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 
-// Awareness payloads are UNTRUSTED wire data from other clients (CRITICAL
-// PATH — Yjs collab). The renderer must never inline a free-form remote
-// string into a style attribute: `;background:url(...)` smuggled through
-// user.color would fire a request beacon on every caret render.
-describe('safeCaretColor — untrusted awareness identity → safe CSS color', () => {
-  it('renders a whitelisted hue as the theme-adaptive palette token var', () => {
-    expect(safeCaretColor({ hue: 'pink', color: '#c2298a' })).toBe(
-      'var(--color-palette-pink)',
-    );
+/** A resolver that knows exactly one collaborator. */
+const knows =
+  (id: string, name: string) =>
+    (userId: string): string | null =>
+      userId === id ? name : null;
+
+/** A resolver that knows nobody — the roster has not arrived yet. */
+const knowsNobody = (): string | null => null;
+
+// #1882: awareness now carries the user id and NOTHING else about identity.
+// Colour is derived from that id on the receiving side, so the two clients
+// cannot disagree about it and there is no free-form colour string on the
+// wire to sanitise in the first place.
+describe('caretColor — derived from the user id, never from the wire', () => {
+  it('derives the palette token from the user id', () => {
+    const id = 'user-42';
+    expect(caretColor({ id })).toBe(`var(--color-palette-${userPaletteHue(id)})`);
   });
 
-  it('falls back to the wire color only when it is a strict 6-digit hex', () => {
-    expect(safeCaretColor({ hue: 'not-a-hue', color: '#12ab3F' })).toBe(
-      '#12ab3F',
-    );
-    expect(safeCaretColor({ color: '#abcdef' })).toBe('#abcdef');
+  it('agrees with the colour the sender computes for itself from the same id', () => {
+    // The sender used to publish a pre-computed colour; both sides now run the
+    // same derivation, so a caret cannot be one colour for its owner and
+    // another for everyone else.
+    const id = 'user-7';
+    expect(caretColor({ id })).toBe(`var(--color-palette-${userPaletteHue(id)})`);
+    expect(resolvePaletteHex(userPaletteHue(id))).toMatch(/^#[0-9a-fA-F]{6}$/);
   });
 
-  it('rejects style-injection payloads in both fields (neutral token instead)', () => {
-    expect(
-      safeCaretColor({
-        hue: 'red;background:url(https://evil.example)',
-        color: 'red;background:url(https://evil.example)',
-      }),
-    ).toBe('var(--color-muted-foreground)');
-    expect(safeCaretColor({ color: '#fff' })).toBe(
-      'var(--color-muted-foreground)',
+  it('ignores colour fields a malicious client smuggles into awareness', () => {
+    // A peer can put anything in its awareness state. Nothing reads these
+    // fields any more, so a `;background:url(...)` beacon has no door left.
+    const hostile = {
+      id: 'user-42',
+      color: 'red;background:url(https://evil.example)',
+      hue: 'red;background:url(https://evil.example)',
+    } as { id: string };
+    expect(caretColor(hostile)).toBe(
+      `var(--color-palette-${userPaletteHue('user-42')})`,
     );
-    expect(safeCaretColor({})).toBe('var(--color-muted-foreground)');
+    expect(caretColor(hostile)).not.toContain('evil.example');
+  });
+
+  it('falls back to a neutral token when the id is missing or empty', () => {
+    expect(caretColor({})).toBe('var(--color-muted-foreground)');
+    expect(caretColor({ id: '' })).toBe('var(--color-muted-foreground)');
   });
 });
 
 describe('renderCollabCaret — caret DOM for a remote collaborator', () => {
-  it('builds caret + label colored via the safe color, name as a text node', () => {
-    const el = renderCollabCaret({
-      name: 'Grace',
-      color: '#c2298a',
-      hue: 'pink',
-    });
+  it('resolves the name from the roster by user id, colours from the same id', () => {
+    const el = renderCollabCaret(
+      { id: 'user-42' },
+      undefined,
+      knows('user-42', 'Grace'),
+    );
+    const expected = `var(--color-palette-${userPaletteHue('user-42')})`;
     expect(el.classList.contains('collaboration-carets__caret')).toBe(true);
-    expect(el.style.borderColor).toContain('var(--color-palette-pink)');
+    expect(el.style.borderColor).toContain(expected);
     const label = el.querySelector('.collaboration-carets__label');
     expect(label?.textContent).toBe('Grace');
-    expect((label as HTMLElement).style.backgroundColor).toContain(
-      'var(--color-palette-pink)',
-    );
+    expect((label as HTMLElement).style.backgroundColor).toContain(expected);
   });
 
   it('a markup-looking name stays inert text (no element is parsed from it)', () => {
-    const el = renderCollabCaret({
-      name: '<img src=x onerror=alert(1)>',
-      hue: 'teal',
-    });
+    const el = renderCollabCaret(
+      { id: 'user-9' },
+      undefined,
+      knows('user-9', '<img src=x onerror=alert(1)>'),
+    );
     const label = el.querySelector('.collaboration-carets__label');
     expect(label?.textContent).toBe('<img src=x onerror=alert(1)>');
     expect(label?.querySelector('img')).toBeNull();
   });
+
+  it('draws the bare colour line, no label, while the name is unresolved', () => {
+    // The roster is fetched, not broadcast, so a caret can appear before its
+    // owner's name is known. An empty label would flash a coloured box with
+    // nothing in it; the caret line alone reads as "someone is here".
+    const el = renderCollabCaret({ id: 'user-42' }, undefined, knowsNobody);
+    expect(el.classList.contains('collaboration-carets__caret')).toBe(true);
+    expect(el.querySelector('.collaboration-carets__label')).toBeNull();
+  });
+
+  it('treats an empty resolved name as unresolved, not as a name', () => {
+    // The roster merge fills `name: profile?.name ?? ''` for a member whose
+    // profile query has not landed, so "known but blank" and "absent" arrive
+    // through the same door and must be handled the same way.
+    const el = renderCollabCaret({ id: 'user-42' }, undefined, () => '');
+    expect(el.querySelector('.collaboration-carets__label')).toBeNull();
+  });
+
+  it('stamps the client id so the roster-update listener can find this caret', () => {
+    const el = renderCollabCaret({ id: 'user-42' }, 77, knows('user-42', 'G'));
+    expect(el.dataset.clientId).toBe('77');
+  });
 });
 
-// Adversarial round-1 HIGH: hardening only the cursor widget left the
-// SELECTION highlight on the extension's default builder, which inlines the
-// raw remote user.color into a style attribute — the exact
-// `;background:url(...)` beacon vector caret-render defends against, through
-// the second door. The selection builder must route through safeCaretColor.
+// The selection highlight has to derive its colour the same way the caret
+// does. It used to have its own door: the extension's default builder inlined
+// the raw remote `user.color` into a style attribute, which is why an override
+// exists at all (adversarial round-1 HIGH). With the colour derived from the
+// id there is no remote string in either path.
 describe('renderCollabSelection — remote selection highlight attrs', () => {
-  it('builds the highlight from the whitelisted hue, translucent via color-mix', () => {
-    const attrs = renderCollabSelection({ hue: 'pink', color: '#c2298a' });
+  it('builds the highlight from the id-derived colour, translucent via color-mix', () => {
+    const attrs = renderCollabSelection({ id: 'user-42' });
     expect(attrs.class).toBe('collaboration-carets__selection');
-    expect(attrs.style).toContain('var(--color-palette-pink)');
+    expect(attrs.style).toContain(
+      `var(--color-palette-${userPaletteHue('user-42')})`,
+    );
     expect(attrs.style).toContain('color-mix');
   });
 
@@ -91,34 +132,41 @@ describe('renderCollabSelection — remote selection highlight attrs', () => {
   // rounded pill on a chip — never the chip's rectangular wrapper), so a remote
   // selection over a chip follows the pill's rounded shape (B, user 2026-07-13).
   it('exposes only the --collab-selection-bg custom property, no direct background', () => {
-    const attrs = renderCollabSelection({ hue: 'pink', color: '#c2298a' });
+    const attrs = renderCollabSelection({ id: 'user-42' });
     expect(attrs.style).toContain('--collab-selection-bg:');
     expect(attrs.style).not.toContain('background-color');
   });
 
-  it('never inlines a style-injection payload (neutral token instead)', () => {
+  it('ignores colour fields smuggled into awareness', () => {
     const attrs = renderCollabSelection({
-      hue: 'red;background:url(https://evil.example)',
+      id: 'user-42',
       color: '#000;background-image:url(https://evil.example/beacon)',
-    });
+      hue: 'red;background:url(https://evil.example)',
+    } as { id: string });
     expect(attrs.style).not.toContain('evil.example');
-    expect(attrs.style).toContain('var(--color-muted-foreground)');
+  });
+
+  it('falls back to the neutral token when the id is missing', () => {
+    expect(renderCollabSelection({}).style).toContain(
+      'var(--color-muted-foreground)',
+    );
   });
 
   it('dims a BLURRED collaborator via a lower mix ratio (never CSS opacity on the text)', () => {
-    expect(renderCollabSelection({ hue: 'pink', focused: false }).style).toContain('12%');
-    expect(renderCollabSelection({ hue: 'pink', focused: true }).style).toContain('25%');
-    expect(renderCollabSelection({ hue: 'pink' }).style).toContain('25%'); // old clients
+    expect(renderCollabSelection({ id: 'u', focused: false }).style).toContain('12%');
+    expect(renderCollabSelection({ id: 'u', focused: true }).style).toContain('25%');
+    expect(renderCollabSelection({ id: 'u' }).style).toContain('25%'); // old clients
   });
 });
 
 describe('renderCollabCaret — blurred (window unfocused) collaborator dims', () => {
   it('adds the --blurred modifier ONLY on the literal focused === false', () => {
-    const blurred = renderCollabCaret({ name: 'A', hue: 'teal', focused: false });
+    const named = knows('u', 'A');
+    const blurred = renderCollabCaret({ id: 'u', focused: false }, undefined, named);
     expect(blurred.classList.contains('collaboration-carets__caret--blurred')).toBe(true);
-    const focused = renderCollabCaret({ name: 'A', hue: 'teal', focused: true });
+    const focused = renderCollabCaret({ id: 'u', focused: true }, undefined, named);
     expect(focused.classList.contains('collaboration-carets__caret--blurred')).toBe(false);
-    const legacy = renderCollabCaret({ name: 'A', hue: 'teal' }); // field absent
+    const legacy = renderCollabCaret({ id: 'u' }, undefined, named); // field absent
     expect(legacy.classList.contains('collaboration-carets__caret--blurred')).toBe(false);
   });
 });
@@ -191,7 +239,11 @@ describe('the label flip is actually wired to a scroll viewport', () => {
     if (opts.inViewport) container.setAttribute('data-radix-scroll-area-viewport', '');
     document.body.appendChild(container);
 
-    const caret = renderCollabCaret({ name: 'Them', hue: 'blue' });
+    const caret = renderCollabCaret(
+      { id: 'them' },
+      undefined,
+      knows('them', 'Them'),
+    );
     container.appendChild(caret);
     const label = caret.querySelector('.collaboration-carets__label') as HTMLElement;
 

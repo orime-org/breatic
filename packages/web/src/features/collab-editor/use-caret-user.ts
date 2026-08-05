@@ -5,49 +5,41 @@
  * The identity this client publishes at its caret for other collaborators.
  *
  * Shared by every collaborative editor in the app (the canvas prompt editor
- * and the document body), so a person shows up under the same name and colour
- * wherever their cursor appears.
+ * and the document body), so a person shows up the same way wherever their
+ * cursor appears.
+ *
+ * It is the user id, and only the user id (#1882). Peers resolve the display
+ * name from the project member roster — server data, current by construction —
+ * and derive the colour from the same id, so both ends compute it identically
+ * without anyone publishing it. Publishing identity was what let one account
+ * show up under two different names in two tabs: each tab broadcast its own
+ * snapshot of the store, and whichever wrote last won.
  */
 
 import * as React from 'react';
 
-import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 /** A caret identity as it travels over awareness. */
 export interface CaretUserIdentity {
-  /** Display name shown beside the remote caret. */
-  name: string;
-  /**
-   * A concrete 6-digit hex. This is what the wire carries because
-   * y-prosemirror validates `user.color` against that format and warns on
-   * every caret update otherwise.
-   */
-  color: string;
-  /**
-   * The palette hue receivers actually render from — it resolves to a theme
-   * token, so a caret stays legible in whichever theme the VIEWER is using.
-   */
-  hue: string;
+  /** The collaborator's user id — everything else is derived from it. */
+  id: string;
 }
 
 /**
  * Build this user's caret identity, stable across renders.
  *
- * The colour is derived from the user id, so the same person keeps the same
- * caret colour across sessions and across every editor in the app.
+ * Memoised on the id alone, so a rename or an avatar change does not produce a
+ * new object: the identity on the wire genuinely has not changed, and a new
+ * reference would re-publish awareness and re-run every effect that depends on
+ * it for nothing.
  * @returns The identity, or null while no user is resolved (the caret layer
  *   stays unmounted until then).
  */
 export function useCaretUser(): CaretUserIdentity | null {
-  const currentUser = useCurrentUserStore((s) => s.user);
-  return React.useMemo(() => {
-    if (!currentUser) return null;
-    const hue = userPaletteHue(currentUser.id);
-    return {
-      name: currentUser.name || currentUser.email,
-      color: resolvePaletteHex(hue),
-      hue,
-    };
-  }, [currentUser]);
+  const userId = useCurrentUserStore((s) => s.user?.id);
+  return React.useMemo(
+    () => (userId === undefined ? null : { id: userId }),
+    [userId],
+  );
 }

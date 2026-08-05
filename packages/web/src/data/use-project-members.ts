@@ -1,11 +1,21 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { useQuery } from '@tanstack/react-query';
+import * as React from 'react';
+import {
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 
 import type { Member } from '@web/data/api/members';
 import { membersApi } from '@web/data/api/members';
 import { usersApi } from '@web/data/api/users';
+
+/** Query key of the role relation half of the roster. */
+const ROLES_KEY = 'project-members';
+/** Query key prefix of the profile half (the full key appends the id list). */
+const PROFILES_KEY = 'user-profiles';
 
 interface ProjectMembersResult {
   members: Member[];
@@ -31,7 +41,7 @@ interface ProjectMembersResult {
  */
 export function useProjectMembers(projectId: string): ProjectMembersResult {
   const rolesQuery = useQuery({
-    queryKey: ['project-members', projectId],
+    queryKey: [ROLES_KEY, projectId],
     queryFn: () => membersApi.list(projectId),
     enabled: projectId !== 'demo',
   });
@@ -39,7 +49,7 @@ export function useProjectMembers(projectId: string): ProjectMembersResult {
   const userIds = (rolesQuery.data ?? []).map((m) => m.userId);
 
   const profilesQuery = useQuery({
-    queryKey: ['user-profiles', projectId, userIds],
+    queryKey: [PROFILES_KEY, projectId, userIds],
     queryFn: () => usersApi.getByIds(userIds),
     enabled: userIds.length > 0,
   });
@@ -61,4 +71,62 @@ export function useProjectMembers(projectId: string): ProjectMembersResult {
     rolesQuery.isLoading || (userIds.length > 0 && profilesQuery.isLoading);
 
   return { members, isLoading };
+}
+
+/**
+ * Re-fetch the whole roster for a project.
+ *
+ * BOTH halves, always. Invalidating only the roles query looks sufficient
+ * because a membership change alters the id list, which changes the profile
+ * query's key and re-fetches it as a side effect — but when an existing member
+ * simply comes back online the ids are identical, so the profile query (where
+ * names and avatars live) would never move. Whoever adds a third query to this
+ * roster has to add it here too; that is why the keys are constants in this
+ * file rather than string literals at each callsite.
+ * @param client - The query client holding the roster cache.
+ * @param projectId - The project whose roster to refresh.
+ */
+export function refetchProjectRoster(
+  client: QueryClient,
+  projectId: string,
+): void {
+  void client.invalidateQueries({ queryKey: [ROLES_KEY, projectId] });
+  // Prefix match: the full key appends the id list, and every cached id list
+  // for this project is stale for the same reason.
+  void client.invalidateQueries({ queryKey: [PROFILES_KEY, projectId] });
+}
+
+/**
+ * Re-fetch the roster whenever anyone joins the project's online set.
+ *
+ * Unconditional by design (owner, #1882): no filtering on whether the id is
+ * already known, no skipping ourselves, no debounce. Each of those is a
+ * judgement about who is worth re-fetching for, and the one that was proposed
+ * — "only when the id is missing from the roster" — would have quietly kept
+ * showing the old name for anyone the roster already listed, which is most of
+ * the renames this is here to catch.
+ *
+ * A departure is not a join and brings no new identity to resolve, so it does
+ * not trigger. Membership is compared by content, not by reference: awareness
+ * hands out a fresh Set on every heartbeat.
+ * @param projectId - The project whose roster to refresh.
+ * @param onlineUserIds - The user ids currently online, from awareness.
+ */
+export function useRosterRefreshOnJoin(
+  projectId: string,
+  onlineUserIds: ReadonlySet<string>,
+): void {
+  const client = useQueryClient();
+  const seenRef = React.useRef<ReadonlySet<string>>(onlineUserIds);
+
+  React.useEffect(() => {
+    const seen = seenRef.current;
+    seenRef.current = onlineUserIds;
+    for (const id of onlineUserIds) {
+      if (!seen.has(id)) {
+        refetchProjectRoster(client, projectId);
+        return;
+      }
+    }
+  }, [client, projectId, onlineUserIds]);
 }
