@@ -4,15 +4,21 @@
 /**
  * Receiver-side renderer for remote collaborator carets (batch-2 item 14).
  *
- * The awareness payload is UNTRUSTED wire data from other clients. The
- * CollaborationCaret default render inlines `user.color` straight into a
- * style attribute — a hostile collaborator could smuggle extra declarations
- * (`;background:url(...)` = request beacon) through it. This renderer never
- * inlines raw remote strings: it renders from the WHITELISTED palette hue
- * (which also makes the color viewer-theme adaptive — each client resolves
- * the token var against its own light/dark values), falls back to the wire
- * color only when it matches the strict 6-digit-hex shape, and otherwise
- * uses a neutral token.
+ * NOTHING from the wire reaches the DOM here. The awareness payload is
+ * untrusted data written by another client, and the CollaborationCaret
+ * default render inlines `user.color` straight into a style attribute — a
+ * hostile collaborator could smuggle extra declarations through it
+ * (`;background:url(...)` = a request beacon). This renderer takes only the
+ * user id off the wire and derives everything shown from it:
+ *
+ *   - the COLOUR, from a whitelisted palette hue keyed on that id. Being a
+ *     token rather than a literal also makes it viewer-theme adaptive: each
+ *     client resolves the same var against its own light/dark values.
+ *   - the NAME, from the project roster (#1882), never from the payload.
+ *     There is no wire name to render, and no wire colour to fall back to.
+ *
+ * An id that is missing or not a string gets the neutral token, which is the
+ * only remaining input this file makes a decision on.
  */
 
 import { userPaletteHue, type PaletteHue } from '@web/lib/user-color';
@@ -268,6 +274,13 @@ export function applyCaretName(
   }
   if (existing) {
     existing.textContent = name;
+    // Re-measure. The flip decisions were taken against the OLD text, and a
+    // longer name overruns an edge the short one cleared — a rename on a caret
+    // that is sitting still would otherwise clip instead of flipping, and the
+    // caret is exactly the element that does not get rebuilt (see the note in
+    // the renderer). Safe to re-run: the measurement does not depend on the
+    // current flip state, and the class toggles are idempotent.
+    scheduleLabelFlip(caret, existing);
     return;
   }
   const label = document.createElement('div');

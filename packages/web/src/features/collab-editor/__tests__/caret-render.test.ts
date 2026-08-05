@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
 import {
+  applyCaretName,
   caretColor,
   renderCollabCaret,
   renderCollabSelection,
@@ -284,6 +285,32 @@ describe('the label flip is actually wired to a scroll viewport', () => {
     const { label } = mount({ inViewport: true, caretTop: 400, caretLeft: 460 });
     await nextFrame();
     expect(label.classList.contains('collaboration-carets__label--flip-left')).toBe(true);
+  });
+
+  it('re-measures when a late name replaces the text of a parked label', async () => {
+    // The repair path writes into a caret that is NOT rebuilt — the renderer
+    // reuses parked caret DOM by client id — so nothing else will retake the
+    // flip decision. A name that arrives longer than the placeholder it
+    // replaces has to flip a label that was correctly left alone before.
+    const { caret, label } = mount({
+      inViewport: true,
+      caretTop: 400,
+      caretLeft: 440,
+    });
+    let labelWidth = 40;
+    label.getBoundingClientRect = (): DOMRect =>
+      ({ width: labelWidth }) as DOMRect;
+
+    await nextFrame();
+    // 440 + 40 = 480, clear of the 492 threshold.
+    expect(label.classList.contains('collaboration-carets__label--flip-left')).toBe(false);
+
+    labelWidth = 80;
+    applyCaretName(caret, 'A Much Longer Name', 'var(--color-palette-1)');
+    await nextFrame();
+    // 440 + 80 = 520, past it.
+    expect(label.classList.contains('collaboration-carets__label--flip-left')).toBe(true);
+    expect(label.textContent).toBe('A Much Longer Name');
   });
 
   it('does nothing, and does not throw, outside a scroll viewport', async () => {
