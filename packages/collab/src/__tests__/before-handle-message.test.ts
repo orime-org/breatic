@@ -171,10 +171,12 @@ describe("checkWriteAuthz — meta.users", () => {
     ).toThrow(/meta\.users/);
   });
 
-  it("rejects a client mutating their own entry directly (must go via RPC)", () => {
-    // Even self-writes are refused — the only legitimate writer is
-    // the users:upsert-self RPC handler running under the 'system'
-    // privileged context.
+  it("rejects a client mutating their own entry directly (the root is retired)", () => {
+    // Even self-writes are refused. There is no legitimate writer left at
+    // all: #1882 retired the map, so nothing on the server writes it and a
+    // client reaching for it is either running old code or probing. The
+    // guard outlives the feature on purpose — a retired root that stops
+    // being guarded is a root anyone can fill with anything.
     const current = makeSeededMetaDoc((doc) => {
       const entry = new Y.Map();
       entry.set("id", "user-1");

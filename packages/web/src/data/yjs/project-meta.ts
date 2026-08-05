@@ -54,16 +54,15 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 const SPACES_KEY = 'spaces';
 const PER_USER_KEY = 'perUser';
 const OPEN_TAB_IDS_KEY = 'openTabIds';
-/**
- * Y.Map<userId, { name, avatarUrl }> seeded at project creation by the
- * meta bootstrap and kept live by collab's awareness projection
- * (`hooks/awareness-meta-users.ts`, which replaced the earlier
- * handshake-time upsert - PR #153). Consumers (ProjectActivityButton
- * activity panel, MembersStack, canvas handlingBy rendering, future
- * presence overlays) look up display names via this map so a username
- * rename propagates live. See Q11 v2 design (2026-05-26).
- */
-const USERS_KEY = 'users';
+// There is no `users` root any more (#1882). It held a name and avatar per
+// user, seeded at project creation and refreshed by a collab awareness hook,
+// on the theory that a persisted copy let peers name somebody who had gone
+// offline. Nothing ever read it — the docstring here named three consumers
+// and all three took their identity from REST — and the premise was wrong
+// anyway: a name only has to be right for somebody who is present, and
+// somebody present has a browser that just fetched it. Names now come from
+// the project roster. The collab guard against writing this root outlives
+// the root itself, on purpose.
 
 export interface ProjectSpace {
   id: string;
@@ -72,34 +71,10 @@ export interface ProjectSpace {
   locked?: boolean;
 }
 
-/** Live user record stored in `meta.users[userId]`. */
-export interface ProjectUser {
-  id: string;
-  name: string;
-  avatarUrl: string | null;
-  /**
-   * Timestamp (ms) of the most recent awareness update for this
-   * user as persisted by the collab onAwarenessUpdate hook. Used
-   * for "last active N min ago" rendering when the user is
-   * currently offline. Optional because seeded entries may predate
-   * the field; treat missing as "unknown".
-   */
-  lastSeenAt?: number;
-}
-
 export interface ProjectMetaState {
   spaces: ReadonlyArray<ProjectSpace>;
   /** Spaces the current user has open in their tab bar. */
   openTabIds: ReadonlyArray<string>;
-  /**
-   * Live map of `userId → { name, avatarUrl, lastSeenAt }` for
-   * everyone who has connected to this project's meta doc.
-   * ProjectActivityButton looks up `users[m.actor]?.name` to render
-   * display names so rename propagates retroactively. Map shape,
-   * not array, because callsites lookup by id far more often than
-   * iterate.
-   */
-  users: ReadonlyMap<string, ProjectUser>;
   /**
    * Live set of `userId`s currently online (have an active
    * awareness entry on the meta doc). Derived from
@@ -151,12 +126,11 @@ export function useProjectMeta(
   const [state, setState] = React.useState<{
     spaces: ReadonlyArray<ProjectSpace>;
     openTabIds: ReadonlyArray<string>;
-    users: ReadonlyMap<string, ProjectUser>;
   }>(() => readMetaState(doc, userId));
 
   React.useEffect(() => {
     /**
-     * Re-read spaces / per-user / users state from the doc into React state.
+     * Re-read spaces / per-user state from the doc into React state.
      * @returns Nothing.
      */
     const update = (): void => setState(readMetaState(doc, userId));
@@ -168,36 +142,29 @@ export function useProjectMeta(
     // never lands changes here — see PR-b post-merge bug.
     const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
     const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
-    const users = doc.getMap<Y.Map<unknown>>(USERS_KEY);
     spacesMap.observeDeep(update);
     perUser.observeDeep(update);
-    users.observeDeep(update);
     update();
     return () => {
       spacesMap.unobserveDeep(update);
       perUser.unobserveDeep(update);
-      users.unobserveDeep(update);
     };
   }, [doc, userId]);
 
-  // 2026-05-27 (awareness rewrite) — project current user identity
-  // into Yjs awareness. Backend's `onAwarenessUpdate` hook persists
-  // the snapshot into `meta.users[userId]`. Awareness is declarative
-  // — `setLocalStateField` re-fires whenever `currentUser` changes
-  // (rename / avatar update via settings → React Query invalidate →
-  // store update → this effect re-runs), so identity stays in sync
-  // without manual `sendStateless` bookkeeping. Yjs internally diffs
-  // and only broadcasts when the serialized value actually changes,
-  // so a re-render with unchanged `currentUser` is free.
-  const currentUser = useCurrentUserStore((s) => s.user);
+  // Announce who is here, and nothing more (#1882). This used to publish
+  // `{ id, name, avatarUrl }` so a collab hook could persist the snapshot
+  // into `meta.users`; both the hook and the map are gone. What is left is
+  // the id, which is the only part a peer cannot look up for itself — the
+  // name and avatar come from the project roster, where they are current by
+  // construction rather than as fresh as whichever tab wrote last.
+  //
+  // Depending on the id alone also means a rename no longer touches the
+  // wire at all: nothing to re-publish, nothing for two tabs to disagree on.
+  const currentUserId = useCurrentUserStore((s) => s.user?.id);
   React.useEffect(() => {
-    if (!provider || !provider.awareness || !currentUser) return;
-    provider.awareness.setLocalStateField('user', {
-      id: currentUser.id,
-      name: currentUser.name,
-      avatarUrl: currentUser.avatarUrl ?? null,
-    });
-  }, [provider, currentUser]);
+    if (!provider || !provider.awareness || !currentUserId) return;
+    provider.awareness.setLocalStateField('user', { id: currentUserId });
+  }, [provider, currentUserId]);
 
   // Track the live set of online users by subscribing to the
   // awareness instance. The collab `onAwarenessUpdate` hook
@@ -419,28 +386,6 @@ function readSpaces(doc: Y.Doc): ReadonlyArray<ProjectSpace> {
 }
 
 /**
- * Read the live `meta.users` map into a `userId → ProjectUser` map.
- * @param doc - The project meta Y.Doc to read from.
- * @returns The known users keyed by id, with defaults applied for missing fields.
- */
-function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
-  const usersMap = doc.getMap<Y.Map<unknown>>(USERS_KEY);
-  const out = new Map<string, ProjectUser>();
-  usersMap.forEach((m, userId) => {
-    if (!(m instanceof Y.Map)) return;
-    const lastSeenRaw = m.get('lastSeenAt');
-    out.set(userId, {
-      id: String(m.get('id') ?? userId),
-      name: String(m.get('name') ?? ''),
-      avatarUrl: (m.get('avatarUrl') as string | null) ?? null,
-      lastSeenAt:
-        typeof lastSeenRaw === 'number' ? lastSeenRaw : undefined,
-    });
-  });
-  return out;
-}
-
-/**
  * Project the meta doc into the React-facing state shape for one user,
  * applying the pre-auth and first-visit "all spaces open" fallbacks. The
  * active tab is NOT part of this projection — it is local page state, so a
@@ -448,7 +393,7 @@ function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
  * old docs is deliberately ignored).
  * @param doc - The project meta Y.Doc to read from.
  * @param userId - Current user whose per-user subtree to read; undefined pre-auth.
- * @returns The spaces, the user's open tabs, and the users map.
+ * @returns The spaces and the user's open tabs.
  */
 function readMetaState(
   doc: Y.Doc,
@@ -456,13 +401,11 @@ function readMetaState(
 ): {
   spaces: ReadonlyArray<ProjectSpace>;
   openTabIds: ReadonlyArray<string>;
-  users: ReadonlyMap<string, ProjectUser>;
 } {
   const spaces = readSpaces(doc);
-  const users = readUsers(doc);
   if (!userId) {
     // Pre-auth fallback: open every space.
-    return { spaces, openTabIds: spaces.map((s) => s.id), users };
+    return { spaces, openTabIds: spaces.map((s) => s.id) };
   }
   const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
   const userMap = perUser.get(userId);
@@ -475,11 +418,11 @@ function readMetaState(
     // the original Space silently disappear (Q6). The `openSpaceTab`
     // snapshot persists this state to the perUser subtree the moment
     // the user clicks anything.
-    return { spaces, openTabIds: spaces.map((s) => s.id), users };
+    return { spaces, openTabIds: spaces.map((s) => s.id) };
   }
   const openTabIdsArr = userMap.get(OPEN_TAB_IDS_KEY) as
     | Y.Array<string>
     | undefined;
   const openTabIds = openTabIdsArr ? openTabIdsArr.toArray() : [];
-  return { spaces, openTabIds, users };
+  return { spaces, openTabIds };
 }

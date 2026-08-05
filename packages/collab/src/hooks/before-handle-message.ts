@@ -18,10 +18,11 @@
  *     client cannot resurrect it. Was:
  *     `messages:*` RPC (push is collab-only side-effect of space:*
  *     handlers; clear is owner-only RPC).
- *   - `meta.users` — any add / modify / delete. The display-name
- *     lookup map is written exclusively by the `users:upsert-self`
- *     stateless RPC handler (server-side `system` context). Clients
- *     never push directly; the RPC handler enforces caller identity.
+ *   - `meta.users` — RETIRED root (#1882: a collaborator's name and
+ *     avatar are resolved from the project roster at render time and
+ *     never persisted in Yjs); still guarded so a malicious client
+ *     cannot resurrect it. Was: written by the awareness projection
+ *     hook, and before that by a `users:upsert-self` stateless RPC.
  *   - `meta.perUser[X]` where X is not the connected user's id. Each
  *     user may only write their own perUser entry (open tabs +
  *     active tab id).
@@ -212,7 +213,7 @@ export function checkWriteAuthz({
 
   if (beforeUsers !== afterUsers) {
     throw new WriteAuthzError(
-      "Direct write to meta.users is not allowed — use users:upsert-self stateless RPC",
+      "Direct write to meta.users is not allowed — the map is retired (#1882: a collaborator's name and avatar are resolved from the project roster at render time and never persisted in Yjs); the root stays guarded against malicious writes",
     );
   }
 

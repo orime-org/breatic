@@ -44,7 +44,6 @@ import {
   type SpaceRpcResponse,
 } from "@breatic/shared";
 import { createAuthHook } from "@collab/hooks/auth.js";
-import { projectAwarenessIntoMetaUsers } from "@collab/hooks/awareness-meta-users.js";
 import { checkWriteAuthz, WriteAuthzError } from "@collab/hooks/before-handle-message.js";
 import { createPersistenceExtension } from "@collab/services/persistence.js";
 import { getCollabConfig } from "@collab/config.js";
@@ -229,47 +228,22 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
     },
 
-    // `meta.users[userId]` population (2026-05-27 awareness rewrite):
-    // the front-end writes `user` into awareness via
-    // `provider.awareness.setLocalStateField('user', { id, name, avatarUrl })`
-    // and we project it into `meta.users[userId]` here. Awareness is
-    // declarative — `setLocalStateField` re-fires for any
-    // `currentUser` deps change in `useProjectMeta`, so a user
-    // renaming themselves in settings flows through automatically
-    // (the prior `users:upsert-self` stateless RPC path missed this
-    // because its `sentForProviderRef` guard skipped re-sends).
+    // There is no `onAwarenessUpdate` hook any more (#1882).
     //
-    // Anti-spoof: only awareness state whose `user.id` matches the
-    // connection-context user is honored. Multi-collab-instance dedup
-    // falls out of the same check — remote-synced updates land here
-    // with a non-matching (or empty) context.user.id and are
-    // rejected without writing.
+    // It used to project each client's awareness `user` field into
+    // `meta.users[userId]`, so a name and avatar survived the person going
+    // offline. That whole idea was retired: a name only ever needs to be
+    // right for somebody who is HERE, and someone who is here has a browser
+    // that just fetched it. Peers now resolve names from the project roster
+    // (server data, current by construction) and never from the wire, which
+    // also means the server stops holding a copy that goes stale the moment
+    // anyone renames themselves.
     //
-    // Debounce: cursor / selection awareness updates would fire this
-    // hook at sub-second rates. The helper diffs the user fields and
-    // throttles the `lastSeenAt` refresh to one transact per user
-    // per 30s — see `awareness-meta-users.ts`.
-    onAwarenessUpdate: async ({
-      documentName,
-      document,
-      awareness,
-      added,
-      updated,
-      context,
-    }) => {
-      const parsed = parseDocName(documentName);
-      if (!parsed || parsed.kind !== "meta") return;
-      const ctx = context as { user?: { id?: string } };
-      projectAwarenessIntoMetaUsers({
-        documentName,
-        document,
-        awareness,
-        added,
-        updated,
-        contextUserId: ctx.user?.id,
-        now: Date.now(),
-      });
-    },
+    // What went with it: the anti-spoof identity check (nothing to spoof —
+    // the wire carries only a user id, and the id it carries is not read for
+    // anything a peer displays), the multi-instance dedup that fell out of
+    // it, and the 30s debounce that existed because cursor movement fired
+    // this hook at sub-second rates.
 
     onDisconnect: async ({ documentName, context, socketId }) => {
       const ctx = context as { user?: { id: string } };

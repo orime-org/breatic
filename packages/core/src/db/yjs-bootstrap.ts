@@ -40,17 +40,6 @@ export interface EncodeInitialMetaStateArgs {
   kind: SpaceKind;
   name: string;
   createdBy: string;
-  /**
-   * Creator's display name (their personal studio `name`, falling back
-   * to the email local-part). Seeded into `meta.users[actor]` so other
-   * members reading the project before the creator first connects
-   * — e.g. a share link opened by a peer immediately after project
-   * creation — still see the creator's name in
-   * `space-created` audit lookups instead of falling back to UUID.
-   */
-  creatorName: string;
-  /** Creator's avatar URL (nullable — Google OAuth path, null otherwise today). */
-  creatorAvatarUrl: string | null;
   /** Milliseconds since epoch. Caller passes `Date.now()` in production. */
   ts: number;
 }
@@ -127,8 +116,6 @@ export function encodeInitialMetaState(
     kind,
     name,
     createdBy,
-    creatorName,
-    creatorAvatarUrl,
     ts,
   } = args;
 
@@ -156,21 +143,13 @@ export function encodeInitialMetaState(
   // that activity row itself, since only it knows the actor + can
   // reach the business DB at the right transactional moment.
 
-  // 2026-05-27 awareness rewrite — seed `meta.users[creator]` so
-  // ProjectActivityButton's actor lookup hits on the
-  // `space-created` entry above even when a remote peer opens
-  // the project before the creator first connects (their awareness
-  // hasn't fired yet, so the runtime onAwarenessUpdate path
-  // wouldn't have written this entry). `lastSeenAt = ts` treats
-  // the creation moment as the most recent activity — the runtime
-  // hook refreshes it on every subsequent awareness change.
-  const users = doc.getMap("users");
-  const creatorEntry = new Y.Map<unknown>();
-  creatorEntry.set("id", createdBy);
-  creatorEntry.set("name", creatorName);
-  creatorEntry.set("avatarUrl", creatorAvatarUrl);
-  creatorEntry.set("lastSeenAt", ts);
-  users.set(createdBy, creatorEntry);
+  // No identity is seeded here. This used to write `meta.users[creator]`
+  // (name + avatar + lastSeenAt) so a peer opening the project before the
+  // creator first connected would still see a name on the space-created
+  // audit entry. #1882 retired the whole `meta.users` map: the activity feed
+  // renders `actorName` from the PG activity row and never read it, and a
+  // display name is now resolved from the project roster at render time —
+  // server data that cannot go stale, unlike a copy frozen at creation.
 
   // Seed `meta.perUser[creator]` with the first space opened +
   // active. The frontend `readMetaState` fallback used to derive
