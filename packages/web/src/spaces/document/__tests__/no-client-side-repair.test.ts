@@ -31,7 +31,6 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import {
   _resetDocumentEditorCacheForTests,
   getDocumentEditor,
@@ -39,8 +38,7 @@ import {
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
-const HUE = userPaletteHue('test-user');
-const CARET_USER = { name: 'Tester', color: resolvePaletteHex(HUE), hue: HUE };
+const CARET_USER = { id: 'u' };
 const NAME = 'project-p/document-s';
 
 describe('opening a document does not write to it', () => {

@@ -63,3 +63,39 @@ export function useResolverRef(
     [],
   );
 }
+
+/** Everything an editor needs to put names on its collaborators' carets. */
+export interface CollaboratorNames {
+  /**
+   * The resolver handed to the caret builder. Reference-stable — the caret
+   * extension keeps it for the editor's whole life.
+   */
+  resolve: ResolveCollaboratorName;
+  /**
+   * The roster snapshot. Deliberately NOT for reading names (that is
+   * `resolve`'s job): it exists so an effect can depend on it and re-run when
+   * the roster moves. A caret already on screen does not re-render when a name
+   * arrives — prosemirror-view keys the widget on the client id and reuses its
+   * DOM without calling the builder again — so somebody has to notice the
+   * change and patch the DOM, and this is what tells them.
+   */
+  members: readonly Member[];
+}
+
+/**
+ * Build the collaborator-name bundle from a roster the caller already holds.
+ *
+ * Takes the roster rather than fetching it, and that is the point. The project
+ * page loads it once for the member stack; deriving from that means one query
+ * and one answer, and — just as importantly — it keeps every space body and
+ * every editor free of a data dependency they would otherwise carry all the
+ * way down into ReactFlow, where there is no QueryClientProvider to satisfy it.
+ * @param members - The project roster, from the page that owns it.
+ * @returns A stable resolver plus the roster snapshot behind it.
+ */
+export function useCollaboratorNamesFrom(
+  members: readonly Member[],
+): CollaboratorNames {
+  const resolve = useResolverRef(members);
+  return React.useMemo(() => ({ resolve, members }), [resolve, members]);
+}

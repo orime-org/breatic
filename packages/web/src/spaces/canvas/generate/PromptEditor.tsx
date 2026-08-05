@@ -13,6 +13,8 @@ import type * as Y from 'yjs';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
+import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
+import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 
 import {
   extractAtMentionedSourceIds,
@@ -81,12 +83,17 @@ interface PromptEditorProps {
    */
   caretProvider?: Pick<HocuspocusProvider, 'awareness'> | null;
   /**
-   * This user's identity shown at their caret on OTHER clients: display name,
-   * a concrete 6-digit hex (what the wire carries — y-prosemirror validates
-   * it), and the palette hue breatic receivers actually render from (see
-   * `user-color.ts` / `caret-render.ts`).
+   * This user's identity as published at their caret on OTHER clients: the
+   * user id, and nothing else (#1882). Receivers resolve the display name
+   * from the project roster and derive the colour from the id.
    */
-  caretUser?: { name: string; color: string; hue: string } | null;
+  caretUser?: CaretUserIdentity | null;
+  /**
+   * Names for the collaborators whose carets appear in this editor, resolved
+   * from the project member roster. Without it their carets render as bare
+   * coloured lines.
+   */
+  collaboratorNames?: CollaboratorNames | null;
 }
 
 /**
@@ -105,7 +112,8 @@ interface PromptEditorProps {
  * @param root0.mode - Active generation sub-mode (t2i greys out `@` chips).
  * @param root0.mentionEmptyLabel - Localized empty-state text for the `@` popup.
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
- * @param root0.caretUser - This user's caret identity (name + palette color) published to other clients.
+ * @param root0.caretUser - This user's caret identity (the user id) published to other clients.
+ * @param root0.collaboratorNames - Resolves collaborators' display names from the project roster.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
@@ -123,6 +131,7 @@ export const PromptEditor = React.forwardRef<
     mentionEmptyLabel,
     caretProvider = null,
     caretUser = null,
+    collaboratorNames = null,
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -158,7 +167,12 @@ export const PromptEditor = React.forwardRef<
         // it mount only when awareness is available: the extension THROWS in
         // onCreate on a null provider, and before the socket's first connect
         // there is genuinely nothing to publish carets through.
-        ...buildCollabExtensions({ fragment, caretProvider, caretUser }),
+        ...buildCollabExtensions({
+          fragment,
+          caretProvider,
+          caretUser,
+          resolveCollaboratorName: collaboratorNames?.resolve,
+        }),
         Placeholder.configure({ placeholder }),
         ReferenceMention.configure({
           suggestion: makeReferenceSuggestion({
@@ -206,7 +220,7 @@ export const PromptEditor = React.forwardRef<
   // Shared with the document editor — both halves have to travel together,
   // or one side publishes into a void and the other renders a flag nobody
   // sets.
-  useCollabCaretPresence(editor, caretProvider, caretUser);
+  useCollabCaretPresence(editor, caretProvider, caretUser, collaboratorNames);
   // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
   // narrow imperative handle rather than the raw editor, keeping TipTap
   // encapsulated (same boundary as the onTextChange / onAtMentionsChange

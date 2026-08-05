@@ -29,6 +29,7 @@ import type * as Y from 'yjs';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
+import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 
 /**
  * The box metrics the two states of a text node's body MUST share.
@@ -87,6 +88,7 @@ const EDITOR_CLASS = `${TEXT_BODY_BOX} cursor-text focus:bg-accent/30`;
  * @param options.fragment - The node's shared body.
  * @param options.caretProvider - Provider carrying collaborator carets, or null before first connect.
  * @param options.caretUser - This user's caret identity.
+ * @param options.collaboratorNames - Resolves collaborators' names from the roster.
  * @param options.placeholder - Text shown while the body is empty.
  * @returns The complete extension list.
  */
@@ -94,9 +96,16 @@ export function buildTextNodeExtensions(options: {
   fragment: Y.XmlFragment;
   caretProvider?: Pick<HocuspocusProvider, 'awareness'> | null;
   caretUser?: CaretUserIdentity | null;
+  collaboratorNames?: CollaboratorNames | null;
   placeholder: string;
 }): Extensions {
-  const { fragment, caretProvider, caretUser, placeholder } = options;
+  const {
+    fragment,
+    caretProvider,
+    caretUser,
+    collaboratorNames,
+    placeholder,
+  } = options;
   return [
     Document,
     Paragraph,
@@ -106,7 +115,12 @@ export function buildTextNodeExtensions(options: {
     // within it mount only once awareness exists: the extension throws on a
     // null provider, and before the socket's first connect there is nothing to
     // publish through.
-    ...buildCollabExtensions({ fragment, caretProvider, caretUser }),
+    ...buildCollabExtensions({
+      fragment,
+      caretProvider,
+      caretUser,
+      resolveCollaboratorName: collaboratorNames?.resolve,
+    }),
     Placeholder.configure({ placeholder }),
   ];
 }
@@ -118,6 +132,11 @@ interface TextNodeEditorProps {
   caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
   /** This user's caret identity. */
   caretUser: CaretUserIdentity | null;
+  /**
+   * Names for the collaborators whose carets appear here, resolved from the
+   * project member roster. Without it their carets are bare colour lines.
+   */
+  collaboratorNames: CollaboratorNames | null;
   /** Text shown while the body is empty. */
   placeholder: string;
   /**
@@ -150,6 +169,7 @@ interface TextNodeEditorProps {
  * @param props.fragment - The node's shared body.
  * @param props.caretProvider - Provider carrying collaborator carets.
  * @param props.caretUser - This user's caret identity.
+ * @param props.collaboratorNames - Resolves collaborators' names from the roster.
  * @param props.placeholder - Text shown while the body is empty.
  * @param props.editable - Whether this user may write.
  * @param props.onLeave - Leave the editor, saying where focus should end up.
@@ -159,6 +179,7 @@ export function TextNodeEditor({
   fragment,
   caretProvider,
   caretUser,
+  collaboratorNames,
   placeholder,
   editable,
   onLeave,
@@ -178,6 +199,7 @@ export function TextNodeEditor({
         fragment,
         caretProvider,
         caretUser,
+        collaboratorNames,
         placeholder,
       }),
       editable,
@@ -227,12 +249,12 @@ export function TextNodeEditor({
     // re-synced, so a locale switch while a node is open would otherwise leave
     // the old language behind until it was reopened. `caretProvider` flips
     // from null to a provider once, on the socket's first connect.
-    [fragment, placeholder, caretProvider, caretUser, editable],
+    [fragment, placeholder, caretProvider, caretUser, collaboratorNames, editable],
   );
   // Publish this window's focus and dim collaborators who have left theirs.
   // The other half of the caret story: without it this client publishes into a
   // void, and renders a flag nobody sets.
-  useCollabCaretPresence(editor, caretProvider, caretUser);
+  useCollabCaretPresence(editor, caretProvider, caretUser, collaboratorNames);
 
   return <EditorContent editor={editor} />;
 }

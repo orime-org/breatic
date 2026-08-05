@@ -28,12 +28,14 @@ import { useDocumentHistory } from '@web/spaces/document/use-document-history';
  * @param root0.spaceId - ID of the document space.
  * @param root0.projectId - ID of the owning project.
  * @param root0.readOnly - True for a viewer; the body and toolbar go read-only.
+ * @param root0.collaboratorNames - Resolves collaborators' names from the roster.
  * @returns The document editor, or a loading placeholder while it mounts.
  */
 export function DocumentSpace({
   spaceId,
   projectId,
   readOnly = false,
+  collaboratorNames = null,
 }: SpaceBodyProps): React.JSX.Element {
   const t = useTranslation();
   const name = docName.documentSpace(projectId, spaceId);
@@ -93,6 +95,7 @@ export function DocumentSpace({
     name,
     caretProvider: provider,
     caretUser,
+    collaboratorNames,
     // Only the ROLE decides this. A refused or read-only connection is reported
     // to the user, not enforced against them — see above.
     editable: !readOnly,

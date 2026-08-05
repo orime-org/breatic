@@ -97,6 +97,7 @@ describe('FLOW_NODE_TYPES', () => {
             readOnly: false,
             caretProvider: null,
             caretUser: null,
+            collaboratorNames: null,
           }}
         >
           <Text {...({ id: 'n2', data, selected: false } as unknown as NodeProps)} />

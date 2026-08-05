@@ -3704,9 +3704,12 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
     name: canvasDocName,
     doc: canvasDoc,
   });
-  // Shared with every other editor, so one person keeps the same caret name and
-  // colour wherever their cursor turns up.
+  // Shared with every other editor, so one person keeps the same caret colour
+  // wherever their cursor turns up. It is the user id alone — names are
+  // resolved from the roster the project page already holds, not from the
+  // wire (#1882).
   const caretUser = useCaretUser();
+  const collaboratorNames = props.collaboratorNames ?? null;
   const canvas = React.useMemo<CanvasContextValue>(
     () => ({
       projectId: props.projectId,
@@ -3714,8 +3717,16 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
       readOnly: props.readOnly ?? false,
       caretProvider,
       caretUser,
+      collaboratorNames,
     }),
-    [props.projectId, props.spaceId, props.readOnly, caretProvider, caretUser],
+    [
+      props.projectId,
+      props.spaceId,
+      props.readOnly,
+      caretProvider,
+      caretUser,
+      collaboratorNames,
+    ],
   );
   return (
     <CanvasContext.Provider value={canvas}>

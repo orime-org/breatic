@@ -46,6 +46,8 @@ import { CollabUndoSelection } from '@web/features/collab-editor/collab-undo-sel
 import {
   renderCollabCaret,
   renderCollabSelection,
+  type CaretUser,
+  type ResolveCollaboratorName,
 } from '@web/features/collab-editor/caret-render';
 
 /** What an editor has to supply to be bound to a shared document. */
@@ -67,6 +69,15 @@ export interface CollabExtensionOptions {
   /** This user's caret identity, published to other clients. */
   caretUser?: CaretUserIdentity | null;
   /**
+   * Turns a remote collaborator's user id into a display name (#1882).
+   *
+   * Awareness carries no name, so without this every remote caret renders as
+   * a bare coloured line. It must be reference-stable: the extension keeps
+   * whatever it is given here for the editor's whole life, and this editor is
+   * built once per document and never rebuilt.
+   */
+  resolveCollaboratorName?: ResolveCollaboratorName;
+  /**
    * An undo manager to bind instead of letting the collaboration extension
    * build its own. Supply it when the caller needs to READ the manager — a
    * plugin-key lookup fails silently against a duplicated binding.
@@ -82,7 +93,13 @@ export interface CollabExtensionOptions {
 export function buildCollabExtensions(
   options: CollabExtensionOptions,
 ): Extensions {
-  const { fragment, caretProvider, caretUser, undoManager } = options;
+  const {
+    fragment,
+    caretProvider,
+    caretUser,
+    undoManager,
+    resolveCollaboratorName,
+  } = options;
 
   const extensions: Extensions = [
     Collaboration.configure({
@@ -110,12 +127,20 @@ export function buildCollabExtensions(
       CollaborationCaret.configure({
         provider: caretProvider,
         user: caretUser,
-        // Receiver-side safe render: a whitelisted hue resolves to a theme
-        // token, so a remote client's colour string is never inlined into the
-        // DOM. BOTH builders are supplied — the default selectionRender inlines
-        // the raw remote colour too, and that omission is exactly what an
-        // editor assembling this list by hand would miss.
-        render: renderCollabCaret,
+        // Receiver-side render. The colour is derived from the remote user id
+        // rather than read off the wire, so no remote string is ever inlined
+        // into the DOM. BOTH builders are supplied — the default
+        // selectionRender inlines the raw remote colour, and that omission is
+        // exactly what an editor assembling this list by hand would miss.
+        //
+        // The name comes from the resolver, which is why this closure exists
+        // at all: upstream calls `render(user, clientId)` and has nowhere to
+        // put a third argument.
+        // `clientId` stays optional so this still matches upstream's
+        // single-argument `render` type. It arrives at runtime — the caret's
+        // data-client-id, which the DOM patches key off, comes from it.
+        render: (user: CaretUser, clientId?: number) =>
+          renderCollabCaret(user, clientId, resolveCollaboratorName),
         selectionRender: renderCollabSelection,
       }),
     );

@@ -23,6 +23,7 @@ import * as React from 'react';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 
 import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
+import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 
 /** The canvas subtree's document coordinates, permissions, and caret identity. */
 export interface CanvasContextValue {
@@ -48,6 +49,12 @@ export interface CanvasContextValue {
   caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
   /** This user's caret identity, published to other clients. */
   caretUser: CaretUserIdentity | null;
+  /**
+   * Names for the collaborators whose carets appear in this canvas's editors,
+   * resolved from the project member roster (#1882). Every editor in the
+   * canvas takes it from here so they all name the same person the same way.
+   */
+  collaboratorNames: CollaboratorNames | null;
 }
 
 /**
@@ -64,6 +71,7 @@ const NO_CANVAS: CanvasContextValue = {
   readOnly: true,
   caretProvider: null,
   caretUser: null,
+  collaboratorNames: null,
 };
 
 export const CanvasContext = React.createContext<CanvasContextValue>(NO_CANVAS);

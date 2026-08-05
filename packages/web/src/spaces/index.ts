@@ -3,6 +3,8 @@
 
 import type { ComponentType } from 'react';
 
+import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
+
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
@@ -19,6 +21,17 @@ export interface SpaceBodyProps {
    * editable when omitted.
    */
   readOnly?: boolean;
+  /**
+   * Resolves collaborators' display names from the project member roster
+   * (#1882), threaded through `SpaceOutlet` the same way `readOnly` is.
+   *
+   * It comes from above rather than being fetched here on purpose: the
+   * project page already holds that roster for the member stack, so asking
+   * for it again would be a second copy of one fact — and it would make every
+   * space body depend on a QueryClientProvider that only the running app has.
+   * Omitted, remote carets render as bare colour lines.
+   */
+  collaboratorNames?: CollaboratorNames | null;
 }
 
 export interface SpaceDefinition {

@@ -44,6 +44,7 @@ import type * as Y from 'yjs';
 
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
+import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import {
   createDocumentUndoManager,
@@ -74,6 +75,8 @@ export interface DocumentEditorInputs {
   caretProvider: { awareness: unknown };
   /** This user's caret identity, published to other clients. */
   caretUser: CaretUserIdentity;
+  /** Resolves collaborators' display names from the project roster (#1882). */
+  resolveCollaboratorName?: ResolveCollaboratorName;
   /**
    * Whether this client may type.
    *
@@ -101,6 +104,7 @@ function createDocumentEditor(
       fragment: documentBodyFragment(doc),
       caretProvider: inputs.caretProvider,
       caretUser: inputs.caretUser,
+      resolveCollaboratorName: inputs.resolveCollaboratorName,
       undoManager,
     }),
   });

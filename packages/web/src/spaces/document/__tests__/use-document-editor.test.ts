@@ -20,7 +20,6 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import {
   _resetDocumentEditorCacheForTests,
   evictDocumentEditor,
@@ -52,8 +51,7 @@ function syncAsRemote(target: Y.Doc, source: Y.Doc): void {
   );
 }
 
-const HUE = userPaletteHue('test-user');
-const CARET_USER = { name: 'Tester', color: resolvePaletteHex(HUE), hue: HUE };
+const CARET_USER = { id: 'u' };
 
 describe('useDocumentEditor', () => {
   let doc: Y.Doc;

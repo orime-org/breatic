@@ -8,7 +8,11 @@ import { toast } from '@web/lib/toast';
 
 import { newId, type SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@web/data/api';
-import { useProjectMembers } from '@web/data/use-project-members';
+import {
+  useProjectMembers,
+  useRosterRefreshOnJoin,
+} from '@web/data/use-project-members';
+import { useCollaboratorNamesFrom } from '@web/features/collab-editor/use-collaborator-names';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
@@ -188,6 +192,10 @@ function ProjectWorkspace({
   // `GET /projects/:id/members` is membership-gated; viewers can still read
   // the roster (the gating is on *mutations*, not the list).
   const { members } = useProjectMembers(projectId);
+  // The same roster names the collaborators whose carets show up inside the
+  // space bodies (#1882). Derived here rather than fetched again down there:
+  // one query, one answer, and space bodies stay free of a data dependency.
+  const collaboratorNames = useCollaboratorNamesFrom(members);
 
   // ---- Current user + Yjs meta + project messages ----
   const userId = useCurrentUserStore((s) => s.user?.id);
@@ -210,8 +218,14 @@ function ProjectWorkspace({
     spaces,
     openTabIds,
     provider,
+    onlineUserIds,
     status: connectionStatus,
   } = useProjectMeta(projectId, userId);
+  // Somebody arriving is the one moment we know a name might be new to us, so
+  // it is the one trigger for re-reading the roster (#1882). Unconditional on
+  // purpose: no filtering on whether we already know the id, which would have
+  // quietly kept showing the old name for everyone already listed.
+  useRosterRefreshOnJoin(projectId, onlineUserIds);
   // The active tab is LOCAL window state — deliberately NOT in the synced
   // meta doc (see module doc). null = no local choice yet → the effective
   // active falls back to the first open tab.
@@ -751,6 +765,7 @@ function ProjectWorkspace({
                   spaceId={activeSpace.id}
                   type={activeSpace.type}
                   readOnly={isViewer}
+                  collaboratorNames={collaboratorNames}
                 />
               ) : (
                 <div

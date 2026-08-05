@@ -115,6 +115,7 @@ function canvasValue(over: Partial<CanvasContextValue> = {}): CanvasContextValue
     readOnly: false,
     caretProvider: null,
     caretUser: null,
+    collaboratorNames: null,
     ...over,
   };
 }

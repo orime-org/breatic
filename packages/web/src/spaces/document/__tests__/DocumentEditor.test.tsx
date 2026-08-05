@@ -20,7 +20,6 @@ import * as Y from 'yjs';
 
 import { Awareness } from 'y-protocols/awareness';
 
-import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
@@ -43,8 +42,7 @@ function markupOf(fragment: Y.XmlFragment): string {
   return fragment.toArray().map((n) => n.toString()).join('');
 }
 
-const HUE = userPaletteHue('test-user');
-const CARET_USER = { name: 'Tester', color: resolvePaletteHex(HUE), hue: HUE };
+const CARET_USER = { id: 'u' };
 
 describe('DocumentEditor', () => {
   const NAME = 'project-p/document-chrome';

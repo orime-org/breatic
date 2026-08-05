@@ -24,13 +24,11 @@ import { act } from 'react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import { resolvePaletteHex, userPaletteHue } from '@web/lib/user-color';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
-const HUE = userPaletteHue('local-user');
-const CARET_USER = { name: 'Me', color: resolvePaletteHex(HUE), hue: HUE };
+const CARET_USER = { id: 'u' };
 const REMOTE_CLIENT_ID = 4242;
 
 describe('a collaborator caret', () => {
@@ -50,6 +48,12 @@ describe('a collaborator caret', () => {
         name: 'project-p/document-carets',
         caretProvider: { awareness },
         caretUser: CARET_USER,
+        // The name is resolved from the roster now (#1882), not published by
+        // the peer — so the caret needs one to have a label at all.
+        collaboratorNames: {
+          resolve: (userId) => (userId === 'u-them' ? 'Them' : null),
+          members: [],
+        },
         hasEverSynced: true,
       }),
     );
@@ -77,7 +81,7 @@ describe('a collaborator caret', () => {
         Y.createRelativePositionFromTypeIndex(documentBodyFragment(doc), 0),
       );
       (awareness.states as Map<number, unknown>).set(REMOTE_CLIENT_ID, {
-        user: { name: 'Them', color: '#ff0000' },
+        user: { id: 'u-them' },
         cursor: { anchor: cursor, head: cursor },
       });
       awareness.emit('change', [

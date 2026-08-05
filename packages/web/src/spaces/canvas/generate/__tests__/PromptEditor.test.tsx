@@ -26,10 +26,7 @@ import * as React from 'react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import {
-  renderCollabCaret,
-  renderCollabSelection,
-} from '@web/features/collab-editor/caret-render';
+import { userPaletteHue } from '@web/lib/user-color';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -251,7 +248,12 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
         mode='t2i'
         mentionEmptyLabel='none'
         caretProvider={withProvider ? { awareness } : null}
-        caretUser={{ name: 'Ada', color: '#008573', hue: 'teal' }}
+        caretUser={{ id: 'u-ada' }}
+        collaboratorNames={{
+          // Stands in for the project roster the page passes down (#1882).
+          resolve: (userId) => (userId === 'u-grace' ? 'Grace' : null),
+          members: [],
+        }}
       />,
     );
     const editorEl = screen.getByTestId('generate-prompt-editor');
@@ -261,23 +263,21 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     return { awareness, editorEl };
   }
 
-  it('publishes the local user identity into awareness when the provider is supplied', async () => {
+  it('publishes the local user id into awareness when the provider is supplied', async () => {
     const { awareness } = await mountWithAwareness(true);
     await waitFor(() => {
       const local = awareness.getLocalState() as {
-        user?: { name: string; color: string };
+        user?: Record<string, unknown>;
       } | null;
-      // The published color is a concrete 6-digit hex (y-prosemirror's
-      // validator warns on anything else); the hue rides along so receiving
-      // breatic clients render the viewer-theme-adaptive palette token, and
+      // The id, and only the id (#1882): receivers resolve the name from the
+      // project roster and derive the colour from this id, so neither travels.
       // `focused` seeds from the REAL document.hasFocus() on mount (its jsdom
       // value depends on what earlier tests focused — assert the type only).
-      expect(local?.user).toMatchObject({
-        name: 'Ada',
-        color: '#008573',
-        hue: 'teal',
-      });
-      expect(typeof (local?.user as { focused?: unknown })?.focused).toBe('boolean');
+      expect(local?.user).toMatchObject({ id: 'u-ada' });
+      expect(typeof local?.user?.focused).toBe('boolean');
+      expect(local?.user).not.toHaveProperty('name');
+      expect(local?.user).not.toHaveProperty('color');
+      expect(local?.user).not.toHaveProperty('hue');
     });
   });
 
@@ -438,7 +438,7 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     const REMOTE_CLIENT = awareness.clientID + 1;
     const states = new Map(awareness.getStates());
     states.set(REMOTE_CLIENT, {
-      user: { name: 'Grace', color: '#c2298a', hue: 'pink' },
+      user: { id: 'u-grace' },
       cursor: {
         anchor: JSON.parse(
           JSON.stringify(Y.relativePositionToJSON(anchor)),
@@ -460,13 +460,14 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
       const caret = editorEl.querySelector('.collaboration-carets__caret');
       expect(caret).not.toBeNull();
       const label = caret?.querySelector('.collaboration-carets__label');
+      // The name came from the roster resolver, not from the wire (#1882):
+      // the remote client published nothing but `{ id: 'u-grace' }`.
       expect(label?.textContent).toBe('Grace');
-      // Receiver-side rendering resolves the WHITELISTED hue to the palette
-      // token var — the viewer's own theme picks the light/dark value. The
-      // raw remote color string is never inlined when a valid hue exists
-      // (style-attribute injection from a hostile collaborator).
+      // The colour is derived from that same id, resolving to a palette token
+      // var so the viewer's own theme picks the light/dark value. No remote
+      // string reaches the style attribute at all any more.
       expect(label?.getAttribute('style')).toContain(
-        'var(--color-palette-pink)',
+        `var(--color-palette-${userPaletteHue('u-grace')})`,
       );
     });
   });
@@ -486,8 +487,29 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
       (e) => e.name === 'collaborationCaret',
     );
     expect(caretExt).toBeDefined();
-    expect(caretExt?.options.render).toBe(renderCollabCaret);
-    expect(caretExt?.options.selectionRender).toBe(renderCollabSelection);
+    // Asserted by BEHAVIOUR, not by function identity: `render` is now a
+    // closure so the name resolver can be threaded in (#1882 — upstream's
+    // signature has nowhere to put a third argument). Comparing references
+    // would have failed on that wrapper while the wiring was perfectly fine,
+    // and — worse — would pass on a wrapper that forgot to call through.
+    const render = caretExt?.options.render as (
+      user: { id: string },
+      clientId?: number,
+    ) => HTMLElement;
+    const caret = render({ id: 'u-remote' }, 5);
+    expect(caret.classList.contains('collaboration-carets__caret')).toBe(true);
+    expect(caret.style.borderColor).toContain('var(--color-palette-');
+    expect(caret.dataset.clientId).toBe('5');
+
+    const selectionRender = caretExt?.options.selectionRender as (u: {
+      id: string;
+    }) => { style: string; class: string };
+    const attrs = selectionRender({ id: 'u-remote' });
+    expect(attrs.class).toBe('collaboration-carets__selection');
+    // The hardened part: a custom property, never a raw background-color —
+    // the default builder inlines the remote colour (adversarial round-1 HIGH).
+    expect(attrs.style).toContain('--collab-selection-bg:');
+    expect(attrs.style).not.toContain('background-color');
   });
 
   it('mounts NO caret extension without a provider (the extension throws on null)', async () => {

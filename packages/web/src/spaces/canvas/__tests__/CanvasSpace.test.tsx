@@ -263,13 +263,15 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       expect(document.querySelector('.ProseMirror')).not.toBeNull(),
     );
     // What a collaborator receives: the caret extension publishes the local
-    // user into the shared awareness. The identity fields come from the
-    // current-user store seeded in beforeEach.
+    // user id into the shared awareness — the id and nothing else (#1882).
+    // It comes from the current-user store seeded in beforeEach; the display
+    // name never travels, peers resolve it from the project roster.
     await waitFor(() => {
       const local = awareness.getLocalState() as {
-        user?: { name?: string };
+        user?: Record<string, unknown>;
       } | null;
-      expect(local?.user?.name).toBe('Ada');
+      expect(local?.user?.id).toBe('u-1');
+      expect(local?.user).not.toHaveProperty('name');
     });
 
     // The OTHER half of item 2, and the half the assertion above cannot see:
