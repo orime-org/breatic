@@ -14,10 +14,15 @@
  *
  * The two halves do not even judge "transient" the same way. Presign keeps
  * the reading below: 5xx, 429, and a network-level failure, with a 4xx taken
- * as a fact rather than weather. The transport reads the protocol instead —
- * it retries 408 and 429 despite both being 4xx, and it honours `Retry-After`,
- * so a server naming a wait past the transport's ceiling ends the attempt
- * after one delivery rather than three.
+ * as a fact rather than weather. The transport reads the protocol instead,
+ * retrying 408 and 429 despite both being 4xx.
+ *
+ * It would also honour `Retry-After`, but not on this path: the PUT is a
+ * cross-origin request to the presigned URL, and a header has to be named in
+ * `Access-Control-Expose-Headers` before the browser hands it to JS. Measured
+ * against our own bucket, the PUT response exposes ETag, x-oss-request-id and
+ * x-oss-version-id, and nothing else. So the transport reads null and falls
+ * back to its own backoff — same three deliveries as before.
  */
 
 import { httpRequest } from '@breatic/shared';

@@ -382,7 +382,7 @@ function uploadOneMedia(
 /**
  * Upload a video and its extracted cover ATOMICALLY (#1816): the two run
  * concurrently, EACH with its own transient retry ({@link runMediaUpload} →
- * presign + PUT, 3 attempts apiece). The node is written only when BOTH
+ * presign and PUT, each retried under its own rules). The node is written only when BOTH
  * FINALLY succeed. If either FINALLY fails (after its own retries are
  * exhausted), the whole thing aborts with no write — a video never lands
  * without its cover and a cover never lands without its video; the failed node
