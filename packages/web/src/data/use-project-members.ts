@@ -55,6 +55,22 @@ export function useProjectMembers(projectId: string): ProjectMembersResult {
     queryKey: [PROFILES_KEY, projectId, userIds],
     queryFn: () => usersApi.getByIds(userIds),
     enabled: userIds.length > 0,
+    // Keep the profiles we already have while the new ones load.
+    //
+    // The id list is part of the key, so ONE person joining makes this an
+    // entirely different query with an empty cache — and every other member,
+    // whose profile did not change at all, goes nameless until the request
+    // lands. That is visible: a caret whose label is already on screen loses
+    // it, because a missing profile is (correctly) read as "no name yet" and
+    // a nameless caret (correctly) renders as a bare line.
+    //
+    // This is the documented purpose of the function form: keep showing the
+    // old data instead of a loading state while transitioning from one query
+    // to the next. It also cleans up what an empty name MEANS downstream —
+    // "we do not have this person's profile", never "a fetch is in flight".
+    // Somebody who just joined is still unknown, which is the truth: their
+    // caret stays a bare line until their name actually arrives.
+    placeholderData: (previous) => previous,
   });
 
   // Memoised because consumers put this array — or something derived from it —

@@ -26,7 +26,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as React from 'react';
 
@@ -210,5 +210,76 @@ describe('useProjectMembers', () => {
     expect(result.current.members).toBe(first);
     rerender();
     expect(result.current.members).toBe(first);
+  });
+
+  describe('while a new member’s profile is still loading', () => {
+    /**
+     * Settle a two-person roster, then add a third and hold the profile
+     * request open so the in-flight window can be inspected.
+     * @param client - The query client to render against.
+     * @returns The hook result and a release function for the held request.
+     */
+    async function joinWithHeldProfiles(client: QueryClient): Promise<{
+      names: () => (string | undefined)[];
+      release: () => void;
+    }> {
+      vi.mocked(membersApi.list).mockResolvedValue([
+        { userId: 'a', role: 'owner' },
+        { userId: 'b', role: 'editor' },
+      ] as Awaited<ReturnType<typeof membersApi.list>>);
+      vi.mocked(usersApi.getByIds).mockImplementation((async (ids: string[]) =>
+        ids.map((id) => ({ id, name: id.toUpperCase(), email: `${id}@x.com` }))) as
+        unknown as typeof usersApi.getByIds);
+
+      const { result } = renderHook(() => useProjectMembers(PROJECT), {
+        wrapper: wrapper(client),
+      });
+      await waitFor(() => expect(result.current.members[0]?.name).toBe('A'));
+
+      // Somebody joins. This PR's own refresh-on-join fires here, and the id
+      // list is part of the profile query's key, so this is a brand-new query.
+      vi.mocked(membersApi.list).mockResolvedValue([
+        { userId: 'a', role: 'owner' },
+        { userId: 'b', role: 'editor' },
+        { userId: 'c', role: 'editor' },
+      ] as Awaited<ReturnType<typeof membersApi.list>>);
+      let release = (): void => {};
+      vi.mocked(usersApi.getByIds).mockImplementation((() =>
+        new Promise((resolve) => {
+          release = (): void => resolve([]);
+        })) as unknown as typeof usersApi.getByIds);
+
+      await act(async () => {
+        refetchProjectRoster(client, PROJECT);
+        await new Promise((r) => setTimeout(r, 30));
+      });
+
+      return {
+        names: () => result.current.members.map((m) => m.name),
+        release: () => release(),
+      };
+    }
+
+    it('keeps the names of the people we already knew', async () => {
+      // The bug this pins: one person joining wiped the name off every member,
+      // including everyone whose profile had not changed at all. On screen that
+      // is every remote caret losing its label for a round trip — collaborators
+      // turning into anonymous coloured lines because somebody else arrived.
+      const { names, release } = await joinWithHeldProfiles(client);
+      expect(names()).toContain('A');
+      expect(names()).toContain('B');
+      release();
+    });
+
+    it('still reports the newcomer as unknown until their profile lands', async () => {
+      // The other half, and the one a careless fix breaks: we genuinely do not
+      // know this person's name yet. An empty name is the honest answer, and it
+      // is what makes their caret render as a bare line rather than a label
+      // with something invented in it.
+      const { names, release } = await joinWithHeldProfiles(client);
+      expect(names()).toHaveLength(3);
+      expect(names()[2]).toBe('');
+      release();
+    });
   });
 });
