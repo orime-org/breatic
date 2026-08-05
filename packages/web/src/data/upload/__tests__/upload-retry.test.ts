@@ -130,14 +130,20 @@ describe('computePutTimeoutMs — stall guard scales with size', () => {
   });
 
   it('keeps a 2 GiB file (the upload cap) below the 32-bit setTimeout ceiling', () => {
-    // Guard invariant: a timeout past 2,147,483,647 ms (the int32 setTimeout
-    // limit) overflows to ~0. This value is now handed to the shared HTTP
-    // transport as its per-delivery deadline, so an overflow there aborts the
-    // PUT instantly just as the old AbortSignal.timeout did. At the 2 GiB cap
-    // and 65536 B/s floor the timeout is ~32.8M ms (~9h) — comfortably under
-    // the ceiling — so no clamp is needed today. This test fails the day
-    // someone shrinks the rate floor or raises the cap enough to approach the
-    // limit, forcing a clamp then.
+    // This value is now handed to the shared HTTP transport as its
+    // per-delivery deadline, and the transport REFUSES an out-of-range one at
+    // the boundary — `usableDeadline` throws before the loop, so not a single
+    // byte is sent. That is a deliberate choice on its side over clamping, and
+    // it differs from what this path used to do: AbortSignal.timeout overflowed
+    // to ~0 and aborted each of three deliveries instantly.
+    //
+    // Pinned here: at the shipped pair of values the deadline stays in range,
+    // with ~65x of headroom. Be exact about what this does NOT do — CFG is a
+    // literal in this file, so it cannot notice a change to storage.yaml. An
+    // operator lowering client_put_min_bytes_per_sec far enough would push a
+    // 2 GiB upload past the ceiling and every such PUT would fail with zero
+    // bytes sent, and this test would still be green. Connecting the guard to
+    // the real config is tracked separately.
     const t = computePutTimeoutMs(2147483648, CFG);
     expect(t).toBeGreaterThan(0);
     expect(t).toBeLessThanOrEqual(2147483647);

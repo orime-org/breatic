@@ -24,6 +24,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { HttpRetryError } from '@breatic/shared';
 import type * as sharedModule from '@breatic/shared';
 
 const httpRequestMock = vi.fn();
@@ -104,22 +105,37 @@ describe('putFileWithRetry hands the PUT to the shared transport', () => {
     ).rejects.toMatchObject({ status: 403 });
   });
 
-  it('lets the transport’s own failure through untouched', async () => {
-    // The third exit, and the one with nothing else guarding it. When no
-    // delivery produced a response the transport throws — HttpRetryError once
-    // it has replayed, the original failure when it has not — and this
-    // function must not catch it. Swallowing it, or rewriting it as an
-    // UploadHttpError, would turn "the network never answered" into something
-    // the caller reads as an HTTP outcome. The other two exits are pinned by
-    // their own tests; without this one a future catch here passes the suite.
-    const transportFailure = new Error('http request to https://store.test failed after 3 attempts');
+  // The third exit, and the one with nothing else guarding it: when no
+  // delivery produced a response the transport throws, and this function must
+  // not catch it. Swallowing it, or rewriting it as an UploadHttpError, turns
+  // "the network never answered" into something the caller reads as an HTTP
+  // outcome.
+  //
+  // Both shapes are pinned because the transport throws two, and a catch that
+  // narrows on one of them would slip past a test that only knows the other.
+  // HttpRetryError is the shape that matters most here — request.ts rethrows
+  // the original only when the first delivery failed, and a File body is
+  // replayable, so a replay-safe PUT reaching this exit has usually replayed.
+  it('lets a replayed transport failure through untouched', async () => {
+    const failure = new HttpRetryError('http request to https://store.test failed after 3 attempts', 3, new TypeError('fetch failed'));
     httpRequestMock.mockImplementation(async () => {
-      throw transportFailure;
+      throw failure;
     });
 
     await expect(
       putFileWithRetry('https://store.test/key?sig=abc', bigFile(), CFG),
-    ).rejects.toBe(transportFailure);
+    ).rejects.toBe(failure);
+  });
+
+  it('lets a first-delivery failure through untouched', async () => {
+    const failure = new TypeError('fetch failed');
+    httpRequestMock.mockImplementation(async () => {
+      throw failure;
+    });
+
+    await expect(
+      putFileWithRetry('https://store.test/key?sig=abc', bigFile(), CFG),
+    ).rejects.toBe(failure);
   });
 
   it('makes exactly one call — retrying is the transport’s job now', async () => {
