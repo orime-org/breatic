@@ -235,10 +235,11 @@ export interface FocusImage {
 // through a single entry), and a live collaborative object is not wire data.
 // Read it through the web helpers `getTextBody` / `bodyToPlainText`.
 //
-// A text node also still carries `content`, written alongside the body when a
-// handling task lands its result. Nothing in the canvas reads it any more —
-// the view projection omits it for text and the clipboard reads the body — so
-// treat the body as the only truth for what a text node says.
+// `content` below is dead for a text node: nothing writes it (a landing task
+// puts its words in the body instead) and nothing reads it (the view
+// projection omits it for text, the clipboard reads the body). Nodes older
+// than this feature still carry a value there, and it stays unread — before
+// launch we do not serve legacy data.
 
 /**
  * Documents the keys on each node's Y.Map in the canvas document.
@@ -324,9 +325,9 @@ export interface CanvasNodeFields {
 
     // ─── Data node fields ───────────────────────────────────
     /**
-     * Primary result: URL (image/video/audio/3D) or text (web). For a text
-     * node this is a leftover write from a landing task that no reader
-     * consumes — its words are in `data.body` (see the note above).
+     * Primary result: URL (image/video/audio/3D) or text (web). Retired for a
+     * text node — neither written nor read there since #1774; its words are in
+     * `data.body` (see the note above).
      */
     content?: string;
     /**
