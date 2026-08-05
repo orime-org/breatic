@@ -13,7 +13,7 @@ import { modelsApi } from '@web/data/api/models';
 import { ApiException } from '@web/data/api/types';
 import {
   clearNodeStyleImage,
-  getOrCreatePromptFragment,
+  getPromptFragment,
   isNodeHandling,
   isNodeLocked,
   nodeExists,
@@ -205,13 +205,14 @@ function GeneratePanelBody({
     };
   }, []);
 
-  // Resolve the prompt fragment in an effect, NOT during render: on a node's
-  // first open getOrCreatePromptFragment WRITES the fragment into the Yjs doc,
-  // which synchronously fires the canvas observer (setState in the parent) —
-  // doing that during render triggers React's "setState while rendering" warning.
+  // Resolve the prompt fragment in an effect, NOT during render. Reading is
+  // pure since #1880, but the node id can change under a mounted panel and an
+  // effect keeps that transition in one place. Null means the node predates
+  // the seeding (see getPromptFragment) — the panel then renders without a
+  // prompt editor rather than minting a fragment behind the user's back.
   const [fragment, setFragment] = React.useState<Y.XmlFragment | null>(null);
   React.useEffect(() => {
-    setFragment(getOrCreatePromptFragment(projectId, spaceId, nodeId));
+    setFragment(getPromptFragment(projectId, spaceId, nodeId));
   }, [projectId, spaceId, nodeId]);
 
   // The render-time view-model drives what the panel DISPLAYS (a frame of lag is

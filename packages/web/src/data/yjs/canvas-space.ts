@@ -5,6 +5,7 @@ import * as React from 'react';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import * as Y from 'yjs';
 import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
+import { canGenerate } from '@breatic/shared';
 
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -436,6 +437,14 @@ function buildDataMap(
     const text = typeof data.content === 'string' ? data.content : '';
     map.set('body', bodyFromText(text));
   }
+  // Born with the node for the same reason as the crops container above
+  // (#1880): created on the first panel open, two people opening the same
+  // node at once each minted their own fragment under this key and map-level
+  // last-write-wins dropped one WITH everything typed into it. Replayed
+  // against the old code the loser's line vanished outright. Seeded only for
+  // the modalities that offer Generate — an inert key on a group or a sticky
+  // would be a container nothing ever reads.
+  if (canGenerate(type)) map.set('prompt', new Y.XmlFragment());
   return map;
 }
 
@@ -1038,18 +1047,25 @@ export function ensureTextBody(
 }
 
 /**
- * Get (or lazily create) the Y.XmlFragment backing a content node's Generate
- * prompt. The collaborative prompt editor (TipTap + Collaboration) binds to
- * this fragment so collaborators see keystrokes live. Created empty on first
- * open with the content-write origin so the init does NOT enter the canvas undo
- * stack (prompt edits carry the y-sync origin and are excluded too). Returns
- * null when the node or its data map is missing.
+ * Read the Y.XmlFragment backing a content node's Generate prompt. The
+ * collaborative prompt editor (TipTap + Collaboration) binds to this fragment
+ * so collaborators see keystrokes live.
+ *
+ * A pure read, and that is the point (#1880): this used to create the fragment
+ * when it found none, so two people opening the same node's panel at once each
+ * minted one under the same key and map-level last-write-wins dropped one WITH
+ * everything typed into it. The fragment is now born with the node, so by the
+ * time anyone can open a panel it is already there and shared.
+ *
+ * Returns null for a node that is missing, or for one older than #1880 — those
+ * predate the seeding and are deliberately not repaired (pre-launch legacy data
+ * is not served). The panel renders without a prompt editor in that case.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the node whose prompt fragment to get / create.
- * @returns The prompt Y.XmlFragment, or null when the node is missing.
+ * @param nodeId - Id of the node whose prompt fragment to read.
+ * @returns The prompt Y.XmlFragment, or null when there is none.
  */
-export function getOrCreatePromptFragment(
+export function getPromptFragment(
   projectId: string,
   spaceId: string,
   nodeId: string,
@@ -1058,10 +1074,7 @@ export function getOrCreatePromptFragment(
   const data = nodeDataMap(doc, nodeId);
   if (!data) return null;
   const existing = data.get('prompt');
-  if (existing instanceof Y.XmlFragment) return existing;
-  const fragment = new Y.XmlFragment();
-  doc.transact(() => data.set('prompt', fragment), CONTENT_WRITE);
-  return fragment;
+  return existing instanceof Y.XmlFragment ? existing : null;
 }
 
 /**

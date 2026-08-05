@@ -20,7 +20,7 @@ import {
   resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
-  getOrCreatePromptFragment,
+  getPromptFragment,
   isNodeLocked,
   nodeExists,
   setNodeStyleImage,
@@ -126,6 +126,11 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
           // Eager-seeded at birth (concurrent-first-crop safety) — the
           // wire carries an empty array, inert for every reader.
           focusImages: [],
+          // Seeded at birth too (#1880): an empty prompt container, so two
+          // people opening the panel share one instead of each minting theirs.
+          // The view carries its serialized form; the editor binds to the live
+          // fragment through getPromptFragment, not through this projection.
+          prompt: '',
         },
       },
     ]);
@@ -178,6 +183,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       errorMessage: undefined,
       locked: false,
       focusImages: [],
+      prompt: '',
     });
   });
 
@@ -730,9 +736,9 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(removeNodeFocusImage(PID, SID, 'ghost-node', 'f1')).toBe(false);
   });
 
-  it('getOrCreatePromptFragment creates + persists a Y.XmlFragment on the node prompt', () => {
+  it('getPromptFragment reads the fragment the node was born with', () => {
     addNode(PID, SID, sampleFields('image'));
-    const frag = getOrCreatePromptFragment(PID, SID, 'n1');
+    const frag = getPromptFragment(PID, SID, 'n1');
     expect(frag).toBeInstanceOf(Y.XmlFragment);
     const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
@@ -740,15 +746,15 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(data.get('prompt')).toBe(frag);
   });
 
-  it('getOrCreatePromptFragment returns the same fragment on repeat calls (idempotent)', () => {
+  it('getPromptFragment returns the same fragment on repeat calls', () => {
     addNode(PID, SID, sampleFields('image'));
-    expect(getOrCreatePromptFragment(PID, SID, 'n1')).toBe(
-      getOrCreatePromptFragment(PID, SID, 'n1'),
+    expect(getPromptFragment(PID, SID, 'n1')).toBe(
+      getPromptFragment(PID, SID, 'n1'),
     );
   });
 
-  it('getOrCreatePromptFragment returns null for a missing node', () => {
-    expect(getOrCreatePromptFragment(PID, SID, 'ghost')).toBeNull();
+  it('getPromptFragment returns null for a missing node', () => {
+    expect(getPromptFragment(PID, SID, 'ghost')).toBeNull();
   });
 
   it('readNodeLeaseGen returns 0 for a node with no leaseGen and the stored value otherwise', () => {
