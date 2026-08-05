@@ -5,10 +5,14 @@
  * What `putFileWithRetry` tells the shared transport.
  *
  * The PUT target is a URL the server handed us. Under s3 / aliyun_oss it is
- * the object store; under `STORAGE_PROVIDER=local` it is this very server
- * (`server/src/routes/assets.ts:214`). The browser cannot tell which, and does
- * not need to: either way it is not an API call made under our own
- * conventions, which is what separates it from presign.
+ * the object store; under `STORAGE_PROVIDER=local` it is this very server —
+ * the local branch of the presign handler in `server/src/routes/assets.ts`
+ * builds it from the presign request's own protocol and host. (Named by
+ * branch rather than by line: the line number this once carried was made
+ * wrong by an edit higher up in that same file, in this same change.) The
+ * browser cannot tell which, and does not need to: either way it is not an API
+ * call made under our own conventions, which is what separates it from
+ * presign.
  *
  * Behavioural rather than structural, because two of the things that must hold
  * cannot be read off the call site:

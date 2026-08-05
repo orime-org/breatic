@@ -17,12 +17,19 @@
  * as a fact rather than weather. The transport reads the protocol instead,
  * retrying 408 and 429 despite both being 4xx.
  *
- * It would also honour `Retry-After`, but not on this path: the PUT is a
- * cross-origin request to the presigned URL, and a header has to be named in
- * `Access-Control-Expose-Headers` before the browser hands it to JS. Measured
- * against our own bucket, the PUT response exposes ETag, x-oss-request-id and
- * x-oss-version-id, and nothing else. So the transport reads null and falls
- * back to its own backoff — same three deliveries as before.
+ * It would also honour `Retry-After`, but nothing on this path ever produces
+ * one to read — for a different reason in each of the two storage modes, so
+ * both are worth naming rather than generalising over.
+ *
+ * Under s3 / aliyun_oss the PUT is cross-origin, and a header has to be named
+ * in `Access-Control-Expose-Headers` before the browser hands it to JS.
+ * Measured against our own bucket, the PUT response exposes ETag,
+ * x-oss-request-id and x-oss-version-id, and nothing else. Under
+ * `STORAGE_PROVIDER=local` the target is this app's own origin, so no such
+ * filter applies — but that endpoint carries only `requireAuth` and no rate
+ * limiter, and the rate limiter is the one thing in the server that emits
+ * `Retry-After`. Either way the transport reads null and falls back to its own
+ * backoff — same three deliveries as before.
  */
 
 import { httpRequest } from '@breatic/shared';
@@ -182,6 +189,15 @@ export function computePutTimeoutMs(
  * a stall guard, not a UX deadline — it scales with the file so a legitimately
  * slow big upload never trips it — and the transport replaces whatever signal
  * the caller left behind, so one passed there would silently do nothing.
+ *
+ * `credentials: 'same-origin'` is the one setting that has to be right in both
+ * modes at once, which is why it is neither `include` nor `omit`. The cloud
+ * PUT carries its signature in the URL and wants no cookie; sending one would
+ * hand our session to a storage vendor. The local endpoint is our own origin
+ * and authenticates by cookie, so it needs one. `same-origin` attaches it to
+ * ours and never to theirs. (This reasoning used to live on `assetsApi.putFile`,
+ * deleted with that function; it is written down here so it does not go with
+ * the next thing that gets removed.)
  * @param uploadUrl - The PUT target presign returned.
  * @param file - The file to upload.
  * @param cfg - The upload knobs from `GET /assets/upload-config`.
