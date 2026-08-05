@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { apiDelete, apiGet, apiPost } from '@web/data/api/request';
-import type { Notification } from '@web/data/api/notifications';
 
 export interface SubmitRoleUpgradeBody {
   message?: string;
 }
 
-/** What a viewer gets back after asking: the request, and the bell entry. */
+/**
+ * What a viewer gets back after asking: the id of the request they filed.
+ *
+ * Not the bell entry the server also wrote — that one is the owner's, and its
+ * payload carries the token that answers this request.
+ */
 export interface FiledRoleUpgradeRequest {
   requestId: string;
-  notification: Notification;
 }
 
 /** The caller's own outstanding request on a project. */

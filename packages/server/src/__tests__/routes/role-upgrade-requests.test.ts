@@ -41,6 +41,8 @@ const AUTH = {
   "Content-Type": "application/json",
 };
 const PID = "11111111-1111-4111-8111-111111111111";
+/** The token the service really puts in the owner's bell payload. */
+const SHARE_TOKEN = "s".repeat(64);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -48,6 +50,23 @@ beforeEach(() => {
   // The POST route resolves the owner through the service (prohibition
   // #1 — routes call services, not repos), so drive the service mock.
   mocks.projectMembersService.getOwner.mockResolvedValue("u-owner");
+  // The real return shape, token and all: a mock that omitted the token would
+  // let the route go on leaking it while the test below stayed green.
+  mocks.roleUpgradeRequestService.request.mockResolvedValue({
+    requestId: "r-1",
+    notification: {
+      id: "n-1",
+      userId: "u-owner",
+      type: "access.role_upgrade_request",
+      payload: { shareToken: SHARE_TOKEN, requesterUserId: "u-viewer" },
+      projectId: PID,
+      readAt: null,
+      expiresAt: null,
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  });
   mocks.projectService.get.mockResolvedValue({
     id: PID,
     name: "Demo Project",
@@ -78,6 +97,31 @@ describe("POST /projects/:pid/role-upgrade-requests", () => {
         message: "Please",
       }),
     );
+  });
+
+  it("does not hand the requester the token that answers their own request", async () => {
+    // The token names the request to whoever holds it, and the only two
+    // responses meant to carry one are the sender's copyable link and the
+    // recipient's bell row. The requester is neither: they cannot answer
+    // their own upgrade, and there is no share box on this flow.
+    //
+    // It leaked by shape rather than by intent — the route returned the whole
+    // notification it had just written for the OWNER, and `shareToken` rides
+    // in that payload. Nothing in the client ever read it.
+    const app = createApp();
+    const res = await app.request(
+      `/api/v1/projects/${PID}/role-upgrade-requests`,
+      {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({ message: "Please" }),
+      },
+    );
+
+    expect(res.status).toBe(201);
+    const body = await res.text();
+    expect(body).not.toContain(SHARE_TOKEN);
+    expect(body).toContain("r-1");
   });
 
   it("returns 403 when caller is editor (not viewer)", async () => {

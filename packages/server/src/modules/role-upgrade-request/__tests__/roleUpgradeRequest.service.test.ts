@@ -233,10 +233,13 @@ describe("request", () => {
     // instant — pinning a date would only be testing what the mock returns,
     // while THIS is the property the two writes have to share.
     expect(announced?.expiresAt).toEqual(filed?.expiresAt);
-    // And it is the configured window out, not some other number.
+    // And it is the configured window out, not some other number. Measured
+    // against a span rather than an instant: the service reads its own
+    // `Date.now()` a beat after `before`, so an exact ceiling is off by
+    // however many milliseconds the call took.
+    const window = 7 * 24 * 60 * 60 * 1000;
     const aheadMs = filed!.expiresAt.getTime() - before;
-    expect(aheadMs).toBeLessThanOrEqual(7 * 24 * 60 * 60 * 1000);
-    expect(aheadMs).toBeGreaterThan(7 * 24 * 60 * 60 * 1000 - 60_000);
+    expect(Math.abs(aheadMs - window)).toBeLessThan(60_000);
     expect(announced?.payload).toEqual(
       expect.objectContaining({
         requesterUserId: VIEWER,

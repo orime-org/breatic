@@ -91,10 +91,12 @@ projectRoleUpgradeRequests.post(
       origin: c.req.header("Origin") ?? "",
     });
 
-    return c.json(
-      { data: { requestId: filed.requestId, notification: filed.notification } },
-      201,
-    );
+    // Just the id of the thing that was created. The bell entry the service
+    // also wrote belongs to the OWNER, and its payload carries the token that
+    // answers this request — which the requester can neither use nor should
+    // hold. Returning the whole entry handed it over by shape rather than by
+    // intent; nothing in the client ever read it.
+    return c.json({ data: { requestId: filed.requestId } }, 201);
   },
 );
 
