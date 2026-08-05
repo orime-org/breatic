@@ -19,6 +19,7 @@ import { closeQueues } from "@breatic/core";
 import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis, yjsRawPg } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { startHealthServer } from "@breatic/core";
+import { getStorageConfig } from "@breatic/core";
 import { runGracefulShutdown } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
 import { logger, initLogger } from "@breatic/core";
@@ -32,6 +33,20 @@ initLogger("server");
 
 // Health probe port from the validated config (default 3001).
 const HEALTH_PORT = env.SERVER_HEALTH_PORT;
+
+// Fail-fast on config/storage.yaml, for the same reason env is validated
+// before anything runs. The routes that need it read it lazily, so without
+// this the first upload of a deployment is where a bad file surfaces: a 500
+// for whoever happened to be uploading, and a stack trace the operator has to
+// go looking for. Parsing it here moves that to the one moment the person who
+// edited the file is watching. The library throws and this decides the
+// process's fate, per the lifecycle mandate.
+try {
+  getStorageConfig();
+} catch (err) {
+  logger.error({ err }, "storage_config_invalid");
+  process.exit(1);
+}
 
 // Fail-fast: verify PG + Redis are reachable before starting the
 // server. `checkInfraReady` throws InfraNotReadyError per the

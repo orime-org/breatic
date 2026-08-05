@@ -148,11 +148,12 @@ describe('computePutTimeoutMs — stall guard scales with size', () => {
     //
     // Pinned here: at the shipped pair of values the deadline stays in range,
     // with ~65x of headroom. Be exact about what this does NOT do — CFG is a
-    // literal in this file, so it cannot notice a change to storage.yaml. At
-    // client_put_min_bytes_per_sec <= 1000 a 2 GiB upload crosses the ceiling,
-    // and every such PUT then fails with zero bytes sent where the old path
-    // would have uploaded. This test would still be green. Both that gap and
-    // whether the guard should cap itself instead are tracked separately.
+    // literal in this file, so it cannot notice a change to storage.yaml, and
+    // a config able to cross the ceiling would leave it green. That is not the
+    // hole it used to be: `storageConfigSchema` now refuses such a pair at
+    // load, so no reachable config can hand this function an unusable figure.
+    // The invariant lives there, in core; this stays a check on the shipped
+    // numbers.
     const t = computePutTimeoutMs(2147483648, CFG);
     expect(t).toBeGreaterThan(0);
     expect(t).toBeLessThanOrEqual(2147483647);

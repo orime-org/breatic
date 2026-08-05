@@ -236,3 +236,12 @@ export { newId, deriveId } from "@shared/ids.js";
 // caller holding a 200 has no use for "and it took two tries", while a caller
 // holding a failure has a log line to write.
 export { httpRequest, HttpRetryError } from "@shared/http/request.js";
+
+// The ceiling on `timeoutMs`, exported because asking callers to compute their
+// own deadline while keeping the range they must land in inside an error
+// message is only half a contract. A caller whose deadline comes from config
+// (`size / rate`) has to be able to refuse an unusable pair where the operator
+// can still read the complaint, rather than at the moment someone uploads.
+// This is not a fourth thing the transport does — it is the parameter's own
+// bound, said out loud.
+export { MAX_TIMER_MS } from "@shared/http/constants.js";
