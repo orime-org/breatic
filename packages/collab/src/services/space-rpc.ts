@@ -540,8 +540,16 @@ async function publishMetaChange(
  * @returns `response` is what to send, or null to carry on to the
  *   handler's own success path; `undo` is true only when nothing reached
  *   any client.
+ *
+ * Exported for its own unit test. Only three of the seven operations own
+ * content rows, and none of their callbacks can both write and settle, so
+ * the write-then-settle row of this table is unreachable through any
+ * handler — leaving the rule that guards it with nothing to fail against.
+ * A test of the rule itself is what keeps someone from "simplifying" it
+ * back to "a verdict means nothing went out", which the tab handlers
+ * already disprove.
  */
-function settlePublish(
+export function settlePublish(
   outcome: PublishOutcome,
   internal: () => SpaceRpcResponse,
 ): { response: SpaceRpcResponse | null; undo: boolean } {
@@ -1295,10 +1303,10 @@ function ensureOpenTabList(
     userMap = new Y.Map<unknown>();
     perUser.set(userId, userMap);
   }
-  const existing = userMap.get(OPEN_TAB_IDS_KEY) as
-    | Y.Array<string>
-    | undefined;
-  if (existing) return existing;
+  // Same predicate as the pre-check, from the same function: "does this
+  // caller have a list" gets one answer, not two that could drift.
+  const existing = existingOpenTabList(doc, userId);
+  if (existing !== null) return existing;
   mark();
   const list = new Y.Array<string>();
   userMap.set(OPEN_TAB_IDS_KEY, list);

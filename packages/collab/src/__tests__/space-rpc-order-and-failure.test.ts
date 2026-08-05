@@ -115,7 +115,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-import { handleSpaceRpc } from "../services/space-rpc.js";
+import { handleSpaceRpc, settlePublish } from "../services/space-rpc.js";
 import {
   spaceContentDocName,
   projectMetaDocName,
@@ -1465,10 +1465,12 @@ describe("a refused pre-check is a pure read — a broken store cannot reach it"
     );
   });
 
-  it("space:rename's same-name verdict survives a store failure without undoing anything", async () => {
+  it("space:rename's same-name verdict outranks a store failure and logs as never-broadcast", async () => {
     // rename is the other operation whose write-phase re-check can settle
     // without writing. Nothing was seeded here, so this is the mirror of
     // the tab:close seed case: a verdict with NO broadcast behind it.
+    // rename owns no content rows, so this pins the verdict and the log
+    // line only — the undo rule has its own test on `settlePublish`.
     seedSpace(SID, { type: "canvas", name: "Foo", order: 0, locked: false });
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus({ storeFails: true }) },
@@ -1480,5 +1482,65 @@ describe("a refused pre-check is a pure read — a broken store cannot reach it"
     const messages = [...loggerErrorMock.mock.calls].map((c) => c[1]);
     expect(messages).toContain("space_rpc_store_failed_after_guard_decided");
     expect(messages).not.toContain("space_rpc_not_persisted_after_broadcast");
+  });
+});
+
+describe("settlePublish — the rule itself", () => {
+  // Tested directly because no handler can reach one of its four rows.
+  // Only create / delete / restore own content rows, and none of their
+  // callbacks both writes and settles, so "a verdict WITH a broadcast
+  // behind it" never meets an undo through the public surface. Left to
+  // handler tests alone, the rule that keeps those two apart could be
+  // rewritten to "a verdict means nothing went out" and every test would
+  // stay green — while tab:open and tab:close already disprove it.
+  const answer = { id: "r1", ok: true } as const;
+  const internal = (): ReturnType<typeof settlePublish>["response"] => ({
+    id: "r1",
+    ok: false,
+    error: { code: "INTERNAL", message: "boom" },
+  });
+
+  it("sends a guard's verdict and owes an undo when nothing was broadcast", () => {
+    expect(
+      settlePublish(
+        { kind: "decided", response: answer, broadcast: false },
+        () => internal()!,
+      ),
+    ).toEqual({ response: answer, undo: true });
+  });
+
+  it("sends a guard's verdict and owes NOTHING when it settled after a write", () => {
+    // The row no handler can reach today. Undoing here would roll back
+    // work every client has already applied.
+    expect(
+      settlePublish(
+        { kind: "decided", response: answer, broadcast: true },
+        () => internal()!,
+      ),
+    ).toEqual({ response: answer, undo: false });
+  });
+
+  it("carries on with no undo when the change was published", () => {
+    expect(settlePublish({ kind: "published" }, () => internal()!)).toEqual({
+      response: null,
+      undo: false,
+    });
+  });
+
+  it("sends the operation's own controlled error and owes an undo when nothing went out", () => {
+    const settled = settlePublish({ kind: "failed-before-broadcast" }, () =>
+      internal()!,
+    );
+    expect(settled.undo).toBe(true);
+    expect(settled.response).toEqual(internal());
+  });
+
+  it("does not build the controlled error unless it is the answer", () => {
+    // `internal` is a closure each handler writes for its own wording; it
+    // must not run on the paths where a guard already answered.
+    const build = vi.fn(() => internal()!);
+    settlePublish({ kind: "decided", response: answer, broadcast: true }, build);
+    settlePublish({ kind: "published" }, build);
+    expect(build).not.toHaveBeenCalled();
   });
 });
