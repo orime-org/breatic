@@ -258,6 +258,15 @@ export async function settleIfPending(
       status,
       decidedByUserId,
       decidedAt: status === "expired" ? null : new Date(),
+      // `expired` arrives two ways: nobody answered in time, or the premise
+      // walked away and the request was settled on the spot — days before its
+      // deadline. The deadline is what the row says about when answering
+      // stopped being possible, and the landing page reads the window off it,
+      // so a request that ended early ends its window with it. A deadline
+      // already in the past is the honest answer and stays untouched.
+      ...(status === "expired"
+        ? { expiresAt: sql`LEAST(${roleUpgradeRequests.expiresAt}, now())` }
+        : {}),
     })
     .where(
       and(

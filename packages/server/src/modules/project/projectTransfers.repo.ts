@@ -257,7 +257,16 @@ export async function settleIfPending(
 ): Promise<boolean> {
   const rows = await tx
     .update(projectTransfers)
-    .set({ status, decidedAt: status === "expired" ? null : new Date() })
+    .set({
+      status,
+      decidedAt: status === "expired" ? null : new Date(),
+      // See roleUpgradeRequests.settleIfPending: a request that ended before
+      // its deadline ends its window with it, so the landing page cannot say
+      // "this has ended" over "you had seven days" on day two.
+      ...(status === "expired"
+        ? { expiresAt: sql`LEAST(${projectTransfers.expiresAt}, now())` }
+        : {}),
+    })
     .where(
       and(
         eq(projectTransfers.id, id),

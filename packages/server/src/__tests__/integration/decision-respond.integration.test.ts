@@ -257,6 +257,34 @@ describe("accepting lands the flow's own write, and says where to go", () => {
     expect(rows[0]!.role).toBe("editor");
   });
 
+  it("survives the recipient marking their whole inbox read", async () => {
+    // Answering used to run through the bell entry, and its one-shot gate was
+    // `read_at IS NULL`. Under that design one call to mark-all-read voided
+    // every pending transfer and upgrade the user had: both answers came back
+    // as not-found, and nothing told them why. Unifying onto the token moved
+    // the truth to the request's own row, which is what fixed it — so this
+    // pins the property rather than the old bug, because the way to lose it
+    // again is for something to start consulting the notification once more.
+    const s = await seedScene();
+    const { id } = await roleUpgradeRequestsRepo.createPending({
+      projectId: s.projectId,
+      requesterUserId: s.memberId,
+      requestedRole: "editor",
+      expiresAt: IN_A_WEEK(),
+    });
+    const token = await tokenOf("role_upgrade_requests", id);
+
+    await sql`
+      UPDATE notifications SET read_at = now()
+      WHERE user_id = ${s.ownerId} AND read_at IS NULL
+    `;
+
+    const view = await decisionService.viewByToken(token, s.ownerId);
+    expect(view?.state).toBe("answerable");
+    const result = await decisionService.respond(token, s.ownerId, "confirm");
+    expect(result.state).toBe("accepted");
+  });
+
   it("a request whose container is gone refuses everyone the same way", async () => {
     // Deleting a project soft-deletes its member rows, and the role upgrade's
     // recipient IS the project's current owner — looked up, not stored. So the

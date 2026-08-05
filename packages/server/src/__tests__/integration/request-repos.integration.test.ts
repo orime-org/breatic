@@ -428,6 +428,66 @@ describe("role-upgrade requests repo", () => {
     expect(await decidedAtOf("role_upgrade_requests", timedOut)).toBeNull();
   });
 
+  it("pulls a future deadline back when the request ends before it", async () => {
+    // `expired` covers two arrivals: nobody answered in time, and the premise
+    // walked away — the requester stopped being a viewer, so the request is
+    // settled on the spot, days before its deadline.
+    //
+    // The landing page tells the recipient how long the window was, read off
+    // the row. Leaving a future deadline on a settled request makes those two
+    // sentences contradict each other: "this request has ended" over "it could
+    // be answered within 7 days", read on day two by someone who can count.
+    // The deadline is what the row says about when answering stopped being
+    // possible, so ending it early moves it.
+    const { otherId, projectId } = await seedScene();
+    const premiseGone = (await roleUpgradeRequestsRepo.createPending({
+      projectId,
+      requesterUserId: otherId,
+      requestedRole: "editor",
+      expiresAt: nextWeek(),
+    })).id;
+
+    const before = Date.now();
+    await db.transaction(async (tx) =>
+      roleUpgradeRequestsRepo.settleIfPending(premiseGone, "expired", null, tx),
+    );
+
+    const rows = await sql<{ expires_at: Date }[]>`
+      SELECT expires_at FROM role_upgrade_requests WHERE id = ${premiseGone}
+    `;
+    const deadline = rows[0]!.expires_at.getTime();
+    expect(deadline).toBeLessThanOrEqual(Date.now());
+    expect(deadline).toBeGreaterThanOrEqual(before - 1000);
+  });
+
+  it("leaves a deadline that already passed exactly where it was", async () => {
+    // The other arrival. Its deadline is the honest answer to "how long did I
+    // have", so the reaper flipping the status must not rewrite it.
+    const { ownerId, projectId } = await seedScene();
+    const timedOut = (await roleUpgradeRequestsRepo.createPending({
+      projectId,
+      requesterUserId: ownerId,
+      requestedRole: "editor",
+      expiresAt: yesterday(),
+    })).id;
+    const original = (
+      await sql<{ expires_at: Date }[]>`
+        SELECT expires_at FROM role_upgrade_requests WHERE id = ${timedOut}
+      `
+    )[0]!.expires_at.getTime();
+
+    await db.transaction(async (tx) =>
+      roleUpgradeRequestsRepo.settleIfPending(timedOut, "expired", null, tx),
+    );
+
+    const after = (
+      await sql<{ expires_at: Date }[]>`
+        SELECT expires_at FROM role_upgrade_requests WHERE id = ${timedOut}
+      `
+    )[0]!.expires_at.getTime();
+    expect(after).toBe(original);
+  });
+
   it("lists the requester's own live request, and hides a timed-out one", async () => {
     // This is what the requester's "pending / cancel" surface reads. Reusing
     // the index predicate (status only) would keep showing a request that died
