@@ -31,9 +31,8 @@ import {
   assetUrlSurvives,
   isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
-import { docName, getDoc } from '@web/data/yjs/manager';
-import { useCaretUser } from '@web/features/collab-editor/use-caret-user';
-import { useSocket } from '@web/data/yjs/use-socket';
+import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
+import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
@@ -49,6 +48,7 @@ import {
   type GeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
 import {
+  deriveReferences,
   focusIdOfRefId,
   focusToRailItem,
   type ReferenceRailItem,
@@ -59,6 +59,15 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
+
+/**
+ * For the two derivations below that deliberately want no body text. Shared so
+ * neither allocates a map per call, and so "no text here" reads as one decision
+ * rather than two look-alike literals. Not frozen — `ReadonlyMap` is a
+ * compile-time view, and `Object.freeze` would not stop `.set()` on a Map
+ * anyway; nothing downstream writes to it, and the type says they may not.
+ */
+const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
 
 interface GeneratePanelContainerProps {
   /** Live canvas node views (target + reference sources). */
@@ -139,22 +148,12 @@ function GeneratePanelBody({
   const startStylePick = useCanvasStore((s) => s.startStylePick);
 
   // Collaborator carets (batch-2 item 14): the prompt fragment lives in the
-  // canvas-space doc, so its provider's AWARENESS is the caret channel.
-  // useSocket ref-counts the shared provider (SpaceDocSync already holds a
-  // ref while the tab is open, so this acquire is a cheap share, never a
-  // second socket). Identity = display name + deterministic palette color.
-  const canvasDocName = docName.canvasSpace(projectId, spaceId);
-  const canvasDoc = React.useMemo(
-    () => getDoc(canvasDocName),
-    [canvasDocName],
-  );
-  const { provider: caretProvider } = useSocket({
-    name: canvasDocName,
-    doc: canvasDoc,
-  });
-  // Shared with the document editor so one person keeps the same caret name
-  // and colour wherever their cursor shows up.
-  const caretUser = useCaretUser();
+  // canvas-space doc, so its provider's AWARENESS is the caret channel. The
+  // canvas resolves that provider once and hands it down, so every editor on
+  // the board publishes through the same one — a second acquire here would
+  // work (useSocket reference-counts the shared provider) but would leave two
+  // answers in the codebase to "whose caret is this".
+  const { caretProvider, caretUser } = useCanvasContext();
 
   const { data: catalog } = useQuery({
     queryKey: ['models'],
@@ -220,9 +219,40 @@ function GeneratePanelBody({
   // freshVm() at click time — a render closure goes stale the moment a
   // collaborator edits the node, so building a task / param write off it would
   // submit deleted references or clobber a concurrent edit.
+  // A referenced text node's body is a shared fragment the node view does not
+  // carry (#1774), so the panel follows the ones it can reference. This
+  // subscription is the only source of what a text reference says: the rail's
+  // previews read it, and the editor's reference pool — which is what the
+  // prompt serializer substitutes a text chip with at execute time — is built
+  // from it. Without it every text chip would serialize to nothing.
+  //
+  // "The ones it can reference" is literal, BY CONSTRUCTION: the ids are read
+  // off `deriveReferences` itself — the only consumer of the map this feeds —
+  // so the two sets cannot drift (a first cut re-derived the set by hand and
+  // promptly missed that function's focus-namespace guards, round-5).
+  // Following every text node on the board instead would attach observers to
+  // all of them and rebuild this view model on every keystroke anyone types
+  // anywhere — the exact whole-board cost freshVm below refuses to pay.
+  const textNodeIds = React.useMemo(
+    () => [
+      ...new Set(
+        // Empty map on purpose: this call wants the ROWS (which sources, of
+        // what type), and what they say is the very thing being subscribed to
+        // below. Passing it is impossible here and unnecessary — but it has to
+        // be said out loud, because the parameter is required precisely so
+        // that omitting it can never be an accident.
+        deriveReferences(nodeId, nodes, edges, EMPTY_TEXT)
+          .filter((row) => row.sourceNodeType === 'text')
+          .map((row) => row.sourceNodeId),
+      ),
+    ],
+    [nodeId, nodes, edges],
+  );
+  const textById = useTextBodies(projectId, spaceId, textNodeIds);
   const vm: GeneratePanelViewModel = React.useMemo(
-    () => buildGeneratePanelViewModel({ nodeId, nodes, edges, models }),
-    [nodeId, nodes, edges, models],
+    () =>
+      buildGeneratePanelViewModel({ nodeId, nodes, edges, models, textById }),
+    [nodeId, nodes, edges, models, textById],
   );
   // Stable model-list identity for the memo'd pickers: the vm rebuilds on
   // EVERY canvas graph mutation (nodes/edges deps), and its freshly-filtered
@@ -279,6 +309,14 @@ function GeneratePanelBody({
         edges: graph.edges,
         models,
         atMentionedSourceIds,
+        // Empty on purpose. What a text reference SAYS never travels through
+        // here: the prompt string is serialized by the editor from its own
+        // reference pool, and this call site reads only the model, the params,
+        // the node status and the reference URLs. Filling it in would read
+        // every text body on the board on every click for a field nobody
+        // downstream looks at. Stated rather than omitted — the parameter is
+        // required so that leaving it out can never be an oversight.
+        textById: EMPTY_TEXT,
       });
     },
     [projectId, spaceId, nodeId, models],

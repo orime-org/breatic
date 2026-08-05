@@ -157,12 +157,20 @@ function thumbnailOf(view: NodeView): string | undefined {
  *   fields). Only `id` + `data` are read, so both the stored
  *   {@link CanvasNodeView} shape and ReactFlow's `Node<NodeView>` satisfy it.
  * @param edges - The current canvas edges.
+ * @param textById - Body text per text node, from `useTextBodies`. Passed in
+ *   rather than read off the node view, because the body is a shared fragment
+ *   the view deliberately does not carry (#1774) — this function stays pure,
+ *   and the subscription stays in the component that can hold one. REQUIRED,
+ *   deliberately: a default empty map would let a caller forget it and get
+ *   silently blank text for every reference. Callers that only want the rows
+ *   (ids, types, thumbnails) pass an empty map and say so at the call site.
  * @returns The reference rail rows, in connection-time order (newest last).
  */
 export function deriveReferences(
   nodeId: string,
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>,
   edges: ReadonlyArray<CanvasEdge>,
+  textById: ReadonlyMap<string, string>,
 ): ReferenceRailItem[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   // filter() returns a fresh array, so the in-place sort never mutates the
@@ -200,7 +208,7 @@ export function deriveReferences(
       sourceNodeName: nameOf(source.data),
       thumbnail: thumbnailOf(source.data),
       textContent:
-        source.data.kind === 'text' ? source.data.content : undefined,
+        source.data.kind === 'text' ? (textById.get(source.id) ?? '') : undefined,
     });
   }
   return rail;
