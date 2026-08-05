@@ -44,11 +44,6 @@ describe('isTransientUploadError — retry only what can heal', () => {
     expect(isTransientUploadError({ status: 422 })).toBe(false);
   });
 
-  it('reads status off axios-shaped errors (presign path)', () => {
-    expect(isTransientUploadError({ response: { status: 502 } })).toBe(true);
-    expect(isTransientUploadError({ response: { status: 404 } })).toBe(false);
-  });
-
   it('reads status off the project ApiException flat .status (real presign error shape)', () => {
     // apiGet rejects with ApiException { status, name: 'ApiException' } —
     // a FLAT status, not { response: { status } }. Adversarial #2: without

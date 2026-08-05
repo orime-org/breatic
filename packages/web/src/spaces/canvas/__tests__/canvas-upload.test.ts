@@ -212,7 +212,10 @@ describe('runMediaUpload — config → hash → presign(dedup) → PUT → call
   it('retries a transient presign failure (5xx) before succeeding', async () => {
     const presign = vi
       .fn()
-      .mockRejectedValueOnce({ response: { status: 503 } })
+      // Flat `.status`, the shape apiGet's interceptor normalises every
+      // presign failure into. The raw axios `{response:{status}}` shape this
+      // used to seed cannot leave the axios instance.
+      .mockRejectedValueOnce({ status: 503 })
       .mockResolvedValueOnce({
         uploadUrl: 'https://put',
         fileUrl: 'https://cdn/p.png',

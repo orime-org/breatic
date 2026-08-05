@@ -83,12 +83,23 @@ describe('putFileWithRetry hands the PUT to the shared transport', () => {
     const file = bigFile();
     await putFileWithRetry('https://store.test/key?sig=abc', file, CFG);
 
+    const init = httpRequestMock.mock.calls[0]![1] as RequestInit;
     expect(httpRequestMock.mock.calls[0]![0]).toBe('https://store.test/key?sig=abc');
-    // Strict equality catches a leftover `signal` — the transport replaces it,
-    // so one left here is a deadline that silently does nothing.
-    expect(httpRequestMock.mock.calls[0]![1]).toStrictEqual({
+
+    // The body is asserted by IDENTITY, not by structure. `toStrictEqual`
+    // cannot tell two Files apart under jsdom — the wrapper carries no
+    // enumerable own properties, so bytes, name and type are all invisible to
+    // it, and a structural assertion here passes while the wrong file goes on
+    // the wire. Measured: replacing `body: file` with a one-byte File left all
+    // 23 tests green.
+    expect(init.body).toBe(file);
+
+    // The rest are literals, where structure is what there is to check. Strict
+    // equality also catches a leftover `signal`: the transport replaces it, so
+    // one left here is a deadline that silently does nothing.
+    expect({ ...init, body: undefined }).toStrictEqual({
       method: 'PUT',
-      body: file,
+      body: undefined,
       headers: { 'Content-Type': 'video/mp4' },
       credentials: 'same-origin',
     });

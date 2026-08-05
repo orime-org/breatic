@@ -12,8 +12,12 @@
  * returned, so it goes through the shared HTTP transport, which owns its
  * retries — see {@link putFileWithRetry}.
  *
- * Only transient failures retry, on both halves — a 4xx is a fact, not
- * weather.
+ * The two halves do not even judge "transient" the same way. Presign keeps
+ * the reading below: 5xx, 429, and a network-level failure, with a 4xx taken
+ * as a fact rather than weather. The transport reads the protocol instead —
+ * it retries 408 and 429 despite both being 4xx, and it honours `Retry-After`,
+ * so a server naming a wait past the transport's ceiling ends the attempt
+ * after one delivery rather than three.
  */
 
 import { httpRequest } from '@breatic/shared';
@@ -51,11 +55,15 @@ export class UploadHttpError extends Error {
 /**
  * Extract an HTTP status from a presign failure, if it carries one.
  *
- * Two shapes: the project's `ApiException`, whose status is FLAT on `.status`
- * and NOT at `{response:{status}}`, and a raw axios error as a defensive
- * fallback. The flat branch is what makes the presign retry actually work —
- * apiGet normalizes every failure into an ApiException, so reading only the
- * axios shape left presign retries dead.
+ * One shape reaches this now: the project's `ApiException`, whose status is
+ * FLAT on `.status` and NOT at `{response:{status}}`. Reading only the axios
+ * shape once left presign retries dead, which is why the flat read exists.
+ *
+ * The raw axios shape used to be read here as a fallback and no longer is, on
+ * the same ground that removed two branches from the predicate below: apiGet's
+ * interceptor turns every failure into an ApiException before anything here
+ * sees it, so a raw axios error cannot arrive. Keeping one unreachable branch
+ * while deleting two others would have been half a judgment.
  * @param err - The thrown value.
  * @returns The status, or null when the error carries none (network-level).
  */
@@ -63,8 +71,6 @@ function errorStatus(err: unknown): number | null {
   if (typeof err !== 'object' || err === null) return null;
   const flat = (err as { status?: unknown }).status;
   if (typeof flat === 'number') return flat;
-  const nested = (err as { response?: { status?: unknown } }).response?.status;
-  if (typeof nested === 'number') return nested;
   return null;
 }
 
