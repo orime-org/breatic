@@ -176,7 +176,14 @@ describe('the dead ends each say their own thing', () => {
     setup();
     // No date — the reaper does not run on the instant, so printing one lies.
     // How long you HAD is what answers "why can't I answer this any more".
-    expect(await screen.findByText(/within 7 days/i)).toBeInTheDocument();
+    //
+    // Past tense, and about THIS request: the number is now read off the row,
+    // so a card that says "requests can be answered within N days" would be
+    // stating today's rule in the present tense on a request that has ended,
+    // using a number that may no longer be the rule.
+    expect(
+      await screen.findByText(/this request could be answered within 7 days/i),
+    ).toBeInTheDocument();
   });
 
   it('already-a-member offers the way in, since there is one', async () => {
@@ -284,25 +291,33 @@ describe('answering', () => {
     expect(toast.error).toHaveBeenCalledWith('Too late');
   });
 
-  it('a rejected answer toasts the server and leaves the buttons up', async () => {
+  it('an answer that failed on the way keeps the buttons, because it can be retried', async () => {
+    // The other half of the pair above: the answer did not land, but the
+    // request itself is untouched. Re-reading says so, and a request that can
+    // still be answered must keep the buttons that answer it.
     const user = userEvent.setup();
-    vi.mocked(decisionsApi.view).mockResolvedValueOnce(makeView());
+    vi.mocked(decisionsApi.view)
+      .mockResolvedValueOnce(makeView())
+      .mockResolvedValueOnce(makeView());
     vi.mocked(decisionsApi.respond).mockRejectedValueOnce(
       new ApiException({
-        status: 409,
-        code: 'CONFLICT',
-        message: 'Already decided',
+        status: 503,
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'Try again',
       }),
     );
     setup();
     await user.click(await screen.findByRole('button', { name: 'Accept' }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('Already decided');
+      expect(toast.error).toHaveBeenCalledWith('Try again');
     });
-    expect(
-      screen.getByRole('button', { name: 'Accept' }),
-    ).toBeInTheDocument();
+    // Both calls, or the assertion below would pass on a page that never
+    // re-read and simply never changed.
+    await waitFor(() => {
+      expect(decisionsApi.view).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeInTheDocument();
   });
 });
 
