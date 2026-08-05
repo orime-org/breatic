@@ -6,7 +6,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
-import type { PersonalStudio } from '@web/data/api/auth';
+import type { PersonalStudioRef } from '@breatic/shared';
 import { useCurrentUserStore } from '@web/stores';
 
 // Use the declarative `<MemoryRouter>` + `<Routes>` form rather than
@@ -39,7 +39,11 @@ function renderAt(
   );
 }
 
-const studio: PersonalStudio = { name: 'Alice', slug: 'alice' };
+const studio: PersonalStudioRef = {
+  name: 'Alice',
+  slug: 'alice',
+  avatarUrl: null,
+};
 
 describe('ProtectedRoute', () => {
   beforeEach(() => {

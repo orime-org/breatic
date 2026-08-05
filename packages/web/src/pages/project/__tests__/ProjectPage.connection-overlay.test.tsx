@@ -158,7 +158,7 @@ describe('ProjectPage — the workspace overlay follows the banner', () => {
         id: 'u-me',
         name: 'Me',
         email: 'me@e.com',
-        personalStudio: { name: 'Me', slug: 'me' },
+        personalStudio: { name: 'Me', slug: 'me', avatarUrl: null },
       } as ReturnType<typeof useCurrentUserStore.getState>['user'],
       role: null,
       loading: false,

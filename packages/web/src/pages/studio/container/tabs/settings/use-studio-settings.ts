@@ -20,7 +20,10 @@ import { studiosApi } from '@web/data/api/studios';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { useCurrentUserStore } from '@web/stores/current-user';
+import {
+  applyPersonalStudio,
+  useCurrentUserStore,
+} from '@web/stores/current-user';
 import type { Studio, StudioDetail, UpdateStudioInput } from '@breatic/shared';
 
 /** The settings tab's write actions and their in-flight state. */
@@ -97,12 +100,13 @@ export function useStudioSettings(
       const user = store.user;
       if (user !== null && studio.type === 'personal') {
         // A personal studio IS the user's display identity.
-        store.setUser({
-          ...user,
-          name: next.name,
-          avatarUrl: next.avatarUrl ?? undefined,
-          personalStudio: { name: next.name, slug: next.slug },
-        });
+        store.setUser(
+          applyPersonalStudio(user, {
+            name: next.name,
+            slug: next.slug,
+            avatarUrl: next.avatarUrl ?? null,
+          }),
+        );
       }
 
       if (renamed) navigate(`/studio/${next.slug}`, { replace: true });
