@@ -126,8 +126,11 @@ export function deferredRequestExpiry(): Date {
 }
 
 /**
- * The same TTL as a second count, for the Redis-backed invite tokens whose
- * expiry must match the invitation row they unlock.
+ * The same TTL as a second count, for callers that need the duration rather
+ * than the instant — a cache header, a `set … EX`, anything that takes "how
+ * long" instead of "until when". `no-hardcoded-request-ttl` names this
+ * function as the way out, which is the whole reason it exists: without it,
+ * the only escape from the rule would be to write the day out by hand.
  * @returns The request TTL in seconds.
  */
 export function deferredRequestTtlSeconds(): number {

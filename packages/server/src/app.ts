@@ -85,7 +85,6 @@ export function createApp(): Hono {
   // Space lifecycle (create / delete / lock / restore) now routes via
   // collab stateless RPC; the server no longer owns the write path.
   app.route("/api/v1/users", usersRoute);
-  // Mounted before "/api/v1/studio" so the more specific prefix matches first.
   app.route("/api/v1/decisions", decisionsRoute);
   app.route("/api/v1/studios", studiosRoute);
   app.route("/api/v1/studio", studioRoute);

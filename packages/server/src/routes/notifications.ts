@@ -76,19 +76,20 @@ route.get("/count", async (c) => {
  * is already read, or belongs to a different user — all collapse to a
  * 404 response (defense in depth on top of the userId scope).
  */
-// `:id` reaches a uuid comparison, and this is the confirm / decline entry
-// point for both transfer flows — the half that the per-request withdraw
-// routes' guard does not cover.
+// `:id` reaches a uuid comparison, so it is validated as one before it gets
+// there. Marking read is the only thing the bell still does to a row of its
+// own — answering moved to the decision page.
 const notificationParamSchema = z.object({ id: z.string().uuid() });
 
 route.patch(
   "/:id/read",
   zValidator("param", notificationParamSchema),
   async (c) => {
-  const user = c.get("user");
-  const id = c.req.param("id");
-  await notificationService.markRead(id, user.id);
-  return c.json({ data: { ok: true } });  },
+    const user = c.get("user");
+    const id = c.req.param("id");
+    await notificationService.markRead(id, user.id);
+    return c.json({ data: { ok: true } });
+  },
 );
 
 /**

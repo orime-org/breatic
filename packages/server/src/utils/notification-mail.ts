@@ -24,8 +24,10 @@ const BRAND = "Breatic";
  * The footer naming what expires and when.
  *
  * The window is a yaml knob (`deferred_request_ttl_days`), so every builder
- * takes it from its caller: a number hardcoded here contradicted the landing
- * page — which reads the knob — the moment ops turned it away from 7.
+ * takes it from its caller rather than hardcoding a number that stops being
+ * true the moment ops turn the knob. The landing page arrives at the same
+ * figure from the other direction, off the row itself, so a card written
+ * years later still states the window that request actually had.
  * @param noun - What the email is about, as the recipient would call it.
  * @param windowDays - How long the answering window is, in days.
  * @returns The footer sentence.
