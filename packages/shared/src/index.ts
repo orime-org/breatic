@@ -218,14 +218,15 @@ export { newId, deriveId } from "@shared/ids.js";
 // anything aimed outward (cloud storage, vendor APIs, arbitrary URLs) comes
 // through here, on both sides of the wire (decided 2026-08-02).
 //
-// Two symbols, and that is the whole surface. It does six things — send,
-// judge, wait, cap at three deliveries, hand over or throw, hold nothing — and
-// no seventh, so there is nothing else worth naming here. Everything the loop
-// needs internally (the judgement, its vocabulary, the backoff maths, the
-// sleep) stays inside: an export is a promise to somebody, and nobody outside
-// this package needs those. Not even the options type: a caller writes the
-// object inline and TypeScript's structural typing does the rest, so
-// exporting a name nobody spells is surface for nothing.
+// Two symbols for what it does, plus one for what it demands of a caller (see
+// below). It does six things — send, judge, wait, cap at three deliveries,
+// hand over or throw, hold nothing — and no seventh, so there is nothing else
+// worth naming here. Everything the loop needs internally (the judgement, its
+// vocabulary, the backoff maths, the sleep) stays inside: an export is a
+// promise to somebody, and nobody outside this package needs those. Not even
+// the options type: a caller writes the object inline and TypeScript's
+// structural typing does the rest, so exporting a name nobody spells is
+// surface for nothing.
 //
 // It hands back the platform's own `Response` and holds nothing afterwards.
 // Reading it — how long a read may stall, how large it may be, how to stop
@@ -243,6 +244,6 @@ export { httpRequest, HttpRetryError } from "@shared/http/request.js";
 // message is only half a contract. A caller whose deadline comes from config
 // (`size / rate`) has to be able to refuse an unusable pair where the operator
 // can still read the complaint, rather than at the moment someone uploads.
-// This is not a fourth thing the transport does — it is the parameter's own
-// bound, said out loud.
+// This is not a seventh thing the transport does — it is the bound the second
+// parameter already had, said out loud.
 export { MAX_TIMER_MS } from "@shared/http/constants.js";
