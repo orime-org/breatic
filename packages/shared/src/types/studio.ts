@@ -14,7 +14,9 @@ export type StudioType = "personal" | "team";
 
 /**
  * Minimal personal-studio reference returned by EVERY auth endpoint
- * (`/auth/register`, `/auth/login`, `/auth/me`, `/auth/setup-studio`).
+ * (`/auth/register`, `/auth/login`, `/auth/google`, `/auth/me`,
+ * `/auth/setup-studio`) — no exceptions, so the client parses one shape
+ * whichever door the user came through.
  * The frontend derives the user's display name from `name`, their avatar
  * from `avatarUrl`, and links to `/studio/{slug}`. A `null` ref is the
  * onboarding gate signal — the user has registered but not yet picked a

@@ -6,7 +6,7 @@
 **Hocuspocus 独立进程**:Yjs 文档同步 + PG 持久化 + Redis 跨实例 + 消费 Redis Streams 写 canvas 节点。只它认识 Hocuspocus。
 
 ## 分层(包内,目录即分层)
-- `hooks/`(`auth` / `before-handle-message` / `awareness-meta-users` / `disconnect-cleanup`)= Hocuspocus 生命周期钩子,协作事件适配,翻译 Yjs 事件 ↔ 持久化/流
+- `hooks/`(`auth` / `before-handle-message` / `disconnect-cleanup`)= Hocuspocus 生命周期钩子,协作事件适配,翻译 Yjs 事件 ↔ 持久化/流。**awareness 不落库**:在线态里只有一个 user id,名字头像由各前端自己从项目成员名册查(#1882 撤掉了 `awareness-meta-users` 钩子和它写的 `meta.users`)—— 名字只需要对**在场的人**成立,而在场的人的浏览器刚拉过它;`before-handle-message` 仍守着 `meta.users` 这个根,防恶意客户端把它复活
 - `services/`(`persistence`〔含懒种子 fetchDoc 兜底〕 / `yjs-documents.repo`〔yjs 库唯一 repo〕 / `lazy-seed` / `lifecycle-listener`〔删除/复制命令消费者〕 / `event-stream` / `space-rpc` / `task-listener` / `members-sync` / `space-delete-lock`〔DB3 fencing 锁〕 / `connection-registry`〔#1421 跨实例连接数 sorted set〕 / `connection-tracking`〔连接数上限 tracking 策略:meta 豁免的 `shouldTrackConnection` 守卫〕 / `handling-sweeper`〔#1569 handling 租约清扫:afterLoadDocument + 5min 周期扫,超 1h/无 handlingBy 的 handling 节点打回 idle,直接 doc 引用不走 openDirectConnection,命名 origin 不进撤销栈〕)= collab **自带的协作业务**(本质是协作适配,跟 Hocuspocus 绑死,留本包)
 - `infra/`(`logger` / `health-checks` / `connectivity-check`)= 本包支撑设施(对齐 core/server 的 `infra/`)
 - 根:`index.ts` = composition root(启动 `initCore(process.env)`,唯一读 `process.env` 处;`config.ts` 等经 core 的 `env` proxy 读注入后的配置)· `hocuspocus.ts` = Hocuspocus 装配(把 hooks + services 接进 Server)· `bootstrap-config.ts` / `config.ts` = 引导 + 配置

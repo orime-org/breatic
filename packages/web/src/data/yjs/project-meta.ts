@@ -166,14 +166,19 @@ export function useProjectMeta(
     provider.awareness.setLocalStateField('user', { id: currentUserId });
   }, [provider, currentUserId]);
 
-  // Track the live set of online users by subscribing to the
-  // awareness instance. The collab `onAwarenessUpdate` hook
-  // persists name/avatar into meta.users on every awareness change,
-  // so the persisted record stays fresh; this subscription only
-  // covers "is the user currently online" (a derived ephemeral
-  // signal not worth stuffing into Y.Doc state). Combined with
-  // `users[userId].lastSeenAt` the UI can render
-  // "online" vs "last active N min ago" without polling.
+  // Track the live set of online users by subscribing to the awareness
+  // instance. Presence is ephemeral by nature and stays out of the Y.Doc
+  // entirely — nothing persists it, and nothing needs to: who is here right
+  // now is only meaningful right now.
+  //
+  // This set is also what tells the roster to refresh. An id appearing here is
+  // somebody announcing they arrived, and that is the moment their name may
+  // have changed since we last asked.
+  //
+  // "Last active N minutes ago" is NOT available from this and never was — a
+  // timestamp for that would have to be written down somewhere, and there is
+  // no such record. Anyone adding that feature is adding a store, not reading
+  // one.
   const [onlineUserIds, setOnlineUserIds] = React.useState<
     ReadonlySet<string>
   >(() => new Set());

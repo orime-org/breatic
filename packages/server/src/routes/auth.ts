@@ -194,8 +194,13 @@ const googleAuthSchema = z.object({
  * who registers `victim@gmail.com` at an identity provider that
  * federates to Google (and doesn't verify ownership) cannot claim
  * someone else's email.
+ * The session token leaves in the cookie, never in the body. The user
+ * carries `personalStudio` like every other auth exit — a first Google
+ * sign-in creates the account but not the studio, so it is `null` here more
+ * often than anywhere else, and that null is what routes the client to the
+ * slug-setup gate.
  * @param c - Hono context with Google credential in body
- * @returns `200` with `{ data: { user, token } }`
+ * @returns `200` with `{ data: { user: { ...user, personalStudio } } }`
  * @throws {AppError} `401` if the credential is invalid, expired, or unverified
  * @throws {AppError} `503` if Google OAuth is not configured on this server
  */
