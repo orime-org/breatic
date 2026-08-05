@@ -224,6 +224,21 @@ export interface FocusImage {
 // (PromptDoc / ChipSnapshot) is a FRONTEND rendering concern and lives in web
 // (`spaces/canvas/generate/prompt-types`) — the backend only ever reads the
 // prompt as plain text via `extractPromptText`, never the chip structure.
+//
+// ── Text-node body ───────────────────────────────────────
+//
+// A text node's words live in `data.body`, an opaque `Y.XmlFragment` seeded
+// when the node is created, so two people typing in one node merge character
+// by character instead of overwriting each other. It is absent from the
+// interface below for the same reason `prompt` carries no structured type:
+// this package has no yjs dependency (it must stay browser-safe and bundles
+// through a single entry), and a live collaborative object is not wire data.
+// Read it through the web helpers `getTextBody` / `bodyToPlainText`.
+//
+// A text node also still carries `content`, written alongside the body when a
+// handling task lands its result. Nothing in the canvas reads it any more —
+// the view projection omits it for text and the clipboard reads the body — so
+// treat the body as the only truth for what a text node says.
 
 /**
  * Documents the keys on each node's Y.Map in the canvas document.
@@ -308,7 +323,11 @@ export interface CanvasNodeFields {
     errorMessage?: string;
 
     // ─── Data node fields ───────────────────────────────────
-    /** Primary result: URL (image/video/audio/3D) or text body (text/web). */
+    /**
+     * Primary result: URL (image/video/audio/3D) or text (web). For a text
+     * node this is a leftover write from a landing task that no reader
+     * consumes — its words are in `data.body` (see the note above).
+     */
     content?: string;
     /**
      * Video poster (first-frame thumbnail). Video-only: image renders
