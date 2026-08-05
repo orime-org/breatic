@@ -150,8 +150,12 @@ describe('putFileWithRetry hands the PUT to the shared transport', () => {
   });
 
   it('makes exactly one call — retrying is the transport’s job now', async () => {
-    // The old loop retried 5xx itself. If that machinery is still in place a
-    // transport-level failure would produce more than one call here.
+    // A 503 *response*, which in the transport's own vocabulary is an answer
+    // and not a failure — only the absence of a response throws. The old loop
+    // here read that answer itself, judged 503 transient and re-delivered; if
+    // any of that machinery were still in place this would call three times.
+    // The exit where no delivery produced a response is pinned by the two
+    // tests above, not by this one.
     httpRequestMock.mockImplementation(async () => new Response(null, { status: 503 }));
 
     await expect(

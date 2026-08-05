@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+import { ApiException } from '@web/data/api/types';
 import {
   isReportableAssetUrl,
   fileToNodeSpec,
@@ -232,12 +233,25 @@ describe('runMediaUpload — config → hash → presign(dedup) → PUT → call
   });
 
   it('reports failure when presign finally throws (PUT not attempted)', async () => {
+    // The real thing apiGet rejects with, rather than a hand-written shape.
+    // It used to be seeded as `{ response: { status: 403 } }` — the raw axios
+    // shape, which the interceptor no longer lets out and which `errorStatus`
+    // no longer reads. That fixture still went green, but for a changed
+    // reason: not "403 is final, so no retry", but "no status could be read
+    // at all". The 403 in it had stopped reaching any code.
     const deps = makeUploadDeps({
-      presign: vi.fn().mockRejectedValue({ response: { status: 403 } }),
+      presign: vi.fn().mockRejectedValue(
+        new ApiException({ status: 403, message: 'forbidden' }),
+      ),
     });
 
     await runMediaUpload(file, 'p1', deps);
 
+    // Called ONCE, which is what makes the 403 in the fixture load-bearing.
+    // Without this the same test passes with a 503 in there, and then it is
+    // only checking that an exhausted presign reports failure — which the
+    // status could not affect either way.
+    expect(deps.presign).toHaveBeenCalledTimes(1);
     expect(deps.putFile).not.toHaveBeenCalled();
     expect(deps.onSuccess).not.toHaveBeenCalled();
     expect(deps.onFailure).toHaveBeenCalledOnce();
