@@ -173,6 +173,16 @@ export interface SafeFetchOptions {
  * @throws {SsrfError} if any hop resolves to a non-public IP or matches
  *   a blocked hostname
  * @throws {TypeError} for malformed URLs
+ * @throws {HttpRetryError} when a hop was delivered more than once and the
+ *   last delivery still produced no response. This is the shape a caller now
+ *   meets most often on a bad network, and it is the one this module used to
+ *   have no way of producing — before the retries there was one delivery, so
+ *   its failure reached the caller as itself.
+ * @throws {Error} the transport's own refusals, which are about the request
+ *   rather than about where it points and so are not `SsrfError`: a URL
+ *   carrying credentials, or a `timeoutMs` no timer can hold. A first
+ *   delivery that fails without being replayed also arrives unwrapped, which
+ *   for a connection-level failure means a `TypeError`.
  */
 export async function safeFetch(
   url: string,

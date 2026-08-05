@@ -12,9 +12,13 @@
  * injected fetch — "the global one is always what runs" — so the global is
  * the only place to stand.
  *
- * What would pass here without the batch: nothing. Before the move `safeFetch`
- * calls `fetch` once per hop, so the first rejection ends the hop and the
- * error reaches the caller.
+ * What passes here without the batch, measured by putting the pre-move module
+ * back and running this file against it: one of the four. `does not replay a
+ * 4xx` passes on both versions, because one delivery is one delivery either
+ * way — it pins a shape the two share rather than anything the move added.
+ * The other three fail on the old code, which is the point: before the move
+ * `safeFetch` calls `fetch` once per hop, so the first rejection ends the hop
+ * and the error reaches the caller.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";

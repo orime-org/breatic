@@ -6,9 +6,23 @@
  *
  * These are the first tests this file has ever had. The SSRF guard is a
  * security control and it shipped with no automated coverage at all, so the
- * refusal cases below are characterisation: they pin behaviour that must
- * survive the move onto the transport, and they were green before the move as
- * well as after. The handoff cases are the new ones.
+ * refusal cases below are characterisation.
+ *
+ * How much they characterise was MEASURED, by putting the pre-move module
+ * back (`git show origin/main:…safe-fetch.ts`) and running this file against
+ * it: 5 of the 8 refusals pass unchanged on both versions — the scheme check,
+ * the IP-range check, the hostname denylist, a name resolving to a private
+ * address, and one bad record among several. Those five are genuine
+ * cross-version characterisation: they refuse before any request is made, so
+ * neither version reaches a request layer.
+ *
+ * The other three CANNOT run against the pre-move module, and saying
+ * otherwise would overstate what this file proves. `re-checks every hop`,
+ * `stops after the redirect budget` and `hands back a 3xx with no Location`
+ * all need a response to come back, and the pre-move module gets its response
+ * from the global `fetch` — which this very file stubs to throw. Against the
+ * old code they fail with "a real fetch escaped". They pin the behaviour
+ * going forward; they do not testify that it is unchanged.
  *
  * Two things about the handoff cannot be read off the call site, which is why
  * they are asserted behaviourally:
@@ -120,8 +134,6 @@ describe("safeFetch refuses what it always refused", () => {
   });
 
   it("refuses when ANY resolved address is private, not merely the first", async () => {
-    // `lookup(..., { all: true })` is asked for precisely so one bad record
-    // among several cannot slip through.
     dnsLookupMock.mockResolvedValue([
       { address: "93.184.216.34", family: 4 },
       { address: "127.0.0.1", family: 4 },
@@ -129,6 +141,23 @@ describe("safeFetch refuses what it always refused", () => {
 
     await expect(safeFetch("https://mixed.example/")).rejects.toBeInstanceOf(SsrfError);
     expect(httpRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("asks DNS for EVERY record, which is what makes the check above possible", async () => {
+    // Separate from the case above, and asserted on the ARGUMENT rather than
+    // on the outcome, because the mock hands back its array whatever it is
+    // asked — so the case above passes with `{ all: true }` deleted. Measured:
+    // dropping it left all 32 tests green.
+    //
+    // The option is load-bearing in production. Without it `lookup(host)`
+    // resolves to a single `{ address, family }` object, `for (const {
+    // address } of addresses)` throws on a non-iterable, and web_fetch's
+    // catch-all turns that into an error string for every hostname there is.
+    dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+
+    await safeFetch("https://public.example/");
+
+    expect(dnsLookupMock).toHaveBeenCalledWith("public.example", { all: true });
   });
 
   it("re-checks every hop, so a public host cannot redirect into the private range", async () => {
