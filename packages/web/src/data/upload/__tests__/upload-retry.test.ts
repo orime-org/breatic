@@ -130,12 +130,14 @@ describe('computePutTimeoutMs — stall guard scales with size', () => {
   });
 
   it('keeps a 2 GiB file (the upload cap) below the 32-bit setTimeout ceiling', () => {
-    // Guard invariant: a timeout past 2,147,483,647 ms (the int32
-    // setTimeout / AbortSignal.timeout limit) overflows to ~0 and aborts
-    // the PUT instantly. At the 2 GiB cap and 65536 B/s floor the timeout
-    // is ~32.8M ms (~9h) — comfortably under the ceiling — so no clamp is
-    // needed today. This test fails the day someone shrinks the rate floor
-    // or raises the cap enough to approach the limit, forcing a clamp then.
+    // Guard invariant: a timeout past 2,147,483,647 ms (the int32 setTimeout
+    // limit) overflows to ~0. This value is now handed to the shared HTTP
+    // transport as its per-delivery deadline, so an overflow there aborts the
+    // PUT instantly just as the old AbortSignal.timeout did. At the 2 GiB cap
+    // and 65536 B/s floor the timeout is ~32.8M ms (~9h) — comfortably under
+    // the ceiling — so no clamp is needed today. This test fails the day
+    // someone shrinks the rate floor or raises the cap enough to approach the
+    // limit, forcing a clamp then.
     const t = computePutTimeoutMs(2147483648, CFG);
     expect(t).toBeGreaterThan(0);
     expect(t).toBeLessThanOrEqual(2147483647);

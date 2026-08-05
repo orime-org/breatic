@@ -22,11 +22,11 @@ import { httpRequest } from '@breatic/shared';
 export interface UploadClientConfig {
   /** Hard upload cap in bytes (pre-checked on selection; server 413s). */
   maxUploadBytes: number;
-  /** Attempts per operation including the first. */
+  /** Presign attempts including the first; the PUT's count lives in the transport. */
   clientMaxAttempts: number;
-  /** Base backoff (ms); full jitter on base * 2^attemptIndex. */
+  /** Base backoff (ms) between presign attempts; full jitter on base * 2^attemptIndex. */
   clientRetryBaseDelayMs: number;
-  /** Per-attempt API request timeout (ms); also the PUT timeout floor. */
+  /** Floor for the PUT stall guard. It times no API request — presign is timed by the axios client. */
   clientRequestTimeoutMs: number;
   /** PUT stall guard rate: timeout = max(floor, size / rate). */
   clientPutMinBytesPerSec: number;
@@ -136,7 +136,7 @@ export async function retryTransient<T>(
 /**
  * Per-attempt PUT timeout: a stall guard, not a UX deadline. Scales with
  * file size at the minimum acceptable transfer rate so a legitimately
- * slow big upload never trips it, floored at the API request timeout.
+ * slow big upload never trips it, floored at the value below, whose name says API request but times none.
  * @param sizeBytes - The file size about to be PUT.
  * @param cfg - The upload knobs.
  * @returns The per-attempt timeout in milliseconds.

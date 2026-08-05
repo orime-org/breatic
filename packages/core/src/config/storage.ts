@@ -64,11 +64,11 @@ export const storageConfigSchema = z.object({
     .object({
       /** Hard upload cap in bytes; presign rejects larger files (413). */
       max_upload_bytes: z.number().int().positive().default(2147483648),
-      /** Browser presign/PUT attempts including the first. */
+      /** Browser PRESIGN attempts including the first. The PUT is retried by the shared HTTP transport, which compiles its own count. */
       client_max_attempts: z.number().int().positive().default(3),
-      /** Base backoff (ms) between browser retry attempts. */
+      /** Base backoff (ms) between browser PRESIGN retry attempts. */
       client_retry_base_delay_ms: z.number().int().min(0).default(1000),
-      /** Per-attempt browser API request timeout (ms); PUT timeout floor. */
+      /** Floor for the PUT stall guard. Despite the name it does not time any API request: presign is timed by the axios client. */
       client_request_timeout_ms: z.number().int().positive().default(30000),
       /** PUT stall guard rate: per-attempt timeout = max(floor, size/rate). */
       client_put_min_bytes_per_sec: z.number().int().positive().default(65536),

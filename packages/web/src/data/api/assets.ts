@@ -94,7 +94,6 @@ export const assetsApi = {
     uploadConfigCache = null;
   },
 
-
   /**
    * Report a completed upload (activity-feed handshake, ADR 2026-07-04).
    * The server verifies the object exists in storage (head()) before the

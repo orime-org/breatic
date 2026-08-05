@@ -21,7 +21,8 @@ upload:
   # job_attempts=3). Transient errors only. The PUT no longer reads this:
   # it goes through the shared HTTP transport, which compiles its own.
   client_max_attempts: 3
-  # Base backoff (ms) between browser retry attempts, full-jittered.
+  # Base backoff (ms) between browser PRESIGN retry attempts, full-jittered.
+  # The PUT's backoff lives in the shared HTTP transport.
   client_retry_base_delay_ms: 1000
   # Floor for the PUT stall guard below. Despite the name it does NOT time
   # presign: that goes through axios, whose timeout is set in
