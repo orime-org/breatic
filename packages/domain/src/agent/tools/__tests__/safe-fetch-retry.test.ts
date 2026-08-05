@@ -22,6 +22,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { HttpRetryError } from "@breatic/shared";
 
 const dnsLookupMock = vi.fn();
 
@@ -61,10 +62,24 @@ describe("a network blip is retried rather than failing the hop", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   }, 15_000);
 
-  it("gives up after the transport's budget instead of retrying forever", async () => {
+  it("gives up as an HttpRetryError that names how many deliveries it made", async () => {
     fetchMock.mockRejectedValue(new TypeError("fetch failed"));
 
-    await expect(safeFetch("https://public.example/page")).rejects.toThrow();
+    // Deliberately not `rejects.toThrow()`, which any error satisfies —
+    // including the raw `TypeError("fetch failed")` the PRE-move module let
+    // through. safeFetch's `@throws` now names this shape as the one a caller
+    // meets on a bad network, so the shape is what has to be pinned, not the
+    // mere fact that something was thrown.
+    const err: unknown = await safeFetch("https://public.example/page").catch(
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(HttpRetryError);
+    expect((err as HttpRetryError).attempts).toBe(3);
+    // The original failure is kept as the cause rather than flattened into a
+    // string, which is what lets a caller tell a dropped connection apart
+    // from anything else the transport gives up on.
+    expect((err as HttpRetryError).cause).toBeInstanceOf(TypeError);
     // Three deliveries is the transport's compiled-in cap, not ours.
     expect(fetchMock).toHaveBeenCalledTimes(3);
   }, 15_000);

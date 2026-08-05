@@ -10,11 +10,11 @@
  *
  * How much they characterise was MEASURED, by putting the pre-move module
  * back (`git show origin/main:…safe-fetch.ts`) and running this file against
- * it: 5 of the 9 refusals pass unchanged on both versions — the scheme check,
- * the IP-range check, the hostname denylist, a name resolving to a private
- * address, and one bad record among several. Those five are genuine
- * cross-version characterisation: they refuse before any request is made, so
- * neither version reaches a request layer.
+ * it: 6 of the 10 refusals pass unchanged on both versions — the scheme
+ * check, the IP-range check, the IPv6-literal check, the hostname denylist, a
+ * name resolving to a private address, and one bad record among several.
+ * Those six are genuine cross-version characterisation: they refuse before
+ * any request is made, so neither version reaches a request layer.
  *
  * The other FOUR cannot run against the pre-move module, and saying otherwise
  * would overstate what this file proves. `asks DNS for EVERY record`,
@@ -25,11 +25,13 @@
  * They pin the behaviour going forward; they do not testify that it is
  * unchanged.
  *
- * That count is worth a sentence of its own, because the first version of
- * this paragraph said "5 of the 8" and "the other three": the same commit
- * that wrote it added a ninth case to the block below without re-measuring.
- * A measured number goes stale the moment the thing it counts changes, so
- * adding a case here means running the pre-move check again.
+ * That count is worth a sentence of its own, because it has gone stale twice.
+ * The paragraph first said "5 of the 8", and the same commit that wrote it
+ * added a ninth case without re-measuring; it then said "5 of the 9" until
+ * the IPv6-literal case arrived. Both times the number was written from
+ * memory of an earlier run. A measured number expires the moment the thing
+ * it counts changes, so adding a case to the block below means re-running the
+ * pre-move check — which is where the 6-of-10 above comes from.
  *
  * Two things about the handoff cannot be read off the call site, which is why
  * they are asserted behaviourally:
@@ -125,6 +127,26 @@ describe("safeFetch refuses what it always refused", () => {
     ]) {
       await expect(safeFetch(url)).rejects.toBeInstanceOf(SsrfError);
     }
+    expect(httpRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses an IPv6 literal, which reaches the guard by a different branch than IPv4 does", async () => {
+    // The four IPv4 literals above do NOT cover this, which is why it is its
+    // own case. Measured on Node 24: `new URL("http://[::1]/").hostname` is
+    // `"[::1]"` — brackets kept — and `ipaddr.isValid("[::1]")` is false, so
+    // every IPv6 literal misses the `isValid` branch and is refused only by
+    // the bracket-stripping one. Delete those three lines from safe-fetch.ts
+    // and this is the case that turns red; before it existed, deleting them
+    // left the whole directory green.
+    for (const url of [
+      "http://[::1]/", // loopback
+      "http://[fd00::1]/", // uniqueLocal
+      "http://[::ffff:127.0.0.1]/", // ipv4Mapped; URL normalises it to [::ffff:7f00:1]
+    ]) {
+      await expect(safeFetch(url)).rejects.toBeInstanceOf(SsrfError);
+    }
+    // A literal is checked directly, so the resolver is never consulted.
+    expect(dnsLookupMock).not.toHaveBeenCalled();
     expect(httpRequestMock).not.toHaveBeenCalled();
   });
 

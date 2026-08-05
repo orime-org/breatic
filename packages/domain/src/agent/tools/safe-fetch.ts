@@ -29,8 +29,8 @@
  * The request itself goes through the shared HTTP transport, which may
  * deliver one hop up to three times. That is deliberate: a dropped
  * connection used to fail the tool outright. The DNS check above runs
- * once per HOP, not once per delivery — what that costs is the next
- * paragraph, and it is more than a count of connections.
+ * once per HOP, not once per delivery — what that widens is the next
+ * paragraph.
  *
  * DNS rebinding is partially mitigated by re-resolving per hop; a
  * determined attacker with a short-TTL DNS record and precise timing
@@ -38,21 +38,28 @@
  * would require the target server's TCP stack to re-query DNS, which
  * it does not within a single fetch call.
  *
- * State the retries' effect on that race precisely, because counting
- * connections understates it. Each delivery resolves the hostname
- * again, and none of those re-resolutions is checked. Worse, the far
- * side chooses WHEN they happen: a `Retry-After` on a 429 is honoured
+ * What the retries add to that race was MEASURED rather than reasoned
+ * about, because the obvious guess is wrong. A replay re-resolves only
+ * when it needs a NEW connection, and undici pools by origin — so a
+ * replay landing inside the keep-alive window reuses the socket and
+ * resolves nothing at all. Counting TCP connections against a local
+ * server (Node 24): three deliveries across the transport's own 1s and
+ * 2s backoff opened ONE connection; three deliveries after dropped
+ * connections opened three; two deliveries either side of a
+ * `Retry-After: 6` opened two.
+ *
+ * So the widening is not "every delivery". It is the delivery that
+ * waits long enough to outlive the pooled socket, and the far side is
+ * what decides how long that is. A `Retry-After` on a 429 is honoured
  * up to 60 seconds, and 429 takes the protocol branch that does not
- * consult `replaySafe` at all. So a host that answers "come back in
- * 59 seconds" schedules an unchecked re-resolution 59 seconds after
- * the check that cleared it — turning a race measured in milliseconds
- * into a window the target itself sets. The precise timing the
- * paragraph above asks of an attacker is no longer needed.
+ * consult `replaySafe` at all, so a host answering "come back in 59
+ * seconds" outlives any keep-alive: it forces a fresh connection, hence
+ * a fresh and unchecked resolution, 59 seconds after the check that
+ * cleared it. The precise timing the paragraph above asks of an
+ * attacker arrives in the attacker's own header.
  *
  * That is accepted here rather than fixed here: the guard is the one
- * rigid gate, and hardening it is tracked separately. It is written
- * down so the next person meets a measured statement rather than a
- * comforting one.
+ * rigid gate, and hardening it is tracked separately.
  */
 
 import { lookup as dnsLookup } from "node:dns/promises";
@@ -140,8 +147,10 @@ async function assertHostnameAllowed(hostname: string): Promise<void> {
     return;
   }
 
-  // IPv6 bracketed literal — URL.hostname strips brackets but handle
-  // the edge case where something passes through anyway.
+  // IPv6 literal. Not the edge case this comment used to call it: measured,
+  // `new URL("http://[::1]/").hostname` KEEPS the brackets and
+  // `ipaddr.isValid("[::1]")` is therefore false, so every IPv6 literal
+  // misses the branch above and is refused here or nowhere.
   if (normalized.startsWith("[") && normalized.endsWith("]")) {
     assertIpAllowed(normalized.slice(1, -1));
     return;
