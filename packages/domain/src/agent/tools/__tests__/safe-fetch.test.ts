@@ -1,0 +1,233 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+
+/**
+ * What `safeFetch` refuses, and what it tells the shared transport.
+ *
+ * These are the first tests this file has ever had. The SSRF guard is a
+ * security control and it shipped with no automated coverage at all, so the
+ * refusal cases below are characterisation: they pin behaviour that must
+ * survive the move onto the transport, and they were green before the move as
+ * well as after. The handoff cases are the new ones.
+ *
+ * Two things about the handoff cannot be read off the call site, which is why
+ * they are asserted behaviourally:
+ *
+ *   - `replaySafe: true` is what buys the retry this batch exists for. With
+ *     `false` the transport replays 429 and 408 only, so the network blip that
+ *     names this batch would still fail the tool on the first try.
+ *   - The per-hop deadline must arrive as `timeoutMs`. It used to ride in as
+ *     `init.signal`, and the transport replaces the caller's signal — left
+ *     there it becomes a no-op and every hop silently gets the transport's
+ *     300s default instead of the 30s this module intends.
+ *
+ * `redirect: "manual"` is asserted for a different reason: manual redirects
+ * are why this module exists. Following them itself is what lets it re-check
+ * DNS on every hop; hand that back to the platform and the guard covers the
+ * first URL only.
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as sharedModule from "@breatic/shared";
+import { HttpRetryError } from "@breatic/shared";
+
+const httpRequestMock = vi.fn();
+
+vi.mock("@breatic/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof sharedModule>();
+  return {
+    ...actual,
+    httpRequest: (...args: unknown[]) => httpRequestMock(...args),
+  };
+});
+
+const dnsLookupMock = vi.fn();
+
+vi.mock("node:dns/promises", () => ({
+  lookup: (...args: unknown[]) => dnsLookupMock(...args),
+}));
+
+// A real network call from a unit test would make these tests depend on the
+// machine's connectivity AND would hide the very failure the handoff tests
+// exist to catch: before the move, `safeFetch` calls the global `fetch`, so a
+// test asserting on the transport mock would otherwise pass its request to the
+// internet and fail for a confusing reason. This makes that mistake loud.
+vi.stubGlobal("fetch", () => {
+  throw new Error("a real fetch escaped: safeFetch must go through httpRequest");
+});
+
+import { safeFetch, SsrfError } from "@domain/agent/tools/safe-fetch.js";
+
+/** The deadline this module applies to one hop when the caller names none. */
+const DEFAULT_HOP_TIMEOUT_MS = 30_000;
+
+/** A 2xx with no redirect, i.e. the hop loop's exit. */
+const okResponse = (): Response => new Response("hello", { status: 200 });
+
+/**
+ * A redirect response pointing at `to`.
+ * @param to - The Location header value.
+ * @returns A 302 carrying that Location.
+ */
+const redirectTo = (to: string): Response =>
+  new Response(null, { status: 302, headers: { location: to } });
+
+describe("safeFetch refuses what it always refused", () => {
+  beforeEach(() => {
+    httpRequestMock.mockReset();
+    httpRequestMock.mockImplementation(async () => okResponse());
+    dnsLookupMock.mockReset();
+    dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+  });
+
+  it("refuses a scheme that is not http or https", async () => {
+    await expect(safeFetch("file:///etc/passwd")).rejects.toBeInstanceOf(SsrfError);
+    await expect(safeFetch("ftp://example.com/x")).rejects.toBeInstanceOf(SsrfError);
+    expect(httpRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a loopback, private, link-local or metadata address", async () => {
+    // Written as IP literals, which the guard checks directly without DNS —
+    // so these four also prove the literal path, not just the resolved one.
+    for (const url of [
+      "http://127.0.0.1:5432/",
+      "http://10.0.0.1/",
+      "http://192.168.1.1/",
+      "http://169.254.169.254/latest/meta-data/",
+    ]) {
+      await expect(safeFetch(url)).rejects.toBeInstanceOf(SsrfError);
+    }
+    expect(httpRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a denylisted hostname even when DNS answers with a public address", async () => {
+    // The point of the denylist: DNS is not the only way a name reaches an
+    // internal service, so a name on the list is refused before it is asked.
+    dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+
+    for (const host of ["localhost", "metadata.google.internal", "instance-data"]) {
+      await expect(safeFetch(`http://${host}/`)).rejects.toBeInstanceOf(SsrfError);
+    }
+    expect(dnsLookupMock).not.toHaveBeenCalled();
+    expect(httpRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a public name that resolves to a private address", async () => {
+    dnsLookupMock.mockResolvedValue([{ address: "10.1.2.3", family: 4 }]);
+
+    await expect(safeFetch("https://sneaky.example/")).rejects.toBeInstanceOf(SsrfError);
+    expect(httpRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses when ANY resolved address is private, not merely the first", async () => {
+    // `lookup(..., { all: true })` is asked for precisely so one bad record
+    // among several cannot slip through.
+    dnsLookupMock.mockResolvedValue([
+      { address: "93.184.216.34", family: 4 },
+      { address: "127.0.0.1", family: 4 },
+    ]);
+
+    await expect(safeFetch("https://mixed.example/")).rejects.toBeInstanceOf(SsrfError);
+    expect(httpRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("re-checks every hop, so a public host cannot redirect into the private range", async () => {
+    // The whole reason this module follows redirects itself.
+    dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+    httpRequestMock.mockImplementationOnce(async () => redirectTo("http://127.0.0.1/"));
+
+    await expect(safeFetch("https://public.example/")).rejects.toBeInstanceOf(SsrfError);
+    expect(httpRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops after the redirect budget rather than following forever", async () => {
+    dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+    httpRequestMock.mockImplementation(async () => redirectTo("https://public.example/next"));
+
+    await expect(safeFetch("https://public.example/")).rejects.toBeInstanceOf(SsrfError);
+    // Six deliveries: the initial hop plus the five the budget allows.
+    expect(httpRequestMock).toHaveBeenCalledTimes(6);
+  });
+
+  it("hands back a 3xx with no Location instead of guessing where it meant", async () => {
+    dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+    const bare = new Response(null, { status: 302 });
+    httpRequestMock.mockImplementation(async () => bare);
+
+    await expect(safeFetch("https://public.example/")).resolves.toBe(bare);
+  });
+});
+
+describe("safeFetch hands the request to the shared transport", () => {
+  beforeEach(() => {
+    httpRequestMock.mockReset();
+    httpRequestMock.mockImplementation(async () => okResponse());
+    dnsLookupMock.mockReset();
+    dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+  });
+
+  it("declares the hop replay-safe and passes the hop deadline as a deadline", async () => {
+    await safeFetch("https://public.example/page");
+
+    expect(httpRequestMock).toHaveBeenCalledTimes(1);
+    // Strict equality on the whole options object: replaySafe flipping to
+    // false takes away the retry this batch exists for, and a missing
+    // timeoutMs swaps 30s for the transport's 300s default.
+    expect(httpRequestMock.mock.calls[0]![2]).toStrictEqual({
+      replaySafe: true,
+      timeoutMs: DEFAULT_HOP_TIMEOUT_MS,
+    });
+  });
+
+  it("passes the caller's hop deadline through when given one", async () => {
+    await safeFetch("https://public.example/page", { timeoutMs: 5_000 });
+
+    expect(httpRequestMock.mock.calls[0]![2]).toStrictEqual({
+      replaySafe: true,
+      timeoutMs: 5_000,
+    });
+  });
+
+  it("sends the same wire shape, with manual redirects and no signal in the init", async () => {
+    await safeFetch("https://public.example/page", {
+      headers: { "User-Agent": "breatic-test" },
+    });
+
+    expect(httpRequestMock.mock.calls[0]![0]).toBe("https://public.example/page");
+    // Strict equality catches a leftover `signal` as well as a lost
+    // `redirect` — the transport replaces the former and depends on the
+    // latter staying put.
+    expect(httpRequestMock.mock.calls[0]![1]).toStrictEqual({
+      headers: { "User-Agent": "breatic-test" },
+      redirect: "manual",
+    });
+  });
+
+  it("addresses each hop by its own resolved URL, including a relative Location", async () => {
+    httpRequestMock
+      .mockImplementationOnce(async () => redirectTo("/moved"))
+      .mockImplementationOnce(async () => okResponse());
+
+    await safeFetch("https://public.example/start");
+
+    expect(httpRequestMock.mock.calls[0]![0]).toBe("https://public.example/start");
+    expect(httpRequestMock.mock.calls[1]![0]).toBe("https://public.example/moved");
+  });
+
+  it("lets a transport failure through untouched", async () => {
+    // The exit with nothing else guarding it: when no delivery produced a
+    // response the transport throws, and this module must not swallow it or
+    // rewrite it as an SsrfError — "the network never answered" is not a
+    // verdict about where the URL points.
+    const failure = new HttpRetryError(
+      "http request to https://public.example failed after 3 attempts",
+      3,
+      new TypeError("fetch failed"),
+    );
+    httpRequestMock.mockImplementation(async () => {
+      throw failure;
+    });
+
+    await expect(safeFetch("https://public.example/")).rejects.toBe(failure);
+  });
+});

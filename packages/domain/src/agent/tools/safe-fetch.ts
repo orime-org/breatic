@@ -22,19 +22,29 @@
  *      resolve to unicast IPs in unusual network setups.
  *   4. Follows redirects manually, re-checking DNS for every hop. A
  *      redirect from a public host to `http://10.0.0.1/` is rejected.
- *   5. Caps hop count and wall-clock timeout.
+ *   5. Caps hop count, and gives each hop a deadline.
+ *
+ * The request itself goes through the shared HTTP transport, which may
+ * deliver one hop up to three times. That is deliberate — a dropped
+ * connection used to fail the tool outright — and it widens one thing
+ * worth stating plainly: the DNS check above runs once per HOP, not
+ * once per delivery, so a single check now covers up to three
+ * connections instead of one.
  *
  * DNS rebinding is partially mitigated by re-resolving per hop; a
  * determined attacker with a short-TTL DNS record and precise timing
  * could still race the check against the actual connect, but this
  * would require the target server's TCP stack to re-query DNS, which
- * it does not within a single fetch call. We therefore accept this
- * narrow residual risk in favor of keeping TLS SNI / `Host` headers
- * working correctly with the original hostname.
+ * it does not within a single fetch call. The retries widen that
+ * existing race from one connection to three rather than opening a new
+ * kind of hole. We accept this narrow residual risk in favor of
+ * keeping TLS SNI / `Host` headers working correctly with the original
+ * hostname.
  */
 
 import { lookup as dnsLookup } from "node:dns/promises";
 import ipaddr from "ipaddr.js";
+import { httpRequest } from "@breatic/shared";
 
 /** Error thrown when a URL would reach a forbidden host or IP. */
 export class SsrfError extends Error {
@@ -183,11 +193,25 @@ export async function safeFetch(
 
     await assertHostnameAllowed(parsed.hostname);
 
-    const res = await fetch(current, {
-      headers,
-      redirect: "manual",
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    // Through the shared transport, which owns the retrying. `replaySafe` is
+    // a statement about this request rather than a wish for reliability: a
+    // hop is a read, so its only effect is the response, and a delivery that
+    // produced none produced no effect to repeat. That declaration is what
+    // buys the retry on a dropped connection — the failure this module used
+    // to pass straight to the caller, and the reason this batch exists.
+    //
+    // The deadline goes in as `timeoutMs`, not as a signal on the init: the
+    // transport replaces the caller's signal, so one left there would be a
+    // no-op and every hop would silently get the transport's 300s default.
+    //
+    // `redirect: "manual"` stays in the init, because following redirects
+    // here is the whole point — it is what lets the check above run again on
+    // every hop rather than on the first URL only.
+    const res = await httpRequest(
+      current,
+      { headers, redirect: "manual" },
+      { replaySafe: true, timeoutMs },
+    );
 
     // Not a redirect — return to caller.
     if (res.status < 300 || res.status >= 400) {
