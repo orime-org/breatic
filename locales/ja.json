@@ -128,6 +128,9 @@
       "web": "ダブルクリックで URL を埋め込む",
       "rightClickHint": "右クリックで生成など"
     },
+    "textNode": {
+      "editorPlaceholder": "入力を始めましょう"
+    },
     "contextMenu": {
       "paste": "貼り付け",
       "copy": "コピー",

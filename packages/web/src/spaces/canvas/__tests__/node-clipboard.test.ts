@@ -16,6 +16,9 @@ import {
   type ClipboardNode,
 } from '@web/spaces/canvas/node-clipboard';
 
+/** No body text for this case — the parameter is required so omitting it cannot be an accident. */
+const NO_TEXT: ReadonlyMap<string, string> = new Map();
+
 describe('node-clipboard', () => {
   it('serializeNodes + parseClipboardNodes round-trip through the marker', () => {
     const nodes: ClipboardNode[] = [
@@ -59,6 +62,7 @@ describe('node-clipboard', () => {
     const out = captureClipboard(
       ['n'],
       [{ id: 'n', type: 'image', position: { x: 5, y: 6 }, data: { name: 'Hero', content: 'a.png' } }],
+      NO_TEXT,
     );
     expect(out).toEqual([
       { type: 'image', position: { x: 5, y: 6 }, name: 'Hero', content: 'a.png', id: 'n' },
@@ -78,6 +82,7 @@ describe('node-clipboard', () => {
           data: { name: 'Clip', content: 'clip.mp4', coverUrl: 'clip-cover.jpg' },
         },
       ],
+      NO_TEXT,
     );
     expect(out).toEqual([
       {
@@ -118,6 +123,7 @@ describe('node-clipboard', () => {
           data: {},
         },
       ],
+      NO_TEXT,
     );
     expect(out[0].width).toBe(300);
     expect(out[0].height).toBe(200);
@@ -129,7 +135,9 @@ describe('node-clipboard', () => {
       { id: 'm', type: 'text', parentId: 'g', position: { x: 20, y: 30 }, data: { content: 'hi' } },
     ];
     // member is captured alone (group not selected) → abs = group(100,100)+rel(20,30).
-    expect(captureClipboard(['m'], nodes)).toEqual([
+    // A text node's words live in a shared body now, so they reach the
+    // clipboard through this map rather than off the node's data (#1774).
+    expect(captureClipboard(['m'], nodes, new Map([['m', 'hi']]))).toEqual([
       { type: 'text', position: { x: 120, y: 130 }, content: 'hi', id: 'm', parentId: 'g' },
     ]);
   });
@@ -147,7 +155,7 @@ describe('node-clipboard', () => {
     ];
     // Selecting the group AND a member must not emit the member twice; the
     // group's name is carried (R2-B — a duplicated group keeps its name).
-    const out = captureClipboard(['g', 'm1'], nodes);
+    const out = captureClipboard(['g', 'm1'], nodes, new Map([['m1', 'a']]));
     expect(out).toEqual([
       {
         type: 'group',
@@ -167,6 +175,7 @@ describe('node-clipboard', () => {
     const out = captureClipboard(
       ['a'],
       [{ id: 'a', type: 'annotation', position: { x: 0, y: 0 }, data: {} }],
+      NO_TEXT,
     );
     expect(out).toEqual([]);
   });

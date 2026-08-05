@@ -128,6 +128,9 @@
       "web": "더블클릭하여 URL 삽입",
       "rightClickHint": "우클릭으로 생성 등"
     },
+    "textNode": {
+      "editorPlaceholder": "내용을 입력하세요"
+    },
     "contextMenu": {
       "paste": "붙여넣기",
       "copy": "복사",

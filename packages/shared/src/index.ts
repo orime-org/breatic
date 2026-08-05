@@ -84,6 +84,7 @@ export type {
 export {
   ROLE_RANK,
   HANDLING_TIMEOUT_MS,
+  canGenerate,
   membersChangedChannel,
   activityNewChannel,
   allProjectChannelsPattern,

@@ -12,6 +12,20 @@ import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 
 /**
+ * Builds a view model with no body text, which is what every case here wants:
+ * these tests cover model / params / status resolution, never what a text
+ * reference says. `textById` is required at the real call sites so that
+ * forgetting it cannot silently blank every reference (#1774 round-6).
+ * @param input - Everything except the text map.
+ * @returns The view model.
+ */
+function buildVm(
+  input: Omit<Parameters<typeof buildGeneratePanelViewModel>[0], 'textById'>,
+): ReturnType<typeof buildGeneratePanelViewModel> {
+  return buildGeneratePanelViewModel({ ...input, textById: new Map() });
+}
+
+/**
  * Builds an image ModelEntry fixture with only the fields the view-model reads.
  * @param name - Model id.
  * @param over - Overrides (tier, cost_per_call, params).
@@ -89,39 +103,39 @@ describe('buildGeneratePanelViewModel', () => {
 
   it('uses the stored model when it is present in the mode catalog', () => {
     const nodes = [node('n1', imageView({ model: 'flux' }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.model).toBe('flux');
     expect(vm.creditEstimate).toBe(7);
   });
 
   it('picks the FIRST offered model when the node has none (user 2026-07-11)', () => {
     const nodes = [node('n1', imageView())];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.model).toBe('flux'); // first in the list; sdxl's badge does not promote it
     expect(vm.creditEstimate).toBe(7);
   });
 
   it('restores the mode\'s remembered model over the first', () => {
     const nodes = [node('n1', imageView({ modelByMode: { t2i: 'sdxl' } }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.model).toBe('sdxl'); // remembered t2i pick beats list order
   });
 
   it('defaults the mode to t2i when the node stores none', () => {
     const nodes = [node('n1', imageView())];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.mode).toBe('t2i');
   });
 
   it('reads a stored i2i mode', () => {
     const nodes = [node('n1', i2iView())];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: i2iModels });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: i2iModels });
     expect(vm.mode).toBe('i2i');
   });
 
   it('sanitizes a malformed stored mode to t2i', () => {
     const nodes = [node('n1', imageView({ mode: 'garbage' }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.mode).toBe('t2i');
   });
 
@@ -131,14 +145,14 @@ describe('buildGeneratePanelViewModel', () => {
       makeModel('mj-i2i', { mode: 'i2i' }),
       makeModel('nano-edit', { mode: ['i2i', 'edit'] }), // carries i2i
     ];
-    const t2iVm = buildGeneratePanelViewModel({
+    const t2iVm = buildVm({
       nodeId: 'n1',
       nodes: [node('n1', imageView())],
       edges: [],
       models: mixed,
     });
     expect(t2iVm.models.map((m) => m.name)).toEqual(['flux']);
-    const i2iVm = buildGeneratePanelViewModel({
+    const i2iVm = buildVm({
       nodeId: 'n1',
       nodes: [node('n1', imageView({ mode: 'i2i' }))],
       edges: [],
@@ -151,7 +165,7 @@ describe('buildGeneratePanelViewModel', () => {
     const nodes = [
       node('n1', imageView({ model: 'flux', params: { aspect_ratio: '16:9', bogus: 'x' } })),
     ];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.params.aspect_ratio).toBe('16:9'); // kept — valid
     expect(vm.params.resolution).toBe('1k'); // filled from model default
     // Undeclared params persist (user 2026-07-18): they live in the node
@@ -165,7 +179,7 @@ describe('buildGeneratePanelViewModel', () => {
       node('src', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       edges,
@@ -185,7 +199,7 @@ describe('buildGeneratePanelViewModel', () => {
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
     // No atMentionedSourceIds → nothing @-picked. Design B: i2i without an
     // @-reference sends an empty source list (the #1675 gate then blocks execute).
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models: i2iModels });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges, models: i2iModels });
     expect(vm.references).toHaveLength(1); // rail still shows the connected image
     expect(vm.referenceUrls).toEqual([]); // but nothing is @-picked → no source sent
   });
@@ -199,7 +213,7 @@ describe('buildGeneratePanelViewModel', () => {
       node('aud', { kind: 'audio', status: 'idle', name: 'Song', content: 'https://cdn/x.mp3' }),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'aud', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       edges,
@@ -218,7 +232,7 @@ describe('buildGeneratePanelViewModel', () => {
       node('src', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges, models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges, models });
     expect(vm.references).toHaveLength(1); // rail still shown
     expect(vm.referenceUrls).toEqual([]); // but nothing submitted
   });
@@ -230,7 +244,7 @@ describe('buildGeneratePanelViewModel', () => {
       node('src', imageView({ name: 'Bad', content: { u: 1 } as unknown as string })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       edges,
@@ -246,7 +260,7 @@ describe('buildGeneratePanelViewModel', () => {
       node('src', imageView({ name: 'Empty' })), // no content
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       edges,
@@ -258,7 +272,7 @@ describe('buildGeneratePanelViewModel', () => {
   });
 
   it('returns a safe empty view-model when the node is missing', () => {
-    const vm = buildGeneratePanelViewModel({ nodeId: 'ghost', nodes: [], edges: [], models });
+    const vm = buildVm({ nodeId: 'ghost', nodes: [], edges: [], models });
     expect(vm.model).toBe('flux'); // first t2i model — picker stays usable
     expect(vm.mode).toBe('t2i');
     expect(vm.references).toEqual([]);
@@ -277,7 +291,7 @@ describe('buildGeneratePanelViewModel', () => {
       height: 360,
     };
     const nodes = [node('n1', imageView({ focusImages: [crop] }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.focusImages).toEqual([crop]);
   });
 
@@ -302,12 +316,12 @@ describe('buildGeneratePanelViewModel', () => {
         }),
       ),
     ];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.focusImages).toEqual([good]);
     const nodes2 = [
       node('n1', imageView({ focusImages: 'nope' as unknown as FocusImage[] })),
     ];
-    const vm2 = buildGeneratePanelViewModel({ nodeId: 'n1', nodes: nodes2, edges: [], models });
+    const vm2 = buildVm({ nodeId: 'n1', nodes: nodes2, edges: [], models });
     expect(vm2.focusImages).toEqual([]);
   });
 
@@ -320,7 +334,7 @@ describe('buildGeneratePanelViewModel', () => {
       height: 1,
     }));
     const nodes = [node('n1', imageView({ focusImages: many }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.focusImages).toHaveLength(200);
   });
 
@@ -328,7 +342,7 @@ describe('buildGeneratePanelViewModel', () => {
     const a = { id: 'k', url: 'https://cdn/a.png', name: 'a', width: 1, height: 1 };
     const b = { id: 'k', url: 'https://cdn/b.png', name: 'b', width: 1, height: 1 };
     const nodes = [node('n1', imageView({ focusImages: [a, b] }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.focusImages).toEqual([a]);
   });
 
@@ -345,7 +359,7 @@ describe('buildGeneratePanelViewModel', () => {
       node('src', imageView({ content: 'https://cdn/source.png' })),
     ];
     const edges = [{ id: 'src->n1', source: 'src', target: 'n1' }];
-    const vm = buildGeneratePanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       edges,
@@ -357,7 +371,7 @@ describe('buildGeneratePanelViewModel', () => {
       'https://cdn/crop.png',
     ]);
     // Un-mentioned crops stay out (A, user 2026-07-16: @ is the only gate).
-    const vmNone = buildGeneratePanelViewModel({
+    const vmNone = buildVm({
       nodeId: 'n1',
       nodes,
       edges,
@@ -376,7 +390,7 @@ describe('buildGeneratePanelViewModel', () => {
       height: 10,
     };
     const nodes = [node('n1', imageView({ mode: 't2i', focusImages: [crop] }))];
-    const vm = buildGeneratePanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes,
       edges: [],
@@ -401,7 +415,7 @@ describe('buildGeneratePanelViewModel', () => {
     const nodes = [
       node('n1', imageView({ model: 'flux-style', styleImageUrl: 'https://cdn/style.png' })),
     ];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: styleModels });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: styleModels });
     expect(vm.styleImageUrl).toBe('https://cdn/style.png');
     expect(vm.styleSupported).toBe(true);
   });
@@ -412,7 +426,7 @@ describe('buildGeneratePanelViewModel', () => {
     const nodes = [
       node('n1', imageView({ model: 'flux', styleImageUrl: 'https://cdn/style.png' })),
     ];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.styleSupported).toBe(false);
     expect(vm.styleImageUrl).toBe('https://cdn/style.png'); // copy still readable
   });
@@ -427,7 +441,7 @@ describe('buildGeneratePanelViewModel', () => {
         }),
       ),
     ];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: styleModels });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: styleModels });
     expect(vm.styleImageUrl).toBeUndefined();
   });
 
@@ -441,7 +455,7 @@ describe('buildGeneratePanelViewModel', () => {
     // Guards the empty-catalog path: with no models the execute gate must see
     // model='' and refuse to submit an invalid task.
     const nodes = [node('n1', imageView())];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: [] });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [] });
     expect(vm.model).toBe('');
     expect(vm.creditEstimate).toBe(0);
   });
@@ -451,20 +465,20 @@ describe('buildGeneratePanelViewModel', () => {
     const toolsOnly = [makeModel('bg', { mode: 'remove_bg', tier: 'internal' })];
     // loading / failed (no models) -> empty
     expect(
-      buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: [] }).catalogEmpty,
+      buildVm({ nodeId: 'n1', nodes, edges: [], models: [] }).catalogEmpty,
     ).toBe(true);
     // only pure tools, zero generatable -> empty
     expect(
-      buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: toolsOnly }).catalogEmpty,
+      buildVm({ nodeId: 'n1', nodes, edges: [], models: toolsOnly }).catalogEmpty,
     ).toBe(true);
     // has generatable models -> NOT empty
     expect(
-      buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models }).catalogEmpty,
+      buildVm({ nodeId: 'n1', nodes, edges: [], models }).catalogEmpty,
     ).toBe(false);
     // i2i mode with ZERO i2i models but t2i models present: catalogEmpty stays
     // false so the toggle can escape back to t2i (round-2 fix).
     expect(
-      buildGeneratePanelViewModel({
+      buildVm({
         nodeId: 'n1',
         nodes: [node('n1', imageView({ mode: 'i2i' }))],
         edges: [],
@@ -480,7 +494,7 @@ describe('buildGeneratePanelViewModel', () => {
       makeModel('topaz', { mode: 'upscale', tier: 'internal' }), // tool
     ];
     const nodes = [node('n1', imageView())]; // default t2i
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: mixed });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: mixed });
     expect(vm.models.map((m) => m.name)).toEqual(['flux']); // tools dropped
     expect(vm.model).toBe('flux'); // default never a tool
   });
@@ -492,14 +506,14 @@ describe('buildGeneratePanelViewModel', () => {
     ];
     // node somehow stored a tool model — it must not resolve to the tool.
     const nodes = [node('n1', imageView({ model: 'bg-remover' }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: mixed });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: mixed });
     expect(vm.model).toBe('flux');
     expect(vm.models.some((m) => m.name === 'bg-remover')).toBe(false);
   });
 
   it('surfaces the node status so execute can refuse while handling', () => {
     const nodes = [node('n1', imageView({ model: 'flux', status: 'handling' }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.nodeStatus).toBe('handling');
   });
 
@@ -507,26 +521,26 @@ describe('buildGeneratePanelViewModel', () => {
   // source image (i2i / edit) must not submit with an empty image list.
   it('flags requiresSource=false for a t2i model (generates from scratch)', () => {
     const nodes = [node('n1', imageView({ model: 'flux' }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.requiresSource).toBe(false);
   });
 
   it('flags requiresSource=true for an i2i model (#1675 gate)', () => {
     const nodes = [node('n1', i2iView())];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: i2iModels });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: i2iModels });
     expect(vm.requiresSource).toBe(true);
   });
 
   it('flags requiresSource=true for an edit-capable model', () => {
     const editModels = [makeModel('nano-edit', { mode: ['i2i', 'edit'] })];
     const nodes = [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: editModels });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: editModels });
     expect(vm.requiresSource).toBe(true);
   });
 
   it('flags requiresSource=false when the catalog is empty (no model resolved)', () => {
     const nodes = [node('n1', imageView())];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: [] });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [] });
     expect(vm.requiresSource).toBe(false);
   });
 
@@ -539,14 +553,14 @@ describe('buildGeneratePanelViewModel', () => {
   it('requiresSource=false for a hybrid (t2i+i2i) model running under t2i', () => {
     const hybrid = [makeModel('seedream', { mode: ['t2i', 'i2i'] })];
     const nodes = [node('n1', imageView({ mode: 't2i', model: 'seedream' }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: hybrid });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: hybrid });
     expect(vm.requiresSource).toBe(false);
   });
 
   it('requiresSource=true for the same hybrid model running under i2i', () => {
     const hybrid = [makeModel('seedream', { mode: ['t2i', 'i2i'] })];
     const nodes = [node('n1', imageView({ mode: 'i2i', model: 'seedream' }))];
-    const vm = buildGeneratePanelViewModel({ nodeId: 'n1', nodes, edges: [], models: hybrid });
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: hybrid });
     expect(vm.requiresSource).toBe(true);
   });
 });
@@ -599,7 +613,7 @@ describe('buildGeneratePanelViewModel — maxReferences (#1735 count gate)', () 
       mode: 'i2i',
       params: { images: { description: '', default: null, max_items: 3 } },
     });
-    const vm = buildGeneratePanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes: [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))],
       edges: [],
@@ -611,7 +625,7 @@ describe('buildGeneratePanelViewModel — maxReferences (#1735 count gate)', () 
 
   it('leaves maxReferences undefined when the active model caps nothing', () => {
     // The default makeModel params carry aspect_ratio / resolution — no images cap.
-    const vm = buildGeneratePanelViewModel({
+    const vm = buildVm({
       nodeId: 'n1',
       nodes: [node('n1', imageView({ mode: 't2i', model: 'flux' }))],
       edges: [],
@@ -626,7 +640,7 @@ describe('buildGeneratePanelViewModel — maxReferences (#1735 count gate)', () 
     // agree, or a max_items: 0 would block every submit with a nonsensical
     // "limit: 0" toast while the server accepts it.
     for (const cap of [0, -1, Number.NaN]) {
-      const vm = buildGeneratePanelViewModel({
+      const vm = buildVm({
         nodeId: 'n1',
         nodes: [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))],
         edges: [],

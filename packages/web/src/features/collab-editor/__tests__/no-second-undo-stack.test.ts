@@ -34,6 +34,7 @@ import { Editor, type Extensions } from '@tiptap/core';
 import * as Y from 'yjs';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import { buildTextNodeExtensions } from '@web/spaces/canvas/nodes/TextNodeEditor';
 
 /** The plugin key a local (non-collaborative) history registers under. */
 const LOCAL_HISTORY_PLUGIN = 'undoRedo';
@@ -48,6 +49,14 @@ const COLLABORATIVE_EDITORS: ReadonlyArray<{
     build: () =>
       buildDocumentExtensions({
         fragment: new Y.Doc().getXmlFragment('content'),
+      }),
+  },
+  {
+    name: 'canvas text node',
+    build: () =>
+      buildTextNodeExtensions({
+        fragment: new Y.Doc().getXmlFragment('body'),
+        placeholder: '',
       }),
   },
   // The canvas prompt editor composes its list inline inside `PromptEditor`

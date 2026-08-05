@@ -128,6 +128,9 @@
       "web": "双击嵌入网址",
       "rightClickHint": "右键可生成等更多"
     },
+    "textNode": {
+      "editorPlaceholder": "开始写作"
+    },
     "contextMenu": {
       "paste": "粘贴",
       "copy": "复制",
