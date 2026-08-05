@@ -15,6 +15,7 @@ import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFr
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
+import { useCanvasStore } from '@web/stores';
 import {
   TEXT_BODY_BOX,
   TEXT_BODY_MAX_HEIGHT,
@@ -181,6 +182,17 @@ export const TextNode = React.memo(function TextNode({
     // should not be told "unlock it to edit" when unlocking would not let
     // them edit either, so their refusal stays silent and comes first.
     if (readOnly || !nodeId) return;
+    // A running reference pick owns node interaction (user 2026-07-12 P2b), so
+    // entering edit — a WRITE, since a bodyless node is repaired on the way in
+    // — must not happen under one. The rule used to live on the wrapper's
+    // double-click capture, which is a guard on one EVENT rather than on the
+    // action: the keyboard doors this feature added (Enter on the node, Space
+    // on an empty node's placeholder) walked straight past it while a
+    // double-click was still stopped. Read fresh here, where the action is,
+    // the same way `activateNodeUpload` does — then any future door is covered
+    // by construction. Silent like the read-only refusal: the pick is what the
+    // user is doing, and it is visibly in progress.
+    if (useCanvasStore.getState().pickSession) return;
     if (editBlock) {
       warnNodeGate(t(editBlock.toastKey));
       return;

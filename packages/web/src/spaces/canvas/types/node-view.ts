@@ -108,8 +108,10 @@ export interface TextNodeView extends ContentNodeViewBase {
   kind: 'text';
   // No body here, on purpose (#1774). The text is a shared fragment on the
   // node, and keeping it out of this projection is what makes a keystroke
-  // change nothing the canvas compares — so zero nodes re-render while
-  // somebody types. Whoever displays it subscribes through `useTextBody`.
+  // change nothing the canvas compares — so no OTHER node re-renders while
+  // somebody types. The node being typed in does re-render, by construction:
+  // it subscribes to its own body. Whoever displays it subscribes through
+  // `useTextBody`.
 }
 
 export interface ImageNodeView extends ContentNodeViewBase {

@@ -431,9 +431,12 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       // The clone is a second text node in the document, carrying the same
       // words in a body of its own.
       const doc = getDoc(docName.canvasSpace('p', 's'));
-      const ids = [...doc.getMap<Y.Map<unknown>>('nodesMap').keys()];
-      await waitFor(() => expect(ids.length).toBeGreaterThan(1));
-      const cloneId = ids.find((id) => id !== 'n1') as string;
+      /** Node ids in the document RIGHT NOW — re-read on every poll. */
+      const currentIds = (): string[] => [
+        ...doc.getMap<Y.Map<unknown>>('nodesMap').keys(),
+      ];
+      await waitFor(() => expect(currentIds().length).toBeGreaterThan(1));
+      const cloneId = currentIds().find((id) => id !== 'n1') as string;
       expect(
         bodyToPlainText(getTextBody('p', 's', cloneId) as Y.XmlFragment),
       ).toBe('notes worth keeping');

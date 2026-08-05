@@ -44,6 +44,7 @@ import {
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { TextNode } from '@web/spaces/canvas/nodes/TextNode';
 import { TEXT_BODY_BOX } from '@web/spaces/canvas/nodes/TextNodeEditor';
+import { useCanvasStore } from '@web/stores';
 import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
 
 vi.mock('sonner', () => ({
@@ -298,6 +299,29 @@ describe('TextNode', () => {
       expect(hint).not.toContain('.');
     });
 
+
+    it('refuses to open while a reference pick is running', () => {
+      // A pick owns node interaction (user 2026-07-12 P2b). That rule used to
+      // live on the wrapper's double-click capture — a guard on one EVENT —
+      // so the keyboard doors this feature added walked straight past it and
+      // opened the editor mid-pick, repairing a bodyless node on the way in,
+      // which is a write into the shared document (round-7, probed in a real
+      // ReactFlow mount: double-click blocked, Enter not). The guard now sits
+      // on the action, so every door is covered.
+      seedNode();
+      renderNode();
+      act(() => {
+        useCanvasStore.getState().startStylePick('other-node');
+      });
+      fireEvent.click(screen.getByTestId('node-placeholder'), { detail: 0 });
+      expect(editor()).toBeNull();
+      // And nothing was written: a bodyless node stays bodyless.
+      act(() => {
+        useCanvasStore.setState({ pickSession: null });
+      });
+      fireEvent.click(screen.getByTestId('node-placeholder'), { detail: 0 });
+      expect(editor()).not.toBeNull();
+    });
 
     it('opens from the placeholder by keyboard, not only by double-click', () => {
       // Clicking an empty node lands focus on the placeholder button, not on

@@ -939,9 +939,11 @@ export function nodeDataMap(doc: Y.Doc, nodeId: string): Y.Map<unknown> | null {
 /**
  * Read a text node's body, without creating one (#1774).
  *
- * Absent means the node predates this feature or is the tail of an undo, not
- * that it is empty: an empty body still holds one block. Callers that need to
- * write have to repair first, through {@link ensureTextBody}.
+ * Absent means the node predates this feature, not that it is empty: an empty
+ * body still holds one block, and every node born since carries one from
+ * inside its creating transaction (an undo removes such a node whole rather
+ * than stripping its body — probed). Callers that need to write have to
+ * repair first, through {@link ensureTextBody}.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space holding the node.
  * @param nodeId - Id of the text node whose body to read.

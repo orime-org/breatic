@@ -61,9 +61,11 @@ import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-paylo
 import { useCanvasStore } from '@web/stores';
 
 /**
- * For the two derivations below that deliberately want no body text. Shared and
- * frozen so neither allocates a map per call, and so "no text here" reads as
- * one decision rather than two look-alike literals.
+ * For the two derivations below that deliberately want no body text. Shared so
+ * neither allocates a map per call, and so "no text here" reads as one decision
+ * rather than two look-alike literals. Not frozen — `ReadonlyMap` is a
+ * compile-time view, and `Object.freeze` would not stop `.set()` on a Map
+ * anyway; nothing downstream writes to it, and the type says they may not.
  */
 const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
 
