@@ -44,6 +44,7 @@ import * as decisionRepo from "@server/modules/decision/decision.repo.js";
 import type { RequestDetail } from "@server/modules/decision/decision.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
+import { DAY_MS } from "@server/config/limits.js";
 
 
 /** Terminal status words meaning the recipient said yes. */
@@ -65,7 +66,6 @@ const WITHDRAWN = new Set(["revoked", "cancelled"]);
  * @returns The window length in days, at least 1.
  */
 function windowDaysOf(createdAt: Date, expiresAt: Date): number {
-  const DAY_MS = 24 * 3600 * 1000;
   return Math.max(1, Math.round((expiresAt.getTime() - createdAt.getTime()) / DAY_MS));
 }
 

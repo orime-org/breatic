@@ -15,6 +15,14 @@ ruleTester.run("no-hardcoded-request-ttl", noHardcodedRequestTtl, {
     { code: "const area = 24 * 60;" },
     // A name that merely contains TTL is not a per-flow day count.
     { code: "const TTL_SECONDS = fromConfig();" },
+    // Durations that are whole days without being a deferred decision opt out
+    // in the open, on the line itself.
+    {
+      code: "const EMAIL_VERIFY_TTL = 24 * 3600; // request-ttl:allow — email verification, not a deferred decision",
+    },
+    {
+      code: "const ms = 86400000; // request-ttl:allow — cache horizon",
+    },
   ],
   invalid: [
     {
@@ -40,6 +48,30 @@ ruleTester.run("no-hardcoded-request-ttl", noHardcodedRequestTtl, {
     {
       // Order does not save it.
       code: "const ms = 1000 * 60 * 60 * 24;",
+      errors: [{ messageId: "ttlArithmetic" }],
+    },
+    {
+      // Neither does spelling an hour as one number. Matching the SHAPE of the
+      // arithmetic only ever catches the shapes somebody thought of; what
+      // makes this a day is the value it comes to.
+      code: "const at = new Date(Date.now() + 7 * 24 * 3600 * 1000);",
+      errors: [{ messageId: "ttlArithmetic" }],
+    },
+    {
+      code: "const seconds = 7 * 24 * 3600;",
+      errors: [{ messageId: "ttlArithmetic" }],
+    },
+    {
+      code: "const ms = 7 * 86400000;",
+      errors: [{ messageId: "ttlArithmetic" }],
+    },
+    {
+      // Nor does skipping the arithmetic altogether.
+      code: "const at = new Date(Date.now() + 604800000);",
+      errors: [{ messageId: "ttlArithmetic" }],
+    },
+    {
+      code: "const seconds = 86400;",
       errors: [{ messageId: "ttlArithmetic" }],
     },
   ],

@@ -62,8 +62,12 @@ describe("answering happens through exactly one pair of routes", () => {
     ["POST", "/studio-invitations/respond"],
     ["POST", "/project-invitations/respond"],
     // The role-upgrade decision endpoint — row 4 of the design's deletion
-    // table, still alive after round 1 claimed the table done.
-    ["PATCH", "/role-upgrade-requests/:requestId/decision"],
+    // table, still alive after round 1 claimed the table done. The parameter
+    // was named for the notification, not the request: this door addressed
+    // the bell entry, which is what made it a second entrance in the first
+    // place. Spelling it any other way pins nothing, since the match is a
+    // substring of the registered path.
+    ["PATCH", "/role-upgrade-requests/:notificationId/decision"],
   ] as const;
 
   it.each(DEAD_DOORS)("%s %s is not routed", (method, fragment) => {

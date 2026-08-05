@@ -107,13 +107,22 @@ export function getDeferredRequestTtlDays(): number {
 }
 
 /**
+ * A day in milliseconds, spelled once for everyone who needs the unit.
+ *
+ * This module is where "how long is a day" already lived, so it is where the
+ * number belongs — including for readers who are not stamping a TTL at all
+ * but converting a span back into days.
+ */
+export const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
  * The single place a request TTL becomes an instant: `now + TTL`. Every create
  * path stamps BOTH the request row and its bell notification from one call, so
  * the two projections of "is this still live" can never disagree.
  * @returns The moment the request being created will expire.
  */
 export function deferredRequestExpiry(): Date {
-  return new Date(Date.now() + getDeferredRequestTtlDays() * 24 * 60 * 60 * 1000);
+  return new Date(Date.now() + getDeferredRequestTtlDays() * DAY_MS);
 }
 
 /**
