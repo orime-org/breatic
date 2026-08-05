@@ -7,7 +7,6 @@ import {
   retryTransient,
   isTransientUploadError,
   computePutTimeoutMs,
-  putFileWithRetry,
   UploadHttpError,
   type UploadClientConfig,
 } from '@web/data/upload/upload-retry';
@@ -33,23 +32,16 @@ function fakeSleep(): { sleep: (ms: number) => Promise<void>; delays: number[] }
 }
 
 describe('isTransientUploadError — retry only what can heal', () => {
+  // Carried on a flat `.status`, which is the only shape that reaches this
+  // function now: presign is its one caller, and axios normalises every
+  // failure into an ApiException before it arrives.
   it('retries 5xx and 429, never other 4xx', () => {
-    expect(isTransientUploadError(new UploadHttpError(500))).toBe(true);
-    expect(isTransientUploadError(new UploadHttpError(503))).toBe(true);
-    expect(isTransientUploadError(new UploadHttpError(429))).toBe(true);
-    expect(isTransientUploadError(new UploadHttpError(403))).toBe(false);
-    expect(isTransientUploadError(new UploadHttpError(413))).toBe(false);
-    expect(isTransientUploadError(new UploadHttpError(422))).toBe(false);
-  });
-
-  it('retries network failures and per-attempt timeouts', () => {
-    expect(isTransientUploadError(new TypeError('Failed to fetch'))).toBe(true);
-    expect(
-      isTransientUploadError(new DOMException('aborted', 'AbortError')),
-    ).toBe(true);
-    expect(
-      isTransientUploadError(new DOMException('timed out', 'TimeoutError')),
-    ).toBe(true);
+    expect(isTransientUploadError({ status: 500 })).toBe(true);
+    expect(isTransientUploadError({ status: 503 })).toBe(true);
+    expect(isTransientUploadError({ status: 429 })).toBe(true);
+    expect(isTransientUploadError({ status: 403 })).toBe(false);
+    expect(isTransientUploadError({ status: 413 })).toBe(false);
+    expect(isTransientUploadError({ status: 422 })).toBe(false);
   });
 
   it('reads status off axios-shaped errors (presign path)', () => {
@@ -111,9 +103,12 @@ describe('retryTransient — 3 attempts, full-jitter backoff', () => {
   });
 
   it('stops on first success', async () => {
+    // A network-level presign failure, which apiGet reports as status 0 —
+    // this used to be a bare `TypeError`, the shape raw `fetch` throws, back
+    // when this loop still wrapped the PUT.
     const fn = vi
       .fn()
-      .mockRejectedValueOnce(new TypeError('network'))
+      .mockRejectedValueOnce({ status: 0, message: 'network' })
       .mockResolvedValueOnce('ok');
     const { sleep } = fakeSleep();
 
@@ -144,60 +139,5 @@ describe('computePutTimeoutMs — stall guard scales with size', () => {
     const t = computePutTimeoutMs(2147483648, CFG);
     expect(t).toBeGreaterThan(0);
     expect(t).toBeLessThanOrEqual(2147483647);
-  });
-});
-
-describe('putFileWithRetry — PUT with attempts + timeout signal', () => {
-  const file = new File(['x'.repeat(16)], 'a.png', { type: 'image/png' });
-
-  it('resolves on success and sends content-type + same-origin credentials + a signal', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 });
-
-    await putFileWithRetry('https://put', file, CFG, {
-      fetchImpl,
-      sleep: fakeSleep().sleep,
-    });
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://put');
-    expect(init.method).toBe('PUT');
-    expect(init.body).toBe(file);
-    expect(init.headers).toEqual({ 'Content-Type': 'image/png' });
-    expect(init.credentials).toBe('same-origin');
-    expect(init.signal).toBeInstanceOf(AbortSignal);
-  });
-
-  it('retries 5xx to the attempt budget then throws the HTTP error', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 500 });
-    const { sleep } = fakeSleep();
-
-    await expect(
-      putFileWithRetry('https://put', file, CFG, { fetchImpl, sleep }),
-    ).rejects.toMatchObject({ status: 500 });
-    expect(fetchImpl).toHaveBeenCalledTimes(3);
-  });
-
-  it('does not retry a 403', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 403 });
-    const { sleep } = fakeSleep();
-
-    await expect(
-      putFileWithRetry('https://put', file, CFG, { fetchImpl, sleep }),
-    ).rejects.toMatchObject({ status: 403 });
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-  });
-
-  it('retries a network failure and succeeds', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockResolvedValueOnce({ ok: true, status: 200 });
-    const { sleep } = fakeSleep();
-
-    await expect(
-      putFileWithRetry('https://put', file, CFG, { fetchImpl, sleep }),
-    ).resolves.toBeUndefined();
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });

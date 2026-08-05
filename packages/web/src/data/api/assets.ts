@@ -94,27 +94,6 @@ export const assetsApi = {
     uploadConfigCache = null;
   },
 
-  /**
-   * PUT a file to its presigned upload URL. Works for both cloud storage
-   * (S3/OSS presigned URL — cross-origin, signature in the URL, no cookie) and
-   * local mode (same-origin app endpoint — cookie auth): `credentials:
-   * 'same-origin'` attaches the session cookie only to our own origin and
-   * never leaks it to cloud storage.
-   * @param uploadUrl - The presigned `uploadUrl` from `presign`.
-   * @param file - The browser `File` to upload.
-   * @throws {Error} When the storage responds with a non-2xx status.
-   */
-  async putFile(uploadUrl: string, file: File): Promise<void> {
-    const res = await fetch(uploadUrl, {
-      method: 'PUT',
-      body: file,
-      headers: { 'Content-Type': file.type },
-      credentials: 'same-origin',
-    });
-    if (!res.ok) {
-      throw new Error(`Asset upload failed (HTTP ${res.status})`);
-    }
-  },
 
   /**
    * Report a completed upload (activity-feed handshake, ADR 2026-07-04).
