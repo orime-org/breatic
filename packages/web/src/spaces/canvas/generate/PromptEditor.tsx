@@ -213,8 +213,20 @@ export const PromptEditor = React.forwardRef<
     // (rare); the reference POOL stays a live ref (poolRef) so frequent edge
     // add/remove never triggers a recreate. caretProvider flips null→provider
     // once on first socket connect (mounting the caret extension); caretUser is
-    // memoized by the container so it never churns per render.
-    [fragment, placeholder, mentionEmptyLabel, caretProvider, caretUser],
+    // memoized by the container so it never churns per render. The name
+    // RESOLVER is listed rather than the roster bundle holding it — the bundle
+    // is rebuilt on every project-page render and would tear this editor down
+    // mid-keystroke, while the resolver keeps one identity for the editor's
+    // whole life and reads the current roster through a ref. Listed at all so
+    // that a resolver arriving after mount still reaches the extensions.
+    [
+      fragment,
+      placeholder,
+      mentionEmptyLabel,
+      caretProvider,
+      caretUser,
+      collaboratorNames?.resolve,
+    ],
   );
   // Publish this window's focus and dim collaborators who have left theirs.
   // Shared with the document editor — both halves have to travel together,

@@ -46,7 +46,10 @@ export function useProjectMembers(projectId: string): ProjectMembersResult {
     enabled: projectId !== 'demo',
   });
 
-  const userIds = (rolesQuery.data ?? []).map((m) => m.userId);
+  const userIds = React.useMemo(
+    () => (rolesQuery.data ?? []).map((m) => m.userId),
+    [rolesQuery.data],
+  );
 
   const profilesQuery = useQuery({
     queryKey: [PROFILES_KEY, projectId, userIds],
@@ -54,18 +57,27 @@ export function useProjectMembers(projectId: string): ProjectMembersResult {
     enabled: userIds.length > 0,
   });
 
-  const profiles = profilesQuery.data ?? [];
-  const members: Member[] = (rolesQuery.data ?? []).map((row) => {
-    const profile = profiles.find((p) => p.id === row.userId);
-    return {
-      id: row.userId,
-      userId: row.userId,
-      name: profile?.name ?? '',
-      email: profile?.email ?? '',
-      role: row.role,
-      avatarUrl: profile?.avatarUrl,
-    };
-  });
+  // Memoised because consumers put this array — or something derived from it —
+  // into dependency lists. Rebuilding it on every render is what silently
+  // destroyed and recreated the open canvas text-node editor: the roster
+  // travels down to `useEditor`, which compares its deps by identity and
+  // rebuilds the whole editor on any mismatch, discarding the selection and
+  // undo stack of whoever was typing. The rows only change when one of the two
+  // queries resolves, so that is what this depends on.
+  const members: Member[] = React.useMemo(() => {
+    const profiles = profilesQuery.data ?? [];
+    return (rolesQuery.data ?? []).map((row) => {
+      const profile = profiles.find((p) => p.id === row.userId);
+      return {
+        id: row.userId,
+        userId: row.userId,
+        name: profile?.name ?? '',
+        email: profile?.email ?? '',
+        role: row.role,
+        avatarUrl: profile?.avatarUrl,
+      };
+    });
+  }, [rolesQuery.data, profilesQuery.data]);
 
   const isLoading =
     rolesQuery.isLoading || (userIds.length > 0 && profilesQuery.isLoading);

@@ -249,7 +249,21 @@ export function TextNodeEditor({
     // re-synced, so a locale switch while a node is open would otherwise leave
     // the old language behind until it was reopened. `caretProvider` flips
     // from null to a provider once, on the socket's first connect.
-    [fragment, placeholder, caretProvider, caretUser, collaboratorNames, editable],
+    //
+    // The RESOLVER, not the roster bundle around it: the bundle is a new object
+    // on every project-page render, and listing it here rebuilt this editor
+    // whenever anyone joined the project — the exact tear-down the ref above
+    // exists to prevent. The resolver keeps one identity for the editor's whole
+    // life and reads the current roster through a ref, so later names reach the
+    // carets without the editor being recreated.
+    [
+      fragment,
+      placeholder,
+      caretProvider,
+      caretUser,
+      collaboratorNames?.resolve,
+      editable,
+    ],
   );
   // Publish this window's focus and dim collaborators who have left theirs.
   // The other half of the caret story: without it this client publishes into a
