@@ -409,6 +409,9 @@
       },
       "error": {
         "create": "Space の作成に失敗しました",
+        "openTab": "タブを開けませんでした",
+        "closeTab": "タブを閉じられませんでした",
+        "unreachable": "サーバーから応答がありません。接続を確認して再試行してください",
         "notSynced": "Project を同期中です。しばらくしてから再試行してください"
       },
       "loading": {

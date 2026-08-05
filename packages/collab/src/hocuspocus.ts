@@ -45,7 +45,7 @@ import {
 } from "@breatic/shared";
 import { createAuthHook } from "@collab/hooks/auth.js";
 import { projectAwarenessIntoMetaUsers } from "@collab/hooks/awareness-meta-users.js";
-import { checkWriteAuthz, WriteAuthzError } from "@collab/hooks/before-handle-message.js";
+import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import { createPersistenceExtension } from "@collab/services/persistence.js";
 import { getCollabConfig } from "@collab/config.js";
 import { cleanupOnDisconnect } from "@collab/hooks/disconnect-cleanup.js";
@@ -299,25 +299,25 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
     },
 
-    // Client write authorization — refuses direct writes to
-    // meta.spaces / meta.projectMessages / meta.perUser[someone else].
-    // Per ADR 2026-05-23-yjs-collab-only-write-authz.
-    beforeHandleMessage: async ({ documentName, document, update, context }) => {
-      try {
-        checkWriteAuthz({
-          documentName,
-          document,
-          update,
-          context: context as { user?: { id?: string } },
-        });
-      } catch (e) {
-        if (e instanceof WriteAuthzError) {
-          logger.warn(
-            { documentName, err: e.message },
-            "write_authz_rejected",
-          );
-        }
-        throw e;
+    // A client trying to write the meta doc gets ONE LOG LINE and nothing
+    // else. Refusing the write is not this hook's job: the connection to
+    // that doc is read-only for every client (`hooks/auth.ts`), and the
+    // framework enforces that at each site where it would apply an update.
+    //
+    // This replaces a gate that decided here whether to reject, which
+    // required recognising a write from the raw frame — and it got that
+    // wrong, silently, for its entire life. Keeping only the observation
+    // means a mistake costs a log line rather than a hole.
+    //
+    // Nothing in the frontend writes the meta doc, so this should never
+    // fire. When it does, it is a stale build or someone probing.
+    beforeHandleMessage: async ({ documentName, update, context }) => {
+      const ctx = context as { user?: { id?: string } };
+      if (isMetaWriteAttempt(documentName, update, ctx)) {
+        logger.warn(
+          { documentName, userId: ctx.user?.id },
+          "meta_write_attempt",
+        );
       }
     },
 
@@ -381,9 +381,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         }
       }
 
-      // (Per-user write-boundary enforcement now lives in
-      // `beforeHandleMessage` → `checkWriteAuthz`, per ADR
-      // 2026-05-23-yjs-collab-only-write-authz. The old onChange
+      // (Nothing enforces write boundaries here. The meta doc is
+      // read-only for every client — see `hooks/auth.ts` — and per-user
+      // tab changes go through the `tab:*` RPCs below. The old onChange
       // audit-log was telemetry-only and has been retired.)
     },
   });

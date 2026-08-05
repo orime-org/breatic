@@ -82,7 +82,10 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-import { handleSpaceRpc } from "../services/space-rpc.js";
+import {
+  handleSpaceRpc,
+  type SpaceRpcCaller,
+} from "../services/space-rpc.js";
 import { spaceContentDocName, ACTIVITY_NEW_SIGNAL } from "@breatic/shared";
 
 const PID = "11111111-1111-4111-8111-111111111111";
@@ -100,6 +103,10 @@ function makeHocuspocus(): Hocuspocus {
   return {
     openDirectConnection: vi.fn(async () => {
       return {
+        // The real `DirectConnection` exposes the live Y.Doc as a public
+        // field; read-only pre-checks use it so they never ask the store
+        // for anything.
+        document: fakeMetaDoc.doc,
         transact: async (fn: (doc: Y.Doc) => void) => {
           fn(fakeMetaDoc.doc);
         },
@@ -153,6 +160,14 @@ beforeEach(() => {
   activityConsumeRestoreMock.mockResolvedValue(true);
 });
 
+/**
+ * A well-formed uuid v4, standing in for the token a client generates per
+ * click. The server stores it on the entry and echoes it in the broadcast;
+ * the machine that sent it recognises the Space it asked for that way,
+ * since it no longer chooses the id.
+ */
+const TOKEN = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+
 describe("handleSpaceRpc — role validation", () => {
   it("space:create refuses viewer role", async () => {
     const res = await handleSpaceRpc(
@@ -162,7 +177,7 @@ describe("handleSpaceRpc — role validation", () => {
       {
         id: "r1",
         type: "space:create",
-        payload: { spaceId: SID, type: "canvas", name: "Main" },
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
       },
     );
     expect(res.ok).toBe(false);
@@ -207,7 +222,7 @@ describe("handleSpaceRpc — role validation", () => {
 });
 
 describe("handleSpaceRpc — happy paths write PG activity rows", () => {
-  it("space:create writes meta.spaces + inserts a space:created activity row + broadcasts the signal", async () => {
+  it("space:create mints the id, writes meta.spaces + inserts a space:created activity row + broadcasts the signal", async () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
@@ -215,20 +230,23 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       {
         id: "r1",
         type: "space:create",
-        payload: { spaceId: SID, type: "canvas", name: "Main" },
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
       },
     );
     expect(res.ok).toBe(true);
-    expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(true);
+    // The caller learns the id from the reply — it did not choose one.
+    const newId = res.ok ? res.result?.spaceId : undefined;
+    expect(newId).toBeTruthy();
+    expect(fakeMetaDoc.doc.getMap("spaces").has(newId!)).toBe(true);
     expect(seedInitialStateMock).toHaveBeenCalledWith(
-      spaceContentDocName(PID, SID, "canvas"),
+      spaceContentDocName(PID, newId!, "canvas"),
       expect.any(Uint8Array),
     );
     expect(activityInsertMock).toHaveBeenCalledWith({
       projectId: PID,
       actorUserId: "u-1",
       type: "space:created",
-      spaceId: SID,
+      spaceId: newId,
       payload: { spaceName: "Main" },
     });
     // Live signal so connected members refetch the feed.
@@ -237,8 +255,10 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
     );
   });
 
-  it("space:create returns CONFLICT when spaceId already exists (no activity row)", async () => {
-    seedSpace(SID, {});
+  it("space:create puts the caller's claim token on the entry", async () => {
+    // How the requesting machine recognises the Space it asked for once
+    // the entry is broadcast: it no longer knows the id, so it watches for
+    // the token it generated. Only that machine has it.
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
       PID,
@@ -246,12 +266,42 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       {
         id: "r1",
         type: "space:create",
-        payload: { spaceId: SID, type: "canvas", name: "Duplicate" },
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
       },
     );
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.code).toBe("CONFLICT");
-    expect(activityInsertMock).not.toHaveBeenCalled();
+    const newId = res.ok ? res.result?.spaceId : undefined;
+    const entry = fakeMetaDoc.doc
+      .getMap("spaces")
+      .get(newId!) as Y.Map<unknown>;
+    expect(entry.get("claimToken")).toBe(TOKEN);
+  });
+
+  it("space:create mints a different id on every call", async () => {
+    // The old CONFLICT-on-duplicate case is gone with the client-chosen
+    // id: nobody can submit an id at all, so the only way to collide is a
+    // uuid v4 collision. The handler still refuses to overwrite an
+    // existing entry — that guard costs one line and protects data — but
+    // it is not reachable by any input, so what is pinned here is the
+    // property that actually holds: two creates never land on one id.
+    const mk = async (name: string): Promise<string | undefined> => {
+      const res = await handleSpaceRpc(
+        { hocuspocus: makeHocuspocus() },
+        PID,
+        { userId: "u-1", role: "editor" },
+        {
+          id: "r",
+          type: "space:create",
+          payload: { type: "canvas", name, claimToken: TOKEN },
+        },
+      );
+      return res.ok ? res.result?.spaceId : undefined;
+    };
+    const first = await mk("One");
+    const second = await mk("Two");
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+    expect(first).not.toBe(second);
+    expect(fakeMetaDoc.doc.getMap("spaces").size).toBe(2);
   });
 
   it("activity insert failure does NOT fail the RPC (best-effort audit - the Yjs mutation already applied)", async () => {
@@ -263,11 +313,12 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       {
         id: "r1",
         type: "space:create",
-        payload: { spaceId: SID, type: "canvas", name: "Main" },
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
       },
     );
     expect(res.ok).toBe(true);
-    expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(true);
+    const newId = res.ok ? res.result?.spaceId : undefined;
+    expect(fakeMetaDoc.doc.getMap("spaces").has(newId!)).toBe(true);
   });
 
   it("space:delete removes the meta entry + inserts space:deleted with the snapshot payload + soft-deletes content rows", async () => {
@@ -617,5 +668,269 @@ describe("handleSpaceRpc — restore sources from the PG activity row", () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("NOT_FOUND");
     expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(false);
+  });
+});
+
+// ── Task #27: the open-tab list moves behind RPCs ────────────────────────
+//
+// It was the one part of the meta doc a client wrote directly, and that
+// single exception is why the write gate had to understand which field an
+// incoming frame touched. With it behind an RPC the rule is flat — a client
+// never writes that doc — and the connection is simply read-only.
+//
+// The seeding rule below is not new behaviour invented here: it is the
+// existing client-side rule, moved. Getting it wrong server-side is worse
+// than getting it wrong in a browser tab, because the result is persisted
+// and every machine on the account sees it.
+
+/**
+ * Read a user's open-tab list out of the fake meta doc.
+ * @param userId - Whose list to read.
+ * @returns The ids in the list, or null when the user has no list at all.
+ */
+function readTabs(userId: string): string[] | null {
+  const perUser = fakeMetaDoc.doc.getMap("perUser");
+  const userMap = perUser.get(userId) as Y.Map<unknown> | undefined;
+  if (!userMap) return null;
+  const arr = userMap.get("openTabIds") as Y.Array<string> | undefined;
+  return arr ? arr.toArray() : null;
+}
+
+/** Give a user a perUser record that has no openTabIds list. */
+function seedRecordWithoutList(userId: string): void {
+  fakeMetaDoc.doc.getMap("perUser").set(userId, new Y.Map<unknown>());
+}
+
+describe("handleSpaceRpc — tab:open / tab:close", () => {
+  const A = "sp-a";
+  const B = "sp-b";
+  const C = "sp-c";
+  // Typed as the handler's own caller shape so the viewer case below is
+  // not narrowed to "editor" by the default argument.
+  const editor: SpaceRpcCaller = { userId: "u-1", role: "editor" };
+
+  beforeEach(() => {
+    seedSpace(A, { type: "canvas", name: "A", order: 0 });
+    seedSpace(B, { type: "canvas", name: "B", order: 1 });
+    seedSpace(C, { type: "canvas", name: "C", order: 2 });
+  });
+
+  const open = (spaceId: string, caller = editor) =>
+    handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, caller, {
+      id: "r",
+      type: "tab:open",
+      payload: { spaceId },
+    });
+
+  const close = (spaceId: string, caller = editor) =>
+    handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, caller, {
+      id: "r",
+      type: "tab:close",
+      payload: { spaceId },
+    });
+
+  it("refuses to open a tab for a Space that does not exist", async () => {
+    const res = await open("sp-missing");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("NOT_FOUND");
+    expect(readTabs("u-1")).toBeNull();
+  });
+
+  it("seeds the list with every existing Space on a user's first open", async () => {
+    // No record yet means the tab bar shows ALL Spaces. Writing just the
+    // one that was clicked would silently drop the others — and it is
+    // persisted now, so all of that user's machines lose them and a
+    // reload does not bring them back. This bug was fixed once already in
+    // the client; the rule moves with the code.
+    expect(readTabs("u-1")).toBeNull();
+    const res = await open(B);
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-1")).toEqual([A, B, C]);
+  });
+
+  it("seeds on a first CLOSE too, then removes the one closed", async () => {
+    // Closing without ever opening is a real path: the tab bar is showing
+    // every Space, and the user closes one of them. Seeding first is what
+    // makes "close one" mean "keep the other two" instead of "keep none".
+    const res = await close(A);
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-1")).toEqual([B, C]);
+  });
+
+  it("seeds when the record exists but has no list", async () => {
+    // A shape that exists in production today: the old client-side close
+    // created the record and then returned without making a list. The
+    // gate is the LIST, not the record — gating on the record would skip
+    // seeding for exactly these users and leave their tab bar empty.
+    seedRecordWithoutList("u-1");
+    const res = await open(B);
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-1")).toEqual([A, B, C]);
+  });
+
+  it("opening an already-open tab changes nothing", async () => {
+    await open(B);
+    const before = readTabs("u-1");
+    let updates = 0;
+    const count = (): void => {
+      updates += 1;
+    };
+    fakeMetaDoc.doc.on("update", count);
+    const res = await open(B);
+    fakeMetaDoc.doc.off("update", count);
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-1")).toEqual(before);
+    expect(updates).toBe(0);
+  });
+
+  it("closing a tab that is not open changes nothing", async () => {
+    await open(B); // seeds [A, B, C]
+    await close(A); // -> [B, C]
+    const before = readTabs("u-1");
+    const res = await close(A);
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-1")).toEqual(before);
+  });
+
+  it("writes no activity row for either operation", async () => {
+    // Which tabs someone has open is their own window state, not a
+    // project event. This is the line between the tab RPCs and the five
+    // Space operations.
+    await open(B);
+    await close(B);
+    expect(activityInsertMock).not.toHaveBeenCalled();
+    expect(activityInsertIgnoreMock).not.toHaveBeenCalled();
+  });
+
+  it("lets a viewer manage their own tabs", async () => {
+    // A viewer cannot change the project, but their tab bar is theirs.
+    // Their connection is read-only, which is exactly why this has to go
+    // through an RPC — before this change their tab state was silently
+    // dropped by the server and never survived a reload.
+    const res = await open(B, { userId: "u-viewer", role: "viewer" });
+    expect(res.ok).toBe(true);
+    expect(readTabs("u-viewer")).toEqual([A, B, C]);
+  });
+
+  it("writes to the caller's own record, never another user's", async () => {
+    await open(B, { userId: "u-1", role: "editor" });
+    await open(C, { userId: "u-2", role: "editor" });
+    expect(readTabs("u-1")).toEqual([A, B, C]);
+    expect(readTabs("u-2")).toEqual([A, B, C]);
+    // Two separate records, each seeded on its own first write.
+    expect(fakeMetaDoc.doc.getMap("perUser").size).toBe(2);
+  });
+});
+
+describe("handleSpaceRpc — a deleted Space leaves everyone's tab bar", () => {
+  const A = "sp-a";
+  const B = "sp-b";
+  const editor: SpaceRpcCaller = { userId: "u-1", role: "editor" };
+
+  beforeEach(() => {
+    seedSpace(A, { type: "canvas", name: "A", order: 0 });
+    seedSpace(B, { type: "canvas", name: "B", order: 1 });
+  });
+
+  const openFor = (userId: string, spaceId: string) =>
+    handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId, role: "editor" },
+      { id: "r", type: "tab:open", payload: { spaceId } },
+    );
+
+  it("clears the deleted Space from every user's list", async () => {
+    // Nobody's client can clean this up any more: clients do not write
+    // the meta doc. Leaving it to each client would also mean the tab
+    // only disappears for the people who happen to be online.
+    await openFor("u-1", A);
+    await openFor("u-2", A);
+    await openFor("u-3", A);
+    expect(readTabs("u-1")).toContain(A);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      editor,
+      { id: "r", type: "space:delete", payload: { spaceId: A } },
+    );
+
+    expect(res.ok).toBe(true);
+    expect(fakeMetaDoc.doc.getMap("spaces").has(A)).toBe(false);
+    for (const u of ["u-1", "u-2", "u-3"]) {
+      expect(readTabs(u), u).not.toContain(A);
+      // The other Space is untouched — this clears one entry, not the list.
+      expect(readTabs(u), u).toContain(B);
+    }
+  });
+
+  it("leaves users who never had that tab open alone", async () => {
+    await openFor("u-1", A);
+    const before = readTabs("u-1");
+    // u-2 has no record at all; deleting must not conjure one for them.
+    await handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, editor, {
+      id: "r",
+      type: "space:delete",
+      payload: { spaceId: B },
+    });
+    expect(readTabs("u-2")).toBeNull();
+    expect(before).not.toBeNull();
+  });
+
+  it("does not manufacture a list for someone who has a record but no list", async () => {
+    // "No list" means the tab bar shows every Space. Giving that user an
+    // empty list while sweeping would flip them to showing nothing — the
+    // sweep would empty a tab bar it was only supposed to remove one
+    // entry from. They have no list to clean, so they are left alone.
+    seedRecordWithoutList("u-2");
+    await handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, editor, {
+      id: "r",
+      type: "space:delete",
+      payload: { spaceId: A },
+    });
+    expect(readTabs("u-2")).toBeNull();
+  });
+
+  it("restore clears stale tab entries as a backstop", async () => {
+    // The cross-instance window: a tab:open can land after delete's sweep
+    // on another instance, leaving an entry pointing at a Space that is
+    // gone. Nobody sees it — the tab bar drops ids it cannot resolve — but
+    // when the Space comes back the id resolves again and the tab appears
+    // out of nowhere, which contradicts "restore does not restore tabs".
+    await openFor("u-1", A);
+    await handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, editor, {
+      id: "r1",
+      type: "space:delete",
+      payload: { spaceId: A },
+    });
+    // Feed restore the snapshot the delete just wrote, so this exercises
+    // the real path rather than a stub that always says "nothing to
+    // restore".
+    const deleteRow = activityInsertMock.mock.calls.find(
+      (c) => (c[0] as { type: string }).type === "space:deleted",
+    );
+    expect(deleteRow).toBeDefined();
+    activityLatestUnrestoredMock.mockResolvedValue({
+      id: "act-1",
+      payload: (deleteRow![0] as { payload: unknown }).payload,
+    });
+
+    // Simulate the straggler that the sweep missed.
+    const userMap = fakeMetaDoc.doc
+      .getMap("perUser")
+      .get("u-1") as Y.Map<unknown>;
+    (userMap.get("openTabIds") as Y.Array<string>).push([A]);
+    expect(readTabs("u-1")).toContain(A);
+
+    await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "owner-1", role: "owner" },
+      { id: "r2", type: "space:restore", payload: { spaceId: A } },
+    );
+
+    expect(fakeMetaDoc.doc.getMap("spaces").has(A)).toBe(true);
+    expect(readTabs("u-1")).not.toContain(A);
   });
 });

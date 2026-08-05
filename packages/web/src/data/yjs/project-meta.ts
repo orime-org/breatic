@@ -16,7 +16,7 @@ import { useCurrentUserStore } from '@web/stores/current-user';
  *
  * Y.Doc structure:
  *
- *   spaces:  Y.Map<spaceId, Y.Map<{ id, name, type, locked? }>>  shared (all members)
+ *   spaces:  Y.Map<spaceId, Y.Map<{ id, name, type, locked?, claimToken? }>>
  *   perUser: Y.Map<userId, Y.Map<{ openTabIds: Y.Array<string> }>>  per-user tab bar
  *
  * The ACTIVE tab is deliberately NOT in this doc (user 2026-07-11): it is
@@ -35,20 +35,27 @@ import { useCurrentUserStore } from '@web/stores/current-user';
  *   - Hocuspocus persists the Y.Doc to PG, so per-user keys persist by
  *     default — a user logging in on a new machine receives the full
  *     Y.Doc on sync and restores their open tabs in one round trip.
- *   - Yjs CRDT semantics scope writes by Y.Map key (userId); a malicious
- *     client trying to write another user's key is rejected by the
- *     Hocuspocus `beforeHandleMessage` extension (collab F.2 hook).
+ *   - Which tabs someone had open survives a machine change, because
+ *     Hocuspocus persists the Y.Doc to PG and the whole doc arrives on
+ *     sync. Going through the server does not change that — the value
+ *     still ends up in the same place, just written by the backend.
  *
- * Write boundaries:
- *   - Shared `spaces` writes (create / delete / lock / rename) round-trip
- *     through the collab process as stateless RPCs on the live meta-doc
- *     WebSocket (`sendSpaceRpc` → collab `services/space-rpc.ts`, per ADR
- *     2026-05-23 yjs-collab-only-write-authz): collab authorizes the role,
- *     applies the privileged Yjs write + audit entry, and Yjs broadcasts
- *     the change. The client does NOT write `spaces` directly.
- *   - Per-user writes (`openSpaceTab` / `closeSpaceTab`) write the
- *     client's OWN `perUser[userId]` subtree directly; the Hocuspocus
- *     extension ensures the user can't write another user's subtree.
+ * Write boundaries — the client writes NOTHING in this document.
+ *
+ * Every change goes through a stateless RPC on the live meta-doc
+ * WebSocket (`sendSpaceRpc` → collab `services/space-rpc.ts`): the Space
+ * lifecycle as `space:*`, and each person's own tab bar as `tab:open` /
+ * `tab:close`. Collab checks the role, makes the privileged write, and
+ * Yjs broadcasts it back. The client's connection to this doc is
+ * read-only at the framework level, so a direct write does not fail
+ * loudly — it simply never lands.
+ *
+ * The tab bar used to be the one exception, written straight into
+ * `perUser[userId]`. That exception is why the server needed a gate that
+ * could tell which field an incoming frame touched, and a gate that has
+ * to enumerate the framework's internal message types fails open on the
+ * ones it misses. Removing the exception let the rule become flat and
+ * the gate disappear (task #27).
  */
 
 const SPACES_KEY = 'spaces';
@@ -70,6 +77,14 @@ export interface ProjectSpace {
   name: string;
   type: SpaceType;
   locked?: boolean;
+  /**
+   * The token this machine sent when it asked for this Space, echoed back
+   * on the entry. Present only on Spaces created through `space:create`,
+   * and only meaningful to the machine that generated it — that is how it
+   * recognises the Space it asked for, since the server mints the id and
+   * the requester never knew it in advance.
+   */
+  claimToken?: string;
 }
 
 /** Live user record stored in `meta.users[userId]`. */
@@ -247,156 +262,44 @@ export function useProjectMeta(
 }
 
 /**
- * Open a Space tab for the given user. No-op if the tab is already
- * open. Always appends at the end of `openTabIds` so the most recently
- * opened tab is rightmost — matches user expectation that "new things
- * appear on the right".
+ * Which tab to activate after the project's spaces change, when the active
+ * one has VANISHED (deleted locally or by a collaborator — no longer in
+ * `liveSpaceIds`).
  *
- * Q6 first-write snapshot: when this is the very first interaction
- * for `userId` on the project (no `openTabIds` Y.Array yet), seed the
- * array with ALL currently-visible Space ids before appending the
- * requested one. Without the snapshot, the user's first click /
- * create would set `openTabIds = [thatOneId]` — and the
- * `readMetaState` `!userMap`-fallback (`openTabIds: [spaces[0].id]`)
- * would no longer fire, so every Space EXCEPT the one just opened
- * would silently disappear from the tab bar (`Y.Map.forEach` order
- * is not insertion order, so even the "first" tab is unstable).
- * @param projectId - Project whose meta document holds the per-user tabs.
- * @param userId - User whose tab bar to open the Space in.
- * @param spaceId - Space to open as a tab.
- */
-export function openSpaceTab(
-  projectId: string,
-  userId: string,
-  spaceId: string,
-): void {
-  const doc = getDoc(docName.projectMeta(projectId));
-  doc.transact(() => {
-    const userMap = ensureUserMap(doc, userId);
-    const openTabIds = userMap.get(OPEN_TAB_IDS_KEY) as
-      | Y.Array<string>
-      | undefined;
-    if (!openTabIds) {
-      // First-write snapshot — see docstring (Q6).
-      const arr = new Y.Array<string>();
-      userMap.set(OPEN_TAB_IDS_KEY, arr);
-      const allSpaceIds = Array.from(
-        doc.getMap<Y.Map<unknown>>(SPACES_KEY).keys(),
-      );
-      const initial = allSpaceIds.includes(spaceId)
-        ? allSpaceIds
-        : [...allSpaceIds, spaceId];
-      arr.push(initial);
-      return;
-    }
-    const existing = openTabIds.toArray();
-    if (!existing.includes(spaceId)) openTabIds.push([spaceId]);
-  });
-}
-
-/**
- * Plan the per-user tab reconcile after the project's spaces change. Returns
- * which open-tab ids have VANISHED (deleted locally or by a collaborator — no
- * longer in `liveSpaceIds`) and, when the active space is among the vanished,
- * which still-live open tab to activate instead: the first remaining open tab,
- * or null for the empty state. Pure — the caller applies the result via
- * {@link closeSpaceTab} / `setActiveSpace`. `reactivateTo === undefined`
- * means the active space is still live, so leave it alone (no-op).
+ * ## It answers one question: has the active Space disappeared?
+ *
+ * It deliberately does NOT ask whether the active id is in `openTabIds`. An id
+ * that is live but missing from that list has two opposite meanings that look
+ * identical in the data: a tab that was just closed, and a Space that is being
+ * opened right now, whose `tab:open` broadcast has not landed yet — the click
+ * handler sets the active id immediately, because which tab is active is local
+ * window state and switching stays instant (design §6.6.2). Reacting to that
+ * shape throws the user back to the first tab the moment they pick a Space.
+ * The closed case needs nothing from here either: `resolveEffectiveActiveSpace`
+ * already falls back to the first open tab, and the tab strip highlights the
+ * id that fallback returns, so both the body and the highlight follow.
+ *
+ * It used to also return the vanished ids for the caller to close. That is
+ * the server's job now — deleting a Space clears it from everyone's list in
+ * the same broadcast — and a client could not do it anyway, since it does not
+ * write this document. Which tab is ACTIVE is local window state, never
+ * shared, so nobody else can put it right for us; that is the half that
+ * stays here. Pure — the caller applies the result.
  * @param openTabIds - This user's open-tab space ids.
  * @param liveSpaceIds - The set of space ids that still exist in the project.
  * @param activeSpaceId - This user's active space id (or null).
- * @returns The tab ids to close and the next active id (undefined = no change).
+ * @returns The id to activate, `null` for the empty state, or `undefined` when
+ *   the active space is still live and nothing should move.
  */
-export function planVanishedSpaceReconcile(
+export function nextActiveAfterVanish(
   openTabIds: ReadonlyArray<string>,
   liveSpaceIds: ReadonlySet<string>,
   activeSpaceId: string | null,
-): { tabsToClose: string[]; reactivateTo: string | null | undefined } {
-  const tabsToClose = openTabIds.filter((id) => !liveSpaceIds.has(id));
-  const reactivateTo =
-    activeSpaceId !== null && !liveSpaceIds.has(activeSpaceId)
-      ? (openTabIds.find((id) => liveSpaceIds.has(id)) ?? null)
-      : undefined;
-  return { tabsToClose, reactivateTo };
-}
-
-/**
- * Close a Space tab for the given user. No-op if the tab is not open.
- * Does NOT delete the Space — the Space stays in `spaces`; the user's
- * tab bar just stops showing it. To fully delete a Space, call the
- * server `DELETE /spaces/:id` endpoint.
- * @param projectId - Project whose meta document holds the per-user tabs.
- * @param userId - User whose tab bar to close the Space in.
- * @param spaceId - Space tab to close.
- */
-export function closeSpaceTab(
-  projectId: string,
-  userId: string,
-  spaceId: string,
-): void {
-  const doc = getDoc(docName.projectMeta(projectId));
-  doc.transact(() => {
-    const userMap = ensureUserMap(doc, userId);
-    const arr = userMap.get(OPEN_TAB_IDS_KEY) as Y.Array<string> | undefined;
-    if (!arr) return;
-    for (let i = arr.length - 1; i >= 0; i--) {
-      if (arr.get(i) === spaceId) arr.delete(i, 1);
-    }
-  });
-}
-
-/**
- * Legacy direct-write helper, kept for tests and demo scaffolding only.
- * Production code creates Spaces via
- * `sendSpaceRpc({ type: 'space:create', ... })`; a direct client write
- * here is rejected by `beforeHandleMessage` in collab in connected sessions.
- * @param projectId - Project whose meta document to write the Space into.
- * @param space - The Space record to append.
- * @internal
- */
-export function appendSpace(projectId: string, space: ProjectSpace): void {
-  const doc = getDoc(docName.projectMeta(projectId));
-  const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
-  doc.transact(() => {
-    const entry = new Y.Map<unknown>();
-    entry.set('id', space.id);
-    entry.set('name', space.name);
-    entry.set('type', space.type);
-    if (space.locked) entry.set('locked', true);
-    spacesMap.set(space.id, entry);
-  });
-}
-
-/**
- * Legacy direct-write helper, kept for tests and demo scaffolding only.
- * Production code deletes Spaces via
- * `sendSpaceRpc({ type: 'space:delete', ... })`.
- * @param projectId - Project whose meta document to remove the Space from.
- * @param spaceId - Id of the Space to remove.
- * @internal
- */
-export function removeSpace(projectId: string, spaceId: string): void {
-  const doc = getDoc(docName.projectMeta(projectId));
-  const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
-  doc.transact(() => {
-    if (spacesMap.has(spaceId)) spacesMap.delete(spaceId);
-  });
-}
-
-/**
- * Get-or-create the `perUser[userId]` Y.Map subtree for a user.
- * @param doc - The project meta Y.Doc.
- * @param userId - User whose per-user subtree to return.
- * @returns The user's per-user Y.Map, created if it did not exist.
- */
-function ensureUserMap(doc: Y.Doc, userId: string): Y.Map<unknown> {
-  const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
-  let userMap = perUser.get(userId);
-  if (!userMap) {
-    userMap = new Y.Map<unknown>();
-    perUser.set(userId, userMap);
+): string | null | undefined {
+  if (activeSpaceId === null || liveSpaceIds.has(activeSpaceId)) {
+    return undefined;
   }
-  return userMap;
+  return openTabIds.find((id) => liveSpaceIds.has(id)) ?? null;
 }
 
 /**
@@ -413,6 +316,7 @@ function readSpaces(doc: Y.Doc): ReadonlyArray<ProjectSpace> {
       name: String(m.get('name') ?? ''),
       type: (m.get('type') as SpaceType) ?? 'canvas',
       locked: Boolean(m.get('locked') ?? false),
+      claimToken: (m.get('claimToken') as string | undefined) ?? undefined,
     });
   });
   return out;
@@ -472,9 +376,10 @@ function readMetaState(
     // user can act on. The previous `[spaces[0].id]` shape collapsed
     // the bar to one tab and the chosen tab was unstable across
     // Y.Map.forEach iteration order, so creating a new Space made
-    // the original Space silently disappear (Q6). The `openSpaceTab`
-    // snapshot persists this state to the perUser subtree the moment
-    // the user clicks anything.
+    // the original Space silently disappear (Q6). This is a read-time
+    // default only; the server writes the same set into `perUser` the
+    // first time the user opens or closes anything (`ensureOpenTabList`
+    // in collab's space-rpc), so the two agree from then on.
     return { spaces, openTabIds: spaces.map((s) => s.id), users };
   }
   const openTabIdsArr = userMap.get(OPEN_TAB_IDS_KEY) as

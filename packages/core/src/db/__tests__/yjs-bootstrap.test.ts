@@ -159,10 +159,17 @@ describe("writeSpaceEntry (shared Space-entry construction)", () => {
     expect(e.get("createdBy")).toBe("u-1");
   });
 
-  it("builds the FIRST Space (bootstrap seed) with the same field shape as a later Space", () => {
+  it("builds the FIRST Space (bootstrap seed) with the same field shape as a later Space, claim token aside", () => {
     // The "one logic" invariant: encodeInitialMetaState's first Space and
     // any later Space (collab space:create) are constructed by the SAME
     // writeSpaceEntry, so their field keys must be identical.
+    //
+    // `claimToken` is the one key that legitimately differs, and the later
+    // Space below carries one so this compares the shapes that actually
+    // occur rather than two token-less entries. A Space created through
+    // the RPC always has a token (a client asked for it); the seeded first
+    // Space never does (the server made it with nobody waiting). Every
+    // OTHER key must still match, which is what this pins.
     const seededDoc = new Y.Doc();
     Y.applyUpdate(
       seededDoc,
@@ -188,12 +195,60 @@ describe("writeSpaceEntry (shared Space-entry construction)", () => {
       order: 1,
       createdAt: 2,
       createdBy: "u2",
+      claimToken: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
     });
     const laterKeys = Object.keys(
       (laterDoc.getMap("spaces").get("s-later") as Y.Map<unknown>).toJSON(),
-    ).sort();
+    )
+      .filter((k) => k !== "claimToken")
+      .sort();
 
+    expect(laterKeys).toContain("createdBy");
     expect(seededKeys).toEqual(laterKeys);
+  });
+
+  // ── Task #27: the claim token rides on the entry ──────────────────────
+  //
+  // The server mints the id now, so the machine that asked for a Space no
+  // longer knows what to look for in the broadcast. The token it sent is
+  // written onto the entry and comes back with it, and only that machine
+  // recognises it. The server stores it and never parses it.
+
+  it("writes the claim token onto the entry when one was supplied", () => {
+    const doc = new Y.Doc();
+    const spaces = doc.getMap("spaces");
+    writeSpaceEntry(spaces, {
+      spaceId: "s-1",
+      type: "canvas",
+      name: "Main",
+      order: 0,
+      createdAt: 1,
+      createdBy: "u-1",
+      claimToken: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+    });
+    const e = spaces.get("s-1") as Y.Map<unknown>;
+    expect(e.get("claimToken")).toBe("3f2504e0-4f89-41d3-9a0c-0305e82c3301");
+  });
+
+  it("omits the key entirely when there is no claim token", () => {
+    // The first Space of a project is seeded by the server with no client
+    // waiting on it. Storing an explicit `undefined` would put a key with
+    // no meaning into a permanently shared document, and it would travel
+    // into the delete snapshot and back out on restore. Absent means
+    // absent.
+    const doc = new Y.Doc();
+    const spaces = doc.getMap("spaces");
+    writeSpaceEntry(spaces, {
+      spaceId: "s-1",
+      type: "canvas",
+      name: "Main",
+      order: 0,
+      createdAt: 1,
+      createdBy: "u-1",
+    });
+    const e = spaces.get("s-1") as Y.Map<unknown>;
+    expect(e.has("claimToken")).toBe(false);
+    expect(Object.keys(e.toJSON())).not.toContain("claimToken");
   });
 });
 

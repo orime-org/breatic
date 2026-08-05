@@ -58,22 +58,33 @@ export type SpaceRpcErrorCode = z.infer<typeof SpaceRpcErrorCodeSchema>;
 
 // ── Request payloads ────────────────────────────────────────────────
 
-/**
- * Create a new Space. Caller generates the spaceId client-side
- * (uuid v4) per ADR B1.1 - collab uses `set-if-not-exists` semantics
- * so a collision is reported as `CONFLICT` and the client
- * retries with a fresh id.
- */
 // Space name length cap shared across create + rename (and the web
 // TitleEditable primitive). 80 matches the project-title cap so users
 // have a single mental model for "how long can I make a name".
 export const SPACE_NAME_MAX_LEN = 80;
 
-export const SpaceCreatePayloadSchema = z.object({
-  spaceId: z.string().min(1).max(64),
-  type: SpaceTypeSchema,
-  name: z.string().min(1).max(SPACE_NAME_MAX_LEN),
-});
+/**
+ * Create a new Space. **The server mints the id** — the caller does not
+ * name the Space it is creating.
+ *
+ * A client-chosen id used to be accepted, and it let a client re-submit
+ * the id of a Space that had been deleted: the "is this id taken" check
+ * reads `meta.spaces`, and a deleted Space is no longer there, so it
+ * passed. The client now sends `claimToken` instead, which answers a
+ * different question — "which of my machines asked for this?" — so the
+ * machine that created a Space can open it when the entry is broadcast
+ * back. The server stores the token and echoes it, and never parses it.
+ *
+ * Strict on purpose: a leftover `spaceId` must be refused outright, not
+ * silently dropped, or the old path stays open behind an ignored field.
+ */
+export const SpaceCreatePayloadSchema = z
+  .object({
+    type: SpaceTypeSchema,
+    name: z.string().min(1).max(SPACE_NAME_MAX_LEN),
+    claimToken: z.uuidv4(),
+  })
+  .strict();
 export type SpaceCreatePayload = z.infer<typeof SpaceCreatePayloadSchema>;
 
 /**
@@ -103,6 +114,28 @@ export const SpaceRestorePayloadSchema = z.object({
 });
 export type SpaceRestorePayload = z.infer<typeof SpaceRestorePayloadSchema>;
 
+/**
+ * Open or close a Space in the caller's own tab bar.
+ *
+ * The open-tab list lives in the meta doc under `perUser`, and it used to
+ * be the one thing a client wrote there directly. That single exception
+ * is why the write gate had to understand which field an incoming frame
+ * touched — and a gate that must enumerate the framework's internal
+ * message types fails open when it misses one. With tabs behind an RPC
+ * the rule is flat: a client never writes the meta doc, and its
+ * connection to that doc is simply read-only.
+ *
+ * Strict on purpose: **whose** tab bar changes comes from the
+ * authenticated connection, never from the body. Refusing a `userId`
+ * field outright means "change someone else's tabs" cannot be expressed.
+ */
+export const TabPayloadSchema = z
+  .object({
+    spaceId: z.string().min(1).max(64),
+  })
+  .strict();
+export type TabPayload = z.infer<typeof TabPayloadSchema>;
+
 // ── Request envelope (tagged union) ─────────────────────────────────
 
 export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
@@ -130,6 +163,16 @@ export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
     id: RpcIdSchema,
     type: z.literal("space:restore"),
     payload: SpaceRestorePayloadSchema,
+  }),
+  z.object({
+    id: RpcIdSchema,
+    type: z.literal("tab:open"),
+    payload: TabPayloadSchema,
+  }),
+  z.object({
+    id: RpcIdSchema,
+    type: z.literal("tab:close"),
+    payload: TabPayloadSchema,
   }),
 ]);
 export type SpaceRpcRequest = z.infer<typeof SpaceRpcRequestSchema>;
