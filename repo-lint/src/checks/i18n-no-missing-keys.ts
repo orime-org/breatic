@@ -9,7 +9,8 @@ import { stripComments } from "#repo-lint/strip-comments";
 const SOURCE_CATALOG = "locales/en.json";
 
 /**
- * A message asked of the catalog by name: `t("a.b.c")`, either quote.
+ * A message asked of the catalog by name: `t("a.b.c")`, in any of the three
+ * string delimiters.
  *
  * Only the argument of a `t(...)` call counts. The sibling dead-key check
  * sweeps every dotted literal in a file, because for its question a false
@@ -17,17 +18,30 @@ const SOURCE_CATALOG = "locales/en.json";
  * is a finding against a file path or a property chain, so the call is what
  * anchors it.
  *
+ * A backtick is in the class because a backtick with nothing interpolated is a
+ * literal like any other, and nothing stops one being written: `packages/web`
+ * forbids the form with a `quotes` lint rule, the root config that governs
+ * `packages/server` has no such rule, and server is where the typo this check
+ * exists for shipped. An interpolated one still cannot match, since a segment
+ * cannot contain `$` or `{`.
+ *
  * The literal has to BE the argument, which is what the trailing `[),]` says:
  * a `)` closes the call, a `,` starts the params object. Without it,
  * `t('canvas.group' + suffix)` matched as far as the closing quote and the
  * namespace `canvas.group` was reported as a missing message — a finding
- * against a call whose real key is not in the source at all. No call in the
- * tree is written that way today, so this closed a latent false positive
- * rather than a live one, and a check that cries wolf is one somebody turns
- * off.
+ * against a call whose real key is not in the source at all.
+ *
+ * That anchor is also where this stops: a literal wearing a trailing type
+ * assertion (`t("a.b" as const)`, `t("a.b" satisfies string)`) or reached
+ * through an optional call (`t?.("a.b")`) is not followed by `)` or `,` and
+ * goes unseen. Those are syntax decorations rather than another way of naming
+ * a key, and a text scan chasing them has no end; none appears in the tree.
+ * Saying where the scan stops is worth more than pretending it does not.
  */
 const MESSAGE_CALL = new RegExp(
-  String.raw`\bt\(\s*(['"])(` +
+  String.raw`\bt\(\s*(['"` +
+    "`" +
+    String.raw`])(` +
     `${KEY_SEGMENT}(?:\\.${KEY_SEGMENT})+` +
     String.raw`)\1\s*[),]`,
   "g",
@@ -84,8 +98,9 @@ function messageAt(catalog: unknown, key: string): string | undefined {
  *
  * WHAT IT DOES COVER is the form the bug that prompted it was written in:
  * `t("server.error.notFound")`, the whole key spelled out as the whole
- * argument, against a catalog that says `not_found`. Every call of that shape
- * is checked.
+ * argument and followed straight by the `)` or the `,`, against a catalog that
+ * says `not_found`. Every call written that way is checked, in any of the
+ * three delimiters, with or without a params object.
  *
  * Comments are stripped. The first repo-wide run reported two keys that live
  * in a docstring showing callers how the hook is used, one of them about a
@@ -114,7 +129,7 @@ export const i18nNoMissingKeys = {
         if (messageAt(catalog, key) !== undefined) continue;
         findings.push({
           file,
-          message: `${key} is asked of the catalog and ${SOURCE_CATALOG} has no message there, so the runtime falls back to printing the key and the user reads it as text. Either the key is misspelled — check the separator style, since the catalogs use snake_case under server.error and camelCase elsewhere — or the message was never added, in which case add it to all five catalogs.`,
+          message: `${key} is asked of the catalog and ${SOURCE_CATALOG} has no message there, so the runtime falls back to printing the key and the user reads it as text. Either the key is misspelled — separator style is the usual cause, and it is not uniform: every key under server.* is snake_case, most of the rest is camelCase, and a few outside server.* are not, so read the catalog rather than guess — or the message was never added, in which case add it to all five catalogs.`,
         });
       }
     }

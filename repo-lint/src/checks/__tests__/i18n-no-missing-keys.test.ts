@@ -48,6 +48,20 @@ describe("i18n-no-missing-keys", () => {
     ).toHaveLength(1);
   });
 
+  it("reads a backtick literal, which is a literal like any other", () => {
+    // A key in backticks with nothing interpolated is spelled out as fully as
+    // one in quotes. `packages/web` forbids the form by lint, `packages/server`
+    // does not — and server is where the typo this check exists for shipped.
+    expect(
+      i18nNoMissingKeys.run(
+        repo(
+          { server: { error: { not_found: "Not found" } } },
+          { "packages/server/src/a.ts": "t(`server.error.notFound`)" },
+        ),
+      ),
+    ).toHaveLength(1);
+  });
+
   it("says nothing about an interpolated id", () => {
     // `t(`a.${kind}`)` names no key in full, so this check cannot tell whether
     // the catalog answers it. Silence here is a stated limit, not coverage —
@@ -163,8 +177,11 @@ describe("i18n-no-missing-keys", () => {
   });
 
   it("treats a key whose value is an object as unanswered", () => {
-    // `t("server.error")` against `{ error: { not_found: ... } }` resolves to a
-    // branch, not a message. Rendering that puts "[object Object]" on screen.
+    // `t("server.error")` against `{ error: { not_found: ... } }` lands on a
+    // branch, not a message. `resolveKey` returns a string or nothing
+    // (shared/src/i18n/index.ts:180), so `t` falls through to `return key` and
+    // the user reads `server.error` — the same symptom as a key that is simply
+    // absent, which is why it is the same finding.
     expect(
       i18nNoMissingKeys.run(
         repo(
