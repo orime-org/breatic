@@ -57,7 +57,12 @@ loader:`packages/collab/src/config.ts`。**只有行为参数,没有端口** —
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `debounce` / `max_debounce` | 2000 / 10000 ms | 文档持久化防抖 |
+| `debounce` / `max_debounce` | 2000 / 10000 ms | 库自己触发存盘钩子的节奏。**#40 起那次调用落到我们这儿是空返回**(只有定时循环和卸载闸能真正写库),这两个值保留是因为调大它们不是选项 —— 存盘挂起期间 `shouldUnloadDocument` 恒为假,调大等于让每份文档都卸载不掉 |
+| `store_interval_ms` | 10000 | 定时存盘间隔。**这是写库压力旋钮,不是安全旋钮** —— 正常关页面和正常重启都由卸载闸兜住,崩一个实例由别的实例兜住(它们连转发来的更新也计数、会自己写),全部实例同时断电则 2 秒和 10 秒没有区别,那一格靠救援文件加告警 |
+| `store_final_attempt_timeout_ms` | 3000 | 卸载闸那次补传的独立超时。必须有:yjs 连接池继承 postgres.js 默认的 30 秒连接超时,是整个优雅关闭预算(4 秒)的好几倍,等它等于连救援文件都写不下 |
+| `store_rescue_dir` | `logs/collab/rescue` | 补传也失败时,内容写到哪。相对路径从仓库根解析;Docker 下落在挂载的 `./logs` 卷里。**永不自动清理** —— 每个文件都是某人工作的最后一份拷贝 |
+| `store_alert_email` | 空 | 收告警的运维邮箱。**生产必须配** —— 没人知道的救援文件等于没有。注意 `EMAIL_BACKEND` 默认 `disabled` 且两个 env 模板都是 disabled,那种情况下告警只到日志,collab 会明说而不是静默 |
+| `store_alert_window_ms` | 600000(10 分钟) | 同一份文档在这个窗口内只发一封告警。一次库故障 = 每份打开的文档每轮一次失败,不去重会刷屏 |
 | `max_document_bytes` | 10485760(10 MB) | 单 Yjs 文档字节上限(0 = 不限) |
 | `max_connections_per_document` | 100 | 单文档跨实例连接数上限(0 = 不限) |
 | `max_documents_per_socket` | 1000 | 一条 socket 要能承载多少文档(= 一个 project 的 Space 数 + meta)。库里**几个**「超了就关掉整条 socket」的上限都从这一个数推导(`infra/socket-ceilings.ts`),因为只抬其中一个不算修 —— 下一个照样撞、症状一模一样。字节上限和静默超时实测远够用,故意保留库默认值 |
