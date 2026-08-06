@@ -300,8 +300,15 @@ function NotificationItem({
 
 /**
  * Maps a notification type to the short glyph shown in its avatar fallback.
+ *
+ * Every type the inbox can hold names itself here. The two-letter forms follow
+ * what the pair they belong to already established — a studio invite is IN and
+ * a project one PI, so a studio transfer is TR and a project one PT — and each
+ * settled outcome is a tick.
  * @param type - Notification type to represent.
- * @returns the glyph for the type, or `?` for an unknown type.
+ * @returns the glyph for the type, or `?` for a type this build does not know
+ *   about, which is a wire carrying something newer than this bundle rather
+ *   than one of ours.
  */
 function iconForType(type: NotificationType): string {
   switch (type) {
@@ -314,6 +321,10 @@ function iconForType(type: NotificationType): string {
     case 'studio.transfer_request':
       return initialsFromString('TR');
     case 'studio.transfer_approved':
+      return '✓';
+    case 'project.transfer_request':
+      return initialsFromString('PT');
+    case 'project.transfer_approved':
       return '✓';
     case 'studio.invite_request':
       return initialsFromString('IN');

@@ -53,6 +53,7 @@ vi.mock('@web/lib/toast', () => ({
 }));
 
 import { notificationsApi , EMPTY_RESOLVED } from '@web/data/api/notifications';
+import type { NotificationType } from '@web/data/api/notifications';
 
 function setup() {
   const qc = new QueryClient({
@@ -72,17 +73,11 @@ function setup() {
   );
 }
 
-type NotifType =
-  | 'access.role_upgrade_request'
-  | 'access.role_upgrade_approved'
-  | 'access.role_upgrade_rejected'
-  | 'studio.transfer_request'
-  | 'project.transfer_request'
-  | 'studio.transfer_approved'
-  | 'studio.invite_request'
-  | 'studio.invite_accepted'
-  | 'project.invite_request'
-  | 'project.invite_accepted';
+// The wire's own union, not a copy of it. The copy that used to live here had
+// already drifted — it was missing project.transfer_approved — which is the
+// same shape of bug these tests are here to catch: a type gets added and the
+// places that enumerate types are updated one at a time.
+type NotifType = NotificationType;
 
 function fakeNotification(
   id: string,
@@ -236,6 +231,45 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     for (const s of SAYS) {
       expect(screen.getByText(s.line)).toBeInTheDocument();
     }
+  });
+
+  it('every type this inbox can hold has a glyph of its own', async () => {
+    // The avatar falls back to `?` for a type the switch does not name. That
+    // fallback is for a type we do not know about; reaching it for one of our
+    // own means the row shipped half-wired, and the recipient reads a question
+    // mark next to a decision they are being asked to make. Measured: the
+    // project transfer did exactly that while the studio transfer showed TR.
+    const EVERY_TYPE = [
+      'access.role_upgrade_request',
+      'access.role_upgrade_approved',
+      'access.role_upgrade_rejected',
+      'studio.transfer_request',
+      'studio.transfer_approved',
+      'studio.invite_request',
+      'studio.invite_accepted',
+      'project.invite_request',
+      'project.invite_accepted',
+      'project.transfer_request',
+      'project.transfer_approved',
+    ] as const satisfies readonly NotifType[];
+    // A list written by hand can fall behind the union it claims to cover, so
+    // the gap is a type error rather than a quieter run of this test: leaving a
+    // type out makes `Missing` something other than never, and nothing can be
+    // assigned to it.
+    type Missing = Exclude<NotifType, (typeof EVERY_TYPE)[number]>;
+    const noneMissing: Missing extends never ? true : Missing = true;
+    expect(noneMissing).toBe(true);
+
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: EVERY_TYPE.map((type, i) => fakeNotification(`n-g${i}`, type)),
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByTestId('bell-notification-headline-n-g0');
+
+    expect(screen.queryByText('?')).toBeNull();
   });
 
   it('informational rows still mark read rather than offering an answer', async () => {
