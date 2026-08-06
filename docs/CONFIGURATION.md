@@ -74,19 +74,14 @@ loader:`packages/core/src/config/worker.ts`。
 | `job_attempts` | 3 | 任务失败重试次数 |
 | `job_backoff_delay_ms` | 2000 | 重试退避基延时(full-jitter,自定义 backoffStrategy)|
 | `lock_duration_ms` | 600000(10 分钟) | 任务锁时长 |
-| `http_max_retries` / `http_retry_base_delay` | 3 / 2000 | **已失效,调它不起作用** —— provider HTTP 重试改由[共享 HTTP 传输层](./ARCHITECTURE.md#shared-http-transport)按固定策略执行,不读这两个键。待删 |
 | `poll_interval` | 3000 | 队列轮询间隔 |
 
 ## 6. `config/storage.yaml` — 存储下载重试 + 浏览器上传
 
 loader:`packages/core/src/config/storage.ts`。
 
-`download.*`:**已失效,调它不起作用** —— 转存 provider 结果的下载重试改由[共享 HTTP 传输层](./ARCHITECTURE.md#shared-http-transport)按固定策略执行,不读这两个键。待删。
-
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `download.max_attempts` | 3 | 已失效,见上 |
-| `download.retry_base_delay_ms` | 500 | 已失效,见上 |
 
 `upload.*`:浏览器上传旋钮(#1609 资产层片2)。前端经 `GET /assets/upload-config`(会话缓存)取;上传上限在 `/assets/presign` 权威校验(413),前端选文件时预检只为体验。
 
