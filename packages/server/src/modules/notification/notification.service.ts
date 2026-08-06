@@ -613,7 +613,7 @@ export async function countUnread(userId: string): Promise<number> {
 export async function markRead(id: string, userId: string): Promise<void> {
   const ok = await notificationRepo.markRead(id, userId);
   if (!ok) {
-    throw new NotFoundError(t("server.error.notFound"));
+    throw new NotFoundError(t("server.error.not_found"));
   }
 }
 
