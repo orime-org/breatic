@@ -38,7 +38,6 @@
  */
 
 import type { Redis } from "@breatic/core";
-import type { IncomingHttpHeaders } from "node:http";
 import {
   createLogger,
   getSession,
@@ -205,7 +204,7 @@ export function createAuthHook({
   }: {
     token: string;
     documentName: string;
-    requestHeaders: IncomingHttpHeaders;
+    requestHeaders: Headers;
     connectionConfig: MutableConnectionConfig;
   }): Promise<AuthContext> => {
     // Every decision below - accept or reject - logs structured
@@ -229,7 +228,10 @@ export function createAuthHook({
       // sends a placeholder like `"__cookie_auth__"` purely to trip
       // Hocuspocus into invoking this hook (an empty token short-
       // circuits `onAuthenticate` in v3, see ueberdosis/hocuspocus#596).
-      const token = readCookie(requestHeaders.cookie, sessionCookieName());
+      const token = readCookie(
+        requestHeaders.get("cookie") ?? undefined,
+        sessionCookieName(),
+      );
       if (!token) {
         logger.warn(
           { documentName, reason: "missing_cookie" },

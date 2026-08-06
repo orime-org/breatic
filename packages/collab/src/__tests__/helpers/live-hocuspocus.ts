@@ -36,7 +36,6 @@
  */
 
 import { EventEmitter } from "node:events";
-import type { IncomingMessage } from "node:http";
 
 import { Hocuspocus } from "@hocuspocus/server";
 import * as decoding from "lib0/decoding";
@@ -323,14 +322,17 @@ export async function connectLiveClient(
   options: { cookie?: string } = {},
 ): Promise<LiveClient> {
   const socket = new FakeWebSocket();
-  const request = {
-    headers: { cookie: options.cookie ?? "" },
-    url: `/${docName}`,
-  } as unknown as IncomingMessage;
+  // From v4 the connection path speaks the web-standard Request, and
+  // `handleConnection` no longer subscribes to the socket — it hands back the
+  // connection and the integration drives it. Both halves are mirrored here so
+  // this helper keeps exercising the real path rather than a stand-in.
+  const request = new Request(`http://localhost/${docName}`, {
+    headers: options.cookie ? { cookie: options.cookie } : {},
+  });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  hocuspocus.handleConnection(socket as any, request);
-  socket.emit("message", authFrame(docName, COOKIE_AUTH_TOKEN));
+  const clientConnection = hocuspocus.handleConnection(socket as any, request);
+  clientConnection.handleMessage(authFrame(docName, COOKIE_AUTH_TOKEN));
 
   /**
    * Decode everything the server has sent so far.
@@ -357,10 +359,11 @@ export async function connectLiveClient(
   return {
     frames,
     send: (bytes: Uint8Array): void => {
-      socket.emit("message", bytes);
+      clientConnection.handleMessage(bytes);
     },
     close: (): void => {
       socket.close();
+      clientConnection.handleClose({ code: 1000, reason: "" } as CloseEvent);
     },
     authenticated,
     authorizedScope: authFrameReceived?.authDetail,

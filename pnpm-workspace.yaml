@@ -41,7 +41,7 @@ catalog:
 
   # Collaboration: the Yjs stack is shared by web, collab and the server, and a
   # split here means two clients speaking different wire formats.
-  "@hocuspocus/server": ^3.4.4
+  "@hocuspocus/server": ^4.5.0
   "y-protocols": ^1.0.7
   "yjs": ^13.6.30
 

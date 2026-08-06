@@ -72,10 +72,13 @@ function kickUserFromProject(
   for (const [docName, doc] of docs.entries()) {
     const parsed = parseDocName(docName);
     if (!parsed || parsed.projectId !== projectId) continue;
-    for (const [, connection] of doc.connections) {
-      const ctxUser = (connection.connection.context as { user?: { id?: string } } | undefined)?.user;
+    // The connection IS the map key from v4 on (the value only carries the
+    // client-id set); before that the key was the raw websocket and the
+    // connection hung off the value.
+    for (const [connection] of doc.connections) {
+      const ctxUser = (connection.context as { user?: { id?: string } } | undefined)?.user;
       if (ctxUser?.id === userId) {
-        connection.connection.close({ code: 4403, reason: "Permission changed, please reconnect" });
+        connection.close({ code: 4403, reason: "Permission changed, please reconnect" });
       }
     }
   }

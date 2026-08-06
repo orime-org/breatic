@@ -24,7 +24,7 @@ import {
   getRedis,
   getCollabRedis,
 } from "@breatic/core";
-import { createLoopbackExemptThrottle } from "@collab/infra/loopback-exempt-throttle.js";
+import { createConnectionGate } from "@collab/infra/connection-gate.js";
 import {
   createConnectionRegistry,
   type ConnectionRegistry,
@@ -134,13 +134,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     }),
   ];
 
-  // Throttle extension (optional) — loopback-exempt so a developer's own
-  // machine / health probes are never rate-banned (every dev tab shares the
-  // loopback IP and trips the threshold in seconds). Real client IPs (carried
-  // via x-forwarded-for behind a load balancer) are still throttled.
+  // Connection gate (optional) — identifies every incoming connection by its
+  // peer address during the upgrade, then either exempts a developer's own
+  // machine or hands a real client to the throttle to be counted. See
+  // `infra/connection-gate.ts` for why the verdict has to be decided that
+  // early and why it travels as a header.
   if (cfg.throttle_enabled) {
     extensions.push(
-      createLoopbackExemptThrottle({
+      createConnectionGate({
         throttle: cfg.throttle_max_attempts,
         banTime: cfg.throttle_ban_time,
       }),
@@ -255,18 +256,24 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       awareness,
       added,
       updated,
-      context,
+      connection,
     }) => {
       const parsed = parseDocName(documentName);
       if (!parsed || parsed.kind !== "meta") return;
-      const ctx = context as { user?: { id?: string } };
+      // From v4 the payload carries the originating connection instead of a
+      // bare context, and it is ABSENT for updates relayed from another
+      // instance. Both shapes feed the same anti-spoof check below: an update
+      // whose declared user id does not match the connection's own context is
+      // rejected, and a relayed update has no connection at all so it can
+      // never match.
+      const ctx = connection?.context as { user?: { id?: string } } | undefined;
       projectAwarenessIntoMetaUsers({
         documentName,
         document,
         awareness,
         added,
         updated,
-        contextUserId: ctx.user?.id,
+        contextUserId: ctx?.user?.id,
         now: Date.now(),
       });
     },

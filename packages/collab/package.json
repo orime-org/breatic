@@ -15,9 +15,9 @@
   "dependencies": {
     "@breatic/core": "workspace:*",
     "@breatic/shared": "workspace:*",
-    "@hocuspocus/extension-database": "^3.4.4",
-    "@hocuspocus/extension-redis": "^3.4.4",
-    "@hocuspocus/extension-throttle": "^3.4.4",
+    "@hocuspocus/extension-database": "^4.5.0",
+    "@hocuspocus/extension-redis": "^4.5.0",
+    "@hocuspocus/extension-throttle": "^4.5.0",
     "@hocuspocus/server": "catalog:",
     "dotenv": "catalog:",
     "drizzle-orm": "catalog:",
