@@ -21,6 +21,11 @@ const collabConfigSchema = z.object({
   debounce: z.number().int().positive().default(2000),
   max_debounce: z.number().int().positive().default(10000),
 
+  // How long an online presence record with no live connection behind it is
+  // believed. Must stay well above the keepalive interval (60s), or the load
+  // sweep evicts people who are merely idle rather than gone.
+  presence_stale_after_ms: z.number().int().positive().default(300_000),
+
   // Document size limit
   max_document_bytes: z.number().int().min(0).default(10_485_760), // 10 MB
 

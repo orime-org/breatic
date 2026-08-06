@@ -31,9 +31,16 @@ interface ConnectionLike {
   socketId?: string;
 }
 
-/** The document as Hocuspocus hands it to a hook. */
+/**
+ * The document as Hocuspocus hands it to a hook.
+ *
+ * Declared with method syntax on purpose. Property syntax makes parameters
+ * strictly contravariant, which would reject the library's own `Connection`
+ * type against the smaller shape this module actually needs.
+ */
 interface DocumentLike {
-  getConnections?: () => ConnectionLike[];
+  getConnections?(): ConnectionLike[];
+  getClients?(connection: ConnectionLike): Set<number>;
 }
 
 /**
@@ -190,10 +197,7 @@ export function sweepPresenceOnLoad(
  */
 export function stampIdentityOnAwareness(payload: {
   states: Map<number, Record<string, unknown>>;
-  document: {
-    getClients?: (connection: unknown) => Set<number>;
-    getConnections?: () => ConnectionLike[];
-  };
+  document: DocumentLike;
   connection?: ConnectionLike;
   context?: { user?: { id?: string } };
 }): void {

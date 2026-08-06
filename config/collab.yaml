@@ -20,6 +20,14 @@ unload_immediately: true
 debounce: 2000
 max_debounce: 10000
 
+# How long a presence record that says "online" is believed once nobody is
+# connected as that user. Only the server writes these records, and it writes
+# "offline" on disconnect — so a record older than this means the server that
+# wrote it went away before it could. Keep it well above the 60s keepalive:
+# the timestamp only advances when a client does something, so an idle-but-
+# connected person leans on the live-connection check rather than on this.
+presence_stale_after_ms: 300000
+
 # ── Document Size Limit ───────────────────────────
 # Max Yjs document size in bytes (0 = unlimited).
 # Rejects new updates that would push the document over this limit.
