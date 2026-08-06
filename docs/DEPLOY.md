@@ -149,12 +149,24 @@ is asked sometimes of Postgres and sometimes of an application server. So a
 single deadline is written by one clock and judged by two, and they have to be
 the same clock for the answer to mean anything.
 
-If the clocks drift apart, the things that go wrong are the ones that ask what
-time it is: a request can look answerable to one service and expired to
-another, a rate-limit window can open early or close late, and a session can
-outlive or predecease its stated lifetime. None of that is repairable in
-application code, which is why it is stated here as a condition of running the
-system rather than handled as a case inside it.
+What goes wrong falls into two kinds, and it is worth telling them apart when
+you are chasing one.
+
+When the hosts disagree with each other: a decision request can look answerable
+to one service and expired to another, because of the split above. And a
+rate-limit window can open early or close late, because the score written into
+it is the clock of whichever application server took the request, while the
+window it is measured against comes from whichever server asks next.
+
+When any one host's clock is simply wrong, whether or not the others agree with
+it: sessions and rate-limit keys are given a lifetime in seconds and Redis turns
+that into a moment using its own clock as it writes. Correct that clock later —
+which is what happens the first time an unsynchronised host is brought into line
+— and everything already stored dies against the old reckoning, early or late by
+however far it had drifted.
+
+None of it is repairable in application code, which is why it is stated here as
+a condition of running the system rather than handled as a case inside it.
 
 ### Quick Start
 
