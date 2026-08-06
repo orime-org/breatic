@@ -38,7 +38,7 @@
 import type { IncomingMessage } from "node:http";
 import { Throttle } from "@hocuspocus/extension-throttle";
 import { createLogger } from "@breatic/core";
-import { decideClientIdentity, isLoopbackIp } from "@collab/infra/client-identity.js";
+import { decideClientIdentity } from "@collab/infra/client-identity.js";
 import type { RefusalReason } from "@collab/infra/client-identity.js";
 
 const logger = createLogger("connection-gate");
