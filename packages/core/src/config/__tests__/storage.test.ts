@@ -9,14 +9,8 @@ import { getStorageConfig, storageConfigSchema } from "@core/config/storage.js";
 /** The avatar cap the yaml ships, in bytes. */
 const SHIPPED_AVATAR_CAP = 2097152;
 
-/** Pins the shipped config/storage.yaml download-retry defaults (#1625 Slice 2). */
+/** Pins what the shipped config/storage.yaml guarantees its callers. */
 describe("getStorageConfig", () => {
-  it("loads the download retry config from config/storage.yaml", () => {
-    const cfg = getStorageConfig();
-    expect(cfg.download.max_attempts).toBe(3);
-    expect(cfg.download.retry_base_delay_ms).toBe(500);
-  });
-
   // Asset upload slice 2 (#1609): every file is hashed (no size line —
   // user decision 2026-07-07 superseding the earlier 500MB line) and a
   // configurable upload cap protects storage cost + local-mode memory.
@@ -75,8 +69,6 @@ describe("storageConfigSchema defaults", () => {
   it("defaults every section, not just the one that was fixed", () => {
     const cfg = storageConfigSchema.parse({});
 
-    expect(cfg.download.max_attempts).toBe(3);
-    expect(cfg.download.retry_base_delay_ms).toBe(500);
     expect(cfg.upload.max_upload_bytes).toBe(2147483648);
     expect(cfg.upload.presign_expires_seconds).toBe(300);
   });

@@ -9,6 +9,7 @@ import { noDrizzleTypeLeak } from "#rules/rules/no-drizzle-type-leak";
 import { noHardcodedRequestTtl } from "#rules/rules/no-hardcoded-request-ttl";
 import { noInlineScrollbar } from "#rules/rules/no-inline-scrollbar";
 import { noIoredisOutsideCore } from "#rules/rules/no-ioredis-outside-core";
+import { noNakedFetch } from "#rules/rules/no-naked-fetch";
 import { noLibraryEnvAccess } from "#rules/rules/no-library-env-access";
 import { noLibraryLogger } from "#rules/rules/no-library-logger";
 import { noLibraryProcessExit } from "#rules/rules/no-library-process-exit";
@@ -52,6 +53,7 @@ export const breaticPlugin = {
     "no-hardcoded-request-ttl": noHardcodedRequestTtl,
     "no-inline-scrollbar": noInlineScrollbar,
     "no-ioredis-outside-core": noIoredisOutsideCore,
+    "no-naked-fetch": noNakedFetch,
     "no-library-env-access": noLibraryEnvAccess,
     "no-library-logger": noLibraryLogger,
     "no-library-process-exit": noLibraryProcessExit,

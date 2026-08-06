@@ -4,8 +4,8 @@
 /**
  * Storage YAML configuration loader.
  *
- * Reads `config/storage.yaml`: download retry parameters, the browser-side
- * upload knobs and presign window, and the studio-avatar byte cap.
+ * Reads `config/storage.yaml`: the browser-side upload knobs and presign
+ * window, and the studio-avatar byte cap.
  */
 
 import { readFileSync } from "node:fs";
@@ -53,14 +53,6 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
  * one thing application code should reach for is {@link getStorageConfig}.
  */
 export const storageConfigSchema = z.object({
-  download: z
-    .object({
-      /** Total download attempts including the first. */
-      max_attempts: z.number().int().positive().default(3),
-      /** Base backoff (ms); effective ceiling = base * attempt, then jittered. */
-      retry_base_delay_ms: z.number().int().min(0).default(500),
-    })
-    .prefault({}),
   upload: z
     .object({
       /** Hard upload cap in bytes; presign rejects larger files (413). */

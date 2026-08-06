@@ -4,7 +4,8 @@
 /**
  * Worker YAML configuration loader.
  *
- * Reads `config/worker.yaml` for BullMQ and HTTP retry parameters.
+ * Reads `config/worker.yaml`: BullMQ queue parameters, the async-task polling
+ * window, and the billing-query timeout.
  */
 
 import { readFileSync } from "node:fs";
@@ -21,8 +22,6 @@ const workerConfigSchema = z.object({
   job_attempts: z.number().int().positive().default(3),
   /** Base backoff delay (ms) between job retries. */
   job_backoff_delay_ms: z.number().int().positive().default(2000),
-  http_max_retries: z.number().int().min(0).default(3),
-  http_retry_base_delay: z.number().int().positive().default(2000),
   poll_interval: z.number().int().positive().default(3000),
   poll_max_wait: z.number().int().positive().default(300_000),
   billing_timeout: z.number().int().positive().default(30_000),

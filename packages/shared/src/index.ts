@@ -230,11 +230,16 @@ export { newId, deriveId } from "@shared/ids.js";
 // below). It does six things — send, judge, wait, cap at three deliveries,
 // hand over or throw, hold nothing — and no seventh, so there is nothing else
 // worth naming here. Everything the loop needs internally (the judgement, its
-// vocabulary, the backoff maths, the sleep) stays inside: an export is a
-// promise to somebody, and nobody outside this package needs those. Not even
-// the options type: a caller writes the object inline and TypeScript's
-// structural typing does the rest, so exporting a name nobody spells is
-// surface for nothing.
+// vocabulary, the sleep) stays inside: an export is a promise to somebody, and
+// nobody outside this package needs those. Not even the options type: a caller
+// writes the object inline and TypeScript's structural typing does the rest,
+// so exporting a name nobody spells is surface for nothing.
+//
+// `exponentialJitterDelay` used to be on that list, on the same reasoning. It
+// came off when the reasoning expired rather than because the rule bent:
+// core's BullMQ retry strategy now calls it, so "nobody outside this package
+// needs it" simply stopped being true. `fullJitter`, which it is built on,
+// stays unexported — nobody outside calls that one. See below.
 //
 // It hands back the platform's own `Response` and holds nothing afterwards.
 // Reading it — how long a read may stall, how large it may be, how to stop
@@ -255,3 +260,22 @@ export { httpRequest, HttpRetryError } from "@shared/http/request.js";
 // This is not a seventh thing the transport does — it is the bound the second
 // parameter already had, said out loud.
 export { MAX_TIMER_MS } from "@shared/http/constants.js";
+
+// The one backoff function with a consumer outside this package.
+// `packages/core/src/infra/retry.ts` held a byte-identical copy of the backoff
+// maths, because the transport lives here and `shared` cannot import `core` —
+// the dependency runs the other way, so during the migration a second copy was
+// the only option. Every caller of core's copy has since moved onto the
+// transport except its BullMQ job-retry strategy, which is backend-only
+// plumbing and stays where it is; it now calls this instead of a twin.
+//
+// `fullJitter` is deliberately NOT exported alongside it. It is what this one
+// is built on, so the pull to export the pair is real — but the criterion is
+// whether something outside the package calls it, and nothing does. Exporting
+// a symbol because its neighbour earned it is how a barrel stops meaning
+// anything.
+//
+// Deleting the twin is the point. Two copies of one formula are two things to
+// change and one of them will be forgotten — the copy carried a comment
+// saying exactly that, and now neither has to.
+export { exponentialJitterDelay } from "@shared/backoff.js";
