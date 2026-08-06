@@ -236,7 +236,7 @@ export const PromptEditor = React.forwardRef<
     ref,
     () => ({
       insertReference: (item: ReferenceRailItem): void => {
-        if (!editor) return;
+        if (!editor || editor.isDestroyed) return;
         const content = referenceMentionContent(item);
         // Focused → insert at the caret; unfocused (no live cursor) → append to
         // the end. The rail button preventDefaults mousedown so it never blurs.
@@ -259,7 +259,7 @@ export const PromptEditor = React.forwardRef<
   // stale substitution (an empty node @-ed keeps the button dead after the
   // node gains words; an emptied node leaves the button lit but dead).
   React.useEffect(() => {
-    if (!editor) return;
+    if (!editor || editor.isDestroyed) return;
     onTextChange(serializePromptText(editor, references));
   }, [editor, references, onTextChange]);
 
@@ -281,7 +281,7 @@ export const PromptEditor = React.forwardRef<
   // pool). Collect the mention occurrences, plan the deletions purely, then
   // apply them in one transaction (synced to collaborators via Collaboration).
   React.useEffect(() => {
-    if (!editor) return;
+    if (!editor || editor.isDestroyed) return;
     const poolIds = new Set(references.map((r) => r.sourceNodeId));
     const occurrences: MentionOccurrence[] = [];
     editor.state.doc.descendants((n, pos) => {
@@ -325,7 +325,7 @@ export const PromptEditor = React.forwardRef<
   // HoverPreview's resolveOnOpen), keeping the source node the single truth
   // (freezing the body into an attr would duplicate it into the Yjs prompt doc).
   React.useEffect(() => {
-    if (!editor) return;
+    if (!editor || editor.isDestroyed) return;
     const chips: ChipDisplaySnapshot[] = [];
     editor.state.doc.descendants((n, pos) => {
       if (n.type.name !== REFERENCE_MENTION_NODE) return;

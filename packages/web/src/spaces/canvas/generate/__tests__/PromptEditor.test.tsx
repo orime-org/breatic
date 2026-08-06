@@ -544,3 +544,49 @@ describe('collaboration caret CSS contract (index.css)', () => {
     );
   });
 });
+
+// The editor is rebuilt whenever one of its dependencies changes — a locale
+// switch changes the placeholder baked into the extensions, and reopening a
+// node changes the fragment. Rebuilding destroys the old instance, and a
+// DESTROYED editor is not null: its `schema` is. So a guard that only asks
+// `if (!editor) return` lets every effect run against a corpse, and the first
+// one to touch the schema throws.
+describe('PromptEditor — effects after the editor is rebuilt', () => {
+  it('does not touch the destroyed instance when the placeholder changes', async () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('prompt');
+    const paragraph = new Y.XmlElement('paragraph');
+    paragraph.insert(0, [new Y.XmlText('hello')]);
+    fragment.insert(0, [paragraph]);
+
+    /** Render at a given placeholder; changing it rebuilds the editor. */
+    const view = (placeholder: string): React.JSX.Element => (
+      <PromptEditor
+        fragment={fragment}
+        placeholder={placeholder}
+        onTextChange={vi.fn()}
+        onAtMentionsChange={vi.fn()}
+        references={[]}
+        mode='t2i'
+        mentionEmptyLabel='none'
+      />
+    );
+
+    const { rerender } = render(view('Describe the image'));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('generate-prompt-editor').querySelector('.ProseMirror'),
+      ).not.toBeNull(),
+    );
+
+    // A locale switch. The old editor is destroyed here; anything still
+    // holding it must notice.
+    rerender(view('Décrivez l’image'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('generate-prompt-editor').querySelector('.ProseMirror'),
+      ).not.toBeNull(),
+    );
+  });
+});
