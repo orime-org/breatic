@@ -341,10 +341,13 @@ const PROJECT_ROLE_KEY: Record<string, string> = {
 };
 
 /**
- * Extracts the optional subtitle for a notification: the message the requester
- * typed (role upgrade), the role being offered (either invite), or a fixed
- * hint (studio transfer). Everything else — the project transfer included —
- * has no second line.
+ * Extracts the optional subtitle for a notification.
+ *
+ * Every waiting row's second line answers the same question — what you hold if
+ * you accept. The invites answer it by naming the role being offered, the
+ * transfers by naming the role you take over, and a role upgrade by showing
+ * the message the requester typed. Rows that decide nothing have no second
+ * line, because there is nothing to accept.
  * @param n - Notification whose payload is inspected for subtitle text.
  * @param t - Translation function for the localized subtitle.
  * @returns the subtitle text, or `null` when none applies.
@@ -367,7 +370,10 @@ function subtitleFor(
     return roleKey ? t(roleKey) : null;
   }
   if (n.type === 'studio.transfer_request') {
-    return t('notifications.subtitle.transferHint');
+    return t('notifications.subtitle.studioTransferHint');
+  }
+  if (n.type === 'project.transfer_request') {
+    return t('notifications.subtitle.projectTransferHint');
   }
   return null;
 }

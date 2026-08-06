@@ -634,7 +634,8 @@
     "subtitle": {
       "invitedAsMaintainer": "以 Maintainer 身份加入",
       "invitedAsGuest": "以 Guest 身份加入",
-      "transferHint": "接受后即成为该 Studio 的 Admin",
+      "studioTransferHint": "接受后即成为该 Studio 的 Admin",
+      "projectTransferHint": "接受后即成为该 Project 的 Owner",
       "invitedAsEditor": "以 Editor 身份加入",
       "invitedAsViewer": "以 Viewer 身份加入"
     },

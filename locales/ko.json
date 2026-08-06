@@ -634,7 +634,8 @@
     "subtitle": {
       "invitedAsMaintainer": "Maintainer로 참여",
       "invitedAsGuest": "Guest로 참여",
-      "transferHint": "수락하면 Studio Admin이 됩니다",
+      "studioTransferHint": "수락하면 Studio Admin이 됩니다",
+      "projectTransferHint": "수락하면 Project Owner가 됩니다",
       "invitedAsEditor": "Editor로 참여",
       "invitedAsViewer": "Viewer로 참여"
     },

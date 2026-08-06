@@ -634,7 +634,8 @@
     "subtitle": {
       "invitedAsMaintainer": "Maintainer として参加",
       "invitedAsGuest": "Guest として参加",
-      "transferHint": "承認すると Studio の Admin になります",
+      "studioTransferHint": "承認すると Studio の Admin になります",
+      "projectTransferHint": "承認すると Project の Owner になります",
       "invitedAsEditor": "Editor として参加",
       "invitedAsViewer": "Viewer として参加"
     },

@@ -206,6 +206,38 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     });
   });
 
+  it('every waiting row says what accepting makes you', async () => {
+    // The second line answers one question: what do you hold if you accept.
+    // The invites answer it by naming the role being offered; the transfers
+    // answer it by naming the role you take over. The project transfer — the
+    // heavier of the two transfers, since it hands over a whole project —
+    // shipped with no second line at all, so its recipient was told least.
+    const SAYS: Array<{ type: NotifType; payload: Record<string, unknown>; line: RegExp }> = [
+      {
+        type: 'studio.transfer_request',
+        payload: { transferId: 't-1', studioId: N1, fromUserId: 'u-other', shareToken: 'd'.repeat(64) },
+        line: /become the Studio Admin/i,
+      },
+      {
+        type: 'project.transfer_request',
+        payload: { transferId: 't-2', projectId: PID, fromUserId: 'u-other', shareToken: 'e'.repeat(64) },
+        line: /become the Project Owner/i,
+      },
+    ];
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: SAYS.map((s, i) => fakeNotification(`n-s${i}`, s.type, s.payload)),
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByTestId('bell-open-decision-n-s0');
+
+    for (const s of SAYS) {
+      expect(screen.getByText(s.line)).toBeInTheDocument();
+    }
+  });
+
   it('informational rows still mark read rather than offering an answer', async () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification('n-9', 'studio.transfer_approved', { studioId: N1 })],
