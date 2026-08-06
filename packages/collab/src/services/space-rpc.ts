@@ -410,8 +410,8 @@ function metaDocOf(conn: MetaDirectConnection): Y.Doc {
  *
  * - `decided`: a guard inside the callback reached an answer by READING
  *   the world, and that answer is what the caller must send. It holds
- *   whether or not the store then failed — the guard did not cause that
- *   failure and its reading is unaffected by it. The answer can be a
+ *   whether or not the publish then rejected — the guard did not cause
+ *   that rejection and its reading is unaffected by it. The answer can be a
  *   refusal (the entry vanished) or a success (nothing needed writing,
  *   §6.5's same-name rename). **This case exists so the precedence lives
  *   here instead of being re-derived by each handler.**
@@ -422,7 +422,7 @@ function metaDocOf(conn: MetaDirectConnection): Y.Doc {
  *   earlier steps must key that undo on this flag, never on the kind.
  * - `published`: no guard reached an answer, so the callback ran to the
  *   end. In every operation today that means it wrote, and the change is
- *   out on every client — even when the store rejected afterwards (§3.2:
+ *   out on every client — even when the publish rejected afterwards (§3.2:
  *   the callback runs synchronously and the broadcast leaves inside it).
  *   A callback that neither wrote nor decided would land here too, but
  *   none can: each of the seven either returns a verdict or marks and
@@ -984,8 +984,8 @@ async function handleRename(
       if (oldSpaceName === name) {
         // Idempotent success per §6.5: the goal state already holds, so
         // nothing needed writing. Returning it here rather than through a
-        // flag is what keeps it ahead of a store failure — the same rule
-        // that governs the refusals above, in one place.
+        // flag is what keeps it ahead of a publish rejection — the same
+        // rule that governs the refusals above, in one place.
         return ok(req.id);
       }
       oldName = oldSpaceName;
