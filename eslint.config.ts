@@ -510,6 +510,31 @@ export default tseslint.config(
     },
   },
   {
+    // Outbound HTTP goes through the shared transport. The six packages this
+    // file can reach; web declares the same rule in its own config, because
+    // ESLint started there never reads this one.
+    //
+    // packages/shared/src/http/ is where the transport is implemented, so the
+    // one remaining bare fetch lives there by definition. Exempting the
+    // directory rather than the file: splitting the implementation later
+    // should not require breaking the exemption open again.
+    //
+    // Tests are exempt on the same terms as every other invariant here, and
+    // for a concrete reason too — the transport's own real-fetch.test.ts opens
+    // a real port and calls the platform fetch, which is the only way to prove
+    // the thing it proves.
+    files: ["packages/{collab,core,domain,server,shared,worker}/src/**/*.{ts,tsx}"],
+    ignores: [
+      "packages/shared/src/http/**",
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.spec.ts",
+    ],
+    rules: {
+      "breatic/no-naked-fetch": "error",
+    },
+  },
+  {
     ignores: ["**/dist/**", "**/node_modules/**", "**/*.js", "**/*.mjs"],
   },
 );

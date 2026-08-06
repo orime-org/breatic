@@ -237,6 +237,12 @@ export default [
       'breatic/no-cors-wildcard-credentials': 'error',
       'breatic/no-yjs-documents-outside-repo': 'error',
       'breatic/schema-timestamps': 'error',
+      // Outbound HTTP goes through the shared transport here too. Anything
+      // aimed at our own backend uses the axios singleton; neither route is a
+      // bare fetch. Declared here as well as in the root config for the reason
+      // written above — a rule that lives only there governs nothing in this
+      // package, which is exactly how the two rules above went unenforced.
+      'breatic/no-naked-fetch': 'error',
     },
   },
   {
