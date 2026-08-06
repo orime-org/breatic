@@ -24,7 +24,8 @@ import {
   getRedis,
   getCollabRedis,
 } from "@breatic/core";
-import { createLoopbackExemptThrottle } from "@collab/infra/loopback-exempt-throttle.js";
+import { createConnectionGate } from "@collab/infra/connection-gate.js";
+import { socketCeilings } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
   type ConnectionRegistry,
@@ -134,13 +135,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     }),
   ];
 
-  // Throttle extension (optional) — loopback-exempt so a developer's own
-  // machine / health probes are never rate-banned (every dev tab shares the
-  // loopback IP and trips the threshold in seconds). Real client IPs (carried
-  // via x-forwarded-for behind a load balancer) are still throttled.
+  // Connection gate (optional) — identifies every incoming connection by its
+  // peer address during the upgrade, then either exempts a developer's own
+  // machine or hands a real client to the throttle to be counted. See
+  // `infra/connection-gate.ts` for why the verdict has to be decided that
+  // early and why it travels as a header.
   if (cfg.throttle_enabled) {
     extensions.push(
-      createLoopbackExemptThrottle({
+      createConnectionGate({
         throttle: cfg.throttle_max_attempts,
         banTime: cfg.throttle_ban_time,
       }),
@@ -155,6 +157,24 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     unloadImmediately: cfg.unload_immediately,
     debounce: cfg.debounce,
     maxDebounce: cfg.max_debounce,
+
+    // How many documents one socket may have awaiting authentication. The
+    // framework defaults this to 100 and closes the WHOLE socket past it,
+    // which assumes one document per socket. Ours carries a project: the meta
+    // doc plus one per open Space tab, and a member who has never closed a tab
+    // has every Space open. See config/collab.yaml for the ceiling and for
+    // what actually bounds abuse here.
+    ...socketCeilings(cfg.max_documents_per_socket),
+
+    // Broadcast every change the moment it is applied, which is what the
+    // framework did before it grew a batching window. The window (default
+    // `0`, meaning "coalesce whatever lands in this event-loop turn") would
+    // trade fewer frames for a broadcast that no longer happens inside the
+    // transaction — and the Space RPC commit boundary is built on the
+    // broadcast being the synchronous, observable commit point. Turning it on
+    // is a behaviour change to weigh on its own, not something to inherit
+    // from a default.
+    flushDelay: false,
 
     // Authentication — verifies session token AND per-project
     // ownership. See packages/collab/src/auth.ts.
@@ -255,18 +275,24 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       awareness,
       added,
       updated,
-      context,
+      connection,
     }) => {
       const parsed = parseDocName(documentName);
       if (!parsed || parsed.kind !== "meta") return;
-      const ctx = context as { user?: { id?: string } };
+      // From v4 the payload carries the originating connection instead of a
+      // bare context, and it is ABSENT for updates relayed from another
+      // instance. Both shapes feed the same anti-spoof check below: an update
+      // whose declared user id does not match the connection's own context is
+      // rejected, and a relayed update has no connection at all so it can
+      // never match.
+      const ctx = connection?.context as { user?: { id?: string } } | undefined;
       projectAwarenessIntoMetaUsers({
         documentName,
         document,
         awareness,
         added,
         updated,
-        contextUserId: ctx.user?.id,
+        contextUserId: ctx?.user?.id,
         now: Date.now(),
       });
     },
@@ -394,6 +420,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     debounce: cfg.debounce,
     throttle: cfg.throttle_enabled,
     maxConnectionsPerDoc: cfg.max_connections_per_document,
+    // Belongs in the banner for the same reason the line above does: it is a
+    // ceiling whose only symptom, once crossed, is connections dropping. An
+    // operator has to be able to read what this process is enforcing without
+    // guessing which copy of the config it loaded.
+    maxDocumentsPerSocket: cfg.max_documents_per_socket,
   }, "Hocuspocus server configured");
 
   // Periodic handling-lease sweep (#1569) over the currently-loaded docs,

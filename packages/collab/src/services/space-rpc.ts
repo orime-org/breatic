@@ -341,8 +341,8 @@ async function undoContentRows(
 /**
  * Run a cleanup that must never change the answer the caller already has.
  *
- * `finally` blocks throw here for real reasons — a store failure poisons
- * the document, so `disconnect()` fails too. A throw inside `finally`
+ * `finally` blocks throw here for real reasons — `disconnect()` runs the
+ * disconnect hooks, and any of those can reject. A throw inside `finally`
  * REPLACES the function's return value, which turns an operation that
  * already broadcast successfully into an internal error carrying the
  * database's own words. So every cleanup in THIS file goes through here
@@ -382,15 +382,18 @@ interface MetaDirectConnection {
  * **The checks an operation runs BEFORE it writes go through here, never
  * through `transact`.** (The checks a callback re-runs at the moment it
  * writes are a different thing and stay inside the write — see §4 on why
- * they have to be re-run at all.) `transact` runs its callback and then
- * stores the document unconditionally
- * (`hocuspocus-server.esm.js:2097-2112`) — even for a callback that only
- * reads. A check routed through it therefore comes back with two
- * unrelated answers: what it saw, and whether the database is healthy.
- * Every caller then has to decide which one wins, and that decision was
+ * they have to be re-run at all.) Until hocuspocus 4, `transact` ran its
+ * callback and then stored the document unconditionally — even for a
+ * callback that only read — so a check routed through it came back with two
+ * unrelated answers: what it saw, and whether the database was healthy.
+ * Every caller then had to decide which one won, and that decision was
  * written three different ways across nine call sites, two of them
- * backwards. A Yjs read needs no transaction and touches no storage, so
- * there is only ever one answer and nothing to order.
+ * backwards. 4.5.0 removed the store from `transact` altogether, which
+ * removes that particular hazard but not the reason for the split: a read
+ * routed through `transact` still opens a Yjs transaction, still costs a
+ * broadcast frame if the callback writes by accident, and still couples a
+ * pure question to the write path. A Yjs read needs no transaction and
+ * touches no storage, so there is only ever one answer and nothing to order.
  * @param conn - Direct connection opened for this operation.
  * @returns The live meta doc.
  * @throws {Error} When the connection has already been disconnected.
@@ -407,8 +410,8 @@ function metaDocOf(conn: MetaDirectConnection): Y.Doc {
  *
  * - `decided`: a guard inside the callback reached an answer by READING
  *   the world, and that answer is what the caller must send. It holds
- *   whether or not the store then failed — the guard did not cause that
- *   failure and its reading is unaffected by it. The answer can be a
+ *   whether or not the publish then rejected — the guard did not cause
+ *   that rejection and its reading is unaffected by it. The answer can be a
  *   refusal (the entry vanished) or a success (nothing needed writing,
  *   §6.5's same-name rename). **This case exists so the precedence lives
  *   here instead of being re-derived by each handler.**
@@ -419,7 +422,7 @@ function metaDocOf(conn: MetaDirectConnection): Y.Doc {
  *   earlier steps must key that undo on this flag, never on the kind.
  * - `published`: no guard reached an answer, so the callback ran to the
  *   end. In every operation today that means it wrote, and the change is
- *   out on every client — even when the store rejected afterwards (§3.2:
+ *   out on every client — even when the publish rejected afterwards (§3.2:
  *   the callback runs synchronously and the broadcast leaves inside it).
  *   A callback that neither wrote nor decided would land here too, but
  *   none can: each of the seven either returns a verdict or marks and
@@ -442,19 +445,23 @@ type PublishOutcome =
  *
  * Three invariants live here and nowhere else:
  *
- * 1. **Everything the callback writes leaves as one update.** The
- *    library's `transact` runs the callback bare — each Y.js mutation
- *    inside it would otherwise be its own transaction and its own
- *    broadcast frame, so "remove the entry and sweep every tab in the
- *    same broadcast" (§6.2 step 5) would silently be several. The
- *    `doc.transact` wrapper is what makes "same broadcast" literal.
+ * 1. **Everything the callback writes leaves as one update.** Without a
+ *    transaction around it, each Y.js mutation is its own transaction and
+ *    its own broadcast frame, so "remove the entry and sweep every tab in
+ *    the same broadcast" (§6.2 step 5) would silently be several. The
+ *    library's own `transact` opens one since hocuspocus 4, which makes the
+ *    `doc.transact` wrapper below redundant rather than wrong — Y.js keeps
+ *    the outermost transaction and runs a nested call inside it. Kept
+ *    anyway: this guarantee is ours to make, and inheriting it from a
+ *    library that changed this exact behaviour once already is how it goes
+ *    away without anything failing.
  * 2. **The boundary flag cannot be forgotten.** The callback receives
  *    `mark` and must call it immediately before its first write; a
  *    rejection is then classifiable as before or after the broadcast.
  *    Handlers that skip `mark` and write anyway would misreport — which
  *    is why the flag rides through this wrapper instead of being a local
  *    variable seven functions each remember to declare.
- * 3. **A guard's answer outranks a store failure it did not cause.** The
+ * 3. **A guard's answer outranks a publish rejection it did not cause.** The
  *    callback returns its answer instead of setting a flag the caller
  *    then has to consult in the right order, so `decided` and
  *    `failed-before-broadcast` are mutually exclusive by construction.
@@ -492,6 +499,23 @@ async function publishMetaChange(
       });
     });
   } catch (transactError) {
+    // What can land here changed with hocuspocus 4, and the three keys below
+    // are named for what could land here before it. Until 3.4.4 `transact`
+    // awaited an immediate store and rethrew whatever it raised, so a failed
+    // write to the database arrived exactly here. In 4.5.0 `transact` does
+    // not store at all — the document's own update schedules a debounced one
+    // — and a failed store is swallowed inside the library, so no database
+    // problem reaches any caller anywhere. Measured both ways:
+    // inner/engineering/demo/2026-08-06-v4-transact-store-semantics.mjs.
+    //
+    // What still arrives is the library refusing a closed connection before
+    // running the callback, which is the last branch. The first two need the
+    // callback itself to throw, which today means a Y.js write failing —
+    // nothing a request can cause. The classification below is kept intact
+    // because §6's rule does not depend on what raised: past the write the
+    // answer is the truth and nothing is undone. Restoring a signal for a
+    // failed store, and the naming that goes with it, is #40's subject.
+    //
     // `wrote` decides which line gets logged, `decided` decides the answer.
     // They are independent: a callback can seed the tab list (a write, so
     // a broadcast) and still end on a verdict that needs no further write.
@@ -503,7 +527,7 @@ async function publishMetaChange(
         "space_rpc_not_persisted_after_broadcast",
       );
     } else if (decided !== undefined) {
-      // The guard read the world and reached its answer; the store was
+      // The guard read the world and reached its answer; the publish was
       // never asked to carry anything for it.
       logger.error(
         { err: transactError, ...logCtx },
@@ -960,8 +984,8 @@ async function handleRename(
       if (oldSpaceName === name) {
         // Idempotent success per §6.5: the goal state already holds, so
         // nothing needed writing. Returning it here rather than through a
-        // flag is what keeps it ahead of a store failure — the same rule
-        // that governs the refusals above, in one place.
+        // flag is what keeps it ahead of a publish rejection — the same
+        // rule that governs the refusals above, in one place.
         return ok(req.id);
       }
       oldName = oldSpaceName;

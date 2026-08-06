@@ -30,8 +30,40 @@ max_document_bytes: 10485760     # 10 MB
 # Max WebSocket connections per document (0 = unlimited).
 max_connections_per_document: 100
 
+# How many documents one socket must be able to carry.
+#
+# One browser tab holds ONE socket for a project and puts every document it
+# needs on it: the meta doc plus one per open Space tab. A member who has
+# never closed a tab has every Space open, because the tab list is seeded
+# from the full Space directory the first time they open the project. So the
+# real figure is "however many Spaces the project has", and nothing caps that.
+#
+# This one number feeds SEVERAL library limits, each of which closes the WHOLE
+# socket when crossed — every Space on it goes blank and the client reconnects
+# into the same wall. They are derived together in
+# infra/socket-ceilings.ts rather than listed here, because raising one alone
+# is not a fix: that is exactly what happened when only the pending-document
+# limit was raised, and the socket then died on the frame-count limit at half
+# the number written here. Measured for a 1000-document socket carrying the
+# frames a real client sends:
+#
+#   pending documents    library default 100    fires first        -> derived
+#   queued frame count   library default 1000   fires at ~500 docs -> derived
+#   queued frame bytes   library default 5 MB   ~390 KB used       -> left alone
+#   idle timeout         library default 60 s   client beats at 15s -> left alone
+#
+# The byte ceiling is deliberately left at the library's value: it is the one
+# that actually bounds memory, so it stays as a real guard behind the two
+# generous derived ones. Per-IP abuse is bounded by the throttle below.
+#
+# Residual: a project past this many Spaces hits the wall again. The answer
+# then is a cap on Spaces per project, not a bigger number here.
+max_documents_per_socket: 1000
+
 # ── Throttle ──────────────────────────────────────
-# Coarse per-IP DoS backstop (loopback is exempt — see loopback-exempt-throttle.ts).
+# Coarse per-IP DoS backstop. Loopback peers are exempt — see
+# infra/connection-gate.ts, which decides from the raw peer address during the
+# WebSocket upgrade.
 # One user opens many doc-connections (meta + every Space, x2 under dev StrictMode),
 # so keep the threshold generous to avoid false-banning legitimate users; fine-grained
 # abuse control belongs at the authenticated-user layer, not per-IP.

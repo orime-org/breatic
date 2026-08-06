@@ -60,6 +60,7 @@ loader:`packages/collab/src/config.ts`。**只有行为参数,没有端口** —
 | `debounce` / `max_debounce` | 2000 / 10000 ms | 文档持久化防抖 |
 | `max_document_bytes` | 10485760(10 MB) | 单 Yjs 文档字节上限(0 = 不限) |
 | `max_connections_per_document` | 100 | 单文档跨实例连接数上限(0 = 不限) |
+| `max_documents_per_socket` | 1000 | 一条 socket 要能承载多少文档(= 一个 project 的 Space 数 + meta)。库里**几个**「超了就关掉整条 socket」的上限都从这一个数推导(`infra/socket-ceilings.ts`),因为只抬其中一个不算修 —— 下一个照样撞、症状一模一样。字节上限和静默超时实测远够用,故意保留库默认值 |
 | `throttle_max_attempts` | 200 | 单 IP 60s 窗口内连接尝试上限,超则 ban |
 | `throttle_ban_time` | 1(分钟) | ban 时长(**单位是分钟**,扩展内部乘 60×1000) |
 | `handling_lease.default_budget_ms` | 3600000(1 小时) | handling 租约默认预算,超时清扫 |

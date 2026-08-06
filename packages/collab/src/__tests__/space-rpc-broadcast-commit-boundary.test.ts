@@ -21,9 +21,10 @@
  * synchronously, so a recorded Sync/Update frame IS the broadcast, with a
  * position other frames can be ordered against.
  *
- * Every case gets its own project id. One failed store poisons a document —
- * later transacts on it reject too — so sharing one would make the second case
- * fail for the first case's reason.
+ * Every case gets its own project id. This used to be load-bearing: a failed
+ * store poisoned its document, so a shared id made the second case fail for
+ * the first case's reason. Since hocuspocus 4 the library swallows store
+ * errors and that cannot happen, so it is now ordinary test isolation.
  */
 
 import {
@@ -320,8 +321,10 @@ afterEach(() => {
 });
 
 describe("a store failure AFTER the broadcast", () => {
-  // Two ids, because one failed store poisons its document for the rest of the
-  // process and the second case must start from a clean one.
+  // Two ids for isolation. Before hocuspocus 4 this was required — a failed
+  // store poisoned its document for the rest of the process — and it is kept
+  // because a case that starts from a document another case wrote is a case
+  // whose failures are not its own.
   const PID_KEPT = "aaaaaaaa-1111-4111-8111-111111111111";
   const PID_REPLY = "aaaaaaaa-1111-4111-8111-222222222222";
 

@@ -353,8 +353,8 @@ Configure in [Google Cloud Console](https://console.cloud.google.com/apis/creden
 | Service | Image | Port | Description |
 |---------|-------|------|-------------|
 | `web` | nginx:1.27-alpine | 80, 443 | Frontend + reverse proxy + SSL auto-detect |
-| `server` | breatic | 3000 (internal) | HTTP API + SSE |
-| `collab` | breatic | 1234 (internal) | Hocuspocus WebSocket |
+| `server` | breatic | 3000 (published) | HTTP API + SSE |
+| `collab` | breatic | 1234 (not published) | Hocuspocus WebSocket — reachable only over the compose network, as `collab:1234`. nginx sets the header the connection gate identifies clients by, so a published port would let anyone bypass it and set that header themselves |
 | `worker` | breatic | — | BullMQ task worker |
 | `postgres` | postgres:16-alpine | 5432 | Database |
 | `redis` | redis:7-alpine | 6379 | Cache + Queue + Streams |

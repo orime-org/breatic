@@ -90,8 +90,8 @@ vi.mock("@collab/services/yjs-documents.repo.js", () => ({
 import { createAuthHook } from "../hooks/auth.js";
 
 /** Helper — build the headers stub with `breatic_session={token}`. */
-function withCookie(token: string): { cookie: string } {
-  return { cookie: `breatic_session=${token}` };
+function withCookie(token: string): Headers {
+  return new Headers({ cookie: `breatic_session=${token}` });
 }
 
 /**
@@ -162,7 +162,7 @@ describe("createAuthHook", () => {
       hook({
         token: PLACEHOLDER_TOKEN,
         documentName: `project-${PID}/meta`,
-        requestHeaders: {},
+        requestHeaders: new Headers(),
       }),
     ).rejects.toThrow(/cookie/i);
     expect(getSessionMock).not.toHaveBeenCalled();
@@ -174,7 +174,7 @@ describe("createAuthHook", () => {
       hook({
         token: PLACEHOLDER_TOKEN,
         documentName: `project-${PID}/meta`,
-        requestHeaders: { cookie: "other_app=xyz" },
+        requestHeaders: new Headers({ cookie: "other_app=xyz" }),
       }),
     ).rejects.toThrow(/cookie/i);
   });
@@ -573,9 +573,9 @@ describe("createAuthHook", () => {
     const ctx = await hook({
       token: PLACEHOLDER_TOKEN,
       documentName: `project-${PID}/meta`,
-      requestHeaders: {
+      requestHeaders: new Headers({
         cookie: "first=1; breatic_session=real-token; third=3",
-      },
+      }),
       connectionConfig: { readOnly: false },
     });
 
@@ -602,7 +602,7 @@ describe("createAuthHook", () => {
       hook({
         token: PLACEHOLDER_TOKEN,
         documentName: `project-${PID}/meta`,
-        requestHeaders: {},
+        requestHeaders: new Headers(),
       }),
     ).rejects.toThrow(/cookie/i);
     expect(loggerWarn).toHaveBeenCalledWith(
