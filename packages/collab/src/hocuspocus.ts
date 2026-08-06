@@ -419,6 +419,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     debounce: cfg.debounce,
     throttle: cfg.throttle_enabled,
     maxConnectionsPerDoc: cfg.max_connections_per_document,
+    // Belongs in the banner for the same reason the line above does: it is a
+    // ceiling whose only symptom, once crossed, is connections dropping. An
+    // operator has to be able to read what this process is enforcing without
+    // guessing which copy of the config it loaded.
+    maxPendingDocuments: cfg.max_pending_documents,
   }, "Hocuspocus server configured");
 
   // Periodic handling-lease sweep (#1569) over the currently-loaded docs,
