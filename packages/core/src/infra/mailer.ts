@@ -20,7 +20,7 @@
  */
 
 import nodemailer from "nodemailer";
-import { env } from "@breatic/core";
+import { env } from "@core/config/env.js";
 
 let transporter: nodemailer.Transporter | null = null;
 

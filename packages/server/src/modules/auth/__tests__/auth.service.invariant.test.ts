@@ -54,6 +54,7 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
   const actual = await importOriginal();
   return {
     ...actual,
+    sendMail: mockSendMail,
     getRedis: () => mockRedis,
     setSession: vi.fn(),
     getSession: vi.fn(),
@@ -79,9 +80,6 @@ vi.mock("@breatic/domain", () => ({
 }));
 
 const mockSendMail = vi.fn().mockResolvedValue(true);
-vi.mock("@server/infra/mailer.js", () => ({
-  sendMail: mockSendMail,
-}));
 
 const mockGetUserByEmail = vi.fn();
 const mockCreateUser = vi.fn();

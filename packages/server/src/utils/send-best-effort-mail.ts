@@ -17,10 +17,8 @@
  * and surface their result to the caller instead of swallowing it.
  */
 
-import type { SendMailOptions } from "@server/infra/mailer.js";
-import { sendMail } from "@server/infra/mailer.js";
 import { logMailResult, type LogMailCtx } from "@server/utils/log-mail.js";
-import { logger } from "@breatic/core";
+import { logger, sendMail, type SendMailOptions } from "@breatic/core";
 
 /**
  * Prepare (inside the best-effort boundary) and send a notification email; never

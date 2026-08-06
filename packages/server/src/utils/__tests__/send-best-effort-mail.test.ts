@@ -3,15 +3,14 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { sendMail } from "@server/infra/mailer.js";
 import { logMailResult } from "@server/utils/log-mail.js";
-import { logger } from "@breatic/core";
+import { logger, sendMail } from "@breatic/core";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 
-vi.mock("@server/infra/mailer.js", () => ({ sendMail: vi.fn() }));
 vi.mock("@server/utils/log-mail.js", () => ({ logMailResult: vi.fn() }));
 vi.mock("@breatic/core", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  sendMail: vi.fn(),
 }));
 
 const MAIL = { to: "x@example.com", subject: "s", html: "<p>h</p>" };

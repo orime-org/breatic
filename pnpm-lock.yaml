@@ -473,9 +473,6 @@ importers:
       hono:
         specifier: ^4.12.23
         version: 4.12.23
-      nodemailer:
-        specifier: 'catalog:'
-        version: 8.0.5
       prom-client:
         specifier: ^14.2.0
         version: 14.2.0
@@ -507,9 +504,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 22.0.0
-      '@types/nodemailer':
-        specifier: 'catalog:'
-        version: 8.0.0
       bullmq:
         specifier: 'catalog:'
         version: 5.30.0

@@ -16,7 +16,7 @@
  * send result to the caller, so they must not go through the best-effort path.
  */
 
-import type { SendMailOptions } from "@server/infra/mailer.js";
+import type { SendMailOptions } from "@breatic/core";
 import { getDecisionWindowDays } from "@server/config/limits.js";
 
 const BRAND = "Breatic";

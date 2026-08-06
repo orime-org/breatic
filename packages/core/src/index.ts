@@ -92,6 +92,8 @@ export { createQueue, createQueueEvents, createWorker, defaultJobOpts, closeQueu
 export { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@core/infra/storage/index.js";
 export { sniffMimeType } from "@core/infra/storage/sniff-mime.js";
 export type { PersistedObject } from "@core/infra/storage/index.js";
+export { sendMail } from "@core/infra/mailer.js";
+export type { SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
 export {
   publishNodeEvent,
   publishToStream,
