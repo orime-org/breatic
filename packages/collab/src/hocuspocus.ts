@@ -160,7 +160,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // Assembled after the server exists, because the gate's final store
   // attempt goes through the instance. The hooks below run long after that,
   // so reading it late is safe.
-  let storeGate: UnloadGate | undefined;
+  const storeGate: { current?: UnloadGate } = {};
   let shuttingDown = false;
 
   const wsServer = new Server({
@@ -218,7 +218,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       documentName: string;
       document: Y.Doc;
     }): Promise<void> => {
-      await storeGate?.beforeUnloadDocument({ documentName, document });
+      await storeGate.current?.beforeUnloadDocument({ documentName, document });
     },
 
     onConnect: async ({ documentName, context, socketId }) => {
@@ -479,7 +479,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     instanceId,
     send: sendMail,
   });
-  storeGate = createUnloadGate({
+  storeGate.current = createUnloadGate({
     finalAttemptTimeoutMs: cfg.store_final_attempt_timeout_ms,
     encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
     storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus as never, name),

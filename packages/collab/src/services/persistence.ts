@@ -9,7 +9,7 @@
  * `yjsDb` singleton) so the Yjs binary store keeps one home like every other
  * access to that table.
  *
- * WHY THIS IS NOT `@hocuspocus/extension-database` ANY MORE (#40).
+ * WHY THIS IS NOT the stock `extension-database` ANY MORE (#40).
  * hocuspocus fires `onStoreDocument` after every edit and offers no setting
  * to stop it — `shouldSkipStoreHooks` returns false for connection-sourced
  * updates unconditionally, and raising `debounce` instead only strands

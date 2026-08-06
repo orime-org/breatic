@@ -5,7 +5,7 @@
  * Per-document bookkeeping for "does this document hold content the database
  * has never accepted", and for "was this store started by us".
  *
- * @hocuspocus/server 4.5.0 answers neither question. `Document` carries a
+ * The hocuspocus server package (4.5.0) answers neither question. `Document` carries a
  * `lastChangeTime`, but nothing records what the last successful store
  * covered, and the store hook cannot tell a timed store from the one the
  * library fires after every edit.

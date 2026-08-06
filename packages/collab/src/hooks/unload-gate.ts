@@ -161,6 +161,8 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   /**
    * Ordinary unload: try the database, fall back to disk.
    * @param payload - The document about to leave memory.
+   * @param payload.documentName - Full Yjs document name.
+   * @param payload.document - The live document.
    */
   async function settleNormally({ documentName, document }: UnloadPayload): Promise<void> {
     if (!hasUnsavedContent(documentName)) return;
@@ -176,6 +178,9 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   /**
    * Shutdown: write to disk first, then try the database.
    * @param payload - The document about to leave memory, plus a step recorder.
+   * @param payload.documentName - Full Yjs document name.
+   * @param payload.document - The live document.
+   * @param payload.onStep - Called with each step as it starts.
    */
   async function settleForShutdown({
     documentName,

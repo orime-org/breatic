@@ -49,7 +49,7 @@ interface Harness {
   writes: Array<{ documentName: string; state: Uint8Array }>;
   encodes: string[];
   runRound: () => Promise<void>;
-  storeGate: ReturnType<typeof createUnloadGate>;
+  storeGate: { current?: ReturnType<typeof createUnloadGate> };
 }
 
 /**
@@ -60,7 +60,7 @@ interface Harness {
 function harness(options: { failing?: boolean; delayMs?: number } = {}): Harness {
   const writes: Array<{ documentName: string; state: Uint8Array }> = [];
   const encodes: string[] = [];
-  let storeGate: ReturnType<typeof createUnloadGate>;
+  const storeGate: { current?: ReturnType<typeof createUnloadGate> } = {};
 
   const persistence = createPersistenceExtension({
     fetch: async () => null,
@@ -86,13 +86,13 @@ function harness(options: { failing?: boolean; delayMs?: number } = {}): Harness
           documentName: string;
           document: Y.Doc;
         }): Promise<void> => {
-          await storeGate.beforeUnloadDocument(payload);
+          await storeGate.current?.beforeUnloadDocument(payload);
         },
       },
     ],
   });
 
-  storeGate = createUnloadGate({
+  storeGate.current = createUnloadGate({
     finalAttemptTimeoutMs: 2000,
     encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
     storeNow: ({ name }) => storeDocumentNow(hocuspocus as never, name),
