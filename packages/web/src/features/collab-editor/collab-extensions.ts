@@ -136,6 +136,25 @@ export function buildCollabExtensions(
         // The name comes from the resolver, which is why this closure exists
         // at all: upstream calls `render(user, clientId)` and has nowhere to
         // put a third argument.
+        //
+        // DO NOT remove the resolver here as redundant plumbing. There is a
+        // second path that also names carets — the presence hook patches the
+        // label onto carets already on screen when the roster moves — and it
+        // looks like it makes this one unnecessary, because deleting this
+        // argument leaves the whole suite green nearly every time. Nearly.
+        // Measured: with it deleted, the end-to-end caret test passed 9 runs
+        // out of 10 and failed once, unchanged code both times.
+        //
+        // The two paths answer different questions. This one names a caret AT
+        // BIRTH, synchronously, as part of building it. The presence hook
+        // repaints an EXISTING caret, and it runs off the same awareness event
+        // that produced the caret — so which of the two lands first is a race,
+        // and the one-in-ten failure is that race being lost. Keeping this
+        // means a caret is never briefly nameless; removing it means it
+        // usually is not, which is a different promise.
+        //
+        // That difference is a frame wide, so no assertion here can hold it
+        // down. This comment is the guard.
         // `clientId` stays optional so this still matches upstream's
         // single-argument `render` type. It arrives at runtime — the caret's
         // data-client-id, which the DOM patches key off, comes from it.
