@@ -303,8 +303,9 @@ function NotificationItem({
  *
  * Every type the inbox can hold names itself here. The two-letter forms follow
  * what the pair they belong to already established — a studio invite is IN and
- * a project one PI, so a studio transfer is TR and a project one PT — and each
- * settled outcome is a tick.
+ * a project one PI, so a studio transfer is TR and a project one PT. A settled
+ * outcome is a mark rather than initials: a tick when the answer was yes, a
+ * cross when it was no.
  * @param type - Notification type to represent.
  * @returns the glyph for the type, or `?` for a type this build does not know
  *   about, which is a wire carrying something newer than this bundle rather
