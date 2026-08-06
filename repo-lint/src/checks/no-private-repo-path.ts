@@ -134,7 +134,7 @@ const PRIVATE_REFERENCE = new RegExp(
  */
 export const noPrivateRepoPath = {
   name: "no-private-repo-path",
-  description: "The public repo does not cite private-repo paths",
+  description: "The public repo does not name the private one",
   run(context: CheckContext): Finding[] {
     const files = context.textFiles(() => true, "readable tracked files");
 
