@@ -23,12 +23,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render as rtlRender, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
 
 const PID = '11111111-1111-4111-8111-111111111111';
@@ -43,8 +44,8 @@ vi.mock('@web/data/yjs/project-meta', async () => {
   return {
     ...actual,
     useProjectMeta: () => ({
-      spaces: [],
-      openTabIds: [],
+      spaces: [{ id: 's1', name: 'S1', type: 'canvas' }],
+      openTabIds: ['s1'],
       onlineUserIds: onlineNow,
       synced: true,
       provider: null,
@@ -62,25 +63,22 @@ vi.mock('@web/pages/project/LeaveProjectGuard', () => ({
   LeaveProjectGuard: () => null,
 }));
 
-/** Every roster value the page hands to the provider, in order. */
-const publishedRosters: Array<{ resolve: (id: string) => string | null } | null> = [];
-vi.mock('@web/features/collab-editor/collaborator-names-context', async (orig) => {
-  const actual = await orig<
-    typeof import('@web/features/collab-editor/collaborator-names-context')
-  >();
-  return {
-    ...actual,
-    CollaboratorNamesProvider: ({
-      value,
-      children,
-    }: {
-      value: { resolve: (id: string) => string | null } | null;
-      children: React.ReactNode;
-    }): React.ReactNode => {
-      publishedRosters.push(value);
-      return children;
-    },
-  };
+// The space body is replaced by a probe that reads the roster the way a real
+// editor does. The PROVIDER is deliberately NOT mocked: a stand-in for it
+// records the value it was handed and returns its children either way, so it
+// cannot tell whether the page actually nested anything inside — and a
+// provider wrapping nothing is exactly the severance this file has to catch.
+vi.mock('@web/spaces', () => {
+  /** Stands in for a space body, reading the roster the way an editor does. */
+  function RosterProbe(): React.JSX.Element {
+    const names = useCollaboratorNames();
+    return (
+      <div data-testid='roster-probe'>
+        {names ? (names.resolve('u-them') ?? 'unresolved') : 'no-provider'}
+      </div>
+    );
+  }
+  return { SPACE_TYPES: { canvas: { bodyComponent: RosterProbe } } };
 });
 
 const listMock = vi.fn();
@@ -140,7 +138,6 @@ function renderPage() {
 describe('ProjectPage roster wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    publishedRosters.length = 0;
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
@@ -207,30 +204,29 @@ describe('ProjectPage roster wiring', () => {
     expect(listMock).toHaveBeenCalledTimes(1);
   });
 
-  it('publishes the fetched roster so editors below can resolve names', async () => {
-    // The one remaining link. Delete the provider and every editor on the page
-    // silently falls back to nameless carets — types, lint and the rest of the
-    // suite all stay green, which is exactly how the four forwarding links this
-    // replaced managed to be severable.
+  it('puts the roster where the space body can read it', async () => {
+    // The one remaining link, and it has to be checked from BELOW. The page
+    // could publish a perfect roster into a provider that wraps nothing —
+    // types, lint and the rest of the suite all stay green — and every editor
+    // in the product would resolve nobody. Only a consumer rendered inside the
+    // page can tell the difference.
     renderPage();
-
-    await waitFor(() => {
-      const latest = publishedRosters.at(-1);
-      expect(latest?.resolve('u-them')).toBe('Them');
-    });
-  });
-
-  it('publishes a resolver that names nobody before the roster lands', async () => {
-    // The page publishes from its first render, when the fetch has not
-    // returned. What it publishes is a working resolver over an empty roster,
-    // not null — so an editor that mounts early asks and is told "nobody",
-    // which is how a caret ends up as a bare colour line rather than a crash
-    // or a wait.
-    renderPage();
-    expect(publishedRosters[0]?.resolve('u-them')).toBeNull();
 
     await waitFor(() =>
-      expect(publishedRosters.at(-1)?.resolve('u-them')).toBe('Them'),
+      expect(screen.getByTestId('roster-probe')).toHaveTextContent('Them'),
+    );
+  });
+
+  it('reaches the space body with a resolver even before the roster lands', async () => {
+    // From the first render, when the fetch has not returned. What arrives is
+    // a working resolver over an empty roster, not nothing — so an editor that
+    // mounts early asks and is told "nobody", which is how a caret ends up as
+    // a bare colour line rather than a crash or a wait.
+    renderPage();
+    expect(screen.getByTestId('roster-probe')).toHaveTextContent('unresolved');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('roster-probe')).toHaveTextContent('Them'),
     );
   });
 });
