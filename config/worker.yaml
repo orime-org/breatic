@@ -26,13 +26,6 @@ job_backoff_delay_ms: 2000
 # slowest single-step operation (large video upload, 3D generation).
 lock_duration_ms: 600000
 
-# ── HTTP Retry (AIGC provider API calls) ──────────
-# Max retries on 429 Too Many Requests.
-http_max_retries: 3
-
-# Base delay (ms) for exponential backoff: delay = base * 2^attempt.
-http_retry_base_delay: 2000
-
 # ── Polling (async AIGC tasks) ────────────────────
 # Default interval (ms) between poll requests.
 poll_interval: 3000
