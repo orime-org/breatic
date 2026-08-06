@@ -186,6 +186,55 @@ describe("connection gate — onUpgrade", () => {
   });
 });
 
+describe("connection gate — the verdict travels, not just the identity", () => {
+  // The gate decides from the peer address, which is the only fact a client
+  // cannot choose. If `onConnect` re-derives that decision from the identity
+  // string instead of being told it, then a peer that is not loopback buys a
+  // full exemption by claiming to be one — the exact inversion of the rule.
+  // Worse without any attacker: put an edge proxy in front of nginx and
+  // nginx's own `proxy_set_header X-Real-IP $remote_addr` starts saying
+  // 127.0.0.1 for everyone, which would silently disable rate limiting.
+
+  /** Upgrade with the given peer and headers, then connect, and report. */
+  async function arrive(
+    peerAddress: string,
+    headers: Record<string, string>,
+  ): Promise<{ throttled: boolean }> {
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate({ throttle: 15, banTime: 5 }, { throttle });
+    const upgrade = fakeUpgradeRequest(headers, peerAddress);
+    await gate.onUpgrade(upgrade);
+    await gate.onConnect({
+      request: {
+        headers: new Headers(upgrade.request.headers as Record<string, string>),
+      },
+    });
+    return { throttled: throttle.onConnect.mock.calls.length > 0 };
+  }
+
+  it("counts a real client that claims to be loopback", async () => {
+    expect(await arrive("203.0.113.9", { "x-real-ip": "127.0.0.1" })).toEqual({
+      throttled: true,
+    });
+  });
+
+  it("counts a real client that claims to be the IPv6 loopback", async () => {
+    expect(await arrive("203.0.113.9", { "x-real-ip": "::1" })).toEqual({
+      throttled: true,
+    });
+  });
+
+  it("still exempts a genuine loopback peer", async () => {
+    expect(await arrive("127.0.0.1", {})).toEqual({ throttled: false });
+  });
+
+  it("still counts a real client behind the proxy", async () => {
+    expect(await arrive("172.18.0.4", { "x-real-ip": "198.51.100.7" })).toEqual({
+      throttled: true,
+    });
+  });
+});
+
 describe("connection gate — driving the real throttle", () => {
   // The tests above hand the gate a stand-in, which proves it delegates but
   // proves nothing about whether anyone is ever actually throttled. These
@@ -217,13 +266,21 @@ describe("connection gate — driving the real throttle", () => {
     expect(outcomes).toEqual(["allowed", "allowed", "denied", "denied"]);
   });
 
-  it("never bans a loopback identity, however many times it connects", async () => {
+  it("never bans a loopback peer, however many times it connects", async () => {
     // A developer opens the meta doc plus one document per Space, twice over
     // under StrictMode. Counting those would ban them on their own machine.
+    // Through the upgrade, because only the peer address earns the exemption.
     const gate = createConnectionGate({ throttle: 2, banTime: 5 });
     const outcomes: string[] = [];
     for (let i = 0; i < 10; i += 1) {
-      outcomes.push(await connect("127.0.0.1", gate));
+      const upgrade = fakeUpgradeRequest({}, "127.0.0.1");
+      await gate.onUpgrade(upgrade);
+      try {
+        await gate.onConnect(connectPayload(upgrade.request.headers as Record<string, string>));
+        outcomes.push("allowed");
+      } catch {
+        outcomes.push("denied");
+      }
     }
     await gate.onDestroy();
 
@@ -338,11 +395,18 @@ describe("connection gate — what a refusal leaves behind", () => {
 });
 
 describe("connection gate — onConnect", () => {
-  it("exempts a loopback identity without counting it", async () => {
+  it("exempts a peer the upgrade judged loopback, without counting it", async () => {
+    // Driven through the upgrade because that is the only place the peer
+    // address exists. Handing `onConnect` a loopback-looking identity
+    // directly would assert the contract this gate deliberately does not
+    // have: the identity is what the throttle counts by, never what decides
+    // whether to count.
     const throttle = fakeThrottle();
     const gate = createConnectionGate({ throttle: 15, banTime: 5 }, { throttle });
+    const upgrade = fakeUpgradeRequest({}, "::1");
+    await gate.onUpgrade(upgrade);
 
-    await gate.onConnect(connectPayload({ "x-real-ip": "::1" }));
+    await gate.onConnect(connectPayload(upgrade.request.headers as Record<string, string>));
 
     expect(throttle.onConnect).not.toHaveBeenCalled();
   });

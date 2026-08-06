@@ -121,6 +121,20 @@ describe("connection gate on a live server", () => {
     expect(isLoopbackIp(seen[0] as string)).toBe(true);
   });
 
+  it("overwrites a verdict a client tried to award itself", async () => {
+    // The verdict header decides whether a connection is counted at all, so a
+    // client able to set it would exempt itself. A local socket's peer is
+    // loopback, which the gate answers "exempt" — so the client sends the
+    // OPPOSITE value here. Anything but "exempt" arriving would mean the
+    // client's own string survived.
+    const { port, seen } = await serverRecording("x-breatic-connection-verdict");
+
+    await openDocument(port, { "x-breatic-connection-verdict": "count" });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe("exempt");
+  });
+
   it("strips x-forwarded-for before anything downstream can read it", async () => {
     const { port, seen } = await serverRecording("x-forwarded-for");
 

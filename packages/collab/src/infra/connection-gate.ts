@@ -80,8 +80,26 @@ export interface ConnectionGate {
   onDestroy(): Promise<void>;
 }
 
-/** Header carrying the client identity, the only one this gate trusts. */
+/** Header carrying the client identity, which the throttle keys on. */
 const REAL_IP_HEADER = "x-real-ip";
+
+/**
+ * Header carrying the gate's own verdict, written on every upgrade and never
+ * read from a client.
+ *
+ * The identity alone cannot carry it. A loopback peer's identity is its peer
+ * address, and a proxied client's identity is whatever the proxy put in
+ * `x-real-ip` — so "127.0.0.1" downstream means either "the peer really was
+ * loopback" or "something claimed to be". Re-deriving the verdict from that
+ * string hands a full rate-limit exemption to anyone who can set the header,
+ * and, with no attacker at all, to every client at once the moment an edge
+ * proxy sits in front of nginx and nginx's `X-Real-IP $remote_addr` starts
+ * reading 127.0.0.1.
+ */
+const VERDICT_HEADER = "x-breatic-connection-verdict";
+
+/** Verdict value meaning "a developer's own machine — do not count it". */
+const VERDICT_EXEMPT = "exempt";
 
 /** Header this gate always removes, because a client can prepend to it. */
 const FORWARDED_FOR_HEADER = "x-forwarded-for";
@@ -156,15 +174,24 @@ export function createConnectionGate(
         refuseUpgrade(data.socket, decision.reason);
       }
 
-      // Carries the verdict to onConnect. For a loopback peer this overwrites
+      // The identity the throttle keys on. For a loopback peer this overwrites
       // whatever the peer claimed, which is the point.
       headers[REAL_IP_HEADER] = decision.identity;
+      // Written on EVERY upgrade, so whatever a client sent under this name is
+      // gone by the time anything downstream looks. Only `exempt` is spelled
+      // out; every other verdict is "count it", which is what an unset or
+      // unrecognised value has to mean.
+      headers[VERDICT_HEADER] = decision.kind === "exempt" ? VERDICT_EXEMPT : "count";
       return Promise.resolve();
     },
 
     onConnect: (data: ConnectHookPayload): Promise<void> => {
-      const identity = data.request.headers.get(REAL_IP_HEADER) ?? "";
-      if (isLoopbackIp(identity)) return Promise.resolve();
+      // Reads the verdict rather than re-deriving one. The identity cannot be
+      // re-judged here: `onConnect` never sees the peer address, so a loopback
+      // identity is indistinguishable from a claim to be loopback.
+      if (data.request.headers.get(VERDICT_HEADER) === VERDICT_EXEMPT) {
+        return Promise.resolve();
+      }
       return throttle.onConnect(data).then(() => undefined);
     },
 
