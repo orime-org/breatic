@@ -104,7 +104,11 @@ export function useCollabCaretPresence(
      */
     const publish = (focused: boolean): void => {
       if (editor.isDestroyed) return;
-      editor.commands.updateUser({ ...caretUser, focused });
+      // Focus is the only thing we put here. Who this caret belongs to is
+      // written by the server from the credential this connection presented,
+      // so sending an id would at best be ignored and at worst be a claim we
+      // have no standing to make (#1886).
+      editor.commands.updateUser({ focused });
     };
     /**
      * Publishes focused=true on window focus.

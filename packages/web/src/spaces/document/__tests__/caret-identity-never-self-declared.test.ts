@@ -34,7 +34,7 @@ import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 describe('our own caret identity', () => {
   afterEach(() => _resetDocumentEditorCacheForTests());
 
-  it('publishes the user id and no identity fields whatsoever', async () => {
+  it('publishes no identity at all, only the window-focus flag', async () => {
     const doc = new Y.Doc();
     const awareness = new Awareness(doc);
 
@@ -54,19 +54,23 @@ describe('our own caret identity', () => {
       (awareness.getLocalState() as { user?: Record<string, unknown> } | null)
         ?.user;
 
-    await waitFor(() => expect(published()?.id).toBe('user-42'));
+    await waitFor(() => expect(published()).not.toBeUndefined());
 
     const fields = Object.keys(published() ?? {});
     // `focused` is presence, not identity — it describes what this window is
     // doing right now and cannot be looked up from anywhere else.
-    expect(fields.filter((f) => f !== 'id' && f !== 'focused')).toEqual([]);
+    // Focus is the only thing the browser is entitled to state here. Who this
+    // caret belongs to is written by the server from the credential this
+    // connection presented, so an id from us is a claim we cannot back (#1886).
+    expect(fields.filter((f) => f !== 'focused')).toEqual([]);
+    expect(published()).not.toHaveProperty('id');
     expect(published()).not.toHaveProperty('name');
     expect(published()).not.toHaveProperty('color');
     expect(published()).not.toHaveProperty('hue');
     expect(published()).not.toHaveProperty('avatarUrl');
   });
 
-  it('a rename does not change what goes on the wire', async () => {
+  it('a rename changes nothing on the wire, because nothing about the person is on it', async () => {
     // The point of the redesign: the name is not on the wire, so renaming
     // cannot desync it. Peers pick the new name up from the roster instead.
     const doc = new Y.Doc();
@@ -88,7 +92,7 @@ describe('our own caret identity', () => {
     const published = (): Record<string, unknown> | undefined =>
       (awareness.getLocalState() as { user?: Record<string, unknown> } | null)
         ?.user;
-    await waitFor(() => expect(published()?.id).toBe('user-42'));
+    await waitFor(() => expect(published()).not.toBeUndefined());
     const before = JSON.stringify(published());
 
     // Same person, new object identity — the shape a rename produces upstream,

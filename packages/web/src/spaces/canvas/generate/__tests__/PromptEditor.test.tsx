@@ -267,17 +267,18 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     return { awareness, editorEl };
   }
 
-  it('publishes the local user id into awareness when the provider is supplied', async () => {
+  it('publishes the focus flag and no identity when the provider is supplied', async () => {
     const { awareness } = await mountWithAwareness(true);
     await waitFor(() => {
       const local = awareness.getLocalState() as {
         user?: Record<string, unknown>;
       } | null;
-      // The id, and only the id (#1882): receivers resolve the name from the
-      // project roster and derive the colour from this id, so neither travels.
+      // Nothing about who this is (#1886): the server writes the id from the
+      // credential this connection presented, and receivers resolve the name
+      // from the project roster and the colour from that id.
       // `focused` seeds from the REAL document.hasFocus() on mount (its jsdom
       // value depends on what earlier tests focused — assert the type only).
-      expect(local?.user).toMatchObject({ id: 'u-ada' });
+      expect(local?.user).not.toHaveProperty('id');
       expect(typeof local?.user?.focused).toBe('boolean');
       expect(local?.user).not.toHaveProperty('name');
       expect(local?.user).not.toHaveProperty('color');
