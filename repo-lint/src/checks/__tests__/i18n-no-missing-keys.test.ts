@@ -176,6 +176,46 @@ describe("i18n-no-missing-keys", () => {
     expect(findings).toHaveLength(2);
   });
 
+  it("resolves a key whose segment starts with a digit", () => {
+    // `canvas.nodePlaceholder.3d` is in all five catalogs. Before the shape
+    // was widened this call was invisible here, so a typo in it would have
+    // shipped exactly like the one this check was written for.
+    expect(
+      i18nNoMissingKeys.run(
+        repo(
+          { canvas: { nodePlaceholder: { "3d": "3D" } } },
+          { "packages/web/src/a.tsx": 't("canvas.nodePlaceholder.3d")' },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("catches a typo in a key whose segment starts with a digit", () => {
+    // The other side of the case above: seeing the shape is only worth
+    // something if a wrong one is still reported.
+    expect(
+      i18nNoMissingKeys.run(
+        repo(
+          { canvas: { nodePlaceholder: { "3d": "3D" } } },
+          { "packages/web/src/a.tsx": 't("canvas.nodePlaceholder.3D")' },
+        ),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("leaves an id with no namespace to the check that owns the shape", () => {
+    // A dotless id is wrong on its face and `i18n-keys-namespaced` says so,
+    // on the shape, at the call site. Reporting it here as well would give
+    // one mistake two findings and blame the catalog for a caller's error —
+    // the reader would go add `cancel` to the catalogs, where the same
+    // sibling check would then reject it.
+    expect(
+      i18nNoMissingKeys.run(
+        repo({ a: { b: "B" } }, { "packages/web/src/a.tsx": "t('cancel')" }),
+      ),
+    ).toEqual([]);
+  });
+
   it("treats a key whose value is an object as unanswered", () => {
     // `t("server.error")` against `{ error: { not_found: ... } }` lands on a
     // branch, not a message. `resolveKey` returns a string or nothing
