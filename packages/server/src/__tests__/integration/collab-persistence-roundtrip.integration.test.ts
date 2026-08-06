@@ -31,7 +31,12 @@ import { eq } from "drizzle-orm";
 
 import { initCore, yjsDocuments, createTestDb } from "@breatic/core";
 import * as yjsRepo from "@breatic/collab/src/services/yjs-documents.repo.js";
-import { createPersistenceExtension } from "@breatic/collab/src/services/persistence.js";
+import {
+  createPersistenceExtension,
+  storeDocumentNow,
+} from "@breatic/collab/src/services/persistence.js";
+import { createUnloadGate } from "@breatic/collab/src/hooks/unload-gate.js";
+import { noteDocumentChange } from "@breatic/collab/src/services/store-tracker.js";
 
 initCore(process.env);
 
@@ -87,14 +92,43 @@ beforeAll(async () => {
   await yjsTestDb.delete(yjsDocuments).where(eq(yjsDocuments.name, META));
   await yjsTestDb.delete(yjsDocuments).where(eq(yjsDocuments.name, CANVAS));
 
+  // Wired the way production is (#40). Persistence alone no longer stores
+  // anything: the extension declines every store it did not initiate, so the
+  // change counter and the unload gate are not optional extras here — without
+  // them a write followed by a disconnect persists nothing at all, which is
+  // the point of the rework rather than a gap in it.
+  const storeGate: { current?: ReturnType<typeof createUnloadGate> } = {};
   wsServer = new Server({
     port: 0,
     quiet: true,
     debounce: 50,
     unloadImmediately: true,
-    extensions: [createPersistenceExtension()],
+    extensions: [
+      createPersistenceExtension(),
+      {
+        onChange: async ({ documentName }: { documentName: string }): Promise<void> => {
+          noteDocumentChange(documentName);
+        },
+        beforeUnloadDocument: async (payload: {
+          documentName: string;
+          document: Y.Doc;
+        }): Promise<void> => {
+          await storeGate.current?.beforeUnloadDocument(payload);
+        },
+      },
+    ],
   });
   hocuspocus = wsServer.hocuspocus;
+  storeGate.current = createUnloadGate({
+    finalAttemptTimeoutMs: 3000,
+    encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
+    storeNow: ({ name }) => storeDocumentNow(hocuspocus as never, name),
+    writeRescue: async () => {
+      throw new Error("no rescue path in this test — the store is expected to land");
+    },
+    deleteRescue: async () => {},
+    alert: async () => {},
+  });
   await wsServer.listen();
 });
 
