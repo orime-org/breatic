@@ -201,12 +201,16 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     });
   });
 
-  it('every waiting row says what accepting makes you', async () => {
-    // The second line answers one question: what do you hold if you accept.
-    // The invites answer it by naming the role being offered; the transfers
-    // answer it by naming the role you take over. The project transfer — the
-    // heavier of the two transfers, since it hands over a whole project —
-    // shipped with no second line at all, so its recipient was told least.
+  it('both transfers say which role you take over', async () => {
+    // Scoped to the transfers on purpose. The invites answer the same question
+    // by naming the role offered, and a role upgrade answers a different one
+    // (it shows the requester's message, and has no second line when they
+    // typed none) — so "every waiting row" would be a wider claim than this
+    // asserts, and than the code keeps.
+    //
+    // The project transfer — the heavier of the two, since it hands over a
+    // whole project — shipped with no second line at all, so its recipient was
+    // told least.
     const SAYS: Array<{ type: NotifType; payload: Record<string, unknown>; line: RegExp }> = [
       {
         type: 'studio.transfer_request',

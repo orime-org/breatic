@@ -354,11 +354,16 @@ const PROJECT_ROLE_KEY: Record<string, string> = {
 /**
  * Extracts the optional subtitle for a notification.
  *
- * Every waiting row's second line answers the same question — what you hold if
- * you accept. The invites answer it by naming the role being offered, the
- * transfers by naming the role you take over, and a role upgrade by showing
- * the message the requester typed. Rows that decide nothing have no second
- * line, because there is nothing to accept.
+ * The four rows that hand you something answer one question on their second
+ * line — what you hold if you accept: an invite names the role offered, a
+ * transfer the role you take over.
+ *
+ * The fifth waiting row does not, and cannot. A role upgrade asks the reader
+ * to grant something rather than take it, so what is useful there is the
+ * message the requester typed, and it has none when they typed nothing —
+ * `message` is optional on that route. So a waiting row with no second line is
+ * a real state, not an oversight. Rows that decide nothing have no second line
+ * either, because there is nothing to accept.
  * @param n - Notification whose payload is inspected for subtitle text.
  * @param t - Translation function for the localized subtitle.
  * @returns the subtitle text, or `null` when none applies.
