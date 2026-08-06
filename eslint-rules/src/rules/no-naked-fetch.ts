@@ -7,6 +7,42 @@ import { createRule } from "#rules/create-rule";
 const GLOBAL_CARRIERS = new Set(["globalThis", "window", "self"]);
 
 /**
+ * Parent node types that put an identifier in a TypeScript type position.
+ *
+ * Taken as-is from ESLint's own `no-restricted-globals`, which faces exactly
+ * this question and answers it with this list. Copying it whole rather than
+ * keeping the entries that look relevant to `fetch` is deliberate: deciding
+ * which type positions "count" is the judgement that went wrong here once
+ * already, and the upstream list is the maintained answer to it.
+ */
+const TYPE_POSITION_PARENTS = new Set([
+  "TSTypeReference",
+  "TSInterfaceHeritage",
+  "TSClassImplements",
+  "TSTypeQuery",
+  "TSQualifiedName",
+]);
+
+/**
+ * Whether a reference sits in a type position rather than a value position.
+ *
+ * `typeof fetch` is erased before anything runs and cannot send a request, so
+ * reporting it would have the guard refusing a spelling rather than an action,
+ * with suppression as the caller's only recourse.
+ *
+ * The scope analyser cannot answer this: measured, a reference from
+ * `typeof fetch` reports `isValueReference === true`, identical to a real call,
+ * because `typeof X` does resolve X in the value namespace. The syntactic
+ * parent is what separates them.
+ * @param reference - The reference to classify.
+ * @returns True when the identifier's parent is a type-position node.
+ */
+function isInTypePosition(reference: TSESLint.Scope.Reference): boolean {
+  const parent = reference.identifier.parent as TSESTree.Node | undefined;
+  return parent !== undefined && TYPE_POSITION_PARENTS.has(parent.type);
+}
+
+/**
  * Report every reference in a scope that resolves to the platform `fetch`.
  *
  * Two ways it can resolve, and both have to be walked. A file linted without
@@ -15,6 +51,8 @@ const GLOBAL_CARRIERS = new Set(["globalThis", "window", "self"]);
  * definition site, and the references hang off that instead. Walking only one
  * makes the rule depend on how the consuming config happens to declare its
  * environment, which is not something a repository invariant should hinge on.
+ *
+ * Both walks skip type positions — see {@link isInTypePosition}.
  * @param scope - The global scope to walk.
  * @param report - Called with each offending identifier.
  */
@@ -23,15 +61,16 @@ function reportGlobalFetchReferences(
   report: (identifier: TSESTree.Identifier) => void,
 ): void {
   for (const reference of scope.through) {
-    if (reference.identifier.name === "fetch") {
-      report(reference.identifier as TSESTree.Identifier);
-    }
+    if (reference.identifier.name !== "fetch") continue;
+    if (isInTypePosition(reference)) continue;
+    report(reference.identifier as TSESTree.Identifier);
   }
   for (const variable of scope.variables) {
     // A `defs` entry means someone declared this name in source, so the
     // reference is theirs and not the platform's.
     if (variable.name !== "fetch" || variable.defs.length > 0) continue;
     for (const reference of variable.references) {
+      if (isInTypePosition(reference)) continue;
       report(reference.identifier as TSESTree.Identifier);
     }
   }
