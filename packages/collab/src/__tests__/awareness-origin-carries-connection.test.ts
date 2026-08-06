@@ -33,10 +33,14 @@ interface SeenUpdate {
   documentName: string;
 }
 
-let running: Hocuspocus | undefined;
+/** Direct connections opened by the current test, closed after it. */
+const opened: { disconnect: () => Promise<void> }[] = [];
 
-afterEach(() => {
-  running = undefined;
+afterEach(async () => {
+  // Leaving them open keeps the documents loaded and their store debouncers
+  // alive across cases, which is how one test's timer becomes another's
+  // mystery failure.
+  while (opened.length > 0) await opened.pop()?.disconnect();
 });
 
 /**
@@ -64,7 +68,6 @@ async function instanceRecordingAwareness(): Promise<{
     ],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
-  running = hocuspocus;
   return { hocuspocus, seen };
 }
 
@@ -84,6 +87,7 @@ describe("an awareness update relayed from another instance", () => {
   it("arrives with no connection, so it can claim no identity", async () => {
     const { hocuspocus, seen } = await instanceRecordingAwareness();
     const connection = await hocuspocus.openDirectConnection("project-relay/meta", {});
+    opened.push(connection);
     const document = connection.document as unknown as Y.Doc & { awareness: Awareness };
 
     // `{ source: "redis" }` is verbatim what the Redis extension stamps on
@@ -103,6 +107,7 @@ describe("an awareness update relayed from another instance", () => {
     // nothing that did not come off a client socket may attest an identity.
     const { hocuspocus, seen } = await instanceRecordingAwareness();
     const connection = await hocuspocus.openDirectConnection("project-local/meta", {});
+    opened.push(connection);
     const document = connection.document as unknown as Y.Doc & { awareness: Awareness };
 
     applyAwarenessUpdate(document.awareness, awarenessUpdateFrom("u-someone-else"), {
@@ -121,6 +126,7 @@ describe("an awareness update relayed from another instance", () => {
     // populated, and neither assertion would mean anything.
     const { hocuspocus, seen } = await instanceRecordingAwareness();
     const connection = await hocuspocus.openDirectConnection("project-client/meta", {});
+    opened.push(connection);
     const document = connection.document as unknown as Y.Doc & { awareness: Awareness };
     const marker = { context: { user: { id: "u-real" } } };
 
