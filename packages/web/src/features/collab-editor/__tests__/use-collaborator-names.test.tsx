@@ -18,6 +18,7 @@ import { renderHook } from '@testing-library/react';
 import type { Member } from '@web/data/api/members';
 import {
   resolveNameFrom,
+  useCollaboratorNamesFrom,
   useResolverRef,
 } from '@web/features/collab-editor/use-collaborator-names';
 
@@ -89,5 +90,54 @@ describe('useResolverRef', () => {
 
     rerender({ members: [member('u1', 'Alice Wu'), member('u2', 'Bo')] });
     expect(resolve('u1')).toBe('Alice Wu');
+  });
+});
+
+describe('useCollaboratorNamesFrom — the bundle the project page publishes', () => {
+  it('hands back a NEW bundle when the roster changes', () => {
+    // This is the whole repaint trigger. The bundle goes into context, and the
+    // effect that patches names onto carets already on screen depends on it —
+    // so a bundle whose identity never moves means a name that lands after a
+    // caret was drawn never reaches it, which is the case this feature exists
+    // for. Freezing it looks like a harmless memo tidy-up and is not.
+    const { result, rerender } = renderHook(
+      ({ members }: { members: Member[] }) => useCollaboratorNamesFrom(members),
+      { initialProps: { members: [member('u1', 'Alice')] } },
+    );
+    const first = result.current;
+
+    rerender({ members: [member('u1', 'Alice'), member('u2', 'Bo')] });
+    expect(result.current).not.toBe(first);
+    expect(result.current.resolve('u2')).toBe('Bo');
+  });
+
+  it('hands back the SAME bundle when the roster array does not move', () => {
+    // The other side of it: re-rendering for an unrelated reason must not
+    // churn the bundle, or every editor below re-runs its name effect on every
+    // keystroke elsewhere on the page.
+    const roster = [member('u1', 'Alice')];
+    const { result, rerender } = renderHook(
+      ({ members }: { members: Member[] }) => useCollaboratorNamesFrom(members),
+      { initialProps: { members: roster } },
+    );
+    const first = result.current;
+
+    rerender({ members: roster });
+    expect(result.current).toBe(first);
+  });
+
+  it('keeps the resolver itself stable even when the bundle is replaced', () => {
+    // Both properties at once, because they pull in opposite directions and
+    // the editors depend on exactly this combination: the bundle moves so the
+    // repaint fires, the resolver does not so the editor is not rebuilt.
+    const { result, rerender } = renderHook(
+      ({ members }: { members: Member[] }) => useCollaboratorNamesFrom(members),
+      { initialProps: { members: [member('u1', 'Alice')] } },
+    );
+    const first = result.current;
+
+    rerender({ members: [member('u1', 'Alice'), member('u2', 'Bo')] });
+    expect(result.current).not.toBe(first);
+    expect(result.current.resolve).toBe(first.resolve);
   });
 });

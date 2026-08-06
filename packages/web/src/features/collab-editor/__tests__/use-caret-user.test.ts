@@ -69,11 +69,17 @@ describe('useCaretUser', () => {
     // A rename must not disturb the wire at all — peers read the new name off
     // the roster, and re-publishing would only give two tabs something to
     // disagree about.
+    //
+    // The SAME OBJECT, not an equal one. Every effect that publishes presence
+    // or mounts a caret extension keys on this reference, so an implementation
+    // handing back a fresh `{ id }` per store write re-publishes awareness and
+    // re-runs all of them on every rename — while a structural comparison sits
+    // there green, since the contents are of course still equal.
     signIn('user-42', 'Alice');
     const { result, rerender } = renderHook(() => useCaretUser());
     const first = result.current;
     signIn('user-42', 'Alice Wu');
     rerender();
-    expect(result.current).toEqual(first);
+    expect(result.current).toBe(first);
   });
 });

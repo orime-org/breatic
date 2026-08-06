@@ -88,11 +88,6 @@ interface PromptEditorProps {
    * from the project roster and derive the colour from the id.
    */
   caretUser?: CaretUserIdentity | null;
-  /**
-   * Names for the collaborators whose carets appear in this editor, resolved
-   * from the project member roster. Without it their carets render as bare
-   * coloured lines.
-   */
 }
 
 /**
