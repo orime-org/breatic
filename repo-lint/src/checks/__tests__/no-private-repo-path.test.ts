@@ -146,6 +146,20 @@ describe("no-private-repo-path", () => {
     expect(noPrivateRepoPath.run(context)).toHaveLength(4);
   });
 
+  it("catches the same reference with a capital letter", () => {
+    // A citation that starts a sentence or sits in a heading is written with
+    // a capital, and every pattern here spells the short name in lower case.
+    // Measured before the flag was added: each of these returned nothing
+    // while its lowercase twin returned one finding — a silent miss of the
+    // exact shape this check was widened to catch.
+    const context = fakeContext({
+      "a.md": `${MARKER.replace("i", "I")}/engineering/demo/2026-01-01-x.mjs`,
+      "b.md": `per ${MARKER.replace("i", "I")} ADR 2026-01-01`,
+      "c.md": `see Breatic-${MARKER.replace("i", "I")} for the rationale`,
+    });
+    expect(noPrivateRepoPath.run(context)).toHaveLength(3);
+  });
+
   it("leaves the word alone when it points at nothing", () => {
     // Measured before widening: the bare word appears 77 times in the tree,
     // all of them ordinary code. Matching it would switch this check off.

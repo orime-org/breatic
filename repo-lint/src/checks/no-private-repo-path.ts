@@ -77,9 +77,26 @@ const REPO_POINTERS = [
   `\\b${MARKER}\\s*\\u4ed3`,
 ];
 
-/** Any reference that names the private repository. */
+/**
+ * Any reference that names the private repository.
+ *
+ * Case-insensitive, and that is not decoration. Every pattern above spells
+ * the short name in lower case, so without the flag a citation that starts a
+ * sentence or sits in a heading — the same path with a capital first letter —
+ * passes silently, which is the failure this check was widened to end.
+ * Measured before adding it: the uppercase forms of all four pointer shapes
+ * returned no findings while their lowercase twins each returned one.
+ * Measured after: every pattern still matches zero lines of the tree, so the
+ * flag buys the variants and costs nothing.
+ *
+ * The example is described rather than written because this file is inside
+ * its own scan, which is the point of assembling the two constants at the top
+ * — and writing it out is exactly how that was found: the first draft of this
+ * paragraph failed the check.
+ */
 const PRIVATE_REFERENCE = new RegExp(
   [PRIVATE_REPO, ...PRIVATE_DIRECTORIES, ...REPO_POINTERS].join("|"),
+  "i",
 );
 
 /**
@@ -109,10 +126,23 @@ const PRIVATE_REFERENCE = new RegExp(
  *
  * WHERE THIS STOPS, ratified 2026-08-06 and deliberately not wider. The rule
  * is about NAMING the private repository — its name, or its short name used
- * as a pointer. A path fragment that happens to live there but names no
- * repository (`design/project/x.md`, `bugs/audit/x.md`) is NOT a violation,
+ * as a pointer. What it does NOT do is chase the private repository's layout
+ * in general: a path fragment that happens to live there but names no
+ * repository (`design/project/x.md`, `bugs/audit/x.md`) is not a violation,
  * and one of the tests below pins that so the criterion cannot be quietly
  * re-widened.
+ *
+ * `PRIVATE_DIRECTORIES` above is the exception, and it is a kept one rather
+ * than a principled one: five layout shapes that predate this criterion and
+ * still fire. They stay because they cost nothing — zero lines of the tree
+ * match any of them — and because removing coverage was not what the ratified
+ * narrowing was for. What the narrowing settled is that the list is not
+ * EXTENDED: the private repository has a dozen more directories, several
+ * named with ordinary words this repository uses for itself, and adding them
+ * would report the Dockerfile's build output and every path under the web
+ * package. So: the criterion is naming the repository, plus a short frozen
+ * list of layouts. Stating that plainly beats a general rule the code does
+ * not actually follow.
  *
  * Three things settled it, each measured rather than argued. What such a
  * filename actually reveals is of the order "a design document for the
