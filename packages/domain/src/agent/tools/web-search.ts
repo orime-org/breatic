@@ -52,8 +52,13 @@ export const webSearch = tool({
       //
       // The budget goes in as `timeoutMs` rather than as a signal on the init:
       // the transport replaces the caller's signal, so one left there would be
-      // a no-op and this search would silently get the transport's 300s
-      // default instead of the 10s it means.
+      // a no-op and this search would silently get the transport's default
+      // instead of the figure below.
+      //
+      // That figure bounds ONE DELIVERY, not the whole search — the transport
+      // may deliver this request more than once and gives each of them the
+      // full 10s. Same unit as safe-fetch.ts states for web_fetch; said here
+      // too because a reader of this file meets the number here.
       const res = await httpRequest(
         url.toString(),
         {

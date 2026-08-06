@@ -22,15 +22,13 @@
  *      resolve to unicast IPs in unusual network setups.
  *   4. Follows redirects manually, re-checking DNS for every hop. A
  *      redirect from a public host to `http://10.0.0.1/` is rejected.
- *   5. Caps hop count, and gives each DELIVERY a deadline. Not each hop —
- *      the transport may deliver a hop up to three times, and each of those
- *      gets the full figure, so a hop's own worst case is a multiple of it.
+ *   5. Caps hop count, and gives each DELIVERY a deadline — not each hop.
+ *      What that unit means is asserted in the tests; it is stated here
+ *      because a reader meeting the number needs to know what it bounds.
  *
  * The request itself goes through the shared HTTP transport, which may
  * deliver one hop up to three times. That is deliberate: a dropped
- * connection used to fail the tool outright. The DNS check above runs
- * once per HOP, not once per delivery — what that widens is the next
- * paragraph.
+ * connection used to fail the tool outright.
  *
  * DNS rebinding is partially mitigated by re-resolving per hop; a
  * determined attacker with a short-TTL DNS record and precise timing
@@ -38,28 +36,12 @@
  * would require the target server's TCP stack to re-query DNS, which
  * it does not within a single fetch call.
  *
- * What the retries add to that race was MEASURED rather than reasoned
- * about, because the obvious guess is wrong. A replay re-resolves only
- * when it needs a NEW connection, and undici pools by origin — so a
- * replay landing inside the keep-alive window reuses the socket and
- * resolves nothing at all. Counting TCP connections against a local
- * server (Node 24): three deliveries across the transport's own 1s and
- * 2s backoff opened ONE connection; three deliveries after dropped
- * connections opened three; two deliveries either side of a
- * `Retry-After: 6` opened two.
- *
- * So the widening is not "every delivery". It is the delivery that
- * waits long enough to outlive the pooled socket, and the far side is
- * what decides how long that is. A `Retry-After` on a 429 is honoured
- * up to 60 seconds, and 429 takes the protocol branch that does not
- * consult `replaySafe` at all, so a host answering "come back in 59
- * seconds" outlives any keep-alive: it forces a fresh connection, hence
- * a fresh and unchecked resolution, 59 seconds after the check that
- * cleared it. The precise timing the paragraph above asks of an
- * attacker arrives in the attacker's own header.
- *
- * That is accepted here rather than fixed here: the guard is the one
- * rigid gate, and hardening it is tracked separately.
+ * The retries widen that race, because the DNS check runs once per HOP
+ * while a hop may now be delivered up to three times. How much wider
+ * depends on things this module does not control — whether the client
+ * reuses its pooled connection, and how long the far side asks it to
+ * wait — so no figure is quoted here; one would go stale silently.
+ * Hardening the guard is tracked separately.
  */
 
 import { lookup as dnsLookup } from "node:dns/promises";
@@ -111,10 +93,9 @@ const MAX_REDIRECTS = 5;
 /**
  * Default per-DELIVERY deadline in milliseconds.
  *
- * Not per hop: the transport may deliver a hop up to three times and gives
- * each of them this full figure, so a hop's own worst case is a multiple of
- * it. The name stays short; the unit is stated here because this is where a
- * reader learns what the number means.
+ * Not per hop: the transport may deliver a hop more than once and gives each
+ * of them this full figure. The name stays short; the unit is stated here
+ * because this is where a reader meets the number.
  */
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -197,28 +178,20 @@ export interface SafeFetchOptions {
  *
  * The caller receives a native `Response` on success.
  * @param url - The initial URL to fetch
- * @param opts - Optional headers, and the deadline for ONE DELIVERY (not
- *   for a hop: a hop is up to three deliveries, each given the full figure)
+ * @param opts - Optional headers, and the deadline for ONE DELIVERY (not for
+ *   a hop: a hop may be delivered more than once, each given the full figure)
  * @returns A `Response` from the final (non-redirect) hop
  * @throws {SsrfError} if any hop resolves to a non-public IP or matches
  *   a blocked hostname
  * @throws {TypeError} for malformed URLs
- * @throws {HttpRetryError} when a hop was delivered more than once and the
- *   last delivery still produced no response. This is the shape a caller now
- *   meets most often on a bad network, and it is the one this module used to
- *   have no way of producing — before the retries there was one delivery, so
- *   its failure reached the caller as itself.
+ * @throws {HttpRetryError} when the transport gave up without a response.
+ *   This is the shape a caller meets on a bad network, and the one this
+ *   module had no way of producing before the retries. Its exact form is
+ *   asserted in `safe-fetch-retry.test.ts`.
  * @throws {Error} the transport's own refusals, which are about the request
  *   rather than about where it points and so are not `SsrfError`: a URL
  *   carrying credentials, or a `timeoutMs` no timer can hold. Both are raised
  *   before any delivery.
- *
- *   Not listed, because it cannot arrive HERE: the transport also rethrows a
- *   first failure unwrapped when no replay follows, but this call site sends
- *   no body and declares `replaySafe`, so a delivery that produced no
- *   response always earns one. Every connection-level failure therefore
- *   leaves as `HttpRetryError`. Documenting the unwrapped shape would send a
- *   caller looking for something this path never produces.
  */
 export async function safeFetch(
   url: string,
@@ -248,7 +221,8 @@ export async function safeFetch(
     //
     // The deadline goes in as `timeoutMs`, not as a signal on the init: the
     // transport replaces the caller's signal, so one left there would be a
-    // no-op and every hop would silently get the transport's 300s default.
+    // no-op and every DELIVERY would silently get the transport's default
+    // instead of this module's figure.
     //
     // `redirect: "manual"` stays in the init, because following redirects
     // here is the whole point — it is what lets the check above run again on

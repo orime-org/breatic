@@ -8,30 +8,21 @@
  * security control and it shipped with no automated coverage at all, so the
  * refusal cases below are characterisation.
  *
- * How much they characterise was MEASURED, by putting the pre-move module
- * back (`git show origin/main:…safe-fetch.ts`) and running this file against
- * it: 6 of the 10 refusals pass unchanged on both versions — the scheme
- * check, the IP-range check, the IPv6-literal check, the hostname denylist, a
- * name resolving to a private address, and one bad record among several.
- * Those six are genuine cross-version characterisation: they refuse before
- * any request is made, so neither version reaches a request layer.
+ * Which cases characterise the OLD behaviour and which only pin the new one
+ * splits along a line that can be stated without counting anything. A case
+ * that refuses BEFORE any request is made behaves identically on both
+ * versions, because neither version reaches a request layer — those are
+ * genuine cross-version characterisation. A case that needs a response to
+ * come back cannot run against the pre-move module at all: that module gets
+ * its response from the global `fetch`, which this very file stubs to throw,
+ * so it fails with "a real fetch escaped". Those pin the behaviour going
+ * forward; they do not testify that it is unchanged.
  *
- * The other FOUR cannot run against the pre-move module, and saying otherwise
- * would overstate what this file proves. `asks DNS for EVERY record`,
- * `re-checks every hop`, `stops after the redirect budget` and `hands back a
- * 3xx with no Location` all need a response to come back, and the pre-move
- * module gets its response from the global `fetch` — which this very file
- * stubs to throw. Against the old code they fail with "a real fetch escaped".
- * They pin the behaviour going forward; they do not testify that it is
- * unchanged.
- *
- * That count is worth a sentence of its own, because it has gone stale twice.
- * The paragraph first said "5 of the 8", and the same commit that wrote it
- * added a ninth case without re-measuring; it then said "5 of the 9" until
- * the IPv6-literal case arrived. Both times the number was written from
- * memory of an earlier run. A measured number expires the moment the thing
- * it counts changes, so adding a case to the block below means re-running the
- * pre-move check — which is where the 6-of-10 above comes from.
+ * There used to be a count here, and it went stale twice — once when a case
+ * was added by the same commit that wrote the number, once when the IPv6 case
+ * arrived. It is gone on purpose. The rule above is what the count was trying
+ * to convey, it decides every case in this file including ones not written
+ * yet, and unlike a number it cannot quietly rot.
  *
  * Two things about the handoff cannot be read off the call site, which is why
  * they are asserted behaviourally:
@@ -42,9 +33,9 @@
  *   - The deadline must arrive as `timeoutMs`. It used to ride in as
  *     `init.signal`, and the transport replaces the caller's signal — left
  *     there it becomes a no-op and every delivery silently gets the
- *     transport's 300s default instead of the 30s this module intends. Note
- *     the unit: `timeoutMs` bounds one DELIVERY, and a hop is up to three of
- *     them, so the 30s no longer bounds a hop the way it did before the move.
+ *     transport's own default instead of the figure this module intends.
+ *     Note the unit: `timeoutMs` bounds one DELIVERY, so the 30s no longer
+ *     bounds a hop the way it did before the move.
  *
  * `redirect: "manual"` is asserted for a different reason: manual redirects
  * are why this module exists. Following them itself is what lets it re-check
@@ -86,8 +77,8 @@ import { safeFetch, SsrfError } from "@domain/agent/tools/safe-fetch.js";
 /**
  * The deadline this module applies to one DELIVERY when the caller names none.
  *
- * Not one hop: the transport gives each of a hop's up-to-three deliveries the
- * full figure, so a hop's own worst case is a multiple of this.
+ * Not one hop: a hop may be delivered more than once and each delivery gets
+ * this full figure.
  */
 const DEFAULT_DELIVERY_TIMEOUT_MS = 30_000;
 
@@ -131,13 +122,12 @@ describe("safeFetch refuses what it always refused", () => {
   });
 
   it("refuses an IPv6 literal, which reaches the guard by a different branch than IPv4 does", async () => {
-    // The four IPv4 literals above do NOT cover this, which is why it is its
-    // own case. Measured on Node 24: `new URL("http://[::1]/").hostname` is
+    // The IPv4 literals above do NOT cover this, which is why it is its own
+    // case. Measured on Node 24: `new URL("http://[::1]/").hostname` is
     // `"[::1]"` — brackets kept — and `ipaddr.isValid("[::1]")` is false, so
     // every IPv6 literal misses the `isValid` branch and is refused only by
-    // the bracket-stripping one. Delete those three lines from safe-fetch.ts
-    // and this is the case that turns red; before it existed, deleting them
-    // left the whole directory green.
+    // the bracket-stripping one. Deleting that branch is what this case
+    // exists to catch. Before it existed, nothing did.
     for (const url of [
       "http://[::1]/", // loopback
       "http://[fd00::1]/", // uniqueLocal
@@ -182,12 +172,8 @@ describe("safeFetch refuses what it always refused", () => {
   it("asks DNS for EVERY record, which is what makes the check above possible", async () => {
     // Separate from the case above, and asserted on the ARGUMENT rather than
     // on the outcome, because the mock hands back its array whatever it is
-    // asked — so the case above passes with `{ all: true }` deleted. Measured
-    // before this case existed: deleting the option left every test in this
-    // directory green. Stated without a count on purpose — a total goes stale
-    // the moment anyone adds a test, which is how the header's "5 of the 8"
-    // went wrong. What holds today is the sharper statement: delete the
-    // option and THIS case is the one that turns red.
+    // asked — so the case above still passes with `{ all: true }` deleted.
+    // This case is the one that does not.
     //
     // The option is load-bearing in production. Without it `lookup(host)`
     // resolves to a single `{ address, family }` object, `for (const {
@@ -243,7 +229,7 @@ describe("safeFetch hands the request to the shared transport", () => {
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
     // Strict equality on the whole options object: replaySafe flipping to
     // false takes away the retry this batch exists for, and a missing
-    // timeoutMs swaps 30s for the transport's 300s default.
+    // timeoutMs swaps this module's figure for the transport's own default.
     expect(httpRequestMock.mock.calls[0]![2]).toStrictEqual({
       replaySafe: true,
       timeoutMs: DEFAULT_DELIVERY_TIMEOUT_MS,

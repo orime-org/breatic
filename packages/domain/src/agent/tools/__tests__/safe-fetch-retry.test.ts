@@ -12,13 +12,13 @@
  * injected fetch — "the global one is always what runs" — so the global is
  * the only place to stand.
  *
- * What passes here without the batch, measured by putting the pre-move module
- * back and running this file against it: one of the four. `does not replay a
- * 4xx` passes on both versions, because one delivery is one delivery either
- * way — it pins a shape the two share rather than anything the move added.
- * The other three fail on the old code, which is the point: before the move
- * `safeFetch` calls `fetch` once per hop, so the first rejection ends the hop
- * and the error reaches the caller.
+ * Only one case here can pass without the batch, and which one follows from
+ * what the batch does rather than from any count: `does not replay a 4xx`,
+ * because one delivery is one delivery either way — it pins a shape both
+ * versions share. Every other case in this file asserts that a failure is
+ * followed by another delivery, and before the move there was no second
+ * delivery to assert: `safeFetch` called `fetch` once per hop, so the first
+ * rejection ended the hop and the error reached the caller.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -102,8 +102,9 @@ describe("a network blip is retried rather than failing the hop", () => {
     // half is the load-bearing one, since it is what stops a public host
     // redirecting into the private range.
     //
-    // The widening this pins is on the record deliberately: one check now
-    // covers up to three connections rather than one.
+    // What this pins is the widening itself: one check now covers a hop that
+    // may be delivered more than once. How much that actually costs depends
+    // on the client's connection pooling, which is not this file's to assert.
     fetchMock
       .mockRejectedValueOnce(new TypeError("fetch failed"))
       .mockResolvedValueOnce(
