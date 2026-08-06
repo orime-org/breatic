@@ -381,8 +381,15 @@
       "sending": "Sending…",
       "toast": {
         "sent": "Request sent — the owner will see it in their notifications.",
-        "failed": "Could not send the request. Please try again."
-      }
+        "failed": "Could not send the request. Please try again.",
+        "withdrawn": "Request withdrawn.",
+        "withdrawFailed": "Could not withdraw the request. Please try again."
+      },
+      "pendingAriaLabel": "Editor access requested",
+      "pendingTitle": "Request sent",
+      "pendingDescription": "The Owner has not answered yet. Withdraw it if you would rather ask later or ask differently.",
+      "withdraw": "Withdraw",
+      "withdrawing": "Withdrawing…"
     }
   },
   "project": {
@@ -402,6 +409,9 @@
       },
       "error": {
         "create": "Failed to create space",
+        "openTab": "Failed to open the tab",
+        "closeTab": "Failed to close the tab",
+        "unreachable": "No answer from the server — check your connection and try again",
         "notSynced": "Project is still syncing — try again in a moment"
       },
       "loading": {
@@ -441,7 +451,12 @@
       "transferSend": "Send request",
       "transferNoCandidates": "No eligible members yet. Add an Editor or Viewer who also belongs to this Studio first.",
       "transferSuccess": "Transfer request sent to {name}.",
-      "transferFailed": "Could not send the transfer request. Please try again."
+      "transferFailed": "Could not send the transfer request. Please try again.",
+      "transferPending": "Waiting for {name} to accept.",
+      "transferWithdraw": "Withdraw",
+      "transferWithdrawn": "Transfer request withdrawn.",
+      "transferWithdrawFailed": "Could not withdraw the transfer request.",
+      "transferPendingUnnamed": "Waiting for the recipient to accept."
     },
     "stack": {
       "triggerAria": "Project members ({count})"
@@ -600,13 +615,8 @@
   "notifications": {
     "title": "Notifications",
     "empty": "No pending notifications",
-    "reject": "Reject",
-    "approve": "Approve",
     "loading": "Loading…",
     "markRead": "Mark read",
-    "approvedToast": "Upgrade approved.",
-    "rejectedToast": "Request rejected.",
-    "decideFailed": "Could not process the decision. Please try again.",
     "headline": {
       "roleUpgradeRequest": "{actor} requested editor access on {project}",
       "roleUpgradeApproved": "{actor} approved your editor access on {project}",
@@ -621,17 +631,11 @@
       "projectInviteAccepted": "{actor} accepted your invite to {project}"
     },
     "actorFallback": "Someone",
-    "actionFailed": "Could not complete the action. Please try again.",
-    "transferConfirmedToast": "You are now the studio admin.",
-    "transferCancelledToast": "Transfer declined.",
-    "projectTransferConfirmedToast": "You are now the project owner.",
-    "projectTransferCancelledToast": "Transfer declined.",
-    "transferAccept": "Accept",
-    "transferDecline": "Decline",
     "subtitle": {
       "invitedAsMaintainer": "Joined as a Maintainer",
       "invitedAsGuest": "Joined as a Guest",
-      "transferHint": "Accept to become the studio admin",
+      "studioTransferHint": "Accept to become the Studio Admin",
+      "projectTransferHint": "Accept to become the Project Owner",
       "invitedAsEditor": "Joined as an editor",
       "invitedAsViewer": "Joined as a viewer"
     },
@@ -641,11 +645,7 @@
       "hours": "expires in {count}h",
       "days": "expires in {count}d"
     },
-    "inviteAccept": "Accept",
-    "inviteDecline": "Decline",
-    "inviteConfirmedToast": "You've joined the studio.",
-    "inviteDeclinedToast": "Invitation declined.",
-    "viewProjectInvite": "View invite"
+    "openDecision": "Answer"
   },
   "connection": {
     "banner": {
@@ -826,7 +826,7 @@
         "bioCount": "{count}/{max}",
         "slugHelper": "Part of this Studio's web address. Lowercase letters, numbers and hyphens only.",
         "avatarUpload": "Upload image",
-        "avatarHint": "A square image works best. PNG, JPEG or WebP, up to 20 MB.",
+        "avatarHint": "A square image works best. Any common image format, up to 20 MB.",
         "avatarRemove": "Remove",
         "avatarRemoveTitle": "Remove this avatar?",
         "avatarRemoveBody": "The Studio falls back to its initials. You can upload a new image at any time.",
@@ -857,7 +857,12 @@
         "leaveBody": "You will need a new invitation to come back.",
         "leaveLosesProjects": "You lose access to every Project in this Studio.",
         "leaveHandsOver": "Any Project you own here is handed to the Studio's Admin.",
-        "leaveDone": "You have left the Studio"
+        "leaveDone": "You have left the Studio",
+        "transferPending": "Waiting for {name} to accept.",
+        "transferWithdraw": "Withdraw",
+        "transferWithdrawn": "Transfer request withdrawn.",
+        "transferWithdrawFailed": "Could not withdraw the transfer request.",
+        "transferPendingUnnamed": "Waiting for the recipient to accept."
       },
       "dialog": {
         "newProjectTitle": "New project",
@@ -903,47 +908,7 @@
       "myStudiosEmpty": "No team Studios yet",
       "joinedEmpty": "You haven't joined any Studio yet",
       "openNav": "Open navigation"
-    },
-    "invite": {
-      "loadingTitle": "Opening your invitation…",
-      "loadingBody": "One moment while we load the invite.",
-      "title": "You've been invited",
-      "body": "{inviter} invited you to join {studio} as {role, select, maintainer {a Maintainer} guest {a Guest} other {a Guest}}.",
-      "confirm": "Accept & join",
-      "decline": "Decline",
-      "invalidTitle": "This invitation is no longer valid",
-      "invalidBody": "The link may have expired or already been used. Ask the studio admin to send a new invite.",
-      "expiredTitle": "This invitation has expired",
-      "expiredBody": "Your invite to {studio} is past its {days}-day window. Ask the studio admin to send a new one.",
-      "notInviteeTitle": "This invitation isn't for this account",
-      "notInviteeBody": "You're signed in as a different user. Sign in with the account this invite was sent to.",
-      "declinedTitle": "Invitation declined",
-      "declinedBody": "You declined the invite to {studio}. You can ask the admin to invite you again later.",
-      "joinedToast": "You've joined the studio.",
-      "actionFailed": "Could not complete that. Please try again.",
-      "backToStudio": "Back to Studio",
-      "signIn": "Sign in"
     }
-  },
-  "projectInvite": {
-    "loadingTitle": "Opening your invitation…",
-    "loadingBody": "One moment while we load the invite.",
-    "title": "You've been invited",
-    "body": "{inviter} invited you to join {project} as {role, select, editor {an editor} viewer {a viewer} other {a member}}.",
-    "confirm": "Accept & join",
-    "decline": "Decline",
-    "invalidTitle": "This invitation is no longer valid",
-    "invalidBody": "The link may have expired or already been used. Ask the Project owner to send a new invite.",
-    "expiredTitle": "This invitation has expired",
-    "expiredBody": "Your invite to {project} is past its {days}-day window. Ask the Project owner to send a new one.",
-    "notInviteeTitle": "This invitation isn't for this account",
-    "notInviteeBody": "You're signed in as a different user. Sign in with the account this invite was sent to.",
-    "declinedTitle": "Invitation declined",
-    "declinedBody": "You declined the invite to {project}. You can ask the owner to invite you again later.",
-    "joinedToast": "You've joined the project.",
-    "actionFailed": "Could not complete that. Please try again.",
-    "backToStudio": "Back to Studio",
-    "signIn": "Sign in"
   },
   "chrome": {
     "tooltip": {
@@ -1019,5 +984,37 @@
       "monthsAgo": "{count, plural, one {# month ago} other {# months ago}}",
       "isoDate": "{date}"
     }
+  },
+  "decision": {
+    "loadingTitle": "Opening this request…",
+    "loadingBody": "One moment while we look it up.",
+    "title": "{kind, select, studio_invite {You've been invited to a Studio} project_invite {You've been invited to a Project} role_upgrade {Someone asked for a bigger role} project_transfer {A Project is being handed to you} studio_transfer {A Studio is being handed to you} other {Something needs your answer}}",
+    "body": "{kind, select, studio_invite {{actor} invited you to join {entity} as {role, select, maintainer {a Maintainer} guest {a Guest} other {a Member}}.} project_invite {{actor} invited you to work on {entity} as {role, select, editor {an Editor} viewer {a Viewer} other {a Member}}.} role_upgrade {{actor} asked to become {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}} on {entity}.} project_transfer {{actor} wants to make you the Owner of {entity}.} studio_transfer {{actor} wants to make you the Admin of {entity}.} other {{actor} is waiting on your answer about {entity}.}}",
+    "reason": "They said: {message}",
+    "confirm": "{kind, select, role_upgrade {Approve} other {Accept}}",
+    "decline": "{kind, select, role_upgrade {Decline} other {Decline}}",
+    "windowNote": "This request could be answered within {days, plural, one {# day} other {# days}}.",
+    "acceptedTitle": "You already accepted this",
+    "acceptedBody": "There is nothing left to do here.",
+    "declinedTitle": "You already declined this",
+    "declinedBody": "There is nothing left to do here.",
+    "expiredTitle": "This request has ended",
+    "expiredBody": "It can no longer be answered.",
+    "revokedTitle": "This was withdrawn",
+    "revokedBody": "The person who sent it took it back.",
+    "goneTitle": "This is no longer here",
+    "goneBody": "What this request was about has been deleted.",
+    "alreadyMemberTitle": "You are already in",
+    "alreadyMemberBody": "You already have what this invitation offered.",
+    "invalidTitle": "This link is not valid",
+    "invalidBody": "Check that you copied the whole link from your email.",
+    "unreachableTitle": "We could not load this request",
+    "unreachableBody": "Something went wrong on the way here. The link is fine — try again.",
+    "retry": "Try again",
+    "notYoursTitle": "This one is not yours to answer",
+    "notYoursBody": "This link was sent to somebody else.",
+    "goThere": "Go there",
+    "backHome": "Back to your Studio",
+    "actionFailed": "That did not go through. Please try again."
   }
 }

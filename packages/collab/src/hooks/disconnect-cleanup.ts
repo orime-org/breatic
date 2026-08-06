@@ -89,9 +89,13 @@ export async function cleanupOnDisconnect(
 
   try {
     await connection.transact((doc: Y.Doc) => {
-      // Inner `doc.transact` carries the origin so UndoManager filters
-      // this server-side cleanup out of the local undo stack. The outer
-      // `connection.transact` from Hocuspocus only takes the callback.
+      // The inner `doc.transact` names the writer, but nothing outside this
+      // file ever sees that name: `connection.transact` opens the Yjs
+      // transaction itself, and a nested `transact` keeps the outermost origin
+      // and discards whatever an inner call passes. It is also NOT what keeps
+      // this cleanup out of a user's undo stack — origins never cross the
+      // wire, and the canvas UndoManager tracks an allow-list holding a single
+      // local Symbol that no server-side string could match.
       doc.transact(() => {
         const nodesMap = doc.getMap("nodesMap");
         nodesMap.forEach((nodeMap) => {

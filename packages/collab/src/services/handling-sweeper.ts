@@ -34,10 +34,16 @@
  * after #1569 every live producer writes the lease, so a missing lease
  * is by definition an orphan (pre-#1569 zombie or a torn write).
  *
- * Writes use the {@link HANDLING_SWEEP_ORIGIN} named transaction origin so
- * client UndoManagers (which track only their own origins) never absorb a
- * sweep into a user's undo stack — same convention as `node-state-update`
- * and `collab-disconnect-cleanup`.
+ * Writes carry the {@link HANDLING_SWEEP_ORIGIN} named transaction origin,
+ * which names the writer. Unlike `node-state-update` and
+ * `collab-disconnect-cleanup` — both nested inside a `DirectConnection`
+ * transaction, which keeps its own origin and discards theirs — this one does
+ * survive, because the sweeper writes through a direct document reference and
+ * so opens the outermost transaction. Nothing reads it today; it is there for
+ * whoever is holding a debugger. It is NOT what keeps a sweep out of a user's
+ * undo stack: origins never cross the wire, and the canvas UndoManager tracks
+ * an allow-list holding a single local Symbol that no server-side string could
+ * match.
  */
 import * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";

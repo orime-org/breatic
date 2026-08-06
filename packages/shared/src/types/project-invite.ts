@@ -46,27 +46,3 @@ export interface PendingProjectInvitationSummary {
   expiresAt: string;
 }
 
-/**
- * Project invitation landing view — what the email-link page (`/project-invite`)
- * shows before the invitee acts. No invitation id / invitee id is exposed; the
- * server resolves those from the one-time token. Mirror of the studio
- * `InvitationLandingView`.
- */
-export interface ProjectInvitationLandingView {
-  projectName: string;
-  /** The project's URL slug, used to build the post-confirm redirect. */
-  projectSlug: string;
-  /** The project's UUID, used to build the post-confirm redirect. */
-  projectId: string;
-  inviterName: string;
-  role: InvitableProjectRole;
-  /** True once past the decision window — the page shows an "expired" state. */
-  expired: boolean;
-  /** True when the logged-in user is the invitee (gates the confirm button). */
-  isInvitee: boolean;
-  /**
-   * The decision window in days, as the server is configured. The expired copy
-   * prints it instead of spelling out a number of its own.
-   */
-  windowDays: number;
-}

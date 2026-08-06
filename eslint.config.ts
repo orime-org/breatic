@@ -414,6 +414,25 @@ export default tseslint.config(
     },
   },
   {
+    // Where the five deferred decisions live — studio invite, project invite,
+    // studio transfer, project transfer, role upgrade. Their shared TTL is
+    // config/limits.yaml -> deferred_request_ttl_days, reached through
+    // deferredRequestExpiry(); that helper lives in server/src/config, outside
+    // this tree, so it needs no exception. Session lifetime is deliberately
+    // out of scope: a 30-day session is a different concept that happens to be
+    // measured in days, and sweeping it in would make this rule about day
+    // arithmetic rather than about request TTLs.
+    //
+    // Tests are exempt because they legitimately construct arbitrary instants,
+    // including deliberately-expired ones — which is exactly how the expiry
+    // gate is verified.
+    files: ["packages/server/src/modules/**/*.ts"],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
+    rules: {
+      "breatic/no-hardcoded-request-ttl": "error",
+    },
+  },
+  {
     // Only test files, and deliberately not excluding them: this is the one
     // rule whose subject IS the test file. It reads the path rather than the
     // contents, so the block only has to put it in front of the right files.
@@ -488,6 +507,31 @@ export default tseslint.config(
     files: ["packages/{collab,core,domain,server,shared,worker}/src/**/*.{ts,tsx}"],
     rules: {
       "breatic/no-deployed-host": "error",
+    },
+  },
+  {
+    // Outbound HTTP goes through the shared transport. The six packages this
+    // file can reach; web declares the same rule in its own config, because
+    // ESLint started there never reads this one.
+    //
+    // packages/shared/src/http/ is where the transport is implemented, so the
+    // one remaining bare fetch lives there by definition. Exempting the
+    // directory rather than the file: splitting the implementation later
+    // should not require breaking the exemption open again.
+    //
+    // Tests are exempt on the same terms as every other invariant here, and
+    // for a concrete reason too — the transport's own real-fetch.test.ts opens
+    // a real port and calls the platform fetch, which is the only way to prove
+    // the thing it proves.
+    files: ["packages/{collab,core,domain,server,shared,worker}/src/**/*.{ts,tsx}"],
+    ignores: [
+      "packages/shared/src/http/**",
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.spec.ts",
+    ],
+    rules: {
+      "breatic/no-naked-fetch": "error",
     },
   },
   {

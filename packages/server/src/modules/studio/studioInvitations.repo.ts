@@ -28,6 +28,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { db, studioInvitations, studios, users } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { PendingInvitationSummary, StudioRole } from "@breatic/shared";
+import { mintShareToken } from "@server/utils/share-token.js";
 
 /** Roles an invite may grant — admin is granted via transfer, never invite. */
 type InvitableRole = "maintainer" | "guest";
@@ -46,6 +47,12 @@ export interface AcceptedInvite {
   notificationId: string | null;
 }
 
+/** A freshly filed request: its id, and the token that names it in a link. */
+export interface CreatedRequest {
+  id: string;
+  shareToken: string;
+}
+
 /**
  * Insert a fresh pending invitation; returns the new row id (the caller puts it
  * in the bell-notification payload, then links it back via
@@ -61,7 +68,7 @@ export interface AcceptedInvite {
  * @param input.invitedBy - The inviting admin's user id
  * @param input.expiresAt - When the invite times out (matches the notification TTL)
  * @param input.tx - Optional drizzle transaction handle
- * @returns The new invitation's id
+ * @returns The new invitation's id and its share token
  * @throws {Error} if the insert returns no row (should never happen)
  */
 export async function createPending(input: {
@@ -71,7 +78,7 @@ export async function createPending(input: {
   invitedBy: string;
   expiresAt: Date;
   tx?: DbTx;
-}): Promise<string> {
+}): Promise<CreatedRequest> {
   const handle = input.tx ?? db;
   const rows = await handle
     .insert(studioInvitations)
@@ -81,14 +88,15 @@ export async function createPending(input: {
       role: input.role,
       invitedBy: input.invitedBy,
       status: "pending",
+      shareToken: mintShareToken(),
       expiresAt: input.expiresAt,
     })
-    .returning({ id: studioInvitations.id });
+    .returning({ id: studioInvitations.id, shareToken: studioInvitations.shareToken });
   const row = rows[0];
   if (!row) {
     throw new Error("studioInvitationsRepo.createPending: insert returned no row");
   }
-  return row.id;
+  return { id: row.id, shareToken: row.shareToken };
 }
 
 /**
@@ -130,8 +138,9 @@ export async function expireStalePending(
 
 /**
  * Link the bell notification to an invite (set right after the notification is
- * created, in the same transaction) so accept / decline / revoke can mark it
- * read and the bell entry disappears even when acted on via the email link.
+ * created, in the same transaction) so settling the invite can mark it read —
+ * whether the invitee answered on the decision page or the inviter revoked it.
+ * Nothing is answered inside the bell, so without this the row would linger.
  * @param id - Invitation id
  * @param notificationId - The `studio.invite_request` notification id
  * @param tx - Optional drizzle transaction handle

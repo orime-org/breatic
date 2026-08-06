@@ -11,8 +11,10 @@
  */
 
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
+// One shape for "a container has an outstanding ownership offer" — a project and
+// a studio differ in what changes hands, not in what the offer looks like.
+import type { LiveTransfer } from '@web/data/api/projects';
 import type {
-  InvitationLandingView,
   ProjectSummary,
   RecentItem,
   Studio,
@@ -219,6 +221,33 @@ export const studiosApi = {
       body,
     );
   },
+
+  /**
+   * `GET /api/v1/studio/:slug/transfer` — the studio's outstanding adminship
+   * offer, or null. Admin-only; it is the admin's own "pending · withdraw"
+   * surface.
+   * @param slug the studio's URL handle.
+   * @returns the live offer, or null when there is none.
+   */
+  liveTransfer(slug: string): Promise<LiveTransfer | null> {
+    return apiGet<LiveTransfer | null>(`/studio/${slug}/transfer`);
+  },
+
+  /**
+   * `DELETE /api/v1/studio/:slug/transfer/:transferId` — the CURRENT admin
+   * withdraws an outstanding offer, freeing the studio's slot at once.
+   *
+   * Withdrawal belongs to whoever administers the studio now, not to whoever
+   * sent the offer: after a transfer the former admin is gone, and a second
+   * unanswered offer would block adminship for a week with the only key held by
+   * someone who has left.
+   * @param slug the studio's URL handle.
+   * @param transferId the offer being withdrawn.
+   * @returns once the offer is withdrawn.
+   */
+  withdrawTransfer(slug: string, transferId: string): Promise<{ ok: true }> {
+    return apiDelete<{ ok: true }>(`/studio/${slug}/transfer/${transferId}`);
+  },
   /**
    * `PATCH /api/v1/studio/:slug` — edit the studio's name, slug and/or bio.
    * Admin-only; every field is optional but the patch may not be empty.
@@ -271,32 +300,5 @@ export const studiosApi = {
    */
   leave(slug: string): Promise<{ ok: true }> {
     return apiDelete<{ ok: true }>(`/studio/${slug}/membership`);
-  },
-  /**
-   * `GET /api/v1/studio-invitations/:token` — the landing-page view for an email
-   * invite link (studio + inviter names, role, `expired`, `isInvitee`).
-   * Auth-only. Rejects with `404` when the token / invite is gone.
-   * @param token the one-time token from the invite link.
-   * @returns the invitation landing view.
-   */
-  getInvitation(token: string): Promise<InvitationLandingView> {
-    return apiGet<InvitationLandingView>(`/studio-invitations/${token}`);
-  },
-  /**
-   * `POST /api/v1/studio-invitations/respond` — confirm or decline an invite
-   * from the email link; consumes the one-time token. Returns the studio slug
-   * for the post-confirm redirect.
-   * @param token the one-time token from the invite link.
-   * @param action `confirm` to accept (and join), `decline` to refuse.
-   * @returns the studio slug to redirect to on confirm.
-   */
-  respondInvitation(
-    token: string,
-    action: 'confirm' | 'decline',
-  ): Promise<{ studioSlug: string }> {
-    return apiPost<
-      { studioSlug: string },
-      { token: string; action: 'confirm' | 'decline' }
-    >('/studio-invitations/respond', { token, action });
   },
 };

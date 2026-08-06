@@ -24,7 +24,8 @@ import {
   getRedis,
   getCollabRedis,
 } from "@breatic/core";
-import { createLoopbackExemptThrottle } from "@collab/infra/loopback-exempt-throttle.js";
+import { createConnectionGate } from "@collab/infra/connection-gate.js";
+import { socketCeilings } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
   type ConnectionRegistry,
@@ -44,7 +45,8 @@ import {
   type SpaceRpcResponse,
 } from "@breatic/shared";
 import { createAuthHook } from "@collab/hooks/auth.js";
-import { checkWriteAuthz, WriteAuthzError } from "@collab/hooks/before-handle-message.js";
+import { projectAwarenessIntoMetaUsers } from "@collab/hooks/awareness-meta-users.js";
+import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import { createPersistenceExtension } from "@collab/services/persistence.js";
 import { getCollabConfig } from "@collab/config.js";
 import { cleanupOnDisconnect } from "@collab/hooks/disconnect-cleanup.js";
@@ -133,13 +135,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     }),
   ];
 
-  // Throttle extension (optional) — loopback-exempt so a developer's own
-  // machine / health probes are never rate-banned (every dev tab shares the
-  // loopback IP and trips the threshold in seconds). Real client IPs (carried
-  // via x-forwarded-for behind a load balancer) are still throttled.
+  // Connection gate (optional) — identifies every incoming connection by its
+  // peer address during the upgrade, then either exempts a developer's own
+  // machine or hands a real client to the throttle to be counted. See
+  // `infra/connection-gate.ts` for why the verdict has to be decided that
+  // early and why it travels as a header.
   if (cfg.throttle_enabled) {
     extensions.push(
-      createLoopbackExemptThrottle({
+      createConnectionGate({
         throttle: cfg.throttle_max_attempts,
         banTime: cfg.throttle_ban_time,
       }),
@@ -154,6 +157,24 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     unloadImmediately: cfg.unload_immediately,
     debounce: cfg.debounce,
     maxDebounce: cfg.max_debounce,
+
+    // How many documents one socket may have awaiting authentication. The
+    // framework defaults this to 100 and closes the WHOLE socket past it,
+    // which assumes one document per socket. Ours carries a project: the meta
+    // doc plus one per open Space tab, and a member who has never closed a tab
+    // has every Space open. See config/collab.yaml for the ceiling and for
+    // what actually bounds abuse here.
+    ...socketCeilings(cfg.max_documents_per_socket),
+
+    // Broadcast every change the moment it is applied, which is what the
+    // framework did before it grew a batching window. The window (default
+    // `0`, meaning "coalesce whatever lands in this event-loop turn") would
+    // trade fewer frames for a broadcast that no longer happens inside the
+    // transaction — and the Space RPC commit boundary is built on the
+    // broadcast being the synchronous, observable commit point. Turning it on
+    // is a behaviour change to weigh on its own, not something to inherit
+    // from a default.
+    flushDelay: false,
 
     // Authentication — verifies session token AND per-project
     // ownership. See packages/collab/src/auth.ts.
@@ -228,28 +249,53 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
     },
 
-    // There is no `onAwarenessUpdate` hook any more (#1882).
+    // `meta.users[userId]` population (2026-05-27 awareness rewrite):
+    // the front-end writes `user` into awareness via
+    // `provider.awareness.setLocalStateField('user', { id, name, avatarUrl })`
+    // and we project it into `meta.users[userId]` here. Awareness is
+    // declarative — `setLocalStateField` re-fires for any
+    // `currentUser` deps change in `useProjectMeta`, so a user
+    // renaming themselves in settings flows through automatically
+    // (the prior `users:upsert-self` stateless RPC path missed this
+    // because its `sentForProviderRef` guard skipped re-sends).
     //
-    // It used to project each client's awareness `user` field into
-    // `meta.users[userId]`, so a name and avatar survived the person going
-    // offline. That whole idea was retired: a name only ever needs to be
-    // right for somebody who is HERE, and someone who is here has a browser
-    // that just fetched it. Peers now resolve names from the project roster
-    // (server data, current by construction) and never from the wire, which
-    // also means the server stops holding a copy that goes stale the moment
-    // anyone renames themselves.
+    // Anti-spoof: only awareness state whose `user.id` matches the
+    // connection-context user is honored. Multi-collab-instance dedup
+    // falls out of the same check — remote-synced updates land here
+    // with a non-matching (or empty) context.user.id and are
+    // rejected without writing.
     //
-    // What went with it: the persistence itself, the multi-instance dedup
-    // that fell out of it, and the 30s debounce that existed because cursor
-    // movement fired this hook at sub-second rates.
-    //
-    // The anti-spoof check did NOT go with it, and must not. The id on the
-    // wire is the whole of a collaborator's on-screen identity — peers derive
-    // the display name from it via the roster and the caret colour by hashing
-    // it — so announcing someone else's id wears their name and colour. That
-    // check moved to `beforeHandleMessage`, which is the only place that can
-    // still refuse: this hook runs AFTER `handleAwarenessUpdate` has already
-    // broadcast the frame to every connection, and has no reject path.
+    // Debounce: cursor / selection awareness updates would fire this
+    // hook at sub-second rates. The helper diffs the user fields and
+    // throttles the `lastSeenAt` refresh to one transact per user
+    // per 30s — see `awareness-meta-users.ts`.
+    onAwarenessUpdate: async ({
+      documentName,
+      document,
+      awareness,
+      added,
+      updated,
+      connection,
+    }) => {
+      const parsed = parseDocName(documentName);
+      if (!parsed || parsed.kind !== "meta") return;
+      // From v4 the payload carries the originating connection instead of a
+      // bare context, and it is ABSENT for updates relayed from another
+      // instance. Both shapes feed the same anti-spoof check below: an update
+      // whose declared user id does not match the connection's own context is
+      // rejected, and a relayed update has no connection at all so it can
+      // never match.
+      const ctx = connection?.context as { user?: { id?: string } } | undefined;
+      projectAwarenessIntoMetaUsers({
+        documentName,
+        document,
+        awareness,
+        added,
+        updated,
+        contextUserId: ctx?.user?.id,
+        now: Date.now(),
+      });
+    },
 
     onDisconnect: async ({ documentName, context, socketId }) => {
       const ctx = context as { user?: { id: string } };
@@ -279,25 +325,25 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
     },
 
-    // Client write authorization — refuses direct writes to
-    // meta.spaces / meta.projectMessages / meta.perUser[someone else].
-    // Per ADR 2026-05-23-yjs-collab-only-write-authz.
-    beforeHandleMessage: async ({ documentName, document, update, context }) => {
-      try {
-        checkWriteAuthz({
-          documentName,
-          document,
-          update,
-          context: context as { user?: { id?: string } },
-        });
-      } catch (e) {
-        if (e instanceof WriteAuthzError) {
-          logger.warn(
-            { documentName, err: e.message },
-            "write_authz_rejected",
-          );
-        }
-        throw e;
+    // A client trying to write the meta doc gets ONE LOG LINE and nothing
+    // else. Refusing the write is not this hook's job: the connection to
+    // that doc is read-only for every client (`hooks/auth.ts`), and the
+    // framework enforces that at each site where it would apply an update.
+    //
+    // This replaces a gate that decided here whether to reject, which
+    // required recognising a write from the raw frame — and it got that
+    // wrong, silently, for its entire life. Keeping only the observation
+    // means a mistake costs a log line rather than a hole.
+    //
+    // Nothing in the frontend writes the meta doc, so this should never
+    // fire. When it does, it is a stale build or someone probing.
+    beforeHandleMessage: async ({ documentName, update, context }) => {
+      const ctx = context as { user?: { id?: string } };
+      if (isMetaWriteAttempt(documentName, update, ctx)) {
+        logger.warn(
+          { documentName, userId: ctx.user?.id },
+          "meta_write_attempt",
+        );
       }
     },
 
@@ -361,9 +407,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         }
       }
 
-      // (Per-user write-boundary enforcement now lives in
-      // `beforeHandleMessage` → `checkWriteAuthz`, per ADR
-      // 2026-05-23-yjs-collab-only-write-authz. The old onChange
+      // (Nothing enforces write boundaries here. The meta doc is
+      // read-only for every client — see `hooks/auth.ts` — and per-user
+      // tab changes go through the `tab:*` RPCs below. The old onChange
       // audit-log was telemetry-only and has been retired.)
     },
   });
@@ -374,6 +420,11 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     debounce: cfg.debounce,
     throttle: cfg.throttle_enabled,
     maxConnectionsPerDoc: cfg.max_connections_per_document,
+    // Belongs in the banner for the same reason the line above does: it is a
+    // ceiling whose only symptom, once crossed, is connections dropping. An
+    // operator has to be able to read what this process is enforcing without
+    // guessing which copy of the config it loaded.
+    maxDocumentsPerSocket: cfg.max_documents_per_socket,
   }, "Hocuspocus server configured");
 
   // Periodic handling-lease sweep (#1569) over the currently-loaded docs,

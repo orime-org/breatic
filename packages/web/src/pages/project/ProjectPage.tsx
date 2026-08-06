@@ -26,9 +26,7 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { evictDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import {
-  closeSpaceTab,
-  openSpaceTab,
-  planVanishedSpaceReconcile,
+  nextActiveAfterVanish,
   useProjectMeta,
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
@@ -70,16 +68,20 @@ import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
  *     active tab and remounted B's running space body. Opening a project
  *     defaults to the first open tab.
  *
- * Collab-only write flow (ADR 2026-05-23 yjs-collab-only-write-authz):
- *   - Create / delete / lock / restore + projectMessages clear all go
- *     through `sendSpaceRpc` (stateless RPC over the live Hocuspocus
- *     connection on the meta doc). Collab authorizes the caller's role,
- *     performs the privileged Yjs write, and broadcasts back. Server
+ * Collab-only write flow:
+ *   - Create / delete / lock / rename / restore, and each person's own
+ *     tab bar, all go through `sendSpaceRpc` (stateless RPC over the live
+ *     Hocuspocus connection on the meta doc). Collab checks the caller's
+ *     role, makes the privileged Yjs write, and broadcasts back. Server
  *     REST routes + Redis pub/sub are gone.
- *   - The client does NOT write `meta.spaces` / `meta.projectMessages`
- *     directly - `beforeHandleMessage` would reject it. A global
- *     loading overlay covers the 50-200ms round trip; a 10-second
- *     timeout guards against a wedged collab.
+ *   - The client writes NOTHING in the meta doc. Its connection to that
+ *     doc is read-only at the framework level, so a direct write does not
+ *     fail loudly — it simply never lands. A global loading overlay
+ *     covers the 50-200ms round trip; a 10-second timeout guards against
+ *     a wedged collab.
+ *   - Creating a Space returns an id the client did not choose, so the
+ *     machine that asked recognises it by the claim token it sent, which
+ *     comes back on the entry.
  */
 const SPACE_OP_TIMEOUT_MS = 10_000;
 
@@ -264,29 +266,53 @@ function ProjectWorkspace({
     );
   }, [projectId, openTabIds, spaces]);
 
-  // Reconcile this user's per-user tab state when spaces vanish (deleted
-  // locally or by a collaborator). Delete goes through the `space:delete` RPC,
-  // NOT `onCloseTab`, so without this the active space could be a now-deleted
-  // id: the canvas renders the `?? openTabs[0]` fallback but no tab is
-  // highlighted (activeSpaceId still points at the gone space). This prunes the
-  // vanished tab ids and, if the active one vanished, activates the first
-  // still-visible tab (or the empty state when none remain). Per-user + runs on
-  // every client, so the deleter AND collaborators each converge their own
-  // state. Local Yjs writes apply even on a viewer's read-only connection
-  // (they just don't persist), so the UI stays consistent for everyone.
+  // Move off a Space that has VANISHED — deleted by us or by a collaborator.
+  // Delete goes through the `space:delete` RPC, never through `onCloseTab`, so
+  // without this the active id keeps naming a Space that no longer exists.
+  //
+  // Closing a tab is NOT handled here, and must not be: an active id that is
+  // still live but absent from `openTabIds` also describes a Space that is
+  // being opened this instant, whose `tab:open` broadcast has not landed yet.
+  // Reacting to that shape sends the user back to the first tab every time
+  // they pick a Space. Closing needs nothing anyway — `openTabs` drops the id,
+  // `resolveEffectiveActiveSpace` falls back to the first open tab, and line
+  // ~805 hands that fallback's id to the tab strip, so body and highlight move
+  // together. `activeSpaceId` stays pointing at the closed Space until
+  // something else changes it, which is harmless: it only matters again if the
+  // user reopens that same Space, and landing back on it is what they asked
+  // for.
+  //
+  // Per-user + runs on every client, so the person who deleted AND everyone
+  // else each converge their own state.
   React.useEffect(() => {
     if (!userId) return;
     const liveIds = new Set(spaces.map((s) => s.id));
-    const { tabsToClose, reactivateTo } = planVanishedSpaceReconcile(
-      openTabIds,
-      liveIds,
-      activeSpaceId,
-    );
-    for (const id of tabsToClose) closeSpaceTab(projectId, userId, id);
-    if (reactivateTo !== undefined) {
-      setActiveSpaceId(reactivateTo);
+    const next = nextActiveAfterVanish(openTabIds, liveIds, activeSpaceId);
+    if (next !== undefined) {
+      setActiveSpaceId(next);
     }
-  }, [userId, projectId, openTabIds, spaces, activeSpaceId]);
+  }, [userId, openTabIds, spaces, activeSpaceId]);
+
+  // Discard the in-memory state of a tab once it has actually left this
+  // user's list — whether they closed it, another machine on the account
+  // closed it, or the Space was deleted out from under it.
+  //
+  // Driven by the list rather than by the close handler on purpose: the
+  // close is a round trip now, and discarding at request time would mean
+  // a failed close leaves a tab on screen whose undo history is already
+  // gone. Both caches are keyed by doc name and evicting an unknown name
+  // is a no-op, so both are called without checking the Space type.
+  const previousOpenTabIdsRef = React.useRef<readonly string[]>(openTabIds);
+  React.useEffect(() => {
+    const departed = previousOpenTabIdsRef.current.filter(
+      (id) => !openTabIds.includes(id),
+    );
+    previousOpenTabIdsRef.current = openTabIds;
+    for (const id of departed) {
+      evictCanvasUndoManager(docName.canvasSpace(projectId, id));
+      evictDocumentEditor(docName.documentSpace(projectId, id));
+    }
+  }, [projectId, openTabIds]);
 
   // Note: NO URL ↔ active-space reconcile. Per user decision
   // `[[feedback_space_type_vs_route]]`, Space is a type/template, not
@@ -303,25 +329,97 @@ function ProjectWorkspace({
     'space-readonly-sheet',
   );
 
-  const pendingCreateIdRef = React.useRef<string | null>(null);
-
-  // Auto-dismiss the create loading overlay when the new space id
-  // appears in the live Yjs spaces map. Delete intentionally has no
-  // overlay (fast op, the tab vanishing is the user-visible signal).
-  React.useEffect(() => {
-    if (spaceOpInProgress === 'creating' && pendingCreateIdRef.current) {
-      const id = pendingCreateIdRef.current;
-      if (spaces.some((s) => s.id === id)) {
-        pendingCreateIdRef.current = null;
-        setSpaceOpInProgress(null);
-        if (userId) {
-          openSpaceTab(projectId, userId, id);
-          setActiveSpaceId(id);
-        }
+  /**
+   * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
+   * connection. Always throws on failure, and always shows a toast first —
+   * every caller relies on that, ending in an empty `.catch()` because the
+   * user has already been told. There are three ways to fail and all three
+   * go through here: the provider is not mounted yet (the UI gates actions
+   * behind `synced`), the request never came back (`sendSpaceRpc` rejects on
+   * its 10s timeout, or the transport throws), or the server answered no.
+   */
+  const callRpc = React.useCallback(
+    async (
+      req: Parameters<typeof sendSpaceRpc>[1],
+      errorToastKey: string,
+    ): Promise<SpaceRpcResponse> => {
+      if (!provider) {
+        // Surface a toast on the "no provider yet" path too - without this
+        // the catch block in callers received a silent `Error('notSynced')`
+        // and (because `err.message.length > 0`) the fallback toast was
+        // skipped, leaving the user staring at a dismissed dialog and no
+        // explanation (2026-05-25 P0 silent-fail).
+        const msg = t('project.space.error.notSynced');
+        toast.error(t(errorToastKey), { description: msg });
+        throw new Error(msg);
       }
+      let res: SpaceRpcResponse;
+      try {
+        res = await sendSpaceRpc(provider, req);
+      } catch (err) {
+        // A rejection means the request never got an answer — the 10s
+        // timeout, or the socket refusing to carry it. Without this the
+        // rejection travelled straight out of the await, past both toasts
+        // below, into a caller's empty catch: with the network down a user
+        // could close a tab and never hear anything back (real-browser
+        // smoke, 2026-08-03). The thrown message is a developer string, so
+        // the user gets a written one instead.
+        toast.error(t(errorToastKey), {
+          description: t('project.space.error.unreachable'),
+        });
+        throw err;
+      }
+      if (!res.ok) {
+        toast.error(t(errorToastKey), { description: res.error.message });
+        throw new Error(res.error.message);
+      }
+      return res;
+    },
+    [provider, t],
+  );
+
+  const pendingCreateTokenRef = React.useRef<string | null>(null);
+
+  // Claim the Space this machine asked for, and dismiss the create
+  // overlay, when it shows up in the live Yjs spaces map.
+  //
+  // The match is on the claim token, not on the id: the server mints ids
+  // now, so this machine never knew the id in advance. The token was
+  // generated here per click and travels out with the request and back
+  // in the broadcast, so of everyone watching this map, only the machine
+  // that asked recognises the entry. Matching on `createdBy` would not
+  // do — the same person signed in on three machines matches all three,
+  // and all three would open the tab.
+  //
+  // Delete intentionally has no overlay (fast op, the tab vanishing is
+  // the user-visible signal).
+  React.useEffect(() => {
+    if (spaceOpInProgress !== 'creating' || !pendingCreateTokenRef.current) {
+      return;
     }
-    // Delete no longer uses spaceOpInProgress - see onDeleteSpace.
-  }, [spaces, spaceOpInProgress, projectId, userId, setSpaceOpInProgress]);
+    const token = pendingCreateTokenRef.current;
+    const mine = spaces.find((s) => s.claimToken === token);
+    if (!mine) return;
+    pendingCreateTokenRef.current = null;
+    setSpaceOpInProgress(null);
+    if (userId) {
+      // Opening the tab is its own round trip: the token says WHICH
+      // Space to open, and opening it is a change to shared state that
+      // only the server may write.
+      //
+      // It reports as an OPEN failure, not a create failure. The create
+      // already succeeded — the entry is in the list and on screen — so
+      // saying it failed would send the user off to make a second Space.
+      void callRpc(
+        { type: 'tab:open', payload: { spaceId: mine.id } },
+        'project.space.error.openTab',
+      ).catch(() => {
+        // callRpc already surfaced a toast; the Space itself exists, so
+        // there is nothing to roll back and nothing more to say.
+      });
+      setActiveSpaceId(mine.id);
+    }
+  }, [spaces, spaceOpInProgress, userId, setSpaceOpInProgress, callRpc]);
 
   // Safety timeout - if the collab broadcast never lands, free the UI
   // and surface a toast so the user can retry rather than stare at a
@@ -330,7 +428,7 @@ function ProjectWorkspace({
     if (spaceOpInProgress === null) return;
     const handle = setTimeout(() => {
       setSpaceOpInProgress(null);
-      pendingCreateIdRef.current = null;
+      pendingCreateTokenRef.current = null;
       toast.error(t('project.space.timeout.create'), {
         description: t('project.space.timeout.retry'),
       });
@@ -393,7 +491,21 @@ function ProjectWorkspace({
    */
   const onActivate = (id: string): void => {
     if (!userId) return; // pre-auth no-op (per-user UI state needs userId)
-    openSpaceTab(projectId, userId, id);
+    // Which tab is ACTIVE is local window state and stays local — two
+    // machines on one account each keep their own. Which tabs are OPEN
+    // is shared and persisted, so ONLY opening one more rides the wire
+    // (§6.6.2): a click on a tab that is already open is a pure switch,
+    // and a switch is instant and local. Sending the redundant open made
+    // every switch raise "failed to open the tab" whenever collab was
+    // unreachable, for an action that needed nothing from it.
+    if (!openTabIds.includes(id)) {
+      void callRpc(
+        { type: 'tab:open', payload: { spaceId: id } },
+        'project.space.error.openTab',
+      ).catch(() => {
+        // callRpc already surfaced a toast.
+      });
+    }
     setActiveSpaceId(id);
   };
 
@@ -414,64 +526,36 @@ function ProjectWorkspace({
       toast.warning(t('canvas.close.operationInProgress'));
       return;
     }
-    closeSpaceTab(projectId, userId, id);
-    // Closing a tab discards the in-memory state that tab accumulated, so
-    // reopening the space starts clean: the canvas drops its undo manager, and
-    // the document drops its whole editor (which owns its undo stack and its
-    // selection — kept across tab SWITCHES, neither meant to survive a close;
-    // the scroll position is not among them, see `document-editor-cache`).
-    // Each Space type keeps its own cache and
-    // evicting an unknown name is a no-op, so both are called without checking
-    // which type this tab was.
+    // Ask the server to close it, and stop there — literally nothing else
+    // happens here. Both of the follow-ups are driven by the list instead,
+    // once the tab has actually left it: the in-memory state this tab
+    // accumulated (canvas undo manager, document editor with its undo stack
+    // and selection) is discarded by the effect that watches openTabIds, and
+    // moving off it is planned by `nextActiveAfterVanish`.
     //
-    // The Y.Doc goes too, though not from here: `SpaceDocSync` unmounts with
-    // the tab and releases the last reference, and the registry's deferred
-    // teardown destroys the provider and then the document. So a reopen
-    // re-dials and re-syncs from the server, and shows the loading placeholder
-    // while it does — nothing about this tab is kept warm.
-    evictCanvasUndoManager(docName.canvasSpace(projectId, id));
-    evictDocumentEditor(docName.documentSpace(projectId, id));
-    if (id === activeSpace?.id) {
-      const next = openTabs.find((s) => s.id !== id);
-      setActiveSpaceId(next?.id ?? null);
-    }
+    // That split matters now that this is a round trip. Anything done here
+    // happens whether or not the request succeeds, and a close CAN fail —
+    // offline, or a server that says no. Discarding here would leave a failed
+    // close showing a tab whose undo history is already gone; switching the
+    // active tab here would leave the tab on screen while the view has moved
+    // off it, which is what a real-browser smoke caught. Waiting for the
+    // broadcast makes "the tab left", "its state was discarded" and "we moved
+    // off it" the same event, and a failed close is simply an event that
+    // never arrives.
+    void callRpc(
+      { type: 'tab:close', payload: { spaceId: id } },
+      'project.space.error.closeTab',
+    ).catch(() => {
+      // callRpc already surfaced a toast; nothing was discarded and nothing
+      // moved, so the tab and everything in it stay exactly as they were.
+    });
   };
 
   /**
-   * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
-   * connection. Throws if the provider isn't mounted yet (the UI gates
-   * actions behind `synced`) or the server reports a non-ok response.
-   */
-  const callRpc = React.useCallback(
-    async (
-      req: Parameters<typeof sendSpaceRpc>[1],
-      errorToastKey: string,
-    ): Promise<SpaceRpcResponse> => {
-      if (!provider) {
-        // Surface a toast on the "no provider yet" path too - without this
-        // the catch block in callers received a silent `Error('notSynced')`
-        // and (because `err.message.length > 0`) the fallback toast was
-        // skipped, leaving the user staring at a dismissed dialog and no
-        // explanation (2026-05-25 P0 silent-fail).
-        const msg = t('project.space.error.notSynced');
-        toast.error(t(errorToastKey), { description: msg });
-        throw new Error(msg);
-      }
-      const res = await sendSpaceRpc(provider, req);
-      if (!res.ok) {
-        toast.error(t(errorToastKey), { description: res.error.message });
-        throw new Error(res.error.message);
-      }
-      return res;
-    },
-    [provider, t],
-  );
-
-  /**
-   * Create a Space - client-side uuid id (ADR B1.1) + `space:create`
-   * RPC. The collab process applies the write under the system user;
-   * the effect above auto-opens the new tab and dismisses the overlay
-   * when the doc broadcast lands.
+   * Create a Space - `space:create` RPC carrying a claim token this machine
+   * generates. The server mints the id and writes the entry under the system
+   * user; the effect above recognises the token in the broadcast, opens the
+   * new tab and dismisses the overlay.
    * @param type - The Space template type to instantiate.
    * @param name - The display name for the new Space.
    */
@@ -480,27 +564,32 @@ function ProjectWorkspace({
     name: string,
   ): Promise<void> => {
     setSpaceOpInProgress('creating');
-    const spaceId = newId();
-    // Pin the pending id BEFORE the RPC await - Yjs sync from collab
-    // can race ahead of the RPC ack (collab broadcasts the meta-doc
-    // mutation as soon as space-rpc transact runs, which often beats
-    // the broadcastStateless response by a few ms). If we only set
-    // pendingCreateIdRef after `await callRpc`, the spaces-watching
-    // effect re-runs on the Yjs update with the ref still null,
-    // misses the match, and the safety timeout (SPACE_OP_TIMEOUT_MS)
-    // fires even though everything succeeded.
-    pendingCreateIdRef.current = spaceId;
+    // The server mints the id, so this machine has nothing to watch for
+    // except the token it is about to send. Only this machine has it.
+    // `newId` and not `crypto.randomUUID`: same v4 shape, but it is the
+    // generator the rest of the app uses, and it works outside a secure
+    // context where `crypto.randomUUID` is undefined.
+    const claimToken = newId();
+    // Pin the token BEFORE the RPC await - Yjs sync from collab can race
+    // ahead of the RPC ack (collab broadcasts the meta-doc mutation as
+    // soon as space-rpc transact runs, which often beats the
+    // broadcastStateless response by a few ms). If we only set the ref
+    // after `await callRpc`, the spaces-watching effect re-runs on the
+    // Yjs update with the ref still null, misses the match, and the
+    // safety timeout (SPACE_OP_TIMEOUT_MS) fires even though everything
+    // succeeded.
+    pendingCreateTokenRef.current = claimToken;
     try {
       await callRpc(
         {
           type: 'space:create',
-          payload: { spaceId, type, name },
+          payload: { type, name, claimToken },
         },
         'project.space.error.create',
       );
     } catch (err) {
       setSpaceOpInProgress(null);
-      pendingCreateIdRef.current = null;
+      pendingCreateTokenRef.current = null;
       // toast already raised inside callRpc when the RPC reports !ok
       if (!(err instanceof Error) || !err.message.length) {
         toast.error(t('project.space.error.create'));

@@ -5,6 +5,7 @@ import { eofNewline } from "#repo-lint/checks/eof-newline";
 import { eslintRulesEnabled } from "#repo-lint/checks/eslint-rules-enabled";
 import { i18nKeysNamespaced } from "#repo-lint/checks/i18n-keys-namespaced";
 import { i18nNoDeadKeys } from "#repo-lint/checks/i18n-no-dead-keys";
+import { i18nNoMissingKeys } from "#repo-lint/checks/i18n-no-missing-keys";
 import { lintCoverage } from "#repo-lint/checks/lint-coverage";
 import { migrationStyle } from "#repo-lint/checks/migration-style";
 import { noAuthBypassResidue } from "#repo-lint/checks/no-auth-bypass-residue";
@@ -34,6 +35,7 @@ export const CHECKS: readonly Check[] = [
   eslintRulesEnabled,
   i18nKeysNamespaced,
   i18nNoDeadKeys,
+  i18nNoMissingKeys,
   lintCoverage,
   migrationStyle,
   noAuthBypassResidue,

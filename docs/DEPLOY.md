@@ -129,6 +129,44 @@ One command deploys everything. For open-source users and internal networks.
 - [Docker Compose](https://docs.docker.com/compose/install/) v2+
 - A domain with DNS pointing to your server (for HTTPS)
 - SSL certificate files (optional, HTTP works without)
+- **Clocks in sync across every host** — see below
+
+### Clocks must agree
+
+Every machine that runs any part of this — the application services, Postgres,
+and Redis — must keep its clock synchronised, by NTP or your platform's
+equivalent. Run them on one host and this is free; split them across hosts and
+it becomes something you have to arrange.
+
+This is a deployment requirement rather than something the code checks,
+because the code cannot check it: a process only ever sees its own clock, so
+"is this machine's time right" is not a question it can ask.
+
+Nor does the code route every time question to one clock and make the others
+irrelevant. A decision request's deadline is stamped by whichever application
+server took the request that created it, and whether that deadline has passed
+is asked sometimes of Postgres and sometimes of an application server. So a
+single deadline is written by one clock and judged by two, and they have to be
+the same clock for the answer to mean anything.
+
+What goes wrong falls into two kinds, and it is worth telling them apart when
+you are chasing one.
+
+When the hosts disagree with each other: a decision request can look answerable
+to one service and expired to another, because of the split above. And a
+rate-limit window can open early or close late, because the score written into
+it is the clock of whichever application server took the request, while the
+window it is measured against comes from whichever server asks next.
+
+When any one host's clock is simply wrong, whether or not the others agree with
+it: sessions and rate-limit keys are given a lifetime in seconds and Redis turns
+that into a moment using its own clock as it writes. Correct that clock later —
+which is what happens the first time an unsynchronised host is brought into line
+— and everything already stored dies against the old reckoning, early or late by
+however far it had drifted.
+
+None of it is repairable in application code, which is why it is stated here as
+a condition of running the system rather than handled as a case inside it.
 
 ### Quick Start
 
@@ -315,8 +353,8 @@ Configure in [Google Cloud Console](https://console.cloud.google.com/apis/creden
 | Service | Image | Port | Description |
 |---------|-------|------|-------------|
 | `web` | nginx:1.27-alpine | 80, 443 | Frontend + reverse proxy + SSL auto-detect |
-| `server` | breatic | 3000 (internal) | HTTP API + SSE |
-| `collab` | breatic | 1234 (internal) | Hocuspocus WebSocket |
+| `server` | breatic | 3000 (published) | HTTP API + SSE |
+| `collab` | breatic | 1234 (not published) | Hocuspocus WebSocket — reachable only over the compose network, as `collab:1234`. nginx sets the header the connection gate identifies clients by, so a published port would let anyone bypass it and set that header themselves |
 | `worker` | breatic | — | BullMQ task worker |
 | `postgres` | postgres:16-alpine | 5432 | Database |
 | `redis` | redis:7-alpine | 6379 | Cache + Queue + Streams |

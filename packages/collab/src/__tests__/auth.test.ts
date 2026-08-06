@@ -90,8 +90,8 @@ vi.mock("@collab/services/yjs-documents.repo.js", () => ({
 import { createAuthHook } from "../hooks/auth.js";
 
 /** Helper — build the headers stub with `breatic_session={token}`. */
-function withCookie(token: string): { cookie: string } {
-  return { cookie: `breatic_session=${token}` };
+function withCookie(token: string): Headers {
+  return new Headers({ cookie: `breatic_session=${token}` });
 }
 
 /**
@@ -162,7 +162,7 @@ describe("createAuthHook", () => {
       hook({
         token: PLACEHOLDER_TOKEN,
         documentName: `project-${PID}/meta`,
-        requestHeaders: {},
+        requestHeaders: new Headers(),
       }),
     ).rejects.toThrow(/cookie/i);
     expect(getSessionMock).not.toHaveBeenCalled();
@@ -174,7 +174,7 @@ describe("createAuthHook", () => {
       hook({
         token: PLACEHOLDER_TOKEN,
         documentName: `project-${PID}/meta`,
-        requestHeaders: { cookie: "other_app=xyz" },
+        requestHeaders: new Headers({ cookie: "other_app=xyz" }),
       }),
     ).rejects.toThrow(/cookie/i);
   });
@@ -278,7 +278,26 @@ describe("createAuthHook", () => {
     expect(connectionConfig.readOnly).toBe(false);
   });
 
-  it("accepts an active editor on the meta doc; connection stays writable (readOnly = false, no space-exists fetch needed)", async () => {
+  // ── Task #27: the meta doc is read-only for every client ──────────────
+  //
+  // The meta doc is the project's directory — which Spaces exist, who the
+  // members are, which tabs each person has open. Changing any of it has
+  // rules attached (a role to check, a content row to create, a ledger
+  // entry, "you cannot delete the last Space"), and rules a client can
+  // choose not to run are not rules. So every change goes through an RPC
+  // and the client's own connection to that doc cannot write at all.
+  //
+  // This replaces a hand-written gate that inspected each frame to see
+  // which field it touched. That gate had to enumerate the framework's
+  // internal message types to recognise a write, and it failed open on
+  // every type it missed — it never ran on a real frame for its whole
+  // life. Read-only is enforced by the framework at each write site, so
+  // there is no list to keep in sync and nothing to miss.
+  //
+  // Content docs are untouched: a canvas or a document body is the user's
+  // own work, it has no rules to enforce, and it stays writable by role.
+
+  it("makes the meta doc read-only for an editor", async () => {
     getSessionMock.mockResolvedValue("user-1");
     loadProjectRoleMock.mockResolvedValue("editor");
     const hook = buildHook();
@@ -292,9 +311,47 @@ describe("createAuthHook", () => {
     });
 
     expect(ctx).toEqual({ user: { id: "user-1", role: "editor" } });
-    expect(connectionConfig.readOnly).toBe(false);
+    expect(connectionConfig.readOnly).toBe(true);
     // The meta doc never triggers the space-exists read.
     expect(fetchDocDataMock).not.toHaveBeenCalled();
+  });
+
+  it("makes the meta doc read-only for an owner too", async () => {
+    // Not a permission level — nobody writes the directory directly,
+    // however senior. An owner's extra powers are exercised through the
+    // RPCs, which run on the server side of the same connection.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("owner");
+    const hook = buildHook();
+    const connectionConfig = { readOnly: false };
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/meta`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig,
+    });
+
+    expect(connectionConfig.readOnly).toBe(true);
+  });
+
+  it("leaves a content doc writable for an editor", async () => {
+    // The regression guard for the change above: making meta read-only
+    // must not touch the docs people actually create in.
+    getSessionMock.mockResolvedValue("user-1");
+    loadProjectRoleMock.mockResolvedValue("editor");
+    fetchDocDataMock.mockResolvedValue(encodeMetaWithSpaces([SID]));
+    const hook = buildHook();
+    const connectionConfig = { readOnly: false };
+
+    await hook({
+      token: PLACEHOLDER_TOKEN,
+      documentName: `project-${PID}/document-${SID}`,
+      requestHeaders: withCookie("tok"),
+      connectionConfig,
+    });
+
+    expect(connectionConfig.readOnly).toBe(false);
   });
 
   // ── Connection cap (#1421 cross-instance) ──────────────────────────
@@ -369,7 +426,12 @@ describe("createAuthHook", () => {
       connectionConfig,
     });
 
-    expect(connectionConfig.readOnly).toBe(false);
+    // Deliberately no assertion on readOnly here. The meta doc IS
+    // read-only, but for an unrelated reason (task #27 — clients never
+    // write the directory), and asserting it in this case would make a
+    // cap test fail whenever that other rule changes. What this case is
+    // about is that the cluster-wide count is never consulted for meta,
+    // which the spy states directly.
     expect(countSpy).not.toHaveBeenCalled();
   });
 
@@ -448,7 +510,7 @@ describe("createAuthHook", () => {
     // connection (hocuspocus-server messageYjsUpdate / syncStep2 handlers).
     // The prior bug returned `{ connection: { readOnly } }`, which only
     // populated `context` — a value Hocuspocus never reads — so viewers
-    // could drag canvas nodes + tamper meta.projectMeta via raw Yjs.
+    // could drag canvas nodes around via raw Yjs.
     expect(connectionConfig.readOnly).toBe(true);
   });
 
@@ -511,9 +573,9 @@ describe("createAuthHook", () => {
     const ctx = await hook({
       token: PLACEHOLDER_TOKEN,
       documentName: `project-${PID}/meta`,
-      requestHeaders: {
+      requestHeaders: new Headers({
         cookie: "first=1; breatic_session=real-token; third=3",
-      },
+      }),
       connectionConfig: { readOnly: false },
     });
 
@@ -540,7 +602,7 @@ describe("createAuthHook", () => {
       hook({
         token: PLACEHOLDER_TOKEN,
         documentName: `project-${PID}/meta`,
-        requestHeaders: {},
+        requestHeaders: new Headers(),
       }),
     ).rejects.toThrow(/cookie/i);
     expect(loggerWarn).toHaveBeenCalledWith(

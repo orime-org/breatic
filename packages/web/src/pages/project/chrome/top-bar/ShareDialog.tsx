@@ -42,13 +42,13 @@ const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * 2026-06-18, #1337). The owner types a registered user's email + picks a role
  * (`editor` / `viewer`); clicking Invite asks the server to create a PENDING
  * project invite, which drops an actionable bell notification in the invitee's
- * inbox (and best-effort an email link to the `/project-invite` landing page).
+ * inbox (and best-effort an email link to the `/decision` landing page).
  * The invitee becomes a member only after they confirm — no immediate access.
  *
- * On success the server returns the `/project-invite?token=` URL, which the
+ * On success the server returns the `/decision?token=` URL, which the
  * dialog reveals in a read-only field with a copy button: this is the third
  * delivery channel (alongside the bell + email) and all three funnel through the
- * same confirm landing page (the divergence from studio's inline bell confirm).
+ * same landing page every waiting request is answered on.
  *
  * Invite address is email-only: usernames are mutable and can't serve as a
  * stable invite identifier, and only already-registered users can be invited.
@@ -68,7 +68,7 @@ export function ShareDialog({
     React.useState<InvitableProjectRole>('viewer');
   const [inviteSubmitting, setInviteSubmitting] = React.useState(false);
   const [inviteError, setInviteError] = React.useState<string | null>(null);
-  // The copyable `/project-invite?token=` URL from the last successful invite
+  // The copyable `/decision?token=` URL from the last successful invite
   // (null until the first invite lands). Each new invite replaces it.
   const [inviteLink, setInviteLink] = React.useState<string | null>(null);
 
@@ -86,7 +86,7 @@ export function ShareDialog({
   /**
    * Validates the address and creates a pending project invite, surfacing
    * errors inline. On success the input clears, a toast confirms the invite was
-   * sent, and the returned `/project-invite?token=` URL is revealed for copying
+   * sent, and the returned `/decision?token=` URL is revealed for copying
    * (the invitee also gets a bell notification + best-effort email).
    * @returns once the invite has been created (or the error surfaced inline).
    */

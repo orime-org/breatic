@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as React from 'react';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
 import type { PersonalStudioRef } from '@breatic/shared';
@@ -29,7 +30,7 @@ function renderAt(
             </ProtectedRoute>
           }
         />
-        <Route path='/login' element={<div data-testid='login-page' />} />
+        <Route path='/login' element={<LoginProbe />} />
         <Route
           path='/choose-slug'
           element={<div data-testid='onboarding-page' />}
@@ -37,6 +38,16 @@ function renderAt(
       </Routes>
     </MemoryRouter>,
   );
+}
+
+/**
+ * Stand-in login page that exposes the query string it was reached with, so
+ * tests can assert the guard carried the intended destination along.
+ * @returns The probe element.
+ */
+function LoginProbe(): React.ReactElement {
+  const location = useLocation();
+  return <div data-testid='login-page'>{location.search}</div>;
 }
 
 const studio: PersonalStudioRef = {
@@ -137,5 +148,16 @@ describe('ProtectedRoute', () => {
     renderAt('/protected', <div data-testid='protected-content' />, false);
     expect(screen.getByTestId('login-page')).toBeInTheDocument();
     expect(screen.queryByTestId('protected-content')).not.toBeInTheDocument();
+  });
+
+  it('sends the intended destination along, search string included', () => {
+    // The email decision links live behind this guard as /decision?token=...;
+    // a guard that forgets the ?token= strands the recipient on /studio after
+    // they sign in, with no way back to the thing they clicked.
+    useCurrentUserStore.setState({ user: null, bootstrapped: true });
+    renderAt('/protected?token=abc123', <div data-testid='protected-content' />);
+    expect(screen.getByTestId('login-page').textContent).toBe(
+      `?next=${encodeURIComponent('/protected?token=abc123')}`,
+    );
   });
 });

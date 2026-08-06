@@ -170,11 +170,14 @@ interface TransferNotif {
   id: string;
   type: string;
   expires_at: Date | null;
+  /** The row the entry announces — what the decision endpoints act on. */
+  transfer_id: string;
 }
 
 async function transferRequestsFor(userId: string): Promise<TransferNotif[]> {
   return sql<TransferNotif[]>`
-    SELECT id, type, expires_at FROM notifications
+    SELECT id, type, expires_at, payload->>'transferId' AS transfer_id
+    FROM notifications
     WHERE user_id = ${userId} AND type = 'project.transfer_request'
       AND deleted_at IS NULL
     ORDER BY created_at DESC
@@ -197,8 +200,18 @@ async function activityCount(projectId: string, type: string): Promise<number> {
   return rows[0]!.c;
 }
 
-async function expireNotification(id: string): Promise<void> {
-  await sql`UPDATE notifications SET expires_at = now() - interval '1 hour' WHERE id = ${id}`;
+async function expireTransfer(transferId: string): Promise<void> {
+  // Both projections move together, exactly as the create path writes them:
+  // the decision gate reads the ROW, the bell reads the entry, and a test that
+  // aged only one of them would stop exercising the gate it claims to.
+  await sql`
+    UPDATE project_transfers SET expires_at = now() - interval '1 hour'
+    WHERE id = ${transferId}
+  `;
+  await sql`
+    UPDATE notifications SET expires_at = now() - interval '1 hour'
+    WHERE payload->>'transferId' = ${transferId}
+  `;
 }
 
 interface Seeded {
@@ -360,7 +373,7 @@ describe("confirmProjectTransfer", () => {
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
     const [req] = await transferRequestsFor(recipientId);
 
-    await projectTransferService.confirmProjectTransfer(req!.id, recipientId);
+    await projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId);
 
     // Old owner dropped ONE rank to editor (D1), recipient is the new owner —
     // materializeOwner promoted them from editor (D3: recipient is a project member).
@@ -391,7 +404,7 @@ describe("confirmProjectTransfer", () => {
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
     const [req] = await transferRequestsFor(recipientId);
 
-    await projectTransferService.confirmProjectTransfer(req!.id, recipientId);
+    await projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId);
 
     expect(await getProjectRole(projectId, ownerId)).toBe("editor");
     expect(await getProjectRole(projectId, recipientId)).toBe("owner");
@@ -402,10 +415,10 @@ describe("confirmProjectTransfer", () => {
     const { projectId, ownerId, recipientId } = await seedProjectTransfer();
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
     const [req] = await transferRequestsFor(recipientId);
-    await expireNotification(req!.id);
+    await expireTransfer(req!.transfer_id);
 
     await expect(
-      projectTransferService.confirmProjectTransfer(req!.id, recipientId),
+      projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId),
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(await getProjectRole(projectId, ownerId)).toBe("owner");
@@ -421,8 +434,8 @@ describe("confirmProjectTransfer", () => {
     const [req] = await transferRequestsFor(recipientId);
 
     const results = await Promise.allSettled([
-      projectTransferService.confirmProjectTransfer(req!.id, recipientId),
-      projectTransferService.confirmProjectTransfer(req!.id, recipientId),
+      projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId),
+      projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId),
     ]);
 
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
@@ -448,7 +461,7 @@ describe("confirmProjectTransfer — TOCTOU eligibility re-check", () => {
     await sql`UPDATE studio_members SET role = 'guest' WHERE studio_id = ${studioId} AND user_id = ${recipientId}`;
 
     await expect(
-      projectTransferService.confirmProjectTransfer(req!.id, recipientId),
+      projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId),
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(await getProjectRole(projectId, ownerId)).toBe("owner");
@@ -470,7 +483,7 @@ describe("confirmProjectTransfer — TOCTOU eligibility re-check", () => {
     await sql`UPDATE project_members SET deleted_at = now() WHERE project_id = ${projectId} AND user_id = ${recipientId}`;
 
     await expect(
-      projectTransferService.confirmProjectTransfer(req!.id, recipientId),
+      projectTransferService.confirmProjectTransfer(req!.transfer_id, recipientId),
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(await getProjectRole(projectId, ownerId)).toBe("owner");
@@ -512,7 +525,7 @@ describe("confirmProjectTransfer — concurrency invariants", () => {
     });
 
     const transfer = projectTransferService.confirmProjectTransfer(
-      req!.id,
+      req!.transfer_id,
       recipientId,
     );
     await waitUntilBlockedOn(sql, "project_members");
@@ -556,7 +569,7 @@ describe("confirmProjectTransfer — concurrency invariants", () => {
     });
 
     const transfer = projectTransferService.confirmProjectTransfer(
-      req!.id,
+      req!.transfer_id,
       recipientId,
     );
     await waitUntilBlockedOn(sql, "project_members");
@@ -577,58 +590,23 @@ describe("confirmProjectTransfer — concurrency invariants", () => {
   });
 });
 
-describe("cancelProjectTransfer", () => {
-  it("a refused decline leaves no trace — the mark-read rolls back with it", async () => {
-    // Mirror of the studio transfer's twin test: whatever gate rejects a
-    // decline, the mark-read that serializes it has to roll back too.
-    const { recipientId } = await seedProjectTransfer();
-    const [notif] = await sql<{ id: string }[]>`
-      INSERT INTO notifications (user_id, type, payload)
-      VALUES (${recipientId}, 'project.invite_accepted', '{}'::jsonb)
-      RETURNING id
-    `;
-
-    await expect(
-      projectTransferService.cancelProjectTransfer(notif!.id, recipientId),
-    ).rejects.toMatchObject({ statusCode: 404 });
-
-    const [after] = await sql<{ read_at: Date | null }[]>`
-      SELECT read_at FROM notifications WHERE id = ${notif!.id}
-    `;
-    expect(after!.read_at).toBeNull();
-  });
-  it("refuses to DECLINE an expired request with Conflict, leaving it unread", async () => {
-    // Expiry closes the request outright — see the studio transfer's twin test.
-    // Declining past the window fails exactly like confirming, and it fails
-    // whole: the mark-read that serializes the decision must not survive.
-    const { projectId, ownerId, recipientId } = await seedProjectTransfer();
-    await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
-    const [req] = await transferRequestsFor(recipientId);
-    await expireNotification(req!.id);
-
-    await expect(
-      projectTransferService.cancelProjectTransfer(req!.id, recipientId),
-    ).rejects.toMatchObject({ statusCode: 409 });
-
-    const [after] = await sql<{ read_at: Date | null }[]>`
-      SELECT read_at FROM notifications WHERE id = ${req!.id}
-    `;
-    expect(after!.read_at).toBeNull();
-    expect(await getProjectRole(projectId, ownerId)).toBe("owner");
-  });
+describe("declineProjectTransfer", () => {
   it("marks the request read and changes no roles", async () => {
     const { projectId, ownerId, recipientId } = await seedProjectTransfer();
     await projectTransferService.requestProjectTransfer(projectId, ownerId, recipientId);
     const [req] = await transferRequestsFor(recipientId);
 
-    await projectTransferService.cancelProjectTransfer(req!.id, recipientId);
+    await projectTransferService.declineProjectTransfer(req!.transfer_id, recipientId);
 
     expect(await getProjectRole(projectId, ownerId)).toBe("owner");
     expect(await activeOwnerCount(projectId)).toBe(1);
     expect(await countByType(ownerId, "project.transfer_approved")).toBe(0);
+    // A second click reports 409, not 404. Telling "already answered" apart
+    // from "no such offer" is the whole reason the offer has a status column:
+    // while it was only a bell entry, both collapsed into the same silence.
     await expect(
-      projectTransferService.cancelProjectTransfer(req!.id, recipientId),
-    ).rejects.toMatchObject({ statusCode: 404 });
+      projectTransferService.declineProjectTransfer(req!.transfer_id, recipientId),
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 });
 

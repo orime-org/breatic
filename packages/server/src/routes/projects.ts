@@ -93,6 +93,59 @@ projects.post(
 );
 
 /**
+ * `GET /projects/:id/transfer` — the project's outstanding ownership offer, or
+ * null.
+ *
+ * Owner-gated because it is the owner's own "transfer pending · withdraw"
+ * surface; the recipient sees the same offer in their bell.
+ * @returns `200` with `{ data: { id, fromUserId, toUserId, expiresAt } | null }`
+ */
+projects.get(
+  "/:id/transfer",
+  zValidator("param", z.object({ id: z.string().uuid() })),
+  requireRoleOnParam("id", "owner"),
+  async (c) => {
+    const live = await projectTransferService.findLiveProjectTransfer(
+      c.req.param("id"),
+    );
+    return c.json({
+      data: live ? { ...live, expiresAt: live.expiresAt.toISOString() } : null,
+    });
+  },
+);
+
+/**
+ * `DELETE /projects/:id/transfer/:transferId` — the CURRENT owner withdraws an
+ * outstanding offer, freeing the project's slot at once.
+ *
+ * Withdrawal belongs to whoever owns the project now, not to whoever sent the
+ * offer: after a transfer the former owner is gone, and a second unanswered
+ * offer would block ownership for a week with the only key held by someone who
+ * has left. The service matches the offer against this project, so an id from
+ * elsewhere answers 404.
+ * @returns `200` with `{ data: { ok: true } }`; `404` no live offer matches
+ */
+projects.delete(
+  "/:id/transfer/:transferId",
+  // Registered BEFORE the role middleware, which reads `:id` and puts it
+  // straight into a uuid comparison of its own — a validator behind it would
+  // never see a bad `:id`, and the 500 it exists to prevent would happen in
+  // the middleware instead.
+  zValidator(
+    "param",
+    z.object({ id: z.string().uuid(), transferId: z.string().uuid() }),
+  ),
+  requireRoleOnParam("id", "owner"),
+  async (c) => {
+    await projectTransferService.withdrawProjectTransfer(
+      c.req.param("transferId"),
+      c.req.param("id"),
+    );
+    return c.json({ data: { ok: true } });
+  },
+);
+
+/**
  * `GET /projects/:id` — read a project plus the caller's role (the
  * project-open path).
  *

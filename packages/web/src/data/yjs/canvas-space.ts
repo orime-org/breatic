@@ -98,9 +98,14 @@ const EDGES_KEY = 'edgesMap';
 /**
  * Tracked transaction origin for canvas undo. Every frontend structural /
  * metadata / name write below runs in `doc.transact(fn, CANVAS_UNDO)` so the
- * per-space `Y.UndoManager` captures it. Backend content writes use a
- * different origin (`'node-state-update'`, see collab `task-listener`) and so
- * are naturally excluded from the undo stack.
+ * per-space `Y.UndoManager` captures it.
+ *
+ * `trackedOrigins` is an ALLOW-LIST, and this Symbol is local to this module,
+ * so everything else is excluded by construction — remote updates included,
+ * since they arrive with the provider as their origin. Server-side writes name
+ * their origin too (`'node-state-update'` and friends), but that is only for
+ * traces: a transaction origin never crosses the wire, so those strings could
+ * not enter this set even if they wanted to.
  */
 export const CANVAS_UNDO = Symbol('canvas-undo');
 

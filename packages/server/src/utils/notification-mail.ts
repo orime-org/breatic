@@ -4,7 +4,7 @@
 /**
  * Notification email templates (studio / project invitations + transfers).
  *
- * These four builders are best-effort NOTIFICATION emails: the bell
+ * These builders are best-effort NOTIFICATION emails: the bell
  * notification is the always-delivered path, the email is an optional
  * enhancement that only fires when an SMTP backend is configured. They share a
  * single HTML shell + a single HTML escaper here (previously copied across four
@@ -21,7 +21,7 @@ import { getDecisionWindowDays } from "@server/config/limits.js";
 
 const BRAND = "Breatic";
 /**
- * Build the closing line of an invitation or transfer email.
+ * Build the closing line of an invitation, transfer or request email.
  *
  * The duration is read rather than written: this sentence and the deadline
  * stored on the row are the same fact told to two audiences, and a sentence
@@ -92,13 +92,14 @@ export interface StudioInvitationMailInput {
   inviterName: string;
   studioName: string;
   role: string;
-  /** Full landing link, e.g. `https://breatic.ai/studio-invite?token=<token>`. */
+  /** Full landing link, e.g. `https://breatic.ai/decision?token=<token>`. */
   inviteLink: string;
 }
 
 /**
- * Build the studio invitation email — the invitee opens the link and lands on a
- * confirm/decline page (NOT auto-accept), mirroring the bell action.
+ * Build the studio invitation email — the invitee opens the link and lands on
+ * the decision page, where they answer (NOT auto-accept). The bell row leads
+ * to that same page, so both entrances end in one place.
  * @param input - Invitee email, inviter + studio names, role, and the landing link.
  * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
  */
@@ -122,13 +123,14 @@ export interface ProjectInvitationMailInput {
   inviterName: string;
   projectName: string;
   role: string;
-  /** Full landing link, e.g. `https://breatic.ai/project-invite?token=<token>`. */
+  /** Full landing link, e.g. `https://breatic.ai/decision?token=<token>`. */
   inviteLink: string;
 }
 
 /**
  * Build the project invitation email — the invitee opens the link and lands on
- * a confirm/decline page (NOT auto-accept), mirroring the bell action.
+ * the decision page, where they answer (NOT auto-accept). The bell row leads
+ * to that same page, so both entrances end in one place.
  * @param input - Invitee email, inviter + project names, role, and the landing link.
  * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
  */
@@ -151,13 +153,14 @@ export interface StudioTransferMailInput {
   recipientEmail: string;
   initiatorName: string;
   studioName: string;
-  /** Link back into the app, e.g. `https://breatic.ai/studio/<slug>`. */
-  studioLink: string;
+  /** Opens the shared landing page for this transfer. */
+  decisionLink: string;
 }
 
 /**
  * Build the studio transfer-admin email — the recipient accepts / declines from
- * their bell notifications (there is no token landing page for a transfer).
+ * their bell notifications, and its link opens the same `/decision?token=`
+ * landing page every waiting request is answered on.
  * @param input - Recipient email, initiator + studio names, and the app link.
  * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
  */
@@ -168,9 +171,9 @@ export function buildStudioTransferMail(
     to: input.recipientEmail,
     subject: `${BRAND} - ${input.initiatorName} wants to transfer ${input.studioName} to you`,
     leadHtml: `<strong>${escapeHtml(input.initiatorName)}</strong> wants to make you the admin of the studio <strong>${escapeHtml(input.studioName)}</strong>.`,
-    linkHref: input.studioLink,
-    linkLabel: `Open ${BRAND}`,
-    linkTrailing: " and check your notifications to accept or decline.",
+    linkHref: input.decisionLink,
+    linkLabel: "Review this transfer",
+    linkTrailing: " to accept or decline.",
     footer: expiryFooter("This transfer request"),
   });
 }
@@ -180,13 +183,14 @@ export interface ProjectTransferMailInput {
   recipientEmail: string;
   initiatorName: string;
   projectName: string;
-  /** Link back into the app, e.g. `https://breatic.ai/project/<slug>-<id>`. */
-  projectLink: string;
+  /** Opens the shared landing page for this transfer. */
+  decisionLink: string;
 }
 
 /**
  * Build the project transfer-owner email — the recipient accepts / declines from
- * their bell notifications (there is no token landing page for a transfer).
+ * their bell notifications, and its link opens the same `/decision?token=`
+ * landing page every waiting request is answered on.
  * @param input - Recipient email, initiator + project names, and the app link.
  * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
  */
@@ -197,9 +201,50 @@ export function buildProjectTransferMail(
     to: input.recipientEmail,
     subject: `${BRAND} - ${input.initiatorName} wants to transfer ${input.projectName} to you`,
     leadHtml: `<strong>${escapeHtml(input.initiatorName)}</strong> wants to make you the owner of the project <strong>${escapeHtml(input.projectName)}</strong>.`,
-    linkHref: input.projectLink,
-    linkLabel: `Open ${BRAND}`,
-    linkTrailing: " and check your notifications to accept or decline.",
+    linkHref: input.decisionLink,
+    linkLabel: "Review this transfer",
+    linkTrailing: " to accept or decline.",
     footer: expiryFooter("This transfer request"),
+  });
+}
+
+/** Fields for the role-upgrade request email, sent to the project's owner. */
+export interface RoleUpgradeRequestMailInput {
+  ownerEmail: string;
+  requesterName: string;
+  projectName: string;
+  requestedRole: string;
+  /** The requester's own words; null when they gave none. */
+  message: string | null;
+  decisionLink: string;
+}
+
+/**
+ * Builds the email telling a project's owner that somebody wants a bigger role.
+ *
+ * This flow had no email at all until now — it existed only as a bell entry, so
+ * an owner who was not in the app that week never learned there was a decision
+ * waiting. The reason the requester typed is included because it is the whole
+ * basis for the answer.
+ * @param input - Recipient, names, requested role, reason and link.
+ * @returns The mail options to send.
+ */
+export function buildRoleUpgradeRequestMail(
+  input: RoleUpgradeRequestMailInput,
+): SendMailOptions {
+  const reason =
+    input.message === null || input.message.trim() === ""
+      ? ""
+      : ` They said: <em>${escapeHtml(input.message)}</em>`;
+  return renderNotificationMail({
+    to: input.ownerEmail,
+    subject: `${BRAND} - ${input.requesterName} asked for a bigger role on ${input.projectName}`,
+    leadHtml: `<strong>${escapeHtml(input.requesterName)}</strong> asked to become <strong>${escapeHtml(input.requestedRole)}</strong> on <strong>${escapeHtml(input.projectName)}</strong>.${reason}`,
+    linkHref: input.decisionLink,
+    linkLabel: "Review this request",
+    linkTrailing: " to approve or decline.",
+    // Not "transfer request": nothing is changing hands, somebody is asking
+    // for a bigger role on something that stays where it is.
+    footer: expiryFooter("This request"),
   });
 }

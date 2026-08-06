@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Retry / backoff primitives for the HTTP transport in this package.
+ * Retry / backoff primitives — the only copy.
  *
- * ⚠️ A BYTE-FOR-BYTE DUPLICATE OF THESE TWO FUNCTIONS LIVES IN
- * `packages/core/src/infra/retry.ts`. Change one and you must change the
- * other, until #49 deletes core's copy and points everything here. The
- * duplicate exists because this transport sits in `shared`, and `shared`
- * cannot import `core` — the dependency runs the other way. core's callers
- * disappear as the transport takes them over (worker's HTTP loop, then the
- * storage download), leaving only its BullMQ job-retry strategy, which will
- * call into this file.
+ * There were two for the length of the transport migration: this file, and a
+ * byte-identical twin in `packages/core/src/infra/retry.ts`. The twin existed
+ * because the transport sits in `shared` and `shared` cannot import `core` —
+ * the dependency runs the other way — so while core still had callers of its
+ * own, neither side could give up its copy. Those callers moved onto the
+ * transport batch by batch; the last one left, core's BullMQ job-retry
+ * strategy, now imports from here and the twin is gone.
  *
  * They are pure arithmetic with an injectable randomness source, so nothing here
  * touches Node APIs.

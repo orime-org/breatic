@@ -2,20 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect } from "vitest";
+import { MAX_TIMER_MS } from "@breatic/shared";
 
 import { getStorageConfig, storageConfigSchema } from "@core/config/storage.js";
 
 /** The avatar cap the yaml ships, in bytes. */
 const SHIPPED_AVATAR_CAP = 2097152;
 
-/** Pins the shipped config/storage.yaml download-retry defaults (#1625 Slice 2). */
+/** Pins what the shipped config/storage.yaml guarantees its callers. */
 describe("getStorageConfig", () => {
-  it("loads the download retry config from config/storage.yaml", () => {
-    const cfg = getStorageConfig();
-    expect(cfg.download.max_attempts).toBe(3);
-    expect(cfg.download.retry_base_delay_ms).toBe(500);
-  });
-
   // Asset upload slice 2 (#1609): every file is hashed (no size line —
   // user decision 2026-07-07 superseding the earlier 500MB line) and a
   // configurable upload cap protects storage cost + local-mode memory.
@@ -74,9 +69,99 @@ describe("storageConfigSchema defaults", () => {
   it("defaults every section, not just the one that was fixed", () => {
     const cfg = storageConfigSchema.parse({});
 
-    expect(cfg.download.max_attempts).toBe(3);
-    expect(cfg.download.retry_base_delay_ms).toBe(500);
     expect(cfg.upload.max_upload_bytes).toBe(2147483648);
     expect(cfg.upload.presign_expires_seconds).toBe(300);
+  });
+});
+
+/**
+ * The pair of upload knobs that has to be judged together.
+ *
+ * The browser sizes its PUT stall guard as `max_upload_bytes / rate`, and
+ * hands the result to the shared HTTP transport as a per-delivery deadline.
+ * The transport refuses a deadline a timer cannot hold — deliberately, rather
+ * than clamping — so a rate low enough to push the biggest allowed upload past
+ * {@link MAX_TIMER_MS} makes every such PUT fail before a single byte leaves,
+ * with an error written for a programmer and not for the person uploading.
+ *
+ * Nothing about that is the uploader's doing, and nothing we promised covers
+ * an arbitrary rate. So the refusal belongs here, at load, where the operator
+ * who typed the number is the one who reads the message.
+ */
+describe("storageConfigSchema — the stall guard has to stay expressible", () => {
+  /** The shipped cap, and the lowest rate that can still serve it. */
+  const SHIPPED_CAP = 2147483648;
+  const LOWEST_USABLE_RATE = 1001;
+
+  it("accepts the lowest rate that still serves the shipped cap", () => {
+    const cfg = storageConfigSchema.parse({
+      upload: { client_put_min_bytes_per_sec: LOWEST_USABLE_RATE },
+    });
+    expect(cfg.upload.client_put_min_bytes_per_sec).toBe(LOWEST_USABLE_RATE);
+    // The property behind the number, so this test still means something if
+    // either constant moves.
+    expect(
+      Math.ceil((cfg.upload.max_upload_bytes / LOWEST_USABLE_RATE) * 1000),
+    ).toBeLessThanOrEqual(MAX_TIMER_MS);
+  });
+
+  it("refuses the rate one below it, and says what the floor is", () => {
+    expect(() =>
+      storageConfigSchema.parse({
+        upload: { client_put_min_bytes_per_sec: LOWEST_USABLE_RATE - 1 },
+      }),
+    ).toThrow(/client_put_min_bytes_per_sec/);
+    expect(() =>
+      storageConfigSchema.parse({
+        upload: { client_put_min_bytes_per_sec: LOWEST_USABLE_RATE - 1 },
+      }),
+    ).toThrow(new RegExp(String(LOWEST_USABLE_RATE)));
+  });
+
+  it("moves the floor when the upload cap moves", () => {
+    // The two knobs are judged together, not each against a constant. Doubling
+    // the cap doubles what the rate has to be, so a rate that was fine a
+    // moment ago is not. A bound written against the rate alone would let this
+    // through, and the guard would be unusable again at the new cap.
+    expect(() =>
+      storageConfigSchema.parse({
+        upload: {
+          max_upload_bytes: SHIPPED_CAP * 2,
+          client_put_min_bytes_per_sec: LOWEST_USABLE_RATE,
+        },
+      }),
+    ).toThrow(/client_put_min_bytes_per_sec/);
+
+    expect(() =>
+      storageConfigSchema.parse({
+        upload: {
+          max_upload_bytes: SHIPPED_CAP * 2,
+          client_put_min_bytes_per_sec: LOWEST_USABLE_RATE * 2,
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("refuses a floor a timer cannot hold either", () => {
+    // The deadline is max(floor, size/rate), so the floor is the second way to
+    // produce an unusable figure — and the one a rate-only bound would miss.
+    // Enumerated rather than waited for: the invariant is about the deadline,
+    // not about one of the two knobs that feed it.
+    expect(() =>
+      storageConfigSchema.parse({
+        upload: { client_request_timeout_ms: MAX_TIMER_MS + 1 },
+      }),
+    ).toThrow(/client_request_timeout_ms/);
+
+    expect(() =>
+      storageConfigSchema.parse({
+        upload: { client_request_timeout_ms: MAX_TIMER_MS },
+      }),
+    ).not.toThrow();
+  });
+
+  it("leaves the shipped pair alone", () => {
+    expect(() => storageConfigSchema.parse({})).not.toThrow();
+    expect(getStorageConfig().upload.client_put_min_bytes_per_sec).toBe(65536);
   });
 });

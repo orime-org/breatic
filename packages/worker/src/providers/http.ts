@@ -76,9 +76,13 @@ export function extractNested(
  * exactly, because "it retries as it always did" was written here first and
  * is false on every one of these:
  *
- *   - Deliveries: 4 before (`attempt <= http_max_retries`, and that config
- *     value is 3), 3 now (`MAX_RETRIES = 2`, compiled into the transport).
- *   - Backoff base: 2000ms before (`http_retry_base_delay`), 1000ms now
+ *   - Deliveries: 4 before (the old loop ran while `attempt` stayed within a
+ *     configured maximum of 3), 3 now (`MAX_RETRIES = 2`, compiled into the
+ *     transport). Both config keys named here are gone as of the batch that
+ *     added the naked-fetch guard: once the transport owned the count and the
+ *     backoff, nothing read them, and a knob that changes nothing is worse
+ *     than no knob.
+ *   - Backoff base: 2000ms before (the second of those keys), 1000ms now
  *     (`BASE_DELAY_MS`). The jitter formula itself is unchanged.
  *   - 408 was an ordinary failure and threw at once; it is now retried
  *     alongside 429, both being statements that the server did not process

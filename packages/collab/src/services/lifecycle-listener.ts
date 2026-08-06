@@ -79,8 +79,11 @@ function kickAllFromProject(
   for (const [docName, doc] of docs.entries()) {
     const parsed = parseDocName(docName);
     if (!parsed || parsed.projectId !== projectId) continue;
-    for (const [, connection] of doc.connections) {
-      connection.connection.close({ code: close.code, reason: close.reason });
+    // The connection IS the map key from v4 on (the value only carries the
+    // client-id set); before that the key was the raw websocket and the
+    // connection hung off the value.
+    for (const [connection] of doc.connections) {
+      connection.close({ code: close.code, reason: close.reason });
     }
   }
 }

@@ -1,70 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { TEST_FILE } from "#repo-lint/file-kinds";
+import { APPLICATION_SOURCE, TEST_FILE } from "#repo-lint/file-kinds";
+import { KEY_SEGMENT } from "#repo-lint/message-keys";
 
 /** English is the source catalog; the others are translations of it. */
 const SOURCE_CATALOG = "locales/en.json";
-
-/**
- * Where an application source lives: under a package's `src`, in TypeScript.
- *
- * Test material is subtracted by `TEST_FILE`, which knows it by directory and
- * by suffix. That misses scaffolding kept beside the code it serves —
- * `packages/web/src/test-utils/a11y.ts` and `packages/core/src/db/
- * test-support.ts` are both under `src`, are named like modules, and are
- * imported only by tests. They stay in the scan, deliberately.
- *
- * A content sniff was tried and reverted, and the reason is the whole design
- * of this check. It skipped any file whose raw text matched an import of
- * vitest — comments included. To size that, a probe comment naming the import
- * was pasted into one shipped component and the check run: it dropped the
- * file and reported 37 live keys for deletion. No such comment exists in the
- * tree, so this is what the mechanism permits rather than something it did;
- * the point is that a code comment is enough to trigger it. The sniff also
- * missed the scaffolding it was written for, since `test-support.ts` imports
- * drizzle. So it bought a cheap risk (a helper keeping a dead key alive one
- * more sweep) by taking on the expensive one (a live key deleted, a raw id in
- * the UI), which is backwards from the asymmetry this check is built around.
- * If a helper here ever does hold up a dead key, move the helper into
- * `__tests__/`; do not teach the scan to guess from content.
- *
- * The question this check asks is "does deleting this key change what a user
- * sees", so the files whose word counts are the ones that ship. Everything
- * else merely *names* a key — a test fixture, a sentence in a spec, this
- * check's own worked example — and a key held up only by those is dead along
- * with whatever names it.
- *
- * What keeps `repo-lint/` — this file included — out of its own scan is the
- * `<pkg>/src/` shape, not the `packages/` word: both workspaces outside
- * `packages/` (`eslint-rules`, `repo-lint`) put their source one level higher,
- * at `<root>/src`, so they fall out on depth alone. Removing `packages/` from
- * this pattern changes nothing today, which is exactly why it is worth saying
- * — the word states an intent the depth happens to enforce.
- *
- * The intent is that only what ships to users is scanned, and it cuts the
- * expensive way if it is ever wrong: a workspace added outside `packages/`
- * that does read the catalogs would be invisible, and every key only it reads
- * would be reported dead and deleted. Widen this pattern when that happens
- * rather than exempting the keys.
- *
- * Nothing outside TypeScript is here because nothing outside TypeScript reads
- * a key: a sweep of every tracked non-TS, non-Markdown file found zero naming
- * one. That is a measurement, not a guarantee — if a config ever does, this
- * check reports the key, and widening this pattern is the fix. There is no
- * per-key exemption list to reach for, deliberately: an empty one existed for
- * three commits, was never used, and made its own call site impossible to
- * test end to end. Add the mechanism when a key needs it, with that key in it.
- *
- * Widening has a floor. The `packages/<pkg>/src` shape is pinned by three
- * tests and cannot go — dropping it lets this check read its own docstring
- * again, which is the defect the scope exists to close. Widen within it:
- * another extension, another path. And reviving a key deleted by an earlier
- * sweep takes a second edit nothing else announces — its row in
- * REMOVED_DEAD_KEYS asserts the key is absent from all five catalogs, so
- * putting it back fails five tests until that row goes too.
- */
-const APPLICATION_SOURCE = /^packages\/[^/]+\/src\/.*\.([cm]?ts|tsx)$/;
 
 /**
  * Collects every leaf key in a catalog as its dotted path.
@@ -116,14 +57,17 @@ function leafKeys(value: unknown, prefix = "", out: string[] = []): string[] {
  * 'loading'`), so a bare-word pattern would count every one of them as a use
  * and exempt every short key forever.
  */
-const DOTTED_LITERAL = /[a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)+/g;
+const DOTTED_LITERAL = new RegExp(`${KEY_SEGMENT}(?:\\.${KEY_SEGMENT})+`, "g");
 
 /**
  * The static head of an interpolated id — the `` `canvas.upload.${x}` `` form.
  * The trailing dot is kept, so the prefix cannot swallow a sibling subtree
  * whose name merely starts with the same letters.
  */
-const TEMPLATE_PREFIX = /`([a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)*\.)\$\{/g;
+const TEMPLATE_PREFIX = new RegExp(
+  `\`(${KEY_SEGMENT}(?:\\.${KEY_SEGMENT})*\\.)\\$\\{`,
+  "g",
+);
 
 /**
  * Every message in the catalogs is reachable from the code.

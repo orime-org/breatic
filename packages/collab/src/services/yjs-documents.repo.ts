@@ -23,7 +23,7 @@
  * run here idempotently; create is handled by lazy-seed on first load.
  */
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { yjsDb, yjsDocuments } from "@breatic/core";
 import { projectMetaDocName } from "@breatic/shared";
 
@@ -155,16 +155,20 @@ export async function countLiveSpaceDocs(projectId: string): Promise<number> {
 /**
  * Restore (clear `deleted_at` on) the row backing a named Yjs doc.
  *
- * Unconditional by design: collab's space-rpc restore handler reverses
- * a prior soft-delete, and the row is known to exist (the restore path
- * rebuilt its `meta.spaces` entry from the deletion snapshot first).
+ * The mirror image of {@link softDeleteByName}, down to the return value:
+ * idempotent, and it reports whether THIS call is the one that brought the
+ * row back. A restore that fails partway has to put back only what it
+ * actually changed, and it can only know that if each step says so.
  * @param name - Full doc name (e.g. `project-{pid}/canvas-{sid}`)
+ * @returns `true` if a row was newly restored, `false` otherwise
  */
-export async function restoreByName(name: string): Promise<void> {
-  await yjsDb
+export async function restoreByName(name: string): Promise<boolean> {
+  const rows = await yjsDb
     .update(yjsDocuments)
     .set({ deletedAt: null })
-    .where(eq(yjsDocuments.name, name));
+    .where(and(eq(yjsDocuments.name, name), isNotNull(yjsDocuments.deletedAt)))
+    .returning({ name: yjsDocuments.name });
+  return rows.length > 0;
 }
 
 /**

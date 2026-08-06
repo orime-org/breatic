@@ -1,200 +1,80 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
-import { destroyDoc, docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
-import {
-  closeSpaceTab,
-  openSpaceTab,
-  appendSpace,
-  planVanishedSpaceReconcile,
-} from '@web/data/yjs/project-meta';
+import { nextActiveAfterVanish } from '@web/data/yjs/project-meta';
 
 /**
- * Critical-path invariants for the per-user Y.Doc subtree
- * (`perUser[userId].openTabIds`; the active tab is local page state
- * since 2026-07-11 — see project-meta-local-active.test.tsx).
+ * What is left here after the open-tab list moved behind RPCs.
  *
- * Why property-based: Yjs collaboration is one of the 6 critical-path
- * categories (memory `[[CLAUDE.md TDD-MANDATE]]`). Per-user tab state
- * is part of the workspace restore guarantee — if any sequence of
- * open / close can produce duplicates in `openTabIds`, the user lands
- * on a wedged UI after sync.
+ * This file used to hold the state machine for `perUser[userId].openTabIds`
+ * — append, close, idempotence, the first-write snapshot, and two
+ * property tests over random operation sequences. The client does not
+ * write that list any more (task #27): every change goes through
+ * `tab:open` / `tab:close`, and the invariants moved to the server with
+ * the logic, in `collab/src/__tests__/space-rpc.test.ts` under
+ * "tab:open / tab:close". They are stricter there, because getting them
+ * wrong server-side is persisted for every machine on the account
+ * instead of living in one browser tab until a reload.
  *
- * fast-check randomly composes sequences of operations and checks
- * invariants after each one — much more thorough than hand-picked
- * example tests for this state machine.
+ * `nextActiveAfterVanish` stayed on the client, and so did its tests. It
+ * answers a question only the client can answer: which tab to activate
+ * when the active one disappears. Which tab is active is local window
+ * state, deliberately never shared (2026-07-11), so nobody else can fix
+ * it for us. It used to also return the vanished ids for the caller to
+ * close; that half went away with the client writes.
  */
-describe('project-meta per-user state machine', () => {
-  const projectId = 'p1';
-  const userId = 'u1';
-
-  beforeEach(() => {
-    _resetForTests();
-    // Seed a few spaces so the operations have something to work with.
-    appendSpace(projectId, { id: 's1', name: 'S1', type: 'canvas' });
-    appendSpace(projectId, { id: 's2', name: 'S2', type: 'canvas' });
-    appendSpace(projectId, { id: 's3', name: 'S3', type: 'canvas' });
-  });
-
-  it('openSpaceTab appends and is idempotent (no duplicate ids)', () => {
-    // First call snapshots the current spaces (Q6 fix — see invariant
-    // below for the rationale). With 3 spaces seeded in beforeEach,
-    // the snapshot brings them all into openTabIds; subsequent opens
-    // of already-known ids are no-ops.
-    openSpaceTab(projectId, userId, 's1');
-    openSpaceTab(projectId, userId, 's1');
-    openSpaceTab(projectId, userId, 's2');
-    const { openTabIds } = readUserState();
-    expect(openTabIds).toEqual(expect.arrayContaining(['s1', 's2', 's3']));
-    expect(openTabIds).toHaveLength(3);
-  });
-
-  it('Q6 invariant: first openSpaceTab snapshots all existing spaces (no tab disappears)', () => {
-    // Scenario: user lands on a project with 3 existing spaces but has
-    // never interacted before (perUser is empty). They click the "+"
-    // button to create a new space, which triggers openSpaceTab for the
-    // new id. Without the snapshot, the first openSpaceTab would set
-    // openTabIds = [newId], and ALL 3 existing tabs would vanish from
-    // the tab bar — recoverable only via the SpaceDrawer (the Q6 bug).
-    openSpaceTab(projectId, userId, 's2');
-    const { openTabIds } = readUserState();
-    expect(openTabIds).toContain('s1');
-    expect(openTabIds).toContain('s2');
-    expect(openTabIds).toContain('s3');
-    expect(openTabIds).toHaveLength(3);
-  });
-
-  it('Q6 invariant: subsequent openSpaceTab only appends new ids (no re-snapshot)', () => {
-    // First call snapshots {s1, s2, s3}. After a close + re-open of s1,
-    // s1 should sit at the end (the snapshot is a one-shot init, not
-    // a recurring overwrite).
-    openSpaceTab(projectId, userId, 's2');
-    closeSpaceTab(projectId, userId, 's1');
-    openSpaceTab(projectId, userId, 's1');
-    const { openTabIds } = readUserState();
-    expect(openTabIds).toContain('s1');
-    expect(openTabIds).toContain('s2');
-    expect(openTabIds).toContain('s3');
-    // s1 is last because re-open appends to the end.
-    expect(openTabIds[openTabIds.length - 1]).toBe('s1');
-  });
-
-  it('closeSpaceTab removes the id (and is idempotent for missing ids)', () => {
-    // First openSpaceTab snapshots all 3 spaces (Q6) → openTabIds is
-    // now {s1, s2, s3}. Closing s1 leaves {s2, s3}; subsequent closes
-    // of s1 / a missing id are no-ops.
-    openSpaceTab(projectId, userId, 's1');
-    openSpaceTab(projectId, userId, 's2');
-    closeSpaceTab(projectId, userId, 's1');
-    closeSpaceTab(projectId, userId, 's1'); // no-op
-    closeSpaceTab(projectId, userId, 's-missing');
-    const { openTabIds } = readUserState();
-    expect(openTabIds).toEqual(expect.arrayContaining(['s2', 's3']));
-    expect(openTabIds).toHaveLength(2);
-    expect(openTabIds).not.toContain('s1');
-  });
-
-  // Property-based via 100 vanilla random op sequences (fast-check would
-  // be the idiomatic tool but the workspace does not currently depend on
-  // it; loop coverage is sufficient for now — follow-up PR adds the dep
-  // + rewrites these two as fc.property).
-  it('property: openTabIds never contains duplicates after any random op sequence', () => {
-    const ops = ['open', 'close'] as const;
-    const ids = ['s1', 's2', 's3'] as const;
-    for (let iter = 0; iter < 100; iter++) {
-      _resetForTests();
-      appendSpace(projectId, { id: 's1', name: 'S1', type: 'canvas' });
-      appendSpace(projectId, { id: 's2', name: 'S2', type: 'canvas' });
-      appendSpace(projectId, { id: 's3', name: 'S3', type: 'canvas' });
-      const len = Math.floor(Math.random() * 30);
-      for (let i = 0; i < len; i++) {
-        const op = ops[Math.floor(Math.random() * ops.length)];
-        const id = ids[Math.floor(Math.random() * ids.length)];
-        if (op === 'open') openSpaceTab(projectId, userId, id);
-        if (op === 'close') closeSpaceTab(projectId, userId, id);
-      }
-      const { openTabIds } = readUserState();
-      const unique = new Set(openTabIds);
-      expect(unique.size).toBe(openTabIds.length);
-    }
-  });
-
-  it('property: closing a tab never removes the others', () => {
-    const ids = ['s1', 's2', 's3'] as const;
-    for (let iter = 0; iter < 100; iter++) {
-      _resetForTests();
-      appendSpace(projectId, { id: 's1', name: 'S1', type: 'canvas' });
-      appendSpace(projectId, { id: 's2', name: 'S2', type: 'canvas' });
-      appendSpace(projectId, { id: 's3', name: 'S3', type: 'canvas' });
-      const len = Math.floor(Math.random() * 10);
-      for (let i = 0; i < len; i++) {
-        const id = ids[Math.floor(Math.random() * ids.length)];
-        openSpaceTab(projectId, userId, id);
-      }
-      const target = ids[Math.floor(Math.random() * ids.length)];
-      const before = readUserState().openTabIds.filter((id) => id !== target);
-      closeSpaceTab(projectId, userId, target);
-      const after = readUserState().openTabIds;
-      expect(after).toEqual(before);
-    }
-  });
-});
-
-function readUserState(): { openTabIds: string[] } {
-  // Read state directly from the Y.Doc (the hook needs a React tree to
-  // run; tests sidestep React by reading the doc).
-  const doc = getDoc(docName.projectMeta('p1'));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const perUser = doc.getMap<any>('perUser');
-  const userMap = perUser.get('u1');
-  if (!userMap) return { openTabIds: [] };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const arr = userMap.get('openTabIds') as any;
-  const openTabIds = arr ? (arr.toArray() as string[]) : [];
-  return { openTabIds };
-}
-
-// Suppress unused: destroyDoc imported for symmetry with manager test
-void destroyDoc;
-
-describe('planVanishedSpaceReconcile — per-user reconcile when spaces vanish', () => {
-  it('active space deleted → reactivate the first still-live open tab + prune the gone id', () => {
-    // openTabIds [a,b,c], a was deleted and was active. Reactivate to b
-    // (first remaining visible tab), prune a.
-    const out = planVanishedSpaceReconcile(
-      ['a', 'b', 'c'],
-      new Set(['b', 'c']),
-      'a',
+describe('nextActiveAfterVanish — which tab to show when the active one is gone', () => {
+  it('active space deleted → the first still-live open tab', () => {
+    // openTabIds [a,b,c], a was deleted and was active. Activate b, the
+    // first remaining visible tab.
+    expect(nextActiveAfterVanish(['a', 'b', 'c'], new Set(['b', 'c']), 'a')).toBe(
+      'b',
     );
-    expect(out.tabsToClose).toEqual(['a']);
-    expect(out.reactivateTo).toBe('b');
   });
 
-  it('active deleted with no other open tab still live → reactivate to null (empty state)', () => {
+  it('active deleted with no other open tab still live → null (empty state)', () => {
     // Only tab a was open and it was deleted; the project still has space x
     // (>=1 guaranteed) but it is not in this user's open tabs.
-    const out = planVanishedSpaceReconcile(['a'], new Set(['x']), 'a');
-    expect(out.tabsToClose).toEqual(['a']);
-    expect(out.reactivateTo).toBeNull();
+    expect(nextActiveAfterVanish(['a'], new Set(['x']), 'a')).toBeNull();
   });
 
-  it('deleting a NON-active space leaves the active tab untouched (only prune)', () => {
-    const out = planVanishedSpaceReconcile(['a', 'b'], new Set(['a']), 'a');
-    expect(out.tabsToClose).toEqual(['b']);
-    expect(out.reactivateTo).toBeUndefined(); // active 'a' still live → no change
+  it('deleting a NON-active space leaves the active tab untouched', () => {
+    expect(
+      nextActiveAfterVanish(['a', 'b'], new Set(['a']), 'a'),
+    ).toBeUndefined();
   });
 
   it('no vanished spaces → nothing to do', () => {
-    const out = planVanishedSpaceReconcile(['a', 'b'], new Set(['a', 'b']), 'a');
-    expect(out.tabsToClose).toEqual([]);
-    expect(out.reactivateTo).toBeUndefined();
+    expect(
+      nextActiveAfterVanish(['a', 'b'], new Set(['a', 'b']), 'a'),
+    ).toBeUndefined();
   });
 
-  it('null active + a vanished tab → prune it, no reactivation', () => {
-    const out = planVanishedSpaceReconcile(['a', 'b'], new Set(['a']), null);
-    expect(out.tabsToClose).toEqual(['b']);
-    expect(out.reactivateTo).toBeUndefined();
+  // This function answers ONE question: has the active Space disappeared from
+  // the project? It must not also try to answer "is the active id in my tab
+  // list", because those two look identical in the data and mean opposite
+  // things. An id that is live but absent from `openTabIds` is either a tab
+  // that was just closed — where the effective-active fallback already moves
+  // the view, `resolveEffectiveActiveSpace` — or a Space that is being opened
+  // right now, whose `tab:open` broadcast has not landed yet. Reactivating on
+  // that shape breaks the second case: the user picks a Space and gets thrown
+  // back to the first tab. Verified in a real browser on 2026-08-03.
+
+  it('an active id that is live but not in the list is left alone (it is being opened)', () => {
+    expect(
+      nextActiveAfterVanish(['b', 'c'], new Set(['a', 'b', 'c']), 'a'),
+    ).toBeUndefined();
+  });
+
+  it('the same holds when the list is empty — a first tab on its way in', () => {
+    expect(nextActiveAfterVanish([], new Set(['a']), 'a')).toBeUndefined();
+  });
+
+  it('null active → nothing to activate', () => {
+    expect(
+      nextActiveAfterVanish(['a', 'b'], new Set(['a']), null),
+    ).toBeUndefined();
   });
 });

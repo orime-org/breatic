@@ -35,7 +35,9 @@
  * severely degraded. This is the standard TTL-lock tradeoff.
  */
 import { randomUUID } from "node:crypto";
-import { getCollabRedis, env } from "@breatic/core";
+import { createLogger, getCollabRedis, env } from "@breatic/core";
+
+const logger = createLogger("space-delete-lock");
 
 /**
  * Lock time-to-live (seconds) — crash safety net so a holder that dies
@@ -142,6 +144,19 @@ export async function withSpaceDeleteLock<T>(
     return await fn();
   } finally {
     // Fenced release: only DEL if we still own the lock (see RELEASE_SCRIPT).
-    await redis.eval(RELEASE_SCRIPT, 1, key, token);
+    //
+    // Swallowed on purpose. A throw inside `finally` REPLACES whatever the
+    // critical section returned, so an unreachable Redis would turn a delete
+    // that already broadcast into an internal error carrying Redis's own
+    // words. The lock's TTL means a release that never happened costs a
+    // short wait, not correctness — which is the cheaper of the two.
+    try {
+      await redis.eval(RELEASE_SCRIPT, 1, key, token);
+    } catch (releaseError) {
+      logger.warn(
+        { err: releaseError, projectId, key },
+        "space_delete_lock_release_failed",
+      );
+    }
   }
 }

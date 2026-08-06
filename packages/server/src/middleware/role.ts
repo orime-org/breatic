@@ -27,6 +27,13 @@ import type { ProjectRole } from "@breatic/shared";
 import type { AuthVariables } from "@server/middleware/auth.js";
 
 /** Variables stamped on `c` by `requireRole`. */
+/**
+ * What a project id looks like. Anything else is refused before it can reach a
+ * uuid comparison — see the check in {@link requireRoleOnParam}.
+ */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export interface RoleVariables {
   /** Project UUID resolved from the route param. */
   projectId: string;
@@ -51,7 +58,13 @@ export function requireRoleOnParam(
   return async (c, next) => {
     const userId = c.get("user").id;
     const projectId = c.req.param(paramName);
-    if (!projectId) {
+    if (!projectId || !UUID_RE.test(projectId)) {
+      // Shape-checked HERE, not in each route. This middleware is what puts the
+      // param into a uuid comparison, so anything that is not a uuid makes
+      // Postgres reject the statement (SQLSTATE 22P02) and a user-supplied
+      // string becomes an unclassified 500. Validating at the route instead
+      // means every new route has to remember — and the answer is the same 403
+      // either way, since a malformed id names no project the caller can reach.
       throw new ForbiddenError(t("server.error.forbidden"));
     }
 

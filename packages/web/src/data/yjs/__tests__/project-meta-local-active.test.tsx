@@ -14,11 +14,11 @@ vi.mock('@web/data/yjs/use-socket', () => ({
 }));
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
+import { useProjectMeta } from '@web/data/yjs/project-meta';
 import {
-  appendSpace,
-  openSpaceTab,
-  useProjectMeta,
-} from '@web/data/yjs/project-meta';
+  seedSpaceEntry,
+  seedOpenTabs,
+} from '@web/data/yjs/__tests__/meta-doc-fixtures';
 
 // The active Space tab is LOCAL-ONLY state (user 2026-07-11, batch-2 item 2).
 // It used to live in the shared per-user Yjs subtree, which two machines on
@@ -32,9 +32,9 @@ describe('useProjectMeta — active tab is not part of the synced projection', (
 
   beforeEach(() => {
     _resetForTests();
-    appendSpace(projectId, { id: 's1', name: 'S1', type: 'canvas' });
-    appendSpace(projectId, { id: 's2', name: 'S2', type: 'canvas' });
-    openSpaceTab(projectId, userId, 's1');
+    seedSpaceEntry(projectId, { id: 's1', name: 'S1', type: 'canvas' });
+    seedSpaceEntry(projectId, { id: 's2', name: 'S2', type: 'canvas' });
+    seedOpenTabs(projectId, userId, ['s1']);
   });
 
   it('exposes no activeSpaceId field (nothing for a remote machine to flip)', () => {

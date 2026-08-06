@@ -381,8 +381,15 @@
       "sending": "送信中…",
       "toast": {
         "sent": "リクエストを送信しました — Owner に通知が表示されます。",
-        "failed": "リクエストの送信に失敗しました。再試行してください。"
-      }
+        "failed": "リクエストの送信に失敗しました。再試行してください。",
+        "withdrawn": "リクエストを取り消しました。",
+        "withdrawFailed": "リクエストを取り消せませんでした。もう一度お試しください。"
+      },
+      "pendingAriaLabel": "Editor 権限をリクエスト済み",
+      "pendingTitle": "リクエストを送信しました",
+      "pendingDescription": "Owner はまだ返答していません。改めて依頼したい場合は取り消せます。",
+      "withdraw": "取り消す",
+      "withdrawing": "取り消し中…"
     }
   },
   "project": {
@@ -402,6 +409,9 @@
       },
       "error": {
         "create": "Space の作成に失敗しました",
+        "openTab": "タブを開けませんでした",
+        "closeTab": "タブを閉じられませんでした",
+        "unreachable": "サーバーから応答がありません。接続を確認して再試行してください",
         "notSynced": "Project を同期中です。しばらくしてから再試行してください"
       },
       "loading": {
@@ -441,7 +451,12 @@
       "transferSend": "リクエストを送信",
       "transferNoCandidates": "対象のメンバーがいません。まず同じ Studio に属する Editor または Viewer を追加してください。",
       "transferSuccess": "{name} に委譲リクエストを送信しました。",
-      "transferFailed": "委譲リクエストを送信できませんでした。もう一度お試しください。"
+      "transferFailed": "委譲リクエストを送信できませんでした。もう一度お試しください。",
+      "transferPending": "{name} の承諾を待っています。",
+      "transferWithdraw": "取り消す",
+      "transferWithdrawn": "譲渡リクエストを取り消しました。",
+      "transferWithdrawFailed": "譲渡リクエストを取り消せませんでした。",
+      "transferPendingUnnamed": "受け取る人の承諾を待っています。"
     },
     "stack": {
       "triggerAria": "Project メンバー({count})"
@@ -600,13 +615,8 @@
   "notifications": {
     "title": "通知",
     "empty": "保留中の通知はありません",
-    "reject": "却下",
-    "approve": "承認",
     "loading": "読み込み中…",
     "markRead": "既読にする",
-    "approvedToast": "アップグレードを承認しました。",
-    "rejectedToast": "リクエストを拒否しました。",
-    "decideFailed": "処理に失敗しました。再試行してください。",
     "headline": {
       "roleUpgradeRequest": "{actor} さんが {project} の Editor 権限をリクエストしました",
       "roleUpgradeApproved": "{actor} さんが {project} の Editor 権限を承認しました",
@@ -621,17 +631,11 @@
       "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました"
     },
     "actorFallback": "誰か",
-    "actionFailed": "操作を完了できませんでした。もう一度お試しください。",
-    "transferConfirmedToast": "あなたが Studio の Admin になりました。",
-    "transferCancelledToast": "委譲を辞退しました。",
-    "projectTransferConfirmedToast": "あなたが Project の Owner になりました。",
-    "projectTransferCancelledToast": "委譲を辞退しました。",
-    "transferAccept": "承認",
-    "transferDecline": "辞退",
     "subtitle": {
       "invitedAsMaintainer": "Maintainer として参加",
       "invitedAsGuest": "Guest として参加",
-      "transferHint": "承認すると Studio の Admin になります",
+      "studioTransferHint": "承認すると Studio の Admin になります",
+      "projectTransferHint": "承認すると Project の Owner になります",
       "invitedAsEditor": "Editor として参加",
       "invitedAsViewer": "Viewer として参加"
     },
@@ -641,11 +645,7 @@
       "hours": "あと{count}時間で期限切れ",
       "days": "あと{count}日で期限切れ"
     },
-    "inviteAccept": "承認",
-    "inviteDecline": "辞退",
-    "inviteConfirmedToast": "Studio に参加しました。",
-    "inviteDeclinedToast": "招待を辞退しました。",
-    "viewProjectInvite": "招待を表示"
+    "openDecision": "回答する"
   },
   "connection": {
     "banner": {
@@ -826,7 +826,7 @@
         "bioCount": "{count}/{max}",
         "slugHelper": "この Studio のウェブアドレスの一部です。小文字・数字・ハイフンのみ使えます。",
         "avatarUpload": "画像をアップロード",
-        "avatarHint": "正方形の画像が最適です。PNG・JPEG・WebP、20 MB まで。",
+        "avatarHint": "正方形の画像が最適です。一般的な画像形式に対応、20 MB まで。",
         "avatarRemove": "削除",
         "avatarRemoveTitle": "このアバターを削除しますか？",
         "avatarRemoveBody": "Studio はイニシャル表示に戻ります。いつでも新しい画像をアップロードできます。",
@@ -857,7 +857,12 @@
         "leaveBody": "戻るには新しい招待が必要になります。",
         "leaveLosesProjects": "この Studio 内のすべての Project にアクセスできなくなります。",
         "leaveHandsOver": "ここであなたが所有している Project は Studio の Admin に引き継がれます。",
-        "leaveDone": "Studio を退出しました"
+        "leaveDone": "Studio を退出しました",
+        "transferPending": "{name} の承諾を待っています。",
+        "transferWithdraw": "取り消す",
+        "transferWithdrawn": "譲渡リクエストを取り消しました。",
+        "transferWithdrawFailed": "譲渡リクエストを取り消せませんでした。",
+        "transferPendingUnnamed": "受け取る人の承諾を待っています。"
       },
       "dialog": {
         "newProjectTitle": "Project を新規作成",
@@ -903,47 +908,7 @@
       "myStudiosEmpty": "チーム Studio がまだありません",
       "joinedEmpty": "まだ Studio に参加していません",
       "openNav": "ナビゲーションを開く"
-    },
-    "invite": {
-      "loadingTitle": "招待を開いています…",
-      "loadingBody": "招待を読み込んでいます。少々お待ちください。",
-      "title": "招待が届いています",
-      "body": "{inviter} さんがあなたを{role, select, maintainer {Maintainer} guest {Guest} other {Guest}}として {studio} に招待しました。",
-      "confirm": "承認して参加",
-      "decline": "辞退",
-      "invalidTitle": "この招待は無効です",
-      "invalidBody": "リンクの有効期限が切れたか、すでに使用された可能性があります。Studio の Admin に新しい招待を依頼してください。",
-      "expiredTitle": "この招待は期限切れです",
-      "expiredBody": "{studio} への招待は {days} 日間の有効期限を過ぎています。Studio の Admin に再送を依頼してください。",
-      "notInviteeTitle": "この招待はこのアカウント宛てではありません",
-      "notInviteeBody": "別のユーザーとしてサインインしています。この招待が送られたアカウントでサインインしてください。",
-      "declinedTitle": "招待を辞退しました",
-      "declinedBody": "{studio} への招待を辞退しました。あとで Admin に再度招待を依頼できます。",
-      "joinedToast": "Studio に参加しました。",
-      "actionFailed": "処理を完了できませんでした。もう一度お試しください。",
-      "backToStudio": "Studio に戻る",
-      "signIn": "サインイン"
     }
-  },
-  "projectInvite": {
-    "loadingTitle": "招待を開いています…",
-    "loadingBody": "招待を読み込んでいます。少々お待ちください。",
-    "title": "招待が届いています",
-    "body": "{inviter} さんがあなたを{role, select, editor {Editor} viewer {Viewer} other {Member}}として {project} に招待しました。",
-    "confirm": "承認して参加",
-    "decline": "辞退",
-    "invalidTitle": "この招待は無効です",
-    "invalidBody": "リンクの有効期限が切れたか、すでに使用された可能性があります。Project の Owner に新しい招待を依頼してください。",
-    "expiredTitle": "この招待は期限切れです",
-    "expiredBody": "{project} への招待は {days} 日間の有効期限を過ぎています。Project の Owner に再送を依頼してください。",
-    "notInviteeTitle": "この招待はこのアカウント宛てではありません",
-    "notInviteeBody": "別のユーザーとしてサインインしています。この招待が送られたアカウントでサインインしてください。",
-    "declinedTitle": "招待を辞退しました",
-    "declinedBody": "{project} への招待を辞退しました。あとで Owner に再度招待を依頼できます。",
-    "joinedToast": "Project に参加しました。",
-    "actionFailed": "処理を完了できませんでした。もう一度お試しください。",
-    "backToStudio": "Studio に戻る",
-    "signIn": "サインイン"
   },
   "chrome": {
     "tooltip": {
@@ -1019,5 +984,37 @@
       "monthsAgo": "{count, plural, other {# ヶ月前}}",
       "isoDate": "{date}"
     }
+  },
+  "decision": {
+    "loadingTitle": "リクエストを開いています…",
+    "loadingBody": "少々お待ちください。",
+    "title": "{kind, select, studio_invite {Studio に招待されています} project_invite {Project に招待されています} role_upgrade {権限の変更を求められています} project_transfer {Project を引き継ぐよう求められています} studio_transfer {Studio を引き継ぐよう求められています} other {回答が必要です}}",
+    "body": "{kind, select, studio_invite {{actor} さんが {entity} に {role, select, maintainer {Maintainer} guest {Guest} other {Member}} として招待しています。} project_invite {{actor} さんが {entity} に {role, select, editor {Editor} viewer {Viewer} other {Member}} として招待しています。} role_upgrade {{actor} さんが {entity} で {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}} になることを申請しています。} project_transfer {{actor} さんが {entity} の Owner をあなたに引き継ごうとしています。} studio_transfer {{actor} さんが {entity} の Admin をあなたに引き継ごうとしています。} other {{actor} さんが {entity} についてあなたの回答を待っています。}}",
+    "reason": "コメント：{message}",
+    "confirm": "{kind, select, role_upgrade {承認} other {承諾する}}",
+    "decline": "{kind, select, role_upgrade {却下} other {辞退する}}",
+    "windowNote": "このリクエストは {days} 日以内に回答できました。",
+    "acceptedTitle": "すでに承諾済みです",
+    "acceptedBody": "ここで行うことはもうありません。",
+    "declinedTitle": "すでに辞退済みです",
+    "declinedBody": "ここで行うことはもうありません。",
+    "expiredTitle": "このリクエストは終了しました",
+    "expiredBody": "もう回答できません。",
+    "revokedTitle": "このリクエストは取り消されました",
+    "revokedBody": "送信した人が取り下げました。",
+    "goneTitle": "対象はすでに存在しません",
+    "goneBody": "このリクエストの対象は削除されました。",
+    "alreadyMemberTitle": "すでに参加しています",
+    "alreadyMemberBody": "この招待で得られる権限は、すでにお持ちです。",
+    "invalidTitle": "このリンクは無効です",
+    "invalidBody": "メールのリンクを最後までコピーしたか確認してください。",
+    "unreachableTitle": "このリクエストを読み込めませんでした",
+    "unreachableBody": "通信の途中で問題が起きました。リンクは有効です。もう一度お試しください。",
+    "retry": "再試行",
+    "notYoursTitle": "これはあなたが回答するものではありません",
+    "notYoursBody": "このリンクは別の人に送られたものです。",
+    "goThere": "開く",
+    "backHome": "自分の Studio に戻る",
+    "actionFailed": "実行できませんでした。もう一度お試しください。"
   }
 }

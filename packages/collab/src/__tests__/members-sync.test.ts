@@ -81,7 +81,12 @@ const PID = "11111111-1111-4111-8111-111111111111";
 interface DocSpy {
   doc: Y.Doc;
   broadcastStateless: ReturnType<typeof vi.fn>;
-  connections: Map<string, { connection: { context: unknown; close: ReturnType<typeof vi.fn> } }>;
+  // Connection as the KEY, matching the real Document (the value only carries
+  // the set of client ids, which nothing on this path reads).
+  connections: Map<
+    { context: unknown; close: ReturnType<typeof vi.fn> },
+    { clients: Set<number> }
+  >;
 }
 
 function buildHocuspocus(metaDoc?: DocSpy): { hocuspocus: Hocuspocus } {
@@ -105,19 +110,17 @@ describe("startMembersSync — members:changed", () => {
       broadcastStateless: vi.fn(),
       connections: new Map(),
     };
-    metaDoc.connections.set("conn-1", {
-      connection: {
-        context: { user: { id: "victim" } },
-        close: closeSpy,
-      },
-    });
+    // The connection is the map KEY (v4 shape); the value only carries the
+    // set of client ids, which this path never reads.
+    metaDoc.connections.set(
+      { context: { user: { id: "victim" } }, close: closeSpy },
+      { clients: new Set() },
+    );
     // Bystander on the same project — should NOT be kicked.
-    metaDoc.connections.set("conn-2", {
-      connection: {
-        context: { user: { id: "other" } },
-        close: vi.fn(),
-      },
-    });
+    metaDoc.connections.set(
+      { context: { user: { id: "other" } }, close: vi.fn() },
+      { clients: new Set() },
+    );
 
     const { hocuspocus } = buildHocuspocus(metaDoc);
     const { subscriber } = buildRedis();
@@ -160,8 +163,8 @@ describe("startMembersSync — members:changed", () => {
       doc: new Y.Doc(),
       broadcastStateless: vi.fn(),
       connections: new Map([
-        ["c1", { connection: { context: { user: { id: "from" } }, close: fromClose } }],
-        ["c2", { connection: { context: { user: { id: "to" } }, close: toClose } }],
+        [{ context: { user: { id: "from" } }, close: fromClose }, { clients: new Set<number>() }],
+        [{ context: { user: { id: "to" } }, close: toClose }, { clients: new Set<number>() }],
       ]),
     };
 

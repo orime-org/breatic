@@ -33,7 +33,6 @@ const REQUESTER = "u-viewer";
 const PID = "p-1";
 const NID = "n-1";
 /** An arbitrary deadline — this test cares that it is forwarded, not what it is. */
-const DEADLINE = new Date("2026-08-09T00:00:00Z");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -53,31 +52,34 @@ describe("createRoleUpgradeRequest", () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
+    const expiresAt = new Date("2026-08-08T00:00:00.000Z");
     const out = await notificationService.createRoleUpgradeRequest({
       ownerUserId: OWNER,
       projectId: PID,
+      expiresAt,
       payload: {
+        requestId: "r-1",
         requesterUserId: REQUESTER,
         requesterName: "Vicky",
         projectId: PID,
         projectName: "Demo",
         requestedRole: "editor",
+        shareToken: "t".repeat(64),
         message: "please",
       },
-      expiresAt: DEADLINE,
     });
     expect(out.id).toBe(NID);
     const args = vi.mocked(notificationRepo.create).mock.calls[0]?.[0];
     expect(args?.userId).toBe(OWNER);
     expect(args?.type).toBe("access.role_upgrade_request");
     expect(args?.projectId).toBe(PID);
-    // The deadline has to reach the row, not stop at this function. Role-upgrade
-    // requests had no expiry at all before the five decision flows were put on
-    // one window; forwarding it is the whole of this function's new job.
-    expect(args?.expiresAt).toBe(DEADLINE);
+    // The deadline has to reach the bell row: a null `expires_at` reads as
+    // "never expires", so the entry would outlive the request it announces.
+    expect(args?.expiresAt).toBe(expiresAt);
     expect(args?.payload).toMatchObject({
       requesterUserId: REQUESTER,
       requestedRole: "editor",
+      shareToken: "t".repeat(64),
     });
   });
 });
@@ -133,7 +135,6 @@ describe("createRoleUpgradeApproved / Rejected", () => {
         deciderName: "Olivia",
         projectId: PID,
         projectName: "Demo",
-        reason: "Too many editors",
       },
     });
     const args = vi.mocked(notificationRepo.create).mock.calls[0]?.[0];

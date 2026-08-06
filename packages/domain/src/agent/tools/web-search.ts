@@ -9,6 +9,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { env } from "@breatic/core";
+import { httpRequest } from "@breatic/shared";
 
 /**
  * Search the web using the Brave Search API.
@@ -43,13 +44,31 @@ export const webSearch = tool({
       url.searchParams.set("q", query);
       url.searchParams.set("count", String(n));
 
-      const res = await fetch(url, {
-        headers: {
-          Accept: "application/json",
-          "X-Subscription-Token": apiKey,
+      // Through the shared transport, which owns the retrying. A search is a
+      // read: its only effect is the response, so a delivery that produced
+      // none produced no effect to repeat — which is what `replaySafe` states.
+      // That declaration is what buys the retry on a dropped connection, the
+      // failure that used to fail this tool on the first try.
+      //
+      // The budget goes in as `timeoutMs` rather than as a signal on the init:
+      // the transport replaces the caller's signal, so one left there would be
+      // a no-op and this search would silently get the transport's default
+      // instead of the figure below.
+      //
+      // That figure bounds ONE DELIVERY, not the whole search — the transport
+      // may deliver this request more than once and gives each of them the
+      // full 10s. Same unit as safe-fetch.ts states for web_fetch; said here
+      // too because a reader of this file meets the number here.
+      const res = await httpRequest(
+        url.toString(),
+        {
+          headers: {
+            Accept: "application/json",
+            "X-Subscription-Token": apiKey,
+          },
         },
-        signal: AbortSignal.timeout(10_000),
-      });
+        { replaySafe: true, timeoutMs: 10_000 },
+      );
 
       if (!res.ok) {
         return `Error: Brave Search returned HTTP ${res.status}`;

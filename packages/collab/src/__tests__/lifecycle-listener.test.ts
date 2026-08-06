@@ -69,15 +69,18 @@ function makeHocuspocus(docNames: string[]): {
   closed: ClosedFrame[];
 } {
   const closed: ClosedFrame[] = [];
-  const documents = new Map<string, { connections: Map<string, unknown> }>();
+  const documents = new Map<string, { connections: Map<unknown, unknown> }>();
   for (const docName of docNames) {
-    const connections = new Map<string, unknown>();
-    connections.set("conn-1", {
-      connection: {
+    // Connection as the KEY, matching the real Document; the value only
+    // carries the set of client ids, which the kick path never reads.
+    const connections = new Map<unknown, unknown>();
+    connections.set(
+      {
         context: { user: { id: "u1" } },
         close: ({ code }: { code: number }) => closed.push({ docName, code }),
       },
-    });
+      { clients: new Set<number>() },
+    );
     documents.set(docName, { connections });
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

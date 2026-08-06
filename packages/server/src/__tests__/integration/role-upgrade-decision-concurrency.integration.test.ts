@@ -126,14 +126,23 @@ async function insertRoleUpgradeRequest(
   requesterId: string,
   projectId: string,
 ): Promise<string> {
-  const [row] = await sql<{ id: string }[]>`
-    INSERT INTO notifications (user_id, type, payload, project_id)
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const [notice] = await sql<{ id: string }[]>`
+    INSERT INTO notifications (user_id, type, payload, project_id, expires_at)
     VALUES (
       ${ownerId},
       'access.role_upgrade_request',
       ${sql.json({ requesterUserId: requesterId, projectName: "Demo", requestedRole: "editor" })},
-      ${projectId}
+      ${projectId},
+      ${expiresAt}
     )
+    RETURNING id
+  `;
+  // The request is a row of its own now; the notification only announces it.
+  const [row] = await sql<{ id: string }[]>`
+    INSERT INTO role_upgrade_requests
+      (project_id, requester_user_id, requested_role, status, notification_id, expires_at, share_token)
+      VALUES (${projectId}, ${requesterId}, 'editor', 'pending', ${notice!.id}, ${expiresAt}, replace(gen_random_uuid()::text,'-','')||replace(gen_random_uuid()::text,'-',''))
     RETURNING id
   `;
   return row!.id;
@@ -196,12 +205,11 @@ describe("role-upgrade request deadline", () => {
       requesterUserId: requesterId,
       projectId,
       projectName: "Deadline Demo",
-      projectSlug: "deadline-demo",
       message: null,
     });
 
     const [row] = await sql<{ expires_at: Date | null }[]>`
-      SELECT expires_at FROM notifications WHERE id = ${notification.id}
+      SELECT expires_at FROM notifications WHERE id = ${notification.notification.id}
     `;
     expect(row!.expires_at).not.toBeNull();
     const aheadMs = row!.expires_at!.getTime() - Date.now();
@@ -217,16 +225,12 @@ describe("role-upgrade decision is once-only under concurrency", () => {
 
     const results = await Promise.allSettled([
       roleUpgradeService.approve({
-        notificationId: requestId,
+        requestId,
         ownerUserId: ownerId,
-        projectName: "Demo",
-        projectSlug: "demo-slug",
       }),
       roleUpgradeService.approve({
-        notificationId: requestId,
+        requestId,
         ownerUserId: ownerId,
-        projectName: "Demo",
-        projectSlug: "demo-slug",
       }),
     ]);
 
@@ -237,6 +241,14 @@ describe("role-upgrade decision is once-only under concurrency", () => {
     // (request already decided).
     expect(fulfilled).toBe(1);
     expect(rejected).toBe(1);
+    // And the loser is told WHICH refusal it is. Counting outcomes alone
+    // cannot tell 409 "already handled" from 404 "no such request", so putting
+    // `status = 'pending'` back into the lock's WHERE — which turns the first
+    // into the second — would pass a test that only counted.
+    const loser = results.find((r) => r.status === "rejected");
+    expect((loser as PromiseRejectedResult).reason).toMatchObject({
+      statusCode: 409,
+    });
     // The requester must receive EXACTLY ONE approved notification, not two.
     expect(await countByType(requesterId, "access.role_upgrade_approved")).toBe(1);
     // The member is bumped to editor (once).
@@ -249,16 +261,12 @@ describe("role-upgrade decision is once-only under concurrency", () => {
 
     const results = await Promise.allSettled([
       roleUpgradeService.approve({
-        notificationId: requestId,
+        requestId,
         ownerUserId: ownerId,
-        projectName: "Demo",
-        projectSlug: "demo-slug",
       }),
       roleUpgradeService.reject({
-        notificationId: requestId,
+        requestId,
         ownerUserId: ownerId,
-        projectName: "Demo",
-        projectSlug: "demo-slug",
       }),
     ]);
 

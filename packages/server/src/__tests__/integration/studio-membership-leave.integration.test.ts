@@ -167,13 +167,26 @@ async function countAdmins(studioId: string): Promise<number> {
  * @param type - the notification type to look for.
  * @returns the newest matching notification's id.
  */
-async function latestNotificationId(userId: string, type: string): Promise<string> {
-  const rows = await sql<{ id: string }[]>`
-    SELECT id FROM notifications
+/**
+ * The id of the transfer row a bell entry announces.
+ *
+ * NOT the entry's own id. The decision endpoints act on the row, and passing
+ * the entry id instead answers 404 — which several of the assertions below
+ * would still satisfy, since "nothing happened" also leaves exactly one admin
+ * standing. A test that green-lights by doing nothing pins nothing.
+ * @param userId - Whose inbox to look in.
+ * @param type - The bell entry type.
+ * @returns The announced transfer's id.
+ */
+async function latestTransferId(userId: string, type: string): Promise<string> {
+  const rows = await sql<{ transfer_id: string | null }[]>`
+    SELECT payload->>'transferId' AS transfer_id FROM notifications
     WHERE user_id = ${userId} AND type = ${type} AND deleted_at IS NULL
     ORDER BY created_at DESC LIMIT 1
   `;
-  return rows[0]!.id;
+  const id = rows[0]?.transfer_id;
+  if (!id) throw new Error(`no transferId on the latest ${type} for ${userId}`);
+  return id;
 }
 
 
@@ -270,13 +283,13 @@ describe("leaveStudio — concurrency invariants", () => {
     await insertMember(studio.id, receiver.id, "maintainer");
 
     await studioTransferService.requestTransfer(studio.slug, admin.id, receiver.id);
-    const notificationId = await latestNotificationId(
+    const transferId = await latestTransferId(
       receiver.id,
       "studio.transfer_request",
     );
 
     await Promise.allSettled([
-      studioTransferService.confirmTransfer(notificationId, receiver.id),
+      studioTransferService.confirmTransfer(transferId, receiver.id),
       studioMemberService.leaveStudio(studio.slug, receiver.id),
     ]);
 
@@ -297,13 +310,13 @@ describe("leaveStudio — concurrency invariants", () => {
     await insertMember(studio.id, receiver.id, "maintainer");
 
     await studioTransferService.requestTransfer(studio.slug, admin.id, receiver.id);
-    const notificationId = await latestNotificationId(
+    const transferId = await latestTransferId(
       receiver.id,
       "studio.transfer_request",
     );
 
     await Promise.allSettled([
-      studioTransferService.confirmTransfer(notificationId, receiver.id),
+      studioTransferService.confirmTransfer(transferId, receiver.id),
       studioMemberService.updateMemberRole(studio.slug, receiver.id, "guest"),
     ]);
 
@@ -379,7 +392,7 @@ describe("leaveStudio — concurrency invariants", () => {
     await insertProjectMember(project, member.id, "editor");
 
     await projectTransferService.requestProjectTransfer(project, admin.id, member.id);
-    const notificationId = await latestNotificationId(
+    const transferId = await latestTransferId(
       member.id,
       "project.transfer_request",
     );
@@ -405,7 +418,7 @@ describe("leaveStudio — concurrency invariants", () => {
     });
 
     const transfer = projectTransferService.confirmProjectTransfer(
-      notificationId,
+      transferId,
       member.id,
     );
     await waitUntilBlockedOn(sql, "project_members");

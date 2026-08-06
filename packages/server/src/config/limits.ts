@@ -104,6 +104,15 @@ export function getNodeHistoryPageSize(): number {
 }
 
 /**
+ * A day in milliseconds, for readers converting a span back into days.
+ *
+ * Not a window and not a TTL — the unit itself. The landing page divides
+ * `expires_at - created_at` by it to say how long a request had, which is a
+ * question about a row rather than about today's configuration.
+ */
+export const MS_PER_DAY = SECONDS_PER_DAY * 1000;
+
+/**
  * How long someone has to answer something waiting on them, in days.
  *
  * One window for all five such flows — studio invite, project invite,
@@ -136,10 +145,11 @@ export function getDecisionWindowMs(): number {
 }
 
 /**
- * The same window in seconds, for Redis key expiry.
- *
- * The invite-link tokens live in Redis and expire with the invite they open,
- * so a dead link cannot resolve to a live invitation.
+ * The same window in seconds, for callers that need the duration rather than
+ * the instant — anything that takes "how long" instead of "until when".
+ * `no-hardcoded-request-ttl` names this function as the way out, which is part
+ * of why it exists: without it the only escape from the rule would be to write
+ * a day out by hand.
  * @returns The decision window in seconds.
  */
 export function getDecisionWindowSeconds(): number {
