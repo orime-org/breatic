@@ -114,8 +114,11 @@ services:
   collab:
     image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     command: ["node", "packages/collab/dist/index.js"]
-    ports:
-      - "1234:1234"
+    # Deliberately not published. Browsers reach collab through nginx's /ws
+    # location, and nginx is what sets the X-Real-IP the connection gate needs
+    # to identify a client. A published port would let anyone bypass nginx and
+    # supply that header themselves, which is the same as having no rate limit
+    # at all. nginx reaches it over the compose network as `collab:1234`.
     env_file: .env
     volumes:
       - ./logs:/app/logs
