@@ -25,10 +25,27 @@ import {
 /** Minimum of a Y.Doc this module needs; avoids importing yjs types here. */
 type PresenceDoc = Parameters<typeof markOnline>[0]["document"];
 
+/**
+ * The context Hocuspocus attaches to a connection once `onAuthenticate` has run.
+ *
+ * Named rather than written inline at each hook payload, so that the doc rule
+ * stops descending here. Spelled out at every call site it would demand a
+ * `@param` line per level — eight of them across this file, all saying the
+ * same thing.
+ */
+interface AuthContext {
+  user?: { id?: string };
+}
+
 /** What a connection carries once `onAuthenticate` has run. */
 interface ConnectionLike {
-  context?: { user?: { id?: string } };
+  context?: AuthContext;
   socketId?: string;
+}
+
+/** The running server, as much of it as this module reaches for. */
+interface InstanceLike {
+  documents: Map<string, unknown>;
 }
 
 /**
@@ -55,7 +72,7 @@ interface DocumentLike {
  * @returns The user id, or undefined when there is no client behind this call.
  */
 function userIdOf(payload: {
-  context?: { user?: { id?: string } };
+  context?: AuthContext;
   connection?: ConnectionLike;
 }): string | undefined {
   return payload.context?.user?.id ?? payload.connection?.context?.user?.id;
@@ -107,8 +124,8 @@ function connectedUserIds(document: DocumentLike): Set<string> {
 export function recordPresenceOnConnect(
   payload: {
     documentName: string;
-    instance: { documents: Map<string, unknown> };
-    context?: { user?: { id?: string } };
+    instance: InstanceLike;
+    context?: AuthContext;
   },
   deps: { now: () => number },
 ): void {
@@ -145,7 +162,7 @@ export function recordAbsenceOnDisconnect(
   payload: {
     documentName: string;
     document: PresenceDoc & DocumentLike;
-    context?: { user?: { id?: string } };
+    context?: AuthContext;
   },
   deps: { now: () => number },
 ): void {
@@ -199,7 +216,7 @@ export function stampIdentityOnAwareness(payload: {
   states: Map<number, Record<string, unknown>>;
   document: DocumentLike;
   connection?: ConnectionLike;
-  context?: { user?: { id?: string } };
+  context?: AuthContext;
 }): void {
   const userId = userIdOf(payload);
   if (!userId || !payload.connection) return;

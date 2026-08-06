@@ -175,7 +175,9 @@ describe("stampConnectionIdentity", () => {
 
   it("stamps a state that has no user field at all", () => {
     // A cursor with nothing else attached still belongs to somebody.
-    const states = new Map([[OWN_CLIENT, { cursor: { anchor: 1, head: 1 } }]]);
+    const states = new Map<number, Record<string, unknown>>([
+      [OWN_CLIENT, { cursor: { anchor: 1, head: 1 } }],
+    ]);
 
     stampConnectionIdentity({
       states,
