@@ -82,6 +82,10 @@ export const noNakedFetch: TSESLint.RuleModule<"nakedFetch", []> = createRule<
   },
   defaultOptions: [],
   create(context) {
+    /**
+     * Flag one identifier that reached the platform `fetch`.
+     * @param identifier - The node to underline in the report.
+     */
     const report = (identifier: TSESTree.Identifier): void => {
       context.report({ node: identifier, messageId: "nakedFetch" });
     };
