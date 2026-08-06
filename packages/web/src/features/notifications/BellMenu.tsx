@@ -300,8 +300,16 @@ function NotificationItem({
 
 /**
  * Maps a notification type to the short glyph shown in its avatar fallback.
+ *
+ * Every type the inbox can hold names itself here. The two-letter forms follow
+ * what the pair they belong to already established — a studio invite is IN and
+ * a project one PI, so a studio transfer is TR and a project one PT. A settled
+ * outcome is a mark rather than initials: a tick when the answer was yes, a
+ * cross when it was no.
  * @param type - Notification type to represent.
- * @returns the glyph for the type, or `?` for an unknown type.
+ * @returns the glyph for the type, or `?` for a type this build does not know
+ *   about, which is a wire carrying something newer than this bundle rather
+ *   than one of ours.
  */
 function iconForType(type: NotificationType): string {
   switch (type) {
@@ -314,6 +322,10 @@ function iconForType(type: NotificationType): string {
     case 'studio.transfer_request':
       return initialsFromString('TR');
     case 'studio.transfer_approved':
+      return '✓';
+    case 'project.transfer_request':
+      return initialsFromString('PT');
+    case 'project.transfer_approved':
       return '✓';
     case 'studio.invite_request':
       return initialsFromString('IN');
@@ -341,10 +353,18 @@ const PROJECT_ROLE_KEY: Record<string, string> = {
 };
 
 /**
- * Extracts the optional subtitle for a notification: the message the requester
- * typed (role upgrade), the role being offered (either invite), or a fixed
- * hint (studio transfer). Everything else — the project transfer included —
- * has no second line.
+ * Extracts the optional subtitle for a notification.
+ *
+ * The four rows that hand you something answer one question on their second
+ * line — what you hold if you accept: an invite names the role offered, a
+ * transfer the role you take over.
+ *
+ * The fifth waiting row does not, and cannot. A role upgrade asks the reader
+ * to grant something rather than take it, so what is useful there is the
+ * message the requester typed, and it has none when they typed nothing —
+ * `message` is optional on that route. So a waiting row with no second line is
+ * a real state, not an oversight. Rows that decide nothing have no second line
+ * either, because there is nothing to accept.
  * @param n - Notification whose payload is inspected for subtitle text.
  * @param t - Translation function for the localized subtitle.
  * @returns the subtitle text, or `null` when none applies.
@@ -367,7 +387,10 @@ function subtitleFor(
     return roleKey ? t(roleKey) : null;
   }
   if (n.type === 'studio.transfer_request') {
-    return t('notifications.subtitle.transferHint');
+    return t('notifications.subtitle.studioTransferHint');
+  }
+  if (n.type === 'project.transfer_request') {
+    return t('notifications.subtitle.projectTransferHint');
   }
   return null;
 }

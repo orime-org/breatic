@@ -634,7 +634,8 @@
     "subtitle": {
       "invitedAsMaintainer": "Joined as a Maintainer",
       "invitedAsGuest": "Joined as a Guest",
-      "transferHint": "Accept to become the studio admin",
+      "studioTransferHint": "Accept to become the Studio Admin",
+      "projectTransferHint": "Accept to become the Project Owner",
       "invitedAsEditor": "Joined as an editor",
       "invitedAsViewer": "Joined as a viewer"
     },
