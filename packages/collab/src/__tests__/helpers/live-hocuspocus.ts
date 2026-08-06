@@ -21,16 +21,21 @@
  *     applies it. Everything the server sends this client is decoded and
  *     recorded, which makes the broadcast an observable event with a position.
  *
- * Measured facts this encodes, from the 2026-08-01 probe and the bundled
- * source:
+ * Measured facts this encodes, from the 2026-08-01 probe, the 2026-08-06
+ * re-measurement against 4.5.0, and the bundled source:
  *
  *   - `Document.handleUpdate` is bound to the Y.Doc "update" event and sends to
  *     every connection synchronously, so a recorded Sync/Update frame marks the
  *     exact moment of the broadcast.
- *   - One failed store poisons the document: later transacts on it reject too.
- *     Give every case its own document name.
- *   - A failing persistence hook also produces an unhandled rejection separate
- *     from the one `transact` hands back — see `captureUnhandledRejections`.
+ *   - A failed store reaches nobody. `transact` does not store at all since
+ *     hocuspocus 4, and `storeDocumentHooks` catches every store error and
+ *     returns, so no persistence failure surfaces to a caller. Until 3.4.4 it
+ *     did, and a rejected store also poisoned the document — the library
+ *     deletes its running-execution entry only after awaiting, with no
+ *     `finally` — which is why cases were told to take their own document
+ *     name. That registry bug is still in 4.5.0 but has no reachable trigger,
+ *     because the one caller of the debouncer swallows. Own document names are
+ *     still worth keeping, for ordinary test isolation rather than for that.
  *   - `server.destroy()` hangs; do not call it. Close the sockets instead
  *     (`LiveClient.close`), which is what clears the per-connection ping timer.
  */
@@ -386,11 +391,12 @@ export interface RejectionTrap {
 /**
  * Take over `unhandledRejection` for the duration of a test.
  *
- * A failing persistence hook can produce a second, unowned rejection alongside
- * the one `transact` returns: `storeDocumentHooks` schedules `unloadDocument`
- * from a `setTimeout` and nothing awaits it, so on a poisoned document it
- * rejects with no one listening. Under Node's default that ends the process;
- * under vitest it fails the file, for something no test is about.
+ * `storeDocumentHooks` schedules `unloadDocument` from a `setTimeout` that
+ * nothing awaits, so anything that makes that unload reject does so with no
+ * one listening. Under Node's default that ends the process; under vitest it
+ * fails the file, for something no test is about. (The persistence hook itself
+ * no longer gets there: since hocuspocus 4 its errors are caught inside the
+ * library, so this guards the unload path rather than the store.)
  *
  * It only fires when the document has no connections left — `unloadDocument`
  * returns early otherwise — so a test that keeps a client attached will see an

@@ -821,8 +821,10 @@ describe("finishing steps cannot change the answer already decided", () => {
   it("space:create keeps its success when disconnect throws", async () => {
     const hocuspocus = makeHocuspocus({
       disconnect: async () => {
-        // A failed store poisons the document; disconnect then fails too
-        // (2026-08-01 hocuspocus-transact-semantics probe).
+        // `disconnect()` runs the disconnect hooks and awaits a store, so
+        // it is a real place for a rejection to come from. The wording is a
+        // fixture: since hocuspocus 4 the store itself is swallowed inside
+        // the library, so a database error is not what would surface here.
         throw new Error("ECONNREFUSED storing document");
       },
     });
@@ -1295,11 +1297,13 @@ function seedTabList(userId: string, ids: readonly string[]): void {
 }
 
 describe("a refused pre-check is a pure read — a broken publish cannot reach it", () => {
-  // The library's `transact` runs the callback and then stores the doc
-  // unconditionally (`hocuspocus-server.esm.js:2097-2112`), so a check that
-  // goes through it hands back two answers: what it saw, and whether the
-  // database is healthy. Those are unrelated, and every handler had to
-  // hand-write which one wins. Reading `conn.document` directly removes the
+  // Until hocuspocus 4 the library's `transact` ran the callback and then
+  // stored the doc unconditionally, so a check that went through it handed
+  // back two answers: what it saw, and whether the database was healthy.
+  // Those are unrelated, and every handler had to hand-write which one wins.
+  // 4.5.0 dropped the store from `transact`, but a check routed through it
+  // still opens a transaction and still rides the write path. Reading
+  // `conn.document` directly removes the
   // second answer, so there is nothing left to order. See §6 opening.
   beforeEach(() => {
     seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
@@ -1447,8 +1451,8 @@ describe("a refused pre-check is a pure read — a broken publish cannot reach i
   it("space:delete undoes its content rows when the transact rejects without ever running the callback", async () => {
     // The one shape that still reaches `failed-before-broadcast` for an
     // operation whose callback always writes or decides: the library
-    // throws on a closed connection BEFORE touching the document
-    // (`hocuspocus-server.esm.js:2098-2101`). Nothing was read, nothing
+    // throws on a closed connection BEFORE touching the document (the guard
+    // on the first line of `DirectConnection.transact`). Nothing was read, nothing
     // decided, nothing written — so the soft-deleted rows have to come
     // back, or the project keeps rows for a Space that still exists.
     const res = await handleSpaceRpc(

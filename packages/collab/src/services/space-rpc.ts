@@ -341,8 +341,8 @@ async function undoContentRows(
 /**
  * Run a cleanup that must never change the answer the caller already has.
  *
- * `finally` blocks throw here for real reasons — a store failure poisons
- * the document, so `disconnect()` fails too. A throw inside `finally`
+ * `finally` blocks throw here for real reasons — `disconnect()` runs the
+ * disconnect hooks, and any of those can reject. A throw inside `finally`
  * REPLACES the function's return value, which turns an operation that
  * already broadcast successfully into an internal error carrying the
  * database's own words. So every cleanup in THIS file goes through here
@@ -382,15 +382,18 @@ interface MetaDirectConnection {
  * **The checks an operation runs BEFORE it writes go through here, never
  * through `transact`.** (The checks a callback re-runs at the moment it
  * writes are a different thing and stay inside the write — see §4 on why
- * they have to be re-run at all.) `transact` runs its callback and then
- * stores the document unconditionally
- * (`hocuspocus-server.esm.js:2097-2112`) — even for a callback that only
- * reads. A check routed through it therefore comes back with two
- * unrelated answers: what it saw, and whether the database is healthy.
- * Every caller then has to decide which one wins, and that decision was
+ * they have to be re-run at all.) Until hocuspocus 4, `transact` ran its
+ * callback and then stored the document unconditionally — even for a
+ * callback that only read — so a check routed through it came back with two
+ * unrelated answers: what it saw, and whether the database was healthy.
+ * Every caller then had to decide which one won, and that decision was
  * written three different ways across nine call sites, two of them
- * backwards. A Yjs read needs no transaction and touches no storage, so
- * there is only ever one answer and nothing to order.
+ * backwards. 4.5.0 removed the store from `transact` altogether, which
+ * removes that particular hazard but not the reason for the split: a read
+ * routed through `transact` still opens a Yjs transaction, still costs a
+ * broadcast frame if the callback writes by accident, and still couples a
+ * pure question to the write path. A Yjs read needs no transaction and
+ * touches no storage, so there is only ever one answer and nothing to order.
  * @param conn - Direct connection opened for this operation.
  * @returns The live meta doc.
  * @throws {Error} When the connection has already been disconnected.

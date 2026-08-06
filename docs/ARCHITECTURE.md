@@ -24,7 +24,7 @@ breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架�
 | DB | PostgreSQL (postgres.js driver) |
 | Cache / Queue / PubSub | Redis (ioredis) + BullMQ |
 | AI | Vercel AI SDK |
-| Realtime collab | Hocuspocus 3.4.4 (Yjs server) |
+| Realtime collab | Hocuspocus 4.5.0 (Yjs server) |
 | Validation | Zod |
 | Test | Vitest |
 | Logging | pino (main-thread `multistream`) |
@@ -233,7 +233,7 @@ v14 全新重写已于 2026-05-19 合入 `main`(PR #103)。对齐 design-baselin
 | UI 原语 | shadcn/ui(Radix + Tailwind) |
 | 样式 | Tailwind CSS 3.4 + CSS 变量(浅色 / 深色经 `data-theme` 切换) |
 | 状态 | Zustand 5 + immer(需要撤销的 store 用 zundo) |
-| 协作 | Yjs 13 + @hocuspocus/provider 3(同步优先,无离线模式) |
+| 协作 | Yjs 13 + @hocuspocus/provider 4(同步优先,无离线模式) |
 | 画布 | @xyflow/react 12 |
 | 富文本编辑器 | TipTap 3 |
 | 音频 / 视频 | 原生 `<audio>` / `<video>` + 自建统一 `MediaPlayer`(装饰波形,零第三方播放器库) |
