@@ -174,6 +174,7 @@ describe("presence — stale records left by a vanished server", () => {
 
     const swept = sweepStalePresence({
       document: doc,
+      connectedUserIds: new Set<string>(),
       now: 1_000 + 600_000,
       staleAfterMs: 300_000,
     });
@@ -191,6 +192,7 @@ describe("presence — stale records left by a vanished server", () => {
 
     const swept = sweepStalePresence({
       document: doc,
+      connectedUserIds: new Set<string>(),
       now: 1_000 + 10_000,
       staleAfterMs: 300_000,
     });
@@ -208,11 +210,48 @@ describe("presence — stale records left by a vanished server", () => {
 
     sweepStalePresence({
       document: doc,
+      connectedUserIds: new Set<string>(),
       now: 2_000 + 600_000,
       staleAfterMs: 300_000,
     });
 
     expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(2_000);
+  });
+
+  it("spares someone the server is holding a connection for right now", () => {
+    // The timestamp only moves when a client does something. Sit on an open
+    // canvas without touching anything and it stops advancing, while the
+    // WebSocket keepalive quietly holds the connection open. Judging by the
+    // timestamp alone would evict someone who is sitting right there, so the
+    // server's own list of live connections overrides it.
+    const doc = emptyMetaDoc();
+    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
+
+    const swept = sweepStalePresence({
+      document: doc,
+      connectedUserIds: new Set([ALICE]),
+      now: 1_000 + 600_000,
+      staleAfterMs: 300_000,
+    });
+
+    expect(swept).toEqual([]);
+    expect(readPresence(doc, ALICE)?.online).toBe(true);
+  });
+
+  it("sweeps the stale one and spares the connected one in the same pass", () => {
+    const doc = emptyMetaDoc();
+    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
+    markOnline({ documentName: DOC, document: doc, userId: BOB, now: 1_000 });
+
+    const swept = sweepStalePresence({
+      document: doc,
+      connectedUserIds: new Set([BOB]),
+      now: 1_000 + 600_000,
+      staleAfterMs: 300_000,
+    });
+
+    expect(swept).toEqual([ALICE]);
+    expect(readPresence(doc, BOB)?.online).toBe(true);
   });
 
   it("sweeps every stale record in one pass, not just the first", () => {
@@ -222,6 +261,7 @@ describe("presence — stale records left by a vanished server", () => {
 
     const swept = sweepStalePresence({
       document: doc,
+      connectedUserIds: new Set<string>(),
       now: 1_000 + 600_000,
       staleAfterMs: 300_000,
     });

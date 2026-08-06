@@ -193,14 +193,23 @@ export function touchLastSeen(args: {
  * already say offline are left untouched: their timestamp is when their owner
  * actually left, and rewriting it every load would keep pushing "last seen"
  * forward for somebody long gone.
- * @param args - Which document, when, and how old counts as stale.
+ *
+ * The timestamp alone is not enough to convict. It only advances when a client
+ * does something, so someone sitting on an open canvas without touching
+ * anything stops advancing it while the WebSocket keepalive quietly holds their
+ * connection open. Whoever the server is actually holding a connection for is
+ * therefore spared regardless of how old their timestamp looks — the server
+ * knows this for free, and it is the stronger evidence of the two.
+ * @param args - Which document, who is connected, when, and how old counts as stale.
  * @param args.document - The meta document to sweep.
+ * @param args.connectedUserIds - Users the server is holding at least one live connection for; never swept.
  * @param args.now - Current time in ms.
- * @param args.staleAfterMs - How long without a heartbeat before an online record is disbelieved. Must be well above the keepalive interval, or a live user gets swept.
+ * @param args.staleAfterMs - How long without a heartbeat before an unconnected online record is disbelieved.
  * @returns The user ids that were flipped to offline.
  */
 export function sweepStalePresence(args: {
   document: YDoc;
+  connectedUserIds: ReadonlySet<string>;
   now: number;
   staleAfterMs: number;
 }): string[] {
@@ -211,6 +220,8 @@ export function sweepStalePresence(args: {
     users.forEach((value, userId) => {
       if (!(value instanceof Y.Map)) return;
       if (value.get("online") !== true) return;
+      // Sitting right there. Whatever the timestamp says, they are here.
+      if (args.connectedUserIds.has(userId)) return;
       const lastSeenAt = value.get("lastSeenAt");
       if (typeof lastSeenAt !== "number") return;
       if (args.now - lastSeenAt < args.staleAfterMs) return;
