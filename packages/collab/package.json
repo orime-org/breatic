@@ -29,9 +29,11 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/ws": "^8.18.1",
     "fast-check": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "ws": "^8.20.0"
   }
 }
