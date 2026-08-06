@@ -90,17 +90,15 @@ const REFUSAL_RESPONSE = "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n";
  * hook chain with a falsy rejection so hocuspocus skips the upgrade without
  * letting anything escape into the process.
  * @param socket - The raw socket the upgrade arrived on.
- * @returns Never returns normally.
  * @throws {undefined} Always — the falsy value is what makes hocuspocus's
  *   `if (error) throw error` swallow it instead of crashing the process.
  */
 function refuseUpgrade(socket: RefusableSocket): never {
   socket.write(REFUSAL_RESPONSE);
   socket.destroy();
-  // eslint-disable-next-line @typescript-eslint/only-throw-error -- a falsy
-  // rejection is hocuspocus's own signal for "abort this upgrade quietly";
-  // anything truthy is rethrown out of an async event listener and kills the
-  // process. Measured: see the module docstring.
+  // A falsy rejection is hocuspocus's own signal for "abort this upgrade
+  // quietly"; anything truthy is rethrown out of an async event listener and
+  // kills the process. Measured: see the module docstring.
   throw undefined;
 }
 
