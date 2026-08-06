@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * Asserts that `createCollabServer` hands `infra.redisKeyPrefix` to the
- * Hocuspocus Redis extension as its channel prefix (#1831).
+ * Asserts what `createCollabServer` hands to the Hocuspocus server and its
+ * Redis extension — the values whose type gives the compiler nothing to check,
+ * so that wiring the wrong one still compiles and only shows up in production.
+ * The Redis channel prefix (#1831) is the main case.
  *
  * Why this narrow test exists: the prefix is what keeps two deployments
  * sharing a Redis instance from delivering each other's document updates.
@@ -76,6 +78,7 @@ vi.mock("@collab/services/handling-sweeper.js", () => ({
 }));
 
 import { createCollabServer } from "../hocuspocus.js";
+import { getCollabConfig } from "../config.js";
 
 /**
  * Read the `prefix` the Redis extension was constructed with.
@@ -127,6 +130,21 @@ describe("createCollabServer — Redis channel prefix", () => {
 
     const config = serverSpy.mock.calls[0]?.[0] as { port: number };
     expect(config.port).toBe(1244);
+  });
+
+  // Leaving this out costs nothing at build time and drops every connection
+  // to a project with more than 100 documents at runtime, because the library
+  // then falls back to its own default. `pending-documents-limit.test.ts`
+  // pins what the value has to be; this pins that the value is used at all.
+  it("passes the configured pending-document ceiling to the Hocuspocus server", async () => {
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+    });
+
+    const config = serverSpy.mock.calls[0]?.[0] as { maxPendingDocuments: number };
+    expect(config.maxPendingDocuments).toBe(getCollabConfig().max_pending_documents);
   });
 
   it("never uses the Redis URL as the prefix", async () => {

@@ -30,8 +30,30 @@ max_document_bytes: 10485760     # 10 MB
 # Max WebSocket connections per document (0 = unlimited).
 max_connections_per_document: 100
 
+# Max documents one socket may have waiting for authentication at once.
+# Exceeding it does not refuse the document — it closes the whole socket.
+#
+# One browser tab holds ONE socket for a project and puts every document it
+# needs on it: the meta doc plus one per open Space tab. A member who has
+# never closed a tab has every Space open, because the tab list is seeded
+# from the full Space directory the first time they open the project. So the
+# peak here is "however many Spaces the project has", and nothing caps that.
+#
+# The library defaults this to 100, which is a per-socket-per-document
+# assumption that does not hold for us: a 120-Space project would drop every
+# new member's connection on first load. Set far above any plausible project
+# instead. Each pending entry is a small bookkeeping object, so the memory
+# this bounds is negligible; the limits that actually bound abuse are the
+# library's 5MB unauthenticated-queue ceiling and the per-IP throttle below.
+#
+# Residual: a project past ~1000 Spaces hits this again. The answer then is a
+# cap on Spaces per project, not a bigger number here.
+max_pending_documents: 1000
+
 # ── Throttle ──────────────────────────────────────
-# Coarse per-IP DoS backstop (loopback is exempt — see loopback-exempt-throttle.ts).
+# Coarse per-IP DoS backstop. Loopback peers are exempt — see
+# infra/connection-gate.ts, which decides from the raw peer address during the
+# WebSocket upgrade.
 # One user opens many doc-connections (meta + every Space, x2 under dev StrictMode),
 # so keep the threshold generous to avoid false-banning legitimate users; fine-grained
 # abuse control belongs at the authenticated-user layer, not per-IP.
