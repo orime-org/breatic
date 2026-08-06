@@ -41,19 +41,15 @@ import { projectsApi } from '@web/data/api/projects';
 
 interface MembersModalProps {
   projectId?: string;
-  members?: ReadonlyArray<Member>;
+  /**
+   * The project's roster. Required for the same reason as the stack's: this
+   * carried its own copy of the same five invented people as a default.
+   */
+  members: ReadonlyArray<Member>;
   currentUserId?: string;
   /** Viewer's own role on this project; the transfer section is owner-only. */
   currentUserRole?: MemberRole;
 }
-
-const STUB_MEMBERS: ReadonlyArray<Member> = [
-  { id: 'me', userId: 'u-me', name: 'Songxiu Lei', email: 'sx@example.com', role: 'owner' },
-  { id: 'yj', userId: 'u-yj', name: 'Yuki Jia', email: 'yj@example.com', role: 'editor' },
-  { id: 'dm', userId: 'u-dm', name: 'Diana Marquez', email: 'dm@example.com', role: 'editor' },
-  { id: 'rt', userId: 'u-rt', name: 'Ryo Tanaka', email: 'rt@example.com', role: 'viewer' },
-  { id: 'pl', userId: 'u-pl', name: 'Priya Lokesh', email: 'pl@example.com', role: 'viewer' },
-];
 
 const ROLE_OPTIONS: ReadonlyArray<{
   value: Exclude<MemberRole, 'owner'>;
@@ -78,14 +74,14 @@ const ROLE_OPTIONS: ReadonlyArray<{
  * Spec: access-permission design (2026-05-28) § 5.
  * @param root0 - Members modal props.
  * @param root0.projectId - Id of the project whose membership is managed; role/remove calls target it.
- * @param root0.members - Members to list; defaults to stub data when not supplied.
+ * @param root0.members - Members to list.
  * @param root0.currentUserId - Viewer's user id, used to mark and protect their own row.
  * @param root0.currentUserRole - Viewer's own project role; gates the owner-only transfer section.
  * @returns the collaborator management dialog with role and remove controls.
  */
 export function MembersModal({
   projectId,
-  members = STUB_MEMBERS,
+  members,
   currentUserId,
   currentUserRole,
 }: MembersModalProps): React.JSX.Element {

@@ -28,32 +28,46 @@ describe('MembersStack', () => {
     });
   });
 
+  it('does not compile without members, which is the whole point of the change', () => {
+    // The stub roster this component used to fall back on put five people who
+    // do not exist one forgotten prop away from the screen. Deleting it is
+    // only half the fix — the other half is that forgetting the prop has to
+    // stop compiling, and nothing at runtime can assert that.
+    //
+    // This directive is the assertion: if `members` ever goes back to being
+    // optional, there is no error here for it to expect and `pnpm typecheck`
+    // fails on the unused directive.
+    // @ts-expect-error members is required
+    const element = <MembersStack />;
+    expect(element).toBeTruthy();
+  });
+
   it('has no a11y violations', async () => {
-    const { container } = render(<MembersStack />);
+    const { container } = render(<MembersStack members={MEMBERS} />);
     await expectNoA11yViolations(container);
   });
 
   it('trigger button exposes member count in aria-label', () => {
-    render(<MembersStack />);
+    render(<MembersStack members={MEMBERS} />);
     expect(
-      screen.getByRole('button', { name: /Project members \(5\)/i }),
+      screen.getByRole('button', { name: /Project members \(3\)/i }),
     ).toBeInTheDocument();
   });
 
-  it('clicking trigger opens popover with 5 stub member rows', async () => {
+  it('opens a popover with one row per member it was given', async () => {
     const user = userEvent.setup();
-    render(<MembersStack />);
+    render(<MembersStack members={MEMBERS} />);
     await user.click(screen.getByTestId('members-trigger'));
-    expect(screen.getByTestId('members-row-me')).toBeInTheDocument();
-    expect(screen.getByTestId('members-row-yj')).toBeInTheDocument();
-    expect(screen.getByTestId('members-row-pl')).toBeInTheDocument();
-    expect(screen.getByText('Songxiu Lei')).toBeInTheDocument();
+    expect(screen.getByTestId('members-row-m-own')).toBeInTheDocument();
+    expect(screen.getByTestId('members-row-m-ed')).toBeInTheDocument();
+    expect(screen.getByTestId('members-row-m-vw')).toBeInTheDocument();
+    expect(screen.getByText('Owner Person')).toBeInTheDocument();
     expect(screen.getByText('Owner')).toBeInTheDocument();
   });
 
   it('has no Invite new member button (invite lives in ShareDialog)', async () => {
     const user = userEvent.setup();
-    render(<MembersStack />);
+    render(<MembersStack members={MEMBERS} />);
     await user.click(screen.getByTestId('members-trigger'));
     expect(screen.queryByTestId('members-invite-trigger')).toBeNull();
     expect(useUIStore.getState().shareOpen).toBe(false);
@@ -61,7 +75,7 @@ describe('MembersStack', () => {
 
   it('clicking Manage collaborators closes popover + opens members-modal overlay', async () => {
     const user = userEvent.setup();
-    render(<MembersStack currentUserRole='owner' />);
+    render(<MembersStack members={MEMBERS} currentUserRole='owner' />);
     await user.click(screen.getByTestId('members-trigger'));
     await user.click(screen.getByTestId('members-manage-trigger'));
     expect(useUIStore.getState().activeOverlayId).toBe('members-modal');
@@ -70,7 +84,7 @@ describe('MembersStack', () => {
 
   it('keeps the popover title in Title Case (frozen "Project" word, no CSS uppercase)', async () => {
     const user = userEvent.setup();
-    render(<MembersStack />);
+    render(<MembersStack members={MEMBERS} />);
     await user.click(screen.getByTestId('members-trigger'));
     const title = screen.getByTestId('members-popover-title');
     expect(title).not.toHaveClass('uppercase');

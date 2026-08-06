@@ -27,10 +27,11 @@ interface TopBarProps {
   onRename: (next: string) => void;
   onAddCredits?: () => void;
   /**
-   * Real project members for the MembersStack. Omitted in tests so the
-   * stack falls back to its STUB_MEMBERS default.
+   * The project's roster, forwarded to both member components. Required: the
+   * stack and the modal have no fallback to invent, and leaving it optional
+   * here would only move that decision up one layer.
    */
-  members?: ReadonlyArray<Member>;
+  members: ReadonlyArray<Member>;
   /** Current user's id, used by MembersStack to mark the "me" row. */
   currentUserId?: string;
 }
@@ -55,7 +56,7 @@ interface TopBarProps {
  * @param root0.credits - Current credit balance shown in the credits pill.
  * @param root0.onRename - Called with the new title when the user finishes editing the project name.
  * @param root0.onAddCredits - Called when the user clicks the add-credits button on the credits pill.
- * @param root0.members - Real project members for the MembersStack; omitted in tests for the stub fallback.
+ * @param root0.members - The project's roster, forwarded to both member components.
  * @param root0.currentUserId - Current user's id, used by MembersStack to mark the "me" row.
  * @returns the project chrome top bar with its left identity block and right action groups.
  */

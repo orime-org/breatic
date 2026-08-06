@@ -24,8 +24,13 @@ interface ProjectMembersResult {
  * consumes, keying each merged row on `userId` (there is no separate
  * membership id). The profile query stays disabled until the relation
  * resolves with at least one user id, so a project with no members never
- * hits `/users`. The `'demo'` sentinel disables the whole roster so the
- * stub fallback in MembersStack stands in.
+ * hits `/users`. The `'demo'` sentinel disables both queries; the roster is
+ * then simply empty, which is what the stack renders.
+ *
+ * That last sentence used to say the sentinel let a stub roster in MembersStack
+ * stand in, and it never did: this returns an array either way, an array is not
+ * a missing prop, and the default it named could not fire. The stub is gone
+ * now and the prop is required, so there is nothing left to stand in.
  * @param projectId - The bare project uuid (or `'demo'` to disable fetching).
  * @returns The merged members (empty until both queries resolve) and a loading flag.
  */

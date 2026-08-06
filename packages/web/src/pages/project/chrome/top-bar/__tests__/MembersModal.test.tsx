@@ -34,8 +34,18 @@ describe('MembersModal', () => {
     useUIStore.setState({ activeOverlayId: null });
   });
 
+  it('does not compile without members, which is the whole point of the change', () => {
+    // Same pin as the stack's: this modal carried its own copy of the same
+    // five invented people, and a forgotten prop was all it took to put them
+    // on screen. If `members` goes back to optional there is no error for
+    // this directive to expect and typecheck fails on it.
+    // @ts-expect-error members is required
+    const element = <MembersModal projectId='p1' />;
+    expect(element).toBeTruthy();
+  });
+
   it('is hidden when activeOverlayId is not members-modal', () => {
-    renderModal(<MembersModal />);
+    renderModal(<MembersModal members={REAL_MEMBERS} />);
     expect(screen.queryByTestId('members-modal')).not.toBeInTheDocument();
   });
 
@@ -43,29 +53,25 @@ describe('MembersModal', () => {
     act(() => {
       useUIStore.getState().setActiveOverlayId('members-modal');
     });
-    renderModal(<MembersModal />);
+    renderModal(<MembersModal members={REAL_MEMBERS} />);
     await expectNoA11yViolations(document.body);
   });
 
-  it('renders header / 5 stub member rows when open', () => {
+  it('renders the header and one row per member it was given', () => {
     act(() => {
       useUIStore.getState().setActiveOverlayId('members-modal');
     });
-    renderModal(<MembersModal />);
+    renderModal(<MembersModal members={REAL_MEMBERS} />);
     expect(screen.getByTestId('members-modal')).toBeInTheDocument();
     expect(screen.getByText('Collaborators')).toBeInTheDocument();
     expect(
       screen.getByText('Manage project members and their roles'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByTestId('members-modal-row-me'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId('members-modal-row-pl'),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('members-modal-row-u-a')).toBeInTheDocument();
+    expect(screen.getByTestId('members-modal-row-u-b')).toBeInTheDocument();
   });
 
-  it('renders the real members it is given (not the stub fallback)', () => {
+  it('renders exactly the members it is given, and nobody else', () => {
     act(() => {
       useUIStore.getState().setActiveOverlayId('members-modal');
     });
@@ -74,17 +80,18 @@ describe('MembersModal', () => {
     );
     expect(screen.getByText('Real Owner')).toBeInTheDocument();
     expect(screen.getByText('Real Editor')).toBeInTheDocument();
-    // Once real data is supplied, the stub fallback names must NOT appear
-    // (the bug: the modal rendered hardcoded stub members because the
-    // caller passed no props).
-    expect(screen.queryByText('Songxiu Lei')).toBeNull();
+    // Two given, two rendered. This used to guard against a stub roster of
+    // five invented people appearing alongside them; the stub is gone and
+    // the prop is required, so what is left to hold is the plain rule that
+    // the modal invents nobody.
+    expect(screen.getAllByTestId(/^members-modal-row-/)).toHaveLength(2);
   });
 
   it('is manage-only — no invite input / send button (invite lives in ShareDialog)', () => {
     act(() => {
       useUIStore.getState().setActiveOverlayId('members-modal');
     });
-    renderModal(<MembersModal />);
+    renderModal(<MembersModal members={REAL_MEMBERS} />);
     expect(
       screen.queryByTestId('members-modal-invite-input'),
     ).not.toBeInTheDocument();
@@ -120,15 +127,12 @@ describe('MembersModal', () => {
     act(() => {
       useUIStore.getState().setActiveOverlayId('members-modal');
     });
-    renderModal(<MembersModal />);
+    renderModal(<MembersModal members={REAL_MEMBERS} />);
     // owner row: no role select
     expect(
-      screen.queryByTestId('members-modal-role-me'),
+      screen.queryByTestId('members-modal-role-u-a'),
     ).not.toBeInTheDocument();
-    // editor / viewer rows: role select present
-    expect(screen.getByTestId('members-modal-role-yj')).toBeInTheDocument();
-    expect(screen.getByTestId('members-modal-role-dm')).toBeInTheDocument();
-    expect(screen.getByTestId('members-modal-role-rt')).toBeInTheDocument();
-    expect(screen.getByTestId('members-modal-role-pl')).toBeInTheDocument();
+    // non-owner row: role select present
+    expect(screen.getByTestId('members-modal-role-u-b')).toBeInTheDocument();
   });
 });
