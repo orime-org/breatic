@@ -17,11 +17,16 @@ import { noNakedFetch } from "../no-naked-fetch";
  *     members covered is a gap, not a limit.
  *
  * A first draft of this rule matched call shapes with a selector
- * (`CallExpression[callee.name='fetch']`). Measured, that caught three of the
- * seven and flagged a locally-bound parameter that happens to be named fetch —
- * the one case that must NOT be reported. Asking "what does this name resolve
- * to" instead of "what does this line look like" is what makes the last case
- * free rather than a special case.
+ * (`CallExpression[callee.name='fetch']`). Measured, it caught the ones that
+ * call `fetch` on the spot and missed every form that hands it to something
+ * else, while flagging a locally-bound parameter that happens to be named
+ * fetch — the one case that must NOT be reported. Asking "what does this name
+ * resolve to" instead of "what does this line look like" is what makes the
+ * last case free rather than a special case.
+ *
+ * Counts deliberately stay out of this comment. An earlier version said "three
+ * of the seven", and adding one case made it false; the list below is the
+ * count, and it cannot drift from itself.
  */
 const CASES = {
   valid: [
@@ -47,15 +52,47 @@ const CASES = {
     {
       code: "declare const client: { fetch: (u: string) => Promise<Response> };\nexport const go = (): Promise<Response> => client.fetch('https://x');",
     },
-    // A TYPE position. `typeof fetch` is erased before anything runs, so it
-    // cannot send a request — reporting it would be the guard refusing a
-    // spelling rather than an action. The rule asks the scope analyser whether
-    // a reference is a value reference precisely so this stays free.
+    // TYPE POSITIONS. Everything below is erased before anything runs and
+    // cannot send a request, so reporting it would be the guard refusing a
+    // spelling rather than an action. The rule tells them apart by the
+    // identifier's syntactic parent, against a five-entry set copied from
+    // ESLint's own no-restricted-globals — the scope analyser cannot help
+    // here, because `typeof fetch` reports `isValueReference === true` just
+    // like a real call does.
+    //
+    // There is one case per entry in that set, and that is the point of the
+    // three below that do not typecheck: without them, four of the five
+    // entries could be deleted with the whole suite still green, which is the
+    // same half-guarded state this file was rewritten to end. Which spellings
+    // the compiler happens to reject today is not what pins the set — the set
+    // is upstream's answer to "what counts as a type position", and each
+    // entry needs something that goes red when it is dropped.
     {
+      // TSTypeQuery.
       code: "export type Injected = typeof fetch;",
     },
     {
+      // TSTypeQuery, in a parameter annotation.
       code: "export function h(impl: typeof fetch): void {\n  void impl;\n}",
+    },
+    {
+      // TSQualifiedName — a dotted `typeof` query. This one is legal
+      // TypeScript that anybody can write today: `tsc --strict` accepts it
+      // with zero errors.
+      code: "export type FetchName = typeof fetch.name;",
+    },
+    {
+      // TSTypeReference. `fetch` is a value, so tsc rejects this with TS2749;
+      // the parser still produces the node, and the entry still needs a case.
+      code: "declare const x: fetch;\nexport const y = x;",
+    },
+    {
+      // TSInterfaceHeritage. Also TS2749.
+      code: "export interface I extends fetch {}",
+    },
+    {
+      // TSClassImplements. Also TS2749.
+      code: "export class C implements fetch {}",
     },
   ],
   invalid: [
@@ -136,3 +173,53 @@ for (const environment of ENVIRONMENTS) {
   });
   ruleTester.run(`no-naked-fetch (${environment.name})`, noNakedFetch, CASES);
 }
+
+/**
+ * The one case the module-mode list above structurally cannot reach.
+ *
+ * `reportGlobalFetchReferences` skips global variables that carry a definition
+ * site, because a name someone declared in source is theirs and not the
+ * platform's. Every shadowing case above is a LOCAL binding, which never enters
+ * the global scope at all, so none of them exercise that check — measured, it
+ * can be deleted with the rest of the suite still green, and deleting it makes
+ * the rule report a caller's own `fetch` twice.
+ *
+ * Reaching it needs a top-level declaration that lands in the global scope,
+ * which in turn needs script mode: under `sourceType: 'module'` a top-level
+ * `var` belongs to the module, not to the world.
+ *
+ * No file this rule currently governs is linted as a script — the root config
+ * names no sourceType, and web's script block covers `**\/*.cjs`, which its
+ * `src/**\/*.{ts,tsx}` glob cannot intersect. The case is here anyway: "no
+ * configured file reaches it today" is a fact about the config, and a guard
+ * whose removal is invisible is exactly the state this file was rewritten to
+ * end.
+ */
+const scriptModeTester = new RuleTester({
+  languageOptions: {
+    // It has to go in `parserOptions`, not beside `globals`. RuleTester merges
+    // `sourceType: 'module'` into parserOptions itself, and parserOptions wins
+    // — setting the top-level field instead leaves every case below running as
+    // a module, where the guard this block exists for is unreachable and the
+    // block silently proves nothing.
+    parserOptions: { sourceType: "script" },
+    globals: { fetch: "readonly" },
+  },
+});
+
+scriptModeTester.run("no-naked-fetch (script mode, global scope)", noNakedFetch, {
+  valid: [
+    {
+      // A top-level `var fetch` in script mode IS a global variable, but one
+      // with a definition site. It is the caller's own function.
+      code: 'var fetch = function (u) { return u; };\nfetch("https://x");',
+    },
+  ],
+  invalid: [
+    {
+      // Same environment, no declaration: still the platform's.
+      code: 'fetch("https://x");',
+      errors: [{ messageId: "nakedFetch" as const, line: 1, column: 1 }],
+    },
+  ],
+});

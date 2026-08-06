@@ -38,8 +38,7 @@ const TYPE_POSITION_PARENTS = new Set([
  * @returns True when the identifier's parent is a type-position node.
  */
 function isInTypePosition(reference: TSESLint.Scope.Reference): boolean {
-  const parent = reference.identifier.parent as TSESTree.Node | undefined;
-  return parent !== undefined && TYPE_POSITION_PARENTS.has(parent.type);
+  return TYPE_POSITION_PARENTS.has(reference.identifier.parent.type);
 }
 
 /**
@@ -89,12 +88,12 @@ function reportGlobalFetchReferences(
  *
  * The rule asks what a name RESOLVES TO rather than what a line looks like.
  * The difference is not stylistic: an earlier draft matched
- * `CallExpression[callee.name='fetch']` and, measured over the seven ways to
- * reach the global, caught three — missing every form that hands the function
- * to something else rather than calling it, which is how a bare fetch
- * realistically escapes into a third-party client. That draft also flagged a
- * locally-bound parameter named `fetch`, which is not the global at all.
- * Resolution answers both at once.
+ * `CallExpression[callee.name='fetch']` and, measured against the case list in
+ * this rule's test file, caught only the forms that call `fetch` on the spot —
+ * missing every form that hands the function to something else, which is how a
+ * bare fetch realistically escapes into a third-party client. That draft also
+ * flagged a locally-bound parameter named `fetch`, which is not the global at
+ * all. Resolution answers both at once.
  *
  * Known edge, deliberately open: a caller who reads the property off an alias
  * (`const g = globalThis; g.fetch(...)`) is not reported. Closing it would
