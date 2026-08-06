@@ -57,11 +57,11 @@ const EDITORS = [
     name: 'text node',
     render: (
       fragment: Y.XmlFragment,
-      awareness: Awareness,
+      caretProvider: { awareness: Awareness },
     ): React.JSX.Element => (
       <TextNodeEditor
         fragment={fragment}
-        caretProvider={{ awareness }}
+        caretProvider={caretProvider}
         caretUser={CARET_USER}
         placeholder='p'
         editable
@@ -73,11 +73,11 @@ const EDITORS = [
     name: 'generate prompt',
     render: (
       fragment: Y.XmlFragment,
-      awareness: Awareness,
+      caretProvider: { awareness: Awareness },
     ): React.JSX.Element => (
       <PromptEditor
         fragment={fragment}
-        caretProvider={{ awareness }}
+        caretProvider={caretProvider}
         caretUser={CARET_USER}
         placeholder='p'
         mentionEmptyLabel='none'
@@ -94,6 +94,12 @@ describe.each(EDITORS)('a caret in the $name editor', ({ render: renderEditor })
   let doc: Y.Doc;
   let fragment: Y.XmlFragment;
   let awareness: Awareness;
+  /**
+   * Stable across renders, like the real thing: the canvas context memoises
+   * it, and it is a dependency of the editors — a fresh object per render
+   * would rebuild them for a reason that has nothing to do with the roster.
+   */
+  let caretProvider: { awareness: Awareness };
 
   beforeEach(() => {
     doc = new Y.Doc();
@@ -104,21 +110,25 @@ describe.each(EDITORS)('a caret in the $name editor', ({ render: renderEditor })
     para.insert(0, [new Y.XmlText('shared text')]);
     fragment.insert(0, [para]);
     awareness = new Awareness(doc);
+    caretProvider = { awareness };
   });
 
+  /** The page around the editor, re-renderable with a different roster. */
+  function Page({ members }: { members: readonly Member[] }): React.JSX.Element {
+    const collaboratorNames = useCollaboratorNamesFrom(members);
+    return (
+      <TooltipProvider>
+        <CollaboratorNamesProvider value={collaboratorNames}>
+          {renderEditor(fragment, caretProvider)}
+        </CollaboratorNamesProvider>
+      </TooltipProvider>
+    );
+  }
+
   /** Mount the editor under a roster the project page would have published. */
-  function mount(members: readonly Member[]): void {
-    function Page(): React.JSX.Element {
-      const collaboratorNames = useCollaboratorNamesFrom(members);
-      return (
-        <TooltipProvider>
-          <CollaboratorNamesProvider value={collaboratorNames}>
-            {renderEditor(fragment, awareness)}
-          </CollaboratorNamesProvider>
-        </TooltipProvider>
-      );
-    }
-    render(<Page />);
+  function mount(members: readonly Member[]): { rerender: (m: readonly Member[]) => void } {
+    const view = render(<Page members={members} />);
+    return { rerender: (m) => view.rerender(<Page members={m} />) };
   }
 
   /** Put a peer's cursor in the document, the way a real client would. */
@@ -172,5 +182,45 @@ describe.each(EDITORS)('a caret in the $name editor', ({ render: renderEditor })
       ).not.toBeNull(),
     );
     expect(caretLabel()).toBeNull();
+  });
+
+  it('picks up the name when the roster lands after the caret is drawn', async () => {
+    // The case the whole redesign exists for. The roster is FETCHED, so a peer
+    // routinely turns up before their name does — and a caret that is not
+    // moving is never rebuilt, so nothing re-runs the builder that would have
+    // named it. Something has to notice and patch the caret already on screen.
+    const { rerender } = mount([]);
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+
+    peerArrives();
+    await waitFor(() =>
+      expect(
+        document.querySelector('.collaboration-carets__caret'),
+      ).not.toBeNull(),
+    );
+    expect(caretLabel()).toBeNull();
+
+    rerender(ROSTER);
+
+    await waitFor(() => expect(caretLabel()).toBe('Grace'));
+  });
+
+  it('follows a rename on a caret that never moves', async () => {
+    // Nothing about a name is on the wire, so a rename produces no awareness
+    // traffic at all. The only thing that can update this caret is the roster
+    // changing underneath it.
+    const { rerender } = mount(ROSTER);
+    await waitFor(() =>
+      expect(document.querySelector('.ProseMirror')).not.toBeNull(),
+    );
+
+    peerArrives();
+    await waitFor(() => expect(caretLabel()).toBe('Grace'));
+
+    rerender([{ ...ROSTER[0]!, name: 'Grace Hopper' }]);
+
+    await waitFor(() => expect(caretLabel()).toBe('Grace Hopper'));
   });
 });
