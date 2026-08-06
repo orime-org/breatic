@@ -3,24 +3,34 @@
 import { stripComments } from "#repo-lint/strip-comments";
 
 /**
- * One segment of a message key, as a pattern source the checks build on.
+ * One segment of a message key, as a pattern source for scanning a file for
+ * ids nobody wrote inside a call.
  *
- * The three i18n checks ask different questions — is every catalog message
- * read, is every id a source names answerable, is every id namespaced — but
- * they have to agree on what a key looks like, or one would hunt for a shape
- * the others never recognise.
+ * One consumer: `i18n-no-dead-keys`, which sweeps every dotted literal in a
+ * source because for its question a false match is harmless. The two checks
+ * that reason about CALL SITES do not use this and deliberately do not agree
+ * with it — they go through `spelledOutKeys` below, whose class is wider on
+ * purpose so that a malformed id reaches the check that judges its shape.
+ * Narrowing or widening this therefore moves one verdict, not three.
  *
- * A segment may begin with a digit. It did not until 2026-08-06, and the
- * exclusion had a measurable cost: `canvas.nodePlaceholder.3d` is in all five
- * catalogs and no check could see it, so a plain call naming it counted as no
- * use at all and the dead-key check would have reported a live key for
+ * That was two consumers until 2026-08-06, when the missing-key check moved
+ * to `spelledOutKeys` and the namespacing check gained a call-site half that
+ * uses it too.
+ *
+ * A segment may begin with a digit, which it could not before that date, and
+ * the exclusion had a measurable cost: `canvas.nodePlaceholder.3d` is in all
+ * five catalogs and no check could see it, so a plain call naming it counted
+ * as no use at all and the dead-key check would have reported a live key for
  * deletion. Nothing had gone wrong only because the one file that reads it
  * builds the id by interpolation, which the dead-key check covers by prefix.
  *
- * Widening it was measured rather than assumed: it adds 259 literals to the
- * dead-key check's evidence set — version numbers, an IP address, a licence
- * id — and changes no key's verdict, because that check matches a catalog key
- * whole and no catalog key looks like any of them.
+ * Widening it was measured rather than assumed: a few hundred more literals
+ * land in the dead-key check's evidence set — version numbers, an IP address,
+ * a licence id — and no key changes verdict, because that check matches a
+ * catalog key whole and none of them looks like one. The exact count is
+ * deliberately not written here: it moves with any commit that edits a
+ * source, and a number nobody re-measures is a claim that quietly goes false.
+ * It did, in this file, within one commit of being written.
  */
 export const KEY_SEGMENT = String.raw`[a-zA-Z0-9][\w-]*`;
 

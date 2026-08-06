@@ -42,9 +42,12 @@ function leafKeys(value: unknown, prefix = "", out: string[] = []): string[] {
  * `t('canvas.nodePlaceholder.3d')` counted as no use at all and the key read
  * as dead. It survived only because the one file that reads it builds the id
  * with a template literal, so `TEMPLATE_PREFIX` covered the namespace.
- * Widening it was measured: 259 more literals land in the evidence set —
- * version numbers, an IP address, a licence id — and no key changes verdict,
- * because a catalog key is matched whole and none of them looks like one.
+ * Widening it was measured: a few hundred more literals land in the evidence
+ * set — version numbers, an IP address, a licence id — and no key changes
+ * verdict, because a catalog key is matched whole and none of them looks like
+ * one. The exact count is not written here on purpose: it moves with any
+ * commit that edits a source, and the version that did name a number went
+ * false within one commit of being written.
  *
  * Widening this to bare words is not the alternative it looks like. `cancel`
  * and `loading` are ordinary words that appear all over the tree as enum
