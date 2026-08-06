@@ -40,11 +40,6 @@ export interface UseDocumentEditorOptions {
   caretProvider: { awareness: unknown } | null;
   /** This user's caret identity, published to other clients. */
   caretUser: CaretUserIdentity | null;
-  /**
-   * Names for the collaborators whose carets appear in this document, resolved
-   * from the project member roster (#1882). Without it their carets render as
-   * bare coloured lines.
-   */
   /** False puts the editor in read-only mode (viewer role, history preview). */
   editable?: boolean;
   /**

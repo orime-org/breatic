@@ -73,8 +73,14 @@ export interface CollabExtensionOptions {
    *
    * Awareness carries no name, so without this every remote caret renders as
    * a bare coloured line. It must be reference-stable: the extension keeps
-   * whatever it is given here for the editor's whole life, and this editor is
-   * built once per document and never rebuilt.
+   * whatever it is given here for as long as the editor lives, and a resolver
+   * that changed identity would be silently ignored from then on. How long
+   * that is varies by caller — the document editor is cached per document and
+   * outlives tab switches, while the canvas editors are rebuilt whenever one
+   * of their `useEditor` dependencies moves (a locale switch changes the
+   * placeholder, reopening a node changes the fragment). Either way, changing
+   * the resolver is not how a later roster reaches the carets; it reads the
+   * current one through a ref.
    */
   resolveCollaboratorName?: ResolveCollaboratorName;
   /**

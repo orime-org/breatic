@@ -4,21 +4,22 @@
 /**
  * Receiver-side renderer for remote collaborator carets (batch-2 item 14).
  *
- * NOTHING from the wire reaches the DOM here. The awareness payload is
- * untrusted data written by another client, and the CollaborationCaret
- * default render inlines `user.color` straight into a style attribute — a
- * hostile collaborator could smuggle extra declarations through it
- * (`;background:url(...)` = a request beacon). This renderer takes only the
- * user id off the wire and derives everything shown from it:
+ * NO WIRE STRING reaches the DOM here. The awareness payload is untrusted
+ * data written by another client, and the CollaborationCaret default render
+ * inlines `user.color` straight into a style attribute — a hostile
+ * collaborator could smuggle extra declarations through it
+ * (`;background:url(...)` = a request beacon). This renderer reads exactly
+ * two fields off the wire, and neither is rendered as text or style:
  *
- *   - the COLOUR, from a whitelisted palette hue keyed on that id. Being a
- *     token rather than a literal also makes it viewer-theme adaptive: each
- *     client resolves the same var against its own light/dark values.
- *   - the NAME, from the project roster (#1882), never from the payload.
- *     There is no wire name to render, and no wire colour to fall back to.
+ *   - `focused`, a boolean, which only picks between two fixed classes.
+ *   - `id`, from which everything DISPLAYED is derived: the COLOUR, keyed on
+ *     it through a whitelisted palette hue (a token rather than a literal, so
+ *     each client resolves the same var against its own light/dark values),
+ *     and the NAME, looked up in the project roster (#1882). There is no wire
+ *     name to render and no wire colour to fall back to.
  *
  * An id that is missing or not a string gets the neutral token, which is the
- * only remaining input this file makes a decision on.
+ * only other decision this file makes.
  */
 
 import { userPaletteHue, type PaletteHue } from '@web/lib/user-color';

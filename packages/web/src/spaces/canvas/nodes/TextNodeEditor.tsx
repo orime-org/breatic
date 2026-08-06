@@ -133,10 +133,6 @@ interface TextNodeEditorProps {
   caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
   /** This user's caret identity. */
   caretUser: CaretUserIdentity | null;
-  /**
-   * Names for the collaborators whose carets appear here, resolved from the
-   * project member roster. Without it their carets are bare colour lines.
-   */
   /** Text shown while the body is empty. */
   placeholder: string;
   /**
