@@ -111,4 +111,69 @@ describe("no-private-repo-path", () => {
       /matched none/,
     );
   });
+
+  // The word alone is safe to write here: a violation needs it adjacent to a
+  // slash or to a repo-pointing word, and nothing in this file puts it there.
+  // If an edit ever does, this check reads its own source and says so.
+  const MARKER = "inner";
+
+  it("catches a path under the private repo, which is how it actually gets written", () => {
+    // The form that was live in four tracked files while this check reported
+    // clean: a probe script cited by path. It carries no trailing-slash
+    // directory the old list knew, and no repo name — only the prefix.
+    const context = fakeContext({
+      "packages/collab/src/a.ts": `// see ${MARKER}/engineering/demo/2026-01-01-probe.mjs\n`,
+    });
+    expect(noPrivateRepoPath.run(context)).toHaveLength(1);
+  });
+
+  it("catches a directory named in prose, without the trailing slash", () => {
+    const context = fakeContext({
+      "packages/core/src/a.ts": `// per ${MARKER} engineering/specs 2026-01-01 access design\n`,
+    });
+    expect(noPrivateRepoPath.run(context)).toHaveLength(1);
+  });
+
+  it("catches a reference that names no path at all", () => {
+    // An id is as much a pointer as a path: it says the repo exists and that
+    // this decision lives in it, and the reader still cannot follow it.
+    const context = fakeContext({
+      "a.md": `per ${MARKER} ADR 2026-01-01`,
+      "b.md": `spec = ${MARKER} #409`,
+      "c.md": `written up in the ${MARKER} spec`,
+      "d.ts": `// 详见 ${MARKER} 仓`,
+    });
+    expect(noPrivateRepoPath.run(context)).toHaveLength(4);
+  });
+
+  it("leaves the word alone when it points at nothing", () => {
+    // Measured before widening: the bare word appears 77 times in the tree,
+    // all of them ordinary code. Matching it would switch this check off.
+    const context = fakeContext({
+      "packages/core/src/a.ts": [
+        `function ${MARKER}(): void {}`,
+        `// the ${MARKER} loop runs twice`,
+        `const x = { ${MARKER}: 1 };`,
+      ].join("\n"),
+    });
+    expect(noPrivateRepoPath.run(context)).toEqual([]);
+  });
+
+  it("leaves a path that does not name the private repo alone", () => {
+    // The red line's boundary, ratified 2026-08-06: it covers naming the
+    // private repository, not every path fragment that happens to live
+    // there. These three forms were all live in the tree when the boundary
+    // was set and are deliberately not violations — a filename saying a
+    // design document exists reveals nothing that matters, and the private
+    // repository answers 404 to anyone who is not a member.
+    //
+    // This case is what stops the criterion from being quietly re-widened:
+    // widen it and this goes red.
+    const context = fakeContext({
+      "packages/worker/src/a.ts": "// per design/project/02-mini-tool.md § 2",
+      "packages/web/src/b.css": "/* mirrors design/tokens.css */",
+      "docs/c.md": "audit writes bugs/audit/round-N-found.md",
+    });
+    expect(noPrivateRepoPath.run(context)).toEqual([]);
+  });
 });

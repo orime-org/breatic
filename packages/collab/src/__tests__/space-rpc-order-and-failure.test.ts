@@ -226,8 +226,8 @@ interface MetaConnectionBehaviour {
    * rethrow what it raised. In 4.5.0 `transact` does not store at all (the
    * document's own update schedules a debounced one) and a failed store is
    * swallowed inside the library, so nothing a database does reaches a
-   * caller. Measured both ways:
-   * inner/engineering/demo/2026-08-06-v4-transact-store-semantics.mjs.
+   * caller. Measured on both library versions rather than read off the
+   * changelog.
    *
    * What still produces this shape is a callback that throws after writing,
    * which today means a Yjs write failing — nothing a request can cause. So
