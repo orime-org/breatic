@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import { APPLICATION_SOURCE, TEST_FILE } from "#repo-lint/file-kinds";
+import { KEY_SEGMENT } from "#repo-lint/message-keys";
 
 /** English is the source catalog; the others are translations of it. */
 const SOURCE_CATALOG = "locales/en.json";
@@ -56,14 +57,17 @@ function leafKeys(value: unknown, prefix = "", out: string[] = []): string[] {
  * 'loading'`), so a bare-word pattern would count every one of them as a use
  * and exempt every short key forever.
  */
-const DOTTED_LITERAL = /[a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)+/g;
+const DOTTED_LITERAL = new RegExp(`${KEY_SEGMENT}(?:\\.${KEY_SEGMENT})+`, "g");
 
 /**
  * The static head of an interpolated id — the `` `canvas.upload.${x}` `` form.
  * The trailing dot is kept, so the prefix cannot swallow a sibling subtree
  * whose name merely starts with the same letters.
  */
-const TEMPLATE_PREFIX = /`([a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)*\.)\$\{/g;
+const TEMPLATE_PREFIX = new RegExp(
+  `\`(${KEY_SEGMENT}(?:\\.${KEY_SEGMENT})*\\.)\\$\\{`,
+  "g",
+);
 
 /**
  * Every message in the catalogs is reachable from the code.

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import { APPLICATION_SOURCE, TEST_FILE } from "#repo-lint/file-kinds";
+import { KEY_SEGMENT } from "#repo-lint/message-keys";
 import { stripComments } from "#repo-lint/strip-comments";
 
 /** English is the source catalog; the others are translations of it. */
@@ -15,8 +16,22 @@ const SOURCE_CATALOG = "locales/en.json";
  * match is harmless — one extra thing keeping a key alive. Here a false match
  * is a finding against a file path or a property chain, so the call is what
  * anchors it.
+ *
+ * The literal has to BE the argument, which is what the trailing `[),]` says:
+ * a `)` closes the call, a `,` starts the params object. Without it,
+ * `t('canvas.group' + suffix)` matched as far as the closing quote and the
+ * namespace `canvas.group` was reported as a missing message — a finding
+ * against a call whose real key is not in the source at all. No call in the
+ * tree is written that way today, so this closed a latent false positive
+ * rather than a live one, and a check that cries wolf is one somebody turns
+ * off.
  */
-const MESSAGE_CALL = /\bt\(\s*(['"])([a-zA-Z][\w-]*(?:\.[a-zA-Z][\w-]*)+)\1/g;
+const MESSAGE_CALL = new RegExp(
+  String.raw`\bt\(\s*(['"])(` +
+    `${KEY_SEGMENT}(?:\\.${KEY_SEGMENT})+` +
+    String.raw`)\1\s*[),]`,
+  "g",
+);
 
 /**
  * Resolve a dotted key against the catalog.
@@ -43,25 +58,34 @@ function messageAt(catalog: unknown, key: string): string | undefined {
  * nothing rejected it — the runtime has no key to look up and puts the id
  * itself on screen, so the user reads `server.error.notFound`.
  *
- * WHAT THIS DOES NOT SEE: a key that is not written out inside the call. The
- * match needs a quoted literal as the argument, so everything else is silent —
- * not only `t(\`a.\${kind}\`)`, where no key exists in the source at all, but
- * also `t(roleKey)` where `roleKey` came from a lookup table of whole,
- * hard-coded keys (`BellMenu.tsx` has two such tables), and any other way of
- * handing the call a variable. Measured 2026-08-06: 48 call sites across web
- * and server pass something other than a literal.
+ * WHAT THIS DOES NOT SEE, and it is more than one thing:
  *
- * That is a real gap, not a rounding error, and it is stated rather than
- * closed because closing it is a different piece of work: the indirect forms
- * need the key resolved back through a variable, and the cheap approximation —
- * sweeping every dotted string literal in the file, which is what the dead-key
- * check does — is safe only in that direction. There a false match merely
- * keeps one extra key alive; here it would report a file path or a property
- * chain as a missing message, and a check that cries wolf gets switched off.
+ * A key the call does not spell out. `t(\`a.\${kind}\`)` has no key in the
+ * source at all; `t(roleKey)` does have one, written out in full in a lookup
+ * table — `BellMenu.tsx` has two such tables — but not where the match can
+ * reach it; `t('a.b' + suffix)` writes a prefix and glues the rest on. Every
+ * one of these is silent. They are not rare: the non-literal calls are all in
+ * `packages/web`, where they are how a component picks one of several labels
+ * (a role, a modality, a theme), and there are dozens. The count is
+ * deliberately not written here — it moves with any commit, and a number in a
+ * comment is a claim nobody re-measures.
  *
- * What this does cover is the form the bug that prompted it was written in:
- * `t("server.error.notFound")`, spelled out, against a catalog that says
- * `not_found`. Every literal call in the tree is checked.
+ * A key whose shape `KEY_SEGMENT` excludes: a segment starting with a digit,
+ * or no dot at all. Those limits belong to both i18n checks and are written
+ * where the shape is.
+ *
+ * All of that is stated rather than closed because closing it is a different
+ * piece of work: the indirect forms need the key resolved back through a
+ * variable, and the cheap approximation — sweeping every dotted string literal
+ * in the file, which is what the dead-key check does — is safe only in that
+ * direction. There a false match merely keeps one extra key alive; here it
+ * would report a file path or a property chain as a missing message, and a
+ * check that cries wolf gets switched off.
+ *
+ * WHAT IT DOES COVER is the form the bug that prompted it was written in:
+ * `t("server.error.notFound")`, the whole key spelled out as the whole
+ * argument, against a catalog that says `not_found`. Every call of that shape
+ * is checked.
  *
  * Comments are stripped. The first repo-wide run reported two keys that live
  * in a docstring showing callers how the hook is used, one of them about a

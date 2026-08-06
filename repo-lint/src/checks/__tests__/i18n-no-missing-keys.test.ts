@@ -80,6 +80,22 @@ describe("i18n-no-missing-keys", () => {
     ).toEqual([]);
   });
 
+  it("says nothing about a literal glued to something else", () => {
+    // `t('a.b' + suffix)` writes a PREFIX, not a key. Matching it and stopping
+    // at the closing quote reports the namespace as a missing message: a false
+    // finding, against a call whose real key this check cannot know. It has to
+    // be silent here for the same reason it is silent on a variable — the key
+    // is not written out — so the literal must be the whole argument.
+    expect(
+      i18nNoMissingKeys.run(
+        repo(
+          { a: { b: { c: "C" } } },
+          { "packages/web/src/a.tsx": "t('a.b' + suffix)" },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
   it("ignores a dotted string that is not asked of the catalog", () => {
     // Only the argument of a `t(...)` call counts. Plenty of dotted literals
     // are file paths, property chains or ids, and reporting those would make
