@@ -4,7 +4,8 @@
 /**
  * Worker YAML configuration loader.
  *
- * Reads `config/worker.yaml` for BullMQ and HTTP retry parameters.
+ * Reads `config/worker.yaml`: BullMQ queue parameters, the async-task polling
+ * window, and the billing-query timeout.
  */
 
 import { readFileSync } from "node:fs";

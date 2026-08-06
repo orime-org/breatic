@@ -4,8 +4,8 @@
 /**
  * Storage YAML configuration loader.
  *
- * Reads `config/storage.yaml`: download retry parameters, the browser-side
- * upload knobs and presign window, and the studio-avatar byte cap.
+ * Reads `config/storage.yaml`: the browser-side upload knobs and presign
+ * window, and the studio-avatar byte cap.
  */
 
 import { readFileSync } from "node:fs";

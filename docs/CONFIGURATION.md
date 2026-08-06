@@ -76,12 +76,9 @@ loader:`packages/core/src/config/worker.ts`。
 | `lock_duration_ms` | 600000(10 分钟) | 任务锁时长 |
 | `poll_interval` | 3000 | 队列轮询间隔 |
 
-## 6. `config/storage.yaml` — 存储下载重试 + 浏览器上传
+## 6. `config/storage.yaml` — 浏览器上传 + 头像
 
 loader:`packages/core/src/config/storage.ts`。
-
-| 参数 | 默认 | 含义 |
-|---|---|---|
 
 `upload.*`:浏览器上传旋钮(#1609 资产层片2)。前端经 `GET /assets/upload-config`(会话缓存)取;上传上限在 `/assets/presign` 权威校验(413),前端选文件时预检只为体验。
 
