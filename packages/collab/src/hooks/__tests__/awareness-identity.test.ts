@@ -40,9 +40,9 @@ const UNSEEN_CLIENT = 9;
 
 /** An awareness state carrying a cursor and the window-focus flag. */
 function cursorState(
-  extra: Record<string, unknown> = {},
+  user: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  return { cursor: { anchor: 1, head: 1 }, focused: true, ...extra };
+  return { cursor: { anchor: 1, head: 1 }, user: { focused: true, ...user } };
 }
 
 describe("stampConnectionIdentity", () => {
@@ -57,7 +57,7 @@ describe("stampConnectionIdentity", () => {
     });
 
     expect(stamped).toEqual([OWN_CLIENT]);
-    expect(states.get(OWN_CLIENT)?.user).toEqual({ id: ME });
+    expect(states.get(OWN_CLIENT)?.user).toEqual({ id: ME, focused: true });
   });
 
   it("stamps a client id the library has not registered yet", () => {
@@ -74,13 +74,13 @@ describe("stampConnectionIdentity", () => {
     });
 
     expect(stamped).toEqual([UNSEEN_CLIENT]);
-    expect(states.get(UNSEEN_CLIENT)?.user).toEqual({ id: ME });
+    expect(states.get(UNSEEN_CLIENT)?.user).toEqual({ id: ME, focused: true });
   });
 
   it("leaves another connection's entry untouched", () => {
     // This is the relay case, and it is the common one: a normal frame from
     // one collaborator carries the states it learned about everyone else.
-    const peerState = cursorState({ user: { id: "u-peer" } });
+    const peerState = cursorState({ id: "u-peer" });
     const states = new Map([[PEER_CLIENT, peerState]]);
 
     const stamped = stampConnectionIdentity({
@@ -91,7 +91,10 @@ describe("stampConnectionIdentity", () => {
     });
 
     expect(stamped).toEqual([]);
-    expect(states.get(PEER_CLIENT)?.user).toEqual({ id: "u-peer" });
+    expect(states.get(PEER_CLIENT)?.user).toEqual({
+      id: "u-peer",
+      focused: true,
+    });
   });
 
   it("stamps our entry and relays the peer's in the same frame", () => {
@@ -99,7 +102,7 @@ describe("stampConnectionIdentity", () => {
     // two rules right still corrupts every session with two people in it.
     const states = new Map([
       [OWN_CLIENT, cursorState()],
-      [PEER_CLIENT, cursorState({ user: { id: "u-peer" } })],
+      [PEER_CLIENT, cursorState({ id: "u-peer" })],
     ]);
 
     const stamped = stampConnectionIdentity({
@@ -110,8 +113,11 @@ describe("stampConnectionIdentity", () => {
     });
 
     expect(stamped).toEqual([OWN_CLIENT]);
-    expect(states.get(OWN_CLIENT)?.user).toEqual({ id: ME });
-    expect(states.get(PEER_CLIENT)?.user).toEqual({ id: "u-peer" });
+    expect(states.get(OWN_CLIENT)?.user).toEqual({ id: ME, focused: true });
+    expect(states.get(PEER_CLIENT)?.user).toEqual({
+      id: "u-peer",
+      focused: true,
+    });
   });
 
   it("overwrites an id the client put there itself", () => {
@@ -119,7 +125,7 @@ describe("stampConnectionIdentity", () => {
     // a stale build or someone trying it on. Either way the server's answer
     // wins, because the server is the one that checked the credential.
     const states = new Map([
-      [OWN_CLIENT, cursorState({ user: { id: "u-victim", name: "Victim" } })],
+      [OWN_CLIENT, cursorState({ id: "u-victim", name: "Victim" })],
     ]);
 
     stampConnectionIdentity({
@@ -129,7 +135,10 @@ describe("stampConnectionIdentity", () => {
       userId: ME,
     });
 
-    expect(states.get(OWN_CLIENT)?.user).toEqual({ id: ME });
+    // The forged id is replaced and the smuggled name is dropped entirely:
+    // the server decides what this field contains, and it keeps exactly one
+    // thing from the client — the focus flag, which is the client's to know.
+    expect(states.get(OWN_CLIENT)?.user).toEqual({ id: ME, focused: true });
   });
 
   it("keeps the cursor and the focus flag exactly as sent", () => {
@@ -146,15 +155,42 @@ describe("stampConnectionIdentity", () => {
 
     const state = states.get(OWN_CLIENT);
     expect(state?.cursor).toEqual({ anchor: 1, head: 1 });
-    expect(state?.focused).toBe(true);
+    expect((state?.user as { focused?: boolean }).focused).toBe(true);
+  });
+
+  it("omits the focus flag when the client did not send one", () => {
+    const states = new Map([
+      [OWN_CLIENT, { cursor: { anchor: 1, head: 1 }, user: {} }],
+    ]);
+
+    stampConnectionIdentity({
+      states,
+      ownClientIds: new Set([OWN_CLIENT]),
+      otherClientIds: new Set(),
+      userId: ME,
+    });
+
+    expect(states.get(OWN_CLIENT)?.user).toEqual({ id: ME });
+  });
+
+  it("stamps a state that has no user field at all", () => {
+    // A cursor with nothing else attached still belongs to somebody.
+    const states = new Map([[OWN_CLIENT, { cursor: { anchor: 1, head: 1 } }]]);
+
+    stampConnectionIdentity({
+      states,
+      ownClientIds: new Set([OWN_CLIENT]),
+      otherClientIds: new Set(),
+      userId: ME,
+    });
+
+    expect(states.get(OWN_CLIENT)?.user).toEqual({ id: ME });
   });
 
   it("touches nothing when the frame has no connection behind it", () => {
     // Relayed from another collab instance over Redis. It was stamped at its
     // origin; stamping it here would replace a real id with nothing.
-    const states = new Map([
-      [OWN_CLIENT, cursorState({ user: { id: "u-elsewhere" } })],
-    ]);
+    const states = new Map([[OWN_CLIENT, cursorState({ id: "u-elsewhere" })]]);
 
     const stamped = stampConnectionIdentity({
       states,
@@ -164,7 +200,10 @@ describe("stampConnectionIdentity", () => {
     });
 
     expect(stamped).toEqual([]);
-    expect(states.get(OWN_CLIENT)?.user).toEqual({ id: "u-elsewhere" });
+    expect(states.get(OWN_CLIENT)?.user).toEqual({
+      id: "u-elsewhere",
+      focused: true,
+    });
   });
 
   it("drops an entry that is being cleared rather than stamping it", () => {

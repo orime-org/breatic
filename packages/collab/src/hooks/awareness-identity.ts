@@ -69,7 +69,19 @@ export function stampConnectionIdentity(args: {
       continue;
     }
 
-    state[USER_FIELD] = { id: args.userId };
+    // The server decides what this field contains, keeping exactly one thing
+    // the client sent: whether its window has focus. That is the client's to
+    // know — the server has no idea — and it is the reason this field is
+    // rewritten rather than replaced outright. Everything else a client puts
+    // here is dropped, so smuggling a name or a colour in achieves nothing.
+    const previous = state[USER_FIELD];
+    const focused =
+      typeof previous === "object" &&
+      previous !== null &&
+      typeof (previous as { focused?: unknown }).focused === "boolean"
+        ? { focused: (previous as { focused: boolean }).focused }
+        : {};
+    state[USER_FIELD] = { id: args.userId, ...focused };
     stamped.push(clientId);
   }
 
