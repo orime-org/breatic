@@ -368,7 +368,11 @@ describe("checkWriteAuthz — system bypass + non-meta docs", () => {
  *     close the connection on its own; we don't double-throw)
  */
 describe("checkWriteAuthz — Hocuspocus envelope handling", () => {
-  it("skips the gate for awareness messages (messageType=1)", () => {
+  // Awareness frames ARE gated now, for identity (see awareness-identity),
+  // but this one carries no decodable update — so it takes the same exit as
+  // any malformed frame: leave it to MessageReceiver rather than reporting an
+  // authz failure for what is really a decode failure.
+  it("lets an undecodable awareness frame through untouched", () => {
     const current = makeSeededMetaDoc((doc) => {
       doc.getMap("spaces");
     });

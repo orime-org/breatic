@@ -239,11 +239,17 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // also means the server stops holding a copy that goes stale the moment
     // anyone renames themselves.
     //
-    // What went with it: the anti-spoof identity check (nothing to spoof —
-    // the wire carries only a user id, and the id it carries is not read for
-    // anything a peer displays), the multi-instance dedup that fell out of
-    // it, and the 30s debounce that existed because cursor movement fired
-    // this hook at sub-second rates.
+    // What went with it: the persistence itself, the multi-instance dedup
+    // that fell out of it, and the 30s debounce that existed because cursor
+    // movement fired this hook at sub-second rates.
+    //
+    // The anti-spoof check did NOT go with it, and must not. The id on the
+    // wire is the whole of a collaborator's on-screen identity — peers derive
+    // the display name from it via the roster and the caret colour by hashing
+    // it — so announcing someone else's id wears their name and colour. That
+    // check moved to `beforeHandleMessage`, which is the only place that can
+    // still refuse: this hook runs AFTER `handleAwarenessUpdate` has already
+    // broadcast the frame to every connection, and has no reject path.
 
     onDisconnect: async ({ documentName, context, socketId }) => {
       const ctx = context as { user?: { id: string } };

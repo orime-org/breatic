@@ -43,6 +43,7 @@
  * is allowed to bypass this gate.
  */
 import * as decoding from "lib0/decoding";
+import * as awarenessProtocol from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 
@@ -55,6 +56,13 @@ import * as Y from "yjs";
  * clone-and-diff gate.
  */
 const HOCUSPOCUS_MESSAGE_TYPE_SYNC = 0;
+
+/**
+ * Hocuspocus frame type byte for an awareness update — presence, not content.
+ * Gated for identity only (see {@link checkAwarenessIdentity}); it carries no
+ * document changes, so the clone-and-diff path below does not apply to it.
+ */
+const HOCUSPOCUS_MESSAGE_TYPE_AWARENESS = 1;
 
 /**
  * Subset of Hocuspocus's `beforeHandleMessagePayload` we actually need.
@@ -123,6 +131,81 @@ function unwrapHocuspocusUpdate(frame: Uint8Array): Uint8Array | null {
 }
 
 /**
+ * Parse a Hocuspocus frame and return the bare awareness update bytes, or
+ * null when the frame is anything else or is malformed.
+ * @param frame - Raw Hocuspocus WebSocket frame bytes.
+ * @returns The awareness update bytes, or null.
+ */
+function unwrapAwarenessUpdate(frame: Uint8Array): Uint8Array | null {
+  try {
+    const decoder = decoding.createDecoder(frame);
+    if (decoding.readVarUint(decoder) !== HOCUSPOCUS_MESSAGE_TYPE_AWARENESS) {
+      return null;
+    }
+    return decoding.readVarUint8Array(decoder);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Refuse an awareness frame that announces an identity other than the
+ * connection's own.
+ *
+ * Awareness carries a user id and nothing else about who someone is (#1882),
+ * and every peer DERIVES what it shows from that id — the display name from
+ * the project roster, the caret colour by hashing it. So the id is the whole
+ * of a collaborator's on-screen identity, and publishing someone else's wears
+ * their name and colour.
+ *
+ * This is the only place that can refuse. `Document.handleAwarenessUpdate`
+ * broadcasts to every connection before anything else runs and has no reject
+ * path, and the `onAwarenessUpdate` hook is a notification afterwards — so the
+ * check has to happen while the frame is still an inbound message.
+ *
+ * Presence frames with no `user.id` (cursor positions, the focus flag) claim
+ * no identity and pass untouched.
+ * @param frame - Raw Hocuspocus WebSocket frame.
+ * @param userId - Authenticated user id from the connection context.
+ * @throws {WriteAuthzError} when any state in the frame names a different user.
+ */
+function checkAwarenessIdentity(
+  frame: Uint8Array,
+  userId: string | undefined,
+): void {
+  const update = unwrapAwarenessUpdate(frame);
+  if (update === null) return;
+
+  const scratch = new Y.Doc();
+  const awareness = new awarenessProtocol.Awareness(scratch);
+  try {
+    try {
+      awarenessProtocol.applyAwarenessUpdate(awareness, update, null);
+    } catch {
+      // Malformed bytes. Same answer as the sync path gives them: leave it to
+      // Hocuspocus's own MessageReceiver, which closes the connection. Turning
+      // a decode failure into an authz rejection here would report the wrong
+      // reason, and throwing anything else would surface as a crash.
+      return;
+    }
+    for (const [clientId, state] of awareness.getStates()) {
+      // The scratch instance's own entry, not part of the incoming frame.
+      if (clientId === scratch.clientID) continue;
+      const announced = (state as { user?: { id?: unknown } } | null)?.user?.id;
+      if (typeof announced !== "string") continue;
+      if (announced !== userId) {
+        throw new WriteAuthzError(
+          `Awareness may only announce the connected user (got ${announced})`,
+        );
+      }
+    }
+  } finally {
+    awareness.destroy();
+    scratch.destroy();
+  }
+}
+
+/**
  * Throws {@link WriteAuthzError} if the incoming update violates the
  * key-level write rules above. Returns silently otherwise.
  *
@@ -149,13 +232,18 @@ export function checkWriteAuthz({
   update,
   context,
 }: CheckWriteAuthzInput): void {
-  // Only gate the meta doc — other docs are content / canvas / etc.
-  if (!documentName.endsWith("/meta")) return;
-
   // Collab's own privileged writer (openDirectConnection) is allowed.
   // The 'system' marker is set by space-rpc handlers (see space-rpc.ts).
   const userId = context.user?.id;
   if (userId === "system") return;
+
+  // Identity is checked on EVERY document, not just the meta doc: carets live
+  // in the canvas / document / timeline docs, and that is where an announced
+  // id becomes a name and a colour on someone else's screen.
+  checkAwarenessIdentity(update, userId);
+
+  // Everything below gates document CONTENT, which only the meta doc needs.
+  if (!documentName.endsWith("/meta")) return;
 
   // Anonymous / no-user contexts must not write to the meta doc.
   // (onAuthenticate normally guarantees user.id, but defensive.)
