@@ -3709,7 +3709,6 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // resolved from the roster the project page already holds, not from the
   // wire (#1882).
   const caretUser = useCaretUser();
-  const collaboratorNames = props.collaboratorNames ?? null;
   const canvas = React.useMemo<CanvasContextValue>(
     () => ({
       projectId: props.projectId,
@@ -3717,7 +3716,6 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
       readOnly: props.readOnly ?? false,
       caretProvider,
       caretUser,
-      collaboratorNames,
     }),
     [
       props.projectId,
@@ -3725,7 +3723,6 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
       props.readOnly,
       caretProvider,
       caretUser,
-      collaboratorNames,
     ],
   );
   return (

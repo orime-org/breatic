@@ -3,7 +3,6 @@
 
 import type { ComponentType } from 'react';
 
-import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
@@ -31,7 +30,6 @@ export interface SpaceBodyProps {
    * space body depend on a QueryClientProvider that only the running app has.
    * Omitted, remote carets render as bare colour lines.
    */
-  collaboratorNames?: CollaboratorNames | null;
 }
 
 export interface SpaceDefinition {

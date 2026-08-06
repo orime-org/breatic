@@ -29,6 +29,7 @@ import type * as Y from 'yjs';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
+import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 
 /**
@@ -136,7 +137,6 @@ interface TextNodeEditorProps {
    * Names for the collaborators whose carets appear here, resolved from the
    * project member roster. Without it their carets are bare colour lines.
    */
-  collaboratorNames: CollaboratorNames | null;
   /** Text shown while the body is empty. */
   placeholder: string;
   /**
@@ -169,7 +169,6 @@ interface TextNodeEditorProps {
  * @param props.fragment - The node's shared body.
  * @param props.caretProvider - Provider carrying collaborator carets.
  * @param props.caretUser - This user's caret identity.
- * @param props.collaboratorNames - Resolves collaborators' names from the roster.
  * @param props.placeholder - Text shown while the body is empty.
  * @param props.editable - Whether this user may write.
  * @param props.onLeave - Leave the editor, saying where focus should end up.
@@ -179,7 +178,6 @@ export function TextNodeEditor({
   fragment,
   caretProvider,
   caretUser,
-  collaboratorNames,
   placeholder,
   editable,
   onLeave,
@@ -191,6 +189,9 @@ export function TextNodeEditor({
   // editor down per key, yanking the caret and dropping IME composition. A
   // ref makes that impossible instead of documenting it as a rule callers
   // have to know.
+  // From context, not from a prop: the roster is a project-level fact and
+  // every layer between here and the project page used to have to forward it.
+  const collaboratorNames = useCollaboratorNames();
   const onLeaveRef = React.useRef(onLeave);
   onLeaveRef.current = onLeave;
   const editor = useEditor(
@@ -268,7 +269,7 @@ export function TextNodeEditor({
   // Publish this window's focus and dim collaborators who have left theirs.
   // The other half of the caret story: without it this client publishes into a
   // void, and renders a flag nobody sets.
-  useCollabCaretPresence(editor, caretProvider, caretUser, collaboratorNames);
+  useCollabCaretPresence(editor, caretProvider, caretUser);
 
   return <EditorContent editor={editor} />;
 }

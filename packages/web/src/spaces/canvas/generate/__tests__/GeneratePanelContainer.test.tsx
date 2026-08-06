@@ -81,7 +81,6 @@ function mountContainer(graph?: {
     readOnly: false,
     caretProvider: null,
     caretUser: { id: 'u-tester' },
-    collaboratorNames: null,
   };
   return render(
     <QueryClientProvider

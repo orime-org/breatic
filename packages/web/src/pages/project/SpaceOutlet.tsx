@@ -3,7 +3,6 @@
 
 import type * as React from 'react';
 
-import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 import { SPACE_TYPES, type SpaceType } from '@web/spaces';
 
 interface SpaceOutletProps {
@@ -12,8 +11,6 @@ interface SpaceOutletProps {
   type: SpaceType;
   /** Read-only mode for the current user (viewer role), forwarded to the body. */
   readOnly?: boolean;
-  /** Resolves collaborators' names from the roster, forwarded to the body. */
-  collaboratorNames?: CollaboratorNames | null;
 }
 
 /**
@@ -25,7 +22,6 @@ interface SpaceOutletProps {
  * @param root0.spaceId - The id of the Space to render.
  * @param root0.type - The Space type used to resolve the body component.
  * @param root0.readOnly - Read-only mode for the current user, forwarded to the body.
- * @param root0.collaboratorNames - Resolves collaborators' names, forwarded to the body.
  * @returns The registered Space body, or an error message for an unknown type.
  */
 export function SpaceOutlet({
@@ -33,7 +29,6 @@ export function SpaceOutlet({
   spaceId,
   type,
   readOnly,
-  collaboratorNames,
 }: SpaceOutletProps): React.JSX.Element {
   const def = SPACE_TYPES[type];
   if (!def) {
@@ -52,7 +47,6 @@ export function SpaceOutlet({
       projectId={projectId}
       spaceId={spaceId}
       readOnly={readOnly}
-      collaboratorNames={collaboratorNames}
     />
   );
 }

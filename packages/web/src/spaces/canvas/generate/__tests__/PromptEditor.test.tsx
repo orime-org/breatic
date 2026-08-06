@@ -13,6 +13,7 @@ import {
 } from '@testing-library/react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 
 // The prompt's `@` chips inherit the ONE app-level TooltipProvider at runtime
 // (App.tsx); supply the real Radix provider here (single-provider mandate).
@@ -239,22 +240,25 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
     fragment.insert(0, [paragraph]);
     const awareness = new Awareness(doc);
     render(
-      <PromptEditor
-        fragment={fragment}
-        placeholder='p'
-        onTextChange={vi.fn()}
-        onAtMentionsChange={vi.fn()}
-        references={[]}
-        mode='t2i'
-        mentionEmptyLabel='none'
-        caretProvider={withProvider ? { awareness } : null}
-        caretUser={{ id: 'u-ada' }}
-        collaboratorNames={{
-          // Stands in for the project roster the page passes down (#1882).
-          resolve: (userId) => (userId === 'u-grace' ? 'Grace' : null),
+      <CollaboratorNamesProvider
+        value={{
+          // Stands in for the project roster the page publishes (#1882).
+          resolve: (userId: string) => (userId === 'u-grace' ? 'Grace' : null),
           members: [],
         }}
-      />,
+      >
+        <PromptEditor
+          fragment={fragment}
+          placeholder='p'
+          onTextChange={vi.fn()}
+          onAtMentionsChange={vi.fn()}
+          references={[]}
+          mode='t2i'
+          mentionEmptyLabel='none'
+          caretProvider={withProvider ? { awareness } : null}
+          caretUser={{ id: 'u-ada' }}
+        />
+      </CollaboratorNamesProvider>,
     );
     const editorEl = screen.getByTestId('generate-prompt-editor');
     await waitFor(() =>

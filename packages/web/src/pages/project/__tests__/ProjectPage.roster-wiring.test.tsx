@@ -14,6 +14,12 @@
  * must produce a real second request for the member list. Spying on the hook
  * would pass just as happily if the hook were wired to a query key that
  * matches nothing.
+ *
+ * The second half of the file covers the other end: that the page PUBLISHES
+ * the roster it fetched. Every editor below reads it from context, so this one
+ * line is now the whole path between "we know everyone's name" and "carets are
+ * named" — it replaced a chain of six hand-written forwards, four of which
+ * turned out to be severable with the entire suite still green.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -55,6 +61,27 @@ vi.mock('@web/pages/project/use-record-project-open', () => ({
 vi.mock('@web/pages/project/LeaveProjectGuard', () => ({
   LeaveProjectGuard: () => null,
 }));
+
+/** Every roster value the page hands to the provider, in order. */
+const publishedRosters: Array<{ resolve: (id: string) => string | null } | null> = [];
+vi.mock('@web/features/collab-editor/collaborator-names-context', async (orig) => {
+  const actual = await orig<
+    typeof import('@web/features/collab-editor/collaborator-names-context')
+  >();
+  return {
+    ...actual,
+    CollaboratorNamesProvider: ({
+      value,
+      children,
+    }: {
+      value: { resolve: (id: string) => string | null } | null;
+      children: React.ReactNode;
+    }): React.ReactNode => {
+      publishedRosters.push(value);
+      return children;
+    },
+  };
+});
 
 const listMock = vi.fn();
 const profilesMock = vi.fn();
@@ -113,6 +140,7 @@ function renderPage() {
 describe('ProjectPage roster wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    publishedRosters.length = 0;
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
@@ -177,5 +205,32 @@ describe('ProjectPage roster wiring', () => {
 
     await new Promise((r) => setTimeout(r, 50));
     expect(listMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('publishes the fetched roster so editors below can resolve names', async () => {
+    // The one remaining link. Delete the provider and every editor on the page
+    // silently falls back to nameless carets — types, lint and the rest of the
+    // suite all stay green, which is exactly how the four forwarding links this
+    // replaced managed to be severable.
+    renderPage();
+
+    await waitFor(() => {
+      const latest = publishedRosters.at(-1);
+      expect(latest?.resolve('u-them')).toBe('Them');
+    });
+  });
+
+  it('publishes a resolver that names nobody before the roster lands', async () => {
+    // The page publishes from its first render, when the fetch has not
+    // returned. What it publishes is a working resolver over an empty roster,
+    // not null — so an editor that mounts early asks and is told "nobody",
+    // which is how a caret ends up as a bare colour line rather than a crash
+    // or a wait.
+    renderPage();
+    expect(publishedRosters[0]?.resolve('u-them')).toBeNull();
+
+    await waitFor(() =>
+      expect(publishedRosters.at(-1)?.resolve('u-them')).toBe('Them'),
+    );
   });
 });

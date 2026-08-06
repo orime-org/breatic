@@ -20,10 +20,12 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { act } from 'react';
+import { act, createElement } from 'react';
+import type * as React from 'react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
+import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
@@ -42,20 +44,33 @@ describe('a collaborator caret', () => {
     para.insert(0, [new Y.XmlText('shared sentence')]);
     body.insert(0, [para]);
 
-    const rendered = renderHook(() =>
-      useDocumentEditor({
-        doc,
-        name: 'project-p/document-carets',
-        caretProvider: { awareness },
-        caretUser: CARET_USER,
+    const rendered = renderHook(
+      () =>
+        useDocumentEditor({
+          doc,
+          name: 'project-p/document-carets',
+          caretProvider: { awareness },
+          caretUser: CARET_USER,
+          hasEverSynced: true,
+        }),
+      {
         // The name is resolved from the roster now (#1882), not published by
-        // the peer — so the caret needs one to have a label at all.
-        collaboratorNames: {
-          resolve: (userId) => (userId === 'u-them' ? 'Them' : null),
-          members: [],
-        },
-        hasEverSynced: true,
-      }),
+        // the peer, and it reaches the editor through context rather than
+        // through an argument — so the caret needs a provider above it to have
+        // a label at all.
+        wrapper: ({ children }: { children: React.ReactNode }) =>
+          createElement(
+            CollaboratorNamesProvider,
+            {
+              value: {
+                resolve: (userId: string) =>
+                  userId === 'u-them' ? 'Them' : null,
+                members: [],
+              },
+            },
+            children,
+          ),
+      },
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
     const editor = rendered.result.current!.editor;

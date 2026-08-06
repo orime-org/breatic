@@ -80,7 +80,6 @@ export const TextNode = React.memo(function TextNode({
     readOnly,
     caretProvider,
     caretUser,
-    collaboratorNames,
   } = useCanvasContext();
   const text = useTextBody(projectId, spaceId, nodeId ?? '');
   // The open editor IS the fragment it is bound to, and that fragment is
@@ -299,7 +298,6 @@ export const TextNode = React.memo(function TextNode({
                   fragment={editedBody}
                   caretProvider={caretProvider}
                   caretUser={caretUser}
-                  collaboratorNames={collaboratorNames}
                   placeholder={t('canvas.textNode.editorPlaceholder')}
                   editable={!readOnly}
                   onLeave={leaveEdit}

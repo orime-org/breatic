@@ -41,8 +41,8 @@ import type { Editor } from '@tiptap/react';
 import * as React from 'react';
 
 import { applyCaretName } from '@web/features/collab-editor/caret-render';
+import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
-import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 
 /** The slice of awareness this hook reads. */
 interface FocusAwareness {
@@ -57,18 +57,24 @@ const BLURRED_CLASS = 'collaboration-carets__caret--blurred';
 /**
  * Publish this window's focus, dim the carets of collaborators who have left
  * theirs, and keep every rendered caret's name in step with the roster.
+ * The roster comes from context rather than from an argument. It is a
+ * project-level fact and every editor wants the same one, so making it a
+ * parameter meant each layer between the project page and the editor writing a
+ * line to pass it along — lines that were optional, and whose absence nothing
+ * reported. Three rounds of adversarial review found four places where cutting
+ * one left types, lint and the whole suite green while every remote caret lost
+ * its name (#1882). Carets render as bare colour lines with no provider above
+ * them, which is also the honest answer while the roster is still loading.
  * @param editor - The collaborative editor, or null before it mounts.
  * @param caretProvider - Provider whose awareness carries carets.
  * @param caretUser - This user's caret identity; focus is published alongside it.
- * @param names - The collaborator name resolver plus the roster snapshot behind
- *   it; omit it and carets render as bare colour lines.
  */
 export function useCollabCaretPresence(
   editor: Editor | null,
   caretProvider: { awareness: unknown } | null | undefined,
   caretUser: CaretUserIdentity | null | undefined,
-  names?: CollaboratorNames | null,
 ): void {
+  const names = useCollaboratorNames();
   // Depend on the awareness instance, not on the object wrapping it, so that
   // neither effect below re-runs merely because a caller rebuilt its provider
   // wrapper. This buys tidiness, not safety, and the reason is worth stating

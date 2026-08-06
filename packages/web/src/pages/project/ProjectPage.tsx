@@ -12,6 +12,7 @@ import {
   useProjectMembers,
   useRosterRefreshOnJoin,
 } from '@web/data/use-project-members';
+import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { useCollaboratorNamesFrom } from '@web/features/collab-editor/use-collaborator-names';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
@@ -636,35 +637,40 @@ function ProjectWorkspace({
     connectionStatus === 'authFailed' || connectionStatus === 'disconnected';
 
   return (
-    <div className='flex h-screen w-screen flex-col bg-background text-foreground'>
-      {/* Confirm before an in-app leave (back link / logo / browser back) while
+    // Every editor on this page resolves collaborator names from here. Wrapping
+    // the whole page rather than the space body is deliberate: any editor added
+    // anywhere below gets it without a single layer in between having to know
+    // it exists, which is the property the prop chain could not give us.
+    <CollaboratorNamesProvider value={collaboratorNames}>
+      <div className='flex h-screen w-screen flex-col bg-background text-foreground'>
+        {/* Confirm before an in-app leave (back link / logo / browser back) while
           a front-end operation is still syncing (#1787) — the in-app companion
           to the beforeunload guard. Renders nothing while not blocked. */}
-      <LeaveProjectGuard />
-      {/* Keep every OPEN Space tab's Yjs doc attached to the shared collab
+        <LeaveProjectGuard />
+        {/* Keep every OPEN Space tab's Yjs doc attached to the shared collab
           socket. Attach follows tab open / close — NOT the active tab — so
           background tabs stay live and re-activating one is instant (user
           requirement 2026-06-18). Renders nothing. */}
-      {openTabs.map((tab) => (
-        <SpaceDocSync
-          key={tab.id}
-          projectId={projectId}
-          spaceId={tab.id}
-          type={tab.type}
-        />
-      ))}
-      <ConnectionBanner
-        status={connectionStatus}
-        onReload={() => window.location.reload()}
-        onReLogin={() => {
+        {openTabs.map((tab) => (
+          <SpaceDocSync
+            key={tab.id}
+            projectId={projectId}
+            spaceId={tab.id}
+            type={tab.type}
+          />
+        ))}
+        <ConnectionBanner
+          status={connectionStatus}
+          onReload={() => window.location.reload()}
+          onReLogin={() => {
           // Carry the current path as `?next=` so the login page can
           // bounce back to the project after a successful re-auth.
-          navigate(
+            navigate(
             `/login?next=${encodeURIComponent(window.location.pathname)}`,
-          );
-        }}
-      />
-      {/*
+            );
+          }}
+        />
+        {/*
         Nothing reaches INTO this element to disable it when the connection
         drops — no `inert`, no `aria-hidden`, no `disabled`. The first two were
         tried and removed: `inert` stops the whole subtree receiving input,
@@ -690,174 +696,174 @@ function ProjectWorkspace({
         selected on when absent, and a class list would pin the assertion to
         styling.
       */}
-      <div
-        className='relative flex min-h-0 flex-1 flex-col'
-        data-workspace=''
-        data-workspace-disabled={workspaceDisabled || undefined}
-      >
-        <TopBar
-          projectId={projectId}
-          projectName={projectName}
-          role={role}
-          credits={credits}
-          onRename={(next) => renameMutation.mutate(next)}
-          members={members}
-          currentUserId={userId}
-        />
-        <div className='flex min-h-0 flex-1'>
-          {/* Agent column is hidden for viewers (B model — not rendered,
+        <div
+          className='relative flex min-h-0 flex-1 flex-col'
+          data-workspace=''
+          data-workspace-disabled={workspaceDisabled || undefined}
+        >
+          <TopBar
+            projectId={projectId}
+            projectName={projectName}
+            role={role}
+            credits={credits}
+            onRename={(next) => renameMutation.mutate(next)}
+            members={members}
+            currentUserId={userId}
+          />
+          <div className='flex min-h-0 flex-1'>
+            {/* Agent column is hidden for viewers (B model — not rendered,
               not just disabled) AND when the user has collapsed it. The
               backend gates agent chat on role; this hide is UX only. */}
-          {collapsed || isViewer ? null : (
-            <aside
-              data-testid='agent-column'
-              className='flex w-[320px] shrink-0 flex-col border-r border-border bg-card'
-            >
-              <AgentColHeader
-                conversationName='New conversation'
-                messageCount={0}
-                onOpenHistory={() => {
-                /* wired in ChatPanel B-mode round */
-                }}
-                onNewConversation={() => {
-                /* wired in ChatPanel B-mode round */
-                }}
-                onRenameConversation={() => {
-                /* wired when conversation API lands */
-                }}
+            {collapsed || isViewer ? null : (
+              <aside
+                data-testid='agent-column'
+                className='flex w-[320px] shrink-0 flex-col border-r border-border bg-card'
+              >
+                <AgentColHeader
+                  conversationName='New conversation'
+                  messageCount={0}
+                  onOpenHistory={() => {
+                    /* wired in ChatPanel B-mode round */
+                  }}
+                  onNewConversation={() => {
+                    /* wired in ChatPanel B-mode round */
+                  }}
+                  onRenameConversation={() => {
+                    /* wired when conversation API lands */
+                  }}
+                />
+                <ChatPanel projectId={projectId} disabled={isViewer} />
+              </aside>
+            )}
+            <section className='flex min-w-0 flex-1 flex-col'>
+              <SpaceTabBar
+                spaces={openTabs}
+                allSpaces={spaces}
+                openTabIds={openTabIds}
+                activeSpaceId={activeSpace?.id ?? ''}
+                projectId={projectId}
+                onActivate={onActivate}
+                onCreate={onCreateSpace}
+                onClose={onCloseTab}
+                onViewSpace={onViewSpace}
+                onDeleteSpace={onDeleteSpace}
+                onSetSpaceLocked={onSetSpaceLocked}
+                onRenameSpace={onRenameSpace}
+                metaProvider={provider}
+                currentUserRole={role}
+                onRestoreSpace={onRestoreSpace}
               />
-              <ChatPanel projectId={projectId} disabled={isViewer} />
-            </aside>
-          )}
-          <section className='flex min-w-0 flex-1 flex-col'>
-            <SpaceTabBar
-              spaces={openTabs}
-              allSpaces={spaces}
-              openTabIds={openTabIds}
-              activeSpaceId={activeSpace?.id ?? ''}
-              projectId={projectId}
-              onActivate={onActivate}
-              onCreate={onCreateSpace}
-              onClose={onCloseTab}
-              onViewSpace={onViewSpace}
-              onDeleteSpace={onDeleteSpace}
-              onSetSpaceLocked={onSetSpaceLocked}
-              onRenameSpace={onRenameSpace}
-              metaProvider={provider}
-              currentUserRole={role}
-              onRestoreSpace={onRestoreSpace}
-            />
-            {/* overflow-hidden: the pick-mode chrome slide-out (batch-2 item
+              {/* overflow-hidden: the pick-mode chrome slide-out (batch-2 item
                 13) must exit THROUGH this section's edges — without the clip
                 the left menu slides on top of the chat sidebar instead of
                 disappearing (caught by the real-browser screenshot). Floating
                 UI that must escape the box (menus / tooltips) portals to
                 document.body and is unaffected. */}
-            <div className='relative flex-1 overflow-hidden'>
-              {activeSpace ? (
+              <div className='relative flex-1 overflow-hidden'>
+                {activeSpace ? (
                 // key on the Space id so switching tabs REMOUNTS the body —
                 // ReactFlow re-runs fitView so the camera frames the new
                 // Space's nodes (#1378). Cheap now: remount only re-binds the
                 // already-attached doc, it does not rebuild a WebSocket.
-                <SpaceOutlet
-                  key={activeSpace.id}
-                  projectId={projectId}
-                  spaceId={activeSpace.id}
-                  type={activeSpace.type}
-                  readOnly={isViewer}
-                  collaboratorNames={collaboratorNames}
-                />
-              ) : (
-                <div
-                  data-testid='no-active-space'
-                  className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
-                >
-                  {t('project.space.noActive')}
-                </div>
-              )}
-              {activeSpace?.type === 'canvas' ? (
-                <>
-                  <input
-                    ref={uploadInputRef}
-                    type='file'
-                    multiple
-                    accept='image/*,video/*,audio/*,text/*'
-                    hidden
-                    data-testid='canvas-upload-input'
-                    onChange={(e) => {
-                      const files = e.target.files;
-                      if (files && files.length > 0) {
-                        requestUpload([...files]);
-                      }
-                      // Reset so picking the same file again re-fires change.
-                      e.target.value = '';
-                    }}
+                  <SpaceOutlet
+                    key={activeSpace.id}
+                    projectId={projectId}
+                    spaceId={activeSpace.id}
+                    type={activeSpace.type}
+                    readOnly={isViewer}
                   />
-                  <LeftFloatingMenu
-                    disabled={isViewer}
-                    concealed={picking}
-                    onCreateNode={requestNodeCreate}
-                    onPick={(tool) => {
+                ) : (
+                  <div
+                    data-testid='no-active-space'
+                    className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
+                  >
+                    {t('project.space.noActive')}
+                  </div>
+                )}
+                {activeSpace?.type === 'canvas' ? (
+                  <>
+                    <input
+                      ref={uploadInputRef}
+                      type='file'
+                      multiple
+                      accept='image/*,video/*,audio/*,text/*'
+                      hidden
+                      data-testid='canvas-upload-input'
+                      onChange={(e) => {
+                        const files = e.target.files;
+                        if (files && files.length > 0) {
+                          requestUpload([...files]);
+                        }
+                        // Reset so picking the same file again re-fires change.
+                        e.target.value = '';
+                      }}
+                    />
+                    <LeftFloatingMenu
+                      disabled={isViewer}
+                      concealed={picking}
+                      onCreateNode={requestNodeCreate}
+                      onPick={(tool) => {
                       // Open the file picker synchronously inside the click so
                       // the browser keeps user-activation; the canvas fulfils
                       // the picked files via the upload mailbox.
-                      if (tool === 'upload') uploadInputRef.current?.click();
+                        if (tool === 'upload') uploadInputRef.current?.click();
                       // comment    - enter annotation mode (later slice)
                       // collection - placeholder (M1+)
                       // help       - placeholder (M1+)
                       // feedback   - placeholder (M1+)
                       // Buttons never store a "selected" state - fire and forget.
                       // The node-library (`nodes`) button owns its own dropdown.
-                    }}
-                  />
-                  <ViewportToolbar
-                    zoom={zoom}
-                    concealed={picking}
-                    minimapVisible={minimapVisible}
-                    snapToGrid={snapToGrid}
-                    canUndo={canUndo}
-                    canRedo={canRedo}
-                    onZoomIn={() => requestViewportCommand('zoomIn')}
-                    onZoomOut={() => requestViewportCommand('zoomOut')}
-                    onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
-                    onFit={() => requestViewportCommand('fit')}
-                    onToggleSnap={toggleSnapToGrid}
-                    onToggleMinimap={toggleMinimap}
-                    onUndo={() => requestHistoryCommand('undo')}
-                    onRedo={() => requestHistoryCommand('redo')}
-                  />
-                </>
-              ) : null}
-            </div>
-          </section>
-        </div>
-        {/* A visual signal that something is wrong — that is the whole job, and
+                      }}
+                    />
+                    <ViewportToolbar
+                      zoom={zoom}
+                      concealed={picking}
+                      minimapVisible={minimapVisible}
+                      snapToGrid={snapToGrid}
+                      canUndo={canUndo}
+                      canRedo={canRedo}
+                      onZoomIn={() => requestViewportCommand('zoomIn')}
+                      onZoomOut={() => requestViewportCommand('zoomOut')}
+                      onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
+                      onFit={() => requestViewportCommand('fit')}
+                      onToggleSnap={toggleSnapToGrid}
+                      onToggleMinimap={toggleMinimap}
+                      onUndo={() => requestHistoryCommand('undo')}
+                      onRedo={() => requestHistoryCommand('redo')}
+                    />
+                  </>
+                ) : null}
+              </div>
+            </section>
+          </div>
+          {/* A visual signal that something is wrong — that is the whole job, and
             once the user can see it the job is done. Being opaque, it does also
             take the pointer, so the workspace is not clickable while it shows.
             That is a side effect of covering the screen, not a goal: nothing
             here works to block input, and nothing here works to let it
             through either. */}
-        {workspaceDisabled ? (
-          <div
-            className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
-            data-testid='workspace-disabled-overlay'
+          {workspaceDisabled ? (
+            <div
+              className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
+              data-testid='workspace-disabled-overlay'
+            />
+          ) : null}
+        </div>
+        <SpaceReadOnlySheet
+          open={roSheetOpen}
+          space={readOnlySpace}
+          onClose={() => {
+            setRoSheetOpen(false);
+            setReadOnlyViewSpaceId(null);
+          }}
+        />
+        {spaceOpInProgress === 'creating' ? (
+          <LoadingOverlay
+            message={t('project.space.loading.create')}
+            testId='creating-space-overlay'
           />
         ) : null}
       </div>
-      <SpaceReadOnlySheet
-        open={roSheetOpen}
-        space={readOnlySpace}
-        onClose={() => {
-          setRoSheetOpen(false);
-          setReadOnlyViewSpaceId(null);
-        }}
-      />
-      {spaceOpInProgress === 'creating' ? (
-        <LoadingOverlay
-          message={t('project.space.loading.create')}
-          testId='creating-space-overlay'
-        />
-      ) : null}
-    </div>
+    </CollaboratorNamesProvider>
   );
 }

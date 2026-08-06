@@ -29,6 +29,7 @@ import {
   useCollaboratorNamesFrom,
   useResolverRef,
 } from '@web/features/collab-editor/use-collaborator-names';
+import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { TextNodeEditor } from '@web/spaces/canvas/nodes/TextNodeEditor';
 
 /** A roster row. */
@@ -64,15 +65,16 @@ describe('an open text-node editor', () => {
     function Harness({ members }: { members: Member[] }): React.JSX.Element {
       const collaboratorNames = useCollaboratorNamesFrom(members);
       return (
-        <TextNodeEditor
-          fragment={fragment}
-          caretProvider={null}
-          caretUser={CARET_USER}
-          collaboratorNames={collaboratorNames}
-          placeholder='p'
-          editable
-          onLeave={vi.fn()}
-        />
+        <CollaboratorNamesProvider value={collaboratorNames}>
+          <TextNodeEditor
+            fragment={fragment}
+            caretProvider={null}
+            caretUser={CARET_USER}
+            placeholder='p'
+            editable
+            onLeave={vi.fn()}
+          />
+        </CollaboratorNamesProvider>
       );
     }
 

@@ -153,7 +153,7 @@ function GeneratePanelBody({
   // the board publishes through the same one — a second acquire here would
   // work (useSocket reference-counts the shared provider) but would leave two
   // answers in the codebase to "whose caret is this".
-  const { caretProvider, caretUser, collaboratorNames } = useCanvasContext();
+  const { caretProvider, caretUser } = useCanvasContext();
 
   const { data: catalog } = useQuery({
     queryKey: ['models'],
@@ -687,7 +687,6 @@ function GeneratePanelBody({
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
           caretUser={caretUser}
-          collaboratorNames={collaboratorNames}
         />
       ) : null,
     [
@@ -700,7 +699,6 @@ function GeneratePanelBody({
       vm.mode,
       caretProvider,
       caretUser,
-      collaboratorNames,
     ],
   );
 

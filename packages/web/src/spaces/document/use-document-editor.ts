@@ -19,7 +19,7 @@ import type * as Y from 'yjs';
 
 import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
-import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
+import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import {
   getDocumentEditor,
   type DocumentEditorHandle,
@@ -45,7 +45,6 @@ export interface UseDocumentEditorOptions {
    * from the project member roster (#1882). Without it their carets render as
    * bare coloured lines.
    */
-  collaboratorNames?: CollaboratorNames | null;
   /** False puts the editor in read-only mode (viewer role, history preview). */
   editable?: boolean;
   /**
@@ -81,7 +80,6 @@ export interface UseDocumentEditorOptions {
  * @param options.name - The canonical document name (cache key).
  * @param options.caretProvider - Provider whose awareness carries carets.
  * @param options.caretUser - This user's caret identity.
- * @param options.collaboratorNames - Resolves collaborators' names from the roster.
  * @param options.editable - False for read-only.
  * @param options.hasEverSynced - Whether content has ever arrived; gates seeding.
  * @returns The editor and its undo manager, or null while the wiring is absent.
@@ -91,10 +89,12 @@ export function useDocumentEditor({
   name,
   caretProvider,
   caretUser,
-  collaboratorNames = null,
   editable = true,
   hasEverSynced,
 }: UseDocumentEditorOptions): DocumentEditorHandle | null {
+  // From context, not from a prop: the roster is a project-level fact and every
+  // layer between here and the project page used to have to forward it.
+  const collaboratorNames = useCollaboratorNames();
   // Once the real content is known to be in, and only from a client whose ROLE
   // allows writing. A viewer's seed is refused by the server, which would
   // leave it a paragraph ahead of everyone else — the stray blank line this
@@ -140,12 +140,7 @@ export function useDocumentEditor({
   }, [handle, editable]);
 
   // Dim collaborators who have switched away, and tell them when we do.
-  useCollabCaretPresence(
-    handle?.editor ?? null,
-    caretProvider,
-    caretUser,
-    collaboratorNames,
-  );
+  useCollabCaretPresence(handle?.editor ?? null, caretProvider, caretUser);
 
   return handle;
 }
