@@ -25,6 +25,7 @@ import {
   getCollabRedis,
 } from "@breatic/core";
 import { createConnectionGate } from "@collab/infra/connection-gate.js";
+import { socketCeilings } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
   type ConnectionRegistry,
@@ -163,7 +164,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // doc plus one per open Space tab, and a member who has never closed a tab
     // has every Space open. See config/collab.yaml for the ceiling and for
     // what actually bounds abuse here.
-    maxPendingDocuments: cfg.max_pending_documents,
+    ...socketCeilings(cfg.max_documents_per_socket),
 
     // Broadcast every change the moment it is applied, which is what the
     // framework did before it grew a batching window. The window (default
@@ -423,7 +424,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // ceiling whose only symptom, once crossed, is connections dropping. An
     // operator has to be able to read what this process is enforcing without
     // guessing which copy of the config it loaded.
-    maxPendingDocuments: cfg.max_pending_documents,
+    maxDocumentsPerSocket: cfg.max_documents_per_socket,
   }, "Hocuspocus server configured");
 
   // Periodic handling-lease sweep (#1569) over the currently-loaded docs,

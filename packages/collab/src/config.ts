@@ -26,11 +26,11 @@ const collabConfigSchema = z.object({
 
   // Connection limits
   max_connections_per_document: z.number().int().min(0).default(100),
-  // Documents one socket may have awaiting authentication. Not `min(0)`:
-  // the library compares with `>=`, so zero would close every socket on its
-  // first document. See collab.yaml for why the library's own 100 is too low
-  // for a socket that carries a whole project.
-  max_pending_documents: z.number().int().positive().default(1000),
+  // Documents one socket must carry, which several library ceilings are
+  // derived from — see infra/socket-ceilings.ts and collab.yaml. Not
+  // `min(0)`: the library compares the pending count with `>=`, so zero would
+  // close every socket on its first document.
+  max_documents_per_socket: z.number().int().positive().default(1000),
 
   // Throttle (coarse per-IP DoS backstop; loopback is exempt)
   throttle_enabled: z.boolean().default(true),

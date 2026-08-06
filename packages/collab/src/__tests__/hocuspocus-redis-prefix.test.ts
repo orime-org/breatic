@@ -79,6 +79,7 @@ vi.mock("@collab/services/handling-sweeper.js", () => ({
 
 import { createCollabServer } from "../hocuspocus.js";
 import { getCollabConfig } from "../config.js";
+import { socketCeilings } from "../infra/socket-ceilings.js";
 
 /**
  * Read the `prefix` the Redis extension was constructed with.
@@ -132,19 +133,30 @@ describe("createCollabServer — Redis channel prefix", () => {
     expect(config.port).toBe(1244);
   });
 
-  // Leaving this out costs nothing at build time and drops every connection
-  // to a project with more than 100 documents at runtime, because the library
-  // then falls back to its own default. `pending-documents-limit.test.ts`
-  // pins what the value has to be; this pins that the value is used at all.
-  it("passes the configured pending-document ceiling to the Hocuspocus server", async () => {
+  // Every option below is one the library supplies a default for, so leaving
+  // it out costs nothing at build time and changes behaviour in production.
+  // `socket-ceilings.test.ts` pins what the ceilings have to be; these pin
+  // that they are used at all. They are asserted as one object rather than
+  // one case each because the failure they guard against is a whole config
+  // block being tidied, not one line going missing.
+  it("passes every option it must not inherit a default for", async () => {
     await createCollabServer({
       collabRedisUrl: "redis://localhost:6379/3",
       port: 1234,
       redisKeyPrefix: "dev",
     });
 
-    const config = serverSpy.mock.calls[0]?.[0] as { maxPendingDocuments: number };
-    expect(config.maxPendingDocuments).toBe(getCollabConfig().max_pending_documents);
+    const config = serverSpy.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(config).toMatchObject({
+      // Both ceilings that close a whole socket, derived from one number.
+      ...socketCeilings(getCollabConfig().max_documents_per_socket),
+      // Broadcast on apply rather than coalescing per event-loop turn. The
+      // library's own default is `0`, which batches; the Space RPC commit
+      // boundary is built on the broadcast being the synchronous, observable
+      // commit point, and `broadcastStateless` is never batched, so batching
+      // would also let the activity signal overtake the change it announces.
+      flushDelay: false,
+    });
   });
 
   it("never uses the Redis URL as the prefix", async () => {

@@ -30,25 +30,35 @@ max_document_bytes: 10485760     # 10 MB
 # Max WebSocket connections per document (0 = unlimited).
 max_connections_per_document: 100
 
-# Max documents one socket may have waiting for authentication at once.
-# Exceeding it does not refuse the document — it closes the whole socket.
+# How many documents one socket must be able to carry.
 #
 # One browser tab holds ONE socket for a project and puts every document it
 # needs on it: the meta doc plus one per open Space tab. A member who has
 # never closed a tab has every Space open, because the tab list is seeded
 # from the full Space directory the first time they open the project. So the
-# peak here is "however many Spaces the project has", and nothing caps that.
+# real figure is "however many Spaces the project has", and nothing caps that.
 #
-# The library defaults this to 100, which is a per-socket-per-document
-# assumption that does not hold for us: a 120-Space project would drop every
-# new member's connection on first load. Set far above any plausible project
-# instead. Each pending entry is a small bookkeeping object, so the memory
-# this bounds is negligible; the limits that actually bound abuse are the
-# library's 5MB unauthenticated-queue ceiling and the per-IP throttle below.
+# This one number feeds SEVERAL library limits, each of which closes the WHOLE
+# socket when crossed — every Space on it goes blank and the client reconnects
+# into the same wall. They are derived together in
+# infra/socket-ceilings.ts rather than listed here, because raising one alone
+# is not a fix: that is exactly what happened when only the pending-document
+# limit was raised, and the socket then died on the frame-count limit at half
+# the number written here. Measured for a 1000-document socket carrying the
+# frames a real client sends:
 #
-# Residual: a project past ~1000 Spaces hits this again. The answer then is a
-# cap on Spaces per project, not a bigger number here.
-max_pending_documents: 1000
+#   pending documents    library default 100    fires first        -> derived
+#   queued frame count   library default 1000   fires at ~500 docs -> derived
+#   queued frame bytes   library default 5 MB   ~390 KB used       -> left alone
+#   idle timeout         library default 60 s   client beats at 15s -> left alone
+#
+# The byte ceiling is deliberately left at the library's value: it is the one
+# that actually bounds memory, so it stays as a real guard behind the two
+# generous derived ones. Per-IP abuse is bounded by the throttle below.
+#
+# Residual: a project past this many Spaces hits the wall again. The answer
+# then is a cap on Spaces per project, not a bigger number here.
+max_documents_per_socket: 1000
 
 # ── Throttle ──────────────────────────────────────
 # Coarse per-IP DoS backstop. Loopback peers are exempt — see
