@@ -80,7 +80,6 @@ function mountContainer(graph?: {
     spaceId: 's',
     readOnly: false,
     caretProvider: null,
-    caretUser: { id: 'u-tester' },
   };
   return render(
     <QueryClientProvider

@@ -40,7 +40,6 @@ import { Collaboration } from '@tiptap/extension-collaboration';
 import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
 import type * as Y from 'yjs';
 
-import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 import { CollabCaretRefresh } from '@web/features/collab-editor/collab-caret-refresh';
 import { CollabUndoSelection } from '@web/features/collab-editor/collab-undo-selection';
 import {
@@ -66,8 +65,6 @@ export interface CollabExtensionOptions {
    * throws on a null provider, so carets mount only once this is present.
    */
   caretProvider?: { awareness: unknown } | null;
-  /** This user's caret identity, published to other clients. */
-  caretUser?: CaretUserIdentity | null;
   /**
    * Turns a remote collaborator's user id into a display name (#1882).
    *
@@ -99,13 +96,8 @@ export interface CollabExtensionOptions {
 export function buildCollabExtensions(
   options: CollabExtensionOptions,
 ): Extensions {
-  const {
-    fragment,
-    caretProvider,
-    caretUser,
-    undoManager,
-    resolveCollaboratorName,
-  } = options;
+  const { fragment, caretProvider, undoManager, resolveCollaboratorName } =
+    options;
 
   const extensions: Extensions = [
     Collaboration.configure({
@@ -126,13 +118,28 @@ export function buildCollabExtensions(
     CollabCaretRefresh,
   ];
 
-  // Carets need both an awareness-bearing provider and an identity to publish;
-  // the extension throws when the provider is absent.
-  if (caretProvider?.awareness && caretUser) {
+  // A provider is all carets need; the extension throws when it is absent.
+  // There used to be a second condition here — this client's own identity —
+  // because the browser announced who it was. It no longer does (#1886), and
+  // keeping the condition would have meant withholding EVERYONE's caret until
+  // the local account resolved, for no remaining reason.
+  if (caretProvider?.awareness) {
     extensions.push(
       CollaborationCaret.configure({
         provider: caretProvider,
-        user: caretUser,
+        // No `user`. Nothing about who this is belongs on the wire — the
+        // server writes the id onto this field from the credential the
+        // connection presented, and the focus flag comes from
+        // `useCollabCaretPresence`, its single producer.
+        //
+        // The extension still seeds the field when its plugin starts, with the
+        // option's default `{name: null, color: null}`, and that cannot be
+        // switched off from here: `configure` deep-merges into the defaults, so
+        // passing an empty object leaves them exactly where they were. It
+        // states nothing — both values are null — and the server replaces the
+        // whole field before any peer sees it. Passing `user: {}` to look
+        // tidier would be a no-op dressed as a decision.
+        //
         // Receiver-side render. The colour is derived from the remote user id
         // rather than read off the wire, so no remote string is ever inlined
         // into the DOM. BOTH builders are supplied — the default

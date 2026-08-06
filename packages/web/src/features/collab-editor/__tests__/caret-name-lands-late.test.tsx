@@ -84,7 +84,7 @@ describe('a caret already on screen when its name arrives', () => {
 
   /** Nothing to render — the hook works by touching the caret DOM directly. */
   function Probe(): null {
-    useCollabCaretPresence(editor, { awareness }, { id: 'me' });
+    useCollabCaretPresence(editor, { awareness });
     return null;
   }
 

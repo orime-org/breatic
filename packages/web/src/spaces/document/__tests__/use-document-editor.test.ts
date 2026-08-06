@@ -51,7 +51,6 @@ function syncAsRemote(target: Y.Doc, source: Y.Doc): void {
   );
 }
 
-const CARET_USER = { id: 'u' };
 
 describe('useDocumentEditor', () => {
   let doc: Y.Doc;
@@ -75,7 +74,6 @@ describe('useDocumentEditor', () => {
         doc,
         name,
         caretProvider: { awareness },
-        caretUser: CARET_USER,
         hasEverSynced: true,
       }),
     );
@@ -130,7 +128,6 @@ describe('useDocumentEditor', () => {
           doc,
           name: NAME,
           caretProvider: { awareness },
-          caretUser: CARET_USER,
           hasEverSynced: false,
         }),
       );
@@ -171,7 +168,6 @@ describe('useDocumentEditor', () => {
             doc,
             name: NAME,
             caretProvider: { awareness },
-            caretUser: CARET_USER,
             hasEverSynced,
           }),
         { initialProps: { hasEverSynced: false } },
@@ -198,7 +194,6 @@ describe('useDocumentEditor', () => {
             doc,
             name: NAME,
             caretProvider: { awareness },
-            caretUser: CARET_USER,
             hasEverSynced: true,
             editable,
           }),
@@ -224,7 +219,6 @@ describe('useDocumentEditor', () => {
           doc,
           name: NAME,
           caretProvider: { awareness },
-          caretUser: CARET_USER,
           hasEverSynced: true,
           editable: false,
         }),
@@ -269,7 +263,6 @@ describe('useDocumentEditor', () => {
           doc,
           name: NAME,
           caretProvider: null,
-          caretUser: CARET_USER,
           hasEverSynced: true,
         }),
       );

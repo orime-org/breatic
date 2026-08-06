@@ -43,7 +43,6 @@ import { Editor } from '@tiptap/react';
 import type * as Y from 'yjs';
 
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import {
@@ -65,16 +64,14 @@ export interface DocumentEditorHandle {
 /**
  * What the editor needs at construction and can never be given again.
  *
- * Both are baked into the extension list when the editor is built, and the
- * editor is built once per document. The caret layer therefore mounts only once
- * its provider exists, which is why the caller waits for one rather than
- * building an editor without carets and rebuilding later.
+ * The caret wiring is baked into the extension list when the editor is built,
+ * and the editor is built once per document. The caret layer therefore mounts
+ * only once its provider exists, which is why the caller waits for one rather
+ * than building an editor without carets and rebuilding later.
  */
 export interface DocumentEditorInputs {
   /** Provider whose awareness carries collaborator carets. */
   caretProvider: { awareness: unknown };
-  /** This user's caret identity, published to other clients. */
-  caretUser: CaretUserIdentity;
   /** Resolves collaborators' display names from the project roster (#1882). */
   resolveCollaboratorName?: ResolveCollaboratorName;
   /**
@@ -103,7 +100,6 @@ function createDocumentEditor(
     extensions: buildDocumentExtensions({
       fragment: documentBodyFragment(doc),
       caretProvider: inputs.caretProvider,
-      caretUser: inputs.caretUser,
       resolveCollaboratorName: inputs.resolveCollaboratorName,
       undoManager,
     }),

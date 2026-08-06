@@ -22,9 +22,7 @@ import * as React from 'react';
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 
-import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
-
-/** The canvas subtree's document coordinates, permissions, and caret identity. */
+/** The canvas subtree's document coordinates, permissions, and caret wiring. */
 export interface CanvasContextValue {
   /** Project the canvas space belongs to. */
   projectId: string;
@@ -46,8 +44,6 @@ export interface CanvasContextValue {
    * provider, so editors mount carets only once this is present.
    */
   caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
-  /** This user's caret identity, published to other clients. */
-  caretUser: CaretUserIdentity | null;
 }
 
 /**
@@ -63,7 +59,6 @@ const NO_CANVAS: CanvasContextValue = {
   spaceId: '',
   readOnly: true,
   caretProvider: null,
-  caretUser: null,
 };
 
 export const CanvasContext = React.createContext<CanvasContextValue>(NO_CANVAS);

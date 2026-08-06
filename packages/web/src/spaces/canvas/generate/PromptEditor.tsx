@@ -13,7 +13,6 @@ import type * as Y from 'yjs';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { buildCollabExtensions } from '@web/features/collab-editor/collab-extensions';
-import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 
 import {
@@ -82,12 +81,6 @@ interface PromptEditorProps {
    * extension mounts only when present (it throws on a null provider).
    */
   caretProvider?: Pick<HocuspocusProvider, 'awareness'> | null;
-  /**
-   * This user's identity as published at their caret on OTHER clients: the
-   * user id, and nothing else (#1882). Receivers resolve the display name
-   * from the project roster and derive the colour from the id.
-   */
-  caretUser?: CaretUserIdentity | null;
 }
 
 /**
@@ -106,7 +99,6 @@ interface PromptEditorProps {
  * @param root0.mode - Active generation sub-mode (t2i greys out `@` chips).
  * @param root0.mentionEmptyLabel - Localized empty-state text for the `@` popup.
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
- * @param root0.caretUser - This user's caret identity (the user id) published to other clients.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
@@ -123,7 +115,6 @@ export const PromptEditor = React.forwardRef<
     mode,
     mentionEmptyLabel,
     caretProvider = null,
-    caretUser = null,
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -165,7 +156,6 @@ export const PromptEditor = React.forwardRef<
         ...buildCollabExtensions({
           fragment,
           caretProvider,
-          caretUser,
           resolveCollaboratorName: collaboratorNames?.resolve,
         }),
         Placeholder.configure({ placeholder }),
@@ -207,8 +197,7 @@ export const PromptEditor = React.forwardRef<
     // panel reopened (adversarial round-2). Both change only on a locale switch
     // (rare); the reference POOL stays a live ref (poolRef) so frequent edge
     // add/remove never triggers a recreate. caretProvider flips null→provider
-    // once on first socket connect (mounting the caret extension); caretUser is
-    // memoized by the container so it never churns per render. The name
+    // once on first socket connect (mounting the caret extension). The name
     // RESOLVER is listed rather than the roster bundle holding it — the bundle
     // is rebuilt on every project-page render and would tear this editor down
     // mid-keystroke, while the resolver keeps one identity for the editor's
@@ -219,7 +208,6 @@ export const PromptEditor = React.forwardRef<
       placeholder,
       mentionEmptyLabel,
       caretProvider,
-      caretUser,
       collaboratorNames?.resolve,
     ],
   );
@@ -227,7 +215,7 @@ export const PromptEditor = React.forwardRef<
   // Shared with the document editor — both halves have to travel together,
   // or one side publishes into a void and the other renders a flag nobody
   // sets.
-  useCollabCaretPresence(editor, caretProvider, caretUser);
+  useCollabCaretPresence(editor, caretProvider);
   // Click-to-insert (reference rail → prompt, user 2026-07-10 item 8): expose a
   // narrow imperative handle rather than the raw editor, keeping TipTap
   // encapsulated (same boundary as the onTextChange / onAtMentionsChange

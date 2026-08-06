@@ -256,7 +256,6 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
           mode='t2i'
           mentionEmptyLabel='none'
           caretProvider={withProvider ? { awareness } : null}
-          caretUser={{ id: 'u-ada' }}
         />
       </CollaboratorNamesProvider>,
     );

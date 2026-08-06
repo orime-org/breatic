@@ -24,7 +24,6 @@ import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
-const CARET_USER = { id: 'u' };
 
 describe('this client caret', () => {
   afterEach(() => _resetDocumentEditorCacheForTests());
@@ -41,7 +40,6 @@ describe('this client caret', () => {
         doc,
         name: 'project-p/document-leave',
         caretProvider: { awareness },
-        caretUser: CARET_USER,
         hasEverSynced: true,
       }),
     );

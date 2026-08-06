@@ -42,7 +42,6 @@ function markupOf(fragment: Y.XmlFragment): string {
   return fragment.toArray().map((n) => n.toString()).join('');
 }
 
-const CARET_USER = { id: 'u' };
 
 describe('DocumentEditor', () => {
   const NAME = 'project-p/document-chrome';
@@ -62,7 +61,6 @@ describe('DocumentEditor', () => {
         doc,
         name: NAME,
         caretProvider,
-        caretUser: CARET_USER,
         hasEverSynced: true,
       });
       return { handle, history: useDocumentHistory(handle?.undoManager ?? null) };

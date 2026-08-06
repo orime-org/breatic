@@ -30,7 +30,6 @@ import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
-const CARET_USER = { id: 'u' };
 const REMOTE_CLIENT_ID = 4242;
 
 describe('a collaborator caret', () => {
@@ -50,7 +49,6 @@ describe('a collaborator caret', () => {
           doc,
           name: 'project-p/document-carets',
           caretProvider: { awareness },
-          caretUser: CARET_USER,
           hasEverSynced: true,
         }),
       {

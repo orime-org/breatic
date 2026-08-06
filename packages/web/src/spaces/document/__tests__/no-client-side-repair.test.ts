@@ -38,7 +38,6 @@ import {
 import { documentBodyFragment } from '@web/spaces/document/document-yjs';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
-const CARET_USER = { id: 'u' };
 const NAME = 'project-p/document-s';
 
 describe('opening a document does not write to it', () => {
@@ -84,7 +83,6 @@ describe('opening a document does not write to it', () => {
         doc,
         name: NAME,
         caretProvider: { awareness },
-        caretUser: CARET_USER,
         hasEverSynced: true,
         editable,
       }),
@@ -177,7 +175,6 @@ describe('editability is settled before the first paint', () => {
   function resolve(editable: boolean): boolean {
     return getDocumentEditor(doc, NAME, {
       caretProvider: { awareness },
-      caretUser: CARET_USER,
       editable,
     }).editor.isEditable;
   }

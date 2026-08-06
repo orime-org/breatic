@@ -49,7 +49,6 @@ const ROSTER: Member[] = [
 ];
 
 /** This user's caret identity, hoisted so it does not churn per render. */
-const CARET_USER = { id: 'u-me' };
 
 /** The canvas editors that put collaborator names on carets. */
 const EDITORS = [
@@ -62,7 +61,6 @@ const EDITORS = [
       <TextNodeEditor
         fragment={fragment}
         caretProvider={caretProvider}
-        caretUser={CARET_USER}
         placeholder='p'
         editable
         onLeave={vi.fn()}
@@ -78,7 +76,6 @@ const EDITORS = [
       <PromptEditor
         fragment={fragment}
         caretProvider={caretProvider}
-        caretUser={CARET_USER}
         placeholder='p'
         mentionEmptyLabel='none'
         mode='t2i'

@@ -52,7 +52,6 @@ function member(userId: string, name: string): Member {
  * memoises it in the app. Rebuilding it per render here would tear an editor
  * down for a reason that has nothing to do with what this file is testing.
  */
-const CARET_USER = { id: 'me' };
 
 /** The canvas editors that take the roster and must survive it moving. */
 const EDITORS = [
@@ -62,7 +61,6 @@ const EDITORS = [
       <TextNodeEditor
         fragment={fragment}
         caretProvider={null}
-        caretUser={CARET_USER}
         placeholder='p'
         editable
         onLeave={vi.fn()}
@@ -75,7 +73,6 @@ const EDITORS = [
       <PromptEditor
         fragment={fragment}
         caretProvider={null}
-        caretUser={CARET_USER}
         placeholder='p'
         mentionEmptyLabel='none'
         mode='t2i'

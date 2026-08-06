@@ -34,7 +34,6 @@ function syncAsRemote(target: Y.Doc, source: Y.Doc): void {
   );
 }
 
-const CARET_USER = { id: 'u' };
 
 interface Harness {
   handle: ReturnType<typeof useDocumentEditor>;
@@ -66,7 +65,6 @@ describe('useDocumentHistory', () => {
         doc,
         name: NAME,
         caretProvider: { awareness },
-        caretUser: CARET_USER,
         hasEverSynced: true,
       });
       const history = useDocumentHistory(handle?.undoManager ?? null);

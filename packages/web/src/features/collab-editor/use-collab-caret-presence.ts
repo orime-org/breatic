@@ -12,7 +12,7 @@
  * publishes leaves its own caret looking permanently attentive to everyone
  * else.
  *
- * ## Identity is NOT published — it is looked up
+ * ## Identity is NOT published — the server writes it
  *
  * This used to be the file that kept a renamed user's caret current, by
  * re-publishing the whole identity whenever it changed. It had to: the caret
@@ -20,11 +20,13 @@
  * document (it survives Space-tab switches by design), so a name baked in at
  * construction would stay frozen for the session.
  *
- * #1882 removed the need. Awareness carries a user id and the focus flag, and
- * nothing else; peers resolve the display name from the project member roster
- * and derive the colour from the id. A rename needs no re-publish because the
- * name was never on the wire, and two tabs of one account can no longer
- * broadcast different answers.
+ * #1882 removed most of the need: peers resolve the display name from the
+ * project member roster and derive the colour from the id, so a rename needs no
+ * re-publish. #1886 removed the rest. The id is not ours to state either — the
+ * server already resolved this connection's user from the credential it
+ * validated at the handshake, and it writes that id onto every awareness entry
+ * belonging to the connection. So this hook publishes one field, focus, and the
+ * `user` field it lands in is the server's from then on.
  *
  * ## Why both effects below write to the DOM directly
  *
@@ -42,7 +44,6 @@ import * as React from 'react';
 
 import { applyCaretName } from '@web/features/collab-editor/caret-render';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
-import type { CaretUserIdentity } from '@web/features/collab-editor/use-caret-user';
 
 /** The slice of awareness this hook reads. */
 interface FocusAwareness {
@@ -67,12 +68,10 @@ const BLURRED_CLASS = 'collaboration-carets__caret--blurred';
  * them, which is also the honest answer while the roster is still loading.
  * @param editor - The collaborative editor, or null before it mounts.
  * @param caretProvider - Provider whose awareness carries carets.
- * @param caretUser - This user's caret identity; focus is published alongside it.
  */
 export function useCollabCaretPresence(
   editor: Editor | null,
   caretProvider: { awareness: unknown } | null | undefined,
-  caretUser: CaretUserIdentity | null | undefined,
 ): void {
   const names = useCollaboratorNames();
   // Depend on the awareness instance, not on the object wrapping it, so that
@@ -97,7 +96,7 @@ export function useCollabCaretPresence(
   // Publish. Receivers dim on a literal `false` only, so a client that never
   // publishes the field simply renders normally.
   React.useEffect(() => {
-    if (!editor || !awareness || !caretUser) return undefined;
+    if (!editor || !awareness) return undefined;
     /**
      * Publishes the current focus state into the awareness user field.
      * @param focused - Whether this window has focus.
@@ -134,7 +133,7 @@ export function useCollabCaretPresence(
       const presence = awareness as { setLocalStateField?: (k: string, v: unknown) => void };
       presence.setLocalStateField?.('cursor', null);
     };
-  }, [editor, awareness, caretUser]);
+  }, [editor, awareness]);
 
   // Receive. A parked caret's widget is keyed by client id and prosemirror-view
   // reuses its DOM on key equality WITHOUT re-invoking the builder, so a
