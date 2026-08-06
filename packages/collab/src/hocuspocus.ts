@@ -157,6 +157,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     debounce: cfg.debounce,
     maxDebounce: cfg.max_debounce,
 
+    // Broadcast every change the moment it is applied, which is what the
+    // framework did before it grew a batching window. The window (default
+    // `0`, meaning "coalesce whatever lands in this event-loop turn") would
+    // trade fewer frames for a broadcast that no longer happens inside the
+    // transaction — and the Space RPC commit boundary is built on the
+    // broadcast being the synchronous, observable commit point. Turning it on
+    // is a behaviour change to weigh on its own, not something to inherit
+    // from a default.
+    flushDelay: false,
+
     // Authentication — verifies session token AND per-project
     // ownership. See packages/collab/src/auth.ts.
     onAuthenticate: createAuthHook({

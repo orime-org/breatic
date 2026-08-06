@@ -298,6 +298,11 @@ export function createLiveServer(
     quiet: true,
     debounce: 0,
     maxDebounce: 0,
+    // Mirrors production (`hocuspocus.ts`): broadcast on apply rather than
+    // batching into the next event-loop turn. A test that measures WHEN a
+    // frame went out relative to a store must see the same ordering the
+    // server produces.
+    flushDelay: false,
     // Long enough that the keep-alive check never fires mid-test; the timer is
     // cleared by closing the socket.
     timeout: 60_000,
