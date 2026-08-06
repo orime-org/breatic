@@ -129,6 +129,28 @@ One command deploys everything. For open-source users and internal networks.
 - [Docker Compose](https://docs.docker.com/compose/install/) v2+
 - A domain with DNS pointing to your server (for HTTPS)
 - SSL certificate files (optional, HTTP works without)
+- **Clocks in sync across every host** — see below
+
+### Clocks must agree
+
+Every machine that runs any part of this — the application services, Postgres,
+and Redis — must keep its clock synchronised, by NTP or your platform's
+equivalent. Run them on one host and this is free; split them across hosts and
+it becomes something you have to arrange.
+
+This is a deployment requirement rather than something the code checks,
+because the code cannot check it: a process only ever sees its own clock, so
+"is this machine's time right" is not a question it can ask. What the code does
+instead is decide, per concern, which clock is authoritative — deadlines are
+written and compared against the database's clock, so a request expires at the
+same instant no matter which application server is asked about it.
+
+If the clocks drift apart, the things that go wrong are the ones that ask what
+time it is: a request can look answerable to one service and expired to
+another, a rate-limit window can open early or close late, and a session can
+outlive or predecease its stated lifetime. None of that is repairable in
+application code, which is why it is stated here as a condition of running the
+system rather than handled as a case inside it.
 
 ### Quick Start
 
