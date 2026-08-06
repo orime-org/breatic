@@ -442,19 +442,23 @@ type PublishOutcome =
  *
  * Three invariants live here and nowhere else:
  *
- * 1. **Everything the callback writes leaves as one update.** The
- *    library's `transact` runs the callback bare — each Y.js mutation
- *    inside it would otherwise be its own transaction and its own
- *    broadcast frame, so "remove the entry and sweep every tab in the
- *    same broadcast" (§6.2 step 5) would silently be several. The
- *    `doc.transact` wrapper is what makes "same broadcast" literal.
+ * 1. **Everything the callback writes leaves as one update.** Without a
+ *    transaction around it, each Y.js mutation is its own transaction and
+ *    its own broadcast frame, so "remove the entry and sweep every tab in
+ *    the same broadcast" (§6.2 step 5) would silently be several. The
+ *    library's own `transact` opens one since hocuspocus 4, which makes the
+ *    `doc.transact` wrapper below redundant rather than wrong — Y.js keeps
+ *    the outermost transaction and runs a nested call inside it. Kept
+ *    anyway: this guarantee is ours to make, and inheriting it from a
+ *    library that changed this exact behaviour once already is how it goes
+ *    away without anything failing.
  * 2. **The boundary flag cannot be forgotten.** The callback receives
  *    `mark` and must call it immediately before its first write; a
  *    rejection is then classifiable as before or after the broadcast.
  *    Handlers that skip `mark` and write anyway would misreport — which
  *    is why the flag rides through this wrapper instead of being a local
  *    variable seven functions each remember to declare.
- * 3. **A guard's answer outranks a store failure it did not cause.** The
+ * 3. **A guard's answer outranks a publish rejection it did not cause.** The
  *    callback returns its answer instead of setting a flag the caller
  *    then has to consult in the right order, so `decided` and
  *    `failed-before-broadcast` are mutually exclusive by construction.
@@ -492,6 +496,23 @@ async function publishMetaChange(
       });
     });
   } catch (transactError) {
+    // What can land here changed with hocuspocus 4, and the three keys below
+    // are named for what could land here before it. Until 3.4.4 `transact`
+    // awaited an immediate store and rethrew whatever it raised, so a failed
+    // write to the database arrived exactly here. In 4.5.0 `transact` does
+    // not store at all — the document's own update schedules a debounced one
+    // — and a failed store is swallowed inside the library, so no database
+    // problem reaches any caller anywhere. Measured both ways:
+    // inner/engineering/demo/2026-08-06-v4-transact-store-semantics.mjs.
+    //
+    // What still arrives is the library refusing a closed connection before
+    // running the callback, which is the last branch. The first two need the
+    // callback itself to throw, which today means a Y.js write failing —
+    // nothing a request can cause. The classification below is kept intact
+    // because §6's rule does not depend on what raised: past the write the
+    // answer is the truth and nothing is undone. Restoring a signal for a
+    // failed store, and the naming that goes with it, is #40's subject.
+    //
     // `wrote` decides which line gets logged, `decided` decides the answer.
     // They are independent: a callback can seed the tab list (a write, so
     // a broadcast) and still end on a verdict that needs no further write.
@@ -503,7 +524,7 @@ async function publishMetaChange(
         "space_rpc_not_persisted_after_broadcast",
       );
     } else if (decided !== undefined) {
-      // The guard read the world and reached its answer; the store was
+      // The guard read the world and reached its answer; the publish was
       // never asked to carry anything for it.
       logger.error(
         { err: transactError, ...logCtx },

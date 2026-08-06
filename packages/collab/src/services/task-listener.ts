@@ -298,11 +298,13 @@ export async function handleNodeStateUpdateEvent(
       // updates are broadcast as one atomic update. Without this, each
       // dataMap.set/delete() emits a separate Yjs update and collaborators
       // can observe intermediate states (e.g., state='idle' before handlingBy cleared).
-      // The origin names the writer for anyone reading a trace. It is NOT what
-      // keeps this write out of a user's undo stack: transaction origins never
-      // cross the wire, and the canvas UndoManager tracks an allow-list holding
-      // a single local Symbol (`CANVAS_UNDO`), which no server-side string
-      // could ever match.
+      // The origin names the writer, but nothing outside this file ever sees
+      // it: `DirectConnection.transact` opens the Yjs transaction itself, and
+      // a nested `transact` keeps the outermost origin and discards whatever
+      // an inner call passes. It is also NOT what keeps this write out of a
+      // user's undo stack — transaction origins never cross the wire, and the
+      // canvas UndoManager tracks an allow-list holding a single local Symbol
+      // (`CANVAS_UNDO`), which no server-side string could ever match.
       doc.transact(() => {
         for (const [k, v] of filteredEntries) {
           if (v === undefined || v === null) {

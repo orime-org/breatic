@@ -89,12 +89,13 @@ export async function cleanupOnDisconnect(
 
   try {
     await connection.transact((doc: Y.Doc) => {
-      // The inner `doc.transact` carries an origin that names the writer for
-      // anyone reading a trace; the outer `connection.transact` from
-      // Hocuspocus only takes the callback. The origin is NOT what keeps this
-      // cleanup out of a user's undo stack: origins never cross the wire, and
-      // the canvas UndoManager tracks an allow-list holding a single local
-      // Symbol that no server-side string could match.
+      // The inner `doc.transact` names the writer, but nothing outside this
+      // file ever sees that name: `connection.transact` opens the Yjs
+      // transaction itself, and a nested `transact` keeps the outermost origin
+      // and discards whatever an inner call passes. It is also NOT what keeps
+      // this cleanup out of a user's undo stack — origins never cross the
+      // wire, and the canvas UndoManager tracks an allow-list holding a single
+      // local Symbol that no server-side string could match.
       doc.transact(() => {
         const nodesMap = doc.getMap("nodesMap");
         nodesMap.forEach((nodeMap) => {

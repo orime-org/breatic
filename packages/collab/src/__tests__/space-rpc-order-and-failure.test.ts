@@ -32,7 +32,7 @@
  *
  * Scope: this file is the logic layer, so the fake `transact` is fine —
  * it neither persists nor broadcasts for real. The things that need a
- * live server (a store failure AFTER the broadcast, frame-level
+ * live server (a publish rejecting AFTER the broadcast, frame-level
  * read-only enforcement) are §10.2 / §10.4 and live elsewhere.
  */
 
@@ -192,9 +192,9 @@ let broadcastStatelessMock: ReturnType<typeof vi.fn>;
 
 /**
  * How many times `transact` ran in the current test, across every direct
- * connection. A refused pre-check must leave this at zero: `transact`
- * always attempts a store, so a check that goes through it can be
- * defeated by a database problem that has nothing to do with the check.
+ * connection. A refused pre-check must leave this at zero: a check routed
+ * through `transact` is a check that can be defeated by anything that makes
+ * the publish reject, which has nothing to do with the check.
  */
 let transactCalls = 0;
 
@@ -215,17 +215,32 @@ interface MetaConnectionBehaviour {
    */
   beforeFirstTransact?: () => void;
   /**
-   * When set, every `transact` rejects AFTER running its callback — the
-   * real library's shape (§3.2): the callback runs synchronously, the
-   * broadcast leaves inside it, and only then does the awaited store fail.
+   * When set, every `transact` rejects AFTER running its callback: the
+   * callback runs synchronously, the broadcast leaves inside it, and only
+   * then does the rejection surface.
+   *
+   * Read what this is and is not. It is the stimulus for §6's rule — past
+   * the write, the answer is the truth and nothing is undone — and that
+   * rule is what the cases below pin. It is NOT a store failure, and it was
+   * before hocuspocus 4: `transact` used to await an immediate store and
+   * rethrow what it raised. In 4.5.0 `transact` does not store at all (the
+   * document's own update schedules a debounced one) and a failed store is
+   * swallowed inside the library, so nothing a database does reaches a
+   * caller. Measured both ways:
+   * inner/engineering/demo/2026-08-06-v4-transact-store-semantics.mjs.
+   *
+   * What still produces this shape is a callback that throws after writing,
+   * which today means a Yjs write failing — nothing a request can cause. So
+   * the rule stays pinned while its only live producer is gone; making a
+   * failed store observable again is #40's subject, not this file's.
    */
-  storeFails?: boolean;
+  publishRejectsAfterWrite?: boolean;
   /**
-   * When set, `transact` rejects WITHOUT running its callback — the real
-   * library's other failure shape: it throws on a closed connection
-   * before touching the document (`hocuspocus-server.esm.js:2098-2101`).
-   * This is the one path to `failed-before-broadcast` for the operations
-   * whose callbacks always either write or return a verdict.
+   * When set, `transact` rejects WITHOUT running its callback — the shape
+   * the library still produces on its own: it throws on a closed connection
+   * before touching the document (`DirectConnection.transact`, the guard on
+   * its first line). This is the one path to `failed-before-broadcast` for
+   * the operations whose callbacks always either write or return a verdict.
    */
   transactRejectsBeforeCallback?: boolean;
   /** Replaces the default `disconnect`, e.g. to make the finally throw. */
@@ -256,7 +271,12 @@ function makeHocuspocus(behaviour: MetaConnectionBehaviour = {}): Hocuspocus {
             throw new Error("direct connection closed");
           }
           fn(metaDoc);
-          if (behaviour.storeFails) {
+          if (behaviour.publishRejectsAfterWrite) {
+            // Deliberately the ugliest realistic wording, because several
+            // cases assert none of {@link DATABASE_WORDING} survives into the
+            // reply a client renders. The wording is a fixture, not a claim
+            // about the source — see the flag's own docs for what can and
+            // cannot produce this rejection.
             throw new Error(
               'error persisting document: relation "yjs_documents" is unreachable',
             );
@@ -967,7 +987,7 @@ describe("space:rename re-checks all three conditions at the moment it writes", 
   });
 });
 
-describe("a store failure after the broadcast — the four handlers without content rows", () => {
+describe("a publish rejection after the broadcast — the four handlers without content rows", () => {
   // §6's preamble is a shared convention for all seven operations, not a
   // perk of the three that move content rows: once the callback has written,
   // every client has applied the change, so a store rejection afterwards is
@@ -978,7 +998,7 @@ describe("a store failure after the broadcast — the four handlers without cont
 
   it("space:rename still answers success and writes its activity row", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "editor" },
       { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "Bar" } },
@@ -991,7 +1011,7 @@ describe("a store failure after the broadcast — the four handlers without cont
 
   it("space:lock still answers success and writes its activity row", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "editor" },
       { id: "r1", type: "space:lock", payload: { spaceId: SID, locked: true } },
@@ -1004,7 +1024,7 @@ describe("a store failure after the broadcast — the four handlers without cont
 
   it("tab:open still answers success once the seed-or-insert has gone out", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "viewer" },
       { id: "r1", type: "tab:open", payload: { spaceId: SID } },
@@ -1020,7 +1040,7 @@ describe("a store failure after the broadcast — the four handlers without cont
     list.push([SID, OTHER_SID]);
 
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "viewer" },
       { id: "r1", type: "tab:close", payload: { spaceId: SID } },
@@ -1029,13 +1049,13 @@ describe("a store failure after the broadcast — the four handlers without cont
     expect(list.toArray()).toEqual([OTHER_SID]);
   });
 
-  it("space:delete answers success and keeps the rows deleted when the store fails after the broadcast", async () => {
+  it("space:delete answers success and keeps the rows deleted when the publish rejects after the broadcast", async () => {
     // Every check passed, so the removal went out to every client. §1: past
     // the boundary the answer is success and nothing is undone — putting
     // the content rows back would leave rows for a Space nobody can see.
     seedSpace(OTHER_SID, { type: "canvas", name: "B", order: 1, locked: false });
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "editor" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
@@ -1190,15 +1210,15 @@ describe("opening the meta connection fails — nothing has been done yet", () =
   });
 });
 
-describe("a guard's answer outranks a store failure it did not cause", () => {
+describe("a guard's answer outranks a publish rejection it did not cause", () => {
   // When the callback wrote nothing because a guard fired, the guard READ
-  // the world and its answer is true regardless of what the store did
-  // afterwards. create / delete / restore already answer the semantic code;
+  // the world and its answer is true regardless of what the publish
+  // did afterwards. create / delete / restore already answer the semantic code;
   // these pin the same precedence for the handlers that used to answer
   // INTERNAL while knowing better.
-  it("space:lock answers NOT_FOUND, not INTERNAL, when the Space is gone and the store fails", async () => {
+  it("space:lock answers NOT_FOUND, not INTERNAL, when the Space is gone and the publish rejects", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "editor" },
       { id: "r1", type: "space:lock", payload: { spaceId: SID, locked: true } },
@@ -1208,9 +1228,9 @@ describe("a guard's answer outranks a store failure it did not cause", () => {
     expect(res.error.code).toBe("NOT_FOUND");
   });
 
-  it("space:rename answers NOT_FOUND when the Space is gone and the store fails", async () => {
+  it("space:rename answers NOT_FOUND when the Space is gone and the publish rejects", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "editor" },
       { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "X" } },
@@ -1220,10 +1240,10 @@ describe("a guard's answer outranks a store failure it did not cause", () => {
     expect(res.error.code).toBe("NOT_FOUND");
   });
 
-  it("space:rename answers FORBIDDEN when the Space is locked and the store fails", async () => {
+  it("space:rename answers FORBIDDEN when the Space is locked and the publish rejects", async () => {
     seedSpace(SID, { type: "canvas", name: "Foo", order: 0, locked: true });
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "editor" },
       { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "X" } },
@@ -1233,10 +1253,10 @@ describe("a guard's answer outranks a store failure it did not cause", () => {
     expect(res.error.code).toBe("FORBIDDEN");
   });
 
-  it("space:rename to the same name stays an idempotent success when the store fails (§6.5)", async () => {
+  it("space:rename to the same name stays an idempotent success when the publish rejects (§6.5)", async () => {
     seedSpace(SID, { type: "canvas", name: "Foo", order: 0, locked: false });
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "editor" },
       { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "Foo" } },
@@ -1245,9 +1265,9 @@ describe("a guard's answer outranks a store failure it did not cause", () => {
     expect(activityInsertMock).not.toHaveBeenCalled();
   });
 
-  it("tab:open answers NOT_FOUND when the Space does not exist and the store fails", async () => {
+  it("tab:open answers NOT_FOUND when the Space does not exist and the publish rejects", async () => {
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "viewer" },
       { id: "r1", type: "tab:open", payload: { spaceId: SID } },
@@ -1274,7 +1294,7 @@ function seedTabList(userId: string, ids: readonly string[]): void {
   list.push([...ids]);
 }
 
-describe("a refused pre-check is a pure read — a broken store cannot reach it", () => {
+describe("a refused pre-check is a pure read — a broken publish cannot reach it", () => {
   // The library's `transact` runs the callback and then stores the doc
   // unconditionally (`hocuspocus-server.esm.js:2097-2112`), so a check that
   // goes through it hands back two answers: what it saw, and whether the
@@ -1291,10 +1311,10 @@ describe("a refused pre-check is a pure read — a broken store cannot reach it"
     });
   });
 
-  it("space:delete still says NOT_FOUND for a Space that is gone, with the store failing", async () => {
+  it("space:delete still says NOT_FOUND for a Space that is gone, with the publish rejecting", async () => {
     metaDoc.getMap("spaces").delete(SID);
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "editor" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
@@ -1307,10 +1327,10 @@ describe("a refused pre-check is a pure read — a broken store cannot reach it"
     expect(res.error.code).toBe("NOT_FOUND");
   });
 
-  it("space:delete still says CONFLICT for the last Space, with the store failing", async () => {
+  it("space:delete still says CONFLICT for the last Space, with the publish rejecting", async () => {
     countLiveSpaceDocsMock.mockResolvedValue(1);
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "editor" },
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
@@ -1320,10 +1340,10 @@ describe("a refused pre-check is a pure read — a broken store cannot reach it"
     expect(res.error.code).toBe("CONFLICT");
   });
 
-  it("space:restore still says CONFLICT for a Space that is already back, with the store failing", async () => {
+  it("space:restore still says CONFLICT for a Space that is already back, with the publish rejecting", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "owner" },
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
@@ -1333,16 +1353,16 @@ describe("a refused pre-check is a pure read — a broken store cannot reach it"
     expect(res.error.code).toBe("CONFLICT");
   });
 
-  it("tab:close stays an idempotent success for a tab that was not open, with the store failing", async () => {
+  it("tab:close stays an idempotent success for a tab that was not open, with the publish rejecting", async () => {
     seedTabList(ACTOR, [OTHER_SID]);
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "viewer" },
       { id: "r1", type: "tab:close", payload: { spaceId: SID } },
     );
     // §6.6: closing a tab that is not open is a success. Nothing needed
-    // writing, so nothing about the store can change that answer.
+    // writing, so nothing about the publish can change that answer.
     expect(res.ok).toBe(true);
   });
 
@@ -1413,7 +1433,7 @@ describe("a refused pre-check is a pure read — a broken store cannot reach it"
     // an update that every client already applied as one that never left.
     metaDoc.getMap("perUser").set(ACTOR, new Y.Map<unknown>());
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "viewer" },
       { id: "r1", type: "tab:close", payload: { spaceId: "gone-space-id" } },
@@ -1465,7 +1485,7 @@ describe("a refused pre-check is a pure read — a broken store cannot reach it"
     );
   });
 
-  it("space:rename's same-name verdict outranks a store failure and logs as never-broadcast", async () => {
+  it("space:rename's same-name verdict outranks a publish rejection and logs as never-broadcast", async () => {
     // rename is the other operation whose write-phase re-check can settle
     // without writing. Nothing was seeded here, so this is the mirror of
     // the tab:close seed case: a verdict with NO broadcast behind it.
@@ -1473,7 +1493,7 @@ describe("a refused pre-check is a pure read — a broken store cannot reach it"
     // line only — the undo rule has its own test on `settlePublish`.
     seedSpace(SID, { type: "canvas", name: "Foo", order: 0, locked: false });
     const res = await handleSpaceRpc(
-      { hocuspocus: makeHocuspocus({ storeFails: true }) },
+      { hocuspocus: makeHocuspocus({ publishRejectsAfterWrite: true }) },
       PID,
       { userId: ACTOR, role: "editor" },
       { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "Foo" } },

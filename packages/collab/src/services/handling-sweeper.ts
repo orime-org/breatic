@@ -35,11 +35,15 @@
  * is by definition an orphan (pre-#1569 zombie or a torn write).
  *
  * Writes carry the {@link HANDLING_SWEEP_ORIGIN} named transaction origin,
- * which names the writer for anyone reading a trace — same convention as
- * `node-state-update` and `collab-disconnect-cleanup`. It is NOT what keeps a
- * sweep out of a user's undo stack: origins never cross the wire, and the
- * canvas UndoManager tracks an allow-list holding a single local Symbol that
- * no server-side string could match.
+ * which names the writer. Unlike `node-state-update` and
+ * `collab-disconnect-cleanup` — both nested inside a `DirectConnection`
+ * transaction, which keeps its own origin and discards theirs — this one does
+ * survive, because the sweeper writes through a direct document reference and
+ * so opens the outermost transaction. Nothing reads it today; it is there for
+ * whoever is holding a debugger. It is NOT what keeps a sweep out of a user's
+ * undo stack: origins never cross the wire, and the canvas UndoManager tracks
+ * an allow-list holding a single local Symbol that no server-side string could
+ * match.
  */
 import * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";
