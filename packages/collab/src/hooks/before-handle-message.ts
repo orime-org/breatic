@@ -69,13 +69,24 @@ const HOCUSPOCUS_MESSAGE_TYPE_AWARENESS = 1;
  * Declared locally so this module does not depend on hocuspocus types.
  *
  * NOTE on `update`: this is the **raw Hocuspocus WebSocket frame**, not
- * a bare Yjs update. The frame is `[messageType varUint][payload]`; for
- * a sync message the payload is `[syncSubType varUint][updateBytes]`.
+ * a bare Yjs update, and it still carries the document name. The frame is
+ * `[documentName varString][messageType varUint][payload]`; for a sync
+ * message the payload is `[syncSubType varUint][updateBytes]`.
+ * `Connection.handleMessage` reads the document name off a decoder of its
+ * own and hands this hook the untouched `data`, so the name is still at the
+ * head of the bytes we see (`@hocuspocus/server` 3.4.4, `handleMessage`).
+ *
+ * That leading varString is not cosmetic. Reading the first varUint as the
+ * message type yields the document name's LENGTH — a number in the tens
+ * that matches no message type — so every gate below silently accepted
+ * everything. Tests did not catch it because they assembled frames by hand
+ * without the prefix; a real two-account session did. Frames in tests are
+ * now built with Hocuspocus's own `OutgoingMessage`.
+ *
  * Calling `Y.applyUpdate` directly on the frame throws lib0 binary-
  * decoding errors (`Invalid typed array length` / `Unexpected end of
  * array`) and Hocuspocus then closes the connection — the PR-a bug
- * fixed here. See `checkWriteAuthz` body for the correct envelope
- * unwrap.
+ * fixed here. See {@link decodeFrameBody} for the envelope unwrap.
  */
 export interface CheckWriteAuthzInput {
   documentName: string;
@@ -101,6 +112,29 @@ export class WriteAuthzError extends Error {
 }
 
 /**
+ * Step past the document name at the head of a frame.
+ *
+ * The single place that knows a frame starts with the document name. Both
+ * unwrappers below go through it, so the head of the envelope is described
+ * once rather than assumed twice — the earlier code assumed it twice and got
+ * it wrong in both.
+ * @param frame - Raw Hocuspocus WebSocket frame bytes.
+ * @returns A decoder positioned at the message type, or null if the bytes do not decode.
+ */
+function decodeFrameBody(frame: Uint8Array): decoding.Decoder | null {
+  try {
+    const decoder = decoding.createDecoder(frame);
+    // The document name. Hocuspocus has already compared it against the
+    // document this connection is bound to and dropped the frame if it
+    // differed, so there is nothing left to check — only to skip past.
+    decoding.readVarString(decoder);
+    return decoder;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Parse a Hocuspocus WebSocket frame and return the underlying Yjs
  * update bytes — but only when the frame is a sync-update (the only
  * message kind that mutates document content). Returns `null` for:
@@ -114,12 +148,13 @@ export class WriteAuthzError extends Error {
  *   - malformed frames — let Hocuspocus's MessageReceiver handle them
  *     (it will close the connection); returning null here avoids
  *     double-throwing on the same bad bytes
- * @param frame - Raw Hocuspocus WebSocket frame bytes (`[messageType][payload]`).
+ * @param frame - Raw Hocuspocus WebSocket frame bytes (`[documentName][messageType][payload]`).
  * @returns The bare Yjs update bytes when the frame is a sync-update, or null for any non-sync, handshake, or malformed frame.
  */
 function unwrapHocuspocusUpdate(frame: Uint8Array): Uint8Array | null {
+  const decoder = decodeFrameBody(frame);
+  if (decoder === null) return null;
   try {
-    const decoder = decoding.createDecoder(frame);
     const messageType = decoding.readVarUint(decoder);
     if (messageType !== HOCUSPOCUS_MESSAGE_TYPE_SYNC) return null;
     const syncSubType = decoding.readVarUint(decoder);
@@ -137,8 +172,9 @@ function unwrapHocuspocusUpdate(frame: Uint8Array): Uint8Array | null {
  * @returns The awareness update bytes, or null.
  */
 function unwrapAwarenessUpdate(frame: Uint8Array): Uint8Array | null {
+  const decoder = decodeFrameBody(frame);
+  if (decoder === null) return null;
   try {
-    const decoder = decoding.createDecoder(frame);
     if (decoding.readVarUint(decoder) !== HOCUSPOCUS_MESSAGE_TYPE_AWARENESS) {
       return null;
     }

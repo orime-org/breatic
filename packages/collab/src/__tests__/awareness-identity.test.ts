@@ -21,17 +21,26 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { OutgoingMessage } from "@hocuspocus/server";
 import * as awarenessProtocol from "y-protocols/awareness";
-import * as encoding from "lib0/encoding";
 import * as Y from "yjs";
 
 import { checkWriteAuthz, WriteAuthzError } from "@collab/hooks/before-handle-message";
 
-/** Hocuspocus frame type byte for an awareness update. */
-const AWARENESS = 1;
+/** The document these frames are addressed to. */
+const DOC_NAME = "project-p1/canvas-s1";
 
 /**
  * Build the frame a client sends when it publishes an awareness state.
+ *
+ * The bytes come from Hocuspocus's OWN encoder rather than being assembled by
+ * hand, and that is the point. `beforeHandleMessage` receives the frame exactly
+ * as it arrived, which means it still carries the document name Hocuspocus
+ * writes first — hand-built frames omitted that prefix, so every assertion in
+ * this file passed against a shape no client ever sends while the real one
+ * sailed straight through the gate. Building through `OutgoingMessage` ties
+ * these tests to the wire format the library actually produces, so a future
+ * change to that format fails here instead of silently disarming the gate.
  * @param clientId - The Yjs client id publishing the state.
  * @param state - The awareness state payload.
  * @returns The raw Hocuspocus frame bytes.
@@ -41,17 +50,15 @@ function awarenessFrame(clientId: number, state: unknown): Uint8Array {
   doc.clientID = clientId;
   const awareness = new awarenessProtocol.Awareness(doc);
   awareness.setLocalState(state as Record<string, unknown>);
-  const update = awarenessProtocol.encodeAwarenessUpdate(awareness, [clientId]);
-  const encoder = encoding.createEncoder();
-  encoding.writeVarUint(encoder, AWARENESS);
-  encoding.writeVarUint8Array(encoder, update);
-  return encoding.toUint8Array(encoder);
+  return new OutgoingMessage(DOC_NAME)
+    .createAwarenessUpdateMessage(awareness, [clientId])
+    .toUint8Array();
 }
 
 /** Run the gate over one frame from a connection authenticated as `userId`. */
 function gate(frame: Uint8Array, userId: string | undefined): void {
   checkWriteAuthz({
-    documentName: "project-p1/canvas-s1",
+    documentName: DOC_NAME,
     document: new Y.Doc(),
     update: frame,
     context: { user: userId === undefined ? undefined : { id: userId } },
@@ -119,16 +126,15 @@ describe("awareness identity gate", () => {
       awarenessProtocol.encodeAwarenessUpdate(theirs, [8]),
       null,
     );
-    const update = awarenessProtocol.encodeAwarenessUpdate(combined, [7, 8]);
-    const encoder = encoding.createEncoder();
-    encoding.writeVarUint(encoder, AWARENESS);
-    encoding.writeVarUint8Array(encoder, update);
+    const frame = new OutgoingMessage(DOC_NAME)
+      .createAwarenessUpdateMessage(combined, [7, 8])
+      .toUint8Array();
 
     expect(() =>
       checkWriteAuthz({
-        documentName: "project-p1/canvas-s1",
+        documentName: DOC_NAME,
         document: new Y.Doc(),
-        update: encoding.toUint8Array(encoder),
+        update: frame,
         context: { user: { id: "u-me" } },
       }),
     ).toThrow(WriteAuthzError);

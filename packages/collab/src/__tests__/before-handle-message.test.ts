@@ -40,8 +40,28 @@ function makeSeededMetaDoc(seed: (doc: Y.Doc) => void): Y.Doc {
 }
 
 /**
- * Encode a mutation as a real **Hocuspocus WebSocket frame** wrapping
- * a Yjs sync-update message: `[Sync=0][messageYjsUpdate=2][updateBytes]`.
+ * Start a frame the way Hocuspocus does: the document name comes first.
+ *
+ * `Connection.handleMessage` reads the name off its own decoder and passes
+ * the hook the untouched bytes, so the name is still there when the gate
+ * sees them. Leaving it out is not a harmless simplification — the gate
+ * reads the first varUint as the message type, and without the name that
+ * number happens to line up, so hand-built frames were the only shape these
+ * tests ever proved anything about. Every assertion below passed for months
+ * while the gate accepted every real frame untouched; a two-account browser
+ * session found it, not this file.
+ * @param documentName - The document the frame is addressed to.
+ * @returns An encoder positioned where the message type goes.
+ */
+function startFrame(documentName: string): encoding.Encoder {
+  const encoder = encoding.createEncoder();
+  encoding.writeVarString(encoder, documentName);
+  return encoder;
+}
+
+/**
+ * Encode a mutation as a real **Hocuspocus WebSocket frame** wrapping a Yjs
+ * sync-update message: `[documentName][Sync=0][messageYjsUpdate=2][updateBytes]`.
  *
  * Production `beforeHandleMessage` receives bytes in this shape, NOT
  * a bare Yjs update. Earlier versions of these tests fed bare updates
@@ -49,15 +69,23 @@ function makeSeededMetaDoc(seed: (doc: Y.Doc) => void): Y.Doc {
  * connection (lib0 `Invalid typed array length`). Wrapping at the
  * helper level keeps each test focused on the policy it pins, while
  * still exercising the envelope-unwrap branch end-to-end.
+ * @param start - The document state the mutation applies on top of.
+ * @param mutate - Applies the change being tested to a scratch copy.
+ * @param documentName - Which document the frame is addressed to; must match the name passed to the gate, the way Hocuspocus guarantees it does.
+ * @returns The raw frame bytes.
  */
-function encodeMutation(start: Y.Doc, mutate: (doc: Y.Doc) => void): Uint8Array {
+function encodeMutation(
+  start: Y.Doc,
+  mutate: (doc: Y.Doc) => void,
+  documentName: string = META,
+): Uint8Array {
   const before = Y.encodeStateVector(start);
   const tmp = new Y.Doc();
   Y.applyUpdate(tmp, Y.encodeStateAsUpdate(start));
   tmp.transact(() => mutate(tmp));
   const updateBytes = Y.encodeStateAsUpdate(tmp, before);
 
-  const encoder = encoding.createEncoder();
+  const encoder = startFrame(documentName);
   encoding.writeVarUint(encoder, HC_MESSAGE_TYPE_SYNC);
   encoding.writeVarUint(encoder, syncProtocol.messageYjsUpdate);
   encoding.writeVarUint8Array(encoder, updateBytes);
@@ -68,17 +96,24 @@ function encodeMutation(start: Y.Doc, mutate: (doc: Y.Doc) => void): Uint8Array 
  * Build a Hocuspocus frame with the given top-level messageType + a
  * single varUint payload (`payloadByte`). Used to forge non-sync
  * messages (awareness / stateless / etc.) that must skip the gate.
+ * @param messageType - Top-level Hocuspocus message type byte.
+ * @param payloadByte - A single varUint standing in for the payload.
+ * @returns The raw frame bytes.
  */
 function encodeNonSyncFrame(messageType: number, payloadByte = 0): Uint8Array {
-  const encoder = encoding.createEncoder();
+  const encoder = startFrame(META);
   encoding.writeVarUint(encoder, messageType);
   encoding.writeVarUint(encoder, payloadByte);
   return encoding.toUint8Array(encoder);
 }
 
-/** Build a sync frame with a non-update sub-type (step 1 / step 2). */
+/**
+ * Build a sync frame with a non-update sub-type (step 1 / step 2).
+ * @param syncSubType - The y-protocols sync sub-type byte.
+ * @returns The raw frame bytes.
+ */
 function encodeSyncFrameWithSubType(syncSubType: number): Uint8Array {
-  const encoder = encoding.createEncoder();
+  const encoder = startFrame(META);
   encoding.writeVarUint(encoder, HC_MESSAGE_TYPE_SYNC);
   encoding.writeVarUint(encoder, syncSubType);
   // sync-step-1 payload is a state vector; sync-step-2 carries an
@@ -318,16 +353,21 @@ describe("checkWriteAuthz — system bypass + non-meta docs", () => {
   });
 
   it("skips the gate entirely for canvas / document / timeline docs", () => {
+    const canvas = `project-${PID}/canvas-some-space-id`;
     const current = makeSeededMetaDoc((doc) => {
       doc.getMap("spaces");
     });
-    const update = encodeMutation(current, (doc) => {
-      const entry = new Y.Map();
-      doc.getMap("spaces").set("any", entry);
-    });
+    const update = encodeMutation(
+      current,
+      (doc) => {
+        const entry = new Y.Map();
+        doc.getMap("spaces").set("any", entry);
+      },
+      canvas,
+    );
     expect(() =>
       checkWriteAuthz({
-        documentName: `project-${PID}/canvas-some-space-id`,
+        documentName: canvas,
         document: current,
         update,
         context: { user: { id: "user-1" } },
