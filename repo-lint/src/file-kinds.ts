@@ -74,6 +74,63 @@ export function isScannableText(path: string): boolean {
 export const GENERATED = /(^|\/)pnpm-lock\.yaml$/;
 
 /**
+ * Source that ships to users: under a package's `src`, in TypeScript.
+ *
+ * Both i18n key checks ask a question about shipped text — one that every
+ * catalog message has a reader, the other that every message a source names
+ * exists — so both need the same answer to "which files count", and there is
+ * one copy of it here rather than one each. The reasoning below was written
+ * for the dead-key check and moved here with the constant, because it explains
+ * the constant rather than either check.
+ *
+ * Test material is subtracted by `TEST_FILE`, which knows it by directory and
+ * by suffix. That misses scaffolding kept beside the code it serves —
+ * `packages/web/src/test-utils/a11y.ts` and `packages/core/src/db/
+ * test-support.ts` are both under `src`, are named like modules, and are
+ * imported only by tests. They stay in the scan, deliberately.
+ *
+ * A content sniff was tried and reverted. It skipped any file whose raw text
+ * matched an import of vitest — comments included. To size that, a probe
+ * comment naming the import was pasted into one shipped component and the
+ * dead-key check run: it dropped the file and reported 37 live keys for
+ * deletion. No such comment exists in the tree, so this is what the mechanism
+ * permits rather than something it did; the point is that a code comment is
+ * enough to trigger it. The sniff also missed the scaffolding it was written
+ * for, since `test-support.ts` imports drizzle. So it bought a cheap risk (a
+ * helper keeping a dead key alive one more sweep) by taking on the expensive
+ * one (a live key deleted, a raw id in the UI), which is backwards from the
+ * asymmetry the dead-key check is built around. If a helper here ever does
+ * hold up a dead key, move the helper into `__tests__/`; do not teach the scan
+ * to guess from content.
+ *
+ * What keeps `repo-lint/` and `eslint-rules/` — including the checks
+ * themselves — out of their own scans is the `<pkg>/src/` shape, not the
+ * `packages/` word: both of those workspaces put their source one level
+ * higher, at `<root>/src`, so they fall out on depth alone. Removing
+ * `packages/` would change nothing today, which is exactly why it is worth
+ * saying — the word states an intent the depth happens to enforce.
+ *
+ * The intent is that only what ships is scanned, and it cuts the expensive way
+ * if it is ever wrong: a workspace added outside `packages/` that does read
+ * the catalogs would be invisible, and every key only it reads would be
+ * reported dead and deleted. Widen this pattern when that happens rather than
+ * exempting the keys.
+ *
+ * Nothing outside TypeScript is here because nothing outside TypeScript reads
+ * a key: a sweep of every tracked non-TS, non-Markdown file found zero naming
+ * one. That is a measurement, not a guarantee — if a config ever does, the
+ * dead-key check reports the key, and widening this pattern is the fix.
+ *
+ * Widening has a floor. The `packages/<pkg>/src` shape cannot go: dropping it
+ * lets a check read its own worked examples, which is the defect this scope
+ * exists to close. Three tests in the dead-key suite hold it there — a
+ * package-shaped tree outside `packages/` is not scanned, this check's own
+ * source is not scanned, and its own source cannot keep a key alive. Widen
+ * within the shape: another extension, another path under it.
+ */
+export const APPLICATION_SOURCE = /^packages\/[^/]+\/src\/.*\.([cm]?ts|tsx)$/;
+
+/**
  * Test files, which several checks exempt for the same reason.
  *
  * Their content is fixture data rather than something the product ships, so

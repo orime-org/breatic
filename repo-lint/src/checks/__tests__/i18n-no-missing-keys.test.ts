@@ -59,6 +59,27 @@ describe("i18n-no-missing-keys", () => {
     ).toEqual([]);
   });
 
+  it("says nothing about a key handed in through a variable", () => {
+    // The other half of the same limit, and the larger half: the key here IS
+    // written out, in a lookup table, and still cannot be seen — the match
+    // needs the literal inside the call. BellMenu.tsx does exactly this with
+    // two role tables. Pinned so the limit is a measured behaviour rather than
+    // a sentence in a docstring; widening the match must turn this case red.
+    expect(
+      i18nNoMissingKeys.run(
+        repo(
+          { a: { b: "B" } },
+          {
+            "packages/web/src/a.tsx": [
+              'const KEYS = { one: "a.missingOne" };',
+              "t(KEYS[kind])",
+            ].join("\n"),
+          },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
   it("ignores a dotted string that is not asked of the catalog", () => {
     // Only the argument of a `t(...)` call counts. Plenty of dotted literals
     // are file paths, property chains or ids, and reporting those would make

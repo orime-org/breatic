@@ -1,17 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import { TEST_FILE } from "#repo-lint/file-kinds";
+import { APPLICATION_SOURCE, TEST_FILE } from "#repo-lint/file-kinds";
 import { stripComments } from "#repo-lint/strip-comments";
 
 /** English is the source catalog; the others are translations of it. */
 const SOURCE_CATALOG = "locales/en.json";
-
-/**
- * Where an application source lives — the same shape the dead-key check scans,
- * for the same reason: it keeps a check from reading its own worked examples.
- */
-const APPLICATION_SOURCE = /^packages\/[^/]+\/src\/.*\.([cm]?ts|tsx)$/;
 
 /**
  * A message asked of the catalog by name: `t("a.b.c")`, either quote.
@@ -49,13 +43,25 @@ function messageAt(catalog: unknown, key: string): string | undefined {
  * nothing rejected it — the runtime has no key to look up and puts the id
  * itself on screen, so the user reads `server.error.notFound`.
  *
- * WHAT THIS DOES NOT SEE: a key built by interpolation. `t(\`a.\${kind}\`)`
- * names nothing in full, so whether the catalog answers it cannot be settled
- * by reading the source. Those are silent here. That is a stated limit rather
- * than coverage, and it is the reason this is a separate check instead of a
- * second question inside the dead-key one — that check reasons about prefixes
- * precisely so it can keep interpolated keys alive, and the same reasoning
- * run backwards would have to guess at what the interpolation can produce.
+ * WHAT THIS DOES NOT SEE: a key that is not written out inside the call. The
+ * match needs a quoted literal as the argument, so everything else is silent —
+ * not only `t(\`a.\${kind}\`)`, where no key exists in the source at all, but
+ * also `t(roleKey)` where `roleKey` came from a lookup table of whole,
+ * hard-coded keys (`BellMenu.tsx` has two such tables), and any other way of
+ * handing the call a variable. Measured 2026-08-06: 48 call sites across web
+ * and server pass something other than a literal.
+ *
+ * That is a real gap, not a rounding error, and it is stated rather than
+ * closed because closing it is a different piece of work: the indirect forms
+ * need the key resolved back through a variable, and the cheap approximation —
+ * sweeping every dotted string literal in the file, which is what the dead-key
+ * check does — is safe only in that direction. There a false match merely
+ * keeps one extra key alive; here it would report a file path or a property
+ * chain as a missing message, and a check that cries wolf gets switched off.
+ *
+ * What this does cover is the form the bug that prompted it was written in:
+ * `t("server.error.notFound")`, spelled out, against a catalog that says
+ * `not_found`. Every literal call in the tree is checked.
  *
  * Comments are stripped. The first repo-wide run reported two keys that live
  * in a docstring showing callers how the hook is used, one of them about a
