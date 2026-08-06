@@ -37,7 +37,11 @@
 
 import type { IncomingMessage } from "node:http";
 import { Throttle } from "@hocuspocus/extension-throttle";
+import { createLogger } from "@breatic/core";
 import { decideClientIdentity, isLoopbackIp } from "@collab/infra/client-identity.js";
+import type { RefusalReason } from "@collab/infra/client-identity.js";
+
+const logger = createLogger("connection-gate");
 
 /** Throttle tuning: connections per window before a ban, and ban length in minutes. */
 export interface ThrottleConfig {
@@ -86,14 +90,33 @@ const FORWARDED_FOR_HEADER = "x-forwarded-for";
 const REFUSAL_RESPONSE = "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n";
 
 /**
- * Refuse an upgrade: answer the client, release the socket, then abort the
- * hook chain with a falsy rejection so hocuspocus skips the upgrade without
- * letting anything escape into the process.
+ * Refuse an upgrade: record it, answer the client, release the socket, then
+ * abort the hook chain with a falsy rejection so hocuspocus skips the upgrade
+ * without letting anything escape into the process.
+ *
+ * The log line is not optional detail. A refusal happens before any document,
+ * hook or request handler exists, so nothing downstream will ever see it — an
+ * operator staring at a service that refuses everyone would otherwise read
+ * exactly the same logs as one that is healthy. `missing-real-ip` in
+ * particular means traffic reached collab without passing through the proxy
+ * that sets the header, which is a deployment fault worth alerting on.
  * @param socket - The raw socket the upgrade arrived on.
+ * @param reason - Why the identity could not be established.
  * @throws {undefined} Always — the falsy value is what makes hocuspocus's
  *   `if (error) throw error` swallow it instead of crashing the process.
  */
-function refuseUpgrade(socket: RefusableSocket): never {
+function refuseUpgrade(
+  socket: RefusableSocket,
+  reason: RefusalReason,
+): never {
+  // The peer address comes off the socket, never off a header: refusing is
+  // precisely the case where the client's own claim cannot be trusted, so
+  // logging that claim would put an attacker-chosen string in the field an
+  // operator reads as the source of the traffic.
+  logger.warn(
+    { reason, peerAddress: socket.remoteAddress },
+    "collab_upgrade_refused",
+  );
   socket.write(REFUSAL_RESPONSE);
   socket.destroy();
   // A falsy rejection is hocuspocus's own signal for "abort this upgrade
@@ -129,7 +152,9 @@ export function createConnectionGate(
         realIpHeader: Array.isArray(raw) ? raw[0] : raw,
       });
 
-      if (decision.kind === "refuse") refuseUpgrade(data.socket);
+      if (decision.kind === "refuse") {
+        refuseUpgrade(data.socket, decision.reason);
+      }
 
       // Carries the verdict to onConnect. For a loopback peer this overwrites
       // whatever the peer claimed, which is the point.

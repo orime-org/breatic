@@ -31,13 +31,20 @@
 const LOOPBACK_EXACT = new Set(["::1", "::ffff:127.0.0.1", "localhost"]);
 
 /** What to do with a connection, once its client has been identified. */
+/**
+ * Why a connection could not be attributed. Named rather than inlined so the
+ * caller that logs it and the rule that produces it share one list: a new
+ * reason then reaches the logs without anyone remembering to widen a union.
+ */
+export type RefusalReason = "no-peer-address" | "missing-real-ip";
+
 export type ClientIdentityDecision =
   /** A developer's own machine — allow it through without counting it. */
   | { kind: "exempt"; identity: string }
   /** A real client behind our proxy — count it under this identity. */
   | { kind: "identify"; identity: string }
   /** Not attributable, so not allowed. */
-  | { kind: "refuse"; reason: "no-peer-address" | "missing-real-ip" };
+  | { kind: "refuse"; reason: RefusalReason };
 
 /** The two facts the rule needs. */
 export interface ClientIdentityInput {
