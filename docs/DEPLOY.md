@@ -140,10 +140,14 @@ it becomes something you have to arrange.
 
 This is a deployment requirement rather than something the code checks,
 because the code cannot check it: a process only ever sees its own clock, so
-"is this machine's time right" is not a question it can ask. What the code does
-instead is decide, per concern, which clock is authoritative — deadlines are
-written and compared against the database's clock, so a request expires at the
-same instant no matter which application server is asked about it.
+"is this machine's time right" is not a question it can ask.
+
+Nor does the code route every time question to one clock and make the others
+irrelevant. A decision request's deadline is stamped by whichever application
+server took the request that created it, and whether that deadline has passed
+is asked sometimes of Postgres and sometimes of an application server. So a
+single deadline is written by one clock and judged by two, and they have to be
+the same clock for the answer to mean anything.
 
 If the clocks drift apart, the things that go wrong are the ones that ask what
 time it is: a request can look answerable to one service and expired to
