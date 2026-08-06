@@ -51,6 +51,16 @@ export interface UnloadGateDeps {
   deleteRescue(path: string): Promise<void>;
   /** Tell operations about a rescued document. */
   alert(failure: StoreFailureAlert): Promise<void>;
+  /**
+   * Whether the process is shutting down, which reverses the order.
+   *
+   * A flag rather than a separate shutdown drain, because the drains run in
+   * parallel (`Promise.allSettled`), so a drain that settled documents would
+   * race the one that destroys the server — and both would be walking the
+   * same documents. Setting this before the drains start makes the ordinary
+   * unload path, which `server.destroy()` drives anyway, do the right thing.
+   */
+  isShuttingDown?(): boolean;
 }
 
 /** What hocuspocus hands the unload hook. */
@@ -148,51 +158,75 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     });
   }
 
+  /**
+   * Ordinary unload: try the database, fall back to disk.
+   * @param payload - The document about to leave memory.
+   */
+  async function settleNormally({ documentName, document }: UnloadPayload): Promise<void> {
+    if (!hasUnsavedContent(documentName)) return;
+
+    await attemptStore(documentName);
+    if (!hasUnsavedContent(documentName)) return;
+
+    const state = deps.encode(document);
+    const path = await rescue(documentName, state);
+    await reportLoss(documentName, state.length, path);
+  }
+
+  /**
+   * Shutdown: write to disk first, then try the database.
+   * @param payload - The document about to leave memory, plus a step recorder.
+   */
+  async function settleForShutdown({
+    documentName,
+    document,
+    onStep,
+  }: ShutdownPayload): Promise<void> {
+    if (!hasUnsavedContent(documentName)) return;
+
+    // Disk first. The whole shutdown budget is a few seconds and one database
+    // attempt can outlast it, so the fast local write has to happen while
+    // there is still a process to do it.
+    onStep?.("rescue");
+    const state = deps.encode(document);
+    const path = await rescue(documentName, state);
+
+    onStep?.("store");
+    await attemptStore(documentName);
+
+    if (!hasUnsavedContent(documentName)) {
+      if (path) await deps.deleteRescue(path);
+      return;
+    }
+    await reportLoss(documentName, state.length, path);
+  }
+
   return {
-    beforeUnloadDocument: async ({ documentName, document }): Promise<void> => {
+    beforeUnloadDocument: async (payload): Promise<void> => {
       try {
-        if (!hasUnsavedContent(documentName)) return;
-
-        await attemptStore(documentName);
-        if (!hasUnsavedContent(documentName)) return;
-
-        const state = deps.encode(document);
-        const path = await rescue(documentName, state);
-        await reportLoss(documentName, state.length, path);
+        if (deps.isShuttingDown?.()) {
+          await settleForShutdown(payload);
+          return;
+        }
+        await settleNormally(payload);
       } catch (err) {
         // Belt and braces. A throw escaping here would abort the unload and
         // strand the document; nothing this hook does is worth that.
-        logger.error({ err, documentName }, "collab_unload_gate_failed");
+        logger.error({ err, documentName: payload.documentName }, "collab_unload_gate_failed");
       } finally {
         // Either the content is safe or it is on disk and reported. Keeping
         // the counters would leak one entry per document ever opened.
-        forgetDocument(documentName);
+        forgetDocument(payload.documentName);
       }
     },
 
-    settleForShutdown: async ({ documentName, document, onStep }): Promise<void> => {
+    settleForShutdown: async (payload): Promise<void> => {
       try {
-        if (!hasUnsavedContent(documentName)) return;
-
-        // Disk first. The whole shutdown budget is a few seconds and one
-        // database attempt can outlast it, so the fast local write has to
-        // happen while there is still a process to do it.
-        onStep?.("rescue");
-        const state = deps.encode(document);
-        const path = await rescue(documentName, state);
-
-        onStep?.("store");
-        await attemptStore(documentName);
-
-        if (!hasUnsavedContent(documentName)) {
-          if (path) await deps.deleteRescue(path);
-          return;
-        }
-        await reportLoss(documentName, state.length, path);
+        await settleForShutdown(payload);
       } catch (err) {
-        logger.error({ err, documentName }, "collab_shutdown_settle_failed");
+        logger.error({ err, documentName: payload.documentName }, "collab_shutdown_settle_failed");
       } finally {
-        forgetDocument(documentName);
+        forgetDocument(payload.documentName);
       }
     },
   };

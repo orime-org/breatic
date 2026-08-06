@@ -18,11 +18,14 @@ import { randomUUID } from "node:crypto";
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
+import { resolve } from "node:path";
 import {
   createLogger,
   createRedisClient,
   getRedis,
   getCollabRedis,
+  sendMail,
+  MONOREPO_ROOT,
 } from "@breatic/core";
 import { createConnectionGate } from "@collab/infra/connection-gate.js";
 import { socketCeilings } from "@collab/infra/socket-ceilings.js";
@@ -47,7 +50,12 @@ import {
 import { createAuthHook } from "@collab/hooks/auth.js";
 import { projectAwarenessIntoMetaUsers } from "@collab/hooks/awareness-meta-users.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
-import { createPersistenceExtension } from "@collab/services/persistence.js";
+import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
+import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js";
+import { createStoreLoop, type StoreLoop } from "@collab/services/store-loop.js";
+import { createStoreAlerter } from "@collab/services/store-alert.js";
+import { deleteRescueFile, writeRescueFile } from "@collab/services/rescue-file.js";
+import { noteDocumentChange } from "@collab/services/store-tracker.js";
 import { getCollabConfig } from "@collab/config.js";
 import { cleanupOnDisconnect } from "@collab/hooks/disconnect-cleanup.js";
 import { handleSpaceRpc } from "@collab/services/space-rpc.js";
@@ -81,7 +89,7 @@ export interface CollabServerInfra {
  * @param infra - Database and Redis connection details
  * @returns Configured Server + Hocuspocus instances + the cross-instance connection registry and the handling-lease sweeper (caller stops both on shutdown)
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; handlingSweeper: HandlingSweeper }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; connectionRegistry: ConnectionRegistry; handlingSweeper: HandlingSweeper; storeLoop: StoreLoop; markShuttingDown: () => void }> {
   const cfg = getCollabConfig();
 
   // Handling-lease budgets (#1580 #2): default + per-operation overrides,
@@ -149,6 +157,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     );
   }
 
+  // Assembled after the server exists, because the gate's final store
+  // attempt goes through the instance. The hooks below run long after that,
+  // so reading it late is safe.
+  let storeGate: UnloadGate | undefined;
+  let shuttingDown = false;
+
   const wsServer = new Server({
     port: infra.port,
     quiet: cfg.quiet,
@@ -193,6 +207,19 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // Extensions
     // Cast: pnpm hoisting causes duplicate @hocuspocus/server types
     extensions: extensions as never[],
+
+    // The last chance to get a document's content out before it is
+    // destroyed. Measured: without it, a failed store plus the last client
+    // leaving loses the content silently (#40).
+    beforeUnloadDocument: async ({
+      documentName,
+      document,
+    }: {
+      documentName: string;
+      document: Y.Doc;
+    }): Promise<void> => {
+      await storeGate?.beforeUnloadDocument({ documentName, document });
+    },
 
     onConnect: async ({ documentName, context, socketId }) => {
       const ctx = context as { user?: { id: string } };
@@ -392,8 +419,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       document.broadcastStateless(JSON.stringify(response));
     },
 
-    // Document size limit — reject updates that would exceed max
+    // Document size limit — reject updates that would exceed max.
+    //
+    // Also where the store tracker learns a document changed (#40). Every
+    // update counts, whatever produced it — including one relayed from
+    // another instance, which is what lets a surviving instance store content
+    // on behalf of one that died. See services/store-tracker.ts.
     onChange: async ({ documentName, document }) => {
+      noteDocumentChange(documentName);
       if (cfg.max_document_bytes > 0) {
         const size = Y.encodeStateAsUpdate(document).byteLength;
         if (size > cfg.max_document_bytes) {
@@ -437,5 +470,50 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   });
   handlingSweeper.start();
 
-  return { server: wsServer, hocuspocus: wsServer.hocuspocus, connectionRegistry, handlingSweeper };
+  // Timed store (#40). Storing is driven from here rather than from "somebody
+  // changed something", so a failed write is retried instead of costing the
+  // content the moment the last client leaves.
+  const storeAlerter = createStoreAlerter({
+    to: cfg.store_alert_email,
+    windowMs: cfg.store_alert_window_ms,
+    instanceId,
+    send: sendMail,
+  });
+  storeGate = createUnloadGate({
+    finalAttemptTimeoutMs: cfg.store_final_attempt_timeout_ms,
+    encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
+    storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus as never, name),
+    writeRescue: ({ documentName, state }) =>
+      writeRescueFile({
+        dir: resolve(MONOREPO_ROOT, cfg.store_rescue_dir),
+        documentName,
+        state,
+        instanceId,
+      }),
+    deleteRescue: deleteRescueFile,
+    alert: (failure) => storeAlerter.alert(failure),
+    isShuttingDown: (): boolean => shuttingDown,
+  });
+  const storeLoop = createStoreLoop({
+    intervalMs: cfg.store_interval_ms,
+    listDocuments: () =>
+      Array.from(wsServer.hocuspocus.documents.keys(), (name) => ({ name })),
+    storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus as never, name),
+  });
+  storeLoop.start();
+
+  return {
+    server: wsServer,
+    hocuspocus: wsServer.hocuspocus,
+    connectionRegistry,
+    handlingSweeper,
+    storeLoop,
+    // Called by the entry before the shutdown drains start. The drains run in
+    // parallel, so a drain that settled documents itself would race the one
+    // destroying the server; flipping this makes the ordinary unload path,
+    // which server.destroy() drives anyway, write the rescue file first.
+    markShuttingDown: (): void => {
+      shuttingDown = true;
+    },
+  };
 }

@@ -83,6 +83,48 @@ export async function storeDoc({
   await yjsDocumentsRepo.upsertDocData(documentName, state);
 }
 
+/** The part of the Hocuspocus instance {@link storeDocumentNow} drives. */
+export interface StoreDriver {
+  documents: Map<string, Y.Doc & { name: string; getConnectionsCount(): number }>;
+  storeDocumentHooks(document: unknown, payload: unknown, immediately?: boolean): unknown;
+}
+
+/**
+ * Ask hocuspocus to store one document right now.
+ *
+ * Goes through the library's own store entry rather than writing directly,
+ * which is what makes the timed loop and the unload gate inherit two things
+ * they cannot reproduce: the per-document mutex that keeps two writes of one
+ * document from overlapping, and the re-check that unloads a document whose
+ * last connection went away mid-write. A direct write would strand such a
+ * document in memory with zero connections and nothing left to release it.
+ *
+ * It does not throw and its resolution says nothing about success — the
+ * library swallows store errors. Whether the content landed is answered by
+ * the tracker's counters.
+ * @param driver - The Hocuspocus instance.
+ * @param documentName - Full Yjs document name.
+ */
+export async function storeDocumentNow(
+  driver: StoreDriver,
+  documentName: string,
+): Promise<void> {
+  const document = driver.documents.get(documentName);
+  if (!document) return;
+  await driver.storeDocumentHooks(
+    document,
+    {
+      instance: driver,
+      clientsCount: document.getConnectionsCount(),
+      document,
+      documentName,
+      lastContext: {},
+      lastTransactionOrigin: { source: "local", context: {} },
+    },
+    true,
+  );
+}
+
 /** Collaborators the extension needs, overridable so tests can count them. */
 export interface PersistenceDeps {
   /** Read a document's stored bytes. */

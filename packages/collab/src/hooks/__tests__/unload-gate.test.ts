@@ -209,3 +209,43 @@ describe("the unload gate — shutdown order", () => {
     expect(storeCalls).toHaveLength(0);
   });
 });
+
+describe("the unload gate — which order it picks", () => {
+  it("uses the shutdown order once the process is shutting down", async () => {
+    // The graceful-shutdown drains run in parallel, so a separate "settle
+    // everything" drain would race the one destroying the server, with both
+    // walking the same documents. The flag makes the ordinary unload path —
+    // which server.destroy() drives anyway — do the right thing instead.
+    const order: string[] = [];
+    let shuttingDown = false;
+    const rescued: string[] = [];
+    const gate = createUnloadGate({
+      finalAttemptTimeoutMs: 50,
+      encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
+      storeNow: async ({ name }) => {
+        order.push("store");
+        if (!consumeTimedStoreArm(name)) return;
+        commitStore(name, beginStore(name));
+      },
+      writeRescue: async ({ documentName }) => {
+        order.push("rescue");
+        rescued.push(documentName);
+        return "/rescue/x.yjs";
+      },
+      deleteRescue: async () => {},
+      alert: async () => {},
+      isShuttingDown: () => shuttingDown,
+    });
+
+    noteDocumentChange(DOC);
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+    expect(order).toEqual(["store"]);
+
+    order.length = 0;
+    shuttingDown = true;
+    forgetDocument(DOC);
+    noteDocumentChange(DOC);
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+    expect(order).toEqual(["rescue", "store"]);
+  });
+});

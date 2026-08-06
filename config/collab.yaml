@@ -75,6 +75,47 @@ throttle_ban_time: 1             # ban duration in MINUTES (the extension multip
 # Quiet mode: suppress internal Hocuspocus logs (use our pino logger instead).
 quiet: true
 
+# ── Timed Store (#40) ─────────────────────────────
+# Storing runs on a timer, not on "somebody changed something". The two
+# settings above (debounce / max_debounce) still describe when Hocuspocus
+# FIRES its own store hook — that call now returns without writing anything,
+# because only the timed loop and the unload gate are allowed to write. They
+# stay because raising them instead is not an option: `shouldUnloadDocument`
+# is false the whole time a store is pending, so a large debounce strands
+# every document in memory.
+#
+# The interval is a WRITE-LOAD knob, not a safety knob. Every case that would
+# otherwise lose content is covered elsewhere: a user closing a tab and a
+# normal restart both go through the unload gate, and one instance dying
+# leaves the others holding the same content (they count relayed updates too,
+# so they store it themselves). What is left is losing power to every instance
+# at once, and 2 seconds versus 10 makes no difference to that — the answer
+# there is the rescue file plus the alert, not storing more often.
+store_interval_ms: 10000
+
+# How long the unload gate's single final attempt gets. It needs its own
+# budget: the yjs pool inherits postgres.js's 30s connect timeout, which is
+# several times the whole graceful-shutdown budget (4s), so waiting for it
+# would lose the rescue file as well as the database write.
+store_final_attempt_timeout_ms: 3000
+
+# Where content goes when even the final attempt fails. Relative paths are
+# resolved from the monorepo root; in Docker this sits under the mounted
+# ./logs volume so the files survive the container. They are NEVER removed
+# automatically — each one is the only remaining copy of somebody's work.
+store_rescue_dir: logs/collab/rescue
+
+# Who to tell when that happens. LEAVE THIS SET IN PRODUCTION: a rescue file
+# nobody is told about is a file nobody reads. Note EMAIL_BACKEND defaults to
+# `disabled` and both env templates ship it disabled — with it disabled the
+# alert only reaches the log, which collab says explicitly rather than
+# failing quietly.
+store_alert_email: ""
+
+# One outage means one failure per open document per round. Alerts collapse
+# to one per document per window.
+store_alert_window_ms: 600000
+
 # ── Handling Lease (#1580) ────────────────────────
 # 'handling' is fragile shared Yjs state; its driver (a browser uploading,
 # a Worker running AIGC) can die silently. These tune the collab sweeper +

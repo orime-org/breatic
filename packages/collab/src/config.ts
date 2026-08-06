@@ -42,6 +42,14 @@ const collabConfigSchema = z.object({
   // Logging
   quiet: z.boolean().default(true),
 
+  // Timed store (#40). Storing is driven by a timer rather than by edits,
+  // so a failed write is retried and has no consequence for the editor.
+  store_interval_ms: z.number().int().positive().default(10_000),
+  store_final_attempt_timeout_ms: z.number().int().positive().default(3_000),
+  store_rescue_dir: z.string().default("logs/collab/rescue"),
+  store_alert_email: z.string().default(""),
+  store_alert_window_ms: z.number().int().positive().default(600_000),
+
   // Handling lease (#1580) — collab is the ONLY consumer. See collab.yaml.
   handling_lease: z
     .object({

@@ -154,7 +154,8 @@ async function main(): Promise<void> {
   }
 
   // Create and start Hocuspocus server
-  const { server, hocuspocus, connectionRegistry, handlingSweeper } = await createCollabServer({
+  const { server, hocuspocus, connectionRegistry, handlingSweeper, storeLoop, markShuttingDown } =
+    await createCollabServer({
     collabRedisUrl: REDIS_COLLAB_URL,
     port: env.COLLAB_PORT,
     redisKeyPrefix: REDIS_KEY_PREFIX,
@@ -334,6 +335,16 @@ async function main(): Promise<void> {
    */
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutting down...");
+    // Before any drain runs. The drains go in parallel, so this cannot be a
+    // drain of its own — it would race `server.destroy()`, and both would be
+    // walking the same documents. The flag makes the unload path that
+    // destroy() drives anyway write each document's rescue file BEFORE
+    // attempting the database, which matters because one attempt can outlast
+    // the whole budget below (#40).
+    markShuttingDown();
+    // Stop starting new store rounds. A round already in flight finishes; the
+    // unload gate settles whatever it did not reach.
+    storeLoop.stop();
     await runGracefulShutdown({
       // Release the WS listen socket first so a restart can rebind :1234
       // immediately, instead of holding it behind the drains below — the old
