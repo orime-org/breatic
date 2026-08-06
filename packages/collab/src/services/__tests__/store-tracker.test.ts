@@ -33,8 +33,8 @@ describe("hasUnsavedContent", () => {
 
   it("becomes false again once a store commits what it covered", () => {
     noteDocumentChange(DOC);
-    const covered = beginStore(DOC);
-    commitStore(DOC, covered);
+    const ticket = beginStore(DOC);
+    commitStore(DOC, ticket);
     expect(hasUnsavedContent(DOC)).toBe(false);
   });
 
@@ -49,9 +49,26 @@ describe("hasUnsavedContent", () => {
     // reading the counter itself: the write takes time, and anything typed
     // during it is not in the bytes that were handed to the database.
     noteDocumentChange(DOC);
-    const covered = beginStore(DOC);
+    const ticket = beginStore(DOC);
     noteDocumentChange(DOC);
-    commitStore(DOC, covered);
+    commitStore(DOC, ticket);
+    expect(hasUnsavedContent(DOC)).toBe(true);
+  });
+
+  it("ignores a commit from a write that was abandoned before the document went", () => {
+    // Nothing can cancel a database write in flight, so one the caller gave
+    // up on can still land minutes later. If it recorded what it covered
+    // after the document had been forgotten, the count would come back with
+    // no `changeCount` beside it and the document would read as saved until
+    // it accumulated more changes than the orphan claimed. Gate 2 reproduced
+    // exactly that with a 40-change session.
+    for (let i = 0; i < 40; i += 1) noteDocumentChange(DOC);
+    const abandoned = beginStore(DOC);
+    forgetDocument(DOC);
+
+    commitStore(DOC, abandoned);
+
+    noteDocumentChange(DOC);
     expect(hasUnsavedContent(DOC)).toBe(true);
   });
 

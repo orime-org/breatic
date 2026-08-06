@@ -20,7 +20,12 @@
  */
 
 import { createLogger } from "@breatic/core";
-import { armTimedStore, hasUnsavedContent } from "@collab/services/store-tracker.js";
+import {
+  armTimedStore,
+  consumeTimedStoreArm,
+  hasUnsavedContent,
+} from "@collab/services/store-tracker.js";
+import { runWithTimeout } from "@collab/services/with-timeout.js";
 
 const logger = createLogger("collab-store-loop");
 
@@ -34,6 +39,8 @@ export interface StoreLoopEntry {
 export interface StoreLoopDeps {
   /** How long between rounds. */
   intervalMs: number;
+  /** How long one document's store gets before the round moves on. */
+  storeTimeoutMs: number;
   /** Documents currently held in memory. */
   listDocuments(): Iterable<StoreLoopEntry>;
   /** Ask hocuspocus to store this document immediately. */
@@ -76,11 +83,24 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
         // without writing anything when it finds no arm.
         armTimedStore(entry.name);
         try {
-          await deps.storeNow(entry);
+          // Bounded, because a round that never ends is a round that never
+          // reaches the documents behind this one — and on shutdown it also
+          // holds the document's save mutex, which makes the library skip the
+          // unload gate entirely and lose even the rescue file.
+          await runWithTimeout(deps.storeNow(entry), deps.storeTimeoutMs);
         } catch (err) {
           // One document must not take the round down with it — the others
           // are holding unsaved content too.
           logger.error({ err, documentName: entry.name }, "collab_store_round_document_failed");
+        } finally {
+          // Reclaim our own arm rather than trusting it was consumed. The
+          // Redis extension runs first (priority 1000 against our default
+          // 100) and aborts the whole hook chain when another instance holds
+          // the cross-instance lock, so our hook — and its consumption of the
+          // arm — is skipped. A leftover arm would then be spent by the
+          // library's own change-triggered store, which is exactly the write
+          // this design exists to prevent.
+          consumeTimedStoreArm(entry.name);
         }
       }
     } finally {

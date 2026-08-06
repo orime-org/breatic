@@ -103,6 +103,7 @@ function harness(options: { failing?: boolean; delayMs?: number } = {}): Harness
 
   const loop = createStoreLoop({
     intervalMs: 10_000,
+    storeTimeoutMs: 5_000,
     listDocuments: () => Array.from(hocuspocus.documents.keys(), (name) => ({ name })),
     storeNow: ({ name }) => storeDocumentNow(hocuspocus as never, name),
   });
@@ -210,6 +211,36 @@ describe("the timed store on a live server", () => {
 
     await waitFor(() => !h.hocuspocus.documents.has(DOC), "the document to be released");
     expect(h.hocuspocus.documents.has(DOC)).toBe(false);
+  });
+
+  it("notices an edit that only DELETES text", async () => {
+    // The check this rework nearly shipped — a Yjs state vector — cannot see
+    // a deletion, because deletes go into a delete set rather than advancing
+    // any client's clock. A probe measured the loss: delete a paragraph, fail
+    // the store, close the tab, and the deletion is gone while the check
+    // reports nothing outstanding.
+    const h = harness();
+    const client = await connectLiveClient(h.hocuspocus, DOC);
+    const document = h.hocuspocus.documents.get(DOC)!;
+    document.transact(() => {
+      document.getText("body").insert(0, "hello world");
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    await h.runRound();
+    expect(hasUnsavedContent(DOC)).toBe(false);
+
+    document.transact(() => {
+      document.getText("body").delete(5, 6); // the text gets SHORTER
+    });
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(hasUnsavedContent(DOC)).toBe(true);
+
+    await h.runRound();
+    const back = new Y.Doc();
+    Y.applyUpdate(back, h.writes.at(-1)!.state);
+    expect(back.getText("body").toString()).toBe("hello");
+    client.close();
   });
 
   it("leaves the content outstanding when the write fails, so a later round takes it", async () => {

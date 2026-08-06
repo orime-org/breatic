@@ -83,10 +83,37 @@ export async function storeDoc({
   await yjsDocumentsRepo.upsertDocData(documentName, state);
 }
 
-/** The part of the Hocuspocus instance {@link storeDocumentNow} drives. */
+/** The document shape {@link storeDocumentNow} needs off the instance. */
+export interface StorableDocument {
+  name: string;
+  getConnectionsCount(): number;
+}
+
+/** What {@link storeDocumentNow} hands the library's store entry. */
+export interface StorePayload {
+  instance: unknown;
+  clientsCount: number;
+  document: StorableDocument;
+  documentName: string;
+  lastContext: Record<string, unknown>;
+  lastTransactionOrigin: { source: "local"; context: Record<string, unknown> };
+}
+
+/**
+ * The part of the Hocuspocus instance {@link storeDocumentNow} drives.
+ *
+ * Named rather than inferred because the library ships duplicate copies of
+ * its own types under pnpm hoisting, so the real instance does not satisfy an
+ * import of them. Spelling out exactly the two members used keeps the call
+ * checked instead of casting the whole object away.
+ */
 export interface StoreDriver {
-  documents: Map<string, Y.Doc & { name: string; getConnectionsCount(): number }>;
-  storeDocumentHooks(document: unknown, payload: unknown, immediately?: boolean): unknown;
+  documents: Map<string, StorableDocument>;
+  storeDocumentHooks(
+    document: StorableDocument,
+    payload: StorePayload,
+    immediately?: boolean,
+  ): unknown;
 }
 
 /**
@@ -167,12 +194,12 @@ export function createPersistenceExtension(
 
       // Snapshot BEFORE the encode, so anything typed during the write still
       // reads as unsaved when it returns.
-      const covered = beginStore(documentName);
+      const ticket = beginStore(documentName);
       const state = encode(document);
 
       try {
         await store({ documentName, state });
-        commitStore(documentName, covered);
+        commitStore(documentName, ticket);
       } catch (err) {
         // Deliberately not rethrown. Letting it escape makes hocuspocus skip
         // `afterStoreDocument`, which leaves the cross-instance lock held

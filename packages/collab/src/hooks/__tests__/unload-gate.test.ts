@@ -153,13 +153,64 @@ describe("the unload gate — a document with outstanding content", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("forgets the document either way, so its counters do not leak", async () => {
+  it("does NOT clear the counters — the library may still keep the document", async () => {
+    // hocuspocus re-checks shouldUnloadDocument after this hook returns
+    // (server:1580) and abandons the unload when a connection arrived
+    // meanwhile. Clearing here would mark a live document still holding
+    // unstored content as clean, and the timed loop would skip it from then
+    // on. Gate 2 reproduced exactly that.
     const { gate } = harness("fails");
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
 
+    expect(hasUnsavedContent(DOC)).toBe(true);
+  });
+
+  it("clears them once the document has actually left memory", async () => {
+    const { gate } = harness("fails");
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+    gate.afterUnloadDocument({ documentName: DOC });
+
     expect(hasUnsavedContent(DOC)).toBe(false);
+  });
+
+  it("reclaims its own arm, so no leftover can be spent by the library", async () => {
+    // The Redis extension runs first (priority 1000 against our default 100)
+    // and aborts the whole hook chain when another instance holds the
+    // cross-instance lock, so our hook — and its consumption of the arm — is
+    // skipped. A leftover would then be spent by the library's own
+    // change-triggered store.
+    const { gate } = harness("fails");
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(consumeTimedStoreArm(DOC)).toBe(false);
+  });
+
+  it("alerts even when the rescue file could not be written", async () => {
+    // The worst sub-case — the content now has no copy anywhere — was also
+    // the only one that told nobody.
+    const alerted: Array<{ rescuePath: string; reason: string }> = [];
+    const gate = createUnloadGate({
+      finalAttemptTimeoutMs: 50,
+      encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
+      storeNow: async () => {},
+      writeRescue: async () => {
+        throw new Error("disk full");
+      },
+      deleteRescue: async () => {},
+      alert: async (failure) => void alerted.push(failure),
+    });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(alerted).toHaveLength(1);
+    expect(alerted[0]?.reason).toContain("no copy anywhere");
   });
 });
 

@@ -44,6 +44,7 @@ function harness(names: string[], storeNow?: (name: string) => Promise<void>) {
   const stored: string[] = [];
   const loop = createStoreLoop({
     intervalMs: 10_000,
+    storeTimeoutMs: 5_000,
     listDocuments: () => names.map((name) => ({ name })),
     storeNow: async ({ name }) => {
       stored.push(name);

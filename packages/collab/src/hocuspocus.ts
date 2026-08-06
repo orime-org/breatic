@@ -221,6 +221,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       await storeGate.current?.beforeUnloadDocument({ documentName, document });
     },
 
+    // Only once the document has really gone. The gate cannot clean up: the
+    // library re-checks whether to unload AFTER the gate returns, so a
+    // document can survive it, and clearing its counters there would mark a
+    // live document holding unstored content as clean (#40).
+    afterUnloadDocument: async ({ documentName }: { documentName: string }): Promise<void> => {
+      storeGate.current?.afterUnloadDocument({ documentName });
+    },
+
     onConnect: async ({ documentName, context, socketId }) => {
       const ctx = context as { user?: { id: string } };
       // The per-document connection cap is decided in onAuthenticate
@@ -496,6 +504,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   });
   const storeLoop = createStoreLoop({
     intervalMs: cfg.store_interval_ms,
+    storeTimeoutMs: cfg.store_final_attempt_timeout_ms,
     listDocuments: () =>
       Array.from(wsServer.hocuspocus.documents.keys(), (name) => ({ name })),
     storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus as never, name),

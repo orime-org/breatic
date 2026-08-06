@@ -25,9 +25,11 @@ import { createLogger } from "@breatic/core";
 import type { StoreFailureAlert } from "@collab/services/store-alert.js";
 import {
   armTimedStore,
+  consumeTimedStoreArm,
   forgetDocument,
   hasUnsavedContent,
 } from "@collab/services/store-tracker.js";
+import { runWithTimeout } from "@collab/services/with-timeout.js";
 
 const logger = createLogger("collab-unload-gate");
 
@@ -81,6 +83,8 @@ export interface UnloadGate {
   beforeUnloadDocument(payload: UnloadPayload): Promise<void>;
   /** Shutdown: write to disk first, then try the database. */
   settleForShutdown(payload: ShutdownPayload): Promise<void>;
+  /** The document has actually left memory; drop its bookkeeping. */
+  afterUnloadDocument(payload: { documentName: string }): void;
 }
 
 /**
@@ -100,20 +104,16 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
    */
   async function attemptStore(documentName: string): Promise<void> {
     armTimedStore(documentName);
-    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await Promise.race([
-        deps.storeNow({ name: documentName }),
-        new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, deps.finalAttemptTimeoutMs);
-        }),
-      ]);
+      await runWithTimeout(deps.storeNow({ name: documentName }), deps.finalAttemptTimeoutMs);
     } catch (err) {
       // Whether it threw or timed out changes nothing: the counters, not
       // this call's outcome, say whether the content landed.
       logger.warn({ err, documentName }, "collab_final_store_attempt_errored");
     } finally {
-      if (timer) clearTimeout(timer);
+      // Reclaim our own arm rather than trusting it was consumed — see the
+      // same reclamation in the timed loop for why it may not have been.
+      consumeTimedStoreArm(documentName);
     }
   }
 
@@ -149,12 +149,17 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
       { documentName, bytes, rescuePath: rescuePath ?? null },
       "collab_store_unrecoverable",
     );
-    if (!rescuePath) return;
+    // Told even when there is no file. That case is the worst one — the
+    // content now has no copy anywhere — and it is also the one an operator
+    // can still act on, by fixing the rescue directory before the next
+    // document is lost the same way.
     await deps.alert({
       documentName,
-      rescuePath,
+      rescuePath: rescuePath ?? "",
       bytes,
-      reason: "the final store attempt did not land",
+      reason: rescuePath
+        ? "the final store attempt did not land"
+        : "the final store attempt did not land AND the rescue file could not be written — this content has no copy anywhere",
     });
   }
 
@@ -218,11 +223,14 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
         // Belt and braces. A throw escaping here would abort the unload and
         // strand the document; nothing this hook does is worth that.
         logger.error({ err, documentName: payload.documentName }, "collab_unload_gate_failed");
-      } finally {
-        // Either the content is safe or it is on disk and reported. Keeping
-        // the counters would leak one entry per document ever opened.
-        forgetDocument(payload.documentName);
       }
+      // Deliberately no cleanup here. The library re-checks
+      // `shouldUnloadDocument` AFTER this hook returns and abandons the unload
+      // if a connection arrived meanwhile, so a document can survive this
+      // call. Clearing the counters here would mark a live document holding
+      // unstored content as clean, and the timed loop would skip it from then
+      // on. Cleanup belongs to `afterUnloadDocument`, which only fires once
+      // the document has actually gone.
     },
 
     settleForShutdown: async (payload): Promise<void> => {
@@ -230,9 +238,14 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
         await settleForShutdown(payload);
       } catch (err) {
         logger.error({ err, documentName: payload.documentName }, "collab_shutdown_settle_failed");
-      } finally {
-        forgetDocument(payload.documentName);
       }
+    },
+
+    afterUnloadDocument: ({ documentName }): void => {
+      // The document has left memory for real. Only now are the counters
+      // safe to drop; keeping them would leak one entry per document ever
+      // opened, and dropping them any earlier would mislabel a live one.
+      forgetDocument(documentName);
     },
   };
 }

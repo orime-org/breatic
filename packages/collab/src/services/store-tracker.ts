@@ -36,6 +36,19 @@ const storedCount = new Map<string, number>();
 const armed = new Set<string>();
 
 /**
+ * Bumped every time a document is forgotten.
+ *
+ * A store the caller stopped waiting for is not cancelled — nothing can
+ * cancel a database write in flight — so it can still land minutes later and
+ * try to record what it covered. If the document was forgotten in between,
+ * that record would be against a counter that no longer exists: `storedCount`
+ * comes back without a matching `changeCount`, and the document then reads as
+ * saved until it accumulates more changes than the orphan claims. Measured:
+ * a 40-change session left later edits reading as already stored.
+ */
+const generation = new Map<string, number>();
+
+/**
  * Record that a document changed, whatever the origin of the update.
  * @param documentName - Full Yjs document name.
  */
@@ -52,6 +65,14 @@ export function hasUnsavedContent(documentName: string): boolean {
   return (changeCount.get(documentName) ?? 0) > (storedCount.get(documentName) ?? 0);
 }
 
+/** What a store has to hand back to record what it covered. */
+export interface StoreTicket {
+  /** Update count the write will cover. */
+  covered: number;
+  /** Which lifetime of this document the write belongs to. */
+  generation: number;
+}
+
 /**
  * Snapshot what a store is about to cover, before it writes anything.
  *
@@ -59,22 +80,30 @@ export function hasUnsavedContent(documentName: string): boolean {
  * write is in flight is not in the bytes the database received, and has to
  * still read as unsaved once it returns.
  * @param documentName - Full Yjs document name.
- * @returns The update count the pending write will cover.
+ * @returns A ticket to hand {@link commitStore} if the write succeeds.
  */
-export function beginStore(documentName: string): number {
-  return changeCount.get(documentName) ?? 0;
+export function beginStore(documentName: string): StoreTicket {
+  return {
+    covered: changeCount.get(documentName) ?? 0,
+    generation: generation.get(documentName) ?? 0,
+  };
 }
 
 /**
- * Record that a store succeeded, covering the count {@link beginStore} gave.
+ * Record that a store succeeded, covering what its ticket claimed.
  *
  * Only ever called on success. A failed store leaves the counters untouched,
  * which is what makes the next round pick the content up again.
+ *
+ * A ticket from a previous lifetime of the document is discarded: the write
+ * it belongs to was abandoned, the document has since been forgotten, and
+ * recording it would leave a `storedCount` with no `changeCount` beside it.
  * @param documentName - Full Yjs document name.
- * @param covered - The value {@link beginStore} returned for this write.
+ * @param ticket - What {@link beginStore} returned for this write.
  */
-export function commitStore(documentName: string, covered: number): void {
-  storedCount.set(documentName, covered);
+export function commitStore(documentName: string, ticket: StoreTicket): void {
+  if ((generation.get(documentName) ?? 0) !== ticket.generation) return;
+  storedCount.set(documentName, ticket.covered);
 }
 
 /**
@@ -109,4 +138,7 @@ export function forgetDocument(documentName: string): void {
   changeCount.delete(documentName);
   storedCount.delete(documentName);
   armed.delete(documentName);
+  // Not deleted — bumped. A write still in flight carries a ticket from the
+  // lifetime that just ended, and this is what makes its late commit a no-op.
+  generation.set(documentName, (generation.get(documentName) ?? 0) + 1);
 }
