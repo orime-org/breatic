@@ -31,6 +31,15 @@ import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js"
 // the HTTP routes stay mounted under /api/v1 — only the log identity changes.
 initLogger("server");
 
+// Route the AI SDK's warnings into our logger. Without this the SDK writes
+// them to console, and our logs are JSON on disk — console output lands
+// nowhere anyone reads at 3am. Warnings are exactly what matters then: a
+// provider silently dropping a parameter, a model ignoring a setting. The
+// call still succeeds, so nothing else says so.
+globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
+  logger.warn({ warnings, provider, model }, "ai_sdk_warning");
+};
+
 // Health probe port from the validated config (default 3001).
 const HEALTH_PORT = env.SERVER_HEALTH_PORT;
 
