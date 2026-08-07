@@ -47,11 +47,19 @@ const logger = createLogger("collab-unload-gate");
  *                ORDINARY PATH ONLY, where the rescue file is encoded AFTER the
  *                write, so the file is the newer of the two copies.
  *   stale-snapshot the same race, on the SHUTDOWN path, where the rescue file is
- *                encoded BEFORE the write — so the database is the newer copy
- *                and the file is behind it. One label for both would be a
- *                sentence that is true on one path and false on the other, and
- *                the false one tells an operator to restore an old file over a
- *                database that already has the better bytes.
+ *                encoded BEFORE the write — so the file is never the newer of
+ *                the two, and restoring it over the database can only lose.
+ *                "At least as new", not "newer": the two are usually IDENTICAL,
+ *                because `beginStore` and the encode beside it are adjacent
+ *                synchronous statements (persistence.ts), so the update that
+ *                makes the document dirty lands after both and is in neither
+ *                copy. The database is strictly newer only when a SECOND update
+ *                also lands during the disk write. Overclaiming here would send
+ *                an operator to compare two identical files and then stop
+ *                believing the clause that is always true.
+ *                One label for both paths would be a sentence true on one and
+ *                false on the other, and the false one tells an operator to
+ *                restore an old file over a database that has the better bytes.
  *   not-reached  our extension never ran: the permission we issued was still
  *                unspent. `hooks()` chains the extensions with `.then`, so a
  *                rejection from any of them skips every hook behind it, and the
@@ -96,9 +104,10 @@ const ATTEMPT_REASON: Record<Exclude<FinalAttempt, "stored">, string> = {
     "the final store attempt landed, and content arrived while it was in flight that the " +
     "database does not have — this file holds it, and is the newer of the two copies",
   "stale-snapshot":
-    "this file was written BEFORE the final store attempt, and that attempt landed, so " +
-    "the database holds a newer copy than this file. Content that arrived during the " +
-    "write is in neither — check the document in the database before acting on this file",
+    "this file was written BEFORE the final store attempt, and that attempt landed, so the " +
+    "database is at least as new as this file and may be newer. Content that arrived during " +
+    "the write is in neither. Do NOT restore this file over the database — check the " +
+    "document there first",
   "not-reached":
     "this instance's write never ran, and it cannot tell why — the store hook chain " +
     "was aborted before it reached us. Check the document in the database before " +
@@ -288,7 +297,7 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
    * @param bytes - How much content was at stake.
    * @param rescuePath - Where it was written, when it was.
    * @param result - Why the content is unaccounted for.
-   * @param result.attempt - Which of the three failures this was.
+   * @param result.attempt - Which outcome this was; anything but `stored`.
    * @param result.error - What the attempt threw, if it threw at all.
    */
   async function reportLoss(
@@ -355,8 +364,9 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     const path = await rescue(documentName, state);
     await reportLoss(documentName, state.length, path, {
       // Landed, and still dirty: the only way both hold is that content
-      // arrived during the write. The encode below happens AFTER the attempt,
-      // so the file about to be written is the newer of the two copies.
+      // arrived during the write. On this path the encode two lines up ran
+      // AFTER the attempt, so the file just written holds that content and the
+      // database does not — unconditionally, unlike the shutdown path below.
       attempt: result.attempt === "stored" ? "raced-by-edit" : result.attempt,
       error: result.error,
     });

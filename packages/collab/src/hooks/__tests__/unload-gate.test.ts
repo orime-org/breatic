@@ -836,10 +836,17 @@ describe("when the shutdown settle may delete the rescue file", () => {
     expect(alerted[0]?.reason).toContain("this file holds it");
   });
 
-  it("tells the operator the DATABASE is the newer copy on the way out", async () => {
+  it("tells the operator NOT to restore the file over the database on the way out", async () => {
     // Shutdown order: rescue file first, store second. The file therefore
-    // predates the write, the database holds a strictly newer copy, and what
-    // arrived during the write is in neither.
+    // predates the write and can never be the newer of the two.
+    //
+    // Gate 2 round 6: the first version of this sentence said the database is
+    // "newer", which is only true when a second update lands during the disk
+    // write — usually the two copies are byte-identical, because `beginStore`
+    // and the encode beside it are adjacent synchronous statements, so the
+    // update that makes the document dirty lands after both. Claiming a
+    // difference that is usually not there sends an operator to compare two
+    // identical files and then distrust the clause that IS always true.
     const alerted: StoreFailureAlert[] = [];
     const gate = createUnloadGate({
       instanceId: "inst-a",
@@ -863,8 +870,12 @@ describe("when the shutdown settle may delete the rescue file", () => {
     await gate.settleAllForShutdown([{ documentName: DOC, document: documentWithText("x") }]);
 
     expect(alerted).toHaveLength(1);
-    expect(alerted[0]?.reason).toContain("the database holds a newer copy than this file");
+    expect(alerted[0]?.reason).toContain("at least as new as this file");
+    expect(alerted[0]?.reason).toContain("Do NOT restore this file over the database");
+    // The claim that is false here, and the one this whole split exists to
+    // keep off this path.
     expect(alerted[0]?.reason).not.toContain("this file holds it");
+    expect(alerted[0]?.reason).not.toContain("newer of the two copies");
   });
 
   it("still deletes it when the write landed and nothing arrived", async () => {
