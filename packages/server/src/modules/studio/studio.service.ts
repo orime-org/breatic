@@ -178,7 +178,8 @@ export async function checkStudioSlug(
  *
  * Changing the slug frees the old one immediately — no alias, no redirect
  * (rule 7). Every existing link to the old address stops working, which is why
- * the frontend puts this behind a confirmation in the danger zone.
+ * a caller is expected to confirm it with the user first. Where that
+ * confirmation lives is the frontend's business, not this layer's.
  * @param slug - The studio's CURRENT slug (from the URL)
  * @param patch - The fields to change; at least one must be present
  * @param patch.name - New display name

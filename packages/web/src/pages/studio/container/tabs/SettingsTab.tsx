@@ -21,9 +21,10 @@ interface SettingsTabProps {
  * taken back.
  *
  * Editing is the admin's; a non-admin still sees the values, because the
- * studio's name, handle and description are things every member has a reason
- * to look up. What a non-admin gets that an admin does not is the leave
- * button, in the danger zone below.
+ * studio's name and description are things every member has a reason to look
+ * up. The danger zone below holds a different set for each of them: the admin
+ * gets the actions that dispose of the studio or its address, and a non-admin
+ * gets the one that only concerns themselves — walking away from it.
  * @param props - The current studio detail and its members.
  * @param props.studio - The studio being configured.
  * @param props.members - The studio members (the transfer picker's source).
@@ -58,6 +59,8 @@ export function SettingsTab({
         members={members}
         leaving={settings.leaving}
         onLeave={settings.leave}
+        saving={settings.saving}
+        onSave={settings.save}
       />
     </div>
   );
