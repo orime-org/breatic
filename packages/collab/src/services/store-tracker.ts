@@ -13,9 +13,8 @@
  * WHY A COUNTER AND NOT A YJS STATE VECTOR. A vector cannot see a deletion:
  * Yjs records deletes in a delete set rather than advancing any client's
  * clock, so "delete a paragraph, the store fails, close the tab" reads as
- * "nothing outstanding" and the deletion is lost. Measured, not reasoned —
- * inner/engineering/demo/2026-08-06-unsaved-detection-and-final-retry-probe.mjs
- * demonstrates the loss with the vector and its absence with this counter.
+ * "nothing outstanding" and the deletion is lost. Measured, not reasoned: the
+ * loss reproduces with a state vector and does not with this counter.
  *
  * WHY NOT `lastChangeTime`. It is a wall clock: two changes inside the same
  * millisecond are indistinguishable, and a system clock adjustment can move

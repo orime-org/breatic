@@ -21,8 +21,8 @@
  *
  * Standing up two real instances would test the same two things through a
  * Redis round trip, at the cost of a service dependency and a timing-based
- * assertion. The mechanisms are reproduced directly instead — and the
- * two-instance probe in inner/engineering/demo covers the round trip itself.
+ * assertion. The mechanisms are reproduced directly instead; the round trip
+ * itself was verified separately against two live instances.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
