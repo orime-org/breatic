@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * When somebody announces they came online, this client re-fetches the roster.
+ * When somebody's `online` flag turns true, this client re-fetches the roster.
  *
- * That is the whole rule, and it is deliberately unconditional (#1882, owner):
+ * The flag lives on the server-written presence record in the project's meta
+ * document, so false-to-true is the server saying it is holding a connection
+ * for that person again. That transition is the whole rule, and it is
+ * deliberately unconditional (#1882, owner):
  * no "only if the id is unknown", no skipping ourselves, no debounce. A
  * condition would be a judgement about who is worth re-fetching for, and every
  * such judgement is a place to be wrong — the one that was proposed and
@@ -37,6 +40,7 @@ import {
   useProjectMembers,
   useRosterRefreshOnJoin,
 } from '@web/data/use-project-members';
+import type { ProjectUser } from '@web/data/yjs/project-meta';
 
 vi.mock('@web/data/api/members', () => ({
   membersApi: { list: vi.fn() },
@@ -130,49 +134,75 @@ describe('useRosterRefreshOnJoin', () => {
     seedRoster(client);
   });
 
-  /** Render the hook with an initial online set. */
-  function mount(online: ReadonlySet<string>) {
-    return renderHook(
-      ({ ids }: { ids: ReadonlySet<string> }) =>
-        useRosterRefreshOnJoin(PROJECT, ids),
-      { initialProps: { ids: online }, wrapper: wrapper(client) },
+  /**
+   * Build the presence map the server writes, from `id → online`.
+   * @param flags - Who has a record, and whether it says online.
+   * @returns The map the hook consumes.
+   */
+  function presence(
+    flags: Record<string, boolean>,
+  ): ReadonlyMap<string, ProjectUser> {
+    return new Map(
+      Object.entries(flags).map(([id, online]) => [
+        id,
+        { id, online, lastSeenAt: 1_000 },
+      ]),
     );
   }
 
-  it('re-fetches when a user id joins the online set', () => {
-    const { rerender } = mount(new Set(['a']));
+  /** Render the hook with an initial presence map. */
+  function mount(users: ReadonlyMap<string, ProjectUser>) {
+    return renderHook(
+      ({ u }: { u: ReadonlyMap<string, ProjectUser> }) =>
+        useRosterRefreshOnJoin(PROJECT, u),
+      { initialProps: { u: users }, wrapper: wrapper(client) },
+    );
+  }
+
+  it('re-fetches when a record first appears saying online', () => {
+    const { rerender } = mount(presence({ a: true }));
     expect(isInvalidated(client, PROFILES_KEY)).toBe(false);
 
-    rerender({ ids: new Set(['a', 'b']) as ReadonlySet<string> });
+    rerender({ u: presence({ a: true, b: true }) });
     expect(isInvalidated(client, PROFILES_KEY)).toBe(true);
   });
 
-  it('does not re-fetch when somebody merely leaves', () => {
+  it('re-fetches when an existing record flips from offline to online', () => {
+    // The server never deletes a record; it flips the flag. So a returning
+    // person arrives as false-to-true on a row that was there all along, and
+    // a hook watching only for NEW ids would miss every return.
+    const { rerender } = mount(presence({ a: true, b: false }));
+    expect(isInvalidated(client, PROFILES_KEY)).toBe(false);
+
+    rerender({ u: presence({ a: true, b: true }) });
+    expect(isInvalidated(client, PROFILES_KEY)).toBe(true);
+  });
+
+  it('does not re-fetch when somebody merely goes offline', () => {
     // Leaving brings no new identity to resolve. This is not a condition on
-    // WHO we re-fetch for — it is that a departure is not a join at all.
-    const { rerender } = mount(new Set(['a', 'b']));
+    // WHO we re-fetch for — it is that a departure is not an arrival at all.
+    const { rerender } = mount(presence({ a: true, b: true }));
 
-    rerender({ ids: new Set(['a']) as ReadonlySet<string> });
+    rerender({ u: presence({ a: true, b: false }) });
     expect(isInvalidated(client, PROFILES_KEY)).toBe(false);
   });
 
-  it('re-fetches for a returning member the roster already lists', () => {
-    // The rejected alternative ("only when the id is unknown") would skip this
-    // one, and a rename made while they were away would never show up.
-    const { rerender } = mount(new Set(['a', 'b']));
-    rerender({ ids: new Set(['a']) as ReadonlySet<string> });
-    expect(isInvalidated(client, PROFILES_KEY)).toBe(false);
+  it('does not re-fetch for a record that appears already offline', () => {
+    // A first sync hands over everyone who has ever been in this project,
+    // most of them offline. None of those is an arrival.
+    const { rerender } = mount(presence({ a: true }));
 
-    rerender({ ids: new Set(['a', 'b']) as ReadonlySet<string> });
-    expect(isInvalidated(client, PROFILES_KEY)).toBe(true);
+    rerender({ u: presence({ a: true, b: false }) });
+    expect(isInvalidated(client, PROFILES_KEY)).toBe(false);
   });
 
-  it('does not re-fetch when the set is rebuilt with the same members', () => {
-    // Awareness hands out a fresh Set on every heartbeat; re-fetching on
-    // identity rather than on content would hammer the endpoint.
-    const { rerender } = mount(new Set(['a', 'b']));
+  it('does not re-fetch when the map is rebuilt with the same flags', () => {
+    // A fresh Map arrives on every heartbeat, since the timestamp inside every
+    // record moves. Re-fetching on identity rather than on the flag would hit
+    // the endpoint every 15 seconds per person in the project.
+    const { rerender } = mount(presence({ a: true, b: true }));
 
-    rerender({ ids: new Set(['b', 'a']) as ReadonlySet<string> });
+    rerender({ u: presence({ b: true, a: true }) });
     expect(isInvalidated(client, PROFILES_KEY)).toBe(false);
   });
 });

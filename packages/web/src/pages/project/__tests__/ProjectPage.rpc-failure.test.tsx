@@ -80,7 +80,6 @@ vi.mock('@web/data/yjs/project-meta', async () => {
       spaces: meta.spaces,
       openTabIds: [SPACE_A, SPACE_B],
       users: new Map(),
-      onlineUserIds: new Set<string>(),
       synced: true,
       provider: fakeProvider,
       status: 'connected',

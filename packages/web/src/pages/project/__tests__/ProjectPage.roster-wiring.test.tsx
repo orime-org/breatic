@@ -29,13 +29,30 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import type { ProjectUser } from '@web/data/yjs/project-meta';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
 
 const PID = '11111111-1111-4111-8111-111111111111';
 
-/** The online set the mocked meta hook reports; mutated between renders. */
-let onlineNow: ReadonlySet<string> = new Set<string>();
+/** The presence map the mocked meta hook reports; mutated between renders. */
+let usersNow: ReadonlyMap<string, ProjectUser> = new Map();
+
+/**
+ * Build a presence map the way the server writes one.
+ * @param flags - Who has a record, and whether it says online.
+ * @returns The map the page hands to the roster refresh.
+ */
+function presence(
+  flags: Record<string, boolean>,
+): ReadonlyMap<string, ProjectUser> {
+  return new Map(
+    Object.entries(flags).map(([id, online]) => [
+      id,
+      { id, online, lastSeenAt: 1_000 },
+    ]),
+  );
+}
 
 vi.mock('@web/data/yjs/project-meta', async () => {
   const actual = await vi.importActual<
@@ -46,7 +63,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     useProjectMeta: () => ({
       spaces: [{ id: 's1', name: 'S1', type: 'canvas' }],
       openTabIds: ['s1'],
-      onlineUserIds: onlineNow,
+      users: usersNow,
       synced: true,
       provider: null,
       status: 'connected' as const,
@@ -141,7 +158,7 @@ describe('ProjectPage roster wiring', () => {
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
-    onlineNow = new Set<string>();
+    usersNow = new Map();
     listMock.mockResolvedValue([{ userId: 'u-them', role: 'editor' }]);
     profilesMock.mockResolvedValue([
       { id: 'u-them', name: 'Them', email: 't@e.com' },
@@ -176,7 +193,7 @@ describe('ProjectPage roster wiring', () => {
     const { rerender } = renderPage();
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
 
-    onlineNow = new Set(['u-them']);
+    usersNow = presence({ 'u-them': true });
     rerender(
       <MemoryRouter initialEntries={[`/project/demo-${PID}`]}>
         <Routes>
@@ -188,7 +205,7 @@ describe('ProjectPage roster wiring', () => {
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
   });
 
-  it('does not re-fetch while the online set stays empty', async () => {
+  it('does not re-fetch while nobody is online', async () => {
     const { rerender } = renderPage();
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
 

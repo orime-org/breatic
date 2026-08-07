@@ -30,7 +30,7 @@ import {
   waitFor,
   type LiveClient,
 } from "@collab/__tests__/helpers/live-hocuspocus.js";
-import { readPresence, __resetPresenceThrottle } from "@collab/hooks/presence";
+import { readPresence } from "@collab/hooks/presence";
 import {
   recordPresenceOnConnect,
   recordHeartbeat,
@@ -45,7 +45,10 @@ const ALICE = "u-alice";
 let clock = 1_000_000;
 
 /** Presence policy these cases run under; production reads it from config. */
-const POLICY = { staleAfterMs: 90_000, throttleMs: 30_000 };
+const POLICY = { staleAfterMs: 90_000 };
+
+/** How often an awake browser renews its awareness clock. */
+const BEAT_MS = 15_000;
 
 /** Who each fake connection authenticates as, by cookie. */
 const USER_BY_COOKIE: Record<string, string> = {
@@ -152,7 +155,6 @@ function seedGhost(doc: Y.Doc, userId: string, lastSeenAt: number): void {
 
 beforeEach(() => {
   clock = 1_000_000;
-  __resetPresenceThrottle();
   server = makeServer();
 });
 
@@ -204,10 +206,34 @@ describe("presence wiring — a heartbeat refreshes and sweeps", () => {
     const alice = await connect("alice");
     seedGhost(metaDoc(), "u-ghost", clock - 600_000);
 
-    clock += POLICY.throttleMs;
+    clock += BEAT_MS;
     await beat(alice, 4242);
 
     expect(readPresence(metaDoc(), "u-ghost")?.online).toBe(false);
+  });
+
+  it("only clears what is older than the configured threshold", () => {
+    // Without this, the sweep cases above cannot tell the threshold from any
+    // other positive number: their ghost is 600 seconds old and the only live
+    // record has an age of zero, so every value in between reads the same.
+    // Measured: with `staleAfterMs` swapped for a tenth of it, every other case
+    // in this file stayed green. These two ages sit either side of 90 seconds.
+    const doc = new Y.Doc();
+    seedGhost(doc, "u-old", clock - (POLICY.staleAfterMs + 1));
+    seedGhost(doc, "u-recent", clock - (POLICY.staleAfterMs - 1));
+
+    recordPresenceOnConnect(
+      {
+        documentName: META_DOC,
+        instance: { documents: new Map([[META_DOC, doc]]) },
+        context: { user: { id: ALICE } },
+      } as never,
+      { now: () => clock, ...POLICY },
+    );
+
+    expect(readPresence(doc, "u-old")?.online).toBe(false);
+    expect(readPresence(doc, "u-recent")?.online).toBe(true);
+    doc.destroy();
   });
 
   it("clears a ghost the moment somebody arrives, before any heartbeat", async () => {
@@ -251,7 +277,7 @@ describe("presence wiring — a heartbeat refreshes and sweeps", () => {
       );
     });
 
-    clock += POLICY.throttleMs;
+    clock += BEAT_MS;
     await beat(alice, 4243);
 
     expect(readPresence(metaDoc(), ALICE)?.online).toBe(true);

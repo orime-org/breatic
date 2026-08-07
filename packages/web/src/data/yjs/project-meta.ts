@@ -119,13 +119,6 @@ export interface ProjectMetaState {
    * here — resolve them from the project roster by id.
    */
   users: ReadonlyMap<string, ProjectUser>;
-  /**
-   * Live set of `userId`s the server is currently holding a connection for,
-   * derived from the `users` map above. It used to be derived from awareness
-   * states instead, which meant it trusted an id each browser announced about
-   * itself — for the one set that decides when everybody refetches the roster.
-   */
-  onlineUserIds: ReadonlySet<string>;
   /** True after the initial Hocuspocus sync completes. */
   synced: boolean;
   /**
@@ -197,24 +190,13 @@ export function useProjectMeta(
     };
   }, [doc, userId]);
 
-  // Who is online comes from the list the server keeps in the meta doc, not
-  // from what clients put on the awareness channel (#1886). The old derivation
-  // read an id the browser had announced about itself, which meant this set —
-  // the thing every "somebody joined, refetch the roster" decision hangs on —
-  // trusted a claim rather than a fact. The server writes that list from the
-  // credential each connection presented, so reading it here is reading what
-  // the server knows.
-  const onlineUserIds = React.useMemo(() => {
-    const next = new Set<string>();
-    for (const [userId, user] of state.users) {
-      if (user.online) next.add(userId);
-    }
-    return next;
-  }, [state.users]);
-
+  // Who is online is read off `users` by whoever needs it. There used to be a
+  // second field here holding the online ids as a set, derived from that same
+  // map — one truth exposed twice, which read as two sources of presence. It
+  // was added in May for a presence UI that was never built, and its one real
+  // consumer works directly off `users` (#1886).
   return {
     ...state,
-    onlineUserIds,
     synced,
     provider,
     status,

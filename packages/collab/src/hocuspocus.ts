@@ -256,7 +256,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       recordPresenceOnConnect({ documentName, context, instance }, {
         now: Date.now,
         staleAfterMs: cfg.presence_stale_after_ms,
-        throttleMs: cfg.presence_heartbeat_throttle_ms,
       });
     },
 
@@ -278,7 +277,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       recordHeartbeat({ documentName, document, connection }, {
         now: Date.now,
         staleAfterMs: cfg.presence_stale_after_ms,
-        throttleMs: cfg.presence_heartbeat_throttle_ms,
       });
     },
 

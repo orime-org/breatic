@@ -33,7 +33,7 @@
  * absence of heartbeats.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
 
 import {
@@ -41,15 +41,10 @@ import {
   touchLastSeen,
   sweepStalePresence,
   readPresence,
-  __resetPresenceThrottle,
 } from "@collab/hooks/presence";
 
-const DOC = "project-p1/meta";
 const ALICE = "u-alice";
 const BOB = "u-bob";
-
-/** The write throttle these cases exercise; production reads it from config. */
-const THROTTLE_MS = 30_000;
 
 /** A meta doc with nothing in it yet. */
 function emptyMetaDoc(): Y.Doc {
@@ -57,14 +52,10 @@ function emptyMetaDoc(): Y.Doc {
 }
 
 describe("presence — the server records who is here", () => {
-  beforeEach(() => {
-    __resetPresenceThrottle();
-  });
-
   it("records a user as online when their connection is established", () => {
     const doc = emptyMetaDoc();
 
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
 
     expect(readPresence(doc, ALICE)).toEqual({
       id: ALICE,
@@ -78,7 +69,7 @@ describe("presence — the server records who is here", () => {
     // owns, and a copy goes stale the moment its owner renames themselves.
     const doc = emptyMetaDoc();
 
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
 
     const entry = doc.getMap("users").get(ALICE) as Y.Map<unknown>;
     expect([...entry.keys()].sort()).toEqual(["id", "lastSeenAt", "online"]);
@@ -86,40 +77,24 @@ describe("presence — the server records who is here", () => {
 });
 
 describe("presence — the timestamp tracks the heartbeat", () => {
-  beforeEach(() => {
-    __resetPresenceThrottle();
-  });
-
-  it("moves the timestamp forward once the throttle window has passed", () => {
+  it("moves the timestamp forward on every heartbeat", () => {
+    // Every one of them, with nothing skipped. The meta document carries no
+    // traffic but these renewals — carets live in the canvas and document
+    // files — so there is no burst to rate-limit, and the widest gap between
+    // two writes is exactly the browser's beat interval. A skip here would
+    // silently widen that gap past what the threshold is sized for.
     const doc = emptyMetaDoc();
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
 
-    const wrote = touchLastSeen({
-      documentName: DOC,
-      document: doc,
-      userId: ALICE,
-      now: 1_000 + THROTTLE_MS,
-      throttleMs: THROTTLE_MS,
-    });
+    expect(touchLastSeen({ document: doc, userId: ALICE, now: 1_001 })).toBe(
+      true,
+    );
+    expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(1_001);
 
-    expect(wrote).toBe(true);
-    expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(1_000 + THROTTLE_MS);
-  });
-
-  it("writes at most once inside a throttle window", () => {
-    const doc = emptyMetaDoc();
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
-
-    const wrote = touchLastSeen({
-      documentName: DOC,
-      document: doc,
-      userId: ALICE,
-      now: 1_000 + THROTTLE_MS - 1,
-      throttleMs: THROTTLE_MS,
-    });
-
-    expect(wrote).toBe(false);
-    expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(1_000);
+    expect(touchLastSeen({ document: doc, userId: ALICE, now: 1_002 })).toBe(
+      true,
+    );
+    expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(1_002);
   });
 
   it("puts a user back online when their heartbeat arrives", () => {
@@ -128,16 +103,14 @@ describe("presence — the timestamp tracks the heartbeat", () => {
     // can drift close to the threshold. Their next heartbeat is proof they are
     // connected, and proof outranks the inference that flipped them.
     const doc = emptyMetaDoc();
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
     sweepStalePresence({ document: doc, now: 500_000, staleAfterMs: 90_000 });
     expect(readPresence(doc, ALICE)?.online).toBe(false);
 
     const wrote = touchLastSeen({
-      documentName: DOC,
       document: doc,
       userId: ALICE,
       now: 500_100,
-      throttleMs: THROTTLE_MS,
     });
 
     expect(wrote).toBe(true);
@@ -153,13 +126,7 @@ describe("presence — the timestamp tracks the heartbeat", () => {
     // that goes through `markOnline`.
     const doc = emptyMetaDoc();
 
-    const wrote = touchLastSeen({
-      documentName: DOC,
-      document: doc,
-      userId: ALICE,
-      now: 1_000,
-      throttleMs: THROTTLE_MS,
-    });
+    const wrote = touchLastSeen({ document: doc, userId: ALICE, now: 1_000 });
 
     expect(wrote).toBe(false);
     expect(readPresence(doc, ALICE)).toBeNull();
@@ -167,13 +134,9 @@ describe("presence — the timestamp tracks the heartbeat", () => {
 });
 
 describe("presence — records nobody is refreshing any more", () => {
-  beforeEach(() => {
-    __resetPresenceThrottle();
-  });
-
   it("flips a record that claims to be online but stopped beating long ago", () => {
     const doc = emptyMetaDoc();
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
 
     const swept = sweepStalePresence({
       document: doc,
@@ -190,7 +153,7 @@ describe("presence — records nobody is refreshing any more", () => {
     // machine or another one — is refreshing this stamp, and the refresh
     // reaches every instance through the shared document.
     const doc = emptyMetaDoc();
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
 
     const swept = sweepStalePresence({
       document: doc,
@@ -206,7 +169,7 @@ describe("presence — records nobody is refreshing any more", () => {
     // Their timestamp is when they were last actually heard from. Rewriting it
     // on every sweep would keep pushing "last seen" forward for someone gone.
     const doc = emptyMetaDoc();
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
     sweepStalePresence({ document: doc, now: 200_000, staleAfterMs: 90_000 });
     const afterFirst = readPresence(doc, ALICE);
 
@@ -222,8 +185,8 @@ describe("presence — records nobody is refreshing any more", () => {
 
   it("sweeps the stale one and leaves the fresh one in the same pass", () => {
     const doc = emptyMetaDoc();
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
-    markOnline({ documentName: DOC, document: doc, userId: BOB, now: 500_000 });
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
+    markOnline({ document: doc, userId: BOB, now: 500_000 });
 
     const swept = sweepStalePresence({
       document: doc,
@@ -238,8 +201,8 @@ describe("presence — records nobody is refreshing any more", () => {
 
   it("sweeps every stale record in one pass, not just the first", () => {
     const doc = emptyMetaDoc();
-    markOnline({ documentName: DOC, document: doc, userId: ALICE, now: 1_000 });
-    markOnline({ documentName: DOC, document: doc, userId: BOB, now: 2_000 });
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
+    markOnline({ document: doc, userId: BOB, now: 2_000 });
 
     const swept = sweepStalePresence({
       document: doc,

@@ -221,14 +221,14 @@ function ProjectWorkspace({
     spaces,
     openTabIds,
     provider,
-    onlineUserIds,
+    users,
     status: connectionStatus,
   } = useProjectMeta(projectId, userId);
-  // Somebody arriving is the one moment we know a name might be new to us, so
-  // it is the one trigger for re-reading the roster (#1882). Unconditional on
-  // purpose: no filtering on whether we already know the id, which would have
-  // quietly kept showing the old name for everyone already listed.
-  useRosterRefreshOnJoin(projectId, onlineUserIds);
+  // Somebody's `online` turning true is the one moment we know a name might be
+  // new to us, so it is the one trigger for re-reading the roster (#1882).
+  // Unconditional on purpose: no filtering on whether we already know the id,
+  // which would have quietly kept showing the old name for everyone listed.
+  useRosterRefreshOnJoin(projectId, users);
   // The active tab is LOCAL window state — deliberately NOT in the synced
   // meta doc (see module doc). null = no local choice yet → the effective
   // active falls back to the first open tab.

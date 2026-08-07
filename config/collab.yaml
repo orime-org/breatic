@@ -26,14 +26,14 @@ max_debounce: 10000
 # ever asserted (on connect, and on each heartbeat) and absence is inferred:
 # a record nobody anywhere is refreshing is turned off after the threshold.
 #
-# The two numbers move together. The threshold must clear the widest real gap
-# between two refreshes, and that is NOT the 15s browser heartbeat: a hidden
-# browser tab has its timers throttled to once a minute while its socket stays
-# open (Chrome, after 5 minutes hidden), so a connected person can legitimately
-# look ~60s stale. 60000 would sit exactly on that cycle and flip them once a
-# minute forever; 90000 clears it by half again. A test pins the relationship.
+# The threshold must clear the widest real gap between two heartbeats. Every
+# heartbeat is written, so that gap is exactly the browser's beat interval —
+# and the slowest beat is NOT the usual 15s: a hidden browser tab has its
+# timers throttled to once a minute while its socket stays open (Chrome, after
+# 5 minutes hidden), so a connected person can legitimately look ~60s stale.
+# 60000 would sit exactly on that cycle and flip them once a minute forever;
+# 90000 clears it by half again. A test pins the relationship.
 presence_stale_after_ms: 90000
-presence_heartbeat_throttle_ms: 30000
 
 # ── Document Size Limit ───────────────────────────
 # Max Yjs document size in bytes (0 = unlimited).

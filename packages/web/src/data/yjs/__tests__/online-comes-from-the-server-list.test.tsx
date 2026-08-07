@@ -4,18 +4,18 @@
 /**
  * Who is online is read from the server's list, not from what peers say.
  *
- * This set is load-bearing in a way its size hides: `useRosterRefreshOnJoin`
- * fires on an id appearing in it, and that refetch is the only moment anybody
- * learns a collaborator's name has changed. Derive it from the wrong place and
- * the failure is silent — everyone keeps rendering yesterday's name, with types
- * and the rest of the suite green.
+ * This flag is load-bearing in a way its size hides: `useRosterRefreshOnJoin`
+ * fires when it turns true, and that refetch is the only moment anybody learns
+ * a collaborator's name has changed. Read it from the wrong place and the
+ * failure is silent — everyone keeps rendering yesterday's name, with types and
+ * the rest of the suite green.
  *
- * It used to be derived from awareness states, so the id it keyed on was one
- * each browser announced about itself. Now it comes from the list the server
- * writes from the credential each connection presented (#1886). These cases
- * pin that: seed the document, assert the set, and — the part that actually
- * catches a regression — assert that an id sitting in awareness and nowhere
- * else does not get in.
+ * Presence used to be derived from awareness states, so the id it keyed on was
+ * one each browser announced about itself. Now it is the list the server writes
+ * from the credential each connection presented (#1886). These cases pin that:
+ * seed the document, assert the flag, and — the part that actually catches a
+ * regression — assert that an id sitting in awareness and nowhere else never
+ * appears at all.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -114,20 +114,22 @@ afterEach(() => {
 });
 
 describe('who is online', () => {
-  it('contains the users the server marked online', async () => {
+  it('reports the users the server marked online', async () => {
     seedPresence(ME, true);
     const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
 
-    await waitFor(() => expect(result.current.onlineUserIds.has(ME)).toBe(true));
+    await waitFor(() => expect(result.current.users.get(ME)?.online).toBe(true));
   });
 
-  it('leaves out a user the server marked offline', async () => {
+  it('reports a user the server marked offline as offline', async () => {
+    // Their record stays — the server flips the flag, it never deletes a row —
+    // so "gone" has to be readable off the flag, not off the id's absence.
     seedPresence(ME, true);
     seedPresence(PEER, false);
     const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
 
-    await waitFor(() => expect(result.current.onlineUserIds.has(ME)).toBe(true));
-    expect(result.current.onlineUserIds.has(PEER)).toBe(false);
+    await waitFor(() => expect(result.current.users.get(ME)?.online).toBe(true));
+    expect(result.current.users.get(PEER)?.online).toBe(false);
   });
 
   it('ignores an id that exists only in awareness', async () => {
@@ -138,7 +140,7 @@ describe('who is online', () => {
     const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
 
     await waitFor(() => expect(result.current.synced).toBe(true));
-    expect(result.current.onlineUserIds.has('u-imposter')).toBe(false);
+    expect(result.current.users.has('u-imposter')).toBe(false);
   });
 
   it('follows the list when the server marks someone offline later', async () => {
@@ -147,12 +149,12 @@ describe('who is online', () => {
     // can see a regression at all.
     seedPresence(ME, true);
     const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
-    await waitFor(() => expect(result.current.onlineUserIds.has(ME)).toBe(true));
+    await waitFor(() => expect(result.current.users.get(ME)?.online).toBe(true));
 
     updatePresence(ME, false, 2_000);
 
     await waitFor(() =>
-      expect(result.current.onlineUserIds.has(ME)).toBe(false),
+      expect(result.current.users.get(ME)?.online).toBe(false),
     );
   });
 
@@ -162,11 +164,11 @@ describe('who is online', () => {
     seedPresence(ME, false);
     const { result } = renderHook(() => useProjectMeta(PROJECT, ME));
     await waitFor(() => expect(result.current.synced).toBe(true));
-    expect(result.current.onlineUserIds.has(ME)).toBe(false);
+    expect(result.current.users.get(ME)?.online).toBe(false);
 
     updatePresence(ME, true, 3_000);
 
-    await waitFor(() => expect(result.current.onlineUserIds.has(ME)).toBe(true));
+    await waitFor(() => expect(result.current.users.get(ME)?.online).toBe(true));
   });
 
   it('keeps no display name on the record', async () => {

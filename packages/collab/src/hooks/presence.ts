@@ -36,13 +36,14 @@
  * arrive afterwards starts the sweeps that clear them. The threshold is a
  * DELAY before that happens, not a chance to miss it.
  *
- * ## Why the timestamp has to keep moving
+ * ## Every heartbeat is written, and there are only heartbeats
  *
- * `lastSeenAt` has to mean "last heard from", not "connected at". Stamped once
- * on connect, somebody online for three days would carry a three-day-old stamp
- * and the sweep would evict a person who never left. So it is refreshed while
- * the connection lives — throttled, because a connection heartbeats every 15
- * seconds and nobody reads this number at that resolution.
+ * The meta document carries ONE kind of client traffic: the awareness clock
+ * renewal every 15 seconds. Carets live in the canvas and document files, never
+ * here (see the package's CLAUDE.md — publishing a caret onto a meta document
+ * is a bug), so there is no burst of cursor traffic to rate-limit and no reason
+ * to skip a beat. Each one moves the timestamp, and the widest gap between two
+ * writes is therefore exactly the widest gap between two heartbeats.
  */
 
 import type { Doc as YDoc, Map as YMap } from "yjs";
@@ -56,24 +57,6 @@ export interface PresenceEntry {
   id: string;
   online: boolean;
   lastSeenAt: number;
-}
-
-/**
- * Last time each user's timestamp was written, keyed by document and user.
- *
- * Per process, and deliberately not persisted: it only exists to skip writes,
- * so losing it on restart costs one extra write per user, nothing else.
- */
-const lastWriteAt = new Map<string, number>();
-
-/**
- * Build the throttle key for one user on one document.
- * @param documentName - Name of the meta document.
- * @param userId - The user being recorded.
- * @returns The composite key.
- */
-function throttleKey(documentName: string, userId: string): string {
-  return `${documentName}:${userId}`;
 }
 
 /**
@@ -101,13 +84,11 @@ export function readPresence(
  * Called when a connection has been authenticated, so the id is the one the
  * server resolved, never one a client offered.
  * @param args - What to record and when.
- * @param args.documentName - Meta document name; scopes the write throttle.
  * @param args.document - The meta document to write into.
  * @param args.userId - The authenticated user.
  * @param args.now - Current time in ms.
  */
 export function markOnline(args: {
-  documentName: string;
   document: YDoc;
   userId: string;
   now: number;
@@ -122,12 +103,11 @@ export function markOnline(args: {
     entry.set("lastSeenAt", args.now);
     if (!(existing instanceof Y.Map)) users.set(args.userId, entry);
   });
-  lastWriteAt.set(throttleKey(args.documentName, args.userId), args.now);
 }
 
 /**
  * Record a heartbeat: push the timestamp forward, and assert that this person
- * is here — at most once per throttle window.
+ * is here.
  *
  * It puts an offline record BACK online, which it used to refuse. The refusal
  * was aimed at a late heartbeat resurrecting somebody who had just left, and
@@ -141,34 +121,25 @@ export function markOnline(args: {
  * The one thing it still refuses is CREATING a record. A heartbeat is not an
  * arrival; only an authenticated connection is, and that goes through
  * {@link markOnline}.
- * @param args - Whose heartbeat, when, and how often this may be written.
- * @param args.documentName - Meta document name; scopes the write throttle.
+ * @param args - Whose heartbeat, and when.
  * @param args.document - The meta document to write into.
  * @param args.userId - The user whose connection this heartbeat came from.
  * @param args.now - Current time in ms.
- * @param args.throttleMs - Minimum gap between two writes for one user.
- * @returns True when the record was written, false when throttled or absent.
+ * @returns True when the record was written, false when there is none to write.
  */
 export function touchLastSeen(args: {
-  documentName: string;
   document: YDoc;
   userId: string;
   now: number;
-  throttleMs: number;
 }): boolean {
   const users = args.document.getMap(USERS_KEY);
   const existing = users.get(args.userId);
   if (!(existing instanceof Y.Map)) return false;
 
-  const key = throttleKey(args.documentName, args.userId);
-  const previous = lastWriteAt.get(key) ?? 0;
-  if (args.now - previous < args.throttleMs) return false;
-
   args.document.transact(() => {
     existing.set("online", true);
     existing.set("lastSeenAt", args.now);
   });
-  lastWriteAt.set(key, args.now);
   return true;
 }
 
@@ -182,12 +153,12 @@ export function touchLastSeen(args: {
  * holds the connection and reaches all of them through the shared document. A
  * stamp nobody has touched therefore means nobody anywhere is holding them.
  *
- * The threshold has to clear the widest real gap between two refreshes. That is
- * not the 15-second heartbeat: a browser throttles a hidden tab's timers to once
- * a minute (Chrome, after five minutes hidden), while the socket stays open
- * because the keepalive pong never runs JavaScript. So a connected person can
- * legitimately look a minute stale, and a threshold at 60s would flip them on
- * every cycle — offline, then back on their next beat, once a minute forever.
+ * The threshold has to clear the widest real gap between two heartbeats. That
+ * is not 15 seconds: a browser throttles a hidden tab's timers to once a minute
+ * (Chrome, after five minutes hidden), while the socket stays open because the
+ * keepalive pong never runs JavaScript. So a connected person can legitimately
+ * look a minute stale, and a threshold at 60s would flip them on every cycle —
+ * offline, then back on their next beat, once a minute forever.
  *
  * Records that already say offline are left alone: their timestamp is when they
  * were last actually heard from, and rewriting it on every pass would push
@@ -219,11 +190,4 @@ export function sweepStalePresence(args: {
   });
 
   return swept;
-}
-
-/**
- * Test-only — drop the per-process throttle bookkeeping between cases.
- */
-export function __resetPresenceThrottle(): void {
-  lastWriteAt.clear();
 }

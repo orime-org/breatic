@@ -97,14 +97,12 @@ function isMetaDoc(documentName: string): boolean {
   return parsed !== null && parsed.kind === "meta";
 }
 
-/** How presence decides things, injected so tests can move both. */
+/** How presence decides things, injected so tests can move the clock. */
 interface PresencePolicy {
   /** Returns the current time in ms. */
   now: () => number;
   /** How long without a heartbeat before an online record is disbelieved. */
   staleAfterMs: number;
-  /** Minimum gap between two timestamp writes for one user. */
-  throttleMs: number;
 }
 
 /**
@@ -142,12 +140,7 @@ export function recordPresenceOnConnect(
     | undefined;
   if (!document) return;
   const now = policy.now();
-  markOnline({
-    documentName: payload.documentName,
-    document,
-    userId,
-    now,
-  });
+  markOnline({ document, userId, now });
   // Someone arriving is the earliest chance to clean up after a server that
   // went away, and it costs one pass over a small map.
   sweepStalePresence({ document, now, staleAfterMs: policy.staleAfterMs });
@@ -156,22 +149,18 @@ export function recordPresenceOnConnect(
 /**
  * Take one heartbeat: push this user's timestamp forward, and sweep.
  *
- * The sweep rides on the write rather than on the hook. Awareness traffic is
- * heavy — every cursor move is one — while the write is throttled to once per
- * window per user, so sweeping only when the write actually happened bounds the
- * work to roughly one pass per user per window without a second timer to own.
- *
- * This is also the whole reason the sweep can clean up after a crashed process.
- * Its predecessor ran once when the document loaded, which is the moment the
- * records are FRESHEST — a client reconnecting seconds after a restart made
- * every ghost look alive, and the document then stayed loaded for as long as
- * anyone was in it, so the pass never came round again. Riding the heartbeat
- * turns the threshold into a delay instead of a single missed chance.
+ * Sweeping here rather than on a timer is what lets a crashed process be
+ * cleaned up at all. The predecessor ran once when the document loaded, which
+ * is the moment the records are FRESHEST — a client reconnecting seconds after
+ * a restart made every ghost look alive — and the document then stayed loaded
+ * for as long as anyone was in it, so the pass never came round again. Riding
+ * the heartbeat turns the threshold into a delay instead of a single missed
+ * chance, and costs one walk of a per-project map every 15 seconds per person.
  * @param payload - The `onAwarenessUpdate` hook payload.
  * @param payload.documentName - Document the frame was for.
  * @param payload.document - That document.
  * @param payload.connection - The connection the frame came from.
- * @param policy - Clock and presence thresholds.
+ * @param policy - Clock and presence threshold.
  */
 export function recordHeartbeat(
   payload: {
@@ -185,13 +174,7 @@ export function recordHeartbeat(
   const userId = userIdOf(payload);
   if (!userId) return;
   const now = policy.now();
-  const wrote = touchLastSeen({
-    documentName: payload.documentName,
-    document: payload.document,
-    userId,
-    now,
-    throttleMs: policy.throttleMs,
-  });
+  const wrote = touchLastSeen({ document: payload.document, userId, now });
   if (!wrote) return;
   sweepStalePresence({
     document: payload.document,

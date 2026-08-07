@@ -11,6 +11,7 @@ import {
 import type { Member } from '@web/data/api/members';
 import { membersApi } from '@web/data/api/members';
 import { usersApi } from '@web/data/api/users';
+import type { ProjectUser } from '@web/data/yjs/project-meta';
 
 /** Query key of the role relation half of the roster. */
 const ROLES_KEY = 'project-members';
@@ -125,7 +126,14 @@ export function refetchProjectRoster(
 }
 
 /**
- * Re-fetch the roster whenever anyone joins the project's online set.
+ * Re-fetch the roster whenever anybody's `online` flag turns true.
+ *
+ * That flag is the whole trigger. The server keeps one record per person in
+ * the project's meta document and flips it — true when a connection of theirs
+ * arrives or heartbeats, false when the sweep finds nobody refreshing it — so
+ * false-to-true is somebody arriving, and it is the one moment we know a
+ * display name might be new to us. Names live on the account and are read from
+ * the roster, so an arrival is when the roster is worth reading again.
  *
  * Unconditional by design (owner, #1882): no filtering on whether the id is
  * already known, no skipping ourselves, no debounce. Each of those is a
@@ -134,27 +142,25 @@ export function refetchProjectRoster(
  * showing the old name for anyone the roster already listed, which is most of
  * the renames this is here to catch.
  *
- * A departure is not a join and brings no new identity to resolve, so it does
- * not trigger. Membership is compared by content, not by reference: awareness
- * hands out a fresh Set on every heartbeat.
+ * A departure brings no new identity to resolve, so it does not trigger.
  * @param projectId - The project whose roster to refresh.
- * @param onlineUserIds - The user ids currently online, from awareness.
+ * @param users - The project's presence records, as the server keeps them.
  */
 export function useRosterRefreshOnJoin(
   projectId: string,
-  onlineUserIds: ReadonlySet<string>,
+  users: ReadonlyMap<string, ProjectUser>,
 ): void {
   const client = useQueryClient();
-  const seenRef = React.useRef<ReadonlySet<string>>(onlineUserIds);
+  const seenRef = React.useRef<ReadonlyMap<string, ProjectUser>>(users);
 
   React.useEffect(() => {
     const seen = seenRef.current;
-    seenRef.current = onlineUserIds;
-    for (const id of onlineUserIds) {
-      if (!seen.has(id)) {
+    seenRef.current = users;
+    for (const [id, user] of users) {
+      if (user.online && seen.get(id)?.online !== true) {
         refetchProjectRoster(client, projectId);
         return;
       }
     }
-  }, [client, projectId, onlineUserIds]);
+  }, [client, projectId, users]);
 }
