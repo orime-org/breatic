@@ -55,45 +55,45 @@ const STUDIO: StudioDetail = {
 
 const SLUG_LABEL = 'studio.container.settings.slug';
 
-/** A render result that can be put into, and taken out of, the saving state. */
+/** A render result that can be put into, and taken out of, the in-flight state. */
 interface SectionHandle {
-  /** Re-render with a save in flight, or no longer in flight. */
-  setSaving: (saving: boolean) => void;
+  /** Re-render with this rename in flight, or no longer in flight. */
+  setRenaming: (renaming: boolean) => void;
 }
 
 /**
  * Render the section.
  *
- * `setSaving` exists because the in-flight rules cannot be reached by
+ * `setRenaming` exists because the in-flight rules cannot be reached by
  * rendering straight into that state: with the field disabled from the start,
  * nothing can be typed, so the confirm button is off for want of a changed
  * value rather than for the reason under test.
  * @param props - Overrides for the section's props.
- * @param props.saving - Whether a save is in flight to begin with.
+ * @param props.renaming - Whether this rename is in flight to begin with.
  * @param props.onSave - The save handler.
- * @returns The render result, plus a way to flip the saving flag.
+ * @returns The render result, plus a way to flip the in-flight flag.
  */
 function renderSection(props: {
-  saving?: boolean;
+  renaming?: boolean;
   onSave?: (patch: unknown) => void;
 } = {}): ReturnType<typeof render> & SectionHandle {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const onSave = props.onSave ?? vi.fn();
   /**
-   * Build the tree for a given saving flag.
-   * @param saving - Whether a save is in flight.
+   * Build the tree for a given in-flight flag.
+   * @param renaming - Whether this rename is in flight.
    * @returns The element tree.
    */
-  const tree = (saving: boolean): React.JSX.Element => (
+  const tree = (renaming: boolean): React.JSX.Element => (
     <QueryClientProvider client={qc}>
-      <ChangeSlugSection studio={STUDIO} saving={saving} onSave={onSave} />
+      <ChangeSlugSection studio={STUDIO} renaming={renaming} onSave={onSave} />
     </QueryClientProvider>
   );
-  const result = render(tree(props.saving ?? false));
+  const result = render(tree(props.renaming ?? false));
   return {
     ...result,
-    setSaving: (saving: boolean): void => {
-      result.rerender(tree(saving));
+    setRenaming: (renaming: boolean): void => {
+      result.rerender(tree(renaming));
     },
   };
 }
@@ -233,17 +233,17 @@ describe('ChangeSlugSection — the confirm gate', () => {
 
   it('shuts again the moment the request goes out, so it cannot be pressed twice', async () => {
     // Reached by typing FIRST and only then going in-flight. Rendering
-    // straight into `saving` disables the field, so nothing can be typed and
+    // straight into the in-flight state disables the field, so nothing can be typed and
     // the button is off for want of a changed value — which is how the first
     // version of this case passed without the clause it claimed to protect.
-    const { setSaving } = renderSection();
+    const { setRenaming } = renderSection();
     const input = await openDialog();
     fireEvent.change(input, { target: { value: 'acme-renamed' } });
     await waitFor(() =>
       expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
     );
 
-    setSaving(true);
+    setRenaming(true);
     expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled();
   });
 });
@@ -261,7 +261,7 @@ describe('ChangeSlugSection — while the request is in flight', () => {
     await waitFor(() =>
       expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
     );
-    handle.setSaving(true);
+    handle.setRenaming(true);
     return handle;
   }
 
@@ -299,8 +299,8 @@ describe('ChangeSlugSection — while the request is in flight', () => {
   });
 
   it('lets it close again once the request is done', async () => {
-    const { setSaving } = await reachInFlight();
-    setSaving(false);
+    const { setRenaming } = await reachInFlight();
+    setRenaming(false);
     fireEvent.click(screen.getByTestId('settings-slug-cancel'));
     await waitFor(() =>
       expect(

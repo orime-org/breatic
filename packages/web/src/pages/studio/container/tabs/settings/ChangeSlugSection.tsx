@@ -22,8 +22,14 @@ import type { UpdateStudioInput } from '@breatic/shared';
 
 interface ChangeSlugSectionProps {
   studio: StudioDetail;
-  /** Whether a settings save is already in flight. */
-  saving: boolean;
+  /**
+   * Whether THIS rename is in flight.
+   *
+   * Not "a save is in flight". The name and the slug ride the same mutation,
+   * so the broader flag would let a name save hold this dialog shut over a
+   * rename nobody submitted.
+   */
+  renaming: boolean;
   onSave: (patch: UpdateStudioInput) => void;
 }
 
@@ -42,15 +48,15 @@ interface ChangeSlugSectionProps {
  * nothing moves afterwards, whereas a rename leaves the page standing on an
  * address that no longer exists — so this one goes through the settings hook's
  * `save`, which owns the five steps that have to follow.
- * @param props - The studio, whether a save is running, and the save handler.
+ * @param props - The studio, whether this rename is running, and the handler.
  * @param props.studio - The studio being renamed.
- * @param props.saving - Whether a save is already in flight.
+ * @param props.renaming - Whether this rename is already in flight.
  * @param props.onSave - Called with the slug patch once confirmed.
  * @returns The entry button and its dialog.
  */
 export function ChangeSlugSection({
   studio,
-  saving,
+  renaming,
   onSave,
 }: ChangeSlugSectionProps): React.JSX.Element {
   const t = useTranslation();
@@ -63,7 +69,7 @@ export function ChangeSlugSection({
   // Written as "only when available", never as "unless invalid": an emptied
   // field reports neither, it reports `idle`, and a gate phrased the other way
   // walks the user through a destructive confirmation the server then refuses.
-  const canConfirm = changed && availability.status === 'available' && !saving;
+  const canConfirm = changed && availability.status === 'available' && !renaming;
   // The sentence in the header names both ends of the move. Until there is a
   // destination it stays a placeholder: on open both ends hold the same slug,
   // and "the address changes from X to X" is not a thing to greet someone
@@ -83,13 +89,13 @@ export function ChangeSlugSection({
       // directly. Guarding the dismissal events individually as well was
       // tried and removed — deleting those handlers left every one of the
       // four cases below still passing, so they were not holding anything up.
-      if (!nextOpen && saving) return;
+      if (!nextOpen && renaming) return;
       setOpen(nextOpen);
       // Both directions: an abandoned draft must not be waiting when the
       // dialog is opened again.
       setSlug(studio.slug);
     },
-    [saving, studio.slug],
+    [renaming, studio.slug],
   );
 
   const confirm = React.useCallback((): void => {
@@ -139,7 +145,7 @@ export function ChangeSlugSection({
               label={t('studio.container.settings.slug')}
               value={slug}
               onChange={setSlug}
-              disabled={saving}
+              disabled={renaming}
               error={
                 availability.status === 'invalid' ||
                 availability.status === 'taken'
@@ -182,7 +188,7 @@ export function ChangeSlugSection({
                 onClick={confirm}
                 data-testid='settings-slug-confirm'
               >
-                {saving
+                {renaming
                   ? t('studio.container.settings.saving')
                   : t('studio.container.settings.slugChangeConfirm')}
               </Button>

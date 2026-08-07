@@ -59,7 +59,7 @@ export function SettingsTab({
         members={members}
         leaving={settings.leaving}
         onLeave={settings.leave}
-        saving={settings.saving}
+        renaming={settings.renaming}
         onSave={settings.save}
       />
     </div>
