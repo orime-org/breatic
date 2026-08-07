@@ -43,7 +43,7 @@ breatic/                           # Turborepo monorepo
 │   │   │   ├── middleware/        #   Auth, CORS, logging, error handler
 │   │   │   ├── agent/             #   AI core (MainAgent, tools, skills)
 │   │   │   ├── providers/         #   AIGC providers (image/video/audio/tts/3d/understand)
-│   │   │   ├── worker/            #   BullMQ job handlers (5 execution paths)
+│   │   │   ├── worker/            #   BullMQ job handlers (4 execution paths)
 │   │   │   ├── modules/           #   Business modules (Repo + Service per domain)
 │   │   │   ├── db/                #   Drizzle schema + client
 │   │   │   ├── infra/             #   Redis, queues, session store, request context (AsyncLocalStorage)
@@ -94,7 +94,7 @@ Memory is automatically consolidated by the LLM when the conversation exceeds `m
 ```
 skills/{name}/
 ├── SKILL.md          # Frontmatter (name, description) + LLM instructions
-├── metadata.json     # Runtime config: tools, category, output_type, scope, requires
+├── metadata.json     # Runtime config: tools, category, output_type, requires
 └── references/       # Optional reference docs loaded on demand
 ```
 

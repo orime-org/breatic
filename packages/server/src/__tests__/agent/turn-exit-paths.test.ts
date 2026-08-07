@@ -4,18 +4,25 @@
 /**
  * Every way a turn can end emits an ending, and none of them keeps paying.
  *
- * Four exits: the stream finishing, a blocking interaction tool stopping to
- * ask, the model throwing, and the client walking away. The first three all
- * owe the frontend a `chat_done` -- without it the UI has nothing to switch
- * out of its in-flight state.
+ * The exits covered here: the stream finishing, a blocking interaction tool
+ * stopping to ask, a provider failure, and the stream being torn down. Every
+ * one owes the frontend a `chat_done` -- without it the UI has nothing to
+ * switch out of its in-flight state. (The fourth exit, the client walking
+ * away, lives in turn-cleanup-on-abort.test.ts along with what is measured
+ * about how reachable it currently is.)
  *
- * The second assertion is the subtler one and it is a regression this PR
- * introduced. Reading `result.usage` is not a passive read: in AI SDK
- * 6.0.141 the getter chains `usage` to `finalStep` to `steps`, and `steps`
- * calls `consumeStream()`. So awaiting usage inside a finally that a blocking
- * tool just returned through drives the model loop to completion -- the exact
- * opposite of what the sentinel exists to do, and billable tokens for output
- * nobody asked for.
+ * Two of these are subtler than they look, and both were regressions this PR
+ * introduced and then had to undo:
+ *
+ * Reading `result.usage` is not a passive read: in AI SDK 6.0.141 the getter
+ * chains `usage` to `finalStep` to `steps`, and `steps` calls
+ * `consumeStream()`. Awaiting it in a finally that a blocking tool just
+ * returned through drives the model loop to completion -- the exact opposite
+ * of what the sentinel exists to do, and billable output nobody asked for.
+ *
+ * And a failing provider does not throw. Measured on ai@6.0.141 with a model
+ * whose `doStream` throws, the loop saw ["start","error"] and did not throw,
+ * so a loop watching only for exceptions calls a dead turn a clean finish.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -23,7 +30,7 @@ import type * as DomainModule from "@breatic/domain";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const consolidateIfNeeded = vi.fn(async () => undefined);
-const deductOnce = vi.fn(async () => undefined);
+const deductOnce = vi.fn(async (..._args: unknown[]) => undefined);
 const streamTextRetry = vi.fn();
 /** Set when the code under test reads `usage`, which is what consumes a stream. */
 const usageRead = vi.fn();
@@ -201,11 +208,48 @@ describe("how a turn ends", () => {
     expect(consolidateIfNeeded).toHaveBeenCalled();
   });
 
-  it("ends with error and chat_done when the model throws", async () => {
+  it("bills a turn that stopped to ask, for the step it did run", async () => {
+    // The token count for a step rides in its `finish-step` part, and that
+    // part arrives AFTER the step's `tool-result` -- measured against the
+    // real SDK, order was start-step, tool-call, tool-result, finish-step.
+    // So leaving at the tool-result threw away everything the step spent.
+    streamTextRetry.mockReturnValue(
+      streamOf([
+        { type: "tool-call", toolCallId: "t1", toolName: "ask_user_question", input: {} },
+        { type: "tool-result", toolCallId: "t1", output: "__ASK_USER__{}" },
+        { type: "finish-step", usage: { totalTokens: 640 } },
+        // Past the stopping point: proof the turn did not just keep going.
+        { type: "text-delta", text: "should never be streamed" },
+      ]),
+    );
+    const events = await runTurn();
+    expect(deductOnce).toHaveBeenCalled();
+    expect(deductOnce.mock.calls[0]?.[4]).toMatchObject({ tokensUsed: 640 });
+    expect(events).not.toContain("chat_chunk");
+  });
+
+  it("reports a provider failure the SDK hands back as a stream part", async () => {
+    // The SDK does not throw when the provider fails. Measured on ai@6.0.141
+    // with a model whose `doStream` throws: the loop saw ["start","error"]
+    // and did not throw. So an expired key, a 429 past the retry budget or a
+    // bad model id all arrive here as a value, and a loop that only watches
+    // for exceptions streams nothing and calls the turn a clean finish.
+    streamTextRetry.mockReturnValue(
+      streamOf([{ type: "error", error: new Error("401 expired key") }]),
+    );
+    const events = await runTurn();
+    expect(events).toContain("error");
+    expect(events).toContain("chat_done");
+  });
+
+  it("ends with error and chat_done when the stream itself throws", async () => {
+    // This is the other failure shape: something inside our own loop throws,
+    // or the stream is torn down with `controller.error()`. It is NOT what a
+    // failing provider does -- see the test above, which covers that.
     streamTextRetry.mockReturnValue({
       fullStream: (async function* () {
         yield { type: "text-delta", text: "partial" };
-        throw new Error("provider exploded");
+        throw new Error("stream torn down");
       })(),
       get usage() {
         usageRead();

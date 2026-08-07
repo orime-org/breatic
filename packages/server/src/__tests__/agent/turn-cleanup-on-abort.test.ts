@@ -2,20 +2,25 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * A turn's obligations survive the user closing the page.
+ * A turn's obligations survive its consumer walking away mid-stream.
  *
- * This is the defect the turn-finalizer exists for. The cleanup used to sit
- * after the streaming loop, and SSE is an async generator: when the browser
- * goes away the consumer calls `.return()` on it, the generator stops where
- * it was suspended, and every line after the loop is skipped. The reply was
- * never saved, memory never consolidated, the turn never billed.
+ * `gen.return()` is what any consumer that stops reading does -- it is the
+ * language's own mechanism, and it stops the generator where it was
+ * suspended, skipping every line after the loop. That is the defect the
+ * turn-finalizer exists for, and this asserts the cleanup runs anyway.
  *
- * MainAgent had no tests at all before this one, which is how the defect
- * survived. It was found by running the product, not by running the suite --
- * every test was green the whole time.
+ * What this does NOT yet reproduce is a real browser disconnect. Measured on
+ * this stack: hono's `StreamingApi.write` catches and discards the write
+ * error, so when the client aborts the SSE route's `for await` keeps going
+ * and never calls `.return()` at all. A probe on the repo's own hono
+ * 4.12.23 + @hono/node-server 2.0.4 had the generator 358 iterations further
+ * along two seconds after the client left, with `finally` never entered.
+ * Wiring cancellation through is the job of the PR that owns it; this test
+ * covers the mechanism that PR will trigger, and is honest that today
+ * nothing triggers it.
  *
- * `gen.return()` is exactly what the SSE consumer does on disconnect, so
- * this reproduces the real failure rather than a stand-in for it.
+ * MainAgent had no tests at all before this one, which is how the original
+ * defect survived -- every test was green the whole time.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";

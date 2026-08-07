@@ -107,7 +107,7 @@
 
 ### AI 能力
 
-- [ ] Canvas Skill：各模态智能模式 Skill（scope: canvas，单次执行，直接生成）
+- [ ] Canvas Skill：各模态智能模式 Skill（在 config/skill-routing.yaml 的 surfaces 里开 canvas，单次执行，直接生成）
 - [ ] 模型推荐引擎：Agent 根据用户意图自动选择最佳模型，不需要用户手动选
 
 ### 安全

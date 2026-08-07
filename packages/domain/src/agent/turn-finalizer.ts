@@ -4,12 +4,18 @@
 /**
  * Everything a turn owes once it stops, run no matter how it stopped.
  *
- * The obligations used to sit after the streaming loop in the chat handler.
- * SSE is an async generator: when the user closes the page, the consumer
- * calls `.return()` on it and every line after the loop is skipped. Three of
- * the four ways a turn can end went through that gap -- the user closing the
- * page, the model throwing, and a blocking interaction tool returning early
- * -- and in each the reply went unsaved and the turn unbilled.
+ * The obligations used to sit after the streaming loop in the chat handler,
+ * where any early exit skipped them: a failure, and a blocking interaction
+ * tool returning. In both the reply went unsaved and the turn unbilled.
+ *
+ * The third way -- the user closing the page -- also skips everything after
+ * the loop, because an async generator stops where the consumer stopped it.
+ * That one is written for but not yet reachable: measured on this stack, the
+ * SSE route never notices the reader is gone (hono's `StreamingApi.write`
+ * swallows the write error, so the route's loop never breaks and never calls
+ * `.return()`). Making disconnects arrive at all belongs to the PR that owns
+ * cancellation. The point of putting cleanup here rather than after the loop
+ * is that it is already correct for when they do.
  *
  * What belongs here is what the turn's ending waits on. Work the user is not
  * waiting for -- memory consolidation, an LLM call of its own -- does not:

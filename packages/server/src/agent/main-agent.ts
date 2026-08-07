@@ -175,17 +175,31 @@ export class MainAgent {
     let tokensUsed = 0;
 
     // Everything below runs inside try/finally so the turn's obligations are
-    // met however it ends. Three of the four exits used to skip them: the
-    // user closing the page (the consumer calls `.return()` on this
-    // generator and nothing after the loop runs), the model throwing, and a
-    // blocking interaction tool returning early. In each the reply went
-    // unsaved and the turn unbilled.
-    // How this turn ended, for the log. It starts at the exit nothing has to
-    // announce — the client walking away, where control never comes back to
-    // this function's own code — and each of the other three says so on its
-    // way out. A default of "completed" is what let a disconnect log itself
-    // as a clean finish.
+    // met however it ends. Both early exits used to skip them -- a blocking
+    // interaction tool returning, and a failure -- leaving the reply unsaved
+    // and the turn unbilled.
+    //
+    // A third exit, the client walking away, is written for but not yet
+    // reachable. It would arrive as `.return()` on this generator, which is
+    // what a consumer that breaks out of its loop does. Measured: today's SSE
+    // route never breaks, because hono's `StreamingApi.write` swallows the
+    // write error, so nothing tells the loop the reader is gone (probe: a
+    // client aborting after three chunks left the generator running, 358 more
+    // iterations two seconds later, `finally` never entered). Wiring that up
+    // is PR-3's, which owns cancellation; the finalizer is ready for it.
+    //
+    // How this turn ended, for the log. It starts at the exit nothing can
+    // announce from inside, and each of the other three says so on its way
+    // out. A default of "completed" is what would let a disconnect log itself
+    // as a clean finish once PR-3 makes disconnects arrive here at all.
     let exit: "aborted" | "completed" | "blocked" | "failed" = "aborted";
+
+    // Set when a blocking tool has fired: the turn is over, but not until the
+    // current step's `finish-step` goes by. That part carries the step's
+    // token count and arrives after its `tool-result` (measured against the
+    // real SDK: start-step, tool-call, tool-result, finish-step), so leaving
+    // at the tool-result threw away everything the step had spent.
+    let stopAfterStep = false;
 
     try {
       stream: for await (const part of result.fullStream) {
@@ -201,7 +215,19 @@ export class MainAgent {
 
           case "finish-step":
             tokensUsed += part.usage?.totalTokens ?? 0;
+            if (stopAfterStep) break stream;
             break;
+
+          // The SDK does not throw when the provider fails -- it hands the
+          // failure back as a value and closes the stream. Measured on
+          // ai@6.0.141 with a model whose `doStream` throws: the loop saw
+          // ["start","error"] and did not throw. So an expired key, a 429 past
+          // the retry budget and a bad model id all arrive here, and the
+          // `catch` below never sees any of them.
+          case "error":
+            exit = "failed";
+            yield this.failed(part.error);
+            break stream;
 
           case "tool-call":
             toolCallLog.push({
@@ -254,10 +280,11 @@ export class MainAgent {
                 yield this.sse(SSEEventType.AGENT_ASK, { question: resultStr });
               }
               // The turn stops here waiting for the user, but it still owes
-              // an ending. Breaking rather than returning keeps the exit on
-              // one path so `chat_done` cannot be skipped.
+              // an ending, and it owes the charge for the step it just ran.
+              // So it leaves at this step's `finish-step` rather than here.
               exit = "blocked";
-              break stream;
+              stopAfterStep = true;
+              break;
             }
 
             if (interaction) {
@@ -267,7 +294,7 @@ export class MainAgent {
               // them, and let it draw more than one in a turn.
               if (interaction.blocking) {
                 exit = "blocked";
-                break stream;
+                stopAfterStep = true;
               }
             }
             break;
@@ -279,11 +306,11 @@ export class MainAgent {
       // untouched default counts as a clean finish.
       if (exit === "aborted") exit = "completed";
     } catch (err) {
+      // The other failure shape: our own code inside the loop threw, or the
+      // stream was torn down with `controller.error()`. A failing provider
+      // does not land here -- see `case "error"` above.
       exit = "failed";
-      logger.error({ err, userId, conversationId }, "agent_turn_failed");
-      yield this.sse(SSEEventType.ERROR, {
-        message: "The assistant could not finish this turn.",
-      });
+      yield this.failed(err);
     } finally {
       // Memory consolidation is an LLM call of its own and nobody is waiting
       // for it — the user is waiting for the turn to be over. Starting it
@@ -357,6 +384,24 @@ export class MainAgent {
         creditsUsed,
       });
     }
+  }
+
+  /**
+   * Log a turn that failed and produce the event its client gets.
+   *
+   * Written once because a turn can fail two ways that look nothing alike --
+   * a provider failure arrives as a value in the stream, our own code throws
+   * -- and both owe the user the same thing. The message is deliberately not
+   * the provider's: those carry endpoint URLs and key hints.
+   * @param err - Whatever failed, for the log.
+   * @returns The error event to send the client.
+   */
+  private failed(err: unknown): SSEEvent {
+    const { userId, conversationId } = this.ctx;
+    logger.error({ err, userId, conversationId }, "agent_turn_failed");
+    return this.sse(SSEEventType.ERROR, {
+      message: "The assistant could not finish this turn.",
+    });
   }
 
   /**

@@ -37,15 +37,21 @@ initLogger("worker");
 // nowhere anyone reads at 3am. Warnings are exactly what matters then: a
 // provider silently dropping a parameter, a model ignoring a setting. The
 // call still succeeds, so nothing else says so.
-// Read the skill routing config now rather than on the first request. It is
-// lazy like every other config reader, and lazy here means a typo surfaces
-// mid-SSE-stream — the user's message already saved, the stream already
-// open, and no way left to send them an error.
-getSkillRouting();
-
 globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
   logger.warn({ warnings, provider, model }, "ai_sdk_warning");
 };
+
+// Read the skill routing config now rather than on the first job. It is lazy
+// like every other config reader, and lazy here means a typo surfaces halfway
+// through a job that has already been claimed off the queue — the failure
+// lands on whatever task happened to be first, and BullMQ retries it into the
+// same wall. The library throws and this layer decides the process's fate.
+try {
+  getSkillRouting();
+} catch (err) {
+  logger.error({ err }, "skill_routing_config_invalid");
+  process.exit(1);
+}
 import { runTask } from "@worker/handlers/dispatch.js";
 import { reclaimFailedJobById } from "@worker/handlers/failed-job-cleanup.js";
 
