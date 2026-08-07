@@ -22,7 +22,7 @@ interface ProjectCardProps {
 }
 
 /**
- * A project card in the studio container Projects tab (spec §3.3): a 16:10
+ * A project card in the studio container Projects tab (spec §3.3): a 16:9
  * thumbnail, the name, a role badge, and a governance (`⋯`) entry shown only
  * to the project Owner or a studio Admin (spec §4 invariant 2). Inside the
  * container the source-studio label is omitted (only the cross-studio Recent

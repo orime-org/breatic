@@ -18,11 +18,17 @@
  * `meta/_journal.json` and never opens a `.sql` that is not listed there, so an
  * unregistered file is silently skipped.
  *
- * Nothing mechanical covers that half. repo-lint's migration-style check is
- * NOT it: it finds folders through the journal but then lints every `.sql` in
- * them, so an unregistered orphan reads clean. What actually catches a missing
- * entry is running `pnpm db:migrate` and watching it not throw — drizzle opens
- * each entry's file by tag and errors when it cannot. That is a human step.
+ * NOTHING catches that half — not this suite, not CI, not a human running the
+ * migration. drizzle's `readMigrationFiles` loops over `journal.entries` and
+ * never enumerates the folder, so a `.sql` nobody registered is never opened
+ * and `pnpm db:migrate` exits 0 having skipped it. repo-lint's migration-style
+ * check is no help either: it finds folders through the journal but then lints
+ * every `.sql` in them, so the orphan reads clean. The only thing standing
+ * between a hand-written migration and silently never running is the author
+ * remembering to add the journal entry.
+ *
+ * (Running the migration DOES catch the mirror failure — an entry whose file
+ * is missing throws `No file ... found`. That is a different mistake.)
  *
  * Nor can it be written the obvious way. `global-setup.ts` migrates the
  * container before any test module loads, and drizzle's migrate() no-ops on a
