@@ -107,9 +107,11 @@ describe('NewItemDialog (spec §3.12)', () => {
 
   it('offers no visibility choice — every project is visible to the studio', () => {
     render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
-    // Neither the group nor either option: the concept left the product on
-    // 2026-08-07, so a picker reappearing here would be offering a choice the
-    // server no longer honours.
+    // Neither the group nor either option. The concept left the product on
+    // 2026-08-07; a picker reappearing here would put a choice back in front
+    // of users that the product no longer makes. (The server still honours an
+    // explicit value — that is the accepted gap of stopping at the UI layer,
+    // not a reason for the dialog to offer one.)
     expect(
       screen.queryByTestId('new-project-visibility'),
     ).not.toBeInTheDocument();

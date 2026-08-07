@@ -33,11 +33,14 @@ describe("projectCreateSchema — visibility", () => {
   it("defaults visibility to studio when omitted", () => {
     // Load-bearing since 2026-08-07. The create dialog dropped the visibility
     // picker and the client stopped sending the field, so this default is now
-    // the only thing deciding what every new project gets. Changing it to
+    // the only thing deciding what every new project gets: flipping it to
     // 'private' would hide every project created from then on from most of its
-    // studio, and nothing else in the tree would notice: the web suite no
-    // longer touches the field and every integration create passes a value
-    // explicitly.
+    // studio. The route's own assertion (server routes/projects.test.ts) reads
+    // the same default through zValidator, so that flip turns both red —
+    // verified. The segment past the route is watched separately, by an
+    // assertion on the created row in the project-visibility-materialize
+    // integration suite; that one calls the service with an explicit value, so
+    // it guards against the repo rewriting it rather than against this flip.
     expect(projectCreateSchema.parse(base).visibility).toBe("studio");
   });
 
