@@ -48,6 +48,11 @@ function harness(names: string[], storeNow?: (name: string) => Promise<void>) {
     listDocuments: () => names.map((name) => ({ name })),
     storeNow: async ({ name }) => {
       stored.push(name);
+      // The real path reaches the persistence extension, which spends the arm
+      // before it writes. Standing in for that is what separates an ordinary
+      // round from one whose hook chain was aborted upstream — a stub that
+      // never spends the arm makes every test look like the latter.
+      consumeTimedStoreArm(name);
       if (storeNow) await storeNow(name);
     },
   });
@@ -74,10 +79,17 @@ describe("the timed store loop", () => {
 
   it("arms the document before asking for the store", async () => {
     // Without the arm the persistence extension returns without writing, so
-    // a loop that forgets it would silently store nothing at all.
+    // a loop that forgets it would silently store nothing at all. Built
+    // directly rather than through the harness, because the observation here
+    // IS the harness's stand-in for the persistence extension.
     let armedAtStoreTime = false;
-    const { loop } = harness([DIRTY], async () => {
-      armedAtStoreTime = consumeTimedStoreArm(DIRTY);
+    const loop = createStoreLoop({
+      intervalMs: 10_000,
+      storeTimeoutMs: 5_000,
+      listDocuments: () => [{ name: DIRTY }],
+      storeNow: async () => {
+        armedAtStoreTime = consumeTimedStoreArm(DIRTY);
+      },
     });
     noteDocumentChange(DIRTY);
 
@@ -159,5 +171,62 @@ describe("the timed store loop", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("a round that could not confirm the write", () => {
+  // Gate 2 round 2 findings 1, 5 and 8. Neither of these loses content — the
+  // document stays in memory and still reads as dirty, so the next round picks
+  // it up. They are logged because a document that never wins the
+  // cross-instance lock, or never finishes a write, is otherwise invisible: it
+  // just quietly stays dirty round after round with nothing to show for it.
+
+  it("records that the hook chain never reached our extension", async () => {
+    // An aborted chain leaves the arm the round issued untouched — it does
+    // not replace it. Re-arming would mint a different token, which reads as
+    // "somebody else armed it", not as "nothing reached us".
+    const loop = createStoreLoop({
+      intervalMs: 10_000,
+      storeTimeoutMs: 5_000,
+      listDocuments: () => [{ name: DIRTY }],
+      storeNow: async () => {},
+    });
+    noteDocumentChange(DIRTY);
+
+    await loop.runOnce();
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ documentName: DIRTY, outcome: "not-reached" }),
+      "collab_store_round_document_unconfirmed",
+    );
+  });
+
+  it("records a write that had not come back when the round moved on", async () => {
+    const loop = createStoreLoop({
+      intervalMs: 10_000,
+      storeTimeoutMs: 10,
+      listDocuments: () => [{ name: DIRTY }],
+      storeNow: async ({ name }) => {
+        consumeTimedStoreArm(name);
+        return new Promise<void>(() => {});
+      },
+    });
+    noteDocumentChange(DIRTY);
+
+    await loop.runOnce();
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ documentName: DIRTY, outcome: "still-in-flight" }),
+      "collab_store_round_document_unconfirmed",
+    );
+  });
+
+  it("says nothing about an ordinary round", async () => {
+    const { loop } = harness([DIRTY]);
+    noteDocumentChange(DIRTY);
+
+    await loop.runOnce();
+
+    expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 });

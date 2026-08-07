@@ -35,16 +35,25 @@ const logger = createLogger("collab-unload-gate");
 /**
  * What the one final store attempt turned out to be.
  *
- * `not-reached` is the one the gate could not see before. `hooks()` chains the
- * extensions with `.then`, so a rejection from any of them skips every hook
- * behind it — and the Redis extension, which runs first, rejects exactly that
- * way when another instance holds the cross-instance store lock. The library
- * catches it and resolves normally, so the attempt looks identical to a
- * completed store from out here. Telling an operator the database refused
- * content that a healthy database never even saw is a lie, and one that costs
- * real attention during an outage.
+ * Three of these used to be one. The gate asked a single question — "does the
+ * document still hold unstored content?" — and reported every yes as "the
+ * database refused it", which is true of only one of them:
+ *
+ *   refused      our extension ran, the write came back, the content did not
+ *                land. The database really did say no.
+ *   not-reached  our extension never ran. `hooks()` chains the extensions with
+ *                `.then`, so a rejection from any of them skips every hook
+ *                behind it — and the Redis extension, which runs first, rejects
+ *                exactly that way when another instance holds the
+ *                cross-instance store lock. The library catches it and resolves
+ *                normally, so the attempt looks identical to a completed one.
+ *   unknown      our extension ran and we stopped waiting. Giving up cancels
+ *                nothing; the write may land seconds later.
+ *
+ * Telling an operator a healthy database rejected content it never saw, or very
+ * probably accepted, costs real attention during an outage.
  */
-type FinalAttempt = "stored" | "refused" | "not-reached";
+type FinalAttempt = "stored" | "refused" | "not-reached" | "unknown";
 
 /** How each outcome is explained to whoever reads the alert. */
 const ATTEMPT_REASON: Record<Exclude<FinalAttempt, "stored">, string> = {
@@ -52,6 +61,9 @@ const ATTEMPT_REASON: Record<Exclude<FinalAttempt, "stored">, string> = {
   "not-reached":
     "this instance's write never ran — another instance held the cross-instance " +
     "store lock, so the content may already be safe, but this instance could not confirm it",
+  unknown:
+    "the final store attempt had not come back when this instance stopped waiting, " +
+    "so it may still have landed — check the document in the database before acting on this file",
 };
 
 /** A document the gate is settling. */
@@ -123,23 +135,24 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
    */
   async function attemptStore(documentName: string): Promise<FinalAttempt> {
     const arm = armTimedStore(documentName);
-    let neverRan = false;
-    try {
-      await runWithTimeout(deps.storeNow({ name: documentName }), deps.finalAttemptTimeoutMs);
-    } catch (err) {
-      // Whether it threw or timed out changes nothing here: the counters and
-      // the arm, not this call's outcome, say what happened.
-      logger.warn({ err, documentName }, "collab_final_store_attempt_errored");
-    } finally {
-      // Give our own arm back rather than trusting it was consumed, and learn
-      // from it whether our extension ran at all. Handing back the token
-      // rather than deleting by name is what keeps this from taking the timed
-      // loop's arm instead of ours.
-      neverRan = releaseTimedStoreArm(documentName, arm);
+    const outcome = await runWithTimeout(
+      deps.storeNow({ name: documentName }),
+      deps.finalAttemptTimeoutMs,
+    );
+    if (outcome.error) {
+      logger.warn({ err: outcome.error, documentName }, "collab_final_store_attempt_errored");
     }
+    // Give our own arm back rather than trusting it was consumed, and learn
+    // from it whether our extension ran at all. Handing back the token rather
+    // than deleting by name is what keeps this from taking the timed loop's
+    // arm instead of ours.
+    const neverRan = releaseTimedStoreArm(documentName, arm);
 
     if (!hasUnsavedContent(documentName)) return "stored";
-    return neverRan ? "not-reached" : "refused";
+    // Order matters. An unspent arm means the chain never got to us, which is
+    // true whether or not we also ran out of patience waiting for it.
+    if (neverRan) return "not-reached";
+    return outcome.timedOut ? "unknown" : "refused";
   }
 
   /**

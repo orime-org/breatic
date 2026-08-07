@@ -82,25 +82,40 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
         // Arm immediately before the call: the persistence extension returns
         // without writing anything when it finds no arm.
         const arm = armTimedStore(entry.name);
-        try {
-          // Bounded, because a round that never ends is a round that never
-          // reaches the documents behind this one.
-          await runWithTimeout(deps.storeNow(entry), deps.storeTimeoutMs);
-        } catch (err) {
-          // One document must not take the round down with it — the others
-          // are holding unsaved content too.
-          logger.error({ err, documentName: entry.name }, "collab_store_round_document_failed");
-        } finally {
-          // Give our own arm back rather than trusting it was consumed. The
-          // Redis extension runs first (priority 1000 against our default
-          // 100) and aborts the whole hook chain when another instance holds
-          // the cross-instance lock, so our hook — and its consumption of the
-          // arm — is skipped. A leftover arm would then be spent by the
-          // library's own change-triggered store, which is exactly the write
-          // this design exists to prevent. Handing back the token rather than
-          // deleting by name is what keeps this from taking the unload gate's
-          // arm instead of ours.
-          releaseTimedStoreArm(entry.name, arm);
+        // Bounded, because a round that never ends is a round that never
+        // reaches the documents behind this one — and each of those is holding
+        // unstored content too. `runWithTimeout` does not reject, so one
+        // document cannot take the round down with it.
+        const outcome = await runWithTimeout(deps.storeNow(entry), deps.storeTimeoutMs);
+        // Give our own arm back rather than trusting it was consumed. The
+        // Redis extension runs first (priority 1000 against our default 100)
+        // and aborts the whole hook chain when another instance holds the
+        // cross-instance lock, so our hook — and its consumption of the arm —
+        // is skipped. A leftover arm would then be spent by the library's own
+        // change-triggered store, which is exactly the write this design
+        // exists to prevent. Handing back the token rather than deleting by
+        // name is what keeps this from taking the unload gate's arm.
+        const neverRan = releaseTimedStoreArm(entry.name, arm);
+
+        if (outcome.error) {
+          logger.error(
+            { err: outcome.error, documentName: entry.name },
+            "collab_store_round_document_failed",
+          );
+        }
+        // Nothing to retry here and nothing to alert about: the document is
+        // still in memory and still reads as holding unstored content, so the
+        // next round picks it up. Recorded because a document that never wins
+        // the cross-instance lock, or never finishes a write, is invisible
+        // otherwise — it just quietly stays dirty round after round.
+        if (neverRan || outcome.timedOut) {
+          logger.warn(
+            {
+              documentName: entry.name,
+              outcome: neverRan ? "not-reached" : "still-in-flight",
+            },
+            "collab_store_round_document_unconfirmed",
+          );
         }
       }
     } finally {

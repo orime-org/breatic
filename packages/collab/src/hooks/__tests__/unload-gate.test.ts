@@ -341,3 +341,30 @@ describe("the unload gate — when nothing reached our extension", () => {
     expect(consumeTimedStoreArm(DOC)).toBe(false);
   });
 });
+
+describe("the unload gate — when the write had not come back", () => {
+  // Gate 2 round 2 findings 1 and 3. Giving up waiting does not cancel the
+  // write and does not release the document's save mutex; the write may land
+  // seconds later. Reporting that as "the store did not land" tells an
+  // operator a healthy database refused content it very probably accepted.
+
+  it("still writes the rescue file — an unconfirmed write is not a confirmed one", async () => {
+    const { gate, rescued } = harness("hangs");
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("hello") });
+
+    expect(rescued).toHaveLength(1);
+  });
+
+  it("says the outcome is unknown rather than claiming it did not land", async () => {
+    const { gate, alerted } = harness("hangs");
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("hello") });
+
+    expect(alerted).toHaveLength(1);
+    expect(alerted[0]?.reason).toMatch(/stopped waiting|may still have landed/i);
+    expect(alerted[0]?.reason).not.toMatch(/did not land/);
+  });
+});
