@@ -494,7 +494,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     send: sendMail,
   });
   storeGate.current = createUnloadGate({
-    finalAttemptTimeoutMs: cfg.store_final_attempt_timeout_ms,
     instanceId,
     encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
     storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus, name),
@@ -511,7 +510,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   });
   const storeLoop = createStoreLoop({
     intervalMs: cfg.store_interval_ms,
-    storeTimeoutMs: cfg.store_final_attempt_timeout_ms,
     listDocuments: () =>
       Array.from(wsServer.hocuspocus.documents.keys(), (name) => ({ name })),
     storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus, name),
@@ -531,7 +529,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // to reach zero, while `shouldUnloadDocument` stays false for as long as a
     // document's save mutex is held, so one store still in flight from the last
     // timed round meant that document never unloaded, never reached the gate,
-    // and got no rescue file before the deadline fired.
+    // and got no rescue file at all.
     settleAllForShutdown: async (): Promise<void> => {
       const gate = storeGate.current;
       if (!gate) return;
@@ -545,7 +543,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
             documentName,
             document: document as unknown as Y.Doc,
           })),
-        budgetMs: cfg.store_shutdown_settle_budget_ms,
       });
     },
   };

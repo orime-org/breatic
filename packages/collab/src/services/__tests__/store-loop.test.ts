@@ -45,7 +45,6 @@ function harness(names: string[], storeNow?: (name: string) => Promise<void>) {
   const stored: string[] = [];
   const loop = createStoreLoop({
     intervalMs: 10_000,
-    storeTimeoutMs: 5_000,
     listDocuments: () => names.map((name) => ({ name })),
     storeNow: async ({ name }) => {
       stored.push(name);
@@ -88,7 +87,6 @@ describe("the timed store loop", () => {
     let armedAtStoreTime = false;
     const loop = createStoreLoop({
       intervalMs: 10_000,
-      storeTimeoutMs: 5_000,
       listDocuments: () => [{ name: DIRTY }],
       storeNow: async () => {
         armedAtStoreTime = consumeTimedStoreArm(DIRTY);
@@ -179,11 +177,11 @@ describe("the timed store loop", () => {
 });
 
 describe("a round that could not confirm the write", () => {
-  // Gate 2 round 2 findings 1, 5 and 8. Neither of these loses content — the
+  // Gate 2 round 2 findings 1, 5 and 8. This does not lose content — the
   // document stays in memory and still reads as dirty, so the next round picks
-  // it up. They are logged because a document that never wins the
-  // cross-instance lock, or never finishes a write, is otherwise invisible: it
-  // just quietly stays dirty round after round with nothing to show for it.
+  // it up. It is logged because a document that never wins the cross-instance
+  // lock is otherwise invisible: it just quietly stays dirty round after round
+  // with nothing to show for it.
 
   it("records that the hook chain never reached our extension", async () => {
     // An aborted chain leaves the arm the round issued untouched — it does
@@ -191,7 +189,6 @@ describe("a round that could not confirm the write", () => {
     // "somebody else armed it", not as "nothing reached us".
     const loop = createStoreLoop({
       intervalMs: 10_000,
-      storeTimeoutMs: 5_000,
       listDocuments: () => [{ name: DIRTY }],
       storeNow: async () => true,
     });
@@ -205,14 +202,16 @@ describe("a round that could not confirm the write", () => {
     );
   });
 
-  it("records a write that had not come back when the round moved on", async () => {
+  it("records an extension that ran and reported nothing", async () => {
+    // Only reachable by our own extension throwing before its try block —
+    // encoding the document is the one step out there. It used to also cover
+    // "the round stopped waiting", which is gone: a round waits for its answer.
     const loop = createStoreLoop({
       intervalMs: 10_000,
-      storeTimeoutMs: 10,
       listDocuments: () => [{ name: DIRTY }],
       storeNow: async ({ name }) => {
         consumeTimedStoreArm(name);
-        return new Promise<boolean>(() => {});
+        return true;
       },
     });
     noteDocumentChange(DIRTY);
@@ -220,7 +219,7 @@ describe("a round that could not confirm the write", () => {
     await loop.runOnce();
 
     expect(mockLogger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ documentName: DIRTY, outcome: "still-in-flight" }),
+      expect.objectContaining({ documentName: DIRTY, outcome: "no-result" }),
       "collab_store_round_document_unconfirmed",
     );
   });
@@ -232,5 +231,33 @@ describe("a round that could not confirm the write", () => {
     await loop.runOnce();
 
     expect(mockLogger.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("a store that takes its time", () => {
+  // A store is one event with two outcomes: it lands, or it does not. A clock
+  // racing it answers neither question — it cannot cancel the write, so all it
+  // does is make this side stop listening and invent a third outcome, "I do not
+  // know", which the document then gets rescued and alerted on. Three such
+  // alerts fired in smoke against a healthy database that answers in 250ms.
+
+  it("waits for the answer instead of moving on without one", async () => {
+    const loop = createStoreLoop({
+      intervalMs: 10_000,
+      listDocuments: () => [{ name: DIRTY }],
+      storeNow: async ({ name }) => {
+        consumeTimedStoreArm(name);
+        return new Promise<boolean>(() => {});
+      },
+    });
+    noteDocumentChange(DIRTY);
+
+    const round = loop.runOnce();
+    const raced = await Promise.race([
+      round.then(() => "the round moved on"),
+      new Promise((resolve) => setTimeout(() => resolve("still waiting"), 50)),
+    ]);
+
+    expect(raced).toBe("still waiting");
   });
 });

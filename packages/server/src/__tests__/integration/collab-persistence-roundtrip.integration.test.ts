@@ -121,7 +121,6 @@ beforeAll(async () => {
   });
   hocuspocus = wsServer.hocuspocus;
   storeGate.current = createUnloadGate({
-    finalAttemptTimeoutMs: 3000,
     instanceId: "inst-test",
     encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
     storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),

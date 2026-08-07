@@ -29,19 +29,22 @@ import {
   hasUnsavedContent,
   releaseTimedStoreArm,
 } from "@collab/services/store-tracker.js";
-import { runWithTimeout } from "@collab/services/with-timeout.js";
 
 const logger = createLogger("collab-unload-gate");
 
 /**
  * What the one final store attempt turned out to be.
  *
- * Three of these used to be one. The gate asked a single question — "does the
- * document still hold unstored content?" — and reported every yes as "the
- * database refused it", which is true of only one of them:
+ * The attempt is waited out, so every one of these is something that actually
+ * happened rather than something a clock decided. There used to be a fifth,
+ * "we stopped waiting", and it was the source of three operator alerts in smoke
+ * against a database answering in 250ms.
  *
+ *   stored       our extension ran and its write landed.
  *   refused      our extension ran, the write came back, the content did not
  *                land. The database really did say no.
+ *   raced-by-edit the write landed, and content arrived while it was in flight,
+ *                so the database holds a copy that is already behind.
  *   not-reached  our extension never ran: the permission we issued was still
  *                unspent. `hooks()` chains the extensions with `.then`, so a
  *                rejection from any of them skips every hook behind it, and the
@@ -49,17 +52,14 @@ const logger = createLogger("collab-unload-gate");
  *                attempt looks identical to a completed one. WHICH extension
  *                aborted it is not visible, so the operator text names none.
  *   unconfirmed  we cannot say what happened: another writer superseded our
- *                attempt, the document left memory while we waited, or the
- *                library had already unloaded it before we got there. All three
- *                may well have stored it, and none of them is "nothing reached
- *                us".
- *   unknown      our extension ran and we stopped waiting. Giving up cancels
- *                nothing; the write may land seconds later.
+ *                attempt, the document left memory before we got there, or our
+ *                extension ran and threw before it could report. None of them
+ *                is "nothing reached us".
  *
  * Telling an operator a healthy database rejected content it never saw, or very
  * probably accepted, costs real attention during an outage.
  */
-type FinalAttempt = "stored" | "refused" | "not-reached" | "unconfirmed" | "unknown";
+type FinalAttempt = "stored" | "refused" | "raced-by-edit" | "not-reached" | "unconfirmed";
 
 /** One attempt's outcome, plus whatever it threw on the way. */
 interface AttemptResult {
@@ -79,6 +79,9 @@ interface AttemptResult {
 /** How each outcome is explained to whoever reads the alert. */
 const ATTEMPT_REASON: Record<Exclude<FinalAttempt, "stored">, string> = {
   refused: "the final store attempt did not land",
+  "raced-by-edit":
+    "the final store attempt landed, but content arrived while it was in flight and " +
+    "is not in the database — this file holds the newer copy",
   "not-reached":
     "this instance's write never ran, and it cannot tell why — the store hook chain " +
     "was aborted before it reached us. Check the document in the database before " +
@@ -87,9 +90,6 @@ const ATTEMPT_REASON: Record<Exclude<FinalAttempt, "stored">, string> = {
     "this instance could not confirm what happened to its write — another attempt " +
     "took over, or the document left memory first. Check the document in the " +
     "database before acting on this file",
-  unknown:
-    "the final store attempt had not come back when this instance stopped waiting, " +
-    "so it may still have landed — check the document in the database before acting on this file",
 };
 
 /** A document the gate is settling. */
@@ -100,8 +100,6 @@ export interface UnloadGateEntry {
 
 /** Collaborators the gate needs. */
 export interface UnloadGateDeps {
-  /** How long the final attempt gets before it counts as failed. */
-  finalAttemptTimeoutMs: number;
   /** Which collab instance this is — the rescue file only exists on this host. */
   instanceId: string;
   /** Turn a live document into the bytes to store or rescue. */
@@ -203,32 +201,34 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   }
 
   /**
-   * Make one store attempt, giving up after the configured timeout.
+   * Make the one store attempt, and wait for its answer.
    *
-   * A timeout is not optional here: the yjs pool inherits postgres.js's
-   * 30-second connect timeout, which is several times the whole shutdown
-   * budget, so waiting for it would mean losing the rescue file too.
+   * Waited out rather than raced against a clock. Storing is one event with
+   * two outcomes, and only the write can say which it was — a deadline cancels
+   * nothing, so giving up on one yields no answer, just a third state that then
+   * gets rescued and mailed to an operator as though something were wrong.
    * @param documentName - Full Yjs document name.
    * @returns What the attempt turned out to be.
    */
   async function attemptStore(documentName: string): Promise<AttemptResult> {
     const arm = armTimedStore(documentName);
     let stillLoaded = true;
-    const outcome = await runWithTimeout(
-      deps.storeNow({ name: documentName }).then((found) => {
-        stillLoaded = found;
-      }),
-      deps.finalAttemptTimeoutMs,
-    );
-    if (outcome.error) {
-      logger.warn({ err: outcome.error, documentName }, "collab_final_store_attempt_errored");
+    let error: unknown;
+    try {
+      stillLoaded = await deps.storeNow({ name: documentName });
+    } catch (err) {
+      // The library swallows store errors, so this is the rare path — an
+      // extension throwing outside its own handling. Caught because this hook
+      // must never throw: hocuspocus aborts the unload when it does, which
+      // strands the document in memory with nothing left to release it.
+      error = err;
+      logger.warn({ err, documentName }, "collab_final_store_attempt_errored");
     }
     // Hand our own permission back and read what became of it. This is the
     // whole answer: whether our extension ran, and what its write did. Handing
     // back the token rather than deleting by name is what keeps this from
     // taking the timed loop's permission instead of ours.
     const result = releaseTimedStoreArm(documentName, arm);
-    const error = outcome.error;
 
     // The document going away first looks exactly like an unspent permission
     // from here — we arm, nothing consumes it — but they are different events
@@ -243,9 +243,9 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     }
     if (result.outcome === "stored") return { attempt: "stored", error };
     if (result.outcome === "refused") return { attempt: "refused", error };
-    // It ran and has not reported. That is a write still in flight, whether or
-    // not our own deadline is what stopped us waiting for it.
-    return { attempt: "unknown", error };
+    // It ran and reported nothing, which it only does by throwing before its
+    // own try block — encoding the document is the one step out there.
+    return { attempt: "unconfirmed", error };
   }
 
   /**
@@ -337,7 +337,11 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     const state = deps.encode(document);
     const path = await rescue(documentName, state);
     await reportLoss(documentName, state.length, path, {
-      attempt: result.attempt === "stored" ? "unknown" : result.attempt,
+      // Landed, and still dirty: the only way both hold is that content
+      // arrived during the write. Saying "it did not land" here would be
+      // false, and it is the one case where the database has a real, if
+      // slightly older, copy.
+      attempt: result.attempt === "stored" ? "raced-by-edit" : result.attempt,
       error: result.error,
     });
   }
@@ -356,9 +360,9 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   }: ShutdownPayload): Promise<void> {
     if (!hasUnsavedContent(documentName)) return;
 
-    // Disk first. The whole shutdown budget is a few seconds and one database
-    // attempt can outlast it, so the fast local write has to happen while
-    // there is still a process to do it.
+    // Disk first. A store can take as long as the database takes, and this is
+    // the last moment the content exists anywhere, so the fast local write
+    // happens while there is certainly still a process to do it.
     onStep?.("rescue");
     const state = deps.encode(document);
     const path = await rescue(documentName, state);
@@ -375,7 +379,9 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
       return;
     }
     await reportLoss(documentName, state.length, path, {
-      attempt: result.attempt === "stored" ? "unknown" : result.attempt,
+      // Same pairing as the ordinary path: landed AND still dirty means an
+      // edit arrived mid-write, and the file is the copy that has it.
+      attempt: result.attempt === "stored" ? "raced-by-edit" : result.attempt,
       error: result.error,
     });
   }
@@ -384,9 +390,8 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     beforeUnloadDocument: async (payload): Promise<void> => {
       if (!claim(payload.documentName)) return;
       try {
-        // Disk first once the process is going down: the whole budget is a few
-        // seconds and one database attempt can outlast it, so the fast local
-        // write has to happen while there is still a process to do it.
+        // Disk first once the process is going down: a store takes as long as
+        // the database takes, and the local write is quick and certain.
         await (shuttingDown ? settleForShutdown(payload) : settleNormally(payload));
       } catch (err) {
         // Belt and braces. A throw escaping here would abort the unload and
@@ -421,10 +426,10 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     },
 
     settleAllForShutdown: async (entries): Promise<void> => {
-      // Concurrently, not one after another. Each document's attempt is
-      // bounded, but a hundred of them in series is a hundred times that, and
-      // the process is on a deadline it does not control. They are independent
-      // writes of independent rows; the pool queues them.
+      // Concurrently, not one after another. A hundred documents in series is
+      // a hundred database round trips end to end, on the way out, when the
+      // supervisor is already waiting. They are independent writes of
+      // independent rows; the pool queues them.
       await Promise.all(
         Array.from(entries, async (payload) => {
           // Whoever gets here first settles it. The other path finds the claim

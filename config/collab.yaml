@@ -93,24 +93,19 @@ quiet: true
 # there is the rescue file plus the alert, not storing more often.
 store_interval_ms: 10000
 
-# How long the unload gate's single final attempt gets. It needs its own
-# budget: the yjs pool inherits postgres.js's 30s connect timeout, which is
-# several times the whole graceful-shutdown budget (4s), so waiting for it
-# would lose the rescue file as well as the database write.
-store_final_attempt_timeout_ms: 3000
+# There is deliberately no timeout over a store, here or anywhere. A store is
+# one event with two outcomes — it lands or it does not — and only the write
+# itself can say which. A clock racing it cancels nothing, so giving up on one
+# produces no answer at all, just a third state ("cannot say") that then gets
+# the document rescued to disk and an operator mailed about it. That is not
+# hypothetical: three such alerts fired in smoke against a healthy database
+# answering in 250ms.
+#
+# The process not hanging forever is a separate, real concern, and the entry's
+# `runGracefulShutdown` has owned it since long before any of this — it bounds
+# the whole exit rather than one step inside it.
 
-# How long the whole shutdown settle gets, across every document at once.
-# On the way out each document still in memory gets its one attempt, and this
-# bounds the lot of them so a hung database cannot hold the process past the
-# window the platform gives it. Documents settle concurrently, so this is a
-# ceiling on the phase rather than the sum of `store_final_attempt_timeout_ms`
-# over however many documents happened to be open. It MUST be larger than
-# `store_final_attempt_timeout_ms` (the loader rejects the config otherwise):
-# a phase that ends before one attempt can finish always reports itself
-# exhausted, and the loss reports it exists to bound land outside it.
-store_shutdown_settle_budget_ms: 4000
-
-# Where content goes when even the final attempt fails. Relative paths are
+# Where content goes when the final attempt does not land. Relative paths are
 # resolved from the monorepo root; in Docker this sits under the mounted
 # ./logs volume so the files survive the container. They are NEVER removed
 # automatically — each one is the only remaining copy of somebody's work.

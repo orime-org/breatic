@@ -23,7 +23,7 @@
  *                        they type between it and `server.destroy()` is
  *                        destroyed with no store, no rescue file and no log
  *                        line. A settle that is not final is not a settle.
- *   settle everything    one final attempt per document, bounded as a phase.
+ *   settle everything    one final attempt per document, each waited out.
  *
  * WHAT IT DOES NOT COVER, stated rather than papered over: an update relayed
  * from another instance. The Redis extension applies those from its own
@@ -34,11 +34,7 @@
  * copy. Pretending to handle it here would be worse than saying so.
  */
 
-import { createLogger } from "@breatic/core";
 import type { UnloadGate, UnloadPayload } from "@collab/hooks/unload-gate.js";
-import { runWithTimeout } from "@collab/services/with-timeout.js";
-
-const logger = createLogger("collab-shutdown-settle");
 
 /** Collaborators the shutdown settle needs. */
 export interface ShutdownSettleDeps {
@@ -48,29 +44,22 @@ export interface ShutdownSettleDeps {
   closeConnections(): void;
   /** Every document the instance holds, read AFTER the connections are closed. */
   listDocuments(): Iterable<UnloadPayload>;
-  /** How long the whole phase gets, across every document at once. */
-  budgetMs: number;
 }
 
 /**
  * Settle every document the instance still holds, on the way out.
- * @param deps - The gate, the connection close, the document source, the budget.
- * @returns Resolves once every document has been settled or the budget elapsed.
+ *
+ * Waited for in full. This phase is a set of stores, and a store either lands
+ * or it does not; a deadline over them cancels nothing, so cutting the phase
+ * short only stops this side listening while the writes carry on regardless.
+ * Keeping the process from hanging forever is a real concern and a separate
+ * one — `runGracefulShutdown` in the entry has owned it since long before any
+ * of this, and it bounds the whole exit rather than this one step.
+ * @param deps - The gate, the connection close, and the document source.
+ * @returns Resolves once every document has been settled.
  */
 export async function settleEverythingForShutdown(deps: ShutdownSettleDeps): Promise<void> {
   deps.gate.markShuttingDown();
   deps.closeConnections();
-
-  // Bounded as a phase rather than per document. The documents settle
-  // concurrently, so a hung database costs one budget, not one per open
-  // document — and the process is on a deadline it does not control. The
-  // config loader refuses a budget that does not outlast one document's own
-  // attempt, which would make this always report itself exhausted.
-  const outcome = await runWithTimeout(
-    deps.gate.settleAllForShutdown(deps.listDocuments()),
-    deps.budgetMs,
-  );
-  if (outcome.timedOut) {
-    logger.error({ budgetMs: deps.budgetMs }, "collab_shutdown_settle_budget_exhausted");
-  }
+  await deps.gate.settleAllForShutdown(deps.listDocuments());
 }

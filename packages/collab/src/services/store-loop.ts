@@ -25,7 +25,6 @@ import {
   hasUnsavedContent,
   releaseTimedStoreArm,
 } from "@collab/services/store-tracker.js";
-import { runWithTimeout } from "@collab/services/with-timeout.js";
 
 const logger = createLogger("collab-store-loop");
 
@@ -39,8 +38,6 @@ export interface StoreLoopEntry {
 export interface StoreLoopDeps {
   /** How long between rounds. */
   intervalMs: number;
-  /** How long one document's store gets before the round moves on. */
-  storeTimeoutMs: number;
   /** Documents currently held in memory. */
   listDocuments(): Iterable<StoreLoopEntry>;
   /**
@@ -86,17 +83,21 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
         // Arm immediately before the call: the persistence extension returns
         // without writing anything when it finds no arm.
         const arm = armTimedStore(entry.name);
-        // Bounded, because a round that never ends is a round that never
-        // reaches the documents behind this one — and each of those is holding
-        // unstored content too. `runWithTimeout` does not reject, so one
-        // document cannot take the round down with it.
+        // Waited for, not raced against a clock. A store is one event with two
+        // outcomes — it lands or it does not — and only the write itself can
+        // say which. A deadline cancels nothing, so giving up on one produces
+        // no answer at all, just a third state that then gets reported as if
+        // something had gone wrong.
         let stillLoaded = true;
-        const outcome = await runWithTimeout(
-          deps.storeNow(entry).then((found) => {
-            stillLoaded = found;
-          }),
-          deps.storeTimeoutMs,
-        );
+        let storeError: unknown;
+        try {
+          stillLoaded = await deps.storeNow(entry);
+        } catch (err) {
+          // Caught rather than allowed to escape: one document must not stop
+          // the round from reaching the documents behind it, each of which is
+          // holding unstored content too.
+          storeError = err;
+        }
         // Give our own arm back rather than trusting it was consumed. The
         // Redis extension runs first (priority 1000 against our default 100)
         // and aborts the whole hook chain when another instance holds the
@@ -107,17 +108,17 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
         // name is what keeps this from taking the unload gate's arm.
         const result = releaseTimedStoreArm(entry.name, arm);
 
-        if (outcome.error) {
+        if (storeError) {
           logger.error(
-            { err: outcome.error, documentName: entry.name },
+            { err: storeError, documentName: entry.name },
             "collab_store_round_document_failed",
           );
         }
         // Nothing to retry here and nothing to alert about: the document is
         // still in memory and still reads as holding unstored content, so the
         // next round picks it up. Recorded because a document that never wins
-        // the cross-instance lock, or never finishes a write, is invisible
-        // otherwise — it just quietly stays dirty round after round.
+        // the cross-instance lock is invisible otherwise — it just quietly
+        // stays dirty round after round.
         // A document that left memory between the listing and the store is
         // ordinary — the unload gate settled it on the way out — so it is not
         // worth a line. Everything else that did not confirm is.
@@ -125,7 +126,10 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
           logger.warn(
             {
               documentName: entry.name,
-              outcome: result.ran ? "still-in-flight" : "not-reached",
+              // Our extension ran and still said nothing, which it only does
+              // when it threw before reaching its own try block — encoding the
+              // document is the one step out there.
+              outcome: result.ran ? "no-result" : "not-reached",
             },
             "collab_store_round_document_unconfirmed",
           );

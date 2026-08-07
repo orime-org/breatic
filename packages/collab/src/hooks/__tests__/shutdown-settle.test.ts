@@ -29,7 +29,7 @@ beforeEach(() => vi.clearAllMocks());
  * @param overrides - Slow or hanging pieces for the timing cases.
  * @returns The deps to pass, plus the recorded order.
  */
-function harness(overrides: { settle?: () => Promise<void>; budgetMs?: number } = {}) {
+function harness(overrides: { settle?: () => Promise<void> } = {}) {
   const order: string[] = [];
   const seen: string[][] = [];
   return {
@@ -46,7 +46,6 @@ function harness(overrides: { settle?: () => Promise<void>; budgetMs?: number } 
       },
       closeConnections: (): void => void order.push("close"),
       listDocuments: () => [{ documentName: "project-p/document-1" }],
-      budgetMs: overrides.budgetMs ?? 1_000,
     },
   };
 }
@@ -77,7 +76,6 @@ describe("settling everything on the way out", () => {
         order.push("list");
         return [];
       },
-      budgetMs: 1_000,
     };
 
     await settleEverythingForShutdown(deps as never);
@@ -93,22 +91,21 @@ describe("settling everything on the way out", () => {
     expect(h.seen).toEqual([["project-p/document-1"]]);
   });
 
-  it("gives up on the phase when the budget runs out, and says so", async () => {
-    const h = harness({ settle: () => new Promise<void>(() => {}), budgetMs: 20 });
+  it("waits for the settle rather than cutting it short on a clock", async () => {
+    // The settle is a set of stores, and a store either lands or does not. A
+    // deadline over the phase cancels none of them; it only stops this side
+    // listening, so a document whose write was about to come back gets counted
+    // as unaccounted for. Keeping the process from hanging forever is a
+    // different job, and `runGracefulShutdown` in the entry already has it.
+    const settling = new Promise<void>(() => {});
+    const h = harness({ settle: () => settling });
 
-    await settleEverythingForShutdown(h.deps as never);
+    const phase = settleEverythingForShutdown(h.deps as never);
+    const raced = await Promise.race([
+      phase.then(() => "the phase moved on"),
+      new Promise((resolve) => setTimeout(() => resolve("still waiting"), 50)),
+    ]);
 
-    expect(mockLogger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ budgetMs: 20 }),
-      "collab_shutdown_settle_budget_exhausted",
-    );
-  });
-
-  it("says nothing when the phase finishes inside its budget", async () => {
-    const h = harness({ budgetMs: 1_000 });
-
-    await settleEverythingForShutdown(h.deps as never);
-
-    expect(mockLogger.error).not.toHaveBeenCalled();
+    expect(raced).toBe("still waiting");
   });
 });

@@ -55,7 +55,6 @@ function harness(outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands")
   const storeCalls: string[] = [];
 
   const gate = createUnloadGate({
-    finalAttemptTimeoutMs: 50,
     instanceId: "inst-a",
     encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
     storeNow: async ({ name }) => {
@@ -148,17 +147,6 @@ describe("the unload gate — a document with outstanding content", () => {
     expect(mockLogger.error).toHaveBeenCalledTimes(1);
   });
 
-  it("treats an attempt that never returns as a failure, within the timeout", async () => {
-    // The yjs pool inherits postgres.js's 30s connect timeout, which is many
-    // times the whole shutdown budget. Waiting for it means losing the file.
-    const { gate, rescued } = harness("hangs");
-    noteDocumentChange(DOC);
-
-    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
-
-    expect(rescued).toHaveLength(1);
-  });
-
   it("never throws, so the document is always released", async () => {
     // Throwing from this hook aborts the unload in hocuspocus, which would
     // strand the document in memory with zero connections.
@@ -207,7 +195,6 @@ describe("the unload gate — a document with outstanding content", () => {
     // the only one that told nobody.
     const alerted: Array<{ rescuePath: string; reason: string }> = [];
     const gate = createUnloadGate({
-      finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async () => true,
@@ -318,7 +305,6 @@ describe("settling every document on the way out", () => {
     forgetDocument(other);
     const rescued: string[] = [];
     const gate = createUnloadGate({
-      finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async () => true,
@@ -405,30 +391,29 @@ describe("the unload gate — when nothing reached our extension", () => {
   });
 });
 
-describe("the unload gate — when the write had not come back", () => {
-  // Gate 2 round 2 findings 1 and 3. Giving up waiting does not cancel the
-  // write and does not release the document's save mutex; the write may land
-  // seconds later. Reporting that as "the store did not land" tells an
-  // operator a healthy database refused content it very probably accepted.
+describe("the unload gate — a write that is taking its time", () => {
+  // A store either lands or it does not, and the write itself is what says
+  // which. A clock racing it cancels nothing, so giving up on it produces no
+  // answer at all — just a third state, "I cannot say", which then rescued the
+  // document and mailed an operator about a database that was merely busy.
+  // Three such alerts fired in smoke against a database answering in 250ms.
 
-  it("still writes the rescue file — an unconfirmed write is not a confirmed one", async () => {
-    const { gate, rescued } = harness("hangs");
+  it("waits for the answer instead of rescuing on a clock", async () => {
+    const { gate, rescued, alerted } = harness("hangs");
     noteDocumentChange(DOC);
 
-    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("hello") });
+    const settle = gate.beforeUnloadDocument({
+      documentName: DOC,
+      document: documentWithText("hello"),
+    });
+    const raced = await Promise.race([
+      settle.then(() => "the gate moved on"),
+      new Promise((resolve) => setTimeout(() => resolve("still waiting"), 50)),
+    ]);
 
-    expect(rescued).toHaveLength(1);
-  });
-
-  it("says the outcome is unknown rather than claiming it did not land", async () => {
-    const { gate, alerted } = harness("hangs");
-    noteDocumentChange(DOC);
-
-    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("hello") });
-
-    expect(alerted).toHaveLength(1);
-    expect(alerted[0]?.reason).toMatch(/stopped waiting|may still have landed/i);
-    expect(alerted[0]?.reason).not.toMatch(/did not land/);
+    expect(raced).toBe("still waiting");
+    expect(rescued).toHaveLength(0);
+    expect(alerted).toHaveLength(0);
   });
 });
 
@@ -442,7 +427,6 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
   it("writes a note beside the rescue file saying what it is", async () => {
     const notes: Array<{ rescuePath: string; note: { reason: string } }> = [];
     const gate = createUnloadGate({
-      finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
@@ -482,7 +466,6 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
 
   it("logs under a stable name when even the rescue file could not be written", async () => {
     const gate = createUnloadGate({
-      finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
@@ -508,7 +491,6 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
 
   it("logs under a stable name when the attempt itself threw", async () => {
     const gate = createUnloadGate({
-      finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async () => {
@@ -564,7 +546,6 @@ describe("who settles a document when both paths want to", () => {
     });
     const rescued: string[] = [];
     const gate = createUnloadGate({
-      finalAttemptTimeoutMs: 5_000,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
@@ -617,7 +598,6 @@ describe("who settles a document when both paths want to", () => {
   it("writes the rescue file before attempting the store once shutting down", async () => {
     const order: string[] = [];
     const gate = createUnloadGate({
-      finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
@@ -670,7 +650,6 @@ describe("what the operator is told when there is no answer", () => {
     // confirm — but "cannot confirm" is not "nothing reached us", and the
     // superseding attempt may well have stored the document.
     const gate = createUnloadGate({
-      finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
@@ -715,7 +694,6 @@ describe("a document destroyed while the shutdown settle is working on it", () =
     const alerted: StoreFailureAlert[] = [];
     const document = documentWithText("x");
     const gate = createUnloadGate({
-      finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
       storeNow: async () => {
@@ -748,7 +726,6 @@ describe("a document destroyed while the shutdown settle is working on it", () =
     const rescued: Array<{ documentName: string; state: Uint8Array }> = [];
     const document = documentWithText("content that must survive the race");
     const gate = createUnloadGate({
-      finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
       storeNow: async ({ name }) => {
@@ -789,7 +766,6 @@ describe("when the shutdown settle may delete the rescue file", () => {
   it("keeps the file when the write landed but something arrived during it", async () => {
     const deleted: string[] = [];
     const gate = createUnloadGate({
-      finalAttemptTimeoutMs: 50,
       instanceId: "inst-a",
       encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
       storeNow: async ({ name }) => {

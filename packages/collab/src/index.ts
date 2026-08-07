@@ -45,11 +45,15 @@ const logger = createLogger("main");
 /**
  * Deadline (ms) for the teardown drains that follow the store settle.
  *
- * It no longer has to cover the listen socket: that is released before the
- * settle now, so a dev `tsx watch` restart can rebind :1234 immediately rather
- * than waiting behind anything. What it still guarantees is that a hung drain
- * (a Redis quit that never returns, say) cannot hold the process open — and by
- * the time it can bite, every rescue file and its log are already on disk.
+ * Predates the timed store by two months (`6e07f4fd`, the shared
+ * graceful-shutdown refactor across all three services) and covers what it
+ * always covered: a hung drain — a Redis quit that never returns, say — must
+ * not hold the process open. It does NOT bound the store settle, which runs
+ * before it and is deliberately unbounded; a store answers when the database
+ * answers, and a clock over it would cancel nothing.
+ *
+ * It no longer has to cover the listen socket either: that is released before
+ * the settle now, so a dev `tsx watch` restart can rebind :1234 immediately.
  */
 const SHUTDOWN_DEADLINE_MS = 4000;
 
@@ -364,7 +368,12 @@ async function main(): Promise<void> {
     // count to reach zero, while `shouldUnloadDocument` stays false for as long
     // as a document's save mutex is held, so one store still in flight from the
     // last timed round meant that document never unloaded, never reached the
-    // gate, and got no rescue file at all before the deadline fired.
+    // gate, and got no rescue file at all.
+    //
+    // Unbounded on purpose. The settle writes each document's rescue file
+    // BEFORE it attempts the store, so the content is already safe on disk by
+    // the time anything slow can happen; what a deadline here would buy is
+    // exiting sooner, at the cost of abandoning writes that were about to land.
     await settleAllForShutdown();
 
     // Onto disk now, not at the end. What the settle just recorded is the

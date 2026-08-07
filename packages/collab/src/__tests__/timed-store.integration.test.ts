@@ -97,7 +97,6 @@ function harness(options: { failing?: boolean; delayMs?: number; debounceMs?: nu
   });
 
   storeGate.current = createUnloadGate({
-    finalAttemptTimeoutMs: 2000,
     instanceId: "inst-test",
     encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
     storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
@@ -109,7 +108,6 @@ function harness(options: { failing?: boolean; delayMs?: number; debounceMs?: nu
 
   const loop = createStoreLoop({
     intervalMs: 10_000,
-    storeTimeoutMs: 5_000,
     listDocuments: () => Array.from(hocuspocus.documents.keys(), (name) => ({ name })),
     storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
   });

@@ -90,7 +90,6 @@ function harness(options: { lockLost?: boolean } = {}) {
   const hocuspocus = createLiveServer({ extensions });
   const loop = createStoreLoop({
     intervalMs: 60_000,
-    storeTimeoutMs: 3_000,
     listDocuments: () => Array.from(hocuspocus.documents.keys(), (name) => ({ name })),
     storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
   });

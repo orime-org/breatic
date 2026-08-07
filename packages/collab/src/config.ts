@@ -45,8 +45,6 @@ const collabConfigSchema = z.object({
   // Timed store (#40). Storing is driven by a timer rather than by edits,
   // so a failed write is retried and has no consequence for the editor.
   store_interval_ms: z.number().int().positive().default(10_000),
-  store_final_attempt_timeout_ms: z.number().int().positive().default(3_000),
-  store_shutdown_settle_budget_ms: z.number().int().positive().default(2_000),
   store_rescue_dir: z.string().default("logs/collab/rescue"),
   store_alert_email: z.string().default(""),
   store_alert_window_ms: z.number().int().positive().default(600_000),
@@ -66,31 +64,6 @@ const collabConfigSchema = z.object({
 });
 
 /** Validated collab configuration type. */
-/**
- * The two shutdown budgets have to be in a relation, not just individually
- * positive.
- *
- * `store_shutdown_settle_budget_ms` bounds the whole settle phase, and every
- * document in it is bounded separately by `store_final_attempt_timeout_ms`,
- * concurrently. A phase budget that does not outlast one attempt therefore
- * always cuts short: under a hung database every document reports the budget
- * exhausted, and every loss report — the log line and the operator email that
- * say where the rescue file is — lands outside the bound it was meant to sit
- * inside. Shipped 2000 against 3000, which is exactly that.
- */
-const collabConfigSchemaWithBudgetRelation = collabConfigSchema.refine(
-  (cfg) => cfg.store_shutdown_settle_budget_ms > cfg.store_final_attempt_timeout_ms,
-  {
-    message:
-      "the shutdown settle budget must be larger than one document's final-attempt " +
-      "timeout, or the phase always ends before any attempt can finish",
-    path: ["store_shutdown_settle_budget_ms"],
-  },
-);
-
-/** Exposed so the relation above can be tested without a YAML file. */
-export const collabConfigSchemaForTests = collabConfigSchemaWithBudgetRelation;
-
 export type CollabConfig = z.infer<typeof collabConfigSchema>;
 
 let _cached: Readonly<CollabConfig> | null = null;
@@ -113,6 +86,6 @@ export function getCollabConfig(): Readonly<CollabConfig> {
   const raw = readFileSync(configPath, "utf-8");
   const parsed = parse(raw) as unknown;
 
-  _cached = Object.freeze(collabConfigSchemaWithBudgetRelation.parse(parsed));
+  _cached = Object.freeze(collabConfigSchema.parse(parsed));
   return _cached;
 }
