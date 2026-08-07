@@ -475,6 +475,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const storeAlerter = createStoreAlerter({
     to: cfg.store_alert_email,
     windowMs: cfg.store_alert_window_ms,
+    timeoutMs: cfg.store_alert_timeout_ms,
     instanceId,
     send: sendMail,
   });

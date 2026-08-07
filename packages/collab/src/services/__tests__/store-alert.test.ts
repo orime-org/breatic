@@ -35,12 +35,15 @@ const FAILURE = {
  * @param overrides - Recipient, window, and what the sender should return.
  * @returns The alerter, the sent mails, and a handle to move the clock.
  */
-function harness(overrides: { to?: string; send?: () => Promise<unknown> } = {}) {
+function harness(
+  overrides: { to?: string; send?: () => Promise<unknown>; timeoutMs?: number } = {},
+) {
   const sent: Array<{ to: string; subject: string; html: string }> = [];
   let clock = 1_000_000;
   const alerter = createStoreAlerter({
     to: overrides.to ?? "ops@example.com",
     windowMs: 600_000,
+    timeoutMs: overrides.timeoutMs ?? 1_000,
     instanceId: "inst-a",
     now: () => clock,
     send: async (options) => {
@@ -145,5 +148,37 @@ describe("createStoreAlerter", () => {
     await alerter.alert(FAILURE);
 
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe("an alert the mail server never answers", () => {
+  // Gate 2 round 2 finding 4. This was the one step on the way out with no
+  // deadline. nodemailer's transport is built without timeout options
+  // (`core/src/infra/mailer.ts`), so it inherits a two-minute connection
+  // timeout — and the gate awaits the alert inside `beforeUnloadDocument`.
+  // An unreachable SMTP host during a database outage therefore held every
+  // unloading document in memory for two minutes each, which is the failure
+  // this whole design exists to prevent, arriving by a different door.
+
+  it("gives up and says so rather than holding the caller", async () => {
+    const { alerter } = harness({
+      timeoutMs: 20,
+      send: () => new Promise(() => {}),
+    });
+
+    await alerter.alert(FAILURE);
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ cause: "timed out" }),
+      "collab_store_alert_undeliverable",
+    );
+  });
+
+  it("does not wait for a transport that answers in time", async () => {
+    const { alerter } = harness({ timeoutMs: 1_000 });
+
+    await alerter.alert(FAILURE);
+
+    expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 });

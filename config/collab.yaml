@@ -124,6 +124,13 @@ store_alert_email: ""
 # to one per document per window.
 store_alert_window_ms: 600000
 
+# How long the mail transport gets before the alert is written off. It needs
+# its own bound: the transport is built without timeout options, so it
+# inherits nodemailer's two-minute connection timeout, and the unload gate
+# waits for the alert. An unreachable SMTP host during a database outage would
+# otherwise hold every unloading document in memory for two minutes each.
+store_alert_timeout_ms: 3000
+
 # ── Handling Lease (#1580) ────────────────────────
 # 'handling' is fragile shared Yjs state; its driver (a browser uploading,
 # a Worker running AIGC) can die silently. These tune the collab sweeper +

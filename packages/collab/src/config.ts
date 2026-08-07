@@ -50,6 +50,7 @@ const collabConfigSchema = z.object({
   store_rescue_dir: z.string().default("logs/collab/rescue"),
   store_alert_email: z.string().default(""),
   store_alert_window_ms: z.number().int().positive().default(600_000),
+  store_alert_timeout_ms: z.number().int().positive().default(3_000),
 
   // Handling lease (#1580) — collab is the ONLY consumer. See collab.yaml.
   handling_lease: z

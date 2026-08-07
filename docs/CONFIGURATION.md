@@ -63,6 +63,7 @@ loader:`packages/collab/src/config.ts`。**只有行为参数,没有端口** —
 | `store_shutdown_settle_budget_ms` | 2000 | 关闭时「给每份还在内存里的文档最后一次机会」这整个阶段的预算。文档是并发结算的,所以这是**整段的上限**,不是 `store_final_attempt_timeout_ms` 乘以开着的文档数。它兜的是「库挂住时进程不能被拖过平台给的窗口」;这一阶段跑完会立刻把日志刷盘,之后的排空再被强杀也不会丢救援记录 |
 | `store_rescue_dir` | `logs/collab/rescue` | 补传也失败时,内容写到哪。相对路径从仓库根解析;Docker 下落在挂载的 `./logs` 卷里。**永不自动清理** —— 每个文件都是某人工作的最后一份拷贝 |
 | `store_alert_email` | 空 | 收告警的运维邮箱。**生产必须配** —— 没人知道的救援文件等于没有。注意 `EMAIL_BACKEND` 默认 `disabled` 且两个 env 模板都是 disabled,那种情况下告警只到日志,collab 会明说而不是静默 |
+| `store_alert_timeout_ms` | 3000 | 发告警邮件的超时。必须有:邮件传输层没配任何超时,继承 nodemailer 默认的两分钟连接超时,而卸载闸要等这封信发完。库故障期间 SMTP 又不通的话,每份正在卸载的文档都会被挂住两分钟——内存被文档填满,正是整套设计要消灭的那个故障从另一扇门进来 |
 | `store_alert_window_ms` | 600000(10 分钟) | 同一份文档在这个窗口内只发一封告警。一次库故障 = 每份打开的文档每轮一次失败,不去重会刷屏 |
 | `max_document_bytes` | 10485760(10 MB) | 单 Yjs 文档字节上限(0 = 不限) |
 | `max_connections_per_document` | 100 | 单文档跨实例连接数上限(0 = 不限) |

@@ -19,6 +19,7 @@
 
 import { createLogger } from "@breatic/core";
 import type { SendMailOptions, SendMailResult } from "@breatic/core";
+import { runWithTimeout } from "@collab/services/with-timeout.js";
 
 const logger = createLogger("collab-store-alert");
 
@@ -40,6 +41,17 @@ export interface StoreAlerterDeps {
   to: string;
   /** How long one document stays quiet after an alert. */
   windowMs: number;
+  /**
+   * How long the transport gets before the alert is written off.
+   *
+   * Not optional. The gate awaits this inside `beforeUnloadDocument`, and the
+   * mail transport is built without timeout options, so it inherits
+   * nodemailer's two-minute connection timeout. An unreachable SMTP host
+   * during a database outage would hold every unloading document in memory for
+   * two minutes each — filling memory with documents, which is the failure the
+   * rest of this design exists to prevent, arriving by a different door.
+   */
+  timeoutMs: number;
   /** Which collab instance this is — the rescue file only exists here. */
   instanceId: string;
   /** Mail transport. */
@@ -100,22 +112,35 @@ export function createStoreAlerter(deps: StoreAlerterDeps): StoreAlerter {
         return;
       }
 
-      try {
-        const result = await deps.send({
-          to: deps.to,
-          subject: `[breatic] collab could not store ${failure.documentName}`,
-          html: renderBody(failure, deps.instanceId),
-        });
-        if (result.status !== "sent") {
-          logger.warn(
-            { ...failure, instanceId: deps.instanceId, cause: result.status },
-            "collab_store_alert_undeliverable",
-          );
-        }
-      } catch (err) {
+      let result: SendMailResult | undefined;
+      const outcome = await runWithTimeout(
+        deps
+          .send({
+            to: deps.to,
+            subject: `[breatic] collab could not store ${failure.documentName}`,
+            html: renderBody(failure, deps.instanceId),
+          })
+          .then((sent) => {
+            result = sent;
+          }),
+        deps.timeoutMs,
+      );
+
+      if (outcome.error) {
         logger.error(
-          { err, ...failure, instanceId: deps.instanceId },
+          { err: outcome.error, ...failure, instanceId: deps.instanceId },
           "collab_store_alert_failed",
+        );
+        return;
+      }
+      // Giving up on the transport is not the same as the transport saying no,
+      // but from here both mean the same thing: nobody was told, and the log is
+      // now the only record that this document was rescued.
+      const cause = outcome.timedOut ? "timed out" : result?.status;
+      if (cause !== "sent") {
+        logger.warn(
+          { ...failure, instanceId: deps.instanceId, cause },
+          "collab_store_alert_undeliverable",
         );
       }
     },
