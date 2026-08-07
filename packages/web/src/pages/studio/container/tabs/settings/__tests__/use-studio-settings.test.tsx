@@ -130,9 +130,9 @@ describe('useStudioSettings — telling a rename apart from any other save', () 
   it('stops saying so once the rename has failed', async () => {
     // The variables of the last mutation survive its settling, so "the patch
     // in flight carried a slug" keeps answering yes afterwards. Only the
-    // in-flight half tells a finished rename from a running one — and the
-    // dialog refuses to close while this is true, so a rename that 409s would
-    // seal it shut for good.
+    // in-flight half tells a finished rename from a running one — without it
+    // the confirm button would sit there spinning over a rename that came back
+    // 409 several seconds ago.
     vi.mocked(studiosApi.update).mockRejectedValue(new Error('taken'));
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
 

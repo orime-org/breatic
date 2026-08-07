@@ -5,11 +5,14 @@
  * How the settings tab wires its two write surfaces together.
  *
  * The name and the slug are saved by the same mutation, so "a save is running"
- * is not the same question as "this rename is running". The rename dialog
- * refuses to close while its own request is out, and a flag that cannot tell
- * the two apart turns that refusal into a trap: press Save on the name, then
- * open the rename dialog, and it is a modal with no way out over a rename
- * nobody submitted.
+ * is not the same question as "this rename is running", and the tab has to
+ * hand each of them the right one. The broad answer holds Confirm back, or a
+ * rename fires while another patch is still out and two ride the one mutation
+ * at once. The narrow answer draws the spinner, which must not claim to be
+ * renaming during a name save.
+ *
+ * The dialog itself closes on every path at any time, so neither flag can trap
+ * anyone; getting the narrow one wrong costs an icon.
  */
 
 import * as React from 'react';

@@ -103,12 +103,6 @@ export function ChangeSlugSection({
   // else — the dialog would open on an address change nobody asked for, and
   // the availability check would ask about the OTHER studio's slug and be
   // told, truthfully, that it is taken.
-  // The studio can change under a mounted dialog: switching to an already
-  // cached studio in the rail re-renders these components rather than
-  // rebuilding them. A draft seeded once at mount would then describe somebody
-  // else — the dialog would open on an address change nobody asked for, and
-  // the availability check would ask about the OTHER studio's slug and be
-  // told, truthfully, that it is taken.
   React.useEffect(() => {
     setSlug(studio.slug);
   }, [studio.slug]);
